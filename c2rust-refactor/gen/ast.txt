@@ -351,7 +351,7 @@ flag AttrStyle;
 
 #[match=custom] #[nonterminal]
 struct Path { span, segments }
-struct PathSegment { ident, args }
+struct PathSegment { ident, id, args }
 enum GenericArgs {
     AngleBracketed(abpd),
     Parenthesized(ppd),

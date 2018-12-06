@@ -11,7 +11,6 @@ use driver::{self, Phase};
 use reflect;
 use resolve;
 use transform::Transform;
-use util::HirDefExt;
 
 
 
@@ -129,8 +128,8 @@ impl Transform for CanonicalizeExterns {
                 }};
             }
 
-            let (old_sig, new_sig) = match (old_sig.no_late_bound_regions(),
-                                            new_sig.no_late_bound_regions()) {
+            let (old_sig, new_sig) = match (old_sig.no_bound_vars(),
+                                            new_sig.no_bound_vars()) {
                 (Some(x), Some(y)) => (x, y),
                 _ => bail!("old or new sig had late-bound regions"),
             };

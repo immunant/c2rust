@@ -12,7 +12,6 @@ use api::*;
 use command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
 use driver::{self, Phase};
 use transform::Transform;
-use util::HirDefExt;
 
 
 /// # `test_one_plus_one` Command

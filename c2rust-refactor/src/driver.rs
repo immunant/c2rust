@@ -425,7 +425,7 @@ pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
 
 pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     let mut p = make_parser(sess, "<pat>", src);
-    match p.parse_pat() {
+    match p.parse_pat(None) {
         Ok(pat) => remove_paren(pat),
         Err(db) => emit_and_panic(db, "pat"),
     }
@@ -512,7 +512,7 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
 
 fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
     // `parse_arg` is private, so we make do with `parse_pat` + `parse_ty`.
-    let pat = p.parse_pat()?;
+    let pat = p.parse_pat(None)?;
     p.expect(&Token::Colon)?;
     let ty = p.parse_ty()?;
     Ok(Arg { pat, ty, id: DUMMY_NODE_ID })

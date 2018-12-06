@@ -12,54 +12,45 @@ impl IncCleanup {
         IncCleanup{in_tail, brk_lbl}
     }
 
-    pub fn stmts_need_block(&self, stmts: &mut Vec<Stmt>) -> bool {
+    /// The only way we can say for sure that we don't need a labelled block is if we remove
+    /// the (unique) break to that label. We know that the label will be unique because relooper
+    /// never duplicates blocks.
+    ///
+    /// Returns true if we manage to remove a tail expr.
+    pub fn remove_tail_expr(&self, stmts: &mut Vec<Stmt>) -> bool {
         if let Some(mut stmt) = stmts.pop() {
             // If the very last stmt in our relooped output is a return/break, we can just
             // remove that statement. We additionally know that there is definitely no need
             // to label a block (if we were in that mode in the first place).
             if self.is_idempotent_tail_expr(&stmt) {
-                return false;
+                return true;
             }
 
-            let mut need_block = true;
+            let mut removed_tail_expr = false;
 
             if let StmtKind::Expr(ref mut expr) = stmt.node {
                 match expr.node {
                     ExprKind::If(_, ref mut body, ref mut sels) => {
-                        let body_need = self.stmts_need_block(&mut body.stmts);
-                        let else_need =
+                        removed_tail_expr = removed_tail_expr || self.remove_tail_expr(&mut body.stmts);
                         if let Some(els) = sels {
                             if let ExprKind::Block(ref mut blk, _) = els.node {
-                                self.stmts_need_block(&mut blk.stmts)
-                            } else {
-                                true // probably shouldn't happen, true is safer fallback
+                                removed_tail_expr = removed_tail_expr || self.remove_tail_expr(&mut blk.stmts)
                             }
-                        } else {
-                            false
-                        };
-
-                        if !body_need && !else_need {
-                            need_block = false
                         }
-                    }
-                    ExprKind::Ret(..) | ExprKind::Break(..) => {
-                        need_block = false
                     }
 
                     ExprKind::Match(_, ref mut cases) => {
-                        // Block label will be needed if any of the arms need it
-                        need_block = false;
+                        // Block label can be removed from any arm
                         for case in cases {
                             match case.body.node {
                                 ExprKind::Block(ref mut blk, _) => {
-                                    if self.stmts_need_block(&mut blk.stmts) {
-                                        need_block = true
-                                    }
+                                    removed_tail_expr = removed_tail_expr || self.remove_tail_expr(&mut blk.stmts)
                                 }
-                                _ => need_block = true, // Safe fallback
+                                _ => (),
                             }
                         }
                     }
+
                     _ => (),
                 }
             }
@@ -69,7 +60,7 @@ impl IncCleanup {
             // In all other cases, we give up and accept that we can't get rid of the last
             // stmt and that we might need a block label.
             stmts.push(stmt);
-            need_block
+            removed_tail_expr
         } else {
             false
         }
@@ -85,7 +76,7 @@ impl IncCleanup {
             Some(ImplicitReturnType::Main) => {
                 if let Expr { node: ExprKind::Ret(Some(ref zero)), .. } = **tail_expr {
                     if let Expr { node: ExprKind::Lit(ref lit), .. } = **zero {
-                        if let Lit { node: LitKind::Int(0, LitIntType::Unsuffixed), .. } = **lit {
+                        if let Lit { node: LitKind::Int(0, LitIntType::Unsuffixed), .. } = *lit {
                             return true;
                         }
                     }
@@ -98,7 +89,7 @@ impl IncCleanup {
                     return true;
                 }
                 false
-            },
+            }
 
             _ => {
                 if let Expr { node: ExprKind::Break(Some(ref blbl), None), .. } = **tail_expr {
@@ -108,6 +99,7 @@ impl IncCleanup {
                 }
                 false
             }
+
         }
     }
 }

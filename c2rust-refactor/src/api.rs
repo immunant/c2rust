@@ -25,7 +25,6 @@ use matcher::Pattern;
 use command::CommandState;
 use driver;
 use reflect;
-use util::HirDefExt;
 
 
 /// Replace all instances of expression `pat` with expression `repl`.

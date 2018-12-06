@@ -463,7 +463,7 @@ pub fn dump_results(dcx: &driver::Ctxt,
                     results: &AnalysisResult) {
     eprintln!("\n === summary ===");
 
-    let arena = SyncDroplessArena::new();
+    let arena = SyncDroplessArena::default();
     let new_lcx = LabeledTyCtxt::new(&arena);
     let format_sig = |sig: VFnSig, assign: &IndexVec<Var, ConcretePerm>| {
         let mut func = |p: &Option<_>| p.as_ref().map(|&v| assign[v]);

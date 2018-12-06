@@ -285,7 +285,7 @@ impl<'a> Stream<'a> {
                     let ts = self.parens_raw()?;
 
                     let mut p = Parser::new(self.sess, ts, None, false, false);
-                    let x = p.parse_pat()
+                    let x = p.parse_pat(None)
                         .map_err(|e| format!("error parsing pat: {}", e.message()))?;
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing pat: {}", e.message()))?;

@@ -297,7 +297,7 @@ fn main_impl(opts: Options) {
     let mut marks = HashSet::new();
     for m in &opts.marks {
         let label = m.label.as_ref().map_or("target", |s| s).into_symbol();
-        marks.insert((NodeId::new(m.id), label));
+        marks.insert((NodeId::from_usize(m.id), label));
     }
 
     let rustc_args = get_rustc_arg_strings(opts.rustc_args.clone());

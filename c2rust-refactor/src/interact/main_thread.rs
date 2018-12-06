@@ -123,7 +123,7 @@ impl InteractState {
             },
 
             GetMarkInfo { id } => {
-                let id = NodeId::new(id);
+                let id = NodeId::from_usize(id);
 
                 let mut labels = Vec::new();
                 for &(mark_id, label) in self.state.marks() {

@@ -1242,7 +1242,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
     /// Change the type of an integer literal if it fits into the expected
     /// type's range.
-    fn retype_int_lit(&self, lit: P<Lit>, expected: TypeExpectation<'tcx>) -> Option<P<Expr>> {
+    fn retype_int_lit(&self, lit: Lit, expected: TypeExpectation<'tcx>) -> Option<P<Expr>> {
         // from librust_lint::TypeLimits
         // for isize & usize, be conservative with the warnings, so that the
         // warnings are consistent between 32- and 64-bit platforms

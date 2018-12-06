@@ -145,6 +145,8 @@ impl<'tcx, L: Clone> LabeledTyCtxt<'tcx, L> {
             UnnormalizedProjection(..) |
             Opaque(..) |
             Param(..) |
+            Bound(..) |
+            Placeholder(..) |
             Infer(..) |
             Error => self.mk(ty, &[], label),
         }

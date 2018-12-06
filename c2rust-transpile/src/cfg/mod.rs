@@ -1782,9 +1782,10 @@ impl CfgBuilder {
             false,
         )?;
 
-        // Remove unnecessary break statements
-        let need_block = IncCleanup::new(in_tail, brk_lbl).stmts_need_block(&mut stmts);
-        
+        // Remove unnecessary break statements. We only need a break statement if we failed to
+        // remove the tail expr.
+        let need_block = stmts.is_empty() || !IncCleanup::new(in_tail, brk_lbl).remove_tail_expr(&mut stmts);
+
         if has_fallthrough && need_block && use_brk_lbl {
             translator.use_feature("label_break_value");
             let block_body = mk().block(stmts);

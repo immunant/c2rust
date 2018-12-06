@@ -10,7 +10,6 @@ use driver;
 use transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
 use util::dataflow;
-use util::HirDefExt;
 
 
 /// # `static_collect_to_struct` Command

@@ -541,8 +541,8 @@ fn recover<'s, T>(maybe_restricted_span: Option<Span>,
         return false;
     }
 
-    let fm = rcx.session().source_map().lookup_byte_offset(old.splice_span().lo()).fm;
-    if let FileName::Macros(..) = fm.name {
+    let sf = rcx.session().source_map().lookup_byte_offset(old.splice_span().lo()).sf;
+    if let FileName::Macros(..) = sf.name {
         return false;
     }
 

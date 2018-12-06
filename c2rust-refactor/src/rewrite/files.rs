@@ -18,24 +18,24 @@ pub fn rewrite_files_with(cm: &SourceMap,
     let mut by_file = HashMap::new();
 
     for rw in rewrites {
-        let fm = cm.lookup_byte_offset(rw.old_span.lo()).fm;
-        let ptr = (&fm as &SourceFile) as *const _;
-        by_file.entry(ptr).or_insert_with(|| (Vec::new(), fm)).0.push(rw.clone());
+        let sf = cm.lookup_byte_offset(rw.old_span.lo()).sf;
+        let ptr = (&sf as &SourceFile) as *const _;
+        by_file.entry(ptr).or_insert_with(|| (Vec::new(), sf)).0.push(rw.clone());
     }
 
-    for (_, (rewrites, fm)) in by_file {
-        let path = match fm.name {
+    for (_, (rewrites, sf)) in by_file {
+        let path = match sf.name {
             FileName::Real(ref path) => path,
             _ => {
-                warn!("can't rewrite virtual file {:?}", fm.name);
+                warn!("can't rewrite virtual file {:?}", sf.name);
                 continue;
             },
         };
 
-        io.save_rewrites(cm, &fm, &rewrites)?;
+        io.save_rewrites(cm, &sf, &rewrites)?;
         let mut buf = String::new();
         let rewrites = cleanup_rewrites(cm, rewrites);
-        rewrite_range(cm, fm.start_pos, fm.end_pos, &rewrites, &mut |s| buf.push_str(s));
+        rewrite_range(cm, sf.start_pos, sf.end_pos, &rewrites, &mut |s| buf.push_str(s));
         io.write_file(path, &buf)?;
     }
 
@@ -111,8 +111,8 @@ fn emit_chunk<F: FnMut(&str)>(cm: &SourceMap,
                               mut callback: F) {
     let lo = cm.lookup_byte_offset(lo);
     let hi = cm.lookup_byte_offset(hi);
-    let src = lo.fm.src.as_ref()
-        .unwrap_or_else(|| panic!("source of file {} is not available", lo.fm.name));
+    let src = lo.sf.src.as_ref()
+        .unwrap_or_else(|| panic!("source of file {} is not available", lo.sf.name));
     callback(&src[lo.pos.0 as usize .. hi.pos.0 as usize]);
 }
 

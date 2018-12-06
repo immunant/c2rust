@@ -55,7 +55,6 @@ use syntax::symbol::Symbol;
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use type_map;
-use util::HirDefExt;
 
 
 /// Unification key for types.
