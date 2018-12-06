@@ -2636,7 +2636,7 @@ impl<'c> Translation<'c> {
         let init = match self.ast_context.index(decl_id).kind {
 
             // Zero initialize all of the fields
-            CDeclKind::Struct { ref fields, .. } => {
+            CDeclKind::Struct { ref fields, platform_byte_size, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 let fields = match *fields {
@@ -2644,26 +2644,31 @@ impl<'c> Translation<'c> {
                     None => return Err(format!("Attempted to zero-initialize forward-declared struct")),
                 };
 
-                let fields: Result<Vec<Field>, String> = fields
-                    .into_iter()
-                    .filter(|&&field_id| match self.ast_context[field_id].kind {
-                        CDeclKind::Field { bitfield_width: Some(0), .. } => false,
-                        _ => true,
-                    })
-                    .map(|field_id| -> Result<Field, String> {
-                        let name = self.type_converter.borrow().resolve_field_name(Some(decl_id), *field_id).unwrap();
+                let has_bitfields = fields.iter().map(|field_id| match self.ast_context.index(*field_id).kind {
+                    CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
+                    _ => unreachable!("Found non-field in record field list"),
+                }).any(|x| x);
 
-                        match self.ast_context.index(*field_id).kind {
-                            CDeclKind::Field { typ, .. } => {
-                                let field_init = self.implicit_default_expr(typ.ctype, is_static)?;
-                                Ok(mk().field(name, field_init))
+                if has_bitfields {
+                    self.bitfield_zero_initializer(name, fields, platform_byte_size, is_static)
+                } else {
+                    let fields: Result<Vec<Field>, String> = fields
+                        .into_iter()
+                        .map(|field_id| {
+                            let name = self.type_converter.borrow().resolve_field_name(Some(decl_id), *field_id).unwrap();
+
+                            match self.ast_context.index(*field_id).kind {
+                                CDeclKind::Field { typ, .. } => {
+                                    let field_init = self.implicit_default_expr(typ.ctype, is_static)?;
+                                    Ok(mk().field(name, field_init))
+                                }
+                                _ => Err(format!("Found non-field in record field list"))
                             }
-                            _ => Err(format!("Found non-field in record field list"))
-                        }
-                    })
-                    .collect();
+                        })
+                        .collect();
 
-                Ok(mk().struct_expr(vec![name], fields?))
+                    Ok(mk().struct_expr(vec![name], fields?))
+                }
             },
 
             // Zero initialize the first field

@@ -11,8 +11,9 @@
 // static bitfields get sectioned off
 
 use std::collections::HashSet;
+use std::ops::Index;
 
-use c_ast::{CExprId, CQualTypeId};
+use c_ast::{CDeclId, CDeclKind, CExprId, CQualTypeId, CTypeId};
 use c2rust_ast_builder::mk;
 use syntax::ast::{AttrStyle, Expr, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StrStyle, StructField, Ty, TyKind};
 use syntax::ext::quote::rt::Span;
@@ -32,7 +33,7 @@ type FieldInfo = (String, CQualTypeId, Option<u64>, u64, u64);
 enum FieldType {
     BitfieldGroup { start_bit: u64, field_name: String, bytes: u64, attrs: Vec<(String, P<Ty>, String)> },
     Padding { bytes: u64 },
-    Regular(StructField),
+    Regular { name: String, ctype: CTypeId, field: StructField },
 }
 
 fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
@@ -48,7 +49,7 @@ fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
 }
 
 impl<'a> Translation<'a> {
-    /// FIXME
+    /// TODO
     fn get_field_types(&self, field_info: Vec<FieldInfo>, platform_byte_size: u64) -> Result<Vec<FieldType>, String> {
         let mut reorganized_fields = Vec::new();
         let mut last_bitfield_group: Option<FieldType> = None;
@@ -56,7 +57,8 @@ impl<'a> Translation<'a> {
         let mut encountered_bytes = HashSet::new();
 
         for (field_name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
-            let ty = self.convert_type(ty.ctype)?;
+            let ctype = ty.ctype;
+            let ty = self.convert_type(ctype)?;
             let bitfield_width = match bitfield_width {
                 // Bitfield widths of 0 should just be markers for clang,
                 // we shouldn't need to explicitly handle it ourselves
@@ -81,9 +83,13 @@ impl<'a> Translation<'a> {
                         reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
                     }
 
-                    let field = mk().pub_().struct_field(field_name, ty);
+                    let field = mk().pub_().struct_field(field_name.clone(), ty);
 
-                    reorganized_fields.push(FieldType::Regular(field));
+                    reorganized_fields.push(FieldType::Regular {
+                        name: field_name,
+                        ctype,
+                        field,
+                    });
 
                     next_byte_pos = (bit_index + platform_ty_bitwidth) / 8;
 
@@ -141,7 +147,7 @@ impl<'a> Translation<'a> {
                         }
                     }
 
-                    let bit_range = format!("{}..={}", 0, bitfield_width - 1);
+                    let bit_range = format!("0..={}", bitfield_width - 1);
                     let attrs = vec![
                         (field_name.clone(), ty, bit_range),
                     ];
@@ -180,6 +186,8 @@ impl<'a> Translation<'a> {
     /// #[derive(BitfieldStruct, Clone, Copy)]
     /// #[repr(C, align(2))]
     /// struct Foo {
+    ///     #[bitfield(name = "bf1", ty = "libc::c_char", bits = "0..=9")]
+    ///     #[bitfield(name = "bf2", ty = "libc::c_uchar",bits = "10..=15")]
     ///     bf1_bf2: [u8; 2],
     ///     non_bf: u64,
     /// }
@@ -252,7 +260,7 @@ impl<'a> Translation<'a> {
 
                     field_entries.push(field);
                 },
-                FieldType::Regular(field) => field_entries.push(field),
+                FieldType::Regular { field, .. } => field_entries.push(field),
             }
         }
 
@@ -281,8 +289,8 @@ impl<'a> Translation<'a> {
     ///         bf1_bf2: [0; 2],
     ///         non_bf: 32,
     ///     };
-    ///     init.set_bf1(123);
-    ///     init.set_bf2(45);
+    ///     init.set_bf1(-12);
+    ///     init.set_bf2(34);
     ///     init
     /// }
     /// ```
@@ -329,7 +337,7 @@ impl<'a> Translation<'a> {
 
                     fields.push(field);
                 },
-                FieldType::Regular(_) => {},
+                _ => {},
             }
         }
 
@@ -388,5 +396,61 @@ impl<'a> Translation<'a> {
             stmts: Vec::new(),
             val,
         })
+    }
+
+    /// TODO
+    pub fn bitfield_zero_initializer(
+        &self,
+        name: String,
+        field_ids: &[CDeclId],
+        platform_byte_size: u64,
+        is_static: bool,
+    ) -> Result<P<Expr>, String> {
+        let field_info: Vec<FieldInfo> = field_ids.iter()
+            .map(|field_id| match self.ast_context.index(*field_id).kind {
+                CDeclKind::Field { ref name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth, .. } =>
+                    (name.clone(), typ, bitfield_width, platform_bit_offset, platform_type_bitwidth),
+                _ => unreachable!("Found non-field in record field list"),
+            }).collect();
+        let reorganized_fields = self.get_field_types(field_info, platform_byte_size)?;
+        let mut fields = Vec::with_capacity(reorganized_fields.len());
+        let mut padding_count = 0;
+
+        for field_type in reorganized_fields {
+            match field_type {
+                FieldType::BitfieldGroup { field_name, bytes, .. } => {
+                    let array_expr = mk().repeat_expr(
+                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                    );
+                    let field = mk().field(field_name, array_expr);
+
+                    fields.push(field);
+                },
+                FieldType::Padding { bytes } => {
+                    let field_name = if padding_count == 0 {
+                        "_pad".into()
+                    } else {
+                        format!("_pad{}", padding_count + 1)
+                    };
+                    let array_expr = mk().repeat_expr(
+                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                    );
+                    let field = mk().field(field_name, array_expr);
+
+                    padding_count += 1;
+
+                    fields.push(field);
+                },
+                FieldType::Regular { ctype, name, .. } => {
+                    let field_init = self.implicit_default_expr(ctype, is_static)?;
+
+                    fields.push(mk().field(name, field_init));
+                },
+            }
+        }
+
+        Ok(mk().struct_expr(name.as_str(), fields))
     }
 }
