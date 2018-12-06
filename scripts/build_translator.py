@@ -178,6 +178,16 @@ def build_transpiler(args):
         llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm"
 
     llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
+
+    # log how we run `cargo build` to aid troubleshooting, IDE setup, etc.
+    msg = "invoking cargo build as\ncd {} && \\\n".format(c.C2RUST_DIR)
+    msg += "LLVM_CONFIG_PATH={} \\\n".format(llvm_config)
+    msg += "LLVM_SYSTEM_LIBS='{}' \\\n".format(llvm_system_libs)
+    msg += "C2RUST_AST_EXPORTER_LIB_DIR={} \\\n".format(llvm_libdir)
+    msg += " cargo +{} ".format(c.CUSTOM_RUST_NAME)
+    msg += " ".join(build_flags)
+    logging.debug(msg)
+
     with pb.local.cwd(c.C2RUST_DIR):
         with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs,
