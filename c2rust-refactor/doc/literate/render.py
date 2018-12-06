@@ -65,9 +65,9 @@ def render_line(line: Line, f: File) -> str:
 
     def mark_arrow(m, start):
         if start:
-            sym = '&#x25b6'
+            sym = '&#x25b6;'
         else:
-            sym = '&#x25c0'
+            sym = '&#x25c0;'
         parts.append('<a class="mark-%s" title="%s">%s</a>' %
                 (mark_class(f, m), html.escape(mark_desc(f, m)), sym))
 
