@@ -51,13 +51,19 @@ def convert_marks(marks: List[Dict]) -> Dict[int, Mark]:
                 )
     return result
 
+CRATE_NODE_ID = 0
+
 def build_mark_annot(f: File) -> Annot[Set[int]]:
     '''Build an annotation on the entire file, labeled with sets of NodeIds
     indicating the marked nodes overlapping each source location.'''
     # We start with one big annotation that labels the entire file with the
-    # empty set, and zip it with an annotation for each marked node in turn.
-    empty = frozenset()
-    annot = [Span(0, len(f.text), empty)]
+    # empty set (or the singleton set containing CRATE_NODE_ID, if the crate is
+    # marked), and zip it with an annotation for each marked node in turn.
+    if CRATE_NODE_ID not in f.marks:
+        default = frozenset()
+    else:
+        default = frozenset((CRATE_NODE_ID,))
+    annot = [Span(0, len(f.text), default)]
 
     for u_start, u_end, node_id in f.unformatted_nodes:
         if node_id not in f.marks:
@@ -69,7 +75,7 @@ def build_mark_annot(f: File) -> Annot[Set[int]]:
         end = f.fmt_map_translate(u_end)
 
         node_annot = fill_annot([Span(start, end, frozenset((node_id,)))], 
-                len(f.text), label=empty)
+                len(f.text), label=default)
         annot = zip_annot(annot, node_annot, f=lambda a, b: a | b)
 
     return annot
