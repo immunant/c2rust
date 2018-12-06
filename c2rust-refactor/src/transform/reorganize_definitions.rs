@@ -105,7 +105,7 @@ impl<'st> CrateInformation<'st> {
         }
 
         // iterate through the set of possible destinations and try to find a possible match
-        for dest_module_id in self.possible_destination_modules.iter() {
+        for dest_module_id in &self.possible_destination_modules {
             if let Some(dest_module) = self.item_map.get(dest_module_id) {
                 let mut dest_module_ident = dest_module.ident;
 
@@ -198,41 +198,44 @@ impl<'ast, 'st> Visitor<'ast> for CrateInformation<'st> {
         if has_source_header(&old_module.attrs) {
             match old_module.node {
                 ItemKind::Mod(ref m) => {
+                    let mut path_info = HashMap::new();
                     for module_item in m.items.iter() {
                         let (dest_module_id, ident) =
                             self.find_destination_id(&module_item.id, &old_module);
                         self.item_to_dest_module
                             .insert(module_item.id, dest_module_id);
 
-                        for use_id in self.path_ids.iter() {
-                            let item = self.item_map.get(&use_id)
-                                .unwrap_or_else(|| panic!("There should be an item here: {:#?}", use_id));
-                            let ut = match item.node {
-                                ItemKind::Use(ref ut) => ut,
-                                _ => unreachable!(),
-                            };
+                        path_info.insert(old_module.ident, (dest_module_id, ident));
+                    }
 
-                            let (prefix, dest_id) = self.path_mapping.entry(*use_id).or_insert_with(|| {
-                                let mut prefix = ut.prefix.clone();
+                    for use_id in self.path_ids.iter() {
+                        let item = self.item_map.get(&use_id)
+                            .unwrap_or_else(|| panic!("There should be an item here: {:#?}", use_id));
+                        let ut = match item.node {
+                            ItemKind::Use(ref ut) => ut,
+                            _ => unreachable!(),
+                        };
 
-                                // Remove super and self from the paths
-                                if prefix.segments.len() > 1 {
-                                    prefix.segments.retain(|segment| {
-                                        segment.ident.name != keywords::Super.name()
-                                            && segment.ident.name != keywords::SelfValue.name()
-                                    });
-                                }
-                                (prefix, *use_id)
-                            });
+                        let (prefix, dest_id) = self.path_mapping.entry(*use_id).or_insert_with(|| {
+                            let mut prefix = ut.prefix.clone();
 
-                            // Check to see if a segment within the path is getting moved.
-                            // example_h -> example
-                            // DUMMY_NODE_ID -> actual destination module id
-                            for segment in &mut prefix.segments {
-                                if segment.ident == old_module.ident {
-                                    segment.ident = ident;
-                                    *dest_id = dest_module_id;
-                                }
+                            // Remove super and self from the paths
+                            if prefix.segments.len() > 1 {
+                                prefix.segments.retain(|segment| {
+                                    segment.ident.name != keywords::Super.name()
+                                        && segment.ident.name != keywords::SelfValue.name()
+                                });
+                            }
+                            (prefix, *use_id)
+                        });
+
+                        // Check to see if a segment within the path is getting moved.
+                        // example_h -> example
+                        // DUMMY_NODE_ID -> actual destination module id
+                        for segment in &mut prefix.segments {
+                            if let Some((dest_module_id, ident)) = path_info.get(&segment.ident) {
+                                segment.ident = *ident;
+                                *dest_id = *dest_module_id;
                             }
                         }
                     }
@@ -282,15 +285,20 @@ impl Transform for ReorganizeDefinitions {
                         // module name.
                         let mut seen_paths: HashMap<Ident, HashSet<Ident>> = HashMap::new();
                         let mut new_paths = HashSet::new();
-                        m.items = m.items.into_iter().filter_map(|item| {
-                            // Removes use statements that are no longer needed in a module
-                            if let Some((_, dest_module_id)) = krate_info.path_mapping.get(&item.id) {
+                        let seen_item_ids =
+                            m.items.iter().map(|item| item.id).collect::<HashSet<_>>();
+                        let mut deleted_item_ids = HashSet::new();
+
+                        // TODO: Use a function for `filter_map`
+                        m.items = m.items.into_iter().filter_map(|mut module_item| {
+                            if let Some((_, dest_module_id)) = krate_info.path_mapping.get(&module_item.id) {
                                 if i.id == *dest_module_id {
                                     return None;
                                 }
                             }
-                            let m_id = item.id;
-                            if let ItemKind::Use(ref ut) = item.node {
+
+                            let m_id = module_item.id;
+                            if let ItemKind::Use(ref ut) = module_item.node {
                                 if let Some((new_path, _)) = krate_info.path_mapping.get(&m_id) {
                                     let mut ut = ut.clone();
                                     ut.prefix = new_path.clone();
@@ -302,7 +310,7 @@ impl Transform for ReorganizeDefinitions {
                                     //    the existing set with the set of prefixes we just created and
                                     //    override.
                                     //    Else just insert that set into the map.
-                                    //    [foo_h] -> [item, item2, item3]
+                                    //    [foo_h] -> [module_item, module_item2, module_item3]
                                     //  3. delete the nested use statement.
                                     match ut.kind {
                                         UseTreeKind::Nested(ref use_trees) => {
@@ -310,7 +318,7 @@ impl Transform for ReorganizeDefinitions {
 
                                             let mod_prefix = path_to_ident(&ut.prefix);
                                             // This is a check to see if the use statement is:
-                                            // `use Super::{item, item2};`
+                                            // `use Super::{module_item, module_item2};`
                                             // If it is we are going to seperate the nested
                                             // statement to be N simple statements, N being the
                                             // number of nested segements.
@@ -330,7 +338,7 @@ impl Transform for ReorganizeDefinitions {
                                                     segments
                                                 });
                                             }
-
+                                            return None;
                                         },
                                         UseTreeKind::Simple(..) => {
                                             if ut.prefix.segments.len() > 1 {
@@ -339,29 +347,13 @@ impl Transform for ReorganizeDefinitions {
 
                                                 let set_of_segments = seen_paths.entry(mod_name.ident).or_insert_with(HashSet::new);
                                                 set_of_segments.insert(segment.ident);
-                                            } else {
-                                                // one item use statements like: `use libc;`
-                                                // can be returned
-                                                return Some(P(Item {
-                                                    node: ItemKind::Use(ut.clone()),
-                                                    ..item.clone().into_inner()
-                                                }))
+                                                return None;
                                             }
                                         },
                                         _ => {}
                                     }
-                                    return None;
                                 }
                             }
-                            Some(item)
-                        }).collect();
-
-                        let seen_item_ids =
-                            m.items.iter().map(|item| item.id).collect::<HashSet<_>>();
-                        let mut deleted_item_ids = HashSet::new();
-
-                        // TODO: Use a function for `filter_map`
-                        m.items = m.items.into_iter().filter_map(|mut module_item| {
                             for item_id in &seen_item_ids {
                                 let item = krate_info.item_map.get(&item_id)
                                     .unwrap_or_else(|| panic!("There should be an item here: {:#?}", item_id));
@@ -383,18 +375,7 @@ impl Transform for ReorganizeDefinitions {
                                             });
                                         }
                                     }
-                                }
-                            }
-                            Some(module_item)
-                        }).collect();
 
-                        // TODO: instead of iterating through items twice, use a hashmap and
-                        // utilize indexing to get O(n)
-                        m.items = m.items.into_iter().filter_map(|module_item| {
-                            for item_id in &seen_item_ids {
-                                let item = krate_info.item_map.get(&item_id)
-                                    .unwrap_or_else(|| panic!("There should be an item here: {:#?}", item_id));
-                                if item.id != module_item.id {
                                     let m_copy = module_item.clone();
                                     match module_item.node {
                                         // Remove empty `ForeignMod`s
@@ -423,18 +404,18 @@ impl Transform for ReorganizeDefinitions {
                             seen_paths.values().any(|set_of_segments| set_of_segments.contains(path))
                         };
 
-                        let item_idents: HashSet<Ident> =
-                            m.items.iter().map(|item| item.ident).collect::<HashSet<_>>();
+                        let mut item_idents = HashSet::new();
+                        let mut use_stmts = Vec::new();
 
-                        let mod_items = m.items.clone();
-                        let use_stmts: Vec<&P<Item>> = mod_items.iter().filter_map(|item| {
+                        for item in &m.items {
+                            item_idents.insert(item.ident);
                             match item.node {
-                                ItemKind::Use(_) => {},
-                                _ => return None
+                                ItemKind::Use(_) => {
+                                    use_stmts.push(item.clone());
+                                },
+                                _ => {}
                             }
-                            Some(item)
-                        }).collect();
-
+                        }
                         // On occasions where there is a use statement:
                         // `use super::{libc, foo};`.
                         // This is where a the statement is seperated, and turned into simple
@@ -558,31 +539,21 @@ fn insert_items_into_dest(
                         },
                     };
 
-                    // TODO: Avoid this clone?
-                    let mod_items = m.items.clone();
-                    let old_items: HashMap<Ident, &P<Item>> = mod_items.iter().filter_map(|item| {
-                        if item.ident.as_str().is_empty() {
-                            return None;
-                        }
-                        Some((item.ident, item))
-                    }).collect();
+                    let mut old_items = HashMap::new();
+                    let mut foreign_mods = Vec::new();
+                    let mut use_stmts = Vec::new();
 
-                    let foreign_mods: Vec<&P<Item>> = mod_items.iter().filter_map(|item| {
+                    for item in &m.items {
+                        if !item.ident.as_str().is_empty() {
+                            old_items.insert(item.ident, item.clone());
+                        }
+
                         match item.node {
-                            ItemKind::ForeignMod(_) => {},
-                            _ => return None
+                            ItemKind::ForeignMod(_) => {foreign_mods.push(item.clone())},
+                            ItemKind::Use(_) => {use_stmts.push(item.clone())},
+                            _ => {}
                         }
-                        Some(item)
-                    }).collect();
-
-                    let use_stmts: Vec<&P<Item>> = mod_items.iter().filter_map(|item| {
-                        match item.node {
-                            ItemKind::Use(_) => {},
-                            _ => return None
-                        }
-                        Some(item)
-                    }).collect();
-
+                    }
 
                     for new_item_id in new_item_ids.iter() {
                         let mut new_item = item_map.remove(new_item_id)
