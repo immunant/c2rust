@@ -1,11 +1,14 @@
 # Table of Contents
 
-- [README](README.md)
-- [Vagrant Setup](vagrant/README.md)
-- [Docker Setup](docker/README.md)
-- [Translator](_generated/translator.md):
+- [Introduction](intro.md)
+- [Installation](installation.md)
+- [Quickstart](quickstart.md)
+- [Translator](c2rust-transpile/README.md):
     - [Building ast-exporter](docs/building-ast-exporter.md)
     - [Known limitations](docs/known-limitations.md)
+- [Refactoring Tool](c2rust-refactor/README.md)
+    - [Commands](c2rust-refactor/commands.md)
+    - [Ownership analysis](c2rust-refactor/src/analysis/ownership/README.md)
 - [Cross Checks](cross-checks/README.md)
     - [Tutorial](docs/cross-check-tutorial.md)
     - [Configuration](docs/cross-check-config.md)
@@ -14,10 +17,7 @@
     - [runtime](cross-checks/rust-checks/runtime/README.md)
     - [backends](cross-checks/rust-checks/backends/README.md)
     - [clang-plugin](cross-checks/c-checks/clang-plugin/README.md)
-- [Refactoring Tool](c2rust-refactor/README.md)
-    - [Commands](_generated/c2rust-refactor-commands.md)
-    - [Ownership analysis](c2rust-refactor/src/analysis/ownership/README.md)
-- [Examples](_generated/examples.md):
+- [Examples](examples/README.md):
     - [json-c](examples/json-c/README.md)
     - [urlparser](examples/urlparser/README.md)
     - [qsort](examples/qsort/README.md)
@@ -28,5 +28,8 @@
     - [genann](examples/genann/README.md)
     - [lil](examples/lil/README.md)
     - [xzoom](examples/xzoom/README.md)
-- [Tests](tests/README.md)
-- [Building the manual](manual/README.md)
+- [For Developers](docs/README-developers.md)
+    - [Vagrant Setup](vagrant/README.md)
+    - [Docker Setup](docker/README.md)
+    - [Translator Testing](tests/README.md)
+    - [Building the manual](docs/build_manual.md)
