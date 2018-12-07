@@ -3,7 +3,7 @@
 extern crate rustc_plugin;
 extern crate syntax;
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use rustc_plugin::Registry;
 use syntax::ast;
@@ -13,7 +13,6 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::{Symbol, Ident};
 use syntax::source_map::{Span, DUMMY_SP};
-use syntax::util::move_map::MoveMap;
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
@@ -65,30 +64,41 @@ const HOOKED_FUNCTIONS: &[&'static str] = &[
 
 struct LifetimeInstrumentation<'a, 'cx: 'a> {
     cx: &'a mut ExtCtxt<'cx>,
-    hooked_functions: HashSet<Ident>,
+    hooked_functions: HashMap<Ident, P<ast::FnDecl>>,
 }
 
 impl<'a, 'cx> LifetimeInstrumentation<'a, 'cx> {
     fn new(cx: &'a mut ExtCtxt<'cx>) -> Self {
         Self {
             cx,
-            hooked_functions: HashSet::new(),
+            hooked_functions: HashMap::new(),
         }
     }
 
-    fn hooked_fn_name(&self, callee: &ast::Expr) -> Option<ast::Ident> {
+    /// Check if the callee expr is a function we've hooked. Returns the name of
+    /// the function and its declaration if found.
+    fn hooked_fn(&self, callee: &ast::Expr) -> Option<(Ident, &ast::FnDecl)> {
         match &callee.node {
             ast::ExprKind::Path(None, path) => {
-                if path.segments.len() == 1 &&
-                    self.hooked_functions.contains(&path.segments[0].ident)
-                {
-                    return Some(path.segments[0].ident);
+                if path.segments.len() == 1 {
+                    if let Some(decl) = self.hooked_functions.get(&path.segments[0].ident) {
+                        return Some((path.segments[0].ident, decl));
+                    }
                 }
             }
             _ => (),
         }
 
         None
+    }
+
+    /// If ty is a Ptr type, return a new expr that is a cast of expr to usize,
+    /// otherwise just return a clone of expr.
+    fn add_ptr_cast(&self, expr: &P<ast::Expr>, ty: &ast::Ty) -> P<ast::Expr> {
+        match ty.node {
+            ast::TyKind::Ptr(_) => quote_expr!(self.cx, $expr as usize),
+            _ => expr.clone(),
+        }
     }
 }
 
@@ -107,56 +117,57 @@ impl<'a, 'cx> Folder for LifetimeInstrumentation<'a, 'cx> {
     // }
 
     fn fold_foreign_item_simple(&mut self, item: ast::ForeignItem) -> ast::ForeignItem {
-        if let ast::ForeignItemKind::Fn(_, _) = &item.node {
+        if let ast::ForeignItemKind::Fn(decl, _) = &item.node {
             if HOOKED_FUNCTIONS.contains(&&*item.ident.name.as_str()) {
-                self.hooked_functions.insert(item.ident);
+                self.hooked_functions.insert(item.ident, decl.clone());
             }
         }
         fold::noop_fold_foreign_item_simple(item, self)
     }
 
     fn fold_expr(&mut self, expr: P<ast::Expr>) -> P<ast::Expr> {
+        // Post-order traversal so we instrument any arguments before processing
+        // the expr.
+        let expr = expr.map(|expr| fold::noop_fold_expr(expr, self));
+
         match &expr.node {
             ast::ExprKind::Call(callee, args) => {
-                if let Some(fn_name) = self.hooked_fn_name(callee) {
-                    // fold arguments in case we need to hook a subexpression
-                    let args = self.fold_exprs(args.clone());
-
+                if let Some((fn_name, decl)) = self.hooked_fn(callee) {
                     // Cast all original arguments to usize
-                    let mut runtime_args: Vec<P<ast::Expr>> = args
+                    let mut hook_args: Vec<P<ast::Expr>> = args
                         .iter()
-                        .map(|arg| quote_expr!(self.cx, $arg as usize))
+                        .zip(decl.inputs.iter())
+                        .map(|(arg, arg_decl)| self.add_ptr_cast(arg, &arg_decl.ty))
                         .collect();
                     // Add the return value of the hooked call.
-                    runtime_args.push(quote_expr!(self.cx, ret as usize));
+                    hook_args.push({
+                        let ret_expr = quote_expr!(self.cx, ret);
+                        match &decl.output {
+                            ast::FunctionRetTy::Ty(ty) => self.add_ptr_cast(&ret_expr, ty),
+                            _ => ret_expr,
+                        }
+                    });
 
-                    // Build a replacement call with the folded args
-                    let call = self.cx.expr_call(
-                        expr.span,
-                        callee.clone(),
-                        args,
-                    );
-
-                    // Build the hook call (we can't do this with quoting
+                    // Build the hook call (we can't do this with just quoting
                     // because I couldn't figure out how to get quote_expr! to
-                    // play nice with multiple arguments in a variable.
+                    // play nice with multiple arguments in a variable).
                     let hook_call = self.cx.expr_call(
                         DUMMY_SP,
                         quote_expr!(self.cx, c2rust_analysis_rt::$fn_name),
-                        runtime_args,
+                        hook_args,
                     );
 
                     // Build the instrumentation block
-                    return quote_expr!(self.cx, {
-                        let ret = $call;
+                    quote_expr!(self.cx, {
+                        let ret = $expr;
                         $hook_call;
                         ret
-                    });
+                    })
+                } else {
+                    expr
                 }
             }
-            _ => (),
+            _ => expr,
         }
-
-        expr.map(|expr| fold::noop_fold_expr(expr, self))
     }
 }
