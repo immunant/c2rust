@@ -13,9 +13,9 @@
 use std::collections::HashSet;
 use std::ops::Index;
 
-use c_ast::{CDeclId, CDeclKind, CExprId, CQualTypeId, CTypeId};
+use c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CQualTypeId, CTypeId};
 use c2rust_ast_builder::mk;
-use syntax::ast::{AttrStyle, Expr, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StrStyle, StructField, Ty, TyKind};
+use syntax::ast::{AttrStyle, BinOpKind, Expr, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StrStyle, StructField, Ty, TyKind};
 use syntax::ext::quote::rt::Span;
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
@@ -452,5 +452,48 @@ impl<'a> Translation<'a> {
         }
 
         Ok(mk().struct_expr(name.as_str(), fields))
+    }
+
+    /// TODO
+    pub fn convert_bitfield_assignment_op_with_rhs(
+        &self,
+        ctx: ExprContext,
+        op: BinOp,
+        field_name: &str,
+        lhs: CExprId,
+        rhs: WithStmts<P<Expr>>,
+    ) -> Result<WithStmts<P<Expr>>, String> {
+        let lhs_expr = self.convert_expr(ctx, lhs)?.to_expr();
+        let setter_name = format!("set_{}", field_name);
+
+        let expr = match op {
+            BinOp::AssignAdd => {
+                let param = mk().binary_expr(BinOpKind::Add, lhs_expr.clone(), rhs.to_expr());
+
+                mk().method_call_expr(lhs_expr, setter_name, vec![param])
+            },
+            BinOp::AssignSubtract => {
+                let param = mk().binary_expr(BinOpKind::Sub, lhs_expr.clone(), rhs.to_expr());
+
+                mk().method_call_expr(lhs_expr, setter_name, vec![param])
+            },
+            BinOp::AssignMultiply => {
+                let param = mk().binary_expr(BinOpKind::Mul, lhs_expr.clone(), rhs.to_expr());
+
+                mk().method_call_expr(lhs_expr, setter_name, vec![param])
+            },
+            BinOp::AssignDivide => {
+                let param = mk().binary_expr(BinOpKind::Div, lhs_expr.clone(), rhs.to_expr());
+
+                mk().method_call_expr(lhs_expr, setter_name, vec![param])
+            },
+            BinOp::Assign => mk().method_call_expr(lhs_expr, setter_name, vec![rhs.to_expr()]),
+            e => unimplemented!("{:?}", e),
+        };
+
+        let stmt = mk().expr_stmt(expr);
+        let val = self.panic("Empty statement expression is not supposed to be used");
+
+        return Ok(WithStmts { stmts: vec![stmt], val });
     }
 }

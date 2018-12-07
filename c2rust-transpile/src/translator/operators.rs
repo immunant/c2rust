@@ -248,12 +248,29 @@ impl<'c> Translation<'c> {
 
         let result_type_id = result_type.unwrap_or(qtype);
         let compute_lhs_type_id = compute_type.unwrap_or(qtype);
-        let initial_lhs_type_id = self
-            .ast_context
+        let initial_lhs = &self.ast_context
             .index(lhs)
-            .kind
+            .kind;
+        let initial_lhs_type_id = initial_lhs
             .get_qual_type()
             .ok_or_else(|| format!("bad initial lhs type"))?;
+
+        let bitfield_name = match initial_lhs {
+            CExprKind::Member(_, _, decl_id, _, _) => {
+                let kind = &self.ast_context[*decl_id].kind;
+
+                if let CDeclKind::Field { bitfield_width: Some(_), name, .. } = kind {
+                    Some(name)
+                } else {
+                    None
+                }
+            },
+            _ => None,
+        };
+
+        if let Some(name) = bitfield_name {
+            return self.convert_bitfield_assignment_op_with_rhs(ctx, op, name, lhs, rhs_translation);
+        }
 
         let is_volatile = initial_lhs_type_id.qualifiers.is_volatile;
         let is_volatile_compound_assign = op.underlying_assignment().is_some() && is_volatile;

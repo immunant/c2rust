@@ -2211,8 +2211,35 @@ impl<'c> Translation<'c> {
             }
 
             CExprKind::Member(_, expr, decl, kind, _) => {
+                let is_bitfield = match &self.ast_context[decl].kind {
+                    CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
+                    _ => unreachable!("Found a member which is not a field"),
+                };
 
-                if ctx.is_unused() {
+                if is_bitfield {
+                    let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
+
+                    match kind {
+                        MemberKind::Dot => {
+                            let val = self.convert_expr(ctx, expr)?;
+
+                            Ok(val.map(|v| mk().method_call_expr(v, field_name, vec![] as Vec<P<Expr>>)))
+                        },
+                        MemberKind::Arrow => {
+                            if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _)
+                            = self.ast_context[expr].kind {
+                                let val = self.convert_expr(ctx, subexpr_id)?;
+
+                                Ok(val.map(|v| mk().method_call_expr(v, field_name, vec![] as Vec<P<Expr>>)))
+                            } else {
+                                let val = self.convert_expr(ctx, expr)?;
+
+                                Ok(val.map(|v| mk().method_call_expr(mk().unary_expr(ast::UnOp::Deref, v),
+                                                                     field_name, vec![] as Vec<P<Expr>>)))
+                            }
+                        },
+                    }
+                } else if ctx.is_unused() {
                     self.convert_expr(ctx, expr)
                 } else {
                     let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
