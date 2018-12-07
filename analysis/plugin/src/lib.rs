@@ -58,7 +58,10 @@ impl MultiItemModifier for LifetimeAnalysis {
 
 const HOOKED_FUNCTIONS: &[&'static str] = &[
     "malloc",
+    "free",
+    "calloc",
     "realloc",
+    "reallocarray",
 ];
 
 
