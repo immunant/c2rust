@@ -639,6 +639,6 @@ def run_refactor_for_playground(args: argparse.Namespace,
     rs.add_commands(0, cmds)
 
     results = rs.finish()
-    return results[0]
+    return results[0], rs.all_files
 
 

@@ -145,9 +145,8 @@ def do_playground(args: argparse.Namespace):
     with open(args.script) as f:
         script = f.read()
 
-    old_file, new_file = literate.refactor.run_refactor_for_playground(
+    (old, new), all_files = literate.refactor.run_refactor_for_playground(
             args, script)
-    all_files = [old_file, new_file]
 
     literate.format.format_files(all_files)
     literate.render.prepare_files(all_files)
@@ -155,7 +154,7 @@ def do_playground(args: argparse.Namespace):
     opts = literate.refactor.OPT_DEFAULTS.copy()
     opts['show-filename'] = False
 
-    diff_text = literate.render.render_diff(old_file, new_file, opts)
+    diff_text = literate.render.render_diff(old, new, opts)
     with open(args.output, 'w') as f:
         f.write(diff_text)
 
