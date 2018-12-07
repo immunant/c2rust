@@ -6,6 +6,8 @@ members = [
     "c2rust-ast-builder",
     "c2rust-ast-exporter",
     "manual/preprocessors",
+    "analysis/plugin",
+    "analysis/runtime",
 ]
 exclude = [
     "cross-checks/rust-checks",
