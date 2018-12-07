@@ -25,7 +25,10 @@ def highlight_file(f: File):
 
     assert all(l.highlight is not None for l in f.lines)
 
-HIGHLIGHT_CLASSES = {
+
+# This is a very rough mapping from pygments token types to HighlightJS CSS
+# classes
+HLJS_CLASSES = {
     Token:                         None,
 
     Text:                          None,
@@ -53,13 +56,24 @@ HIGHLIGHT_CLASSES = {
     Comment:                       'comment',
 }
 
-def token_css_class(tok: type(pygments.token.Token)) -> Optional[str]:
+def token_css_class(tok: type(pygments.token.Token),
+        mode='hljs') -> Optional[str]:
     '''Get the CSS class for a Pygments token type.'''
     # If the token is A.B.C, we first look for A.B.C, then A.B, then A.
     # Everything's a subtype of Token, so eventually we'll get a match.
+    if mode == 'hljs':
+        classes = HLJS_CLASSES
+    elif mode == 'pygments':
+        classes = pygments.token.STANDARD_TYPES
+    else:
+        raise ValueError('unknown highlighting mode %r' % mode)
+
     while tok is not Token:
-        if tok in HIGHLIGHT_CLASSES:
-            return HIGHLIGHT_CLASSES[tok]
+        if tok in classes:
+            if mode == 'hljs':
+                return 'hljs-' + classes[tok]
+            else:
+                return classes[tok]
         else:
             tok = tok.parent
     return None

@@ -56,7 +56,7 @@ def mark_desc(f: File, node_id: int) -> str:
 
     return '%s: %s' % (mark_str, '; '.join(parts))
 
-def render_line(line: Line, f: File) -> str:
+def render_line(line: Line, f: File, opts: Dict[str, Any]) -> str:
     '''Render HTML output for a single line of a file.  `f` should be the file
     containing `line`.'''
     parts = []
@@ -152,6 +152,8 @@ def render_line(line: Line, f: File) -> str:
             if last_pos < len(line.text) and line.text[last_pos] == ' ':
                 last_pos += 1
 
+    hl_mode = opts['highlight-mode']
+
     for p in events:
         if p.pos > last_pos:
             emit_text(last_pos, p.pos)
@@ -170,11 +172,11 @@ def render_line(line: Line, f: File) -> str:
         elif kind == 'i_e':
             end_span()
         elif kind == 'hl_s':
-            cls = literate.highlight.token_css_class(label)
+            cls = literate.highlight.token_css_class(label, hl_mode)
             if cls is not None:
-                start_span('hljs-%s' % cls)
+                start_span(cls)
         elif kind == 'hl_e':
-            cls = literate.highlight.token_css_class(label)
+            cls = literate.highlight.token_css_class(label, hl_mode)
             if cls is not None:
                 end_span()
 
@@ -257,7 +259,7 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
                     parts.append('<td class="line-num %s">%d</td>' %
                             (old_cls, ol.old_line + 1))
                     parts.append('<td class="%s"><pre>' % old_cls)
-                    parts.append(render_line(old.lines[ol.old_line], old))
+                    parts.append(render_line(old.lines[ol.old_line], old, opts))
                     parts.append('</pre></td>')
                 else:
                     parts.append('<td></td><td></td>')
@@ -266,7 +268,7 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
                     parts.append('<td class="line-num %s">%d</td>' %
                             (new_cls, ol.new_line + 1))
                     parts.append('<td class="%s"><pre>' % new_cls)
-                    parts.append(render_line(new.lines[ol.new_line], new))
+                    parts.append(render_line(new.lines[ol.new_line], new, opts))
                     parts.append('</pre></td>')
                 else:
                     parts.append('<td></td><td></td>')

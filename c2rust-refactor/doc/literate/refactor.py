@@ -58,10 +58,12 @@ FLAG_OPTS = {
         'show-filename',
         'collapse-diff',
         'hide-diff',
+        'highlight-mode',
         }
 
 STR_OPTS = {
         'diff-style',
+        'highlight-mode',
         }
 
 OPT_DEFAULTS = {
@@ -72,6 +74,7 @@ OPT_DEFAULTS = {
         'collapse-diff': True,
         'hide-diff': False,
         'diff-style': 'context',
+        'highlight-mode': 'hljs',
         }
 
 FLAG_TRUTHY = { '1', 'true', 'y', 'yes', 'on' }
