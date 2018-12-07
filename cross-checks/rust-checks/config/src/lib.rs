@@ -257,8 +257,8 @@ impl ItemConfig {
 pub struct ItemList(Vec<Rc<ItemConfig>>);
 
 impl ItemList {
-    pub fn items(&self) -> &Vec<Rc<ItemConfig>> {
-        &self.0
+    pub fn items(&self) -> &[Rc<ItemConfig>] {
+        &self.0[..]
     }
 }
 
