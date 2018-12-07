@@ -1740,6 +1740,7 @@ ExportResult *make_export_result(const Outputs &outputs) {
         std::copy(std::begin(bytes), std::end(bytes), byte_array);
         result->bytes[i] = byte_array;
         result->sizes[i] = bytes.size();
+        i++;
     }
 
     return result;
