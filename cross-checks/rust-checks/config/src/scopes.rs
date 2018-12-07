@@ -161,7 +161,7 @@ impl ScopeConfig {
             .unwrap_or(false)
     }
 
-    fn get_item_configs(&self, item: &str) -> &[Rc<super::ItemConfig>] {
+    fn get_item_configs(&self, item: &str) -> &[super::ItemConfigRef] {
         self.items
             .as_ref()
             .and_then(|nil| nil.name_map.get(item))

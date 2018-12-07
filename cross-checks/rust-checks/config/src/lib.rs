@@ -253,11 +253,13 @@ impl ItemConfig {
     }
 }
 
+pub type ItemConfigRef = Rc<ItemConfig>;
+
 #[derive(Deserialize, Debug, Default, Clone)]
-pub struct ItemList(Vec<Rc<ItemConfig>>);
+pub struct ItemList(Vec<ItemConfigRef>);
 
 impl ItemList {
-    pub fn items(&self) -> &[Rc<ItemConfig>] {
+    pub fn items(&self) -> &[ItemConfigRef] {
         &self.0[..]
     }
 }
@@ -265,7 +267,7 @@ impl ItemList {
 #[derive(Debug, Default, Clone)]
 pub struct NamedItemList {
     // FIXME: _items is unused; do we really need it???
-    pub name_map: HashMap<String, Vec<Rc<ItemConfig>>>,
+    pub name_map: HashMap<String, Vec<ItemConfigRef>>,
 }
 
 impl NamedItemList {
@@ -275,7 +277,7 @@ impl NamedItemList {
             if let Some(item_name) = item.name().map(String::from) {
                 map.entry(item_name)
                     .or_default()
-                    .push(Rc::clone(item));
+                    .push(ItemConfigRef::clone(item));
             }
         }
         NamedItemList {
@@ -414,7 +416,7 @@ impl Config {
                 items.sort();
                 let item_list = items.into_iter()
                     .flat_map(|(_, idx)| files[idx].items.0.items())
-                    .map(Rc::clone)
+                    .map(ItemConfigRef::clone)
                     .collect();
                 ItemList(item_list)
             }
