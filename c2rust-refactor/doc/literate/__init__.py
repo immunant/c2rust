@@ -48,6 +48,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument('input', metavar='INPUT.md')
     sp.add_argument('output', metavar='OUTPUT.md')
 
+    sp = subparsers.add_parser('playground',
+            help='run a refactoring script on some code, and render a diff')
+    sp.add_argument('code', metavar='CODE.rs')
+    sp.add_argument('script', metavar='SCRIPT.txt')
+    sp.add_argument('output', metavar='OUTPUT.html')
+
     return ap
 
 def do_extract(args: argparse.Namespace):
@@ -128,6 +134,32 @@ def do_render(args: argparse.Namespace):
             else:
                 raise TypeError('expected Text or ScriptDiff, got %s' % (type(b),))
 
+def do_playground(args: argparse.Namespace):
+    # Stupid hack here, because Rust `Process` doesn't support merging stdout
+    # and stderr.
+    sys.stderr = None
+    os.close(2)
+    os.dup2(1, 2)
+    sys.stderr = sys.stdout
+
+    with open(args.script) as f:
+        script = f.read()
+
+    old_file, new_file = literate.refactor.run_refactor_for_playground(
+            args, script)
+    all_files = [old_file, new_file]
+
+    literate.format.format_files(all_files)
+    literate.render.prepare_files(all_files)
+
+    opts = literate.refactor.OPT_DEFAULTS.copy()
+    opts['show-filename'] = False
+
+    diff_text = literate.render.render_diff(old_file, new_file, opts)
+    with open(args.output, 'w') as f:
+        f.write(diff_text)
+
+
 def main(argv: List[str]):
     ap = build_arg_parser()
     args = ap.parse_args(argv)
@@ -139,6 +171,8 @@ def main(argv: List[str]):
         do_exec(args)
     elif args.cmd == 'render':
         do_render(args)
+    elif args.cmd == 'playground':
+        do_playground(args)
     else:
         if args.cmd is not None:
             print('unknown subcommand `%s`' % args.cmd)

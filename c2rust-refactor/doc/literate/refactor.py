@@ -16,16 +16,20 @@ from literate.file import File
 from literate import parse
 
 
-class RealCrate(NamedTuple):
+class CargoCrate(NamedTuple):
     '''A real crate, identified by its Cargo project directory.'''
     dir: str
+
+class FileCrate(NamedTuple):
+    '''A real crate consisting only of the indicated file.'''
+    path: str
 
 class TempCrate(NamedTuple):
     '''A temporary crate, built from some source text.  We handle these by
     writing the text to a temp file and passing explicit `rustc` arguments.'''
     text: str
 
-AnyCrate = Union[RealCrate, TempCrate]
+AnyCrate = Union[CargoCrate, FileCrate, TempCrate]
 
 
 class PermanentDirectory(NamedTuple):
@@ -102,12 +106,8 @@ class RefactorState:
     global_opts: Dict[str, Any]
     '''The current global refactoring options.'''
 
-    def __init__(self, args: argparse.Namespace):
-        self.args = args
-
+    def __init__(self):
         self.cur_crate = None
-        if args.project_dir is not None:
-            self.cur_crate = RealCrate(args.project_dir)
 
         self.pending_cmds = []
         self.pending_results = []
@@ -316,15 +316,20 @@ def refactor_crate(crate: AnyCrate, cmds: List[RefactorCommand]):
     '''Run refactoring commands `cmds` on `crate`.  If `crate` is a
     `TempCrate`, return the `TemporaryDirectory` where the refactoring was
     done.  Otherwise, return `None`.'''
-    if isinstance(crate, RealCrate):
+    if isinstance(crate, CargoCrate):
         work_dir = PermanentDirectory(crate.dir)
         pre_args, post_args = ['--cargo'], []
+    elif isinstance(crate, FileCrate):
+        work_dir = PermanentDirectory(os.getcwd())
+        pre_args, post_args = [], ['--', crate.path, '--crate-type', 'rlib']
     elif isinstance(crate, TempCrate):
         work_dir = tempfile.TemporaryDirectory()
         with open(os.path.join(work_dir.name, 'tmp.rs'), 'w') as f:
             f.write(crate.text)
         pre_args, post_args = [], ['--', os.path.join(work_dir.name, 'tmp.rs'),
                 '--crate-type', 'rlib']
+    else:
+        raise TypeError('bad crate type %s' % type(crate))
 
     all_args = ['-r', 'json,marks']
     all_args.extend(pre_args)
@@ -574,7 +579,11 @@ def split_commands(code: str) -> List[RefactorCommand]:
 def run_refactor_scripts(args: argparse.Namespace,
         blocks: List[parse.Block]) -> Tuple[List[Block], List[File]]:
     # Run all refactoring commands, and get the refactoring results.
-    rs = RefactorState(args)
+    rs = RefactorState()
+
+    if args.project_dir is not None:
+        rs.set_crate(CargoCrate(args.project_dir))
+
     block_opts = {}
     for i, b in enumerate(blocks):
         if not isinstance(b, parse.Code):
@@ -620,3 +629,16 @@ def run_refactor_scripts(args: argparse.Namespace,
             new_blocks.append(b)
 
     return new_blocks, all_files
+
+def run_refactor_for_playground(args: argparse.Namespace,
+        script: str) -> Tuple[File, File]:
+    rs = RefactorState()
+    rs.set_crate(FileCrate(args.code))
+
+    cmds = split_commands(script)
+    rs.add_commands(0, cmds)
+
+    results = rs.finish()
+    return results[0]
+
+
