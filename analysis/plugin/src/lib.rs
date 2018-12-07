@@ -56,6 +56,8 @@ impl MultiItemModifier for LifetimeAnalysis {
     }
 }
 
+/// List of functions we want hooked for the lifetime analyis runtime (see
+/// ../../runtime/src/lib.rs for the implementations of these hooks)
 const HOOKED_FUNCTIONS: &[&'static str] = &[
     "malloc",
     "free",
