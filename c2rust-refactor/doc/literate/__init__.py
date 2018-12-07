@@ -54,6 +54,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument('script', metavar='SCRIPT.txt')
     sp.add_argument('output', metavar='OUTPUT.html')
 
+    sp = subparsers.add_parser('playground-styles',
+            help='print CSS styles for rendering playground diffs')
+
     return ap
 
 def do_extract(args: argparse.Namespace):
@@ -159,6 +162,9 @@ def do_playground(args: argparse.Namespace):
     with open(args.output, 'w') as f:
         f.write(diff_text)
 
+def do_playground_styles(args: argparse.Namespace):
+    print(literate.render.get_styles())
+    print(literate.render.get_pygments_styles())
 
 def main(argv: List[str]):
     ap = build_arg_parser()
@@ -173,6 +179,8 @@ def main(argv: List[str]):
         do_render(args)
     elif args.cmd == 'playground':
         do_playground(args)
+    elif args.cmd == 'playground-styles':
+        do_playground_styles(args)
     else:
         if args.cmd is not None:
             print('unknown subcommand `%s`' % args.cmd)

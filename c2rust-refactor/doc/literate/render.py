@@ -2,6 +2,8 @@ from collections import namedtuple
 import html
 from typing import Dict, Optional, Any
 
+import pygments.formatters
+
 from literate.annot import Span, fill_annot, cut_annot
 from literate.file import File, Line, Diff
 from literate.points import Point, map_points, merge_points, \
@@ -317,3 +319,9 @@ def get_styles() -> str:
     parts.append('table.diff tbody tr:nth-child(2n) { background: inherit; }')
 
     return '\n'.join(parts) + '\n'
+
+def get_pygments_styles(fmt=None) -> str:
+    fmt = fmt or pygments.formatters.get_formatter_by_name(
+            'html', nowrap=True, style='monokai')
+
+    return fmt.get_style_defs('.highlight')
