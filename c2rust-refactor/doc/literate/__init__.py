@@ -156,7 +156,7 @@ def do_playground(args: argparse.Namespace):
 
     opts = literate.refactor.OPT_DEFAULTS.copy()
     opts['show-filename'] = False
-    opts['highlight-mode'] = 'pygments'
+    opts['highlight-mode'] = 'ace'
 
     diff_text = literate.render.render_diff(old, new, opts)
     with open(args.output, 'w') as f:

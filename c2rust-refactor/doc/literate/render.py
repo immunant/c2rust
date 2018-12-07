@@ -224,7 +224,8 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
     empty = True
 
     parts = []
-    parts.append('<table class="diff highlight">\n')
+    parts.append('<table class="diff %s">\n' %
+            literate.highlight.get_highlight_class(opts))
     parts.append('<colgroup>')
     parts.append('<col width="50"><col><col width="50"><col>')
     parts.append('</colgroup>\n')
