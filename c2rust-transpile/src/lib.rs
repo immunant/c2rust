@@ -27,7 +27,7 @@ use c2rust_ast_exporter as ast_exporter;
 
 pub mod renamer;
 pub mod convert_type;
-pub mod templates;
+pub mod build_files;
 pub mod translator;
 pub mod c_ast;
 pub mod rust_ast;
@@ -35,6 +35,7 @@ pub mod cfg;
 pub mod with_stmts;
 
 pub use translator::ReplaceMode;
+use build_files::emit_build_files;
 
 /// Configuration settings for the translation process
 #[derive(Debug)]
@@ -47,7 +48,7 @@ pub struct TranspilerConfig {
     pub json_function_cfgs: bool,
     pub dump_cfg_liveness: bool,
     pub dump_structures: bool,
-
+    // Options that control translation
     pub incremental_relooper: bool,
     pub fail_on_multiple: bool,
     pub debug_relooper_labels: bool,
@@ -55,41 +56,35 @@ pub struct TranspilerConfig {
     pub cross_check_configs: Vec<String>,
     pub prefix_function_names: Option<String>,
     pub translate_asm: bool,
-    pub translate_entry: bool,
     pub use_c_loop_info: bool,
     pub use_c_multiple_info: bool,
     pub simplify_structures: bool,
     pub panic_on_translator_failure: bool,
-    pub emit_module: bool,
-    pub emit_build_files: bool,
+    pub emit_modules: bool,
     pub fail_on_error: bool,
     pub replace_unsupported_decls: ReplaceMode,
     pub translate_valist: bool,
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
 
-    pub main_file: Option<PathBuf>,
+
+    // Options that control build files
+    /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
+    pub emit_build_files: bool,
+    /// Names the translation unit containing the main function
+    pub main: Option<String>,
+    /// Use log-based cross checking
+    pub use_fakechecks: bool,
 }
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
 pub fn transpile(mut tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
 
-    println!("{:?}", tcfg);
-
-    // TODO: we should probably just remove the translate_entry flag
-    tcfg.translate_entry = true;
-    if tcfg.emit_build_files {
-        tcfg.emit_module = true;
-
-        templates::emit_templates(&tcfg)
-    }
-
-    /* MacOS Mojave does not have `/usr/include` even if the command line
-     * tools are installed. The fix is to run the developer package:
-     * `macOS_SDK_headers_for_macOS_10.14.pkg` in
-     * `/Library/Developer/CommandLineTools/Packages`.
-     * Source https://forums.developer.apple.com/thread/104296 */
+    // TODO: bindgen may have a more elegant solution to this issue
+    // MacOS Mojave does not have `/usr/include` even if Xcode or the
+    // command line developer tools are installed.
+    // See https://forums.developer.apple.com/thread/104296
     if cfg!(target_os = "macos") {
         let usr_incl = Path::new("/usr/include");
         if !usr_incl.exists() {
@@ -115,6 +110,10 @@ Directory `/usr/include` was not found! Please install the following package:
                 panic!(reason);
             }
         }
+   }
+
+   if tcfg.emit_build_files {
+       emit_build_files(&tcfg)
    }
 }
 
@@ -183,8 +182,6 @@ fn transpile_single(tcfg: &TranspilerConfig, input_path: &Path, cc_db: &Path, ex
 
     // Perform the translation
     let main_file = input_path.with_extension("");
-    println!("extenzione: {:?}", main_file);
-    panic!("at the disco");
     let translated_string = translator::translate(typed_context, &tcfg, main_file);
     let output_path = get_output_path(input_path);
 

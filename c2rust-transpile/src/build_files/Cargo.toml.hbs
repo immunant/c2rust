@@ -3,7 +3,6 @@ name = "{{crate_name}}"
 authors = ["C2Rust"]
 version = "0.0.0"
 publish = false
-
 {{#if main_module}}
 [[bin]]
 path = "main.rs"
@@ -12,9 +11,7 @@ name = "{{main_module}}"
 [lib]
 path = "lib.rs"
 crate-type = ["staticlib"]
-{{/if}}
-
-{{#if cross_checks}}:
+{{/if}}{{#if cross_checks}}
 [dependencies.c2rust-xcheck-plugin]
 path = "{{plugin_path}}"
 
@@ -24,10 +21,7 @@ path = "{{derive_path}}"
 [dependencies.c2rust-xcheck-runtime]
 path = "{{runtime_path}}"
 features = ["libc-hash", "fixed-length-array-hash"]
-
 {{#if use_fakechecks}}:
 [dependencies.c2rust-xchecks-libfakechecks-sys]
 path = "{{libfakechecks_sys_path}}"
-{{/if}}
-
-{{/if}}
+{{/if}}{{/if}}

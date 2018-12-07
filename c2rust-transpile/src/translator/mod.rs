@@ -273,10 +273,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
 
     let mut t = Translation::new(ast_context, tcfg, main_file);
 
-    if !t.tcfg.translate_entry {
-        t.ast_context.c_main = None;
-    }
-
     if t.tcfg.reorganize_definitions {
         t.features.borrow_mut().insert("custom_attribute");
     }
@@ -552,7 +548,7 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
 
 /// Pretty-print the leading pragmas and extern crate declarations
 fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
-    if t.tcfg.emit_module {
+    if t.tcfg.emit_modules {
         s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
     } else {
         let mut features = vec!["libc"];

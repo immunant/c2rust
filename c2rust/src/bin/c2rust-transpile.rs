@@ -19,7 +19,7 @@ fn main() {
         Some(args) => args.collect(),
         None => Vec::new(),
     };
-    let tcfg = TranspilerConfig {
+    let mut tcfg = TranspilerConfig {
         dump_untyped_context:   matches.is_present("dump-untyped-clang-ast"),
         dump_typed_context:     matches.is_present("dump-typed-clang-ast"),
         pretty_typed_context:   matches.is_present("pretty-typed-clang-ast"),
@@ -32,6 +32,7 @@ fn main() {
         fail_on_error:          matches.is_present("fail-on-error"),
         fail_on_multiple:       matches.is_present("fail-on-multiple"),
         debug_relooper_labels:  matches.is_present("debug-labels"),
+        use_fakechecks:         matches.is_present("use-fakechecks"),
         cross_checks:           matches.is_present("cross-checks"),
         cross_check_configs:    matches.values_of("cross-check-config")
             .map(|vals| vals.map(String::from).collect::<Vec<_>>())
@@ -39,23 +40,21 @@ fn main() {
         prefix_function_names:  matches.value_of("prefix-function-names")
             .map(String::from),
         translate_asm:          matches.is_present("translate-asm"),
-        translate_entry:        matches.is_present("translate-entry"),
         translate_valist:       matches.is_present("translate-valist"),
         use_c_loop_info:        !matches.is_present("ignore-c-loop-info"),
         use_c_multiple_info:    !matches.is_present("ignore-c-multiple-info"),
         simplify_structures:    !matches.is_present("no-simplify-structures"),
         reduce_type_annotations:matches.is_present("reduce-type-annotations"),
         reorganize_definitions: matches.is_present("reorganize-definitions"),
-        emit_module:            matches.is_present("emit-module"),
+        emit_modules:           matches.is_present("emit-modules"),
         emit_build_files:       matches.is_present("emit-build-files"),
-        main_file: {
-            if matches.is_present("main-file") {
-                Some(Path::new(matches.value_of("main-file").unwrap()).canonicalize().unwrap())
+        main: {
+            if matches.is_present("main") {
+                Some(String::from(matches.value_of("main").unwrap()))
             } else {
                 None
             }
         },
-//        output_file:            matches.value_of("output-file").map(|s| s.to_string()),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,
@@ -65,6 +64,12 @@ fn main() {
         },
         replace_unsupported_decls: ReplaceMode::Extern,
     };
+    // main implies emit-build-files
+    if tcfg.main != None{ tcfg.emit_build_files = true };
+    // use-fakechecks implies cross-checks
+    if tcfg.use_fakechecks { tcfg.cross_checks = true };
+    // emit-build-files implies emit-modules
+    if tcfg.emit_build_files { tcfg.emit_modules = true };
 
     c2rust_transpile::transpile(tcfg, &cc_json_path, &extra_args);
 }
