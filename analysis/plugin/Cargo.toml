@@ -9,6 +9,7 @@ edition = "2018"
 plugin = true
 
 [dependencies]
-
-[dev-dependencies]
+indexmap = "1.0.2"
 c2rust-analysis-rt = { path = "../runtime" }
+bincode = "1.0.1"
+error-chain = "0.12.0"
