@@ -13,6 +13,7 @@ impl<'c> Translation<'c> {
     /// the arguments to the assembly statement, however.
     pub fn convert_asm
         (&self,
+         ctx: ExprContext,
          span: Span,
          is_volatile: bool,
          asm: &str,
@@ -47,7 +48,7 @@ impl<'c> Translation<'c> {
             for &AsmOperand { ref constraints, expression } in list {
                 if first { first = false } else { tokens.push(Token::Comma) }
 
-                let mut result = self.convert_expr(ExprUse::Used, expression, false, DecayRef::Default)?;
+                let mut result = self.convert_expr(ctx.used(), expression)?;
                 stmts.append(&mut result.stmts);
 
                 push_expr(&mut tokens, mk().lit_expr(mk().str_lit(constraints)));

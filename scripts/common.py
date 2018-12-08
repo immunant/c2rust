@@ -89,9 +89,9 @@ add_subdirectory(c2rust-ast-exporter)
 """.format(prefix=CBOR_PREFIX)  # nopep8
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = 'nightly-2018-10-18'
+    CUSTOM_RUST_NAME = 'nightly-2018-12-03'
     # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
-    CUSTOM_RUST_RUSTC_VERSION = "rustc 1.31.0-nightly (1dceaddfb 2018-10-17)"
+    CUSTOM_RUST_RUSTC_VERSION = "rustc 1.32.0-nightly (21f268495 2018-12-02)"
 
     def __init__(self):
         self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) 

@@ -6,6 +6,12 @@ use driver;
 use transform::Transform;
 
 
+/// # `wrapping_arith_to_normal` Command
+/// 
+/// Usage: `wrapping_arith_to_normal`
+/// 
+/// Replace all uses of wrapping arithmetic methods with ordinary arithmetic
+/// operators.  For example, replace `x.wrapping_add(y)` with `x + y`.
 pub struct WrappingToNormal;
 
 impl Transform for WrappingToNormal {

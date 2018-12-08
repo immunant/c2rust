@@ -266,7 +266,8 @@ def transpile_files(cc_db: TextIO,
                     use_fakechecks: bool = False,
                     cross_check_config: List[str] = [],
                     incremental_relooper: bool = True,
-                    reorganize_definitions: bool = False) -> bool:
+                    reorganize_definitions: bool = False,
+                    no_refactor_pass: bool = False) -> bool:
     """
     run the transpiler on all C files in a compile commands database.
     """
@@ -369,6 +370,9 @@ def transpile_files(cc_db: TextIO,
                           use_fakechecks,
                           cross_check_config)
 
+        if reorganize_definitions and not no_refactor_pass:
+           run_refactor_pass(cc_db_dir)
+
     successes, failures = 0, 0
     for (fname, retcode, stdout, stderr, _) in results:
         if not retcode:
@@ -390,6 +394,22 @@ def transpile_files(cc_db: TextIO,
     print("successes...: " + str(successes))
     print("failures....: " + str(failures))
     return failures == 0
+
+def run_refactor_pass(dest_dir: str):
+    build_dir = os.path.join(dest_dir, "c2rust-build")
+
+    assert os.path.isdir(build_dir)
+    os.chdir(build_dir)
+
+    logging.info(" running the refactor tool...")
+
+    refactor = get_cmd_or_die(c.RREF_BIN)
+    refactor_args = ['-r', 'inplace', 'reorganize_definitions', '--', 'main.rs']
+    refactor[refactor_args].run()
+
+    logging.info(" running cargo fmt...")
+    cargo = get_cmd_or_die("cargo")
+    cargo['fmt'].run()
 
 
 class NegateAction(argparse.Action):
@@ -445,8 +465,12 @@ def parse_args() -> argparse.Namespace:
                              'default')
     parser.add_argument('-r', '--reorganize-definitions',
                         default=False, action='store_true',
-                        help='Reorganize definitions, then use the '
-                             'refactor tool to eliminate duplication')
+                        help='enables definition reorganization on the tranpiler, '
+                        'the refactor tool should then be ran')
+    parser.add_argument('--no-refactor-pass',
+                        default=False, action='store_true',
+                        help='stops the script from running the '
+                        '`reorganize_definitions` refactor tool pass')
     c.add_args(parser)
 
     args = parser.parse_args()
@@ -474,7 +498,8 @@ def main():
                     use_fakechecks=args.use_fakechecks,
                     cross_check_config=args.cross_check_config,
                     incremental_relooper=args.incremental_relooper,
-                    reorganize_definitions=args.reorganize_definitions)
+                    reorganize_definitions=args.reorganize_definitions,
+                    no_refactor_pass=args.no_refactor_pass)
 
     logging.info("success")
 

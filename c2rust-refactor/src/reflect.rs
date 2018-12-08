@@ -76,6 +76,11 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 mk().ident_ty(param.name)
             }
         },
+        // `Bound` is "used only when preparing a trait query", so hopefully we never actually
+        // encouter one.
+        Bound(..) => mk().infer_ty(),   
+        // No idea what `Placeholder` is, but it sounds like something rustc-internal.
+        Placeholder(..) => mk().infer_ty(),
         Infer(_) => mk().infer_ty(),
         Error => mk().infer_ty(), // unsupported
     }
@@ -99,7 +104,7 @@ fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
         Unary(op, ref a) => {
             mk().unary_expr(op.as_str(), hir_expr_to_expr(a))
         },
-        Lit(ref l) => mk().lit_expr(l),
+        Lit(ref l) => mk().lit_expr((**l).clone()),
         ref k => panic!("unsupported variant in hir_expr_to_expr: {:?}", k),
     }
 }
@@ -298,6 +303,7 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         Node::AnonConst(_) |
         Node::Expr(_) |
         Node::Stmt(_) |
+        Node::PathSegment(_) |
         Node::Ty(_) |
         Node::TraitRef(_) |
         Node::Pat(_) |
@@ -309,7 +315,14 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
 }
 
 
-pub fn register_commands(reg: &mut Registry) {
+/// # `test_reflect` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `test_reflect`
+/// 
+/// Applies path and ty reflection on every expr in the program.
+fn register_test_reflect(reg: &mut Registry) {
     reg.register("test_reflect", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             st.map_krate(|krate| {
@@ -345,4 +358,8 @@ pub fn register_commands(reg: &mut Registry) {
             });
         }))
     });
+}
+
+pub fn register_commands(reg: &mut Registry) {
+    register_test_reflect(reg);
 }

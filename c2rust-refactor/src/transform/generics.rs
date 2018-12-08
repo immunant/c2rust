@@ -8,15 +8,59 @@ use command::{CommandState, Registry};
 use driver;
 use transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
-use util::HirDefExt;
 
 
-/// Add a type variable with the given name (default: `T`) to each `target` item, and replace each
-/// `target` type annotation within a `target` item with the new type variable.  This makes all
-/// items with a `target` mark or containing a `target` type annotation generic over the new type
-/// variable, and adjusts references between them appropriately.  References from unmarked items to
-/// rewritten ones will set the type argument to the provided replacement type (default: use the
-/// first replaced type annotation).
+/// # `generalize_items` Command
+/// 
+/// Usage: `generalize_items VAR [TY]`
+/// 
+/// Marks: `target`
+/// 
+/// Replace marked types with generic type parameters.
+/// 
+/// Specifically: add a new type parameter called `VAR` to each item marked
+/// `target`, replacing type annotations inside that item that are marked `target`
+/// with uses of the type parameter.  Also update all uses of `target` items,
+/// passing `TY` as the new type argument when used inside a non-`target` item, and
+/// passing the type variable `VAR` when used inside a `target` item.
+/// 
+/// If `TY` is not provided, it defaults to a copy of the first type annotation
+/// that was replaced with `VAR`.
+/// 
+/// Example:
+/// 
+///     struct Foo {    // Foo: target
+///         x: i32,     // i32: target
+///         y: i32,
+///     }
+/// 
+///     fn f(foo: Foo) { ... }  // f: target
+/// 
+///     fn main() {
+///         f(...);
+///     }
+/// 
+/// After running `generalize_items T`:
+/// 
+///     // 1. Foo gains a new type parameter `T`
+///     struct Foo<T> {
+///         // 2. Marked type annotations become `T`
+///         x: T,
+///         y: i32,
+///     }
+/// 
+///     // 3. `f` gains a new type parameter `T`, and passes
+///     // it through to uses of `Foo`
+///     fn f<T>(foo: Foo<T>) { ... }
+///     struct Bar<T> {
+///         foo: Foo<T>,
+///     }
+/// 
+///     fn main() {
+///         // 4. Uses outside target items use `i32`, the
+///         // first type that was replaced with `T`.
+///         f::<i32>(...);
+///     }
 pub struct GeneralizeItems {
     ty_var_name: Symbol,
     replacement_ty: Option<String>,

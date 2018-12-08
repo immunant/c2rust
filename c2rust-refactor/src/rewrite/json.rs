@@ -22,10 +22,10 @@ impl<'a> Encoder<'a> {
     fn encode_span(&self, sp: Span) -> JsonValue {
         let lo = self.sm.lookup_byte_offset(sp.lo());
         let hi = self.sm.lookup_byte_offset(sp.hi());
-        let src = &lo.fm.src.as_ref().unwrap()[lo.pos.0 as usize .. hi.pos.0 as usize];
+        let src = &lo.sf.src.as_ref().unwrap()[lo.pos.0 as usize .. hi.pos.0 as usize];
 
         object! {
-            "file" => lo.fm.name.to_string(),
+            "file" => lo.sf.name.to_string(),
             "lo" => lo.pos.0,
             "hi" => hi.pos.0,
             "src" => src,

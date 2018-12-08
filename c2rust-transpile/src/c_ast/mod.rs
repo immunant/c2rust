@@ -150,7 +150,7 @@ impl TypedAstContext {
             CExprKind::BadExpr |
             CExprKind::ShuffleVector(..) |
             CExprKind::ConvertVector(..) |
-            CExprKind::Call(_, _, _) |
+            CExprKind::Call(..) |
             CExprKind::Unary(_, UnOp::PreIncrement, _, _) |
             CExprKind::Unary(_, UnOp::PostIncrement, _, _) |
             CExprKind::Unary(_, UnOp::PreDecrement, _, _) |
@@ -158,8 +158,9 @@ impl TypedAstContext {
             CExprKind::Binary(_, BinOp::Assign, _, _, _, _) |
             CExprKind::InitList { .. } |
             CExprKind::ImplicitValueInit { .. } |
-            CExprKind::Predefined(_, _) |
-            CExprKind::Statements(..) => false, // TODO: more precision
+            CExprKind::Predefined(..) |
+            CExprKind::Statements(..) | // TODO: more precision
+            CExprKind::VAArg(..) => false,
 
             CExprKind::Literal(_, _) |
             CExprKind::DeclRef(_, _, _) |
@@ -171,7 +172,6 @@ impl TypedAstContext {
             CExprKind::ExplicitCast(_, e, _, _, _) |
             CExprKind::Member(_, e, _, _, _) |
             CExprKind::CompoundLiteral(_, e) |
-            CExprKind::VAArg(_, e) |
             CExprKind::Unary(_, _, e, _) => self.is_expr_pure(e),
 
             CExprKind::Binary(_, op, _, _, _, _) if op.underlying_assignment().is_some() => false,

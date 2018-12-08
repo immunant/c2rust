@@ -13,9 +13,7 @@ fn wrapping_neg_expr(arg: P<Expr>) -> P<Expr> {
 impl<'c> Translation<'c> {
     pub fn convert_binary_expr(
         &self,
-        use_: ExprUse,
-        is_static: bool,
-        mut decay_ref: DecayRef,
+        mut ctx: ExprContext,
         type_id: CQualTypeId,
         op: c_ast::BinOp,
         lhs: CExprId,
@@ -26,8 +24,8 @@ impl<'c> Translation<'c> {
         match op {
             c_ast::BinOp::Comma => {
                 // The value of the LHS of a comma expression is always discarded
-                let lhs = self.convert_expr(ExprUse::Unused, lhs, is_static, decay_ref)?;
-                let rhs = self.convert_expr(use_, rhs, is_static, decay_ref)?;
+                let lhs = self.convert_expr(ctx.unused(), lhs)?;
+                let rhs = self.convert_expr(ctx, rhs)?;
 
                 Ok(WithStmts {
                     stmts: lhs.stmts.into_iter().chain(rhs.stmts).collect(),
@@ -36,12 +34,12 @@ impl<'c> Translation<'c> {
             }
 
             c_ast::BinOp::And => {
-                let lhs = self.convert_condition(true, lhs, is_static)?;
-                let rhs = self.convert_condition(true, rhs, is_static)?;
+                let lhs = self.convert_condition(ctx, true, lhs)?;
+                let rhs = self.convert_condition(ctx, true, rhs)?;
                 let mut out =
                     lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::And, x, rhs.to_expr())));
 
-                if use_ == ExprUse::Unused {
+                if ctx.is_unused() {
                     let out_val = mem::replace(
                         &mut out.val,
                         self.panic("Binary expression is not supposed to be used"),
@@ -53,12 +51,12 @@ impl<'c> Translation<'c> {
             }
 
             c_ast::BinOp::Or => {
-                let lhs = self.convert_condition(true, lhs, is_static)?;
-                let rhs = self.convert_condition(true, rhs, is_static)?;
+                let lhs = self.convert_condition(ctx, true, lhs)?;
+                let rhs = self.convert_condition(ctx, true, rhs)?;
                 let mut out =
                     lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::Or, x, rhs.to_expr())));
 
-                if use_ == ExprUse::Unused {
+                if ctx.is_unused() {
                     let out_val = mem::replace(
                         &mut out.val,
                         self.panic("Binary expression is not supposed to be used"),
@@ -81,7 +79,7 @@ impl<'c> Translation<'c> {
             | c_ast::BinOp::AssignBitOr
             | c_ast::BinOp::AssignBitAnd
             | c_ast::BinOp::Assign => self.convert_assignment_operator(
-                use_,
+                ctx,
                 op,
                 type_id,
                 lhs,
@@ -96,7 +94,7 @@ impl<'c> Translation<'c> {
                 // https://github.com/rust-lang/rust/issues/53772. This might be removable
                 // once the above issue is resolved.
                 if op == c_ast::BinOp::EqualEqual || op == c_ast::BinOp::NotEqual {
-                    decay_ref = DecayRef::Yes;
+                    ctx = ctx.decay_ref();
                 }
 
                 let ty = self.convert_type(type_id.ctype)?;
@@ -116,14 +114,12 @@ impl<'c> Translation<'c> {
 
                 let mut stmts = vec![];
 
-                if use_ == ExprUse::Unused {
+                if ctx.is_unused() {
                     stmts.extend(
-                        self.convert_expr(ExprUse::Unused, lhs, is_static, decay_ref)?
-                            .stmts,
+                        self.convert_expr(ctx, lhs)?.stmts,
                     );
                     stmts.extend(
-                        self.convert_expr(ExprUse::Unused, rhs, is_static, decay_ref)?
-                            .stmts,
+                        self.convert_expr(ctx, rhs)?.stmts,
                     );
 
                     Ok(WithStmts {
@@ -134,11 +130,11 @@ impl<'c> Translation<'c> {
                     let WithStmts {
                         val: lhs_val,
                         stmts: lhs_stmts,
-                    } = self.convert_expr(ExprUse::Used, lhs, is_static, decay_ref)?;
+                    } = self.convert_expr(ctx, lhs)?;
                     let WithStmts {
                         val: rhs_val,
                         stmts: rhs_stmts,
-                    } = self.convert_expr(ExprUse::Used, rhs, is_static, decay_ref)?;
+                    } = self.convert_expr(ctx, rhs)?;
 
                     stmts.extend(lhs_stmts);
                     stmts.extend(rhs_stmts);
@@ -209,7 +205,7 @@ impl<'c> Translation<'c> {
 
     fn convert_assignment_operator(
         &self,
-        use_: ExprUse,
+        ctx: ExprContext,
         op: c_ast::BinOp,
         qtype: CQualTypeId,
         lhs: CExprId,
@@ -223,9 +219,9 @@ impl<'c> Translation<'c> {
             .kind
             .get_qual_type()
             .ok_or_else(|| format!("bad assignment rhs type"))?;
-        let rhs_translation = self.convert_expr(ExprUse::Used, rhs, false, DecayRef::Default)?;
+        let rhs_translation = self.convert_expr(ctx.used(), rhs)?;
         self.convert_assignment_operator_with_rhs(
-            use_,
+            ctx,
             op,
             qtype,
             lhs,
@@ -239,7 +235,7 @@ impl<'c> Translation<'c> {
     /// Translate an assignment binary operator
     fn convert_assignment_operator_with_rhs(
         &self,
-        use_: ExprUse,
+        ctx: ExprContext,
         op: c_ast::BinOp,
         qtype: CQualTypeId,
         lhs: CExprId,
@@ -283,7 +279,7 @@ impl<'c> Translation<'c> {
         };
 
         let (write, read, lhs_stmts) = if initial_lhs_type_id.ctype != compute_lhs_type_id.ctype
-            || use_ == ExprUse::Used
+            || ctx.is_used()
             || pointer_lhs.is_some()
             || is_volatile_compound_assign
             || is_unsigned_arith
@@ -291,13 +287,13 @@ impl<'c> Translation<'c> {
             let WithStmts {
                 val: (write, read),
                 stmts: lhs_stmts,
-            } = self.name_reference_write_read(lhs)?;
+            } = self.name_reference_write_read(ctx, lhs)?;
             (write, read, lhs_stmts)
         } else {
             let WithStmts {
                 val: write,
                 stmts: lhs_stmts,
-            } = self.name_reference_write(lhs)?;
+            } = self.name_reference_write(ctx, lhs)?;
             (
                 write,
                 self.panic("Volatile value is not supposed to be read"),
@@ -708,6 +704,7 @@ impl<'c> Translation<'c> {
 
     fn convert_pre_increment(
         &self,
+        ctx: ExprContext,
         ty: CQualTypeId,
         up: bool,
         arg: CExprId,
@@ -723,7 +720,7 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format!("bad arg type"))?;
         self.convert_assignment_operator_with_rhs(
-            ExprUse::Used,
+            ctx.used(),
             op,
             arg_type,
             arg,
@@ -736,14 +733,14 @@ impl<'c> Translation<'c> {
 
     fn convert_post_increment(
         &self,
-        use_: ExprUse,
+        ctx: ExprContext,
         ty: CQualTypeId,
         up: bool,
         arg: CExprId,
     ) -> Result<WithStmts<P<Expr>>, String> {
         // If we aren't going to be using the result, may as well do a simple pre-increment
-        if use_ == ExprUse::Unused {
-            return self.convert_pre_increment(ty, up, arg);
+        if ctx.is_unused() {
+            return self.convert_pre_increment(ctx, ty, up, arg);
         }
 
         let ty = self
@@ -756,7 +753,7 @@ impl<'c> Translation<'c> {
         let WithStmts {
             val: (write, read),
             stmts: mut lhs_stmts,
-        } = self.name_reference_write_read(arg)?;
+        } = self.name_reference_write_read(ctx, arg)?;
 
         let val_name = self.renamer.borrow_mut().fresh();
         let save_old_val = mk().local_stmt(P(mk().local(
@@ -812,13 +809,11 @@ impl<'c> Translation<'c> {
 
     pub fn convert_unary_operator(
         &self,
-        use_: ExprUse,
+        mut ctx: ExprContext,
         name: c_ast::UnOp,
         cqual_type: CQualTypeId,
         arg: CExprId,
         lrvalue: LRValue,
-        is_static: bool,
-        mut decay_ref: DecayRef,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let CQualTypeId { ctype, .. } = cqual_type;
         let ty = self.convert_type(ctype)?;
@@ -831,18 +826,18 @@ impl<'c> Translation<'c> {
                 match arg_kind {
                     // C99 6.5.3.2 para 4
                     CExprKind::Unary(_, c_ast::UnOp::Deref, target, _) => {
-                        return self.convert_expr(use_, *target, is_static, decay_ref)
+                        return self.convert_expr(ctx, *target)
                     }
                     // An AddrOf DeclRef/Member is safe to not decay if the translator isn't already giving a hard
                     // yes to decaying (ie, BitCasts). So we only convert default to no decay.
-                    CExprKind::DeclRef(..) | CExprKind::Member(..) => decay_ref.set_default_to_no(),
+                    CExprKind::DeclRef(..) | CExprKind::Member(..) => ctx.decay_ref.set_default_to_no(),
                     _ => (),
                 };
 
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
-                let arg = self.convert_expr(ExprUse::Used, arg, is_static, decay_ref)?;
+                let arg = self.convert_expr(ctx.used(), arg)?;
 
                 if self.ast_context.is_function_pointer(ctype) {
                     Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
@@ -861,7 +856,7 @@ impl<'c> Translation<'c> {
                     arg.result_map(|a| {
                         let mut addr_of_arg: P<Expr>;
 
-                        if is_static {
+                        if ctx.is_static {
                             // static variable initializers aren't able to use &mut,
                             // so we work around that by using & and an extra cast
                             // through & to *const to *mut
@@ -880,7 +875,7 @@ impl<'c> Translation<'c> {
                             addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
 
                             // Avoid unnecessary reference to pointer decay in fn call args:
-                            if decay_ref.is_no() {
+                            if ctx.decay_ref.is_no() {
                                 return Ok(addr_of_arg);
                             }
                         }
@@ -889,17 +884,17 @@ impl<'c> Translation<'c> {
                     })
                 }
             }
-            c_ast::UnOp::PreIncrement => self.convert_pre_increment(cqual_type, true, arg),
-            c_ast::UnOp::PreDecrement => self.convert_pre_increment(cqual_type, false, arg),
-            c_ast::UnOp::PostIncrement => self.convert_post_increment(use_, cqual_type, true, arg),
-            c_ast::UnOp::PostDecrement => self.convert_post_increment(use_, cqual_type, false, arg),
+            c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
+            c_ast::UnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),
+            c_ast::UnOp::PostIncrement => self.convert_post_increment(ctx, cqual_type, true, arg),
+            c_ast::UnOp::PostDecrement => self.convert_post_increment(ctx, cqual_type, false, arg),
             c_ast::UnOp::Deref => {
                 match self.ast_context[arg].kind {
                     CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg_, _) => {
-                        self.convert_expr(ExprUse::Used, arg_, is_static, decay_ref)
+                        self.convert_expr(ctx.used(), arg_)
                     }
                     _ => {
-                        self.convert_expr(ExprUse::Used, arg, is_static, decay_ref)?
+                        self.convert_expr(ctx.used(), arg)?
                             .result_map(|val: P<Expr>| {
                                 if let CTypeKind::Function(..) =
                                     self.ast_context.resolve_type(ctype).kind
@@ -921,10 +916,10 @@ impl<'c> Translation<'c> {
                     }
                 }
             }
-            c_ast::UnOp::Plus => self.convert_expr(ExprUse::Used, arg, is_static, decay_ref), // promotion is explicit in the clang AST
+            c_ast::UnOp::Plus => self.convert_expr(ctx.used(), arg), // promotion is explicit in the clang AST
 
             c_ast::UnOp::Negate => {
-                let val = self.convert_expr(ExprUse::Used, arg, is_static, decay_ref)?;
+                let val = self.convert_expr(ctx.used(), arg)?;
 
                 if resolved_ctype.kind.is_unsigned_integral_type() {
                     Ok(val.map(wrapping_neg_expr))
@@ -933,15 +928,15 @@ impl<'c> Translation<'c> {
                 }
             }
             c_ast::UnOp::Complement => Ok(self
-                .convert_expr(ExprUse::Used, arg, is_static, decay_ref)?
+                .convert_expr(ctx.used(), arg)?
                 .map(|a| mk().unary_expr(ast::UnOp::Not, a))),
 
             c_ast::UnOp::Not => {
-                let val = self.convert_condition(false, arg, is_static)?;
+                let val = self.convert_condition(ctx, false, arg)?;
                 Ok(val.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc", "c_int"]))))
             }
             c_ast::UnOp::Extension => {
-                let arg = self.convert_expr(use_, arg, is_static, decay_ref)?;
+                let arg = self.convert_expr(ctx, arg)?;
                 Ok(arg)
             }
             c_ast::UnOp::Real | c_ast::UnOp::Imag | c_ast::UnOp::Coawait => {

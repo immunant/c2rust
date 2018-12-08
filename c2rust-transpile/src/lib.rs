@@ -79,7 +79,7 @@ pub struct TranspilerConfig {
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
-pub fn transpile(mut tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
+pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
 
     // TODO: bindgen may have a more elegant solution to this issue
     // MacOS Mojave does not have `/usr/include` even if Xcode or the

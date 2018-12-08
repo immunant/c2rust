@@ -1,0 +1,1 @@
+../../../../cross-checks/rust-checks/rustc-plugin/README.md

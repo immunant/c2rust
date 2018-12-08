@@ -30,7 +30,7 @@ use rustc::session::Session;
 use ast_manip::{GetSpan, AstDeref};
 
 use super::strategy;
-use super::{RewriteCtxtRef, TextAdjust, SeqItemId};
+use super::{RewriteCtxtRef, TextAdjust, SeqItemId, ExprPrec};
 use super::strategy::print;
 
 
@@ -368,28 +368,36 @@ pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
 
 // Misc helpers
 
-pub fn binop_left_prec(op: &BinOp) -> i8 {
+pub fn binop_left_prec(op: &BinOp) -> ExprPrec {
     let assoc_op = AssocOp::from_ast_binop(op.node);
     let prec = assoc_op.precedence() as i8;
     let fixity = assoc_op.fixity();
 
-    match fixity {
+    let prec = match fixity {
         Fixity::Left => prec,
         Fixity::Right => prec + 1,
         Fixity::None => prec + 1,
+    };
+
+    match assoc_op {
+        AssocOp::Less |
+        AssocOp::LessEqual |
+        AssocOp::ObsoleteInPlace => ExprPrec::LeftLess(prec),
+        _ => ExprPrec::Normal(prec),
     }
 }
 
-pub fn binop_right_prec(op: &BinOp) -> i8 {
+pub fn binop_right_prec(op: &BinOp) -> ExprPrec {
     let assoc_op = AssocOp::from_ast_binop(op.node);
     let prec = assoc_op.precedence() as i8;
     let fixity = assoc_op.fixity();
 
-    match fixity {
+    let prec = match fixity {
         Fixity::Left => prec + 1,
         Fixity::Right => prec,
         Fixity::None => prec + 1,
-    }
+    };
+    ExprPrec::Normal(prec)
 }
 
 /// Checks if a span has corresponding source text that we can rewrite (or use as source text to
@@ -408,11 +416,11 @@ pub fn describe(sess: &Session, span: Span) -> String {
     let cm = sess.source_map();
     let lo = cm.lookup_byte_offset(span.lo());
     let hi = cm.lookup_byte_offset(span.hi());
-    let src = &lo.fm.src.as_ref().unwrap()[lo.pos.0 as usize .. hi.pos.0 as usize];
+    let src = &lo.sf.src.as_ref().unwrap()[lo.pos.0 as usize .. hi.pos.0 as usize];
 
-    if Rc::ptr_eq(&lo.fm, &hi.fm) {
-        format!("{}: {} .. {} = {}", lo.fm.name, lo.pos.0, hi.pos.0, src)
+    if Rc::ptr_eq(&lo.sf, &hi.sf) {
+        format!("{}: {} .. {} = {}", lo.sf.name, lo.pos.0, hi.pos.0, src)
     } else {
-        format!("{}: {} .. {}: {} = {}", lo.fm.name, lo.pos.0, hi.fm.name, hi.pos.0, src)
+        format!("{}: {} .. {}: {} = {}", lo.sf.name, lo.pos.0, hi.sf.name, hi.pos.0, src)
     }
 }

@@ -10,9 +10,51 @@ use driver;
 use transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
 use util::dataflow;
-use util::HirDefExt;
 
 
+/// # `static_collect_to_struct` Command
+/// 
+/// Usage: `static_collect_to_struct STRUCT VAR`
+/// 
+/// Marks: `target`
+/// 
+/// Collect marked statics into a single static struct.
+/// 
+/// Specifically:
+/// 
+///  1. Find all statics marked `target`.  For each one, record its name, type, and
+///     initializer expression, then delete it.
+///  2. Generate a new struct definition named `STRUCT`.  For each marked static,
+///     include a field of `STRUCT` with the same name and type as the static.
+///  3. Generate a new `static mut` named `VAR` whose type is `STRUCT`.  Initialize
+///     it using the initializer expressions for the marked statics.
+///  4. For each marked static `foo`, replace uses of `foo` with `VAR.foo`.
+/// 
+/// Example:
+/// 
+///     static mut FOO: i32 = 100;
+///     static mut BAR: bool = true;
+/// 
+///     unsafe fn f() -> i32 {
+///         FOO
+///     }
+/// 
+/// 
+/// After running `static_collect_to_struct Globals G`, with both statics marked:
+/// 
+///     struct Globals {
+///         FOO: i32,
+///         BAR: bool,
+///     }
+/// 
+///     static mut G: Globals = Globals {
+///         FOO: 100,
+///         BAR: true,
+///     };
+/// 
+///     unsafe fn f() -> i32 {
+///         G.FOO
+///     }
 pub struct CollectToStruct {
     pub struct_name: String,
     pub instance_name: String,
@@ -107,6 +149,62 @@ fn build_struct_instance(struct_name: &str,
 }
 
 
+/// # `static_to_local_ref` Command
+/// 
+/// Usage: `static_to_local_ref`
+/// 
+/// Marks: `target`, `user`
+/// 
+/// For each function marked `user`, replace uses of statics marked `target` with
+/// uses of newly-introduced reference arguments.  Afterward, no `user` function
+/// directly accesses any `target` static.  At call sites of `user` functions, a
+/// reference to the original static is passed in for each new argument if the
+/// caller is not itself a `user` function; otherwise, the caller's own reference
+/// argument is passed through.  Note this sometimes results in functions gaining
+/// arguments corresponding to statics that the function itself does not use, but
+/// that its callees do.
+/// 
+/// Example:
+/// 
+///     static mut FOO: i32 = 100;  // FOO: target
+/// 
+///     unsafe fn f() -> i32 {  // f: user
+///         FOO
+///     }
+/// 
+///     unsafe fn g() -> i32 {  // g: user
+///         f()
+///     }
+/// 
+///     unsafe fn h() -> i32 {
+///         g()
+///     }
+/// 
+/// After running `static_to_local_ref`:
+/// 
+///     static mut FOO: i32 = 100;
+/// 
+///     // `f` is a `user` that references `FOO`, so it
+///     // gains a new argument `FOO_`.
+///     unsafe fn f(FOO_: &mut i32) -> i32 {
+///         // References to `FOO` are replaced with `*FOO_`
+///         *FOO_
+///     }
+/// 
+///     // `g` is a `user` that references `FOO` indirectly,
+///     // via fellow `user` `f`.
+///     unsafe fn g(FOO_: &mut i32) -> i32 {
+///         // `g` passes through its own `FOO_` reference
+///         // when calling `f`.
+///         f(FOO_)
+///     }
+/// 
+///     // `h` is not a `user`, so its signature is unchanged.
+///     unsafe fn h() -> i32 {
+///         // `h` passes in a reference to the original
+///         // static `FOO`.
+///         g(&mut FOO)
+///     }
 pub struct Localize;
 
 impl Transform for Localize {
@@ -305,8 +403,42 @@ impl Transform for Localize {
 }
 
 
-/// Replace marked statics with local variable declarations, one in each function that uses the
-/// static.
+/// # `static_to_local` Command
+/// 
+/// Usage: `static_to_local`
+/// 
+/// Marks: `target`
+/// 
+/// Delete each static marked `target`.  For each function that uses a marked static, insert a new
+/// local variable definition replicating the marked static.
+/// 
+/// Example:
+/// 
+///     static mut FOO: i32 = 100;  // FOO: target
+/// 
+///     unsafe fn f() -> i32 {
+///         FOO
+///     }
+/// 
+///     unsafe fn g() -> i32 {
+///         FOO + 1
+///     }
+/// 
+/// After running `static_to_local`:
+/// 
+///     // `FOO` deleted
+/// 
+///     // `f` gains a new local, replicating `FOO`.
+///     unsafe fn f() -> i32 {
+///         let FOO: i32 = 100;
+///         FOO
+///     }
+/// 
+///     // If multiple functions use `FOO`, each one gets its own copy.
+///     unsafe fn g() -> i32 {
+///         let FOO: i32 = 100;
+///         FOO + 1
+///     }
 struct StaticToLocal;
 
 impl Transform for StaticToLocal {

@@ -11,14 +11,24 @@ use driver::{self, Phase};
 use reflect;
 use resolve;
 use transform::Transform;
-use util::HirDefExt;
 
 
 
-/// For every `extern fn` or `extern static` with the "target" mark, look for an extern with the
-/// same symbol in the module at `path`.  If found, delete the old extern and replace all its uses
-/// with the one found in `path`.  If the old and new externs have different signatures, also
-/// insert casts around arguments and calls to make the types line up.
+/// # `canonicalize_externs` Command
+/// 
+/// Usage: `canonicalize_externs MOD_PATH`
+/// 
+/// Marks: `target`
+/// 
+/// Replace foreign items ("externs") with references to externs
+/// in a different crate or module.
+/// 
+/// For each foreign `fn` or `static` marked `target`, if a foreign item with the
+/// same symbol exists in the module at `MOD_PATH` (which can be part of an
+/// external crate), it deletes the marked foreign item and replaces all its uses
+/// with uses of the matching foreign item in `MOD_PATH`.  If a replacement item
+/// has a different type than the original, it also inserts the necessary casts at
+/// each use of the item.
 pub struct CanonicalizeExterns {
     path: String,
 }
@@ -118,8 +128,8 @@ impl Transform for CanonicalizeExterns {
                 }};
             }
 
-            let (old_sig, new_sig) = match (old_sig.no_late_bound_regions(),
-                                            new_sig.no_late_bound_regions()) {
+            let (old_sig, new_sig) = match (old_sig.no_bound_vars(),
+                                            new_sig.no_bound_vars()) {
                 (Some(x), Some(y)) => (x, y),
                 _ => bail!("old or new sig had late-bound regions"),
             };

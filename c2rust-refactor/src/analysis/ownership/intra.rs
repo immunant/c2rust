@@ -5,6 +5,7 @@ use rustc::mir::*;
 use rustc::mir::tcx::PlaceTy;
 use rustc::ty::{Ty, TyKind};
 use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_target::abi::VariantIdx;
 
 use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
@@ -229,7 +230,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
     }
 
     fn place_lty_downcast(&mut self,
-                           lv: &Place<'tcx>) -> (ITy<'tcx>, Perm<'tcx>, Option<usize>) {
+                           lv: &Place<'tcx>) -> (ITy<'tcx>, Perm<'tcx>, Option<VariantIdx>) {
         match *lv {
             Place::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
 
@@ -259,7 +260,10 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                          self.cx.min_perm(base_perm, base_ty.label.perm()),
                          None),
                     ProjectionElem::Field(f, _) =>
-                        (self.field_lty(base_ty, base_variant.unwrap_or(0), f), base_perm, None),
+                        (self.field_lty(
+                                base_ty, base_variant.unwrap_or(VariantIdx::from_usize(0)), f),
+                         base_perm,
+                         None),
                     ProjectionElem::Index(ref _index_op) =>
                         (base_ty.args[0], base_perm, None),
                     ProjectionElem::ConstantIndex { .. } => unimplemented!(),
@@ -271,7 +275,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         }
     }
 
-    fn field_lty(&mut self, base_ty: ITy<'tcx>, v: usize, f: Field) -> ITy<'tcx> {
+    fn field_lty(&mut self, base_ty: ITy<'tcx>, v: VariantIdx, f: Field) -> ITy<'tcx> {
         match base_ty.ty.sty {
             TyKind::Adt(adt, _substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
@@ -347,7 +351,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
                         if let Some(union_variant) = union_variant {
                             assert!(ops.len() == 1);
-                            let field_def_id = adt.variants[0].fields[union_variant].did;
+                            let field_def_id = adt.non_enum_variant().fields[union_variant].did;
                             let poly_field_ty = self.static_ty(field_def_id);
                             let field_ty = self.ilcx.subst(poly_field_ty, adt_ty.args);
                             let (op_ty, op_perm) = self.operand_lty(&ops[0]);
@@ -523,8 +527,8 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 // InlineAsm has some Lvalues and Operands, but we can't do anything useful
                 // with them without analysing the actual asm code.
                 StatementKind::InlineAsm { .. } |
-                StatementKind::Validate(..) |
-                StatementKind::EndRegion(_) |
+                StatementKind::Retag { .. } |
+                StatementKind::EscapeToRaw(_) |
                 StatementKind::AscribeUserType(..) |
                 StatementKind::Nop => {},
             }

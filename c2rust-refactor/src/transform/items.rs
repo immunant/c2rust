@@ -13,10 +13,16 @@ use c2rust_ast_builder::{mk, Make, IntoSymbol};
 use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
-use util::HirDefExt;
 
 
-/// Rename items using regex match and replace.
+/// # `rename_regex` Command
+/// 
+/// Usage: `rename_regex PAT REPL [FILTER]`
+/// 
+/// Marks: reads `FILTER`
+/// 
+/// Replace `PAT` (a regular expression) with `REPL` in all item names.  If `FILTER` is provided,
+/// only items bearing the `FILTER` mark will be renamed.
 pub struct RenameRegex {
     pattern: String,
     repl: String,
@@ -70,8 +76,14 @@ impl Transform for RenameRegex {
 }
 
 
-/// Replace all uses of `target` items with references to the `repl` item, and remove all `target`
-/// items.
+/// # `replace_items` Command
+/// 
+/// Usage: `replace_items`
+/// 
+/// Marks: `target`, `repl`
+/// 
+/// Replace all uses of items marked `target` with reference to the item marked
+/// `repl`, then remove all `target` items.
 pub struct ReplaceItems;
 
 impl Transform for ReplaceItems {
@@ -157,9 +169,16 @@ impl Transform for ReplaceItems {
 }
 
 
-/// Set visibility of all marked items, foreign items, and inherent-impl items.
-///
-/// Doesn't handle struct field visibility for now.
+/// # `set_visibility` Command
+/// 
+/// Usage: `set_visibility VIS`
+/// 
+/// Marks: `target`
+/// 
+/// Set the visibility of all items marked `target` to `VIS`.  `VIS` is a Rust
+/// visibility qualifier such as `pub`, `pub(crate)`, or the empty string.
+/// 
+/// Doesn't handle struct field visibility, for now.
 pub struct SetVisibility {
     vis_str: String,
 }
@@ -222,7 +241,14 @@ impl Transform for SetVisibility {
 }
 
 
-/// Set mutability of all marked statics and extern statics.
+/// # `set_mutability` Command
+/// 
+/// Usage: `set_mutability MUT`
+/// 
+/// Marks: `target`
+/// 
+/// Set the mutability of all items marked `target` to `MUT`.  `MUT` is either
+/// `imm` or `mut`.  This command only affects `static` items (including extern statics).
 pub struct SetMutability {
     mut_str: String,
 }
@@ -328,6 +354,17 @@ impl Transform for SetUnsafety {
 }
 
 
+/// # `create_item` Command
+/// 
+/// Usage: `create_item ITEMS <inside/after> [MARK]`
+/// 
+/// Marks: `MARK`/`target`
+/// 
+/// Parse `ITEMS` as item definitions, and insert the parsed items either `inside` (as the first
+/// child) or `after` (as a sibling) of the AST node bearing `MARK` (default: `target`).  Supports
+/// adding items to both `mod`s and blocks.
+/// 
+/// Note that other itemlikes, such as impl and trait items, are not handled by this command.
 pub struct CreateItem {
     header: String,
     pos: String,
@@ -455,7 +492,14 @@ impl Transform for CreateItem {
 }
 
 
-/// Remove all items marked `target` from their containing modules or blocks.
+/// # `delete_items` Command
+/// 
+/// Usage: `delete_items`
+/// 
+/// Marks: `target`
+/// 
+/// Delete all items marked `target` from the AST.  This handles items in both `mod`s and blocks,
+/// but doesn't handle other itemlikes.
 pub struct DeleteItems;
 
 impl Transform for DeleteItems {

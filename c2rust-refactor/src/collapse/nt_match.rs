@@ -171,7 +171,7 @@ impl AsNonterminal for Lifetime {
 
 impl AsNonterminal for Lit {
     fn as_nonterminal(&self) -> Nonterminal {
-        Nonterminal::NtLiteral(mk().lit_expr(P(self.clone())))
+        Nonterminal::NtLiteral(mk().lit_expr(self.clone()))
     }
 }
 

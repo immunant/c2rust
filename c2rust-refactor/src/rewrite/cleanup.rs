@@ -14,13 +14,13 @@ fn equal_span_text(cm: &SourceMap, sp1: Span, sp2: Span) -> bool {
 
     let lo1 = cm.lookup_byte_offset(sp1.lo());
     let hi1 = cm.lookup_byte_offset(sp1.hi());
-    let src1 = lo1.fm.src.as_ref()
-        .unwrap_or_else(|| panic!("source of file {} is not available", lo1.fm.name));
+    let src1 = lo1.sf.src.as_ref()
+        .unwrap_or_else(|| panic!("source of file {} is not available", lo1.sf.name));
 
     let lo2 = cm.lookup_byte_offset(sp2.lo());
     let hi2 = cm.lookup_byte_offset(sp2.hi());
-    let src2 = lo2.fm.src.as_ref()
-        .unwrap_or_else(|| panic!("source of file {} is not available", lo2.fm.name));
+    let src2 = lo2.sf.src.as_ref()
+        .unwrap_or_else(|| panic!("source of file {} is not available", lo2.sf.name));
 
     src1[lo1.pos.0 as usize .. hi1.pos.0 as usize] ==
     src2[lo2.pos.0 as usize .. hi2.pos.0 as usize]

@@ -13,7 +13,6 @@ use ast_manip::{Visit, visit_nodes};
 use command::CommandState;
 use command::{Registry, DriverCommand, RefactorState, FuncCommand};
 use driver::{self, Phase};
-use util::HirDefExt;
 use c2rust_ast_builder::IntoSymbol;
 
 
@@ -161,6 +160,14 @@ pub fn find_mark_uses<T: Visit>(target: &T,
     }
 }
 
+/// # `mark_uses` Command
+/// 
+/// Usage: `mark_uses MARK`
+/// 
+/// Marks: reads `MARK`; sets/clears `MARK`
+/// 
+/// For every top-level definition bearing `MARK`, apply `MARK` to uses of that
+/// definition.  Removes `MARK` from the original definitions.
 pub fn find_mark_uses_command(st: &CommandState, cx: &driver::Ctxt, label: &str) {
     find_mark_uses(&*st.krate(), st, cx, label);
 }
@@ -209,6 +216,14 @@ pub fn find_field_uses<T: Visit>(target: &T,
     }
 }
 
+/// # `mark_field_uses` Command
+/// 
+/// Usage: `mark_field_uses FIELD MARK`
+/// 
+/// Marks: reads `MARK`; sets/clears `MARK`
+/// 
+/// For every struct definition bearing `MARK`, apply `MARK` to expressions
+/// that use `FIELD` of that struct.  Removes `MARK` from the original struct.
 pub fn find_field_uses_command(st: &CommandState, cx: &driver::Ctxt, field: &str, label: &str) {
     find_field_uses(&*st.krate(), st, cx, field, label);
 }
@@ -244,6 +259,15 @@ pub fn find_arg_uses<T: Visit>(target: &T,
     }
 }
 
+/// # `mark_arg_uses` Command
+/// 
+/// Usage: `mark_arg_uses ARG_IDX MARK`
+/// 
+/// Marks: reads `MARK`; sets/clears `MARK`
+/// 
+/// For every `fn` definition bearing `MARK`, apply `MARK` to expressions
+/// passed in as argument `ARG_IDX` in calls to that function.
+/// Removes `MARK` from the original function.
 pub fn find_arg_uses_command(st: &CommandState, cx: &driver::Ctxt, arg_idx: usize, label: &str) {
     find_arg_uses(&*st.krate(), st, cx, arg_idx, label);
 }
@@ -273,11 +297,27 @@ pub fn find_callers<T: Visit>(target: &T,
     }
 }
 
+/// # `mark_callers` Command
+/// 
+/// Usage: `mark_callers MARK`
+/// 
+/// Marks: reads `MARK`; sets/clears `MARK`
+/// 
+/// For every `fn` definition bearing `MARK`, apply `MARK` to call
+/// expressions that call that function.
+/// Removes `MARK` from the original function.
 pub fn find_callers_command(st: &CommandState, cx: &driver::Ctxt, label: &str) {
     find_callers(&*st.krate(), st, cx, label);
 }
 
 
+/// # `copy_marks` Command
+/// 
+/// Usage: `copy_marks OLD_MARK NEW_MARK`
+/// 
+/// Marks: reads `OLD_MARK`; sets `NEW_MARK`
+/// 
+/// For every node bearing `OLD_MARK`, also apply `NEW_MARK`.
 pub fn copy_marks(st: &CommandState, old: Symbol, new: Symbol) {
     let mut marks = st.marks_mut();
     let nodes = marks.iter().filter(|&&(_, label)| label == old)
@@ -287,12 +327,40 @@ pub fn copy_marks(st: &CommandState, old: Symbol, new: Symbol) {
     }
 }
 
+/// # `delete_marks` Command
+/// 
+/// Usage: `delete_marks MARK`
+/// 
+/// Marks: clears `MARK`
+/// 
+/// Remove `MARK` from every node where it appears.
 pub fn delete_marks(st: &CommandState, old: Symbol) {
     let mut marks = st.marks_mut();
     marks.retain(|&(_, label)| label != old);
 }
 
+/// # `rename_marks` Command
+/// 
+/// Usage: `rename_marks OLD_MARK NEW_MARK`
+/// 
+/// Marks: reads/clears `OLD_MARK`; sets `NEW_MARK`
+/// 
+/// For every node bearing `OLD_MARK`, remove `OLD_MARK` and apply `NEW_MARK`.
+pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
+    copy_marks(st, old, new);
+    delete_marks(st, old);
+}
 
+
+/// # `mark_pub_in_mod` Command
+/// 
+/// Obsolete - use `select` instead.
+/// 
+/// Usage: `mark_pub_in_mod MARK`
+/// 
+/// Marks: reads `MARK`; sets `MARK`
+/// 
+/// In each `mod` bearing `MARK`, apply `MARK` to every public item in the module.
 pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
     let label = label.into_symbol();
 
@@ -320,15 +388,42 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
 }
 
 
+/// # `print_marks` Command
+/// 
+/// Test command - not intended for general use.
+/// 
+/// Usage: `print_marks`
+/// 
+/// Marks: reads all
+/// 
+/// Logs the ID and label of every mark, at level `info`.
+fn print_marks(st: &CommandState) {
+    let mut marks = st.marks().iter().map(|&x| x).collect::<Vec<_>>();
+    marks.sort();
+
+    for (id, label) in marks {
+        info!("{}:{}", id.as_usize(), label.as_str());
+    }
+}
+
+
+/// # `clear_marks` Command
+/// 
+/// Usage: `clear_marks`
+/// 
+/// Marks: clears all marks
+/// 
+/// Remove all marks from all nodes.
+fn register_clear_marks(reg: &mut Registry) {
+    reg.register("clear_marks", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
+        rs.clear_marks();
+    })));
+}
+
 pub fn register_commands(reg: &mut Registry) {
     reg.register("print_marks", |_| {
         Box::new(DriverCommand::new(Phase::Phase2, move |st, _cx| {
-            let mut marks = st.marks().iter().map(|&x| x).collect::<Vec<_>>();
-            marks.sort();
-
-            for (id, label) in marks {
-                info!("{}:{}", id.as_usize(), label.as_str());
-            }
+            print_marks(st);
         }))
     });
 
@@ -381,8 +476,7 @@ pub fn register_commands(reg: &mut Registry) {
         let old = (&args[0]).into_symbol();
         let new = (&args[1]).into_symbol();
         Box::new(DriverCommand::new(Phase::Phase2, move |st, _cx| {
-            copy_marks(st, old, new);
-            delete_marks(st, old);
+            rename_marks(st, old, new);
         }))
     });
 
@@ -393,7 +487,5 @@ pub fn register_commands(reg: &mut Registry) {
         }))
     });
 
-    reg.register("clear_marks", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
-        rs.clear_marks();
-    })));
+    register_clear_marks(reg);
 }

@@ -155,9 +155,7 @@ impl<'c> Translation<'c> {
     /// used as array literals, struct literals, and union literals in code.
     pub fn convert_init_list(
         &self,
-        use_: ExprUse,
-        is_static: bool,
-        decay_ref: DecayRef,
+        ctx: ExprContext,
         ty: CQualTypeId,
         ids: &[CExprId],
         opt_union_field_id: Option<CFieldId>,
@@ -183,13 +181,13 @@ impl<'c> Translation<'c> {
                 let mut stmts: Vec<Stmt> = vec![];
                 let val: P<Expr> = if is_string {
                     let v = ids.first().unwrap();
-                    let mut x = self.convert_expr(ExprUse::Used, *v, is_static, decay_ref)?;
+                    let mut x = self.convert_expr(ctx.used(), *v)?;
                     stmts.append(&mut x.stmts);
                     x.val
                 } else {
                     let mut vals: Vec<P<Expr>> = vec![];
                     for &v in ids {
-                        let mut x = self.convert_expr(ExprUse::Used, v, is_static, decay_ref)?;
+                        let mut x = self.convert_expr(ctx.used(), v)?;
 
                         // Array literals require all of their elements to be the correct type; they
                         // will not use implicit casts to change mut to const. This becomes a problem
@@ -208,7 +206,7 @@ impl<'c> Translation<'c> {
                     }
                     // Pad out the array literal with default values to the desired size
                     for _i in ids.len()..n {
-                        vals.push(self.implicit_default_expr(ty, is_static)?)
+                        vals.push(self.implicit_default_expr(ty, ctx.is_static)?)
                     }
                     mk().array_expr(vals)
                 };
@@ -216,22 +214,22 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts { stmts, val })
             }
             CTypeKind::Struct(struct_id) => {
-                self.convert_struct_literal(struct_id, ids.as_ref(), is_static)
+                self.convert_struct_literal(ctx, struct_id, ids.as_ref())
             }
             CTypeKind::Union(union_id) => self.convert_union_literal(
+                ctx,
                 union_id,
                 ids.as_ref(),
                 ty,
                 opt_union_field_id,
-                is_static,
             ),
             CTypeKind::Pointer(_) => {
                 let id = ids.first().unwrap();
-                let mut x = self.convert_expr(ExprUse::Used, *id, is_static, decay_ref);
+                let mut x = self.convert_expr(ctx.used(), *id);
                 Ok(x.unwrap())
             }
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
-                self.vector_list_initializer(use_, is_static, decay_ref, ids, ctype, len)
+                self.vector_list_initializer(ctx, ids, ctype, len)
             }
             ref t => Err(format!("Init list not implemented for {:?}", t)),
         }
@@ -239,11 +237,11 @@ impl<'c> Translation<'c> {
 
     fn convert_union_literal(
         &self,
+        ctx: ExprContext,
         union_id: CRecordId,
         ids: &[CExprId],
         _ty: CQualTypeId,
         opt_union_field_id: Option<CFieldId>,
-        is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let union_field_id = opt_union_field_id.expect("union field ID");
 
@@ -259,10 +257,10 @@ impl<'c> Translation<'c> {
                         let val = if ids.is_empty() {
                             WithStmts {
                                 stmts: vec![],
-                                val: self.implicit_default_expr(field_ty.ctype, is_static)?,
+                                val: self.implicit_default_expr(field_ty.ctype, ctx.is_static)?,
                             }
                         } else {
-                            self.convert_expr(ExprUse::Used, ids[0], is_static, DecayRef::Default)?
+                            self.convert_expr(ctx.used(), ids[0])?
                         };
 
                         Ok(val.map(|v| {
@@ -285,9 +283,9 @@ impl<'c> Translation<'c> {
 
     fn convert_struct_literal(
         &self,
+        ctx: ExprContext,
         struct_id: CRecordId,
         ids: &[CExprId],
-        is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let field_decls = match self.ast_context.index(struct_id).kind {
             CDeclKind::Struct { ref fields, .. } => {
@@ -330,7 +328,7 @@ impl<'c> Translation<'c> {
             let v = ids[i];
             let &(ref field_name, _) = &field_decls[i];
 
-            let mut x = self.convert_expr(ExprUse::Used, v, is_static, DecayRef::Default)?;
+            let mut x = self.convert_expr(ctx.used(), v)?;
             stmts.append(&mut x.stmts);
             fields.push(mk().field(field_name, x.val));
         }
@@ -338,7 +336,7 @@ impl<'c> Translation<'c> {
         // Pad out remaining omitted record fields
         for i in ids.len()..fields.len() {
             let &(ref field_name, ty) = &field_decls[i];
-            fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, is_static)?));
+            fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, ctx.is_static)?));
         }
 
         Ok(WithStmts {

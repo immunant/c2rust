@@ -49,7 +49,7 @@ mod tests {
     use super::{Hasher, JodyHasher};
 
     fn jodyhash_string(s: &str) -> u64 {
-        assert!(s.len() % 8 == 0);
+        assert_eq!(s.len() % 8, 0);
         let mut h = JodyHasher::default();
         let sptr = s.as_ptr() as *const u64;
         for i in 0..s.len() / 8 {

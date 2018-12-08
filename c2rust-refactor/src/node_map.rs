@@ -92,7 +92,7 @@ impl NodeMap {
         let mut new_marks = HashSet::new();
         for &(old_id, label) in marks {
             let lo = (old_id, NodeId::from_u32(0));
-            let hi = (old_id, NodeId::from_u32(!0));
+            let hi = (old_id, NodeId::MAX);
             let mut empty = true;
             for &(_, new_id) in self.pending_edges.range((Included(&lo), Included(&hi))) {
                 debug!("  {:?}: {:?} -> {:?}", label, old_id, new_id);
@@ -112,7 +112,7 @@ impl NodeMap {
         let mut new_map = HashMap::with_capacity(map.len());
         for (old_id, v) in map {
             let lo = (old_id, NodeId::from_u32(0));
-            let hi = (old_id, NodeId::from_u32(!0));
+            let hi = (old_id, NodeId::MAX);
 
             let mut new_ids = self.pending_edges.range((Included(&lo), Included(&hi)))
                 .map(|&(_, new_id)| new_id)
