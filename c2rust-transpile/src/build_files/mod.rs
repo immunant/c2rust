@@ -1,7 +1,6 @@
 extern crate handlebars;
 
 use std::env;
-use std::path::{PathBuf};
 
 use self::handlebars::Handlebars;
 use super::serde_json::{json};

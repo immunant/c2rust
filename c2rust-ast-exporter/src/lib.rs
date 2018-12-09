@@ -26,7 +26,7 @@ pub fn get_untyped_ast(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> R
 fn get_ast_cbors(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> HashMap<String, Vec<u8>> {
     let mut res = 0;
 
-    let mut args_owned = vec![CString::new("ast_extractor").unwrap()];
+    let mut args_owned = vec![CString::new("ast_exporter").unwrap()];
     args_owned.push(CString::new(file_path.to_str().unwrap()).unwrap());
     args_owned.push(CString::new("-p").unwrap());
     args_owned.push(CString::new(cc_db.to_str().unwrap()).unwrap());
@@ -39,7 +39,7 @@ fn get_ast_cbors(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> HashMap
 
     let hashmap;
     unsafe {
-        let ptr = ast_extractor(args_ptrs.len() as libc::c_int, args_ptrs.as_ptr(), &mut res);
+        let ptr = ast_exporter(args_ptrs.len() as libc::c_int, args_ptrs.as_ptr(), &mut res);
         hashmap = marshal_result(ptr);
         drop_export_result(ptr);
     }
@@ -50,9 +50,9 @@ fn get_ast_cbors(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> HashMap
 include!(concat!(env!("OUT_DIR"), "/cppbindings.rs"));
 
 extern "C" {
-    // ExportResult *ast_extractor(int argc, char *argv[]);
+    // ExportResult *ast_exporter(int argc, char *argv[]);
     #[no_mangle]
-    fn ast_extractor(argc: libc::c_int, argv: *const *const libc::c_char, res: *mut libc::c_int) -> *mut ExportResult;
+    fn ast_exporter(argc: libc::c_int, argv: *const *const libc::c_char, res: *mut libc::c_int) -> *mut ExportResult;
 
     // void drop_export_result(ExportResult *result);
     #[no_mangle]

@@ -9,6 +9,7 @@
 
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/CommandLine.h"
 // Declares clang::SyntaxOnlyAction.
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CommonOptionsParser.h"
@@ -1746,26 +1747,37 @@ ExportResult *make_export_result(const Outputs &outputs) {
     return result;
 }
 
+// Extract clang AST for the source file specified in the argument vector.
+// Note: The arguments should only reference one source file at a time.
 Outputs process(int argc, const char *argv[], int *result)
 {
+    static uint64_t source_path_count = 0;
     auto argv_ = augment_argv(argc, argv);
     int argc_ = argv_.size() - 1; // ignore the extra nullptr
     CommonOptionsParser OptionsParser(argc_, argv_.data(), MyToolCategory);
 
-    ClangTool Tool(OptionsParser.getCompilations(),
-                   OptionsParser.getSourcePathList());
+    // the logic below assumes we're only translating one source file
+    assert(OptionsParser.getSourcePathList().size() - 1 == source_path_count++ &&
+        "Expected exactly one source path");
+
+    // CommonOptionsParser is stateful so the vector returned by 
+    // getSourcePathList() includes paths from past invocations.  
+    std::string sourcePath = OptionsParser.getSourcePathList().back();
+    // Make a new list with just the file we're currently translating
+    std::vector<std::string> sourcePathList(1, sourcePath);
+    ClangTool Tool(OptionsParser.getCompilations(), sourcePathList);
 
     Outputs outputs;
     MyFrontendActionFactory myFrontendActionFactory(&outputs);
 
     *result = Tool.run(&myFrontendActionFactory);
-
+    assert(outputs.size() == 1 && "Expected exactly one output.");
     return outputs;
 }
 
-// AST-Extractor as a library interface.
+// AST exporter library interface.
 extern "C" {
-    ExportResult *ast_extractor(int argc, const char *argv[]) {
+    ExportResult *ast_exporter(int argc, const char *argv[]) {
         int result;
         auto outputs = process(argc, argv, &result);
         return make_export_result(outputs);
