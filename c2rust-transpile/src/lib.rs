@@ -36,6 +36,7 @@ pub mod with_stmts;
 
 pub use translator::ReplaceMode;
 use build_files::emit_build_files;
+use std::prelude::v1::Vec;
 
 /// Configuration settings for the translation process
 #[derive(Debug)]
@@ -97,13 +98,15 @@ Directory `/usr/include` was not found! Please install the following package:
     }
 
     let cmds = get_compile_commands(cc_db).unwrap();
+    let mut modules = Vec::<PathBuf>::new();
     for mut cmd in cmds {
         match cmd {
             CompileCmd { directory: d, file: f, command: None, arguments: _, output: None} => {
                 println!("transpiling {}", f.to_str().unwrap());
                 let input_file_abs = d.join(f);
 
-                transpile_single(&tcfg, input_file_abs.as_path(), cc_db, extra_clang_args);
+                let m = transpile_single(&tcfg, input_file_abs.as_path(), cc_db, extra_clang_args);
+                modules.push(m);
             },
             _ => {
                 let reason = format!("unhandled compile cmd: {:?}", cmd);
@@ -113,7 +116,7 @@ Directory `/usr/include` was not found! Please install the following package:
    }
 
    if tcfg.emit_build_files {
-       emit_build_files(&tcfg)
+       emit_build_files(&tcfg, cc_db, modules)
    }
 }
 
@@ -148,7 +151,8 @@ fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Box<
     Ok(v)
 }
 
-fn transpile_single(tcfg: &TranspilerConfig, input_path: &Path, cc_db: &Path, extra_clang_args: &[&str]) {
+fn transpile_single(tcfg: &TranspilerConfig, input_path: &Path, cc_db: &Path, extra_clang_args: &[&str])
+    -> PathBuf {
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(input_path, cc_db, extra_clang_args) {
         Err(e) => {
@@ -185,7 +189,7 @@ fn transpile_single(tcfg: &TranspilerConfig, input_path: &Path, cc_db: &Path, ex
     let translated_string = translator::translate(typed_context, &tcfg, main_file);
     let output_path = get_output_path(input_path);
 
-    let mut file = match File::create(output_path) {
+    let mut file = match File::create(&output_path) {
         Ok(file) => file,
         Err(e) => panic!("Unable to open file for writing: {}", e),
     };
@@ -194,6 +198,8 @@ fn transpile_single(tcfg: &TranspilerConfig, input_path: &Path, cc_db: &Path, ex
         Ok(()) => (),
         Err(e) => panic!("Unable to write translation to file: {}", e),
     };
+
+    output_path
 }
 
 fn get_output_path(input_path: &Path) -> PathBuf {
