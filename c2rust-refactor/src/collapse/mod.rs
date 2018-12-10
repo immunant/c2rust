@@ -1,3 +1,19 @@
+//! Macro collapsing - the opposite of macro expansion.
+//!
+//! There are four ASTs we care about:
+//!
+//!  1. Unexpanded: the original AST before macro expansion
+//!  2. Expanded: the immediate result of macro expansion, with no further edits
+//!  3. Transformed: the result of applying an arbitrary AST transformation to `expanded`
+//!  4. Collapsed: `transformed`, but with macro-generated code turned back into macro invocations
+//!
+//! The general idea here is to compute some kind of delta between `unexpanded` and `expanded`,
+//! then apply that in reverse to turn `transformed` into `collapsed`, with some adjustments so we
+//! don't lose all the changes that were made to turn `expanded` into `transformed`.
+//!
+//! Though most of the code and comments talk about "macros", we really mean everything that gets
+//! processed during macro expansion, which includes regular macros, proc macros (`format!`, etc.),
+//! certain attributes (`#[derive]`, `#[cfg]`), and `std`/prelude injection.
 use std::collections::HashSet;
 use syntax::attr;
 use syntax::ast::*;
@@ -33,6 +49,7 @@ fn injected_items(krate: &Crate) -> (&'static [&'static str], bool) {
     }
 }
 
+/// Reverse the effect of `std`/prelude injection, by deleting the injected items.
 pub fn collapse_injected(mut krate: Crate) -> Crate {
     let (crate_names, mut expect_prelude) = injected_items(&krate);
     let mut crate_names = crate_names.iter().map(|x| x.into_symbol()).collect::<HashSet<_>>();

@@ -27,6 +27,16 @@ impl Ctxt {
 
 
 pub trait NtMatch {
+    /// Match up subtrees of `old` and `new`, and record `Nonterminal`s that may be useful for
+    /// macro collapsing.  `old` should be a node from the expanded AST, and `new` should be the
+    /// corresponding node (same `NodeId`) from the transformed AST.
+    ///
+    /// Specifically, this operation traverses the corresponding portions of the two trees, looking
+    /// for `old` nodes that are not macro-generated (empty `SyntaxContext`).  When it finds one,
+    /// it records the old node's span (which should point to code inside a macro argument list)
+    /// along with the new node wrapped up as a `Nonterminal`.  Editing the collapsed AST to
+    /// replace tokens in the old span with the new nonterminal (as is done by `collapse::macros`)
+    /// should cause later expansions to produce `new` in place of `old`.
     fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt);
 }
 

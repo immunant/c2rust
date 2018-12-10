@@ -15,6 +15,11 @@ use super::mac_table::{MacTable, InvocKind};
 /// Match up IDs of pre-expansion `Nonterminal` tokens with post-expansion AST nodes.  Matching is
 /// performed by first checking for equal spans and then by comparing with `ast_equiv`.  This can
 /// match multiple new IDs to a single old ID.
+///
+/// We need this to match up nodes across multiple rounds of macro expansion and collapsing.  The
+/// first macro expansion step turns some sequences of tokens into actual nodes, and later
+/// collapse/expand steps preserve those nodes by storing them as nonterminals.  Nonterminal ID
+/// matching lets us track those nodes throughout the later rounds of this process.
 pub fn match_nonterminal_ids(node_map: &mut NodeMap, mac_table: &MacTable) {
     for info in mac_table.invocations() {
         let mac = match info.invoc {

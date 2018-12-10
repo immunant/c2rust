@@ -60,6 +60,12 @@ pub struct RefactorState {
     session: Session,
 
     parsed_nodes: ParsedNodes,
+    /// Counter for assigning fresh `NodeId`s to newly parsed nodes (among others).
+    ///
+    /// It's important that this counter is preserved across `transform_crate` calls.  Parsed
+    /// nodes' IDs stick around after the originating `transform_crate` ends: they remain in
+    /// `parsed_nodes`, and they can be referenced by `node_map` as "old" IDs.  Preserving this
+    /// counter ensures that every parsed node has a distinct `NodeId`.
     node_id_counter: NodeIdCounter,
 
     /// The current crate AST.  This is used as the "new" AST when rewriting.  This is always
