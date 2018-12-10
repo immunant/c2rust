@@ -903,7 +903,7 @@ impl<'c> Translation<'c> {
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
-            CDeclKind::Struct { fields: Some(ref fields), is_packed, manual_alignment, .. } => {
+            CDeclKind::Struct { fields: Some(ref fields), is_packed, manual_alignment, max_field_alignment, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 // Gather up all the field names and field types
@@ -927,7 +927,7 @@ impl<'c> Translation<'c> {
 
                 let mut reprs = vec![simple_metaitem("C")];
 
-                if is_packed { reprs.push(simple_metaitem("packed")); };
+                if is_packed || max_field_alignment == Some(1) { reprs.push(simple_metaitem("packed")); };
                 // https://github.com/rust-lang/rust/issues/33626
                 if let Some(alignment) = manual_alignment {
                     self.use_feature("repr_align");

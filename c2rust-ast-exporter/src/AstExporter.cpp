@@ -1229,7 +1229,7 @@ class TranslateASTVisitor final
           auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
 
           encode_entry(D, tag, childIds, QualType(),
-          [D,def](CborEncoder *local){
+          [D,def, this](CborEncoder *local){
 
               // 1. Encode name or null
               auto name = D->getNameAsString();
@@ -1259,6 +1259,12 @@ class TranslateASTVisitor final
                   cbor_encode_uint(local, align);
               }
 
+              // 5. Encode pragma pack(n)
+              if (auto const mfaa = D->getAttr<MaxFieldAlignmentAttr>()) {
+                  cbor_encode_uint(local, mfaa->getAlignment() / 8);
+              } else {
+                  cbor_encode_null(local);
+              }
           });
 
           return true;

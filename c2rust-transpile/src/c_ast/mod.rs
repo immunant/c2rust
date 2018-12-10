@@ -519,6 +519,7 @@ pub enum CDeclKind {
         fields: Option<Vec<CFieldId>>,
         is_packed: bool,
         manual_alignment: Option<u64>,
+        max_field_alignment: Option<u64>,
     },
 
     // Union
