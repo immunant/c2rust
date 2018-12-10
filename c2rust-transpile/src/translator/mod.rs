@@ -91,6 +91,7 @@ pub struct ExprContext {
     is_static: bool,
     decay_ref: DecayRef,
     va_decl: Option<CDeclId>,
+    is_bitfield_write: bool,
 }
 
 impl ExprContext {
@@ -103,6 +104,10 @@ impl ExprContext {
     pub fn static_(self) -> Self { ExprContext { is_static: true, .. self } }
     pub fn set_static(self, is_static: bool) -> Self { ExprContext { is_static, .. self } }
     pub fn is_va_decl(&self, decl_id: CDeclId) -> bool { Some(decl_id) == self.va_decl }
+    pub fn is_bitfield_write(&self) -> bool { self.is_bitfield_write }
+    pub fn set_bitfield_write(self, is_bitfield_write: bool) -> Self {
+        ExprContext { is_bitfield_write, .. self }
+    }
 }
 
 pub struct Translation<'c> {
@@ -303,6 +308,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
         is_static: false,
         decay_ref: DecayRef::Default,
         va_decl: None,
+        is_bitfield_write: false,
     };
 
     if !t.tcfg.translate_entry {
@@ -2219,26 +2225,7 @@ impl<'c> Translation<'c> {
                 if is_bitfield {
                     let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
 
-                    match kind {
-                        MemberKind::Dot => {
-                            let val = self.convert_expr(ctx, expr)?;
-
-                            Ok(val.map(|v| mk().method_call_expr(v, field_name, vec![] as Vec<P<Expr>>)))
-                        },
-                        MemberKind::Arrow => {
-                            if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _)
-                            = self.ast_context[expr].kind {
-                                let val = self.convert_expr(ctx, subexpr_id)?;
-
-                                Ok(val.map(|v| mk().method_call_expr(v, field_name, vec![] as Vec<P<Expr>>)))
-                            } else {
-                                let val = self.convert_expr(ctx, expr)?;
-
-                                Ok(val.map(|v| mk().method_call_expr(mk().unary_expr(ast::UnOp::Deref, v),
-                                                                     field_name, vec![] as Vec<P<Expr>>)))
-                            }
-                        },
-                    }
+                    self.convert_bitfield_member_expr(ctx, field_name, expr, kind)
                 } else if ctx.is_unused() {
                     self.convert_expr(ctx, expr)
                 } else {

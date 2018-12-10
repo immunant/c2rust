@@ -13,9 +13,9 @@
 use std::collections::HashSet;
 use std::ops::Index;
 
-use c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CQualTypeId, CTypeId};
+use c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CQualTypeId, CTypeId, MemberKind, UnOp};
 use c2rust_ast_builder::mk;
-use syntax::ast::{AttrStyle, BinOpKind, Expr, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StrStyle, StructField, Ty, TyKind};
+use syntax::ast::{AttrStyle, BinOpKind, Expr, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StrStyle, StructField, Ty, TyKind, self};
 use syntax::ext::quote::rt::Span;
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
@@ -463,37 +463,59 @@ impl<'a> Translation<'a> {
         lhs: CExprId,
         rhs: WithStmts<P<Expr>>,
     ) -> Result<WithStmts<P<Expr>>, String> {
-        let lhs_expr = self.convert_expr(ctx, lhs)?.to_expr();
+        let lhs_expr_read = self.convert_expr(ctx, lhs)?.to_expr();
+        let ctx = ctx.set_bitfield_write(true);
+        let lhs_expr_write = self.convert_expr(ctx, lhs)?.to_expr();
         let setter_name = format!("set_{}", field_name);
-
-        let expr = match op {
-            BinOp::AssignAdd => {
-                let param = mk().binary_expr(BinOpKind::Add, lhs_expr.clone(), rhs.to_expr());
-
-                mk().method_call_expr(lhs_expr, setter_name, vec![param])
-            },
-            BinOp::AssignSubtract => {
-                let param = mk().binary_expr(BinOpKind::Sub, lhs_expr.clone(), rhs.to_expr());
-
-                mk().method_call_expr(lhs_expr, setter_name, vec![param])
-            },
-            BinOp::AssignMultiply => {
-                let param = mk().binary_expr(BinOpKind::Mul, lhs_expr.clone(), rhs.to_expr());
-
-                mk().method_call_expr(lhs_expr, setter_name, vec![param])
-            },
-            BinOp::AssignDivide => {
-                let param = mk().binary_expr(BinOpKind::Div, lhs_expr.clone(), rhs.to_expr());
-
-                mk().method_call_expr(lhs_expr, setter_name, vec![param])
-            },
-            BinOp::Assign => mk().method_call_expr(lhs_expr, setter_name, vec![rhs.to_expr()]),
-            e => unimplemented!("{:?}", e),
+        let rhs_expr = rhs.to_expr();
+        let param_expr = match op {
+            BinOp::AssignAdd => mk().binary_expr(BinOpKind::Add, lhs_expr_read, rhs_expr),
+            BinOp::AssignSubtract => mk().binary_expr(BinOpKind::Sub, lhs_expr_read, rhs_expr),
+            BinOp::AssignMultiply => mk().binary_expr(BinOpKind::Mul, lhs_expr_read, rhs_expr),
+            BinOp::AssignDivide => mk().binary_expr(BinOpKind::Div, lhs_expr_read, rhs_expr),
+            BinOp::AssignModulus => mk().binary_expr(BinOpKind::Rem, lhs_expr_read, rhs_expr),
+            BinOp::AssignBitXor => mk().binary_expr(BinOpKind::BitXor, lhs_expr_read, rhs_expr),
+            BinOp::AssignShiftLeft => mk().binary_expr(BinOpKind::Shl, lhs_expr_read, rhs_expr),
+            BinOp::AssignShiftRight => mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr),
+            BinOp::AssignBitOr => mk().binary_expr(BinOpKind::BitOr, lhs_expr_read, rhs_expr),
+            BinOp::AssignBitAnd => mk().binary_expr(BinOpKind::BitAnd, lhs_expr_read, rhs_expr),
+            BinOp::Assign => rhs_expr,
+            _ => panic!("Cannot convert non-assignment operator"),
         };
 
+        let expr = mk().method_call_expr(lhs_expr_write, setter_name, vec![param_expr]);
         let stmt = mk().expr_stmt(expr);
         let val = self.panic("Empty statement expression is not supposed to be used");
 
         return Ok(WithStmts { stmts: vec![stmt], val });
+    }
+
+    /// TODO
+    pub fn convert_bitfield_member_expr(
+        &self,
+        ctx: ExprContext,
+        field_name: String,
+        expr_id: CExprId,
+        kind: MemberKind,
+    ) -> Result<WithStmts<P<Expr>>, String> {
+        let mut val = match kind {
+            MemberKind::Dot => self.convert_expr(ctx, expr_id)?,
+            MemberKind::Arrow => {
+                if let CExprKind::Unary(_, UnOp::AddressOf, subexpr_id, _)
+                = self.ast_context[expr_id].kind {
+                    self.convert_expr(ctx, subexpr_id)?
+                } else {
+                    let mut val = self.convert_expr(ctx, expr_id)?;
+
+                    val.map(|v| mk().unary_expr(ast::UnOp::Deref, v))
+                }
+            },
+        };
+
+        if !ctx.is_bitfield_write() {
+            val = val.map(|v| mk().method_call_expr(v, field_name, vec![] as Vec<P<Expr>>));
+        }
+
+        Ok(val)
     }
 }
