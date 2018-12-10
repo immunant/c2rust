@@ -461,13 +461,12 @@ impl<'a> Translation<'a> {
         op: BinOp,
         field_name: &str,
         lhs: CExprId,
-        rhs: WithStmts<P<Expr>>,
+        rhs_expr: P<Expr>,
     ) -> Result<WithStmts<P<Expr>>, String> {
         let lhs_expr_read = self.convert_expr(ctx, lhs)?.to_expr();
         let ctx = ctx.set_bitfield_write(true);
         let lhs_expr_write = self.convert_expr(ctx, lhs)?.to_expr();
         let setter_name = format!("set_{}", field_name);
-        let rhs_expr = rhs.to_expr();
         let param_expr = match op {
             BinOp::AssignAdd => mk().binary_expr(BinOpKind::Add, lhs_expr_read, rhs_expr),
             BinOp::AssignSubtract => mk().binary_expr(BinOpKind::Sub, lhs_expr_read, rhs_expr),
