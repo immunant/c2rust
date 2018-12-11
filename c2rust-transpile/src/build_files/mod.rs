@@ -2,6 +2,7 @@ extern crate handlebars;
 
 use std::env;
 use std::fs::File;
+use std::fs::DirBuilder;
 use std::path::{Path, PathBuf};
 use std::io::Write;
 
@@ -10,12 +11,20 @@ use super::serde_json::{json};
 
 use super::TranspilerConfig;
 
-pub fn emit_build_files(tcfg: &TranspilerConfig, cc_db: &Path, modules: Vec<PathBuf>) {
+pub fn emit_build_files(tcfg: &TranspilerConfig, cc_db: &Path,
+                        modules: Vec<PathBuf>) {
 
     let build_dir = cc_db
         .parent() // get directory of `compile_commands.json`
         .unwrap()
         .join("c2rust-build");
+    if !build_dir.exists() {
+        let db = DirBuilder::new();
+        db.create(&build_dir)
+            .expect(&format!(
+                "couldn't create build directory: {}",
+                build_dir.display()));
+    }
 
     let mut reg = Handlebars::new();
 
@@ -23,22 +32,25 @@ pub fn emit_build_files(tcfg: &TranspilerConfig, cc_db: &Path, modules: Vec<Path
     reg.register_template_string("lib.rs", include_str!("lib.rs.hbs")).unwrap();
 
     emit_cargo_toml(tcfg,&reg, &build_dir);
-    emit_lib_rs(tcfg, &reg, &build_dir);
+    emit_lib_rs(tcfg, &reg, &build_dir, modules);
 }
 
 /// Emit `lib.rs` for libraries and `main.rs` for binaries.
-fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) {
+fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
+               modules: Vec<PathBuf>) {
     let plugin_args = tcfg.cross_check_configs
         .iter()
         .map(|ccc| format!("config_file = \"{}\"", ccc))
         .collect::<Vec<String>>()
         .join(", ");
+
     let json = json!({
         "reorganize_definitions": tcfg.reorganize_definitions,
         "cross_checks": tcfg.cross_checks,
         "use_fakechecks": tcfg.use_fakechecks,
         "main_module": tcfg.main,
-        "plugin_args": plugin_args
+        "plugin_args": plugin_args,
+        "modules": modules
     });
 
     let file_name = match tcfg.main { Some(_) => "main.rs", None => "lib.rs" };
@@ -46,7 +58,7 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) {
     let output = reg.render("lib.rs", &json).unwrap();
 //    println!("{}", output);
 
-    write_to_file(&output_path, output);
+    maybe_write_to_file(&output_path, output);
 }
 
 fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) {
@@ -75,10 +87,15 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) 
     let output_path = build_dir.join(file_name);
     let output = reg.render(file_name, &json).unwrap();
 //    println!("{}", output);
-    write_to_file(&output_path, output);
+    maybe_write_to_file(&output_path, output);
 }
 
-fn write_to_file(output_path: &Path, output: String) {
+fn maybe_write_to_file(output_path: &Path, output: String) {
+    if output_path.exists() {
+        eprintln!("Skipping {}; file exists.", output_path.display());
+        return;
+    }
+
     let mut file = match File::create(&output_path) {
         Ok(file) => file,
         Err(e) => panic!("Unable to open file for writing: {}", e),
