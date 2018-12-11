@@ -398,7 +398,8 @@ impl<'a> Translation<'a> {
         })
     }
 
-    /// TODO
+    /// This method handles zero-initializing bitfield structs including bitfields
+    /// & padding fields
     pub fn bitfield_zero_initializer(
         &self,
         name: String,

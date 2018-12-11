@@ -272,9 +272,7 @@ impl<'c> Translation<'c> {
             let rhs_expr = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
                 rhs_translation.to_expr()
             } else {
-                let lhs_type = self.convert_type(qtype.ctype)?;
-
-                mk().cast_expr(rhs_translation.to_expr(), lhs_type)
+                mk().cast_expr(rhs_translation.to_expr(), ty)
             };
 
             return self.convert_bitfield_assignment_op_with_rhs(ctx, op, name, lhs, rhs_expr);
