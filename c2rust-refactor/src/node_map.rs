@@ -86,6 +86,25 @@ impl NodeMap {
         self.pending_edges.extend(matched_ids.iter().cloned());
     }
 
+    pub fn add_edge(&mut self, id: NodeId, new_id: NodeId) {
+        self.pending_edges.insert((id, new_id));
+    }
+
+
+    /// Save what we know about the origin of node `id`.  The origin can be tracked externally and
+    /// restored later with `restore_id`.  This is useful when a node will be removed from the AST,
+    /// but could be reinserted later on.
+    pub fn save_origin(&self, id: NodeId) -> Option<NodeId> {
+        self.id_map.get(&id).cloned()
+    }
+
+    /// Restore saved information about a node's origin.
+    pub fn restore_origin(&mut self, id: NodeId, origin: Option<NodeId>) {
+        if let Some(origin) = origin {
+            self.id_map.insert(id, origin);
+        }
+    }
+
 
     /// Update mark NodeIds to account for the pending (not committed) NodeId changes.
     pub fn transfer_marks(&self, marks: &HashSet<(NodeId, Symbol)>) -> HashSet<(NodeId, Symbol)> {
@@ -129,5 +148,13 @@ impl NodeMap {
             }
         }
         new_map
+    }
+
+    pub fn transfer<'a>(&'a self, id: NodeId) -> impl Iterator<Item=NodeId> + 'a {
+        let lo = (id, NodeId::from_u32(0));
+        let hi = (id, NodeId::MAX);
+
+        self.pending_edges.range((Included(&lo), Included(&hi)))
+            .map(|&(_, new_id)| new_id)
     }
 }

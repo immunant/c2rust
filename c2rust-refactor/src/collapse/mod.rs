@@ -21,6 +21,7 @@ use syntax::source_map::Span;
 use c2rust_ast_builder::IntoSymbol;
 
 mod cfg_attr;
+mod deleted;
 mod mac_table;
 mod macros;
 mod node_map;
@@ -28,6 +29,7 @@ mod nt_match;
 
 
 pub use self::cfg_attr::{collect_cfg_attrs, restore_cfg_attrs};
+pub use self::deleted::{collect_deleted_nodes, restore_deleted_nodes};
 pub use self::mac_table::{MacTable, MacInfo, collect_macro_invocations};
 pub use self::node_map::match_nonterminal_ids;
 pub use self::macros::collapse_macros;

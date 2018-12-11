@@ -126,7 +126,8 @@ impl RefactorState {
         bits.into_crate()
     }
 
-    /// Load the crate from disk.  Transitions to `Loaded`, regardless of current mode.
+    /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
+    /// rewriting with the previous `orig_crate` any more.
     pub fn load_crate(&mut self) {
         // Discard any existing krate, and proceed to `Loaded` regardless of current mode.
         let krate = self.load_crate_inner();
@@ -140,6 +141,11 @@ impl RefactorState {
         // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
         self.node_map.init(iter::once(CRATE_NODE_ID));
         self.marks = HashSet::new();
+
+        // The newly loaded `krate` and reinitialized `node_map` reference none of the old
+        // `parsed_nodes`.  That means we can reset the ID counter without risk of ID collisions.
+        self.parsed_nodes = ParsedNodes::default();
+        self.node_id_counter = NodeIdCounter::new(0x8000_0000);
     }
 
     /// Save the crate to disk by applying any pending rewrites.  Transitions to `Unloaded`, mainly
@@ -185,6 +191,8 @@ impl RefactorState {
             self.node_map.add_edges(&matched_ids);
             self.node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
             let cfg_attr_info = collapse::collect_cfg_attrs(&unexpanded);
+            let deleted_info = collapse::collect_deleted_nodes(
+                &unexpanded, &self.node_map, &mac_table);
             collapse::match_nonterminal_ids(&mut self.node_map, &mac_table);
 
             let marks = self.node_map.transfer_marks(&marks);
@@ -220,6 +228,9 @@ impl RefactorState {
 
             let cfg_attr_info = self.node_map.transfer_map(cfg_attr_info);
             let new_krate = collapse::restore_cfg_attrs(new_krate, cfg_attr_info);
+
+            let new_krate = collapse::restore_deleted_nodes(
+                new_krate, &mut self.node_map, &mut self.node_id_counter, deleted_info);
 
             let new_marks = self.node_map.transfer_marks(&new_marks);
             self.node_map.commit();
