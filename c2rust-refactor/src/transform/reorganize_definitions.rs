@@ -27,7 +27,7 @@ pub struct ReorganizeDefinitions;
 
 /// Holds the information of the current `Crate`, which includes a `HashMap` to look up Items
 /// quickly, as well as other members that hold important information.
-pub struct CrateInformation<'st> {
+pub struct CrateInfo<'st> {
     /// Mapping for fast item lookup, stops the need of having to search the entire Crate.
     item_map: HashMap<NodeId, Item>,
 
@@ -46,27 +46,32 @@ pub struct CrateInformation<'st> {
 
     /// Helper, to expedite the look up of paths
     path_ids: HashSet<NodeId>,
-
-    old_path_info: HashMap<Ident, HashSet<Ident>>,
-    new_path_info: HashMap<Ident, HashSet<Ident>>,
+    path_info: PathInfo,
 
     st: &'st CommandState,
 }
 
-impl<'st> CrateInformation<'st> {
+#[derive(Default)]
+struct PathInfo {
+    // old_module_ident -> set_of_segments
+    old: HashMap<Ident, HashSet<Ident>>,
+    // new_module_ident -> set_of_segments
+    new: HashMap<Ident, HashSet<Ident>>,
+}
+
+impl<'st> CrateInfo<'st> {
     fn new(st: &'st CommandState) -> Self {
         let mut new_modules = HashMap::new();
         new_modules.insert(Ident::from_str("stdlib"), st.next_node_id());
-        CrateInformation {
-            item_map: HashMap::new(),
-            item_to_dest_module: HashMap::new(),
+        CrateInfo {
             new_modules,
-            possible_destination_modules: HashSet::new(),
-            path_mapping: HashMap::new(),
-            path_ids: HashSet::new(),
-            old_path_info: HashMap::new(),
-            new_path_info: HashMap::new(),
             st,
+            item_map:                     HashMap::new(),
+            item_to_dest_module:          HashMap::new(),
+            possible_destination_modules: HashSet::new(),
+            path_mapping:                 HashMap::new(),
+            path_ids:                     HashSet::new(),
+            path_info:                    Default::default(),
         }
     }
 
@@ -141,18 +146,16 @@ impl<'st> CrateInformation<'st> {
     ) -> Crate {
 
         #[derive(Default)]
-        struct MiscInfo {
-            item_map: HashMap<NodeId, Item>,
+        struct InsertionInfo {
+            item_map:       HashMap<NodeId, Item>,
             item_to_parent: HashMap<Ident, Ident>,
 
-            old_items: HashMap<Ident, P<Item>>,
-            foreign_mods: Vec<P<Item>>,
-            use_stmts: Vec<P<Item>>,
-
-            path_info: HashMap<Ident, (Ident, Ident)>,
+            old_items:      HashMap<Ident, P<Item>>,
+            foreign_mods:   Vec<P<Item>>,
+            use_stmts:      Vec<P<Item>>,
         }
 
-        impl MiscInfo {
+        impl InsertionInfo {
             fn reset(&mut self) {
                 self.old_items = HashMap::new();
                 self.foreign_mods = Vec::new();
@@ -160,14 +163,14 @@ impl<'st> CrateInformation<'st> {
             }
         }
 
-        let mut misc_info: MiscInfo = Default::default();
+        let mut insertion_info: InsertionInfo = Default::default();
 
         visit_nodes(&krate, |i: &Item| {
-            misc_info.item_map.insert(i.id, i.clone());
+            insertion_info.item_map.insert(i.id, i.clone());
             match i.node {
                 ItemKind::Mod(ref m) => {
                     for item in &m.items {
-                        misc_info.item_to_parent.insert(item.ident, i.ident.clone());
+                        insertion_info.item_to_parent.insert(item.ident, i.ident.clone());
                     }
                 },
                 _ => {}
@@ -196,18 +199,18 @@ impl<'st> CrateInformation<'st> {
 
                         for item in &m.items {
                             if !item.ident.as_str().is_empty() {
-                                misc_info.old_items.insert(item.ident, item.clone());
+                                insertion_info.old_items.insert(item.ident, item.clone());
                             }
 
                             match item.node {
-                                ItemKind::ForeignMod(_) => {misc_info.foreign_mods.push(item.clone())},
-                                ItemKind::Use(_) => {misc_info.use_stmts.push(item.clone())},
+                                ItemKind::ForeignMod(_) => {insertion_info.foreign_mods.push(item.clone())},
+                                ItemKind::Use(_) => {insertion_info.use_stmts.push(item.clone())},
                                 _ => {}
                             }
                         }
 
                         for new_item_id in new_item_ids {
-                            let mut new_item = misc_info.item_map.remove(new_item_id)
+                            let mut new_item = insertion_info.item_map.remove(new_item_id)
                                 .unwrap_or_else(|| panic!("There should be a node here: {}", new_item_id));
                             // Since `Use` statements do not have `Ident`'s,
                             // it is necessary to iterate through all the module's use statements
@@ -217,14 +220,14 @@ impl<'st> CrateInformation<'st> {
                             match new_item.node {
                                 ItemKind::Use(_) => {
                                     is_use_stmt = true;
-                                    for use_stmt in &misc_info.use_stmts {
+                                    for use_stmt in &insertion_info.use_stmts {
                                         if compare_items(&use_stmt, &new_item) {
                                             found = true;
                                         }
                                     }
                                 },
                                 ItemKind::ForeignMod(ref mut fm) => {
-                                    fm.items.retain(|fm_item| !misc_info.old_items.contains_key(&fm_item.ident));
+                                    fm.items.retain(|fm_item| !insertion_info.old_items.contains_key(&fm_item.ident));
                                 },
                                 _ => {}
                             }
@@ -233,41 +236,41 @@ impl<'st> CrateInformation<'st> {
                             // When NLL releases, see if it's possible to put this in the match
                             // above.
                             if !is_use_stmt {
-                                for foreign_mod in &misc_info.foreign_mods {
+                                for foreign_mod in &insertion_info.foreign_mods {
                                     if compare_items(&foreign_mod, &new_item) {
                                         found = true;
                                     }
                                 }
 
-                                if let Some(old_item) = misc_info.old_items.get(&new_item.ident) {
+                                if let Some(old_item) = insertion_info.old_items.get(&new_item.ident) {
                                     if compare_items(&old_item, &new_item) {
                                         found = true;
                                     }
                                 }
                             }
                             if !found {
-                                misc_info.item_to_parent.insert(new_item.ident, i.ident.clone());
+                                insertion_info.item_to_parent.insert(new_item.ident, i.ident.clone());
                                 m.items.push(P(new_item));
                             }
                         }
 
-                        let parent_ident = i.ident.clone();
+                        let old_parent_ident = i.ident.clone();
                         // look for declarations that also have definitions elsewhere in the crate
                         for module_item in &mut m.items {
                             if let ItemKind::ForeignMod(ref mut foreign_mod) = module_item.node {
                                 foreign_mod.items.retain(|foreign_item| {
                                     // if there is a definition somewhere else in the crate, put
                                     // the idents in the map
-                                    if let Some(new_parent_ident) = misc_info.item_to_parent.get(&foreign_item.ident) {
-                                        misc_info.path_info.insert(foreign_item.ident, (parent_ident, *new_parent_ident));
+                                    if let Some(new_parent_ident) = insertion_info.item_to_parent.get(&foreign_item.ident) {
+                                        self.path_info.old.entry(old_parent_ident).or_insert_with(HashSet::new).insert(foreign_item.ident);
+                                        self.path_info.new.entry(*new_parent_ident).or_insert_with(HashSet::new).insert(foreign_item.ident);
                                         return false;
                                     }
                                     true
                                 });
                             }
                         }
-
-                        misc_info.reset();
+                        insertion_info.reset();
                         ItemKind::Mod(m)
                     },
                     n => n,
@@ -276,17 +279,11 @@ impl<'st> CrateInformation<'st> {
             });
             smallvec![pi]
         });
-
-        for (item_ident, (old_mod_ident, new_mod_ident)) in &misc_info.path_info {
-            self.old_path_info.entry(*old_mod_ident).or_insert_with(HashSet::new).insert(*item_ident);
-            self.new_path_info.entry(*new_mod_ident).or_insert_with(HashSet::new).insert(*item_ident);
-        }
-
         krate
     }
 }
 
-impl<'ast, 'st> Visitor<'ast> for CrateInformation<'st> {
+impl<'ast, 'st> Visitor<'ast> for CrateInfo<'st> {
     // Match the modules, using a mapping like:
     // NodeId -> NodeId
     // The key is the id of the old item to be moved, and the value is the NodeId of the module
@@ -344,232 +341,246 @@ impl<'ast, 'st> Visitor<'ast> for CrateInformation<'st> {
     }
 }
 
-impl Transform for ReorganizeDefinitions {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
-        let mut krate_info = CrateInformation::new(st);
 
-        krate_info.find_destination_modules(&krate);
+/// This is where a bulk of the duplication removal happens, as well as path clean up.
+/// 1. Paths are updated, meaning either removed or changed to match module change.
+///      And then reinserted with the new set of prefixes.
+/// 2. Removes duplicates from `ForeignMod`'s
+/// 3. Duplicate `Item`s are removed
+fn deduplicate_krate(krate: Crate, krate_info: &CrateInfo) -> Crate {
+    struct DeduplicationInfo<'pi> {
+        path_info:        &'pi PathInfo,
+        seen_paths:       HashMap<Ident, HashSet<Ident>>,
+        new_paths:        HashSet<Ident>,
+        seen_item_ids:    HashSet<NodeId>,
+        deleted_item_ids: HashSet<NodeId>,
+    }
+    impl<'pi> DeduplicationInfo<'pi> {
+        fn new(path_info: &'pi PathInfo) -> Self {
+            DeduplicationInfo {
+                path_info,
+                seen_paths:       HashMap::new(),
+                new_paths:        HashSet::new(),
+                seen_item_ids:    HashSet::new(),
+                deleted_item_ids: HashSet::new(),
+            }
+        }
 
-        krate.visit(&mut krate_info);
+        /// Part of the removal of forward declarations, this updates use statements to correctly use
+        /// definitions as opposed to the deleted declarations.
+        fn update_paths(&mut self, current_mod_name: &Ident) {
+            let mut new_path_info = self.path_info.new.clone();
+            for (module_name, set_of_segments) in self.seen_paths.iter_mut() {
+                if let Some(segments_to_remove) = self.path_info.old.get(&module_name) {
+                    let copy = set_of_segments.clone();
+                    let diff = copy.into_iter().filter(|k| !segments_to_remove.contains(k)).collect();
+                    *set_of_segments = diff;
+                }
 
-        // `dest_mod_to_items`:
-        // NodeId -> vec<NodeId>
-        // The mapping is the destination module's `NodeId` to the items needing to be added to it.
-        let dest_mod_to_items = create_dest_mod_map(&krate_info);
+                if let Some(segments_to_add) = new_path_info.remove(&module_name) {
+                    set_of_segments.extend(segments_to_add.iter());
+                }
+            }
 
-        // Insert a new modules into the Crate
-        let krate = extend_crate(krate, &krate_info, &dest_mod_to_items);
+            for (module_name, segments_to_add) in new_path_info.iter() {
+                if current_mod_name != module_name {
+                    self.seen_paths.insert(*module_name, segments_to_add.clone());
+                }
+            }
+        }
 
-        // Insert all the items marked as to be moved, into the proper
-        // "destination module"
-        let krate = krate_info.insert_items_into_dest(krate, &dest_mod_to_items);
+        fn update_and_insert_paths(&mut self, module: &mut Mod, module_ident: &Ident) -> Vec<P<Item>> {
+            // Update paths so the definitions can be used in path segments instead of
+            // the declaration
+            self.update_paths(module_ident);
 
-        // This is where a bulk of the duplication removal happens, as well as path clean up.
-        // 1. Paths are updated, meaning either removed or changed to match module change.
-        //      And then reinserted with the new set of prefixes.
-        // 2. Removes duplicates from `ForeignMod`'s
-        // 3. Duplicate `Item`s are removed
-        krate_info.item_map.clear();
-        visit_nodes(&krate, |i: &Item| {
-            krate_info.item_map.insert(i.id, i.clone());
-        });
-        let krate = fold_nodes(krate, |pi: P<Item>| {
-            let pi = pi.map(|mut i| {
-                i.node = match i.node {
-                    ItemKind::Mod(ref m) => {
-                        let mut m = m.clone();
+            let already_in_use = |path, seen_paths: &HashMap<Ident, HashSet<Ident>>| -> bool {
+                seen_paths.values().any(|set_of_segments| set_of_segments.contains(path))
+            };
 
-                        // This iteration goes through the module items and finds use statements,
-                        // and either removes use statements or modifies them to have correct the
-                        // module name.
-                        let mut seen_paths: HashMap<Ident, HashSet<Ident>> = HashMap::new();
-                        let mut new_paths = HashSet::new();
-                        let seen_item_ids =
-                            m.items.iter().map(|item| item.id).collect::<HashSet<_>>();
-                        let mut deleted_item_ids = HashSet::new();
+            let mut item_idents = HashSet::new();
+            let mut use_stmts = Vec::new();
 
-                        // TODO: Use a function for `filter_map`
-                        m.items = m.items.into_iter().filter_map(|mut module_item| {
-                            if let Some((_, dest_module_id)) = krate_info.path_mapping.get(&module_item.id) {
-                                if i.id == *dest_module_id {
-                                    return None;
-                                }
+            for item in &module.items {
+                item_idents.insert(item.ident);
+                match item.node {
+                    ItemKind::Use(_) => {
+                        use_stmts.push(item.clone());
+                    },
+                    _ => {}
+                }
+            }
+            // On occasions where there is a use statement:
+            // `use super::{libc, foo};`.
+            // This is where a the statement is seperated, and turned into simple
+            // statements for every nested segment. The simple statements are
+            // inserted if there is no other occurence of that statement within the module already.
+            for new_path in &self.new_paths {
+                if !item_idents.contains(new_path) && !already_in_use(new_path, &self.seen_paths) {
+                    let path = mk().use_item(Path::from_ident(*new_path), None as Option<Ident>);
+                    if use_stmts.is_empty() {
+                        module.items.push(path.clone());
+                    } else {
+                        for use_stmt in &use_stmts {
+                            if !compare_items(&path, use_stmt) {
+                                module.items.push(path.clone());
                             }
+                        }
+                    }
+                }
+            }
+            // `seen_paths` turns into `use foo_h::{item, item2, item3};`
+            // That Path is then pushed into the module
+            let mut use_items = Vec::new();
+            for (mod_name, mut prefixes) in &mut self.seen_paths {
+                let mut items: Vec<Ident> = prefixes.iter().map(|i| i).cloned().collect();
+                let mod_prefix = Path::from_ident(*mod_name);
 
-                            let m_id = module_item.id;
-                            if let ItemKind::Use(ref ut) = module_item.node {
-                                if let Some((new_path, _)) = krate_info.path_mapping.get(&m_id) {
-                                    let mut ut = ut.clone();
-                                    ut.prefix = new_path.clone();
-                                    // In some modules there are multiple nested use statements that may
-                                    // import differing prefixes, but also duplicate prefixes. So what
-                                    // happens here is if there is a nested use statement:
-                                    // 1. insert all the prefixes in a set
-                                    // 2. If the module name is already in seen_paths, create a union of
-                                    //    the existing set with the set of prefixes we just created and
-                                    //    override.
-                                    //    Else just insert that set into the map.
-                                    //    [foo_h] -> [module_item, module_item2, module_item3]
-                                    //  3. delete the nested use statement.
-                                    match ut.kind {
-                                        UseTreeKind::Nested(ref use_trees) => {
-                                            let mut segments = HashSet::new();
+                // Removes duplicates from the nested use statement
+                prefixes.retain(|prefix| !item_idents.contains(&*prefix));
 
-                                            let mod_prefix = path_to_ident(&ut.prefix);
-                                            // This is a check to see if the use statement is:
-                                            // `use Super::{module_item, module_item2};`
-                                            // If it is we are going to seperate the nested
-                                            // statement to be N simple statements, N being the
-                                            // number of nested segements.
-                                            if mod_prefix.name == keywords::Super.name() ||
-                                                mod_prefix.name == keywords::SelfValue.name() {
-                                                for (use_tree, _) in use_trees {
-                                                    new_paths.insert(path_to_ident(&use_tree.prefix));
-                                                }
-                                            } else {
-                                                for (use_tree, _) in use_trees {
-                                                    segments.insert(path_to_ident(&use_tree.prefix));
-                                                }
+                use_items.push(mk().use_multiple_item(mod_prefix, items));
+            }
+            // Put the use stmts at the top of the module
+            use_items.append(&mut module.items);
+            use_items
+        }
+    }
 
-                                                seen_paths.entry(mod_prefix).and_modify(|set_of_segments| {
-                                                    set_of_segments.extend(segments.clone().into_iter());
-                                                }).or_insert_with(|| {
-                                                    segments
-                                                });
-                                            }
-                                            return None;
-                                        },
-                                        UseTreeKind::Simple(..) => {
-                                            if ut.prefix.segments.len() > 1 {
-                                                let mod_name = ut.prefix.segments.first().unwrap();
-                                                let segment = ut.prefix.segments.last().unwrap();
+    let krate = fold_nodes(krate, |pi: P<Item>| {
+        let pi = pi.map(|mut i| {
+            i.node = match i.node {
+                ItemKind::Mod(ref m) => {
+                    let mut m = m.clone();
 
-                                                let set_of_segments = seen_paths.entry(mod_name.ident).or_insert_with(HashSet::new);
-                                                set_of_segments.insert(segment.ident);
-                                                return None;
-                                            }
-                                        },
-                                        _ => {}
-                                    }
-                                }
+                    let mut ddi = DeduplicationInfo::new(&krate_info.path_info);
+
+                    // This iteration goes through the module items and finds use statements,
+                    // and either removes use statements or modifies them to have correct the
+                    // module name.
+                    ddi.seen_item_ids =
+                        m.items.iter().map(|item| item.id).collect::<HashSet<_>>();
+
+                    // TODO: Use a function for `filter_map`
+                    m.items = m.items.into_iter().filter_map(|mut module_item| {
+                        if let Some((_, dest_module_id)) = krate_info.path_mapping.get(&module_item.id) {
+                            if i.id == *dest_module_id {
+                                return None;
                             }
-                            for item_id in &seen_item_ids {
-                                let item = krate_info.item_map.get(&item_id)
-                                    .unwrap_or_else(|| panic!("There should be an item here: {:#?}", item_id));
-                                if item.id != module_item.id {
-                                    if let ItemKind::ForeignMod(ref mut foreign_mod) = module_item.node {
-                                        if let ItemKind::ForeignMod(ref other_foreign_mod) = item.node {
-                                            let other_items: HashMap<Ident, &ForeignItem> = other_foreign_mod.items.iter()
-                                                .map(|i| (i.ident, i)).collect::<HashMap<_, _>>();
+                        }
 
-                                            foreign_mod.items.retain(|foreign_item| {
-                                                let mut result = true;
-                                                if let Some(other_item) = other_items.get(&foreign_item.ident) {
-                                                    if compare_foreign_items(&foreign_item, &other_item) && !deleted_item_ids.contains(&other_item.id) {
-                                                        deleted_item_ids.insert(foreign_item.id);
-                                                        result = false;
-                                                    }
-                                                }
-                                                result
+                        if let ItemKind::Use(ref ut) = module_item.node {
+                            if let Some((new_path, _)) = krate_info.path_mapping.get(&module_item.id) {
+                                let mut ut = ut.clone();
+                                ut.prefix = new_path.clone();
+                                // In some modules there are multiple nested use statements that may
+                                // import differing prefixes, but also duplicate prefixes. So what
+                                // happens here is if there is a nested use statement:
+                                // 1. insert all the prefixes in a set
+                                // 2. If the module name is already in seen_paths, create a union of
+                                //    the existing set with the set of prefixes we just created and
+                                //    override.
+                                //    Else just insert that set into the map.
+                                //    [foo_h] -> [module_item, module_item2, module_item3]
+                                //  3. delete the nested use statement.
+                                match ut.kind {
+                                    UseTreeKind::Nested(ref use_trees) => {
+                                        let mut segments = HashSet::new();
+
+                                        let mod_prefix = path_to_ident(&ut.prefix);
+                                        // This is a check to see if the use statement is:
+                                        // `use Super::{module_item, module_item2};`
+                                        // If it is we are going to seperate the nested
+                                        // statement to be N simple statements, N being the
+                                        // number of nested segements.
+                                        if mod_prefix.name == keywords::Super.name() ||
+                                            mod_prefix.name == keywords::SelfValue.name() {
+                                            for (use_tree, _) in use_trees {
+                                                ddi.new_paths.insert(path_to_ident(&use_tree.prefix));
+                                            }
+                                        } else {
+                                            for (use_tree, _) in use_trees {
+                                                segments.insert(path_to_ident(&use_tree.prefix));
+                                            }
+
+                                            ddi.seen_paths.entry(mod_prefix).and_modify(|set_of_segments| {
+                                                set_of_segments.extend(segments.clone().into_iter());
+                                            }).or_insert_with(|| {
+                                                segments
                                             });
                                         }
-                                    }
+                                        return None;
+                                    },
+                                    UseTreeKind::Simple(..) => {
+                                        if ut.prefix.segments.len() > 1 {
+                                            let mod_name = ut.prefix.segments.first().unwrap();
+                                            let segment = ut.prefix.segments.last().unwrap();
 
-                                    let m_copy = module_item.clone();
-                                    match module_item.node {
-                                        // Remove empty `ForeignMod`s
-                                        ItemKind::ForeignMod(ref foreign_mod) => {
-                                            if foreign_mod.items.is_empty() {
-                                                return None;
-                                            }
-                                        },
-                                        _ => {
-                                            if compare_items(&item, &m_copy) && !deleted_item_ids.contains(&item.id) {
-                                                deleted_item_ids.insert(module_item.id);
-                                                return None;
-                                            }
+                                            let set_of_segments = ddi.seen_paths.entry(mod_name.ident).or_insert_with(HashSet::new);
+                                            set_of_segments.insert(segment.ident);
+                                            return None;
                                         }
-                                    }
+                                    },
+                                    _ => {}
                                 }
                             }
-                            Some(module_item)
-                        }).collect();
-
-                        // Update paths so the definitions can be used in path segments instead of
-                        // the declaration
-                        update_paths(&mut seen_paths, &krate_info, &i.ident);
-
-                        let already_in_use = |path, seen_paths: &HashMap<Ident, HashSet<Ident>>| -> bool {
-                            seen_paths.values().any(|set_of_segments| set_of_segments.contains(path))
-                        };
-
-                        let mut item_idents = HashSet::new();
-                        let mut use_stmts = Vec::new();
-
-                        for item in &m.items {
-                            item_idents.insert(item.ident);
-                            match item.node {
-                                ItemKind::Use(_) => {
-                                    use_stmts.push(item.clone());
-                                },
-                                _ => {}
-                            }
                         }
-                        // On occasions where there is a use statement:
-                        // `use super::{libc, foo};`.
-                        // This is where a the statement is seperated, and turned into simple
-                        // statements for every nested segment. The simple statements are
-                        // inserted if there is no other occurence of that statement within the module already.
-                        for new_path in &new_paths {
-                            if !item_idents.contains(new_path) && !already_in_use(new_path, &seen_paths) {
-                                let path = mk().use_item(Path::from_ident(*new_path), None as Option<Ident>);
-                                if use_stmts.is_empty() {
-                                    m.items.push(path.clone());
-                                } else {
-                                    for use_stmt in &use_stmts {
-                                        if !compare_items(&path, use_stmt) {
-                                            m.items.push(path.clone());
+                        for item_id in ddi.seen_item_ids.clone().iter() {
+                            let item = krate_info.item_map.get(&item_id)
+                                .unwrap_or_else(|| panic!("There should be an item here: {:#?}", item_id));
+                            if item.id != module_item.id {
+                                if let ItemKind::ForeignMod(ref mut foreign_mod) = module_item.node {
+                                    if let ItemKind::ForeignMod(ref other_foreign_mod) = item.node {
+                                        let other_items: HashMap<Ident, &ForeignItem> = other_foreign_mod.items.iter()
+                                            .map(|i| (i.ident, i)).collect::<HashMap<_, _>>();
+
+                                        foreign_mod.items.retain(|foreign_item| {
+                                            let mut result = true;
+                                            if let Some(other_item) = other_items.get(&foreign_item.ident) {
+                                                if compare_foreign_items(&foreign_item, &other_item) && !ddi.deleted_item_ids.contains(&other_item.id) {
+                                                    ddi.deleted_item_ids.insert(foreign_item.id);
+                                                    result = false;
+                                                }
+                                            }
+                                            result
+                                        });
+                                    }
+                                }
+
+                                match module_item.node {
+                                    // Remove empty `ForeignMod`s
+                                    ItemKind::ForeignMod(ref foreign_mod) => {
+                                        if foreign_mod.items.is_empty() {
+                                            return None;
+                                        }
+                                    },
+                                    _ => {
+                                        if compare_items(&item, &module_item) && !ddi.deleted_item_ids.contains(&item.id) {
+                                            ddi.deleted_item_ids.insert(module_item.id);
+                                            return None;
                                         }
                                     }
                                 }
                             }
                         }
-                        // `seen_paths` turns into `use foo_h::{item, item2, item3};`
-                        // That Path is then pushed into the module
-                        let mut use_items = Vec::new();
-                        for (mod_name, mut prefixes) in &mut seen_paths {
-                            let mut items: Vec<Ident> = prefixes.iter().map(|i| i).cloned().collect();
-                            let mod_prefix = Path::from_ident(*mod_name);
+                        Some(module_item)
+                    }).collect();
 
-                            // Removes duplicates from the nested use statement
-                            prefixes.retain(|prefix| !item_idents.contains(&*prefix));
-
-                            use_items.push(mk().use_multiple_item(mod_prefix, items));
-                        }
-                        // Put the use stmts at the top
-                        use_items.append(&mut m.items);
-                        m.items = use_items;
-                        ItemKind::Mod(m)
-                    },
-                    n => n,
-                };
-                i
-            });
-            smallvec![pi]
+                    m.items = ddi.update_and_insert_paths(&mut m, &i.ident);
+                    ItemKind::Mod(m)
+                },
+                n => n,
+            };
+            i
         });
-
-        krate
-    }
-
-    fn min_phase(&self) -> Phase {
-        Phase::Phase3
-    }
+        smallvec![pi]
+    });
+    krate
 }
-
 
 /// Iterates through `item_to_dest_mod`, and creates a reverse mapping of the HashMap
 /// `dest_node_id` -> `Vec<items_to_get_inserted>`
-fn create_dest_mod_map(krate_info: &CrateInformation) -> HashMap<NodeId, IndexSet<NodeId>> {
+fn create_dest_mod_map(krate_info: &CrateInfo) -> HashMap<NodeId, IndexSet<NodeId>> {
     let mut dest_mod_to_items: HashMap<NodeId, IndexSet<NodeId>> = HashMap::new();
     for (item_id, dest_mod_id) in krate_info.item_to_dest_module.iter() {
         dest_mod_to_items.entry(*dest_mod_id).or_insert_with(IndexSet::new).insert(*item_id);
@@ -581,7 +592,7 @@ fn create_dest_mod_map(krate_info: &CrateInformation) -> HashMap<NodeId, IndexSe
 /// `Crate`.
 fn extend_crate(
     krate: Crate,
-    krate_info: &CrateInformation,
+    krate_info: &CrateInfo,
     dest_mod_to_items: &HashMap<NodeId, IndexSet<NodeId>>,
 ) -> Crate {
     let mut krate = krate;
@@ -605,29 +616,6 @@ fn extend_crate(
         }
     }
     krate
-}
-
-/// Part of the removal of forward declarations, this updates use statements to correctly use
-/// definitions as opposed to the deleted declarations.
-fn update_paths(seen_paths: &mut HashMap<Ident, HashSet<Ident>> , krate_info: &CrateInformation, current_mod_name: &Ident) {
-    let mut new_path_info = krate_info.new_path_info.clone();
-    for (module_name, set_of_segments) in seen_paths.iter_mut() {
-        if let Some(segments_to_remove) = krate_info.old_path_info.get(&module_name) {
-            let copy = set_of_segments.clone();
-            let diff = copy.into_iter().filter(|k| !segments_to_remove.contains(k)).collect();
-            *set_of_segments = diff;
-        }
-
-        if let Some(segments_to_add) = new_path_info.remove(&module_name) {
-            set_of_segments.extend(segments_to_add.iter());
-        }
-    }
-
-    for (module_name, segments_to_add) in new_path_info.iter() {
-        if current_mod_name != module_name {
-            seen_paths.insert(*module_name, segments_to_add.clone());
-        }
-    }
 }
 
 // TODO:
@@ -720,6 +708,41 @@ fn is_std(attrs: &Vec<Attribute>) -> bool {
         }
         false
     })
+}
+
+impl Transform for ReorganizeDefinitions {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+        let mut krate_info = CrateInfo::new(st);
+
+        krate_info.find_destination_modules(&krate);
+
+        krate.visit(&mut krate_info);
+
+        // `dest_mod_to_items`:
+        // NodeId -> vec<NodeId>
+        // The mapping is the destination module's `NodeId` to the items needing to be added to it.
+        let dest_mod_to_items = create_dest_mod_map(&krate_info);
+
+        // Insert a new modules into the Crate
+        let krate = extend_crate(krate, &krate_info, &dest_mod_to_items);
+
+        // Insert all the items marked as to be moved, into the proper
+        // "destination module"
+        let krate = krate_info.insert_items_into_dest(krate, &dest_mod_to_items);
+
+        krate_info.item_map.clear();
+        visit_nodes(&krate, |i: &Item| {
+            krate_info.item_map.insert(i.id, i.clone());
+        });
+
+        let krate = deduplicate_krate(krate, &krate_info);
+
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
 }
 
 pub fn register_commands(reg: &mut Registry) {
