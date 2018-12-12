@@ -59,6 +59,7 @@ FLAG_OPTS = {
         'collapse-diff',
         'hide-diff',
         'highlight-mode',
+        'rewrite-alongside',
         }
 
 STR_OPTS = {
@@ -75,6 +76,7 @@ OPT_DEFAULTS = {
         'hide-diff': False,
         'diff-style': 'context',
         'highlight-mode': 'hljs',
+        'rewrite-alongside': False,
         }
 
 FLAG_TRUTHY = { '1', 'true', 'y', 'yes', 'on' }
@@ -127,7 +129,12 @@ class RefactorState:
             assert len(self.pending_results) == 0
             return
 
-        work_dir = refactor_crate(self.cur_crate, self.pending_cmds)
+        modes = ['json', 'marks']
+        if self.global_opts['rewrite-alongside']:
+            modes.append('alongside')
+
+        work_dir = refactor_crate(self.cur_crate, self.pending_cmds,
+                rewrite_mode=','.join(modes))
 
         rp = ResultProcessor(self.all_files, work_dir.name)
         for i, info in enumerate(self.pending_results):
@@ -315,7 +322,8 @@ class ResultProcessor:
         return (old, new)
 
 
-def refactor_crate(crate: AnyCrate, cmds: List[RefactorCommand]):
+def refactor_crate(crate: AnyCrate, cmds: List[RefactorCommand],
+        rewrite_mode: str='json,marks'):
     '''Run refactoring commands `cmds` on `crate`.  If `crate` is a
     `TempCrate`, return the `TemporaryDirectory` where the refactoring was
     done.  Otherwise, return `None`.'''
@@ -334,7 +342,7 @@ def refactor_crate(crate: AnyCrate, cmds: List[RefactorCommand]):
     else:
         raise TypeError('bad crate type %s' % type(crate))
 
-    all_args = ['-r', 'json,marks']
+    all_args = ['-r', rewrite_mode]
     all_args.extend(pre_args)
     for cmd in cmds:
         all_args.extend(cmd)
@@ -637,6 +645,9 @@ def run_refactor_for_playground(args: argparse.Namespace,
         script: str) -> Tuple[File, File]:
     rs = RefactorState()
     rs.set_crate(FileCrate(args.code))
+    rs.set_global_options([
+        'rewrite-alongside = 1',
+        ])
 
     cmds = split_commands(script)
     rs.add_commands(0, cmds)
