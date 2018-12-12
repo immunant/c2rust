@@ -76,11 +76,11 @@ impl<'a> Translation<'a> {
                         reorganized_fields.push(field_group);
                     }
 
-                    let byte_diff = bit_index / 8 - next_byte_pos;
+                    let bytes = bit_index / 8 - next_byte_pos;
 
                     // Need to add padding first
-                    if byte_diff > 1 {
-                        reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
+                    if bytes > 1 {
+                        reorganized_fields.push(FieldType::Padding { bytes });
                     }
 
                     let field = mk().pub_().struct_field(field_name.clone(), ty);
@@ -100,9 +100,9 @@ impl<'a> Translation<'a> {
 
             // Ensure we aren't looking at overlapping bits in the same byte
             if bit_index / 8 > next_byte_pos {
-                let byte_diff = (bit_index / 8) - next_byte_pos;
+                let bytes = (bit_index / 8) - next_byte_pos;
 
-                reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
+                reorganized_fields.push(FieldType::Padding { bytes });
             }
 
             match last_bitfield_group {
@@ -169,10 +169,10 @@ impl<'a> Translation<'a> {
 
         // Packed structs can cause platform_byte_size < next_byte_pos
         if platform_byte_size > next_byte_pos {
-            let byte_diff = platform_byte_size - next_byte_pos;
+            let bytes = platform_byte_size - next_byte_pos;
 
             // Need to add padding to end if we haven't hit the expected total byte size
-            reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
+            reorganized_fields.push(FieldType::Padding { bytes });
         }
 
         Ok(reorganized_fields)
