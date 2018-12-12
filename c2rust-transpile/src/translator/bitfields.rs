@@ -102,9 +102,7 @@ impl<'a> Translation<'a> {
             if bit_index / 8 > next_byte_pos {
                 let byte_diff = (bit_index / 8) - next_byte_pos;
 
-                // if byte_diff > 0 {
                 reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
-                // }
             }
 
             match last_bitfield_group {
@@ -169,11 +167,14 @@ impl<'a> Translation<'a> {
             reorganized_fields.push(field_group);
         }
 
-        let byte_diff = platform_byte_size - next_byte_pos;
+        // Packed structs can cause platform_byte_size < next_byte_pos
+        if platform_byte_size >= next_byte_pos {
+            let byte_diff = platform_byte_size - next_byte_pos;
 
-        // Need to add padding to end if we haven't hit the expected total byte size
-        if byte_diff > 0 {
-            reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
+            // Need to add padding to end if we haven't hit the expected total byte size
+            if byte_diff > 0 {
+                reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
+            }
         }
 
         Ok(reorganized_fields)
