@@ -89,6 +89,10 @@ impl RefactorState {
                cmd_reg: Registry,
                file_io: Arc<FileIO+Sync+Send>,
                marks: HashSet<(NodeId, Symbol)>) -> RefactorState {
+        let mut session = session;
+        // Force disable incremental compilation.  It causes panics with multiple typechecking.
+        session.opts.incremental = None;
+
         RefactorState {
             file_io,
             cmd_reg,
