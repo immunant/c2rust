@@ -168,13 +168,11 @@ impl<'a> Translation<'a> {
         }
 
         // Packed structs can cause platform_byte_size < next_byte_pos
-        if platform_byte_size >= next_byte_pos {
+        if platform_byte_size > next_byte_pos {
             let byte_diff = platform_byte_size - next_byte_pos;
 
             // Need to add padding to end if we haven't hit the expected total byte size
-            if byte_diff > 0 {
-                reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
-            }
+            reorganized_fields.push(FieldType::Padding { bytes: byte_diff });
         }
 
         Ok(reorganized_fields)
