@@ -3,6 +3,7 @@
     trace_macros,
 )]
 extern crate arena;
+extern crate bincode;
 extern crate ena;
 extern crate indexmap;
 extern crate libc;
@@ -10,6 +11,8 @@ extern crate cargo;
 extern crate clap;
 extern crate diff;
 extern crate env_logger;
+#[macro_use]
+extern crate error_chain;
 #[macro_use] extern crate json;
 #[macro_use] extern crate log;
 extern crate regex;
@@ -26,6 +29,7 @@ extern crate syntax;
 extern crate syntax_ext;
 extern crate syntax_pos;
 extern crate c2rust_ast_builder;
+extern crate c2rust_analysis_rt;
 
 #[macro_use] mod macros;
 
