@@ -7,13 +7,14 @@ use libc::{c_uchar, c_short, c_ushort, c_ulong, c_uint, c_double};
 
 #[link(name = "test")]
 extern "C" {
-    fn check_compact_date(_: *const CompactDate) -> c_uint;
+    fn check_compact_date(_: *const CompactDate, _: c_uchar, _: c_uchar, _: c_ushort) -> c_uint;
     fn assign_compact_date_day(_: *mut CompactDate, _: c_uchar);
     fn check_overlapping_byte_date(_: *const OverlappingByteDate, _: c_ulong, _: c_ushort, _: c_ushort) -> c_uint;
     fn check_unnamed_bitfield(_: *const UnnamedBitfield, _: c_ushort, _: c_ushort, _: c_double) -> c_uint;
     fn check_signed_bitfields(_: *const SignedBitfields, _: c_short, _: c_ushort, _: c_short) -> c_uint;
     fn assign_signed_bitfields(_: *mut SignedBitfields, _: c_short, _: c_ushort, _: c_short);
     fn check_three_byte_date(_: *const ThreeByteDate, _: c_uchar, _: c_uchar, _: c_ushort) -> c_uint;
+    fn assign_three_byte_date(_: *mut ThreeByteDate, _: c_uchar, _: c_uchar, _: c_ushort);
 }
 
 // *** Dumping AST Record Layout
@@ -59,7 +60,7 @@ fn test_compact_date() {
     //    --31- |     -12- | -2014--> | <--2014-
 
     unsafe {
-        assert_eq!(check_compact_date(&date), 1);
+        assert_eq!(check_compact_date(&date, 31, 12, 2014), 1);
     }
 }
 
@@ -102,7 +103,7 @@ fn test_overflow() {
 
     date.set_d(255);
 
-    assert_eq!(date.d(), 0);
+    assert_eq!(date.d(), 31);
 
     // Double check C's overflow
     date.set_d(31);
@@ -121,12 +122,16 @@ fn test_overflow() {
         _pad: [0; 4],
     };
 
-    date2.set_d(32);
-    date2.set_m(52);
+    date2.set_d(34);
+    date2.set_m(50);
 
-    assert_eq!(date2.d(), 0);
-    assert_eq!(date2.m(), 0);
+    assert_eq!(date2.d(), 2);
+    assert_eq!(date2.m(), 2);
     assert_eq!(date2.y, 2019);
+
+    unsafe {
+        assert_eq!(check_overlapping_byte_date(&date2, 2, 2, 2019), 1);
+    }
 
     date2.set_d(14);
     date2.set_m(8);
@@ -135,8 +140,12 @@ fn test_overflow() {
     date2.set_m(52);
 
     assert_eq!(date2.d(), 13);
-    assert_eq!(date2.m(), 0);
+    assert_eq!(date2.m(), 4);
     assert_eq!(date2.y, 2019);
+
+    unsafe {
+        assert_eq!(check_overlapping_byte_date(&date2, 13, 4, 2019), 1);
+    }
 
     date2.set_d(14);
     date2.set_m(8);
@@ -144,9 +153,13 @@ fn test_overflow() {
     date2.set_d(45);
     date2.set_m(9);
 
-    assert_eq!(date2.d(), 0);
+    assert_eq!(date2.d(), 13);
     assert_eq!(date2.m(), 9);
     assert_eq!(date2.y, 2019);
+
+    unsafe {
+        assert_eq!(check_overlapping_byte_date(&date2, 13, 9, 2019), 1);
+    }
 }
 
 // *** Dumping AST Record Layout
@@ -331,6 +344,10 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), -8);
 
+    unsafe {
+        assert_eq!(check_signed_bitfields(&signed_bitfields, -8, 0, 0), 1)
+    }
+
     // C Sanity Check:
     signed_bitfields.set_x(7);
 
@@ -342,10 +359,36 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), -8);
 
-    // Values 16+ will still overflow like their unsigned counterparts
+    // Values 16+ will still wrap on overflow like their unsigned counterparts
     signed_bitfields.set_x(16);
 
     assert_eq!(signed_bitfields.x(), 0);
+
+    let ret = unsafe {
+        check_signed_bitfields(&signed_bitfields, 0, 31, -1)
+    };
+
+    assert_eq!(ret, 1);
+
+    signed_bitfields.set_x(17);
+
+    assert_eq!(signed_bitfields.x(), 1);
+
+    let ret = unsafe {
+        check_signed_bitfields(&signed_bitfields, 1, 31, -1)
+    };
+
+    assert_eq!(ret, 1);
+
+    signed_bitfields.set_x(25);
+
+    assert_eq!(signed_bitfields.x(), -7);
+
+    let ret = unsafe {
+        check_signed_bitfields(&signed_bitfields, -7, 31, -1)
+    };
+
+    assert_eq!(ret, 1);
 
     // C Sanity Check:
     signed_bitfields.set_x(7);
@@ -358,20 +401,49 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), 0);
 
+    signed_bitfields.set_x(7);
+
+    assert_eq!(signed_bitfields.x(), 7);
+
+    unsafe {
+        assign_signed_bitfields(&mut signed_bitfields, 17, 31, 31);
+    }
+
+    assert_eq!(signed_bitfields.x(), 1);
+
+    signed_bitfields.set_x(7);
+
+    assert_eq!(signed_bitfields.x(), 7);
+
+    unsafe {
+        assign_signed_bitfields(&mut signed_bitfields, 25, 31, 31);
+    }
+
+    assert_eq!(signed_bitfields.x(), -7);
+    assert_eq!(signed_bitfields.z(), -1);
+
     // Underflow
     signed_bitfields.set_x(-8);
 
     assert_eq!(signed_bitfields.x(), -8);
 
-    // However -9 to -15 don't count as underflow
+    unsafe {
+        assert_eq!(check_signed_bitfields(&signed_bitfields, -8, 31, -1), 1)
+    }
+
+    // -9 to -15 will wrap around on underflow
     signed_bitfields.set_x(-9);
 
     assert_eq!(signed_bitfields.x(), 7);
 
-    // C Sanity Check:
-    signed_bitfields.set_x(7);
+    unsafe {
+        assert_eq!(check_signed_bitfields(&signed_bitfields, 7, 31, -1), 1)
+    }
 
-    assert_eq!(signed_bitfields.x(), 7);
+    // C Sanity Check:
+    signed_bitfields.set_x(6);
+
+    assert_eq!(signed_bitfields.x(), 6);
 
     unsafe {
         assign_signed_bitfields(&mut signed_bitfields, -9, 31, 31);
@@ -379,10 +451,14 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), 7);
 
-    // Values < -15 will not 0 on underflow apparently
+    // Values < -15 will also wrap on underflow
     signed_bitfields.set_x(-31);
 
     assert_eq!(signed_bitfields.x(), 1);
+
+    unsafe {
+        assert_eq!(check_signed_bitfields(&signed_bitfields, 1, 31, -1), 1)
+    }
 
     // C Sanity Check:
     signed_bitfields.set_x(7);
@@ -478,9 +554,20 @@ fn test_three_byte_date() {
     assert_eq!(date.month(), 7);
     assert_eq!(date.year(), 2000);
 
-    let ret = unsafe {
-        check_three_byte_date(&date, 18, 7, 2000)
-    };
+    unsafe {
+        assert_eq!(check_three_byte_date(&date, 18, 7, 2000), 1)
+    }
 
-    assert_eq!(ret, 1);
+    // Check overflow wraps
+    unsafe {
+        assign_three_byte_date(&mut date, 36, 19, 2u16.pow(15) + 2)
+    }
+
+    assert_eq!(date.day(), 4);
+    assert_eq!(date.month(), 3);
+    assert_eq!(date.year(), 2);
+
+    unsafe {
+        assert_eq!(check_three_byte_date(&date, 4, 3, 2), 1)
+    }
 }

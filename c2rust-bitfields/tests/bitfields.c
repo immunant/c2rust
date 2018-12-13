@@ -1,5 +1,9 @@
 #include <stdio.h>
 
+typedef unsigned char uchar;
+typedef unsigned short ushort;
+typedef unsigned long ulong;
+
 // On my x86_64 machine:
 // *** Dumping AST Record Layout
 //         0 | struct compact_date
@@ -13,20 +17,20 @@ typedef struct {
     unsigned short y;
 } compact_date;
 
-unsigned int check_compact_date(compact_date const* date) {
-    if (date->d != 31) {
+unsigned int check_compact_date(compact_date const* date, uchar d, uchar m, ushort y) {
+    if (date->d != d) {
         printf("Different day: %u!\n", date->d);
 
         return 2;
     }
 
-    if (date->m != 12) {
+    if (date->m != m) {
         printf("Different month: %u!\n", date->m);
 
         return 3;
     }
 
-    if (date->y != 2014) {
+    if (date->y != y) {
         printf("Different year: %hu!\n", date->y);
 
         return 4;
@@ -35,7 +39,7 @@ unsigned int check_compact_date(compact_date const* date) {
     return 1;
 }
 
-void assign_compact_date_day(compact_date* date, unsigned char day) {
+void assign_compact_date_day(compact_date* date, uchar day) {
     date->d = day;
 }
 
@@ -52,7 +56,7 @@ typedef struct {
     unsigned short y;
 } overlapping_byte_date;
 
-unsigned int check_overlapping_byte_date(overlapping_byte_date const* date, unsigned long d, unsigned short m, unsigned short y) {
+unsigned int check_overlapping_byte_date(overlapping_byte_date const* date, ulong d, ushort m, ushort y) {
     if (date->d != d) {
         printf("Different day: %u!\n", date->d);
 
@@ -88,7 +92,7 @@ typedef struct {
    unsigned short y: 9;
 } unnamed_bitfield;
 
-unsigned int check_unnamed_bitfield(unnamed_bitfield const* bf, unsigned short x, unsigned short y, double z) {
+unsigned int check_unnamed_bitfield(unnamed_bitfield const* bf, ushort x, ushort y, double z) {
     if (bf->x != x) {
         return 2;
     }
@@ -126,13 +130,14 @@ unsigned int check_signed_bitfields(signed_bitfields const* bf, signed short x, 
     }
 
     if (bf->z != z) {
+        printf("Found %hd expected %hd", bf->z, z);
         return 4;
     }
 
     return 1;
 }
 
-void assign_signed_bitfields(signed_bitfields* bf, signed short x, unsigned short y, signed short z) {
+void assign_signed_bitfields(signed_bitfields* bf, signed short x, ushort y, signed short z) {
     bf->x = x;
     bf->y = y;
     bf->z = z;
@@ -150,7 +155,7 @@ typedef struct {
     unsigned short year: 15;
 } __attribute((packed)) three_byte_date;
 
-unsigned int check_three_byte_date(three_byte_date const* bf, unsigned char day, unsigned char month, unsigned short year) {
+unsigned int check_three_byte_date(three_byte_date const* bf, uchar day, uchar month, ushort year) {
     if (bf->day != day) {
         return 2;
     }
@@ -164,4 +169,10 @@ unsigned int check_three_byte_date(three_byte_date const* bf, unsigned char day,
     }
 
     return 1;
+}
+
+void assign_three_byte_date(three_byte_date* bf, uchar day, uchar month, ushort year) {
+    bf->day = day;
+    bf->month = month;
+    bf->year = year;
 }

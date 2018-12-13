@@ -221,21 +221,13 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                     let mut field = &mut self.#field_names;
                     let (lhs_bit, rhs_bit) = #field_bit_info;
 
-                    // Check for overflow, which C defines to 0 the bitfield
-                    // Note that for signed types, the gap between signed max value
-                    // and unsigned max value does not count as an overflow, even
-                    // though that range of values cannot be represented. Instead,
-                    // they are interpereted as their negative counterparts.
-                    let min_overflow_val = 1 << (rhs_bit - lhs_bit + 1);
-                    let zeroing = int >= min_overflow_val as #field_type_setters2;
-
                     for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
                         let byte_index = bit_index / 8;
                         let mut byte = &mut field[byte_index];
                         let bit = 1 << i;
                         let read_bit = int & bit;
 
-                        if zeroing || read_bit == 0 {
+                        if read_bit == 0 {
                             zero_bit(byte, (bit_index % 8) as u64);
                         } else {
                             one_bit(byte, (bit_index % 8) as u64);
@@ -246,6 +238,8 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                 /// This method allows you to read from a bitfield to a value
                 pub fn #method_names(&self) -> #field_types {
                     type IntType = #field_types2;
+
+                    const is_signed: bool = IntType::min_value() != 0;
 
                     let field = self.#field_names2;
                     let (lhs_bit, rhs_bit) = #field_bit_info2;
@@ -267,7 +261,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                     // If the int type is signed, and the leftmost bit
                     // that can fit in the bitwidth is 1, we must 1-extend
                     // so that it gets interpreted as a negative number
-                    if IntType::min_value() != 0 {
+                    if is_signed {
                         let bit_width = rhs_bit - lhs_bit;
                         let bit = 1 << bit_width;
                         let read_bit = val & bit;
