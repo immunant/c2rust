@@ -42,23 +42,77 @@ void write_three_byte_date(three_byte_date* tbd, uchar d, uchar m, ushort y) {
 
 }
 
-// FIXME:
-void ops_three_byte_date(three_byte_date* tbd) {
-    unsigned char one = 1;
-    unsigned char two = 2;
+// *** Dumping AST Record Layout
+//          0 | struct test3
+//      0:0-6 |   long x
+//        2:- |   short
+//      2:0-9 |   unsigned long z
+//            | [sizeof=8, align=8]
+typedef struct {
+    signed long x: 7;
+    signed short: 0;
+    unsigned long z: 10;
+} padded_bitfield;
 
+size_t size_of_padded_bitfield() {
+    return sizeof(padded_bitfield);
+}
+
+void ops_padded_bitfield(padded_bitfield* bf) {
     // These should not add casts to rhs
-    tbd->day %= two; // 1
-    tbd->day += one; // 2
-    tbd->day *= two; // 4
-    tbd->day -= one; // 3
-    tbd->day /= two; // 1
-    tbd->day ^= one; // 1
-    tbd->day >>= two; // 4
-    tbd->day <<= one; // 2
-    tbd->day &= one; // 1
-    tbd->day |= two; // 3
+    // (shifts seem to add them for some reason)
+    bf->x %= 2L;
+    bf->x += 1L;
+    bf->x *= 2L;
+    bf->x -= 1L;
+    bf->x /= 2L;
+    bf->x ^= 1L;
+    bf->x >>= 2L;
+    bf->x <<= 1L;
+    bf->x &= 1L;
+    bf->x |= 2L;
 
     // These should add casts to rhs
-
+    bf->x %= 2;
+    bf->x += 1;
+    bf->x *= 2;
+    bf->x -= 1;
+    bf->x /= 2;
+    bf->x ^= 1;
+    bf->x >>= 2;
+    bf->x <<= 1;
+    bf->x &= 1;
+    bf->x |= 2;
 }
+
+padded_bitfield ops_padded_bitfield_init(void) {
+    padded_bitfield bf = {13, 0};
+    // These should not add casts to rhs
+    // (shifts seem to add them for some reason)
+    bf.x %= 2L;
+    bf.x += 1L;
+    bf.x *= 2L;
+    bf.x -= 1L;
+    bf.x /= 2L;
+    bf.x ^= 1L;
+    bf.x >>= 2L;
+    bf.x <<= 1L;
+    bf.x &= 1L;
+    bf.x |= 2L;
+
+    // These should add casts to rhs
+    bf.x %= 2;
+    bf.x += 1;
+    bf.x *= 2;
+    bf.x -= 1;
+    bf.x /= 2;
+    bf.x ^= 1;
+    bf.x >>= 2;
+    bf.x <<= 1;
+    bf.x &= 1;
+    bf.x |= 2;
+
+    return bf;
+}
+
+three_byte_date static_date = {13, 12, 2018};
