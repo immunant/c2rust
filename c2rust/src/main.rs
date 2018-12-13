@@ -9,6 +9,7 @@ fn main() {
     let subcommand_yamls = [
         load_yaml!("transpile.yaml"),
         load_yaml!("refactor.yaml"),
+        load_yaml!("analysis.yaml"),
     ];
     let matches = App::new("C2Rust")
         .version(crate_version!())

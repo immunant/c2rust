@@ -10,6 +10,10 @@ log = "0.4.0"
 env_logger = "0.6.0"
 c2rust-transpile = { path = "../c2rust-transpile" }
 c2rust-refactor = { path = "../c2rust-refactor" }
+tempfile = "3"
+cargo = "0.32.0"
+toml_edit = "0.1.3"
+c2rust-analysis-rt = { path = "../analysis/runtime" }
 
 [features]
 # Force static linking of LLVM

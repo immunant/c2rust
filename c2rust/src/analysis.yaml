@@ -1,0 +1,13 @@
+name: analysis
+version: 0.1.0
+author: |
+  - The C2Rust Project Developers <c2rust@immunant.com>
+about: Analyze unsafe Rust for safety improvement opportunities
+subcommands:
+  - instrument:
+      about: Instrument Rust code to track dynamic lifetimes of allocations
+      args:
+        - keep-temps:
+            long: keep-temps
+            help: "Keep temporary rewritten source files"
+            hidden: true
