@@ -8,6 +8,7 @@ members = [
     "manual/preprocessors",
     "analysis/plugin",
     "analysis/runtime",
+    "analysis/test",
 ]
 exclude = [
     "cross-checks/rust-checks",

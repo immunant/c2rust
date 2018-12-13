@@ -1,14 +1,5 @@
-#![allow(dead_code,
-         mutable_transmutes,
-         non_camel_case_types,
-         non_snake_case,
-         non_upper_case_globals,
-         unused_mut)]
-#![feature(plugin, custom_attribute)]
-#![plugin(c2rust_analysis_plugin)]
-#![lifetime_analysis]
-#![feature(libc)]
-extern crate libc;
+use libc;
+
 extern "C" {
     #[no_mangle]
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
@@ -30,7 +21,7 @@ pub type size_t = libc::c_ulong;
 pub struct S {
     pub field: libc::c_int,
 }
-unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
+pub unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
  -> libc::c_int {
     let mut s: *mut S =
         malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
@@ -78,18 +69,4 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
     }
     free(s as *mut libc::c_void);
     return 0i32;
-}
-
-#[test]
-pub fn main() {
-    let mut args: Vec<*mut libc::c_char> = Vec::new();
-    for arg in ::std::env::args() {
-        args.push(::std::ffi::CString::new(arg).expect("Failed to convert argument into CString.").into_raw());
-    };
-    args.push(::std::ptr::null_mut());
-    unsafe {
-        ::std::process::exit(main_0((args.len() - 1) as libc::c_int,
-                                    args.as_mut_ptr() as
-                                        *mut *mut libc::c_char) as i32)
-    }
 }
