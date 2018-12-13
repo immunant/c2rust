@@ -167,7 +167,6 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     let field_types: Vec<_> = bitfields.iter().map(parse_bitfield_ty_path).collect();
     let field_types2 = field_types.clone();
     let field_type_setters = field_types.clone();
-    let field_type_setters2 = field_types.clone();
     let method_names: Vec<_> = bitfields.iter().map(|field| Ident::new(&field.name, Span::call_site().into())).collect();
     let field_names: Vec<_> = bitfields.iter().map(|field| &field.field_name).collect();
     let field_names2 = field_names.clone();

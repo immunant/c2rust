@@ -797,6 +797,8 @@ impl<'c> Translation<'c> {
         false
     }
 
+    /// The purpose of this function is to decide on whether or not a static initializer's
+    /// translation is able to be compiled as a valid rust static initializer
     fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use c_ast::UnOp::{AddressOf, Negate};
         use c_ast::CastKind::PointerToIntegral;
@@ -847,6 +849,27 @@ impl<'c> Translation<'c> {
                             return true;
                         }
                     }
+                },
+                CExprKind::InitList(qtype, _, _, _) => {
+                    let ty = &self.ast_context.resolve_type(qtype.ctype).kind;
+
+                    match ty {
+                        CTypeKind::Struct(decl_id) => {
+                            let decl = &self.ast_context[*decl_id].kind;
+
+                            if let CDeclKind::Struct { fields: Some(fields), .. } = decl {
+                                for field_id in fields {
+                                    let field_decl = &self.ast_context[*field_id].kind;
+
+                                    if let CDeclKind::Field { bitfield_width: Some(_), .. } = field_decl {
+                                        return true;
+                                    }
+                                }
+                            }
+                        },
+                        _ => {},
+                    }
+
                 },
                 _ => {},
             }
