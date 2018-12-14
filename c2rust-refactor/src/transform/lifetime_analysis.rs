@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::path::PathBuf;
 
 use syntax::{ast, entry};
 use syntax::fold::{self, Folder};
@@ -57,27 +56,16 @@ struct LifetimeInstrumentation<'a, 'tcx: 'a> {
 
     spans: IndexSet<SourceSpan>,
     depth: usize,
-    crate_path: PathBuf,
 }
 
 impl<'a, 'tcx> LifetimeInstrumentation<'a, 'tcx> {
     fn new(cx: &'a driver::Ctxt<'a, 'tcx>, span_file_path: &'a str) -> Self {
-        eprintln!("session info: {:?}", cx.session().sysroot());
-        let path = cx.session().local_crate_source_file
-            .as_ref()
-            .unwrap()
-            .canonicalize()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_path_buf();
         Self {
             cx,
             span_file_path,
             hooked_functions: HashMap::new(),
             spans: IndexSet::new(),
             depth: 0,
-            crate_path: path,
         }
     }
 
