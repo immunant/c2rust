@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdint.h>
 
 typedef unsigned char uchar;
 typedef unsigned short ushort;
@@ -158,4 +159,25 @@ mixed_bitfields zeroed_mixed_bitfields(void) {
     mixed_bitfields mb = {0, 0.0};
 
     return mb;
+}
+
+struct from_csmith {
+    signed f0 : 27;
+    unsigned f1 : 4;
+    unsigned f2 : 22;
+    const unsigned f3 : 10;
+    unsigned f4 : 17;
+    uint32_t  f5;
+    unsigned : 0;
+    signed f6 : 25;
+};
+
+size_t size_of_from_csmith(void) {
+    return sizeof(struct from_csmith);
+}
+
+struct from_csmith init_from_csmith(void) {
+    struct from_csmith fc = {1, 2, 3, 4, 5, 6, 7};
+
+    return fc;
 }
