@@ -170,7 +170,15 @@ impl<'st> CrateInfo<'st> {
             match i.node {
                 ItemKind::Mod(ref m) => {
                     for item in &m.items {
-                        insertion_info.item_to_parent.insert(item.ident, i.ident.clone());
+                        // Structs can be forward declared, but do not need
+                        // the `no_mangle` attribute.
+                        let is_struct = match item.node {
+                            ItemKind::Struct(..) => true,
+                            _ => false
+                        };
+                        if attr::contains_name(&item.attrs, "no_mangle") || is_struct {
+                            insertion_info.item_to_parent.insert(item.ident, i.ident.clone());
+                        }
                     }
                 },
                 _ => {}
@@ -431,7 +439,7 @@ fn deduplicate_krate(krate: Crate, krate_info: &CrateInfo) -> Crate {
             }
             // `seen_paths` turns into `use foo_h::{item, item2, item3};`
             // That Path is then pushed into the module
-            let mut use_items = Vec::new();
+            let mut use_items = Vec::with_capacity(self.seen_paths.len());
             for (mod_name, mut prefixes) in &mut self.seen_paths {
                 let mut items: Vec<Ident> = prefixes.iter().map(|i| i).cloned().collect();
                 let mod_prefix = Path::from_ident(*mod_name);
