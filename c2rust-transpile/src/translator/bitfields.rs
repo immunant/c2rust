@@ -1,14 +1,6 @@
 #![deny(missing_docs)]
 //! This module provides translation for bitfield structs and operations on them. Generated code
-//! requires the use of the bitfield crate.
-
-// TODO: See if union bitfields are supportable or not
-// FIXME: size_of won't call the bitfield struct with required generic params, same
-// for variable bindings: `let foo: Foo` should be `let foo: Foo<[u8; X]>`
-// TODO: We can generate static bitfields in a slightly less nice, but safe, way:
-// static mut bitfield: BitField<[u8; X]> = BitField([A, B, C, D]); Either we figure
-// out what bits to assign here, or else we reuse the local var version but ensure that
-// static bitfields get sectioned off
+//! requires the use of the c2rust-bitfields crate.
 
 use std::collections::HashSet;
 use std::ops::Index;
@@ -31,7 +23,12 @@ type FieldInfo = (String, CQualTypeId, Option<u64>, u64, u64);
 
 #[derive(Debug)]
 enum FieldType {
-    BitfieldGroup { start_bit: u64, field_name: String, bytes: u64, attrs: Vec<(String, P<Ty>, String)> },
+    BitfieldGroup {
+        start_bit: u64,
+        field_name: String,
+        bytes: u64,
+        attrs: Vec<(String, P<Ty>, String)>,
+    },
     Padding { bytes: u64 },
     Regular { name: String, ctype: CTypeId, field: StructField },
 }
@@ -49,8 +46,16 @@ fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
 }
 
 impl<'a> Translation<'a> {
-    /// TODO
-    fn get_field_types(&self, field_info: Vec<FieldInfo>, platform_byte_size: u64) -> Result<Vec<FieldType>, String> {
+    /// This method aggregates bitfield struct field information by way of:
+    /// 1. Collecting consecutive bytes of bitfields into a single FieldType::BitfieldGroup
+    /// 2. Summing up the number of padding bytes between fields (or at the end of a struct)
+    ///    into a FieldType::Padding
+    /// 3. A standard field into a FieldType::Regular
+    fn get_field_types(
+        &self,
+        field_info: Vec<FieldInfo>,
+        platform_byte_size: u64,
+    ) -> Result<Vec<FieldType>, String> {
         let mut reorganized_fields = Vec::new();
         let mut last_bitfield_group: Option<FieldType> = None;
         let mut next_byte_pos = 0;
@@ -189,6 +194,7 @@ impl<'a> Translation<'a> {
     ///     #[bitfield(name = "bf2", ty = "libc::c_uchar",bits = "10..=15")]
     ///     bf1_bf2: [u8; 2],
     ///     non_bf: u64,
+    ///     _pad: [u8; 2],
     /// }
     /// ```
     pub fn convert_bitfield_struct_decl(
@@ -287,6 +293,7 @@ impl<'a> Translation<'a> {
     ///     let mut init = Foo {
     ///         bf1_bf2: [0; 2],
     ///         non_bf: 32,
+    ///         _pad: [0; 2],
     ///     };
     ///     init.set_bf1(-12);
     ///     init.set_bf2(34);
@@ -301,7 +308,6 @@ impl<'a> Translation<'a> {
         field_info: Vec<FieldInfo>,
         ctx: ExprContext,
     ) -> Result<WithStmts<P<Expr>>, String> {
-        // REVIEW: statics? Could section them off
         let mut fields = Vec::with_capacity(field_ids.len());
         let reorganized_fields = self.get_field_types(field_info.clone(), platform_byte_size)?;
         let local_pat = mk().mutbl().ident_pat("init");
@@ -454,7 +460,16 @@ impl<'a> Translation<'a> {
         Ok(mk().struct_expr(name.as_str(), fields))
     }
 
-    /// TODO
+    /// This method handles conversion of assignment operators on bitfields.
+    /// Regular fields would look like this:
+    /// A) bf.a = 1;
+    /// B) bf.a += 1;
+    ///
+    /// However, since we need to call methods for read and write, we generate this:
+    /// A) bf.set_a(1);
+    /// B) bf.set_a(bf.a() + 1);
+    ///
+    /// Note that B) requires NLL to be valid rust
     pub fn convert_bitfield_assignment_op_with_rhs(
         &self,
         ctx: ExprContext,
@@ -489,7 +504,17 @@ impl<'a> Translation<'a> {
         return Ok(WithStmts { stmts: vec![stmt], val });
     }
 
-    /// TODO
+    /// This method will convert a bitfield member one of four ways:
+    /// A) bf.a()
+    /// B) (*bf).a()
+    /// C) bf
+    /// D) (*bf)
+    ///
+    /// The first two are when we know this bitfield member is going to be read
+    /// from (default), possibly requiring a dereference first. The latter two
+    /// are generated when we are expecting to require a write, which will need
+    /// to make a method call with some input which we do not yet have access
+    /// to and will have to be handled elsewhere, IE `bf.set_a(1)`
     pub fn convert_bitfield_member_expr(
         &self,
         ctx: ExprContext,

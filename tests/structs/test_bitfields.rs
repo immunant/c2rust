@@ -187,7 +187,7 @@ pub fn test_bf_arrays_and_pointers() {
     const size: usize = 5;
 
     // Test zeroed bitfield struct (incl padding)
-    let mut array = [unsafe{ zeroed_mixed_bitfields() }; size];
+    let mut array = [unsafe { zeroed_mixed_bitfields() }; size];
     let last_y_ptr = unsafe {
         rust_init_bitfield_array(array.as_mut_ptr(), size as _)
     };
