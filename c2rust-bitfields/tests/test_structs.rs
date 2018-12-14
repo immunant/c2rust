@@ -338,8 +338,7 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), 7);
 
-    // Even though 8-15 cannot be represented, it does not count as
-    // overflow since they can be represented as negatives
+    // Signed overflow wraps around into negatives
     signed_bitfields.set_x(8);
 
     assert_eq!(signed_bitfields.x(), -8);
@@ -359,7 +358,7 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), -8);
 
-    // Values 16+ will still wrap on overflow like their unsigned counterparts
+    // Values 16+ will also wrap on overflow like their unsigned counterparts
     signed_bitfields.set_x(16);
 
     assert_eq!(signed_bitfields.x(), 0);
