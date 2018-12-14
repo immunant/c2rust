@@ -3,7 +3,8 @@
 use std::mem::size_of;
 use bitfields::{
     three_byte_date, rust_compare_three_byte_date, rust_write_three_byte_date, padded_bitfield,
-    rust_ops_padded_bitfield, rust_ops_padded_bitfield_init,
+    rust_ops_padded_bitfield, rust_ops_padded_bitfield_init, mixed_bitfields, rust_init_bitfield_array,
+    rust_static_date,
 };
 
 extern "C" {
@@ -18,7 +19,15 @@ extern "C" {
     #[no_mangle]
     fn ops_padded_bitfield(_: *mut padded_bitfield);
     #[no_mangle]
-    static static_date: three_byte_date;
+    static mut static_date: three_byte_date;
+    #[no_mangle]
+    fn size_of_mixed_bitfields() -> usize;
+    #[no_mangle]
+    fn zeroed_mixed_bitfields() -> mixed_bitfields;
+    #[no_mangle]
+    fn zeroed_padded_bitfield() -> padded_bitfield;
+    #[no_mangle]
+    fn zeroed_three_byte_date() -> three_byte_date;
 }
 
 pub fn test_three_byte_date() {
@@ -29,9 +38,9 @@ pub fn test_three_byte_date() {
     // Ensure correct size (also a packed struct)
     assert_eq!(size_of::<three_byte_date>(), c_size_of);
 
-    // FIXME: get init from translated rust
-    let mut tbd = three_byte_date {
-        day_month_year: [0; 3],
+    // Test zeroed bitfield struct
+    let mut tbd = unsafe {
+        zeroed_three_byte_date()
     };
 
     tbd.set_day(26);
@@ -104,12 +113,9 @@ pub fn test_padded_bitfield() {
 
     assert_eq!(size_of::<padded_bitfield>(), c_size_of);
 
-    // FIXME: get init from translated rust
-    let mut pb = padded_bitfield {
-        x: [0; 1],
-        _pad: [0; 1],
-        z: [0; 2],
-        _pad2: [0; 4],
+    // Test zeroed bitfield struct (incl padding)
+    let mut pb = unsafe {
+        zeroed_padded_bitfield()
     };
 
     pb.set_x(13);
@@ -138,11 +144,70 @@ pub fn test_padded_bitfield() {
 }
 
 pub fn test_static_bitfield() {
+    // On C static
     unsafe {
         assert_eq!(static_date.day(), 13);
+
+        static_date.set_day(15);
+
+        assert_eq!(static_date.day(), 15);
+
+        rust_write_three_byte_date(&mut static_date, 2, 4, 23);
+
+        assert_eq!(static_date.day(), 2);
+        assert_eq!(static_date.month(), 4);
+        assert_eq!(static_date.year(), 23);
     }
 
+    // On translated static
     unsafe {
-        static_date.set_day(12);
+        assert_eq!(rust_static_date.day(), 13);
+
+        rust_static_date.set_day(15);
+
+        assert_eq!(rust_static_date.day(), 15);
+
+        rust_write_three_byte_date(&mut rust_static_date, 2, 4, 23);
+
+        assert_eq!(rust_static_date.day(), 2);
+        assert_eq!(rust_static_date.month(), 4);
+        assert_eq!(rust_static_date.year(), 23);
     }
+}
+
+// Test creating arrays of bitfield structs
+// as well as pointers to non bitfields
+pub fn test_bf_arrays_and_pointers() {
+    let c_size_of = unsafe {
+        size_of_mixed_bitfields()
+    };
+
+    assert_eq!(size_of::<mixed_bitfields>(), c_size_of);
+
+    const size: usize = 5;
+
+    // Test zeroed bitfield struct (incl padding)
+    let mut array = [unsafe{ zeroed_mixed_bitfields() }; size];
+    let last_y_ptr = unsafe {
+        rust_init_bitfield_array(array.as_mut_ptr(), size as _)
+    };
+
+    assert_eq!(array[0].x(), 0);
+    assert_eq!(array[0].y, 0.0);
+    assert_eq!(array[1].x(), 1);
+    assert_eq!(array[1].y, 2.2);
+    assert_eq!(array[2].x(), 2);
+    assert_eq!(array[2].y, 4.4);
+    assert_eq!(array[3].x(), 3);
+    assert_eq!(array[3].y, 6.6000000000000005);
+    assert_eq!(array[4].x(), 4);
+    assert_eq!(array[4].y, 8.8);
+
+    unsafe {
+        assert_eq!(*last_y_ptr, 8.8);
+
+        *last_y_ptr = 4.4;
+    }
+
+    assert_eq!(array[4].y, 4.4);
 }

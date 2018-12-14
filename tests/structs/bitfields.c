@@ -15,6 +15,12 @@ typedef struct {
     unsigned short year: 15;
 } __attribute((packed)) three_byte_date;
 
+three_byte_date zeroed_three_byte_date(void) {
+    three_byte_date tbd = {0, 0, 0};
+
+    return tbd;
+}
+
 size_t size_of_three_byte_date() {
     return sizeof(three_byte_date);
 }
@@ -43,7 +49,7 @@ void write_three_byte_date(three_byte_date* tbd, uchar d, uchar m, ushort y) {
 }
 
 // *** Dumping AST Record Layout
-//          0 | struct test3
+//          0 | struct padded_bitfield
 //      0:0-6 |   long x
 //        2:- |   short
 //      2:0-9 |   unsigned long z
@@ -53,6 +59,12 @@ typedef struct {
     signed short: 0;
     unsigned long z: 10;
 } padded_bitfield;
+
+padded_bitfield zeroed_padded_bitfield(void) {
+    padded_bitfield pb = {0, 0};
+
+    return pb;
+}
 
 size_t size_of_padded_bitfield() {
     return sizeof(padded_bitfield);
@@ -116,3 +128,34 @@ padded_bitfield ops_padded_bitfield_init(void) {
 }
 
 three_byte_date static_date = {13, 12, 2018};
+
+// *** Dumping AST Record Layout
+//          0 | struct mixed_bitfields
+//      0:0-9 |   unsigned long x
+//          8 |   double y
+//            | [sizeof=16, align=8]
+typedef struct {
+    unsigned long x: 10;
+    double y;
+} mixed_bitfields;
+
+size_t size_of_mixed_bitfields(void) {
+    return sizeof(mixed_bitfields);
+}
+
+// Initializes an array of bitfield structs and returns a
+// pointer to the last one's y (non bitfield)
+double* init_bitfield_array(mixed_bitfields* bfs, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        bfs[i].x = i;
+        bfs[i].y = (double) i * 2.2;
+    }
+
+    return &bfs[size - 1].y;
+}
+
+mixed_bitfields zeroed_mixed_bitfields(void) {
+    mixed_bitfields mb = {0, 0.0};
+
+    return mb;
+}
