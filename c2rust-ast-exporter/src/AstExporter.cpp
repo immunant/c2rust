@@ -1277,9 +1277,6 @@ class TranslateASTVisitor final
 
               // 7. Encode the platform specific alignment of this record
               cbor_encode_uint(local, recordAlignment);
-
-              // 6. Encode the platform specific byte size of this record
-              cbor_encode_uint(local, byteSize);
           });
 
           return true;
