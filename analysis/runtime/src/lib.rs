@@ -9,6 +9,15 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::sync::RwLock;
 
+/// List of functions we want hooked for the lifetime analyis runtime.
+pub const HOOK_FUNCTIONS: &[&'static str] = &[
+    "malloc",
+    "free",
+    "calloc",
+    "realloc",
+    "reallocarray",
+];
+
 lazy_static! {
     static ref SPAN_FILE_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);
 }

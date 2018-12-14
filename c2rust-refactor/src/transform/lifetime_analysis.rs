@@ -48,13 +48,7 @@ impl Transform for LifetimeAnalysis {
 
 /// List of functions we want hooked for the lifetime analyis runtime (see
 /// ../../runtime/src/lib.rs for the implementations of these hooks)
-const HOOKED_FUNCTIONS: &[&'static str] = &[
-    "malloc",
-    "free",
-    "calloc",
-    "realloc",
-    "reallocarray",
-];
+const HOOK_FUNCTIONS: &[&'static str] = c2rust_analysis_rt::HOOK_FUNCTIONS;
 
 struct LifetimeInstrumentation<'a, 'tcx: 'a> {
     cx: &'a driver::Ctxt<'a, 'tcx>,
@@ -157,7 +151,7 @@ impl<'a, 'tcx> LifetimeInstrumentation<'a, 'tcx> {
 impl<'a, 'tcx> Folder for LifetimeInstrumentation<'a, 'tcx> {
     fn fold_foreign_item_simple(&mut self, item: ast::ForeignItem) -> ast::ForeignItem {
         if let ast::ForeignItemKind::Fn(decl, _) = &item.node {
-            if HOOKED_FUNCTIONS.contains(&&*item.ident.name.as_str()) {
+            if HOOK_FUNCTIONS.contains(&&*item.ident.name.as_str()) {
                 self.hooked_functions.insert(item.ident, decl.clone());
             }
         }
