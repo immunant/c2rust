@@ -15,9 +15,9 @@ use driver::{self, Phase};
 use transform::Transform;
 
 
-/// # `rename_regex` Command
+/// # `rename_items_regex` Command
 /// 
-/// Usage: `rename_regex PAT REPL [FILTER]`
+/// Usage: `rename_items_regex PAT REPL [FILTER]`
 /// 
 /// Marks: reads `FILTER`
 /// 

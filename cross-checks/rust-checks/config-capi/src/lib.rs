@@ -222,13 +222,13 @@ pub extern fn xcfg_scope_stack_push_item<'stk>(scope_stack: Option<&'stk mut xcf
         _ => panic!("unknown item kind: {}", item_kind)
     };
     let pre_xcfg = (0..pre_xcfg.len).map(|i| {
-        assert!(pre_xcfg.elem_size as usize == mem::size_of::<StringLenPtr>());
+        assert_eq!(pre_xcfg.elem_size as usize, mem::size_of::<StringLenPtr>());
         let pre_str = unsafe { pre_xcfg.get(i as usize) };
         serde_yaml::from_slice(pre_str.to_slice())
             .expect(&format!("invalid YAML: '{}'", pre_str.to_str()))
     }).collect::<Vec<_>>();
     let post_xcfg = (0..post_xcfg.len).map(|i| {
-        assert!(post_xcfg.elem_size as usize == mem::size_of::<StringLenPtr>());
+        assert_eq!(post_xcfg.elem_size as usize, mem::size_of::<StringLenPtr>());
         let post_str = unsafe { post_xcfg.get(i as usize) };
         serde_yaml::from_slice(post_str.to_slice())
             .expect(&format!("invalid YAML: '{}'", post_str.to_str()))

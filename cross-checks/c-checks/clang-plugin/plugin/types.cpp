@@ -483,7 +483,8 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
     }
 
     unsigned pushed_files = 0; // FIXME: use a scope guard
-    auto file_cfg = xcfg_scope_stack_push_file(config_stack, config, file_name);
+    auto file_cfg = xcfg_scope_stack_push_file(config_stack.get(),
+                                               config.get(), file_name);
     if (file_cfg != nullptr)
         pushed_files++;
 
@@ -494,7 +495,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
     for (auto &s : pre_xcfg_strings)
         pre_xcfg_slps.push_back(config::StringLenPtr{s});
     auto record_cfg =
-        xcfg_scope_stack_push_item(config_stack, config::ITEM_KIND_STRUCT,
+        xcfg_scope_stack_push_item(config_stack.get(), config::ITEM_KIND_STRUCT,
                                    file_name, record_name,
                                    config::StringVec::from_vector(pre_xcfg_slps),
                                    {});
@@ -502,7 +503,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
 
     if (!config::xcfg_scope_enabled(record_cfg)) {
         // Cross-checks are disabled for this record
-        xcfg_scope_stack_pop_multi(config_stack, pushed_files);
+        xcfg_scope_stack_pop_multi(config_stack.get(), pushed_files);
         return;
     }
 
@@ -529,7 +530,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
             return { return_stmt };
         };
         build_generic_hash_function(func, ctx, body_fn);
-        xcfg_scope_stack_pop_multi(config_stack, pushed_files);
+        xcfg_scope_stack_pop_multi(config_stack.get(), pushed_files);
         return;
     }
 
@@ -554,7 +555,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
                                   "please use a custom cross-check for '%0'",
                                   record_decl->getDeclName().getAsString());
 #endif
-        xcfg_scope_stack_pop_multi(config_stack, pushed_files);
+        xcfg_scope_stack_pop_multi(config_stack.get(), pushed_files);
         return;
     }
     if (record_def->isUnion()) {
@@ -575,7 +576,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
             return { depth_check, return_stmt };
         };
         build_generic_hash_function(func, ctx, body_fn);
-        xcfg_scope_stack_pop_multi(config_stack, pushed_files);
+        xcfg_scope_stack_pop_multi(config_stack.get(), pushed_files);
         return;
     }
     assert((record_def->isStruct() || record_def->isClass()) &&
@@ -689,7 +690,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
         return stmts;
     };
     build_generic_hash_function(func, ctx, body_fn);
-    xcfg_scope_stack_pop_multi(config_stack, pushed_files);
+    xcfg_scope_stack_pop_multi(config_stack.get(), pushed_files);
 }
 
 } // namespace crosschecks

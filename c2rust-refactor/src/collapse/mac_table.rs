@@ -75,8 +75,12 @@ mac_node_ref_getters! {
 }
 
 
-trait AsMacNodeRef {
+pub trait AsMacNodeRef: Clone+Sized {
     fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a>;
+    fn from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> &'a Self;
+    fn clone_from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> Self {
+        (*Self::from_mac_node_ref(r)).clone()
+    }
 }
 
 macro_rules! as_mac_node_ref_impls {
@@ -85,6 +89,14 @@ macro_rules! as_mac_node_ref_impls {
             impl AsMacNodeRef for $Ty {
                 fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a> {
                     MacNodeRef::$Ty(self)
+                }
+
+                fn from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> &'a Self {
+                    match r {
+                        MacNodeRef::$Ty(r) => r,
+                        _ => panic!(concat!("bad MacNodeRef kind (expected ",
+                                            stringify!($Ty), ")")),
+                    }
                 }
             }
         )*
@@ -97,9 +109,17 @@ as_mac_node_ref_impls! {
     Stmt,
 }
 
-impl<T: AsMacNodeRef> AsMacNodeRef for P<T> {
+impl<T: AsMacNodeRef+'static> AsMacNodeRef for P<T> {
     fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a> {
         <T as AsMacNodeRef>::as_mac_node_ref(self)
+    }
+
+    fn from_mac_node_ref<'a>(_r: MacNodeRef<'a>) -> &'a Self {
+        panic!("can't get reference to P<T>")
+    }
+
+    fn clone_from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> Self {
+        P(<T as AsMacNodeRef>::clone_from_mac_node_ref(r))
     }
 }
 
@@ -132,6 +152,11 @@ pub enum InvocKind<'ast> {
     Derive(InvocId),
 }
 
+struct MacInfoRaw<'ast> {
+    id: InvocId,
+    expanded: MacNodeRef<'ast>,
+}
+
 pub struct MacInfo<'ast> {
     pub id: InvocId,
     pub invoc: InvocKind<'ast>,
@@ -141,22 +166,35 @@ pub struct MacInfo<'ast> {
 pub struct MacTable<'ast> {
     /// Maps expanded `NodeId` to macro invocation info.  Note that multiple nodes may map to the
     /// same invocation, when a macro produces multiple items/stmts.
-    pub map: HashMap<NodeId, MacInfo<'ast>>,
+    map: HashMap<NodeId, MacInfoRaw<'ast>>,
+
+    /// For macro invocations that produced no items, this maps the unexpanded NodeId to the
+    /// invocation ID.  `collapse::cfg` uses this to detect when nodes are removed due to `#[cfg]`
+    /// attrs.
+    pub empty_invocs: HashMap<NodeId, InvocId>,
 
     pub invoc_map: HashMap<InvocId, InvocKind<'ast>>,
 }
 
 impl<'ast> MacTable<'ast> {
-    pub fn get(&self, id: NodeId) -> Option<&MacInfo<'ast>> {
-        self.map.get(&id)
+    pub fn get(&self, id: NodeId) -> Option<MacInfo<'ast>> {
+        self.map.get(&id).map(|raw| MacInfo {
+            id: raw.id,
+            invoc: self.invoc_map[&raw.id],
+            expanded: raw.expanded,
+        })
     }
 
     pub fn get_invoc(&self, id: InvocId) -> Option<InvocKind<'ast>> {
         self.invoc_map.get(&id).cloned()
     }
 
-    pub fn invocations<'a>(&'a self) -> impl Iterator<Item=&'a MacInfo<'ast>> + 'a {
-        self.map.values()
+    pub fn invocations<'a>(&'a self) -> impl Iterator<Item=MacInfo<'ast>> + 'a {
+        self.map.values().map(move |raw| MacInfo {
+            id: raw.id,
+            invoc: self.invoc_map[&raw.id],
+            expanded: raw.expanded,
+        })
     }
 }
 
@@ -186,6 +224,7 @@ impl<'a> Ctxt<'a> {
         Ctxt {
             table: MacTable {
                 map: HashMap::new(),
+                empty_invocs: HashMap::new(),
                 invoc_map: HashMap::new(),
             },
             next_id: 0,
@@ -199,13 +238,21 @@ impl<'a> Ctxt<'a> {
         InvocId(id)
     }
 
+    fn record_invoc(&mut self, invoc_kind: InvocKind<'a>) -> InvocId {
+        let invoc_id = self.next_id();
+        self.table.invoc_map.insert(invoc_id, invoc_kind);
+        invoc_id
+    }
+
+    fn record_empty_invoc(&mut self, node_id: NodeId, invoc_id: InvocId) {
+        self.table.empty_invocs.insert(node_id, invoc_id);
+    }
+
     fn record_macro_with_id(&mut self,
                             invoc_id: InvocId,
-                            invoc_kind: InvocKind<'a>,
                             expanded: MacNodeRef<'a>) {
         self.table.map.insert(
-            expanded.id(), MacInfo { id: invoc_id, invoc: invoc_kind, expanded });
-        self.table.invoc_map.insert(invoc_id, invoc_kind);
+            expanded.id(), MacInfoRaw { id: invoc_id, expanded });
     }
 
     fn record_node_id_match(&mut self,
@@ -218,9 +265,9 @@ impl<'a> Ctxt<'a> {
                         old_id: NodeId,
                         invoc_kind: InvocKind<'a>,
                         expanded: MacNodeRef<'a>) {
-        let invoc_id = self.next_id();
+        let invoc_id = self.record_invoc(invoc_kind);
         trace!("new {:?} from macro {:?} - collect matching {:?}", invoc_id, old_id, expanded.id());
-        self.record_macro_with_id(invoc_id, invoc_kind, expanded);
+        self.record_macro_with_id(invoc_id, expanded);
         self.record_node_id_match(old_id, expanded.id());
     }
 }
@@ -235,27 +282,33 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
 
     for old in old_seq {
         if let Some(invoc) = old.as_invoc() {
-            let invoc_id = cx.next_id();
+            let invoc_id = cx.record_invoc(invoc);
             trace!("new {:?} from macro {:?} at {:?}",
                   invoc_id, old.get_node_id(), old.get_span());
 
+            let mut empty = true;
             while j < new_seq.len() {
                 let new = &new_seq[j];
 
                 if !old.get_span().contains(root_callsite_span(new.get_span())) {
                     // Reached a node that didn't come from this macro.
+                    if empty {
+                        cx.record_empty_invoc(old.get_node_id(), invoc_id);
+                    }
                     break;
                 }
+
+                empty = false;
 
                 trace!("  collect {:?} at {:?}", new.get_node_id(), new.get_span());
 
                 // The node came from `invoc`, so consume and record the node.
                 if let Some(child_invoc) = get_child_invoc(
                         invoc, invoc_id, new.as_mac_node_ref()) {
-                    let child_invoc_id = cx.next_id();
-                    cx.record_macro_with_id(child_invoc_id, child_invoc, new.as_mac_node_ref());
+                    let child_invoc_id = cx.record_invoc(child_invoc);
+                    cx.record_macro_with_id(child_invoc_id, new.as_mac_node_ref());
                 } else {
-                    cx.record_macro_with_id(invoc_id, invoc, new.as_mac_node_ref());
+                    cx.record_macro_with_id(invoc_id, new.as_mac_node_ref());
                 }
                 cx.record_node_id_match(old.get_node_id(), new.get_node_id());
                 j += 1;
@@ -414,7 +467,9 @@ impl MaybeInvoc for Item {
         match self.node {
             ItemKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => {
-                if attr::contains_name(&self.attrs, "derive") {
+                if attr::contains_name(&self.attrs, "derive") ||
+                   attr::contains_name(&self.attrs, "cfg") ||
+                   attr::contains_name(&self.attrs, "test") {
                     Some(InvocKind::ItemAttr(self))
                 } else {
                     None

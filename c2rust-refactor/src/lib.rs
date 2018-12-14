@@ -69,6 +69,7 @@ pub mod select;
 pub mod print_spans;
 
 use std::collections::HashSet;
+use std::env;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::sync::Arc;
@@ -386,6 +387,10 @@ fn main_impl(opts: Options) {
 
 pub fn lib_main(opts: Options) {
     env_logger::init();
+
+    // Make sure we compile with the toolchain version that the refactoring tool
+    // is built against.
+    env::set_var("RUSTUP_TOOLCHAIN", env!("RUSTUP_TOOLCHAIN"));
 
     ty::tls::GCX_PTR.set(&Lock::new(0), || {
         syntax::with_globals(move || {

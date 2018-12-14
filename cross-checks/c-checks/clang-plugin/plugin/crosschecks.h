@@ -178,8 +178,8 @@ class CrossCheckInserter : public SemaConsumer {
 private:
     bool disable_xchecks;
 
-    const config::Config *config;
-    config::ScopeStack *config_stack;
+    std::unique_ptr<const config::Config> config;
+    std::unique_ptr<config::ScopeStack> config_stack;
 
     static const char default_config[];
     friend class CrossCheckInsertionAction;
@@ -476,16 +476,9 @@ private:
 
 public:
     CrossCheckInserter() = delete;
-    CrossCheckInserter(bool dx, const config::Config *cfg)
-            : disable_xchecks(dx), config(cfg) {
-        config_stack = config::xcfg_scope_stack_new(nullptr);
-    }
-
-    ~CrossCheckInserter() {
-        if (config_stack) {
-            config::xcfg_scope_stack_destroy(config_stack);
-            config_stack = nullptr;
-        }
+    CrossCheckInserter(bool dx, std::unique_ptr<const config::Config> cfg)
+            : disable_xchecks(dx), config(std::move(cfg)),
+              config_stack(config::xcfg_scope_stack_new(nullptr)) {
     }
 
     void InitializeSema(Sema &S) override {
