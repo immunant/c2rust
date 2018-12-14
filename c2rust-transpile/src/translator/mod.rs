@@ -899,7 +899,7 @@ impl<'c> Translation<'c> {
             CDeclKind::Enum { integral_type: None, .. } => {
                 self.use_feature("extern_types");
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
-                let extern_item = mk().span(s).pub_().foreign_ty(name);
+                let extern_item = mk().span(s).pub_().ty_foreign_item(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
@@ -926,7 +926,7 @@ impl<'c> Translation<'c> {
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
-
+                
                 if is_packed || max_field_alignment == Some(1) { reprs.push(simple_metaitem("packed")); };
                 // https://github.com/rust-lang/rust/issues/33626
                 if let Some(alignment) = manual_alignment {
@@ -1067,7 +1067,7 @@ impl<'c> Translation<'c> {
                     .span(s)
                     .set_mutbl(mutbl)
                     .vis(visibility)
-                    .foreign_static(&new_name, ty);
+                    .static_foreign_item(&new_name, ty);
 
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
@@ -1289,7 +1289,7 @@ impl<'c> Translation<'c> {
                 let function_decl = mk_linkage(true, new_name, name)
                     .span(span)
                     .vis(visibility)
-                    .foreign_fn(new_name, decl);
+                    .fn_foreign_item(new_name, decl);
 
                 Ok(ConvertedDecl::ForeignItem(function_decl))
             }
