@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
+use rustc::hir::HirId;
+use syntax::attr;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::fold::{self, Folder};
@@ -72,6 +74,213 @@ impl Transform for RenameRegex {
         });
 
         krate
+    }
+}
+
+/// # `rename_unnamed` Command
+/// 
+/// Usage: `rename_unnamed`
+/// 
+/// Renames all `Ident`s that have `unnamed` throughout the `Crate`, so the `Crate` can
+/// have a completely unique naming scheme for Anonymous Types.
+/// This command should be ran after transpiling using `c2rust-transpile`, and
+/// is also mainly to be used when doing the `reorganize_definition` pass; although
+/// this pass can run on any `c2rust-transpile`d project.
+/// 
+/// Example:
+/// ```
+/// pub mod foo {
+///     pub struct unnamed {
+///         a: i32
+///     }
+/// }
+/// 
+/// pub mod bar {
+///     pub struct unnamed {
+///         b: usize
+///     }
+/// }
+/// ```
+/// Becomes:
+/// ```
+/// pub mod foo {
+///     pub struct unnamed {
+///         a: i32
+///     }
+/// }
+/// 
+/// pub mod bar {
+///     pub struct unnamed_1 {
+///         b: usize
+///     }
+/// }
+/// ```
+pub struct RenameUnnamed;
+
+impl Transform for RenameUnnamed {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        #[derive(Debug, Default)]
+        struct Renamer {
+            idents: HashSet<Ident>,
+            items_to_change: HashSet<NodeId>,
+            new_idents: HashMap<HirId, Ident>,
+            new_to_old: HashMap<Ident, Ident>,
+            is_source: bool,
+        }
+        let mut renamer: Renamer = Default::default();
+
+        let has_unnamed = |ident: &Ident| -> bool { ident.as_str().contains("unnamed") };
+
+        // 1. Figure out how high the `unnamed` Ident count goes
+        let krate = fold_nodes(krate, |i: P<Item>| {
+            if attr::contains_name(&i.attrs, "header_src") && !renamer.is_source {
+                renamer.is_source = true;
+            }
+
+            if !has_unnamed(&i.ident) {
+                return smallvec![i];
+            }
+
+            if !renamer.idents.insert(i.ident) {
+                renamer.items_to_change.insert(i.id);
+            }
+            smallvec![i]
+        });
+
+        // `counter - 1` should give `N + 1`, where `N` is `unnamed_N` or the base of
+        // the highest "unnamed" within a Crate
+        let mut counter: usize = renamer.idents.len();
+
+        let make_name = |counter| -> String {
+            // A set of these Anonmyous types would look like
+            // [unnamed, unnamed_0, unnamed_1, unnamed_2]
+            if counter > 2 {
+                return format!("unnamed_{}", counter - 1);
+            } else if counter == 2 {
+                // [unnamed, unnamed_0], so the next value to start with should be 1
+                return format!("unnamed_{}", 1);
+            } else {
+                format!("unnamed_{}", 0)
+            }
+        };
+
+        // 2. Rename Anonymous types to the unique Ident
+        let krate = fold_nodes(krate, |i: P<Item>| {
+            if renamer.items_to_change.contains(&i.id) {
+                let new_name = Ident::from_str(&make_name(counter));
+
+                renamer
+                    .new_idents
+                    .insert(cx.hir_map().node_to_hir_id(i.id), new_name);
+                renamer.new_to_old.insert(new_name, i.ident);
+                counter += 1;
+                smallvec![i.map(|i| Item {
+                    ident: new_name,
+                    ..i
+                })]
+            } else {
+                smallvec![i]
+            }
+        });
+
+        // 3. Update types to match the new renamed Anonymous Types
+        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def| {
+            if let Some(hir_id) = cx.def_to_hir_id(def) {
+                if let Some(new_ident) = renamer.new_idents.get(&hir_id) {
+                    path.segments.last_mut().unwrap().ident = new_ident.clone();
+                }
+            }
+            (qself, path)
+        });
+
+        // No need to update paths if the project wasn't transpiled
+        // with `--reorganize-definitions` flag
+        if !renamer.is_source {
+            return krate;
+        }
+
+        // 4. Update paths to from the old Anonymous Type Ident to the new Anonymous Type Ident
+        let krate = fold_nodes(krate, |mut i: P<Item>| {
+            match i.node {
+                ItemKind::Mod(ref mut outer_mod) => {
+                    // mod_ident -> [(old_unnamed_ident, new_unnamed_ident)]
+                    let mut mod_to_old_idents = HashMap::new();
+                    for outer_item in &outer_mod.items {
+                        match outer_item.node {
+                            ItemKind::Mod(ref inner_mod) => {
+                                let mut old_idents: Vec<(Ident, Ident)> = Vec::new();
+                                // iterate through and find all occurences of `unnamed`
+                                for inner_item in &inner_mod.items {
+                                    if let Some(old_ident) =
+                                        renamer.new_to_old.get(&inner_item.ident)
+                                    {
+                                        old_idents.push((*old_ident, inner_item.ident));
+                                    }
+                                }
+                                mod_to_old_idents.insert(outer_item.ident, old_idents);
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    for outer_item in &mut outer_mod.items {
+                        match outer_item.node {
+                            ItemKind::Use(ref mut ut) => {
+                                let mut old_idents = Vec::new();
+                                for segment in &ut.prefix.segments {
+                                    if let Some(vec) = mod_to_old_idents.get(&segment.ident) {
+                                        old_idents = vec.clone();
+                                    }
+                                }
+                                if !old_idents.is_empty() {
+                                    let old_to_new: HashMap<Ident, Ident> = old_idents
+                                        .iter()
+                                        .map(|(old, new)| (*old, *new))
+                                        .collect::<HashMap<_, _>>();
+
+                                    let mut is_simple = false;
+                                    match ut.kind {
+                                        UseTreeKind::Nested(ref mut use_trees) => {
+                                            for (use_tree, _) in use_trees.iter_mut() {
+                                                if let Some(new_ident) =
+                                                    old_to_new.get(&use_tree.ident())
+                                                {
+                                                    let new_path =
+                                                        mk().path(Path::from_ident(*new_ident));
+                                                    use_tree.prefix = new_path;
+                                                }
+                                            }
+                                        }
+                                        UseTreeKind::Simple(..) => {
+                                            is_simple = true;
+                                        }
+                                        _ => {}
+                                    }
+
+                                    if is_simple {
+                                        for segment in &mut ut.prefix.segments {
+                                            if let Some(new_ident) = old_to_new.get(&segment.ident)
+                                            {
+                                                segment.ident = *new_ident;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+            smallvec![i]
+        });
+
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
     }
 }
 
@@ -542,6 +751,8 @@ pub fn register_commands(reg: &mut Registry) {
         repl: args[1].clone(),
         filter: args.get(2).map(|x| (x as &str).into_symbol()),
     }));
+
+    reg.register("rename_unnamed", |_args| mk(RenameUnnamed));
 
     reg.register("replace_items", |_args| mk(ReplaceItems));
 
