@@ -32,6 +32,7 @@ pub mod bar {
             u: unnamed,
         }
     }
+    use self::bar_h::*;
 }
 
 pub mod foo {
@@ -42,6 +43,12 @@ pub mod foo {
         pub struct unnamed {
             b: usize,
         }
+
+        #[derive(Copy, Clone)]
+        #[repr(C)]
+        pub struct unnamed_0 {
+            c: usize,
+        }
         
         #[derive(Copy, Clone)]
         #[repr(C)]
@@ -50,12 +57,29 @@ pub mod foo {
         }
     }
 
-    use self::foo_h::unnamed;
+    use self::foo_h::{unnamed, foo_t};
+    use self::foo_h::unnamed_0;
+    #[derive(Copy, Clone)]
+    #[repr(C)]
     pub struct foo_bar {
         u: unnamed,
+        u2: unnamed_0,
     }
 }
 
+pub mod test {
+    pub mod unnamed {
+    }
+}
+
+struct unnamed {
+    d: u32, 
+}
+
 fn main() {
-    println!("hello!");
+    let u = unnamed {
+        d: 0
+    };
+
+    println!("{}", u.d);
 }

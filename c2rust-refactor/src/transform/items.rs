@@ -121,69 +121,46 @@ impl Transform for RenameUnnamed {
     fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
         #[derive(Debug, Default)]
         struct Renamer {
-            idents: HashSet<Ident>,
             items_to_change: HashSet<NodeId>,
             new_idents: HashMap<HirId, Ident>,
             new_to_old: HashMap<Ident, Ident>,
             is_source: bool,
         }
         let mut renamer: Renamer = Default::default();
+        let mut counter: usize = 0;
 
-        let has_unnamed = |ident: &Ident| -> bool { ident.as_str().contains("unnamed") };
+        let has_unnamed = |ident: &Ident| { ident.as_str().contains("unnamed") };
+        let make_name = |counter| { Ident::from_str(&format!("unnamed_{}", counter)) };
 
-        // 1. Figure out how high the `unnamed` Ident count goes
+        // 1. Rename Anonymous types to the unique Ident
         let krate = fold_nodes(krate, |i: P<Item>| {
             if attr::contains_name(&i.attrs, "header_src") && !renamer.is_source {
                 renamer.is_source = true;
             }
 
-            if !has_unnamed(&i.ident) {
+            let is_module = match i.node {
+                ItemKind::Mod(..) => true,
+                _ => false,
+            };
+
+            if !has_unnamed(&i.ident) || is_module {
                 return smallvec![i];
             }
 
-            if !renamer.idents.insert(i.ident) {
-                renamer.items_to_change.insert(i.id);
-            }
-            smallvec![i]
+            let new_name = make_name(counter);
+
+            renamer
+                .new_idents
+                .insert(cx.hir_map().node_to_hir_id(i.id), new_name);
+            renamer.new_to_old.insert(new_name, i.ident);
+            counter += 1;
+            smallvec![i.map(|i| Item {
+                ident: new_name,
+                ..i
+            })]
         });
 
-        // `counter - 1` should give `N + 1`, where `N` is `unnamed_N` or the base of
-        // the highest "unnamed" within a Crate
-        let mut counter: usize = renamer.idents.len();
-
-        let make_name = |counter| -> String {
-            // A set of these Anonmyous types would look like
-            // [unnamed, unnamed_0, unnamed_1, unnamed_2]
-            if counter > 2 {
-                return format!("unnamed_{}", counter - 1);
-            } else if counter == 2 {
-                // [unnamed, unnamed_0], so the next value to start with should be 1
-                return format!("unnamed_{}", 1);
-            } else {
-                format!("unnamed_{}", 0)
-            }
-        };
-
-        // 2. Rename Anonymous types to the unique Ident
-        let krate = fold_nodes(krate, |i: P<Item>| {
-            if renamer.items_to_change.contains(&i.id) {
-                let new_name = Ident::from_str(&make_name(counter));
-
-                renamer
-                    .new_idents
-                    .insert(cx.hir_map().node_to_hir_id(i.id), new_name);
-                renamer.new_to_old.insert(new_name, i.ident);
-                counter += 1;
-                smallvec![i.map(|i| Item {
-                    ident: new_name,
-                    ..i
-                })]
-            } else {
-                smallvec![i]
-            }
-        });
-
-        // 3. Update types to match the new renamed Anonymous Types
+        // 2. Update types to match the new renamed Anonymous Types
         let krate = fold_resolved_paths(krate, cx, |qself, mut path, def| {
             if let Some(hir_id) = cx.def_to_hir_id(def) {
                 if let Some(new_ident) = renamer.new_idents.get(&hir_id) {
@@ -199,22 +176,37 @@ impl Transform for RenameUnnamed {
             return krate;
         }
 
-        // 4. Update paths to from the old Anonymous Type Ident to the new Anonymous Type Ident
+        // 3. Update paths to from the old AnonymousType Ident to the new AnonymousType Ident
         let krate = fold_nodes(krate, |mut i: P<Item>| {
+            // This pass is only intended to be ran when the `--reorganize-definition` flag is used
+            // on `c2rust-transpile`
             match i.node {
                 ItemKind::Mod(ref mut outer_mod) => {
-                    // mod_ident -> [(old_unnamed_ident, new_unnamed_ident)]
+
+                    // What the transpiler does is, separate items into their modules based on
+                    // source location, we need to gather the changed ident so paths can be
+                    // correctly updated.
+
+                    // This map holds the module name that will be used as a check in the path,
+                    // and a mapping between the old ident and the new one
+                    // mod_ident -> <old_unnamed_ident -> new_unnamed_ident>
                     let mut mod_to_old_idents = HashMap::new();
                     for outer_item in &outer_mod.items {
+                        // populate mod_to_old_idents
                         match outer_item.node {
                             ItemKind::Mod(ref inner_mod) => {
-                                let mut old_idents: Vec<(Ident, Ident)> = Vec::new();
-                                // iterate through and find all occurences of `unnamed`
+                                let mut old_idents: HashMap<Ident, Ident> = HashMap::new();
+                                // iterate through and find all occurences of `unnamed` within this
+                                // inner module
+
+                                // TODO: if a module `foo_h` defines an Item with an ident
+                                // of `bar_h`, and there is also a module with that same ident.
+                                // That may cause some issues
                                 for inner_item in &inner_mod.items {
                                     if let Some(old_ident) =
                                         renamer.new_to_old.get(&inner_item.ident)
                                     {
-                                        old_idents.push((*old_ident, inner_item.ident));
+                                        old_idents.insert(*old_ident, inner_item.ident);
                                     }
                                 }
                                 mod_to_old_idents.insert(outer_item.ident, old_idents);
@@ -223,27 +215,29 @@ impl Transform for RenameUnnamed {
                         }
                     }
 
+                    // Iterate through the items and locate use statements
                     for outer_item in &mut outer_mod.items {
                         match outer_item.node {
+                            // Update the paths
                             ItemKind::Use(ref mut ut) => {
-                                let mut old_idents = Vec::new();
+                                let mut old_idents = HashMap::new();
                                 for segment in &ut.prefix.segments {
-                                    if let Some(vec) = mod_to_old_idents.get(&segment.ident) {
-                                        old_idents = vec.clone();
+                                    if let Some(map) = mod_to_old_idents.get(&segment.ident) {
+                                        old_idents = map.clone();
                                     }
                                 }
                                 if !old_idents.is_empty() {
-                                    let old_to_new: HashMap<Ident, Ident> = old_idents
-                                        .iter()
-                                        .map(|(old, new)| (*old, *new))
-                                        .collect::<HashMap<_, _>>();
-
                                     let mut is_simple = false;
                                     match ut.kind {
+                                        // Change paths that look like:
+                                        // use self::module::{unnamed, unnamed_0};
+                                        //
+                                        // unnamed -> unnamed_12 && unnamed_0 -> unnamed_13
+                                        // use self::module::{unnamed_12, unnamed_13};
                                         UseTreeKind::Nested(ref mut use_trees) => {
                                             for (use_tree, _) in use_trees.iter_mut() {
                                                 if let Some(new_ident) =
-                                                    old_to_new.get(&use_tree.ident())
+                                                    old_idents.get(&use_tree.ident())
                                                 {
                                                     let new_path =
                                                         mk().path(Path::from_ident(*new_ident));
@@ -257,9 +251,16 @@ impl Transform for RenameUnnamed {
                                         _ => {}
                                     }
 
+                                    // Update simple paths:
+                                    // use self::module::unnamed_0;
+                                    //
+                                    // unnamed_0 -> unnamed_17
+                                    // use self::module::unnamed_17;
                                     if is_simple {
+                                        // Iterate through each segment until an unchanged unnamed
+                                        // is found
                                         for segment in &mut ut.prefix.segments {
-                                            if let Some(new_ident) = old_to_new.get(&segment.ident)
+                                            if let Some(new_ident) = old_idents.get(&segment.ident)
                                             {
                                                 segment.ident = *new_ident;
                                             }
