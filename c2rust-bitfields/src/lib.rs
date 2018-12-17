@@ -257,26 +257,17 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                         }
                     }
 
-                    // If the int type is signed, and the leftmost bit
-                    // that can fit in the bitwidth is 1, we must 1-extend
-                    // so that it gets interpreted as a negative number
+                    // If the int type is signed, attempt to sign extend unconditionally
                     if is_signed {
-                        let bit_width = rhs_bit - lhs_bit;
-                        let bit = 1 << bit_width;
-                        let read_bit = val & bit;
+                        #[cfg(not(feature = "no_std"))]
+                        let total_bit_size = ::std::mem::size_of::<IntType>() * 8;
+                        #[cfg(feature = "no_std")]
+                        let total_bit_size = ::core::mem::size_of::<IntType>() * 8;
+                        let bit_width = rhs_bit - lhs_bit + 1;
+                        let unused_bits = total_bit_size - bit_width;
 
-                        if read_bit != 0 {
-                            #[cfg(not(feature = "no_std"))]
-                            let total_bit_size = ::std::mem::size_of::<IntType>() * 8;
-                            #[cfg(feature = "no_std")]
-                            let total_bit_size = ::core::mem::size_of::<IntType>() * 8;
-
-                            for bit_pos in bit_width..total_bit_size {
-                                let bit = 1 << bit_pos;
-
-                                val |= bit;
-                            }
-                        }
+                        val <<= unused_bits;
+                        val >>= unused_bits;
                     }
 
                     val
