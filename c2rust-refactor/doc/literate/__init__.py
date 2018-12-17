@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shlex
 import shutil
 import sys
 from typing import List, Dict, Any
@@ -119,8 +120,21 @@ def build_result_json(blocks: List[literate.refactor.Block]) -> Dict[str, Any]:
 
             script_acc = []
 
-        script_acc.append('\n'.join(b.lines))
-        script.append('\n\n'.join(script_acc))
+        if len(script_acc) > 0:
+            # If there are previous commands in this block, make sure they end with
+            # a semicolon
+            words = shlex.split('\n'.join(script_acc))
+            if len(words) > 0 and words[-1] != ';':
+                for i in reversed(range(len(script_acc))):
+                    if script_acc[i].strip() != '':
+                        script_acc[i] = script_acc[i].rstrip('\n') + ' ;\n'
+                        break
+
+            # Add a blank line between blocks
+            script_acc.append('\n')
+
+        script_acc.extend(b.lines)
+        script.append(''.join(script_acc))
 
         results.append({
             'code_idx': len(code) - 1,
