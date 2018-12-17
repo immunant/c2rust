@@ -103,9 +103,9 @@ def do_render(args: argparse.Namespace):
     literate.render.prepare_files(all_files)
 
     with open(args.output, 'w') as f:
-        f.write('<style>')
+        f.write('<style>\n')
         f.write(literate.render.get_styles())
-        f.write('</style>')
+        f.write('</style>\n\n')
 
         diff_idx = 0
         for b in blocks:
