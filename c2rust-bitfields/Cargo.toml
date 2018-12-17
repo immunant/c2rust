@@ -14,5 +14,8 @@ quote = "0.6"
 [dev_dependencies]
 libc = "0.2"
 
+[features]
+no_std = []
+
 [lib]
 proc-macro = true

@@ -205,8 +205,9 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     }).collect();
     let field_bit_info = field_bit_info?;
     let field_bit_info2 = field_bit_info.clone();
+    let calc_total_bit_size_fn = generate_calc_total_bit_size_fn(field_bit_info.len());
 
-    // TODO: Field visibility determined by struct field visibility?
+    // TODO: Method visibility determined by struct field visibility?
     let q = quote! {
         impl #struct_ident {
             #(
@@ -266,10 +267,9 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
 
                     // If the int type is signed, attempt to sign extend unconditionally
                     if is_signed {
-                        #[cfg(not(feature = "no_std"))]
-                        let total_bit_size = ::std::mem::size_of::<IntType>() * 8;
-                        #[cfg(feature = "no_std")]
-                        let total_bit_size = ::core::mem::size_of::<IntType>() * 8;
+                        #calc_total_bit_size_fn
+
+                        let total_bit_size = calc_total_bit_size();
                         let bit_width = rhs_bit - lhs_bit + 1;
                         let unused_bits = total_bit_size - bit_width;
 
@@ -284,4 +284,22 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     };
 
     Ok(q.into())
+}
+
+fn generate_calc_total_bit_size_fn(count: usize) -> Vec<__rt::TokenStream> {
+    #[cfg(not(feature = "no_std"))]
+    let quoted = quote! {
+        fn calc_total_bit_size() -> usize {
+            ::std::mem::size_of::<IntType>() * 8
+        }
+    };
+
+    #[cfg(feature = "no_std")]
+    let quoted = quote! {
+        fn calc_total_bit_size() -> usize {
+            ::core::mem::size_of::<IntType>() * 8
+        }
+    };
+
+    vec![quoted; count]
 }

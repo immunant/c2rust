@@ -66,7 +66,10 @@ fn main() {
 }
 ```
 
-Furthermore, C bitfield rules for overflow and signed integers are taken into account. This crate is likely no_std compatible.
+Furthermore, C bitfield rules for overflow and signed integers are taken into account.
+
+This crate can generate `no_std` compatible code when the `no_std` feature flag
+is provided.
 
 ## Tests
 
