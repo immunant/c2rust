@@ -1,8 +1,9 @@
 import argparse
+import json
 import os
 import shutil
 import sys
-from typing import List
+from typing import List, Dict, Any
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../../scripts'))
 from common import config
@@ -44,6 +45,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
             help='generate rendered Markdown, including a diff for every '
                 'refactoring step',
             parents=[common])
+    sp.add_argument('--playground-js',
+            help='if set, the generated markdown will include this javascript '
+            'URL and call `initRefactorPlaygroundButtons` to set up '
+            'playground integration')
     sp.add_argument('input', metavar='INPUT.md')
     sp.add_argument('output', metavar='OUTPUT.md')
 
@@ -94,6 +99,40 @@ def do_exec(args: argparse.Namespace):
 
     literate.refactor.run_refactor(work_dir, cmds, mode=args.rewrite_mode)
 
+def build_result_json(blocks: List[literate.refactor.Block]) -> Dict[str, Any]:
+    code = []
+    script = []
+    results = []
+
+    script_acc = []
+
+    for b in blocks:
+        if not isinstance(b, literate.refactor.RefactorCode):
+            continue
+
+        if b.parsed_old:
+            if len(b.old) == 1:
+                f = next(iter(b.old.values()))
+                code.append(f.text)
+            else:
+                code.append(None)
+
+            script_acc = []
+
+        script_acc.append('\n'.join(b.lines))
+        script.append('\n\n'.join(script_acc))
+
+        results.append({
+            'code_idx': len(code) - 1,
+            'script_idx': len(script) - 1,
+        })
+
+    return {
+            'code': code,
+            'script': script,
+            'results': results,
+            }
+
 def do_render(args: argparse.Namespace):
     with open(args.input) as f:
         blocks = literate.parse.parse_blocks(f)
@@ -122,6 +161,13 @@ def do_render(args: argparse.Namespace):
                 for line in b.lines:
                     f.write(line)
                 f.write('```\n\n')
+                # Unfortunately the `pulldown-cmark` package used by `mdbook`
+                # provides no way to set the `id` of a code block.  Instead we
+                # use this hack: we place an empty, invisible <a> tag with an
+                # `id` just after the block, and in the Javascript code we use
+                # `document.getElementById(...).previousElementSibling` to get
+                # the actual code block.
+                f.write('<a id="refactor-anchor-%d" style="display: none"></a>\n' % diff_idx)
 
                 print('rendering diff #%d' % (diff_idx + 1))
                 print('  diff options: %s' % (b.opts,))
@@ -136,6 +182,13 @@ def do_render(args: argparse.Namespace):
                 diff_idx += 1
             else:
                 raise TypeError('expected Text or ScriptDiff, got %s' % (type(b),))
+
+        if args.playground_js is not None:
+            j = build_result_json(blocks)
+            f.write('<script>var C2RUST_REFACTOR_JSON = %s;</script>\n' %
+                    json.dumps(j, indent=2))
+            f.write('<script src="%s"></script>' % args.playground_js)
+            f.write('<script>initRefactorPlaygroundButtons();</script>')
 
 def do_playground(args: argparse.Namespace):
     # Stupid hack here, because Rust `Process` doesn't support merging stdout
