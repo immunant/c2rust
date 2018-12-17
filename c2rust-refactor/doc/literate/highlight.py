@@ -111,14 +111,13 @@ def token_css_class(tok: type(pygments.token.Token),
 
     while tok is not Token:
         if tok in classes:
+            if classes[tok] is None:
+                return None
             if mode == 'hljs':
                 return 'hljs-' + classes[tok]
             elif mode == 'ace':
                 cs = classes[tok]
-                if cs is None:
-                    return None
-                else:
-                    return ' '.join('ace_%s' % c for c in cs)
+                return ' '.join('ace_%s' % c for c in cs)
             else:
                 return classes[tok]
         else:
