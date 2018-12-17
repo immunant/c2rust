@@ -33,3 +33,4 @@
     - [Docker Setup](docker/README.md)
     - [Translator Testing](tests/README.md)
     - [Building the manual](docs/build_manual.md)
+    - [Source walkthrough](docs/source_walkthrough.md)
