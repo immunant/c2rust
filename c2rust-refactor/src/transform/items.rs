@@ -176,10 +176,12 @@ impl Transform for RenameUnnamed {
             return krate;
         }
 
-        // 3. Update paths to from the old AnonymousType Ident to the new AnonymousType Ident
+        // 3. Update paths to from the old AnonymousType `Ident` to the new AnonymousType `Ident`
         let krate = fold_nodes(krate, |mut i: P<Item>| {
             // This pass is only intended to be ran when the `--reorganize-definition` flag is used
-            // on `c2rust-transpile`
+            // on `c2rust-transpile`, and the reason is due to having use statements importing
+            // `Item`s within submodules (also the only time the `c2rust-transpile`r uses use
+            // statements).
             match i.node {
                 ItemKind::Mod(ref mut outer_mod) => {
 
@@ -218,8 +220,8 @@ impl Transform for RenameUnnamed {
                     // Iterate through the items and locate use statements
                     for outer_item in &mut outer_mod.items {
                         match outer_item.node {
-                            // Update the paths
                             ItemKind::Use(ref mut ut) => {
+                                let mut ut: &mut UseTree = ut;
                                 let mut old_idents = HashMap::new();
                                 for segment in &ut.prefix.segments {
                                     if let Some(map) = mod_to_old_idents.get(&segment.ident) {
@@ -227,7 +229,6 @@ impl Transform for RenameUnnamed {
                                     }
                                 }
                                 if !old_idents.is_empty() {
-                                    let mut is_simple = false;
                                     match ut.kind {
                                         // Change paths that look like:
                                         // use self::module::{unnamed, unnamed_0};
@@ -245,26 +246,22 @@ impl Transform for RenameUnnamed {
                                                 }
                                             }
                                         }
+                                        // Update simple paths:
+                                        // use self::module::unnamed_0;
+                                        //
+                                        // unnamed_0 -> unnamed_17
+                                        // use self::module::unnamed_17;
                                         UseTreeKind::Simple(..) => {
-                                            is_simple = true;
-                                        }
-                                        _ => {}
-                                    }
-
-                                    // Update simple paths:
-                                    // use self::module::unnamed_0;
-                                    //
-                                    // unnamed_0 -> unnamed_17
-                                    // use self::module::unnamed_17;
-                                    if is_simple {
-                                        // Iterate through each segment until an unchanged unnamed
-                                        // is found
-                                        for segment in &mut ut.prefix.segments {
-                                            if let Some(new_ident) = old_idents.get(&segment.ident)
-                                            {
-                                                segment.ident = *new_ident;
+                                            // Iterate through each segment until an unchanged unnamed
+                                            // is found
+                                            for segment in &mut ut.prefix.segments {
+                                                if let Some(new_ident) = old_idents.get(&segment.ident)
+                                                {
+                                                    segment.ident = *new_ident;
+                                                }
                                             }
                                         }
+                                        _ => {}
                                     }
                                 }
                             }
