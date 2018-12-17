@@ -317,6 +317,7 @@ def get_styles() -> str:
     # Compatibility with manual/mdbook rendering
     parts.append('.diff { font-size: 0.875em; }')
     parts.append('.diff td { padding: 2px; }')
+    parts.append('.diff td pre { margin: 0; }')
     parts.append('table.diff tbody tr:nth-child(2n) { background: inherit; }')
 
     return '\n'.join(parts) + '\n'
