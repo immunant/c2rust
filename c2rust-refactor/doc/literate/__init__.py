@@ -20,8 +20,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     config.add_args(common)
 
     ap = argparse.ArgumentParser(
-            description='Process literate refactoring scripts.',
-            parents=[common])
+            description='Process literate refactoring scripts.')
 
     subparsers = ap.add_subparsers(dest='cmd')
 
@@ -49,7 +48,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument('output', metavar='OUTPUT.md')
 
     sp = subparsers.add_parser('playground',
-            help='run a refactoring script on some code, and render a diff')
+            help='run a refactoring script on some code, and render a diff',
+            parents=[common])
     sp.add_argument('code', metavar='CODE.rs')
     sp.add_argument('script', metavar='SCRIPT.txt')
     sp.add_argument('output', metavar='OUTPUT.html')
