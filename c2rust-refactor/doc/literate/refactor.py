@@ -84,22 +84,31 @@ FLAG_FALSY = { '0', 'false', 'n', 'no', 'off' }
 
 RefactorCommand = List[str]
 
+class RefactorResult(NamedTuple):
+    old: Dict[str, File]
+    new: Dict[str, File]
+
+    parsed_old: bool
+    '''If `True`, this refactoring step actually parsed the contents of `old`
+    from disk before running `cmds`.  This means we can be sure that loading
+    `old` and running `cmds` will actually succeed.'''
+
 class RefactorState:
     args: argparse.Namespace
 
     cur_crate: Optional[AnyCrate]
 
+    pending_cmds: List[RefactorCommand]
     '''Accumulator of refactoring commands to run.  We try to run all commands
     in one go for efficiency, and to avoid the need to keep track of rewritten
     files.'''
-    pending_cmds: List[RefactorCommand]
 
     pending_results: List[ResultInfo]
     '''A `ResultInfo` for each refactoring result that will be produced by
     running `pending_cmds`.  That is, there is an entry in `pending_results`
     for each `commit` or `write` in `pending_cmds`.'''
 
-    results: Dict[ResultKey, Tuple[Dict[str, File], Dict[str, File]]]
+    results: Dict[ResultKey, RefactorResult]
     '''A dict of refactoring results (pairs of old and new files), keyed on the
     `key` argument passed to `force_write`.'''
 
@@ -138,13 +147,7 @@ class RefactorState:
 
         rp = ResultProcessor(self.all_files, work_dir.name)
         for i, info in enumerate(self.pending_results):
-            # `commit` saves the previous marks before clearing, but we
-            # actually want to pretend that the marks were cleared first, so
-            # that the next block doesn't get a bunch of random removed marks
-            # included in its diff.
-            clear_marks = info.is_commit
-
-            result = rp.next_result(clear_marks)
+            result = rp.next_result(info.is_commit)
             for k in info.dests:
                 self.results[k] = result
 
@@ -280,9 +283,11 @@ class ResultProcessor:
         self.rw_index = 0
         self.prev_files = {}
         self.prev_marks = []
+        # `True` when the contents of `prev_files` have actually been written
+        # out with `commit`.
+        self.prev_committed = True
 
-    def next_result(self, clear_marks: bool=False) -> \
-            Tuple[Dict[str, File], Dict[str, File]]:
+    def next_result(self, is_commit: bool=False) -> RefactorResult:
         '''Load and process the next refactoring result.  If `clear_marks` is
         set, the content of the `marks.json` file is ignored, as if the
         refactoring process cleared all marks at the end.'''
@@ -290,7 +295,11 @@ class ResultProcessor:
         with open(os.path.join(self.dir_path, 'rewrites.%d.json' % self.rw_index)) as f:
             rws = json.load(f)
 
-        if clear_marks:
+        # `commit` saves the previous marks before clearing, but we actually
+        # want to pretend that the marks were cleared first, so that the next
+        # block doesn't get a bunch of random removed marks included in its
+        # diff.
+        if is_commit:
             marks = []
         else:
             with open(os.path.join(self.dir_path, 'marks.%d.json' % self.rw_index)) as f:
@@ -316,10 +325,13 @@ class ResultProcessor:
             self.all_files.append(new[path])
             self.prev_files[path] = new[path]
 
+        result = RefactorResult(old, new, self.prev_committed)
+
         self.prev_marks = marks
+        self.prev_committed = is_commit
         self.rw_index += 1
 
-        return (old, new)
+        return result
 
 
 def refactor_crate(crate: AnyCrate, cmds: List[RefactorCommand],
@@ -561,6 +573,12 @@ class RefactorCode(NamedTuple):
     new: Dict[str, File]
     '''The files of the project following this refactoring step.'''
 
+    parsed_old: bool
+    '''If `True`, the running of this block of code actually began with parsing
+    `old` from disk (i.e., `old` was not a snapshot of an intermediate
+    refactoring state, captured with `write`).  This means we can be sure that
+    loading `old` and running the commands in `lines` will actually succeed.'''
+
 # Reexport for convenience
 Text = parse.Text
 Code = parse.Code
@@ -631,9 +649,9 @@ def run_refactor_scripts(args: argparse.Namespace,
                 continue
 
             if i in results:
-                old, new = results[i]
+                r = results[i]
                 new_blocks.append(RefactorCode(opts['_attrs'], b.lines,
-                    opts, old, new))
+                    opts, r.old, r.new, r.parsed_old))
             else:
                 new_blocks.append(b)
         else:

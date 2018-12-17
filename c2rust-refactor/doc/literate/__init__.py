@@ -148,8 +148,10 @@ def do_playground(args: argparse.Namespace):
     with open(args.script) as f:
         script = f.read()
 
-    (old, new), all_files = literate.refactor.run_refactor_for_playground(
+    result, all_files = literate.refactor.run_refactor_for_playground(
             args, script)
+    old = result.old
+    new = result.new
 
     literate.format.format_files(all_files)
     literate.render.prepare_files(all_files)
