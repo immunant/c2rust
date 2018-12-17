@@ -1,4 +1,4 @@
-#![recursion_limit="512"]
+#![recursion_limit = "512"]
 
 extern crate proc_macro;
 extern crate quote;
@@ -7,10 +7,13 @@ extern crate syn;
 use proc_macro::{Span, TokenStream};
 use quote::quote;
 use quote::__rt;
-use syn::{Attribute, Field, Fields, Ident, ItemStruct, Lit, Meta, NestedMeta, Path, PathArguments, PathSegment, Token, parse_macro_input};
 use syn::parse::Error;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
+use syn::{
+    parse_macro_input, Attribute, Field, Fields, Ident, ItemStruct, Lit, Meta, NestedMeta, Path,
+    PathArguments, PathSegment, Token,
+};
 
 #[cfg(target_endian = "big")]
 compile_error!("Big endian architectures are not currently supported");
@@ -89,27 +92,28 @@ fn parse_bitfield_attr(attr: &Attribute, field_ident: &Ident) -> Result<BFFieldA
 }
 
 fn filter_and_parse_fields(field: &Field) -> Vec<Result<BFFieldAttr, Error>> {
-    let attrs: Vec<_> = field.attrs.iter().filter(|attr|
-        attr.path
-            .segments
-            .last()
-            .unwrap()
-            .value()
-            .ident == "bitfield"
-    ).collect();
+    let attrs: Vec<_> = field
+        .attrs
+        .iter()
+        .filter(|attr| attr.path.segments.last().unwrap().value().ident == "bitfield")
+        .collect();
 
     if attrs.len() == 0 {
         return Vec::new();
     }
 
-    attrs.into_iter()
+    attrs
+        .into_iter()
         .map(|attr| parse_bitfield_attr(attr, &field.ident.as_ref().unwrap()))
         .collect()
 }
 
 fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
     let leading_colon = if field.ty.starts_with("::") {
-        Some(Token![::]([Span::call_site().into(), Span::call_site().into()]))
+        Some(Token![::]([
+            Span::call_site().into(),
+            Span::call_site().into(),
+        ]))
     } else {
         None
     };
@@ -124,7 +128,10 @@ fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
         });
 
         if segement_strings.peek().is_some() {
-            segments.push_punct(Token![::]([Span::call_site().into(), Span::call_site().into()]));
+            segments.push_punct(Token![::]([
+                Span::call_site().into(),
+                Span::call_site().into(),
+            ]));
         }
     }
 

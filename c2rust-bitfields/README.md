@@ -68,6 +68,16 @@ fn main() {
 
 Furthermore, C bitfield rules for overflow and signed integers are taken into account. This crate is likely no_std compatible.
 
+## Tests
+
+Since rust doesn't support a `build.rs` exclusively for tests, you must manually compile the c test code and link it in.
+
+```shell
+$ clang tests/bitfields.c -c -fPIC -o tests/bitfields.o
+$ ar -rc tests/libtest.a tests/bitfields.o
+$ RUSTFLAGS="-L `pwd`/tests" cargo test
+```
+
 # Acknowledgements
 
 This crate is inspired by the [rust-bitfield](https://github.com/dzamlo/rust-bitfield), [packed_struct](https://github.com/hashmismatch/packed_struct.rs), and [bindgen](https://github.com/rust-lang/rust-bindgen) crates.
