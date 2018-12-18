@@ -6,5 +6,6 @@ if [ `uname` = 'Darwin' ]; then
 fi
 
 $refactor \
+    rewrite_expr '1 + 1' '2' \; \
     autoretype \
     -- old.rs $rustflags
