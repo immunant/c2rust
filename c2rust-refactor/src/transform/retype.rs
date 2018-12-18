@@ -1468,6 +1468,10 @@ fn can_coerce<'a, 'tcx>(
         // TODO Deref coercion: Expression &x of type &T to &*x of type &U if T
         // derefs to U (i.e. T: Deref<Target=U>)
 
+        (FnDef(..), FnPtr(sig)) => {
+            from_ty.fn_sig(tcx) == *sig
+        },
+
         _ => false
     }
 }
