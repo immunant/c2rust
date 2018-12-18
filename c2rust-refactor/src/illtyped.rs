@@ -75,7 +75,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> FoldIlltyped<'a, 'tcx, F> {
               sub_e: P<Expr>,
               expected_ty: ty::Ty<'tcx>,
               illtyped: Option<&Cell<bool>>) -> P<Expr> {
-        if let Some(actual_ty) = self.cx.opt_node_type(sub_e.id) {
+        if let Some(actual_ty) = self.cx.opt_adjusted_node_type(sub_e.id) {
             if actual_ty != expected_ty {
                 illtyped.map(|i| i.set(true));
                 return self.inner.fix_expr(sub_e, actual_ty, expected_ty);
@@ -88,7 +88,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> FoldIlltyped<'a, 'tcx, F> {
                    sub_e: P<Expr>,
                    target_ty: ty::Ty<'tcx>,
                    illtyped: Option<&Cell<bool>>) -> P<Expr> {
-        if let Some(actual_ty) = self.cx.opt_node_type(sub_e.id) {
+        if let Some(actual_ty) = self.cx.opt_adjusted_node_type(sub_e.id) {
             illtyped.map(|i| i.set(true));
             return self.inner.fix_expr_cast(sub_e, actual_ty, target_ty);
         }
