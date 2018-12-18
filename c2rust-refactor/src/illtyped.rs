@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use rustc::hir;
 use rustc::hir::def::Def;
-use rustc::ty;
+use rustc::ty::{self, TyCtxt, ParamEnv};
 use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
@@ -11,6 +11,24 @@ use syntax::util::move_map::MoveMap;
 use api::*;
 use driver;
 
+
+fn types_approx_equal<'tcx>(tcx: TyCtxt<'_, 'tcx, 'tcx>,
+                            ty1: ty::Ty<'tcx>,
+                            ty2: ty::Ty<'tcx>) -> bool {
+    // Normalizing and erasing regions fixes a few cases where `illtyped` would otherwise falsely
+    // report a type error.  Specifically:
+    //
+    //  - On a method call `x.f()`, the autoref adjustment on `x` uses a specific region, while the
+    //    signature returned by `opt_callee_fn_sig` has regions erased (because `opt_callee_info`
+    //    itself calls `normalize_erasing_regions`).  Erasing regions fixes this issue, though at
+    //    the cost of ignoring most borrow checker errors.
+    //  - On array expressions, often one side has the length expression fully evaluated, while the
+    //    other does not.  Normalizing makes sure both sides are evaluated, so no error is reported
+    //    (assuming the lengths do, in fact, match).
+    let ty1 = tcx.normalize_erasing_regions(ParamEnv::empty(), ty1);
+    let ty2 = tcx.normalize_erasing_regions(ParamEnv::empty(), ty2);
+    ty1 == ty2
+}
 
 pub trait IlltypedFolder<'tcx> {
     /// Called on each expr `e` whose `actual` type doesn't match the `expected` type propagated
@@ -76,7 +94,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> FoldIlltyped<'a, 'tcx, F> {
               expected_ty: ty::Ty<'tcx>,
               illtyped: Option<&Cell<bool>>) -> P<Expr> {
         if let Some(actual_ty) = self.cx.opt_adjusted_node_type(sub_e.id) {
-            if actual_ty != expected_ty {
+            if !types_approx_equal(self.cx.ty_ctxt(), actual_ty, expected_ty) {
                 illtyped.map(|i| i.set(true));
                 return self.inner.fix_expr(sub_e, actual_ty, expected_ty);
             }
