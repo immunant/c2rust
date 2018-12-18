@@ -478,10 +478,11 @@ impl<'a> Translation<'a> {
         lhs: CExprId,
         rhs_expr: P<Expr>,
     ) -> Result<WithStmts<P<Expr>>, String> {
-        let lhs_expr_read = self.convert_expr(ctx, lhs)?.to_expr();
         let ctx = ctx.set_bitfield_write(true);
-        let lhs_expr_write = self.convert_expr(ctx, lhs)?.to_expr();
+        let named_reference = self.name_reference_write_read(ctx, lhs)?;
+        let lhs_expr = named_reference.val.0;
         let setter_name = format!("set_{}", field_name);
+        let lhs_expr_read = mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<P<Expr>>::new());
         let param_expr = match op {
             BinOp::AssignAdd => mk().binary_expr(BinOpKind::Add, lhs_expr_read, rhs_expr),
             BinOp::AssignSubtract => mk().binary_expr(BinOpKind::Sub, lhs_expr_read, rhs_expr),
@@ -497,11 +498,13 @@ impl<'a> Translation<'a> {
             _ => panic!("Cannot convert non-assignment operator"),
         };
 
-        let expr = mk().method_call_expr(lhs_expr_write, setter_name, vec![param_expr]);
-        let stmt = mk().expr_stmt(expr);
+        let expr = mk().method_call_expr(lhs_expr, setter_name, vec![param_expr]);
         let val = self.panic("Empty statement expression is not supposed to be used");
+        let mut stmts = named_reference.stmts;
 
-        return Ok(WithStmts { stmts: vec![stmt], val });
+        stmts.push(mk().expr_stmt(expr));
+
+        return Ok(WithStmts { stmts, val });
     }
 
     /// This method will convert a bitfield member one of four ways:

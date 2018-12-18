@@ -84,6 +84,8 @@ void ops_padded_bitfield(padded_bitfield* bf) {
     bf->x <<= 1L;
     bf->x &= 1L;
     bf->x |= 2L;
+    bf->x++;
+    bf->x--;
 
     // These should add casts to rhs
     bf->x %= 2;
@@ -112,6 +114,8 @@ padded_bitfield ops_padded_bitfield_init(void) {
     bf.x <<= 1L;
     bf.x &= 1L;
     bf.x |= 2L;
+    bf.x++;
+    bf.x--;
 
     // These should add casts to rhs
     bf.x %= 2;
@@ -180,4 +184,15 @@ struct from_csmith init_from_csmith(void) {
     struct from_csmith fc = {1, 2, 3, 4, 5, 6, 7};
 
     return fc;
+}
+
+struct S {
+    int a: 8;
+} s;
+
+struct S *get_bf_ptr(void) { return &s; }
+
+void modify_bf_ptr(void) {
+    get_bf_ptr()->a = 1;
+    get_bf_ptr()->a += 1;
 }

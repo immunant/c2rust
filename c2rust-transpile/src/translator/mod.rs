@@ -984,7 +984,7 @@ impl<'c> Translation<'c> {
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
-                
+
                 if is_packed || max_field_alignment == Some(1) { reprs.push(simple_metaitem("packed")); };
                 // https://github.com/rust-lang/rust/issues/33626
                 if let Some(alignment) = manual_alignment {

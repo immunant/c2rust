@@ -4,7 +4,7 @@ use std::mem::size_of;
 use bitfields::{
     three_byte_date, rust_compare_three_byte_date, rust_write_three_byte_date, padded_bitfield,
     rust_ops_padded_bitfield, rust_ops_padded_bitfield_init, mixed_bitfields, rust_init_bitfield_array,
-    rust_static_date, from_csmith, rust_init_from_csmith,
+    rust_static_date, from_csmith, rust_init_from_csmith, rust_get_bf_ptr, rust_modify_bf_ptr,
 };
 
 extern "C" {
@@ -233,4 +233,15 @@ pub fn test_from_csmith() {
     assert_eq!(fc.f4(), 5);
     assert_eq!(fc.f5, 6);
     assert_eq!(fc.f6(), 7);
+}
+
+pub fn test_returned_bitfield_ptr() {
+    let ptr = unsafe {
+        rust_modify_bf_ptr();
+        rust_get_bf_ptr()
+    };
+
+    unsafe {
+        assert_eq!((*ptr).a(), 2);
+    }
 }
