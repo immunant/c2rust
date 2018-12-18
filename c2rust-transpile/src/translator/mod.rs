@@ -952,7 +952,6 @@ impl<'c> Translation<'c> {
                 manual_alignment,
                 max_field_alignment,
                 platform_byte_size,
-                platform_alignment,
                 ..
             } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
@@ -980,7 +979,7 @@ impl<'c> Translation<'c> {
                 }
 
                 if has_bitfields {
-                    return self.convert_bitfield_struct_decl(name, manual_alignment, platform_alignment, platform_byte_size, s, field_info);
+                    return self.convert_bitfield_struct_decl(name, manual_alignment, platform_byte_size, s, field_info);
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];

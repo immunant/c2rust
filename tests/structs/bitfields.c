@@ -196,3 +196,18 @@ void modify_bf_ptr(void) {
     get_bf_ptr()->a = 1;
     get_bf_ptr()->a += 1;
 }
+
+struct two_eight_bits {
+    int a: 8;
+    int b: 8;
+};
+
+size_t size_of_two_eight_bits(void) {
+    return sizeof(struct two_eight_bits);
+}
+
+struct two_eight_bits two_eight_bits_init(void) {
+    struct two_eight_bits teb = {0, 0};
+
+    return teb;
+}

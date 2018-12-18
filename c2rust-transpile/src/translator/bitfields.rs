@@ -164,7 +164,7 @@ impl<'a> Translation<'a> {
                 },
             }
 
-            next_byte_pos = (bit_index + bitfield_width) / 8 + 1;
+            next_byte_pos = (bit_index + bitfield_width - 1) / 8 + 1;
         }
 
         // Find leftover bitfield group at end: it's all set
@@ -201,7 +201,6 @@ impl<'a> Translation<'a> {
         &self,
         name: String,
         manual_alignment: Option<u64>,
-        platform_alignment: u64,
         platform_byte_size: u64,
         span: Span,
         field_info: Vec<FieldInfo>,
@@ -269,10 +268,14 @@ impl<'a> Translation<'a> {
             }
         }
 
-        let repr_items = vec![
+        let mut repr_items = vec![
             simple_metaitem("C"),
-            simple_metaitem(&format!("align({})", manual_alignment.unwrap_or(platform_alignment))),
         ];
+
+        if let Some(align) = manual_alignment {
+            repr_items.push(simple_metaitem(&format!("align({})", align)));
+        }
+
         let repr_attr = mk().meta_item("repr", MetaItemKind::List(repr_items));
 
         let item = mk()

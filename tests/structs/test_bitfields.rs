@@ -5,6 +5,7 @@ use bitfields::{
     three_byte_date, rust_compare_three_byte_date, rust_write_three_byte_date, padded_bitfield,
     rust_ops_padded_bitfield, rust_ops_padded_bitfield_init, mixed_bitfields, rust_init_bitfield_array,
     rust_static_date, from_csmith, rust_init_from_csmith, rust_get_bf_ptr, rust_modify_bf_ptr,
+    two_eight_bits, rust_two_eight_bits_init,
 };
 
 extern "C" {
@@ -30,6 +31,8 @@ extern "C" {
     fn zeroed_three_byte_date() -> three_byte_date;
     #[no_mangle]
     fn size_of_from_csmith() -> usize;
+    #[no_mangle]
+    fn size_of_two_eight_bits() -> usize;
 }
 
 pub fn test_three_byte_date() {
@@ -244,4 +247,15 @@ pub fn test_returned_bitfield_ptr() {
     unsafe {
         assert_eq!((*ptr).a(), 2);
     }
+}
+
+// Previously there was an issue where the end
+// padding was one byte instead of two for this
+// struct
+pub fn test_size_of_two_eight_bits() {
+    let c_size_of = unsafe {
+        size_of_two_eight_bits()
+    };
+
+    assert_eq!(size_of::<two_eight_bits>(), c_size_of);
 }
