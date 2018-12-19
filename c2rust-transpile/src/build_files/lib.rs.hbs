@@ -41,7 +41,7 @@ ${line_prefix}#[path = "${module_path}"] pub mod ${module_name};
 -->
 
 {{#each modules}}
-    {{line_prefix}}#[path = "{{module_path}}"] pub mod {{module_name}};
+    #[path = "{{this.0}}"] pub mod {{this.1}};
 {{/each}}
 
 {{#if main_module}}

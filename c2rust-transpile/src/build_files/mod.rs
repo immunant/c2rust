@@ -44,6 +44,28 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
         .collect::<Vec<String>>()
         .join(", ");
 
+    println!("{:?}", modules); // TODO: remove debug output
+    let relpaths = modules
+        .iter()
+        // TODO: make path relative to `build_dir`
+        .map(|m| (m.file_name().unwrap().to_str().unwrap()))
+        .collect::<Vec<&str>>();
+
+    let modnames = modules
+        .iter()
+        .map(|m: &PathBuf| {
+            // remove .rs from filename
+            let fname = m.file_name().unwrap().to_str().unwrap();
+            let len = fname.len();
+            &fname[0..len-3]
+        })
+        .collect::<Vec<&str>>();
+
+    let modules = relpaths
+        .iter()
+        .zip(modnames.iter())
+        .collect::<Vec<_>>();
+
     let json = json!({
         "reorganize_definitions": tcfg.reorganize_definitions,
         "cross_checks": tcfg.cross_checks,
@@ -56,7 +78,6 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
     let file_name = match tcfg.main { Some(_) => "main.rs", None => "lib.rs" };
     let output_path = build_dir.join(file_name);
     let output = reg.render("lib.rs", &json).unwrap();
-//    println!("{}", output);
 
     maybe_write_to_file(&output_path, output);
 }
@@ -86,7 +107,6 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) 
     let file_name = "Cargo.toml";
     let output_path = build_dir.join(file_name);
     let output = reg.render(file_name, &json).unwrap();
-//    println!("{}", output);
     maybe_write_to_file(&output_path, output);
 }
 
