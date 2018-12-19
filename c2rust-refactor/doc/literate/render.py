@@ -68,7 +68,7 @@ def render_line(line: Line, f: File) -> str:
             sym = '&#x25b6;'
         else:
             sym = '&#x25c0;'
-        parts.append('<a class="mark-%s" title="%s">%s</a>' %
+        parts.append('<span class="mark-%s" title="%s">%s</span>' %
                 (mark_class(f, m), html.escape(mark_desc(f, m)), sym))
 
     def emit_text(start, end):
