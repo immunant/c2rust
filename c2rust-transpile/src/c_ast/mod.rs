@@ -520,6 +520,8 @@ pub enum CDeclKind {
         is_packed: bool,
         manual_alignment: Option<u64>,
         max_field_alignment: Option<u64>,
+        platform_byte_size: u64,
+        platform_alignment: u64,
     },
 
     // Union
@@ -533,6 +535,8 @@ pub enum CDeclKind {
         name: String,
         typ: CQualTypeId,
         bitfield_width: Option<u64>,
+        platform_bit_offset: u64,
+        platform_type_bitwidth: u64,
     },
 }
 
