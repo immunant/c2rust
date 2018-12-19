@@ -630,4 +630,278 @@ later refactoring pass will gather up all `static mut`s, including `win`,
 and collect them into a stack-allocated struct, at which point accessing `win`
 will no longer be unsafe.
 
+## General library calls
+
+We convert `ncurses` library calls to `pancurses` ones in a few stages.
+
+First, for functions that don't require a window object, we simply replace each
+`ncurses` function with its equivalent in the `pancurses` library:
+
+```refactor
+rewrite_expr 'nonl' '::pancurses::nonl' ;
+rewrite_expr 'noecho' '::pancurses::noecho' ;
+rewrite_expr 'cbreak' '::pancurses::cbreak' ;
+rewrite_expr 'has_colors' '::pancurses::has_colors' ;
+rewrite_expr 'start_color' '::pancurses::start_color' ;
+rewrite_expr 'endwin' '::pancurses::endwin' ;
+rewrite_expr 'init_pair' '::pancurses::init_pair' ;
+```
+
+Next, functions taking a window are replaced with method calls on the static
+`win` variable we defined earlier:
+
+```refactor
+rewrite_expr 'wrefresh(stdscr)' 'win.refresh()' ;
+rewrite_expr 'wrefresh(curscr)' 'win.refresh()' ;
+rewrite_expr 'keypad(stdscr, __bf)' 'win.keypad(__bf)' ;
+rewrite_expr 'wmove(stdscr, __my, __mx)' 'win.mv(__my, __mx)' ;
+rewrite_expr 'wclear(stdscr)' 'win.clear()' ;
+rewrite_expr 'wclrtoeol(stdscr)' 'win.clrtoeol()' ;
+rewrite_expr 'waddch(stdscr, __ch)' 'win.addch(__ch)' ;
+
+rewrite_expr
+    'wattr_get(stdscr, __attrs, __pair, __e)'
+    '{
+        let tmp = win.attrget();
+        *__attrs = tmp.0;
+        *__pair = tmp.1;
+        0
+    }' ;
+rewrite_expr
+    'wattrset(stdscr, __attrs)'
+    'win.attrset(__attrs as ::pancurses::chtype)' ;
+```
+
+For simplicity, we write `win.f(...)` in the `rewrite_expr` replacement
+arguments, even though `win` is actually an `Option<Window>`, not a `Window`.
+Later, we replace `win` with `win.as_ref().unwrap()` throughout the crate to
+correct the resulting type errors.
+
+We next replace some `ncurses` global variables with calls to corresponding
+`pancurses` functions:
+
+```refactor
+rewrite_expr 'LINES' 'win.get_max_y()' ;
+rewrite_expr 'COLS' 'win.get_max_x()' ;
+```
+
+Finally, we handle a few special cases.
+
+`waddnstr` takes a string argument, which in general could be any `*const
+c_char`.  However, `robotfindskitten` calls it only on string literals, which
+lets us perform a more specialized rewrite that avoids unsafe C string
+conversions:
+
+```refactor
+rewrite_expr
+    'waddnstr(stdscr, __str as *const u8 as *const libc::c_char, __n)'
+    "win.addnstr(::std::str::from_utf8(__str).unwrap().trim_end_matches('\0'),
+                 __n as usize)" ;
+```
+
+`intrflush` has no `pancurses` equivalent, so we replace it with a no-op of the
+same type:
+
+```refactor
+rewrite_expr 'intrflush(__e, __f)' '0' ;
+```
+
+That covers all of the "ordinary" `ncurses` functions used in
+`robotfindskitten`.  The remaining subsections cover the more complex cases.
+
+## String formatting
+
+We previously replaced calls to the `ncurses` `printw` and `mvprintw`
+string-formatting functions with code using Rust's safe string formatting
+macros.  This removes unsafety from the call site, but uses wrapper functions
+(`fmt_printw` and `fmt_mvprintw`) that call unsafe code internally.  But now
+that we are using the `pancurses` library, we can replace those wrappers with
+safer equivalents.
+
+```refactor
+select target 'item(fmt_printw);' ;
+create_item '
+    fn fmt_printw(args: ::std::fmt::Arguments) -> libc::c_int {
+        unsafe {
+            win.printw(&format!("{}", args))
+        }
+    }
+' after ;
+delete_items ;
+clear_marks ;
+
+select target 'item(fmt_mvprintw);' ;
+create_item '
+    fn fmt_mvprintw(y: libc::c_int, x: libc::c_int,
+                    args: ::std::fmt::Arguments) -> libc::c_int {
+        unsafe {
+            win.mvprintw(y, x, &format!("{}", args))
+        }
+    }
+' after ;
+delete_items ;
+clear_marks ;
+```
+
+The wrappers still use unsafe code to access `win`, a `static mut`, but no
+longer make FFI calls or manipulate raw C strings.  When we later remove all
+`static mut`s from the program, these functions will become entirely safe.
+
+## Input handling
+
+Adapting `ncurses`-based input handling to use `pancurses` requires some extra
+care.  The `pancurses` `getch` function returns a Rust enum, while the
+`ncurses` version simply returns an integer.  `robotfindskitten` matches those
+integers against various `ncurses` keycode constants, which, after macro
+expansion, become integer literals in the Rust code.
+
+The more idiomatic approach would be to replace each integer literal with the
+matching `pancurses::Input` enum variant when switching from `ncurses` `getch`
+to the `pancurses` version.  However, we instead take the easier approach of
+converting `pancurses::Input` values back to `ncurses` integer keycodes, so
+the existing `robotfindskitten` input handling code can remain unchanged.
+
+First, we inject a translation function from `pancurses` to `ncurses` keycodes:
+
+```refactor
+select target 'item(initialize_ncurses);' ;
+create_item '
+    fn encode_input(inp: Option<::pancurses::Input>) -> libc::c_int {
+        use ::pancurses::Input::*;
+        let inp = match inp {
+            Some(x) => x,
+            None => return -1,
+        };
+        match inp {
+            // TODO: unicode inputs in the range 256 .. 512 can
+            // collide with ncurses special keycodes
+            Character(c) => c as u32 as libc::c_int,
+            Unknown(i) => i,
+            special => {
+                let idx = ::pancurses::SPECIAL_KEY_CODES.iter()
+                    .position(|&k| k == special).unwrap();
+                let code = idx as i32 + ::pancurses::KEY_OFFSET;
+                if code > ::pancurses::KEY_F15 {
+                    code + 48
+                } else {
+                    code
+                }
+            },
+        }
+    }
+' after ;
+```
+
+Then, we translate `ncurses` `wgetch` calls to use the `pancurses` `getch`
+method, wrapping the result in `encode_input` to keep the results unchanged.
+
+```refactor
+rewrite_expr 'wgetch(stdscr)' '::encode_input(win.getch())' ;
+```
+
+## Final steps
+
+As mentioned previously, we use `win` to obtain the current window object
+throughout the `ncurses` refactoring process, even though `win` is actually an
+`Option<Window>`, not a `Window`.  Now that we are done with all the rewrites,
+we can update thote uses to access the `Window` properly:
+
+```refactor
+rewrite_expr 'win' 'win.as_ref().unwrap()' ;
+```
+
+The final step is to initialize `win`.  This corresponds to the call to the
+`ncurses` `initscr` initialization function:
+
+```refactor
+rewrite_expr 'initscr()' 'win = Some(::pancurses::initscr())' ;
+```
+
+We save this for last only so that the `win` to `win.as_ref().unwrap()` rewrite
+doesn't produce an erroneous assignment `win.as_ref().unwrap() = ...`.
+
+At this point, we are done with the current refactoring step:
+`robotfindskitten` has been fully adapted to use the safe `pancurses` API in
+place of raw `ncurses` FFI calls.
+
+```refactor
+commit
+```
+
+
+# Moving global state to the stack
+
+`robotfindskitten` uses global variables - `static mut`s in Rust - to store the
+game state.  Accessing these globals is unsafe, due to the difficulty of
+preventing simultaneous borrowing and mutation.  In this refactoring step, we
+move the global state onto the stack and pass it by reference to every function
+that needs it, which allows the borrow checker to analyze its usage and ensure
+safety.
+
+Most of the work in this step is handled by the `static_to_local_ref`
+refactoring command.  This command identifies all functions that use a given
+static, and modifies those functions to access the global through a reference
+(passed as an argument to the function) instead of accessing it directly.  (See
+the `static_to_local_ref` command documentation for examples.)
+
+However, running `static_to_local_ref` separately on each of
+`robotfindskitten`'s seven global variables would add up to seven new arguments
+to many of `robotfindskitten`'s functions, making their signatures difficult to
+read.  Instead, we proceed in two steps.  First, we gather up all the global
+variables into a single global struct.  Then, we run `static_to_local_ref` on
+just the struct, achieving safety while adding only a single new argument to
+each affected function.
+
+
+We collect the statics into a struct using `static_collect_to_struct`:
+
+```refactor
+select target 'crate; child(static && mut);' ;
+static_collect_to_struct State S
+```
+
+Then we run `static_to_local_ref` to pass a reference to the new `State` object
+everywhere it is used:
+
+```refactor
+select target 'crate; child(static && name("S"));' ;
+select user 'crate; desc(fn && !name("main|main_0"));' ;
+static_to_local_ref ;
+```
+
+The functions that previously accessed the global `S` now use a reference
+argument `S_`, removing a source of unsafety.
+
+The only function that still accesses `S` directly is `main_0`.  And since
+`main_0` is called only once per run of the program, we can replace the global
+`S` with a local variable declared inside `main_0` without affecting the
+behavior of the program.  The `static_to_local` command performs the necessary
+transformation (using the marks we previous set up for `static_to_local_ref`):
+
+```refactor
+static_to_local
+```
+
+Now there are no `static mut`s remaining in the program.
+
+There is one final cleanup step to perform.  The struct `State` appears in the
+signature of several public functions, but `State` itself is not public, so
+`rustc` reports an error.  We could make `State` public, but since there is no
+reason for the functions in question to be public in the first place, we make
+the functions private instead:
+
+```refactor
+select target 'crate; desc(fn && !name("main"));' ;
+set_visibility '' ;
+
+commit
+```
+
+
+# `libc` calls
+
+
+
+
+
 
