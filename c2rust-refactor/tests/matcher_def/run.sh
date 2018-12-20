@@ -6,6 +6,5 @@ if [ `uname` = 'Darwin' ]; then
 fi
 
 $refactor \
-    select target 'crate; child(fn && name("f"));' \; \
-    rewrite_expr 'def!(f)()' '::f2()' \
+    rewrite_expr 'def!(::f)()' '::f2()' \
     -- old.rs $rustflags

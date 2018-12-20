@@ -133,7 +133,7 @@ pub enum RustcArgSource {
 }
 
 pub struct Options {
-    pub rewrite_mode: file_io::OutputMode,
+    pub rewrite_modes: Vec<file_io::OutputMode>,
     pub commands: Vec<Command>,
     pub rustc_args: RustcArgSource,
     pub cursors: Vec<Cursor>,
@@ -356,7 +356,7 @@ fn main_impl(opts: Options) {
         let mut state = command::RefactorState::from_rustc_args(
             &rustc_args,
             cmd_reg,
-            Arc::new(file_io::RealFileIO::new(opts.rewrite_mode)),
+            Arc::new(file_io::RealFileIO::new(opts.rewrite_modes)),
             marks,
         );
 

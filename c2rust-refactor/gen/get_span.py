@@ -69,3 +69,7 @@ def generate(decls):
         field_name = find_span_field(d)
         if field_name is not None:
             yield do_impl(d, field_name)
+
+def has_get_span_impl(d):
+    '''Returns `true` if type `d` implements `GetSpan`; `False` otherwise.'''
+    return isinstance(d, Struct) and find_span_field(d) is not None

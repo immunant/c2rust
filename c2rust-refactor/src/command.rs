@@ -71,17 +71,29 @@ pub struct RefactorState {
     /// The current crate AST.  This is used as the "new" AST when rewriting.  This is always
     /// "unexpanded" - meaning either actually unexpanded, or expanded and then subsequently
     /// macro-collapsed.
-    krate: Option<Crate>,
+    krate: Crate,
 
-    /// The original crate AST.  This is used as the "old" AST when rewriting.  This is always an
-    /// unexpanded AST.
-    orig_krate: Option<Crate>,
+    /// The original crate AST.  This is used as the "old" AST when rewriting.  This is always a
+    /// real unexpanded AST, as it was loaded from disk, with full user-provided source text.
+    orig_krate: Crate,
 
     /// Mapping from `krate` IDs to `disk_krate` IDs
     node_map: NodeMap,
 
     /// Current marks.  The `NodeId`s here refer to nodes in `krate`.
     marks: HashSet<(NodeId, Symbol)>,
+}
+
+fn dummy_crate() -> Crate {
+    Crate {
+        module: Mod {
+            inner: DUMMY_SP,
+            items: vec![],
+            inline: false,
+        },
+        attrs: vec![],
+        span: DUMMY_SP,
+    }
 }
 
 impl RefactorState {
@@ -101,8 +113,8 @@ impl RefactorState {
             parsed_nodes: ParsedNodes::default(),
             node_id_counter: NodeIdCounter::new(0x8000_0000),
 
-            krate: None,
-            orig_krate: None,
+            krate: dummy_crate(),
+            orig_krate: dummy_crate(),
 
             node_map: NodeMap::new(),
 
@@ -133,13 +145,14 @@ impl RefactorState {
     /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
     /// rewriting with the previous `orig_crate` any more.
     pub fn load_crate(&mut self) {
-        // Discard any existing krate, and proceed to `Loaded` regardless of current mode.
+        // Discard any existing krate, overwriting it with one loaded from disk.
         let krate = self.load_crate_inner();
         let krate = remove_paren(krate);
         let krate = number_nodes(krate);
-        self.orig_krate = Some(krate.clone());
-        self.krate = Some(krate);
+        self.orig_krate = krate.clone();
+        self.krate = krate;
 
+        // Re-initialize `node_map` and `marks`.
         self.node_map = NodeMap::new();
         self.node_map.init(self.krate.list_node_ids().into_iter());
         // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
@@ -152,34 +165,30 @@ impl RefactorState {
         self.node_id_counter = NodeIdCounter::new(0x8000_0000);
     }
 
-    /// Save the crate to disk by applying any pending rewrites.  Transitions to `Unloaded`, mainly
-    /// so we don't have to deal with questions of how to keep `orig_krate` in sync with disk while
-    /// also being usable for rewriting from `krate`.
+    /// Save the crate to disk, by writing out the new source text produced by rewriting.
+    ///
+    /// Note that we allow multiple calls to `save_crate` with no intervening `load_crate`.  The
+    /// later `save_crate`s will simply keep using the original source text (even if it no longer
+    /// matches the text on disk) as the basis for rewriting.
     pub fn save_crate(&mut self) {
-        {
-            let old = self.orig_krate.take().unwrap();
-            let new = self.krate.take().unwrap();
-            let node_map = mem::replace(&mut self.node_map, NodeMap::new());
-            let node_id_map = node_map.into_inner();
+        let old = &self.orig_krate;
+        let new = &self.krate;
+        let node_id_map = self.node_map.clone().into_inner();
 
-            let rws = rewrite::rewrite(&self.session, &old, &new, node_id_map, |map| {
-                map_ast_into(&self.parsed_nodes, map);
-            });
-            if rws.len() == 0 {
-                info!("(no files to rewrite)");
-            } else {
-                files::rewrite_files_with(
-                    self.session.source_map(), &rws, &*self.file_io).unwrap();
-            }
-        }
+        self.file_io.save_marks(
+            new, self.session.source_map(), &node_id_map, &self.marks).unwrap();
 
-        // We already cleared most of the fields in the block above.
-        self.marks = HashSet::new();
+        let rw = rewrite::rewrite(&self.session, old, new, node_id_map, |map| {
+            map_ast_into(&self.parsed_nodes, map);
+        });
+        // Note that `rewrite_files_with` does not read any files from disk - it uses the
+        // `SourceMap` to get files' original source text.
+        files::rewrite_files_with(self.session.source_map(), &rw, &*self.file_io).unwrap();
     }
 
     pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> R
             where F: FnOnce(&CommandState, &driver::Ctxt) -> R {
-        let krate = self.krate.take().unwrap();
+        let krate = mem::replace(&mut self.krate, dummy_crate());
         let marks = mem::replace(&mut self.marks, HashSet::new());
 
         let unexpanded = krate.clone();
@@ -240,7 +249,7 @@ impl RefactorState {
             self.node_map.commit();
 
             // Write back new crate and marks
-            self.krate = Some(new_krate);
+            self.krate = new_krate;
             self.marks = new_marks;
 
             r
@@ -535,6 +544,10 @@ fn register_commit(reg: &mut Registry) {
         rs.save_crate();
         rs.load_crate();
         rs.clear_marks();
+    })));
+
+    reg.register("write", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
+        rs.save_crate();
     })));
 }
 

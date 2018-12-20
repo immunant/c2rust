@@ -16,98 +16,28 @@
 //!
 //!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
-//!
-//!  * `def!(name [, label])`: This placeholder will be replaced with a path `Expr` or `Ty` that
-//!    refers to a definition named `name` and labeled with `label` (default: "target").  Note that
-//!    this form uses only the plain name of the definition, and relies on the label to find the
-//!    specific def.
-//!
-//!    By default, the replacement path will be an absolute path.  But if the `Bindings` came from
-//!    a `matcher` invocation that included a `def!(name, label)` pattern, then the path matched by
-//!    that `def!` pattern will be used instead.  (This provides an easy way to take advantage of
-//!    surrounding `use` items to produce more convenient paths.)
 
-use rustc::hir::Node;
-use rustc::hir::def_id::DefId;
 use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem};
 use syntax::ast::Mac;
 use syntax::fold::{self, Folder};
-use syntax::parse::parser::Parser;
-use syntax::parse::token::Token;
 use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax::tokenstream::ThinTokenStream;
 use smallvec::SmallVec;
-use c2rust_ast_builder::mk;
 
-use api::DriverCtxtExt;
 use ast_manip::Fold;
 use ast_manip::util::{PatternSymbol, macro_name};
 use command::CommandState;
 use driver;
 use matcher::Bindings;
-use c2rust_ast_builder::IntoSymbol;
 use util::Lone;
 
 
+// `st` and `cx` were previously used for `def!` substitution, which has been removed.  I expect
+// they'll be needed again for future subst extensions, so I've left them in to reduce API churn.
+#[allow(unused)]
 struct SubstFolder<'a, 'tcx: 'a> {
     st: &'a CommandState,
     cx: &'a driver::Ctxt<'a, 'tcx>,
     bindings: &'a Bindings,
-}
-
-impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
-    fn named_marked_def_id(&self, name: Symbol, label: Symbol) -> Option<DefId> {
-        let mut found = None;
-
-        for &(node_id, node_label) in self.st.marks().iter() {
-            if node_label != label {
-                continue;
-            }
-
-            let node = match_or!([self.cx.hir_map().find(node_id)] Some(x) => x;
-                                 continue);
-            let node_name = match node {
-                Node::Item(i) => i.name,
-                Node::ForeignItem(i) => i.name,
-                Node::TraitItem(i) => i.ident.name,
-                Node::ImplItem(i) => i.ident.name,
-                _ => continue,
-            };
-            if node_name != name {
-                continue;
-            }
-
-            assert!(found.is_none(),
-                    "found multiple nodes with name `{}` and label `{}`", name, label);
-            found = Some(self.cx.node_def_id(node_id));
-        }
-
-        found
-    }
-
-    fn get_def_path(&self, tts: &ThinTokenStream) -> Path {
-        let mut p = Parser::new(&self.cx.session().parse_sess,
-                                tts.clone().into(),
-                                None, false, false);
-        let name = p.parse_ident().unwrap().name;
-        let label =
-            if p.eat(&Token::Comma) {
-                p.parse_ident().unwrap().name
-            } else {
-                "target".into_symbol()
-            };
-
-        if let Some(path) = self.bindings.get_def_path(name, label) {
-            return path.clone();
-        }
-
-        if let Some(def_id) = self.named_marked_def_id(name, label) {
-            return self.cx.def_path(def_id);
-        }
-
-        panic!("found no definition with name `{}` and label `{}`", name, label);
-    }
 }
 
 impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
@@ -144,10 +74,6 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
 
         if let ExprKind::Mac(ref mac) = e.node {
             match &macro_name(&mac).as_str() as &str {
-                "def" => {
-                    let path = self.get_def_path(&mac.node.tts);
-                    return mk().path_expr(path);
-                },
                 _ => {},
             }
         }
@@ -170,10 +96,6 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
 
         if let TyKind::Mac(ref mac) = ty.node {
             match &macro_name(&mac).as_str() as &str {
-                "def" => {
-                    let path = self.get_def_path(&mac.node.tts);
-                    return mk().path_ty(path);
-                },
                 _ => {},
             }
         }

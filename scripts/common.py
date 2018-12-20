@@ -136,6 +136,9 @@ add_subdirectory(c2rust-ast-exporter)
         self.RREF_BIN = "target/{}/c2rust-refactor".format(build_type)
         self.RREF_BIN = os.path.join(self.ROOT_DIR, self.RREF_BIN)
 
+        self.C2RUST_BIN = "target/{}/c2rust".format(build_type)
+        self.C2RUST_BIN = os.path.join(self.ROOT_DIR, self.C2RUST_BIN)
+
         self.TARGET_DIR = "target/{}/".format(build_type)
         self.TARGET_DIR = os.path.join(self.ROOT_DIR, self.TARGET_DIR)
 
