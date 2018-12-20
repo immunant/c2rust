@@ -191,7 +191,7 @@ convert_format_args ;
 
 Finally, we clean up from this step by clearing all the marks.
 
-```refactor 
+```refactor
 clear_marks ;
 ```
 
@@ -900,8 +900,223 @@ commit
 
 # `libc` calls
 
+`robotfindskitten` makes a number of calls to `libc` functions, such as `sleep`
+and `rand`, using the FFI.  Rust's standard library provides most of the same
+functionality, so we can replace these `libc` calls with safe equivalents.
+
+We replace `sleep` with `std::thread::sleep`:
+
+```refactor
+rewrite_expr 'sleep(__e)'
+    '::std::thread::sleep(
+        ::std::time::Duration::from_secs(__e as u64))' ;
+```
+
+We replace `atoi` with a call to `from_str`:
+
+```refactor
+rewrite_expr 'atoi(__e)'
+    '<libc::c_int as ::std::str::FromStr>::from_str(
+        ::std::ffi::CStr::from_ptr(__e).to_str().unwrap()).unwrap()' ;
+```
+
+In the version of `glibc` we used for translating `robotfindskitten`, `atoi` is
+actually provided as an inline wrapper function in the `libc` headers.  That
+means the Rust translation of `robotfindskitten` actually includes a full
+definition of `fn atoi(...) { ... }`.  Now that we've replaced the `atoi` call,
+we can delete the definition as well:
+
+```refactor
+select target 'item(atoi);' ;
+delete_items ;
+clear_marks ;
+```
+
+We replace `exit` with `std::process::exit`:
+
+```refactor
+rewrite_expr 'exit(__e)' '::std::process::exit(__e as i32)' ;
+```
+
+For `rand`, no equivalent is available in the Rust standard library.  Instead,
+we import the `rand` crate from crates.io:
+
+```refactor
+select target 'crate;' ;
+create_item 'extern crate rand;' inside ;
+clear_marks ;
+```
+
+`robotfindskitten` uses the common `srand(time())` pattern to initialize the
+random number generator, suggesting it does not rely on the ability to control
+or reuse seeds.  That means we can use the thread-local RNG provided by the
+`rand` crate, instead of explicitly constructing an RNG with a specific seed.
+So we replace `rand` with calls to `rand::random`:
+
+```refactor
+rewrite_expr 'rand()'
+    '(::rand::random::<libc::c_uint>() >> 1) as libc::c_int' ;
+```
+
+And we delete `srand` calls entirely, relying on the `rand` crate's automatic
+initialization of the thread-local RNG:
+
+```refactor
+rewrite_expr 'srand(__e)' '()' ;
+```
+
+At this point, the only remaining FFI call is to `signal`.  `robotfindskitten`
+sets up a `SIGINT` handler to ensure that `ncurses` (now `pancurses`) is shut
+down properly and the terminal is returned to a normal state when the user
+terminates the program with `^C`.  Unfortunately, there is no general way to
+make signal handling safe: to achieve memory safety, signal handling functions
+must obey a number of special restrictions above and beyond Rust's normal
+notions of safety, and these properties cannot be checked by the Rust compiler.
+
+We therefore leave the call to `signal` as unsafe code.  Since this will be the
+only unsafe operation in the program once we finish refactoring, we wrap it in
+its own unsafe block:
+
+```refactor
+rewrite_expr 'signal(__e, __f)' 'unsafe { signal(__e, __f) }' ;
+```
+
+We've now covered all of the `libc` functions used by `robotfindskitten`, and
+replaced nearly all of them with safe code.
+
+```refactor
+commit
+```
 
 
+# Function argument types
 
+Two functions in `robotfindskitten` accept raw pointers: `message` takes a
+pointer to a string to display on the screen, and `main_0` takes an array of
+string pointers `argv` containing the program's command line arguments.  To
+make these functions safe, we must replace their raw pointer arguments with
+safe equivalents.
+
+## `message`
+
+We begin with `message` because it is simpler.  This function takes a single
+argument of type `*mut c_char`, which we want to replace with `&str`:
+
+```refactor
+select target
+    'item(message); child(arg); child(match_ty(*mut libc::c_char));' ;
+rewrite_ty 'marked!(*mut libc::c_char)' '&str' ;
+delete_marks target ;
+```
+
+Of course, simply changing the type annotation is not sufficient.  Like when we
+retyped the `ver` and `messages` constants, this change has introduced two
+kinds of type errors: callers of `message` still pass `*mut c_char` where
+`&str` is now expected, and the body of message still uses the `message_0: &str`
+argument in contexts that require a `*mut c_char`.  We fix these using
+`type_fix_rules`:
+
+```refactor
+type_fix_rules
+    '*, *mut __t, &str =>
+        ::std::ffi::CStr::from_ptr(__old).to_str().unwrap()' ;
+    '*, &str, *const __t =>
+        ::std::ffi::CString::new(__old.to_owned()).unwrap().as_ptr()'
+```
+
+The first rule handles callers of `message`, using `CStr` methods to convert
+their `*mut c_char` raw pointers into safe `&str` references.  The second
+handles errors in the body of `message`, using `CString` to convert `&str`s
+back into `*const c_char`.  Note we must use `CString` instead of `CStr` in the
+second rule because an allocation is required: a `&str` is not guaranteed to
+end with a null terminator, so `CString` must copy it into a larger buffer and
+add the null terminator to produce a valid `*const c_char` string pointer.
+Since the `CString` is temporary, it will be deallocated at the end of the
+containing expression, but this is good enough for the code we encounter inside
+of `message`.  More complex string manipulation, however, would likely require
+a different refactoring approach.
+
+## `main_0`
+
+The Rust function `main_0` is the translation of the C `main` function of
+`robotfindskitten`.  The Rust `main` is a `c2rust`-generated wrapper that
+handles the differences between C's `main` signature and Rust's before invoking
+`main_0`.
+
+As in the `message` case, we wish to replace the unsafe pointer types in
+`main_0`'s argument list with safe equivalents.  However, in this case our
+choice of safe reference type is more constrained.  `main_0` calls
+`argv.offset` to access the individual command-line arguments, so we must use
+`CArray` (which supports such access patterns) for the outer pointer.   For the
+inner pointer, we use `Option<&CStr>`: `CStr` supports the conversions we will
+need to perform in `main` and `main_0`, and `Option<&CStr>` can be safely
+zero-initialized, which is required by `CArray`.
+
+We begin, as with `message`, by rewriting the argument type:
+
+```refactor
+select target
+    'item(main_0); child(arg && name("argv")); child(ty);' ;
+rewrite_ty 'marked!(*mut *mut libc::c_char)'
+    '::c2rust_runtime::CArray<Option<&::std::ffi::CStr>>' ;
+delete_marks target ;
+```
+
+Next, we fix type errors in `main`, which is the only caller of `main_0`.
+Since `c2rust` always generates the same `main` wrapper function, rather than
+refactor it, we can simply replace it entirely with a new version that is
+compatible with `main_0`'s new signature:
+
+```refactor
+select target 'item(main);' ;
+create_item '
+    fn main() {
+        // Collect argv into a vector.
+        let mut args_owned: Vec<::std::ffi::CString> = Vec::new();
+        for arg in ::std::env::args() {
+            args_owned.push(::std::ffi::CString::new(arg).unwrap());
+        }
+
+        // Now that the length is known, we can build a CArray.
+        let mut args: ::c2rust_runtime::CArray<Option<&::std::ffi::CStr>> =
+            ::c2rust_runtime::CArray::alloc(args_owned.len() + 1);
+        for i in 0 .. args_owned.len() {
+            args[i] = Some(&args_owned[i]);
+        }
+        // The last element of `args` remains `None`.
+
+        unsafe {
+            ::std::process::exit(main_0(
+                (args.len() - 1) as libc::c_int,
+                args) as i32);
+        }
+    }
+' after ;
+delete_items ;
+clear_marks ;
+```
+
+TODO
+
+```refactor
+select target 'item(main);' ;
+create_item '
+    fn opt_c_str_to_ptr(x: Option<&::std::ffi::CStr>) -> *const libc::c_char {
+        match x {
+            None => ::std::ptr::null(),
+            Some(x) => x.as_ptr(),
+        }
+    }
+' after ;
+clear_marks ;
+```
+
+```refactor
+type_fix_rules
+    '*, ::c2rust_runtime::array::CArrayOffset<__t>, __u => *__old'
+    '*, ::std::option::Option<&::std::ffi::CStr>, *const i8 =>
+        opt_c_str_to_ptr(__old)'
+    ;
+```
 
 
