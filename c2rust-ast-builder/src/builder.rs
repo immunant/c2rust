@@ -42,6 +42,11 @@ impl<L: Make<Ident>> Make<Label> for L {
     }
 }
 
+impl<'a> Make<Path> for &'a str {
+    fn make(self, mk: &Builder) -> Path {
+        vec![self].make(mk)
+    }
+}
 
 impl<'a> Make<Visibility> for &'a str {
     fn make(self, _mk: &Builder) -> Visibility {
@@ -1307,20 +1312,6 @@ impl Builder {
                                     self.generics))
     }
 
-    pub fn struct_field<I, T>(self, ident: I, ty: T) -> StructField
-        where I: Make<Ident>, T: Make<P<Ty>> {
-        let ident = ident.make(&self);
-        let ty = ty.make(&self);
-        StructField {
-            span: self.span,
-            ident: Some(ident),
-            vis: self.vis,
-            id: self.id,
-            ty: ty,
-            attrs: self.attrs,
-        }
-    }
-
     pub fn union_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
         where I: Make<Ident> {
         let name = name.make(&self);
@@ -1334,19 +1325,6 @@ impl Builder {
         let name = name.make(&self);
         Self::item(name, self.attrs, self.vis, self.span, self.id,
                    ItemKind::Enum(EnumDef { variants: fields }, self.generics))
-    }
-
-    pub fn enum_field<T>(self, ty: T) -> StructField
-        where T: Make<P<Ty>> {
-        let ty = ty.make(&self);
-        StructField {
-            span: self.span,
-            ident: None,
-            vis: self.vis,
-            id: self.id,
-            ty: ty,
-            attrs: self.attrs,
-        }
     }
 
     pub fn type_item<I, T>(self, name: I, ty: T) -> P<Item>
@@ -1525,7 +1503,7 @@ impl Builder {
         }
     }
 
-    pub fn foreign_fn<I, D>(self, name: I, decl: D) -> ForeignItem
+    pub fn fn_foreign_item<I, D>(self, name: I, decl: D) -> ForeignItem
         where I: Make<Ident>, D: Make<P<FnDecl>> {
         let name = name.make(&self);
         let decl = decl.make(&self);
@@ -1533,7 +1511,7 @@ impl Builder {
                            ForeignItemKind::Fn(decl, self.generics))
     }
 
-    pub fn foreign_static<I, T>(self, name: I, ty: T) -> ForeignItem
+    pub fn static_foreign_item<I, T>(self, name: I, ty: T) -> ForeignItem
         where I: Make<Ident>, T: Make<P<Ty>> {
         let name = name.make(&self);
         let ty = ty.make(&self);
@@ -1542,7 +1520,7 @@ impl Builder {
                            ForeignItemKind::Static(ty, is_mut))
     }
 
-    pub fn foreign_ty<I>(self, name: I) -> ForeignItem
+    pub fn ty_foreign_item<I>(self, name: I) -> ForeignItem
         where I: Make<Ident> {
         let name = name.make(&self);
         Self::foreign_item(name, self.attrs, self.vis, self.span, self.id,
@@ -1557,6 +1535,34 @@ impl Builder {
                            self.span, self.id, kind)
     }
 
+    // struct fields
+
+    pub fn struct_field<I, T>(self, ident: I, ty: T) -> StructField
+        where I: Make<Ident>, T: Make<P<Ty>> {
+        let ident = ident.make(&self);
+        let ty = ty.make(&self);
+        StructField {
+            span: self.span,
+            ident: Some(ident),
+            vis: self.vis,
+            id: self.id,
+            ty: ty,
+            attrs: self.attrs,
+        }
+    }
+
+    pub fn enum_field<T>(self, ty: T) -> StructField
+        where T: Make<P<Ty>> {
+        let ty = ty.make(&self);
+        StructField {
+            span: self.span,
+            ident: None,
+            vis: self.vis,
+            id: self.id,
+            ty: ty,
+            attrs: self.attrs,
+        }
+    }
 
     // Misc nodes
 
@@ -1698,6 +1704,7 @@ impl Builder {
         }
     }
 
+    /// Create a local variable
     pub fn local<V, T, E>(self, pat: V, ty: Option<T>, init: Option<E>) -> Local
         where V: Make<P<Pat>>, T: Make<P<Ty>>, E: Make<P<Expr>> {
         let pat = pat.make(&self);

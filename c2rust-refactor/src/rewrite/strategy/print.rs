@@ -23,11 +23,11 @@ use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
 use syntax::util::parser;
 
-use ast_manip::{GetNodeId, AstDeref};
+use ast_manip::{GetNodeId, GetSpan, AstDeref};
 use ast_manip::ast_map::NodeTable;
 use ast_manip::util::extended_span;
 use driver;
-use rewrite::{Rewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, ExprPrec};
+use rewrite::{Rewrite, TextRewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, ExprPrec};
 use rewrite::base::{is_rewritable, describe};
 use rewrite::base::{binop_left_prec, binop_right_prec};
 use util::Lone;
@@ -559,16 +559,17 @@ fn recover<'s, T>(maybe_restricted_span: Option<Span>,
     info!("REVERT {}", describe(rcx.session(), reparsed.splice_span()));
     info!("    TO {}", describe(rcx.session(), old.splice_span()));
 
-    let mut rewrites = Vec::new();
+    let mut rw = TextRewrite::adjusted(reparsed.splice_span(),
+                                       old.splice_span(),
+                                       new.get_adjustment(&rcx));
     let mark = rcx.mark();
-    let ok = Rewrite::rewrite(old, new, rcx.with_rewrites(&mut rewrites));
+    let ok = Rewrite::rewrite(old, new, rcx.enter(&mut rw));
     if !ok {
         rcx.rewind(mark);
         return false;
     }
 
-    let adj = new.get_adjustment(&rcx);
-    rcx.record(reparsed.splice_span(), old.splice_span(), rewrites, adj);
+    rcx.record(rw);
     true
 }
 
@@ -602,16 +603,16 @@ pub fn rewrite_at<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
         info!("     TEXT {}", describe(rcx.session(), reparsed.splice_span()));
     }
 
-    let mut rewrites = Vec::new();
+    let mut rw = TextRewrite::adjusted(old_span,
+                                       reparsed.splice_span(),
+                                       new.get_adjustment(&rcx));
     // Try recovery, starting in "restricted mode" to avoid infinite recursion.  The guarantee of
     // `recover_node_restricted` is that if it calls into `Rewrite::rewrite(old2, new2, ...)`, then
     // `old2.splice_span() != old_span`, so we won't end up back here in `rewrite_at` with
     // identical arguments.
     RecoverChildren::recover_node_restricted(
-        old_span, reparsed, new, rcx.with_rewrites(&mut rewrites));
+        old_span, reparsed, new, rcx.enter(&mut rw));
 
-    let adj = new.get_adjustment(&rcx);
-    rcx.record(old_span, reparsed.splice_span(), rewrites, adj);
-
+    rcx.record(rw);
     true
 }

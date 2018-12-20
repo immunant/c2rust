@@ -22,9 +22,7 @@ extern crate pulldown_cmark_to_cmark;
 extern crate regex;
 extern crate serde_json;
 
-use std::cell::Cell;
 use std::io;
-use std::iter;
 use std::process;
 use std::path::{Path, PathBuf};
 
@@ -33,7 +31,7 @@ use mdbook::book::{Book, BookItem};
 use mdbook::errors::*;
 use mdbook::preprocess::{CmdPreprocessor, Preprocessor, PreprocessorContext};
 use mdbook::utils::fs::file_to_string;
-use mdbook::utils::{take_lines, normalize_id};
+use mdbook::utils::normalize_id;
 use pulldown_cmark::{Parser, Event, Tag};
 use pulldown_cmark_to_cmark::fmt::cmark;
 use regex::{CaptureMatches, Captures, Regex};
@@ -86,7 +84,7 @@ fn handle_preprocessing(pre: &dyn Preprocessor) -> Result<()> {
     Ok(())
 }
 
-fn handle_supports(pre: &dyn Preprocessor, sub_args: &ArgMatches) -> ! {
+fn handle_supports(_pre: &dyn Preprocessor, _sub_args: &ArgMatches) -> ! {
     // All renderers are supported
     process::exit(0);
 }
@@ -237,7 +235,6 @@ impl<'a> Link<'a> {
             (_, Some(typ), Some(rest)) => {
                 let mut path_props = rest.as_str().split_whitespace();
                 let file_arg = path_props.next();
-                let props: Vec<&str> = path_props.collect();
 
                 match (typ.as_str(), file_arg) {
                     ("include_md", Some(pth)) => Some(parse_include_path(pth)),

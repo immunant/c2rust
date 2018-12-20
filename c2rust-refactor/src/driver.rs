@@ -125,6 +125,10 @@ impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
         self.tcx_arena
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
+
+    pub fn has_ty_ctxt(&self) -> bool {
+        self.tcx.is_some()
+    }
 }
 
 

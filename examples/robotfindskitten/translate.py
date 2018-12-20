@@ -585,6 +585,8 @@ class RefactorHash:
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument('--no-refactor', default=False, action='store_true',
+            help="translate only; don't refactor translated code")
     config.add_args(ap)
     args = ap.parse_args()
     config.update_args(args)
@@ -610,6 +612,10 @@ def main():
     # Move rust files into rust/src
     mkdir['-vp', 'rust/src']()
     mv['-v', local.path('src') // '*.rs', 'rust/src/']()
+
+
+    if args.no_refactor:
+        return
 
 
     # Refactor

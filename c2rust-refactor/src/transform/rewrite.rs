@@ -140,6 +140,29 @@ impl Transform for RewriteTy {
 }
 
 
+pub struct DebugMatchExpr {
+    pub pat: String,
+}
+
+impl Transform for DebugMatchExpr {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let pat = parse_expr(cx.session(), &self.pat);
+
+        let mut init_mcx = make_init_mcx(st, cx);
+        init_mcx.debug = true;
+        fold_match_with(init_mcx, pat, krate, |ast, _bnd| {
+            eprintln!("matched node {:?}", ast);
+            ast
+        })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -152,5 +175,9 @@ pub fn register_commands(reg: &mut Registry) {
         pat: args[0].clone(),
         repl: args[1].clone(),
         filter: if args.len() >= 3 { Some((&args[2]).into_symbol()) } else { None },
+    }));
+
+    reg.register("debug_match_expr", |args| mk(DebugMatchExpr {
+        pat: args[0].clone(),
     }));
 }

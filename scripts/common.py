@@ -42,6 +42,7 @@ class Config:
     DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
     RREF_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
     C2RUST_DIR = os.path.join(ROOT_DIR, 'c2rust')
+    BITFIELDS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-bitfields')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
     REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
     LIBFAKECHECKS_DIR = os.path.join(CROSS_CHECKS_DIR, "libfakechecks")
@@ -94,7 +95,7 @@ add_subdirectory(c2rust-ast-exporter)
     CUSTOM_RUST_RUSTC_VERSION = "rustc 1.32.0-nightly (21f268495 2018-12-02)"
 
     def __init__(self):
-        self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) 
+        self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER)
                                   for s in Config.LLVM_ARCHIVE_URLS]
         self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_FILES = [os.path.basename(s)
@@ -127,11 +128,19 @@ add_subdirectory(c2rust-ast-exporter)
             if args.debug:
                 build_type = 'debug'
 
+        self.BUILD_TYPE = build_type
+
         self.TRANSPILER = "target/{}/c2rust-transpile".format(build_type)
         self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)
 
         self.RREF_BIN = "target/{}/c2rust-refactor".format(build_type)
         self.RREF_BIN = os.path.join(self.ROOT_DIR, self.RREF_BIN)
+
+        self.C2RUST_BIN = "target/{}/c2rust".format(build_type)
+        self.C2RUST_BIN = os.path.join(self.ROOT_DIR, self.C2RUST_BIN)
+
+        self.TARGET_DIR = "target/{}/".format(build_type)
+        self.TARGET_DIR = os.path.join(self.ROOT_DIR, self.TARGET_DIR)
 
     @staticmethod
     def add_args(parser: argparse.ArgumentParser):

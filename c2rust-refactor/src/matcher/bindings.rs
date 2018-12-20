@@ -12,17 +12,12 @@ use c2rust_ast_builder::IntoSymbol;
 #[derive(Clone, Debug)]
 pub struct Bindings {
     map: HashMap<Symbol, Value>,
-
-    /// Record of paths matched by `def!()` special patterns.  The recorded path will be reused if
-    /// an equivalent `def!()` is encountered in substitution.
-    def_paths: HashMap<(Symbol, Symbol), Path>
 }
 
 impl Bindings {
     pub fn new() -> Bindings {
         Bindings {
             map: HashMap::new(),
-            def_paths: HashMap::new(),
         }
     }
 
@@ -38,23 +33,6 @@ impl Bindings {
                 val.ast_equiv(e.get())
             },
         }
-    }
-
-    /// Record the `Path` used to refer to a marked definition, so it can be reused later.
-    pub fn add_def_path(&mut self,
-                        name: Symbol,
-                        label: Symbol,
-                        path: Path) {
-        if !self.def_paths.contains_key(&(name, label)) {
-            self.def_paths.insert((name, label), path);
-        }
-    }
-
-    /// Obtain the path used to refer to a marked definition, if one was recorded.
-    pub fn get_def_path(&self,
-                        name: Symbol,
-                        label: Symbol) -> Option<&Path> {
-        self.def_paths.get(&(name, label))
     }
 }
 

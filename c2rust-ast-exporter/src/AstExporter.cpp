@@ -1213,6 +1213,8 @@ class TranslateASTVisitor final
           }
 
           auto def = D->getDefinition();
+          auto recordAlignment = 0;
+          auto byteSize = 0;
 
           std::vector<void*> childIds;
           if (def) {
@@ -1224,12 +1226,16 @@ class TranslateASTVisitor final
               // types.
               auto loc = def->getLocation();
               D->setLocation(loc);
+
+              const ASTRecordLayout &layout = this->Context->getASTRecordLayout(def);
+              recordAlignment = layout.getAlignment().getQuantity();
+              byteSize = layout.getSize().getQuantity();
           }
 
           auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
 
           encode_entry(D, tag, childIds, QualType(),
-          [D,def](CborEncoder *local){
+          [D,def,recordAlignment,byteSize](CborEncoder *local){
 
               // 1. Encode name or null
               auto name = D->getNameAsString();
@@ -1259,6 +1265,18 @@ class TranslateASTVisitor final
                   cbor_encode_uint(local, align);
               }
 
+              // 5. Encode pragma pack(n)
+              if (auto const mfaa = D->getAttr<MaxFieldAlignmentAttr>()) {
+                  cbor_encode_uint(local, mfaa->getAlignment() / 8);
+              } else {
+                  cbor_encode_null(local);
+              }
+
+              // 6. Encode the platform specific size of this record
+              cbor_encode_uint(local, byteSize);
+
+              // 7. Encode the platform specific alignment of this record
+              cbor_encode_uint(local, recordAlignment);
           });
 
           return true;
@@ -1330,16 +1348,29 @@ class TranslateASTVisitor final
 
           std::vector<void*> childIds;
           auto t = D->getType();
+          auto record = D->getParent();
+          const ASTRecordLayout &layout = this->Context->getASTRecordLayout(record);
+          auto index = D->getFieldIndex();
+          auto bitOffset = layout.getFieldOffset(index);
+          auto bitWidth = this->Context->getTypeSize(t);
           encode_entry(D, TagFieldDecl, childIds, t,
-                             [D, this](CborEncoder *array) {
+                             [D, this, bitOffset, bitWidth](CborEncoder *array) {
+                                 // 1. Encode field name
                                  auto name = D->getNameAsString();
                                  cbor_encode_string(array, name);
 
+                                 // 2. Encode bitfield width if any
                                  if (D->isBitField()) {
                                      cbor_encode_uint(array, D->getBitWidthValue(*this->Context));
                                  } else {
                                      cbor_encode_null(array);
                                  };
+
+                                 // 3. Encode bit offset in its record
+                                 cbor_encode_uint(array, bitOffset);
+
+                                 // 4. Encode the type's full bit width (even if a bitfield)
+                                 cbor_encode_uint(array, bitWidth);
                              });
 
           // This might be the only occurence of this type in the translation unit

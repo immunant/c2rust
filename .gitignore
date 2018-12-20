@@ -34,3 +34,7 @@ tests/*_c.txt
 tests/*_rust.txt
 
 /book
+
+# Outputs of `c2rust refactor -r json,marks`
+rewrites.*.json
+marks.*.json

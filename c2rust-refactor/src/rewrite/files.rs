@@ -13,17 +13,26 @@ use rewrite::cleanup::cleanup_rewrites;
 /// Apply a sequence of rewrites to the source code, handling the results by passing the new text
 /// to `callback` along with the `SourceFile` describing the original source file.
 pub fn rewrite_files_with(cm: &SourceMap,
-                          rewrites: &[TextRewrite],
+                          rw: &TextRewrite,
                           io: &FileIO) -> io::Result<()> {
     let mut by_file = HashMap::new();
 
-    for rw in rewrites {
+    for rw in &rw.rewrites {
         let sf = cm.lookup_byte_offset(rw.old_span.lo()).sf;
         let ptr = (&sf as &SourceFile) as *const _;
-        by_file.entry(ptr).or_insert_with(|| (Vec::new(), sf)).0.push(rw.clone());
+        by_file.entry(ptr).or_insert_with(|| (Vec::new(), Vec::new(), sf))
+            .0.push(rw.clone());
     }
 
-    for (_, (rewrites, sf)) in by_file {
+    for &(span, id) in &rw.nodes {
+        let sf = cm.lookup_byte_offset(span.lo()).sf;
+        let ptr = (&sf as &SourceFile) as *const _;
+        by_file.entry(ptr).or_insert_with(|| (Vec::new(), Vec::new(), sf))
+            .1.push((span, id));
+    }
+
+
+    for (_, (rewrites, nodes, sf)) in by_file {
         let path = match sf.name {
             FileName::Real(ref path) => path,
             _ => {
@@ -32,7 +41,8 @@ pub fn rewrite_files_with(cm: &SourceMap,
             },
         };
 
-        io.save_rewrites(cm, &sf, &rewrites)?;
+        // TODO: do something with nodes
+        io.save_rewrites(cm, &sf, &rewrites, &nodes)?;
         let mut buf = String::new();
         let rewrites = cleanup_rewrites(cm, rewrites);
         rewrite_range(cm, sf.start_pos, sf.end_pos, &rewrites, &mut |s| buf.push_str(s));

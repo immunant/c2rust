@@ -1,0 +1,21 @@
+[package]
+name = "c2rust-bitfields"
+version = "0.1.0"
+authors = [
+    "The C2Rust Project Developers <c2rust@immunant.com>",
+    "Daniel Kolsoi <djk@immunant.com>",
+]
+edition = "2018"
+
+[dependencies]
+syn = { version = "0.15", features = ["full"] }
+quote = "0.6"
+
+[dev_dependencies]
+libc = "0.2"
+
+[features]
+no_std = []
+
+[lib]
+proc-macro = true
