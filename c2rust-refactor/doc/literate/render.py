@@ -2,6 +2,8 @@ from collections import namedtuple
 import html
 from typing import Dict, Optional, Any
 
+import pygments.formatters
+
 from literate.annot import Span, fill_annot, cut_annot
 from literate.file import File, Line, Diff
 from literate.points import Point, map_points, merge_points, \
@@ -56,7 +58,7 @@ def mark_desc(f: File, node_id: int) -> str:
 
     return '%s: %s' % (mark_str, '; '.join(parts))
 
-def render_line(line: Line, f: File) -> str:
+def render_line(line: Line, f: File, opts: Dict[str, Any]) -> str:
     '''Render HTML output for a single line of a file.  `f` should be the file
     containing `line`.'''
     parts = []
@@ -152,6 +154,8 @@ def render_line(line: Line, f: File) -> str:
             if last_pos < len(line.text) and line.text[last_pos] == ' ':
                 last_pos += 1
 
+    hl_mode = opts['highlight-mode']
+
     for p in events:
         if p.pos > last_pos:
             emit_text(last_pos, p.pos)
@@ -170,11 +174,11 @@ def render_line(line: Line, f: File) -> str:
         elif kind == 'i_e':
             end_span()
         elif kind == 'hl_s':
-            cls = literate.highlight.token_css_class(label)
+            cls = literate.highlight.token_css_class(label, hl_mode)
             if cls is not None:
-                start_span('hljs-%s' % cls)
+                start_span(cls)
         elif kind == 'hl_e':
-            cls = literate.highlight.token_css_class(label)
+            cls = literate.highlight.token_css_class(label, hl_mode)
             if cls is not None:
                 end_span()
 
@@ -220,7 +224,8 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
     empty = True
 
     parts = []
-    parts.append('<table class="diff highlight">\n')
+    parts.append('<table class="diff %s">\n' %
+            literate.highlight.get_highlight_class(opts))
     parts.append('<colgroup>')
     parts.append('<col width="50"><col><col width="50"><col>')
     parts.append('</colgroup>\n')
@@ -257,7 +262,7 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
                     parts.append('<td class="line-num %s">%d</td>' %
                             (old_cls, ol.old_line + 1))
                     parts.append('<td class="%s"><pre>' % old_cls)
-                    parts.append(render_line(old.lines[ol.old_line], old))
+                    parts.append(render_line(old.lines[ol.old_line], old, opts))
                     parts.append('</pre></td>')
                 else:
                     parts.append('<td></td><td></td>')
@@ -266,7 +271,7 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
                     parts.append('<td class="line-num %s">%d</td>' %
                             (new_cls, ol.new_line + 1))
                     parts.append('<td class="%s"><pre>' % new_cls)
-                    parts.append(render_line(new.lines[ol.new_line], new))
+                    parts.append(render_line(new.lines[ol.new_line], new, opts))
                     parts.append('</pre></td>')
                 else:
                     parts.append('<td></td><td></td>')
@@ -312,6 +317,13 @@ def get_styles() -> str:
     # Compatibility with manual/mdbook rendering
     parts.append('.diff { font-size: 0.875em; }')
     parts.append('.diff td { padding: 2px; }')
+    parts.append('.diff td pre { margin: 0; }')
     parts.append('table.diff tbody tr:nth-child(2n) { background: inherit; }')
 
     return '\n'.join(parts) + '\n'
+
+def get_pygments_styles(fmt=None) -> str:
+    fmt = fmt or pygments.formatters.get_formatter_by_name(
+            'html', nowrap=True, style='monokai')
+
+    return fmt.get_style_defs('.highlight')

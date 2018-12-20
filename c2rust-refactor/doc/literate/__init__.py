@@ -1,8 +1,10 @@
 import argparse
+import json
 import os
+import shlex
 import shutil
 import sys
-from typing import List
+from typing import List, Dict, Any
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../../scripts'))
 from common import config
@@ -20,8 +22,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     config.add_args(common)
 
     ap = argparse.ArgumentParser(
-            description='Process literate refactoring scripts.',
-            parents=[common])
+            description='Process literate refactoring scripts.')
 
     subparsers = ap.add_subparsers(dest='cmd')
 
@@ -45,8 +46,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
             help='generate rendered Markdown, including a diff for every '
                 'refactoring step',
             parents=[common])
+    sp.add_argument('--playground-js',
+            help='if set, the generated markdown will include this javascript '
+            'URL and call `initRefactorPlaygroundButtons` to set up '
+            'playground integration')
     sp.add_argument('input', metavar='INPUT.md')
     sp.add_argument('output', metavar='OUTPUT.md')
+
+    sp = subparsers.add_parser('playground',
+            help='run a refactoring script on some code, and render a diff',
+            parents=[common])
+    sp.add_argument('code', metavar='CODE.rs')
+    sp.add_argument('script', metavar='SCRIPT.txt')
+    sp.add_argument('output', metavar='OUTPUT.html')
+
+    sp = subparsers.add_parser('playground-styles',
+            help='print CSS styles for rendering playground diffs')
 
     return ap
 
@@ -85,6 +100,53 @@ def do_exec(args: argparse.Namespace):
 
     literate.refactor.run_refactor(work_dir, cmds, mode=args.rewrite_mode)
 
+def build_result_json(blocks: List[literate.refactor.Block]) -> Dict[str, Any]:
+    code = []
+    script = []
+    results = []
+
+    script_acc = []
+
+    for b in blocks:
+        if not isinstance(b, literate.refactor.RefactorCode):
+            continue
+
+        if b.parsed_old:
+            if len(b.old) == 1:
+                f = next(iter(b.old.values()))
+                code.append(f.text)
+            else:
+                code.append(None)
+
+            script_acc = []
+
+        if len(script_acc) > 0:
+            # If there are previous commands in this block, make sure they end with
+            # a semicolon
+            words = shlex.split('\n'.join(script_acc))
+            if len(words) > 0 and words[-1] != ';':
+                for i in reversed(range(len(script_acc))):
+                    if script_acc[i].strip() != '':
+                        script_acc[i] = script_acc[i].rstrip('\n') + ' ;\n'
+                        break
+
+            # Add a blank line between blocks
+            script_acc.append('\n')
+
+        script_acc.extend(b.lines)
+        script.append(''.join(script_acc))
+
+        results.append({
+            'code_idx': len(code) - 1,
+            'script_idx': len(script) - 1,
+        })
+
+    return {
+            'code': code,
+            'script': script,
+            'results': results,
+            }
+
 def do_render(args: argparse.Namespace):
     with open(args.input) as f:
         blocks = literate.parse.parse_blocks(f)
@@ -94,9 +156,9 @@ def do_render(args: argparse.Namespace):
     literate.render.prepare_files(all_files)
 
     with open(args.output, 'w') as f:
-        f.write('<style>')
+        f.write('<style>\n')
         f.write(literate.render.get_styles())
-        f.write('</style>')
+        f.write('</style>\n\n')
 
         diff_idx = 0
         for b in blocks:
@@ -113,6 +175,13 @@ def do_render(args: argparse.Namespace):
                 for line in b.lines:
                     f.write(line)
                 f.write('```\n\n')
+                # Unfortunately the `pulldown-cmark` package used by `mdbook`
+                # provides no way to set the `id` of a code block.  Instead we
+                # use this hack: we place an empty, invisible <a> tag with an
+                # `id` just after the block, and in the Javascript code we use
+                # `document.getElementById(...).previousElementSibling` to get
+                # the actual code block.
+                f.write('<a id="refactor-anchor-%d" style="display: none"></a>\n' % diff_idx)
 
                 print('rendering diff #%d' % (diff_idx + 1))
                 print('  diff options: %s' % (b.opts,))
@@ -128,6 +197,44 @@ def do_render(args: argparse.Namespace):
             else:
                 raise TypeError('expected Text or ScriptDiff, got %s' % (type(b),))
 
+        if args.playground_js is not None:
+            j = build_result_json(blocks)
+            f.write('<script>var C2RUST_REFACTOR_JSON = %s;</script>\n' %
+                    json.dumps(j, indent=2))
+            f.write('<script src="%s"></script>' % args.playground_js)
+            f.write('<script>initRefactorPlaygroundButtons();</script>')
+
+def do_playground(args: argparse.Namespace):
+    # Stupid hack here, because Rust `Process` doesn't support merging stdout
+    # and stderr.
+    sys.stderr = None
+    os.close(2)
+    os.dup2(1, 2)
+    sys.stderr = sys.stdout
+
+    with open(args.script) as f:
+        script = f.read()
+
+    result, all_files = literate.refactor.run_refactor_for_playground(
+            args, script)
+    old = result.old
+    new = result.new
+
+    literate.format.format_files(all_files)
+    literate.render.prepare_files(all_files)
+
+    opts = literate.refactor.OPT_DEFAULTS.copy()
+    opts['show-filename'] = False
+    opts['highlight-mode'] = 'ace'
+
+    diff_text = literate.render.render_diff(old, new, opts)
+    with open(args.output, 'w') as f:
+        f.write(diff_text)
+
+def do_playground_styles(args: argparse.Namespace):
+    print(literate.render.get_styles())
+    print(literate.render.get_pygments_styles())
+
 def main(argv: List[str]):
     ap = build_arg_parser()
     args = ap.parse_args(argv)
@@ -139,6 +246,10 @@ def main(argv: List[str]):
         do_exec(args)
     elif args.cmd == 'render':
         do_render(args)
+    elif args.cmd == 'playground':
+        do_playground(args)
+    elif args.cmd == 'playground-styles':
+        do_playground_styles(args)
     else:
         if args.cmd is not None:
             print('unknown subcommand `%s`' % args.cmd)

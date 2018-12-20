@@ -187,13 +187,17 @@ fn get_rustc_executable(path: &Path) -> String {
 fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
     use std::sync::{Arc, Mutex};
     use cargo::Config;
-    use cargo::core::{Workspace, PackageId, Target};
+    use cargo::core::{Workspace, PackageId, Target, maybe_allow_nightly_features};
     use cargo::core::compiler::{CompileMode, Executor, DefaultExecutor, Context, Unit};
     use cargo::core::manifest::TargetKind;
     use cargo::ops;
     use cargo::ops::CompileOptions;
     use cargo::util::{ProcessBuilder, CargoResult};
     use cargo::util::important_paths::find_root_manifest_for_wd;
+
+    // `cargo`-built `libcargo` is always on the `dev` channel, so `maybe_allow_nightly_features`
+    // really does allow nightly features.
+    maybe_allow_nightly_features();
 
     match src {
         RustcArgSource::CmdLine(mut args) => {

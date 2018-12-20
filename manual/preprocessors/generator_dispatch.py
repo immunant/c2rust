@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shlex
 import sys
 import tempfile
 
@@ -19,6 +20,11 @@ def literate(args):
     # Redirect stdout to stderr for `literate`
     real_stdout = sys.stdout
     sys.stdout = sys.stderr
+    if os.environ.get('C2RUST_MANUAL_DEBUG_REFACTOR') == '1':
+        args = ['-d'] + args
+
+    if 'C2RUST_MANUAL_LITERATE_ARGS' in os.environ:
+        args = shlex.split(os.environ['C2RUST_MANUAL_LITERATE_ARGS']) + args
 
     sys.path.append(os.path.join(os.path.dirname(__file__),
         '../../c2rust-refactor/doc'))
