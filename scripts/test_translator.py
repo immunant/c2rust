@@ -528,7 +528,10 @@ class TestDirectory:
 
 def compile_bitfields_crate() -> bool:
     with pb.local.cwd(c.BITFIELDS_CRATE_DIR):
-        args = ["build", "--release"]
+        args = ["build"]
+
+        if c.BUILD_TYPE == 'release':
+            args.append('--release')
 
         retcode, stdout, stderr = cargo[args].run(retcode=None)
 

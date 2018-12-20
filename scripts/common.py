@@ -128,6 +128,8 @@ add_subdirectory(c2rust-ast-exporter)
             if args.debug:
                 build_type = 'debug'
 
+        self.BUILD_TYPE = build_type
+
         self.TRANSPILER = "target/{}/c2rust-transpile".format(build_type)
         self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)
 
