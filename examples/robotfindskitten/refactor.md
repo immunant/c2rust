@@ -1096,7 +1096,38 @@ delete_items ;
 clear_marks ;
 ```
 
-TODO
+Now to fix errors in `main_0` itself.  We changed both the inner and outer
+pointer types of `argv`, so there are two kinds of errors to clean up.
+
+For the outer pointer, where we changed `*mut T` to `CArray<T>`, the problem
+we see is that `argv.offset(...)` returns `&CArrayOffset<T>`, not `*mut T`, and
+`&CArrayOffset<T>` requires two derefs to obtain a `T` (`&CArrayOffset<T>`
+derefs to `CArrayOffset<T>`, which derefs to `T`) instead of just one.  We
+handle this with `type_fix_rules`, looking for cases where a single deref
+resulted in `CArrayOffset<T>` but some other type was expected, and adding the
+second deref:
+
+```refactor
+type_fix_rules
+    '*, ::c2rust_runtime::array::CArrayOffset<__t>, __u => *__old'
+    ;
+```
+
+For the inner pointer type, which we changed from `*mut c_char` to
+`Option<&CStr>`, we need only insert a simple conversion anywhere the new type
+is used but `*mut c_char` is expected:
+
+```refactor
+type_fix_rules
+    '*, ::std::option::Option<&::std::ffi::CStr>, *const i8 =>
+        opt_c_str_to_ptr(__old)'
+    ;
+```
+
+The only quirk here is that we wrap up the conversion in a helper function,
+making it easier to recognize in the later refactoring step where we clean up
+redundant string conversions.  Of course, now we must define that helper
+function:
 
 ```refactor
 select target 'item(main);' ;
@@ -1111,12 +1142,159 @@ create_item '
 clear_marks ;
 ```
 
+And with that, we are done.  All raw pointer arguments in `robotfindskitten`
+have now been replaced with safe equivalents.
+
 ```refactor
-type_fix_rules
-    '*, ::c2rust_runtime::array::CArrayOffset<__t>, __u => *__old'
-    '*, ::std::option::Option<&::std::ffi::CStr>, *const i8 =>
-        opt_c_str_to_ptr(__old)'
-    ;
+commit
 ```
 
+
+# String conversion cleanup
+
+A number of the previous refactoring steps involved changing the type of some
+variable from a raw C string (`*const c_char`) to a safe Rust string (`&str`),
+inserting conversions between the two forms everywhere the variable was
+initialized or used.  But now that we have finished transitioning the entire
+crate to Rust strings, many of those conversions have become redundant.
+Essentially, we began with code like this:
+
+```Rust
+fn f(s1: *const c_char) { ... }
+
+fn g(s2: *const c_char) {
+    ... f(s2) ...
+}
+```
+
+By incrementally refactoring C strings into Rust string, we first
+transitioned to code like this:
+
+```Rust
+fn f(s1: &str) { ... }
+
+fn g(s2: *const c_char) {
+    ... f(c_str_to_rust(s2)) ...
+}
+```
+
+And then to code like this:
+
+```Rust
+fn f(s1: &str) { ... }
+
+fn g(s2: &str) {
+    ... f(rust_str_to_c(c_str_to_rust(s2))) ...
+}
+```
+
+But `rust_str_to_c(c_str_to_rust(s2))` is the same as just `s2` - the two
+conversions are redundant and can be removed:
+
+```Rust
+fn f(s1: &str) { ... }
+
+fn g(s2: &str) {
+    ... f(s2) ...
+}
+```
+
+This doesn't merely affect readability - the actual conversion operations
+represented by `c_str_to_rust` are unsafe, so we must remove them to complete
+our refactoring of `robotfindskitten`.
+
+The actual refactoring process we apply to `robotfindskitten` mostly consists
+of removing specific types of redundant conversions with `rewrite_expr`.  The
+patterns we use here are general, taking advantage of overlap between different
+conversion cases rather than hardcoding a rewrite for each distinct conversion
+in `robotfindskitten`.
+
+To begin with, converting `CString` to `*const c_char` to `CStr` can be
+replaced with a no-op (`CString` derefs to `CStr`, so it can be used almost
+anywhere a `CStr` is required):
+
+```refactor
+rewrite_expr
+    '::std::ffi::CStr::from_ptr(
+        cast!(typed!(__e, ::std::ffi::CString).as_ptr()))'
+    '__e' ;
+```
+
+Converting `String` to `CString` to `Option<&str>` is not strictly a no-op, but
+can still be simplified:
+
+```refactor
+rewrite_expr
+    '::std::ffi::CString::new(__e).unwrap().to_str()'
+    'Some(&__e)' ;
+```
+
+In some places, the code actually converts `&str` to `*const c_char` directly,
+rather than using `CString`, and then converts `*const c_char` to `CStr` to
+`&str`.  This is memory-safe only when the `&str` already includes a null
+terminator, and the `CStr` to `str` conversion will trim it off.  We rewrite
+the code to simply trim off the null terminator directly, avoiding these
+complex (and unsafe) conversions:
+
+```refactor
+rewrite_expr
+    '::std::ffi::CStr::from_ptr(
+        cast!(typed!(__e, &str).as_ptr())).to_str()'
+    "Some(__e.trim_end_matches('\0'))" ;
+```
+
+For code in `main_0` using the `opt_c_str_to_ptr` helper function we introduced
+earlier, the `Option<&CStr>` to `&CStr` conversion can be replaced with a
+simple `unwrap()`:
+
+```refactor
+rewrite_expr
+    '::std::ffi::CStr::from_ptr(cast!(opt_c_str_to_ptr(__e)))'
+    '__e.unwrap()' ;
+```
+
+Conversions of bytestring literals (`b"..."`, whose type is `&[u8; _]`) to
+`*const c_char` to `CStr` to `str` can be simplified down to a direct
+conversion from `&[u8; _]` to `&str`, plus removal of the null terminator:
+
+```refactor
+rewrite_expr
+    '::std::ffi::CStr::from_ptr(
+        cast!(typed!(__e, &[u8; __f]))).to_str()'
+    "Some(::std::str::from_utf8(__e).unwrap().trim_end_matches('\0'))" ;
+```
+
+This removes the unsafety, but with a little more work, we can further improve
+readability.  First, we convert the byte strings to ordinary string literals
+(`b"..."` to `"..."`):
+
+```refactor
+select target
+    'crate; desc(match_expr(::std::str::from_utf8(__e))); desc(expr);' ;
+bytestr_to_str ;
+clear_marks ;
+```
+
+This introduces type errors, as the type of the literal has changed from `&str`
+to `&[u8]`.  We fix these by inserting calls to `str::as_bytes`:
+
+```refactor
+type_fix_rules '*, &str, &[u8] => __old.as_bytes()' ;
+```
+
+Finally, we remove the redundant conversion from `&str` to `&[u8]` to `&str`:
+
+```refactor
+rewrite_expr
+    '::std::str::from_utf8(__e.as_bytes())'
+    'Some(__e)' ;
+```
+
+With the replacements above, we have removed all redundant string conversions
+from the crate.  This was the last major source of unnecessary unsafety in
+`robotfindskitten`.
+
+```refactor
+commit
+```
 
