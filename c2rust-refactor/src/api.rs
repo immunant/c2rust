@@ -83,6 +83,7 @@ pub trait DriverCtxtExt<'tcx> {
     fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>>;
     /// Get the `ty::Ty` computed for a node, taking into account any adjustments that were applied.
     fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx>;
+    fn opt_adjusted_node_type(&self, id: NodeId) -> Option<Ty<'tcx>>;
 
     fn def_type(&self, id: DefId) -> Ty<'tcx>;
     /// Build a `Path` referring to a particular def.  This method returns an absolute path when
@@ -132,13 +133,22 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     }
 
     fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx> {
-        let parent = self.hir_map().get_parent_did(id);
+        self.opt_adjusted_node_type(id)
+            .unwrap_or_else(|| panic!("adjusted node type unavailable for {:?}", id))
+    }
+
+    fn opt_adjusted_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
+        let parent_node = self.hir_map().get_parent(id);
+        let parent = self.hir_map().opt_local_def_id(parent_node)?;
+        if !self.ty_ctxt().has_typeck_tables(parent) {
+            return None;
+        }
         let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
         if let Some(adj) = tables.adjustments().get(hir_id).and_then(|adjs| adjs.last()) {
-            adj.target
+            Some(adj.target)
         } else {
-            tables.node_id_to_type(hir_id)
+            tables.node_id_to_type_opt(hir_id)
         }
     }
 
