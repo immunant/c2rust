@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::mem;
 use rustc::hir;
 use rustc::hir::def_id::DefId;
-use rustc::ty::{self, TyKind, TyCtxt};
+use rustc::ty::{self, TyKind, TyCtxt, ParamEnv};
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::parse::PResult;
@@ -1433,21 +1433,19 @@ fn can_coerce<'a, 'tcx>(
 ) -> bool {
     use rustc::ty::TyKind::*;
 
+    // We won't necessarily have matching regions if we created new expressions
+    // during retyping, so we should strip those. This also handles arrays with
+    // length expressions that aren't yet evaluated. See types_approx_equal() in
+    // illtyped.rs for more details.
+    let from_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), from_ty);
+    let to_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), to_ty);
+
     if from_ty == to_ty {
         return true;
     }
     match (&from_ty.sty, &to_ty.sty) {
         // Unsize for Array
         (Array(ref from_ty, _), Slice(ref to_ty)) => can_coerce(from_ty, to_ty, tcx),
-
-        // Evaluate sizes
-        (Array(ref from_ty, ref from_size), Array(ref to_ty, ref to_size)) => {
-            match (from_size.assert_usize(tcx), to_size.assert_usize(tcx)) {
-                (Some(from_size), Some(to_size)) if from_size == to_size =>
-                    can_coerce(from_ty, to_ty, tcx),
-                _ => can_coerce(from_ty, to_ty, tcx),
-            }
-        }
 
         // Lifetime coercion. This is more permissive than the language allows
         // (should only be longer -> shorter lifetimes). However, if we assume
