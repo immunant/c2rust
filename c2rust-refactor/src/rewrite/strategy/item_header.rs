@@ -20,7 +20,7 @@ use syntax::tokenstream::{TokenStream, ThinTokenStream, TokenTree};
 
 use ast_manip::AstEquiv;
 use driver;
-use rewrite::{Rewrite, RewriteCtxtRef, TextAdjust};
+use rewrite::{Rewrite, TextRewrite, RewriteCtxtRef};
 use rewrite::base::{describe, rewrite_seq_comma_sep};
 use rewrite::strategy::print::PrintParse;
 
@@ -194,7 +194,7 @@ fn record_qualifier_rewrite(old_span: Span, new_span: Span, mut rcx: RewriteCtxt
         info!("   INTO (QUAL) {}", describe(rcx.session(), src_span));
     }
 
-    rcx.record(old_span, src_span, vec![], TextAdjust::None);
+    rcx.record(TextRewrite::new(old_span, src_span));
 }
 
 fn rewrite_arg_list_with_tokens(old: &[Arg],

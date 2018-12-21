@@ -125,7 +125,7 @@ impl ScopeConfig {
             inherited: Rc::clone(&self.inherited),
             item: ItemConfig::FileDefaults,
         };
-        for item in file_items.items().into_iter() {
+        for item in file_items.items() {
             match **item {
                 super::ItemConfig::Defaults(_) => {
                     new_config.parse_xcfg_config(item);
@@ -161,7 +161,7 @@ impl ScopeConfig {
             .unwrap_or(false)
     }
 
-    fn get_item_configs(&self, item: &str) -> &[Rc<super::ItemConfig>] {
+    fn get_item_configs(&self, item: &str) -> &[super::ItemConfigRef] {
         self.items
             .as_ref()
             .and_then(|nil| nil.name_map.get(item))

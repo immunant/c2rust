@@ -65,6 +65,7 @@ pub mod select;
 pub mod print_spans;
 
 use std::collections::HashSet;
+use std::env;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::sync::Arc;
@@ -132,7 +133,7 @@ pub enum RustcArgSource {
 }
 
 pub struct Options {
-    pub rewrite_mode: file_io::OutputMode,
+    pub rewrite_modes: Vec<file_io::OutputMode>,
     pub commands: Vec<Command>,
     pub rustc_args: RustcArgSource,
     pub cursors: Vec<Cursor>,
@@ -186,13 +187,17 @@ fn get_rustc_executable(path: &Path) -> String {
 fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
     use std::sync::{Arc, Mutex};
     use cargo::Config;
-    use cargo::core::{Workspace, PackageId, Target};
+    use cargo::core::{Workspace, PackageId, Target, maybe_allow_nightly_features};
     use cargo::core::compiler::{CompileMode, Executor, DefaultExecutor, Context, Unit};
     use cargo::core::manifest::TargetKind;
     use cargo::ops;
     use cargo::ops::CompileOptions;
     use cargo::util::{ProcessBuilder, CargoResult};
     use cargo::util::important_paths::find_root_manifest_for_wd;
+
+    // `cargo`-built `libcargo` is always on the `dev` channel, so `maybe_allow_nightly_features`
+    // really does allow nightly features.
+    maybe_allow_nightly_features();
 
     match src {
         RustcArgSource::CmdLine(mut args) => {
@@ -355,7 +360,7 @@ fn main_impl(opts: Options) {
         let mut state = command::RefactorState::from_rustc_args(
             &rustc_args,
             cmd_reg,
-            Arc::new(file_io::RealFileIO::new(opts.rewrite_mode)),
+            Arc::new(file_io::RealFileIO::new(opts.rewrite_modes)),
             marks,
         );
 
@@ -382,6 +387,10 @@ fn main_impl(opts: Options) {
 
 pub fn lib_main(opts: Options) {
     env_logger::init();
+
+    // Make sure we compile with the toolchain version that the refactoring tool
+    // is built against.
+    env::set_var("RUSTUP_TOOLCHAIN", env!("RUSTUP_TOOLCHAIN"));
 
     ty::tls::GCX_PTR.set(&Lock::new(0), || {
         syntax::with_globals(move || {

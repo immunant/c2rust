@@ -32,11 +32,14 @@ from rust_file import (
 )
 from typing import Generator, List, Optional, Set, Iterable
 
+COMPILED_BITFIELDS_CRATE = False
+
 # Tools we will need
 clang = get_cmd_or_die("clang")
 rustc = get_cmd_or_die("rustc")
 diff = get_cmd_or_die("diff")
 ar = get_cmd_or_die("ar")
+cargo = get_cmd_or_die("cargo")
 
 
 # Intermediate files
@@ -184,6 +187,7 @@ class TestFile(RustFile):
 
         self.test_functions = test_functions or []
         self.pass_expected = "xfail" not in flags
+        self.link_in_bitfields_crate = "link_in_bitfields_crate" in flags
 
 
 class TestDirectory:
@@ -336,7 +340,7 @@ class TestDirectory:
         self.generated_files["c_obj"].extend(static_library.obj_files)
 
         rust_file_builder = RustFileBuilder()
-        rust_file_builder.add_features(["libc", "extern_types", "simd_ffi", "stdsimd", "const_transmute"])
+        rust_file_builder.add_features(["libc", "extern_types", "simd_ffi", "stdsimd", "const_transmute", "nll"])
 
         # .c -> .rs
         for c_file in self.c_files:
@@ -369,16 +373,35 @@ class TestDirectory:
                                               RustVisibility.Public))
 
         match_arms = []
+        rustc_extra_args = ["-C", "target-cpu=native"]
 
         # Build one binary that can call all the tests
         for test_file in self.rs_test_files:
+            # Compile our bitfields crate only once
+            if test_file.link_in_bitfields_crate and not COMPILED_BITFIELDS_CRATE:
+                description = "Compiling c2rust-bitfields"
+                self.print_status(Colors.WARNING, "RUNNING", description)
+
+                success = compile_bitfields_crate()
+
+                if not success:
+                    description = "Failed to compile c2rust-bitfields"
+
+                    self.print_status(Colors.FAIL, "FAILED", description)
+                    outcomes.append(TestOutcome.Failure)
+
+                    continue
+
+                rustc_extra_args.append(["-L", "crate={}".format(c.TARGET_DIR)])
+                rust_file_builder.add_extern_crate("c2rust_bitfields")
+
             _, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
 
             if not test_file.pass_expected:
                 try:
                     test_file.compile(CrateType.Library, save_output=False,
-                                      extra_args=["-C", "target-cpu=native"])
+                                      extra_args=rustc_extra_args)
 
                     self.print_status(Colors.FAIL, "OK",
                                       "Unexpected success {}".format(file_name))
@@ -424,7 +447,7 @@ class TestDirectory:
         # Try and build test binary
         try:
             main = main_file.compile(CrateType.Binary, save_output=True,
-                                     extra_args=["-C", "target-cpu=native"])
+                                     extra_args=rustc_extra_args)
         except NonZeroReturn as exception:
             _, main_file_path_short = os.path.split(main_file.path)
 
@@ -503,6 +526,28 @@ class TestDirectory:
                     pass
 
 
+def compile_bitfields_crate() -> bool:
+    with pb.local.cwd(c.BITFIELDS_CRATE_DIR):
+        args = ["build"]
+
+        if c.BUILD_TYPE == 'release':
+            args.append('--release')
+
+        retcode, stdout, stderr = cargo[args].run(retcode=None)
+
+        if retcode != 0:
+            print("stderr:", stderr)
+            return False
+
+        global COMPILED_BITFIELDS_CRATE
+
+        COMPILED_BITFIELDS_CRATE = True
+
+        return True
+
+    return False
+
+
 def readable_directory(directory: str) -> str:
     """
     Check that a directory is exists and is readable
@@ -564,7 +609,7 @@ def main() -> None:
     bins = [c.TRANSPILER]
     for b in bins:
         if not os.path.isfile(b):
-            msg = b + " not found; run build_translator.py first?"
+            msg = b + " not found; run cargo build --release first?"
             die(msg, errno.ENOENT)
 
     ensure_dir(c.DEPS_DIR)

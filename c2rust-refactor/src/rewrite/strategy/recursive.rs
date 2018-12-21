@@ -3,6 +3,7 @@ use syntax::parse::token::Nonterminal;
 use syntax::tokenstream::{TokenTree, Delimited, DelimSpan};
 use syntax::util::parser;
 
+use ast_manip::{GetNodeId, GetSpan};
 use rewrite::{RewriteCtxtRef, Rewrite, ExprPrec};
 use rewrite::base::{rewrite_seq, calc_outer_span, binop_left_prec, binop_right_prec};
 

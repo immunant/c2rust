@@ -435,6 +435,14 @@ impl<'a> Stream<'a> {
                 SelectOp::Filter(filter)
             },
 
+            "first" => {
+                SelectOp::First
+            },
+
+            "last" => {
+                SelectOp::Last
+            },
+
             name => fail!("unknown select op `{}`", name),
         };
 

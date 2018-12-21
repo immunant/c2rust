@@ -135,6 +135,7 @@ class RustMatch:
 class RustFileBuilder:
     def __init__(self) -> None:
         self.features = set()
+        self.extern_crates = set()
         self.mods = set()
         self.uses = set()
         self.functions = []
@@ -144,6 +145,11 @@ class RustFileBuilder:
 
         for feature in self.features:
             buffer += "#![feature({})]\n".format(feature)
+
+        buffer += '\n'
+
+        for crate in self.extern_crates:
+            buffer += "extern crate {};\n".format(crate)
 
         buffer += '\n'
 
@@ -169,6 +175,9 @@ class RustFileBuilder:
 
     def add_features(self, features: Iterable[str]) -> None:
         self.features.update(features)
+
+    def add_extern_crate(self, crate: str) -> None:
+        self.extern_crates.add(crate)
 
     def add_mod(self, mod: RustMod) -> None:
         self.mods.add(mod)

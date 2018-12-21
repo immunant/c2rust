@@ -30,7 +30,7 @@ use rustc::session::Session;
 use ast_manip::{GetSpan, AstDeref};
 
 use super::strategy;
-use super::{RewriteCtxtRef, TextAdjust, SeqItemId, ExprPrec};
+use super::{TextRewrite, RewriteCtxtRef, SeqItemId, ExprPrec};
 use super::strategy::print;
 
 
@@ -218,7 +218,7 @@ pub fn rewrite_seq<T, R>(old: &[R],
                 // There's an item on the left corresponding to nothing on the right.
                 // Delete the item from the left.
                 info!("DELETE {}", describe(rcx.session(), ast(&old[i]).splice_span()));
-                rcx.record(ast(&old[i]).splice_span(), DUMMY_SP, vec![], TextAdjust::None);
+                rcx.record(TextRewrite::new(ast(&old[i]).splice_span(), DUMMY_SP));
                 i += 1;
             },
             diff::Result::Right(_) => {
@@ -306,7 +306,7 @@ pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
                 // There's an item on the left corresponding to nothing on the right.
                 // Delete the item from the left.
                 info!("DELETE {}", describe(rcx.session(), old_spans[i]));
-                rcx.record(old_spans[i], DUMMY_SP, vec![], TextAdjust::None);
+                rcx.record(TextRewrite::new(old_spans[i], DUMMY_SP));
                 i += 1;
 
                 if i == old.len() && !has_trailing_comma {

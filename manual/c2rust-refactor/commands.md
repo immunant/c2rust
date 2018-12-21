@@ -1,1 +1,1 @@
-{{#refactor_commands}}
+{{#generate refactor_commands}}

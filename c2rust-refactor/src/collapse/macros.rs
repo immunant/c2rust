@@ -1,3 +1,10 @@
+//! Handles collapsing of macros, turning `std::io::_print(...)` into `println!(...)` and so on.
+//!
+//! This also computes edges to add to `NodeMap`.  Most of these are identity edges (mapping each
+//! node's `x.id -> x.id`), but in cases where nonterminals get merged we do something a bit more
+//! interesting (see `token_rewrite_map` for details).  Edges for different categories of nodes get
+//! added in different places: macro invocations in `CollapseMacros`, macro arguments in
+//! `token_rewrite_map`, and nodes outside of macros in `ReplaceTokens`.
 use std::collections::{HashMap, HashSet, BTreeMap};
 use syntax::ast::*;
 use syntax::attr;
@@ -26,6 +33,11 @@ struct RewriteItem {
 }
 
 
+/// Folder that replaces macro-generated nodes with their original macro invocations.  For example,
+/// it turns `std::io::_print(...)` back into `println!(...)`.  It also (1) records a `RewriteItem`
+/// for each nonterminal detected in the macro expansion, so that edits inside the expansion can be
+/// converted to token-stream rewrites on the collapsed macro, and (2) records ID matches between
+/// the transformed and collapsed versions of the macro.
 struct CollapseMacros<'a> {
     mac_table: &'a MacTable<'a>,
 
@@ -246,6 +258,11 @@ impl<'a> Folder for CollapseMacros<'a> {
     }
 }
 
+/// Undo changes to attributes that occurred during macro expansion.  `old` is unexpanded and `new`
+/// is transformed/collapsed.  Since additional attributes could have been added/removed by the
+/// transform, we can't just copy `old.attrs`.  Instead, we look through `old.attrs` for attributes
+/// with known effects (such as `#[cfg]`, which removes itself when the condition is met) and tries
+/// to reverse those specific effects on `new.attrs`.
 fn restore_attrs(mut new: Item, old: &Item) -> Item {
     // If the original item had a `#[derive]` attr, transfer it to the new one.
     // TODO: handle multiple instances of `#[derive]`
@@ -278,6 +295,29 @@ fn spans_overlap(sp1: Span, sp2: Span) -> bool {
     sp1.lo() < sp2.hi() && sp2.lo() < sp1.hi()
 }
 
+/// Index the `RewriteItem`s collected by the `CollapseMacros` folder by start position, so they
+/// can be looked up efficiently during token rewriting.
+///
+/// As a side effect, this also updates `matched_ids` for all nonterminals in `vec`.  Normally each
+/// nonterminal gets its IDs mapped to themselves (recursively), because we don't generally
+/// renumber nodes during collapsing (i.e., the "old" and "new" NodeId namespaces are essentially
+/// identical).  But in cases where two identical nonterminals get merged (example below), the
+/// second instance gets discarded, and all its IDs get mapped to the IDs of the first instance.
+///
+/// ## Nonterminal merging example
+///
+///  1. Unexpanded: `some_macro!(2 + 2)` - The original token string is `2` `+` `2`.
+///  2. Expanded: `(2 + 2)#1 * (2 + 2)#2` - The same tokens are used to produce two different nodes.
+///     These nodes have different `NodeId`s (the `#1` and `#2` markers), but both have the same
+///     `Span`, that of the original token string.
+///  3. Transformed: `4#1 * 4#2` - `nt_match` matches each `4` to the corresponding expanded `2 + 2`.
+///  4. Collapsed: `some_macro!(4)` - This is the interesting part.  The token string `2` `+` `2`
+///     should be replaced with a nonterminal `4#1` for the first occurrence, but it should also be
+///     replaced by a different `4#2` for the second occurrence, differing only in `NodeId`.  This
+///     is where merging happens: we replace the tokens only with `4#1`, discarding the `4#2`
+///     replacement, but update the ID map with both mappings `1 -> 1` and `2 -> 1`.  This way, the
+///     `4#1` in the collapsed AST inherits all the marks and other annotations that applied to
+///     either the `4#1` or the `4#2` copy.
 fn token_rewrite_map(vec: Vec<RewriteItem>,
                      matched_ids: &mut Vec<(NodeId, NodeId)>) -> BTreeMap<BytePos, RewriteItem> {
     // Map from `span.lo()` to the full RewriteItem.  Invariant: all spans in `map` are
@@ -302,6 +342,9 @@ fn token_rewrite_map(vec: Vec<RewriteItem>,
             if item.span == after.span && AstEquiv::ast_equiv(&item.nt, &after.nt) {
                 // Both rewrites replace the same old tokens with the same new AST, so we can just
                 // drop the second one.
+
+                // `item` in the old/transformed AST is now known by `after`'s ID in the
+                // new/collapsed AST.
                 matched_ids.extend(item.nt.list_node_ids().into_iter()
                                        .zip(after.nt.list_node_ids().into_iter()));
                 continue;
@@ -311,6 +354,7 @@ fn token_rewrite_map(vec: Vec<RewriteItem>,
             }
         }
 
+        // `item` in the old/transformed AST keeps the same ID in the new/collapsed AST.
         matched_ids.extend(item.nt.list_node_ids().into_iter().map(|x| (x, x)));
         map.insert(key, item);
     }
@@ -378,6 +422,11 @@ fn convert_token_rewrites(rewrite_vec: Vec<RewriteItem>,
 }
 
 
+/// Folder for updating the `TokenStream`s of macro invocations.  This is where we actually copy
+/// the rewritten token streams produced by `convert_token_rewrites` into the AST.
+///
+/// As a side effect, this updates `matched_ids` with identity edges (`x.id -> x.id`) for any
+/// remaining nodes that were unaffected by the collapsing.
 struct ReplaceTokens<'a> {
     mac_table: &'a MacTable<'a>,
     new_tokens: HashMap<InvocId, ThinTokenStream>,
