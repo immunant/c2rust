@@ -50,10 +50,11 @@ safe Rust program.  We divide the refactoring process into several major steps:
    both redundant and a source of unsafe code.  We remove such conversion
    cycles to avoid unnecessary raw pointer manipulation.
 
- * Removing `unsafe` qualifiers: At this point, we have removed all the unsafe
-   code we can.  We remove unused `unsafe` qualifiers from blocks and
-   functions, leaving a correct Rust translation of `robotfindskitten` with
-   only a single line of unsafe code.
+ * Final cleanup: At this point, we have removed all the unsafe code we can.
+   Only a few cleanup steps remain, such as removing unused `unsafe` qualifiers
+   and deleting unused `extern "C"` definitions.  In the end, we are left with
+   a correct Rust translation of `robotfindskitten` that contains only a single
+   line of unsafe code.
 
 
 # `ncurses` macro cleanup
@@ -591,7 +592,26 @@ rewrite_expr
     'typed!(__e, ::c2rust_runtime::CArray<__t>).offset_mut(__f).as_mut()'
     '&mut __e[__f as usize]' ;
 rewrite_expr '*&mut __e' '__e' ;
+```
 
+Finally, we remove unsafety from `screen`'s static initializer.  It currently
+calls `CArray::from_ptr(0 as *mut _)`, which is unsafe because
+`CArray::from_ptr` requires its pointer argument to  must satisfy certain
+properties.  But `CArray` also provides a safe method specifically for
+initializing a `CArray` to null, which we can use instead:
+
+```refactor
+rewrite_expr
+    '::c2rust_runtime::CArray::from_ptr(cast!(0))'
+    '::c2rust_runtime::CArray::empty()' ;
+```
+
+This completes the refactoring of `screen`, as all raw pointer manipulations
+have been replaced with safe `CArray` method calls.  The only remaining
+unsafety arises from the fact that `screen` is a `static mut`, which we address
+in a later refactoring step.
+
+```
 commit ;
 ```
 
@@ -1298,3 +1318,15 @@ from the crate.  This was the last major source of unnecessary unsafety in
 commit
 ```
 
+
+# Final cleanup
+
+At this point, we have removed all the major sources of unsafety from
+`robotfindskitten`.  We finish the refactoring with an assortment of minor
+cleanup steps.
+
+TODO:
+
+- unused unsafe
+- unused helper/wrapper fns (`opt_c_str_to_ptr`, maybe others?)
+- unused foreignmods
