@@ -18,6 +18,7 @@ extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_metadata;
+extern crate rustc_privacy;
 extern crate rustc_resolve;
 extern crate rustc_target;
 extern crate rustc_codegen_utils;
