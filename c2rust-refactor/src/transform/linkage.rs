@@ -134,7 +134,7 @@ impl Transform for LinkFuncs {
 ///         unsafe fn use_foo(x: &Foo) { ... }
 ///     }
 /// 
-/// After running `link_funcs`:
+/// After running `link_incomplete_types`:
 /// 
 ///     mod a {
 ///         struct Foo { ... }
@@ -224,7 +224,7 @@ impl Transform for LinkIncompleteTypes {
 ///         unsafe fn use_foo(x: &Foo) { ... }
 ///     }
 /// 
-/// After running `link_funcs`:
+/// After running `canonicalize_structs`:
 /// 
 ///     mod a {
 ///         pub struct Foo { ... }
