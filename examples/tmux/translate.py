@@ -1,24 +1,32 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from common import Config
 from plumbum.cmd import mv, mkdir, rename
 from plumbum import local
 from transpile import transpile_files
 from typing import Tuple
+from common import (
+    Config,
+    get_cmd_or_die,
+    setup_logging,
+    pb,
+    Colors
+)
 
 import argparse
+import logging
 import multiprocessing
 import os
 import re
+import sys
 
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates tmux into the repo/rust/src directory")
 parser.add_argument('-f', '--filter',
                     default="",
                     help='Filters translated files')
-
 config = Config()
+config.add_args(parser)
 
 C2RUST_DIR = config.ROOT_DIR
 TMUX_REPO = os.path.join(C2RUST_DIR, "examples/tmux/repo")
@@ -47,7 +55,7 @@ FILES_NEEDING_TRAILING_UNDERSCORE = [
     "window.rs",
 ]
 MAIN_MODS = """\
-#![feature(const_slice_as_ptr, ptr_wrapping_offset_from, used)]
+#![feature(label_break_value, ptr_wrapping_offset_from, used)]
 #![allow(unused_imports)]
 extern crate libc;
 
@@ -193,17 +201,28 @@ def add_mods(path: str):
 
 
 if __name__ == "__main__":
+    setup_logging()
     args = parser.parse_args()
-    transpiler_args = [
-        "--reduce-type-annotations",
-    ]
+
+    # Add option to use the debug version of `c2rust`
+    config.update_args(args)
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
-    with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, filter=lambda f: args.filter in f,
-                        emit_build_files=False, verbose=True,
-                        extra_transpiler_args=transpiler_args, reorganize_definitions=True)
+    c2rust_bin = get_cmd_or_die(config.C2RUST_BIN)
+    try:
+        tmux_transpile = c2rust_bin["transpile", COMPILE_COMMANDS,
+                                    "--reduce-type-annotations",
+                                    "--reorganize-definitions"]
+        Retcode, stdout, transpiler_warnings = tmux_transpile.run()
+        if transpiler_warnings:
+            logging.warning(transpiler_warnings)
+
+    except pb.ProcessExecutionError as pee:
+        print(Colors.FAIL + "tmux could not be transpiled:" + Colors.NO_COLOR)
+        logging.warning(pee.stderr)
+        # No need to continue if transpilation failed
+        sys.exit(pee.retcode)
 
     # Move and rename tmux.rs to main.rs
     move(TMUX_RS, MAIN_RS)
