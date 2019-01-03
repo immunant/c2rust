@@ -3,13 +3,15 @@
 # What is C2Rust?
 
 C2Rust helps you migrate C99-compliant code to Rust. It provides:
-- a C to Rust translator, 
-- a Rust code refactoring tool, and
-- a way to cross-check the C code against the new Rust code.
+- a C to Rust translator
+- a Rust code refactoring tool
+- tools to cross-check execution of the C code against the new Rust code
 
-The translator (or transpiler), produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to produce code that is functionally identical to the input C code. Generating safe or idomatic Rust is *not* a goal for the translator. Rather, we think the best approach is to gradually clean up the translator using dedicated refactoring tools. See the `c2rust-refactor` directory to learn about the `c2rust-refactor` tool that we are working on.
-Some refactoring will have to be done by hand which may introduce errors. We provide plugins for `clang` and `rustc` so you can compile and run two binaries and check that they behave identically (at the level of function calls).
-See details in the `cross-checks` directory and in the cross checking [tutorial](docs/cross-check-tutorial.md). Here's the big picture:
+The translator (or transpiler), produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to produce code that is functionally identical to the input C code. Generating safe or idomatic Rust is *not* a goal for the translator. Rather, we think the best approach is to gradually rewrite the translated Rust code using dedicated refactoring tools. To this end, we are building a refactoring tool that rewrites unsafe auto-translated Rust into safer idioms (see [c2rust-refactor](c2rust-refactor/)).
+
+Some refactoring will have to be done by hand which may introduce errors. We provide plugins for `clang` and `rustc` so you can compile and run two binaries and check that they behave identically (at the level of function calls). For details on cross-checking see the [cross-checks](cross-checks) directory and the cross checking [tutorial](docs/cross-check-tutorial.md).
+
+Here's the big picture:
 
 ![C2Rust overview](docs/c2rust-overview.png "C2Rust overview")
 
@@ -30,13 +32,13 @@ C2Rust requires LLVM 6 or 7 and its corresponding libraries and clang compiler. 
         pacman -S base-devel llvm clang cmake
 
 
-- **OS X:** (XCode command-line tools and recent LLVM (we recommend the Homebrew version) are required.)
+- **OS X:** XCode command-line tools and recent LLVM (we recommend the Homebrew version) are required.
 
         xcode-select --install
         brew install llvm python3 cmake
 
 
-A rust installation with [Rustup](https://rustup.rs/) is also required on all platforms.
+Finally, a rust installation with [Rustup](https://rustup.rs/) is required on all platforms.
 
 
 ## Building C2Rust
@@ -53,7 +55,9 @@ If you have trouble with cargo build, the [developer docs](docs/README-developer
 
 # Translating C to Rust
 
-The translation tool first needs to know the existing compiler commands used to build the C code. To provide this information, you will need to generate a [standard](https://clang.llvm.org/docs/JSONCompilationDatabase.html) `compile_commands.json` file. Many build systems can automatically generate this file, as it is used by many other tools, but see [below](#generating-compile_commandsjson-files) for recommendations on how to generate this file for common build processes.
+The translator needs access to the exact compiler commands used to build the C code. To provide this information, you will need a [standard](https://clang.llvm.org/docs/JSONCompilationDatabase.html) `compile_commands.json` file. Many build systems can automatically generate this file, as it is used by many other tools, but see [below](#generating-compile_commandsjson-files) for recommendations on how to generate this file for common build processes.
+
+Once you have a `compile_commands.json` file describing the C build, translate the C code to Rust with the following command:
 
     $ ./scripts/transpile.py path/to/compile_commands.json
 
@@ -78,7 +82,7 @@ in this translator. The translator will attempt to skip function definitions tha
 ## Generating `compile_commands.json` files
 
 The `compile_commands.json` file can be automatically created using
-either `cmake`, `intercept-build`, or `bear` (Linux only).
+either `cmake`, `intercept-build`, or `bear`.
 
 It may be a good idea to remove optimizations(`-OX`) from the compile commands
 file, as there are optimization builtins which we do not support translating.
@@ -100,7 +104,7 @@ Intercept build is distributed with clang and recommended for makefile projects 
 	$ intercept-build make
 	$ intercept-build xcodebuild
 
-### ... with `bear`
+### ... with `bear` (linux only)
 
 When building on Linux, *Bear* is automatically built by the
 `build_translator.py` script and installed into the `dependencies`
@@ -113,7 +117,7 @@ directory.
 
 > Are there release binaries? Can I install C2Rust with Cargo?
 
-We hope to release binaries that you can `cargo install` soon(tm).
+We plan to release a cargo package that you can `cargo install` soon(tm).
 
 > I translated code on platform X but it didn't work correctly on platform Y
 

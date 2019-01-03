@@ -11,3 +11,9 @@ command = "cargo run --bin mdbook-include_md --quiet --"
 
 [preprocessor.generator_dispatch]
 command = "python3 manual/preprocessors/generator_dispatch.py"
+
+[output.html]
+
+# Uncomment the following to enable link-checking. This should not be enabled by
+# default because linkcheck has false positives due to our use of symlinks.
+# [output.linkcheck]

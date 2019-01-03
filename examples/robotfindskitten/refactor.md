@@ -1,4 +1,6 @@
-# Collapsing `ncurses` macros
+# Translating and refactoring robotfindskitten
+
+## Collapsing `ncurses` macros
 
 We begin with a little cleanup.  Some `ncurses` functions used in
 `robotfindskitten` are actually implemented as macros, which are expanded by
@@ -94,7 +96,7 @@ checkpoint where results can be cached, so that later refactoring commands can
 be tweaked without rerunning all the previous steps.
 
 
-# String formatting
+## String formatting
 
 Our next step is to replace calls to C string-formatting functions (such as
 `printf`) with wrappers using Rust's `format_args!` macro.  Since
@@ -110,7 +112,7 @@ accept the `std::fmt::Arguments` produced by the `format_args!` macro.  The
 second step then replaces the `printf` call with a call to a wrapper that does
 accept `std::fmt::Arguments`.
 
-## `printf` format argument conversion
+### `printf` format argument conversion
 
 We run a few commands to mark the nodes involved in string formatting, before
 finally running the `convert_format_args` command to perform the actual
@@ -155,7 +157,7 @@ clear_marks ;
 clear the marks, but we don't want to `commit` these changes until we've fixed
 the type errors introduced in this step.
 
-## Creating a `printf` wrapper
+### Creating a `printf` wrapper
 
 As a reminder, we currently have code that looks like this:
 
@@ -201,7 +203,7 @@ commit the changes:
 commit ;
 ```
 
-## Other string formatting functions
+### Other string formatting functions
 
 Aside from `printf`, `robotfindskitten` also uses the `ncurses` `printw` and
 `mvprintw` string-formatting functions.  The refactoring script for `printw` is
@@ -267,7 +269,7 @@ commit ;
 ```
 
 
-# Static string constant - `ver`
+## Static string constant - `ver`
 
 `robotfindskitten` defines a static string constant, `ver`, to store the game's
 version.  Using `ver` is currently unsafe, first because its Rust type is a raw
@@ -295,7 +297,7 @@ Simply replacing `*mut c_char` with `&str` introduces type errors throughout
 the crate.  The initializer for `ver` still has type `*mut c_char`, and all
 uses of `ver` are still expecting a `*mut c_char`.
 
-## Fixing `ver`'s initializer
+### Fixing `ver`'s initializer
 
 Fixing the `ver` initializer is straightforward: we simply remove all the
 casts, then convert the binary string (`&[u8]`) literal to an ordinary string
@@ -317,7 +319,7 @@ bytestr_to_str ;
 delete_marks target ;
 ```
 
-## Fixing `ver`'s uses
+### Fixing `ver`'s uses
 
 `ver`'s initializer is now well-typed, but its uses are still expecting a `*mut
 c_char` instead of a `&str`.  To fix these up, we use the `type_fix_rules`
@@ -333,7 +335,7 @@ __t`), then wrap the original expression in a call to `.as_ptr()`.  This turns
 out to be enough to fix all the errors at uses of `ver`.
 
 
-## Making `ver` immutable
+### Making `ver` immutable
 
 Now that all type errors have been corrected, we can finish our refactoring of
 `ver`.  We make it immutable, then commit all the changes to disk.
@@ -346,7 +348,7 @@ commit ;
 ```
 
 
-# Static string array - `messages`
+## Static string array - `messages`
 
 Aside from `ver`, `robotfindskitten` contains a static array of strings, called
 `messages`.  Like `ver`, accessing `messages` is unsafe because each element is
@@ -387,7 +389,7 @@ commit ;
 ```
 
 
-# Heap-allocated array - `screen`
+## Heap-allocated array - `screen`
 
 `robotfindskitten` uses a heap-allocated array to store information about each
 object on the screen.  The initial translation gives this array the type `*mut
@@ -407,7 +409,7 @@ create_item 'extern crate c2rust_runtime;' inside ;
 
 Now we can proceed with the actual refactoring.
 
-## Converting to `CBlockPtr`
+### Converting to `CBlockPtr`
 
 We actually perform the conversion from `*mut` to `CArray` via an intermediate
 step, using `CBlockPtr`.  This is another type provided by `c2rust_runtime`,
@@ -505,5 +507,5 @@ done, and we can commit the changes:
 commit ;
 ```
 
-## Converting to `CArray`
+### Converting to `CArray`
 

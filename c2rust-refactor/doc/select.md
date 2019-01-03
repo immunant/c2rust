@@ -39,8 +39,8 @@ function-by-function basis.
 
 The remainder of this tutorial describes `select` and related mark-manipulation
 commands.  For details of how marks affect various transformation commands, see
-the [command documentation](c2rust-refactor-commands.md) or read about the
-[`marked!` pattern](refactor-rewrite.md#marked) for `rewrite_expr` and other
+the [command documentation](commands.html) or read about the
+[`marked!` pattern](rewrite.md#marked) for `rewrite_expr` and other
 pattern-matching commands.
 
 
@@ -432,11 +432,10 @@ selected node.  `last` does the same with the last selected node.  "First" and
 ordered as expected, and a parent node come "after" all of its children.
 
 The `first` and `last` operations are most useful for finding places to insert
-new nodes (such as with the [`create_item`
-command](c2rust-refactor-commands.md#create_item)) while ignoring details such
-as the specific names or kinds of the nodes around the insertion point.  For
-example, we can use `last` to easily select the last item in a module.  First,
-we select all the module's items:
+new nodes (such as with the [`create_item` command](commands.html#create_item))
+while ignoring details such as the specific names or kinds of the nodes around
+the insertion point.  For example, we can use `last` to easily select the last
+item in a module.  First, we select all the module's items:
 
 ```rust refactor-target hidden
 mod m {
@@ -457,7 +456,7 @@ clear_marks ;
 select target 'item(m); child(kind(item)); last;'
 ```
 
-Now we could use [`create_item`](c2rust-refactor-commands.md#create_item) to
+Now we could use [`create_item`](commands.html#create_item) to
 insert a new item after the last existing one.
 
 ### `marked`
