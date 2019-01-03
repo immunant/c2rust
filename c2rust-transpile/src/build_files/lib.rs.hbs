@@ -2,7 +2,6 @@
 #![feature(extern_types)]
 #![feature(asm)]
 #![feature(ptr_wrapping_offset_from)]
-#![feature(const_slice_as_ptr)]
 #![feature(label_break_value)]
 
 #![allow(non_upper_case_globals)]
@@ -33,15 +32,9 @@ extern crate libc;
 extern crate c2rust_xcheck_libfakechecks_sys;
 {{/if}}
 
-<!--
-% for (module_name, module_path, line_prefix) in modules:
-<% module_name = module_name.replace('-', '_') %>
-${line_prefix}#[path = "${module_path}"] pub mod ${module_name};
-% endfor
--->
-
 {{#each modules}}
-    #[path = "{{this.0}}"] pub mod {{this.1}};
+#[path = "{{this.path}}"]
+pub mod {{this.name}};
 {{/each}}
 
 {{#if main_module}}

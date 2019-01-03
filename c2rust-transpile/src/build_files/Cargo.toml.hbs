@@ -13,15 +13,12 @@ path = "lib.rs"
 crate-type = ["staticlib"]
 {{/if}}{{#if cross_checks}}
 [dependencies.c2rust-xcheck-plugin]
-path = "{{plugin_path}}"
 
 [dependencies.c2rust-xcheck-derive]
-path = "{{derive_path}}"
 
 [dependencies.c2rust-xcheck-runtime]
-path = "{{runtime_path}}"
 features = ["libc-hash", "fixed-length-array-hash"]
+
 {{#if use_fakechecks}}:
 [dependencies.c2rust-xchecks-libfakechecks-sys]
-path = "{{libfakechecks_sys_path}}"
 {{/if}}{{/if}}

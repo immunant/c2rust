@@ -1,4 +1,5 @@
 extern crate handlebars;
+extern crate pathdiff;
 
 use std::env;
 use std::fs::File;
@@ -7,7 +8,8 @@ use std::path::{Path, PathBuf};
 use std::io::Write;
 
 use self::handlebars::Handlebars;
-use super::serde_json::{json};
+use self::pathdiff::diff_paths;
+use serde_json::json;
 
 use super::TranspilerConfig;
 
@@ -35,6 +37,12 @@ pub fn emit_build_files(tcfg: &TranspilerConfig, cc_db: &Path,
     emit_lib_rs(tcfg, &reg, &build_dir, modules);
 }
 
+#[derive(Serialize)]
+struct Module {
+    path: String,
+    name: String,
+}
+
 /// Emit `lib.rs` for libraries and `main.rs` for binaries.
 fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
                modules: Vec<PathBuf>) {
@@ -44,26 +52,16 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
         .collect::<Vec<String>>()
         .join(", ");
 
-    println!("{:?}", modules); // TODO: remove debug output
-    let relpaths = modules
+    let modules = modules
         .iter()
-        // TODO: make path relative to `build_dir`
-        .map(|m| (m.file_name().unwrap().to_str().unwrap()))
-        .collect::<Vec<&str>>();
-
-    let modnames = modules
-        .iter()
-        .map(|m: &PathBuf| {
-            // remove .rs from filename
-            let fname = m.file_name().unwrap().to_str().unwrap();
-            let len = fname.len();
-            &fname[0..len-3]
+        .map(|m| {
+            let relpath = diff_paths(m, build_dir).unwrap();
+            let name = m.file_stem().unwrap().to_str().unwrap();
+            Module {
+                path: relpath.to_str().unwrap().to_string(),
+                name: name.to_string(),
+            }
         })
-        .collect::<Vec<&str>>();
-
-    let modules = relpaths
-        .iter()
-        .zip(modnames.iter())
         .collect::<Vec<_>>();
 
     let json = json!({
@@ -83,26 +81,13 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
 }
 
 fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) {
-    // TODO: get C2RUST_HOME from environment variable
-    let rust_checks_path = env::current_dir()
-        .unwrap()
-        // Assumes `current_dir` is $C2RUST_HOME/c2rust
-        .join("../cross-checks/rust-checks")
-        .canonicalize()
-        .unwrap();
-    let plugin_path = rust_checks_path.join("rustc-plugin");
-    let derive_path = rust_checks_path.join("derive-macros");
-    let runtime_path = rust_checks_path.join("runtime");
-    let libfakechecks_sys_path = rust_checks_path.join("backends/libfakechecks-sys");
+    // rust_checks_path is gone because we don't want to refer to the source
+    // path but instead want the cross-check libs to be installed via cargo.
     let json = json!({
         "crate_name": "c2rust-build",
         "main_module": tcfg.main,
         "cross_checks": tcfg.cross_checks,
         "use_fakechecks": tcfg.use_fakechecks,
-        "plugin_path": plugin_path,
-        "derive_path": derive_path,
-        "runtime_path": runtime_path,
-        "libfakechecks_sys_path": libfakechecks_sys_path
     });
     let file_name = "Cargo.toml";
     let output_path = build_dir.join(file_name);
