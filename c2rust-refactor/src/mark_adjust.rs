@@ -218,6 +218,8 @@ pub fn find_field_uses<T: Visit>(target: &T,
 
 /// # `mark_field_uses` Command
 /// 
+/// Obsolete - use `select` with `match_expr!(typed!(::TheStruct).field)` instead
+/// 
 /// Usage: `mark_field_uses FIELD MARK`
 /// 
 /// Marks: reads `MARK`; sets/clears `MARK`

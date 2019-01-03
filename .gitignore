@@ -12,6 +12,7 @@
 .vagrant
 **/compile_commands.json
 **/Cargo.lock
+!/Cargo.lock
 .python-version
 
 # xcode-project

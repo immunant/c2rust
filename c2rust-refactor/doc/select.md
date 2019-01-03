@@ -39,8 +39,8 @@ function-by-function basis.
 
 The remainder of this tutorial describes `select` and related mark-manipulation
 commands.  For details of how marks affect various transformation commands, see
-the [command documentation](c2rust-refactor-commands.md) or read about the
-[`marked!` pattern](refactor-rewrite.md#marked) for `rewrite_expr` and other
+the [command documentation](commands.html) or read about the
+[`marked!` pattern](rewrite.md#marked) for `rewrite_expr` and other
 pattern-matching commands.
 
 
@@ -432,11 +432,10 @@ selected node.  `last` does the same with the last selected node.  "First" and
 ordered as expected, and a parent node come "after" all of its children.
 
 The `first` and `last` operations are most useful for finding places to insert
-new nodes (such as with the [`create_item`
-command](c2rust-refactor-commands.md#create_item)) while ignoring details such
-as the specific names or kinds of the nodes around the insertion point.  For
-example, we can use `last` to easily select the last item in a module.  First,
-we select all the module's items:
+new nodes (such as with the [`create_item` command](commands.html#create_item))
+while ignoring details such as the specific names or kinds of the nodes around
+the insertion point.  For example, we can use `last` to easily select the last
+item in a module.  First, we select all the module's items:
 
 ```rust refactor-target hidden
 mod m {
@@ -457,7 +456,7 @@ clear_marks ;
 select target 'item(m); child(kind(item)); last;'
 ```
 
-Now we could use [`create_item`](c2rust-refactor-commands.md#create_item) to
+Now we could use [`create_item`](commands.html#create_item) to
 insert a new item after the last existing one.
 
 ### `marked`
@@ -603,19 +602,189 @@ matches `f2`, and so on.
 
 ### `kind`
 
+`kind(k)` matches AST nodes whose node kind is `k`.  The supported node kinds
+are:
+
+ * `item` - a top-level item, as in `struct Foo { ... }` or `fn foo() { ... }`.
+   Includes both items in modules and items defined inside functions or other
+   blocks, but does not include "item-like" nodes inside traits, impls, or
+   `extern` blocks.
+ * `trait_item` - an item inside a trait definition, such as a method or
+   associated type declaration
+ * `impl_item` - an item inside an impl block, such as a method or associated
+   type definition
+ * `foreign_item` - an item inside an `extern block` ("foreign module"), such
+   as a C function or static declaration
+ * `stmt`
+ * `expr`
+ * `pat` - a pattern, including single-ident patterns like `foo` in `let foo =
+   ...;`
+ * `ty` - a type annotation, such as `Foo` in `let x: Foo = ...;`
+ * `arg` - a function or method argument declaration
+ * `field` - a struct, enum variant, or union field declaration
+ * `itemlike` - matches nodes whose kind is any of `item`, `trait_item`,
+   `impl_item`, or `foreign_item`
+ * `any` - matches any node
+
+The node kind `k` can be used alone as shorthand for `kind(k)`.  For example,
+the operation `desc(item);` is the same as `desc(kind(item));`.
+
 ### `item_kind`
+
+`item_kind(k)` matches itemlike AST nodes whose subkind is `k`.  The itemlike
+subkinds are:
+
+ * `extern_crate`
+ * `use`
+ * `static`
+ * `const`
+ * `fn`
+ * `mod`
+ * `foreign_mod`
+ * `global_asm`
+ * `ty` - type alias definition, as in `type Foo = Bar;`
+ * `existential` - existential type definition, as in `existential type Foo:
+   Bar;`.  Note that existential types are currently an unstable language
+   feature.
+ * `enum`
+ * `struct`
+ * `union`
+ * `trait` - ordinary `trait Foo { ... }` definition, including `unsafe trait`
+ * `trait_alias` - trait alias definition, as in `trait Foo = Bar;`
+   Note that trait aliases are currently an unstable language feature.
+ * `impl` - including both trait and inherent impls
+ * `mac` - macro invocation.  Note that `select` works on the macro-expanded
+   AST, so macro invocations are never present under normal circumstances.
+ * `macro_def` - 2.0/`decl_macro`-style macro definition, as in `macro foo(...)
+   { ... }`.  Note that 2.0-style macro definitions are currently an unstable
+   language feature.
+
+Note that a single `item_kind` filter can match multiple distinct node kinds,
+as long as the subkind is correct.  for example, `item_kind(fn)` will match
+`fn` `item`s, method `trait_item`s and `impl_item`s, and `fn` declarations
+inside `extern` blocks (`foreign_item`s).  similarly, `item_kind(ty)` matches
+ordinary `type` alias definitions, associated type declarations (in traits) and
+definitions (in impls), and foreign type declarations inside `extern` blocks.
+
+`item_kind` filters match only those nodes that also match `kind(itemlike)`, as
+other node kinds have no itemlike subkind.
+
+The itemlike subkind `k` can be used alone as shorthand for `item_kind(k)`.
+For example, the operation `desc(fn);` is the same as `desc(item_kind(fn));`.
 
 ### `pub` and `mut`
 
+`pub` matches any item, impl item, or foreign item whose visibility is `pub`.
+It currently does not support struct fields, even though they can also be
+declared `pub`.
+
+`mut` matches `static mut` items, `static mut` foreign item declarations, and
+mutable binding patterns such as the `mut foo` in `let mut foo = ...;`.
+
 ### `name`
+
+`name(re)` matches itemlikes, arguments, and fields whose name matches the
+regular expression `re`.  For example, `name("[fF].*")` matches `fn f() { ... }`
+and `struct Foo { ... }`, but not `trait Bar { ... }`.  It currently does not
+support general binding patterns, aside from those in function arguments.
 
 ### `path` and `path_prefix`
 
+`path(p)` matches itemlikes and enum variants whose absolute path is `p`.
+
+`path_prefix(n, p)` is similar to `path(p)`, but drops the last `n` segments
+of the node's path before comparing to `p`.
+
 ### `has_attr`
+
+`has_attr(a)` matches itemlikes, exprs, and field declarations that have an
+attribute named `a`.
 
 ### `match_*`
 
+`match_expr(e)` uses [`rewrite_expr`-style AST matching](rewrite.md) to compare
+exprs to `e`, and matches any node where AST matching succeeds.  For example,
+`match_expr(__e + 1)` matches the expressions `1 + 1`, `x + 1`, and `f() + 1`,
+but not `2 + 2`.
+
+`match_pat`, `match_ty`, and `match_stmt` are similar, but operate on pat, ty,
+and stmt nodes respectively.
+
 ### `marked`
+
+`marked(l)` matches nodes that are marked with the label `l`.
 
 ### `any_child`, `all_child`, `any_desc`, and `all_desc`
 
+`any_child(f)` matches nodes that have a child that matches `f`.
+`all_child(f)` matches nodes where all children of the node match `f`.
+
+`any_desc` and `all_desc` are similar, but consider all descendants instead of
+only direct children.
+
+
+## Other commands
+
+In addition to `select`, `c2rust-refactor` contains a number of other
+mark-manipulation commands.  A few of these can be replicated with appropriate
+`select` scripts (though using the command is typically easier), but some are
+more complex.
+
+### `copy_marks`
+
+`copy_marks OLD NEW` adds a mark with label `NEW` to every node currently
+marked with `OLD`.
+
+### `delete_marks`
+
+`delete_marks OLD` removes the label `OLD` from every node that is currently
+marked with it.
+
+### `rename_marks`
+
+`rename_marks OLD NEW` behaves like `copy_marks OLD NEW` followed by
+`delete_marks OLD`: it adds a mark with label `NEW` to every node marked with
+`OLD`, then removes `OLD` from each such node.
+
+### `mark_uses`
+
+`mark_uses LABEL` transfers `LABEL` marks from definitions to uses.  That is,
+it finds each definition marked with `LABEL`, marks each use of such a
+definition with `LABEL`, then removes `LABEL` from the definitions.  For
+example, if a `static FOO: ... = ...` is marked with `target`, then `mark_uses
+target` will add a `target` mark to every expression `FOO` that references the
+marked definition and then remove `target` from `FOO` itself.
+
+For the purposes of this command, a "use" of a definition is a path or
+identifier that resolves to that definition.  This includes expressions
+(both paths and struct literals), patterns (paths to constants, structs, and
+enum variants), and type annotations.  When a function definition is marked,
+only the function path itself (the `foo::bar` in `foo::bar(x)`) is considered a
+use, not the entire call expression.  Method calls (whether using dotted or
+UFCS syntax) normally can't be handled at all, as their resolution is
+"type-dependent" (however, the `mark_callers` command can sometimes work when
+`mark_uses` does not).
+
+### `mark_callers`
+
+`mark_callers LABEL` transfers `LABEL` marks from function or method
+definitions to uses.  That is, it works like `mark_uses`, but is specialized to
+functions and methods.  `mark_callers` uses more a more sophisticated means of
+name resolution that allows it to detect uses via type-dependent method paths,
+which `mark_uses` cannot handle.
+
+For purposes of `mark_callers`, a "use" is a function call (`foo::bar()`) or
+method call (`x.foo()`) expression where the function or method being called is
+one of the marked definitons.
+
+### `mark_arg_uses`
+
+`mark_arg_uses INDEX LABEL` transfers `LABEL` marks from function or method
+definitions to the argument in position `INDEX` at each use.  That is, it works
+like `mark_callers`, but marks the expression passed as argument `INDEX`
+instead of the entire call site.
+
+`INDEX` is zero-based.  However, the `self`/receiver argument of a method call
+counts as the first argument (index 0), with the first argument in parentheses
+having index 1 (`arg0.f(arg1, arg2)`).  For ordinary function calls (including
+UFCS method calls), the first argument has index 0 (`f(arg0, arg1, arg2)`)

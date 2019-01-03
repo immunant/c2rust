@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::mem;
 use rustc::hir;
 use rustc::hir::def_id::DefId;
-use rustc::ty::{self, TyKind};
+use rustc::ty::{self, TyKind, TyCtxt, ParamEnv};
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::parse::PResult;
@@ -1108,7 +1108,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         use rustc::hir::Mutability::*;
 
         // coercion-cast
-        if can_coerce(from, to) {
+        if can_coerce(from, to, self.cx.ty_ctxt()) {
             return true
         }
 
@@ -1395,7 +1395,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
     ) -> Result<P<Expr>, P<Expr>> {
         let cur_ty = self.cx.node_type(expr.id);
         debug!("Attempting to retype {:?} from {:?} to {:?}", expr, cur_ty, expected);
-        if can_coerce(cur_ty, expected.ty) {
+        if can_coerce(cur_ty, expected.ty, self.cx.ty_ctxt()) {
             return Ok(expr);
         }
 
@@ -1426,22 +1426,33 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
 /// Will `from_ty` coerce to `to_ty`?
 /// Based on rules described in https://doc.rust-lang.org/nomicon/coercions.html
-fn can_coerce<'tcx>(from_ty: ty::Ty<'tcx>, to_ty: ty::Ty<'tcx>) -> bool {
+fn can_coerce<'a, 'tcx>(
+    from_ty: ty::Ty<'tcx>,
+    to_ty: ty::Ty<'tcx>,
+    tcx: TyCtxt<'a, 'tcx, 'tcx>,
+) -> bool {
     use rustc::ty::TyKind::*;
+
+    // We won't necessarily have matching regions if we created new expressions
+    // during retyping, so we should strip those. This also handles arrays with
+    // length expressions that aren't yet evaluated. See types_approx_equal() in
+    // illtyped.rs for more details.
+    let from_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), from_ty);
+    let to_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), to_ty);
 
     if from_ty == to_ty {
         return true;
     }
     match (&from_ty.sty, &to_ty.sty) {
         // Unsize for Array
-        (Array(ref from_ty, _), Slice(ref to_ty)) => can_coerce(from_ty, to_ty),
+        (Array(ref from_ty, _), Slice(ref to_ty)) => can_coerce(from_ty, to_ty, tcx),
 
         // Lifetime coercion. This is more permissive than the language allows
         // (should only be longer -> shorter lifetimes). However, if we assume
         // that we aren't changing lifetimes then we can be overly permissive,
         // since we couldn't fix the lifetimes if they did not match.
         (Ref(_, ref from_ty, mut1), Ref(_, ref to_ty, mut2)) => {
-            mut1 == mut2 && can_coerce(from_ty, to_ty)
+            mut1 == mut2 && can_coerce(from_ty, to_ty, tcx)
         }
 
         // TODO other unsizing
@@ -1454,6 +1465,10 @@ fn can_coerce<'tcx>(from_ty: ty::Ty<'tcx>, to_ty: ty::Ty<'tcx>) -> bool {
 
         // TODO Deref coercion: Expression &x of type &T to &*x of type &U if T
         // derefs to U (i.e. T: Deref<Target=U>)
+
+        (FnDef(..), FnPtr(sig)) => {
+            from_ty.fn_sig(tcx) == *sig
+        },
 
         _ => false
     }
