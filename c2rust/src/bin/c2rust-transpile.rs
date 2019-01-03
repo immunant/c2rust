@@ -14,7 +14,7 @@ fn main() {
         .get_matches();
 
     // Build a TranspilerConfig from the command line
-    let cc_json_path = Path::new(matches.value_of("INPUT").unwrap()).canonicalize().unwrap();
+    let cc_json_path = Path::new(matches.value_of("COMPILE_COMMANDS").unwrap()).canonicalize().unwrap();
     let extra_args: Vec<&str> = match matches.values_of("extra-clang-args") {
         Some(args) => args.collect(),
         None => Vec::new(),

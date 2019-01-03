@@ -82,8 +82,8 @@ args:
       requires: cross-checks
       multiple: true
       takes_value: true
-  - INPUT:
-      help: Input C file
+  - COMPILE_COMMANDS:
+      help: Input compile_commands.json file
       required: true
       index: 1
   - invalid-code:

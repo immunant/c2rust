@@ -98,7 +98,8 @@ Directory `/usr/include` was not found! Please install the following package:
         }
     }
 
-    let cmds = get_compile_commands(cc_db).unwrap();
+    let cmds = get_compile_commands(cc_db)
+        .expect(&format!("Could not parse compile commands from {}", cc_db.to_string_lossy()));
     let mut modules = Vec::<PathBuf>::new();
     for mut cmd in cmds {
         match cmd {
