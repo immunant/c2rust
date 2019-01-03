@@ -1,4 +1,4 @@
-# Translating and refactoring robotfindskitten
+# Refactoring robotfindskitten
 
 ## Collapsing `ncurses` macros
 
