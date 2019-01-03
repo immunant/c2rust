@@ -725,7 +725,7 @@ impl<'c> Translation<'c> {
                 "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",
                 "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
                 "ref", "return", "Self", "self", "static", "struct", "super", "trait", "true",
-                "type", "unsafe", "use", "where", "while",
+                "type", "unsafe", "use", "where", "while", "dyn",
 
                 // Keywords reserved for future use
                 "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
