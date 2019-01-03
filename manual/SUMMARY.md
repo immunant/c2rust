@@ -4,7 +4,6 @@
 - [Installation](installation.md)
 - [Quickstart](quickstart.md)
 - [Translator](c2rust-transpile/README.md):
-    - [Building ast-exporter](docs/building-ast-exporter.md)
     - [Known limitations](docs/known-limitations.md)
 - [Refactoring Tool](c2rust-refactor/README.md)
     - [Commands](c2rust-refactor/commands.md)
