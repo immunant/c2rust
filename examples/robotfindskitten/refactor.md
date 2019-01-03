@@ -1427,3 +1427,12 @@ The refactored Rust version of `robotfindskitten` is still unidiomatic and
 somewhat difficult to read, but by removing nearly all of the unsafe code, we
 have established a solid foundation for future improvements.
 
+
+# Final output
+
+Here is the final refactored version of `robotfindskitten`:
+
+```refactor diff-style=only-new hide-code
+
+```
+

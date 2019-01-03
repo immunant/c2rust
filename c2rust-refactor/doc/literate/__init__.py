@@ -167,17 +167,20 @@ def do_render(args: argparse.Namespace):
                     f.write(line)
                 f.write('```\n')
             elif isinstance(b, literate.refactor.RefactorCode):
-                f.write('```sh %s\n' % ' '.join(b.attrs[1:]))
-                for line in b.lines:
-                    f.write(line)
-                f.write('```\n\n')
-                # Unfortunately the `pulldown-cmark` package used by `mdbook`
-                # provides no way to set the `id` of a code block.  Instead we
-                # use this hack: we place an empty, invisible <a> tag with an
-                # `id` just after the block, and in the Javascript code we use
-                # `document.getElementById(...).previousElementSibling` to get
-                # the actual code block.
-                f.write('<a id="refactor-anchor-%d" style="display: none"></a>\n' % diff_idx)
+                if not b.opts['hide-code']:
+                    f.write('```sh %s\n' % ' '.join(b.attrs[1:]))
+                    for line in b.lines:
+                        f.write(line)
+                    f.write('```\n\n')
+                    # Unfortunately the `pulldown-cmark` package used by `mdbook`
+                    # provides no way to set the `id` of a code block.  Instead we
+                    # use this hack: we place an empty, invisible <a> tag with an
+                    # `id` just after the block, and in the Javascript code we use
+                    # `document.getElementById(...).previousElementSibling` to get
+                    # the actual code block.
+                    f.write('<a id="refactor-anchor-%d" style="display: none"></a>\n' % diff_idx)
+
+                f.write('\n\n')
 
                 print('rendering diff #%d' % (diff_idx + 1))
                 print('  diff options: %s' % (b.opts,))

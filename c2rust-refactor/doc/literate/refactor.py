@@ -58,6 +58,7 @@ FLAG_OPTS = {
         'show-filename',
         'collapse-diff',
         'hide-diff',
+        'hide-code',
         'highlight-mode',
         'rewrite-alongside',
         }
@@ -74,6 +75,7 @@ OPT_DEFAULTS = {
         'show-filename': True,
         'collapse-diff': True,
         'hide-diff': False,
+        'hide-code': False,
         'diff-style': 'context',
         'highlight-mode': 'hljs',
         'rewrite-alongside': False,

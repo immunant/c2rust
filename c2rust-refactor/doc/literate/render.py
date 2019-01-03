@@ -116,7 +116,7 @@ def render_line(line: Line, f: File, opts: Dict[str, Any]) -> str:
             )
 
     # Intraline edits.
-    if line.intra is not None:
+    if line.intra is not None and opts['diff-style'] != 'only-new':
         intra = cut_annot_at_points(line.intra, events)
         events = merge_points(
                 map_points(annot_ends(intra), lambda l: ('i_e', l)),
@@ -219,6 +219,9 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
     if opts['hide-diff']:
         return None
 
+    omit_old = opts['diff-style'] == 'only-new'
+    cols = 4 if not omit_old else 2
+
     file_names = sorted(new_files.keys())
     # Is the diff empty?
     empty = True
@@ -227,7 +230,9 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
     parts.append('<table class="diff %s">\n' %
             literate.highlight.get_highlight_class(opts))
     parts.append('<colgroup>')
-    parts.append('<col width="50"><col><col width="50"><col>')
+    if not omit_old:
+        parts.append('<col width="50"><col>')
+    parts.append('<col width="50"><col>')
     parts.append('</colgroup>\n')
     for file_idx, f in enumerate(file_names):
         # `make_diff` copies the files, then updates the copies.  We want
@@ -241,31 +246,32 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
             empty = False
 
         if opts['show-filename']:
-            parts.append('<tr><td colspan="4" class="filename">%s</td></tr>' % f)
+            parts.append('<tr><td colspan="%d" class="filename">%s</td></tr>' % (cols, f))
         else:
             if file_idx > 0:
-                parts.append('<tr><td colspan="4"><hr></td></tr>')
+                parts.append('<tr><td colspan="%d"><hr></td></tr>' % cols)
 
         first = True
         for hunk in diff.hunks:
             if not first:
-                parts.append('<tr><td colspan="4"><hr></td></tr>')
+                parts.append('<tr><td colspan="%d"><hr></td></tr>' % cols)
             first = False
 
             for ol in hunk.output_lines:
                 old_cls = 'diff-old' if ol.changed else ''
-                new_cls = 'diff-new' if ol.changed else ''
+                new_cls = 'diff-new' if ol.changed and not omit_old else ''
 
                 parts.append('<tr>')
 
-                if ol.old_line is not None:
-                    parts.append('<td class="line-num %s">%d</td>' %
-                            (old_cls, ol.old_line + 1))
-                    parts.append('<td class="%s"><pre>' % old_cls)
-                    parts.append(render_line(old.lines[ol.old_line], old, opts))
-                    parts.append('</pre></td>')
-                else:
-                    parts.append('<td></td><td></td>')
+                if not omit_old:
+                    if ol.old_line is not None:
+                        parts.append('<td class="line-num %s">%d</td>' %
+                                (old_cls, ol.old_line + 1))
+                        parts.append('<td class="%s"><pre>' % old_cls)
+                        parts.append(render_line(old.lines[ol.old_line], old, opts))
+                        parts.append('</pre></td>')
+                    else:
+                        parts.append('<td></td><td></td>')
 
                 if ol.new_line is not None:
                     parts.append('<td class="line-num %s">%d</td>' %
