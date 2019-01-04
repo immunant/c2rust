@@ -23,5 +23,7 @@ features = ["libc-hash", "fixed-length-array-hash"]
 
 {{~#if use_fakechecks~}}:
 [dependencies.c2rust-xchecks-libfakechecks-sys]
+{{~else~}}
+[dependencies.c2rust-xchecks-libclevrbuf-sys]
 {{/if}}
 {{/if}}
