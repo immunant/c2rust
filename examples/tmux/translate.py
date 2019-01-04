@@ -3,7 +3,6 @@
 
 from plumbum.cmd import mv, mkdir, rename
 from plumbum import local
-from transpile import transpile_files
 from typing import Tuple
 from common import (
     Config,
