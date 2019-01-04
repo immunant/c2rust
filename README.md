@@ -51,6 +51,7 @@ On OS X with Homebrew LLVM, you need to point the build system at the LLVM insta
 
     $ LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo build
 
+
 If you have trouble with cargo build, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
 
 # Translating C to Rust
@@ -59,25 +60,26 @@ The translator needs access to the exact compiler commands used to build the C c
 
 Once you have a `compile_commands.json` file describing the C build, translate the C code to Rust with the following command:
 
-    $ ./scripts/transpile.py path/to/compile_commands.json
+    $ c2rust transpile path/to/compile_commands.json
 
 To generate a `Cargo.toml` template for a Rust library, add the `-e` option:
 
-    $ ./scripts/transpile.py -e path/to/compile_commands.json
+    $ c2rust transpile --emit-build-files path/to/compile_commands.json
 
 To generate a `Cargo.toml` template for a Rust binary, do this:
 
-    $ ./scripts/transpile.py -m myprog path/to/compile_commands.json
+    $ c2rust transpile --main myprog path/to/compile_commands.json
 
-Where `-m myprog` tells the transpiler to use the `main` method from `myprog.rs` as the entry point.
+Where `--main myprog` tells the transpiler to use the `main` method from `myprog.rs` as the entry point.
 
 The translated Rust files will not depend directly on each other like
 normal Rust modules. They will export and import functions through the C
 API. These modules can be compiled together into a single static Rust
-library.
+library or binary.
 
-There are several [known limitations](docs/known-limitations.md)
-in this translator. The translator will attempt to skip function definitions that use unsupported features.
+There are several [known limitations](docs/known-limitations.md) in this
+translator. The translator will emit a warning and attempt to skip function
+definitions that cannot be translated.
 
 ## Generating `compile_commands.json` files
 
