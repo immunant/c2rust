@@ -11,11 +11,11 @@
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
 
-{{#if reorganize_definitions}}
-#![feature(custom_attribute)]
+{{~#if reorganize_definitions~}}
+    #![feature(custom_attribute)]
 {{/if}}
 
-{{#if cross_checks}}
+{{~#if cross_checks~}}
 #![feature(plugin, custom_attribute)]
 #![plugin(c2rust_xcheck_plugin({{plugin_args}}))]
 #![cross_check(yes)]
@@ -26,20 +26,17 @@
 #[global_allocator]
 static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
 {{/if}}
-
 extern crate libc;
-{{#if use_fakechecks}}
+{{#if use_fakechecks~}}
 extern crate c2rust_xcheck_libfakechecks_sys;
 {{/if}}
-
-{{#each modules}}
+{{#each modules~}}
 #[path = "{{this.path}}"]
 pub mod {{this.name}};
 {{/each}}
 
-{{#if main_module}}
-    {{#if cross_checks}}
-#[cross_check(none)]
+{{~#if main_module~}}
+    {{~#if cross_checks~}}#[cross_check(none)]
     {{/if}}
 fn main() { {{main_module}}::main() }
 {{/if}}
