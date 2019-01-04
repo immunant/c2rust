@@ -113,6 +113,7 @@ args:
       takes_value: true
   - use-fakechecks:
       long: use-fakechecks
+      short: u
       help: use log-based cross checking (implies -x/--cross-checks)
   - reduce-type-annotations:
       long: reduce-type-annotations
