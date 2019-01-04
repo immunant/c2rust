@@ -1,7 +1,6 @@
 extern crate handlebars;
 extern crate pathdiff;
 
-use std::env;
 use std::fs::File;
 use std::fs::DirBuilder;
 use std::path::{Path, PathBuf};
