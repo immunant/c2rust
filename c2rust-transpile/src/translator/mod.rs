@@ -881,12 +881,18 @@ impl<'c> Translation<'c> {
     fn add_static_initializer_to_section(&self, name: &str, typ: CQualTypeId, init: &mut P<Expr>) -> Result<(), String> {
         let root_lhs_expr = mk().path_expr(vec![name]);
         let assign_expr = {
-            let block = match &init.node {
-                ExprKind::Block(block, _) => block,
-                _ => unreachable!("Found static initializer type other than block"),
+            let first_stmt = match &init.node {
+                ExprKind::Block(block, _) => block.stmts[0].clone(),
+                // This only seems to appear when an array init is a private static
+                ExprKind::Array(args) => {
+                    let array_expr = mk().array_expr(args.clone());
+
+                    mk().expr_stmt(array_expr)
+                },
+                ref e => unreachable!("Found static initializer type other than block or array: {:?}", e),
             };
 
-            let expr = match &block.stmts[0].node {
+            let expr = match first_stmt.node {
                 StmtKind::Expr(ref expr) => expr,
                 _ => unreachable!("Found static initializer type other than Expr"),
             };

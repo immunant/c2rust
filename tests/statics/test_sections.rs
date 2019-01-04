@@ -23,5 +23,7 @@ pub fn test_sectioned_statics() {
             *(rust_fn_scoped_static_init() as *const c_uint)
         };
         assert_eq!(ptr_deref, c_uint::max_value());
+
+        rust_use_sectioned_array();
     }
 }
