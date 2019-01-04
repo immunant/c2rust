@@ -42,8 +42,8 @@ The transpiler can instrument the transpiled Rust code for
 instrumentation:
 
 - `-x`, `--cross-checks` - Add macros and build files for cross-checking.
-- `-u`, `--use-fakechecks` - Link against the `fakechecks` library for
-  cross-checking instead of using the default online checks.
+- `--use-fakechecks` - Link against the `fakechecks` library for cross-checking
+  instead of using the default online checks.
 - `-X <config>`, `--cross-check-config <config>` - Use the given config file as
   the cross-checking config.
 
