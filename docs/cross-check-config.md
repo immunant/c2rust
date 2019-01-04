@@ -296,6 +296,6 @@ struct Foo {
 };
 
 struct { int a; }           // This gets the `foo$result` name
-foo(struct { int b; } x ) { // The `x` argument type gets the `foo$arg$x` name
+foo(struct { int b; } x) { // The `x` argument type gets the `foo$arg$x` name
 }
 ```
