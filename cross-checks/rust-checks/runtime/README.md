@@ -1,7 +1,7 @@
 # Runtime library for the Rust cross-checker
 
 This library is used together with the compiler plugin.
-For usage information, see the [README](../rustc-plugin/README.md) file for the plugin.
+For usage information, see the [README](../rustc-plugin/) file for the plugin.
 
 ## Cargo features
 This library can be built with several Cargo features enabled:
