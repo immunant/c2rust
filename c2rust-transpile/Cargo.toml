@@ -21,6 +21,7 @@ c2rust-ast-exporter = { path = "../c2rust-ast-exporter" }
 handlebars = "1.1.0"
 itertools = "0.7"
 pathdiff = "0.1.0"
+regex = "1"
 
 [features]
 # Force static linking of LLVM
