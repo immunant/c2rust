@@ -32,7 +32,7 @@ We distinguish between the following kinds of types:
     We have two special cases here that we need to handle:
       * Null pointers, which our hash functions check and return a special hard-coded hash value for.
       * Non-null invalid pointers. Our cross-checking implementation will crash when dereferencing these pointers.
-      However, running the crashing program using `pointer-tracer` tool will fix the crashes and safely hash these pointers by returning another special hard-coded value.
+      However, running the crashing program either using `pointer-tracer` tool or under the MVEE will fix the crashes and safely hash these pointers by returning another special hard-coded value.
     
 Other data types, e.g., unions and structures containing bitfields, are difficult to hash programatically and require the user to specify a manual hash function.
 
