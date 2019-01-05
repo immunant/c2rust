@@ -74,14 +74,14 @@ Function entries support the following fields:
 `all_args` | Specifies a cross-check override for all of this function's arguments. For example, setting `all_args: none` disables cross-checks for all arguments.
 `args` | An associative array that maps argument names to their corresponding cross-checks. This can be used to customize the cross-checks for some of the function arguments individually. This setting overrides both the global default and the one specified in `all_args` for the current function.
 `return` | Configures the function return value cross-check.
-`ahasher` and `shasher` | Override the default values for the aggregate and simple hasher for this function (see **TODO** for the meaning of these fields).
+`ahasher` and `shasher` | Override the default values for the aggregate and simple hasher for this function (see the [hashing documentation](cross-check-hash.md) for the meaning of these fields).
 `nested` | Recursively configures the items nested inside the current items. Since Rust allows arbitrarily deep function and structure nesting, we use this to recursively configure nested functions.
 `entry_extra` | Specifies a list of additional custom cross-checks to perform after the argument. Each cross-check accepts an optional `tag` parameter that overrides the default `UNKNOWN` tag.
 `exit_extra` | Specifies a list of additional custom cross-checks to perform on function return.
 
 ### Structure cross-check configuration
 Structure entries configure cross-checks for Rust structure, tuple and enumeration types, and are tagged with `item: struct`.
-For a general overview of cross-checking for structures (aggregate types), see **TODO**.
+For a general overview of cross-checking for structures (aggregate types), see the [hashing documentation](cross-check-hash.md).
 Structure entries support the following fields:
 
  Field  |  Role
@@ -127,7 +127,7 @@ The function receives the following arguments:
  * The current aggregate hasher for this structure. The function can call the hasher's `write_u64` function as many times as needed.
  * The structure containing this field. This argument has generic type `S`, so the same function can be reused for different structures.
  * The field itself, with generic type `F`. The function may require additional type bounds for `F` to make it compatible with its callers.
- * The maximum hashing depth (explained in **TODO**).
+ * The maximum hashing depth (explained in the [hashing documentation](cross-check-hash.md)).
  * The type parameters `XCHA` and `XCHS` bound to the current aggregate and simple value hasher for the current invocation.
 
 This function should not return the hash value of the field. Instead, the function should call the hasher's `write_u64` method directly.
