@@ -100,8 +100,13 @@ args:
   - emit-build-files:
       long: emit-build-files
       short: e
-      help: emit Rust build files, i.e., Cargo.toml for a library (or a binary if -m/--main is given). Implies --emit-modules.
+      help: Emit Rust build files, i.e., Cargo.toml for a library (or a binary if -m/--main is given). Implies --emit-modules.
       takes_value: false
+  - filter:
+      long: filter
+      short: f
+      help: Only transpile files matching filter
+      takes_value: true
   - fail-on-error:
       long: fail-on-error
       help: Fail to translate a module when a portion is not able to be translated
@@ -109,11 +114,11 @@ args:
   - main:
       long: main
       short: m
-      help: emit Rust build files for a binary using the main function in the specified translation unit (implies -e/--emit-build-files)
+      help: Emit Rust build files for a binary using the main function in the specified translation unit (implies -e/--emit-build-files)
       takes_value: true
   - use-fakechecks:
       long: use-fakechecks
-      help: use log-based cross checking (implies -x/--cross-checks)
+      help: Use log-based cross checking (implies -x/--cross-checks)
   - reduce-type-annotations:
       long: reduce-type-annotations
       help: Reduces the number of explicit type annotations where it should be safe to do so

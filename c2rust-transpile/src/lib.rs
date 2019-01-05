@@ -14,6 +14,7 @@ extern crate clap;
 extern crate c2rust_ast_exporter;
 extern crate c2rust_ast_builder;
 extern crate itertools;
+extern crate regex;
 
 use std::io::stdout;
 use std::io::prelude::*;
@@ -21,6 +22,8 @@ use std::error::Error;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process;
+
+use regex::Regex;
 
 use c_ast::*;
 use c_ast::Printer;
@@ -53,6 +56,7 @@ pub struct TranspilerConfig {
     // Options that control translation
     pub incremental_relooper: bool,
     pub fail_on_multiple: bool,
+    pub filter: Option<Regex>,
     pub debug_relooper_labels: bool,
     pub cross_checks: bool,
     pub cross_check_configs: Vec<String>,
@@ -100,6 +104,16 @@ Directory `/usr/include` was not found! Please install the following package:
 
     let cmds = get_compile_commands(cc_db)
         .expect(&format!("Could not parse compile commands from {}", cc_db.to_string_lossy()));
+
+    let cmds = match tcfg.filter {
+        Some(ref re) => {
+            cmds.into_iter()
+                .filter(|c| re.is_match(c.file.to_str().unwrap()))
+                .collect::<Vec<CompileCmd>>()
+        },
+        None => cmds
+    };
+
     let mut modules = Vec::<PathBuf>::new();
     for mut cmd in cmds {
         match cmd {

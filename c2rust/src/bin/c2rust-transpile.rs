@@ -4,6 +4,7 @@ extern crate c2rust_transpile;
 
 use std::path::Path;
 use clap::App;
+use regex::Regex;
 
 use c2rust_transpile::{TranspilerConfig, ReplaceMode};
 
@@ -31,6 +32,14 @@ fn main() {
         incremental_relooper:   !matches.is_present("no-incremental-relooper"),
         fail_on_error:          matches.is_present("fail-on-error"),
         fail_on_multiple:       matches.is_present("fail-on-multiple"),
+        filter: {
+            if matches.is_present("filter") {
+                let filter = matches.value_of("filter").unwrap();
+                Some(Regex::new(filter).unwrap())
+            } else {
+                None
+            }
+        },
         debug_relooper_labels:  matches.is_present("debug-labels"),
         use_fakechecks:         matches.is_present("use-fakechecks"),
         cross_checks:           matches.is_present("cross-checks"),
