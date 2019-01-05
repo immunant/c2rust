@@ -10,11 +10,10 @@ from plumbum import local, FG
 
 # Path to the root of the robotfindskitten codebase
 RFK_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'repo'))
+COMPILE_COMMANDS = os.path.join(RFK_DIR, 'compile_commands.json')
 
 sys.path.append(os.path.join(RFK_DIR, '../../../scripts'))
 from common import *
-import transpile
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -34,15 +33,20 @@ def main():
         print('building...')
         local['bear']['make']()
 
+    assert os.path.isfile(COMPILE_COMMANDS), 'Could not find {}'.format(COMPILE_COMMANDS)
+
     # Remove object files that will confuse `transpile`
     rm['-f', 'src/robotfindskitten.o']()
 
-    # Actually translate
-    with open('compile_commands.json', 'r') as f:
-        print('translating...')
-        transpile.transpile_files(f,
-                emit_build_files=False,
-                verbose=True)
+    c2rust_bin = get_cmd_or_die(config.C2RUST_BIN)
+    try:
+        retcode, stdout, transpiler_warnings = c2rust_bin['transpile', COMPILE_COMMANDS].run()
+        if transpiler_warnings:
+            print(transpiler_warnings)
+    except pb.ProcessExectuionError as pee:
+        print(Colors.FAIL + 'RFK could not be transpiled:' + Colors.NO_COLOR)
+        print(pee.stderr)
+        sys.exit(pee.retcode)
 
     # Move rust files into rust/src
     mkdir['-vp', 'rust/src']()

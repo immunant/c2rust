@@ -4,18 +4,17 @@
 
 If the repo submodule appears to be empty or out of date, you may need to run `git submodule update --init path/to/repo`.
 
-## Required Manual Changes
+## Transpiling
 
-The translator will generate this bit of code which will not compile: `static mut cross_cursor: Cursor = ::std::ptr::null_mut::<libc::c_void>() as Cursor;`. This should be replaced with the equivalent code: `static mut cross_cursor: Cursor = 0;` (`Cursor` is just an alias for an int)
+The steps to get the transpiled code are as followed:
 
-## Required Exporter Params
+    $ bear make
+    $ c2rust transpile compile_commands.json
+    $ rustc grabc.rs -L/usr/X11R6/lib -lX11
 
-No params are strictly required at this time.
+If you want to have the transpiler create a crate:
 
-## Required Importer Params
-
-Pass the `--translate-entry` flag to the importer so that a valid rust main function is generated.
-
-## Linking
-
-Link in X11 with `-L/usr/X11R6/lib -lX11` when compiling C/Rust code.
+    $ bear make
+    $ c2rust transpile compile_commands.json --emit-build-files -m grabc
+    $ cd c2rust-build
+    $ RUSTFLAGS="-L/usr/X11R6/lib -lX11" cargo build

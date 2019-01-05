@@ -22,8 +22,6 @@ in `tmux/repo`:
 
 if `bear` is in `$PATH`. Otherwise run:
 
-`../../../dependencies/Bear.$HOSTNAME/bin/bear make check` so that we can translate all necessary files.
-
 If your `compile_commands.json` enables optimizations(`-O2`, `-O3`, etc) you will need to remove them so that unsupported compiler_builtins are less likely to be generated and leave you in an uncompilable state.
 
 Run `rm *.o compat/*.o` here to get rid of gcc generated staticlibs or else you may see `CRITICAL:root:error: some ELF objects were not compiled with clang:` in the next step

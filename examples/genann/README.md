@@ -4,12 +4,11 @@
 
 If the repo submodule appears to be empty or out of date, you may need to run `git submodule update --init path/to/repo`.
 
-## Translation
+## Transpiling
 
     # generate compile_commands.json
-    bear make
-    
-    c2rust transpile compile_commands.json --emit-build-files
+    $ bear make
+    $ c2rust transpile compile_commands.json --emit-build-files
 
 ## Testing
 
