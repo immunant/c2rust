@@ -13,11 +13,8 @@
 - [Cross Checks](cross-checks/README.md)
     - [Tutorial](docs/cross-check-tutorial.md)
     - [Configuration](docs/cross-check-config.md)
-    - [rustc-plugin](cross-checks/rust-checks/rustc-plugin/README.md)
-    - [derive-macros](cross-checks/rust-checks/derive-macros/README.md)
-    - [runtime](cross-checks/rust-checks/runtime/README.md)
-    - [backends](cross-checks/rust-checks/backends/README.md)
-    - [clang-plugin](cross-checks/c-checks/clang-plugin/README.md)
+    - [Rust instrumentation plugin](cross-checks/rust-checks/rustc-plugin/README.md)
+    - [C instrumentation plugin](cross-checks/c-checks/clang-plugin/README.md)
 - [Examples](examples/README.md):
     - [json-c](examples/json-c/README.md)
     - [urlparser](examples/urlparser/README.md)
