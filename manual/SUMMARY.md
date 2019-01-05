@@ -13,6 +13,7 @@
 - [Cross Checks](cross-checks/README.md)
     - [Tutorial](docs/cross-check-tutorial.md)
     - [Configuration](docs/cross-check-config.md)
+    - [Hashing](docs/cross-check-hash.md)
     - [Rust instrumentation plugin](cross-checks/rust-checks/rustc-plugin/README.md)
     - [C instrumentation plugin](cross-checks/c-checks/clang-plugin/README.md)
 - [Examples](examples/README.md):
