@@ -196,7 +196,6 @@ fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) {
 
 fn reorganize_definitions(build_dir: &PathBuf, crate_path: &PathBuf) {
     invoke_refactor(build_dir, crate_path);
-
     // fix the formatting of the output of `c2rust-refactor`
     let code = process::Command::new("cargo")
         .args(&["fmt"])
