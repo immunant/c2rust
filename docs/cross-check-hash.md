@@ -25,7 +25,7 @@ We distinguish between the following kinds of types:
   * Aggregate (or non-trivial) types:
     * Structures. We hash the contents of each structure by recursively hashing each field (with depth increased by one), then aggregating all the hashes into one. We currently use the [JodyHash](https://libraries.io/github/jbruchon/jodyhash) function for the latter.
 
-    * Fixed-size arrays are hashed in fundamentally the same way as structures, by recursively hashing each array field then aggregating the resulting hashes.
+    * Fixed-size arrays are hashed in fundamentally the same way as structures, by recursively hashing each array element then aggregating the resulting hashes.
 
     * Pointers. We avoid hashing pointers by address for the reasons explaing above.
     Instead, we hash each pointer by recursively hashing its dereferenced value (with depth increased by one).
