@@ -13,9 +13,10 @@ serde = "1.0"
 serde_cbor = "0.9"
 
 [build-dependencies]
-bindgen = "0.37"
+bindgen = { version = "0.46", features = ["logging"] }
 cmake = "0.1"
-clang-sys = "0.23"
+clang-sys = "0.26"
+env_logger = "0.6"
 
 [features]
 default = []

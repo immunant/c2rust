@@ -38,7 +38,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use arena::SyncDroplessArena;
-use ena::unify::{UnificationTable, UnifyKey};
+use ena::unify::{UnificationTable, UnifyKey, InPlace};
 use rustc::hir;
 use rustc::hir::*;
 use rustc::hir::def_id::DefId;
@@ -96,7 +96,7 @@ struct LFnSig<'tcx> {
 
 /// A table for tracking labeled types and their unifications.
 struct LTyTable<'tcx> {
-    unif: RefCell<UnificationTable<TyLabel>>,
+    unif: RefCell<UnificationTable<InPlace<TyLabel>>>,
     lcx: LabeledTyCtxt<'tcx, Label>,
 }
 

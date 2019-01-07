@@ -11,11 +11,11 @@ build = "build.rs"
 diff = "0.1.10"
 json = "0.11.8"
 libc = "0.2.28"
-regex = "0.2.2"
-ena = "0.7.3"
+regex = "1.1.0"
+ena = "0.11.0"
 c2rust-ast-builder = { path = "../c2rust-ast-builder" }
 indexmap = { version = "1.0.1", features = ["serde-1"] }
-cargo = "0.30.0"
+cargo = "0.32.0"
 clap = {version = "~2.32.0", features = ["yaml"]}
 
 [lib]
