@@ -1,6 +1,7 @@
 extern crate bindgen;
 extern crate cmake;
 extern crate clang_sys;
+extern crate env_logger;
 
 use std::env;
 use std::ffi::OsStr;
@@ -11,6 +12,8 @@ use cmake::Config;
 // Use `cargo build -vv` to get detailed output on this script's progress.
 
 fn main() {
+    env_logger::init();
+
     let llvm_info = LLVMInfo::new();
 
     // Build the exporter library and link it (and its dependencies)
@@ -79,6 +82,9 @@ fn generate_bindings() -> Result<(), &'static str> {
         .rustified_enum("TypeTag")
         .rustified_enum("StringTypeTag")
 
+        // Tell bindgen we are processing c++
+        .clang_arg("-xc++")
+
         // Finish the builder and generate the bindings.
         .generate()
         .or(Err("Unable to generate AST bindings"))?;
@@ -88,7 +94,11 @@ fn generate_bindings() -> Result<(), &'static str> {
         .whitelist_type("ExportResult")
         .generate_comments(true)
         .derive_default(true)
+
+        // Tell bindgen we are processing c++
+        .clang_arg("-xc++")
         .clang_arg("-std=c++11")
+
         // Finish the builder and generate the bindings.
         .generate()
         .or(Err("Unable to generate ExportResult bindings"))?;
