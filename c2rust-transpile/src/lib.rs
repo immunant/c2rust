@@ -1,46 +1,49 @@
 #![feature(rustc_private)]
 #![feature(label_break_value)]
+extern crate dtoa;
+extern crate rustc_target;
 extern crate serde_cbor;
 extern crate syntax;
 extern crate syntax_pos;
-extern crate rustc_target;
-extern crate dtoa;
-#[macro_use] extern crate indexmap;
+#[macro_use]
+extern crate indexmap;
 extern crate serde;
-#[macro_use] extern crate serde_derive;
-extern crate serde_json;
-extern crate libc;
-extern crate clap;
-extern crate c2rust_ast_exporter;
+#[macro_use]
+extern crate serde_derive;
 extern crate c2rust_ast_builder;
+extern crate c2rust_ast_exporter;
+extern crate clap;
 extern crate itertools;
+extern crate libc;
 extern crate regex;
+extern crate serde_json;
 
-use std::io::stdout;
-use std::io::prelude::*;
 use std::error::Error;
+use std::fs::DirBuilder;
 use std::fs::File;
+use std::io::prelude::*;
+use std::io::stdout;
 use std::path::{Path, PathBuf};
 use std::process;
 
 use regex::Regex;
 
-use c_ast::*;
-use c_ast::Printer;
 use c2rust_ast_exporter as ast_exporter;
+use c_ast::Printer;
+use c_ast::*;
 
-pub mod renamer;
-pub mod convert_type;
 pub mod build_files;
-pub mod translator;
 pub mod c_ast;
-pub mod rust_ast;
 pub mod cfg;
+pub mod convert_type;
+pub mod renamer;
+pub mod rust_ast;
+pub mod translator;
 pub mod with_stmts;
 
-pub use translator::ReplaceMode;
 use build_files::emit_build_files;
 use std::prelude::v1::Vec;
+pub use translator::ReplaceMode;
 
 /// Configuration settings for the translation process
 #[derive(Debug)]
@@ -73,7 +76,6 @@ pub struct TranspilerConfig {
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
 
-
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
     pub emit_build_files: bool,
@@ -83,10 +85,14 @@ pub struct TranspilerConfig {
     pub use_fakechecks: bool,
 }
 
+const USR_INCL_MACOS_EMSG: &str = "
+Directory `/usr/include` was not found! Please install the following package:
+/Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
+ (or the equivalent version on your host.)";
+
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
-
     // TODO: bindgen may have a more elegant solution to this issue
     // MacOS Mojave does not have `/usr/include` even if Xcode or the
     // command line developer tools are installed.
@@ -94,46 +100,105 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     if cfg!(target_os = "macos") {
         let usr_incl = Path::new("/usr/include");
         if !usr_incl.exists() {
-            eprintln!("
-Directory `/usr/include` was not found! Please install the following package:
-/Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
- (or the equivalent version on your host.)");
-            return
+            eprintln!("{}", USR_INCL_MACOS_EMSG);
+            return;
         }
     }
 
-    let cmds = get_compile_commands(cc_db)
-        .expect(&format!("Could not parse compile commands from {}", cc_db.to_string_lossy()));
+    let cmds = get_compile_commands(cc_db).expect(&format!(
+        "Could not parse compile commands from {}",
+        cc_db.to_string_lossy()
+    ));
 
     let cmds = match tcfg.filter {
-        Some(ref re) => {
-            cmds.into_iter()
-                .filter(|c| re.is_match(c.file.to_str().unwrap()))
-                .collect::<Vec<CompileCmd>>()
-        },
-        None => cmds
+        Some(ref re) => cmds
+            .into_iter()
+            .filter(|c| re.is_match(c.file.to_str().unwrap()))
+            .collect::<Vec<CompileCmd>>(),
+        None => cmds,
     };
 
     let mut modules = Vec::<PathBuf>::new();
     for mut cmd in cmds {
         match cmd {
-            CompileCmd { directory: d, file: f, command: None, arguments: _, output: None} => {
+            CompileCmd {
+                directory: d,
+                file: f,
+                command: None,
+                arguments: _,
+                output: None,
+            } => {
                 println!("transpiling {}", f.to_str().unwrap());
                 let input_file_abs = d.join(f);
 
                 let m = transpile_single(&tcfg, input_file_abs.as_path(), cc_db, extra_clang_args);
                 modules.push(m);
-            },
+            }
             _ => {
                 let reason = format!("unhandled compile cmd: {:?}", cmd);
                 panic!(reason);
             }
         }
-   }
+    }
 
-   if tcfg.emit_build_files {
-       emit_build_files(&tcfg, cc_db, modules)
-   }
+    let build_dir = get_build_dir(cc_db);
+
+    if tcfg.emit_build_files {
+        emit_build_files(&tcfg, &build_dir, modules)
+    }
+
+    if tcfg.reorganize_definitions {
+        reorganize_definitions(&build_dir);
+    }
+}
+
+fn get_build_dir(cc_db: &Path) -> PathBuf {
+    let build_dir = cc_db
+        .parent() // get directory of `compile_commands.json`
+        .unwrap()
+        .join("c2rust-build");
+
+    if !build_dir.exists() {
+        let db = DirBuilder::new();
+        db.create(&build_dir).expect(&format!(
+            "couldn't create build directory: {}",
+            build_dir.display()
+        ));
+    }
+
+    build_dir
+}
+
+fn invoke_refactor(build_dir: &PathBuf) {
+    // Assumes the subcommand executable is in the same directory as this program.
+    let cmd_path = std::env::current_exe().expect("Cannot get current executable path");
+    let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
+    cmd_path.pop(); // remove current executable
+    cmd_path.push(format!("c2rust-refactor"));
+    assert!(cmd_path.exists(), format!("{:?} is missing", cmd_path));
+    let args = ["-r", "inplace", "reorganize_definitions", "--", "main.rs"];
+    let code = process::Command::new(cmd_path.into_os_string())
+        .args(&args)
+        .current_dir(build_dir)
+        .status()
+        .expect("failed to start c2rust-refactor subcommand")
+        .code()
+        .unwrap_or(-1);
+    assert_eq!(code, 0);
+}
+
+fn reorganize_definitions(build_dir: &PathBuf) {
+    invoke_refactor(build_dir);
+
+    // fix the formatting of the output of `c2rust-refactor`
+    let code = process::Command::new("cargo")
+        .args(&["fmt"])
+        .current_dir(build_dir)
+        .status()
+        .expect("failed to run cargo fmt subcommand")
+        .code()
+        .unwrap_or(-1);
+    assert_eq!(code, 0);
 }
 
 #[derive(Deserialize, Debug)]
@@ -167,8 +232,12 @@ fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Box<
     Ok(v)
 }
 
-fn transpile_single(tcfg: &TranspilerConfig, input_path: &Path, cc_db: &Path, extra_clang_args: &[&str])
-    -> PathBuf {
+fn transpile_single(
+    tcfg: &TranspilerConfig,
+    input_path: &Path,
+    cc_db: &Path,
+    extra_clang_args: &[&str],
+) -> PathBuf {
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(input_path, cc_db, extra_clang_args) {
         Err(e) => {
@@ -223,7 +292,12 @@ fn get_output_path(input_path: &Path) -> PathBuf {
 
     // When an output file name is not explictly specified, we should convert files
     // with dashes to underscores, as they are not allowed in rust file names.
-    let file_name = path_buf.file_name().unwrap().to_str().unwrap().replace('-', "_");
+    let file_name = path_buf
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .replace('-', "_");
 
     path_buf.set_file_name(file_name);
     path_buf.set_extension("rs");
