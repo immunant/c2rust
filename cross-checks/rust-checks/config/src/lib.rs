@@ -327,7 +327,7 @@ impl RootConfig {
                 for (file_name, cfg) in map_other.into_iter() {
                     // FIXME: check for duplicates???
                     (map_self.entry(file_name.clone())
-                           .or_insert(Default::default())
+                           .or_insert_with(Default::default)
                            .0).0.extend((cfg.0).0);
                 };
                 RootConfig::NameMap(map_self)
