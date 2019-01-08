@@ -96,10 +96,10 @@ pub fn parse_xcheck_arg(arg: &ArgValue<'static>, or_default: bool) -> Option<XCh
 
 pub fn parse_attr_config(item_xcfg: &mut ItemConfig, mi: &ast::MetaItem) {
     assert_eq!(mi.name(), "cross_check");
-    match item_xcfg {
-        &mut ItemConfig::Defaults(ref mut d) => parse_defaults_attr_config(d, mi),
-        &mut ItemConfig::Function(ref mut f) => parse_function_attr_config(f, mi),
-        &mut ItemConfig::Struct(ref mut s)   => parse_struct_attr_config(s, mi),
+    match *item_xcfg {
+        ItemConfig::Defaults(ref mut d) => parse_defaults_attr_config(d, mi),
+        ItemConfig::Function(ref mut f) => parse_function_attr_config(f, mi),
+        ItemConfig::Struct(ref mut s)   => parse_struct_attr_config(s, mi),
         _ => panic!("unexpected item: {:#?}", item_xcfg)
     }
 }
