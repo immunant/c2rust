@@ -189,6 +189,7 @@ dependencies = [
 name = "c2rust-bitfields"
 version = "0.1.0"
 dependencies = [
+ "libc 0.2.46 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 0.15.24 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
