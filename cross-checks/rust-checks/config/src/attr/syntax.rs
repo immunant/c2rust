@@ -134,8 +134,9 @@ fn parse_function_attr_config(f: &mut FunctionConfig, mi: &ast::MetaItem) {
                 f.args.extend(arg.as_list().iter().filter_map(|(name, arg)| {
                     if let ArgValue::List(ref l) = *arg {
                         let arg_xcheck = parse_xcheck_arglist(l, false)
-                            .expect(&format!("expected valid cross-check type \
-                                              for argument: {}", name));
+                            .unwrap_or_else(|| {
+                                panic!("expected valid cross-check type for argument: {}", name)
+                            });
                         Some((String::from(*name), arg_xcheck))
                     } else { None }
                 }));

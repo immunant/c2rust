@@ -392,7 +392,7 @@ impl Config {
         let mut gsb = globset::GlobSetBuilder::new();
         for file in files {
             let glob = globset::Glob::new(&file.file)
-                .expect(&format!("error creating glob for file: '{}'", file.file));
+                .unwrap_or_else(|e| panic!("error creating glob for file '{}': {}", file.file, e));
             gsb.add(glob);
         }
         self.glob_set.replace(gsb.build().unwrap());
