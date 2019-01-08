@@ -42,7 +42,7 @@ fn djb2_hash(s: &str) -> u32 {
 
 trait CrossCheckBuilder {
     fn build_ident_xcheck(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
-                          tag_str: &str, ident: &ast::Ident) -> Option<ast::Stmt>;
+                          tag_str: &str, ident: ast::Ident) -> Option<ast::Stmt>;
     fn build_xcheck<F>(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
                        tag_str: &str, val_ref_str: &str, f: F) -> Option<ast::Stmt>
         where F: FnOnce(ast::Ident, Vec<ast::Stmt>) -> P<ast::Expr>;
@@ -50,7 +50,7 @@ trait CrossCheckBuilder {
 
 impl CrossCheckBuilder for xcfg::XCheckType {
     fn build_ident_xcheck(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
-                          tag_str: &str, ident: &ast::Ident) -> Option<ast::Stmt> {
+                          tag_str: &str, ident: ast::Ident) -> Option<ast::Stmt> {
         self.build_xcheck(cx, exp, tag_str, &"$INVALID$", |tag, pre_hash_stmts| {
             assert!(pre_hash_stmts.is_empty());
             let name = &*ident.name.as_str();
@@ -323,7 +323,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         }).collect::<Vec<ast::Stmt>>()
     }
 
-    fn build_function_xchecks(&mut self, fn_ident: &ast::Ident,
+    fn build_function_xchecks(&mut self, fn_ident: ast::Ident,
                               fn_decl: &ast::FnDecl,
                               block: P<ast::Block>) -> P<ast::Block> {
         let checked_block = if self.config().inherited.enabled {
@@ -393,7 +393,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         })
     }
 
-    fn build_union_hash(&mut self, union_ident: &ast::Ident) -> P<ast::Item> {
+    fn build_union_hash(&mut self, union_ident: ast::Ident) -> P<ast::Item> {
         let custom_hash_opt = &self.config().struct_config().custom_hash;
         let custom_hash_format = &self.config().struct_config().custom_hash_format;
         let hash_body = if let Some(ref custom_hash) = *custom_hash_opt {
@@ -446,7 +446,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     }
 
     #[cfg(feature="c-hash-functions")]
-    fn build_type_c_hash_function(&mut self, ty_ident: &ast::Ident,
+    fn build_type_c_hash_function(&mut self, ty_ident: ast::Ident,
                                   ty_suffix: &str) -> Option<P<ast::Item>> {
         let hash_fn_name = format!("__c2rust_hash_{}_{}", ty_ident, ty_suffix);
         let hash_fn = ast::Ident::from_str(&hash_fn_name);
@@ -478,7 +478,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         match folded_item.node {
             ast::ItemKind::Fn(fn_decl, header, generics, block) => {
                 let checked_block = self.build_function_xchecks(
-                    &folded_item.ident, &*fn_decl, block);
+                    folded_item.ident, &*fn_decl, block);
                 let checked_fn = ast::ItemKind::Fn(
                     fn_decl,
                     header,
@@ -491,11 +491,11 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 }
             }
             ast::ItemKind::Union(_, _) => {
-                let union_hash_impl = self.build_union_hash(&folded_item.ident);
+                let union_hash_impl = self.build_union_hash(folded_item.ident);
                 self.pending_items.push(union_hash_impl);
                 #[cfg(feature="c-hash-functions")]
                 {
-                    let c_hash_func = self.build_type_c_hash_function(&folded_item.ident,
+                    let c_hash_func = self.build_type_c_hash_function(folded_item.ident,
                                                                       "struct");
                     self.pending_items.extend(c_hash_func.into_iter());
                 }
@@ -517,7 +517,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     }
                     #[cfg(feature="c-hash-functions")]
                     {
-                        let c_hash_func = self.build_type_c_hash_function(&folded_item.ident,
+                        let c_hash_func = self.build_type_c_hash_function(folded_item.ident,
                                                                           "struct");
                         self.pending_items.extend(c_hash_func.into_iter());
                     }
