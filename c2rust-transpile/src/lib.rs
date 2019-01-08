@@ -73,6 +73,7 @@ pub struct TranspilerConfig {
     pub fail_on_error: bool,
     pub replace_unsupported_decls: ReplaceMode,
     pub translate_valist: bool,
+    pub overwrite_existing: bool,
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
 
@@ -128,11 +129,14 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                 arguments: _,
                 output: None,
             } => {
-                println!("transpiling {}", f.to_str().unwrap());
                 let input_file_abs = d.join(f);
-
-                let m = transpile_single(&tcfg, input_file_abs.as_path(), cc_db, extra_clang_args);
-                modules.push(m);
+                if let Some(m) = transpile_single(
+                    &tcfg,
+                    input_file_abs.as_path(),
+                    cc_db,
+                    extra_clang_args) {
+                    modules.push(m);
+                };
             }
             _ => {
                 let reason = format!("unhandled compile cmd: {:?}", cmd);
@@ -144,11 +148,13 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let build_dir = get_build_dir(cc_db);
 
     if tcfg.emit_build_files {
-        emit_build_files(&tcfg, &build_dir, modules)
-    }
-
-    if tcfg.reorganize_definitions {
-        reorganize_definitions(&build_dir);
+        let crate_file = emit_build_files(&tcfg, &build_dir, modules);
+        // We only run the reorganization refactoring if we emitted a fresh crate file
+        if let Some(output_file) = crate_file {
+            if tcfg.reorganize_definitions {
+                reorganize_definitions(&build_dir, &output_file);
+            }
+        }
     }
 }
 
@@ -169,14 +175,15 @@ fn get_build_dir(cc_db: &Path) -> PathBuf {
     build_dir
 }
 
-fn invoke_refactor(build_dir: &PathBuf) {
+fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) {
     // Assumes the subcommand executable is in the same directory as this program.
     let cmd_path = std::env::current_exe().expect("Cannot get current executable path");
     let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
     cmd_path.pop(); // remove current executable
     cmd_path.push(format!("c2rust-refactor"));
     assert!(cmd_path.exists(), format!("{:?} is missing", cmd_path));
-    let args = ["-r", "inplace", "reorganize_definitions", "--", "main.rs"];
+    let crate_path = crate_path.to_str().unwrap();
+    let args = ["-r", "inplace", "reorganize_definitions", "--", crate_path];
     let code = process::Command::new(cmd_path.into_os_string())
         .args(&args)
         .current_dir(build_dir)
@@ -187,8 +194,8 @@ fn invoke_refactor(build_dir: &PathBuf) {
     assert_eq!(code, 0);
 }
 
-fn reorganize_definitions(build_dir: &PathBuf) {
-    invoke_refactor(build_dir);
+fn reorganize_definitions(build_dir: &PathBuf, crate_path: &PathBuf) {
+    invoke_refactor(build_dir, crate_path);
 
     // fix the formatting of the output of `c2rust-refactor`
     let code = process::Command::new("cargo")
@@ -237,7 +244,14 @@ fn transpile_single(
     input_path: &Path,
     cc_db: &Path,
     extra_clang_args: &[&str],
-) -> PathBuf {
+) -> Option<PathBuf> {
+
+    let output_path = get_output_path(input_path);
+    if output_path.exists() && !tcfg.overwrite_existing {
+        eprintln!("Skipping existing file {}", output_path.display());
+        return None;
+    }
+
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(input_path, cc_db, extra_clang_args) {
         Err(e) => {
@@ -272,7 +286,6 @@ fn transpile_single(
     // Perform the translation
     let main_file = input_path.with_extension("");
     let translated_string = translator::translate(typed_context, &tcfg, main_file);
-    let output_path = get_output_path(input_path);
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,
@@ -284,7 +297,7 @@ fn transpile_single(
         Err(e) => panic!("Unable to write translation to file: {}", e),
     };
 
-    output_path
+    Some(output_path)
 }
 
 fn get_output_path(input_path: &Path) -> PathBuf {

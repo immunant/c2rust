@@ -53,6 +53,7 @@ fn main() {
         use_c_loop_info:        !matches.is_present("ignore-c-loop-info"),
         use_c_multiple_info:    !matches.is_present("ignore-c-multiple-info"),
         simplify_structures:    !matches.is_present("no-simplify-structures"),
+        overwrite_existing:     matches.is_present("overwrite-existing"),
         reduce_type_annotations:matches.is_present("reduce-type-annotations"),
         reorganize_definitions: matches.is_present("reorganize-definitions"),
         emit_modules:           matches.is_present("emit-modules"),

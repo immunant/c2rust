@@ -119,6 +119,10 @@ args:
   - use-fakechecks:
       long: use-fakechecks
       help: Use log-based cross checking (implies -x/--cross-checks)
+  - overwrite-existing:
+      long: overwrite-existing
+      help: Emit files even if it causes existing files to be overwritten
+      takes_value: false
   - reduce-type-annotations:
       long: reduce-type-annotations
       help: Reduces the number of explicit type annotations where it should be safe to do so

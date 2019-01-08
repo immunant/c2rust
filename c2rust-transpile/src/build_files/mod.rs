@@ -12,8 +12,11 @@ use serde_json::json;
 
 use super::TranspilerConfig;
 
+/// Emit `Cargo.toml` and `lib.rs` for a library or `main.rs` for a binary.
+/// Returns the path to `lib.rs` or `main.rs` (or `None` if the output file
+/// existed already).
 pub fn emit_build_files(tcfg: &TranspilerConfig, cc_db: &Path,
-                        modules: Vec<PathBuf>) {
+                        modules: Vec<PathBuf>) -> Option<PathBuf> {
 
     let build_dir = cc_db
         .parent() // get directory of `compile_commands.json`
@@ -33,7 +36,7 @@ pub fn emit_build_files(tcfg: &TranspilerConfig, cc_db: &Path,
     reg.register_template_string("lib.rs", include_str!("lib.rs.hbs")).unwrap();
 
     emit_cargo_toml(tcfg,&reg, &build_dir);
-    emit_lib_rs(tcfg, &reg, &build_dir, modules);
+    emit_lib_rs(tcfg, &reg, &build_dir, modules)
 }
 
 #[derive(Serialize)]
@@ -42,9 +45,10 @@ struct Module {
     name: String,
 }
 
-/// Emit `lib.rs` for libraries and `main.rs` for binaries.
+/// Emit `lib.rs` for a library or `main.rs` for a binary. Returns the path
+/// to `lib.rs` or `main.rs` (or `None` if the output file existed already).
 fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
-               modules: Vec<PathBuf>) {
+               modules: Vec<PathBuf>) -> Option<PathBuf> {
     let plugin_args = tcfg.cross_check_configs
         .iter()
         .map(|ccc| format!("config_file = \"{}\"", ccc))
@@ -76,7 +80,7 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
     let output_path = build_dir.join(file_name);
     let output = reg.render("lib.rs", &json).unwrap();
 
-    maybe_write_to_file(&output_path, output);
+    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)
 }
 
 fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) {
@@ -91,13 +95,13 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) 
     let file_name = "Cargo.toml";
     let output_path = build_dir.join(file_name);
     let output = reg.render(file_name, &json).unwrap();
-    maybe_write_to_file(&output_path, output);
+    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
 }
 
-fn maybe_write_to_file(output_path: &Path, output: String) {
-    if output_path.exists() {
-        eprintln!("Skipping {}; file exists.", output_path.display());
-        return;
+fn maybe_write_to_file(output_path: &Path, output: String, overwrite: bool) -> Option<PathBuf> {
+    if output_path.exists() && !overwrite {
+        eprintln!("Skipping existing file {}", output_path.display());
+        return None;
     }
 
     let mut file = match File::create(&output_path) {
@@ -108,4 +112,6 @@ fn maybe_write_to_file(output_path: &Path, output: String) {
         Ok(()) => (),
         Err(e) => panic!("Unable to write translation to file: {}", e),
     };
+
+    Some(PathBuf::from(output_path))
 }
