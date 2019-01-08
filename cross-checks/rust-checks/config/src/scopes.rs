@@ -148,7 +148,7 @@ impl ScopeConfig {
             ItemKind::Impl     => ItemConfig::Impl,
         };
         ScopeConfig {
-            file_name: file_name,
+            file_name,
             items: Default::default(),
             inherited: Rc::clone(&self.inherited),
             item: item_config,

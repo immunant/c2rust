@@ -347,7 +347,7 @@ impl RootConfig {
                 // WARNING: the elements are emitted in random order
                 RootConfig::ExtVector(map_self.into_iter()
                     .map(|(file, cfg)| ExtFileConfig {
-                        file: file,
+                        file,
                         priority: 0,
                         items: cfg,
                     }).collect())
@@ -378,7 +378,7 @@ impl Default for Config {
 impl Config {
     pub fn new(root: RootConfig) -> Config {
         Config {
-            root: root,
+            root,
             ..Default::default()
         }
     }
