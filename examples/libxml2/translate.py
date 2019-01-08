@@ -75,7 +75,7 @@ if __name__ == "__main__":
         c2rust_args = ["transpile", COMPILE_COMMANDS,
                             "--filter", "^(test|xmllint|runtest)"]
         c2rust_args += cross_check_args
-        print("running ...")
+        print(Colors.OKBLUE + "Transpiling tests..." + Colors.NO_COLOR)
         Retcode, stdout, transpiler_warnings = c2rust_bin[c2rust_args].run()
         if transpiler_warnings:
             print(transpiler_warnings)
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     try:
         c2rust_args = ["transpile", COMPILE_COMMANDS, "--emit-modules"]
         c2rust_args += cross_check_args
-        print("running ...")
+        print(Colors.OKBLUE + "Transpiling rest of files..." + Colors.NO_COLOR)
         Retcode, stdout, transpiler_warnings = c2rust_bin[c2rust_args].run()
         if transpiler_warnings:
             print(transpiler_warnings)
@@ -120,3 +120,4 @@ if __name__ == "__main__":
     retcode, stdout, stderr = mv[mv_args].run()
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
+    print(Colors.OKGREEN + "Done!" + Colors.NO_COLOR)
