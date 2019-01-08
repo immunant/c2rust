@@ -42,7 +42,6 @@ class Config:
     DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
     RREF_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
     C2RUST_DIR = os.path.join(ROOT_DIR, 'c2rust')
-    BITFIELDS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-bitfields')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
     REMON_SUBMOD_DIR = os.path.join(CROSS_CHECKS_DIR, 'ReMon')
     LIBFAKECHECKS_DIR = os.path.join(CROSS_CHECKS_DIR, "libfakechecks")
@@ -51,6 +50,12 @@ class Config:
     AST_EXPO_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-exporter')
     AST_EXPO_SRC_DIR = os.path.join(AST_EXPO_DIR, 'src')
     AST_EXPO_PRJ_DIR = os.path.join(AST_EXPO_DIR, 'xcode')
+
+    TRANSPILE_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-transpile')
+    REFACTOR_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
+    AST_BUILDER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-builder')
+    AST_EXPORTER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-exporter')
+    BITFIELDS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-bitfields')
 
     CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
     # use an install prefix unique to the host
