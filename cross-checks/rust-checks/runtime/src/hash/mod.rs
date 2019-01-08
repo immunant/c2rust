@@ -276,7 +276,7 @@ macro_rules! impl_fnopt_hash {
                 where HA: CrossCheckHasher,
                       HS: CrossCheckHasher
             {
-                if let &Some(ref func) = self {
+                if let Some(ref func) = self {
                     // Due to C's decay rules, we don't decrease the depth here,
                     // since function values can decay to function pointers,
                     // so they're basically equivalent
@@ -308,7 +308,7 @@ macro_rules! impl_fnopt_hash {
                 where HA: CrossCheckHasher,
                       HS: CrossCheckHasher
             {
-                if let &Some(ref func) = self {
+                if let Some(ref func) = self {
                     // Due to C's decay rules, we don't decrease the depth here,
                     // since function values can decay to function pointers,
                     // so they're basically equivalent
