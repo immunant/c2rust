@@ -11,6 +11,9 @@ edition = "2018"
 syn = { version = "0.15", features = ["full"] }
 quote = "0.6"
 
+[dev-dependencies]
+libc = "0.2"
+
 [features]
 no_std = []
 
