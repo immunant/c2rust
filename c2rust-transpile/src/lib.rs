@@ -121,28 +121,16 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 
     let mut modules = Vec::<PathBuf>::new();
     for mut cmd in cmds {
-        match cmd {
-            CompileCmd {
-                directory: d,
-                file: f,
-                command: None,
-                arguments: _,
-                output: None,
-            } => {
-                let input_file_abs = d.join(f);
-                if let Some(m) = transpile_single(
-                    &tcfg,
-                    input_file_abs.as_path(),
-                    cc_db,
-                    extra_clang_args) {
-                    modules.push(m);
-                };
-            }
-            _ => {
-                let reason = format!("unhandled compile cmd: {:?}", cmd);
-                panic!(reason);
-            }
-        }
+        let CompileCmd { directory: d, file: f, ..} = cmd;
+        println!("transpiling {}", f.to_str().unwrap());
+        let input_file_abs = d.join(f);
+        if let Some(m) = transpile_single(
+            &tcfg,
+            input_file_abs.as_path(),
+            cc_db,
+            extra_clang_args) {
+            modules.push(m);
+        };
     }
 
     let build_dir = get_build_dir(cc_db);

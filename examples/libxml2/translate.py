@@ -1,10 +1,14 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from common import Config
+from common import (
+    Config,
+    get_cmd_or_die,
+    pb,
+    Colors
+)
 from plumbum.cmd import mv, mkdir
 from plumbum import local
-from transpile import transpile_files
 
 import argparse
 import multiprocessing
@@ -12,9 +16,6 @@ import os
 
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates libxml2 into the repo/rust/src directory")
-parser.add_argument('-f', '--filter',
-                    default="",
-                    help='Filters translated files')
 # parser.add_argument('-o', '--only',
 #                     default=False, action='store_true',
 #                     help='Translates only a single libxml2 C file')
@@ -60,30 +61,44 @@ TESTS = [
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    num_jobs = multiprocessing.cpu_count()
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
-    cross_check_configs = []
-    if args.cross_checks:
-        cross_check_configs.append(CROSS_CHECK_CONFIG_YAML)
-    test_sources = set("%s.c" % test for test in TESTS)
-    with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json,
-                        filter=lambda f: f not in test_sources and args.filter in f,
-                        emit_build_files=False,
-                        emit_modules=True,
-                        cross_checks=args.cross_checks,
-                        cross_check_config=cross_check_configs)
+    c2rust_bin = get_cmd_or_die(config.C2RUST_BIN)
 
-    # Build the tests separately as full crates
-    with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json,
-                        filter=lambda f: f in test_sources and args.filter in f,
-                        emit_build_files=False,
-                        emit_modules=False,
-                        cross_checks=args.cross_checks,
-                        cross_check_config=cross_check_configs)
+    cross_check_args = []
+    if args.cross_checks:
+        cross_check_args += ["-x", "--cross-check-config", CROSS_CHECK_CONFIG_YAML]
+
+    # Build the tests first
+    try:
+        c2rust_args = ["transpile", COMPILE_COMMANDS,
+                            "--filter", "^(test|xmllint|runtest)"]
+        c2rust_args += cross_check_args
+        print("running ...")
+        Retcode, stdout, transpiler_warnings = c2rust_bin[c2rust_args].run()
+        if transpiler_warnings:
+            print(transpiler_warnings)
+
+    except pb.ProcessExecutionError as pee:
+        print(Colors.FAIL + "tmux could not be transpiled:" + Colors.NO_COLOR)
+        logging.warning(pee.stderr)
+        # No need to continue if transpilation failed
+        sys.exit(pee.retcode)
+
+    try:
+        c2rust_args = ["transpile", COMPILE_COMMANDS, "--emit-modules"]
+        c2rust_args += cross_check_args
+        print("running ...")
+        Retcode, stdout, transpiler_warnings = c2rust_bin[c2rust_args].run()
+        if transpiler_warnings:
+            print(transpiler_warnings)
+
+    except pb.ProcessExecutionError as pee:
+        print(Colors.FAIL + "tmux could not be transpiled:" + Colors.NO_COLOR)
+        logging.warning(pee.stderr)
+        # No need to continue if transpilation failed
+        sys.exit(pee.retcode)
 
     # Create rust/examples directory if it doesn't exist
     mkdir_args = ["-p", RUST_EXAMPLES_DIR]
