@@ -480,7 +480,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
                     translate_failure(&t.tcfg, &msg)
                 }
             }
-        };
+        }
 
         // Initialize global statics when necessary
         if !t.sectioned_static_initializers.borrow().is_empty() {
