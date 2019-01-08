@@ -329,7 +329,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         let checked_block = if self.config().inherited.enabled {
             // Add the cross-check to the beginning of the function
             // TODO: only add the checks to C abi functions???
-            let ref cfg = self.config();
+            let cfg = &self.config();
             let entry_xcheck = cfg.inherited.entry
                 .build_ident_xcheck(self.cx, self.expander,
                                     "FUNCTION_ENTRY_TAG", fn_ident);
@@ -357,7 +357,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 })
             });
 
-            let ref fcfg = cfg.function_config();
+            let fcfg = &cfg.function_config();
             let entry_extra_xchecks = self.build_extra_xchecks(&fcfg.entry_extra);
             let exit_extra_xchecks = self.build_extra_xchecks(&fcfg.exit_extra);
             // Extract the result type from the function signature,
