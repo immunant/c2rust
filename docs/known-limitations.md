@@ -1,5 +1,5 @@
 # Known Limitations of Translation
-This document is to track things that we know the translator can't handle, as well as things it probably won't ever handle.
+This document tracks things that we know the translator can't handle, as well as things it probably won't ever handle.
 
 ## Unimplemented
 

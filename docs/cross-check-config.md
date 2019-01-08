@@ -1,3 +1,5 @@
+# Cross-checking Configuration
+
 In many cases, we can add identical cross-checks to the original C and the transpiled Rust code, e.g., when the C code is naively translated to the perfectly equivalent Rust code, and everything just works. However, this might not always be the case, and we need to handle mismatches such as:
   * Type mismatches between C and Rust, e.g., a C `const char*` (with or without an attached length parameter) being translated to a `str`. Additionally, if a string+length value pair (with the types `const char*` and `size_t`) gets translated to a single `str`, we may want to omit the cross-check on the length parameter.
   * Whole functions added or removed by the transpiler or refactoring tool, e.g., helpers.
@@ -6,7 +8,7 @@ Note that this list is not exhaustive, so there may be many more cases of mismat
 
 To handle all these cases, we need a language that lets us add new cross-checks, or modify or delete existing ones.
 
-# The cross-check language
+## The cross-check language
 The cross-check metadata is stored as a YAML encoding of an array of configuration entries. Each configuration entry describes the configuration for that specific check.
 
 An example configuration file for a function `foo` with 3 arguments `a`, `alen` and `b` looks something like:
@@ -33,7 +35,7 @@ main.rs:
     return: no
 ```
 
-## Inline vs external configuration
+### Inline vs external configuration
 We can store the cross-check configuration entries in a few places:
  * Externally in separate configuration files.
  * Inline in the source code, attached to the checked functions and structures.
@@ -52,7 +54,7 @@ fn bar() { }
 fn baz() { }
 ```
 
-## Configuration file format
+### Configuration file format
 At the top level, each configuration file is a YAML associative array mapping file names to their configuration entries.
 Each array element maps a file name (represented as a string) to a list of individual items, each item representing a Rust/C scope entity, i.e., function or structure.
 Each item is encoded in YAML as an associative array.
@@ -60,7 +62,7 @@ All items have a few common array members:
  * `item` specifies the type of the current item, e.g., `function`, `struct` or others.
  * `name` specifies the name of the item, i.e., the name of the function or structure.
 
-## Function cross-check configuration
+### Function cross-check configuration
 Function cross-checks are configured using entries with `item: function`.
 Function entries support the following fields:
 
@@ -72,14 +74,14 @@ Function entries support the following fields:
 `all_args` | Specifies a cross-check override for all of this function's arguments. For example, setting `all_args: none` disables cross-checks for all arguments.
 `args` | An associative array that maps argument names to their corresponding cross-checks. This can be used to customize the cross-checks for some of the function arguments individually. This setting overrides both the global default and the one specified in `all_args` for the current function.
 `return` | Configures the function return value cross-check.
-`ahasher` and `shasher` | Override the default values for the aggregate and simple hasher for this function (see **TODO** for the meaning of these fields).
+`ahasher` and `shasher` | Override the default values for the aggregate and simple hasher for this function (see the [hashing documentation](cross-check-hash.md) for the meaning of these fields).
 `nested` | Recursively configures the items nested inside the current items. Since Rust allows arbitrarily deep function and structure nesting, we use this to recursively configure nested functions.
 `entry_extra` | Specifies a list of additional custom cross-checks to perform after the argument. Each cross-check accepts an optional `tag` parameter that overrides the default `UNKNOWN` tag.
 `exit_extra` | Specifies a list of additional custom cross-checks to perform on function return.
 
-## Structure cross-check configuration
+### Structure cross-check configuration
 Structure entries configure cross-checks for Rust structure, tuple and enumeration types, and are tagged with `item: struct`.
-For a general overview of cross-checking for structures (aggregate types), see **TODO**.
+For a general overview of cross-checking for structures (aggregate types), see the [hashing documentation](cross-check-hash.md).
 Structure entries support the following fields:
 
  Field  |  Role
@@ -92,7 +94,7 @@ Structure entries support the following fields:
 
 The `field_hasher` and `custom_hash` provide two alternative methods of customizing the hashing algorithm for a given structure: users may either provide a custom implementation of `CrossCheckHasher` and pass that to `field_hasher`, or implement a hashing function and pass it to `custom_hash`. The two alternatives are mostly equivalent, and users may use whichever is more convenient. Additionally, users can choose to completely disable the automatic derivation of `CrossCheckHash`, and manually implement `CrossCheckHasher` for some of the types instead.
 
-## <a name="xcheck_types"></a>Cross-check types
+### <a name="xcheck_types"></a>Cross-check types
 There are several types of cross-check implemented in the compiler:
 
   Check   | Value Type  |  Behavior
@@ -108,14 +110,14 @@ There are several types of cross-check implemented in the compiler:
 
 More cross-check types may be added as needed.
 
-### Custom hash functions for structures
+#### Custom hash functions for structures
  If `custom_hash: { custom: "hash_foo" }` is a configuration entry for structure `Foo`, then the compiler will insert a call to `hash_foo` to perform the cross checks. This function should have the following signature:
 ```rust
 fn hash_foo<XCHA, XCHS>(foo: &Foo, depth: usize) -> u64 { ... }
 ```
 The hash function receives a reference to a `Foo` object and a maximum depth, and should return the 64-bit hash value for the given object.
 
-### Custom hash functions for structure fields
+#### Custom hash functions for structure fields
  If `bar: { custom: "hash_bar" }` is a configuration entry for field `bar`, then the compiler will insert a call to `hash_bar` to compute the hash for `bar`. This function should have the following signature:
 ```rust
 fn hash_bar<XCHA, XCHS, S, F>(h: &mut XCHA, foo: &S, bar: &F, depth: usize)
@@ -125,12 +127,12 @@ The function receives the following arguments:
  * The current aggregate hasher for this structure. The function can call the hasher's `write_u64` function as many times as needed.
  * The structure containing this field. This argument has generic type `S`, so the same function can be reused for different structures.
  * The field itself, with generic type `F`. The function may require additional type bounds for `F` to make it compatible with its callers.
- * The maximum hashing depth (explained in **TODO**).
+ * The maximum hashing depth (explained in the [hashing documentation](cross-check-hash.md)).
  * The type parameters `XCHA` and `XCHS` bound to the current aggregate and simple value hasher for the current invocation.
 
 This function should not return the hash value of the field. Instead, the function should call the hasher's `write_u64` method directly.
 
-## Per-file default settings
+### Per-file default settings
 The special `defaults` item type specifies the default cross-check settings for all items in a file.
 We currently support the following entries:
 
@@ -142,8 +144,8 @@ Field  |  Role
 `all_args` | Specifies a cross-check override for all arguments to all functions in this file. For example, setting `all_args: default` enables cross-checks for all arguments.
 `return` | Configures the function return value cross-check.
 
-## More examples
-### Function example
+### More examples
+#### Function example
 Example configuration for a function `baz1(a, b)`:
 ```yaml
 main.rs:
@@ -158,7 +160,7 @@ main.rs:
       - { custom: "a" }       // Cross-check the value "a" with UNKNOWN_TAG
 ```
 
-### Structure example
+#### Structure example
 Example configuration for a structure `Foo` (illustrated on an object `foo` of type `Foo`):
 ```yaml
 main.rs:
@@ -171,10 +173,10 @@ main.rs:
       c: none                  // Ignore foo.c when hashing foo
 ```
 
-# Inline cross-check configuration
+## Inline cross-check configuration
 In addition to the external configuration format, a subset of cross-checks can also be configured inline in the program source code. The compiler plugin provides a custom `#[cross_check]` attribute used to annotate functions, structures and fields with custom cross-check metadata.
 
-## Inline function configuration
+### Inline function configuration
 The `#[cross_check]` function attribute currently supports the following arguments:
 
   Argument  |  Type  |  Role
@@ -189,7 +191,7 @@ The `#[cross_check]` function attribute currently supports the following argumen
  `ahasher` and `shasher` | `String` | Same as for external configuration.
  `entry_extra` and `exit_extra` | Same as for external configuration.
 
-### Function example
+#### Function example
 ```rust
 #[cross_check(yes, entry(djb2="foo"))] // Cross-check this function as "foo"
 fn foo1() {
@@ -203,7 +205,7 @@ fn foo1() {
 }
 ```
 
-## Inline structure configuration
+### Inline structure configuration
 The compiler plugin also supports a subset of the full external configuration settings as `#[cross_check]` arguments:
 
   Argument  |  Type  |  Role
@@ -220,7 +222,7 @@ The `#[cross_check]` attribute can also be attached to structure fields to confi
  `fixed`    | `u64` | Fixed 64-bit integer to use as the hash value for this field. Identical to the `fixed` external cross-check type.
  `custom_hash` | `String` | Same as for external configuration.
 
-### Structure example
+#### Structure example
 ```rust
 #[cross_check(field_hasher="MyHasher")]
 struct Foo {
@@ -235,8 +237,8 @@ struct Foo {
 }
 ```
 
-# Caveats
-## Duplicate items
+## Caveats
+### Duplicate items
 At any level or scope, there may be duplicate items, i.e., multiple items with the same names.
 It is not clear at this point how to best handle this case, since we have several conflicting requirements.
 On the one hand, we may wish to allow the configuration for one source file to be spread across multiple configuration files, and entries from later configuration files to be appended or replace entries from earlier files.
@@ -259,18 +261,18 @@ fn foo(x: u32) -> u32 {
 In this example, there are two distinct `foo::bar` functions, and we wish to configure them separately.
 However, at the top level of a file, there may only be one `foo` function, so we can merge all entries for `foo` together. Alternatively, we could check for multiple top-level items with the same name and exit with an error if we encounter any duplicates.
 
-## Configuration priority
+### Configuration priority
 Currently, if a certain cross-check is configured using both an external entry and an inline `#[cross_check(...)]` attribute, the external entry takes priority. Alternatively, we may reverse this priority, or exit with an error if both are present.
 
-## Scope configuration inheritance
+### Scope configuration inheritance
 The configuration settings described above apply to the scope of an item. While most settings apply exclusively to the scope itself (for example, `args` and `all_args` settings only apply to the current function, e.g., `foo` above and not any of the `bar` functions) and not any of its nested sub-items, there are a few that apply to everything inside the scope. These attributes are internally "inherited" from each scope by its child scopes. Currently, the only inherited attributes are `disable_xchecks` (so that disabling cross-checks for a module or function disables them for everything inside that function), `ahasher` and `shasher`.
 
-## Custom cross-check parameters
+### Custom cross-check parameters
 Custom cross-check definitions have a different format for each language. The rustc plugin accepts any Rust expression that is valid on function entry as a custom cross-check.
 
 The clang plugin, on the other hand, only accepts a limited subset of C expressions: each cross-check specification contains the name of the function to call, optionally followed by a list of parameters to pass to the function, e.g., `function` or `function(arg1, arg2, ...)`. Each parameter is the name of a global variable or function argument, and is optionally preceded by `&` (to pass the parameter by address instead of value) or by `*` (to dereference the value if it is a pointer).
 
-## Anonymous structures
+### Anonymous structures
 C allows developers to define anonymous structures that define the type for a single value, e.g.:
 ```C
 struct {
@@ -287,7 +289,7 @@ We assign the names using one of the following formats, depending on the context
  `foo$arg$x`    | This structure defines the type for the argument `x` of function `foo` (as illustrated below).
  `foo$result`   | This structure defines the return type for function `foo`.
 
-### Examples
+#### Examples
 ```C
 struct Foo {
   struct {                  // This gets named `Foo$field$x`
@@ -296,6 +298,6 @@ struct Foo {
 };
 
 struct { int a; }           // This gets the `foo$result` name
-foo(struct { int b; } x ) { // The `x` argument type gets the `foo$arg$x` name
+foo(struct { int b; } x) { // The `x` argument type gets the `foo$arg$x` name
 }
 ```

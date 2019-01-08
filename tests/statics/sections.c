@@ -50,3 +50,15 @@ size_t fn_scoped_static_init(void) {
     static unsigned not_sectioned = 1;
     return sectioned_scoped_init;
 }
+
+// For some reason (only when private/static) this static initializer
+// which gets sectioned, doesn't generate a Block expr like ever other
+// known static init, but an Array expr. If it is made public/non static,
+// then it generates a Block expr
+static size_t sectioned_array[] = {
+    (size_t) &((Foo *)0)->a,
+};
+
+void use_sectioned_array() {
+    size_t f = sectioned_array[0];
+}

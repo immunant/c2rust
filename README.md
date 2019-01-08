@@ -21,21 +21,21 @@ To learn more, check out our [RustConf'18](https://www.youtube.com/watch?v=WEsR0
 
 ## Prerequisites
 
-C2Rust requires LLVM 6 or 7 and its corresponding libraries and clang compiler. Python 3.4 or later and CMake 3.4.3 or later are also required. These prerequisites may be installed with the following commands, depending on your platform:
+C2Rust requires LLVM 6 or 7 and its corresponding libraries and clang compiler. Python 3.4 or later, CMake 3.4.3 or later, and openssl (1.0) are also required. These prerequisites may be installed with the following commands, depending on your platform:
 
 - **Ubuntu 16.04, 18.04 & 18.10:**
 
-        apt install build-essential llvm-6.0 clang-6.0 libclang-6.0-dev cmake
+        apt install build-essential llvm-6.0 clang-6.0 libclang-6.0-dev cmake libssl-dev
 
 - **Arch Linux:**
 
-        pacman -S base-devel llvm clang cmake
+        pacman -S base-devel llvm clang cmake openssl
 
 
 - **OS X:** XCode command-line tools and recent LLVM (we recommend the Homebrew version) are required.
 
         xcode-select --install
-        brew install llvm python3 cmake
+        brew install llvm python3 cmake openssl
 
 
 Finally, a rust installation with [Rustup](https://rustup.rs/) is required on all platforms.

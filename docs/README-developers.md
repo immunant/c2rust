@@ -55,6 +55,7 @@ The following from source full build script has been tested on recent versions o
 
     $ ./scripts/build_translator.py
 
+TODO: Mention how to open as XCode or other IDE project?
 
 # Testing (Optional)
 
