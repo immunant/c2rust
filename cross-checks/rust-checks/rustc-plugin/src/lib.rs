@@ -212,14 +212,14 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             q.to_tokens(cx)
         };
         CrossChecker {
-            expander: expander,
-            cx: cx,
-            scope_stack: scope_stack,
-            default_ahasher: default_ahasher,
-            default_shasher: default_shasher,
+            expander,
+            cx,
+            scope_stack,
+            default_ahasher,
+            default_shasher,
             pending_items: vec![],
             field_idx_stack: vec![],
-            skip_first_scope: skip_first_scope,
+            skip_first_scope,
         }
     }
 
@@ -582,14 +582,11 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                 let folded_fake_item = self.fold_item_simple(fake_item);
                 let (folded_sig, folded_generics, folded_body) = match folded_fake_item.node {
                     ast::ItemKind::Fn(decl, header, generics, body) => {
-                        let sig = ast::MethodSig {
-                            header: header,
-                            decl: decl
-                        };
+                        let sig = ast::MethodSig { header, decl };
                         // TODO: call noop_fold_method_sig on sig???
                         (sig, generics, body)
                     }
-                    n @ _ => panic!("unexpected folded item node: {:?}", n)
+                    n => panic!("unexpected folded item node: {:?}", n)
                 };
                 smallvec![ast::ImplItem {
                     ident:  folded_fake_item.ident,
@@ -671,7 +668,7 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
 
         let sf_attr_xcheck = self.parse_field_attr(&folded_sf.attrs);
         let sf_xcfg_xcheck = self.config().struct_config().fields.get(&sf_name);
-        let sf_xcheck = sf_xcfg_xcheck.or(sf_attr_xcheck.as_ref());
+        let sf_xcheck = sf_xcfg_xcheck.or_else(|| sf_attr_xcheck.as_ref());
         let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
             match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
