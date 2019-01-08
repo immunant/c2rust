@@ -104,6 +104,8 @@ add_subdirectory(c2rust-ast-exporter)
                                   for s in self.LLVM_ARCHIVE_FILES]
         self.LLVM_ARCHIVE_FILES = [os.path.join(Config.DEPS_DIR, s)
                                    for s in self.LLVM_ARCHIVE_FILES]
+        self.TRANSPILER = None  # set in `update_args`
+        self.RREF_BIN = None  # set in `update_args`
         self.check_rust_toolchain()
         self.update_args()
 
@@ -123,10 +125,7 @@ add_subdirectory(c2rust-ast-exporter)
             assert self.CUSTOM_RUST_NAME == toolchain_name, emesg
 
     def update_args(self, args=None):
-        build_type = 'release'
-        if args:
-            if args.debug:
-                build_type = 'debug'
+        build_type = 'debug' if args and args.debug else 'release'
 
         self.BUILD_TYPE = build_type
 

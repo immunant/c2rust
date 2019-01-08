@@ -136,6 +136,9 @@ pub struct Translation<'c> {
 
     // Mod names to try to stop collisions from happening
     mod_names: RefCell<IndexMap<String, PathBuf>>,
+
+    // The file that the translator is operating on w/o its extension
+    main_file: PathBuf,
 }
 
 fn simple_metaitem(name: &str) -> NestedMetaItem {
@@ -300,9 +303,9 @@ pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
     }
 }
 
-pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> String {
+pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_file: PathBuf) -> String {
 
-    let mut t = Translation::new(ast_context, tcfg);
+    let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
         used: true,
         is_static: false,
@@ -310,10 +313,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
         va_decl: None,
         is_bitfield_write: false,
     };
-
-    if !t.tcfg.translate_entry {
-        t.ast_context.c_main = None;
-    }
 
     if t.tcfg.reorganize_definitions {
         t.features.borrow_mut().insert("custom_attribute");
@@ -420,7 +419,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
             };
             if needs_export {
                 let decl_file_path = decl.loc.as_ref().map(|loc| &loc.file_path).into_iter().flatten().next();
-                let main_file_path = &t.tcfg.main_file;
+                let main_file_path = &t.main_file;
 
                 if t.tcfg.reorganize_definitions && decl_file_path != Some(main_file_path) {
                     t.generate_submodule_imports(decl_id, decl_file_path);
@@ -453,7 +452,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
                     Some(Some(s)) => Some(s),
                     _ => None,
                 };
-                let main_file_path = &t.tcfg.main_file;
+                let main_file_path = &t.main_file;
 
                 if t.tcfg.reorganize_definitions && decl_file_path != Some(main_file_path) {
                     t.generate_submodule_imports(*top_id, decl_file_path);
@@ -592,7 +591,7 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
 
 /// Pretty-print the leading pragmas and extern crate declarations
 fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
-    if t.tcfg.emit_module {
+    if t.tcfg.emit_modules {
         s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
     } else {
         let mut features = vec!["libc"];
@@ -708,7 +707,7 @@ pub enum ConvertedDecl {
 }
 
 impl<'c> Translation<'c> {
-    pub fn new(mut ast_context: TypedAstContext, tcfg: &'c TranspilerConfig) -> Self {
+    pub fn new(mut ast_context: TypedAstContext, tcfg: &'c TranspilerConfig, main_file: PathBuf) -> Self {
         let comment_context = RefCell::new(CommentContext::new(&mut ast_context));
         let mut type_converter = TypeConverter::new();
 
@@ -744,6 +743,7 @@ impl<'c> Translation<'c> {
             sectioned_static_initializers: RefCell::new(Vec::new()),
             mod_blocks: RefCell::new(IndexMap::new()),
             mod_names: RefCell::new(IndexMap::new()),
+            main_file,
             extern_crates: RefCell::new(IndexSet::new()),
         }
     }
@@ -2884,7 +2884,7 @@ impl<'c> Translation<'c> {
 
                 // Either the decl lives in the parent module, or else in a sibling submodule
                 match decl_loc.file_path {
-                    Some(ref decl_path) if decl_path == &self.tcfg.main_file => {
+                    Some(ref decl_path) if decl_path == &self.main_file => {
                         store.uses
                             .get_mut(vec!["super".into()])
                             .insert(ident_name);

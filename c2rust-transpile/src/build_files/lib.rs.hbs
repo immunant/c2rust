@@ -1,0 +1,42 @@
+#![feature(libc)]
+#![feature(extern_types)]
+#![feature(asm)]
+#![feature(ptr_wrapping_offset_from)]
+#![feature(label_break_value)]
+
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(dead_code)]
+#![allow(mutable_transmutes)]
+#![allow(unused_mut)]
+
+{{~#if reorganize_definitions~}}
+    #![feature(custom_attribute)]
+{{/if}}
+
+{{~#if cross_checks~}}
+#![feature(plugin, custom_attribute)]
+#![plugin(c2rust_xcheck_plugin({{plugin_args}}))]
+#![cross_check(yes)]
+
+#[macro_use] extern crate c2rust_xcheck_derive;
+#[macro_use] extern crate c2rust_xcheck_runtime;
+
+#[global_allocator]
+static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
+{{/if}}
+extern crate libc;
+{{#if use_fakechecks~}}
+extern crate c2rust_xcheck_libfakechecks_sys;
+{{/if}}
+{{#each modules~}}
+#[path = "{{this.path}}"]
+pub mod {{this.name}};
+{{/each}}
+
+{{~#if main_module~}}
+    {{~#if cross_checks~}}#[cross_check(none)]
+    {{/if}}
+fn main() { {{main_module}}::main() }
+{{/if}}

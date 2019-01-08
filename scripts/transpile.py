@@ -446,7 +446,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-m', '--main',
                         default=None, action='store',
                         help='emit Rust build files for a binary using '
-                             'the main method in the specified translation '
+                             'the main function in the specified translation '
                              'unit (implies -e/--emit-build-files)')
     parser.add_argument('-x', '--cross-checks',
                         default=False, action='store_true',
