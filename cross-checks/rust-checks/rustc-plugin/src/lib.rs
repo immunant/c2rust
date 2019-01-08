@@ -439,8 +439,10 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     $hash_body
                 }
             }
-        ).expect(&format!("unable to implement CrossCheckHash for union '{}'",
-                          union_ident.to_string()))
+        ).unwrap_or_else(|| {
+            panic!("unable to implement CrossCheckHash for union '{}'",
+                   union_ident.to_string())
+        })
     }
 
     #[cfg(feature="c-hash-functions")]
@@ -465,8 +467,10 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 use ::c2rust_xcheck_runtime::hash::CrossCheckHash;
                 (*x).cross_check_hash_depth::<$ahasher, $shasher>(depth)
             }
-        ).expect(&format!("unable to implement C ABI hash function for type '{}'",
-                          ty_ident.to_string())))
+        ).unwrap_or_else(|e| {
+            panic!("unable to implement C ABI hash function for type '{}': {}",
+                   ty_ident.to_string(), e)
+        }))
     }
 
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
@@ -763,7 +767,9 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                             unsafe { $hash_fn(self as *const $ty_name, depth) }
                         }
                     }
-                ).expect(&format!("unable to implement CrossCheckHash for foreign type '{}'", ty_name));
+                ).unwrap_or_else(|| {
+                    panic!("unable to implement CrossCheckHash for foreign type '{}'", ty_name)
+                });
                 self.pending_items.push(hash_impl_item);
             };
             folded_ni
@@ -814,9 +820,13 @@ impl CrossCheckExpander {
             .map(|mi| mi.value_str().expect("invalid string for config_file"))
             .map(|fsym| PathBuf::from(&*fsym.as_str()))
             .map(|fp| fl.abs_path(&fp)
-                        .expect(&format!("invalid path to config file: {:?}", fp)))
+                        .unwrap_or_else(|| {
+                            panic!("invalid path to config file: {:?}", fp)
+                        }))
             .map(|fp| fl.read_file(&fp)
-                        .expect(&format!("could not read config file: {:?}", fp)))
+                        .unwrap_or_else(|e| {
+                            panic!("could not read config file {:?}: {}", fp, e)
+                        }))
             // TODO: use a Reader to read&parse each configuration file
             // without storing its contents in an intermediate String buffer???
             .map(|fd| xcfg::parse_string(&fd).expect("could not parse config file"))
@@ -830,7 +840,9 @@ impl CrossCheckExpander {
             .map(|mi| mi.value_str().expect("invalid string for config_file"))
             .map(|fsym| PathBuf::from(&*fsym.as_str()))
             .map(|fp| fl.abs_path(&fp)
-                        .expect(&format!("invalid path to djb2 names file: {:?}", fp)))
+                        .unwrap_or_else(|| {
+                            panic!("invalid path to djb2 names file: {:?}", fp)
+                        }))
             .collect()
     }
 
@@ -860,9 +872,13 @@ impl CrossCheckExpander {
             // TODO: should probably read the existing file,
             // and merge our names into the existing contents
             let mut f = fs::File::create(fp)
-                .expect(&format!("could not create djb2 names file: {:?}", fp));
+                .unwrap_or_else(|e| {
+                    panic!("could not create djb2 names file {:?}: {}", fp, e)
+                });
             serde_yaml::to_writer(f, djb2_names)
-                .expect(&format!("could not write YAML to djb2 names file: {:?}", fp));
+                .unwrap_or_else(|e| {
+                    panic!("could not write YAML to djb2 names file {:?}: {}", fp, e)
+                });
         }
     }
 }
