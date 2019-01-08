@@ -1,4 +1,4 @@
-#![feature(libc, int_to_from_bytes)]
+#![feature(libc)]
 
 #[macro_use] extern crate lazy_static;
 extern crate libc;
