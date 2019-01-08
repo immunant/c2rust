@@ -24,7 +24,7 @@ lazy_static! {
         let xchecks_file = env::var("FAKECHECKS_OUTPUT_FILE")
             .expect("Expected file path in FAKECHECKS_OUTPUT_FILE variable");
         let file = File::create(xchecks_file.clone())
-            .expect(&format!("Failed to create fakechecks file: {}", xchecks_file));
+            .unwrap_or_else(|e| panic!("Failed to create fakechecks file {}: {}", xchecks_file, e));
         let encoder = zstd::stream::Encoder::new(file, 0)
             .expect("Failed to create zstd encoder");
         Mutex::new(Some(encoder))
