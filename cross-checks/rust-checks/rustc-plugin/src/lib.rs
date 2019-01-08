@@ -37,7 +37,7 @@ use syntax::tokenstream::TokenTree;
 mod default_config;
 
 fn djb2_hash(s: &str) -> u32 {
-    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
+    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c.into()))
 }
 
 trait CrossCheckBuilder {
@@ -54,9 +54,9 @@ impl CrossCheckBuilder for xcfg::XCheckType {
         self.build_xcheck(cx, exp, tag_str, &"$INVALID$", |tag, pre_hash_stmts| {
             assert!(pre_hash_stmts.is_empty());
             let name = &*ident.name.as_str();
-            let id = djb2_hash(name) as u64;
-            exp.insert_djb2_name(id as u32, String::from(name));
-            quote_expr!(cx, Some(($tag, $id)))
+            let id = djb2_hash(name);
+            exp.insert_djb2_name(id, String::from(name));
+            quote_expr!(cx, Some(($tag, $id.into())))
         })
     }
 
@@ -84,9 +84,9 @@ impl CrossCheckBuilder for xcfg::XCheckType {
             xcfg::XCheckType::Disabled => quote_expr!(cx, None),
             xcfg::XCheckType::Fixed(id) => quote_expr!(cx, Some(($tag, $id))),
             xcfg::XCheckType::Djb2(ref s) => {
-                let id = djb2_hash(s) as u64;
-                exp.insert_djb2_name(id as u32, s.clone());
-                quote_expr!(cx, Some(($tag, $id)))
+                let id = djb2_hash(s);
+                exp.insert_djb2_name(id, s.clone());
+                quote_expr!(cx, Some(($tag, $id.into())))
             },
             xcfg::XCheckType::Custom(ref s) => {
                 // TODO: allow the custom expr to return an Option???
