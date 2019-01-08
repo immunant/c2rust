@@ -65,15 +65,8 @@ def transpile_file(dirname, output_c_name):
     """Translate the given C file to Rust."""
 
     compile_commands_name = create_compile_commands(dirname, output_c_name)
-    with open(compile_commands_name) as compile_commands:
-        transpile.transpile_files(
-            compile_commands,
-            None, #filter
-            [], #extra impo args
-            False, #import_only
-            False, # verbose
-            False, # emit_build_files
-        )
+    common.transpile(compile_commands_name,
+                     emit_build_files=False)
 
 def compile_c_file(output_c_name, output_c_exe_name):
     """Compile the given C source file to produce the given executable."""

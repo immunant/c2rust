@@ -11,7 +11,7 @@ import argparse
 import platform
 import multiprocessing
 
-from typing import List
+from typing import Optional, List, Callable
 
 try:
     import plumbum as pb
@@ -503,6 +503,48 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
 
         logging.fatal("command failed: %s", ast_expo[args])
         die("AST export failed: " + mesg, pee.retcode)
+
+
+def transpile(cc_db_path: str,
+              filter: List[str] = [],
+              extra_transpiler_args: List[str] = [],
+              emit_build_files: bool = True,
+              emit_modules: bool = False,
+              main_module_for_build_files: str = None,
+              cross_checks: bool = False,
+              use_fakechecks: bool = False,
+              cross_check_config: List[str] = [],
+              incremental_relooper: bool = True,
+              reorganize_definitions: bool = False) -> bool:
+    """
+    run the transpiler on all C files in a compile commands database.
+    """
+    c2rust = get_cmd_or_die(config.C2RUST_BIN)
+    args = ['transpile']
+    args.extend(['--filter=' + f for f in filter])
+    if emit_build_files:
+        args.append('--emit-build-files')
+    if emit_modules:
+        args.append('--emit-modules')
+    if main_module_for_build_files:
+        args.append('--main=' + main_module_for_build_files)
+    if cross_checks:
+        args.append('--cross-checks')
+    if use_fakechecks:
+        args.append('--use-fakechecks')
+    if cross_check_config:
+        args.append('--cross-check-config=' + cross_check_config)
+    if not incremental_relooper:
+        args.append('--no-incremental-relooper')
+    if reorganize_definitions:
+        args.append('--reorganize-definitions')
+
+    logging.debug("translation command:\n %s", str(c2rust[args]))
+    retcode, stdout, stderr = (c2rust[args]).run(retcode=None)
+    logging.debug("stdout:\n%s", stdout)
+    logging.debug("stderr:\n%s", stderr)
+
+    return retcode == 0
 
 
 def _get_gpg_cmd():
