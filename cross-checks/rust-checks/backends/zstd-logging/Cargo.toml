@@ -1,5 +1,5 @@
 [package]
-name = "c2rust-xcheck-backend-fakechecks-zstd"
+name = "c2rust-xcheck-backend-zstd-logging"
 description = "Compressed logging backend for C2Rust cross-checking"
 version = "0.1.0"
 authors = ["The C2Rust Development Team <c2rust@immunant.com>"]

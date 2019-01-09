@@ -21,10 +21,10 @@ lazy_static! {
         }
         unsafe { libc::atexit(cleanup) };
 
-        let xchecks_file = env::var("FAKECHECKS_OUTPUT_FILE")
-            .expect("Expected file path in FAKECHECKS_OUTPUT_FILE variable");
+        let xchecks_file = env::var("CROSS_CHECKS_OUTPUT_FILE")
+            .expect("Expected file path in CROSS_CHECKS_OUTPUT_FILE variable");
         let file = File::create(xchecks_file.clone())
-            .unwrap_or_else(|e| panic!("Failed to create fakechecks file {}: {}", xchecks_file, e));
+            .unwrap_or_else(|e| panic!("Failed to create cross-checks log file {}: {}", xchecks_file, e));
         let encoder = zstd::stream::Encoder::new(file, 0)
             .expect("Failed to create zstd encoder");
         Mutex::new(Some(encoder))

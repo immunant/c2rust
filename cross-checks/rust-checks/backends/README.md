@@ -11,5 +11,5 @@ backend does not add the full path of `libclevrbuf.so` to RPATH, so the path
 must be in `LD_LIBRARY_PATH` at run-time, e.g., when running `cargo run`.
 * `libfakechecks-sys` uses the native `fakechecks` library with the same
   goal and limitations.
-* `fakechecks-zstd` dumps the cross-checks to a binary file compressed with
+* `zstd-logging` dumps the cross-checks to a binary file compressed with
   zstd, which generally compressed the checks by a factor of 200x.

@@ -84,12 +84,12 @@ args:
       takes_value: true
   - cross-check-backend:
       long: cross-check-backend
-      help: Select which cross-checking backend to use, e.g., fakechecks-zstd
+      help: Select which cross-checking backend to use, e.g., zstd-logging
       requires: cross-checks
       takes_value: true
       possible_values:
           - dynamic-dlsym
-          - fakechecks-zstd
+          - zstd-logging
           - libclevrbuf-sys
           - libfakechecks-sys
       default_value: dynamic-dlsym
