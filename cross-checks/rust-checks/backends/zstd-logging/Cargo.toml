@@ -11,7 +11,7 @@ repository = "https://github.com/immunant/c2rust"
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "xcheck-printer"
+name = "c2rust-xcheck-zstd-printer"
 path = "src/bin/printer.rs"
 
 [dependencies]
