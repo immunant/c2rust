@@ -106,8 +106,9 @@ def main():
     [context, book] = json.loads(raw.decode('utf-8'))
     for section in book['sections']:
         replace_content(section)
-    with open('tmp.json', 'w') as f:
-        json.dump(book, f)
+
+    # with open('tmp.json', 'w') as f:
+    #     json.dump(book, f)
     json.dump(book, sys.stdout)
     exit(0)
 
