@@ -14,6 +14,7 @@ pub mod attr;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::str::FromStr;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]
@@ -187,13 +188,19 @@ pub enum CustomHashFormat {
     Extern,
 }
 
-impl CustomHashFormat {
-    pub fn from_str(s: &str) -> CustomHashFormat {
+#[derive(Debug)]
+pub struct CustomHashFormatError(String);
+
+impl FromStr for CustomHashFormat {
+    type Err = CustomHashFormatError;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<CustomHashFormat, CustomHashFormatError> {
         match s {
-            "function"   => CustomHashFormat::Function,
-            "expression" => CustomHashFormat::Expression,
-            "extern"     => CustomHashFormat::Extern,
-            _ => panic!("unexpected custom_hash_format: {}", s)
+            "function"   => Ok(CustomHashFormat::Function),
+            "expression" => Ok(CustomHashFormat::Expression),
+            "extern"     => Ok(CustomHashFormat::Extern),
+            _ => Err(CustomHashFormatError(s.to_string()))
         }
     }
 }
