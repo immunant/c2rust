@@ -175,12 +175,6 @@ pub enum FieldIndex {
     Str(String),
 }
 
-impl FieldIndex {
-    pub fn from_str(s: &str) -> FieldIndex {
-        FieldIndex::Str(String::from(s))
-    }
-}
-
 #[derive(Deserialize, Debug, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum CustomHashFormat {

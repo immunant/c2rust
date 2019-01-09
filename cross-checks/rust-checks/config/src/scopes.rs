@@ -221,7 +221,7 @@ impl ScopeConfig {
                 parse_optional_field!(^shasher, xcfg_func, shasher, Some(shasher.clone()));
                 // Function-specific fields
                 self_func.args.extend(xcfg_func.args.iter().map(|(k, v)| {
-                    (super::FieldIndex::from_str(k), v.clone())
+                    (super::FieldIndex::Str(k.clone()), v.clone())
                 }));
                 self_func.entry_extra.extend(xcfg_func.entry_extra.iter().cloned());
                 self_func.exit_extra.extend(xcfg_func.exit_extra.iter().cloned());
