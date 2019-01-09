@@ -8,13 +8,6 @@ use super::CrossCheckHasher;
 #[derive(Debug, Default)]
 pub struct JodyHasher(u64);
 
-impl JodyHasher {
-    #[inline]
-    pub fn new() -> JodyHasher {
-        Default::default()
-    }
-}
-
 const JODY_HASH_CONSTANT: u64 = 0x1f3d_5b79u64;
 const JODY_HASH_SHIFT: u32 = 14;
 

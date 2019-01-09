@@ -7,11 +7,6 @@ pub struct Djb2Hasher(u32);
 
 impl Djb2Hasher {
     #[inline]
-    pub fn new() -> Djb2Hasher {
-        Djb2Hasher(5381u32)
-    }
-
-    #[inline]
     pub fn get_hash(&self) -> u32 {
         self.0
     }
@@ -20,7 +15,7 @@ impl Djb2Hasher {
 impl Default for Djb2Hasher {
     #[inline]
     fn default() -> Djb2Hasher {
-        Djb2Hasher::new()
+        Djb2Hasher(5381u32)
     }
 }
 
@@ -72,7 +67,7 @@ mod tests {
     use super::{Hasher, Djb2Hasher};
 
     fn djb2_string(s: &str) -> u32 {
-        let mut h = Djb2Hasher::new();
+        let mut h = Djb2Hasher::default();
         h.write(s.as_bytes());
         h.get_hash()
     }
