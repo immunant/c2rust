@@ -188,7 +188,7 @@ pub unsafe extern fn xcfg_scope_stack_new(top_scope: Option<&xcfg::scopes::Scope
     -> *mut xcfg::scopes::ScopeStack {
     let scope_stack = match top_scope {
         Some(ref ts) => xcfg::scopes::ScopeStack::from_scope((*ts).clone()),
-        None => xcfg::scopes::ScopeStack::new()
+        None => xcfg::scopes::ScopeStack::default()
     };
     Box::into_raw(Box::new(scope_stack))
 }

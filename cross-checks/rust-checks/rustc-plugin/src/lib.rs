@@ -903,7 +903,7 @@ impl MultiItemModifier for CrossCheckExpander {
                 // ignore this expansion and let the higher level one do everything
                 let ni = match (&i.node, span_scope) {
                     (&ast::ItemKind::Mod(_), None) => {
-                        let mut scope_stack = xcfg::scopes::ScopeStack::new();
+                        let mut scope_stack = xcfg::scopes::ScopeStack::default();
                         // Parse the top-level attribute configuration
                         let mut top_xcfg = xcfg::ItemConfig::Defaults(Default::default());
                         xcfg::attr::syntax::parse_attr_config(&mut top_xcfg, &mi);
