@@ -123,11 +123,8 @@ impl ScopeConfig {
             item: ItemConfig::FileDefaults,
         };
         for item in file_items.items() {
-            match **item {
-                super::ItemConfig::Defaults(_) => {
-                    new_config.parse_xcfg_config(item);
-                }
-                _ => (),
+            if let super::ItemConfig::Defaults(_) = **item {
+                new_config.parse_xcfg_config(item);
             }
         }
         Some(new_config)
