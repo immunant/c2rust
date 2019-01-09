@@ -486,7 +486,7 @@ inference, this works even on `transmute` calls that are not fully annotated
 
 The `marked!` form is simple: `marked!(e, label)` matches an expression only if
 `e` matches the expression and the expression is marked with the given `label`.
-See the [documentation on marks and `select`](select-rendered.md) for more
+See the [documentation on marks and `select`](select.md) for more
 information.
 
 
@@ -502,5 +502,5 @@ Several other refactoring commands use the same pattern-matching engine as
    pattern with calls to a newly-created function.
  * `type_fix_rules` ([docs](commands.md#type_fix_rules)) uses type patterns to find
    the appropriate rule to fix each type error.
- * `select`'s `match_expr` ([docs](select-rendered.md#match_)) and similar filters
+ * `select`'s `match_expr` ([docs](select.md#match_)) and similar filters
    use syntax patterns to identify nodes to mark.

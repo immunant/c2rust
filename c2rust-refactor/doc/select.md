@@ -40,7 +40,7 @@ function-by-function basis.
 The remainder of this tutorial describes `select` and related mark-manipulation
 commands.  For details of how marks affect various transformation commands, see
 the [command documentation](commands.md) or read about the
-[`marked!` pattern](rewrite-rendered.md#marked) for `rewrite_expr` and other
+[`marked!` pattern](rewrite.md#marked) for `rewrite_expr` and other
 pattern-matching commands.
 
 
@@ -702,7 +702,7 @@ attribute named `a`.
 
 ### `match_*`
 
-`match_expr(e)` uses [`rewrite_expr`-style AST matching](rewrite-rendered.md)
+`match_expr(e)` uses [`rewrite_expr`-style AST matching](rewrite.md)
 to compare exprs to `e`, and matches any node where AST matching succeeds.  For
 example, `match_expr(__e + 1)` matches the expressions `1 + 1`, `x + 1`, and
 `f() + 1`, but not `2 + 2`.
