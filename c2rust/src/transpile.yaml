@@ -91,7 +91,7 @@ args:
           - zstd-logging
           - libclevrbuf-sys
           - libfakechecks-sys
-      default_value: dynamic-dlsym
+      default_value: zstd-logging
   - COMPILE_COMMANDS:
       help: Input compile_commands.json file
       required: true
