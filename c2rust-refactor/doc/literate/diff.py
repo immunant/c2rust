@@ -6,7 +6,8 @@ import pygments.token
 import re
 from typing import List, Tuple, Optional, Iterator, Iterable
 
-from literate.annot import Span, Annot, merge_annot, SpanMerger, fill_annot
+from literate.annot import Span, Annot, SpanMerger, \
+        cut_annot, merge_annot, sub_annot, fill_annot
 from literate.file import File, Line, Diff, DiffBlock, Hunk, OutputLine
 from literate.points import Point, cut_annot_at_points
 
@@ -307,7 +308,7 @@ def diff_files(f1: File, f2: File) -> Diff:
         # This check means we can blindly call `flush()` without worrying about
         # cluttering the output with zero-length blocks.
         if old_cur - old_start > 0 or new_cur - new_start > 0:
-            diff_blocks.append((changed,
+            diff_blocks.append(DiffBlock(changed,
                 Span(old_start, old_cur),
                 Span(new_start, new_cur)))
         old_start = old_cur
@@ -360,57 +361,6 @@ def context_annot(blocks: List[DiffBlock], new: bool, context_lines: int) -> Ann
 
     return result.finish()
 
-def filter_unchanged(blocks: List[DiffBlock],
-        old_filt: Annot[None], new_filt: Annot[None]) -> List[DiffBlock]:
-    '''Filter `blocks`, keeping changed blocks along with any portions of
-    unchanged blocks that fall within `old_filt` or `new_filt`.  The result is
-    formatted like `Diff.blocks` but blocks may not be contiguous and may not
-    cover the entire old/new file.'''
-    result = []
-
-    old_i = 0
-    new_i = 0
-
-    for changed, old_span, new_span in blocks:
-        if changed:
-            result.append((changed, old_span, new_span))
-            continue
-
-        # In unchanged blocks, the old and new text are identical, so the spans
-        # should contain the same number of lines.
-        assert len(old_span) == len(new_span)
-
-        # Subspans of the current block that we should keep.  In these
-        # annotations, position 0 represents the start of the block and
-        # `len(old_span)` / `len(new_span)` represents its end.
-        old_keep = []
-        new_keep = []
-
-        while old_i < len(old_filt):
-            s = old_filt[old_i]
-            if s.overlaps(old_span):
-                old_keep.append(s.intersect(old_span) - old_span.start)
-            if s.end > old_span.end:
-                # `s` extends past the end of `old_span`, potentially into the
-                # next block's `old_span`.  Keep it around for the next block
-                # to see.
-                break
-            old_i += 1
-
-        while new_i < len(new_filt):
-            s = new_filt[new_i]
-            if s.overlaps(new_span):
-                new_keep.append(s.intersect(new_span) - new_span.start)
-            if s.end > new_span.end:
-                break
-            new_i += 1
-
-        keep = merge_annot(old_keep, new_keep)
-        for s in keep:
-            result.append((False, s + old_span.start, s + new_span.start))
-
-    return result
-
 def split_hunks(blocks: List[DiffBlock]) -> List[Hunk]:
     '''Split the output of `filter_unchanged` into hunks, anywhere there's a
     gap in the old or new line numbers.'''
@@ -436,25 +386,95 @@ def split_hunks(blocks: List[DiffBlock]) -> List[Hunk]:
     flush()
     return hunks
 
+def annotate_blocks(blocks: List[DiffBlock]) \
+        -> Tuple[Annot[Span[None]], Annot[Span[None]]]:
+    '''Return annotations on the old and new files, labeling each line with the
+    block that contains it.'''
+    old = []
+    new = []
+    for b in blocks:
+        old.append(Span(b.old_span.start, b.old_span.end, b))
+        new.append(Span(b.new_span.start, b.new_span.end, b))
+    return old, new
+
 def build_diff_hunks(d: Diff, context_diff: bool=True):
     '''Build a list of output hunks, and assign it to `d.hunks`.
 
     If `d.old_file` or `d.new_file` has a `keep_mark_lines` annotation, all
     annotated lines will be kept as additional context.'''
-    if not context_diff:
-        # Keep all lines, making one big hunk containing all blocks.
-        d.set_hunks([Hunk(d.blocks)])
-        return
+    # Find the set of lines each file wants to keep.
+    def calc_file_keep(f, is_new):
+        if context_diff:
+            keep = context_annot(d.blocks, is_new, 5)
+            if f.keep_mark_lines is not None:
+                keep = merge_annot(keep, f.keep_mark_lines)
+        else:
+            if len(f.line_annot) > 0:
+                keep = [Span(0, f.line_annot[-1].end)]
+            else:
+                keep = []
+        if f.drop_irrelevant_lines is not None:
+            keep = sub_annot(keep, f.drop_irrelevant_lines)
 
-    keep_old = context_annot(d.blocks, False, 5)
-    if d.old_file.keep_mark_lines is not None:
-        keep_old = merge_annot(keep_old, d.old_file.keep_mark_lines)
+        return keep
 
-    keep_new = context_annot(d.blocks, True, 5)
-    if d.new_file.keep_mark_lines is not None:
-        keep_new = merge_annot(keep_new, d.new_file.keep_mark_lines)
+    keep_old = calc_file_keep(d.old_file, False)
+    keep_new = calc_file_keep(d.new_file, True)
 
-    blocks = filter_unchanged(d.blocks, keep_old, keep_new)
+    # In unchanged blocks, add each file's keep lines to the other file's set.
+    # This works because unchanged blocks have the same number of lines on each
+    # side.
+    old_blocks, new_blocks = annotate_blocks(d.blocks)
+    extra_keep_old = []
+    extra_keep_new = []
+    for block_span, keep_spans in cut_annot(keep_old, old_blocks):
+        if block_span.label.changed:
+            continue
+        base = block_span.label.new_span.start
+        extra_keep_new.extend(s + base for s in keep_spans)
+    for block_span, keep_spans in cut_annot(keep_new, new_blocks):
+        if block_span.label.changed:
+            continue
+        base = block_span.label.old_span.start
+        extra_keep_old.extend(s + base for s in keep_spans)
+
+    keep_old = merge_annot(keep_old, extra_keep_old)
+    keep_new = merge_annot(keep_new, extra_keep_new)
+
+    # For changed blocks, we can't match up lines from different files, so we
+    # just hope for the best.  (Normally all changed lines are kept, so there's
+    # no need to match - the only exception is when the `irrelevant_*_regex`
+    # options are set.)
+
+    # Build the filtered list of blocks.  There can be different numbers of
+    # blocks on the old and new sides.  We use a fairly naive strategy to match
+    # them up, but it generally seems to work okay.
+
+    blocks = []
+    for (old_block, old_keeps), (new_block, new_keeps) in zip(
+            cut_annot(keep_old, old_blocks),
+            cut_annot(keep_new, new_blocks)):
+        # `old_blocks` and `new_blocks` have corresponding entries (based on
+        # the same block) at corresponding positions.
+        assert old_block.label is new_block.label
+        block = old_block.label
+
+        # Match up `old_keeps` and `new_keeps` entries by position.  In most
+        # cases, the two lists will have the same length.
+        for old_keep, new_keep in zip(old_keeps, new_keeps):
+            blocks.append(DiffBlock(block.changed,
+                old_keep + block.old_span.start,
+                new_keep + block.new_span.start))
+        for old_keep in old_keeps[len(new_keeps):]:
+            blocks.append(DiffBlock(block.changed,
+                old_keep + block.old_span.start,
+                Span(block.new_span.end, block.new_span.end)))
+        for new_keep in new_keeps[len(old_keeps):]:
+            blocks.append(DiffBlock(block.changed,
+                Span(block.old_span.end, block.old_span.end),
+                new_keep + block.new_span.start))
+
+    # Split the new blocks into hunks, and save them in the `Diff`.
     hunks = split_hunks(blocks)
     d.set_hunks(hunks)
 

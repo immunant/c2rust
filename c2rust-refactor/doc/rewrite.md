@@ -3,6 +3,8 @@ revert
 diff-style = full
 no-show-filename
 no-collapse-diff
+irrelevant-start-regex = '.*let y: i32'
+irrelevant-end-regex = '.*let y: i32'
 ```
 
 

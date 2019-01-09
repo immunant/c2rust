@@ -1,5 +1,6 @@
 '''`c2rust-refactor` command invocation and output parsing.'''
 import argparse
+import ast
 import bisect
 import os
 import shlex
@@ -68,6 +69,11 @@ STR_OPTS = {
         'highlight-mode',
         }
 
+STR_LIT_OPTS = {
+        'irrelevant-start-regex',
+        'irrelevant-end-regex',
+        }
+
 OPT_DEFAULTS = {
         'revert': False,
         'hidden': False,
@@ -79,6 +85,8 @@ OPT_DEFAULTS = {
         'diff-style': 'context',
         'highlight-mode': 'hljs',
         'rewrite-alongside': False,
+        'irrelevant-start-regex': '',
+        'irrelevant-end-regex': '',
         }
 
 FLAG_TRUTHY = { '1', 'true', 'y', 'yes', 'on' }
@@ -243,6 +251,11 @@ class RefactorState:
             elif key in STR_OPTS:
                 # No conversion necessary
                 pass
+
+            elif key in STR_LIT_OPTS:
+                value = ast.literal_eval(value)
+                if not isinstance(value, str):
+                    raise TypeError('expected string literal; got %r' % value)
 
             elif i == 0 and value == '':
                 # The first option is normally expected to be a language name.
