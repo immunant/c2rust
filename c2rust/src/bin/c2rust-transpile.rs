@@ -41,8 +41,10 @@ fn main() {
             }
         },
         debug_relooper_labels:  matches.is_present("debug-labels"),
-        use_fakechecks:         matches.is_present("use-fakechecks"),
         cross_checks:           matches.is_present("cross-checks"),
+        cross_check_backend:    matches.value_of("cross-check-backend")
+            .map(String::from)
+            .unwrap(),
         cross_check_configs:    matches.values_of("cross-check-config")
             .map(|vals| vals.map(String::from).collect::<Vec<_>>())
             .unwrap_or_default(),
@@ -79,8 +81,6 @@ fn main() {
     };
     // main implies emit-build-files
     if tcfg.main != None{ tcfg.emit_build_files = true };
-    // use-fakechecks implies cross-checks
-    if tcfg.use_fakechecks { tcfg.cross_checks = true };
     // emit-build-files implies emit-modules
     if tcfg.emit_build_files { tcfg.emit_modules = true };
 

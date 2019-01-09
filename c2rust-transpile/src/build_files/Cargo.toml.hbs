@@ -22,9 +22,5 @@ crate-type = ["staticlib"]
 [dependencies.c2rust-xcheck-runtime]
 features = ["libc-hash", "fixed-length-array-hash"]
 
-{{#if use_fakechecks~}}
-[dependencies.c2rust-xcheck-libfakechecks-sys]
-{{else~}}
-[dependencies.c2rust-xcheck-libclevrbuf-sys]
-{{~/if}}
+[dependencies.c2rust-xcheck-{{cross_check_backend}}]
 {{~/if}}

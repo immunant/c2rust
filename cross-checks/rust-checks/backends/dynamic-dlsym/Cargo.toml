@@ -1,5 +1,5 @@
 [package]
-name = "c2rust-xcheck-dlsym"
+name = "c2rust-xcheck-dynamic-dlsym"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 description = "rb_xcheck backend that uses dlsym to locate rb_xcheck"

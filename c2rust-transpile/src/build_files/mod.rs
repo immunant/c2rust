@@ -73,10 +73,11 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
         })
         .collect::<Vec<_>>();
 
+    let rs_xcheck_backend = tcfg.cross_check_backend.replace("-", "_");
     let json = json!({
         "reorganize_definitions": tcfg.reorganize_definitions,
         "cross_checks": tcfg.cross_checks,
-        "use_fakechecks": tcfg.use_fakechecks,
+        "cross_check_backend": rs_xcheck_backend,
         "main_module": tcfg.main,
         "plugin_args": plugin_args,
         "modules": modules
@@ -96,7 +97,7 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) 
         "crate_name": "c2rust-build",
         "main_module": tcfg.main,
         "cross_checks": tcfg.cross_checks,
-        "use_fakechecks": tcfg.use_fakechecks,
+        "cross_check_backend": tcfg.cross_check_backend,
     });
     let file_name = "Cargo.toml";
     let output_path = build_dir.join(file_name);

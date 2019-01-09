@@ -61,6 +61,7 @@ pub struct TranspilerConfig {
     pub filter: Option<Regex>,
     pub debug_relooper_labels: bool,
     pub cross_checks: bool,
+    pub cross_check_backend: String,
     pub cross_check_configs: Vec<String>,
     pub prefix_function_names: Option<String>,
     pub translate_asm: bool,
@@ -83,8 +84,6 @@ pub struct TranspilerConfig {
     pub build_directory_name: String,
     /// Names the translation unit containing the main function
     pub main: Option<String>,
-    /// Use log-based cross checking
-    pub use_fakechecks: bool,
 }
 
 const USR_INCL_MACOS_EMSG: &str = "

@@ -82,6 +82,17 @@ args:
       requires: cross-checks
       multiple: true
       takes_value: true
+  - cross-check-backend:
+      long: cross-check-backend
+      help: Select which cross-checking backend to use, e.g., fakechecks-zstd
+      requires: cross-checks
+      takes_value: true
+      possible_values:
+          - dynamic-dlsym
+          - fakechecks-zstd
+          - libclevrbuf-sys
+          - libfakechecks-sys
+      default_value: dynamic-dlsym
   - COMPILE_COMMANDS:
       help: Input compile_commands.json file
       required: true
@@ -121,9 +132,6 @@ args:
       short: m
       help: Emit Rust build files for a binary using the main function in the specified translation unit (implies -e/--emit-build-files)
       takes_value: true
-  - use-fakechecks:
-      long: use-fakechecks
-      help: Use log-based cross checking (implies -x/--cross-checks)
   - overwrite-existing:
       long: overwrite-existing
       help: Emit files even if it causes existing files to be overwritten

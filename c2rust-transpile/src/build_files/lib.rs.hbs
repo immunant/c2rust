@@ -16,21 +16,20 @@
     #![feature(custom_attribute)]
 {{/if}}
 
-{{~#if cross_checks~}}
+{{#if cross_checks~}}
 #![feature(plugin, custom_attribute)]
 #![plugin(c2rust_xcheck_plugin({{plugin_args}}))]
 #![cross_check(yes)]
 
 #[macro_use] extern crate c2rust_xcheck_derive;
 #[macro_use] extern crate c2rust_xcheck_runtime;
+extern crate c2rust_xcheck_{{cross_check_backend}};
 
 #[global_allocator]
 static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
-{{/if}}
+{{~/if}}
 extern crate libc;
-{{#if use_fakechecks~}}
-extern crate c2rust_xcheck_libfakechecks_sys;
-{{/if}}
+
 {{#each modules~}}
 #[path = "{{this.path}}"]
 pub mod {{this.name}};
