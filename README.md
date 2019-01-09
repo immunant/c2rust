@@ -43,32 +43,38 @@ Finally, a rust installation with [Rustup](https://rustup.rs/) is required on al
 
 ## Building C2Rust
 
-    $ cargo build --release
+    cargo build --release
 
 This builds the `c2rust` tool in the `target/release/` directory.
 
 On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
 
-    $ LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo build
+    LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo build
 
 
 If you have trouble with cargo build, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
 
 # Translating C to Rust
 
-The translator needs access to the exact compiler commands used to build the C code. To provide this information, you will need a [standard](https://clang.llvm.org/docs/JSONCompilationDatabase.html) `compile_commands.json` file. Many build systems can automatically generate this file, as it is used by many other tools, but see [below](#generating-compile_commandsjson-files) for recommendations on how to generate this file for common build processes.
+To translate C files specified in `compile_commands.json` (see below), run the `c2rust` tool with the `transpile` subcommand:
+
+    c2rust transpile compile_commands.json
+
+(The `c2rust refactor` tool is also available for refactoring Rust code, see [refactoring](c2rust-refactor/)).
+
+The translator requires the exact compiler commands used to build the C code. To provide this information, you will need a [standard](https://clang.llvm.org/docs/JSONCompilationDatabase.html) `compile_commands.json` file. Many build systems can automatically generate this file, as it is used by many other tools, but see [below](#generating-compile_commandsjson-files) for recommendations on how to generate this file for common build processes.
 
 Once you have a `compile_commands.json` file describing the C build, translate the C code to Rust with the following command:
 
-    $ c2rust transpile path/to/compile_commands.json
+    c2rust transpile path/to/compile_commands.json
 
 To generate a `Cargo.toml` template for a Rust library, add the `-e` option:
 
-    $ c2rust transpile --emit-build-files path/to/compile_commands.json
+    c2rust transpile --emit-build-files path/to/compile_commands.json
 
 To generate a `Cargo.toml` template for a Rust binary, do this:
 
-    $ c2rust transpile --main myprog path/to/compile_commands.json
+    c2rust transpile --main myprog path/to/compile_commands.json
 
 Where `--main myprog` tells the transpiler to use the `main` method from `myprog.rs` as the entry point.
 
@@ -95,25 +101,31 @@ When creating the initial build directory with cmake specify
 `-DCMAKE_EXPORT_COMPILE_COMMANDS=1`. This only works on projects
 configured to be built by `cmake`. This works on Linux and MacOS.
 
-    $ mkdir build
-    $ cd build
-    $ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ..
+    cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ...
 
 ### ... with `intercept-build`
 
-Intercept build is distributed with clang and recommended for makefile projects on macOS.
+intercept-build (part of the [scan-build
+tool](https://github.com/rizsotto/scan-build)) is recommended for non-cmake
+projects. intercept-build is bundled with clang under `tools/scan-build-py` but
+a standalone version can be easily installed via PIP with:
 
-	$ intercept-build make
-	$ intercept-build xcodebuild
+    pip install scan-build
+
+Usage:
+
+    intercept-build <build command>
+
+You can also use intercept-build to generate a compilation database for compiling a single C file, for example:
+
+    intercept-build sh -c "cc program.c"
 
 ### ... with `bear` (linux only)
 
-When building on Linux, *Bear* is automatically built by the
-`build_translator.py` script and installed into the `dependencies`
-directory.
+If you have [bear](https://github.com/rizsotto/Bear) installed, it can be used similarly to intercept-build:
 
-    $ ./configure CC=clang
-    $ bear make
+    bear <build command>
+
 
 # FAQ
 
