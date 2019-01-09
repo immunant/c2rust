@@ -6,9 +6,9 @@ no-collapse-diff
 ```
 
 
-Many refactoring commands in `c2rust-refactor` are designed to work only on
+Many refactoring commands in `c2rust refactor` are designed to work only on
 selected portions of the crate, rather than affecting the entire crate
-uniformly.  To support this, `c2rust-refactor` has a *mark* system, which
+uniformly.  To support this, `c2rust refactor` has a *mark* system, which
 allows marking AST nodes (such as functions, expressions, or type annotations)
 with simple string labels.  Certain commands add or remove marks, while others
 check the existing marks to identify nodes to transform.
@@ -725,7 +725,7 @@ only direct children.
 
 ## Other commands
 
-In addition to `select`, `c2rust-refactor` contains a number of other
+In addition to `select`, `c2rust refactor` contains a number of other
 mark-manipulation commands.  A few of these can be replicated with appropriate
 `select` scripts (though using the command is typically easier), but some are
 more complex.

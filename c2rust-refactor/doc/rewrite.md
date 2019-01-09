@@ -8,7 +8,7 @@ irrelevant-end-regex = '.*let y: i32'
 ```
 
 
-`c2rust-refactor` provides a general-purpose rewriting command, `rewrite_expr`,
+`c2rust refactor` provides a general-purpose rewriting command, `rewrite_expr`,
 for transforming expressions.
 In its most basic form, `rewrite_expr` replaces one expression with another,
 everywhere in the crate:

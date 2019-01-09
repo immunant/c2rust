@@ -7,7 +7,7 @@ C2Rust helps you migrate C99-compliant code to Rust. It provides:
 - a Rust code refactoring tool
 - tools to cross-check execution of the C code against the new Rust code
 
-The translator (or transpiler), produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to produce code that is functionally identical to the input C code. Generating safe or idomatic Rust is *not* a goal for the translator. Rather, we think the best approach is to gradually rewrite the translated Rust code using dedicated refactoring tools. To this end, we are building a refactoring tool that rewrites unsafe auto-translated Rust into safer idioms (see [c2rust-refactor](c2rust-refactor/)).
+The translator (or transpiler), produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to produce code that is functionally identical to the input C code. Generating safe or idomatic Rust is *not* a goal for the translator. Rather, we think the best approach is to gradually rewrite the translated Rust code using dedicated refactoring tools. To this end, we are building a [refactoring tool](c2rust-refactor/) that rewrites unsafe auto-translated Rust into safer idioms.
 
 Some refactoring will have to be done by hand which may introduce errors. We provide plugins for `clang` and `rustc` so you can compile and run two binaries and check that they behave identically (at the level of function calls). For details on cross-checking see the [cross-checks](cross-checks) directory and the cross checking [tutorial](docs/cross-check-tutorial.md).
 
