@@ -18,6 +18,8 @@ The following arguments control the basic transpiler behavior:
   assembly. The translated assembly is unlikely to work as-is due to differences
   between GCC and LLVM (used in Rust) inline assembly styles, but it can provide
   a starting point for manual translation.
+- `-f <regex>`, `--filter <regex>` - Only translate files based on the regular
+  expression used.
 
 ## Creating cargo build files
 
