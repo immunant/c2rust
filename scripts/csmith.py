@@ -18,7 +18,6 @@ import os
 import logging
 from shutil import copyfile
 import tempfile
-import transpile
 import common
 
 DEFAULT_CSMITH_HOME = "/usr/local/opt/csmith/include/csmith-2.3.0/runtime"
