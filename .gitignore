@@ -8,6 +8,7 @@
 **/target/
 **/dependencies/
 **/tests/
+/build
 *.pyc
 .vagrant
 **/compile_commands.json

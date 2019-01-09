@@ -3,12 +3,12 @@ TEST_CFLAGS=-g -O2
 
 #PLUGIN_PATH := $(shell find . -name CrossChecks.so)
 #RUNTIME_PATH := $(shell find . -name libruntime.a)
-PLUGIN_PATH := $(realpath ../../../dependencies/clang-xcheck-plugin.$(shell uname -n)/plugin/CrossChecks.so)
-RUNTIME_PATH := $(realpath ../../../dependencies/clang-xcheck-plugin.$(shell uname -n)/runtime/libruntime.a)
+PLUGIN_PATH := $(realpath ../../../build/clang-xcheck-plugin.$(shell uname -n)/plugin/CrossChecks.so)
+RUNTIME_PATH := $(realpath ../../../build/clang-xcheck-plugin.$(shell uname -n)/runtime/libruntime.a)
 
 # Override this to change the path to the clang binary
 #PLUGIN_CC := clang
-PLUGIN_CC := $(realpath ../../../dependencies/llvm-6.0.0/build.$(shell uname -n)/bin/clang)
+PLUGIN_CC := $(realpath ../../../build/llvm-6.0.0/build.$(shell uname -n)/bin/clang)
 
 PLUGIN_CC_ARGS := -Xclang -plugin-arg-crosschecks -Xclang -Ctest.c2r
 

@@ -39,7 +39,7 @@ class Config:
 
     ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
     ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
-    DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
+    DEPS_DIR = os.path.join(ROOT_DIR, 'build')
     RREF_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
     C2RUST_DIR = os.path.join(ROOT_DIR, 'c2rust')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")

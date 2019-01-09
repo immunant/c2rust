@@ -32,7 +32,7 @@ We provide a clang plugin for C code, and a rustc plugin for Rust code.
 ### Building C code
 To build C variants with cross-checks enabled, first build the cross-checking plugin using `$C2RUST/scripts/build_cross_checks.py`, 
 then run clang (or pass it to the build system) with the following options:
-  * `-Xclang -load -Xclang $C2RUST/dependencies/clang-xcheck-plugin.$(uname -n)/plugin/CrossChecks.so` to load the plugin
+  * `-Xclang -load -Xclang $C2RUST/build/clang-xcheck-plugin.$(uname -n)/plugin/CrossChecks.so` to load the plugin
   * `-Xclang -add-plugin -Xclang crosschecks` to activate the plugin
   * `-Xclang -plugin-arg-crosschecks -Xclang <...>` for every additional option to pass to the plugin
   * `-ffunction-sections` may be required to correctly deduplicate some linkonce functions inserted by the plugin
@@ -43,7 +43,7 @@ We provide a `cc_wrapper.sh` script in the plugin source code directory that ins
 as well as several project-specific scripts in directories under `examples/`.
 
 Additionally, the following arguments should be passed to the linker:
-  * The cross-checking runtime library from `$C2RUST/dependencies/clang-xcheck-plugin.$(uname -n)/runtime/libruntime.a`
+  * The cross-checking runtime library from `$C2RUST/build/clang-xcheck-plugin.$(uname -n)/runtime/libruntime.a`
   * A cross-checking backend library that provides the `rb_xcheck` function, 
     e.g., `libfakechecks` for offline logging or `libclevrbuf` for online MVEE-based checks
 
