@@ -327,7 +327,7 @@ impl RootConfig {
                 for (file_name, cfg) in map_other.into_iter() {
                     // FIXME: check for duplicates???
                     (map_self.entry(file_name.clone())
-                           .or_insert(Default::default())
+                           .or_insert_with(Default::default)
                            .0).0.extend((cfg.0).0);
                 };
                 RootConfig::NameMap(map_self)
@@ -347,7 +347,7 @@ impl RootConfig {
                 // WARNING: the elements are emitted in random order
                 RootConfig::ExtVector(map_self.into_iter()
                     .map(|(file, cfg)| ExtFileConfig {
-                        file: file,
+                        file,
                         priority: 0,
                         items: cfg,
                     }).collect())
@@ -378,7 +378,7 @@ impl Default for Config {
 impl Config {
     pub fn new(root: RootConfig) -> Config {
         Config {
-            root: root,
+            root,
             ..Default::default()
         }
     }
@@ -390,9 +390,9 @@ impl Config {
         }
 
         let mut gsb = globset::GlobSetBuilder::new();
-        for ref file in files {
+        for file in files {
             let glob = globset::Glob::new(&file.file)
-                .expect(&format!("error creating glob for file: '{}'", file.file));
+                .unwrap_or_else(|e| panic!("error creating glob for file '{}': {}", file.file, e));
             gsb.add(glob);
         }
         self.glob_set.replace(gsb.build().unwrap());

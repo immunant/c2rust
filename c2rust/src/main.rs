@@ -47,6 +47,7 @@ where
     let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
     cmd_path.pop(); // remove current executable
     cmd_path.push(format!("c2rust-{}", subcommand));
+    assert!(cmd_path.exists(), format!("{:?} is missing", cmd_path));
     exit(Command::new(cmd_path.into_os_string())
          .args(args)
          .env("LD_LIBRARY_PATH", ld_library_path)

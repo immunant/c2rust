@@ -61,7 +61,7 @@ def main(xcheck: bool, snudown: str):
         bldr.add_entry(snudown, cmd, file)
 
     cmds_json_path = bldr.write_result(os.path.curdir)
-    config_path = os.path.join(snudown, "../snudown_rust.c2r")
+    config_path = os.path.join(snudown, "xchecks/snudown_rust.yaml")
     with open(cmds_json_path, "r") as cmds_json:
         transpile.transpile_files(cmds_json,
                                   filter=None,

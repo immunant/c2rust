@@ -83,7 +83,13 @@ pub enum ItemConfig {
     Impl,
 }
 
-#[derive(Debug, Clone)]
+impl Default for ItemConfig {
+    fn default() -> ItemConfig {
+        ItemConfig::Top
+    }
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct ScopeConfig {
     // File containing this scope
     pub file_name: Option<Rc<String>>, // FIXME: this should be a &str
@@ -99,15 +105,6 @@ pub struct ScopeConfig {
 }
 
 impl ScopeConfig {
-    pub fn new() -> ScopeConfig {
-        ScopeConfig {
-            file_name: None,
-            items: None,
-            inherited: Default::default(),
-            item: ItemConfig::Top,
-        }
-    }
-
     /// Build a FileDefaults ScopeConfig for the given file,
     /// if we have any FileDefaults in the external configuration
     pub fn new_file(&self, external_config: &super::Config,
@@ -148,7 +145,7 @@ impl ScopeConfig {
             ItemKind::Impl     => ItemConfig::Impl,
         };
         ScopeConfig {
-            file_name: file_name,
+            file_name,
             items: Default::default(),
             inherited: Rc::clone(&self.inherited),
             item: item_config,
@@ -277,13 +274,15 @@ pub struct ScopeStack {
     stack: Vec<ScopeConfig>,
 }
 
-impl ScopeStack {
-    pub fn new() -> ScopeStack {
+impl Default for ScopeStack {
+    fn default() -> ScopeStack {
         ScopeStack {
-            stack: vec![ScopeConfig::new()],
+            stack: vec![ScopeConfig::default()],
         }
     }
+}
 
+impl ScopeStack {
     pub fn from_scope(scope: ScopeConfig) -> ScopeStack {
         ScopeStack {
             stack: vec![scope],

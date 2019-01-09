@@ -294,6 +294,13 @@ impl TypedAstContext {
             }
         }
 
+        // Unset c_main if we are not retaining its declaration
+        if let Some(main_id) = self.c_main {
+            if !used.contains(&main_id) {
+                self.c_main = None;
+            }
+        }
+
         // Prune any declaration that isn't considered live
         self.c_decls.retain(|&decl_id, _decl|
             used.contains(&decl_id)

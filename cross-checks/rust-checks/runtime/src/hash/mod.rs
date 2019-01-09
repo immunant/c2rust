@@ -135,15 +135,15 @@ impl_primitive_hash!(f64,   write_f64);
 
 // Placeholder values for reference/pointers to use when
 // we reach depth == 0 and cannot descend any further
-const LEAF_REFERENCE_VALUE: u32 = 0xDEADBEEFu32;
+const LEAF_REFERENCE_VALUE: u32 = 0xDEAD_BEEFu32;
 
-pub const LEAF_ARRAY_HASH:   u64 = 0x797272416661654c_u64; // "LeafArry" in ASCII
-pub const LEAF_RECORD_HASH:  u64 = 0x647263526661654c_u64; // "LeafRcrd" in ASCII
-pub const NULL_POINTER_HASH: u64 = 0x726174536c6c754e_u64; // "NullStar" in ASCII
-pub const LEAF_POINTER_HASH: u64 = 0x726174536661654c_u64; // "LeafStar" in ASCII
-pub const VOID_POINTER_HASH: u64 = 0x7261745364696f56_u64; // "VoidStar" in ASCII
-pub const FUNC_POINTER_HASH: u64 = 0x72617453636e7546_u64; // "FuncStar" in ASCII
-pub const ANY_UNION_HASH:    u64 = 0x6e6f696e55796e41_u64; // "AnyUnion" in ASCII
+pub const LEAF_ARRAY_HASH:   u64 = 0x7972_7241_6661_654c_u64; // "LeafArry" in ASCII
+pub const LEAF_RECORD_HASH:  u64 = 0x6472_6352_6661_654c_u64; // "LeafRcrd" in ASCII
+pub const NULL_POINTER_HASH: u64 = 0x7261_7453_6c6c_754e_u64; // "NullStar" in ASCII
+pub const LEAF_POINTER_HASH: u64 = 0x7261_7453_6661_654c_u64; // "LeafStar" in ASCII
+pub const VOID_POINTER_HASH: u64 = 0x7261_7453_6469_6f56_u64; // "VoidStar" in ASCII
+pub const FUNC_POINTER_HASH: u64 = 0x7261_7453_636e_7546_u64; // "FuncStar" in ASCII
+pub const ANY_UNION_HASH:    u64 = 0x6e6f_696e_5579_6e41_u64; // "AnyUnion" in ASCII
 
 // Hash implementation for slices
 impl<'a, T: CrossCheckHash> CrossCheckHash for [T] {
@@ -276,7 +276,7 @@ macro_rules! impl_fnopt_hash {
                 where HA: CrossCheckHasher,
                       HS: CrossCheckHasher
             {
-                if let &Some(ref func) = self {
+                if let Some(ref func) = self {
                     // Due to C's decay rules, we don't decrease the depth here,
                     // since function values can decay to function pointers,
                     // so they're basically equivalent
@@ -308,7 +308,7 @@ macro_rules! impl_fnopt_hash {
                 where HA: CrossCheckHasher,
                       HS: CrossCheckHasher
             {
-                if let &Some(ref func) = self {
+                if let Some(ref func) = self {
                     // Due to C's decay rules, we don't decrease the depth here,
                     // since function values can decay to function pointers,
                     // so they're basically equivalent

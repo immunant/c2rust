@@ -1,4 +1,4 @@
-#![feature(libc, int_to_from_bytes)]
+#![feature(libc)]
 
 #[macro_use] extern crate lazy_static;
 extern crate libc;
@@ -24,7 +24,7 @@ lazy_static! {
         let xchecks_file = env::var("FAKECHECKS_OUTPUT_FILE")
             .expect("Expected file path in FAKECHECKS_OUTPUT_FILE variable");
         let file = File::create(xchecks_file.clone())
-            .expect(&format!("Failed to create fakechecks file: {}", xchecks_file));
+            .unwrap_or_else(|e| panic!("Failed to create fakechecks file {}: {}", xchecks_file, e));
         let encoder = zstd::stream::Encoder::new(file, 0)
             .expect("Failed to create zstd encoder");
         Mutex::new(Some(encoder))
@@ -35,7 +35,9 @@ lazy_static! {
 pub extern fn rb_xcheck(tag: u8, val: u64) {
     let mut guard = RB_XCHECK_MUTEX.lock().unwrap();
     let out = guard.as_mut().unwrap();
-    out.write(&[tag]).expect("Failed to write tag");
-    out.write(&val.to_le_bytes()).expect("Failed to write value");
+    out.write_all(&[tag])
+        .expect("Failed to write tag");
+    out.write_all(&val.to_le_bytes())
+        .expect("Failed to write value");
 }
 

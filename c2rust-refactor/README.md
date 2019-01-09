@@ -19,7 +19,7 @@ Build `c2rust-refactor` with `cargo build`.
 
 Flags for `c2rust-refactor` are described by `c2rust-refactor --help`.
 
-See [the command documentation](../_generated/c2rust-refactor-commands.md) for a list of commands,
+See [the command documentation](commands.html) for a list of commands,
 including complete usage and descriptions. 
 Multiple commands can be separated by an argument consisting of a single
 semicolon, as in `c2rust-refactor cmd1 arg1 \; cmd2 arg2`.
@@ -51,7 +51,7 @@ by a command is described in the command's documentation; by default, most
 commands that use marks operate on `target`.
 
 The most flexible way of marking nodes is by using the
-[`select`](../_generated/c2rust-refactor-commands.md#select) command.  See the command
+[`select`](commands.html#select) command.  See the command
 documentation and `src/select/mod.rs` for details.  Note that marks are not
 preserved across `c2rust-refactor` invocations, so you usually want to run
 `select` followed by the command of interest using the `;` separator mentioned

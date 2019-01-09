@@ -37,12 +37,12 @@ use syntax::tokenstream::TokenTree;
 mod default_config;
 
 fn djb2_hash(s: &str) -> u32 {
-    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
+    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c.into()))
 }
 
 trait CrossCheckBuilder {
     fn build_ident_xcheck(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
-                          tag_str: &str, ident: &ast::Ident) -> Option<ast::Stmt>;
+                          tag_str: &str, ident: ast::Ident) -> Option<ast::Stmt>;
     fn build_xcheck<F>(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
                        tag_str: &str, val_ref_str: &str, f: F) -> Option<ast::Stmt>
         where F: FnOnce(ast::Ident, Vec<ast::Stmt>) -> P<ast::Expr>;
@@ -50,13 +50,13 @@ trait CrossCheckBuilder {
 
 impl CrossCheckBuilder for xcfg::XCheckType {
     fn build_ident_xcheck(&self, cx: &ExtCtxt, exp: &CrossCheckExpander,
-                          tag_str: &str, ident: &ast::Ident) -> Option<ast::Stmt> {
+                          tag_str: &str, ident: ast::Ident) -> Option<ast::Stmt> {
         self.build_xcheck(cx, exp, tag_str, &"$INVALID$", |tag, pre_hash_stmts| {
             assert!(pre_hash_stmts.is_empty());
             let name = &*ident.name.as_str();
-            let id = djb2_hash(name) as u64;
-            exp.insert_djb2_name(id as u32, String::from(name));
-            quote_expr!(cx, Some(($tag, $id)))
+            let id = djb2_hash(name);
+            exp.insert_djb2_name(id, String::from(name));
+            quote_expr!(cx, Some(($tag, $id.into())))
         })
     }
 
@@ -84,9 +84,9 @@ impl CrossCheckBuilder for xcfg::XCheckType {
             xcfg::XCheckType::Disabled => quote_expr!(cx, None),
             xcfg::XCheckType::Fixed(id) => quote_expr!(cx, Some(($tag, $id))),
             xcfg::XCheckType::Djb2(ref s) => {
-                let id = djb2_hash(s) as u64;
-                exp.insert_djb2_name(id as u32, s.clone());
-                quote_expr!(cx, Some(($tag, $id)))
+                let id = djb2_hash(s);
+                exp.insert_djb2_name(id, s.clone());
+                quote_expr!(cx, Some(($tag, $id.into())))
             },
             xcfg::XCheckType::Custom(ref s) => {
                 // TODO: allow the custom expr to return an Option???
@@ -212,14 +212,14 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             q.to_tokens(cx)
         };
         CrossChecker {
-            expander: expander,
-            cx: cx,
-            scope_stack: scope_stack,
-            default_ahasher: default_ahasher,
-            default_shasher: default_shasher,
+            expander,
+            cx,
+            scope_stack,
+            default_ahasher,
+            default_shasher,
             pending_items: vec![],
             field_idx_stack: vec![],
-            skip_first_scope: skip_first_scope,
+            skip_first_scope,
         }
     }
 
@@ -323,13 +323,13 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         }).collect::<Vec<ast::Stmt>>()
     }
 
-    fn build_function_xchecks(&mut self, fn_ident: &ast::Ident,
+    fn build_function_xchecks(&mut self, fn_ident: ast::Ident,
                               fn_decl: &ast::FnDecl,
                               block: P<ast::Block>) -> P<ast::Block> {
         let checked_block = if self.config().inherited.enabled {
             // Add the cross-check to the beginning of the function
             // TODO: only add the checks to C abi functions???
-            let ref cfg = self.config();
+            let cfg = &self.config();
             let entry_xcheck = cfg.inherited.entry
                 .build_ident_xcheck(self.cx, self.expander,
                                     "FUNCTION_ENTRY_TAG", fn_ident);
@@ -357,7 +357,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 })
             });
 
-            let ref fcfg = cfg.function_config();
+            let fcfg = &cfg.function_config();
             let entry_extra_xchecks = self.build_extra_xchecks(&fcfg.entry_extra);
             let exit_extra_xchecks = self.build_extra_xchecks(&fcfg.exit_extra);
             // Extract the result type from the function signature,
@@ -393,7 +393,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         })
     }
 
-    fn build_union_hash(&mut self, union_ident: &ast::Ident) -> P<ast::Item> {
+    fn build_union_hash(&mut self, union_ident: ast::Ident) -> P<ast::Item> {
         let custom_hash_opt = &self.config().struct_config().custom_hash;
         let custom_hash_format = &self.config().struct_config().custom_hash_format;
         let hash_body = if let Some(ref custom_hash) = *custom_hash_opt {
@@ -439,12 +439,14 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     $hash_body
                 }
             }
-        ).expect(&format!("unable to implement CrossCheckHash for union '{}'",
-                          union_ident.to_string()))
+        ).unwrap_or_else(|| {
+            panic!("unable to implement CrossCheckHash for union '{}'",
+                   union_ident.to_string())
+        })
     }
 
     #[cfg(feature="c-hash-functions")]
-    fn build_type_c_hash_function(&mut self, ty_ident: &ast::Ident,
+    fn build_type_c_hash_function(&mut self, ty_ident: ast::Ident,
                                   ty_suffix: &str) -> Option<P<ast::Item>> {
         let hash_fn_name = format!("__c2rust_hash_{}_{}", ty_ident, ty_suffix);
         let hash_fn = ast::Ident::from_str(&hash_fn_name);
@@ -465,8 +467,10 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 use ::c2rust_xcheck_runtime::hash::CrossCheckHash;
                 (*x).cross_check_hash_depth::<$ahasher, $shasher>(depth)
             }
-        ).expect(&format!("unable to implement C ABI hash function for type '{}'",
-                          ty_ident.to_string())))
+        ).unwrap_or_else(|e| {
+            panic!("unable to implement C ABI hash function for type '{}': {}",
+                   ty_ident.to_string(), e)
+        }))
     }
 
     fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
@@ -474,7 +478,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         match folded_item.node {
             ast::ItemKind::Fn(fn_decl, header, generics, block) => {
                 let checked_block = self.build_function_xchecks(
-                    &folded_item.ident, &*fn_decl, block);
+                    folded_item.ident, &*fn_decl, block);
                 let checked_fn = ast::ItemKind::Fn(
                     fn_decl,
                     header,
@@ -487,11 +491,11 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 }
             }
             ast::ItemKind::Union(_, _) => {
-                let union_hash_impl = self.build_union_hash(&folded_item.ident);
+                let union_hash_impl = self.build_union_hash(folded_item.ident);
                 self.pending_items.push(union_hash_impl);
                 #[cfg(feature="c-hash-functions")]
                 {
-                    let c_hash_func = self.build_type_c_hash_function(&folded_item.ident,
+                    let c_hash_func = self.build_type_c_hash_function(folded_item.ident,
                                                                       "struct");
                     self.pending_items.extend(c_hash_func.into_iter());
                 }
@@ -513,7 +517,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     }
                     #[cfg(feature="c-hash-functions")]
                     {
-                        let c_hash_func = self.build_type_c_hash_function(&folded_item.ident,
+                        let c_hash_func = self.build_type_c_hash_function(folded_item.ident,
                                                                           "struct");
                         self.pending_items.extend(c_hash_func.into_iter());
                     }
@@ -582,14 +586,11 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                 let folded_fake_item = self.fold_item_simple(fake_item);
                 let (folded_sig, folded_generics, folded_body) = match folded_fake_item.node {
                     ast::ItemKind::Fn(decl, header, generics, body) => {
-                        let sig = ast::MethodSig {
-                            header: header,
-                            decl: decl
-                        };
+                        let sig = ast::MethodSig { header, decl };
                         // TODO: call noop_fold_method_sig on sig???
                         (sig, generics, body)
                     }
-                    n @ _ => panic!("unexpected folded item node: {:?}", n)
+                    n => panic!("unexpected folded item node: {:?}", n)
                 };
                 smallvec![ast::ImplItem {
                     ident:  folded_fake_item.ident,
@@ -671,7 +672,7 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
 
         let sf_attr_xcheck = self.parse_field_attr(&folded_sf.attrs);
         let sf_xcfg_xcheck = self.config().struct_config().fields.get(&sf_name);
-        let sf_xcheck = sf_xcfg_xcheck.or(sf_attr_xcheck.as_ref());
+        let sf_xcheck = sf_xcfg_xcheck.or_else(|| sf_attr_xcheck.as_ref());
         let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
             match *sf_xcheck {
                 xcfg::XCheckType::Default => None,
@@ -766,7 +767,9 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                             unsafe { $hash_fn(self as *const $ty_name, depth) }
                         }
                     }
-                ).expect(&format!("unable to implement CrossCheckHash for foreign type '{}'", ty_name));
+                ).unwrap_or_else(|| {
+                    panic!("unable to implement CrossCheckHash for foreign type '{}'", ty_name)
+                });
                 self.pending_items.push(hash_impl_item);
             };
             folded_ni
@@ -817,9 +820,13 @@ impl CrossCheckExpander {
             .map(|mi| mi.value_str().expect("invalid string for config_file"))
             .map(|fsym| PathBuf::from(&*fsym.as_str()))
             .map(|fp| fl.abs_path(&fp)
-                        .expect(&format!("invalid path to config file: {:?}", fp)))
+                        .unwrap_or_else(|| {
+                            panic!("invalid path to config file: {:?}", fp)
+                        }))
             .map(|fp| fl.read_file(&fp)
-                        .expect(&format!("could not read config file: {:?}", fp)))
+                        .unwrap_or_else(|e| {
+                            panic!("could not read config file {:?}: {}", fp, e)
+                        }))
             // TODO: use a Reader to read&parse each configuration file
             // without storing its contents in an intermediate String buffer???
             .map(|fd| xcfg::parse_string(&fd).expect("could not parse config file"))
@@ -833,7 +840,9 @@ impl CrossCheckExpander {
             .map(|mi| mi.value_str().expect("invalid string for config_file"))
             .map(|fsym| PathBuf::from(&*fsym.as_str()))
             .map(|fp| fl.abs_path(&fp)
-                        .expect(&format!("invalid path to djb2 names file: {:?}", fp)))
+                        .unwrap_or_else(|| {
+                            panic!("invalid path to djb2 names file: {:?}", fp)
+                        }))
             .collect()
     }
 
@@ -863,9 +872,13 @@ impl CrossCheckExpander {
             // TODO: should probably read the existing file,
             // and merge our names into the existing contents
             let mut f = fs::File::create(fp)
-                .expect(&format!("could not create djb2 names file: {:?}", fp));
+                .unwrap_or_else(|e| {
+                    panic!("could not create djb2 names file {:?}: {}", fp, e)
+                });
             serde_yaml::to_writer(f, djb2_names)
-                .expect(&format!("could not write YAML to djb2 names file: {:?}", fp));
+                .unwrap_or_else(|e| {
+                    panic!("could not write YAML to djb2 names file {:?}: {}", fp, e)
+                });
         }
     }
 }
@@ -890,7 +903,7 @@ impl MultiItemModifier for CrossCheckExpander {
                 // ignore this expansion and let the higher level one do everything
                 let ni = match (&i.node, span_scope) {
                     (&ast::ItemKind::Mod(_), None) => {
-                        let mut scope_stack = xcfg::scopes::ScopeStack::new();
+                        let mut scope_stack = xcfg::scopes::ScopeStack::default();
                         // Parse the top-level attribute configuration
                         let mut top_xcfg = xcfg::ItemConfig::Defaults(Default::default());
                         xcfg::attr::syntax::parse_attr_config(&mut top_xcfg, &mi);

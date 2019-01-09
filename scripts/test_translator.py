@@ -61,9 +61,9 @@ class CStaticLibrary:
         self.path = path
         self.link_name = link_name
         self.obj_files = obj_files
+
+
 class CFile:
-
-
     def __init__(self, path: str, flags: Set[str] = None) -> None:
         if not flags:
             flags = set()
@@ -72,7 +72,7 @@ class CFile:
         self.enable_incremental_relooper = "incremental_relooper" in flags
         self.disallow_current_block = "disallow_current_block" in flags
 
-    def translate(self, extra_args: List[str] = []) -> RustFile:
+    def translate(self, cc_db, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
 
         # help plumbum find rust
@@ -84,7 +84,7 @@ class CFile:
         transpiler = get_cmd_or_die(c.TRANSPILER)
 
         args = [
-            self.path,
+            cc_db,
             "--prefix-function-names",
             "rust_",
         ]
@@ -120,12 +120,6 @@ class CFile:
             raise NonZeroReturn(stderr)
 
         return RustFile(extensionless_file + ".rs")
-
-
-        if retcode != 0:
-            raise NonZeroReturn(stderr)
-
-        return CborFile(self.path + ".cbor", True, self.disallow_current_block)
 
 
 def build_static_library(c_files: Iterable[CFile],
@@ -354,7 +348,8 @@ class TestDirectory:
             self._generate_cc_db(c_file.path)
 
             try:
-                translated_rust_file = c_file.translate(extra_args=["-march=native"])
+                translated_rust_file = c_file.translate(self.generated_files["cc_db"],
+                                                        extra_args=["-march=native"])
             except NonZeroReturn as exception:
                 self.print_status(Colors.FAIL, "FAILED", "translate " +
                                   c_file_short)

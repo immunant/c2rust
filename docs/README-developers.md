@@ -2,8 +2,8 @@
 
 There are three ways to build the C2Rust project:
 
-- Using **Vagrant**. See our [vagrant README](../vagrant/README.md).
-- Using **Docker**. See our [docker README](../docker/README.md).
+- [Using **Vagrant**](../vagrant/).
+- [Using **Docker**](../docker/).
 - **Manually**, as explained below.
 
 The previous two options automatically install all prerequisites during provisioning. You can also provision a macOS or Linux system manually.
@@ -49,18 +49,19 @@ C2Rust (indirectly) uses the [clang-sys](https://crates.io/crates/clang-sys) cra
 
 # Building dependencies from source
 
-To develop on components that interact with LLVM, we recommend building against a local copy of LLVM. This will ensure that you have debug symbols and IDE integration for both LLVM and C2Rust. However, building C2Rust from source with LLVM takes a while. For a shorter build that links against prebuilt LLVM and clang system libraries, you should be able to `cargo build` in the `c2rust-transpile` directory (see the general [README](../README.md)).
+To develop on components that interact with LLVM, we recommend building against a local copy of LLVM. This will ensure that you have debug symbols and IDE integration for both LLVM and C2Rust. However, building C2Rust from source with LLVM takes a while. For a shorter build that links against prebuilt LLVM and clang system libraries, you should be able to `cargo build` in the `c2rust-transpile` directory (see the general [README](../)).
 
 The following from source full build script has been tested on recent versions of macOS and Ubuntu:
 
     $ ./scripts/build_translator.py
 
+TODO: Mention how to open as XCode or other IDE project?
 
 # Testing (Optional)
 
-Tests are found in the [`tests`](../tests) folder. If you build the translator successfully, you should be able to run the tests with:
+Tests are found in the [`tests`](../tests/) folder. If you build the translator successfully, you should be able to run the tests with:
 
     $ ./scripts/test_translator.py tests
 
-This basically tests that the original C file and translated Rust file produce the same output when compiled and run. More details about tests are in [this README](../tests/README.md).
+This basically tests that the original C file and translated Rust file produce the same output when compiled and run. More details about tests can be found in the [tests folder](../tests/).
 

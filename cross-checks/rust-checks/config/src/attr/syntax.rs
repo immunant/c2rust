@@ -96,10 +96,10 @@ pub fn parse_xcheck_arg(arg: &ArgValue<'static>, or_default: bool) -> Option<XCh
 
 pub fn parse_attr_config(item_xcfg: &mut ItemConfig, mi: &ast::MetaItem) {
     assert_eq!(mi.name(), "cross_check");
-    match item_xcfg {
-        &mut ItemConfig::Defaults(ref mut d) => parse_defaults_attr_config(d, mi),
-        &mut ItemConfig::Function(ref mut f) => parse_function_attr_config(f, mi),
-        &mut ItemConfig::Struct(ref mut s)   => parse_struct_attr_config(s, mi),
+    match *item_xcfg {
+        ItemConfig::Defaults(ref mut d) => parse_defaults_attr_config(d, mi),
+        ItemConfig::Function(ref mut f) => parse_function_attr_config(f, mi),
+        ItemConfig::Struct(ref mut s)   => parse_struct_attr_config(s, mi),
         _ => panic!("unexpected item: {:#?}", item_xcfg)
     }
 }
@@ -134,8 +134,9 @@ fn parse_function_attr_config(f: &mut FunctionConfig, mi: &ast::MetaItem) {
                 f.args.extend(arg.as_list().iter().filter_map(|(name, arg)| {
                     if let ArgValue::List(ref l) = *arg {
                         let arg_xcheck = parse_xcheck_arglist(l, false)
-                            .expect(&format!("expected valid cross-check type \
-                                              for argument: {}", name));
+                            .unwrap_or_else(|| {
+                                panic!("expected valid cross-check type for argument: {}", name)
+                            });
                         Some((String::from(*name), arg_xcheck))
                     } else { None }
                 }));

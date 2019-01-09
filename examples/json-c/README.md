@@ -1,4 +1,6 @@
-# Translating json-c
+# json-c library
+
+## Translating json-c
 
     # in examples/json-c/repo:
     ../configure    # use the custom c2rust configure script
@@ -10,7 +12,7 @@
 This will produce `rust/libjson-c.so.4.0.0`.
 
 
-# Running tests
+## Running tests
 
     # in examples/json-c/repo:
 

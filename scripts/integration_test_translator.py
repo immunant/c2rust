@@ -10,8 +10,6 @@ from shutil import rmtree
 import sys
 import tempfile
 
-from transpile import transpile_files
-
 from common import (
     config as c,
     pb,
@@ -25,6 +23,7 @@ from common import (
     regex,
     setup_logging,
     ensure_dir,
+    transpile,
 )
 
 
@@ -50,7 +49,7 @@ TAR = get_cmd_or_die("tar")
 SED = get_cmd_or_die("sed")
 MAKE = get_cmd_or_die("make")
 CMAKE = get_cmd_or_die("cmake")
-BEAR = get_cmd_or_die(c.BEAR_BIN)
+BEAR = get_cmd_or_die("bear")
 JOBS = "-j2"  # main updates jobs based on args
 
 minimal_snippet = """ \
@@ -134,8 +133,7 @@ def test_json_c(args: argparse.Namespace) -> bool:
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
 
-    with open(cc_db_file) as cc_db:
-        transpile_files(cc_db, verbose=args.verbose)
+    return transpile(cc_db_file)
 
 
 def test_lua(args: argparse.Namespace) -> bool:
@@ -165,8 +163,7 @@ def test_lua(args: argparse.Namespace) -> bool:
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
 
-    with open(cc_db_file) as cc_db:
-        return transpile_files(cc_db, verbose=args.verbose)
+    return transpile(cc_db_file)
 
 
 def test_ruby(args: argparse.Namespace) -> bool:
@@ -191,8 +188,7 @@ def test_ruby(args: argparse.Namespace) -> bool:
     if not os.path.isfile(cc_db_file):
         die("missing " + cc_db_file, errno.ENOENT)
 
-    with open(cc_db_file) as cc_db:
-        return transpile_files(cc_db, verbose=args.verbose)
+    return transpile(cc_db_file)
 
 
 def parse_args() -> argparse.Namespace:

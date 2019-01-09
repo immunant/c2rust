@@ -30,19 +30,18 @@ which can either be enabled globally (using `#![cross_check]` at the beginning o
 per function (the per-function settings override the global ones).
 
 The directive optionally takes the following options:
-  * `always`, `yes` and `enable` enable cross-checking for the current scope (crate
+  * `yes` and `enabled` enable cross-checking for the current scope (crate
     or function).
-  * `never`, `no` and `disable` disable cross-checking for the current scope.
-  * `name="foo"` sets the cross-checking name for the current scope to `foo`.
-  * `id=NNN` sets the cross-checking ID for the current scope to `NNN`;
-    overrides `name=foo` if both are present.
+  * `none` and `disabled` disable cross-checking for the current scope.
+  * `entry(djb2="foo")` sets the cross-checking name for the current function entry point to the DJB2 hash of `foo`.
+  * `entry(fixed=NNN)` sets the cross-checking ID for the current function entry point to `NNN`.
 
 Example:
 ```rust
-#[cross_check(yes, name=foo)]
+#[cross_check(yes, entry(djb2="foo"))]
 fn bar() { }
 
-#[cross_check(yes, id=0x1234)]
+#[cross_check(yes, entry(fixed=0x1234))]
 fn baz() { }
 
 #[cross_check(no)]

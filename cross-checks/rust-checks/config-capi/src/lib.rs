@@ -119,7 +119,7 @@ pub unsafe extern fn xcfg_config_parse(cfg: *mut xcfg::Config, buf: StringLenPtr
     -> *const xcfg::Config {
     let cfg = Box::from_raw(cfg);
     let second_cfg = serde_yaml::from_slice(buf.to_slice())
-        .expect(&format!("invalid YAML: '{:?}'", buf.to_str()));
+        .unwrap_or_else(|e| panic!("invalid YAML '{:?}': {}", buf.to_str(), e));
     let second_cfg = xcfg::Config::new(second_cfg);
     let merged_cfg = cfg.merge(second_cfg);
     Box::into_raw(Box::new(merged_cfg))
@@ -188,7 +188,7 @@ pub unsafe extern fn xcfg_scope_stack_new(top_scope: Option<&xcfg::scopes::Scope
     -> *mut xcfg::scopes::ScopeStack {
     let scope_stack = match top_scope {
         Some(ref ts) => xcfg::scopes::ScopeStack::from_scope((*ts).clone()),
-        None => xcfg::scopes::ScopeStack::new()
+        None => xcfg::scopes::ScopeStack::default()
     };
     Box::into_raw(Box::new(scope_stack))
 }
@@ -225,13 +225,13 @@ pub extern fn xcfg_scope_stack_push_item<'stk>(scope_stack: Option<&'stk mut xcf
         assert_eq!(pre_xcfg.elem_size as usize, mem::size_of::<StringLenPtr>());
         let pre_str = unsafe { pre_xcfg.get(i as usize) };
         serde_yaml::from_slice(pre_str.to_slice())
-            .expect(&format!("invalid YAML: '{}'", pre_str.to_str()))
+            .unwrap_or_else(|e| panic!("invalid YAML '{}': {}", pre_str.to_str(), e))
     }).collect::<Vec<_>>();
     let post_xcfg = (0..post_xcfg.len).map(|i| {
         assert_eq!(post_xcfg.elem_size as usize, mem::size_of::<StringLenPtr>());
         let post_str = unsafe { post_xcfg.get(i as usize) };
         serde_yaml::from_slice(post_str.to_slice())
-            .expect(&format!("invalid YAML: '{}'", post_str.to_str()))
+            .unwrap_or_else(|e| panic!("invalid YAML '{}': {}", post_str.to_str(), e))
     }).collect::<Vec<_>>();
     scope_stack.map(|stk| stk.push_item(item_kind,
                                         file_name.to_str(),

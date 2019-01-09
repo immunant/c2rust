@@ -1,4 +1,3 @@
-#![feature(int_to_from_bytes)]
 
 extern crate zstd;
 
@@ -13,7 +12,7 @@ const MAX_XCHECK_LEN: usize = 52;
 
 pub fn main() -> Result<(), std::io::Error> {
     let tag_names = ["Unk", "Ent", "Exi", "Arg", "Ret"]
-        .into_iter()
+        .iter()
         .map(ToString::to_string)
         .chain((5..256).map(|n| n.to_string()))
         .collect::<Vec<_>>();
