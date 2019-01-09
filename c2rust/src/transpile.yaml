@@ -85,7 +85,6 @@ args:
   - cross-check-backend:
       long: cross-check-backend
       help: Select which cross-checking backend to use, e.g., zstd-logging
-      requires: cross-checks
       takes_value: true
       possible_values:
           - dynamic-dlsym
