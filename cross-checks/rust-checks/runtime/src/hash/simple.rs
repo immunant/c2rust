@@ -20,7 +20,7 @@ impl SimpleHasher {
         if self.0.is_some() {
             panic!("Tried to add hash multiple values with SimpleHasher");
         }
-        self.0 = Some(i ^ (MIX_CONSTANT.wrapping_mul(ty as u64)));
+        self.0 = Some(i ^ (MIX_CONSTANT.wrapping_mul(ty.into())));
     }
 }
 
@@ -45,6 +45,7 @@ macro_rules! impl_primitive_hash {
     ($in_ty:ident, $write_meth:ident, $hash_ty:ident) => {
         #[inline]
         fn $write_meth(&mut self, i: $in_ty) {
+            #[allow(clippy::cast_lossless)]
             self.write_typed(HashType::$hash_ty as u8, i as u64);
         }
     };
@@ -80,7 +81,7 @@ impl CrossCheckHasher for SimpleHasher {
     #[inline]
     fn write_f32(&mut self, i: f32) {
         self.write_typed(HashType::F32 as u8,
-                         unsafe { mem::transmute::<f32, u32>(i) } as u64);
+                         unsafe { mem::transmute::<f32, u32>(i) }.into());
     }
 
     #[inline]

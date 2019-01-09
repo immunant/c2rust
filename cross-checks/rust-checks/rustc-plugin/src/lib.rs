@@ -37,7 +37,7 @@ use syntax::tokenstream::TokenTree;
 mod default_config;
 
 fn djb2_hash(s: &str) -> u32 {
-    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c as u32))
+    s.bytes().fold(5381u32, |h, c| h.wrapping_mul(33).wrapping_add(c.into()))
 }
 
 trait CrossCheckBuilder {
@@ -54,9 +54,9 @@ impl CrossCheckBuilder for xcfg::XCheckType {
         self.build_xcheck(cx, exp, tag_str, &"$INVALID$", |tag, pre_hash_stmts| {
             assert!(pre_hash_stmts.is_empty());
             let name = &*ident.name.as_str();
-            let id = djb2_hash(name) as u64;
-            exp.insert_djb2_name(id as u32, String::from(name));
-            quote_expr!(cx, Some(($tag, $id)))
+            let id = djb2_hash(name);
+            exp.insert_djb2_name(id, String::from(name));
+            quote_expr!(cx, Some(($tag, $id.into())))
         })
     }
 
@@ -84,9 +84,9 @@ impl CrossCheckBuilder for xcfg::XCheckType {
             xcfg::XCheckType::Disabled => quote_expr!(cx, None),
             xcfg::XCheckType::Fixed(id) => quote_expr!(cx, Some(($tag, $id))),
             xcfg::XCheckType::Djb2(ref s) => {
-                let id = djb2_hash(s) as u64;
-                exp.insert_djb2_name(id as u32, s.clone());
-                quote_expr!(cx, Some(($tag, $id)))
+                let id = djb2_hash(s);
+                exp.insert_djb2_name(id, s.clone());
+                quote_expr!(cx, Some(($tag, $id.into())))
             },
             xcfg::XCheckType::Custom(ref s) => {
                 // TODO: allow the custom expr to return an Option???
@@ -249,7 +249,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             ast::PatKind::Ident(_, ref ident, _) => {
                 // Parameter pattern is just an identifier,
                 // so we can reference it directly by name
-                let arg_idx = xcfg::FieldIndex::from_str(&*ident.name.as_str());
+                let arg_idx = xcfg::FieldIndex::Str(ident.name.to_string());
                 let arg_xcheck_cfg = self.config().function_config()
                     .args.get(&arg_idx)
                     .unwrap_or(&self.config().inherited.all_args);
@@ -660,7 +660,7 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
         // if the field is in a Struct. If it's in a Tuple, we use
         // the field index, which we need to compute ourselves from field_idx_stack.
         let sf_name = folded_sf.ident
-            .map(|ident| xcfg::FieldIndex::from_str(&*ident.name.as_str()))
+            .map(|ident| xcfg::FieldIndex::Str(ident.name.to_string()))
             .unwrap_or_else(|| {
                 // We use field_idx_stack to keep track of the index/name
                 // of the fields inside a VariantData
@@ -903,7 +903,7 @@ impl MultiItemModifier for CrossCheckExpander {
                 // ignore this expansion and let the higher level one do everything
                 let ni = match (&i.node, span_scope) {
                     (&ast::ItemKind::Mod(_), None) => {
-                        let mut scope_stack = xcfg::scopes::ScopeStack::new();
+                        let mut scope_stack = xcfg::scopes::ScopeStack::default();
                         // Parse the top-level attribute configuration
                         let mut top_xcfg = xcfg::ItemConfig::Defaults(Default::default());
                         xcfg::attr::syntax::parse_attr_config(&mut top_xcfg, &mi);
