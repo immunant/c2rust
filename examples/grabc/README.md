@@ -6,7 +6,7 @@ If the repo submodule appears to be empty or out of date, you may need to run `g
 
 ## Transpiling
 
-The steps to get the transpiled code are as followed:
+The steps to get the transpiled code are as follows:
 
     $ intercept-build make
     $ c2rust transpile compile_commands.json

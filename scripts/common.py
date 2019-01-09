@@ -527,7 +527,8 @@ def transpile(cc_db_path: str,
     if emit_modules:
         args.append('--emit-modules')
     if main_module_for_build_files:
-        args.append('--main=' + main_module_for_build_files)
+        args.append('--main')
+        args.append(main_module_for_build_files)
     if cross_checks:
         args.append('--cross-checks')
     if use_fakechecks:
@@ -541,7 +542,7 @@ def transpile(cc_db_path: str,
     if reorganize_definitions:
         args.append('--reorganize-definitions')
     if filter:
-        args.append('-f')
+        args.append('--filter')
         args.append(filter)
 
     logging.debug("translation command:\n %s", str(c2rust[args]))
