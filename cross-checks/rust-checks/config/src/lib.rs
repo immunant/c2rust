@@ -1,4 +1,5 @@
 #![cfg_attr(feature="parse-syntax", feature(rustc_private, try_from))]
+#![feature(box_patterns)]
 
 #[macro_use]
 extern crate serde_derive;
@@ -234,9 +235,9 @@ pub struct StructConfig {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "item", rename_all = "lowercase")]
 pub enum ItemConfig {
-    Defaults(DefaultsConfig),
-    Function(FunctionConfig),
-    Struct(StructConfig),
+    Defaults(Box<DefaultsConfig>),
+    Function(Box<FunctionConfig>),
+    Struct(Box<StructConfig>),
     Value,   // TODO
     Closure, // TODO
 }
@@ -244,16 +245,16 @@ pub enum ItemConfig {
 impl ItemConfig {
     fn name(&self) -> Option<&str> {
         match *self {
-            ItemConfig::Function(FunctionConfig { ref name, .. }) => Some(&name[..]),
-            ItemConfig::Struct(StructConfig { ref name, .. }) => Some(&name[..]),
+            ItemConfig::Function(box FunctionConfig { ref name, .. }) => Some(&name[..]),
+            ItemConfig::Struct(box StructConfig { ref name, .. }) => Some(&name[..]),
             _ => None
         }
     }
 
     pub fn nested_items(&self) -> Option<&ItemList> {
         match *self {
-            ItemConfig::Function(FunctionConfig { ref nested, .. }) => nested.as_ref(),
-            ItemConfig::Struct(StructConfig { ref nested, .. }) => nested.as_ref(),
+            ItemConfig::Function(box FunctionConfig { ref nested, .. }) => nested.as_ref(),
+            ItemConfig::Struct(box StructConfig { ref nested, .. }) => nested.as_ref(),
             // TODO: other cases
             _ => None
         }
