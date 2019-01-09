@@ -511,7 +511,7 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
 
 
 def transpile(cc_db_path: str,
-              filter: List[str] = [],
+              filter: str = None,
               extra_transpiler_args: List[str] = [],
               emit_build_files: bool = True,
               emit_modules: bool = False,
@@ -525,24 +525,30 @@ def transpile(cc_db_path: str,
     run the transpiler on all C files in a compile commands database.
     """
     c2rust = get_cmd_or_die(config.C2RUST_BIN)
-    args = ['transpile']
-    args.extend(['--filter=' + f for f in filter])
+    args = ['transpile', cc_db_path]
+    args.extend(extra_transpiler_args)
     if emit_build_files:
         args.append('--emit-build-files')
     if emit_modules:
         args.append('--emit-modules')
     if main_module_for_build_files:
-        args.append('--main=' + main_module_for_build_files)
+        args.append('--main')
+        args.append(main_module_for_build_files)
     if cross_checks:
         args.append('--cross-checks')
     if use_fakechecks:
         args.append('--use-fakechecks')
-    if cross_check_config:
-        args.append('--cross-check-config=' + cross_check_config)
+    if cross_check_config and cross_checks:
+        args.append('--cross-check-config')
+        for ccc in cross_check_config:
+            args.append(ccc)
     if not incremental_relooper:
         args.append('--no-incremental-relooper')
     if reorganize_definitions:
         args.append('--reorganize-definitions')
+    if filter:
+        args.append('--filter')
+        args.append(filter)
 
     logging.debug("translation command:\n %s", str(c2rust[args]))
     retcode, stdout, stderr = (c2rust[args]).run(retcode=None)

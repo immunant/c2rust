@@ -4,17 +4,10 @@
 from common import Config
 from plumbum.cmd import echo, perl
 from plumbum import local
-from transpile import transpile_files
 from typing import Iterable, Tuple
 
 import argparse
 import os
-
-desc = 'transpile files in compiler_commands.json.'
-parser = argparse.ArgumentParser(description="Translates libxml2 into the repo/rust/src directory")
-# parser.add_argument('-i', '--interactive',
-#                     default=False, action='store_true',
-#                     help='Interactively choose which patches to apply')
 
 config = Config()
 
@@ -134,8 +127,6 @@ def replace_all(file_path: str, replacements: Iterable[Tuple[str, str]]) -> None
     assert retcode != 1, "Failed to apply patch {}/replace_all:\n{}".format(file_name, stderr)
 
 if __name__ == "__main__":
-    args = parser.parse_args()
-
     for file_name, patch_config in PATCHES.items():
         file_path = os.path.join(RUST_ROOT_DIR, file_name)
 
