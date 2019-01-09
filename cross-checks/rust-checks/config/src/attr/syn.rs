@@ -32,7 +32,7 @@ pub fn get_item_args(mi: &syn::MetaItem) -> ArgList {
                                 syn::Lit::Str(ref s, syn::StrStyle::Cooked) =>
                                     (kw.as_ref(), ArgValue::Str(s.clone())),
 
-                                syn::Lit::Int(i, _) => (kw.as_ref(), ArgValue::Int(i as u128)),
+                                syn::Lit::Int(i, _) => (kw.as_ref(), ArgValue::Int(i.into())),
 
                                 _ => panic!("invalid tag value for by_value: {:?}", *val)
                             }
