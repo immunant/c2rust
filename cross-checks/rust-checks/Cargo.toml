@@ -8,7 +8,7 @@ members = [
     "backends/fakechecks-zstd",
     "backends/libclevrbuf-sys",
     "backends/libfakechecks-sys",
-    "backends/xcheck-dlsym",
+    "backends/dynamic-dlsym",
 ]
 default-members = [
     "config",
@@ -16,7 +16,7 @@ default-members = [
     "runtime",
     "rustc-plugin",
     "backends/fakechecks-zstd",
-    "backends/xcheck-dlsym",
+    "backends/dynamic-dlsym",
 ]
 exclude = [
     "tests"
