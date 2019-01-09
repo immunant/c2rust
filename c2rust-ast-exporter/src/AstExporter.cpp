@@ -1344,6 +1344,8 @@ class TranslateASTVisitor final
           if (WarnOnFlexibleArrayDecl(D)) {
               PrintWarning("this may be an unsupported flexible array member with size of 1, "
                            "omit the size if this field is intended to be a flexible array member. "
+                           "Note that you must be sure to fix any struct size calculations after "
+                           "doing so or else it will likely be off (by one). "
                            "See section 6.7.2.1 of the C99 Standard for more details.", D);
           }
 
@@ -1791,8 +1793,8 @@ Outputs process(int argc, const char *argv[], int *result)
     assert(OptionsParser.getSourcePathList().size() - 1 == source_path_count++ &&
         "Expected exactly one source path");
 
-    // CommonOptionsParser is stateful so the vector returned by 
-    // getSourcePathList() includes paths from past invocations.  
+    // CommonOptionsParser is stateful so the vector returned by
+    // getSourcePathList() includes paths from past invocations.
     std::string sourcePath = OptionsParser.getSourcePathList().back();
     // Make a new list with just the file we're currently translating
     std::vector<std::string> sourcePathList(1, sourcePath);
