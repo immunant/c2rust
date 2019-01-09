@@ -211,7 +211,8 @@ struct CompileCmd {
     /// with ‘"’ and ‘\’ being the only special characters. Shell expansion is not supported.
     command: Option<String>,
     /// The compile command executed as list of strings. Either arguments or command is required.
-    arguments: Option<Vec<String>>,
+    #[serde(default)]
+    arguments: Vec<String>,
     /// The name of the output created by this compilation step. This field is optional. It can
     /// be used to distinguish different processing modes of the same input file.
     output: Option<String>,

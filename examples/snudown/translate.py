@@ -64,7 +64,7 @@ def main(xcheck: bool, snudown: str):
     config_path = os.path.join(snudown, "xchecks/snudown_rust.yaml")
 
     transpile(cmds_json_path, emit_build_files=True,
-              cross_checks=xcheck, cross_check_config=config_path)
+              cross_checks=xcheck, cross_check_config=[config_path])
 
     with pb.local.cwd(os.path.join(snudown, "c2rust-build")):
         cargo = get_cmd_or_die("cargo")

@@ -513,7 +513,7 @@ def transpile(cc_db_path: str,
               main_module_for_build_files: str = None,
               cross_checks: bool = False,
               use_fakechecks: bool = False,
-              cross_check_config: str = None,
+              cross_check_config: List[str] = [],
               incremental_relooper: bool = True,
               reorganize_definitions: bool = False) -> bool:
     """
@@ -533,14 +533,16 @@ def transpile(cc_db_path: str,
     if use_fakechecks:
         args.append('--use-fakechecks')
     if cross_check_config and cross_checks:
-        args.append('--cross-check-config=' + cross_check_config)
+        args.append('--cross-check-config')
+        for ccc in cross_check_config:
+            args.append(ccc)
     if not incremental_relooper:
         args.append('--no-incremental-relooper')
     if reorganize_definitions:
         args.append('--reorganize-definitions')
     if filter:
         args.append('-f')
-        args.append('{}'.format(filter))
+        args.append(filter)
 
     logging.debug("translation command:\n %s", str(c2rust[args]))
     retcode, stdout, stderr = (c2rust[args]).run(retcode=None)

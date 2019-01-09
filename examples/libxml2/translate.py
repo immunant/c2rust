@@ -65,21 +65,19 @@ if __name__ == "__main__":
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
-    c2rust_bin = get_cmd_or_die(config.C2RUST_BIN)
-
     # Build the tests first
     print(Colors.OKBLUE + "Transpiling tests..." + Colors.NO_COLOR)
     transpile(COMPILE_COMMANDS,
               filter='^(test|xmllint|runtest)',
               emit_build_files=False,
               cross_checks=args.cross_checks,
-              cross_check_config=CROSS_CHECK_CONFIG_YAML)
+              cross_check_config=[CROSS_CHECK_CONFIG_YAML])
 
     print(Colors.OKBLUE + "Transpiling rest of files..." + Colors.NO_COLOR)
     transpile(COMPILE_COMMANDS,
               emit_build_files=True,
               cross_checks=args.cross_checks,
-              cross_check_config=CROSS_CHECK_CONFIG_YAML)
+              cross_check_config=[CROSS_CHECK_CONFIG_YAML])
 
     # Create rust/examples directory if it doesn't exist
     mkdir_args = ["-p", RUST_EXAMPLES_DIR]
