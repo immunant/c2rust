@@ -182,6 +182,7 @@ impl ScopeConfig {
         }
     }
 
+    #[allow(clippy::cyclomatic_complexity)]
     pub fn parse_xcfg_config(&mut self, xcfg: &super::ItemConfig) {
         macro_rules! parse_optional_field {
             // Field for the current scope
