@@ -83,7 +83,7 @@ After running all the variants, divergence can be detected by manually comparing
 There are several backend libraries that support different types of logging outputs:
   * `libfakechecks` outputs a list of the cross-checks linearly to either standard output or a file 
   (specified using the `FAKECHECKS_OUTPUT_FILE` environment variable)
-  * `fakechecks-zstd` library from `cross-checks/rust-checks/backends` (can also be used with the clang plugin) 
+  * `zstd-logging` library from `cross-checks/rust-checks/backends` (can also be used with the clang plugin) 
   outputs a binary encoding of the cross-checks that is compressed using zstd, and is much more space-efficient than 
   the text output of `libfakechecks`. The compressed output files can be converted to text using the `xcheck-printer` tool.
   
