@@ -140,6 +140,10 @@ class File:
     '''Annotates lines that should be kept in the diff (regardless of proximity
     to textual changes) due to marks being inserted/deleted nearby.'''
 
+    drop_irrelevant_lines: Optional[ Annot[None] ]
+    '''Annotates lines that should be excluded from the diff (regardless of
+    proximity to textual changes or `keep_mark_lines`) due to irrelevance.'''
+
     text: Optional[ str ]
     '''The formatted text of the file.'''
 
@@ -182,6 +186,7 @@ class File:
         self.mark_annot = None
         self.mark_labels = None
         self.keep_mark_lines = None
+        self.drop_irrelevant_lines = None
 
         self.text = None
         self.lines = None
@@ -237,6 +242,10 @@ class File:
         assert self.keep_mark_lines is None
         self.keep_mark_lines = keep_mark_lines
 
+    def set_drop_irrelevant_lines(self, drop_irrelevant_lines: Annot[None]):
+        assert self.drop_irrelevant_lines is None
+        self.drop_irrelevant_lines = drop_irrelevant_lines
+
     def set_fmt_map(self, fmt_map: List[Tuple[Span[None], int]],
             fmt_map_index: List[int]):
         assert self.fmt_map is None
@@ -279,7 +288,10 @@ class File:
         return new_start + delta
 
 
-DiffBlock = Tuple[bool, Span[None], Span[None]]
+class DiffBlock(NamedTuple):
+    changed: bool
+    old_span: Span[None]
+    new_span: Span[None]
 
 class Diff:
     '''Maps related lines between old and new files.  Note that this class does

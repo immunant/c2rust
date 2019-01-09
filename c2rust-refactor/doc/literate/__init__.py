@@ -39,8 +39,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
             help='copy the project into a work directory before refactoring'),
     sp.add_argument('-f', '--force', default=False, action='store_true',
             help='remove the work directory if it already exists'),
-    sp.add_argument('-r', '--rewrite-mode', default='inplace',
-            help='rewrite mode for the refactoring process'),
 
     sp = subparsers.add_parser('render',
             help='generate rendered Markdown, including a diff for every '
@@ -82,8 +80,6 @@ def do_exec(args: argparse.Namespace):
     with open(args.input) as f:
         blocks = literate.parse.parse_blocks(f)
 
-    cmds, _ = literate.refactor.combine_script_blocks(blocks)
-
     if args.work_dir is not None:
         if os.path.exists(args.work_dir):
             if args.force:
@@ -98,7 +94,7 @@ def do_exec(args: argparse.Namespace):
     else:
         work_dir = args.project_dir
 
-    literate.refactor.run_refactor(work_dir, cmds, mode=args.rewrite_mode)
+    literate.refactor.exec_refactor_scripts(args, blocks, work_dir)
 
 def build_result_json(blocks: List[literate.refactor.Block]) -> Dict[str, Any]:
     code = []
@@ -171,17 +167,20 @@ def do_render(args: argparse.Namespace):
                     f.write(line)
                 f.write('```\n')
             elif isinstance(b, literate.refactor.RefactorCode):
-                f.write('```sh %s\n' % ' '.join(b.attrs[1:]))
-                for line in b.lines:
-                    f.write(line)
-                f.write('```\n\n')
-                # Unfortunately the `pulldown-cmark` package used by `mdbook`
-                # provides no way to set the `id` of a code block.  Instead we
-                # use this hack: we place an empty, invisible <a> tag with an
-                # `id` just after the block, and in the Javascript code we use
-                # `document.getElementById(...).previousElementSibling` to get
-                # the actual code block.
-                f.write('<a id="refactor-anchor-%d" style="display: none"></a>\n' % diff_idx)
+                if not b.opts['hide-code']:
+                    f.write('```sh %s\n' % ' '.join(b.attrs[1:]))
+                    for line in b.lines:
+                        f.write(line)
+                    f.write('```\n\n')
+                    # Unfortunately the `pulldown-cmark` package used by `mdbook`
+                    # provides no way to set the `id` of a code block.  Instead we
+                    # use this hack: we place an empty, invisible <a> tag with an
+                    # `id` just after the block, and in the Javascript code we use
+                    # `document.getElementById(...).previousElementSibling` to get
+                    # the actual code block.
+                    f.write('<a id="refactor-anchor-%d" style="display: none"></a>\n' % diff_idx)
+
+                f.write('\n\n')
 
                 print('rendering diff #%d' % (diff_idx + 1))
                 print('  diff options: %s' % (b.opts,))

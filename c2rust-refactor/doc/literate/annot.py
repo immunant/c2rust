@@ -152,6 +152,34 @@ def fill_annot(a: Annot[T], end: int, start: int=0, label: T=None) -> Annot[T]:
         result.append(Span(last_pos, end, label))
     return result
 
+def invert_annot(a: Annot[T], end: int, start: int=0, label: U=None) -> Annot[U]:
+    '''Generate an annotation that covers only positions in the range `start ..
+    end` that are *not* annotated in `a`.'''
+    last_pos = start
+    result = []
+    for s in a:
+        if s.start > last_pos:
+            # There's a gap between `last_pos` and `s`.  Fill it with `label`.
+            result.append(Span(last_pos, s.start, label))
+        last_pos = s.end
+    if end > last_pos:
+        result.append(Span(last_pos, end, label))
+    return result
+
+def sub_annot(a1: Annot[T], a2: Annot[U]) -> Annot[T]:
+    '''Subtract `a2` from `a1`, producing an annotation that covers only those
+    positions that are covered by `a1` but not by `a2`.  The labels in the
+    resulting annotation are taken from `a1`.'''
+    if a1 == []:
+        return []
+
+    end = a1[-1].end
+
+    result = []
+    for s2, ss1 in cut_annot(a1, invert_annot(a2, end)):
+        result.extend(s1 + s2.start for s1 in ss1)
+    return result
+
 def zip_annot(a1: Annot[T], a2: Annot[U],
         f: Callable[[T, U], V]=lambda l1, l2: (l1, l2)) -> Annot[V]:
     '''Zip together two annotations, returning an annotation that labels each

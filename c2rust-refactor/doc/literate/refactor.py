@@ -1,5 +1,6 @@
 '''`c2rust-refactor` command invocation and output parsing.'''
 import argparse
+import ast
 import bisect
 import os
 import shlex
@@ -58,6 +59,7 @@ FLAG_OPTS = {
         'show-filename',
         'collapse-diff',
         'hide-diff',
+        'hide-code',
         'highlight-mode',
         'rewrite-alongside',
         }
@@ -67,6 +69,11 @@ STR_OPTS = {
         'highlight-mode',
         }
 
+STR_LIT_OPTS = {
+        'irrelevant-start-regex',
+        'irrelevant-end-regex',
+        }
+
 OPT_DEFAULTS = {
         'revert': False,
         'hidden': False,
@@ -74,9 +81,12 @@ OPT_DEFAULTS = {
         'show-filename': True,
         'collapse-diff': True,
         'hide-diff': False,
+        'hide-code': False,
         'diff-style': 'context',
         'highlight-mode': 'hljs',
         'rewrite-alongside': False,
+        'irrelevant-start-regex': '',
+        'irrelevant-end-regex': '',
         }
 
 FLAG_TRUTHY = { '1', 'true', 'y', 'yes', 'on' }
@@ -94,8 +104,6 @@ class RefactorResult(NamedTuple):
     `old` and running `cmds` will actually succeed.'''
 
 class RefactorState:
-    args: argparse.Namespace
-
     cur_crate: Optional[AnyCrate]
 
     pending_cmds: List[RefactorCommand]
@@ -120,7 +128,7 @@ class RefactorState:
     global_opts: Dict[str, Any]
     '''The current global refactoring options.'''
 
-    def __init__(self):
+    def __init__(self, exec_only=False):
         self.cur_crate = None
 
         self.pending_cmds = []
@@ -131,6 +139,8 @@ class RefactorState:
 
         self.global_opts = OPT_DEFAULTS.copy()
 
+        self.exec_only = exec_only
+
     def flush(self):
         '''Process all pending commands, and clear the `pending_cmds`
         buffer.'''
@@ -138,18 +148,22 @@ class RefactorState:
             assert len(self.pending_results) == 0
             return
 
-        modes = ['json', 'marks']
-        if self.global_opts['rewrite-alongside']:
-            modes.append('alongside')
+        if not self.exec_only:
+            modes = ['json', 'marks']
+            if self.global_opts['rewrite-alongside']:
+                modes.append('alongside')
+        else:
+            modes = ['inplace']
 
         work_dir = refactor_crate(self.cur_crate, self.pending_cmds,
                 rewrite_mode=','.join(modes))
 
-        rp = ResultProcessor(self.all_files, work_dir.name)
-        for i, info in enumerate(self.pending_results):
-            result = rp.next_result(info.is_commit)
-            for k in info.dests:
-                self.results[k] = result
+        if not self.exec_only:
+            rp = ResultProcessor(self.all_files, work_dir.name)
+            for i, info in enumerate(self.pending_results):
+                result = rp.next_result(info.is_commit)
+                for k in info.dests:
+                    self.results[k] = result
 
         self.pending_cmds = []
         self.pending_results = []
@@ -237,6 +251,11 @@ class RefactorState:
             elif key in STR_OPTS:
                 # No conversion necessary
                 pass
+
+            elif key in STR_LIT_OPTS:
+                value = ast.literal_eval(value)
+                if not isinstance(value, str):
+                    raise TypeError('expected string literal; got %r' % value)
 
             elif i == 0 and value == '':
                 # The first option is normally expected to be a language name.
@@ -658,6 +677,31 @@ def run_refactor_scripts(args: argparse.Namespace,
             new_blocks.append(b)
 
     return new_blocks, all_files
+
+def exec_refactor_scripts(args: argparse.Namespace, blocks: List[parse.Block],
+        work_dir: str):
+    '''Run refactoring scripts in-place to refactor the code in `work_dir`.'''
+    rs = RefactorState(exec_only=True)
+    rs.set_crate(CargoCrate(work_dir))
+
+    for i, b in enumerate(blocks):
+        if not isinstance(b, parse.Code):
+            continue
+
+        opts = rs.parse_block_options(b.attrs)
+
+        if opts['_lang'] == 'refactor':
+            if not opts['revert']:
+                cmds = split_commands(''.join(b.lines))
+                rs.add_commands(i, cmds)
+
+        elif opts['_lang'] == 'refactor-options':
+            rs.set_global_options(b.lines)
+
+        if opts['refactor-target']:
+            rs.set_crate(TempCrate(''.join(b.lines)))
+
+    rs.finish()
 
 def run_refactor_for_playground(args: argparse.Namespace,
         script: str) -> Tuple[File, File]:

@@ -47,5 +47,12 @@ def main():
     mkdir['-vp', 'rust/src']()
     mv['-v', local.path('src') // '*.rs', 'rust/src/']()
 
+    with open('rust/src/robotfindskitten.rs') as f:
+        lines = f.read().splitlines(True)
+    lines = [l for l in lines if "/*I'm feeling" not in l]
+    with open('rust/src/robotfindskitten.rs', 'w') as f:
+        f.write(''.join(lines))
+
+
 if __name__ == '__main__':
     main()

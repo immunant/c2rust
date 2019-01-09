@@ -3,21 +3,21 @@ revert
 diff-style = full
 no-show-filename
 no-collapse-diff
+irrelevant-start-regex = '.*let y: i32'
+irrelevant-end-regex = '.*let y: i32'
 ```
 
 
-`c2rust-refactor` provides a versatile general-purpose rewriting command for
-transforming expressions.
-
-
-In its most basic form, the `rewrite_expr` command replaces one expression
-with another, everywhere in the crate:
+`c2rust-refactor` provides a general-purpose rewriting command, `rewrite_expr`,
+for transforming expressions.
+In its most basic form, `rewrite_expr` replaces one expression with another,
+everywhere in the crate:
 
 ```rust refactor-target hidden
 fn main() {
     println!("{}", 1 + 1);
     println!("{}", 1 + /*comment*/ 1);
-    println!("{}", 1 + 11);
+    println!("{}", 1+11);
 }
 ```
 
@@ -26,22 +26,22 @@ rewrite_expr '1+1' '2'
 ```
 
 Here, all instances of the expression `1+1` (the "pattern") are replaced with
-`2`.
+`2` (the "replacement").
 
-Unlike textual search-and-replace, `rewrite_expr` looks at the syntactic
-structure of both the crate and the pattern, ignoring whitespace, comments,
-and even parentheses.  This means the pattern `1+1` matches not only the exact
-source code `1+1`, but also the equivalent forms `1 + 1` and `1 + /* comment */
-1`.
+`rewrite_expr` parses both the pattern and the replacement as Rust expressions,
+and compares the structure of the expression instead of its raw text when
+looking for occurrences of the pattern.  This lets it recognize that `1 + 1`
+and `1 + /* comment */` both match the pattern `1+1` (despite being textually
+distinct), while `1+11` does not (despite being textually similar).
 
 
 # Metavariables
 
-In `rewrite_expr`'s pattern expression, any name beginning with double
+In `rewrite_expr`'s expression pattern, any name beginning with double
 underscores is a *metavariable*.  Just as a variable in an ordinary Rust
 `match` expression will match any value (and bind it for later use), a
-metavariable in a `replace_expr` pattern will match any Rust code.  For
-example, a pattern of `__x + 1` will match any expression that adds 1 to
+metavariable in an expression pattern will match any Rust code.  For example,
+the expression pattern `__x + 1` will match any expression that adds 1 to
 something:
 
 ```rust refactor-target hidden
@@ -59,23 +59,22 @@ fn main() {
 rewrite_expr '__x + 1' '11'
 ```
 
-In these examples, the `__x` metavariable matches (and binds) the expressions
-`1`, `f()`, and `2 * 3`.  On that last one, note that it binds `2 * 3` because
-`2 * 3 + 1` parses as `(2 * 3) + 1`, not `2 * (3 + 1)`.
+In these examples, the `__x` metavariable matches the expressions `1`, `2 * 3`,
+and `f()`.
 
 ## Using bindings
 
-As mentioned above, when a metavariable matches against some piece of code, the
-code it matches is bound to the variable for later use.  Specifically,
-`rewrite_expr`'s replacement argument can refer back to those metavariables to
-substitute in the matched code:
+When a metavariable matches against some piece of code, the code it matches is
+bound to the variable for later use.  Specifically, `rewrite_expr`'s
+replacement argument can refer back to those metavariables to substitute in the
+matched code:
 
 ```refactor
 rewrite_expr '__x + 1' '11 * __x'
 ```
 
-In each case, the expression bound by the `__x` metavariable is substituted
-into the right-hand side of the multiplication.
+In each case, the expression bound to the `__x` metavariable is substituted
+into the right-hand side of the multiplication in the replacement.
 
 ## Multiple occurences
 
@@ -189,8 +188,8 @@ these steps:
     resolves to.  (If `e` doesn't resolve to a definition, then the matching
     fails.)
  2. Construct an absolute path `dpath` referring to `d`.  For definitions in
-    the current crate, this path looks like `mod1::def1`.  For definitions in
-    other crates, it looks like `crate1::mod1::def1`.
+    the current crate, this path looks like `::mod1::def1`.  For definitions in
+    other crates, it looks like `::crate1::mod1::def1`.
  3. Match `dpath` against the `path` pattern provided as the argument
     of `def!`.  Then `e` matches `def!(path)` if `dpath` matches `path`, and
     fails to match otherwise.
@@ -244,8 +243,9 @@ rewrite_expr
 
 ### Metavariables
 
-Since the argument to `def!` is a path pattern, it can contain metavariables.
-For instance, we can rewrite all calls to functions from the `foo` module:
+The argument to `def!` is a path pattern, which can contain metavariables just
+like the overall expression pattern.  For instance, we can rewrite all calls to
+functions from the `foo` module:
 
 ```rust refactor-target hidden
 mod foo {
@@ -269,7 +269,7 @@ rewrite_expr 'def!(::foo::__name)()' '123'
 ```
 
 Since every definition in the `foo` module has an absolute path of the form
-`foo::(something)`, they all match the expression pattern
+`::foo::(something)`, they all match the expression pattern
 `def!(::foo::__name)`.
 
 Like any other metavariable, the ones in a `def!` path pattern can be used in
@@ -283,8 +283,8 @@ rewrite_expr 'def!(::foo::__name)' '::bar::__name'
 
 Note, however, that each metavariable in a path pattern can match only a single
 ident.  This means `foo::__name` will not match the path to an item in a
-submodule, such as `foo::one::two`.  Handling these requires additional rewrite
-steps, such as `rewrite_expr 'def!(::foo::__name1::__name2)'
+submodule, such as `foo::one::two`.  Handling these would require an additional
+rewrite step, such as `rewrite_expr 'def!(::foo::__name1::__name2)'
 '::bar::__name1::__name2'`.
 
 
@@ -309,7 +309,7 @@ fn main() {
 rewrite_expr 'typed!(__e, i32)' '0'
 ```
 
-Every expression matches the subpattern `__e`, but only the `i32`s (whether
+Every expression matches the metavariable `__e`, but only the `i32`s (whether
 literals or variables of type `i32`) are affected by the rewrite.
 
 
@@ -319,10 +319,10 @@ Internally, `typed!` works much like `def!`.  To match an expression `e`
 against `typed!(e_pat, ty_pat)`, `rewrite_expr` follows these steps:
 
  1. Consult `rustc`'s typechecking results to get the type of `e`.  Call
-    that type `tcx_ty`.
- 2. `tcx_ty` is an internal, abstract representation of the type, which is not
-    suitable for matching.  Construct a concrete representation of `tcx_ty`,
-    and call it `ty`.
+    that type `rustc_ty`.
+ 2. `rustc_ty` is an internal, abstract representation of the type, which is
+    not suitable for matching.  Construct a concrete representation of
+    `rustc_ty`, and call it `ty`.
  3. Match `e` against `e_pat` and `ty` against `ty_pat`.  Then `e` matches
     `typed!(e_pat, ty_pat)` if both matches succeed, and fails to match
     otherwise.
@@ -366,8 +366,11 @@ rewrite_expr 'typed!(__e, &str)' '"hello"'
 
 ### Metavariables
 
-Both arguments of `typed!(e, ty)` can include metavariables, and metavariables
-from both subpatterns are usable in the replacement expression.  For example:
+The expression pattern and type pattern arguments of `typed!(e, ty)` are
+handled using the normal `rewrite_expr` matching engine, which means they can
+contain metavariables and other special matching forms.  For example,
+metavariables can capture both parts of the expression and parts of its type
+for use in the replacement:
 
 ```rust refactor-target hidden
 fn main() {
@@ -390,7 +393,7 @@ rewrite_expr
 Notice that the rewritten code has the correct element type in the call to
 `default`, even in cases where the type is not written explicitly in the
 original expression!  The matching of `typed!` obtains the inferred type
-information from `rustc`, and those inferred types can be captured using
+information from `rustc`, and those inferred types are captured by
 metavariables in the type pattern.
 
 
@@ -451,10 +454,10 @@ rewrite_expr 'def!(::std::intrinsics::transmute)(__e)' '__e.as_ref()'
 Now our rewrite catches all uses of `transmute`, whether they're written as
 `transmute(foo)`, `mem::transmute(foo)`, or even `::std::mem::transmute(foo)`.
 
-Notice that we refer to `transmute` as `std::mem::transmute`: this is the
-location of its original definition, which is re-exported in `std::mem`.  See
-the "`def!`: debugging match failures" section for an explanation of how we can
-discover this.
+Notice that we refer to `transmute` as `std::intrinsics::transmute`: this is
+the location of its original definition, which is re-exported in `std::mem`.
+See the ["`def!`: debugging match failures" section](#debugging-match-failures)
+for an explanation of how we discovered this.
 
 ### Filtering `transmute` calls by type
 
@@ -483,20 +486,21 @@ inference, this works even on `transmute` calls that are not fully annotated
 
 The `marked!` form is simple: `marked!(e, label)` matches an expression only if
 `e` matches the expression and the expression is marked with the given `label`.
-See the [documentation on marks and `select`](select.md) for more information.
+See the [documentation on marks and `select`](select-rendered.md) for more
+information.
 
 
 
 # Other commands
 
-Various other refactoring commands use the same pattern-matching engine as
+Several other refactoring commands use the same pattern-matching engine as
 `rewrite_expr`:
 
- * `rewrite_ty PAT REPL` works just like `rewrite_expr`, except it matches and
-   replaces type annotations instead of expressions.
- * `abstract SIG PAT` replaces expressions matching a pattern with calls to a
-   newly-created function.
- * `type_fix_rules` uses type patterns to find the appropriate rule to fix each
-   type error.
- * `select`'s `match_expr` and similar filters use syntax patterns to identify
-   nodes to mark.
+ * `rewrite_ty PAT REPL` ([docs](commands.md#rewrite_ty)) works like `rewrite_expr`,
+   except it matches and replaces type annotations instead of expressions.
+ * `abstract SIG PAT` ([docs](commands.md#abstract)) replaces expressions matching a
+   pattern with calls to a newly-created function.
+ * `type_fix_rules` ([docs](commands.md#type_fix_rules)) uses type patterns to find
+   the appropriate rule to fix each type error.
+ * `select`'s `match_expr` ([docs](select-rendered.md#match_)) and similar filters
+   use syntax patterns to identify nodes to mark.

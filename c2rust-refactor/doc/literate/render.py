@@ -1,5 +1,6 @@
 from collections import namedtuple
 import html
+import re
 from typing import Dict, Optional, Any
 
 import pygments.formatters
@@ -116,7 +117,7 @@ def render_line(line: Line, f: File, opts: Dict[str, Any]) -> str:
             )
 
     # Intraline edits.
-    if line.intra is not None:
+    if line.intra is not None and opts['diff-style'] != 'only-new':
         intra = cut_annot_at_points(line.intra, events)
         events = merge_points(
                 map_points(annot_ends(intra), lambda l: ('i_e', l)),
@@ -191,6 +192,21 @@ def render_line(line: Line, f: File, opts: Dict[str, Any]) -> str:
 
     return ''.join(parts)
 
+def annotate_irrelevant(f: File, start: str, end: str):
+    start_re = re.compile(start)
+    end_re = re.compile(end)
+
+    result = []
+    start_line = None
+    for i, l in enumerate(f.lines):
+        if start_line is None and start_re.match(l.text):
+            start_line = i
+        if start_line is not None and end_re.match(l.text):
+            result.append(Span(start_line, i + 1, None))
+            start_line = None
+
+    f.set_drop_irrelevant_lines(result)
+
 def prepare_files(files: [File]):
     '''Run single-file initialization steps on each file in `files`.'''
     for i, f in enumerate(files):
@@ -198,16 +214,30 @@ def prepare_files(files: [File]):
         literate.highlight.highlight_file(f)
         literate.marks.mark_file(f)
 
-def make_diff(f1: File, f2: File, context_diff: bool) -> Diff:
+def make_diff(f1: File, f2: File, opts: Dict[str, Any]) -> Diff:
     '''Construct a diff between two files, and run diff initialization
     steps.'''
     print('  diffing file %s' % f1.path)
-    d = literate.diff.diff_files(f1.copy(), f2.copy())
+
+    f1 = f1.copy()
+    f2 = f2.copy()
+
+    # These options get handled during diff construction because they can vary
+    # across refactoring blocks, while each `File` in `prepare_files` is
+    # typically used in 2 different blocks.
+    if opts['irrelevant-start-regex'] and opts['irrelevant-end-regex']:
+        start = opts['irrelevant-start-regex']
+        end = opts['irrelevant-end-regex']
+        annotate_irrelevant(f1, start, end)
+        annotate_irrelevant(f2, start, end)
+
+    d = literate.diff.diff_files(f1, f2)
     literate.marks.init_mark_labels(d)
     literate.marks.init_keep_mark_lines(d)
-    literate.diff.build_diff_hunks(d, context_diff)
+    literate.diff.build_diff_hunks(d, opts['diff-style'] == 'context')
     literate.diff.build_output_lines(d)
     literate.marks.init_hunk_boundary_marks(d)
+
     return d
 
 def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
@@ -219,6 +249,9 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
     if opts['hide-diff']:
         return None
 
+    omit_old = opts['diff-style'] == 'only-new'
+    cols = 4 if not omit_old else 2
+
     file_names = sorted(new_files.keys())
     # Is the diff empty?
     empty = True
@@ -227,13 +260,14 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
     parts.append('<table class="diff %s">\n' %
             literate.highlight.get_highlight_class(opts))
     parts.append('<colgroup>')
-    parts.append('<col width="50"><col><col width="50"><col>')
+    if not omit_old:
+        parts.append('<col width="50"><col>')
+    parts.append('<col width="50"><col>')
     parts.append('</colgroup>\n')
     for file_idx, f in enumerate(file_names):
         # `make_diff` copies the files, then updates the copies.  We want
         # references to the new copies only.
-        diff = make_diff(old_files[f], new_files[f],
-                opts['diff-style'] == 'context')
+        diff = make_diff(old_files[f], new_files[f], opts)
         old = diff.old_file
         new = diff.new_file
 
@@ -241,31 +275,32 @@ def render_diff(old_files: Dict[str, File], new_files: Dict[str, File],
             empty = False
 
         if opts['show-filename']:
-            parts.append('<tr><td colspan="4" class="filename">%s</td></tr>' % f)
+            parts.append('<tr><td colspan="%d" class="filename">%s</td></tr>' % (cols, f))
         else:
             if file_idx > 0:
-                parts.append('<tr><td colspan="4"><hr></td></tr>')
+                parts.append('<tr><td colspan="%d"><hr></td></tr>' % cols)
 
         first = True
         for hunk in diff.hunks:
             if not first:
-                parts.append('<tr><td colspan="4"><hr></td></tr>')
+                parts.append('<tr><td colspan="%d"><hr></td></tr>' % cols)
             first = False
 
             for ol in hunk.output_lines:
                 old_cls = 'diff-old' if ol.changed else ''
-                new_cls = 'diff-new' if ol.changed else ''
+                new_cls = 'diff-new' if ol.changed and not omit_old else ''
 
                 parts.append('<tr>')
 
-                if ol.old_line is not None:
-                    parts.append('<td class="line-num %s">%d</td>' %
-                            (old_cls, ol.old_line + 1))
-                    parts.append('<td class="%s"><pre>' % old_cls)
-                    parts.append(render_line(old.lines[ol.old_line], old, opts))
-                    parts.append('</pre></td>')
-                else:
-                    parts.append('<td></td><td></td>')
+                if not omit_old:
+                    if ol.old_line is not None:
+                        parts.append('<td class="line-num %s">%d</td>' %
+                                (old_cls, ol.old_line + 1))
+                        parts.append('<td class="%s"><pre>' % old_cls)
+                        parts.append(render_line(old.lines[ol.old_line], old, opts))
+                        parts.append('</pre></td>')
+                    else:
+                        parts.append('<td></td><td></td>')
 
                 if ol.new_line is not None:
                     parts.append('<td class="line-num %s">%d</td>' %

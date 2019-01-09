@@ -39,8 +39,8 @@ function-by-function basis.
 
 The remainder of this tutorial describes `select` and related mark-manipulation
 commands.  For details of how marks affect various transformation commands, see
-the [command documentation](commands.html) or read about the
-[`marked!` pattern](rewrite.md#marked) for `rewrite_expr` and other
+the [command documentation](commands.md) or read about the
+[`marked!` pattern](rewrite-rendered.md#marked) for `rewrite_expr` and other
 pattern-matching commands.
 
 
@@ -432,7 +432,7 @@ selected node.  `last` does the same with the last selected node.  "First" and
 ordered as expected, and a parent node come "after" all of its children.
 
 The `first` and `last` operations are most useful for finding places to insert
-new nodes (such as with the [`create_item` command](commands.html#create_item))
+new nodes (such as with the [`create_item` command](commands.md#create_item))
 while ignoring details such as the specific names or kinds of the nodes around
 the insertion point.  For example, we can use `last` to easily select the last
 item in a module.  First, we select all the module's items:
@@ -456,8 +456,8 @@ clear_marks ;
 select target 'item(m); child(kind(item)); last;'
 ```
 
-Now we could use [`create_item`](commands.html#create_item) to
-insert a new item after the last existing one.
+Now we could use [`create_item`](commands.md#create_item) to insert a new item
+after the last existing one.
 
 ### `marked`
 
@@ -702,10 +702,10 @@ attribute named `a`.
 
 ### `match_*`
 
-`match_expr(e)` uses [`rewrite_expr`-style AST matching](rewrite.md) to compare
-exprs to `e`, and matches any node where AST matching succeeds.  For example,
-`match_expr(__e + 1)` matches the expressions `1 + 1`, `x + 1`, and `f() + 1`,
-but not `2 + 2`.
+`match_expr(e)` uses [`rewrite_expr`-style AST matching](rewrite-rendered.md)
+to compare exprs to `e`, and matches any node where AST matching succeeds.  For
+example, `match_expr(__e + 1)` matches the expressions `1 + 1`, `x + 1`, and
+`f() + 1`, but not `2 + 2`.
 
 `match_pat`, `match_ty`, and `match_stmt` are similar, but operate on pat, ty,
 and stmt nodes respectively.

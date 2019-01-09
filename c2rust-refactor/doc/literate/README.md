@@ -53,11 +53,15 @@ options.  This tool supports the following options:
  * `hide-diff`: Omit the diff entirely, while still including the code block in
    the output.
 
- * `diff-style = full|context': Sets whether the rendered diff should display
-   the full contents of the old and new files, or only changed portions and
-   nearby context.  This is only meaningful on `refactor` blocks.  The default
-   is `context`.  `full` is useful for tutorials, where the files being
-   refactored are usually very small.
+ * `hide-code`: Omit the code block entirely, while still including the diff in
+   the output.
+
+ * `diff-style = full|context|only-new': Sets the diff rendering mode.  This is
+   only meaningful on `refactor` blocks.  The default is `context`, which
+   renders only changed lines and nearby context.  `full` renders the entire
+   contents of both files, which is useful for tutorials, where the files being
+   refactored are usually very small.  `only-new` renders only the new file,
+   not the old one (and omits insertion/deletion markers).
 
 Boolean options can be prefixed with `no-` to disable them.  For example,
 `no-hidden` cancels the effect of a previous `hidden`, causing the block to
