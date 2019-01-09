@@ -4,7 +4,7 @@
 
     # in examples/json-c/repo:
     ../configure    # use the custom c2rust configure script
-    bear make
+    intercept-build make
     make check
     python3 ../translate.py
     ninja -C rust

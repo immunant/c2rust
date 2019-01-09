@@ -22,7 +22,7 @@ impl Default for Djb2Hasher {
 impl Hasher for Djb2Hasher {
     #[inline]
     fn finish(&self) -> u64 {
-        self.0 as u64
+        self.0.into()
     }
 
     #[cfg(feature="djb2-ssse3")]
@@ -48,7 +48,7 @@ impl Hasher for Djb2Hasher {
         // Add in the last 1-3 bytes manually
         if let Some(last_bytes) = last_chunk {
             self.0 = last_bytes.iter().fold(self.0,
-                |h, c| h.wrapping_mul(33).wrapping_add(*c as u32));
+                |h, c| h.wrapping_mul(33).wrapping_add((*c).into()));
         }
     }
 
@@ -56,7 +56,7 @@ impl Hasher for Djb2Hasher {
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
         self.0 = bytes.iter().fold(self.0,
-            |h, c| h.wrapping_mul(33).wrapping_add(*c as u32));
+            |h, c| h.wrapping_mul(33).wrapping_add((*c).into()));
     }
 }
 

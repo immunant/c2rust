@@ -123,11 +123,8 @@ impl ScopeConfig {
             item: ItemConfig::FileDefaults,
         };
         for item in file_items.items() {
-            match **item {
-                super::ItemConfig::Defaults(_) => {
-                    new_config.parse_xcfg_config(item);
-                }
-                _ => (),
+            if let super::ItemConfig::Defaults(_) = **item {
+                new_config.parse_xcfg_config(item);
             }
         }
         Some(new_config)
@@ -185,6 +182,7 @@ impl ScopeConfig {
         }
     }
 
+    #[allow(clippy::cyclomatic_complexity)]
     pub fn parse_xcfg_config(&mut self, xcfg: &super::ItemConfig) {
         macro_rules! parse_optional_field {
             // Field for the current scope
@@ -223,7 +221,7 @@ impl ScopeConfig {
                 parse_optional_field!(^shasher, xcfg_func, shasher, Some(shasher.clone()));
                 // Function-specific fields
                 self_func.args.extend(xcfg_func.args.iter().map(|(k, v)| {
-                    (super::FieldIndex::from_str(k), v.clone())
+                    (super::FieldIndex::Str(k.clone()), v.clone())
                 }));
                 self_func.entry_extra.extend(xcfg_func.entry_extra.iter().cloned());
                 self_func.exit_extra.extend(xcfg_func.exit_extra.iter().cloned());

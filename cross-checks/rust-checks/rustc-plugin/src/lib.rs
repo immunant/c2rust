@@ -249,7 +249,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             ast::PatKind::Ident(_, ref ident, _) => {
                 // Parameter pattern is just an identifier,
                 // so we can reference it directly by name
-                let arg_idx = xcfg::FieldIndex::from_str(&*ident.name.as_str());
+                let arg_idx = xcfg::FieldIndex::Str(ident.name.to_string());
                 let arg_xcheck_cfg = self.config().function_config()
                     .args.get(&arg_idx)
                     .unwrap_or(&self.config().inherited.all_args);
@@ -660,7 +660,7 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
         // if the field is in a Struct. If it's in a Tuple, we use
         // the field index, which we need to compute ourselves from field_idx_stack.
         let sf_name = folded_sf.ident
-            .map(|ident| xcfg::FieldIndex::from_str(&*ident.name.as_str()))
+            .map(|ident| xcfg::FieldIndex::Str(ident.name.to_string()))
             .unwrap_or_else(|| {
                 // We use field_idx_stack to keep track of the index/name
                 // of the fields inside a VariantData

@@ -1,10 +1,15 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from common import Config
+from common import (
+    Colors,
+    Config,
+    get_cmd_or_die,
+    pb,
+    transpile
+)
 from plumbum.cmd import mv, mkdir
 from plumbum import local
-from transpile import transpile_files
 
 import argparse
 import multiprocessing
@@ -12,9 +17,6 @@ import os
 
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates libxml2 into the repo/rust/src directory")
-parser.add_argument('-f', '--filter',
-                    default="",
-                    help='Filters translated files')
 # parser.add_argument('-o', '--only',
 #                     default=False, action='store_true',
 #                     help='Translates only a single libxml2 C file')
@@ -60,30 +62,22 @@ TESTS = [
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    num_jobs = multiprocessing.cpu_count()
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
-    cross_check_configs = []
-    if args.cross_checks:
-        cross_check_configs.append(CROSS_CHECK_CONFIG_YAML)
-    test_sources = set("%s.c" % test for test in TESTS)
-    with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json,
-                        filter=lambda f: f not in test_sources and args.filter in f,
-                        emit_build_files=False,
-                        emit_modules=True,
-                        cross_checks=args.cross_checks,
-                        cross_check_config=cross_check_configs)
+    # Build the tests first
+    print(Colors.OKBLUE + "Transpiling tests..." + Colors.NO_COLOR)
+    transpile(COMPILE_COMMANDS,
+              filter='^(test|xmllint|runtest)',
+              emit_build_files=False,
+              cross_checks=args.cross_checks,
+              cross_check_config=[CROSS_CHECK_CONFIG_YAML])
 
-    # Build the tests separately as full crates
-    with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json,
-                        filter=lambda f: f in test_sources and args.filter in f,
-                        emit_build_files=False,
-                        emit_modules=False,
-                        cross_checks=args.cross_checks,
-                        cross_check_config=cross_check_configs)
+    print(Colors.OKBLUE + "Transpiling rest of files..." + Colors.NO_COLOR)
+    transpile(COMPILE_COMMANDS,
+              emit_build_files=True,
+              cross_checks=args.cross_checks,
+              cross_check_config=[CROSS_CHECK_CONFIG_YAML])
 
     # Create rust/examples directory if it doesn't exist
     mkdir_args = ["-p", RUST_EXAMPLES_DIR]
@@ -105,3 +99,4 @@ if __name__ == "__main__":
     retcode, stdout, stderr = mv[mv_args].run()
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
+    print(Colors.OKGREEN + "Done!" + Colors.NO_COLOR)

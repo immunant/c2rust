@@ -19,7 +19,6 @@ extern crate regex;
 extern crate serde_json;
 
 use std::error::Error;
-use std::fs::DirBuilder;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::stdout;
@@ -41,7 +40,7 @@ pub mod rust_ast;
 pub mod translator;
 pub mod with_stmts;
 
-use build_files::emit_build_files;
+use build_files::{get_build_dir, emit_build_files};
 use std::prelude::v1::Vec;
 pub use translator::ReplaceMode;
 
@@ -121,28 +120,16 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 
     let mut modules = Vec::<PathBuf>::new();
     for mut cmd in cmds {
-        match cmd {
-            CompileCmd {
-                directory: d,
-                file: f,
-                command: None,
-                arguments: _,
-                output: None,
-            } => {
-                let input_file_abs = d.join(f);
-                if let Some(m) = transpile_single(
-                    &tcfg,
-                    input_file_abs.as_path(),
-                    cc_db,
-                    extra_clang_args) {
-                    modules.push(m);
-                };
-            }
-            _ => {
-                let reason = format!("unhandled compile cmd: {:?}", cmd);
-                panic!(reason);
-            }
-        }
+        let CompileCmd { directory: d, file: f, ..} = cmd;
+        println!("transpiling {}", f.to_str().unwrap());
+        let input_file_abs = d.join(f);
+        if let Some(m) = transpile_single(
+            &tcfg,
+            input_file_abs.as_path(),
+            cc_db,
+            extra_clang_args) {
+            modules.push(m);
+        };
     }
 
     let build_dir = get_build_dir(cc_db);
@@ -156,23 +143,6 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             }
         }
     }
-}
-
-fn get_build_dir(cc_db: &Path) -> PathBuf {
-    let build_dir = cc_db
-        .parent() // get directory of `compile_commands.json`
-        .unwrap()
-        .join("c2rust-build");
-
-    if !build_dir.exists() {
-        let db = DirBuilder::new();
-        db.create(&build_dir).expect(&format!(
-            "couldn't create build directory: {}",
-            build_dir.display()
-        ));
-    }
-
-    build_dir
 }
 
 fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) {
@@ -196,7 +166,6 @@ fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) {
 
 fn reorganize_definitions(build_dir: &PathBuf, crate_path: &PathBuf) {
     invoke_refactor(build_dir, crate_path);
-
     // fix the formatting of the output of `c2rust-refactor`
     let code = process::Command::new("cargo")
         .args(&["fmt"])
@@ -224,6 +193,7 @@ struct CompileCmd {
     /// with ‘"’ and ‘\’ being the only special characters. Shell expansion is not supported.
     command: Option<String>,
     /// The compile command executed as list of strings. Either arguments or command is required.
+    #[serde(default)]
     arguments: Vec<String>,
     /// The name of the output created by this compilation step. This field is optional. It can
     /// be used to distinguish different processing modes of the same input file.

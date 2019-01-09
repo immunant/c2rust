@@ -18,11 +18,7 @@ in `tmux/repo`:
 
 in `tmux/repo`:
 
-`bear make check`
-
-if `bear` is in `$PATH`. Otherwise run:
-
-`../../../dependencies/Bear.$HOSTNAME/bin/bear make check` so that we can translate all necessary files.
+`intercept-build make check`
 
 If your `compile_commands.json` enables optimizations(`-O2`, `-O3`, etc) you will need to remove them so that unsupported compiler_builtins are less likely to be generated and leave you in an uncompilable state.
 
