@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 from common import (
+    Colors,
     Config,
     get_cmd_or_die,
     pb,
-    Colors
+    transpile
 )
 from plumbum.cmd import mv, mkdir
 from plumbum import local
@@ -66,39 +67,19 @@ if __name__ == "__main__":
 
     c2rust_bin = get_cmd_or_die(config.C2RUST_BIN)
 
-    cross_check_args = []
-    if args.cross_checks:
-        cross_check_args += ["-x", "--cross-check-config", CROSS_CHECK_CONFIG_YAML]
-
     # Build the tests first
-    try:
-        c2rust_args = ["transpile", COMPILE_COMMANDS,
-                            "--filter", "^(test|xmllint|runtest)"]
-        c2rust_args += cross_check_args
-        print(Colors.OKBLUE + "Transpiling tests..." + Colors.NO_COLOR)
-        Retcode, stdout, transpiler_warnings = c2rust_bin[c2rust_args].run()
-        if transpiler_warnings:
-            print(transpiler_warnings)
+    print(Colors.OKBLUE + "Transpiling tests..." + Colors.NO_COLOR)
+    transpile(COMPILE_COMMANDS,
+              filter='^(test|xmllint|runtest)',
+              emit_build_files=False,
+              cross_checks=args.cross_checks,
+              cross_check_config=CROSS_CHECK_CONFIG_YAML)
 
-    except pb.ProcessExecutionError as pee:
-        print(Colors.FAIL + "tmux could not be transpiled:" + Colors.NO_COLOR)
-        logging.warning(pee.stderr)
-        # No need to continue if transpilation failed
-        sys.exit(pee.retcode)
-
-    try:
-        c2rust_args = ["transpile", COMPILE_COMMANDS, "--emit-modules"]
-        c2rust_args += cross_check_args
-        print(Colors.OKBLUE + "Transpiling rest of files..." + Colors.NO_COLOR)
-        Retcode, stdout, transpiler_warnings = c2rust_bin[c2rust_args].run()
-        if transpiler_warnings:
-            print(transpiler_warnings)
-
-    except pb.ProcessExecutionError as pee:
-        print(Colors.FAIL + "tmux could not be transpiled:" + Colors.NO_COLOR)
-        logging.warning(pee.stderr)
-        # No need to continue if transpilation failed
-        sys.exit(pee.retcode)
+    print(Colors.OKBLUE + "Transpiling rest of files..." + Colors.NO_COLOR)
+    transpile(COMPILE_COMMANDS,
+              emit_build_files=True,
+              cross_checks=args.cross_checks,
+              cross_check_config=CROSS_CHECK_CONFIG_YAML)
 
     # Create rust/examples directory if it doesn't exist
     mkdir_args = ["-p", RUST_EXAMPLES_DIR]

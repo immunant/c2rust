@@ -63,20 +63,8 @@ def main(xcheck: bool, snudown: str):
     cmds_json_path = bldr.write_result(os.path.curdir)
     config_path = os.path.join(snudown, "xchecks/snudown_rust.yaml")
 
-    c2rust_bin = get_cmd_or_die(config.C2RUST_BIN)
-    try:
-        c2rust_args = ["transpile", cmds_json_path, "--emit-build-files"]
-        if xcheck:
-            c2rust_args += ["-x", "--cross-check-config", config_path]
-
-        Retcode, stdout, transpiler_warnings = c2rust_bin[c2rust_args].run()
-        if transpiler_warnings:
-            logging.warning(transpiler_warnings)
-    except pb.ProcessExecutionError as pee:
-        print(Colors.FAIL + "snudown could not be transpiled:" + Colors.NO_COLOR)
-        logging.warning(pee.stderr)
-        # No need to continue if transpilation failed
-        sys.exit(pee.retcode)
+    transpile(cmds_json_path, emit_build_files=True,
+              cross_checks=xcheck, cross_check_config=config_path)
 
     with pb.local.cwd(os.path.join(snudown, "c2rust-build")):
         cargo = get_cmd_or_die("cargo")

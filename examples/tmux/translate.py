@@ -5,11 +5,12 @@ from plumbum.cmd import mv, mkdir, rename
 from plumbum import local
 from typing import Tuple
 from common import (
+    Colors,
     Config,
     get_cmd_or_die,
-    setup_logging,
     pb,
-    Colors
+    setup_logging,
+    transpile
 )
 
 import argparse
@@ -208,20 +209,10 @@ if __name__ == "__main__":
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
-    c2rust_bin = get_cmd_or_die(config.C2RUST_BIN)
-    try:
-        tmux_transpile = c2rust_bin["transpile", COMPILE_COMMANDS,
-                                    "--reduce-type-annotations",
-                                    "--reorganize-definitions"]
-        Retcode, stdout, transpiler_warnings = tmux_transpile.run()
-        if transpiler_warnings:
-            logging.warning(transpiler_warnings)
-
-    except pb.ProcessExecutionError as pee:
-        print(Colors.FAIL + "tmux could not be transpiled:" + Colors.NO_COLOR)
-        logging.warning(pee.stderr)
-        # No need to continue if transpilation failed
-        sys.exit(pee.retcode)
+    print(Colors.OKBLUE + "Transpiling..." + Colors.NO_COLOR)
+    transpile(COMPILE_COMMANDS, emit_build_files=False,
+              reorganize_definitions=True,
+              extra_transpiler_args=["--reduce-type-annotations"])
 
     # Move and rename tmux.rs to main.rs
     move(TMUX_RS, MAIN_RS)
@@ -245,3 +236,4 @@ if __name__ == "__main__":
 
     # main.rs needs to know about modules so we add them here
     add_mods(MAIN_RS)
+    print(Colors.OKGREEN + "Done!" + Colors.NO_COLOR)

@@ -40,14 +40,8 @@ def main():
     rm['-f', 'src/robotfindskitten.o']()
 
     c2rust_bin = get_cmd_or_die(config.C2RUST_BIN)
-    try:
-        retcode, stdout, transpiler_warnings = c2rust_bin['transpile', COMPILE_COMMANDS].run()
-        if transpiler_warnings:
-            print(transpiler_warnings)
-    except pb.ProcessExectuionError as pee:
-        print(Colors.FAIL + 'RFK could not be transpiled:' + Colors.NO_COLOR)
-        print(pee.stderr)
-        sys.exit(pee.retcode)
+    print('transpiling...')
+    transpile(COMPILE_COMMANDS, emit_build_files=False)
 
     # Move rust files into rust/src
     mkdir['-vp', 'rust/src']()
