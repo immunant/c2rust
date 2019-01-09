@@ -13,11 +13,11 @@ use serde_json::json;
 use super::TranspilerConfig;
 
 /// Create the build directory
-pub fn get_build_dir(cc_db: &Path) -> PathBuf {
+pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
     let build_dir = cc_db
         .parent() // get directory of `compile_commands.json`
         .unwrap()
-        .join("c2rust-build");
+        .join(&tcfg.build_directory_name);
 
     if !build_dir.exists() {
         let db = DirBuilder::new();

@@ -102,6 +102,11 @@ args:
       short: e
       help: Emit Rust build files, i.e., Cargo.toml for a library (or a binary if -m/--main is given). Implies --emit-modules.
       takes_value: false
+  - build-directory-name:
+      long: build-directory-name
+      help: Name of the directory to store the build files into, e.g., c2rust-build
+      takes_value: true
+      default_value: c2rust-build
   - filter:
       long: filter
       short: f

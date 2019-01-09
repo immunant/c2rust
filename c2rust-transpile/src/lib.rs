@@ -79,6 +79,8 @@ pub struct TranspilerConfig {
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
     pub emit_build_files: bool,
+    /// Name of the build directory, e.g., `c2rust-build`
+    pub build_directory_name: String,
     /// Names the translation unit containing the main function
     pub main: Option<String>,
     /// Use log-based cross checking
@@ -132,7 +134,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         };
     }
 
-    let build_dir = get_build_dir(cc_db);
+    let build_dir = get_build_dir(&tcfg, cc_db);
 
     if tcfg.emit_build_files {
         let crate_file = emit_build_files(&tcfg, &build_dir, modules);
