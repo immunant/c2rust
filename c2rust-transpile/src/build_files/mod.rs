@@ -12,23 +12,29 @@ use serde_json::json;
 
 use super::TranspilerConfig;
 
-/// Emit `Cargo.toml` and `lib.rs` for a library or `main.rs` for a binary.
-/// Returns the path to `lib.rs` or `main.rs` (or `None` if the output file
-/// existed already).
-pub fn emit_build_files(tcfg: &TranspilerConfig, cc_db: &Path,
-                        modules: Vec<PathBuf>) -> Option<PathBuf> {
-
+/// Create the build directory
+pub fn get_build_dir(cc_db: &Path) -> PathBuf {
     let build_dir = cc_db
         .parent() // get directory of `compile_commands.json`
         .unwrap()
         .join("c2rust-build");
+
     if !build_dir.exists() {
         let db = DirBuilder::new();
-        db.create(&build_dir)
-            .expect(&format!(
-                "couldn't create build directory: {}",
-                build_dir.display()));
+        db.create(&build_dir).expect(&format!(
+            "couldn't create build directory: {}",
+            build_dir.display()
+        ));
     }
+
+    build_dir
+}
+
+/// Emit `Cargo.toml` and `lib.rs` for a library or `main.rs` for a binary.
+/// Returns the path to `lib.rs` or `main.rs` (or `None` if the output file
+/// existed already).
+pub fn emit_build_files(tcfg: &TranspilerConfig, build_dir: &Path,
+                        modules: Vec<PathBuf>) -> Option<PathBuf> {
 
     let mut reg = Handlebars::new();
 

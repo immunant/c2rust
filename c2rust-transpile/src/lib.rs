@@ -19,7 +19,6 @@ extern crate regex;
 extern crate serde_json;
 
 use std::error::Error;
-use std::fs::DirBuilder;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::stdout;
@@ -41,7 +40,7 @@ pub mod rust_ast;
 pub mod translator;
 pub mod with_stmts;
 
-use build_files::emit_build_files;
+use build_files::{get_build_dir, emit_build_files};
 use std::prelude::v1::Vec;
 pub use translator::ReplaceMode;
 
@@ -156,23 +155,6 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             }
         }
     }
-}
-
-fn get_build_dir(cc_db: &Path) -> PathBuf {
-    let build_dir = cc_db
-        .parent() // get directory of `compile_commands.json`
-        .unwrap()
-        .join("c2rust-build");
-
-    if !build_dir.exists() {
-        let db = DirBuilder::new();
-        db.create(&build_dir).expect(&format!(
-            "couldn't create build directory: {}",
-            build_dir.display()
-        ));
-    }
-
-    build_dir
 }
 
 fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) {
