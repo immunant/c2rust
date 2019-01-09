@@ -23,7 +23,7 @@
 
 #[macro_use] extern crate c2rust_xcheck_derive;
 #[macro_use] extern crate c2rust_xcheck_runtime;
-extern crate c2rust_xcheck_{{cross_check_backend}};
+extern crate c2rust_xcheck_backend_{{cross_check_backend}};
 
 #[global_allocator]
 static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;

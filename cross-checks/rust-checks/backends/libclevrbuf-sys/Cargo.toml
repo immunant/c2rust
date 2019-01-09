@@ -1,5 +1,5 @@
 [package]
-name = "c2rust-xcheck-libclevrbuf-sys"
+name = "c2rust-xcheck-backend-libclevrbuf-sys"
 version = "0.1.0"
 authors = ["Andrei Homescu <ah@immunant.com>"]
 description = "Native bindings to the libclevrbuf library"
