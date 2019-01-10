@@ -9,6 +9,8 @@ members = [
     "c2rust-bitfields",
 ]
 exclude = [
+    "cross-checks/pointer-tracer",
+    "cross-checks/zero-malloc",
     "cross-checks/rust-checks",
     "examples",
 ]
