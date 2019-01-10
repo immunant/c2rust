@@ -11,6 +11,7 @@ from common import (
     Colors,
     get_cmd_or_die,
     invoke,
+    invoke_quietly,
     pb,
     setup_logging,
 )
@@ -64,19 +65,41 @@ class Driver:
         getattr(self, self.subcommand)()
 
     def check(self):
+        # Make sure any changed crates have updated versions
+        ok = self._in_crates(self._check_version)
+
+        # Check that the repository is clean
         git_status = git('status', '--porcelain').strip()
         if git_status:
             print_error('Repository is not in a clean state. Commit any changes and resolve any untracked files.')
+            ok = False
 
-        self._in_crates(self._check_version)
+        # Make sure the project builds
+        print('Building project...')
+        with pb.local.cwd(c.ROOT_DIR):
+            invoke_quietly(cargo['clean'])
+            if not invoke_quietly(cargo['build', '--release']):
+                print_error('cargo build failed in root workspace')
+                ok = False
+        with pb.local.cwd(c.RUST_CHECKS_DIR):
+            invoke_quietly(cargo['clean'])
+            if not invoke_quietly(cargo['build', '--release']):
+                print_error('cargo build failed in rust-checks workspace')
+                ok = False
+
+        return ok
 
     def package(self):
         self._in_crates(self._package)
 
     def publish(self):
+        if not self.check():
+            print_error('Checks failed, cannot publish until errors are resolved.')
+            exit(1)
+
         if not self.dry_run:
             if not confirm('Are you sure you want to publish version {} to crates.io?'):
-                print('Publishing not confirmed, exiting.')
+                print_error('Publishing not confirmed, exiting.')
                 exit(1)
 
             # Since we are not doing a dry run, make sure all relevant crates

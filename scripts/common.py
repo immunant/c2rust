@@ -50,18 +50,18 @@ class Config:
     AST_EXPO_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-exporter')
     AST_EXPO_SRC_DIR = os.path.join(AST_EXPO_DIR, 'src')
     AST_EXPO_PRJ_DIR = os.path.join(AST_EXPO_DIR, 'xcode')
+    RUST_CHECKS_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks')
 
     TRANSPILE_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-transpile')
     REFACTOR_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
     AST_BUILDER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-builder')
     AST_EXPORTER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-exporter')
     BITFIELDS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-bitfields')
-    XCHECK_PLUGIN_CRATE_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks', 'rustc-plugin')
-    XCHECK_RUNTIME_CRATE_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks', 'runtime')
-    XCHECK_DERIVE_CRATE_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks', 'derive-macros')
-    XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(
-        CROSS_CHECKS_DIR, 'rust-checks', 'backends', 'dynamic-dlsym')
-    XCHECK_CONFIG_CRATE_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks', 'config')
+    XCHECK_PLUGIN_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'rustc-plugin')
+    XCHECK_RUNTIME_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'runtime')
+    XCHECK_DERIVE_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'derive-macros')
+    XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'backends', 'dynamic-dlsym')
+    XCHECK_CONFIG_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'config')
 
     CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
     # use an install prefix unique to the host
