@@ -196,7 +196,7 @@ class Driver:
         ]
 
         for cmd in cmds:
-            if not self._invoke(cmd):
+            if not self._invoke(cmd, dry_run=True):
                 return False
         return True
 
