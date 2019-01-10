@@ -5,19 +5,22 @@ extern crate libc;
 extern crate parking_lot;
 extern crate spin;
 
-use libc::{c_void, c_int, size_t};
+use libc::{c_int, c_void, size_t};
+use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use std::alloc;
 use std::collections::HashMap;
 use std::mem;
 use std::ptr;
-use parking_lot::{Mutex, MutexGuard, MappedMutexGuard};
 
-type MallocFnType        = Option<unsafe extern fn (size: size_t) -> *mut c_void>;
-type FreeFnType          = Option<unsafe extern fn (ptr: *mut c_void)>;
-type CallocFnType        = Option<unsafe extern fn (nmemb: size_t, size: size_t) -> *mut c_void>;
-type ReallocFnType       = Option<unsafe extern fn (ptr: *mut c_void, size: size_t) -> *mut c_void>;
-type ReallocArrayFnType  = Option<unsafe extern fn (ptr: *mut c_void, nmemb: size_t, size: size_t) -> *mut c_void>;
-type POSIXMemalignFnType = Option<unsafe extern fn (memptr: *mut *mut c_void, alignment: size_t, size: size_t) -> c_int>;
+type MallocFnType = Option<unsafe extern "C" fn(size: size_t) -> *mut c_void>;
+type FreeFnType = Option<unsafe extern "C" fn(ptr: *mut c_void)>;
+type CallocFnType = Option<unsafe extern "C" fn(nmemb: size_t, size: size_t) -> *mut c_void>;
+type ReallocFnType = Option<unsafe extern "C" fn(ptr: *mut c_void, size: size_t) -> *mut c_void>;
+type ReallocArrayFnType =
+    Option<unsafe extern "C" fn(ptr: *mut c_void, nmemb: size_t, size: size_t) -> *mut c_void>;
+type POSIXMemalignFnType = Option<
+    unsafe extern "C" fn(memptr: *mut *mut c_void, alignment: size_t, size: size_t) -> c_int,
+>;
 
 const DLSYM_BUFSIZE: usize = 64;
 
@@ -42,7 +45,9 @@ struct FunctionTable {
 #[inline]
 unsafe fn load_next_func(fn_name: &str) -> *mut c_void {
     let func = libc::dlsym(libc::RTLD_NEXT, fn_name.as_ptr() as *const i8);
-    if func.is_null() { panic!("Function {} not found", fn_name); }
+    if func.is_null() {
+        panic!("Function {} not found", fn_name);
+    }
     func
 }
 
@@ -53,11 +58,11 @@ impl FunctionTable {
             initializing: false,
             dlsym_buf: [0; DLSYM_BUFSIZE],
             dlsym_ofs: 0,
-            malloc_fn:         None,
-            free_fn:           None,
-            calloc_fn:         None,
-            realloc_fn:        None,
-            reallocarray_fn:   None,
+            malloc_fn: None,
+            free_fn: None,
+            calloc_fn: None,
+            realloc_fn: None,
+            reallocarray_fn: None,
             posix_memalign_fn: None,
         }
     }
@@ -66,11 +71,11 @@ impl FunctionTable {
         self.initialized.call_once(|| unsafe {
             let mut_self = self as *const FunctionTable as *mut FunctionTable;
             (*mut_self).initializing = true;
-            (*mut_self).malloc_fn         = mem::transmute(load_next_func("malloc\0"));
-            (*mut_self).free_fn           = mem::transmute(load_next_func("free\0"));
-            (*mut_self).calloc_fn         = mem::transmute(load_next_func("calloc\0"));
-            (*mut_self).realloc_fn        = mem::transmute(load_next_func("realloc\0"));
-            (*mut_self).reallocarray_fn   = mem::transmute(load_next_func("reallocarray\0"));
+            (*mut_self).malloc_fn = mem::transmute(load_next_func("malloc\0"));
+            (*mut_self).free_fn = mem::transmute(load_next_func("free\0"));
+            (*mut_self).calloc_fn = mem::transmute(load_next_func("calloc\0"));
+            (*mut_self).realloc_fn = mem::transmute(load_next_func("realloc\0"));
+            (*mut_self).reallocarray_fn = mem::transmute(load_next_func("reallocarray\0"));
             (*mut_self).posix_memalign_fn = mem::transmute(load_next_func("posix_memalign\0"));
             (*mut_self).initializing = false;
         });
@@ -129,11 +134,12 @@ static mut ZA: ZeroAllocator = ZeroAllocator::new();
 
 // Functions exported externally
 #[no_mangle]
-pub unsafe extern fn malloc(size: size_t) -> *mut c_void {
+pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
     // Use calloc to allocate zeroed memory
     let mfn = ZA.fn_table().calloc_fn.unwrap();
     let ptr = mfn(1, size);
-    #[cfg(feature = "debug-print")] eprintln!("Malloc:{}@{:p}", size, ptr);
+    #[cfg(feature = "debug-print")]
+    eprintln!("Malloc:{}@{:p}", size, ptr);
     if !ptr.is_null() {
         let ir = ZA.size_map().insert(ptr, size);
         assert!(ir.is_none(), "Address already allocated: {:p}", ptr);
@@ -142,18 +148,19 @@ pub unsafe extern fn malloc(size: size_t) -> *mut c_void {
 }
 
 #[no_mangle]
-pub unsafe extern fn free(ptr: *mut c_void) {
+pub unsafe extern "C" fn free(ptr: *mut c_void) {
     let mfn = ZA.fn_table().free_fn.unwrap();
     mfn(ptr);
     if !ptr.is_null() {
         let rr = ZA.size_map().remove(&ptr);
         assert!(rr.is_some(), "Bad free() address: {:p}", ptr);
-        #[cfg(feature = "debug-print")] eprintln!("Free:{:?}@{:p}", rr, ptr);
+        #[cfg(feature = "debug-print")]
+        eprintln!("Free:{:?}@{:p}", rr, ptr);
     }
 }
 
 #[no_mangle]
-pub unsafe extern fn calloc(nmemb: size_t, size: size_t) -> *mut c_void {
+pub unsafe extern "C" fn calloc(nmemb: size_t, size: size_t) -> *mut c_void {
     if ZA.fn_table.initializing {
         // HACK: we create a call cycle between dlsym() and calloc()
         // during initialization, because dlsym() internally calls calloc()
@@ -161,8 +168,7 @@ pub unsafe extern fn calloc(nmemb: size_t, size: size_t) -> *mut c_void {
         // dlsym_buf in FunctionTable, which we use to hand out memory to dlsym
         let total_size = nmemb.checked_mul(size).unwrap();
         assert!(ZA.fn_table.dlsym_ofs + total_size <= DLSYM_BUFSIZE);
-        let res = ZA.fn_table.dlsym_buf.as_ptr()
-            .add(ZA.fn_table.dlsym_ofs);
+        let res = ZA.fn_table.dlsym_buf.as_ptr().add(ZA.fn_table.dlsym_ofs);
         ZA.fn_table.dlsym_ofs += total_size;
         return res as *mut c_void;
     };
@@ -180,7 +186,9 @@ pub unsafe extern fn calloc(nmemb: size_t, size: size_t) -> *mut c_void {
 }
 
 unsafe fn realloc_internal<F>(ptr: *mut c_void, size: size_t, f: F) -> *mut c_void
-        where F: FnOnce() -> *mut c_void {
+where
+    F: FnOnce() -> *mut c_void,
+{
     let mut sm = ZA.size_map();
     let old_size = if ptr.is_null() {
         0
@@ -211,13 +219,13 @@ unsafe fn realloc_internal<F>(ptr: *mut c_void, size: size_t, f: F) -> *mut c_vo
         // Zero out the additional space, if any
         ptr::write_bytes(new_ptr.add(old_size), 0, size - old_size);
     }
-    #[cfg(feature = "debug-print")] eprintln!("Realloc:{}@{:p}=>{}@{:p}",
-                                              old_size, ptr, size, new_ptr);
+    #[cfg(feature = "debug-print")]
+    eprintln!("Realloc:{}@{:p}=>{}@{:p}", old_size, ptr, size, new_ptr);
     new_ptr
 }
 
 #[no_mangle]
-pub unsafe extern fn realloc(ptr: *mut c_void, size: size_t) -> *mut c_void {
+pub unsafe extern "C" fn realloc(ptr: *mut c_void, size: size_t) -> *mut c_void {
     realloc_internal(ptr, size, || {
         let mfn = ZA.fn_table().realloc_fn.unwrap();
         mfn(ptr, size)
@@ -225,9 +233,11 @@ pub unsafe extern fn realloc(ptr: *mut c_void, size: size_t) -> *mut c_void {
 }
 
 #[no_mangle]
-pub unsafe extern fn reallocarray(ptr: *mut c_void,
-                                  nmemb: size_t,
-                                  size: size_t) -> *mut c_void {
+pub unsafe extern "C" fn reallocarray(
+    ptr: *mut c_void,
+    nmemb: size_t,
+    size: size_t,
+) -> *mut c_void {
     let total_size = nmemb.checked_mul(size).unwrap();
     realloc_internal(ptr, total_size, || {
         let mfn = ZA.fn_table().reallocarray_fn.unwrap();
@@ -236,9 +246,11 @@ pub unsafe extern fn reallocarray(ptr: *mut c_void,
 }
 
 #[no_mangle]
-pub unsafe extern fn posix_memalign(memptr: *mut *mut c_void,
-                                    alignment: size_t,
-                                    size: size_t) -> c_int {
+pub unsafe extern "C" fn posix_memalign(
+    memptr: *mut *mut c_void,
+    alignment: size_t,
+    size: size_t,
+) -> c_int {
     let mfn = ZA.fn_table().posix_memalign_fn.unwrap();
     let res = mfn(memptr, alignment, size);
     if res == 0 && !memptr.is_null() && !(*memptr).is_null() {
