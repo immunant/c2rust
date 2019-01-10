@@ -11,10 +11,10 @@ extern crate c2rust_xcheck_runtime;
 mod xcheck;
 pub use xcheck::rb_xcheck; // Export rb_xcheck for the runtime
 
-use xcheck::{expect_xcheck, expect_no_xchecks};
+use xcheck::{expect_no_xchecks, expect_xcheck};
 
-use c2rust_xcheck_runtime::hash::simple::SimpleHasher;
 use c2rust_xcheck_runtime::hash::djb2::Djb2Hasher;
+use c2rust_xcheck_runtime::hash::simple::SimpleHasher;
 use c2rust_xcheck_runtime::xcheck::UNKNOWN_TAG;
 
 //trace_macros!(true);
@@ -108,8 +108,9 @@ fn test_fixed_hash() {
 #[test]
 fn test_custom_field_hash() {
     fn custom_hash<XCHA, XCHS, S, F>(h: &mut XCHA, _: &S, field: F, _: usize)
-        where XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
-              F: ::std::borrow::Borrow<u64>
+    where
+        XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+        F: ::std::borrow::Borrow<u64>,
     {
         assert_eq!(*field.borrow(), 0x12345678);
         h.write_u64(0x0f0f0f0f0f0f0f0f)
@@ -122,8 +123,9 @@ fn test_custom_field_hash() {
 #[test]
 fn test_custom_hash_skip() {
     fn custom_hash<XCHA, XCHS, S, F>(_: &mut XCHA, _: &S, field: F, _: usize)
-        where XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
-              F: ::std::borrow::Borrow<u64>
+    where
+        XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+        F: ::std::borrow::Borrow<u64>,
     {
         assert_eq!(*field.borrow(), 0x12345678);
     }

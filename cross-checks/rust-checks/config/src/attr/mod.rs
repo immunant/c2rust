@@ -1,17 +1,16 @@
-
-#[cfg(feature="with-quote")]
+#[cfg(feature = "with-quote")]
 extern crate quote;
 
-#[cfg(feature="parse-syn")]
+#[cfg(feature = "parse-syn")]
 pub mod syn;
 
-#[cfg(feature="parse-syntax")]
+#[cfg(feature = "parse-syntax")]
 pub mod syntax;
 
 use std::collections::HashMap;
 use std::ops::Deref;
 
-#[cfg(feature="with-quote")]
+#[cfg(feature = "with-quote")]
 use self::quote::ToTokens;
 
 #[derive(Debug)]
@@ -26,7 +25,7 @@ impl<'a> ArgValue<'a> {
     pub fn get_str(&self) -> Option<&str> {
         match *self {
             ArgValue::Str(ref s) => Some(&s[..]),
-            _ => None
+            _ => None,
         }
     }
 
@@ -37,7 +36,7 @@ impl<'a> ArgValue<'a> {
     pub fn get_list(&self) -> Option<&ArgList<'a>> {
         match *self {
             ArgValue::List(ref l) => Some(l),
-            _ => None
+            _ => None,
         }
     }
 
@@ -45,7 +44,7 @@ impl<'a> ArgValue<'a> {
         self.get_list().expect("argument expects list value")
     }
 
-    #[cfg(feature="with-quote")]
+    #[cfg(feature = "with-quote")]
     pub fn get_str_tokens(&self) -> self::quote::Tokens {
         let mut tokens = self::quote::Tokens::new();
         self.get_str_ident().to_tokens(&mut tokens);
@@ -58,7 +57,9 @@ pub struct ArgList<'a>(HashMap<&'a str, ArgValue<'a>>);
 
 impl<'a> Deref for ArgList<'a> {
     type Target = HashMap<&'a str, ArgValue<'a>>;
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl<'a> ArgList<'a> {
@@ -67,10 +68,14 @@ impl<'a> ArgList<'a> {
         ArgList(m)
     }
 
-    #[cfg(feature="with-quote")]
+    #[cfg(feature = "with-quote")]
     pub fn get_token_arg<D>(&self, arg: &str, default: D) -> self::quote::Tokens
-            where self::quote::Tokens: ::std::convert::From<D> {
-        self.0.get(arg).map_or_else(|| self::quote::Tokens::from(default),
-                                    ArgValue::get_str_tokens)
+    where
+        self::quote::Tokens: ::std::convert::From<D>,
+    {
+        self.0.get(arg).map_or_else(
+            || self::quote::Tokens::from(default),
+            ArgValue::get_str_tokens,
+        )
     }
 }

@@ -1,6 +1,5 @@
-
-use std::hash::Hasher;
 use super::CrossCheckHasher;
+use std::hash::Hasher;
 
 #[derive(Debug)]
 pub struct Djb2Hasher(u32);
@@ -25,18 +24,20 @@ impl Hasher for Djb2Hasher {
         self.0.into()
     }
 
-    #[cfg(feature="djb2-ssse3")]
+    #[cfg(feature = "djb2-ssse3")]
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
         use simd::u32x4;
         use simd::x86::ssse3::Ssse3U32x4;
 
         let mut u32_chunks = bytes.chunks(4);
-        let last_chunk = if bytes.len() % 4 != 0 { u32_chunks.next_back() } else { None };
+        let last_chunk = if bytes.len() % 4 != 0 {
+            u32_chunks.next_back()
+        } else {
+            None
+        };
         self.0 = u32_chunks.fold(self.0, |h, cb| {
-            let cvec = u32x4::new(
-                cb[0] as u32, cb[1] as u32,
-                cb[2] as u32, cb[3] as u32);
+            let cvec = u32x4::new(cb[0] as u32, cb[1] as u32, cb[2] as u32, cb[3] as u32);
             // The djb2 factors: powers of 33 from 33^3 to 33^0
             const DJB2_FACTORS: u32x4 = u32x4::new(35937, 1089, 33, 1);
             let cmul = cvec * DJB2_FACTORS;
@@ -47,16 +48,18 @@ impl Hasher for Djb2Hasher {
         });
         // Add in the last 1-3 bytes manually
         if let Some(last_bytes) = last_chunk {
-            self.0 = last_bytes.iter().fold(self.0,
-                |h, c| h.wrapping_mul(33).wrapping_add((*c).into()));
+            self.0 = last_bytes
+                .iter()
+                .fold(self.0, |h, c| h.wrapping_mul(33).wrapping_add((*c).into()));
         }
     }
 
-    #[cfg(not(feature="djb2-ssse3"))]
+    #[cfg(not(feature = "djb2-ssse3"))]
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
-        self.0 = bytes.iter().fold(self.0,
-            |h, c| h.wrapping_mul(33).wrapping_add((*c).into()));
+        self.0 = bytes
+            .iter()
+            .fold(self.0, |h, c| h.wrapping_mul(33).wrapping_add((*c).into()));
     }
 }
 
@@ -64,7 +67,7 @@ impl CrossCheckHasher for Djb2Hasher {}
 
 #[cfg(test)]
 mod tests {
-    use super::{Hasher, Djb2Hasher};
+    use super::{Djb2Hasher, Hasher};
 
     fn djb2_string(s: &str) -> u32 {
         let mut h = Djb2Hasher::default();
@@ -74,14 +77,14 @@ mod tests {
 
     #[test]
     fn test_djb2() {
-        assert_eq!(djb2_string("a"),        0x0002b606u32);
-        assert_eq!(djb2_string("ab"),       0x00597728u32);
-        assert_eq!(djb2_string("abc"),      0x0b885c8bu32);
-        assert_eq!(djb2_string("abcd"),     0x7c93ee4fu32);
-        assert_eq!(djb2_string("abcde"),    0x0f11b894u32);
-        assert_eq!(djb2_string("abcdef"),   0xf148cb7au32);
-        assert_eq!(djb2_string("abcdefg"),  0x1a623b21u32);
+        assert_eq!(djb2_string("a"), 0x0002b606u32);
+        assert_eq!(djb2_string("ab"), 0x00597728u32);
+        assert_eq!(djb2_string("abc"), 0x0b885c8bu32);
+        assert_eq!(djb2_string("abcd"), 0x7c93ee4fu32);
+        assert_eq!(djb2_string("abcde"), 0x0f11b894u32);
+        assert_eq!(djb2_string("abcdef"), 0xf148cb7au32);
+        assert_eq!(djb2_string("abcdefg"), 0x1a623b21u32);
         assert_eq!(djb2_string("abcdefgh"), 0x66a99fa9u32);
-        assert_eq!(djb2_string("djb2"),     0x7c95b527u32);
+        assert_eq!(djb2_string("djb2"), 0x7c95b527u32);
     }
 }

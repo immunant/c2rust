@@ -1,4 +1,3 @@
-
 #![feature(trace_macros)]
 //trace_macros!(true);
 
@@ -6,9 +5,9 @@
 extern crate c2rust_xcheck_derive;
 extern crate c2rust_xcheck_runtime;
 
-use c2rust_xcheck_runtime::hash::CrossCheckHash as XCH;
-use c2rust_xcheck_runtime::hash::simple::SimpleHasher;
 use c2rust_xcheck_runtime::hash::djb2::Djb2Hasher;
+use c2rust_xcheck_runtime::hash::simple::SimpleHasher;
+use c2rust_xcheck_runtime::hash::CrossCheckHash as XCH;
 
 // This macro creates a structure with the given structure and field attributes,
 // builds and initializes an object with the given values, then
@@ -133,8 +132,9 @@ fn test_fixed_hash() {
 #[test]
 fn test_custom_field_hash() {
     fn custom_hash<XCHA, XCHS, S, F>(h: &mut XCHA, _: &S, field: F, _: usize)
-        where XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
-              F: ::std::borrow::Borrow<u64>
+    where
+        XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+        F: ::std::borrow::Borrow<u64>,
     {
         assert_eq!(*field.borrow(), 0x12345678);
         h.write_u64(0x0f0f0f0f0f0f0f0f)
@@ -151,8 +151,9 @@ fn test_custom_field_hash() {
 #[test]
 fn test_custom_hash_skip() {
     fn custom_hash<XCHA, XCHS, S, F>(_: &mut XCHA, _: &S, field: F, _: usize)
-        where XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
-              F: ::std::borrow::Borrow<u64>
+    where
+        XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+        F: ::std::borrow::Borrow<u64>,
     {
         assert_eq!(*field.borrow(), 0x12345678);
     }
@@ -212,5 +213,4 @@ fn test_multi_field_hash() {
             XCH::cross_check_hash::<Djb2Hasher, SimpleHasher>(&ts),
             Some(0x3d17c937_u64));
     });
-
 }

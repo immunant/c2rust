@@ -1,6 +1,7 @@
 #![feature(libc)]
 
-#[macro_use] extern crate lazy_static;
+#[macro_use]
+extern crate lazy_static;
 extern crate libc;
 extern crate zstd;
 
@@ -32,12 +33,10 @@ lazy_static! {
 }
 
 #[no_mangle]
-pub extern fn rb_xcheck(tag: u8, val: u64) {
+pub extern "C" fn rb_xcheck(tag: u8, val: u64) {
     let mut guard = RB_XCHECK_MUTEX.lock().unwrap();
     let out = guard.as_mut().unwrap();
-    out.write_all(&[tag])
-        .expect("Failed to write tag");
+    out.write_all(&[tag]).expect("Failed to write tag");
     out.write_all(&val.to_le_bytes())
         .expect("Failed to write value");
 }
-

@@ -1,11 +1,10 @@
-
 extern crate zstd;
 
+use std::env;
 use std::fmt;
 use std::fs::File;
 use std::io;
 use std::io::{Read, Write};
-use std::env;
 
 const BUF_SIZE: usize = 4 * 1024 * 1024; // 4MB buffer
 const MAX_XCHECK_LEN: usize = 52;
@@ -35,8 +34,11 @@ pub fn main() -> Result<(), std::io::Error> {
             }
             let old_len = out.len();
             let tag_name = &tag_names[buf[0] as usize];
-            fmt::write(&mut out, format_args!("XCHECK({0}):{1:}/0x{1:08x}\n", tag_name, val))
-                .expect("Error formatting xcheck");
+            fmt::write(
+                &mut out,
+                format_args!("XCHECK({0}):{1:}/0x{1:08x}\n", tag_name, val),
+            )
+            .expect("Error formatting xcheck");
             assert!(out.len() <= old_len + MAX_XCHECK_LEN);
         }
     }

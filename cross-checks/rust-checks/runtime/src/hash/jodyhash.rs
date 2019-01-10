@@ -1,9 +1,9 @@
 // JodyHash: fast hash function for 64-bit blocks
 // from https://github.com/jbruchon/jodyhash
 
+use super::CrossCheckHasher;
 use std::hash::Hasher;
 use std::ops::BitXor;
-use super::CrossCheckHasher;
 
 #[derive(Debug, Default)]
 pub struct JodyHasher(u64);
@@ -24,7 +24,8 @@ impl Hasher for JodyHasher {
 
     #[inline]
     fn write_u64(&mut self, i: u64) {
-        self.0 = self.0
+        self.0 = self
+            .0
             .wrapping_add(i)
             .wrapping_add(JODY_HASH_CONSTANT)
             .rotate_left(JODY_HASH_SHIFT)
@@ -86,13 +87,13 @@ mod tests {
         h.write_u64(002_u64 ^ 0xb4b4b4b4b4b4b4b4_u64); //    level = 2
         h.write_u64(116_u64 ^ 0xc3c3c3c3c3c3c3c2_u64); //    *file = 116
         h.write_u64(975_u64 ^ 0x7878787878787876_u64); //     line = 975
-        h.write_u64(0x726174536c6c754e_u64);           //     str1 = NULL
-        h.write_u64(0x726174536c6c754e_u64);           //     str2 = NULL
-        h.write_u64(0x726174536c6c754e_u64);           //     str3 = NULL
+        h.write_u64(0x726174536c6c754e_u64); //     str1 = NULL
+        h.write_u64(0x726174536c6c754e_u64); //     str2 = NULL
+        h.write_u64(0x726174536c6c754e_u64); //     str3 = NULL
         h.write_u64(000_u64 ^ 0x7878787878787876_u64); //     int1 = 0
         h.write_u64(002_u64 ^ 0x7878787878787876_u64); //     int2 = 2
-        h.write_u64(0x7261745364696f56_u64);           //     ctxt = void*
-        h.write_u64(0x726174536c6c754e_u64);           //     node = NULL
+        h.write_u64(0x7261745364696f56_u64); //     ctxt = void*
+        h.write_u64(0x726174536c6c754e_u64); //     node = NULL
         assert_eq!(h.finish(), 0x816be1ca90dc62b0_u64);
     }
 }
