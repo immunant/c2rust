@@ -23,7 +23,7 @@ serde_yaml = "0.7"
 [dependencies.c2rust-xcheck-config]
 path = "../config"
 version = "0.1.0"
-features = ["parse-syn", "scopes"]
+features = ["parse-syntax", "scopes"]
 
 [dev-dependencies]
 c2rust-xcheck-derive = { path = "../derive-macros", version = "0.1.0" }
