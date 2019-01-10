@@ -1,7 +1,7 @@
 [package]
 name = "c2rust"
 description = "C to Rust translation, refactoring, and cross-checking"
-version = "0.1.0"
+version = "0.9.0"
 authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
 license = "BSD-3-Clause"
 homepage = "https://c2rust.com/"
