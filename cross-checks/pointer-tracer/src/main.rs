@@ -19,7 +19,7 @@ use std::ptr;
 use std::slice;
 
 /// Marker pattern that identifies C2Rust invalid pointer checks
-const C2RUST_MARKER: &'static [u8] = b"C2RUST_INVPTR";
+const C2RUST_MARKER: &[u8] = b"C2RUST_INVPTR";
 
 fn get_process_regs(pid: unistd::Pid) -> libc::user_regs_struct {
     unsafe {
@@ -27,7 +27,7 @@ fn get_process_regs(pid: unistd::Pid) -> libc::user_regs_struct {
         #[allow(deprecated)]
         ptrace::ptrace(ptrace::Request::PTRACE_GETREGS,
                        pid, ptr::null_mut(),
-                       mem::transmute(&regs))
+                       &regs as *const libc::user_regs_struct as *mut _)
             .expect("Error running ptrace()");
         regs
     }
@@ -38,7 +38,7 @@ fn set_process_regs(pid: unistd::Pid, regs: libc::user_regs_struct) {
         #[allow(deprecated)]
         ptrace::ptrace(ptrace::Request::PTRACE_SETREGS,
                        pid, ptr::null_mut(),
-                       mem::transmute(&regs))
+                       &regs as *const libc::user_regs_struct as *mut _)
             .expect("Error running ptrace()");
     }
 }
@@ -65,6 +65,7 @@ fn get_c2rust_pc_delta(pid: unistd::Pid, pc: usize) -> Option<isize> {
         slice::from_raw_parts(buf_ptr.offset(2), C2RUST_MARKER.len())
     };
     if buf_marker == C2RUST_MARKER {
+        #[allow(clippy::cast_ptr_alignment)]
         let delta = unsafe { *(buf_ptr as *const i16) };
         Some(delta as isize)
     } else {
@@ -119,7 +120,7 @@ fn run_command(matches: ArgMatches) -> Result<(), io::Error> {
                 ptrace::cont(unistd_pid, Some(sig))
                     .expect("Error running ptrace()");
             },
-            ws @ _ => panic!("Unknown wait status: {:?}", ws)
+            ws => panic!("Unknown wait status: {:?}", ws)
         }
     }
     Ok(())
