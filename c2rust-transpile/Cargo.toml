@@ -9,6 +9,7 @@ authors = [
 license = "BSD-3-Clause"
 homepage = "https://c2rust.com/"
 repository = "https://github.com/immunant/c2rust"
+description = "C2Rust transpiler implemenation"
 
 [dependencies]
 serde_cbor = "0.9"
