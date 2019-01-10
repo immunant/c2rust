@@ -3,6 +3,7 @@
 import argparse
 from distutils.util import strtobool
 import os.path
+import re
 
 import toml
 
@@ -18,6 +19,7 @@ from common import (
 
 git = get_cmd_or_die('git')
 cargo = get_cmd_or_die('cargo')
+python3 = get_cmd_or_die('python3')
 
 
 # These crates should be sorted in reverse dependency order.
@@ -75,16 +77,20 @@ class Driver:
             ok = False
 
         # Make sure the project builds
-        print('Building project...')
+        print('Building and testing...')
         with pb.local.cwd(c.ROOT_DIR):
             invoke_quietly(cargo['clean'])
             if not invoke_quietly(cargo['build', '--release']):
                 print_error('cargo build failed in root workspace')
                 ok = False
+            test_translator = python3['scripts/test_translator.py', 'tests']
+            if not invoke_quietly(test_translator):
+                print_error('scripts/test_translator.py failed')
+                ok = False
         with pb.local.cwd(c.RUST_CHECKS_DIR):
             invoke_quietly(cargo['clean'])
-            if not invoke_quietly(cargo['build', '--release']):
-                print_error('cargo build failed in rust-checks workspace')
+            if not invoke_quietly(cargo['test', '--release']):
+                print_error('cargo test failed in rust-checks workspace')
                 ok = False
 
         return ok
@@ -97,6 +103,11 @@ class Driver:
             print_error('Checks failed, cannot publish until errors are resolved.')
             exit(1)
 
+        # Tag and publish the tag to github
+        if not self._git_push_public():
+            if not confirm('Could not complete git tag and merge successfully, do you want to continue?'):
+                exit(1)
+
         if not self.dry_run:
             if not confirm('Are you sure you want to publish version {} to crates.io?'):
                 print_error('Publishing not confirmed, exiting.')
@@ -108,7 +119,10 @@ class Driver:
 
         self._in_crates(self._publish)
 
-    def _invoke(self, cmd, dry_run=False):
+    def _invoke(self, cmd, dry_run=None):
+        if dry_run is None:
+            dry_run = self.dry_run
+
         print(cmd)
         result = True
         if not dry_run:
@@ -143,7 +157,48 @@ class Driver:
 
     def _package(self, crate_name, cargo_toml):
         cmd = cargo['package', '--color', 'always', '--no-verify', '--allow-dirty']
-        return self._invoke(cmd, dry_run=self.dry_run)
+        return self._invoke(cmd)
+
+    def _git_push_public(self):
+        remotes = git('remote', '--verbose')
+        matches = re.search(r'(\S+)\s+git@github\.com:immunant/c2rust\.git', remotes)
+        if not matches:
+            print_error('Missing github.com:immunant/c2rust.git remote')
+            return False
+        public_remote = matches.group(1)
+
+        # branches = git('branch', '-vv')
+        # public_branches = re.findall(r'^. (\S+).*' + public_remote + '/master', branches, re.MULTILINE)
+        # if len(public_branches) == 0:
+        #     print_error('Could not find public branch tracking {}/master'.format(public_remote))
+        #     exit(1)
+        # elif len(public_branches) > 1:
+        #     print_error('More than one public branch tracking {}/master found. Ensure only one branch is tracking the public mirror.'.format(public_remote))
+        #     exit(1)
+        # public_branch = public_branches[0]
+
+        if not self.dry_run and not confirm('Warning: git tag {} will be created and merged into the public master. Do you want to proceed?'.format(self.version)):
+            print_error('git tag and merge not confirmed, exiting.')
+            exit(1)
+
+        cmds = [
+            # Tag the new version
+            git['tag', self.version],
+
+            # Push the new tag to both remotes
+            git['push', 'origin', self.version],
+            git['push', public_remote, self.version],
+
+            # Merge the new tag into the public master
+            git['checkout', public_remote + '/master'],
+            git['merge', self.version],
+            git['push', public_remote, 'HEAD:master'],
+        ]
+
+        for cmd in cmds:
+            if not self._invoke(cmd):
+                return False
+        return True
 
     def _publish(self, crate_name, cargo_toml):
         args = ['publish']
