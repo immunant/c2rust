@@ -56,6 +56,12 @@ class Config:
     AST_BUILDER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-builder')
     AST_EXPORTER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-exporter')
     BITFIELDS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-bitfields')
+    XCHECK_PLUGIN_CRATE_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks', 'rustc-plugin')
+    XCHECK_RUNTIME_CRATE_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks', 'runtime')
+    XCHECK_DERIVE_CRATE_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks', 'derive-macros')
+    XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(
+        CROSS_CHECKS_DIR, 'rust-checks', 'backends', 'dynamic-dlsym')
+    XCHECK_CONFIG_CRATE_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks', 'config')
 
     CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
     # use an install prefix unique to the host

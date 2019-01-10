@@ -1,15 +1,31 @@
 #!/usr/bin/env python3
 
+import argparse
+from distutils.util import strtobool
+import os.path
+
+import toml
+
 from common import (
     config as c,
+    Colors,
     get_cmd_or_die,
     invoke,
     pb,
     setup_logging,
 )
 
+git = get_cmd_or_die('git')
+cargo = get_cmd_or_die('cargo')
 
-CRATES_TO_PACKAGE = [
+
+# These crates should be sorted in reverse dependency order.
+CRATES = [
+    c.XCHECK_CONFIG_CRATE_DIR,
+    c.XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR,
+    c.XCHECK_RUNTIME_CRATE_DIR,
+    c.XCHECK_DERIVE_CRATE_DIR,
+    c.XCHECK_PLUGIN_CRATE_DIR,
     c.AST_BUILDER_CRATE_DIR,
     c.AST_EXPORTER_CRATE_DIR,
     c.BITFIELDS_CRATE_DIR,
@@ -19,16 +35,127 @@ CRATES_TO_PACKAGE = [
 ]
 
 
-def package(crate_dir):
-    cargo = get_cmd_or_die("cargo")
-    with pb.local.cwd(crate_dir):
-        invoke(cargo['package', '--no-verify'])
+def confirm(prompt):
+    response = input(prompt + ' [y/N] ')
+    try:
+        return strtobool(response)
+    except ValueError:
+        pass
+    return False
+
+
+def print_error(msg):
+    print(Colors.FAIL + 'ERROR: ' + Colors.NO_COLOR + msg)
+
+
+def print_warning(msg):
+    print(Colors.WARNING + 'WARNING: ' + Colors.NO_COLOR + msg)
+
+
+class Driver:
+    def __init__(self, args):
+        self.crates = args.crates if args.crates else []
+        self.dry_run = args.dry_run
+        self.subcommand = args.subcommand
+        self.version = args.version
+        self.args = args
+
+    def run(self):
+        getattr(self, self.subcommand)()
+
+    def check(self):
+        git_status = git('status', '--porcelain').strip()
+        if git_status:
+            print_error('Repository is not in a clean state. Commit any changes and resolve any untracked files.')
+
+        self._in_crates(self._check_version)
+
+    def package(self):
+        self._in_crates(self._package)
+
+    def publish(self):
+        if not self.dry_run:
+            if not confirm('Are you sure you want to publish version {} to crates.io?'):
+                print('Publishing not confirmed, exiting.')
+                exit(1)
+
+            # Since we are not doing a dry run, make sure all relevant crates
+            # package cleanly before we push any.
+            self.package()
+
+        self._in_crates(self._publish)
+
+    def _invoke(self, cmd, dry_run=False):
+        print(cmd)
+        result = True
+        if not dry_run:
+            result = invoke(cmd)
+        print()
+        return result
+
+    def _in_crates(self, callback):
+        """Run the given callback in the crates with the provided names. If crates is
+        empty, run the callback for all CRATES
+        """
+        for crate_dir in CRATES:
+            cargo_toml_path = os.path.join(crate_dir, 'Cargo.toml')
+            cargo_toml = toml.load(cargo_toml_path)
+            if len(self.crates) == 0 or cargo_toml['package']['name'] in self.crates:
+                with pb.local.cwd(crate_dir):
+                    print('Entering {}'.format(crate_dir))
+                    callback(cargo_toml['package']['name'], cargo_toml)
+
+    def _check_version(self, crate_name, cargo_toml):
+        old_version = cargo_toml['package']['version']
+        try:
+            diff_since_last_tag = git('diff', old_version, '--', '.').strip()
+            changed = bool(diff_since_last_tag)
+        except pb.commands.processes.ProcessExecutionError:
+            changed = True
+        if changed and old_version != self.version:
+            print_error('{} has changed since version {}, you must bump its version number to {}'.format(crate_name, old_version, self.version))
+            print()
+            return False
+        return True
+
+    def _package(self, crate_name, cargo_toml):
+        cmd = cargo['package', '--color', 'always', '--no-verify', '--allow-dirty']
+        return self._invoke(cmd, dry_run=self.dry_run)
+
+    def _publish(self, crate_name, cargo_toml):
+        args = ['publish']
+        if self.dry_run:
+            args += ['--dry-run']
+        cmd = cargo[args]
+        return self._invoke(cmd, dry_run=True)
+
+
+def _parse_args():
+    """
+    define and parse command line arguments here.
+    """
+    desc = 'Package crates and publish to crates.io'
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument('--version', required=True, help='New version for crate')
+    parser.add_argument('--dry-run', action='store_true',
+                        help='Only print commands, do not publish')
+    parser.add_argument('--crates', nargs='+', help='Crate to package')
+
+    subparsers = parser.add_subparsers(dest='subcommand', required=True)
+
+    subparsers.add_parser('check', help='Check repo in preperation for publishing')
+
+    subparsers.add_parser('package', help='Package crates')
+
+    subparsers.add_parser('publish', help='Publish crates')
+
+    return parser.parse_args()
 
 
 def main():
     setup_logging()
-    for crate in CRATES_TO_PACKAGE:
-        package(crate)
+    args = _parse_args()
+    Driver(args).run()
 
 
 if __name__ == "__main__":
