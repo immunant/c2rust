@@ -16,11 +16,15 @@ crate-type = ["staticlib"]
 
 {{#if cross_checks~}}
 [dependencies.c2rust-xcheck-plugin]
+version = "*"
 
 [dependencies.c2rust-xcheck-derive]
+version = "*"
 
 [dependencies.c2rust-xcheck-runtime]
+version = "*"
 features = ["libc-hash", "fixed-length-array-hash"]
 
 [dependencies.c2rust-xcheck-backend-{{cross_check_backend}}]
+version = "*"
 {{~/if}}
