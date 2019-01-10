@@ -134,13 +134,16 @@ class Driver:
         """Run the given callback in the crates with the provided names. If crates is
         empty, run the callback for all CRATES
         """
+        ok = True
         for crate_dir in CRATES:
             cargo_toml_path = os.path.join(crate_dir, 'Cargo.toml')
             cargo_toml = toml.load(cargo_toml_path)
             if len(self.crates) == 0 or cargo_toml['package']['name'] in self.crates:
                 with pb.local.cwd(crate_dir):
                     print('Entering {}'.format(crate_dir))
-                    callback(cargo_toml['package']['name'], cargo_toml)
+                    if not callback(cargo_toml['package']['name'], cargo_toml):
+                        ok = False
+        return ok
 
     def _check_version(self, crate_name, cargo_toml):
         old_version = cargo_toml['package']['version']
