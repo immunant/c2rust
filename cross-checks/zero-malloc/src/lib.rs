@@ -64,7 +64,7 @@ impl FunctionTable {
 
     fn init(&self) {
         self.initialized.call_once(|| unsafe {
-            let mut_self: *mut FunctionTable = mem::transmute(self);
+            let mut_self = self as *const FunctionTable as *mut FunctionTable;
             (*mut_self).initializing = true;
             (*mut_self).malloc_fn         = mem::transmute(load_next_func("malloc\0"));
             (*mut_self).free_fn           = mem::transmute(load_next_func("free\0"));
@@ -162,7 +162,7 @@ pub unsafe extern fn calloc(nmemb: size_t, size: size_t) -> *mut c_void {
         let total_size = nmemb.checked_mul(size).unwrap();
         assert!(ZA.fn_table.dlsym_ofs + total_size <= DLSYM_BUFSIZE);
         let res = ZA.fn_table.dlsym_buf.as_ptr()
-            .offset(ZA.fn_table.dlsym_ofs as isize);
+            .add(ZA.fn_table.dlsym_ofs);
         ZA.fn_table.dlsym_ofs += total_size;
         return res as *mut c_void;
     };
@@ -209,7 +209,7 @@ unsafe fn realloc_internal<F>(ptr: *mut c_void, size: size_t, f: F) -> *mut c_vo
     };
     if !new_ptr.is_null() && size > old_size {
         // Zero out the additional space, if any
-        ptr::write_bytes(new_ptr.offset(old_size as isize), 0, size - old_size);
+        ptr::write_bytes(new_ptr.add(old_size), 0, size - old_size);
     }
     #[cfg(feature = "debug-print")] eprintln!("Realloc:{}@{:p}=>{}@{:p}",
                                               old_size, ptr, size, new_ptr);
