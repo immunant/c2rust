@@ -1,4 +1,3 @@
-#![feature(iterator_flatten)]
 #![feature(libc)]
 
 #[macro_use]
