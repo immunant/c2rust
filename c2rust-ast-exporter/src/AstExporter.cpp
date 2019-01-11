@@ -1663,7 +1663,8 @@ public:
                 CborEncoder entry;
                 cbor_encoder_create_array(&array, &entry, 4);
                 visitor.encodeSourcePos(&entry, comment->getLocStart()); // emits 3 values
-                cbor_encode_string(&entry, comment->getRawText(Context.getSourceManager()).str());
+                auto raw_text = comment->getRawText(Context.getSourceManager());
+                cbor_encode_byte_string(&entry, raw_text.bytes_begin(), raw_text.size());
                 cbor_encoder_close_container(&array, &entry);
             }
             cbor_encoder_close_container(&outer, &array);

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use serde_bytes::ByteBuf;
 use serde_cbor::{Value, from_value};
 use serde_cbor::error;
 use std;
@@ -97,11 +98,16 @@ pub fn process(items: Value) -> error::Result<AstContext> {
         (Vec<Vec<Value>>,
          Vec<u64>,
          Vec<String>,
-         Vec<(u64, u64, u64, String)>,
+         Vec<(u64, u64, u64, ByteBuf)>,
         ) = from_value(items)?;
 
-    for (fileid, line, column, string) in raw_comments {
-        comments.push(CommentNode{fileid, line, column, string})
+    for (fileid, line, column, bytes) in raw_comments {
+        comments.push(CommentNode{
+            fileid,
+            line,
+            column,
+            string: String::from_utf8_lossy(&bytes).to_string(),
+        })
     }
 
     for entry in all_nodes {

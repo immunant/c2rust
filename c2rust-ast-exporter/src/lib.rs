@@ -1,5 +1,6 @@
 #![allow(non_camel_case_types)]
 extern crate libc;
+extern crate serde_bytes;
 extern crate serde_cbor;
 
 use serde_cbor::{Value, from_slice};
@@ -15,6 +16,12 @@ pub fn get_untyped_ast(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> R
     let cbors = get_ast_cbors(file_path, cc_db, extra_args);
     let buffer = cbors.values().next()
         .ok_or(Error::new(ErrorKind::InvalidData, "Could not parse input file"))?;
+
+    // let cbor_path = file_path.with_extension("cbor");
+    // let mut cbor_file = File::create(&cbor_path)?;
+    // cbor_file.write_all(&buffer[..])?;
+    // eprintln!("Dumped CBOR to {}", cbor_path.to_string_lossy());
+
     let items: Value = from_slice(&buffer[..]).unwrap();
 
     match clang_ast::process(items) {
