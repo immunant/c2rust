@@ -122,7 +122,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let mut modules = Vec::<PathBuf>::new();
     for mut cmd in cmds {
         let CompileCmd { directory: d, file: f, ..} = cmd;
-        println!("transpiling {}", f.to_str().unwrap());
+        println!("Transpiling {}", f.to_str().unwrap());
         let input_file_abs = d.join(f);
         if let Some(m) = transpile_single(
             &tcfg,
@@ -219,8 +219,8 @@ fn transpile_single(
 
     let output_path = get_output_path(input_path);
     if output_path.exists() && !tcfg.overwrite_existing {
-        eprintln!("Skipping existing file {}", output_path.display());
-        return None;
+        println!("Skipping existing file {}", output_path.display());
+        return Some(output_path);
     }
 
     // Extract the untyped AST from the CBOR file
