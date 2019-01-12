@@ -87,6 +87,7 @@ class CFile:
             cc_db,
             "--prefix-function-names",
             "rust_",
+            "--overwrite-existing",
         ]
 
         if not self.enable_incremental_relooper:
