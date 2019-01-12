@@ -1,3 +1,5 @@
+#include <alloca.h>
+
 //! enable_relooper
 //
 void use_arrays(const int n, const int m, int a[const][n*n][m]) {
@@ -48,6 +50,33 @@ void variable_arrays(int buf[const]) {
 
         int n = 8;
         int var1[n];
+
+        for (int i = 0; i < n; i++) {
+                var1[i] = 3*i;
+                buf[counter++] = var1[i];
+        }
+}
+
+/* Same as variable_arrays but using an alloca */
+void alloca_arrays(int buf[const]) {
+
+        int grid[4][4][5];
+
+        use_arrays(2,5,grid);
+        use_arrays(2,5,grid+2);
+
+        int counter = 0;
+
+        for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                        for (int k = 0; k < 5; k++) {
+                                buf[counter++] = grid[i][j][k];
+                        }
+                }
+        }
+
+        int n = 8;
+        int* var1 = alloca(sizeof(int)*n);
 
         for (int i = 0; i < n; i++) {
                 var1[i] = 3*i;

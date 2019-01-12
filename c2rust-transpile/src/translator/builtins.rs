@@ -150,6 +150,15 @@ impl<'c> Translation<'c> {
                 Err(format!("Unsupported va_end"))
             }
 
+            "__builtin_alloca" => {
+                let count = self.convert_expr(ctx.used(), args[0])?;
+                Ok(count.map(|count| {
+                    let zero_elem = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
+                    let vec = vec_expr(zero_elem, cast_int(count, "usize"));
+                    mk().method_call_expr(vec, "as_mut_ptr", vec![] as Vec<P<Expr>>)
+                }))
+            }
+
             // In clang 6 this first one is the only true SIMD builtin, clang 7 converted a bunch more after it:
             "__builtin_ia32_pshufw" =>
                 self.convert_simd_builtin(ctx, "_mm_shuffle_pi16", args),

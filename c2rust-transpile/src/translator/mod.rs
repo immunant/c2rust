@@ -200,6 +200,11 @@ fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> 
     mk().call_expr(mk().path_expr(path), vec![expr])
 }
 
+fn vec_expr(val: P<Expr>, count: P<Expr>) -> P<Expr> {
+    let from_elem = mk().path_expr(vec!["", "std", "vec", "from_elem"]);
+    mk().call_expr(from_elem, vec![val, count])
+}
+
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> P<Block> {
     if stmts.len() == 1 {
         if let StmtKind::Expr(ref e) = stmts[0].node {
@@ -2653,12 +2658,9 @@ impl<'c> Translation<'c> {
 
             // Find base element type of potentially nested arrays
             let inner = self.variable_array_base_type(elt);
-
             let count = self.compute_size_of_expr(ty_id).unwrap();
             let val = self.implicit_default_expr(inner, is_static)?;
-            let from_elem = mk().path_expr(vec!["", "std", "vec", "from_elem"]);
-            let alloc = mk().call_expr(from_elem, vec![val, count]);
-            Ok(alloc)
+            Ok(vec_expr(val, count))
         } else if let &CTypeKind::Vector(CQualTypeId { ctype, .. }, len) = resolved_ty {
             self.implicit_vector_default(ctype, len)
         } else {
