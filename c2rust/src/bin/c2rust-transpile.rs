@@ -2,11 +2,13 @@
 extern crate clap;
 extern crate c2rust_transpile;
 
+use std::collections::HashSet;
 use std::path::Path;
-use clap::App;
+use std::str::FromStr;
+use clap::{App, Values};
 use regex::Regex;
 
-use c2rust_transpile::{TranspilerConfig, ReplaceMode};
+use c2rust_transpile::{TranspilerConfig, ReplaceMode, Diagnostic};
 
 
 fn main() {
@@ -20,6 +22,12 @@ fn main() {
         Some(args) => args.collect(),
         None => Vec::new(),
     };
+
+    let enabled_warnings: HashSet<Diagnostic> = matches.values_of("warn")
+        .unwrap_or_else(|| Values::default())
+        .map(|s| Diagnostic::from_str(s).unwrap())
+        .collect();
+
     let mut tcfg = TranspilerConfig {
         dump_untyped_context:   matches.is_present("dump-untyped-clang-ast"),
         dump_typed_context:     matches.is_present("dump-typed-clang-ast"),
@@ -78,6 +86,8 @@ fn main() {
             }
         },
         replace_unsupported_decls: ReplaceMode::Extern,
+
+        enabled_warnings
     };
     // main implies emit-build-files
     if tcfg.main != None{ tcfg.emit_build_files = true };

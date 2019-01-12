@@ -17,19 +17,15 @@ extern crate itertools;
 extern crate libc;
 extern crate regex;
 extern crate serde_json;
+#[macro_use]
+extern crate log;
+extern crate fern;
+extern crate strum;
+#[macro_use]
+extern crate strum_macros;
 
-use std::error::Error;
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::stdout;
-use std::path::{Path, PathBuf};
-use std::process;
-
-use regex::Regex;
-
-use c2rust_ast_exporter as ast_exporter;
-use c_ast::Printer;
-use c_ast::*;
+#[macro_use]
+mod diagnostics;
 
 pub mod build_files;
 pub mod c_ast;
@@ -39,6 +35,21 @@ pub mod renamer;
 pub mod rust_ast;
 pub mod translator;
 pub mod with_stmts;
+
+use std::collections::HashSet;
+use std::error::Error;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process;
+
+use regex::Regex;
+
+use c2rust_ast_exporter as ast_exporter;
+use c_ast::Printer;
+use c_ast::*;
+pub use diagnostics::Diagnostic;
 
 use build_files::{get_build_dir, emit_build_files};
 use std::prelude::v1::Vec;
@@ -76,6 +87,7 @@ pub struct TranspilerConfig {
     pub overwrite_existing: bool,
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
+    pub enabled_warnings: HashSet<Diagnostic>,
 
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
@@ -94,6 +106,8 @@ Directory `/usr/include` was not found! Please install the following package:
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
+    diagnostics::init(tcfg.enabled_warnings.clone());
+
     // TODO: bindgen may have a more elegant solution to this issue
     // MacOS Mojave does not have `/usr/include` even if Xcode or the
     // command line developer tools are installed.
@@ -251,7 +265,7 @@ fn transpile_single(
 
     if tcfg.pretty_typed_context {
         println!("Pretty-printed Clang AST");
-        println!("{:#?}", Printer::new(stdout()).print(&typed_context));
+        println!("{:#?}", Printer::new(io::stdout()).print(&typed_context));
     }
 
     // Perform the translation

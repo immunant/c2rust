@@ -26,6 +26,10 @@ handlebars = "1.1.0"
 itertools = "0.8"
 pathdiff = "0.1.0"
 regex = "1"
+strum = "0.13"
+strum_macros = "0.13"
+log = "0.4"
+fern = { version = "0.5", features = ["colored"] }
 
 [features]
 # Force static linking of LLVM

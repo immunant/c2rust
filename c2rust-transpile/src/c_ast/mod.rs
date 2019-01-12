@@ -28,6 +28,7 @@ pub type CEnumConstantId = CDeclId;  // Enum's need to point to child 'DeclKind:
 
 pub use self::conversion::*;
 pub use self::print::Printer;
+use super::diagnostics::Diagnostic;
 
 mod conversion;
 mod print;
@@ -381,7 +382,7 @@ impl CommentContext {
                         stmt_comments_map.entry(s).or_insert(BTreeMap::new()).insert(loc, str);
                     }
                     (None, None) => {
-                        eprintln!("Didn't find a target node for the comment '{}'", str);
+                        diag!(Diagnostic::Comments, "Didn't find a target node for the comment '{}'", str);
                     },
                 };
             }

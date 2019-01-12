@@ -148,3 +148,7 @@ args:
       help: Extra arguments to pass to clang frontend during parsing the input C file
       takes_value: true
       multiple: true
+  - warn:
+      short: W
+      help: Enable the specified warning (all enables all warnings)
+      takes_value: true
