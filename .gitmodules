@@ -25,7 +25,6 @@
 [submodule "examples/tmux/repo"]
 	path = examples/tmux/repo
 	url = git@github.com:immunant/tmux-rs.git
-
 [submodule "examples/tinycc/repo"]
 	path = examples/tinycc/repo
 	url = git@github.com:immunant/tinycc-rs.git
