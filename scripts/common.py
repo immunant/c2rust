@@ -520,6 +520,7 @@ def transpile(cc_db_path: str,
               filter: str = None,
               extra_transpiler_args: List[str] = [],
               emit_build_files: bool = True,
+              build_directory_contents: str = None,
               emit_modules: bool = False,
               main_module_for_build_files: str = None,
               cross_checks: bool = False,
@@ -535,6 +536,9 @@ def transpile(cc_db_path: str,
     args.extend(extra_transpiler_args)
     if emit_build_files:
         args.append('--emit-build-files')
+    if build_directory_contents:
+        args.append('--build-directory-contents')
+        args.append(build_directory_contents)
     if emit_modules:
         args.append('--emit-modules')
     if main_module_for_build_files:
