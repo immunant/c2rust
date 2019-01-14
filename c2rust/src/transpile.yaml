@@ -117,6 +117,21 @@ args:
       help: Name of the directory to store the build files into, e.g., c2rust-build
       takes_value: true
       default_value: c2rust-build
+  - build-directory-contents:
+      long: build-directory-contents
+      long_help: |
+          Contents of the build directory, e.g., c2rust-build.
+          Accepts one of the following:
+              nothing - does not create a build directory; instead, it places Cargo.toml and c2rust-lib.rs
+                        in the same directory as the input compilation database
+              build-only - creates a c2rust-directory containing only Cargo.toml and lib.rs
+              full - creates a standalone build directory containing both the build files and Rust source code
+      takes_value: true
+      possible_values:
+          - nothing
+          - build-only
+          - full
+      default_value: build-only
   - filter:
       long: filter
       short: f

@@ -5,6 +5,7 @@ use std::fs::File;
 use std::fs::DirBuilder;
 use std::path::{Path, PathBuf};
 use std::io::Write;
+use std::str::FromStr;
 
 use self::handlebars::Handlebars;
 use self::pathdiff::diff_paths;
@@ -12,8 +13,35 @@ use serde_json::json;
 
 use super::TranspilerConfig;
 
+#[derive(Debug)]
+pub enum BuildDirectoryContents {
+    Nothing,
+    BuildOnly,
+    Full,
+}
+
+impl FromStr for BuildDirectoryContents {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<BuildDirectoryContents, ()> {
+        match s {
+            "nothing" => Ok(BuildDirectoryContents::Nothing),
+            "build-only" => Ok(BuildDirectoryContents::BuildOnly),
+            "full" => Ok(BuildDirectoryContents::Full),
+            _ => Err(())
+        }
+    }
+}
+
 /// Create the build directory
 pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
+    if let BuildDirectoryContents::Nothing = tcfg.build_directory_contents {
+        // We do not put anything in the build directory;
+        // everything, including `Cargo.toml` and `lib.rs`, goes in the
+        // same place as the compilation database
+        return cc_db.into();
+    }
+
     let build_dir = cc_db
         .parent() // get directory of `compile_commands.json`
         .unwrap()
@@ -51,6 +79,15 @@ struct Module {
     name: String,
 }
 
+fn get_root_rs_file_name(tcfg: &TranspilerConfig) -> &str {
+    match (&tcfg.main, &tcfg.build_directory_contents) {
+        (Some(_), BuildDirectoryContents::Nothing) => "c2rust-main.rs",
+        (None, BuildDirectoryContents::Nothing) => "c2rust-lib.rs",
+        (Some(_), _) => "main.rs",
+        (None, _) => "lib.rs",
+    }
+}
+
 /// Emit `lib.rs` for a library or `main.rs` for a binary. Returns the path
 /// to `lib.rs` or `main.rs` (or `None` if the output file existed already).
 fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
@@ -83,7 +120,7 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
         "modules": modules
     });
 
-    let file_name = match tcfg.main { Some(_) => "main.rs", None => "lib.rs" };
+    let file_name = get_root_rs_file_name(tcfg);
     let output_path = build_dir.join(file_name);
     let output = reg.render("lib.rs", &json).unwrap();
 
@@ -95,6 +132,7 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) 
     // path but instead want the cross-check libs to be installed via cargo.
     let json = json!({
         "crate_name": "c2rust-build",
+        "root_rs_file": get_root_rs_file_name(tcfg),
         "main_module": tcfg.main,
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": tcfg.cross_check_backend,

@@ -51,7 +51,7 @@ use c_ast::Printer;
 use c_ast::*;
 pub use diagnostics::Diagnostic;
 
-use build_files::{get_build_dir, emit_build_files};
+use build_files::{get_build_dir, emit_build_files, BuildDirectoryContents};
 use std::prelude::v1::Vec;
 pub use translator::ReplaceMode;
 
@@ -94,6 +94,8 @@ pub struct TranspilerConfig {
     pub emit_build_files: bool,
     /// Name of the build directory, e.g., `c2rust-build`
     pub build_directory_name: String,
+    /// What to put in the build directory
+    pub build_directory_contents: BuildDirectoryContents,
     /// Names the translation unit containing the main function
     pub main: Option<String>,
 }
@@ -133,6 +135,8 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         None => cmds,
     };
 
+    let build_dir = get_build_dir(&tcfg, cc_db);
+
     let mut modules = Vec::<PathBuf>::new();
     for mut cmd in cmds {
         let CompileCmd { directory: d, file: f, ..} = cmd;
@@ -142,12 +146,11 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             &tcfg,
             input_file_abs.as_path(),
             cc_db,
+            &build_dir,
             extra_clang_args) {
             modules.push(m);
         };
     }
-
-    let build_dir = get_build_dir(&tcfg, cc_db);
 
     if tcfg.emit_build_files {
         let crate_file = emit_build_files(&tcfg, &build_dir, modules);
@@ -228,10 +231,11 @@ fn transpile_single(
     tcfg: &TranspilerConfig,
     input_path: &Path,
     cc_db: &Path,
+    build_dir: &Path,
     extra_clang_args: &[&str],
 ) -> Option<PathBuf> {
 
-    let output_path = get_output_path(input_path);
+    let output_path = get_output_path(tcfg, input_path, build_dir);
     if output_path.exists() && !tcfg.overwrite_existing {
         println!("Skipping existing file {}", output_path.display());
         return Some(output_path);
@@ -285,7 +289,11 @@ fn transpile_single(
     Some(output_path)
 }
 
-fn get_output_path(input_path: &Path) -> PathBuf {
+fn get_output_path(
+    tcfg: &TranspilerConfig,
+    input_path: &Path,
+    build_dir: &Path
+) -> PathBuf {
     let mut path_buf = PathBuf::from(input_path);
 
     // When an output file name is not explictly specified, we should convert files
@@ -299,5 +307,16 @@ fn get_output_path(input_path: &Path) -> PathBuf {
 
     path_buf.set_file_name(file_name);
     path_buf.set_extension("rs");
-    path_buf
+
+    if let BuildDirectoryContents::Full = tcfg.build_directory_contents {
+        // Place the source files under `c2rust-build/src` in Full mode
+        let mut build_path_buf = PathBuf::from(build_dir);
+        build_path_buf.push("src");
+        // FIXME: replicate the subdirectory structure as well???
+        // this currently puts all the output files in the same directory
+        build_path_buf.push(path_buf.file_name().unwrap());
+        build_path_buf
+    } else {
+        path_buf
+    }
 }

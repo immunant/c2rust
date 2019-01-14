@@ -71,6 +71,9 @@ fn main() {
         build_directory_name:   matches.value_of("build-directory-name")
             .map(String::from)
             .unwrap(),
+        build_directory_contents: matches.value_of("build-directory-contents")
+            .and_then(|x| x.parse().ok())
+            .unwrap(),
         main: {
             if matches.is_present("main") {
                 Some(String::from(matches.value_of("main").unwrap()))
