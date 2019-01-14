@@ -47,12 +47,22 @@ pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
         .unwrap()
         .join(&tcfg.build_directory_name);
 
+    let db = DirBuilder::new();
     if !build_dir.exists() {
-        let db = DirBuilder::new();
         db.create(&build_dir).expect(&format!(
             "couldn't create build directory: {}",
             build_dir.display()
         ));
+    }
+
+    if let BuildDirectoryContents::Full = tcfg.build_directory_contents {
+        let build_src_dir = build_dir.join("src");
+        if !build_src_dir.exists() {
+            db.create(&build_src_dir).expect(&format!(
+                "couldn't create build source directory: {}",
+                build_src_dir.display()
+            ));
+        }
     }
 
     build_dir
