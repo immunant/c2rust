@@ -30,4 +30,6 @@ type -P "pip3" >/dev/null || {
 pip3 install -r "$SCRIPT_DIR/requirements.txt" --user --disable-pip-version-check --quiet
 
 # Rust and dependencies
+RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain"
+export RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')
 "$SCRIPT_DIR/provision_rust.sh"
