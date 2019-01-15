@@ -17,7 +17,7 @@ apt-get install -qq --install-recommends dirmngr
 apt-get install -qq build-essential clang-6.0 cmake curl \
     git gnupg2 gperf htop ninja-build python-dev \
     software-properties-common unzip libssl-dev \
-    libclang-6.0-dev
+    libclang-6.0-dev pkg-config
 
 update-alternatives --install /usr/bin/clang clang /usr/bin/clang-6.0 100
 update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100
