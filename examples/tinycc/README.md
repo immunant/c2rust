@@ -32,7 +32,8 @@ in `tinycc`:
 
 Run `cargo run` to build and execute tinycc.
 
-## Unsupported tests
+## Modified tests
 
-`tests/tests2/70_floating_point_literals.c`, `tests/abitest.c`, `tests/tcctest.c`
-will fail to compile due to use of `long double`s which do not have a rust equivalent at this time (no `f128`).
+`tests/tests2/70_floating_point_literals.c`, `tests/abitest.c`, and
+`tests/tcctest.c` were modified due to use of `long double`s which do
+not have a rust equivalent at this time (no `f128`).
