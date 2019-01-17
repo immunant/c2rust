@@ -146,7 +146,7 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) 
     // rust_checks_path is gone because we don't want to refer to the source
     // path but instead want the cross-check libs to be installed via cargo.
     let json = json!({
-        "crate_name": "c2rust-build",
+        "crate_name": tcfg.build_directory_name,
         "root_rs_file": get_root_rs_file_name(tcfg),
         "main_module": tcfg.main,
         "cross_checks": tcfg.cross_checks,
