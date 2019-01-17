@@ -6,11 +6,11 @@ publish = false
 
 {{#if main_module~}}
 [[bin]]
-path = "main.rs"
+path = "{{root_rs_file}}"
 name = "{{main_module}}"
 {{else~}}
 [lib]
-path = "lib.rs"
+path = "{{root_rs_file}}"
 crate-type = ["staticlib"]
 {{~/if}}
 

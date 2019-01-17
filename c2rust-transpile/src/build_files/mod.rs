@@ -124,8 +124,10 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
         })
         .collect::<Vec<_>>();
 
+    let file_name = get_root_rs_file_name(tcfg);
     let rs_xcheck_backend = tcfg.cross_check_backend.replace("-", "_");
     let json = json!({
+        "root_rs_file": file_name,
         "reorganize_definitions": tcfg.reorganize_definitions,
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": rs_xcheck_backend,
@@ -134,7 +136,6 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
         "modules": modules
     });
 
-    let file_name = get_root_rs_file_name(tcfg);
     let output_path = build_dir.join(file_name);
     let output = reg.render("lib.rs", &json).unwrap();
 
