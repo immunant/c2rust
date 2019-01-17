@@ -13,7 +13,7 @@ use serde_json::json;
 
 use super::TranspilerConfig;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
     Nothing,
     BuildOnly,
@@ -35,6 +35,10 @@ impl FromStr for BuildDirectoryContents {
 
 /// Create the build directory
 pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
+    if !tcfg.emit_build_files {
+        return cc_db.into();
+    }
+
     if let BuildDirectoryContents::Nothing = tcfg.build_directory_contents {
         // We do not put anything in the build directory;
         // everything, including `Cargo.toml` and `lib.rs`, goes in the

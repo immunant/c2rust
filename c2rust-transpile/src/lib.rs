@@ -308,7 +308,8 @@ fn get_output_path(
     path_buf.set_file_name(file_name);
     path_buf.set_extension("rs");
 
-    if let BuildDirectoryContents::Full = tcfg.build_directory_contents {
+    if let (true, BuildDirectoryContents::Full) = (tcfg.emit_build_files,
+                                                   tcfg.build_directory_contents) {
         // Place the source files under `c2rust-build/src` in Full mode
         let mut build_path_buf = PathBuf::from(build_dir);
         build_path_buf.push("src");
