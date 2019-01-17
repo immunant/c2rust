@@ -35,23 +35,23 @@ impl FromStr for BuildDirectoryContents {
 
 /// Create the build directory
 pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
+    let cc_db_dir = cc_db
+        .parent() // get directory of `compile_commands.json`
+        .unwrap();
+
     if !tcfg.emit_build_files {
-        return cc_db.into();
+        return cc_db_dir.into();
     }
 
     if let BuildDirectoryContents::Nothing = tcfg.build_directory_contents {
         // We do not put anything in the build directory;
         // everything, including `Cargo.toml` and `lib.rs`, goes in the
         // same place as the compilation database
-        return cc_db.into();
+        return cc_db_dir.into();
     }
 
-    let build_dir = cc_db
-        .parent() // get directory of `compile_commands.json`
-        .unwrap()
-        .join(&tcfg.build_directory_name);
-
     let db = DirBuilder::new();
+    let build_dir = cc_db_dir.join(&tcfg.build_directory_name);
     if !build_dir.exists() {
         db.create(&build_dir).expect(&format!(
             "couldn't create build directory: {}",
