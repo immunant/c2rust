@@ -2366,10 +2366,10 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                let block_body = mk().block(stmts);
-                let block: P<Expr> = mk().labelled_block_expr(block_body, lbl.pretty_print());
+                let block_body = mk().block(stmts.clone());
+                let val: P<Expr> = mk().labelled_block_expr(block_body, lbl.pretty_print());
 
-                Ok(WithStmts::new(block))
+                Ok(WithStmts { stmts, val })
             }
             _ => {
                 if ctx.is_unused()  {
