@@ -16,6 +16,7 @@ env_logger = "0.6.0"
 tempfile = "3"
 cargo = "0.32.0"
 toml_edit = "0.1.3"
+regex = "1.1"
 c2rust-analysis-rt = { path = "../analysis/runtime" }
 c2rust-transpile = { version = "0.9.0", path = "../c2rust-transpile" }
 c2rust-refactor = { version = "0.9.0", path = "../c2rust-refactor" }

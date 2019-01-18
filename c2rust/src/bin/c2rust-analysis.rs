@@ -115,7 +115,7 @@ impl Instrumenter {
         env::set_current_dir(&self.out_path)
             .expect("Could not change to temporary build directory");
         let refactor_options = c2rust_refactor::Options {
-            rewrite_mode: c2rust_refactor::file_io::OutputMode::InPlace,
+            rewrite_modes: vec![c2rust_refactor::file_io::OutputMode::InPlace],
             commands: vec![
                 c2rust_refactor::Command {
                     name: String::from("lifetime_analysis"),
