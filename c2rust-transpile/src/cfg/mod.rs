@@ -999,6 +999,7 @@ impl DeclStmtStore {
 /// Represents a `BasicBlock` under construction where the bit under construction is the end. Extra
 /// statements may be added in the `body` and extra declarations may be added to `defined`. However,
 /// the `label` and `live` should not change.
+#[derive(Debug)]
 struct WipBlock {
     /// Label of WIP.
     label: Label,

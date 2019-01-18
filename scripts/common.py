@@ -11,7 +11,7 @@ import argparse
 import platform
 import multiprocessing
 
-from typing import List
+from typing import Optional, List, Callable
 
 try:
     import plumbum as pb
@@ -39,7 +39,7 @@ class Config:
 
     ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
     ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
-    DEPS_DIR = os.path.join(ROOT_DIR, 'dependencies')
+    DEPS_DIR = os.path.join(ROOT_DIR, 'build')
     RREF_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
     C2RUST_DIR = os.path.join(ROOT_DIR, 'c2rust')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
@@ -50,6 +50,18 @@ class Config:
     AST_EXPO_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-exporter')
     AST_EXPO_SRC_DIR = os.path.join(AST_EXPO_DIR, 'src')
     AST_EXPO_PRJ_DIR = os.path.join(AST_EXPO_DIR, 'xcode')
+    RUST_CHECKS_DIR = os.path.join(CROSS_CHECKS_DIR, 'rust-checks')
+
+    TRANSPILE_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-transpile')
+    REFACTOR_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
+    AST_BUILDER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-builder')
+    AST_EXPORTER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-exporter')
+    BITFIELDS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-bitfields')
+    XCHECK_PLUGIN_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'rustc-plugin')
+    XCHECK_RUNTIME_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'runtime')
+    XCHECK_DERIVE_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'derive-macros')
+    XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'backends', 'dynamic-dlsym')
+    XCHECK_CONFIG_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'config')
 
     CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
     # use an install prefix unique to the host
@@ -94,7 +106,7 @@ add_subdirectory(c2rust-ast-exporter)
     CUSTOM_RUST_RUSTC_VERSION = "rustc 1.32.0-nightly (21f268495 2018-12-02)"
 
     def __init__(self):
-        self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER) 
+        self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER)
                                   for s in Config.LLVM_ARCHIVE_URLS]
         self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_FILES = [os.path.basename(s)
@@ -103,6 +115,8 @@ add_subdirectory(c2rust-ast-exporter)
                                   for s in self.LLVM_ARCHIVE_FILES]
         self.LLVM_ARCHIVE_FILES = [os.path.join(Config.DEPS_DIR, s)
                                    for s in self.LLVM_ARCHIVE_FILES]
+        self.TRANSPILER = None  # set in `update_args`
+        self.RREF_BIN = None  # set in `update_args`
         self.check_rust_toolchain()
         self.update_args()
 
@@ -122,16 +136,21 @@ add_subdirectory(c2rust-ast-exporter)
             assert self.CUSTOM_RUST_NAME == toolchain_name, emesg
 
     def update_args(self, args=None):
-        build_type = 'release'
-        if args:
-            if args.debug:
-                build_type = 'debug'
+        build_type = 'debug' if args and args.debug else 'release'
+
+        self.BUILD_TYPE = build_type
 
         self.TRANSPILER = "target/{}/c2rust-transpile".format(build_type)
         self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)
 
         self.RREF_BIN = "target/{}/c2rust-refactor".format(build_type)
         self.RREF_BIN = os.path.join(self.ROOT_DIR, self.RREF_BIN)
+
+        self.C2RUST_BIN = "target/{}/c2rust".format(build_type)
+        self.C2RUST_BIN = os.path.join(self.ROOT_DIR, self.C2RUST_BIN)
+
+        self.TARGET_DIR = "target/{}/".format(build_type)
+        self.TARGET_DIR = os.path.join(self.ROOT_DIR, self.TARGET_DIR)
 
     @staticmethod
     def add_args(parser: argparse.ArgumentParser):
@@ -495,6 +514,58 @@ def export_ast_from(ast_expo: pb.commands.BaseCommand,
 
         logging.fatal("command failed: %s", ast_expo[args])
         die("AST export failed: " + mesg, pee.retcode)
+
+
+def transpile(cc_db_path: str,
+              filter: str = None,
+              extra_transpiler_args: List[str] = [],
+              emit_build_files: bool = True,
+              build_directory_contents: str = None,
+              emit_modules: bool = False,
+              main_module_for_build_files: str = None,
+              cross_checks: bool = False,
+              use_fakechecks: bool = False,
+              cross_check_config: List[str] = [],
+              incremental_relooper: bool = True,
+              reorganize_definitions: bool = False) -> bool:
+    """
+    run the transpiler on all C files in a compile commands database.
+    """
+    c2rust = get_cmd_or_die(config.C2RUST_BIN)
+    args = ['transpile', cc_db_path]
+    args.extend(extra_transpiler_args)
+    if emit_build_files:
+        args.append('--emit-build-files')
+    if build_directory_contents:
+        args.append('--build-directory-contents')
+        args.append(build_directory_contents)
+    if emit_modules:
+        args.append('--emit-modules')
+    if main_module_for_build_files:
+        args.append('--main')
+        args.append(main_module_for_build_files)
+    if cross_checks:
+        args.append('--cross-checks')
+    if use_fakechecks:
+        args.append('--use-fakechecks')
+    if cross_check_config and cross_checks:
+        args.append('--cross-check-config')
+        for ccc in cross_check_config:
+            args.append(ccc)
+    if not incremental_relooper:
+        args.append('--no-incremental-relooper')
+    if reorganize_definitions:
+        args.append('--reorganize-definitions')
+    if filter:
+        args.append('--filter')
+        args.append(filter)
+
+    logging.debug("translation command:\n %s", str(c2rust[args]))
+    retcode, stdout, stderr = (c2rust[args]).run(retcode=None)
+    logging.debug("stdout:\n%s", stdout)
+    logging.debug("stderr:\n%s", stderr)
+
+    return retcode == 0
 
 
 def _get_gpg_cmd():

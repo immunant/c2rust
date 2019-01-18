@@ -1,24 +1,32 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from common import Config
 from plumbum.cmd import mv, mkdir, rename
 from plumbum import local
-from transpile import transpile_files
 from typing import Tuple
+from common import (
+    Colors,
+    Config,
+    get_cmd_or_die,
+    pb,
+    setup_logging,
+    transpile
+)
 
 import argparse
+import logging
 import multiprocessing
 import os
 import re
+import sys
 
 desc = 'transpile files in compiler_commands.json.'
 parser = argparse.ArgumentParser(description="Translates tmux into the repo/rust/src directory")
 parser.add_argument('-f', '--filter',
                     default="",
                     help='Filters translated files')
-
 config = Config()
+config.add_args(parser)
 
 C2RUST_DIR = config.ROOT_DIR
 TMUX_REPO = os.path.join(C2RUST_DIR, "examples/tmux/repo")
@@ -47,7 +55,7 @@ FILES_NEEDING_TRAILING_UNDERSCORE = [
     "window.rs",
 ]
 MAIN_MODS = """\
-#![feature(const_slice_as_ptr, ptr_wrapping_offset_from, used)]
+#![feature(label_break_value, ptr_wrapping_offset_from, used)]
 #![allow(unused_imports)]
 extern crate libc;
 
@@ -193,17 +201,18 @@ def add_mods(path: str):
 
 
 if __name__ == "__main__":
+    setup_logging()
     args = parser.parse_args()
-    transpiler_args = [
-        "--reduce-type-annotations",
-    ]
+
+    # Add option to use the debug version of `c2rust`
+    config.update_args(args)
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
 
-    with open(COMPILE_COMMANDS, 'r') as cc_json:
-        transpile_files(cc_json, filter=lambda f: args.filter in f,
-                        emit_build_files=False, verbose=True,
-                        extra_transpiler_args=transpiler_args, reorganize_definitions=True)
+    print(Colors.OKBLUE + "Transpiling..." + Colors.NO_COLOR)
+    transpile(COMPILE_COMMANDS, emit_build_files=False,
+              reorganize_definitions=True,
+              extra_transpiler_args=["--reduce-type-annotations"])
 
     # Move and rename tmux.rs to main.rs
     move(TMUX_RS, MAIN_RS)
@@ -227,3 +236,4 @@ if __name__ == "__main__":
 
     # main.rs needs to know about modules so we add them here
     add_mods(MAIN_RS)
+    print(Colors.OKGREEN + "Done!" + Colors.NO_COLOR)

@@ -172,14 +172,21 @@ def build_transpiler(args):
     llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
     assert os.path.isfile(llvm_config), "missing binary: " + llvm_config
 
-    # HACK(perl): `llvm-config --system-libs` does what we want but
-    # doesn't seem to work unless we actually install our LLVM build.
     if on_mac():
         llvm_system_libs = "-lz -lcurses -lm -lxml2"
     else:  # linux
         llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm"
 
     llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
+
+    # log how we run `cargo build` to aid troubleshooting, IDE setup, etc.
+    msg = "invoking cargo build as\ncd {} && \\\n".format(c.C2RUST_DIR)
+    msg += "LLVM_CONFIG_PATH={} \\\n".format(llvm_config)
+    msg += "LLVM_SYSTEM_LIBS='{}' \\\n".format(llvm_system_libs)
+    msg += "C2RUST_AST_EXPORTER_LIB_DIR={} \\\n".format(llvm_libdir)
+    msg += " cargo +{} ".format(c.CUSTOM_RUST_NAME)
+    msg += " ".join(build_flags)
+    logging.debug(msg)
 
     with pb.local.cwd(c.C2RUST_DIR):
         with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
@@ -272,6 +279,17 @@ def _main():
     configure_and_build_llvm(args)
 
     build_transpiler(args)
+
+    # print a helpful message on how to run c2rust bin directly
+    c2rust_bin_path = 'target/debug/c2rust' if args.debug \
+                      else 'target/release/c2rust'
+    c2rust_bin_path = os.path.join(c.ROOT_DIR, c2rust_bin_path)
+    # if os.path.curdir
+    abs_curdir = os.path.abspath(os.path.curdir)
+    common_path = os.path.commonpath([abs_curdir, c2rust_bin_path])
+    if common_path != "/":
+        c2rust_bin_path = "." + c2rust_bin_path[len(common_path):]
+    print("success! you may now run", c2rust_bin_path)
 
 
 if __name__ == "__main__":

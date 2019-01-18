@@ -9,7 +9,6 @@ JSON_C_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'repo'))
 
 sys.path.append(os.path.join(JSON_C_DIR, '../../../scripts'))
 from common import *
-import transpile
 
 
 # List of c2rust-refactor commands to run.
@@ -108,10 +107,7 @@ def main():
 
 
     # Actually translate
-    with open('compile_commands.json', 'r') as f:
-        transpile.transpile_files(f,
-                emit_build_files=False,
-                verbose=True)
+    transpile_files('compile_commands.json', emit_build_files=False)
 
 
     # Move rust files into rust/src

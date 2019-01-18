@@ -31,6 +31,7 @@ use renamer::Renamer;
 use with_stmts::WithStmts;
 
 mod assembly;
+mod bitfields;
 mod builtins;
 mod literals;
 mod main_function;
@@ -90,6 +91,7 @@ pub struct ExprContext {
     is_static: bool,
     decay_ref: DecayRef,
     va_decl: Option<CDeclId>,
+    is_bitfield_write: bool,
 }
 
 impl ExprContext {
@@ -102,6 +104,10 @@ impl ExprContext {
     pub fn static_(self) -> Self { ExprContext { is_static: true, .. self } }
     pub fn set_static(self, is_static: bool) -> Self { ExprContext { is_static, .. self } }
     pub fn is_va_decl(&self, decl_id: CDeclId) -> bool { Some(decl_id) == self.va_decl }
+    pub fn is_bitfield_write(&self) -> bool { self.is_bitfield_write }
+    pub fn set_bitfield_write(self, is_bitfield_write: bool) -> Self {
+        ExprContext { is_bitfield_write, .. self }
+    }
 }
 
 pub struct Translation<'c> {
@@ -114,6 +120,7 @@ pub struct Translation<'c> {
     pub features: RefCell<IndexSet<&'static str>>,
     pub item_store: RefCell<ItemStore>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
+    extern_crates: RefCell<IndexSet<&'static str>>,
 
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
@@ -129,6 +136,15 @@ pub struct Translation<'c> {
 
     // Mod names to try to stop collisions from happening
     mod_names: RefCell<IndexMap<String, PathBuf>>,
+
+    // The file that the translator is operating on w/o its extension
+    main_file: PathBuf,
+}
+
+fn simple_metaitem(name: &str) -> NestedMetaItem {
+    let meta_item = mk().meta_item(vec![name], MetaItemKind::Word);
+
+    mk().nested_meta_item(NestedMetaItemKind::MetaItem(meta_item))
 }
 
 fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
@@ -182,6 +198,11 @@ fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> 
                                       mk().angle_bracketed_args(type_args)),
     ];
     mk().call_expr(mk().path_expr(path), vec![expr])
+}
+
+fn vec_expr(val: P<Expr>, count: P<Expr>) -> P<Expr> {
+    let from_elem = mk().path_expr(vec!["", "std", "vec", "from_elem"]);
+    mk().call_expr(from_elem, vec![val, count])
 }
 
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> P<Block> {
@@ -287,23 +308,22 @@ pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
     }
 }
 
-pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> String {
+pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_file: PathBuf) -> String {
 
-    let mut t = Translation::new(ast_context, tcfg);
+    let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
         used: true,
         is_static: false,
         decay_ref: DecayRef::Default,
         va_decl: None,
+        is_bitfield_write: false,
     };
-
-    if !t.tcfg.translate_entry {
-        t.ast_context.c_main = None;
-    }
 
     if t.tcfg.reorganize_definitions {
         t.features.borrow_mut().insert("custom_attribute");
     }
+
+    t.extern_crates.borrow_mut().insert("libc");
 
     // Headers often pull in declarations that are unused;
     // we simplify the translator output by omitting those.
@@ -404,7 +424,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
             };
             if needs_export {
                 let decl_file_path = decl.loc.as_ref().map(|loc| &loc.file_path).into_iter().flatten().next();
-                let main_file_path = &t.tcfg.main_file;
+                let main_file_path = &t.main_file;
 
                 if t.tcfg.reorganize_definitions && decl_file_path != Some(main_file_path) {
                     t.generate_submodule_imports(decl_id, decl_file_path);
@@ -437,7 +457,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
                     Some(Some(s)) => Some(s),
                     _ => None,
                 };
-                let main_file_path = &t.tcfg.main_file;
+                let main_file_path = &t.main_file;
 
                 if t.tcfg.reorganize_definitions && decl_file_path != Some(main_file_path) {
                     t.generate_submodule_imports(*top_id, decl_file_path);
@@ -465,7 +485,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig) -> Strin
                     translate_failure(&t.tcfg, &msg)
                 }
             }
-        };
+        }
 
         // Initialize global statics when necessary
         if !t.sectioned_static_initializers.borrow().is_empty() {
@@ -576,7 +596,7 @@ fn make_submodule(submodule_item_store: &mut ItemStore, file_path: &path::Path,
 
 /// Pretty-print the leading pragmas and extern crate declarations
 fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
-    if t.tcfg.emit_module {
+    if t.tcfg.emit_modules {
         s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
     } else {
         let mut features = vec!["libc"];
@@ -628,8 +648,11 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
             }
         }
 
-        // Add `extern crate libc` to the top of the file
-        s.print_item(&mk().extern_crate_item("libc", None))?;
+        // Add `extern crate X;` to the top of the file
+        for crate_name in t.extern_crates.borrow().iter() {
+            s.print_item(&mk().extern_crate_item(*crate_name, None))?;
+        }
+
         if t.tcfg.cross_checks {
             s.print_item(&mk().single_attr("macro_use")
                 .extern_crate_item("c2rust_xcheck_derive", None))?;
@@ -682,14 +705,14 @@ pub enum ExprUse {
 /// Foreign items are called out specially because we'll combine all of them
 /// into a single extern block at the end of translation.
 #[derive(Debug)]
-enum ConvertedDecl {
+pub enum ConvertedDecl {
     ForeignItem(ForeignItem),
     Item(P<Item>),
     NoItem,
 }
 
 impl<'c> Translation<'c> {
-    pub fn new(mut ast_context: TypedAstContext, tcfg: &'c TranspilerConfig) -> Self {
+    pub fn new(mut ast_context: TypedAstContext, tcfg: &'c TranspilerConfig, main_file: PathBuf) -> Self {
         let comment_context = RefCell::new(CommentContext::new(&mut ast_context));
         let mut type_converter = TypeConverter::new();
 
@@ -706,7 +729,7 @@ impl<'c> Translation<'c> {
                 "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",
                 "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
                 "ref", "return", "Self", "self", "static", "struct", "super", "trait", "true",
-                "type", "unsafe", "use", "where", "while",
+                "type", "unsafe", "use", "where", "while", "dyn",
 
                 // Keywords reserved for future use
                 "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
@@ -725,6 +748,8 @@ impl<'c> Translation<'c> {
             sectioned_static_initializers: RefCell::new(Vec::new()),
             mod_blocks: RefCell::new(IndexMap::new()),
             mod_names: RefCell::new(IndexMap::new()),
+            main_file,
+            extern_crates: RefCell::new(IndexSet::new()),
         }
     }
 
@@ -777,6 +802,8 @@ impl<'c> Translation<'c> {
         false
     }
 
+    /// The purpose of this function is to decide on whether or not a static initializer's
+    /// translation is able to be compiled as a valid rust static initializer
     fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use c_ast::UnOp::{AddressOf, Negate};
         use c_ast::CastKind::PointerToIntegral;
@@ -828,6 +855,27 @@ impl<'c> Translation<'c> {
                         }
                     }
                 },
+                CExprKind::InitList(qtype, _, _, _) => {
+                    let ty = &self.ast_context.resolve_type(qtype.ctype).kind;
+
+                    match ty {
+                        CTypeKind::Struct(decl_id) => {
+                            let decl = &self.ast_context[*decl_id].kind;
+
+                            if let CDeclKind::Struct { fields: Some(fields), .. } = decl {
+                                for field_id in fields {
+                                    let field_decl = &self.ast_context[*field_id].kind;
+
+                                    if let CDeclKind::Field { bitfield_width: Some(_), .. } = field_decl {
+                                        return true;
+                                    }
+                                }
+                            }
+                        },
+                        _ => {},
+                    }
+
+                },
                 _ => {},
             }
         }
@@ -838,12 +886,18 @@ impl<'c> Translation<'c> {
     fn add_static_initializer_to_section(&self, name: &str, typ: CQualTypeId, init: &mut P<Expr>) -> Result<(), String> {
         let root_lhs_expr = mk().path_expr(vec![name]);
         let assign_expr = {
-            let block = match &init.node {
-                ExprKind::Block(block, _) => block,
-                _ => unreachable!("Found static initializer type other than block"),
+            let first_stmt = match &init.node {
+                ExprKind::Block(block, _) => block.stmts[0].clone(),
+                // This only seems to appear when an array init is a private static
+                ExprKind::Array(args) => {
+                    let array_expr = mk().array_expr(args.clone());
+
+                    mk().expr_stmt(array_expr)
+                },
+                ref e => unreachable!("Found static initializer type other than block or array: {:?}", e),
             };
 
-            let expr = match &block.stmts[0].node {
+            let expr = match first_stmt.node {
                 StmtKind::Expr(ref expr) => expr,
                 _ => unreachable!("Found static initializer type other than Expr"),
             };
@@ -899,30 +953,44 @@ impl<'c> Translation<'c> {
             CDeclKind::Enum { integral_type: None, .. } => {
                 self.use_feature("extern_types");
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
-                let extern_item = mk().span(s).pub_().foreign_ty(name);
+                let extern_item = mk().span(s).pub_().ty_foreign_item(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
-            CDeclKind::Struct { fields: Some(ref fields), is_packed, manual_alignment, max_field_alignment, .. } => {
+            CDeclKind::Struct {
+                fields: Some(ref fields),
+                is_packed,
+                manual_alignment,
+                max_field_alignment,
+                platform_byte_size,
+                ..
+            } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
+                let mut has_bitfields = false;
 
                 // Gather up all the field names and field types
                 let mut field_entries = vec![];
+                let mut field_info = Vec::new();
+
                 for &x in fields {
                     match self.ast_context.index(x).kind {
-                        CDeclKind::Field { ref name, typ, .. } => {
+                        CDeclKind::Field { ref name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth } => {
                             let name = self.type_converter.borrow_mut().declare_field_name(decl_id, x, name);
+
+                            has_bitfields |= bitfield_width.is_some();
+
+                            field_info.push((name.clone(), typ.clone(), bitfield_width, platform_bit_offset, platform_type_bitwidth));
+
                             let typ = self.convert_type(typ.ctype)?;
-                            field_entries.push(mk().span(s).pub_().struct_field(name, typ))
+
+                            field_entries.push(mk().span(s).pub_().struct_field(name, typ));
                         }
                         _ => return Err(format!("Found non-field in record field list")),
                     }
                 }
 
-                fn simple_metaitem(name: &str) -> ast::NestedMetaItem {
-                    mk().nested_meta_item(
-                        NestedMetaItemKind::MetaItem(
-                            mk().meta_item(vec![name], MetaItemKind::Word)))
+                if has_bitfields {
+                    return self.convert_bitfield_struct_decl(name, manual_alignment, platform_byte_size, s, field_info);
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
@@ -1067,7 +1135,7 @@ impl<'c> Translation<'c> {
                     .span(s)
                     .set_mutbl(mutbl)
                     .vis(visibility)
-                    .foreign_static(&new_name, ty);
+                    .static_foreign_item(&new_name, ty);
 
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
@@ -1289,7 +1357,7 @@ impl<'c> Translation<'c> {
                 let function_decl = mk_linkage(true, new_name, name)
                     .span(span)
                     .vis(visibility)
-                    .foreign_fn(new_name, decl);
+                    .fn_foreign_item(new_name, decl);
 
                 Ok(ConvertedDecl::ForeignItem(function_decl))
             }
@@ -1893,19 +1961,19 @@ impl<'c> Translation<'c> {
 
             let val = mk().binary_expr(BinOpKind::Mul, lhs, rhs);
 
-            Ok(WithStmts { stmts, val })
-
-        } else {
-            let ty = self.convert_type(type_id)?;
-            let name = "size_of";
-            let params = mk().angle_bracketed_args(vec![ty]);
-            let path = vec![mk().path_segment(""),
-                            mk().path_segment("std"),
-                            mk().path_segment("mem"),
-                            mk().path_segment_with_args(name, params)];
-            let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
-            Ok(WithStmts::new(call))
+            return Ok(WithStmts { stmts, val })
         }
+
+        let ty = self.convert_type(type_id)?;
+        let name = "size_of";
+        let params = mk().angle_bracketed_args(vec![ty]);
+        let path = vec![mk().path_segment(""),
+                        mk().path_segment("std"),
+                        mk().path_segment("mem"),
+                        mk().path_segment_with_args(name, params)];
+        let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
+
+        Ok(WithStmts::new(call))
     }
 
     pub fn compute_align_of_type(&self, mut type_id: CTypeId)
@@ -2182,8 +2250,16 @@ impl<'c> Translation<'c> {
             }
 
             CExprKind::Member(_, expr, decl, kind, _) => {
+                let is_bitfield = match &self.ast_context[decl].kind {
+                    CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
+                    _ => unreachable!("Found a member which is not a field"),
+                };
 
-                if ctx.is_unused() {
+                if is_bitfield {
+                    let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
+
+                    self.convert_bitfield_member_expr(ctx, field_name, expr, kind)
+                } else if ctx.is_unused() {
                     self.convert_expr(ctx, expr)
                 } else {
                     let field_name = self.type_converter.borrow().resolve_field_name(None, decl).unwrap();
@@ -2290,10 +2366,10 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                let block_body = mk().block(stmts);
-                let block: P<Expr> = mk().labelled_block_expr(block_body, lbl.pretty_print());
+                let block_body = mk().block(stmts.clone());
+                let val: P<Expr> = mk().labelled_block_expr(block_body, lbl.pretty_print());
 
-                Ok(WithStmts::new(block))
+                Ok(WithStmts { stmts, val })
             }
             _ => {
                 if ctx.is_unused()  {
@@ -2414,7 +2490,7 @@ impl<'c> Translation<'c> {
                             return Ok(val)
                         }
                     }
-                }                
+                }
 
                 let is_const = pointee.qualifiers.is_const;
 
@@ -2582,12 +2658,9 @@ impl<'c> Translation<'c> {
 
             // Find base element type of potentially nested arrays
             let inner = self.variable_array_base_type(elt);
-
             let count = self.compute_size_of_expr(ty_id).unwrap();
             let val = self.implicit_default_expr(inner, is_static)?;
-            let from_elem = mk().path_expr(vec!["", "std", "vec", "from_elem"]);
-            let alloc = mk().call_expr(from_elem, vec![val, count]);
-            Ok(alloc)
+            Ok(vec_expr(val, count))
         } else if let &CTypeKind::Vector(CQualTypeId { ctype, .. }, len) = resolved_ty {
             self.implicit_vector_default(ctype, len)
         } else {
@@ -2607,7 +2680,7 @@ impl<'c> Translation<'c> {
         let init = match self.ast_context.index(decl_id).kind {
 
             // Zero initialize all of the fields
-            CDeclKind::Struct { ref fields, .. } => {
+            CDeclKind::Struct { ref fields, platform_byte_size, .. } => {
                 let name = self.type_converter.borrow().resolve_decl_name(decl_id).unwrap();
 
                 let fields = match *fields {
@@ -2615,22 +2688,31 @@ impl<'c> Translation<'c> {
                     None => return Err(format!("Attempted to zero-initialize forward-declared struct")),
                 };
 
-                let fields: Result<Vec<Field>, String> = fields
-                    .into_iter()
-                    .map(|field_id: &CFieldId| -> Result<Field, String> {
-                        let name = self.type_converter.borrow().resolve_field_name(Some(decl_id), *field_id).unwrap();
+                let has_bitfields = fields.iter().map(|field_id| match self.ast_context.index(*field_id).kind {
+                    CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
+                    _ => unreachable!("Found non-field in record field list"),
+                }).any(|x| x);
 
-                        match self.ast_context.index(*field_id).kind {
-                            CDeclKind::Field { typ, .. } => {
-                                let field_init = self.implicit_default_expr(typ.ctype, is_static)?;
-                                Ok(mk().field(name, field_init))
+                if has_bitfields {
+                    self.bitfield_zero_initializer(name, fields, platform_byte_size, is_static)
+                } else {
+                    let fields: Result<Vec<Field>, String> = fields
+                        .into_iter()
+                        .map(|field_id| {
+                            let name = self.type_converter.borrow().resolve_field_name(Some(decl_id), *field_id).unwrap();
+
+                            match self.ast_context.index(*field_id).kind {
+                                CDeclKind::Field { typ, .. } => {
+                                    let field_init = self.implicit_default_expr(typ.ctype, is_static)?;
+                                    Ok(mk().field(name, field_init))
+                                }
+                                _ => Err(format!("Found non-field in record field list"))
                             }
-                            _ => Err(format!("Found non-field in record field list"))
-                        }
-                    })
-                    .collect();
+                        })
+                        .collect();
 
-                Ok(mk().struct_expr(vec![name], fields?))
+                    Ok(mk().struct_expr(vec![name], fields?))
+                }
             },
 
             // Zero initialize the first field
@@ -2804,7 +2886,7 @@ impl<'c> Translation<'c> {
 
                 // Either the decl lives in the parent module, or else in a sibling submodule
                 match decl_loc.file_path {
-                    Some(ref decl_path) if decl_path == &self.tcfg.main_file => {
+                    Some(ref decl_path) if decl_path == &self.main_file => {
                         store.uses
                             .get_mut(vec!["super".into()])
                             .insert(ident_name);

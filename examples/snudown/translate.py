@@ -6,18 +6,17 @@
 
 from shutil import rmtree
 from common import *
-import transpile
 from collections import namedtuple
 
 
-CompileCommand = namedtuple('CompileCommand', ['directory', 'command', 'file'])
+CompileCommand = namedtuple('CompileCommand', ['directory', 'arguments', 'file'])
 
 
 class CompileCommandsBuilder(object):
     entries: List[CompileCommand] = []
 
-    def add_entry(self, dir: str, cmd: str, file: str) -> None:
-        entry = CompileCommand(directory=dir, command=cmd, file=file)
+    def add_entry(self, dir: str, args: [], file: str) -> None:
+        entry = CompileCommand(directory=dir, arguments=args, file=file)
         self.entries.append(entry._asdict())
 
     def write_result(self, outdir: str) -> None:
@@ -55,21 +54,18 @@ def main(xcheck: bool, snudown: str):
     ctmpl = "cc -o {snudown}/src/{slug}.c.o -c {snudown}/src/{slug}.c -Isrc -Ihtml -Wwrite-strings -D_FORTIFY_SOURCE=0 -DNDEBUG=1"
 
     for s in slugs:
-        cmd = ctmpl.format(slug=s, snudown=snudown)
+        args = ctmpl.format(slug=s, snudown=snudown)
+        arguments = [c for c in args.split()]
         file = os.path.join(snudown, "src", s + ".c")
         assert os.path.isfile(file), "No such file: " + file
-        bldr.add_entry(snudown, cmd, file)
+        bldr.add_entry(snudown, arguments, file)
 
     cmds_json_path = bldr.write_result(os.path.curdir)
-    config_path = os.path.join(snudown, "../snudown_rust.c2r")
-    with open(cmds_json_path, "r") as cmds_json:
-        transpile.transpile_files(cmds_json,
-                                  filter=None,
-                                  extra_transpiler_args=[],
-                                  emit_build_files=True,
-                                  main_module_for_build_files=None,
-                                  cross_checks=xcheck,
-                                  cross_check_config=[config_path])
+    config_path = os.path.join(snudown, "xchecks/snudown_rust.yaml")
+
+    transpile(cmds_json_path, emit_build_files=True,
+              cross_checks=xcheck, cross_check_config=[config_path],
+              build_directory_contents="full")
 
     with pb.local.cwd(os.path.join(snudown, "c2rust-build")):
         cargo = get_cmd_or_die("cargo")

@@ -1,4 +1,5 @@
-#![cfg_attr(feature="parse-syntax", feature(rustc_private, try_from))]
+#![cfg_attr(feature = "parse-syntax", feature(rustc_private, try_from))]
+#![feature(box_patterns)]
 
 #[macro_use]
 extern crate serde_derive;
@@ -9,11 +10,13 @@ extern crate serde_yaml;
 extern crate globset;
 
 pub mod attr;
-#[cfg(feature="scopes")] pub mod scopes;
+#[cfg(feature = "scopes")]
+pub mod scopes;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::str::FromStr;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]
@@ -40,9 +43,8 @@ pub enum XCheckType {
 impl XCheckType {
     pub fn is_disabled(&self) -> bool {
         match *self {
-            XCheckType::None |
-            XCheckType::Disabled => true,
-            _ => false
+            XCheckType::None | XCheckType::Disabled => true,
+            _ => false,
         }
     }
 }
@@ -98,7 +100,7 @@ impl DefaultsConfig {
                 if other.$field.is_some() {
                     self.$field = other.$field.clone();
                 }
-            }
+            };
         };
         update_field!(disable_xchecks);
         update_field!(entry);
@@ -173,12 +175,6 @@ pub enum FieldIndex {
     Str(String),
 }
 
-impl FieldIndex {
-    pub fn from_str(s: &str) -> FieldIndex {
-        FieldIndex::Str(String::from(s))
-    }
-}
-
 #[derive(Deserialize, Debug, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum CustomHashFormat {
@@ -187,13 +183,19 @@ pub enum CustomHashFormat {
     Extern,
 }
 
-impl CustomHashFormat {
-    pub fn from_str(s: &str) -> CustomHashFormat {
+#[derive(Debug)]
+pub struct CustomHashFormatError(String);
+
+impl FromStr for CustomHashFormat {
+    type Err = CustomHashFormatError;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<CustomHashFormat, CustomHashFormatError> {
         match s {
-            "function"   => CustomHashFormat::Function,
-            "expression" => CustomHashFormat::Expression,
-            "extern"     => CustomHashFormat::Extern,
-            _ => panic!("unexpected custom_hash_format: {}", s)
+            "function" => Ok(CustomHashFormat::Function),
+            "expression" => Ok(CustomHashFormat::Expression),
+            "extern" => Ok(CustomHashFormat::Extern),
+            _ => Err(CustomHashFormatError(s.to_string())),
         }
     }
 }
@@ -227,9 +229,9 @@ pub struct StructConfig {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "item", rename_all = "lowercase")]
 pub enum ItemConfig {
-    Defaults(DefaultsConfig),
-    Function(FunctionConfig),
-    Struct(StructConfig),
+    Defaults(Box<DefaultsConfig>),
+    Function(Box<FunctionConfig>),
+    Struct(Box<StructConfig>),
     Value,   // TODO
     Closure, // TODO
 }
@@ -237,35 +239,37 @@ pub enum ItemConfig {
 impl ItemConfig {
     fn name(&self) -> Option<&str> {
         match *self {
-            ItemConfig::Function(FunctionConfig { ref name, .. }) => Some(&name[..]),
-            ItemConfig::Struct(StructConfig { ref name, .. }) => Some(&name[..]),
-            _ => None
+            ItemConfig::Function(box FunctionConfig { ref name, .. }) => Some(&name[..]),
+            ItemConfig::Struct(box StructConfig { ref name, .. }) => Some(&name[..]),
+            _ => None,
         }
     }
 
     pub fn nested_items(&self) -> Option<&ItemList> {
         match *self {
-            ItemConfig::Function(FunctionConfig { ref nested, .. }) => nested.as_ref(),
-            ItemConfig::Struct(StructConfig { ref nested, .. }) => nested.as_ref(),
+            ItemConfig::Function(box FunctionConfig { ref nested, .. }) => nested.as_ref(),
+            ItemConfig::Struct(box StructConfig { ref nested, .. }) => nested.as_ref(),
             // TODO: other cases
-            _ => None
+            _ => None,
         }
     }
 }
 
+pub type ItemConfigRef = Rc<ItemConfig>;
+
 #[derive(Deserialize, Debug, Default, Clone)]
-pub struct ItemList(Vec<Rc<ItemConfig>>);
+pub struct ItemList(Vec<ItemConfigRef>);
 
 impl ItemList {
-    pub fn items(&self) -> &Vec<Rc<ItemConfig>> {
-        &self.0
+    pub fn items(&self) -> &[ItemConfigRef] {
+        &self.0[..]
     }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct NamedItemList {
     // FIXME: _items is unused; do we really need it???
-    pub name_map: HashMap<String, Vec<Rc<ItemConfig>>>,
+    pub name_map: HashMap<String, Vec<ItemConfigRef>>,
 }
 
 impl NamedItemList {
@@ -275,12 +279,10 @@ impl NamedItemList {
             if let Some(item_name) = item.name().map(String::from) {
                 map.entry(item_name)
                     .or_default()
-                    .push(Rc::clone(item));
+                    .push(ItemConfigRef::clone(item));
             }
         }
-        NamedItemList {
-            name_map: map,
-        }
+        NamedItemList { name_map: map }
     }
 
     pub fn extend(&mut self, other: NamedItemList) {
@@ -300,7 +302,6 @@ pub struct ExtFileConfig {
 
     items: FileConfig,
 }
-
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -324,17 +325,20 @@ impl RootConfig {
             (RootConfig::NameMap(mut map_self), RootConfig::NameMap(map_other)) => {
                 for (file_name, cfg) in map_other.into_iter() {
                     // FIXME: check for duplicates???
-                    (map_self.entry(file_name.clone())
-                           .or_insert(Default::default())
-                           .0).0.extend((cfg.0).0);
-                };
+                    (map_self
+                        .entry(file_name.clone())
+                        .or_insert_with(Default::default)
+                        .0)
+                        .0
+                        .extend((cfg.0).0);
+                }
                 RootConfig::NameMap(map_self)
-            },
+            }
             (RootConfig::ExtVector(mut ev_self), RootConfig::ExtVector(ev_other)) => {
                 ev_self.extend(ev_other.into_iter());
                 RootConfig::ExtVector(ev_self)
             }
-            p @ (_, _) => p.0.into_ext_vector().merge(p.1.into_ext_vector())
+            p @ (_, _) => p.0.into_ext_vector().merge(p.1.into_ext_vector()),
         }
     }
 
@@ -343,14 +347,18 @@ impl RootConfig {
             RootConfig::NameMap(map_self) => {
                 // Convert the NameMap into an ordered Vec
                 // WARNING: the elements are emitted in random order
-                RootConfig::ExtVector(map_self.into_iter()
-                    .map(|(file, cfg)| ExtFileConfig {
-                        file: file,
-                        priority: 0,
-                        items: cfg,
-                    }).collect())
-            },
-            r @ RootConfig::ExtVector(_) => r
+                RootConfig::ExtVector(
+                    map_self
+                        .into_iter()
+                        .map(|(file, cfg)| ExtFileConfig {
+                            file,
+                            priority: 0,
+                            items: cfg,
+                        })
+                        .collect(),
+                )
+            }
+            r @ RootConfig::ExtVector(_) => r,
         }
     }
 }
@@ -376,7 +384,7 @@ impl Default for Config {
 impl Config {
     pub fn new(root: RootConfig) -> Config {
         Config {
-            root: root,
+            root,
             ..Default::default()
         }
     }
@@ -388,9 +396,9 @@ impl Config {
         }
 
         let mut gsb = globset::GlobSetBuilder::new();
-        for ref file in files {
+        for file in files {
             let glob = globset::Glob::new(&file.file)
-                .expect(&format!("error creating glob for file: '{}'", file.file));
+                .unwrap_or_else(|e| panic!("error creating glob for file '{}': {}", file.file, e));
             gsb.add(glob);
         }
         self.glob_set.replace(gsb.build().unwrap());
@@ -398,23 +406,23 @@ impl Config {
 
     pub fn get_file_items(&self, file: &str) -> ItemList {
         match self.root {
-            RootConfig::NameMap(ref m) => {
-                m.get(file).map(|fc| fc.0.clone())
-                    .unwrap_or_default()
-            },
+            RootConfig::NameMap(ref m) => m.get(file).map(|fc| fc.0.clone()).unwrap_or_default(),
             RootConfig::ExtVector(ref files) => {
                 self.rebuild_glob_set(files);
                 // Return all items that match this file,
                 // sorted by increasing file priority
-                let mut items = self.glob_set.borrow()
+                let mut items = self
+                    .glob_set
+                    .borrow()
                     .matches(file)
                     .into_iter()
                     .map(|idx| (files[idx].priority, idx))
                     .collect::<Vec<_>>();
                 items.sort();
-                let item_list = items.into_iter()
+                let item_list = items
+                    .into_iter()
                     .flat_map(|(_, idx)| files[idx].items.0.items())
-                    .map(Rc::clone)
+                    .map(ItemConfigRef::clone)
                     .collect();
                 ItemList(item_list)
             }
@@ -455,16 +463,23 @@ mod tests {
 
     #[test]
     fn test_types() {
-        assert_eq!(parse_test_yaml::<XCheckType>("default"),
-                   XCheckType::Default);
-        assert_eq!(parse_test_yaml::<XCheckType>("none"),
-                   XCheckType::None);
-        assert_eq!(parse_test_yaml::<XCheckType>("disabled"),
-                   XCheckType::Disabled);
-        assert_eq!(parse_test_yaml::<XCheckType>("{ \"fixed\": 1234 }"),
-                   XCheckType::Fixed(1234));
-        assert_eq!(parse_test_yaml::<XCheckType>("{ \"djb2\": \"foo\" }"),
-                   XCheckType::Djb2(String::from("foo")));
+        assert_eq!(
+            parse_test_yaml::<XCheckType>("default"),
+            XCheckType::Default
+        );
+        assert_eq!(parse_test_yaml::<XCheckType>("none"), XCheckType::None);
+        assert_eq!(
+            parse_test_yaml::<XCheckType>("disabled"),
+            XCheckType::Disabled
+        );
+        assert_eq!(
+            parse_test_yaml::<XCheckType>("{ \"fixed\": 1234 }"),
+            XCheckType::Fixed(1234)
+        );
+        assert_eq!(
+            parse_test_yaml::<XCheckType>("{ \"djb2\": \"foo\" }"),
+            XCheckType::Djb2(String::from("foo"))
+        );
     }
 
     #[test]

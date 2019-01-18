@@ -1,0 +1,30 @@
+[package]
+name = "{{crate_name}}"
+authors = ["C2Rust"]
+version = "0.0.0"
+publish = false
+
+{{#if main_module~}}
+[[bin]]
+path = "{{root_rs_file}}"
+name = "{{main_module}}"
+{{else~}}
+[lib]
+path = "{{root_rs_file}}"
+crate-type = ["staticlib"]
+{{~/if}}
+
+{{#if cross_checks~}}
+[dependencies.c2rust-xcheck-plugin]
+version = "*"
+
+[dependencies.c2rust-xcheck-derive]
+version = "*"
+
+[dependencies.c2rust-xcheck-runtime]
+version = "*"
+features = ["libc-hash", "fixed-length-array-hash"]
+
+[dependencies.c2rust-xcheck-backend-{{cross_check_backend}}]
+version = "*"
+{{~/if}}

@@ -87,6 +87,7 @@ enum ImplItemKind {
 struct TraitRef { path, ref_id }
 
 struct EnumDef { variants }
+#[extend_span]
 struct Variant_ { ident, #[match=ignore] attrs, data, disr_expr }
 enum VariantData {
     Struct(fields, id),
@@ -94,12 +95,13 @@ enum VariantData {
     Unit(id),
 }
 
+#[extend_span]
 struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs }
 
 struct MethodSig { header, decl }
 
 struct ForeignMod { abi, #[mac_table_seq] items }
-#[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal]
+#[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal] #[extend_span]
 struct ForeignItem { ident, #[match=ignore] attrs, node, id, span, vis }
 enum ForeignItemKind {
     Fn(decl, generics),
@@ -111,6 +113,7 @@ enum ForeignItemKind {
 
 #[nonterminal]
 struct Generics { params, where_clause, span }
+#[extend_span]
 struct GenericParam { id, ident, attrs, bounds, kind }
 enum GenericParamKind {
     Lifetime,
@@ -203,6 +206,7 @@ enum StmtKind {
     Mac(mac),
 }
 
+#[extend_span]
 struct Local { pat, ty, init, id, span, #[match=ignore] attrs }
 
 
@@ -271,7 +275,9 @@ enum UnOp {
 }
 #[match=eq]
 flag BinOpKind;
+#[extend_span]
 struct Field { ident, expr, span, is_shorthand, attrs }
+#[extend_span]
 struct Arm { attrs, pats, guard, body }
 enum Guard {
     If(expr),
@@ -298,6 +304,7 @@ enum PatKind {
     #[mac_table_record] Mac(mac),
 }
 
+#[extend_span]
 struct FieldPat { ident, pat, is_shorthand, attrs }
 
 

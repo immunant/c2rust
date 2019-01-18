@@ -1,10 +1,12 @@
-# Checking out the libxml2 sources
+# libxml2
 
-In `path/to/examples/libxml2`, initialize the git submodule: 
+## Checking out the libxml2 sources
+
+In `path/to/examples/libxml2`, initialize the git submodule:
 
 `git submodule update --init repo`
 
-# Create a Makefile
+## Create a Makefile
 
 in `libxml2/repo`:
 
@@ -13,45 +15,41 @@ in `libxml2/repo`:
 and optionally `./configure` (`autogen.sh` currently runs this automatically,
 so you're not required to).
 
-# Create a compile_commands.json
+## Create a compile_commands.json
 
 in `libxml2/repo`:
 
-`bear make check` 
-
-if `bear` is in `$PATH`. Otherwise run:
-
-`../../../dependencies/Bear.$HOSTNAME/bin/bear make check` so that we can translate all necessary files (including tests).
+`intercept-build make check`
 
 If your `compile_commands.json` enables optimizations(`-O2`) you will need to remove them so that unsupported compiler_builtins are less likely to be generated and leave you in an uncompilable state.
 
 Run `rm .libs/*.o` here to get rid of gcc generated staticlibs or else you may see `CRITICAL:root:error: some ELF objects were not compiled with clang:` in the next step
 
-# Generate Rust Code
+## Generate Rust Code
 
 in `libxml2`:
 
 `./translate.py` to translate all required c files (including tests) into the `libxml2/repo/rust/src` and `libxml2/repo/rust/examples` directories.
 
-# Fix Known Translation Issues
+## Fix Known Translation Issues
 
 in `libxml2`:
 
 `./patch_translated_code.py` to apply patches to some known issues in the generated code.
 
-# Run Libxml2 C Tests
+## Run Libxml2 C Tests
 
 Since each of these tests have their own main file, we decided to move them to the rust examples directory instead of trying to wrap them in the test framework.
 
 You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one of the files in `libxml2/repo/rust/examples`, not including the file extension.
 
-# Outstanding Test Issues
+## Outstanding Test Issues
 
-## Runnable
+### Runnable
 
 * `testReader` seems to be mostly working identically but with some slight differences. Try `testReader --valid test/japancrlf.xml`. It produces an extra "Ns verBoom: Validation failed: no DTD found !, (null), (null)"
 
-## Working
+### Working
 
 * `runtest` seems to be consistently successful now
 * `testRelax` seems to work equivalently with files as in C
@@ -73,7 +71,7 @@ You can run a test like so: `cargo run --example EXAMPLE` where `EXAMPLE` is one
 * `testAutomata` takes a file from `test/automata` and produces equivalent output to C run
 * `testURI` waits on input from stdin, needs example input from `test/URI`. See `Makefile.am` and `result/URI/uri.data` for examples
 
-## Working cross-checks
+### Working cross-checks
 * `testchar` all cross-checks match
 * `testdict` all cross-checks match
 * `testapi` all cross-checks match (345 million)

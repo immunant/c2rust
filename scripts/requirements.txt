@@ -4,4 +4,6 @@ mako
 pip
 plumbum >= 1.6.3
 psutil
+pygments
 typing
+scan-build

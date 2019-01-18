@@ -1416,6 +1416,8 @@ impl ConversionContext {
                     let attrs = node.extras[2].as_array().expect("Expected attribute array on record");
                     let manual_alignment = expect_opt_u64(&node.extras[3]).expect("Expected struct alignment");
                     let max_field_alignment = expect_opt_u64(&node.extras[4]).expect("Expected struct field align");
+                    let platform_byte_size = node.extras[5].as_u64().expect("Expected struct size");
+                    let platform_alignment = node.extras[6].as_u64().expect("Expected struct alignment");
 
                     let fields: Option<Vec<CDeclId>> =
                     if has_def {
@@ -1440,8 +1442,15 @@ impl ConversionContext {
                         }
                     }
 
-                    let record = CDeclKind::Struct
-                        { name, fields, is_packed, manual_alignment, max_field_alignment };
+                    let record = CDeclKind::Struct {
+                        name,
+                        fields,
+                        is_packed,
+                        manual_alignment,
+                        max_field_alignment,
+                        platform_byte_size,
+                        platform_alignment,
+                    };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);
@@ -1476,7 +1485,9 @@ impl ConversionContext {
                     let typ_id = node.type_id.expect("Expected to find type on field declaration");
                     let typ = self.visit_qualified_type(typ_id);
                     let bitfield_width = node.extras[1].as_u64();
-                    let field = CDeclKind::Field { name, typ, bitfield_width };
+                    let platform_bit_offset = node.extras[2].as_u64().expect("Did not find field bit offset");
+                    let platform_type_bitwidth = node.extras[3].as_u64().expect("Did not find field bitwidth");
+                    let field = CDeclKind::Field { name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth };
                     self.add_decl(new_id, located(node, field));
                     self.processed_nodes.insert(new_id, FIELD_DECL);
                 }

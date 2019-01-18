@@ -1,5 +1,5 @@
-use std::collections::VecDeque;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 
 #[derive(Debug, PartialEq, Eq)]
 struct XCheck(u8, u64);
@@ -9,7 +9,7 @@ thread_local! {
 }
 
 #[no_mangle]
-pub extern fn rb_xcheck(tag: u8, val: u64) {
+pub extern "C" fn rb_xcheck(tag: u8, val: u64) {
     XCHECKS.with(|xc| xc.borrow_mut().push_back(XCheck(tag, val)));
 }
 
@@ -19,6 +19,8 @@ pub fn expect_xcheck(tag: u8, val: u64) {
 }
 
 pub fn expect_no_xchecks() {
-    assert!(XCHECKS.with(|xc| xc.borrow_mut().is_empty()),
-            "found more cross-checks than expected");
+    assert!(
+        XCHECKS.with(|xc| xc.borrow_mut().is_empty()),
+        "found more cross-checks than expected"
+    );
 }

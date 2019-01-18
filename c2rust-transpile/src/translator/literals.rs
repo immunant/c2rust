@@ -287,8 +287,9 @@ impl<'c> Translation<'c> {
         struct_id: CRecordId,
         ids: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, String> {
-        let field_decls = match self.ast_context.index(struct_id).kind {
-            CDeclKind::Struct { ref fields, .. } => {
+        let mut has_bitfields = false;
+        let (field_decls, platform_byte_size) = match self.ast_context.index(struct_id).kind {
+            CDeclKind::Struct { ref fields, platform_byte_size, .. } => {
                 let mut fieldnames = vec![];
 
                 let fields = match fields {
@@ -302,14 +303,16 @@ impl<'c> Translation<'c> {
                         .borrow()
                         .resolve_field_name(Some(struct_id), x)
                         .unwrap();
-                    if let CDeclKind::Field { typ, .. } = self.ast_context.index(x).kind {
-                        fieldnames.push((name, typ));
+                    if let CDeclKind::Field { typ, bitfield_width, platform_type_bitwidth, platform_bit_offset, .. } = self.ast_context.index(x).kind {
+                        has_bitfields |= bitfield_width.is_some();
+
+                        fieldnames.push((name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth));
                     } else {
                         panic!("Struct field decl type mismatch")
                     }
                 }
 
-                fieldnames
+                (fieldnames, platform_byte_size)
             }
             _ => panic!("Struct literal declaration mismatch"),
         };
@@ -320,13 +323,17 @@ impl<'c> Translation<'c> {
             .resolve_decl_name(struct_id)
             .unwrap();
 
+        if has_bitfields {
+            return self.convert_bitfield_struct_literal(struct_name, platform_byte_size, ids, field_decls, ctx);
+        }
+
         let mut stmts: Vec<Stmt> = vec![];
         let mut fields: Vec<Field> = vec![];
 
         // Add specified record fields
         for i in 0usize..ids.len() {
             let v = ids[i];
-            let &(ref field_name, _) = &field_decls[i];
+            let &(ref field_name, _, _, _, _) = &field_decls[i];
 
             let mut x = self.convert_expr(ctx.used(), v)?;
             stmts.append(&mut x.stmts);
@@ -335,7 +342,7 @@ impl<'c> Translation<'c> {
 
         // Pad out remaining omitted record fields
         for i in ids.len()..fields.len() {
-            let &(ref field_name, ty) = &field_decls[i];
+            let &(ref field_name, ty, _, _, _) = &field_decls[i];
             fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, ctx.is_static)?));
         }
 

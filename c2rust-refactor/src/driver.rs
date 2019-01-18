@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use rustc::hir::map as hir_map;
 use rustc::ty::{TyCtxt, AllArenas};
+use rustc::ty::query::Providers;
 use rustc::session::{self, Session};
 use rustc::session::config::{Input, Options};
 use rustc_driver;
@@ -125,6 +126,10 @@ impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
         self.tcx_arena
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
+
+    pub fn has_ty_ctxt(&self) -> bool {
+        self.tcx.is_some()
+    }
 }
 
 
@@ -173,7 +178,32 @@ impl Phase1Bits {
         let in_path = old_session.local_crate_source_file.clone();
         let input = Input::File(in_path.unwrap());
 
-        let control = CompileController::basic();
+        let mut control = CompileController::basic();
+        control.provide = Box::new(move |providers| {
+            use rustc::hir::def_id::CrateNum;
+            use rustc::middle::privacy::AccessLevels;
+            use rustc_data_structures::sync::Lrc;
+            use rustc_privacy;
+
+            fn privacy_access_levels<'tcx>(tcx: TyCtxt<'_, 'tcx, 'tcx>,
+                                           krate: CrateNum) -> Lrc<AccessLevels> {
+                // Get and call the original implementation, resetting the error count before
+                // returning so that `abort_if_errors` won't abort.
+                // NOTE: It's possible in theory for the codegen_backend to override the
+                // implementation, since `codegen_backend.provide` runs after `default_provide`.
+                // We wouldn't handle that since we call only `rustc_privacy::provide` here.
+                // Privacy checking would be a weird thing for a backend to override, though.
+                let mut p = Providers::default();
+                rustc_privacy::provide(&mut p);
+                let r = (p.privacy_access_levels)(tcx, krate);
+                tcx.sess.diagnostic().reset_err_count();
+                r
+            }
+            providers.privacy_access_levels = privacy_access_levels;
+
+            // TODO: provide error-resetting versions of other "query + `abort_if_errors`" passes
+            // in `phase_3_run_analysis_passes`.
+        });
 
         Phase1Bits {
             session, cstore, codegen_backend,

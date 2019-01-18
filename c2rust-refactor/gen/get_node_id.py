@@ -71,3 +71,7 @@ def generate(decls):
         else:
             field_name = None
         yield do_impl(d, field_name)
+
+def has_get_node_id_impl(d):
+    '''Returns `true` if type `d` implements `GetNodeId`; `False` otherwise.'''
+    return isinstance(d, Struct) and find_id_field(d) is not None

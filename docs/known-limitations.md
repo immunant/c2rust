@@ -1,13 +1,12 @@
 # Known Limitations of Translation
-This document is to track things that we know the translator can't handle, as well as things it probably won't ever handle.
+This document tracks things that we know the translator can't handle, as well as things it probably won't ever handle.
 
 ## Unimplemented
 
-  * bitfields
   * variadic function definitions (blocking [Rust issue](https://github.com/rust-lang/rust/issues/44930))
-  * some static initializers
   * preserving comments (work in progress)
   * `long double` and `_Complex` types (partially blocked by Rust language)
+  * Non x86/64 SIMD function/types and x86/64 SIMD function/types which have no rust equivalent
 
 ## Unimplemented, _might_ be implementable but very low priority
 
@@ -16,7 +15,6 @@ This document is to track things that we know the translator can't handle, as we
   * `restrict` pointers (Rust has references)
   * inline assembly
   * macros
-  * SIMD/vector types
 
 ## Likely won't ever support
 

@@ -5,18 +5,18 @@ members = [
     "derive-macros",
     "runtime",
     "rustc-plugin",
-    "backends/fakechecks-zstd",
     "backends/libclevrbuf-sys",
     "backends/libfakechecks-sys",
-    "backends/xcheck-dlsym",
+    "backends/dynamic-dlsym",
+    "backends/zstd-logging",
 ]
 default-members = [
     "config",
     "derive-macros",
     "runtime",
     "rustc-plugin",
-    "backends/fakechecks-zstd",
-    "backends/xcheck-dlsym",
+    "backends/dynamic-dlsym",
+    "backends/zstd-logging",
 ]
 exclude = [
     "tests"

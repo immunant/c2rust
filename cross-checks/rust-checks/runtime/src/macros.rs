@@ -1,8 +1,9 @@
-
 // FIXME: do we even need this one???
 #[macro_export]
 macro_rules! cross_check_iter {
-    ($iter:expr) => { $crate::xcheck::xcheck($iter) };
+    ($iter:expr) => {
+        $crate::xcheck::xcheck($iter)
+    };
 }
 
 #[macro_export]
@@ -22,9 +23,12 @@ macro_rules! cross_check_value {
         cross_check_value!(UNKNOWN_TAG, $value)
     };
     ($tag:ident, $value:expr) => {
-        cross_check_value!($tag, $value,
-                           cross_check_types::DefaultAggHasher,
-                           cross_check_types::DefaultSimpleHasher);
+        cross_check_value!(
+            $tag,
+            $value,
+            cross_check_types::DefaultAggHasher,
+            cross_check_types::DefaultSimpleHasher
+        );
     };
     // This form allows the user to pick the hashers, where:
     //   $ahasher == the hasher to use for aggregate/derived values
@@ -34,5 +38,5 @@ macro_rules! cross_check_value {
         if let Some(hash) = XCH::cross_check_hash::<$ahasher, $shasher>(&$value) {
             cross_check_raw!($tag, hash)
         }
-    }}
+    }};
 }

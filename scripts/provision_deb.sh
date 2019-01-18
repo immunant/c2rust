@@ -14,10 +14,10 @@ apt-get update -qq
 # dirmngr is required for gnupg2 key retrieval
 apt-get install -qq --install-recommends dirmngr
 # libclang-6.0-dev allows builds against pre-built clang/llvm
-apt-get install -qq bear build-essential clang-6.0 cmake curl \
+apt-get install -qq build-essential clang-6.0 cmake curl \
     git gnupg2 gperf htop ninja-build python-dev \
     software-properties-common unzip libssl-dev \
-    libclang-6.0-dev
+    libclang-6.0-dev pkg-config
 
 update-alternatives --install /usr/bin/clang clang /usr/bin/clang-6.0 100
 update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100

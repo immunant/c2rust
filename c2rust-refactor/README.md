@@ -1,37 +1,30 @@
-# `c2rust-refactor`
+# C2Rust Refactoring Tool
 
 This is a refactoring tool for Rust programs, aimed at removing unsafety from
 automatically-generated Rust code.
 
 
-## Building
-
-Install cargo and rustup first.
-
-Build `c2rust-refactor` with `cargo build`.
-
-
 ## Usage
 
-`c2rust-refactor` command line usage is as follows:
+`c2rust refactor` command line usage is as follows:
 
-    c2rust-refactor [flags] <command> [command args] -- <input file> [rustc flags]
+    c2rust refactor [flags] <command> [command args] -- <input file> [rustc flags]
 
-Flags for `c2rust-refactor` are described by `c2rust-refactor --help`.
+Flags for `c2rust refactor` are described by `c2rust refactor --help`.
 
-See [the command documentation](../_generated/c2rust-refactor-commands.md) for a list of commands,
+See [the command documentation](commands.html) for a list of commands,
 including complete usage and descriptions. 
 Multiple commands can be separated by an argument consisting of a single
-semicolon, as in `c2rust-refactor cmd1 arg1 \; cmd2 arg2`.
+semicolon, as in `c2rust refactor cmd1 arg1 \; cmd2 arg2`.
 (Note the semicolon needs to be escaped to prevent it from being interpreted by
 the shell.)
 
-`c2rust-refactor` requires `rustc` command line arguments for the program to be
+`c2rust refactor` requires `rustc` command line arguments for the program to be
 refactored, so that it can use `rustc` to load and typecheck the source code.
-For projects built with `cargo`, pass the `--cargo` flag to `c2rust-refactor`
+For projects built with `cargo`, pass the `--cargo` flag to `c2rust refactor`
 and it will obtain the right arguments from `cargo` automatically.  Otherwise,
-you must provide the `rustc` arguments on the `c2rust-refactor` command line,
-following a `--` separator.
+you must provide the `rustc` arguments on the `c2rust refactor` command line,
+after a `--` separator.
 
 
 ## Marks
@@ -51,8 +44,8 @@ by a command is described in the command's documentation; by default, most
 commands that use marks operate on `target`.
 
 The most flexible way of marking nodes is by using the
-[`select`](../_generated/c2rust-refactor-commands.md#select) command.  See the command
+[`select`](commands.html#select) command.  See the command
 documentation and `src/select/mod.rs` for details.  Note that marks are not
-preserved across `c2rust-refactor` invocations, so you usually want to run
+preserved across `c2rust refactor` invocations, so you usually want to run
 `select` followed by the command of interest using the `;` separator mentioned
 above.

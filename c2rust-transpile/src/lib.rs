@@ -1,36 +1,58 @@
 #![feature(rustc_private)]
 #![feature(label_break_value)]
+extern crate dtoa;
+extern crate rustc_target;
 extern crate serde_cbor;
 extern crate syntax;
 extern crate syntax_pos;
-extern crate rustc_target;
-extern crate dtoa;
-#[macro_use] extern crate indexmap;
+#[macro_use]
+extern crate indexmap;
 extern crate serde;
-extern crate serde_json;
-extern crate libc;
-extern crate clap;
-extern crate c2rust_ast_exporter;
+#[macro_use]
+extern crate serde_derive;
 extern crate c2rust_ast_builder;
+extern crate c2rust_ast_exporter;
+extern crate clap;
+extern crate itertools;
+extern crate libc;
+extern crate regex;
+extern crate serde_json;
+#[macro_use]
+extern crate log;
+extern crate fern;
+extern crate strum;
+#[macro_use]
+extern crate strum_macros;
 
-use std::io::stdout;
-use std::io::prelude::*;
+#[macro_use]
+mod diagnostics;
+
+pub mod build_files;
+pub mod c_ast;
+pub mod cfg;
+pub mod convert_type;
+pub mod renamer;
+pub mod rust_ast;
+pub mod translator;
+pub mod with_stmts;
+
+use std::collections::HashSet;
+use std::error::Error;
 use std::fs::File;
+use std::io::prelude::*;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use c_ast::*;
-use c_ast::Printer;
+use regex::Regex;
+
 use c2rust_ast_exporter as ast_exporter;
+use c_ast::Printer;
+use c_ast::*;
+pub use diagnostics::Diagnostic;
 
-pub mod renamer;
-pub mod convert_type;
-pub mod translator;
-pub mod c_ast;
-pub mod rust_ast;
-pub mod cfg;
-pub mod with_stmts;
-
+use build_files::{get_build_dir, emit_build_files, BuildDirectoryContents};
+use std::prelude::v1::Vec;
 pub use translator::ReplaceMode;
 
 /// Configuration settings for the translation process
@@ -44,35 +66,183 @@ pub struct TranspilerConfig {
     pub json_function_cfgs: bool,
     pub dump_cfg_liveness: bool,
     pub dump_structures: bool,
-
+    // Options that control translation
     pub incremental_relooper: bool,
     pub fail_on_multiple: bool,
+    pub filter: Option<Regex>,
     pub debug_relooper_labels: bool,
     pub cross_checks: bool,
+    pub cross_check_backend: String,
     pub cross_check_configs: Vec<String>,
     pub prefix_function_names: Option<String>,
     pub translate_asm: bool,
-    pub translate_entry: bool,
     pub use_c_loop_info: bool,
     pub use_c_multiple_info: bool,
     pub simplify_structures: bool,
     pub panic_on_translator_failure: bool,
-    pub emit_module: bool,
+    pub emit_modules: bool,
     pub fail_on_error: bool,
     pub replace_unsupported_decls: ReplaceMode,
     pub translate_valist: bool,
+    pub overwrite_existing: bool,
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
+    pub enabled_warnings: HashSet<Diagnostic>,
 
-    pub main_file: PathBuf,
-    pub output_file: Option<String>,
+    // Options that control build files
+    /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
+    pub emit_build_files: bool,
+    /// Name of the build directory, e.g., `c2rust-build`
+    pub build_directory_name: String,
+    /// What to put in the build directory
+    pub build_directory_contents: BuildDirectoryContents,
+    /// Names the translation unit containing the main function
+    pub main: Option<String>,
 }
+
+const USR_INCL_MACOS_EMSG: &str = "
+Directory `/usr/include` was not found! Please install the following package:
+/Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
+ (or the equivalent version on your host.)";
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
-pub fn transpile(tcfg: TranspilerConfig, input_file: &Path, extra_clang_args: &[&str]) {
+pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
+    diagnostics::init(tcfg.enabled_warnings.clone());
+
+    // TODO: bindgen may have a more elegant solution to this issue
+    // MacOS Mojave does not have `/usr/include` even if Xcode or the
+    // command line developer tools are installed.
+    // See https://forums.developer.apple.com/thread/104296
+    if cfg!(target_os = "macos") {
+        let usr_incl = Path::new("/usr/include");
+        if !usr_incl.exists() {
+            eprintln!("{}", USR_INCL_MACOS_EMSG);
+            return;
+        }
+    }
+
+    let cmds = get_compile_commands(cc_db).expect(&format!(
+        "Could not parse compile commands from {}",
+        cc_db.to_string_lossy()
+    ));
+
+    let cmds = match tcfg.filter {
+        Some(ref re) => cmds
+            .into_iter()
+            .filter(|c| re.is_match(c.file.to_str().unwrap()))
+            .collect::<Vec<CompileCmd>>(),
+        None => cmds,
+    };
+
+    let build_dir = get_build_dir(&tcfg, cc_db);
+
+    let mut modules = Vec::<PathBuf>::new();
+    for mut cmd in cmds {
+        let CompileCmd { directory: d, file: f, ..} = cmd;
+        println!("Transpiling {}", f.to_str().unwrap());
+        let input_file_abs = d.join(f);
+        if let Some(m) = transpile_single(
+            &tcfg,
+            input_file_abs.as_path(),
+            cc_db,
+            &build_dir,
+            extra_clang_args) {
+            modules.push(m);
+        };
+    }
+
+    if tcfg.emit_build_files {
+        let crate_file = emit_build_files(&tcfg, &build_dir, modules);
+        // We only run the reorganization refactoring if we emitted a fresh crate file
+        if let Some(output_file) = crate_file {
+            if tcfg.reorganize_definitions {
+                reorganize_definitions(&build_dir, &output_file);
+            }
+        }
+    }
+}
+
+fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) {
+    // Assumes the subcommand executable is in the same directory as this program.
+    let cmd_path = std::env::current_exe().expect("Cannot get current executable path");
+    let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
+    cmd_path.pop(); // remove current executable
+    cmd_path.push(format!("c2rust-refactor"));
+    assert!(cmd_path.exists(), format!("{:?} is missing", cmd_path));
+    let crate_path = crate_path.to_str().unwrap();
+    let args = ["-r", "inplace", "reorganize_definitions", "--", crate_path];
+    let code = process::Command::new(cmd_path.into_os_string())
+        .args(&args)
+        .current_dir(build_dir)
+        .status()
+        .expect("failed to start c2rust-refactor subcommand")
+        .code()
+        .unwrap_or(-1);
+    assert_eq!(code, 0);
+}
+
+fn reorganize_definitions(build_dir: &PathBuf, crate_path: &PathBuf) {
+    invoke_refactor(build_dir, crate_path);
+    // fix the formatting of the output of `c2rust-refactor`
+    let code = process::Command::new("cargo")
+        .args(&["fmt"])
+        .current_dir(build_dir)
+        .status()
+        .expect("failed to run cargo fmt subcommand")
+        .code()
+        .unwrap_or(-1);
+    assert_eq!(code, 0);
+}
+
+#[derive(Deserialize, Debug)]
+struct CompileCmd {
+    /// The working directory of the compilation. All paths specified in the command
+    /// or file fields must be either absolute or relative to this directory.
+    directory: PathBuf,
+    /// The main translation unit source processed by this compilation step. This is
+    /// used by tools as the key into the compilation database. There can be multiple
+    /// command objects for the same file, for example if the same source file is compiled
+    /// with different configurations.
+    file: PathBuf,
+    /// The compile command executed. After JSON unescaping, this must be a valid command
+    /// to rerun the exact compilation step for the translation unit in the environment
+    /// the build system uses. Parameters use shell quoting and shell escaping of quotes,
+    /// with ‘"’ and ‘\’ being the only special characters. Shell expansion is not supported.
+    command: Option<String>,
+    /// The compile command executed as list of strings. Either arguments or command is required.
+    #[serde(default)]
+    arguments: Vec<String>,
+    /// The name of the output created by this compilation step. This field is optional. It can
+    /// be used to distinguish different processing modes of the same input file.
+    output: Option<String>,
+}
+
+fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Box<Error>> {
+    let f = File::open(compile_commands)?; // open read-only
+
+    // Read the JSON contents of the file as an instance of `Value`
+    let v = serde_json::from_reader(f)?;
+
+    Ok(v)
+}
+
+fn transpile_single(
+    tcfg: &TranspilerConfig,
+    input_path: &Path,
+    cc_db: &Path,
+    build_dir: &Path,
+    extra_clang_args: &[&str],
+) -> Option<PathBuf> {
+
+    let output_path = get_output_path(tcfg, input_path, build_dir);
+    if output_path.exists() && !tcfg.overwrite_existing {
+        println!("Skipping existing file {}", output_path.display());
+        return Some(output_path);
+    }
+
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match ast_exporter::get_untyped_ast(input_file, &extra_clang_args) {
+    let untyped_context = match ast_exporter::get_untyped_ast(input_path, cc_db, extra_clang_args) {
         Err(e) => {
             eprintln!("Error: {:}", e);
             process::exit(1);
@@ -99,14 +269,14 @@ pub fn transpile(tcfg: TranspilerConfig, input_file: &Path, extra_clang_args: &[
 
     if tcfg.pretty_typed_context {
         println!("Pretty-printed Clang AST");
-        println!("{:#?}", Printer::new(stdout()).print(&typed_context));
+        println!("{:#?}", Printer::new(io::stdout()).print(&typed_context));
     }
 
     // Perform the translation
-    let translated_string = translator::translate(typed_context, &tcfg);
-    let output_path = get_output_path(&tcfg);
+    let main_file = input_path.with_extension("");
+    let translated_string = translator::translate(typed_context, &tcfg, main_file);
 
-    let mut file = match File::create(output_path) {
+    let mut file = match File::create(&output_path) {
         Ok(file) => file,
         Err(e) => panic!("Unable to open file for writing: {}", e),
     };
@@ -115,22 +285,39 @@ pub fn transpile(tcfg: TranspilerConfig, input_file: &Path, extra_clang_args: &[
         Ok(()) => (),
         Err(e) => panic!("Unable to write translation to file: {}", e),
     };
+
+    Some(output_path)
 }
 
-fn get_output_path(tcfg: &TranspilerConfig) -> PathBuf {
-    if let Some(output_file) = tcfg.output_file.as_ref() {
-        return Path::new(output_file).to_path_buf();
-    }
-
-    // main_file does not have an extension; set_extension will add an .rs
-    // extension
-    let mut path_buf = tcfg.main_file.clone();
+fn get_output_path(
+    tcfg: &TranspilerConfig,
+    input_path: &Path,
+    build_dir: &Path
+) -> PathBuf {
+    let mut path_buf = PathBuf::from(input_path);
 
     // When an output file name is not explictly specified, we should convert files
     // with dashes to underscores, as they are not allowed in rust file names.
-    let file_name = path_buf.file_name().unwrap().to_str().unwrap().replace('-', "_");
+    let file_name = path_buf
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .replace('-', "_");
 
     path_buf.set_file_name(file_name);
     path_buf.set_extension("rs");
-    path_buf
+
+    if let (true, BuildDirectoryContents::Full) = (tcfg.emit_build_files,
+                                                   tcfg.build_directory_contents) {
+        // Place the source files under `c2rust-build/src` in Full mode
+        let mut build_path_buf = PathBuf::from(build_dir);
+        build_path_buf.push("src");
+        // FIXME: replicate the subdirectory structure as well???
+        // this currently puts all the output files in the same directory
+        build_path_buf.push(path_buf.file_name().unwrap());
+        build_path_buf
+    } else {
+        path_buf
+    }
 }

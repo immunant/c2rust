@@ -1,4 +1,3 @@
-
 pub(crate) const DEFAULT_CONFIG: &str = r###"
 ---
 - file: "*.rs"

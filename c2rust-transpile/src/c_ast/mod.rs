@@ -28,6 +28,7 @@ pub type CEnumConstantId = CDeclId;  // Enum's need to point to child 'DeclKind:
 
 pub use self::conversion::*;
 pub use self::print::Printer;
+use super::diagnostics::Diagnostic;
 
 mod conversion;
 mod print;
@@ -294,6 +295,13 @@ impl TypedAstContext {
             }
         }
 
+        // Unset c_main if we are not retaining its declaration
+        if let Some(main_id) = self.c_main {
+            if !used.contains(&main_id) {
+                self.c_main = None;
+            }
+        }
+
         // Prune any declaration that isn't considered live
         self.c_decls.retain(|&decl_id, _decl|
             used.contains(&decl_id)
@@ -374,7 +382,7 @@ impl CommentContext {
                         stmt_comments_map.entry(s).or_insert(BTreeMap::new()).insert(loc, str);
                     }
                     (None, None) => {
-                        eprintln!("Didn't find a target node for the comment '{}'", str);
+                        diag!(Diagnostic::Comments, "Didn't find a target node for the comment '{}'", str);
                     },
                 };
             }
@@ -520,6 +528,8 @@ pub enum CDeclKind {
         is_packed: bool,
         manual_alignment: Option<u64>,
         max_field_alignment: Option<u64>,
+        platform_byte_size: u64,
+        platform_alignment: u64,
     },
 
     // Union
@@ -533,6 +543,8 @@ pub enum CDeclKind {
         name: String,
         typ: CQualTypeId,
         bitfield_width: Option<u64>,
+        platform_bit_offset: u64,
+        platform_type_bitwidth: u64,
     },
 }
 

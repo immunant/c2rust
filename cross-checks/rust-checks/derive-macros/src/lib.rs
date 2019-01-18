@@ -8,9 +8,10 @@ extern crate quote;
 extern crate c2rust_xcheck_config as xcfg;
 
 fn get_cross_check_args(attrs: &[syn::Attribute]) -> Option<xcfg::attr::ArgList> {
-    attrs.iter()
-         .find(|f| f.name() == "cross_check_hash")
-         .map(|attr| xcfg::attr::syn::get_item_args(&attr.value))
+    attrs
+        .iter()
+        .find(|f| f.name() == "cross_check_hash")
+        .map(|attr| xcfg::attr::syn::get_item_args(&attr.value))
 }
 
 fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
@@ -21,8 +22,9 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     let shasher = top_args.get_ident_arg("shasher", "__XCHS");
 
     // Iterate through all fields, inserting the hash computation for each field
-    let hash_fields = s.each(|f| {
-        get_cross_check_args(&f.ast().attrs[..]).and_then(|args| {
+    let hash_fields =
+        s.each(|f| {
+            get_cross_check_args(&f.ast().attrs[..]).and_then(|args| {
             // FIXME: figure out the argument priorities here
             if args.contains_key("none") ||
                args.contains_key("disabled") {
@@ -46,57 +48,63 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                 h.write_u64(#f.cross_check_hash_depth::<#ahasher, #shasher>(_depth - 1));
             }
         })
-    });
+        });
 
-    let hash_code = top_args.get("custom_hash").map(|sub_arg| {
-        // Hash this value by calling the specified function
-        let format = top_args.get("custom_hash_format")
-            .and_then(xcfg::attr::ArgValue::get_str);
-        match format {
-            None |
-            Some("function") => {
-                let id = sub_arg.get_str_ident();
-                quote! { #id::<#ahasher, #shasher>(&self, _depth) }
-            },
-            Some("expression") => {
-                let expr = sub_arg.get_str_tokens();
-                quote! { #expr }
-            },
-            Some("extern") => {
-                let id = sub_arg.get_str_ident();
-                let struct_id = &s.ast().ident;
-                quote! {
-                    extern {
-                        #[no_mangle]
-                        fn #id(_: *const #struct_id, _: usize) -> u64;
-                    }
-                    unsafe { #id(self as *const #struct_id, _depth) }
+    let hash_code = top_args
+        .get("custom_hash")
+        .map(|sub_arg| {
+            // Hash this value by calling the specified function
+            let format = top_args
+                .get("custom_hash_format")
+                .and_then(xcfg::attr::ArgValue::get_str);
+            match format {
+                None | Some("function") => {
+                    let id = sub_arg.get_str_ident();
+                    quote! { #id::<#ahasher, #shasher>(&self, _depth) }
                 }
-            },
-            Some(ref f) => panic!("unexpected custom_hash_format: {}", f)
-        }
-    }).unwrap_or_else(|| {
-        // Hash this value using the default algorithm
-        let hasher = top_args.get_ident_arg("field_hasher", ahasher);
-        quote! {
-            if _depth == 0 {
-                ::c2rust_xcheck_runtime::hash::LEAF_RECORD_HASH
-            } else {
-                #[allow(unused_mut)]
-                let mut h = #hasher::default();
-                match *self { #hash_fields }
-                h.finish()
+                Some("expression") => {
+                    let expr = sub_arg.get_str_tokens();
+                    quote! { #expr }
+                }
+                Some("extern") => {
+                    let id = sub_arg.get_str_ident();
+                    let struct_id = &s.ast().ident;
+                    quote! {
+                        extern {
+                            #[no_mangle]
+                            fn #id(_: *const #struct_id, _: usize) -> u64;
+                        }
+                        unsafe { #id(self as *const #struct_id, _depth) }
+                    }
+                }
+                Some(ref f) => panic!("unexpected custom_hash_format: {}", f),
             }
-        }
-    });
-    s.bound_impl("::c2rust_xcheck_runtime::hash::CrossCheckHash", quote! {
-        fn cross_check_hash_depth<__XCHA, __XCHS>(&self, _depth: usize) -> u64
-                where __XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
-                      __XCHS: ::c2rust_xcheck_runtime::hash::CrossCheckHasher {
-            #[allow(unused_imports)]
-            use std::hash::Hasher;
-            #hash_code
-        }
-    })
+        })
+        .unwrap_or_else(|| {
+            // Hash this value using the default algorithm
+            let hasher = top_args.get_ident_arg("field_hasher", ahasher);
+            quote! {
+                if _depth == 0 {
+                    ::c2rust_xcheck_runtime::hash::LEAF_RECORD_HASH
+                } else {
+                    #[allow(unused_mut)]
+                    let mut h = #hasher::default();
+                    match *self { #hash_fields }
+                    h.finish()
+                }
+            }
+        });
+    s.bound_impl(
+        "::c2rust_xcheck_runtime::hash::CrossCheckHash",
+        quote! {
+            fn cross_check_hash_depth<__XCHA, __XCHS>(&self, _depth: usize) -> u64
+                    where __XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
+                          __XCHS: ::c2rust_xcheck_runtime::hash::CrossCheckHasher {
+                #[allow(unused_imports)]
+                use std::hash::Hasher;
+                #hash_code
+            }
+        },
+    )
 }
 decl_derive!([CrossCheckHash, attributes(cross_check_hash)] => xcheck_hash_derive);

@@ -21,6 +21,7 @@ extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_metadata;
+extern crate rustc_privacy;
 extern crate rustc_resolve;
 extern crate rustc_target;
 extern crate rustc_codegen_utils;
@@ -137,7 +138,7 @@ pub enum RustcArgSource {
 }
 
 pub struct Options {
-    pub rewrite_mode: file_io::OutputMode,
+    pub rewrite_modes: Vec<file_io::OutputMode>,
     pub commands: Vec<Command>,
     pub rustc_args: RustcArgSource,
     pub cursors: Vec<Cursor>,
@@ -191,13 +192,17 @@ fn get_rustc_executable(path: &Path) -> String {
 fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
     use std::sync::{Arc, Mutex};
     use cargo::Config;
-    use cargo::core::{Workspace, PackageId, Target};
+    use cargo::core::{Workspace, PackageId, Target, maybe_allow_nightly_features};
     use cargo::core::compiler::{CompileMode, Executor, DefaultExecutor, Context, Unit};
     use cargo::core::manifest::TargetKind;
     use cargo::ops;
     use cargo::ops::CompileOptions;
     use cargo::util::{ProcessBuilder, CargoResult};
     use cargo::util::important_paths::find_root_manifest_for_wd;
+
+    // `cargo`-built `libcargo` is always on the `dev` channel, so `maybe_allow_nightly_features`
+    // really does allow nightly features.
+    maybe_allow_nightly_features();
 
     match src {
         RustcArgSource::CmdLine(mut args) => {
@@ -360,7 +365,7 @@ fn main_impl(opts: Options) {
         let mut state = command::RefactorState::from_rustc_args(
             &rustc_args,
             cmd_reg,
-            Arc::new(file_io::RealFileIO::new(opts.rewrite_mode)),
+            Arc::new(file_io::RealFileIO::new(opts.rewrite_modes)),
             marks,
         );
 

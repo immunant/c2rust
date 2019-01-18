@@ -9,6 +9,7 @@
 
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/CommandLine.h"
 // Declares clang::SyntaxOnlyAction.
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CommonOptionsParser.h"
@@ -1213,6 +1214,8 @@ class TranslateASTVisitor final
           }
 
           auto def = D->getDefinition();
+          auto recordAlignment = 0;
+          auto byteSize = 0;
 
           std::vector<void*> childIds;
           if (def) {
@@ -1224,12 +1227,16 @@ class TranslateASTVisitor final
               // types.
               auto loc = def->getLocation();
               D->setLocation(loc);
+
+              const ASTRecordLayout &layout = this->Context->getASTRecordLayout(def);
+              recordAlignment = layout.getAlignment().getQuantity();
+              byteSize = layout.getSize().getQuantity();
           }
 
           auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
 
           encode_entry(D, tag, childIds, QualType(),
-          [D,def, this](CborEncoder *local){
+          [D,def,recordAlignment,byteSize](CborEncoder *local){
 
               // 1. Encode name or null
               auto name = D->getNameAsString();
@@ -1265,6 +1272,12 @@ class TranslateASTVisitor final
               } else {
                   cbor_encode_null(local);
               }
+
+              // 6. Encode the platform specific size of this record
+              cbor_encode_uint(local, byteSize);
+
+              // 7. Encode the platform specific alignment of this record
+              cbor_encode_uint(local, recordAlignment);
           });
 
           return true;
@@ -1331,21 +1344,36 @@ class TranslateASTVisitor final
           if (WarnOnFlexibleArrayDecl(D)) {
               PrintWarning("this may be an unsupported flexible array member with size of 1, "
                            "omit the size if this field is intended to be a flexible array member. "
+                           "Note that you must be sure to fix any struct size calculations after "
+                           "doing so or else it will likely be off (by one). "
                            "See section 6.7.2.1 of the C99 Standard for more details.", D);
           }
 
           std::vector<void*> childIds;
           auto t = D->getType();
+          auto record = D->getParent();
+          const ASTRecordLayout &layout = this->Context->getASTRecordLayout(record);
+          auto index = D->getFieldIndex();
+          auto bitOffset = layout.getFieldOffset(index);
+          auto bitWidth = this->Context->getTypeSize(t);
           encode_entry(D, TagFieldDecl, childIds, t,
-                             [D, this](CborEncoder *array) {
+                             [D, this, bitOffset, bitWidth](CborEncoder *array) {
+                                 // 1. Encode field name
                                  auto name = D->getNameAsString();
                                  cbor_encode_string(array, name);
 
+                                 // 2. Encode bitfield width if any
                                  if (D->isBitField()) {
                                      cbor_encode_uint(array, D->getBitWidthValue(*this->Context));
                                  } else {
                                      cbor_encode_null(array);
                                  };
+
+                                 // 3. Encode bit offset in its record
+                                 cbor_encode_uint(array, bitOffset);
+
+                                 // 4. Encode the type's full bit width (even if a bitfield)
+                                 cbor_encode_uint(array, bitWidth);
                              });
 
           // This might be the only occurence of this type in the translation unit
@@ -1635,7 +1663,8 @@ public:
                 CborEncoder entry;
                 cbor_encoder_create_array(&array, &entry, 4);
                 visitor.encodeSourcePos(&entry, comment->getLocStart()); // emits 3 values
-                cbor_encode_string(&entry, comment->getRawText(Context.getSourceManager()).str());
+                auto raw_text = comment->getRawText(Context.getSourceManager());
+                cbor_encode_byte_string(&entry, raw_text.bytes_begin(), raw_text.size());
                 cbor_encoder_close_container(&array, &entry);
             }
             cbor_encoder_close_container(&outer, &array);
@@ -1746,31 +1775,43 @@ ExportResult *make_export_result(const Outputs &outputs) {
         std::copy(std::begin(bytes), std::end(bytes), byte_array);
         result->bytes[i] = byte_array;
         result->sizes[i] = bytes.size();
+        i++;
     }
 
     return result;
 }
 
+// Extract clang AST for the source file specified in the argument vector.
+// Note: The arguments should only reference one source file at a time.
 Outputs process(int argc, const char *argv[], int *result)
 {
+    static uint64_t source_path_count = 0;
     auto argv_ = augment_argv(argc, argv);
     int argc_ = argv_.size() - 1; // ignore the extra nullptr
     CommonOptionsParser OptionsParser(argc_, argv_.data(), MyToolCategory);
 
-    ClangTool Tool(OptionsParser.getCompilations(),
-                   OptionsParser.getSourcePathList());
+    // the logic below assumes we're only translating one source file
+    assert(OptionsParser.getSourcePathList().size() - 1 == source_path_count++ &&
+        "Expected exactly one source path");
+
+    // CommonOptionsParser is stateful so the vector returned by
+    // getSourcePathList() includes paths from past invocations.
+    std::string sourcePath = OptionsParser.getSourcePathList().back();
+    // Make a new list with just the file we're currently translating
+    std::vector<std::string> sourcePathList(1, sourcePath);
+    ClangTool Tool(OptionsParser.getCompilations(), sourcePathList);
 
     Outputs outputs;
     MyFrontendActionFactory myFrontendActionFactory(&outputs);
 
     *result = Tool.run(&myFrontendActionFactory);
-
+    assert(outputs.size() == 1 && "Expected exactly one output.");
     return outputs;
 }
 
-// AST-Extractor as a library interface.
+// AST exporter library interface.
 extern "C" {
-    ExportResult *ast_extractor(int argc, const char *argv[]) {
+    ExportResult *ast_exporter(int argc, const char *argv[]) {
         int result;
         auto outputs = process(argc, argv, &result);
         return make_export_result(outputs);

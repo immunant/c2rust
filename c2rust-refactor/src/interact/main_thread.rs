@@ -12,7 +12,7 @@ use std::sync::mpsc::{self, SyncSender, Receiver};
 use std::thread;
 use syntax::ast::*;
 use syntax::source_map::{FileLoader, RealFileLoader};
-use syntax::source_map::{SourceMap, SourceFile, Span};
+use syntax::source_map::Span;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 use syntax_pos::FileName;
@@ -26,7 +26,6 @@ use interact::WrapSender;
 use interact::{plain_backend, vim8_backend};
 use interact::worker::{self, ToWorker};
 use pick_node;
-use rewrite::TextRewrite;
 use c2rust_ast_builder::IntoSymbol;
 
 use super::MarkInfo;
@@ -291,17 +290,6 @@ impl FileIO for InteractiveFileIO {
             file: path.to_str().unwrap().to_owned(),
             content: s.to_owned(),
         }).unwrap();
-        Ok(())
-    }
-
-    fn end_rewrite(&self, _sm: &SourceMap) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn save_rewrites(&self,
-                     _sm: &SourceMap,
-                     _sf: &SourceFile,
-                     _rws: &[TextRewrite]) -> io::Result<()> {
         Ok(())
     }
 }

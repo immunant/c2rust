@@ -83,6 +83,7 @@ pub trait DriverCtxtExt<'tcx> {
     fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>>;
     /// Get the `ty::Ty` computed for a node, taking into account any adjustments that were applied.
     fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx>;
+    fn opt_adjusted_node_type(&self, id: NodeId) -> Option<Ty<'tcx>>;
 
     fn def_type(&self, id: DefId) -> Ty<'tcx>;
     /// Build a `Path` referring to a particular def.  This method returns an absolute path when
@@ -132,13 +133,22 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     }
 
     fn adjusted_node_type(&self, id: NodeId) -> Ty<'tcx> {
-        let parent = self.hir_map().get_parent_did(id);
+        self.opt_adjusted_node_type(id)
+            .unwrap_or_else(|| panic!("adjusted node type unavailable for {:?}", id))
+    }
+
+    fn opt_adjusted_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
+        let parent_node = self.hir_map().get_parent(id);
+        let parent = self.hir_map().opt_local_def_id(parent_node)?;
+        if !self.ty_ctxt().has_typeck_tables(parent) {
+            return None;
+        }
         let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
         if let Some(adj) = tables.adjustments().get(hir_id).and_then(|adjs| adjs.last()) {
-            adj.target
+            Some(adj.target)
         } else {
-            tables.node_id_to_type(hir_id)
+            tables.node_id_to_type_opt(hir_id)
         }
     }
 
@@ -207,27 +217,36 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     }
 
     fn try_resolve_expr_to_hid(&self, e: &Expr) -> Option<hir::HirId> {
-        let node = match_or!([self.hir_map().find(e.id)] Some(x) => x;
-                             return None);
-        let e = match_or!([node] hir::Node::Expr(e) => e;
-                          return None);
-        let qpath = match_or!([e.node] hir::ExprKind::Path(ref q) => q;
-                              return None);
-        let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
-                             return None);
-        self.def_to_hir_id(&path.def)
+        if let Some(def) = try_resolve_expr_hir(self, e) {
+            return self.def_to_hir_id(&def);
+        }
+
+        if self.has_ty_ctxt() {
+            if let Some(def) = try_resolve_node_type_dep(self, e.id) {
+                return self.def_to_hir_id(&def);
+            }
+        }
+
+        None
     }
 
     fn try_resolve_expr(&self, e: &Expr) -> Option<DefId> {
-        let node = match_or!([self.hir_map().find(e.id)] Some(x) => x;
-                             return None);
-        let e = match_or!([node] hir::Node::Expr(e) => e;
-                          return None);
-        let qpath = match_or!([e.node] hir::ExprKind::Path(ref q) => q;
-                              return None);
-        let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
-                             return None);
-        path.def.opt_def_id()
+        if let Some(def) = try_resolve_expr_hir(self, e) {
+            return def.opt_def_id();
+        }
+
+        if self.has_ty_ctxt() {
+            // Only try the type_dependent_defs fallback on Path exprs.  Other expr kinds,
+            // particularly MethodCall, can show up in type_dependent_defs, and we don't want to
+            // wrongly treat those as path-like.
+            if let ExprKind::Path(..) = e.node {
+                if let Some(def) = try_resolve_node_type_dep(self, e.id) {
+                    return def.opt_def_id();
+                }
+            }
+        }
+
+        None
     }
 
     fn resolve_expr(&self, e: &Expr) -> DefId {
@@ -236,15 +255,19 @@ impl<'a, 'tcx> DriverCtxtExt<'tcx> for driver::Ctxt<'a, 'tcx> {
     }
 
     fn try_resolve_ty(&self, t: &ast::Ty) -> Option<DefId> {
-        let node = match_or!([self.hir_map().find(t.id)] Some(x) => x;
-                             return None);
-        let t = match_or!([node] hir::Node::Ty(t) => t;
-                          return None);
-        let qpath = match_or!([t.node] hir::TyKind::Path(ref q) => q;
-                              return None);
-        let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
-                             return None);
-        path.def.opt_def_id()
+        if let Some(def) = try_resolve_ty_hir(self, t) {
+            return def.opt_def_id();
+        }
+
+        if self.has_ty_ctxt() {
+            if let ast::TyKind::Path(..) = t.node {
+                if let Some(def) = try_resolve_node_type_dep(self, t.id) {
+                    return def.opt_def_id();
+                }
+            }
+        }
+
+        None
     }
 
     fn resolve_ty(&self, t: &ast::Ty) -> DefId {
@@ -394,4 +417,49 @@ pub struct CalleeInfo<'tcx> {
 
     /// The type and region arguments that were substituted in at the call site.
     pub substs: Option<&'tcx Substs<'tcx>>,
+}
+
+
+fn try_resolve_expr_hir(cx: &driver::Ctxt, e: &Expr) -> Option<Def> {
+    let node = match_or!([cx.hir_map().find(e.id)] Some(x) => x;
+                         return None);
+    let e = match_or!([node] hir::Node::Expr(e) => e;
+                      return None);
+    let qpath = match_or!([e.node] hir::ExprKind::Path(ref q) => q;
+                          return None);
+    let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
+                         return None);
+    Some(path.def)
+}
+
+fn try_resolve_ty_hir(cx: &driver::Ctxt, t: &ast::Ty) -> Option<Def> {
+    let node = match_or!([cx.hir_map().find(t.id)] Some(x) => x;
+                         return None);
+    let t = match_or!([node] hir::Node::Ty(t) => t;
+                      return None);
+    let qpath = match_or!([t.node] hir::TyKind::Path(ref q) => q;
+                          return None);
+    let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
+                         return None);
+    Some(path.def)
+}
+
+/// Try to resolve a node as a reference to a type-dependent definition, like `Vec::new` (a.k.a.
+/// `<Vec>::new`) or `<Vec as IntoIterator>::into_iter`.
+///
+/// Note that this method doesn't look up the node itself, so it can return results even for
+/// non-path nodes (unlike `try_resolve_expr/ty_hir`).
+fn try_resolve_node_type_dep(cx: &driver::Ctxt, id: NodeId) -> Option<Def> {
+    let hir_map = cx.hir_map();
+    let tcx = cx.ty_ctxt();
+
+    let parent = hir_map.get_parent(id);
+    let parent_body = match_or!([hir_map.maybe_body_owned_by(parent)]
+                                Some(x) => x; return None);
+    let tables = tcx.body_tables(parent_body);
+
+    let hir_id = hir_map.node_to_hir_id(id);
+    let tdd = tables.type_dependent_defs();
+    let def = match_or!([tdd.get(hir_id)] Some(x) => x; return None);
+    Some(*def)
 }

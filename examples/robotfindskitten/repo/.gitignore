@@ -8,4 +8,4 @@ Makefile
 .deps
 *.o
 /src/robotfindskitten
-
+/rust/src/

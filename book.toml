@@ -4,10 +4,16 @@ src = "manual/"
 
 [build]
 create-missing = false
-preprocess = ["links", "index", "include_md", "refactor_commands"]
+preprocess = ["links", "index", "include_md", "generator_dispatch"]
 
 [preprocessor.include_md]
 command = "cargo run --bin mdbook-include_md --quiet --"
 
-[preprocessor.refactor_commands]
-command = "python3 c2rust-refactor/doc/gen_command_docs.py"
+[preprocessor.generator_dispatch]
+command = "python3 manual/preprocessors/generator_dispatch.py"
+
+[output.html]
+
+# Uncomment the following to enable link-checking. This should not be enabled by
+# default because linkcheck has false positives due to our use of symlinks.
+# [output.linkcheck]
