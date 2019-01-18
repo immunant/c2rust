@@ -2451,7 +2451,14 @@ impl<'c> Translation<'c> {
                     .ok_or_else(|| format!("bad source expression"))?;
 
                 let source_ty = self.convert_type(source_ty_ctype_id)?;
-                if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
+                if let CTypeKind::LongDouble = target_ty_ctype {
+                    self.extern_crates.borrow_mut().insert("f128");
+
+                    let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
+                    let args = vec![val.val];
+
+                    Ok(WithStmts::new(mk().call_expr(fn_path, args)))
+                } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
                     // Casts targeting `enum` types...
                     Ok(self.enum_cast(ty.ctype, enum_decl_id, expr, val, source_ty, target_ty))
                 } else {
@@ -2852,10 +2859,15 @@ impl<'c> Translation<'c> {
         match self.ast_context[ctype].kind {
             Void | Char | SChar | UChar | Short | UShort | Int | UInt |
             Long | ULong | LongLong | ULongLong | Int128 | UInt128 |
-            Half | Float | Double | LongDouble => {
+            Half | Float | Double => {
                 store.uses
                     .get_mut(vec!["super".into()])
                     .insert("libc");
+            },
+            LongDouble => {
+                store.uses
+                    .get_mut(vec!["super".into()])
+                    .insert("f128");
             },
             // Bool uses the bool type, so no dependency on libc
             Bool => {},

@@ -99,14 +99,20 @@ impl<'c> Translation<'c> {
                 } else {
                     c_str.to_owned()
                 };
+                let val = match self.ast_context.resolve_type(ty.ctype).kind {
+                    CTypeKind::LongDouble => {
+                        self.extern_crates.borrow_mut().insert("f128");
 
-                let float_ty = match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::LongDouble => FloatTy::F64,
-                    CTypeKind::Double => FloatTy::F64,
-                    CTypeKind::Float => FloatTy::F32,
+                        let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
+                        let args = vec![mk().ident_expr(str)];
+
+                        mk().call_expr(fn_path, args)
+                    },
+                    CTypeKind::Double => mk().lit_expr(mk().float_lit(str, FloatTy::F64)),
+                    CTypeKind::Float => mk().lit_expr(mk().float_lit(str, FloatTy::F32)),
                     ref k => panic!("Unsupported floating point literal type {:?}", k),
                 };
-                Ok(WithStmts::new(mk().lit_expr(mk().float_lit(str, float_ty))))
+                Ok(WithStmts::new(val))
             }
 
             CLiteral::String(ref val, width) => {
