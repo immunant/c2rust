@@ -27,24 +27,3 @@ update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100
 apt-get install -qq python3-pip
 pip3 install --no-cache-dir --disable-pip-version-check -r $SCRIPT_DIR/requirements.txt
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
-# Dependencies for test programs #
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
-
-apt-get install -qq automake autoconf libtool
-
-# lua dependencies
-apt-get install -qq libreadline-dev
-
-# lighttpd dependencies
-apt-get install -qq libbz2-dev
-
-# python dependencies
-apt-get install -qq python-setuptools tcl-dev liblzma-dev libgdbm-dev
-apt-get -qq --no-install-recommends install tk-dev
-
-# redis and sqlite dependencies
-apt-get install -qq tcl tcl-dev
-
-# varnish dependencies
-apt-get install -qq python-docutils graphviz
