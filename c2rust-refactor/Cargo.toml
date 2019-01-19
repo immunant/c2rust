@@ -22,7 +22,7 @@ indexmap = { version = "1.0.1", features = ["serde-1"] }
 cargo = "0.32.0"
 clap = {version = "~2.32.0", features = ["yaml"]}
 c2rust-analysis-rt = { path = "../analysis/runtime" }
-error-chain = "0.12.0"
+failure = "0.1"
 bincode = "1.0.1"
 
 [lib]

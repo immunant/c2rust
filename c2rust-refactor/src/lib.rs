@@ -11,8 +11,7 @@ extern crate cargo;
 extern crate clap;
 extern crate diff;
 extern crate env_logger;
-#[macro_use]
-extern crate error_chain;
+extern crate failure;
 #[macro_use] extern crate json;
 #[macro_use] extern crate log;
 extern crate regex;

@@ -8,6 +8,7 @@ use syntax::symbol::Ident;
 use syntax::source_map::{Span, FileName};
 
 use indexmap::IndexSet;
+use failure::{Error, ResultExt};
 
 use c2rust_analysis_rt::{SourceSpan, BytePos};
 
@@ -16,17 +17,6 @@ use command::{CommandState, Registry};
 use driver::{self, Phase};
 use transform::Transform;
 
-
-mod errors {
-    error_chain! {
-        foreign_links {
-            Io(std::io::Error);
-            Bincode(Box<bincode::ErrorKind>);
-        }
-    }
-}
-
-use self::errors::*;
 
 struct LifetimeAnalysis {
     span_file_path: String,
@@ -69,13 +59,14 @@ impl<'a, 'tcx> LifetimeInstrumentation<'a, 'tcx> {
         }
     }
 
-    fn finalize(self) -> Result<()> {
+    fn finalize(self) -> Result<(), Error> {
         eprintln!("Writing spans to {:?}", self.span_file_path);
         let span_file = File::create(self.span_file_path)
-            .chain_err(|| "Could not open span file")?;
+            .context("Could not open span file")?;
         let spans: Vec<SourceSpan> = self.spans.into_iter().collect();
         bincode::serialize_into(span_file, &spans)
-            .chain_err(|| "Span serialization failed")
+            .context("Span serialization failed")?;
+        Ok(())
     }
 
     /// Check if the callee expr is a function we've hooked. Returns the name of
