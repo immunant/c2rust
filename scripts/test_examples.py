@@ -154,7 +154,8 @@ class Genann(Test):
     def _transpile_example(self, main: str):
         transpile(self.cc_db,
                   emit_build_files=False,
-                  extra_transpiler_args=['--emit-build-files', '--main', main])
+                  extra_transpiler_args=['--emit-build-files', '--main', main,
+                      '--overwrite-existing'])
         self.rust_src = build_path(self.repo_dir, 'c2rust-build',
                                    is_dir=True)
 
