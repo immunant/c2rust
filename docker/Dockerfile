@@ -22,5 +22,5 @@ RUN chmod +x /tmp/provision_rust.sh
 
 USER $USER
 # Provision rust language and packages (should not run as root)
-ARG RUST_VER=nightly-2018-06-20 
+ARG RUST_VER=nightly-2018-12-03
 RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
