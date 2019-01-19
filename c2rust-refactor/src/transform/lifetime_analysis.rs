@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::fs::File;
 
-use syntax::{ast, entry};
+use syntax::entry;
+use syntax::ast::{self, ExprKind, UnOp};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::Ident;
@@ -125,6 +126,19 @@ impl<'a, 'tcx> LifetimeInstrumentation<'a, 'tcx> {
             block
         })
     }
+
+    fn instrument_expr(&self, expr: P<ast::Expr>, stmts: &[ast::Stmt]) -> P<ast::Expr> {
+        let local = P(mk().local::<_, P<ast::Ty>, _>(
+            mk().ident_pat("ret"), None, Some(expr)
+        ));
+
+        let mut block_stmts = vec![mk().local_stmt(local)];
+        block_stmts.extend(stmts.into_iter().cloned());
+        block_stmts.push(mk().expr_stmt(mk().path_expr(vec!["ret"])));
+
+        // Build the instrumentation block
+        return mk().block_expr(mk().block(block_stmts));
+    }
 }
 
 impl<'a, 'tcx> Folder for LifetimeInstrumentation<'a, 'tcx> {
@@ -179,17 +193,27 @@ impl<'a, 'tcx> Folder for LifetimeInstrumentation<'a, 'tcx> {
                         hook_args,
                     );
 
-                    let local = P(mk().local::<_, P<ast::Ty>, _>(
-                        mk().ident_pat("ret"), None, Some(&expr)
-                    ));
-
-                    // Build the instrumentation block
-                    return mk().block_expr(mk().block(vec![
-                        mk().local_stmt(local),
-                        mk().semi_stmt(hook_call),
-                        mk().expr_stmt(mk().path_expr(vec!["ret"])),
-                    ]));
+                    return self.instrument_expr(expr.clone(), &[mk().semi_stmt(hook_call)]);
                 }
+            }
+            ExprKind::Unary(UnOp::Deref, ptr_expr) => {
+                let source_loc_idx = self.get_source_location_idx(expr.span);
+
+                let hook_call = mk().call_expr(
+                    mk().path_expr(vec![
+                        mk().ident("c2rust_analysis_rt"),
+                        mk().ident("ptr_deref"),
+                    ]),
+                    vec![
+                        mk().lit_expr(mk().int_lit(source_loc_idx as u128, "usize")),
+                        mk().cast_expr(mk().path_expr(vec!["ret"]), mk().ident_ty("usize"))
+                    ],
+                );
+
+                return mk().unary_expr(
+                    "*",
+                    self.instrument_expr(ptr_expr.clone(), &[mk().semi_stmt(hook_call)]),
+                );
             }
             _ => (),
         }

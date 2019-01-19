@@ -83,3 +83,8 @@ pub fn realloc(span: usize, ptr: usize, size: u64, result: usize) {
 pub fn reallocarray(span: usize, ptr: usize, nmemb: u64, size: u64, result: usize) {
     eprintln!("Recording a reallocarray ({:?}) of 0x{:x} to {} members of size {} at address 0x{:x}", SOURCE_SPANS[span], ptr, nmemb, size, result);
 }
+
+
+pub fn ptr_deref(span: usize, ptr: usize) {
+    eprintln!("Recording a pointer dereference of 0x{:x}", ptr);
+}
