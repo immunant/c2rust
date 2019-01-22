@@ -1,8 +1,8 @@
-os: osx
+language: generic
 # note: xcode9.4/macOS 10.13 is the default for macOS
 # osx_image: xcode9.3 # request macOS 10.13
-sudo: enabled
-language: generic
+dist: xenial
+sudo: required
 
 # TODO: figure out why submodule checkout fails
 git:
@@ -10,31 +10,57 @@ git:
 
 env:
   global:
-    - PATH="/usr/local/opt/ccache/libexec:$PATH"
     - CXX=clang++
     - CC=clang
     - USE_CCACHE=1
     - CCACHE_COMPRESS=1
     - CCACHE_CPP2=1
 
-# https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
-cache: 
-  directories: # handle non-obvious Rust target dirs
-    - $HOME/.rustup
-    - $HOME/.cargo
-    - $HOME/.ccache
-    - $HOME/Library/Caches/Homebrew
-    - $TRAVIS_BUILD_DIR/ast-importer/target.travis
-    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
-    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
-    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/runtime/target
-    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
-    - $TRAVIS_BUILD_DIR/rust-refactor/target
+
+matrix:
+  fast_finish: true
+  include:
+    - os: osx
+      env: PATH="/usr/local/opt/ccache/libexec:$PATH"
+      cache:
+        # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
+        directories:
+          - $HOME/.rustup
+          - $HOME/.cargo
+          - $HOME/.ccache
+          - $HOME/Library/Caches/Homebrew
+          - $TRAVIS_BUILD_DIR/ast-importer/target.travis
+          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
+          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
+          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/runtime/target
+          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
+          - $TRAVIS_BUILD_DIR/rust-refactor/target
+    - os: linux
+      cache: ccache
+        # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
+        directories:
+          - $HOME/.rustup
+          - $HOME/.cargo
+          - $HOME/.ccache
+          - $TRAVIS_BUILD_DIR/ast-importer/target.travis
+          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
+          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
+          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/runtime/target
+          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
+          - $TRAVIS_BUILD_DIR/rust-refactor/target
+
+
 
 install:
 #   - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
   - /usr/bin/env python3 --version
-  - ./scripts/provision_mac.sh
+  - |
+    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      ./scripts/provision_mac.sh
+    else
+      ./scripts/provision_deb.sh
+      ./scripts/provision_rust.sh
+    fi
   - . ~/.cargo/env
 
 # NOTE: travis doesn't automatically terminate if command fails.
