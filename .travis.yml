@@ -22,33 +22,20 @@ matrix:
   include:
     - os: osx
       env: PATH="/usr/local/opt/ccache/libexec:$PATH"
-      cache:
-        # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
-        directories:
-          - $HOME/.rustup
-          - $HOME/.cargo
-          - $HOME/.ccache
-          - $HOME/Library/Caches/Homebrew
-          - $TRAVIS_BUILD_DIR/ast-importer/target.travis
-          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
-          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
-          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/runtime/target
-          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
-          - $TRAVIS_BUILD_DIR/rust-refactor/target
-    - os: linux
-      cache: ccache
-        # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
-        directories:
-          - $HOME/.rustup
-          - $HOME/.cargo
-          - $HOME/.ccache
-          - $TRAVIS_BUILD_DIR/ast-importer/target.travis
-          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
-          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
-          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/runtime/target
-          - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
-          - $TRAVIS_BUILD_DIR/rust-refactor/target
 
+cache:
+  # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
+  directories:
+    - $HOME/.rustup
+    - $HOME/.cargo
+    - $HOME/.ccache
+      #- $HOME/Library/Caches/Homebrew
+    - $TRAVIS_BUILD_DIR/ast-importer/target.travis
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/runtime/target
+    - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
+    - $TRAVIS_BUILD_DIR/rust-refactor/target
 
 
 install:
