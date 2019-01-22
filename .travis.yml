@@ -1,6 +1,7 @@
 language: generic
 # note: xcode9.4/macOS 10.13 is the default for macOS
 # osx_image: xcode9.3 # request macOS 10.13
+os: linux
 dist: xenial
 sudo: required
 
@@ -21,7 +22,10 @@ matrix:
   fast_finish: true
   include:
     - os: osx
-      env: PATH="/usr/local/opt/ccache/libexec:$PATH"
+      env: >-
+          PATH="/usr/local/opt/ccache/libexec:$PATH"
+          CACHE_NAME=OSX_JOB
+    - env: CACHE_NAME=LINUX_JOB
 
 cache:
   # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
@@ -51,7 +55,7 @@ install:
   - . ~/.cargo/env
 
 # NOTE: travis doesn't automatically terminate if command fails.
-script: 
+script:
   - ccache -s
   - python3 ./scripts/build_translator.py --debug || travis_terminate 1
   - ccache -s
