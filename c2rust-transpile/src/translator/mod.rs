@@ -2458,6 +2458,32 @@ impl<'c> Translation<'c> {
                     let args = vec![val.val];
 
                     Ok(WithStmts::new(mk().call_expr(fn_path, args)))
+                } else if let CTypeKind::LongDouble = self.ast_context[source_ty_ctype_id].kind {
+                    self.extern_crates.borrow_mut().insert("num_traits");
+                    self.item_store.borrow_mut()
+                        .uses
+                        .get_mut(vec!["num_traits".into()])
+                        .insert("ToPrimitive");
+
+                    let to_method_name = match target_ty_ctype {
+                        CTypeKind::Float => "to_f32",
+                        CTypeKind::Double => "to_f64",
+                        CTypeKind::Char => "to_i8",
+                        CTypeKind::UChar => "to_u8",
+                        CTypeKind::Short => "to_i16",
+                        CTypeKind::UShort => "to_u16",
+                        CTypeKind::Int => "to_i32",
+                        CTypeKind::UInt => "to_u32",
+                        CTypeKind::Long => "to_i64",
+                        CTypeKind::ULong => "to_u64",
+                        CTypeKind::LongLong => "to_i128",
+                        CTypeKind::ULongLong => "to_u128",
+                        _ => return Err(format!("Tried casting long double to unsupported type: {:?}", target_ty_ctype)),
+                    };
+
+                    let to_call = mk().method_call_expr(val.val, to_method_name, Vec::<P<Expr>>::new());
+
+                    Ok(WithStmts::new(mk().method_call_expr(to_call, "unwrap", Vec::<P<Expr>>::new())))
                 } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
                     // Casts targeting `enum` types...
                     Ok(self.enum_cast(ty.ctype, enum_decl_id, expr, val, source_ty, target_ty))
