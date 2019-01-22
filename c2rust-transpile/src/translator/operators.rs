@@ -737,7 +737,21 @@ impl<'c> Translation<'c> {
         } else {
             c_ast::BinOp::AssignSubtract
         };
-        let one = WithStmts::new(mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)));
+        let one = match self.ast_context[ty.ctype].kind {
+            // TODO: If rust gets f16 support:
+            // CTypeKind::Half |
+            CTypeKind::Float |
+            CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
+            CTypeKind::LongDouble => {
+                self.extern_crates.borrow_mut().insert("f128");
+
+                let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
+                let args = vec![mk().ident_expr("1.")];
+
+                mk().call_expr(fn_path, args)
+            },
+            _ => mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)),
+        };
         let arg_type = self.ast_context[arg]
             .kind
             .get_qual_type()
@@ -748,7 +762,7 @@ impl<'c> Translation<'c> {
             arg_type,
             arg,
             ty,
-            one,
+            WithStmts::new(one),
             Some(arg_type),
             Some(arg_type),
         )
@@ -785,7 +799,22 @@ impl<'c> Translation<'c> {
             Some(read.clone()),
         )));
 
-        let mut one = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
+        let mut one = match self.ast_context[ty.ctype].kind {
+            // TODO: If rust gets f16 support:
+            // CTypeKind::Half |
+            CTypeKind::Float |
+            CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
+            CTypeKind::LongDouble => {
+                self.extern_crates.borrow_mut().insert("f128");
+
+                let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
+                let args = vec![mk().ident_expr("1.")];
+
+                mk().call_expr(fn_path, args)
+            },
+            _ => mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)),
+        };
+
         // *p + 1
         let val =
             if let &CTypeKind::Pointer(pointee) = &self.ast_context.resolve_type(ty.ctype).kind {
