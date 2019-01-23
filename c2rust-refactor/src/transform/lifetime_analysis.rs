@@ -196,7 +196,9 @@ impl<'a, 'tcx> Folder for LifetimeInstrumentation<'a, 'tcx> {
                     return self.instrument_expr(expr.clone(), &[mk().semi_stmt(hook_call)]);
                 }
             }
-            ExprKind::Unary(UnOp::Deref, ptr_expr) => {
+            ExprKind::Unary(UnOp::Deref, ptr_expr) =>
+                if self.cx.node_type(ptr_expr.id).is_unsafe_ptr()
+            {
                 let source_loc_idx = self.get_source_location_idx(expr.span);
 
                 let hook_call = mk().call_expr(

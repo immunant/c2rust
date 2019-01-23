@@ -9,6 +9,8 @@ extern crate libc;
 mod pointers;
 use pointers::main_0;
 
+pub mod safe_rust;
+
 pub fn main() {
     let mut args: Vec<*mut libc::c_char> = Vec::new();
     for arg in ::std::env::args() {
