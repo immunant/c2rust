@@ -25,6 +25,11 @@ update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100
 
 # Install python3 and packages
 apt-get install -qq python3-pip
+
+# python dependencies
+apt-get install -qq python-setuptools python3-setuptools tcl-dev liblzma-dev libgdbm-dev
+apt-get -qq --no-install-recommends install tk-dev
+
 pip3 install --no-cache-dir --disable-pip-version-check -r $SCRIPT_DIR/requirements.txt
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~# 
@@ -38,10 +43,6 @@ apt-get install -qq libreadline-dev
 
 # lighttpd dependencies
 apt-get install -qq libbz2-dev
-
-# python dependencies
-apt-get install -qq python-setuptools python3-setuptools tcl-dev liblzma-dev libgdbm-dev
-apt-get -qq --no-install-recommends install tk-dev
 
 # redis and sqlite dependencies
 apt-get install -qq tcl tcl-dev
