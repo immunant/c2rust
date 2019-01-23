@@ -154,7 +154,7 @@ def configure_and_build_llvm(args) -> None:
         # since we are building and using it for other purposes.
         ninja = get_cmd_or_die("ninja")
         ninja_args = ['c2rust-ast-exporter', 'clangAstExporter',
-                      'llvm-config', 'tools/llvm-config/install',
+                      'llvm-config',
                       'install-clang-headers',
                       'FileCheck', 'count', 'not']
         if args.with_clang:
