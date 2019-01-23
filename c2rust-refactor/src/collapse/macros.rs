@@ -475,7 +475,6 @@ impl<'a> Folder for ReplaceTokens<'a> {
     fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(invoc_id) = self.mac_table.get(s.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
-                let mut s = s;
                 unpack!([s.node] StmtKind::Mac(mac));
                 let mac = mac.map(|(mut mac, style, attrs)| {
                     mac.node.tts = new_tts;

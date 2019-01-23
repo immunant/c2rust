@@ -112,7 +112,7 @@ impl<'st> CrateInfo<'st> {
         // iterate through the set of possible destinations and try to find a possible match
         for dest_module_id in &self.possible_destination_modules {
             if let Some(dest_module) = self.item_map.get(dest_module_id) {
-                let mut dest_module_ident = dest_module.ident;
+                let dest_module_ident = dest_module.ident;
 
                 // TODO: This is a simple naive heuristic,
                 // and should be improved upon.
@@ -440,8 +440,8 @@ fn deduplicate_krate(krate: Crate, krate_info: &CrateInfo) -> Crate {
             // `seen_paths` turns into `use foo_h::{item, item2, item3};`
             // That Path is then pushed into the module
             let mut use_items = Vec::with_capacity(self.seen_paths.len());
-            for (mod_name, mut prefixes) in &mut self.seen_paths {
-                let mut items: Vec<Ident> = prefixes.iter().map(|i| i).cloned().collect();
+            for (mod_name, prefixes) in &mut self.seen_paths {
+                let items: Vec<Ident> = prefixes.iter().map(|i| i).cloned().collect();
                 let mod_prefix = Path::from_ident(*mod_name);
 
                 // Removes duplicates from the nested use statement
