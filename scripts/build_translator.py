@@ -161,6 +161,10 @@ def configure_and_build_llvm(args) -> None:
             ninja_args.append('clang')
         invoke(ninja, *ninja_args)
 
+        # Make sure install/bin exists so that we can create a relative path
+        # using it in AstExporter.cpp
+        os.makedirs(os.path.join(c.LLVM_INSTALL, 'bin'), exist_ok=True)
+
 
 def build_transpiler(args):
     cargo = get_cmd_or_die("cargo")
