@@ -5,12 +5,12 @@ use rustc::ty::{Instance, TyCtxt, TyKind, Ty};
 use syntax::ast::*;
 use syntax::ptr::P;
 
-use api::*;
-use command::{CommandState, Registry};
-use driver::{self, Phase};
-use reflect;
-use resolve;
-use transform::Transform;
+use crate::api::*;
+use crate::command::{CommandState, Registry};
+use crate::driver::{self, Phase};
+use crate::reflect;
+use crate::resolve;
+use crate::transform::Transform;
 
 
 

@@ -17,15 +17,15 @@ use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 use syntax_pos::FileName;
 
-use ast_manip::{GetNodeId, GetSpan, Visit};
-use command::{self, RefactorState};
-use driver;
-use file_io::FileIO;
-use interact::{ToServer, ToClient};
-use interact::WrapSender;
-use interact::{plain_backend, vim8_backend};
-use interact::worker::{self, ToWorker};
-use pick_node;
+use crate::ast_manip::{GetNodeId, GetSpan, Visit};
+use crate::command::{self, RefactorState};
+use crate::driver;
+use crate::file_io::FileIO;
+use crate::interact::{ToServer, ToClient};
+use crate::interact::WrapSender;
+use crate::interact::{plain_backend, vim8_backend};
+use crate::interact::worker::{self, ToWorker};
+use crate::pick_node;
 use c2rust_ast_builder::IntoSymbol;
 
 use super::MarkInfo;

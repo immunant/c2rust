@@ -11,7 +11,7 @@ use std::rc::Rc;
 use syntax::ptr::P;
 use c2rust_ast_builder::mk;
 
-use ast_manip::{MaybeGetNodeId, GetSpan};
+use crate::ast_manip::{MaybeGetNodeId, GetSpan};
 
 
 pub struct Ctxt {

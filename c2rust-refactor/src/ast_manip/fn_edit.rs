@@ -7,7 +7,7 @@ use syntax::util::move_map::MoveMap;
 use syntax::visit::{self, Visitor};
 use syntax_pos::Span;
 
-use ast_manip::{Fold, Visit, GetNodeId, GetSpan};
+use crate::ast_manip::{Fold, Visit, GetNodeId, GetSpan};
 
 
 /// Enum indicating which kind of itemlike a `fn` is.

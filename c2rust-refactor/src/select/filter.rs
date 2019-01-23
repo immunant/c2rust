@@ -5,13 +5,13 @@ use syntax::source_map::Span;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 
-use ast_manip::AstEquiv;
-use command::CommandState;
-use driver;
-use matcher::MatchCtxt;
-use pick_node::NodeKind;
-use reflect;
-use select::{Filter, AnyPattern};
+use crate::ast_manip::AstEquiv;
+use crate::command::CommandState;
+use crate::driver;
+use crate::matcher::MatchCtxt;
+use crate::pick_node::NodeKind;
+use crate::reflect;
+use crate::select::{Filter, AnyPattern};
 
 
 #[derive(Clone, Copy, Debug)]

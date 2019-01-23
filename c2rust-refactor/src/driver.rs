@@ -34,9 +34,9 @@ use syntax_pos::FileName;
 use syntax_pos::Span;
 use arena::SyncDroplessArena;
 
-use ast_manip::remove_paren;
-use span_fix;
-use util::Lone;
+use crate::ast_manip::remove_paren;
+use crate::span_fix;
+use crate::util::Lone;
 
 
 /// Driver context.  Contains all available analysis results as of the current compiler phase.

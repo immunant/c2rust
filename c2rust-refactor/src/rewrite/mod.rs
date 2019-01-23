@@ -63,9 +63,9 @@ use syntax::ast::*;
 use syntax::source_map::{Span, DUMMY_SP};
 use syntax::util::parser;
 
-use ast_manip::{GetSpan, Visit};
-use ast_manip::ast_map::{AstMap, map_ast};
-use driver;
+use crate::ast_manip::{GetSpan, Visit};
+use crate::ast_manip::ast_map::{AstMap, map_ast};
+use crate::driver;
 
 mod cleanup;
 pub mod files;

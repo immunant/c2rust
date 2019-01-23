@@ -1,6 +1,6 @@
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 
-use rewrite::TextRewrite;
+use crate::rewrite::TextRewrite;
 
 
 fn empty_span(sp: Span) -> bool {

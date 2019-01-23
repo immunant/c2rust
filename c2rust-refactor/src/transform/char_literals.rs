@@ -1,9 +1,9 @@
-use api::*;
-use command::{CommandState, Registry};
-use driver::{self, Phase};
+use crate::api::*;
+use crate::command::{CommandState, Registry};
+use crate::driver::{self, Phase};
 use syntax::ast::*;
 use syntax::ptr::P;
-use transform::Transform;
+use crate::transform::Transform;
 
 /// # `char_literals` Command
 /// 

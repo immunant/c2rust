@@ -4,8 +4,8 @@ use std::sync::mpsc::{self, SyncSender};
 use std::thread;
 use json::{self, JsonValue};
 
-use interact::{ToServer, ToClient, MarkInfo};
-use interact::WrapSender;
+use crate::interact::{ToServer, ToClient, MarkInfo};
+use crate::interact::WrapSender;
 
 
 pub fn init<U, F>(to_server: WrapSender<ToServer, U, F>) -> SyncSender<ToClient>

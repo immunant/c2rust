@@ -9,9 +9,9 @@ use syntax::ext::hygiene::SyntaxContext;
 use syntax::visit::{self, Visitor, FnKind};
 use syntax_pos::FileName;
 
-use ast_manip::Visit;
-use command::{Registry, DriverCommand};
-use driver::{self, Phase};
+use crate::ast_manip::Visit;
+use crate::command::{Registry, DriverCommand};
+use crate::driver::{self, Phase};
 
 
 /// The ID and span of a selected node.

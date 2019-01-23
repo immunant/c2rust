@@ -2,11 +2,11 @@ use rustc::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
 use syntax::ast::{Crate, Expr, ExprKind, Mutability, UnOp};
 use syntax::ptr::P;
 
-use api::*;
-use ast_manip::fold_nodes;
-use command::{CommandState, Registry};
-use driver::{self, Phase};
-use transform::Transform;
+use crate::api::*;
+use crate::ast_manip::fold_nodes;
+use crate::command::{CommandState, Registry};
+use crate::driver::{self, Phase};
+use crate::transform::Transform;
 
 /// Transformation that makes all autorefs and autoderefs explicit.
 struct CanonicalizeRefs;

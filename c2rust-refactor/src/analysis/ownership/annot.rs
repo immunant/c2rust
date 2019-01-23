@@ -12,10 +12,10 @@ use syntax::ast;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
 
-use ast_manip::Visit;
-use command::CommandState;
-use driver;
-use type_map::{self, TypeSource};
+use crate::ast_manip::Visit;
+use crate::command::CommandState;
+use crate::driver;
+use crate::type_map::{self, TypeSource};
 
 use super::{LTy, LFnSig, ConcretePerm, PermVar, Var};
 use super::constraint::{ConstraintSet, Perm};

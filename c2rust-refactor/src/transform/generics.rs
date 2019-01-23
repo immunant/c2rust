@@ -3,10 +3,10 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use api::*;
-use command::{CommandState, Registry};
-use driver;
-use transform::Transform;
+use crate::api::*;
+use crate::command::{CommandState, Registry};
+use crate::driver;
+use crate::transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
 
 

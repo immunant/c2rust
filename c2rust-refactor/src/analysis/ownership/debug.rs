@@ -6,7 +6,7 @@ use rustc::hir;
 use rustc::ty::TyKind;
 use rustc_data_structures::indexed_vec::Idx;
 
-use analysis::labeled_ty::LabeledTy;
+use crate::analysis::labeled_ty::LabeledTy;
 
 use super::{ConcretePerm, Perm};
 

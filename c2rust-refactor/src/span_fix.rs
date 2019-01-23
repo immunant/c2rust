@@ -14,8 +14,8 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax_pos::hygiene::SyntaxContext;
 
-use ast_manip::Fold;
-use ast_manip::util::extended_span;
+use crate::ast_manip::Fold;
+use crate::ast_manip::util::extended_span;
 
 
 /// Folder for fixing expansions of `format!`.  `format!(..., foo)` generates an expression `&foo`,

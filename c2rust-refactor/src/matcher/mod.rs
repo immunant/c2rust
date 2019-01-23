@@ -46,12 +46,12 @@ use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::move_map::MoveMap;
 use smallvec::SmallVec;
 
-use api::DriverCtxtExt;
-use ast_manip::{Fold, GetNodeId};
-use ast_manip::util::PatternSymbol;
-use command::CommandState;
-use driver;
-use reflect;
+use crate::api::DriverCtxtExt;
+use crate::ast_manip::{Fold, GetNodeId};
+use crate::ast_manip::util::PatternSymbol;
+use crate::command::CommandState;
+use crate::driver;
+use crate::reflect;
 use c2rust_ast_builder::IntoSymbol;
 
 mod bindings;

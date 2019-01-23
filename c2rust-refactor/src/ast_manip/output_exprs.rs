@@ -5,8 +5,8 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::move_map::MoveMap;
 
-use ast_manip::Fold;
-use util::Lone;
+use crate::ast_manip::Fold;
+use crate::util::Lone;
 
 
 struct OutputFolder<F> {

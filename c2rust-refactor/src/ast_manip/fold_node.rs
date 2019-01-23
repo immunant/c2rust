@@ -5,7 +5,7 @@ use syntax::ptr::P;
 use smallvec::SmallVec;
 use syntax::util::move_map::MoveMap;
 
-use ast_manip::Fold;
+use crate::ast_manip::Fold;
 
 
 /// Trait for AST node types that can be rewritten with a fold.

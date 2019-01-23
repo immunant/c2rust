@@ -26,10 +26,10 @@ use rustc::ty::TyCtxt;
 use rustc_data_structures::indexed_vec::{IndexVec, Idx};
 use syntax::source_map::Span;
 
-use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
-use command::CommandState;
-use driver;
-use type_map;
+use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::command::CommandState;
+use crate::driver;
+use crate::type_map;
 
 
 pub mod constraint;

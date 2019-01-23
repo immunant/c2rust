@@ -13,7 +13,7 @@ use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinToke
 use syntax::util::move_map::MoveMap;
 use syntax_pos::hygiene::SyntaxContext;
 
-use ast_manip::Fold;
+use crate::ast_manip::Fold;
 
 
 // TODO: Check for autoborrow adjustments.  Some method receivers are actually Lvalue / LvalueMut

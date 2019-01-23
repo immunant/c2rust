@@ -27,7 +27,7 @@ use syntax::source_map::{Spanned, DUMMY_SP};
 use syntax::util::parser::{AssocOp, Fixity};
 use rustc::session::Session;
 
-use ast_manip::{GetSpan, AstDeref};
+use crate::ast_manip::{GetSpan, AstDeref};
 
 use super::strategy;
 use super::{TextRewrite, RewriteCtxtRef, SeqItemId, ExprPrec};

@@ -7,7 +7,7 @@ use rustc::ty::{Ty, TyKind};
 use rustc_data_structures::indexed_vec::IndexVec;
 use rustc_target::abi::VariantIdx;
 
-use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
 use super::{Var, PermVar, LTy, LFnSig, FnSig};
 use super::constraint::{ConstraintSet, Perm};

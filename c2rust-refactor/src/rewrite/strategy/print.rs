@@ -23,14 +23,14 @@ use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
 use syntax::util::parser;
 
-use ast_manip::{GetNodeId, GetSpan, AstDeref};
-use ast_manip::ast_map::NodeTable;
-use ast_manip::util::extended_span;
-use driver;
-use rewrite::{Rewrite, TextRewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, ExprPrec};
-use rewrite::base::{is_rewritable, describe};
-use rewrite::base::{binop_left_prec, binop_right_prec};
-use util::Lone;
+use crate::ast_manip::{GetNodeId, GetSpan, AstDeref};
+use crate::ast_manip::ast_map::NodeTable;
+use crate::ast_manip::util::extended_span;
+use crate::driver;
+use crate::rewrite::{Rewrite, TextRewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, ExprPrec};
+use crate::rewrite::base::{is_rewritable, describe};
+use crate::rewrite::base::{binop_left_prec, binop_right_prec};
+use crate::util::Lone;
 
 
 // PrintParse

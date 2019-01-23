@@ -5,11 +5,11 @@ use syntax::attr;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use api::*;
-use ast_manip::fn_edit::{visit_fns, FnKind};
-use command::{CommandState, Registry};
-use driver::{self, Phase};
-use transform::Transform;
+use crate::api::*;
+use crate::ast_manip::fn_edit::{visit_fns, FnKind};
+use crate::command::{CommandState, Registry};
+use crate::driver::{self, Phase};
+use crate::transform::Transform;
 
 
 /// # `link_funcs` Command

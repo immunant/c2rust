@@ -12,17 +12,17 @@ use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax::util::move_map::MoveMap;
 use syntax_pos::Span;
-use reflect::reflect_tcx_ty;
+use crate::reflect::reflect_tcx_ty;
 use smallvec::SmallVec;
 
-use api::*;
-use ast_manip::lr_expr::{self, fold_exprs_with_context};
-use command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
-use driver::{self, Phase};
-use illtyped::{IlltypedFolder, fold_illtyped};
-use reflect;
-use transform::Transform;
-use ast_manip::fn_edit::visit_fns;
+use crate::api::*;
+use crate::ast_manip::lr_expr::{self, fold_exprs_with_context};
+use crate::command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
+use crate::driver::{self, Phase};
+use crate::illtyped::{IlltypedFolder, fold_illtyped};
+use crate::reflect;
+use crate::transform::Transform;
+use crate::ast_manip::fn_edit::visit_fns;
 
 /// # `retype_argument` Command
 /// 

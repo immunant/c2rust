@@ -9,8 +9,8 @@ use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
 
-use ast_manip::util::macro_name;
-use matcher::{self, TryMatch, MatchCtxt};
+use crate::ast_manip::util::macro_name;
+use crate::matcher::{self, TryMatch, MatchCtxt};
 
 
 impl TryMatch for Ident {

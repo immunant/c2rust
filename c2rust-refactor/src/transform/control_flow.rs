@@ -1,9 +1,9 @@
 use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind};
 
-use api::*;
-use command::{CommandState, Registry};
-use driver;
-use transform::Transform;
+use crate::api::*;
+use crate::command::{CommandState, Registry};
+use crate::driver;
+use crate::transform::Transform;
 
 
 /// # `reconstruct_while` Command

@@ -8,10 +8,10 @@ use rustc::hir;
 use rustc::ty::{self, TyCtxt, ParamEnv};
 use rustc::ty::subst::Substs;
 
-use api::*;
-use command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
-use driver::{self, Phase};
-use transform::Transform;
+use crate::api::*;
+use crate::command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
+use crate::driver::{self, Phase};
+use crate::transform::Transform;
 
 
 /// # `test_one_plus_one` Command

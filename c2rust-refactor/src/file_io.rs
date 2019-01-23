@@ -12,7 +12,7 @@ use syntax::source_map::{Span, DUMMY_SP};
 use syntax::symbol::Symbol;
 use syntax_pos::hygiene::SyntaxContext;
 
-use rewrite::{self, TextRewrite};
+use crate::rewrite::{self, TextRewrite};
 
 
 #[allow(unused_variables)]

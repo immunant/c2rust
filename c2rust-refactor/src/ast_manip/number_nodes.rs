@@ -2,7 +2,7 @@ use std::cell::Cell;
 use syntax::ast::{NodeId, Mac, DUMMY_NODE_ID};
 use syntax::fold::{self, Folder};
 
-use ast_manip::Fold;
+use crate::ast_manip::Fold;
 
 
 pub struct NodeIdCounter(Cell<u32>);

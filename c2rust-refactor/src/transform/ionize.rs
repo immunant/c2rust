@@ -1,8 +1,8 @@
-use api::*;
-use ast_manip::lr_expr::*;
-use command::{CommandState, Registry};
-use driver::{self, Phase, parse_impl_items};
-use reflect::reflect_def_path;
+use crate::api::*;
+use crate::ast_manip::lr_expr::*;
+use crate::command::{CommandState, Registry};
+use crate::driver::{self, Phase, parse_impl_items};
+use crate::reflect::reflect_def_path;
 use rustc::hir::def_id::DefId;
 use rustc::ty::TyKind;
 use std::collections::HashSet;
@@ -10,7 +10,7 @@ use std::fmt::Display;
 use syntax::ast::*;
 use syntax::fold::Folder;
 use syntax::ptr::P;
-use transform::Transform;
+use crate::transform::Transform;
 
 /// # `ionize` Command
 /// 

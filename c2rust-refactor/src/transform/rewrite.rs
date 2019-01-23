@@ -1,11 +1,11 @@
 use syntax::ast::Crate;
 use syntax::symbol::Symbol;
 
-use api::*;
-use command::{CommandState, Registry};
-use contains_mark::contains_mark;
-use driver::{self, Phase};
-use transform::Transform;
+use crate::api::*;
+use crate::command::{CommandState, Registry};
+use crate::contains_mark::contains_mark;
+use crate::driver::{self, Phase};
+use crate::transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
 
 

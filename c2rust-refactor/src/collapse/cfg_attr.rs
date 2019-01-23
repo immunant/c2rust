@@ -5,7 +5,7 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
-use ast_manip::{Fold, GetNodeId, Visit};
+use crate::ast_manip::{Fold, GetNodeId, Visit};
 
 
 struct CollectCfgAttrs {

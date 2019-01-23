@@ -1,9 +1,9 @@
 use syntax::ast::Crate;
 
-use api::*;
-use command::{CommandState, Registry};
-use driver;
-use transform::Transform;
+use crate::api::*;
+use crate::command::{CommandState, Registry};
+use crate::driver;
+use crate::transform::Transform;
 
 
 /// # `wrapping_arith_to_normal` Command

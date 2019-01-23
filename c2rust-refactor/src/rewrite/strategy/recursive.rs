@@ -3,9 +3,9 @@ use syntax::parse::token::Nonterminal;
 use syntax::tokenstream::{TokenTree, Delimited, DelimSpan};
 use syntax::util::parser;
 
-use ast_manip::{GetNodeId, GetSpan};
-use rewrite::{RewriteCtxtRef, Rewrite, ExprPrec};
-use rewrite::base::{rewrite_seq, calc_outer_span, binop_left_prec, binop_right_prec};
+use crate::ast_manip::{GetNodeId, GetSpan};
+use crate::rewrite::{RewriteCtxtRef, Rewrite, ExprPrec};
+use crate::rewrite::base::{rewrite_seq, calc_outer_span, binop_left_prec, binop_right_prec};
 
 /// Try rewriting every child of `old` into the corresponding child of `new`.  Fails if `old` and
 /// `new` don't have the same structure (for example, if they are different variants of an enum),

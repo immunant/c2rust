@@ -13,8 +13,8 @@ use syntax::ptr::P;
 use syntax::symbol::keywords;
 use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
 use c2rust_ast_builder::mk;
-use command::{Registry, DriverCommand};
-use driver::Phase;
+use crate::command::{Registry, DriverCommand};
+use crate::driver::Phase;
 
 
 /// Build an AST representing a `ty::Ty`.
@@ -326,7 +326,7 @@ fn register_test_reflect(reg: &mut Registry) {
     reg.register("test_reflect", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             st.map_krate(|krate| {
-                use api::*;
+                use crate::api::*;
                 use rustc::ty::TyKind;
 
                 let krate = fold_nodes(krate, |e: P<Expr>| {

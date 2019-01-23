@@ -12,11 +12,11 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use command::CommandState;
-use command::{Registry, DriverCommand};
-use driver::{self, Phase};
-use pick_node::NodeKind;
-use resolve;
+use crate::command::CommandState;
+use crate::command::{Registry, DriverCommand};
+use crate::driver::{self, Phase};
+use crate::pick_node::NodeKind;
+use crate::resolve;
 use c2rust_ast_builder::IntoSymbol;
 
 pub use self::filter::ItemLikeKind;

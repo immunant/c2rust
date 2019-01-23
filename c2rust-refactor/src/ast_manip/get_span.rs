@@ -3,7 +3,7 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
 
-use ast_manip::util::extended_span;
+use crate::ast_manip::util::extended_span;
 
 
 /// Trait for obtaining the `Span` of a generic AST node.

@@ -18,11 +18,11 @@ use syntax::parse::token::{Token, DelimToken};
 use syntax::symbol::keywords;
 use syntax::tokenstream::{TokenStream, ThinTokenStream, TokenTree};
 
-use ast_manip::AstEquiv;
-use driver;
-use rewrite::{Rewrite, TextRewrite, RewriteCtxtRef};
-use rewrite::base::{describe, rewrite_seq_comma_sep};
-use rewrite::strategy::print::PrintParse;
+use crate::ast_manip::AstEquiv;
+use crate::driver;
+use crate::rewrite::{Rewrite, TextRewrite, RewriteCtxtRef};
+use crate::rewrite::base::{describe, rewrite_seq_comma_sep};
+use crate::rewrite::strategy::print::PrintParse;
 
 struct FnHeaderSpans {
     vis: Span,

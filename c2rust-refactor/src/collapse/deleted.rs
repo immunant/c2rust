@@ -9,10 +9,10 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
-use ast_manip::{Fold, GetNodeId, ListNodeIds, Visit};
-use ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
-use node_map::NodeMap;
-use util::Lone;
+use crate::ast_manip::{Fold, GetNodeId, ListNodeIds, Visit};
+use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
+use crate::node_map::NodeMap;
+use crate::util::Lone;
 
 use super::mac_table::{MacTable, MacNodeRef, AsMacNodeRef};
 
