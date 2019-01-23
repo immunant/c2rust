@@ -1,5 +1,6 @@
 os: osx
-osx_image: xcode9.3 # request macOS 10.13
+# note: xcode9.4/macOS 10.13 is the default for macOS
+# osx_image: xcode9.3 # request macOS 10.13
 sudo: enabled
 language: generic
 
@@ -31,20 +32,21 @@ cache:
     - $TRAVIS_BUILD_DIR/rust-refactor/target
 
 install:
-  - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
+#   - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
+  - /usr/bin/env python3 --version
   - ./scripts/provision_mac.sh
   - . ~/.cargo/env
 
 # NOTE: travis doesn't automatically terminate if command fails.
 script: 
   - ccache -s
-  - python3 ./scripts/build_translator.py  || travis_terminate 1
-  - python3 ./scripts/test_translator.py ./tests || travis_terminate 1
+  - python3 ./scripts/build_translator.py --debug || travis_terminate 1
+  - ccache -s
+  - python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
  # NOTE: disabled because it takes to long to compile on free plan :/
  # To enable, add `--with-clang` to build_translator.py line above.
  # - python3 ./scripts/build_cross_checks.py || travis_terminate 1
  # - python3 ./scripts/test_cross_checks.py || travis_terminate 1
-  - ccache -s
 
 notifications:
   slack:
