@@ -221,7 +221,6 @@ impl Transform for RenameUnnamed {
                     for outer_item in &mut outer_mod.items {
                         match outer_item.node {
                             ItemKind::Use(ref mut ut) => {
-                                let mut ut: &mut UseTree = ut;
                                 let mut old_idents = HashMap::new();
                                 for segment in &ut.prefix.segments {
                                     if let Some(map) = mod_to_old_idents.get(&segment.ident) {

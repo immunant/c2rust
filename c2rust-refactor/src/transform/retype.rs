@@ -1002,8 +1002,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
     fn run(&mut self, krate: Crate) -> TypeckLoopResult {
         let krate = {
-            let folder = RetypeIterationFolder { iteration: self };
-            fold_illtyped(self.cx, krate, folder)
+            fold_illtyped(self.cx, krate, RetypeIterationFolder { iteration: self })
         };
         if self.num_inserted_casts > 0 {
             return TypeckLoopResult::Iterate(krate);
