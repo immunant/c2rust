@@ -12,10 +12,10 @@ use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream};
 use syntax_pos::FileName;
 
-use pick_node::NodeKind;
-use ast_manip::remove_paren;
-use select::{SelectOp, Filter, AnyPattern, ItemLikeKind};
-use util::Lone;
+use crate::pick_node::NodeKind;
+use crate::ast_manip::remove_paren;
+use crate::select::{SelectOp, Filter, AnyPattern, ItemLikeKind};
+use crate::util::Lone;
 
 type PResult<T> = Result<T, String>;
 

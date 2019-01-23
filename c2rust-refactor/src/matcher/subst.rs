@@ -23,12 +23,12 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use smallvec::SmallVec;
 
-use ast_manip::Fold;
-use ast_manip::util::{PatternSymbol, macro_name};
-use command::CommandState;
-use driver;
-use matcher::Bindings;
-use util::Lone;
+use crate::ast_manip::Fold;
+use crate::ast_manip::util::{PatternSymbol, macro_name};
+use crate::command::CommandState;
+use crate::driver;
+use crate::matcher::Bindings;
+use crate::util::Lone;
 
 
 // `st` and `cx` were previously used for `def!` substitution, which has been removed.  I expect

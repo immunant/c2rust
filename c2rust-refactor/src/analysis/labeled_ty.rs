@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use arena::SyncDroplessArena;
 use rustc::ty::{Ty, TyKind};
 
-use type_map;
+use crate::type_map;
 
 
 /// The actual data for a labeled type.

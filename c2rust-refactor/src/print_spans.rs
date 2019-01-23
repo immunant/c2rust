@@ -5,9 +5,9 @@ use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::print::pprust;
 use syntax::visit::Visitor;
 
-use ast_manip::{Visit, visit_nodes};
-use command::{Registry, DriverCommand};
-use driver::Phase;
+use crate::ast_manip::{Visit, visit_nodes};
+use crate::command::{Registry, DriverCommand};
+use crate::driver::Phase;
 
 
 struct PrintSpanVisitor<'a> {

@@ -7,10 +7,10 @@ use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::TokenTree;
 
-use api::*;
-use command::{CommandState, Registry};
-use driver;
-use transform::Transform;
+use crate::api::*;
+use crate::command::{CommandState, Registry};
+use crate::driver;
+use crate::transform::Transform;
 
 
 /// # `convert_format_args` Command

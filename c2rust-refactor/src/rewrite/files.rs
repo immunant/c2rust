@@ -5,9 +5,9 @@ use diff;
 use syntax::source_map::{SourceMap, SourceFile};
 use syntax_pos::{BytePos, FileName};
 
-use file_io::FileIO;
-use rewrite::{TextRewrite, TextAdjust};
-use rewrite::cleanup::cleanup_rewrites;
+use crate::file_io::FileIO;
+use crate::rewrite::{TextRewrite, TextAdjust};
+use crate::rewrite::cleanup::cleanup_rewrites;
 
 
 /// Apply a sequence of rewrites to the source code, handling the results by passing the new text

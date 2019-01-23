@@ -2,8 +2,8 @@
 
 use std::collections::HashSet;
 
-use command::{Registry, DriverCommand};
-use driver::Phase;
+use crate::command::{Registry, DriverCommand};
+use crate::driver::Phase;
 use c2rust_ast_builder::IntoSymbol;
 
 

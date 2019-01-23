@@ -6,8 +6,8 @@ use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::visit::{self, Visitor};
 
-use ast_manip::{AstEquiv, Visit, ListNodeIds};
-use node_map::NodeMap;
+use crate::ast_manip::{AstEquiv, Visit, ListNodeIds};
+use crate::node_map::NodeMap;
 
 use super::mac_table::{MacTable, InvocKind};
 

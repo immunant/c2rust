@@ -8,10 +8,10 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
-use api::*;
-use command::{CommandState, Registry};
-use driver::{self, Phase};
-use transform::Transform;
+use crate::api::*;
+use crate::command::{CommandState, Registry};
+use crate::driver::{self, Phase};
+use crate::transform::Transform;
 use rustc::middle::cstore::CrateStore;
 
 

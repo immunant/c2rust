@@ -9,12 +9,12 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use smallvec::SmallVec;
 
-use api::*;
-use command::{CommandState, Registry};
-use driver::{self, Phase};
-use transform::Transform;
+use crate::api::*;
+use crate::command::{CommandState, Registry};
+use crate::driver::{self, Phase};
+use crate::transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
-use util::Lone;
+use crate::util::Lone;
 
 
 /// # `func_to_method` Command

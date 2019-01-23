@@ -6,7 +6,7 @@ use std::mem;
 use std::path::Path;
 use libc::{dlopen, dlsym, RTLD_LAZY};
 
-use command::Registry;
+use crate::command::Registry;
 
 /// Find the named plugins in the search path, and pass `reg` to each of their `register_commands`
 /// entry points.

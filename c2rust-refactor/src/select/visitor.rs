@@ -6,10 +6,10 @@ use syntax::ast::*;
 use syntax::source_map::Span;
 use syntax::visit::{self, Visitor, FnKind};
 
-use command::CommandState;
-use driver;
-use select::Filter;
-use select::filter::{self, AnyNode};
+use crate::command::CommandState;
+use crate::driver;
+use crate::select::Filter;
+use crate::select::filter::{self, AnyNode};
 
 
 struct ChildMatchVisitor<'a, 'tcx: 'a> {

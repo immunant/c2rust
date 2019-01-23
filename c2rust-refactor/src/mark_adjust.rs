@@ -8,11 +8,11 @@ use syntax::ast::*;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
 
-use api::DriverCtxtExt;
-use ast_manip::{Visit, visit_nodes};
-use command::CommandState;
-use command::{Registry, DriverCommand, RefactorState, FuncCommand};
-use driver::{self, Phase};
+use crate::api::DriverCtxtExt;
+use crate::ast_manip::{Visit, visit_nodes};
+use crate::command::CommandState;
+use crate::command::{Registry, DriverCommand, RefactorState, FuncCommand};
+use crate::driver::{self, Phase};
 use c2rust_ast_builder::IntoSymbol;
 
 

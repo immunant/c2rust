@@ -4,7 +4,7 @@ use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Item};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use ast_manip::AstEquiv;
+use crate::ast_manip::AstEquiv;
 use c2rust_ast_builder::IntoSymbol;
 
 

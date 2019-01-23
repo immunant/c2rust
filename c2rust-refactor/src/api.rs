@@ -12,19 +12,19 @@ use syntax::ast::{Expr, ExprKind};
 use syntax::ast::{Path, QSelf};
 
 // Reexports of various helpers
-pub use ast_manip::*;
-pub use ast_manip::fn_edit::{fold_fns, fold_fns_multi};
-pub use ast_manip::lr_expr::fold_expr_with_context;
+pub use crate::ast_manip::*;
+pub use crate::ast_manip::fn_edit::{fold_fns, fold_fns_multi};
+pub use crate::ast_manip::lr_expr::fold_expr_with_context;
 pub use c2rust_ast_builder::mk;
-pub use driver::{parse_expr, parse_pat, parse_ty, parse_stmts, parse_items};
-pub use matcher::{MatchCtxt, Bindings, BindingType, Subst};
-pub use matcher::{fold_match, fold_match_with};
-pub use path_edit::{self, fold_resolved_paths, fold_resolved_paths_with_id};
+pub use crate::driver::{parse_expr, parse_pat, parse_ty, parse_stmts, parse_items};
+pub use crate::matcher::{MatchCtxt, Bindings, BindingType, Subst};
+pub use crate::matcher::{fold_match, fold_match_with};
+pub use crate::path_edit::{self, fold_resolved_paths, fold_resolved_paths_with_id};
 
-use matcher::Pattern;
-use command::CommandState;
-use driver;
-use reflect;
+use crate::matcher::Pattern;
+use crate::command::CommandState;
+use crate::driver;
+use crate::reflect;
 
 
 /// Replace all instances of expression `pat` with expression `repl`.

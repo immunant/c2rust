@@ -13,16 +13,16 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::visit::Visitor;
 
-use ast_manip::{ListNodeIds, remove_paren, Visit, Fold};
-use ast_manip::ast_map::map_ast_into;
-use ast_manip::number_nodes::{number_nodes, number_nodes_with, NodeIdCounter, reset_node_ids};
-use collapse;
-use driver::{self, Phase, Phase1Bits};
-use file_io::{FileIO, ArcFileIO};
-use node_map::NodeMap;
-use rewrite;
-use rewrite::files;
-use span_fix;
+use crate::ast_manip::{ListNodeIds, remove_paren, Visit, Fold};
+use crate::ast_manip::ast_map::map_ast_into;
+use crate::ast_manip::number_nodes::{number_nodes, number_nodes_with, NodeIdCounter, reset_node_ids};
+use crate::collapse;
+use crate::driver::{self, Phase, Phase1Bits};
+use crate::file_io::{FileIO, ArcFileIO};
+use crate::node_map::NodeMap;
+use crate::rewrite;
+use crate::rewrite::files;
+use crate::span_fix;
 use c2rust_ast_builder::IntoSymbol;
 
 

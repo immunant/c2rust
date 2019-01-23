@@ -9,7 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc::{Sender, SyncSender, Receiver};
 
-use interact::{ToServer, ToClient};
+use crate::interact::{ToServer, ToClient};
 
 
 pub enum ToWorker {

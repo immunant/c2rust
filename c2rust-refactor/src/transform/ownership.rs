@@ -14,13 +14,13 @@ use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream, Delimited, DelimSpan};
 use smallvec::SmallVec;
 
-use analysis::labeled_ty::LabeledTyCtxt;
-use analysis::ownership::{self, ConcretePerm, Var, PTy};
-use analysis::ownership::constraint::{ConstraintSet, Perm};
-use api::*;
-use command::{CommandState, Registry, DriverCommand};
-use driver::{self, Phase};
-use type_map;
+use crate::analysis::labeled_ty::LabeledTyCtxt;
+use crate::analysis::ownership::{self, ConcretePerm, Var, PTy};
+use crate::analysis::ownership::constraint::{ConstraintSet, Perm};
+use crate::api::*;
+use crate::command::{CommandState, Registry, DriverCommand};
+use crate::driver::{self, Phase};
+use crate::type_map;
 use c2rust_ast_builder::IntoSymbol;
 
 pub fn register_commands(reg: &mut Registry) {

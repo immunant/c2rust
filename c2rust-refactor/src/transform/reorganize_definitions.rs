@@ -5,13 +5,13 @@ use syntax::attr;
 use syntax::ptr::P;
 use syntax::symbol::keywords;
 use syntax::visit::{self, Visitor};
-use transform::Transform;
+use crate::transform::Transform;
 use indexmap::IndexSet;
 
-use api::*;
-use ast_manip::AstEquiv;
-use command::{CommandState, Registry};
-use driver::{self, Phase};
+use crate::api::*;
+use crate::ast_manip::AstEquiv;
+use crate::command::{CommandState, Registry};
+use crate::driver::{self, Phase};
 
 /// # `reoganize_definitions` Command
 /// 

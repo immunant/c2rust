@@ -3,8 +3,8 @@
 
 use syntax::ast::Crate;
 
-use command::{Command, RefactorState, CommandState, Registry};
-use driver::{self, Phase};
+use crate::command::{Command, RefactorState, CommandState, Registry};
+use crate::driver::{self, Phase};
 
 
 /// An AST transformation that can be applied to a crate.

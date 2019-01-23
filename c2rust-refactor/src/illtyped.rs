@@ -8,8 +8,8 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::move_map::MoveMap;
 
-use api::*;
-use driver;
+use crate::api::*;
+use crate::driver;
 
 
 fn types_approx_equal<'tcx>(tcx: TyCtxt<'_, 'tcx, 'tcx>,

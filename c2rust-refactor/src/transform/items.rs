@@ -10,11 +10,11 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use smallvec::SmallVec;
 
-use api::*;
+use crate::api::*;
 use c2rust_ast_builder::{mk, Make, IntoSymbol};
-use command::{CommandState, Registry};
-use driver::{self, Phase};
-use transform::Transform;
+use crate::command::{CommandState, Registry};
+use crate::driver::{self, Phase};
+use crate::transform::Transform;
 
 
 /// # `rename_items_regex` Command

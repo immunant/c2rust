@@ -3,8 +3,8 @@ use syntax::ast::{Block, Stmt, Item, Mod};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 
-use ast_manip::Fold;
-use util::cursor::Cursor;
+use crate::ast_manip::Fold;
+use crate::util::cursor::Cursor;
 
 
 struct BlockFolder<F: FnMut(&mut Cursor<Stmt>)> {

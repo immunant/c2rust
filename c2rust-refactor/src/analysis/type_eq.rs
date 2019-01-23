@@ -53,8 +53,8 @@ use syntax::ast::NodeId;
 use syntax::source_map::Span;
 use syntax::symbol::Symbol;
 
-use analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
-use type_map;
+use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::type_map;
 
 
 /// Unification key for types.

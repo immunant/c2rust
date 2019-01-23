@@ -34,7 +34,7 @@ docker rm `docker ps -aq`
 
 pruning all images:
 ```
-docker prune system
-# remove all images, not just unused ones
-docker prune system -a
+docker system prune
+# remove *all* images, not just unused ones
+docker system prune -a
 ```

@@ -28,7 +28,7 @@ use rustc::ty::{Ty, TyCtxt, TyKind};
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::source_map::Span;
 
-use analysis::labeled_ty::LabeledTyCtxt;
+use crate::analysis::labeled_ty::LabeledTyCtxt;
 
 use super::{Var, FnSig, LTy, LFnSig, ConcretePerm, PermVar};
 use super::constraint::ConstraintSet;

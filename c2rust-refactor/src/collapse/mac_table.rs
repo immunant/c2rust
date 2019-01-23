@@ -13,8 +13,8 @@ use syntax::source_map::Spanned;
 use syntax::ptr::P;
 use syntax::visit::Visitor;
 
-use ast_manip::{GetNodeId, GetSpan};
-use ast_manip::Visit;
+use crate::ast_manip::{GetNodeId, GetSpan};
+use crate::ast_manip::Visit;
 
 use super::root_callsite_span;
 

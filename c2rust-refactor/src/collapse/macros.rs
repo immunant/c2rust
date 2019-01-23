@@ -20,8 +20,8 @@ use super::mac_table::{MacTable, InvocId, InvocKind};
 use super::nt_match::{self, NtMatch};
 use super::root_callsite_span;
 
-use ast_manip::{Fold, ListNodeIds};
-use ast_manip::AstEquiv;
+use crate::ast_manip::{Fold, ListNodeIds};
+use crate::ast_manip::AstEquiv;
 
 
 

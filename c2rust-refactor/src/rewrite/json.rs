@@ -5,7 +5,7 @@ use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor, FnKind};
 use json::{self, JsonValue};
 
-use rewrite::{TextRewrite, TextAdjust};
+use crate::rewrite::{TextRewrite, TextAdjust};
 
 
 fn encode_span(sm: &SourceMap, sp: Span) -> JsonValue {
