@@ -88,3 +88,11 @@ pub fn reallocarray(span: usize, ptr: usize, nmemb: u64, size: u64, result: usiz
 pub fn ptr_deref(span: usize, ptr: usize) {
     eprintln!("Recording a pointer dereference at {:?} of 0x{:x}", SOURCE_SPANS[span], ptr);
 }
+
+pub fn ptr_assign(span: usize, ptr: usize) {
+    eprintln!("Recording a pointer assignment at {:?} of 0x{:x}", SOURCE_SPANS[span], ptr);
+}
+
+pub fn ptr_arg(span: usize, ptr: usize) {
+    eprintln!("Recording a pointer argument at {:?} of 0x{:x}", SOURCE_SPANS[span], ptr);
+}
