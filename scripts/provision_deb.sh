@@ -40,7 +40,7 @@ apt-get install -qq libreadline-dev
 apt-get install -qq libbz2-dev
 
 # python dependencies
-apt-get install -qq python-setuptools tcl-dev liblzma-dev libgdbm-dev
+apt-get install -qq python-setuptools python3-setuptools tcl-dev liblzma-dev libgdbm-dev
 apt-get -qq --no-install-recommends install tk-dev
 
 # redis and sqlite dependencies
