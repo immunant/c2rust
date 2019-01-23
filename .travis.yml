@@ -49,7 +49,7 @@ install:
     if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
       ./scripts/provision_mac.sh
     else
-      ./scripts/provision_deb.sh
+      sudo ./scripts/provision_deb.sh
       ./scripts/provision_rust.sh
     fi
   - . ~/.cargo/env
