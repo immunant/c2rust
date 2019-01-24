@@ -1,7 +1,6 @@
 language: generic
 # note: xcode9.4/macOS 10.13 is the default for macOS
 # osx_image: xcode9.3 # request macOS 10.13
-os: linux
 dist: xenial
 sudo: required
 
@@ -26,7 +25,8 @@ matrix:
           PATH="/usr/local/opt/ccache/libexec:$PATH"
           # https://docs.travis-ci.com/user/caching/#caches-and-build-matrices
           CACHE_NAME=OSX_JOB
-    - env: CACHE_NAME=LINUX_JOB
+    - os: linux
+      env: CACHE_NAME=LINUX_JOB
 
 cache:
   # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache

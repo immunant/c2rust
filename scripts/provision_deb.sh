@@ -29,6 +29,7 @@ apt-get install -qq \
     pkg-config \
     python-dev \
     python3-pip \
+    python3-setuptools \
     software-properties-common \
     unzip
 
