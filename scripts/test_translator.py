@@ -44,7 +44,7 @@ cargo = get_cmd_or_die("cargo")
 
 # Intermediate files
 intermediate_files = [
-    'cc_db', 'cbor', 'c_obj', 'c_lib', 'rust_src', 'rust_test_exec',
+    'cc_db', 'cbor', 'c_obj', 'c_lib', 'rust_src',
 ]
 
 
@@ -190,6 +190,7 @@ class TestDirectory:
         self.c_files = []
         self.rs_test_files = []
         self.full_path = full_path
+        self.full_path_src = os.path.join(full_path, "src")
         self.files = files
         self.name = full_path.split('/')[-1]
         self.keep = keep
@@ -198,7 +199,6 @@ class TestDirectory:
             "cbor": [],
             "c_obj": [],
             "c_lib": [],
-            "rust_test_exec": [],
             "cc_db": [],
         }
 
@@ -214,7 +214,14 @@ class TestDirectory:
 
                     if c_file:
                         self.c_files.append(c_file)
-                elif (filename.startswith("test_") and ext == ".rs" and
+
+        for entry in os.listdir(self.full_path_src):
+            path = os.path.abspath(os.path.join(self.full_path_src, entry))
+            if os.path.isfile(path):
+                _, ext = os.path.splitext(path)
+                filename = os.path.splitext(os.path.basename(path))[0]
+
+                if (filename.startswith("test_") and ext == ".rs" and
                       files.search(filename)):
                     rs_test_file = self._read_rust_test_file(path)
 
@@ -360,6 +367,8 @@ class TestDirectory:
                 outcomes.append(TestOutcome.UnexpectedFailure)
                 continue
 
+            translated_rust_file.move_to(self.full_path_src)
+
             self.generated_files["rust_src"].append(translated_rust_file)
 
             _, rust_file_short = os.path.split(translated_rust_file.path)
@@ -436,26 +445,24 @@ class TestDirectory:
 
         rust_file_builder.add_function(test_main)
 
-        main_file = rust_file_builder.build(self.full_path + "/tests_main.rs")
+        main_file = rust_file_builder.build(self.full_path + "/src/main.rs")
 
         self.generated_files["rust_src"].append(main_file)
 
         # Try and build test binary
-        try:
-            main = main_file.compile(CrateType.Binary, save_output=True,
-                                     extra_args=rustc_extra_args)
-        except NonZeroReturn as exception:
+        with pb.local.cwd(self.full_path):
+            retcode, stdout, stderr = cargo[["build"]].run(retcode=None)
+
+        if retcode != 0:
             _, main_file_path_short = os.path.split(main_file.path)
 
             self.print_status(Colors.FAIL, "FAILED", "compile {}".format(main_file_path_short))
             sys.stdout.write('\n')
-            sys.stdout.write(str(exception))
+            sys.stdout.write(stderr)
 
             outcomes.append(TestOutcome.UnexpectedFailure)
 
             return outcomes
-
-        self.generated_files["rust_test_exec"].append(str(main.executable))
 
         for test_file in self.rs_test_files:
             if not test_file.pass_expected:
@@ -465,9 +472,10 @@ class TestDirectory:
             extensionless_file_name, _ = os.path.splitext(file_name)
 
             for test_function in test_file.test_functions:
-                args = ["{}::{}".format(extensionless_file_name, test_function.name)]
+                args = ["run", "{}::{}".format(extensionless_file_name, test_function.name)]
 
-                retcode, stdout, stderr = main[args].run(retcode=None)
+                with pb.local.cwd(self.full_path):
+                    retcode, stdout, stderr = cargo[args].run(retcode=None)
 
                 logging.debug("stdout:%s\n", stdout)
 

@@ -7,6 +7,7 @@ from plumbum.machines.local import LocalCommand
 from typing import Iterable, List, Optional, Tuple
 
 rustc = get_cmd_or_die("rustc")
+mv = get_cmd_or_die("mv")
 
 
 # TODO: Support for custom visibility paths, if needed
@@ -65,6 +66,13 @@ class RustFile:
             # TODO: Support saving lib file
 
         return
+
+    def move_to(self, to_dir: str):
+        _, file_name = os.path.split(self.path)
+
+        mv[[self.path, to_dir]].run(retcode=None)
+
+        self.path = os.path.join(to_dir, file_name)
 
 
 class RustMod:
