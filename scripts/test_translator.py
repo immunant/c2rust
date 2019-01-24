@@ -32,8 +32,6 @@ from rust_file import (
 )
 from typing import Generator, List, Optional, Set, Iterable
 
-COMPILED_BITFIELDS_CRATE = False
-
 # Tools we will need
 clang = get_cmd_or_die("clang")
 rustc = get_cmd_or_die("rustc")
@@ -182,7 +180,7 @@ class TestFile(RustFile):
 
         self.test_functions = test_functions or []
         self.pass_expected = "xfail" not in flags
-        self.link_in_bitfields_crate = "link_in_bitfields_crate" in flags
+        self.extern_crates = {flag[13:] for flag in flags if flag.startswith("extern_crate_")}
 
 
 class TestDirectory:
@@ -382,23 +380,8 @@ class TestDirectory:
 
         # Build one binary that can call all the tests
         for test_file in self.rs_test_files:
-            # Compile our bitfields crate only once
-            if test_file.link_in_bitfields_crate and not COMPILED_BITFIELDS_CRATE:
-                description = "Compiling c2rust-bitfields"
-                self.print_status(Colors.WARNING, "RUNNING", description)
-
-                success = compile_bitfields_crate()
-
-                if not success:
-                    description = "Failed to compile c2rust-bitfields"
-
-                    self.print_status(Colors.FAIL, "FAILED", description)
-                    outcomes.append(TestOutcome.Failure)
-
-                    continue
-
-                rustc_extra_args.append(["-L", "crate={}".format(c.TARGET_DIR)])
-                rust_file_builder.add_extern_crate("c2rust_bitfields")
+            # rustc_extra_args.append(["-L", "crate={}".format(c.TARGET_DIR)])
+            rust_file_builder.add_extern_crates(test_file.extern_crates)
 
             _, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
@@ -528,28 +511,6 @@ class TestDirectory:
                     os.remove(getattr(file_path, "path", file_path))
                 except OSError:
                     pass
-
-
-def compile_bitfields_crate() -> bool:
-    with pb.local.cwd(c.BITFIELDS_CRATE_DIR):
-        args = ["build"]
-
-        if c.BUILD_TYPE == 'release':
-            args.append('--release')
-
-        retcode, stdout, stderr = cargo[args].run(retcode=None)
-
-        if retcode != 0:
-            print("stderr:", stderr)
-            return False
-
-        global COMPILED_BITFIELDS_CRATE
-
-        COMPILED_BITFIELDS_CRATE = True
-
-        return True
-
-    return False
 
 
 def readable_directory(directory: str) -> str:
