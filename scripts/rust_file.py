@@ -67,13 +67,6 @@ class RustFile:
 
         return
 
-    def move_to(self, to_dir: str):
-        _, file_name = os.path.split(self.path)
-
-        mv[[self.path, to_dir]].run(retcode=None)
-
-        self.path = os.path.join(to_dir, file_name)
-
 
 class RustMod:
     def __init__(self, name: str, visibility: RustVisibility = None) -> None:

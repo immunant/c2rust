@@ -147,9 +147,12 @@ def build_static_library(c_files: Iterable[CFile],
     obj_files = []
 
     for c_file in c_files:
-        extensionless_file_name, _ = os.path.splitext(c_file.path)
-        args.append(extensionless_file_name + ".o")
-        obj_files.append(extensionless_file_name + ".o")
+        extensionless_file_path, _ = os.path.splitext(c_file.path)
+        extensionless_file_name = os.path.basename(extensionless_file_path)
+        obj_file_path = os.path.join(output_path, extensionless_file_name + ".o")
+
+        args.append(obj_file_path)
+        obj_files.append(obj_file_path)
 
     logging.debug("combination command:\n %s", str(ar[args]))
     retcode, stdout, stderr = ar[args].run(retcode=None)
@@ -200,8 +203,8 @@ class TestDirectory:
             "cc_db": [],
         }
 
-        for entry in os.listdir(full_path):
-            path = os.path.abspath(os.path.join(full_path, entry))
+        for entry in os.listdir(self.full_path_src):
+            path = os.path.abspath(os.path.join(self.full_path_src, entry))
 
             if os.path.isfile(path):
                 _, ext = os.path.splitext(path)
@@ -213,13 +216,7 @@ class TestDirectory:
                     if c_file:
                         self.c_files.append(c_file)
 
-        for entry in os.listdir(self.full_path_src):
-            path = os.path.abspath(os.path.join(self.full_path_src, entry))
-            if os.path.isfile(path):
-                _, ext = os.path.splitext(path)
-                filename = os.path.splitext(os.path.basename(path))[0]
-
-                if (filename.startswith("test_") and ext == ".rs" and
+                elif (filename.startswith("test_") and ext == ".rs" and
                       files.search(filename)):
                     rs_test_file = self._read_rust_test_file(path)
 
@@ -365,8 +362,6 @@ class TestDirectory:
                 outcomes.append(TestOutcome.UnexpectedFailure)
                 continue
 
-            translated_rust_file.move_to(self.full_path_src)
-
             self.generated_files["rust_src"].append(translated_rust_file)
 
             _, rust_file_short = os.path.split(translated_rust_file.path)
@@ -434,7 +429,12 @@ class TestDirectory:
 
         # Try and build test binary
         with pb.local.cwd(self.full_path):
-            retcode, stdout, stderr = cargo[["build"]].run(retcode=None)
+            args = ["build"]
+
+            if c.BUILD_TYPE == 'release':
+                args.append('--release')
+
+            retcode, stdout, stderr = cargo[args].run(retcode=None)
 
         if retcode != 0:
             _, main_file_path_short = os.path.split(main_file.path)
@@ -456,6 +456,9 @@ class TestDirectory:
 
             for test_function in test_file.test_functions:
                 args = ["run", "{}::{}".format(extensionless_file_name, test_function.name)]
+
+                if c.BUILD_TYPE == 'release':
+                    args.append('--release')
 
                 with pb.local.cwd(self.full_path):
                     retcode, stdout, stderr = cargo[args].run(retcode=None)
