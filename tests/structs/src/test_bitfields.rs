@@ -1,4 +1,4 @@
-//! link_in_bitfields_crate
+//! extern_crate_c2rust_bitfields
 
 use std::mem::size_of;
 use bitfields::{

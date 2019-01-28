@@ -179,6 +179,9 @@ class RustFileBuilder:
     def add_extern_crate(self, crate: str) -> None:
         self.extern_crates.add(crate)
 
+    def add_extern_crates(self, crates: Iterable[str]) -> None:
+        self.extern_crates.update(crates)
+
     def add_mod(self, mod: RustMod) -> None:
         self.mods.add(mod)
 
