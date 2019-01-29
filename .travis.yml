@@ -61,15 +61,18 @@ install:
 # NOTE: travis doesn't automatically terminate if command fails.
 script:
   - |
-    if [["$CACHE_NAME" == "LINUX_JOB"] || ["$CACHE_NAME" == "OSX_JOB"]]; then
-      ccache -s
-      python3 ./scripts/build_translator.py --debug || travis_terminate 1
-      ccache -s
-      python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
-    else
-      cargo build
-      python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
-    fi
+    case "$CACHE_NAME" in
+      LINUX_JOB|OSX_JOB)
+        ccache -s
+        python3 ./scripts/build_translator.py --debug || travis_terminate 1
+        ccache -s
+        python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
+        ;;
+      LINUX_JOB2|OSX_JOB2)
+        cargo build
+        python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
+        ;;
+    esac
  # NOTE: disabled because it takes to long to compile on free plan :/
  # To enable, add `--with-clang` to build_translator.py line above.
  # - python3 ./scripts/build_cross_checks.py || travis_terminate 1
