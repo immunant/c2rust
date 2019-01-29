@@ -39,6 +39,7 @@ struct Instrumenter {
     out_config: Config,
     out_path: PathBuf,
     target_dir: PathBuf,
+    main_path: String,
 }
 
 impl Instrumenter {
@@ -96,6 +97,7 @@ impl Instrumenter {
             out_config,
             out_path,
             target_dir: src_target_dir,
+            main_path: matches.value_of_lossy("main").unwrap().to_string(),
         }
     }
 
@@ -119,7 +121,10 @@ impl Instrumenter {
             commands: vec![
                 c2rust_refactor::Command {
                     name: String::from("lifetime_analysis"),
-                    args: vec![String::from(self.target_dir.join(SPAN_FILENAME).to_str().unwrap())],
+                    args: vec![
+                        String::from(self.target_dir.join(SPAN_FILENAME).to_str().unwrap()),
+                        self.main_path.clone(),
+                    ],
                 },
             ],
             rustc_args: c2rust_refactor::RustcArgSource::Cargo,

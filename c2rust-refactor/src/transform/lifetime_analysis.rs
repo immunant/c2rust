@@ -22,11 +22,12 @@ use c2rust_ast_builder::Make;
 
 struct LifetimeAnalysis {
     span_file_path: String,
+    main_path: String,
 }
 
 impl Transform for LifetimeAnalysis {
     fn transform(&self, krate: ast::Crate, _st: &CommandState, cx: &driver::Ctxt) -> ast::Crate {
-        let mut folder = LifetimeInstrumentation::new(cx, &self.span_file_path);
+        let mut folder = LifetimeInstrumentation::new(cx, &self.span_file_path, &self.main_path);
         let folded = folder.fold_crate(krate);
         folder.finalize().expect("Error instrumenting lifetimes");
         folded
@@ -44,6 +45,7 @@ const HOOK_FUNCTIONS: &[&'static str] = c2rust_analysis_rt::HOOK_FUNCTIONS;
 struct LifetimeInstrumentation<'a, 'tcx: 'a> {
     cx: &'a driver::Ctxt<'a, 'tcx>,
     span_file_path: &'a str,
+    main_path: ast::Path,
     hooked_functions: HashMap<Ident, P<ast::FnDecl>>,
 
     spans: IndexSet<SourceSpan>,
@@ -51,13 +53,25 @@ struct LifetimeInstrumentation<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx> LifetimeInstrumentation<'a, 'tcx> {
-    fn new(cx: &'a driver::Ctxt<'a, 'tcx>, span_file_path: &'a str) -> Self {
+    fn new(cx: &'a driver::Ctxt<'a, 'tcx>, span_file_path: &'a str, main_path: &'a str) -> Self {
+        let main_path = {
+            if let ast::TyKind::Path(_, ref path) = parse_ty(cx.session(), main_path).node {
+                let mut segments = path.segments.clone();
+                if let Some(seg) = path.make_root() {
+                    segments.insert(0, seg);
+                }
+                mk().path(segments)
+            } else {
+                panic!("Could not parse lifetime_analysis main path argument: {:?}", main_path);
+            }
+        };
         Self {
             cx,
             span_file_path,
             hooked_functions: HashMap::new(),
             spans: IndexSet::new(),
             depth: 0,
+            main_path,
         }
     }
 
@@ -116,14 +130,32 @@ impl<'a, 'tcx> LifetimeInstrumentation<'a, 'tcx> {
         idx
     }
 
-    fn instrument_main_block(&self, block: P<ast::Block>) -> P<ast::Block> {
+    fn instrument_entry_block(&self, block: P<ast::Block>) -> P<ast::Block> {
+        let init_stmt = mk().semi_stmt(
+            mk().call_expr(
+                mk().path_expr(vec!["c2rust_analysis_rt", "init"]),
+                vec![mk().lit_expr(mk().str_lit(self.span_file_path))],
+            )
+        );
         block.map(|mut block| {
-            block.stmts.insert(0, mk().semi_stmt(
-                mk().call_expr(
-                    mk().path_expr(vec!["c2rust_analysis_rt", "set_span_file"]),
-                    vec![mk().lit_expr(mk().str_lit(self.span_file_path))]
+            block.stmts.insert(0, init_stmt);
+            block
+        })
+    }
+
+    fn instrument_main_block(&self, block: P<ast::Block>) -> P<ast::Block> {
+        let init_stmt = mk().local_stmt(
+            P(mk().local::<_, P<ast::Ty>, _>(
+                mk().ident_pat("c2rust_analysis_ctx"), None, Some(
+                    mk().call_expr(
+                        mk().path_expr(vec!["c2rust_analysis_rt", "context"]),
+                        vec![] as Vec<P<ast::Expr>>,
+                    )
                 )
-            ));
+            ))
+        );
+        block.map(|mut block| {
+            block.stmts.insert(0, init_stmt);
             block
         })
     }
@@ -295,21 +327,35 @@ impl<'a, 'tcx> Folder for LifetimeInstrumentation<'a, 'tcx> {
             entry::EntryPointType::MainNamed |
             entry::EntryPointType::MainAttr |
             entry::EntryPointType::Start => {
-                ast::Item {
+                return ast::Item {
                     node: {
                         if let ast::ItemKind::Fn(decl, header, generics, block) = item.node {
                             ast::ItemKind::Fn(decl, header, generics, {
-                                self.instrument_main_block(block)
+                                self.instrument_entry_block(block)
                             })
                         } else {
                             panic!("Expected a function item");
                         }
                     },
                     ..item
-                }
+                };
             }
-            _ => item,
+            _ => (),
         }
+
+        // Instrument the real main function
+        if let ast::ItemKind::Fn(decl, header, generics, block) = item.node.clone() {
+            if self.cx.def_path(self.cx.node_def_id(item.id)).ast_equiv(&self.main_path) {
+                return ast::Item {
+                    node: ast::ItemKind::Fn(decl, header, generics, {
+                        self.instrument_main_block(block)
+                    }),
+                    ..item
+                };
+            }
+        }
+
+        item
     }
 }
 
@@ -318,5 +364,6 @@ pub fn register_commands(reg: &mut Registry) {
 
     reg.register("lifetime_analysis", |args| mk(LifetimeAnalysis {
         span_file_path: args[0].clone(),
+        main_path: args[1].clone(),
     }));
 }

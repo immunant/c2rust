@@ -11,3 +11,7 @@ subcommands:
             long: keep-temps
             help: "Keep temporary rewritten source files"
             hidden: true
+        - main:
+            long: main
+            default_value: "main"
+            help: "Full path to main function"
