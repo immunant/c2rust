@@ -1,9 +1,13 @@
 use std::env;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::BufWriter;
 use std::sync::{Mutex, Condvar};
 use std::sync::mpsc::{self, SyncSender, Receiver};
 use std::thread;
+
+use bincode;
+
+use crate::events::{Event, EventKind};
 
 lazy_static! {
     pub static ref TX: SyncSender<Event> = {
@@ -52,10 +56,10 @@ fn log(rx: Receiver<Event>) {
     );
 
     for event in rx {
-        writeln!(out, "{:?}", event).unwrap();
         if let EventKind::Done = event.kind {
             return;
         }
+        bincode::serialize_into(&mut out, &event).unwrap();
     }
 }
 
@@ -69,37 +73,3 @@ fn debug(rx: Receiver<Event>) {
 }
 
 
-pub type Pointer = usize;
-
-#[derive(Debug)]
-pub struct Event {
-    pub span: usize,
-    pub kind: EventKind,
-}
-
-impl Event {
-    fn done() -> Self {
-        Self {
-            span: 0,
-            kind: EventKind::Done,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum EventKind {
-    LibCall(LibFn),
-    Deref(Pointer),
-    Assign(Pointer),
-    Arg(Pointer),
-    Done,
-}
-
-#[derive(Debug)]
-pub enum LibFn {
-    Malloc { size: u64, result: Pointer },
-    Free { ptr: Pointer },
-    Calloc { nmemb: u64, size: u64, result: Pointer },
-    Realloc { ptr: Pointer, size: u64, result: Pointer },
-    ReallocArray { ptr: Pointer, nmemb: u64, size: u64, result: Pointer },
-}

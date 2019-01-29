@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
+use std::path::Path;
 
 use syntax::{ast, entry};
 use syntax::fold::{self, Folder};
@@ -11,6 +12,7 @@ use indexmap::IndexSet;
 use failure::{Error, ResultExt};
 
 use c2rust_analysis_rt::{SourceSpan, BytePos};
+use c2rust_analysis_rt::events::Event;
 
 use crate::api::*;
 use crate::command::{CommandState, Registry};
@@ -20,14 +22,14 @@ use crate::ast_manip::visit_nodes;
 use c2rust_ast_builder::Make;
 
 
-struct LifetimeAnalysis {
+struct InstrumentCmd {
     span_file_path: String,
     main_path: String,
 }
 
-impl Transform for LifetimeAnalysis {
+impl Transform for InstrumentCmd {
     fn transform(&self, krate: ast::Crate, _st: &CommandState, cx: &driver::Ctxt) -> ast::Crate {
-        let mut folder = LifetimeInstrumentation::new(cx, &self.span_file_path, &self.main_path);
+        let mut folder = LifetimeInstrumenter::new(cx, &self.span_file_path, &self.main_path);
         let folded = folder.fold_crate(krate);
         folder.finalize().expect("Error instrumenting lifetimes");
         folded
@@ -42,7 +44,7 @@ impl Transform for LifetimeAnalysis {
 /// ../../runtime/src/lib.rs for the implementations of these hooks)
 const HOOK_FUNCTIONS: &[&'static str] = c2rust_analysis_rt::HOOK_FUNCTIONS;
 
-struct LifetimeInstrumentation<'a, 'tcx: 'a> {
+struct LifetimeInstrumenter<'a, 'tcx: 'a> {
     cx: &'a driver::Ctxt<'a, 'tcx>,
     span_file_path: &'a str,
     main_path: ast::Path,
@@ -52,7 +54,7 @@ struct LifetimeInstrumentation<'a, 'tcx: 'a> {
     depth: usize,
 }
 
-impl<'a, 'tcx> LifetimeInstrumentation<'a, 'tcx> {
+impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
     fn new(cx: &'a driver::Ctxt<'a, 'tcx>, span_file_path: &'a str, main_path: &'a str) -> Self {
         let main_path = {
             if let ast::TyKind::Path(_, ref path) = parse_ty(cx.session(), main_path).node {
@@ -225,7 +227,7 @@ impl<'a, 'tcx> LifetimeInstrumentation<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> Folder for LifetimeInstrumentation<'a, 'tcx> {
+impl<'a, 'tcx> Folder for LifetimeInstrumenter<'a, 'tcx> {
     fn fold_foreign_item_simple(&mut self, item: ast::ForeignItem) -> ast::ForeignItem {
         if let ast::ForeignItemKind::Fn(decl, _) = &item.node {
             if HOOK_FUNCTIONS.contains(&&*item.ident.name.as_str()) {
@@ -359,11 +361,69 @@ impl<'a, 'tcx> Folder for LifetimeInstrumentation<'a, 'tcx> {
     }
 }
 
+
+struct AnalysisCmd {
+    span_filename: String,
+    log_filename: String,
+}
+
+impl Transform for AnalysisCmd {
+    fn transform(&self, krate: ast::Crate, _st: &CommandState, cx: &driver::Ctxt) -> ast::Crate {
+        // Initialize the analysis runtime so we get debug pretty printing for
+        // spans
+        c2rust_analysis_rt::span::set_file(&self.span_filename);
+        let mut analyzer = LifetimeAnalyzer::new(cx, &self.span_filename, &self.log_filename);
+        analyzer.run(&krate);
+        analyzer.fold_crate(krate)
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+struct LifetimeAnalyzer<'a, 'tcx: 'a> {
+    _cx: &'a driver::Ctxt<'a, 'tcx>,
+    log_path: &'a Path,
+    _spans: Vec<SourceSpan>,
+}
+    
+impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
+    fn new(cx: &'a driver::Ctxt<'a, 'tcx>, span_file: &'a str, log_file: &'a str) -> Self {
+        let file = File::open(span_file)
+            .expect(&format!("Could not open span file: {:?}", span_file));
+        let spans = bincode::deserialize_from(file)
+            .expect("Error deserializing span file");
+        
+        Self {
+            _cx: cx,
+            _spans: spans,
+            log_path: Path::new(log_file),
+        }
+    }
+
+    fn run(&mut self, _krate: &ast::Crate) {
+        let mut log_file = File::open(&self.log_path)
+            .expect("Could not open instrumentation log file");
+        while let Ok(event) = bincode::deserialize_from(&mut log_file) as bincode::Result<Event> {
+            println!("{:?}", event);
+        }
+    }
+}
+
+impl<'a, 'tcx> Folder for LifetimeAnalyzer<'a, 'tcx> {
+}
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("lifetime_analysis", |args| mk(LifetimeAnalysis {
+    reg.register("lifetime_analysis_instrument", |args| mk(InstrumentCmd {
         span_file_path: args[0].clone(),
         main_path: args[1].clone(),
+    }));
+
+    reg.register("lifetime_analysis", |args| mk(AnalysisCmd {
+        span_filename: args[0].clone(),
+        log_filename: args[1].clone(),
     }));
 }

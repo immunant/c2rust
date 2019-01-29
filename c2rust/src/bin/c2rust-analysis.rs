@@ -26,27 +26,50 @@ fn main() {
         .get_matches();
 
     match matches.subcommand() {
-        ("instrument", Some(sub_matches)) => Instrumenter::new(sub_matches).instrument(),
-        _ => (),
+        ("instrument", Some(sub_matches)) => Instrumenter::new(sub_matches).run(), 
+        ("process", Some(sub_matches)) => handle_process(sub_matches),
+       _ => (),
     };
 }
 
 pub const SPAN_FILENAME: &str = "lifetime_analysis_spans.bincode";
 
-struct Instrumenter {
+struct AnalysisContext {
     src_path: PathBuf,
+    target_dir: PathBuf,
+}
+
+impl AnalysisContext {
+    fn new() -> Self {
+        let src_config = Config::default().unwrap();
+        let src_manifest_file = find_root_manifest_for_wd(src_config.cwd()).unwrap();
+        let src_path = src_manifest_file.parent().unwrap().to_owned();
+
+        let src_ws = Workspace::new(&src_manifest_file, &src_config).unwrap();
+        let target_dir = src_ws.target_dir().join("instrumented").into_path_unlocked();
+
+        Self {
+            src_path,
+            target_dir,
+        }
+    }
+
+    fn span_path(&self) -> PathBuf {
+        self.target_dir.join(SPAN_FILENAME)
+    }
+}
+
+struct Instrumenter {
+    ctx: AnalysisContext,
     _out_tempdir: Option<TempDir>,
     out_config: Config,
     out_path: PathBuf,
-    target_dir: PathBuf,
     main_path: String,
 }
 
 impl Instrumenter {
     fn new(matches: &ArgMatches) -> Self {
-        let src_config = Config::default().unwrap();
-        let src_manifest_file = find_root_manifest_for_wd(src_config.cwd()).unwrap();
-        let src_path = src_manifest_file.parent().unwrap().to_owned();
+        let ctx = AnalysisContext::new();
 
         let mut out_tempdir = Some(tempdir().expect("Could not create temporary directory"));
         let out_path = {
@@ -57,10 +80,8 @@ impl Instrumenter {
             }
         };
 
-        let src_ws = Workspace::new(&src_manifest_file, &src_config).unwrap();
-        let src_target_dir = src_ws.target_dir().join("instrumented").into_path_unlocked();
-        fs::create_dir_all(&src_target_dir)
-            .expect(&format!("Could not create target directory: {:?}", &src_target_dir));
+        fs::create_dir_all(&ctx.target_dir)
+            .expect(&format!("Could not create target directory: {:?}", &ctx.target_dir));
 
         let mut shell = Shell::new();
         shell.set_verbosity(shell::Verbosity::Quiet);
@@ -80,11 +101,11 @@ impl Instrumenter {
                 out_target_dir.to_string_lossy()
             ));
         let out_target_dir = out_target_dir.join("release");
-        unix::fs::symlink(&src_target_dir, &out_target_dir)
+        unix::fs::symlink(&ctx.target_dir, &out_target_dir)
             .expect(&format!(
                 "Could not create output target directory symlink from {} to {}",
                 out_target_dir.to_string_lossy(),
-                src_target_dir.to_string_lossy(),
+                ctx.target_dir.to_string_lossy(),
             ));
 
         if matches.is_present("keep-temps") {
@@ -92,17 +113,16 @@ impl Instrumenter {
         }
 
         Self {
-            src_path,
+            ctx,
             _out_tempdir: out_tempdir,
             out_config,
             out_path,
-            target_dir: src_target_dir,
             main_path: matches.value_of_lossy("main").unwrap().to_string(),
         }
     }
 
-    fn instrument(&self) {
-        copy_recursively(&self.src_path, &self.out_path)
+    fn run(&self) {
+        copy_recursively(&self.ctx.src_path, &self.out_path)
             .expect("Error copying source files to temporary crate build directory");
 
         self.run_instrumentation_refactoring();
@@ -120,9 +140,9 @@ impl Instrumenter {
             rewrite_modes: vec![c2rust_refactor::file_io::OutputMode::InPlace],
             commands: vec![
                 c2rust_refactor::Command {
-                    name: String::from("lifetime_analysis"),
+                    name: String::from("lifetime_analysis_instrument"),
                     args: vec![
-                        String::from(self.target_dir.join(SPAN_FILENAME).to_str().unwrap()),
+                        String::from(self.ctx.span_path().to_str().unwrap()),
                         self.main_path.clone(),
                     ],
                 },
@@ -183,4 +203,30 @@ fn copy_recursively(src: &Path, dest: &Path) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+fn handle_process(matches: &ArgMatches) {
+    let ctx = AnalysisContext::new();
+
+    let span_path = String::from(ctx.target_dir.join(SPAN_FILENAME).canonicalize().unwrap().to_string_lossy());
+
+    let log_path = Path::new(matches.value_of_os("log").unwrap());
+    let log_path = String::from(log_path.canonicalize().unwrap().to_string_lossy());
+
+    let refactor_options = c2rust_refactor::Options {
+        rewrite_modes: vec![c2rust_refactor::file_io::OutputMode::PrintDiff],
+        commands: vec![
+            c2rust_refactor::Command {
+                name: String::from("lifetime_analysis"),
+                args: vec![span_path, log_path],
+            },
+        ],
+        rustc_args: c2rust_refactor::RustcArgSource::Cargo,
+        cursors: vec![],
+        marks: vec![],
+        plugins: vec![],
+        plugin_dirs: vec![],
+    };
+
+    c2rust_refactor::lib_main(refactor_options);
 }

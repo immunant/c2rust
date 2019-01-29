@@ -188,7 +188,7 @@ fn get_rustc_executable(path: &Path) -> String {
     resolved.to_str().unwrap().to_owned()
 }
 
-fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
+fn get_rustc_command(src: RustcArgSource) -> (Vec<String>, Option<PathBuf>) {
     use std::sync::{Arc, Mutex};
     use cargo::Config;
     use cargo::core::{Workspace, PackageId, Target, maybe_allow_nightly_features};
@@ -207,7 +207,7 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
         RustcArgSource::CmdLine(mut args) => {
             let mut rustc_args = vec!(get_rustc_executable(Path::new("rustc")));
             rustc_args.append(&mut args);
-            return rustc_args;
+            return (rustc_args, None);
         }
         RustcArgSource::Cargo => {},
     }
@@ -299,7 +299,7 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
     args.push(get_rustc_executable(&rustc.path));
     args.extend(opt_args.iter().cloned());
     info!("cargo-provided rustc args = {:?}", args);
-    args
+    (args, Some(PathBuf::from(ws.root())))
 }
 
 fn main_impl(opts: Options) {
@@ -309,7 +309,12 @@ fn main_impl(opts: Options) {
         marks.insert((NodeId::from_usize(m.id), label));
     }
 
-    let rustc_args = get_rustc_arg_strings(opts.rustc_args.clone());
+    let (rustc_args, root_dir) = get_rustc_command(opts.rustc_args.clone());
+
+    if let Some(root_dir) = root_dir {
+        env::set_current_dir(&root_dir)
+            .expect("Could not change to workspace root directory");
+    }
 
     if opts.cursors.len() > 0 {
         driver::run_compiler(&rustc_args, None, driver::Phase::Phase2, |krate, cx| {

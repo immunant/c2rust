@@ -6,6 +6,7 @@ extern crate lazy_static;
 
 pub mod span;
 pub mod backend;
+pub mod events;
 mod handlers;
 
 /// List of functions we want hooked for the lifetime analyis runtime.

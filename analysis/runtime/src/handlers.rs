@@ -1,5 +1,6 @@
 #![allow(dead_code)]
-use crate::backend::{TX, Event, EventKind, LibFn};
+use crate::backend::TX;
+use crate::events::{Event, EventKind, LibFn};
 
 pub fn malloc(span: usize, size: u64, result: usize) {
     TX.send(Event {

@@ -15,3 +15,9 @@ subcommands:
             long: main
             default_value: "main"
             help: "Full path to main function"
+  - process:
+      about: Process instrumented run(s)
+      args:
+        - log:
+            help: Instrumentation run log file
+            required: true

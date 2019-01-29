@@ -22,6 +22,14 @@ lazy_static! {
     };
 }
 
+pub fn get(index: usize) -> Option<&'static SourceSpan> {
+    if SPAN_FILE_PATH.read().unwrap().is_some() {
+        Some(&SOURCE_SPANS[index])
+    } else {
+        None
+    }
+}
+
 
 /// A byte offset. Keep this small (currently 32-bits), as AST contains
 /// a lot of them.
@@ -50,6 +58,3 @@ impl fmt::Debug for SourceSpan {
         write!(f, "{}:{}-{}", self.source.to_str().unwrap(), self.lo.0, self.hi.0)
     }
 }
-
-
-
