@@ -5,7 +5,7 @@ pool:
   vmImage: 'Ubuntu-16.04'
 
 steps:
-- script: scripts/provision_deb.sh
+- script: sudo scripts/provision_deb.sh
   displayName: 'Run Debian provisioning script.'
 
 - script: |
