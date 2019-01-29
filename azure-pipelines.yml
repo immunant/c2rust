@@ -21,25 +21,7 @@ steps:
 - script: |
     # sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 23E7166788B63E1E
     # sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 6B05F25D762E3157
-    sudo apt-get install \
-      build-essential \
-      clang-6.0 \
-      cmake \
-      curl \
-      dirmngr \
-      git \
-      gnupg2 \
-      gperf \
-      htop \
-      libclang-6.0-dev \
-      libssl-dev \
-      ninja-build \
-      pkg-config \
-      python-dev \
-      python3-pip \
-      python3-setuptools \
-      software-properties-common \
-      unzip
+    apt-cache search libclang
 
   displayName: 'Run Debian provisioning script.'
 
