@@ -68,8 +68,12 @@ script:
         ccache -s
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
-      LINUX_JOB2|OSX_JOB2)
+      LINUX_JOB2)
         cargo build
+        python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
+        ;;
+      OSX_JOB2)
+        LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo build
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
     esac
