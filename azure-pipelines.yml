@@ -21,7 +21,7 @@ steps:
 - script: |
     # sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 23E7166788B63E1E
     # sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 6B05F25D762E3157
-    apt-get install rustc
+    sudo apt-get install rustc
     rustc --version
     cargo --version
 
