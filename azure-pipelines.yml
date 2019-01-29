@@ -1,5 +1,18 @@
 trigger:
-- master
+  branches:
+    include:
+    - master
+    - feature/*
+  paths:
+    exclude:
+    - README.md
+    - LICENSE
+    - .travis.yml
+    - book.toml
+    - docker/*
+    - vagrant/*
+    - manual/*
+    - docs/*
 
 pool:
   vmImage: 'Ubuntu-16.04'
