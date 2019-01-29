@@ -61,7 +61,7 @@ install:
 # NOTE: travis doesn't automatically terminate if command fails.
 script:
   - |
-    if [["$CACHE_NAME" == "LINUX_JOB"] || ["$CACHE_NAME" == "OSX_JOB"]]
+    if [["$CACHE_NAME" == "LINUX_JOB"] || ["$CACHE_NAME" == "OSX_JOB"]]; then
       ccache -s
       python3 ./scripts/build_translator.py --debug || travis_terminate 1
       ccache -s
