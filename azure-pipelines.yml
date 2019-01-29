@@ -22,6 +22,7 @@ steps:
     sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 23E7166788B63E1E
     sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 6B05F25D762E3157
     sudo apt-get update
+    sudo apt-mark showhold
     sudo scripts/provision_deb.sh
 
   displayName: 'Run Debian provisioning script.'
