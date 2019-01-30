@@ -10,8 +10,6 @@ git:
 
 env:
   global:
-    - CXX=clang++
-    - CC=clang
     - USE_CCACHE=1
     - CCACHE_COMPRESS=1
     - CCACHE_CPP2=1
@@ -64,17 +62,17 @@ install:
 script:
   - |
     case "$CACHE_NAME" in
-      LINUX_JOB|OSX_JOB)
+      LINUX_DEV_BUILD|OSX_DEV_BUILD)
         ccache -s
         python3 ./scripts/build_translator.py --debug || travis_terminate 1
         ccache -s
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
-      LINUX_JOB2)
+      LINUX_FAST_BUILD)
         cargo build
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
-      OSX_JOB2)
+      OSX_FAST_BUILD)
         cargo build
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
