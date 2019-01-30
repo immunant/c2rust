@@ -24,15 +24,15 @@ matrix:
       env: >-
           PATH="/usr/local/opt/ccache/libexec:$PATH"
           # https://docs.travis-ci.com/user/caching/#caches-and-build-matrices
-          CACHE_NAME=OSX_JOB
+          CACHE_NAME=OSX_DEV_BUILD
     - os: linux
-      env: CACHE_NAME=LINUX_JOB
+      env: CACHE_NAME=LINUX_DEV_BUILD
     - os: osx
       env: >-
-           CACHE_NAME=OSX_JOB2
+           CACHE_NAME=OSX_FAST_BUILD
            LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
     - os: linux
-      env: CACHE_NAME=LINUX_JOB2
+      env: CACHE_NAME=LINUX_FAST_BUILD
 
 cache:
   # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
