@@ -28,7 +28,9 @@ matrix:
     - os: linux
       env: CACHE_NAME=LINUX_JOB
     - os: osx
-      env: CACHE_NAME=OSX_JOB2
+      env: >-
+           CACHE_NAME=OSX_JOB2
+           LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
     - os: linux
       env: CACHE_NAME=LINUX_JOB2
 
@@ -73,7 +75,7 @@ script:
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
       OSX_JOB2)
-        LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo build
+        cargo build
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
     esac
