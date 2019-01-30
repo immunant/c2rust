@@ -68,11 +68,7 @@ script:
         ccache -s
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
-      LINUX_FAST_BUILD)
-        cargo build
-        python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
-        ;;
-      OSX_FAST_BUILD)
+      LINUX_FAST_BUILD|OSX_FAST_BUILD)
         cargo build
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
