@@ -31,7 +31,10 @@ def main():
         print('configuring...')
         local['./configure']()
         print('building...')
-        intercept_build = get_cmd_or_die('intercept-build')
+        try:
+            intercept_build = pb.local['intercept-build']
+        except pb.CommandNotFound:
+            intercept_build = get_cmd_or_die('compiledb')
         intercept_build['make']()
 
     assert os.path.isfile(COMPILE_COMMANDS), 'Could not find {}'.format(COMPILE_COMMANDS)
