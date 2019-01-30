@@ -20,25 +20,30 @@ impl<'c> Translation<'c> {
             CDeclKind::Function { ref name, .. } => name,
             _ => return Err(format!("Expected function when processing builtin")),
         };
+        let std_or_core = if self.tcfg.emit_no_std {
+            "core"
+        } else {
+            "std"
+        };
 
         match builtin_name {
             "__builtin_huge_valf" => Ok(WithStmts::new(
-                mk().path_expr(vec!["", "std", "f32", "INFINITY"]),
+                mk().path_expr(vec!["", std_or_core, "f32", "INFINITY"]),
             )),
             "__builtin_huge_val" | "__builtin_huge_vall" => Ok(WithStmts::new(
-                mk().path_expr(vec!["", "std", "f64", "INFINITY"]),
+                mk().path_expr(vec!["", std_or_core, "f64", "INFINITY"]),
             )),
             "__builtin_inff" => Ok(WithStmts::new(
-                mk().path_expr(vec!["", "std", "f32", "INFINITY"]),
+                mk().path_expr(vec!["", std_or_core, "f32", "INFINITY"]),
             )),
             "__builtin_inf" | "__builtin_infl" => Ok(WithStmts::new(
-                mk().path_expr(vec!["", "std", "f64", "INFINITY"]),
+                mk().path_expr(vec!["", std_or_core, "f64", "INFINITY"]),
             )),
             "__builtin_nanf" => Ok(WithStmts::new(
-                mk().path_expr(vec!["", "std", "f32", "NAN"]),
+                mk().path_expr(vec!["", std_or_core, "f32", "NAN"]),
             )),
             "__builtin_nan" => Ok(WithStmts::new(
-                mk().path_expr(vec!["", "std", "f64", "NAN"]),
+                mk().path_expr(vec!["", std_or_core, "f64", "NAN"]),
             )),
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;

@@ -12,6 +12,7 @@ pub struct TypeConverter {
     renamer: Renamer<CDeclId>,
     fields: HashMap<CDeclId, Renamer<CFieldId>>,
     features: HashSet<&'static str>,
+    emit_no_std: bool,
 }
 
 static RESERVED_NAMES: [&str; 101] = [
@@ -48,12 +49,13 @@ static RESERVED_NAMES: [&str; 101] = [
 
 impl TypeConverter {
 
-    pub fn new() -> TypeConverter {
+    pub fn new(emit_no_std: bool) -> TypeConverter {
         TypeConverter {
             translate_valist: false,
             renamer: Renamer::new(&RESERVED_NAMES),
             fields: HashMap::new(),
             features: HashSet::new(),
+            emit_no_std,
         }
     }
 
@@ -160,7 +162,13 @@ impl TypeConverter {
                     if let CDeclKind::Struct { name: Some(ref struct_name), .. } = ctxt[struct_id].kind {
                         if struct_name == "__va_list_tag" {
                             self.features.insert("c_variadic");
-                            let path = vec!["","std","ffi","VaList"];
+
+                            let std_or_core = if self.emit_no_std {
+                                "core"
+                            } else {
+                                "std"
+                            };
+                            let path = vec!["", std_or_core, "ffi", "VaList"];
                             let ty = mk().path_ty(path);
                             return Ok(ty)
                         }
