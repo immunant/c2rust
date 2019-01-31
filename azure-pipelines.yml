@@ -17,12 +17,13 @@ trigger:
 pool:
   vmImage: 'Ubuntu-16.04'
 
+container: ubuntu:16.04
+
 steps:
 - script: |
-    # sudo apt-get update
-    # sudo apt-get install libclang-6.0-dev
-    cat /etc/apt/sources.list
-    cat /etc/apt/sources.list | grep llvm
+    sudo apt-get update
+    sudo apt-get install libclang-6.0-dev
+
 
   displayName: 'Provision required packages'
 
