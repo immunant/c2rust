@@ -1,6 +1,4 @@
 language: generic
-# note: xcode9.4/macOS 10.13 is the default for macOS
-# osx_image: xcode9.3 # request macOS 10.13
 dist: xenial
 sudo: required
 
@@ -18,6 +16,8 @@ env:
 matrix:
   fast_finish: true
   include:
+    # note: xcode9.4/macOS 10.13 is the default for macOS
+    # osx_image: xcode9.3 # request macOS 10.13
     - os: osx
       env: >-
           PATH="/usr/local/opt/ccache/libexec:$PATH"
@@ -47,10 +47,10 @@ cache:
 
 
 install:
-#   - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
   - /usr/bin/env python3 --version
   - |
     if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      # - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
       ./scripts/provision_mac.sh
     else
       sudo ./scripts/provision_deb.sh
