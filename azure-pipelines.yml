@@ -19,8 +19,10 @@ pool:
 
 steps:
 - script: |
-    sudo apt-get update
-    sudo apt-get install libclang-6.0-dev
+    # sudo apt-get update
+    # sudo apt-get install libclang-6.0-dev
+    cat /etc/apt/sources.list
+    cat /etc/apt/sources.list | grep llvm
 
   displayName: 'Provision required packages'
 
