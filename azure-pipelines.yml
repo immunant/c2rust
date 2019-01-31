@@ -19,13 +19,9 @@ pool:
 
 steps:
 - script: |
-    # sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 23E7166788B63E1E
-    # sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 6B05F25D762E3157
-    sudo apt-get install rustc
-    rustc --version
-    cargo --version
+    sudo apt-get install libclang-6.0-dev
 
-  displayName: 'Run Debian provisioning script.'
+  displayName: 'Provision required packages'
 
 - script: |
     echo Add other tasks to build, test, and deploy your project.
