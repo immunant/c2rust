@@ -1,9 +1,11 @@
-FROM ubuntu:bionic
-LABEL maintainer="perl@immunant.com"
+ARG BASE_IMAGE=ubuntu:bionic
+FROM ${BASE_IMAGE}
+LABEL maintainer="c2rust@immunant.com"
 
 ARG USER=docker
 ARG UID=1000
 ARG GID=1000
+ARG PROVISION_SCRIPT=provision_deb.sh
 ENV HOME=/home/$USER
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -13,9 +15,9 @@ RUN useradd --create-home -u $UID -g $GID --create-home --shell /bin/bash $USER
 WORKDIR $HOME
 
 # Provision debian and python packages 
-COPY provision_deb.sh /tmp/provision_deb.sh
+COPY $PROVISION_SCRIPT /tmp/provision.sh
 COPY requirements.txt /tmp/requirements.txt
-RUN chmod +x /tmp/provision_deb.sh && /tmp/provision_deb.sh
+RUN chmod +x /tmp/provision.sh && /tmp/provision.sh
 
 COPY provision_rust.sh /tmp/provision_rust.sh
 RUN chmod +x /tmp/provision_rust.sh 

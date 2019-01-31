@@ -1,5 +1,6 @@
 #!/bin/bash
 
+IMAGE_NAME=${1:-immunant/c2rust}
 CONTAINER_NAME=c2rust
 SCRIPT_DIR=$( cd "$( dirname $0 )" && pwd )
 C2RUST_HOME="$(dirname "$SCRIPT_DIR")"
@@ -18,5 +19,5 @@ docker run \
     --volume $C2RUST_HOME:/home/docker/C2Rust \
     --volume $(dirname $SSH_AUTH_SOCK):$(dirname $SSH_AUTH_SOCK) \
     --env SSH_AUTH_SOCK=$SSH_AUTH_SOCK \
-    c2rust
+    $IMAGE_NAME
 
