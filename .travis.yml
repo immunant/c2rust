@@ -22,14 +22,21 @@ matrix:
           PATH="/usr/local/opt/ccache/libexec:$PATH"
           # https://docs.travis-ci.com/user/caching/#caches-and-build-matrices
           CACHE_NAME=OSX_DEV_BUILD
-    - os: linux
-      env: CACHE_NAME=LINUX_DEV_BUILD
+
     - os: osx
       env: >-
-           CACHE_NAME=OSX_FAST_BUILD
-           LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
+          CACHE_NAME=OSX_FAST_BUILD
+          # https://github.com/immunant/c2rust/blob/master/README.md#building-c2rust
+          LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
+
     - os: linux
-      env: CACHE_NAME=LINUX_FAST_BUILD
+      env: >-
+          CACHE_NAME=LINUX_DEV_BUILD
+          PATH="/usr/lib/ccache:$PATH"
+
+    - os: linux
+      env: >-
+          CACHE_NAME=LINUX_FAST_BUILD
 
 cache:
   # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
