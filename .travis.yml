@@ -16,9 +16,8 @@ env:
 matrix:
   fast_finish: true
   include:
-    # note: xcode9.4/macOS 10.13 is the default for macOS
-    # osx_image: xcode9.3 # request macOS 10.13
     - os: osx
+      # osx_image: xcode9.3 # request macOS 10.13
       env: >-
           PATH="/usr/local/opt/ccache/libexec:$PATH"
           # https://docs.travis-ci.com/user/caching/#caches-and-build-matrices
