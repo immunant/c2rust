@@ -33,6 +33,7 @@ matrix:
       env: >-
           CACHE_NAME=LINUX_DEV_BUILD
           PATH="/usr/lib/ccache:$PATH"
+          CXX="ccache clang++"
 
     - os: linux
       env: >-
