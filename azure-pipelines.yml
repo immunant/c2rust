@@ -17,12 +17,15 @@ trigger:
 pool:
   vmImage: 'Ubuntu-16.04'
 
-container: ubuntu:16.04
+container: 
+  image: immunant/c2rust:ubuntu-bionic-20190131
+  # options: --privileged
 
 steps:
 - script: |
-    sudo apt-get update
-    sudo apt-get install libclang-6.0-dev
+    echo $HOME
+    ls $HOME
+    uname -a
 
 
   displayName: 'Provision required packages'
