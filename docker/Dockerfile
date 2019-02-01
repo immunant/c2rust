@@ -26,3 +26,6 @@ USER $USER
 # Provision rust language and packages (should not run as root)
 ARG RUST_VER=nightly-2018-06-20 
 RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
+
+# Need to switch back to root for Azure DevOps compatibility
+USER root

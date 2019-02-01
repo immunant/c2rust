@@ -9,7 +9,7 @@ C2RUST_HOME="$(dirname "$SCRIPT_DIR")"
 # 1st: names container
 # 2nd: sets hostname
 # 3rd: keeps STDIN open, allocates a pseudo-TTY
-# 4th: maps pardir on host into docker guest
+# 4-5th: maps pardir on host into docker guest
 # NOTE: ssh forwarding does not work with Docker for Mac ATM.
 # More info here https://github.com/docker/for-mac/issues/483
 docker run \
@@ -19,5 +19,6 @@ docker run \
     --volume $C2RUST_HOME:/home/docker/C2Rust \
     --volume $(dirname $SSH_AUTH_SOCK):$(dirname $SSH_AUTH_SOCK) \
     --env SSH_AUTH_SOCK=$SSH_AUTH_SOCK \
+    --user docker \
     $IMAGE_NAME
 
