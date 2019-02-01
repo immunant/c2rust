@@ -26,9 +26,7 @@ strategy:
     ubuntu18:
       containerImage: immunant/c2rust:ubuntu-bionic-20190131
 
-container: 
-  image: $[ variables['containerImage'] ]
-  # options: --privileged
+container: $[ variables['containerImage'] ]
 
 steps:
 - script: |
