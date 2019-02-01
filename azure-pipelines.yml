@@ -28,6 +28,7 @@ steps:
     export PATH="/home/docker/.cargo/bin:$PATH"
     export RUSTUP_HOME=/home/docker/.rustup
     export CARGO_HOME=$HOME/.cargo
+    env
     cargo build
   displayName: 'Build C2Rust against host clang/LLVM'
 
