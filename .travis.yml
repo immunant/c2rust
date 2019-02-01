@@ -8,7 +8,9 @@ git:
 
 env:
   global:
+    - USE_CCACHE=1
     - CCACHE_COMPRESS=1
+    - CCACHE_CPP2=1
 
 
 matrix:
@@ -30,17 +32,19 @@ matrix:
     - os: linux
       env: >-
           CACHE_NAME=LINUX_DEV_BUILD
+          PATH="/usr/lib/ccache:$PATH"
+          CXX="ccache clang++"
 
     - os: linux
       env: >-
           CACHE_NAME=LINUX_FAST_BUILD
 
 cache:
-  - ccache
   # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
   directories:
     - $HOME/.rustup
     - $HOME/.cargo
+    - $HOME/.ccache
     - $TRAVIS_BUILD_DIR/ast-importer/target.travis
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
