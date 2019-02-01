@@ -29,6 +29,7 @@ from common import (
     git_ignore_dir,
     on_linux,
     get_ninja_build_type,
+    binary_in_path,
 )
 
 
@@ -125,6 +126,9 @@ def configure_and_build_llvm(args) -> None:
 
             if on_x86():  # speed up builds on x86 hosts
                 cargs.append("-DLLVM_TARGETS_TO_BUILD=X86")
+            if args.use_ccache:
+                cargs.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+
             invoke(cmake[cargs])
 
             # NOTE: we only generate Xcode project files for IDE support
@@ -212,6 +216,9 @@ def _parse_args():
     parser.add_argument('--with-clang', default=False,
                         action='store_true', dest='with_clang',
                         help='build clang with this tool')
+    parser.add_argument('--use-ccache', default=False,
+                        action='store_true', dest='use_ccache',
+                        help='use ccache if available')
     parser.add_argument('--without-assertions', default=True,
                         action='store_false', dest='assertions',
                         help='build the tool and clang without assertions')
@@ -223,18 +230,11 @@ def _parse_args():
 
     if not on_mac() and args.xcode:
         die("-x/--xcode option requires macOS host.")
+    if not binary_in_path("ccache") and args.use_ccache:
+        die("--use-ccache needs ccache installed.")
 
     c.update_args(args)
     return args
-
-
-def binary_in_path(binary_name) -> bool:
-    try:
-        # raises CommandNotFound exception if not available.
-        _ = pb.local[binary_name]  # noqa: F841
-        return True
-    except pb.CommandNotFound:
-        return False
 
 
 def _main():
