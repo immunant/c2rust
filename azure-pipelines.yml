@@ -23,14 +23,10 @@ container:
 
 steps:
 - script: |
-    echo $HOME
-    ls $HOME
-    uname -a
-
-
-  displayName: 'Provision required packages'
+    . ~/.cargo/env
+    cargo build
+  displayName: 'Build C2Rust against host clang/LLVM'
 
 - script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    python3 ./scripts/test_translator.py --debug ./tests
+  displayName: 'Test C2Rust translator'
