@@ -1,8 +1,6 @@
-os: osx
-# note: xcode9.4/macOS 10.13 is the default for macOS
-# osx_image: xcode9.3 # request macOS 10.13
-sudo: enabled
 language: generic
+dist: xenial
+sudo: required
 
 # TODO: figure out why submodule checkout fails
 git:
@@ -10,20 +8,35 @@ git:
 
 env:
   global:
-    - PATH="/usr/local/opt/ccache/libexec:$PATH"
-    - CXX=clang++
-    - CC=clang
     - USE_CCACHE=1
     - CCACHE_COMPRESS=1
     - CCACHE_CPP2=1
 
-# https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
-cache: 
-  directories: # handle non-obvious Rust target dirs
+
+matrix:
+  fast_finish: true
+  include:
+    - os: osx
+      # osx_image: xcode9.3 # request macOS 10.13
+      env: >-
+          PATH="/usr/local/opt/ccache/libexec:$PATH"
+          # https://docs.travis-ci.com/user/caching/#caches-and-build-matrices
+          CACHE_NAME=OSX_DEV_BUILD
+    - os: linux
+      env: CACHE_NAME=LINUX_DEV_BUILD
+    - os: osx
+      env: >-
+           CACHE_NAME=OSX_FAST_BUILD
+           LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
+    - os: linux
+      env: CACHE_NAME=LINUX_FAST_BUILD
+
+cache:
+  # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
+  directories:
     - $HOME/.rustup
     - $HOME/.cargo
     - $HOME/.ccache
-    - $HOME/Library/Caches/Homebrew
     - $TRAVIS_BUILD_DIR/ast-importer/target.travis
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/config/target
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/rustc-plugin/target
@@ -31,18 +44,34 @@ cache:
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
     - $TRAVIS_BUILD_DIR/rust-refactor/target
 
+
 install:
-#   - HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
   - /usr/bin/env python3 --version
-  - ./scripts/provision_mac.sh
+  - |
+    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      # HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
+      ./scripts/provision_mac.sh
+    else
+      sudo ./scripts/provision_deb.sh
+      ./scripts/provision_rust.sh
+    fi
   - . ~/.cargo/env
 
 # NOTE: travis doesn't automatically terminate if command fails.
-script: 
-  - ccache -s
-  - python3 ./scripts/build_translator.py --debug || travis_terminate 1
-  - ccache -s
-  - python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
+script:
+  - |
+    case "$CACHE_NAME" in
+      LINUX_DEV_BUILD|OSX_DEV_BUILD)
+        ccache -s
+        python3 ./scripts/build_translator.py --debug || travis_terminate 1
+        ccache -s
+        python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
+        ;;
+      LINUX_FAST_BUILD|OSX_FAST_BUILD)
+        cargo build
+        python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
+        ;;
+    esac
  # NOTE: disabled because it takes to long to compile on free plan :/
  # To enable, add `--with-clang` to build_translator.py line above.
  # - python3 ./scripts/build_cross_checks.py || travis_terminate 1
