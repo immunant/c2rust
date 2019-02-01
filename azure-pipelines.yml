@@ -23,7 +23,8 @@ container:
 
 steps:
 - script: |
-    . ~/.cargo/env
+    # rust was installed for the `docker` user, not the user azure creates
+    export PATH="/home/docker/.cargo/bin:$PATH"
     cargo build
   displayName: 'Build C2Rust against host clang/LLVM'
 
