@@ -29,7 +29,7 @@ steps:
     export RUSTUP_HOME=/home/docker/.rustup
     export CARGO_HOME=$HOME/.cargo
     env
-    cargo build
+    CARGO_HOME=$HOME/.cargo cargo build
   displayName: 'Build C2Rust against host clang/LLVM'
 
 - script: |
