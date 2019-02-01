@@ -17,8 +17,17 @@ trigger:
 pool:
   vmImage: 'Ubuntu-16.04'
 
+strategy:
+  matrix:
+    # ubuntu14:
+    #   containerImage: ubuntu:14.04
+    ubuntu16:
+      containerImage: immunant/c2rust:ubuntu-xenial-20190131
+    ubuntu18:
+      containerImage: immunant/c2rust:ubuntu-bionic-20190131
+
 container: 
-  image: immunant/c2rust:ubuntu-bionic-20190131
+  image: $[ variables['containerImage'] ]
   # options: --privileged
 
 steps:
