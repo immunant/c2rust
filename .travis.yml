@@ -33,11 +33,6 @@ matrix:
       env: >-
           CACHE_NAME=LINUX_DEV_BUILD
           PATH="/usr/lib/ccache:$PATH"
-      addons:
-        apt:
-          packages:
-            - ccache
-
 
     - os: linux
       env: >-
@@ -66,6 +61,7 @@ install:
     else
       sudo ./scripts/provision_deb.sh
       ./scripts/provision_rust.sh
+      export CXX="ccache clang++"
     fi
   - . ~/.cargo/env
 
@@ -75,6 +71,7 @@ script:
     case "$CACHE_NAME" in
       LINUX_DEV_BUILD|OSX_DEV_BUILD)
         ccache -s
+        which clang++
         python3 ./scripts/build_translator.py --debug || travis_terminate 1
         ccache -s
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
