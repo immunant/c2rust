@@ -12,10 +12,7 @@ SCRIPT_DIR="$(dirname "$0")"
 
 apt-get update -qq
 # gnupg2: required for gnupg2 key retrieval
-# libclang-6.0-dev: for fast builds against host libclang
 apt-get install -qq \
-    build-essential \
-    clang-6.0 \
     cmake \
     curl \
     dirmngr \
@@ -23,7 +20,6 @@ apt-get install -qq \
     gnupg2 \
     gperf \
     htop \
-    libclang-6.0-dev \
     libssl-dev \
     ninja-build \
     pkg-config \
@@ -33,10 +29,20 @@ apt-get install -qq \
     software-properties-common \
     unzip
 
+# Older releases do not include clang 6 and later so we grab 
+# the latest versions of those packages from the LLVM project. 
+export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
+curl -s https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+apt-add-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-6.0 main"
+
+apt-get update -qq
+# libclang-6.0-dev: for fast builds against host libclang
+apt-get install -qq clang-6.0 libclang-6.0-dev 
+
 update-alternatives --install /usr/bin/clang clang /usr/bin/clang-6.0 100
 update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100
 # update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-6.0 100
 
 # Install python3 and packages
-pip3 install --no-cache-dir --disable-pip-version-check -r $SCRIPT_DIR/requirements.txt
+pip3 install --disable-pip-version-check -r $SCRIPT_DIR/requirements.txt
 
