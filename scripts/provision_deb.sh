@@ -44,5 +44,5 @@ update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100
 # update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-6.0 100
 
 # Install python3 and packages
-pip3 install --disable-pip-version-check -r $SCRIPT_DIR/requirements.txt
+pip3 install -r $SCRIPT_DIR/requirements.txt
 
