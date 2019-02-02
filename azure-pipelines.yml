@@ -19,12 +19,14 @@ pool:
 
 strategy:
   matrix:
-    # ubuntu14:
-    #   containerImage: ubuntu:14.04
+    debian8:
+      containerImage: immunant/c2rust:debian-jessie-20190201
+    debian9:
+      containerImage: immunant/c2rust:debian-stretch-20190201
     ubuntu16:
-      containerImage: immunant/c2rust:ubuntu-xenial-20190131
+      containerImage: immunant/c2rust:ubuntu-xenial-20190201
     ubuntu18:
-      containerImage: immunant/c2rust:ubuntu-bionic-20190131
+      containerImage: immunant/c2rust:ubuntu-bionic-20190201
 
 container: $[ variables['containerImage'] ]
 
