@@ -108,14 +108,16 @@ def configure_and_build_llvm(args) -> None:
 
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
+            clang = get_cmd_or_die("clang")
+            clangpp = get_cmd_or_die("clang++")
             max_link_jobs = est_parallel_link_jobs()
             assertions = "1" if args.assertions else "0"
             ast_ext_dir = "-DLLVM_EXTERNAL_C2RUST_AST_EXPORTER_SOURCE_DIR={}"
             ast_ext_dir = ast_ext_dir.format(c.AST_EXPO_SRC_DIR)
             cargs = ["-G", "Ninja", c.LLVM_SRC,
                      "-Wno-dev",
-                     "-DCMAKE_C_COMPILER=clang",
-                     "-DCMAKE_CXX_COMPILER=clang++",
+                     "-DCMAKE_C_COMPILER={}".format(clang),
+                     "-DCMAKE_CXX_COMPILER={}".format(clangpp),
                      "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
