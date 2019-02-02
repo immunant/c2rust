@@ -20,7 +20,7 @@ pool:
 strategy:
   matrix:
     debian8:
-      containerImage: immunant/c2rust:debian-jessie-20190201
+      containerImage: immunant/c2rust:debian-jessie-20190202
     debian9:
       containerImage: immunant/c2rust:debian-stretch-20190201
     ubuntu16:

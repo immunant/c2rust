@@ -39,6 +39,16 @@ apt-get update -qq
 # libclang-6.0-dev: for fast builds against host libclang
 apt-get install -qq clang-6.0 libclang-6.0-dev 
 
+source /etc/os-release
+# Debian jessie ships with a version of cmake that is too old
+if [ "$VERSION" == "8 (jessie)" ]; then
+    echo "deb http://ftp.debian.org/debian jessie-backports main" >> /etc/apt/sources.list
+    apt-get update -qq
+    apt-get -t jessie-backports install -y --no-install-recommends cmake
+fi
+
+apt-get clean # clear apt-caches to reduce image size
+
 update-alternatives --install /usr/bin/clang clang /usr/bin/clang-6.0 100
 update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100
 # update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-6.0 100
