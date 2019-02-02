@@ -28,6 +28,9 @@ fn make_init_mcx<'a, 'tcx>(st: &'a CommandState,
     init_mcx.set_type("__s", BindingType::Stmt);
     init_mcx.set_type("__r", BindingType::Stmt);
 
+    init_mcx.set_type("__m", BindingType::MultiStmt);
+    init_mcx.set_type("__n", BindingType::MultiStmt);
+
     // "d" for "definition"
     init_mcx.set_type("__d", BindingType::Item);
     init_mcx.set_type("__c", BindingType::Item);
@@ -140,6 +143,38 @@ impl Transform for RewriteTy {
 }
 
 
+/// # `rewrite_stmts` Command
+///
+/// Usage: `rewrite_stmts PAT REPL`
+///
+/// For every statement sequence in the crate matching `PAT`, replace it with `REPL`.  `PAT` and
+/// `REPL` are both Rust statement sequences.  `PAT` can use placeholders to capture nodes from
+/// the matched AST, and `REPL` can refer to those same placeholders to substitute
+/// in the captured nodes.  See the `matcher` module for details on AST pattern
+/// matching.
+///
+/// See the documentation for `rewrite_expr` for an example of this style of
+/// rewriting.
+pub struct RewriteStmts {
+    pub pat: String,
+    pub repl: String,
+}
+
+impl Transform for RewriteStmts {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let pat = parse_stmts(cx.session(), &self.pat);
+        let repl = parse_stmts(cx.session(), &self.repl);
+        fold_match_with(make_init_mcx(st, cx), pat, krate, |_, bnd| {
+            repl.clone().subst(st, cx, &bnd)
+        })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
+
 pub struct DebugMatchExpr {
     pub pat: String,
 }
@@ -175,6 +210,10 @@ pub fn register_commands(reg: &mut Registry) {
         pat: args[0].clone(),
         repl: args[1].clone(),
         filter: if args.len() >= 3 { Some((&args[2]).into_symbol()) } else { None },
+    }));
+    reg.register("rewrite_stmts", |args| mk(RewriteStmts {
+        pat: args[0].clone(),
+        repl: args[1].clone(),
     }));
 
     reg.register("debug_match_expr", |args| mk(DebugMatchExpr {
