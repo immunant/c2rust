@@ -15,7 +15,7 @@ REPO_NAME=immunant/c2rust
 DATE_TAG=$(date +'%Y%m%d')
 SCRIPT_DIR="$(dirname "$0")"
 BASE_IMAGE=${1:-ubuntu:bionic}
-IMAGE_TAG=$(echo ${BASE_IMAGE} | tr -s : -) # replace colons with hyphens
+IMAGE_TAG=$(echo ${BASE_IMAGE} | tr -s :/ - ) # replace colons and slashes with hyphens
 PROVISION_SCRIPT=${2:-provision_deb.sh}
 
 # make sure provisioning script exists
@@ -33,6 +33,5 @@ docker build -f $SCRIPT_DIR/../docker/Dockerfile \
     --build-arg UID=$(id -u $(logname)) \
     --build-arg GID=$(id -g $(logname)) \
     --build-arg RUST_VER=$RUST_VER \
-    --tag $REPO_NAME:latest \
     --tag "$REPO_NAME:$IMAGE_TAG-$DATE_TAG" \
      $SCRIPT_DIR
