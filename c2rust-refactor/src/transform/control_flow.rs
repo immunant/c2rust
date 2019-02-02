@@ -37,7 +37,7 @@ impl Transform for ReconstructWhile {
 }
 
 
-/// # `reconstruct_for_loops` Command
+/// # `reconstruct_for_range` Command
 /// 
 /// Usage: `reconstruct_for_range`
 /// 
