@@ -71,7 +71,8 @@ script:
     case "$CACHE_NAME" in
       LINUX_DEV_BUILD|OSX_DEV_BUILD)
         ccache -s
-        python3 ./scripts/build_translator.py --debug --use-ccache || travis_terminate 1
+        which clang++
+        python3 ./scripts/build_translator.py --debug || travis_terminate 1
         ccache -s
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
