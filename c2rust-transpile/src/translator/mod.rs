@@ -657,6 +657,10 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
             }
         }
 
+        if t.tcfg.emit_no_std {
+            s.print_attribute(&mk().single_attr("no_std").as_inner_attrs()[0])?;
+        }
+
         // Add `extern crate X;` to the top of the file
         for crate_name in t.extern_crates.borrow().iter() {
             s.print_item(&mk().extern_crate_item(*crate_name, None))?;
