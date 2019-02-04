@@ -8,7 +8,6 @@ members = [
     "manual/preprocessors",
     "analysis/plugin",
     "analysis/runtime",
-    "analysis/test",
     "c2rust-bitfields",
 ]
 exclude = [
@@ -16,4 +15,5 @@ exclude = [
     "cross-checks/zero-malloc",
     "cross-checks/rust-checks",
     "examples",
+    "analysis/test",
 ]

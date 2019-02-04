@@ -2,11 +2,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+struct S *global;
+
 struct S {
   int field;
 };
 
-int main(int argc, char *argv[]) {
+void exercise_allocator() {
   struct S* s = (struct S*)malloc(sizeof(struct S));
   s->field = 10;
   printf("%i\n", s->field);
@@ -35,6 +37,38 @@ int main(int argc, char *argv[]) {
     printf("%i\n", s[i].field);
 
   free(s);
+}
 
+void simple_analysis() {
+  struct S* s = (struct S*)malloc(sizeof(struct S));
+  s->field = 10;
+  printf("%i\n", s->field);
+  free(s);
+}
+
+void analysis2_helper(struct S *s) {
+  printf("%i\n", s->field);
+}
+
+void analysis2() {
+  struct S* s = (struct S*)malloc(sizeof(struct S));
+  s->field = 10;
+  analysis2_helper(s);
+  free(s);
+}
+
+void invalid() {
+  struct S* s = (struct S*)malloc(sizeof(struct S));
+  s->field = 10;
+  global = s;
+  printf("%i\n", s->field);
+  printf("%i\n", global->field);
+  global = NULL;
+  free(s);
+}
+
+int main(int argc, char *argv[]) {
+  exercise_allocator();
+  simple_analysis();
   return 0;
 }

@@ -1,5 +1,4 @@
 use libc;
-
 extern "C" {
     #[no_mangle]
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
@@ -21,8 +20,10 @@ pub type size_t = libc::c_ulong;
 pub struct S {
     pub field: libc::c_int,
 }
-pub unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
- -> libc::c_int {
+#[no_mangle]
+pub static mut global: *mut S = 0 as *const S as *mut S;
+#[no_mangle]
+pub unsafe extern "C" fn exercise_allocator() {
     let mut s: *mut S =
         malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
     (*s).field = 10i32;
@@ -68,5 +69,53 @@ pub unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
         i_1 += 1
     }
     free(s as *mut libc::c_void);
+}
+#[no_mangle]
+pub unsafe extern "C" fn simple_analysis() {
+    let mut s: *mut S =
+        malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
+    (*s).field = 10i32;
+    printf(b"%i\n\x00" as *const u8 as *const libc::c_char, (*s).field);
+    free(s as *mut libc::c_void);
+}
+#[no_mangle]
+pub unsafe extern "C" fn analysis2_helper(mut s: *mut S) {
+    printf(b"%i\n\x00" as *const u8 as *const libc::c_char, (*s).field);
+}
+#[no_mangle]
+pub unsafe extern "C" fn analysis2() {
+    let mut s: *mut S =
+        malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
+    (*s).field = 10i32;
+    analysis2_helper(s);
+    free(s as *mut libc::c_void);
+}
+#[no_mangle]
+pub unsafe extern "C" fn invalid() {
+    let mut s: *mut S =
+        malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
+    (*s).field = 10i32;
+    global = s;
+    printf(b"%i\n\x00" as *const u8 as *const libc::c_char, (*s).field);
+    printf(b"%i\n\x00" as *const u8 as *const libc::c_char, (*global).field);
+    global = 0 as *mut S;
+    free(s as *mut libc::c_void);
+}
+unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
+ -> libc::c_int {
+    exercise_allocator();
+    simple_analysis();
     return 0i32;
+}
+pub fn main() {
+    let mut args: Vec<*mut libc::c_char> = Vec::new();
+    for arg in ::std::env::args() {
+        args.push(::std::ffi::CString::new(arg).expect("Failed to convert argument into CString.").into_raw());
+    };
+    args.push(::std::ptr::null_mut());
+    unsafe {
+        ::std::process::exit(main_0((args.len() - 1) as libc::c_int,
+                                    args.as_mut_ptr() as
+                                        *mut *mut libc::c_char) as i32)
+    }
 }
