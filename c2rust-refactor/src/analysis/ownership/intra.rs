@@ -345,7 +345,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             Rvalue::UnaryOp(op, ref _a) => match op {
                 UnOp::Not | UnOp::Neg => (self.local_ty(ty), Perm::move_()),
             },
-            Rvalue::Discriminant(ref _lv) => unimplemented!(),
+            Rvalue::Discriminant(ref _lv) => (self.local_ty(ty), Perm::move_()),
             Rvalue::Aggregate(ref kind, ref ops) => match **kind {
                 AggregateKind::Array(ty) => {
                     let array_ty = self.local_ty(ty);
