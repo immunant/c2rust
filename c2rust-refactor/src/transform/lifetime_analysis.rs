@@ -1,25 +1,31 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::convert::TryFrom;
+use std::fmt;
 use std::fs::File;
+use std::iter::FromIterator;
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
+use std::u32;
 
 use syntax::{ast, entry};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::symbol::Ident;
-use syntax::source_map::{Span, FileName};
+use syntax_pos::{Span, FileName, BytePos, Pos, NO_EXPANSION};
 
 use indexmap::IndexSet;
 use failure::{Error, ResultExt};
 
-use c2rust_analysis_rt::{SourceSpan, BytePos};
-use c2rust_analysis_rt::events::Event;
+use c2rust_analysis_rt::{SourceSpan, SourcePos, SpanId};
+use c2rust_analysis_rt::events::{Pointer, Event, EventKind};
+use c2rust_ast_builder::Make;
 
+use crate::analysis::ownership;
 use crate::api::*;
 use crate::command::{CommandState, Registry};
 use crate::driver::{self, Phase};
 use crate::transform::Transform;
 use crate::ast_manip::visit_nodes;
-use c2rust_ast_builder::Make;
 
 
 struct InstrumentCmd {
@@ -111,7 +117,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         }
     }
 
-    fn get_source_location_idx(&mut self, span: Span) -> usize {
+    fn get_source_location_idx(&mut self, span: Span) -> SpanId {
         let lo = self.cx.session().source_map().lookup_byte_offset(span.lo());
         let hi = self.cx.session().source_map().lookup_byte_offset(span.hi());
 
@@ -126,10 +132,10 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
             }
         };
 
-        let source_span = SourceSpan::new(file_path, BytePos(lo.pos.0), BytePos(hi.pos.0));
+        let source_span = SourceSpan::new(file_path, SourcePos(lo.pos.0), SourcePos(hi.pos.0));
 
         let (idx, _) = self.spans.insert_full(source_span);
-        idx
+        u32::try_from(idx).unwrap()
     }
 
     fn instrument_entry_block(&self, block: P<ast::Block>) -> P<ast::Block> {
@@ -185,7 +191,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
     where I: Make<Ident>
     {
         let source_loc_idx = self.get_source_location_idx(span);
-        let mut hook_args = vec![mk().lit_expr(mk().int_lit(source_loc_idx as u128, "usize"))];
+        let mut hook_args = vec![mk().lit_expr(mk().int_lit(source_loc_idx as u128, "u32"))];
         hook_args.extend(args.into_iter().cloned());
         let call = mk().call_expr(
             mk().path_expr(vec![
@@ -368,11 +374,19 @@ struct AnalysisCmd {
 }
 
 impl Transform for AnalysisCmd {
-    fn transform(&self, krate: ast::Crate, _st: &CommandState, cx: &driver::Ctxt) -> ast::Crate {
+    fn transform(&self, krate: ast::Crate, st: &CommandState, cx: &driver::Ctxt) -> ast::Crate {
         // Initialize the analysis runtime so we get debug pretty printing for
         // spans
         c2rust_analysis_rt::span::set_file(&self.span_filename);
-        let mut analyzer = LifetimeAnalyzer::new(cx, &self.span_filename, &self.log_filename);
+
+        let ownership_analysis = ownership::analyze(&st, &cx);
+
+        let mut analyzer = LifetimeAnalyzer::new(
+            cx,
+            &self.span_filename,
+            &self.log_filename,
+            ownership_analysis,
+        );
         analyzer.run(&krate);
         analyzer.fold_crate(krate)
     }
@@ -382,32 +396,223 @@ impl Transform for AnalysisCmd {
     }
 }
 
-struct LifetimeAnalyzer<'a, 'tcx: 'a> {
-    _cx: &'a driver::Ctxt<'a, 'tcx>,
-    log_path: &'a Path,
-    _spans: Vec<SourceSpan>,
+#[derive(Debug)]
+struct EventPlace {
+    kind: EventKind,
+    // AST node where this event occurred
+    node: ast::NodeId,
 }
-    
-impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
-    fn new(cx: &'a driver::Ctxt<'a, 'tcx>, span_file: &'a str, log_file: &'a str) -> Self {
-        let file = File::open(span_file)
-            .expect(&format!("Could not open span file: {:?}", span_file));
-        let spans = bincode::deserialize_from(file)
-            .expect("Error deserializing span file");
-        
+
+struct AllocInfo {
+    base: Pointer,
+    size: usize,
+    events: Vec<EventPlace>,
+}
+
+impl AllocInfo {
+    fn new(base: Pointer, size: usize) -> Self {
         Self {
-            _cx: cx,
-            _spans: spans,
-            log_path: Path::new(log_file),
+            base,
+            size,
+            events: vec![],
         }
     }
 
-    fn run(&mut self, _krate: &ast::Crate) {
+    fn contains(&self, ptr: Pointer) -> bool {
+        ptr >= self.base && ptr - self.size < self.base
+    }
+
+    fn add_event(&mut self, kind: EventKind, node: ast::NodeId) {
+        self.events.push(EventPlace { kind, node });
+    }
+}
+
+impl fmt::Debug for AllocInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:p}[{}]", self.base as *const u8, self.size)
+    }
+}
+
+struct MemMap ( BTreeMap<Pointer, AllocInfo> );
+
+impl MemMap {
+    fn new() -> Self {
+        Self ( BTreeMap::new() )
+    }
+
+    fn is_allocated(&self, ptr: Pointer) -> bool {
+        let alloc = match self.range(..ptr).next_back() {
+            Some(a) => a.1,
+            None => return false,
+        };
+
+        alloc.contains(ptr)
+    }
+
+    fn alloc(&mut self, size: usize, ptr: Pointer) -> &mut AllocInfo {
+        if self.is_allocated(ptr) {
+            panic!("Inserting an allocation overlapping an existing allocation??");
+        }
+
+        if let Some(old) = self.insert(ptr, AllocInfo::new(ptr, size)) {
+            panic!("Inserting an allocation at the same address as {:?}", old);
+        }
+
+        self.get_mut(&ptr).unwrap()
+    }
+
+    fn free(&mut self, ptr: Pointer) -> AllocInfo {
+        self.remove(&ptr)
+            .unwrap_or_else(|| panic!("Could not free allocation at {:?}", ptr))
+    }
+
+    fn realloc(&mut self, old_ptr: Pointer, size: usize, new_ptr: Pointer) -> &mut AllocInfo {
+        if old_ptr == new_ptr {
+            let alloc = self.get_mut(&old_ptr)
+                .unwrap_or_else(|| panic!("Could not realloc from {:?}", old_ptr));
+            alloc.size = size;
+            alloc
+        } else {
+            self.free(old_ptr);
+            self.alloc(new_ptr, size)
+        }
+    }
+}
+
+impl Deref for MemMap {
+    type Target = BTreeMap<Pointer, AllocInfo>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+
+impl DerefMut for MemMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl fmt::Debug for MemMap {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_list().entries(self.values()).finish()
+    }
+}
+
+struct LifetimeAnalyzer<'a, 'tcx: 'a> {
+    _cx: &'a driver::Ctxt<'a, 'tcx>,
+    log_path: &'a Path,
+
+    spans: Vec<Span>,
+    span_ids: HashMap<Span, SpanId>,
+
+    // TODO: replace with a Vec, SpanIds are dense
+    span_to_expr: HashMap<SpanId, ast::NodeId>,
+
+    _ownership_analysis: ownership::AnalysisResult<'tcx>,
+
+    mem_map: MemMap,
+}
+    
+impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
+    fn new(
+        cx: &'a driver::Ctxt<'a, 'tcx>,
+        span_file: &'a str,
+        log_file: &'a str,
+        ownership_analysis: ownership::AnalysisResult<'tcx>,
+    ) -> Self {
+        let file = File::open(span_file)
+            .expect(&format!("Could not open span file: {:?}", span_file));
+        let spans: Vec<SourceSpan> = bincode::deserialize_from(file)
+            .expect("Error deserializing span file");
+
+        let spans: Vec<Span> = spans.into_iter().map(|s: SourceSpan| {
+            let filename = FileName::from(s.source.clone());
+            let source_file = cx.session().source_map().get_source_file(&filename)
+                .unwrap_or_else(|| panic!("Could not find source file: {:?}", filename));
+            Span::new(
+                source_file.start_pos + BytePos::from_u32(s.lo.to_u32()),
+                source_file.start_pos + BytePos::from_u32(s.hi.to_u32()),
+                NO_EXPANSION,
+            )
+        }).collect();
+
+        if spans.len() > u32::MAX as usize {
+            panic!("Too many spans");
+        }
+        let span_ids = HashMap::from_iter(
+            spans.iter().enumerate().map(|(i, v)| (*v, i as SpanId))
+        );
+        
+        Self {
+            _cx: cx,
+            log_path: Path::new(log_file),
+            spans,
+            span_ids,
+            span_to_expr: HashMap::new(),
+            _ownership_analysis: ownership_analysis,
+            mem_map: MemMap::new(),
+        }
+    }
+
+    fn run(&mut self, krate: &ast::Crate) {
+        // Construct a mapping from expressions to spans
+        visit_nodes(krate, |e: &ast::Expr| {
+            if let Some(id) = self.span_ids.get(&e.span) {
+                self.span_to_expr.insert(*id, e.id);
+            }
+        });
+
         let mut log_file = File::open(&self.log_path)
             .expect("Could not open instrumentation log file");
         while let Ok(event) = bincode::deserialize_from(&mut log_file) as bincode::Result<Event> {
-            println!("{:?}", event);
+            let span = self.spans[event.span as usize];
+            println!("{:?} {:?}", span, event.kind);
+
+            let node_id = *match self.span_to_expr.get(&event.span) {
+                Some(id) => id,
+                _ => {
+                    let span = self.spans[event.span as usize];
+                    panic!("Could not find expression corresponding to span: {:?}\nMaybe the source code is out of sync with the event log?", span);
+                }
+            };
+
+            match event.kind {
+                EventKind::Alloc { size, ptr } => {
+                    self.mem_map.alloc(size, ptr)
+                        .add_event(event.kind, node_id);
+                }
+                EventKind::Free { ptr } => {
+                    let info = self.mem_map.free(ptr);
+                    self.process_chain(&info.events);
+                }
+                EventKind::Realloc { old_ptr, size, new_ptr } => {
+                    self.mem_map.realloc(old_ptr, size, new_ptr)
+                        .add_event(event.kind, node_id);
+                }
+                EventKind::Assign(ptr) |
+                EventKind::Arg(ptr) |
+                EventKind::Deref(ptr) => {
+                    match self.mem_map.get_mut(&ptr) {
+                        Some(info) => info.add_event(event.kind, node_id),
+                        None => {
+                            eprintln!("Warning: Could not find allocation for {:?}", event);
+                        }
+                    }
+                }
+                EventKind::Done => continue,
+            };
+
+            println!("{:?}", self.mem_map);
         }
+    }
+
+    fn process_chain(&self, events: &[EventPlace]) {
+        println!("Processing chain of memory events: {:#?}", events);
+
+        // TODO: create dataflow graph from this chain
+
     }
 }
 

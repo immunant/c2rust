@@ -1,7 +1,4 @@
-#![feature(
-    rustc_private,
-    trace_macros,
-)]
+#![feature(rustc_private, trace_macros, try_from)]
 extern crate arena;
 extern crate bincode;
 extern crate ena;
