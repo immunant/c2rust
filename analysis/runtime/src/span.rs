@@ -22,29 +22,37 @@ lazy_static! {
     };
 }
 
-pub fn get(index: usize) -> Option<&'static SourceSpan> {
+pub fn get(index: SpanId) -> Option<&'static SourceSpan> {
     if SPAN_FILE_PATH.read().unwrap().is_some() {
-        Some(&SOURCE_SPANS[index])
+        Some(&SOURCE_SPANS[index as usize])
     } else {
         None
     }
 }
 
+pub type SpanId = u32;
 
 /// A byte offset. Keep this small (currently 32-bits), as AST contains
 /// a lot of them.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
-pub struct BytePos(pub u32);
+pub struct SourcePos(pub u32);
+
+impl SourcePos {
+    #[inline(always)]
+    pub fn to_u32(&self) -> u32 {
+        self.0
+    }
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct SourceSpan {
-    source: PathBuf,
-    lo: BytePos,
-    hi: BytePos,
+    pub source: PathBuf,
+    pub lo: SourcePos,
+    pub hi: SourcePos,
 }
 
 impl SourceSpan {
-    pub fn new(source: PathBuf, lo: BytePos, hi: BytePos) -> Self {
+    pub fn new(source: PathBuf, lo: SourcePos, hi: SourcePos) -> Self {
         Self {
             source,
             lo,

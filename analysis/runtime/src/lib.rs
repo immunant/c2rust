@@ -18,7 +18,7 @@ pub const HOOK_FUNCTIONS: &[&'static str] = &[
     "reallocarray",
 ];
 
-pub use self::span::{SourceSpan, BytePos};
+pub use self::span::{SourceSpan, SourcePos, SpanId};
 
 pub use self::handlers::*;
 
