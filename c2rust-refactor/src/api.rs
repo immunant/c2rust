@@ -34,9 +34,12 @@ pub fn replace_expr<T: Fold>(st: &CommandState,
                              ast: T,
                              pat: &str,
                              repl: &str) -> <T as Fold>::Result {
-    let pat = parse_expr(cx.session(), pat);
-    let repl = parse_expr(cx.session(), repl);
-    fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
+    let mut mcx = MatchCtxt::new(st, cx);
+    let (pat, pat_bt) = parse_free_expr(cx.session(), pat);
+    mcx.merge_binding_types(pat_bt);
+    let (repl, repl_bt) = parse_free_expr(cx.session(), repl);
+    mcx.merge_binding_types(repl_bt);
+    fold_match_with(mcx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
 }
 
 /// Replace all instances of the statement sequence `pat` with `repl`.
@@ -45,9 +48,12 @@ pub fn replace_stmts<T: Fold>(st: &CommandState,
                               ast: T,
                               pat: &str,
                               repl: &str) -> <T as Fold>::Result {
-    let pat = parse_stmts(cx.session(), pat);
-    let repl = parse_stmts(cx.session(), repl);
-    fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
+    let mut mcx = MatchCtxt::new(st, cx);
+    let (pat, pat_bt) = parse_free_stmts(cx.session(), pat);
+    mcx.merge_binding_types(pat_bt);
+    let (repl, repl_bt) = parse_free_stmts(cx.session(), repl);
+    mcx.merge_binding_types(repl_bt);
+    fold_match_with(mcx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
 }
 
 
