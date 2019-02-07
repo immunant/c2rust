@@ -128,7 +128,7 @@ fn build_native(llvm_info: &LLVMInfo) {
 
     match env::var("C2RUST_AST_EXPORTER_LIB_DIR") {
         Ok(libdir) => {
-            println!("cargo:rustc-link-search={}", libdir);
+            println!("cargo:rustc-link-search=native={}", libdir);
         }
         _ => {
             // Build libclangAstExporter.a with cmake
@@ -143,8 +143,8 @@ fn build_native(llvm_info: &LLVMInfo) {
             let out_dir = dst.display();
 
             // Set up search path for newly built tinycbor.a and libclangAstExporter.a
-            println!("cargo:rustc-link-search={}/build/lib", out_dir);
-            println!("cargo:rustc-link-search={}/build", out_dir);
+            println!("cargo:rustc-link-search=native={}/build/lib", out_dir);
+            println!("cargo:rustc-link-search=native={}/build", out_dir);
         }
     };
 
@@ -154,7 +154,7 @@ fn build_native(llvm_info: &LLVMInfo) {
 
     // Link against these Clang libs. The ordering here is important! Libraries
     // must be listed before their dependencies when statically linking.
-    println!("cargo:rustc-link-search={}", llvm_lib);
+    println!("cargo:rustc-link-search=native={}", llvm_lib);
     for lib in &[
         "clangTooling",
         "clangFrontend",

@@ -173,6 +173,9 @@ def build_transpiler(args):
     if not args.debug:
         build_flags.append("--release")
 
+    if args.verbose:
+        build_flags.append("-vv")
+
     llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
     assert os.path.isfile(llvm_config), "missing binary: " + llvm_config
 
@@ -185,6 +188,8 @@ def build_transpiler(args):
 
     # log how we run `cargo build` to aid troubleshooting, IDE setup, etc.
     msg = "invoking cargo build as\ncd {} && \\\n".format(c.C2RUST_DIR)
+    msg += "LIBCURL_NO_PKG_CONFIG=1\\\n"
+    msg += "ZLIB_NO_PKG_CONFIG=1\\\n"
     msg += "LLVM_CONFIG_PATH={} \\\n".format(llvm_config)
     msg += "LLVM_SYSTEM_LIBS='{}' \\\n".format(llvm_system_libs)
     msg += "C2RUST_AST_EXPORTER_LIB_DIR={} \\\n".format(llvm_libdir)
@@ -192,8 +197,16 @@ def build_transpiler(args):
     msg += " ".join(build_flags)
     logging.debug(msg)
 
+    # NOTE: the `curl-rust` and `libz-sys` crates use the `pkg_config`
+    # crate to locate the system libraries they wrap. This causes
+    # `pkg_config` to add `/usr/lib` to `rustc`s library search path
+    # which means that our `cargo` invocation picks up the system
+    # libraries even when we're trying to link against libs we built.
+    # https://docs.rs/pkg-config/0.3.14/pkg_config/
     with pb.local.cwd(c.C2RUST_DIR):
-        with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
+        with pb.local.env(LIBCURL_NO_PKG_CONFIG=1,
+                          ZLIB_NO_PKG_CONFIG=1,
+                          LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs,
                           C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
             # build with custom rust toolchain
@@ -218,6 +231,9 @@ def _parse_args():
     parser.add_argument('-x', '--xcode', default=False,
                         action='store_true', dest='xcode',
                         help='generate Xcode project files (macOS only)')
+    parser.add_argument('-v', '--verbose', default=False,
+                        action='store_true', dest='verbose',
+                        help='emit verbose information during build')
     c.add_args(parser)
     args = parser.parse_args()
 
