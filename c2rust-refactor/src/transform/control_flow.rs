@@ -21,15 +21,15 @@ impl Transform for ReconstructWhile {
             st, cx, krate,
             r#"
                 $'label: loop {
-                    if !($cond) {
+                    if !($cond:expr) {
                         break;
                     }
-                    $body;
+                    $body:multi_stmt;
                 }
             "#,
             r#"
                 $'label: while $cond {
-                    $body;
+                    $body:multi_stmt;
                 }
             "#);
         krate
