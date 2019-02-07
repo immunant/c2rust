@@ -77,11 +77,11 @@ jobs:
   steps:
   - script: |
       ./scripts/provision_mac.sh
+      xcode-select --switch /Applications/Xcode_9.4.1.app/Contents/Developer
     displayName: 'Provision macOS'
 
   - script: |
       source $HOME/.cargo/env
-      export CFLAGS_x86_64-apple-darwin=-mmacosx-version-min=10.13
       cargo build -vv
     displayName: 'Fast build against host clang/LLVM'
 
