@@ -76,15 +76,13 @@ jobs:
     vmImage: 'macos-10.13'
   steps:
   - script: |
-    ./scripts/provision_mac.sh
+      ./scripts/provision_mac.sh
     displayName: 'Provision macOS'
 
   - script: |
-    cargo build
+      cargo build
     displayName: 'Fast build against host clang/LLVM'
-    condition: eq(variables['agent.os'], 'Darwin')
 
   - script: |
-    python3 ./scripts/test_translator.py --debug ./tests
+      python3 ./scripts/test_translator.py --debug ./tests
     displayName: 'Test translator (fast build)'
-    condition: eq(variables['agent.os'], 'Darwin')
