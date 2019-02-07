@@ -14,6 +14,7 @@ trigger:
     - manual/*
     - docs/*
 
+jobs:
 - job: Linux tests
   pool:
     vmImage: 'Ubuntu-16.04'
