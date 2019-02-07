@@ -12,12 +12,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 USER root
 RUN groupadd -f -g $GID $USER
 RUN useradd --create-home -u $UID -g $GID --create-home --shell /bin/bash $USER 
-WORKDIR $HOME
 
 # Provision debian and python packages 
-COPY $PROVISION_SCRIPT /tmp/provision.sh
+COPY provision*.sh /tmp/
 COPY requirements.txt /tmp/requirements.txt
-RUN chmod +x /tmp/provision.sh && /tmp/provision.sh
+RUN chmod +x /tmp/provision*.sh && /tmp/provision.sh
 
 COPY provision_rust.sh /tmp/provision_rust.sh
 RUN chmod +x /tmp/provision_rust.sh 

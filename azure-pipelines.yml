@@ -19,14 +19,16 @@ pool:
 
 strategy:
   matrix:
+    arch:
+      containerImage: immunant/c2rust:base-archlinux-20190206
     debian8:
-      containerImage: immunant/c2rust:debian-jessie-20190202
+      containerImage: immunant/c2rust:debian-jessie-20190206
     debian9:
-      containerImage: immunant/c2rust:debian-stretch-20190201
+      containerImage: immunant/c2rust:debian-stretch-20190206
     ubuntu16:
-      containerImage: immunant/c2rust:ubuntu-xenial-20190201
+      containerImage: immunant/c2rust:ubuntu-xenial-20190206
     ubuntu18:
-      containerImage: immunant/c2rust:ubuntu-bionic-20190201
+      containerImage: immunant/c2rust:ubuntu-bionic-20190206
 
 container: $[ variables['containerImage'] ]
 
