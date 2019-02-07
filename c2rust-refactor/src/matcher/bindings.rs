@@ -1,12 +1,62 @@
 //! The `Bindings` type, for mapping names to AST fragments.
 use std::collections::hash_map::{HashMap, Entry};
 use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Item};
+use syntax::parse::token::Token;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
+use syntax::tokenstream::{Delimited, TokenTree, TokenStream, TokenStreamBuilder};
 
 use crate::ast_manip::AstEquiv;
 use c2rust_ast_builder::IntoSymbol;
 
+/// A set of binding types, mapping names to binding types.
+#[derive(Clone, Debug)]
+pub struct BindingTypes {
+    types: HashMap<Symbol, Type>,
+}
+
+impl BindingTypes {
+    pub fn new() -> BindingTypes {
+        BindingTypes {
+            types: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, name: &Symbol) -> Option<&Type> {
+        self.types.get(name)
+    }
+
+    /// Set the type for a name, so that the name matches (and captures) only nodes of the
+    /// appropriate typ.
+    pub fn set_type<S: IntoSymbol>(&mut self, name: S, ty: Type) {
+        let name = name.into_symbol();
+        match self.types.entry(name.into_symbol()) {
+            Entry::Vacant(e) => {
+                e.insert(ty);
+            },
+            Entry::Occupied(mut e) => {
+                let old_ty = *e.get();
+                match (old_ty, ty) {
+                    (xty, yty) if xty == yty => {}
+                    (_, Type::Unknown) => {}
+                    (Type::Unknown, yty) => {
+                        e.insert(yty);
+                    }
+                    _ => {
+                        assert!(false, "tried to set type of {:?} to {:?}, but its type is already set to {:?}",
+                                name, ty, old_ty);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn merge(&mut self, other: Self) {
+        for (name, ty) in other.types.into_iter() {
+            self.set_type(name, ty);
+        }
+    }
+}
 
 /// A set of bindings, mapping names to AST fragments.
 #[derive(Clone, Debug)]
@@ -49,7 +99,17 @@ macro_rules! define_binding_values {
         /// The types of AST fragments that can be used in `Bindings`.
         #[derive(Clone, Copy, PartialEq, Eq, Debug)]
         pub enum Type {
+            Unknown,
             $( $Thing, )*
+        }
+
+        impl Type {
+            fn from_ast_ident(ty_ident: Ident) -> Type {
+                match &*ty_ident.as_str() {
+                    $(stringify!($thing) => Type::$Thing,)*
+                    ty @ _ => panic!("Unknown binding type: {}", ty)
+                }
+            }
         }
 
         impl Bindings {
@@ -122,4 +182,60 @@ define_binding_values! {
     Stmt(Stmt), add_stmt, try_add_stmt, stmt, get_stmt;
     MultiStmt(Vec<Stmt>), add_multi_stmt, try_add_multi_stmt, multi_stmt, get_multi_stmt;
     Item(P<Item>), add_item, try_add_item, item, get_item;
+}
+
+/// Rewrite tokens like `$foo:ty` into `$foo` and extract the types
+fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
+    let mut tsb = TokenStreamBuilder::new();
+    let mut c = ts.into_trees();
+    while let Some(tt) = c.next() {
+        let new_tt = match tt {
+            TokenTree::Token(sp, Token::Dollar) => match c.look_ahead(0) {
+                Some(TokenTree::Token(sp, Token::Ident(ident, is_raw))) => {
+                    c.next();
+                    let dollar_sym = Symbol::intern(&format!("${}", ident));
+                    let ident_ty = if let Some(TokenTree::Token(_, Token::Colon)) = c.look_ahead(0) {
+                        c.next();
+                        match c.next() {
+                            Some(TokenTree::Token(_, Token::Ident(ty_ident, _))) =>
+                                Type::from_ast_ident(ty_ident),
+                            tt @ _ => panic!("Expected identifier, got {:?}", tt)
+                        }
+                    } else {
+                        Type::Unknown
+                    };
+                    bt.set_type(dollar_sym, ident_ty);
+                    TokenTree::Token(sp, Token::Ident(Ident::new(dollar_sym, ident.span), is_raw))
+                }
+
+                Some(TokenTree::Token(sp, Token::Lifetime(ident))) => {
+                    c.next();
+                    let ident_str = &*ident.as_str();
+                    let (prefix, label) = ident_str.split_at(1);
+                    assert!(prefix == "'", "Lifetime identifier does not start with ': {}", ident);
+                    let dollar_sym = Symbol::intern(&format!("'${}", label));
+                    TokenTree::Token(sp, Token::Lifetime(Ident::new(dollar_sym, ident.span)))
+                }
+
+                _ => TokenTree::Token(sp, Token::Dollar)
+            },
+
+            TokenTree::Delimited(sp, del) => {
+                let Delimited { delim, tts } = del;
+                let dts = rewrite_token_stream(tts.into(), bt);
+                let del = Delimited { delim, tts: dts.into() };
+                TokenTree::Delimited(sp, del)
+            }
+
+            tt @ _ => tt
+        };
+        tsb.push(new_tt);
+    }
+    tsb.build()
+}
+
+pub fn parse_bindings(ts: TokenStream) -> (TokenStream, BindingTypes) {
+    let mut bt = BindingTypes::new();
+    let new_ts = rewrite_token_stream(ts, &mut bt);
+    (new_ts, bt)
 }

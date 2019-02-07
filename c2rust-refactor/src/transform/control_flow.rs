@@ -20,16 +20,16 @@ impl Transform for ReconstructWhile {
         let krate = replace_expr(
             st, cx, krate,
             r#"
-                '__label: loop {
-                    if !(__cond) {
+                $'label: loop {
+                    if !($cond) {
                         break;
                     }
-                    __m_body;
+                    $body;
                 }
             "#,
             r#"
-                '__label: while __cond {
-                    __m_body;
+                $'label: while $cond {
+                    $body;
                 }
             "#);
         krate
@@ -46,38 +46,40 @@ impl Transform for ReconstructWhile {
 pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        let pat = parse_stmts(cx.session(), r#"
-            __i = __start;
-            '__label: while __i < __end {
-                __m_body;
-                __i = __i + __step;
-            }
-        "#);
-
-        let repl_step_one = parse_stmts(cx.session(), r#"
-            '__label: for __i in __start .. __end {
-                __m_body;
-            }
-        "#);
-
-        let repl_step_more = parse_stmts(cx.session(), r#"
-            '__label: for __i in (__start .. __end).step_by(__step) {
-                __m_body;
-            }
-        "#);
-
+    fn transform(&self, mut krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
-        mcx.set_type("__i", BindingType::Ident);
-        mcx.set_type("__step", BindingType::Expr);
+        let (pat, pat_bt) = parse_free_stmts(cx.session(), r#"
+            $i:ident = $start:expr;
+            $'label: while $i < $end:expr {
+                $body:multi_stmt;
+                $i = $i + $step:expr;
+            }
+        "#);
+        mcx.merge_binding_types(pat_bt);
 
-        fold_match_with(mcx, pat, krate, |_, bnd| {
-            if is_one_expr(bnd.expr("__step")) {
+        let (repl_step_one, repl1_bt) = parse_free_stmts(cx.session(), r#"
+            $'label: for $i in $start .. $end {
+                $body;
+            }
+        "#);
+        mcx.merge_binding_types(repl1_bt);
+
+        let (repl_step_more, repl2_bt) = parse_free_stmts(cx.session(), r#"
+            $'label: for $i in ($start .. $end).step_by($step) {
+                $body;
+            }
+        "#);
+        mcx.merge_binding_types(repl2_bt);
+
+        krate = fold_match_with(mcx, pat, krate, |_, bnd| {
+            if is_one_expr(bnd.expr("$step")) {
                 repl_step_one.clone().subst(st, cx, &bnd)
             } else {
                 repl_step_more.clone().subst(st, cx, &bnd)
             }
-        })
+        });
+
+        krate
     }
 }
 

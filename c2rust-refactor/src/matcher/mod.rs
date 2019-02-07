@@ -31,7 +31,6 @@
 //!
 //!  * `cast!(x)`: Matches the `Expr`s `x`, `x as __t`, `x as __t as __u`, etc.
 
-use std::collections::hash_map::HashMap;
 use std::cmp;
 use std::result;
 use rustc::hir::def_id::DefId;
@@ -58,7 +57,7 @@ mod bindings;
 mod impls;
 mod subst;
 
-pub use self::bindings::{Bindings, Type as BindingType};
+pub use self::bindings::{Bindings, BindingTypes, Type as BindingType, parse_bindings};
 pub use self::subst::Subst;
 
 
@@ -96,7 +95,7 @@ pub enum Error {
 #[derive(Clone)]
 pub struct MatchCtxt<'a, 'tcx: 'a> {
     pub bindings: Bindings,
-    pub types: HashMap<Symbol, bindings::Type>,
+    pub types: BindingTypes,
     st: &'a CommandState,
     cx: &'a driver::Ctxt<'a, 'tcx>,
     pub debug: bool,
@@ -107,7 +106,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
                cx: &'a driver::Ctxt<'a, 'tcx>) -> MatchCtxt<'a, 'tcx> {
         MatchCtxt {
             bindings: Bindings::new(),
-            types: HashMap::new(),
+            types: BindingTypes::new(),
             st: st,
             cx: cx,
             debug: false,
@@ -138,27 +137,20 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         Ok(m)
     }
 
-
-    /// Set the type for a name, so that the name matches (and captures) only nodes of the
-    /// appropriate typ.
-    pub fn set_type<S: IntoSymbol>(&mut self, name: S, ty: bindings::Type) {
+    pub fn set_type<S: IntoSymbol>(&mut self, name: S, ty: BindingType) {
         let name = name.into_symbol();
-
-        if let Some(&old_ty) = self.types.get(&name) {
-            assert!(ty == old_ty,
-                    "tried to set type of {:?} to {:?}, but its type is already set to {:?}",
-                    name, ty, old_ty);
-        }
-
         if let Some(old_ty) = self.bindings.get_type(name) {
-            assert!(ty == old_ty,
+            assert!(ty == old_ty || ty == BindingType::Unknown || old_ty == BindingType::Unknown,
                     "tried to set type of {:?} to {:?}, but it already has a value of type {:?}",
                     name, ty, old_ty);
         }
 
-        self.types.insert(name, ty);
+        self.types.set_type(name, ty)
     }
 
+    pub fn merge_binding_types(&mut self, other: BindingTypes) {
+        self.types.merge(other)
+    }
 
     /// Try to capture an ident.  Returns `Ok(true)` if it captured, `Ok(false)` if `pattern` is
     /// not a capturing pattern, or `Err(_)` if capturing failed.
@@ -172,6 +164,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         // starts with "__", then it's a valid pattern for any binding type.
         match self.types.get(&sym) {
             Some(&bindings::Type::Ident) => {},
+            Some(&bindings::Type::Unknown) => {},
             None if sym.as_str().starts_with("__") => {},
             _ => return Ok(false),
         }
@@ -189,6 +182,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         // Labels use lifetime syntax, but are `Ident`s instead of `Lifetime`s.
         match self.types.get(&sym) {
             Some(&bindings::Type::Ident) => {},
+            Some(&bindings::Type::Unknown) => {},
             None if sym.as_str().starts_with("'__") => {},
             _ => return Ok(false),
         }
@@ -205,6 +199,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
         match self.types.get(&sym) {
             Some(&bindings::Type::Path) => {},
+            Some(&bindings::Type::Unknown) => {},
             None if sym.as_str().starts_with("__") => {},
             _ => return Ok(false),
         }
@@ -221,6 +216,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
         match self.types.get(&sym) {
             Some(&bindings::Type::Expr) => {},
+            Some(&bindings::Type::Unknown) => {},
             None if sym.as_str().starts_with("__") => {},
             _ => return Ok(false),
         }
@@ -237,6 +233,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
         match self.types.get(&sym) {
             Some(&bindings::Type::Pat) => {},
+            Some(&bindings::Type::Unknown) => {},
             None if sym.as_str().starts_with("__") => {},
             _ => return Ok(false),
         }
@@ -253,6 +250,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
         match self.types.get(&sym) {
             Some(&bindings::Type::Ty) => {},
+            Some(&bindings::Type::Unknown) => {},
             None if sym.as_str().starts_with("__") => {},
             _ => return Ok(false),
         }
@@ -269,6 +267,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
         match self.types.get(&sym) {
             Some(&bindings::Type::Stmt) => {},
+            Some(&bindings::Type::Unknown) => {},
             None if sym.as_str().starts_with("__") => {},
             _ => return Ok(false),
         }
@@ -610,7 +609,7 @@ fn is_multi_stmt_glob(mcx: &MatchCtxt, pattern: &Stmt) -> bool {
     };
 
     match mcx.types.get(&sym) {
-        Some(&bindings::Type::MultiStmt) => {},
+        Some(&bindings::Type::MultiStmt) => {}, // FIXME: match Unknown too???
         None if sym.as_str().starts_with("__m_") => {},
         _ => return false,
     }

@@ -17,6 +17,7 @@ pub use crate::ast_manip::fn_edit::{fold_fns, fold_fns_multi};
 pub use crate::ast_manip::lr_expr::fold_expr_with_context;
 pub use c2rust_ast_builder::mk;
 pub use crate::driver::{parse_expr, parse_pat, parse_ty, parse_stmts, parse_items};
+pub use crate::driver::{parse_free_expr, parse_free_pat, parse_free_ty, parse_free_stmts, parse_free_items};
 pub use crate::matcher::{MatchCtxt, Bindings, BindingType, Subst};
 pub use crate::matcher::{fold_match, fold_match_with};
 pub use crate::path_edit::{self, fold_resolved_paths, fold_resolved_paths_with_id};
