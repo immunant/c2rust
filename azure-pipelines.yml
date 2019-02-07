@@ -77,14 +77,14 @@ jobs:
   steps:
   - script: |
     ./scripts/provision_mac.sh
-  displayName: 'Provision macOS'
+    displayName: 'Provision macOS'
 
   - script: |
     cargo build
-  displayName: 'Fast build against host clang/LLVM'
-  condition: eq(variables['agent.os'], 'Darwin')
+    displayName: 'Fast build against host clang/LLVM'
+    condition: eq(variables['agent.os'], 'Darwin')
 
   - script: |
     python3 ./scripts/test_translator.py --debug ./tests
-  displayName: 'Test translator (fast build)'
-  condition: eq(variables['agent.os'], 'Darwin')
+    displayName: 'Test translator (fast build)'
+    condition: eq(variables['agent.os'], 'Darwin')
