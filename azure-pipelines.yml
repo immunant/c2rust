@@ -80,9 +80,11 @@ jobs:
     displayName: 'Provision macOS'
 
   - script: |
+      source $HOME/.cargo/env
       cargo build
     displayName: 'Fast build against host clang/LLVM'
 
   - script: |
+      source $HOME/.cargo/env
       python3 ./scripts/test_translator.py --debug ./tests
     displayName: 'Test translator (fast build)'
