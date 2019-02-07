@@ -47,35 +47,36 @@ pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
     fn transform(&self, mut krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        for label in &["", "$'label:"] {
-            for (cmp_from, cmp_to) in &[("<", ".."), ("<=", "..=")] {
-                for incr in &["$i = $i + ", "$i += "] {
-                    for (step_from, step_to) in &[("1", ""), ("$step:expr", ".step_by($step)")] {
-                        let mut mcx = MatchCtxt::new(st, cx);
-                        let pat_str = format!(r#"
-                            $i:ident = $start:expr;
-                            {} while $i {} $end:expr {{
-                                $body:multi_stmt;
-                                {} {}
-                            }}
-                        "#, label, cmp_from, incr, step_from);
-                        let (pat, pat_bt) = parse_free_stmts(cx.session(), &pat_str);
-                        mcx.merge_binding_types(pat_bt);
+        let labels = &["", "$'label:"];
+        let cmps = &[("<", ".."), ("<=", "..=")];
+        let incrs = &["+=", "= $i +"];
+        let steps = &[("1", ""), ("$step:expr", ".step_by($step)")];
+        let scs = &["", ";"];
+        for (label, (cmp_from, cmp_to), incr, (step_from, step_to), sc) in
+            iproduct!(labels, cmps, incrs, steps, scs) {
+            let mut mcx = MatchCtxt::new(st, cx);
+            let pat_str = format!(r#"
+                $i:ident = $start:expr;
+                {} while $i {} $end:expr {{
+                    $body:multi_stmt;
+                    $i {} {} {}
+                }}
+            "#, label, cmp_from, incr, step_from, sc);
+            let (pat, pat_bt) = parse_free_stmts(cx.session(), &pat_str);
+            mcx.merge_binding_types(pat_bt);
 
-                        let repl_str = format!(r#"
-                            {} for $i in $start {} $end{} {{
-                                $body;
-                            }}
-                        "#, label, cmp_to, step_to);
-                        let (repl_step, repl_bt) = parse_free_stmts(cx.session(), &repl_str);
-                        mcx.merge_binding_types(repl_bt);
+            let repl_str = format!(r#"
+                {} for $i in $start {} $end{} {{
+                    $body;
+                    {}
+                }}
+            "#, label, cmp_to, step_to, sc);
+            let (repl_step, repl_bt) = parse_free_stmts(cx.session(), &repl_str);
+            mcx.merge_binding_types(repl_bt);
 
-                        krate = fold_match_with(mcx, pat, krate, |_, bnd| {
-                            repl_step.clone().subst(st, cx, &bnd)
-                        });
-                    }
-                }
-            }
+            krate = fold_match_with(mcx, pat, krate, |_, bnd| {
+                repl_step.clone().subst(st, cx, &bnd)
+            });
         }
         krate
     }
