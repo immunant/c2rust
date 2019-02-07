@@ -685,8 +685,9 @@ class TranslateASTVisitor final
           APSInt value;
           if (!expr->isIntegerConstantExpr(value, *Context)) {
               if (!expr->EvaluateAsInt(value, *Context)) {
-                  std::cerr << "Aborting due to the expression in `CaseStmt` not being an integer."
-                            << std::endl;
+                  std:: string msg = "Aborting due to the expression in `CaseStmt`\
+                                      not being an integer.";
+                  PrintError(msg, CS);
                   abort();
               }
           }
@@ -1541,13 +1542,24 @@ class TranslateASTVisitor final
           return false;
       }
 
-      void PrintWarning(std::string Message, Decl *D) {
+      DiagnosticBuilder GetDiagBuilder(SourceLocation Loc, DiagnosticsEngine::Level Lvl) {
           auto &DiagEngine = Context->getDiagnostics();
-          const auto ID = DiagEngine.getCustomDiagID(DiagnosticsEngine::Warning, "%0");
+          // Prefix `c2rust-ast-exporter`, so the user can know where the
+          // message is coming from
+          const auto ID = DiagEngine.getCustomDiagID(Lvl, "c2rust-ast-exporter: %0");
+          return DiagEngine.Report(Loc, ID);
+      }
 
-          auto DiagBuilder = DiagEngine.Report(D->getLocation(), ID);
+      void PrintWarning(std::string Message, Decl *D) {
+          auto DiagBuilder = GetDiagBuilder(D->getLocation(), DiagnosticsEngine::Warning);
           DiagBuilder.AddString(Message);
           DiagBuilder.AddSourceRange(CharSourceRange::getCharRange(D->getSourceRange()));
+      }
+
+      void PrintError(std::string Message, Stmt *S) {
+          auto DiagBuilder = GetDiagBuilder(S->getLocStart(), DiagnosticsEngine::Error);
+          DiagBuilder.AddString(Message);
+          DiagBuilder.AddSourceRange(CharSourceRange::getCharRange(S->getSourceRange()));
       }
 };
 
