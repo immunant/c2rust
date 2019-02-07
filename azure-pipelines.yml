@@ -51,7 +51,7 @@ steps:
     python3 ./scripts/test_translator.py --debug ./tests
   displayName: 'Test translator (fast build)'
 
-  - script: |
+- script: |
     # export PATH="/home/docker/.cargo/bin:$PATH"
     # export RUSTUP_HOME=/home/docker/.rustup
     # export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
@@ -59,10 +59,10 @@ steps:
   displayName: 'Clean'
 
 
-  - script: |
+- script: |
     python3 ./scripts/build_translator.py --debug
   displayName: 'Developer build against local clang/LLVM'
 
-  - script: |
+- script: |
     python3 ./scripts/test_translator.py --debug ./tests
   displayName: 'Test translator (dev build)'
