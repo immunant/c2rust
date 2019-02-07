@@ -214,6 +214,7 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                     let (prefix, label) = ident_str.split_at(1);
                     assert!(prefix == "'", "Lifetime identifier does not start with ': {}", ident);
                     let dollar_sym = Symbol::intern(&format!("'${}", label));
+                    bt.set_type(dollar_sym, Type::Ident);
                     TokenTree::Token(sp, Token::Lifetime(Ident::new(dollar_sym, ident.span)))
                 }
 
