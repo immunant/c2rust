@@ -684,7 +684,11 @@ class TranslateASTVisitor final
 
           APSInt value;
           if (!expr->isIntegerConstantExpr(value, *Context)) {
-              abort();
+              if (!expr->EvaluateAsInt(value, *Context)) {
+                  std::cerr << "Aborting due to the expression in `CaseStmt` not being an integer."
+                            << std::endl;
+                  abort();
+              }
           }
 
           std::vector<void*> childIds { expr, CS->getSubStmt() };
