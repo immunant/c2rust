@@ -77,7 +77,7 @@ jobs:
   steps:
   - script: |
       ./scripts/provision_mac.sh
-      xcode-select --switch /Applications/Xcode_9.4.1.app/Contents/Developer
+      sudo xcode-select --switch /Applications/Xcode_9.4.1.app/Contents/Developer
     displayName: 'Provision macOS'
 
   - script: |
