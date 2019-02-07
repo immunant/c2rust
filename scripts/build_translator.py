@@ -253,6 +253,19 @@ def binary_in_path(binary_name) -> bool:
         return False
 
 
+def print_success_msg(args):
+    """
+    print a helpful message on how to run the c2rust binary.
+    """
+    c2rust_bin_path = 'target/debug/c2rust' if args.debug \
+                      else 'target/release/c2rust'
+    c2rust_bin_path = os.path.join(c.ROOT_DIR, c2rust_bin_path)
+
+    abs_curdir = os.path.abspath(os.path.curdir)
+    c2rust_bin_path = os.path.relpath(c2rust_bin_path, abs_curdir)
+    print("success! you may now run", c2rust_bin_path)
+
+
 def _main():
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
@@ -300,16 +313,7 @@ def _main():
 
     build_transpiler(args)
 
-    # print a helpful message on how to run c2rust bin directly
-    c2rust_bin_path = 'target/debug/c2rust' if args.debug \
-                      else 'target/release/c2rust'
-    c2rust_bin_path = os.path.join(c.ROOT_DIR, c2rust_bin_path)
-    # if os.path.curdir
-    abs_curdir = os.path.abspath(os.path.curdir)
-    common_path = os.path.commonpath([abs_curdir, c2rust_bin_path])
-    if common_path != "/":
-        c2rust_bin_path = "." + c2rust_bin_path[len(common_path):]
-    print("success! you may now run", c2rust_bin_path)
+    print_success_msg(args)
 
 
 if __name__ == "__main__":
