@@ -35,7 +35,7 @@ matrix:
           PATH="/usr/lib/ccache:/usr/bin:$PATH"
       before_script:
         # Clang is not in `/usr/lib/ccache/`, so it needs to be added
-        - /usr/sbin/update-ccache-symlinks
+        - sudo /usr/sbin/update-ccache-symlinks
 
     - os: linux
       env: >-
