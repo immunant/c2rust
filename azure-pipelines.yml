@@ -44,7 +44,6 @@ steps:
   displayName: 'Fast build against host clang/LLVM'
 
 - script: |
-    printenv
     export PATH="/home/docker/.cargo/bin:$PATH"
     export RUSTUP_HOME=/home/docker/.rustup
     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
@@ -52,17 +51,23 @@ steps:
   displayName: 'Test translator (fast build)'
 
 - script: |
-    # export PATH="/home/docker/.cargo/bin:$PATH"
-    # export RUSTUP_HOME=/home/docker/.rustup
-    # export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+    export PATH="/home/docker/.cargo/bin:$PATH"
+    export RUSTUP_HOME=/home/docker/.rustup
+    export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
     cargo clean
   displayName: 'Clean'
 
 
 - script: |
+    export PATH="/home/docker/.cargo/bin:$PATH"
+    export RUSTUP_HOME=/home/docker/.rustup
+    export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
     python3 ./scripts/build_translator.py --debug
   displayName: 'Developer build against local clang/LLVM'
 
 - script: |
+    export PATH="/home/docker/.cargo/bin:$PATH"
+    export RUSTUP_HOME=/home/docker/.rustup
+    export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
     python3 ./scripts/test_translator.py --debug ./tests
   displayName: 'Test translator (dev build)'
