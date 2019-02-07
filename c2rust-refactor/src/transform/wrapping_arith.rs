@@ -17,32 +17,32 @@ pub struct WrappingToNormal;
 impl Transform for WrappingToNormal {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = replace_expr(st, cx, krate,
-                                 "__x.wrapping_add(__y)",
-                                 "__x + __y");
+                                 "$x:expr.wrapping_add($y:expr)",
+                                 "$x + $y");
         let krate = replace_expr(st, cx, krate,
-                                 "__x.wrapping_sub(__y)",
-                                 "__x - __y");
+                                 "$x:expr.wrapping_sub($y:expr)",
+                                 "$x - $y");
         let krate = replace_expr(st, cx, krate,
-                                 "__x.wrapping_mul(__y)",
-                                 "__x * __y");
+                                 "$x:expr.wrapping_mul($y:expr)",
+                                 "$x * $y");
         let krate = replace_expr(st, cx, krate,
-                                 "__x.wrapping_div(__y)",
-                                 "__x / __y");
+                                 "$x:expr.wrapping_div($y:expr)",
+                                 "$x / $y");
         let krate = replace_expr(st, cx, krate,
-                                 "__x.wrapping_rem(__y)",
-                                 "__x % __y");
+                                 "$x:expr.wrapping_rem($y:expr)",
+                                 "$x % $y");
         let krate = replace_expr(st, cx, krate,
-                                 "__x.wrapping_neg()",
-                                 "-__x");
+                                 "$x:expr.wrapping_neg()",
+                                 "-$x");
         let krate = replace_expr(st, cx, krate,
-                                 "__x.wrapping_shl(__y)",
-                                 "__x << __y");
+                                 "$x:expr.wrapping_shl($y:expr)",
+                                 "$x << $y");
         let krate = replace_expr(st, cx, krate,
-                                 "__x.wrapping_shr(__y)",
-                                 "__x >> __y");
+                                 "$x:expr.wrapping_shr($y:expr)",
+                                 "$x >> $y");
         let krate = replace_expr(st, cx, krate,
-                                 "__x.wrapping_abs()",
-                                 "__x.abs()");
+                                 "$x:expr.wrapping_abs()",
+                                 "$x:expr.abs()");
         krate
     }
 }
