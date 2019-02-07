@@ -107,7 +107,7 @@ macro_rules! define_binding_values {
             fn from_ast_ident(ty_ident: Ident) -> Type {
                 match &*ty_ident.as_str() {
                     $(stringify!($thing) => Type::$Thing,)*
-                    ty @ _ => panic!("Unknown binding type: {}", ty)
+                    ty @ _ => panic!("unknown binding type: {}", ty)
                 }
             }
         }
@@ -199,7 +199,7 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                         match c.next() {
                             Some(TokenTree::Token(_, Token::Ident(ty_ident, _))) =>
                                 Type::from_ast_ident(ty_ident),
-                            tt @ _ => panic!("Expected identifier, got {:?}", tt)
+                            tt @ _ => panic!("expected identifier, got {:?}", tt)
                         }
                     } else {
                         Type::Unknown
