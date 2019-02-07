@@ -167,3 +167,7 @@ args:
       short: W
       help: Enable the specified warning (all enables all warnings)
       takes_value: true
+  - emit-no-std:
+      long: emit-no-std
+      help: Emit code using core rather than std
+      takes_value: false

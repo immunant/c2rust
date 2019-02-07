@@ -1,4 +1,4 @@
-use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind};
+use syntax::ast::Crate;
 
 use crate::api::*;
 use crate::command::{CommandState, Registry};
@@ -20,16 +20,16 @@ impl Transform for ReconstructWhile {
         let krate = replace_expr(
             st, cx, krate,
             r#"
-                '__label: loop {
-                    if !(__cond) {
+                $'label: loop {
+                    if !($cond:expr) {
                         break;
                     }
-                    __m_body;
+                    $body:multi_stmt;
                 }
             "#,
             r#"
-                '__label: while __cond {
-                    __m_body;
+                $'label: while $cond {
+                    $body:multi_stmt;
                 }
             "#);
         krate
@@ -37,7 +37,7 @@ impl Transform for ReconstructWhile {
 }
 
 
-/// # `reconstruct_for_loops` Command
+/// # `reconstruct_for_range` Command
 /// 
 /// Usage: `reconstruct_for_range`
 /// 
@@ -46,52 +46,39 @@ impl Transform for ReconstructWhile {
 pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        let pat = parse_stmts(cx.session(), r#"
-            __i = __start;
-            '__label: while __i < __end {
-                __m_body;
-                __i = __i + __step;
-            }
-        "#);
+    fn transform(&self, mut krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let labels = &["", "$'label:"];
+        let cmps = &[("<", ".."), ("<=", "..=")];
+        let incrs = &["+=", "= $i +"];
+        let steps = &[("1", "", ""), ("$step:expr", "(", ").step_by($step)")];
+        let scs = &["", ";"];
+        for (label, (cmp_from, cmp_to), incr, (step_from, step_to_prefix, step_to), sc) in
+            iproduct!(labels, cmps, incrs, steps, scs) {
+            let mut mcx = MatchCtxt::new(st, cx);
+            let pat_str = format!(r#"
+                $i:ident = $start:expr;
+                {} while $i {} $end:expr {{
+                    $body:multi_stmt;
+                    $i {} {} {}
+                }}
+            "#, label, cmp_from, incr, step_from, sc);
+            let (pat, pat_bt) = parse_free_stmts(cx.session(), &pat_str);
+            mcx.merge_binding_types(pat_bt);
 
-        let repl_step_one = parse_stmts(cx.session(), r#"
-            '__label: for __i in __start .. __end {
-                __m_body;
-            }
-        "#);
+            let repl_str = format!(r#"
+                {} for $i in {}$start {} $end{} {{
+                    $body;
+                    {}
+                }}
+            "#, label, step_to_prefix, cmp_to, step_to, sc);
+            let (repl_step, repl_bt) = parse_free_stmts(cx.session(), &repl_str);
+            mcx.merge_binding_types(repl_bt);
 
-        let repl_step_more = parse_stmts(cx.session(), r#"
-            '__label: for __i in (__start .. __end).step_by(__step) {
-                __m_body;
-            }
-        "#);
-
-        let mut mcx = MatchCtxt::new(st, cx);
-        mcx.set_type("__i", BindingType::Ident);
-        mcx.set_type("__step", BindingType::Expr);
-
-        fold_match_with(mcx, pat, krate, |_, bnd| {
-            if is_one_expr(bnd.expr("__step")) {
-                repl_step_one.clone().subst(st, cx, &bnd)
-            } else {
-                repl_step_more.clone().subst(st, cx, &bnd)
-            }
-        })
-    }
-}
-
-fn is_one_expr(e: &Expr) -> bool {
-    match e.node {
-        ExprKind::Lit(ref l) => is_one_lit(l),
-        _ => false,
-    }
-}
-
-fn is_one_lit(l: &Lit) -> bool {
-    match l.node {
-        LitKind::Int(1, _) => true,
-        _ => false,
+            krate = fold_match_with(mcx, pat, krate, |_, bnd| {
+                repl_step.clone().subst(st, cx, &bnd)
+            });
+        }
+        krate
     }
 }
 

@@ -797,9 +797,9 @@ class TranslateASTVisitor final
 
           encode_entry(E, TagOffsetOfExpr, childIds, [E,this](CborEncoder *extras){
               APSInt value;
-              bool is_contant = E->isIntegerConstantExpr(value, *this->Context);
+              bool is_constant = E->isIntegerConstantExpr(value, *this->Context);
 
-              if (is_contant) {
+              if (is_constant) {
                   cbor_encode_uint(extras, value.getZExtValue());
               } else {
                   cbor_encode_null(extras);

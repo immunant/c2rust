@@ -188,11 +188,16 @@ fn unwrap_function_pointer(ptr: P<Expr>) -> P<Expr> {
     mk().method_call_expr(ptr, "expect", vec![err_msg])
 }
 
-fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> {
+fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>, no_std: bool) -> P<Expr> {
     let type_args = vec![source_ty, target_ty];
+    let std_or_core = if no_std {
+        "core"
+    } else {
+        "std"
+    };
     let path = vec![
         mk().path_segment(""),
-        mk().path_segment("std"),
+        mk().path_segment(std_or_core),
         mk().path_segment("mem"),
         mk().path_segment_with_args("transmute",
                                       mk().angle_bracketed_args(type_args)),
@@ -321,6 +326,10 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
 
     if t.tcfg.reorganize_definitions {
         t.features.borrow_mut().insert("custom_attribute");
+    }
+
+    if tcfg.emit_no_std {
+        t.extern_crates.borrow_mut().insert("core");
     }
 
     t.extern_crates.borrow_mut().insert("libc");
@@ -648,6 +657,10 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
             }
         }
 
+        if t.tcfg.emit_no_std {
+            s.print_attribute(&mk().single_attr("no_std").as_inner_attrs()[0])?;
+        }
+
         // Add `extern crate X;` to the top of the file
         for crate_name in t.extern_crates.borrow().iter() {
             s.print_item(&mk().extern_crate_item(*crate_name, None))?;
@@ -714,7 +727,7 @@ pub enum ConvertedDecl {
 impl<'c> Translation<'c> {
     pub fn new(mut ast_context: TypedAstContext, tcfg: &'c TranspilerConfig, main_file: PathBuf) -> Self {
         let comment_context = RefCell::new(CommentContext::new(&mut ast_context));
-        let mut type_converter = TypeConverter::new();
+        let mut type_converter = TypeConverter::new(tcfg.emit_no_std);
 
         if tcfg.translate_valist { type_converter.translate_valist = true }
 
@@ -1840,8 +1853,13 @@ impl<'c> Translation<'c> {
                 mk().cast_expr(addr_lhs, ty)
             },
         };
+        let std_or_core = if self.tcfg.emit_no_std {
+            "core"
+        } else {
+            "std"
+        };
 
-        Ok(mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "write_volatile"]), vec![addr_lhs, rhs]))
+        Ok(mk().call_expr(mk().path_expr(vec!["", std_or_core, "ptr", "write_volatile"]), vec![addr_lhs, rhs]))
     }
 
     /// Read from a `lhs` that is volatile
@@ -1866,12 +1884,17 @@ impl<'c> Translation<'c> {
                 mk().cast_expr(addr_lhs, ty)
             }
         };
+        let std_or_core = if self.tcfg.emit_no_std {
+            "core"
+        } else {
+            "std"
+        };
 
         // We explicitly annotate the type of pointer we're reading from
         // in order to avoid omitted bit-casts to const from causing the
         // wrong type to be inferred via the result of the pointer.
         let mut path_parts: Vec<PathSegment> = vec![];
-        for elt in vec!["", "std", "ptr"] {
+        for elt in vec!["", std_or_core, "ptr"] {
             path_parts.push(mk().path_segment(elt))
         }
         let elt_ty = self.convert_type(lhs_type.ctype)?;
@@ -1964,12 +1987,16 @@ impl<'c> Translation<'c> {
 
             return Ok(WithStmts { stmts, val })
         }
-
+        let std_or_core = if self.tcfg.emit_no_std {
+            "core"
+        } else {
+            "std"
+        };
         let ty = self.convert_type(type_id)?;
         let name = "size_of";
         let params = mk().angle_bracketed_args(vec![ty]);
         let path = vec![mk().path_segment(""),
-                        mk().path_segment("std"),
+                        mk().path_segment(std_or_core),
                         mk().path_segment("mem"),
                         mk().path_segment_with_args(name, params)];
         let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
@@ -1983,11 +2010,15 @@ impl<'c> Translation<'c> {
         type_id = self.variable_array_base_type(type_id);
 
         let ty = self.convert_type(type_id)?;
-
+        let std_or_core = if self.tcfg.emit_no_std {
+            "core"
+        } else {
+            "std"
+        };
         let name = "align_of";
         let tys = vec![ty];
         let path = vec![mk().path_segment(""),
-                        mk().path_segment("std"),
+                        mk().path_segment(std_or_core),
                         mk().path_segment("mem"),
                         mk().path_segment_with_args(name,
                                                       mk().angle_bracketed_args(tys)),
@@ -2422,7 +2453,7 @@ impl<'c> Translation<'c> {
                        self.ast_context.is_function_pointer(source_ty_id) {
                         let source_ty = self.convert_type(source_ty_id)?;
                         let target_ty = self.convert_type(ty.ctype)?;
-                        Ok(transmute_expr(source_ty, target_ty, x))
+                        Ok(transmute_expr(source_ty, target_ty, x, self.tcfg.emit_no_std))
                     } else {
                         // Normal case
                         let target_ty = self.convert_type(ty.ctype)?;
@@ -2436,7 +2467,7 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|x| {
                     let intptr_t = mk().path_ty(vec!["libc","intptr_t"]);
                     let intptr = mk().cast_expr(x, intptr_t.clone());
-                    transmute_expr(intptr_t, target_ty, intptr)
+                    transmute_expr(intptr_t, target_ty, intptr, self.tcfg.emit_no_std)
                 }))
             }
 
@@ -2492,7 +2523,7 @@ impl<'c> Translation<'c> {
                     // unless the cast is to a function pointer then use `transmute`.
                     Ok(val.map(|x| {
                         if self.ast_context.is_function_pointer(source_ty_ctype_id) {
-                            transmute_expr(source_ty, target_ty, x)
+                            transmute_expr(source_ty, target_ty, x, self.tcfg.emit_no_std)
                         } else  {
                             mk().cast_expr(x, target_ty)
                         }

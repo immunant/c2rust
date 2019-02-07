@@ -88,6 +88,7 @@ pub struct TranspilerConfig {
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
     pub enabled_warnings: HashSet<Diagnostic>,
+    pub emit_no_std: bool,
 
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`

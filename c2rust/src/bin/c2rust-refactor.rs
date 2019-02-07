@@ -1,8 +1,11 @@
 extern crate env_logger;
 #[macro_use] extern crate log;
 #[macro_use] extern crate clap;
+extern crate shlex;
 extern crate c2rust_refactor;
 
+use std::fs::File;
+use std::io::Read;
 use std::str::FromStr;
 use clap::{App, ArgMatches};
 
@@ -136,9 +139,28 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
     };
 
     // Parse command names + args
+    let transforms_file = match args.value_of("transforms-file") {
+        Some(file_name) => {
+            let mut file = File::open(file_name)
+                .unwrap_or_else(|e| {
+                    panic!("Could not open transforms file {:?}: {}", file_name, e);
+                });
+            let mut buf = String::new();
+            file.read_to_string(&mut buf)
+                .unwrap_or_else(|e| {
+                    panic!("Could not read transforms file {:?}: {}", file_name, e);
+                });
+            buf
+        },
+        None => String::new()
+    };
+    let transforms: Box<Iterator<Item = String>> = match args.value_of("transforms-file") {
+        Some(_) => Box::new(shlex::Shlex::new(&transforms_file)),
+        None => Box::new(args.values_of("transforms").unwrap().map(String::from))
+    };
     let mut commands = Vec::new();
     let mut cur_command = None;
-    for arg in args.values_of("transforms").unwrap() {
+    for arg in transforms {
         if arg == ";" {
             if let Some(cmd) = cur_command.take() {
                 commands.push(cmd);
@@ -148,11 +170,11 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
             }
         } else if cur_command.is_none() {
             cur_command = Some(Command {
-                name: arg.to_string(),
+                name: arg,
                 args: Vec::new(),
             });
         } else {
-            cur_command.as_mut().unwrap().args.push(arg.to_string());
+            cur_command.as_mut().unwrap().args.push(arg);
         }
     }
     if let Some(cmd) = cur_command.take() {
