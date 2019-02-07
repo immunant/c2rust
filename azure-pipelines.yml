@@ -32,8 +32,8 @@ strategy:
       containerImage: immunant/c2rust:ubuntu-bionic-20190206
     mac13:
       imageName: 'macos-10.13'
-    mac14:
-      imageName: 'macos-10.14'
+    # mac14:
+    #   imageName: 'macos-10.14' # will exist one day?
 
 container: $[ variables['containerImage'] ]
 
