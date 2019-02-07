@@ -21,6 +21,7 @@ strategy:
   matrix:
     arch:
       containerImage: immunant/c2rust:base-archlinux-20190206
+      env: 
     debian8:
       containerImage: immunant/c2rust:debian-jessie-20190206
     debian9:
@@ -29,6 +30,10 @@ strategy:
       containerImage: immunant/c2rust:ubuntu-xenial-20190206
     ubuntu18:
       containerImage: immunant/c2rust:ubuntu-bionic-20190206
+    mac13:
+      imageName: 'macos-10.13'
+    mac14:
+      imageName: 'macos-10.14'
 
 container: $[ variables['containerImage'] ]
 
@@ -42,6 +47,7 @@ steps:
     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
     cargo build
   displayName: 'Fast build against host clang/LLVM'
+  condition: eq(variables['agent.os'], 'Linux')
 
 - script: |
     export PATH="/home/docker/.cargo/bin:$PATH"
@@ -49,6 +55,7 @@ steps:
     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
     python3 ./scripts/test_translator.py --debug ./tests
   displayName: 'Test translator (fast build)'
+  condition: eq(variables['agent.os'], 'Linux')
 
 - script: |
     export PATH="/home/docker/.cargo/bin:$PATH"
@@ -56,7 +63,7 @@ steps:
     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
     cargo clean
   displayName: 'Clean'
-
+  condition: eq(variables['agent.os'], 'Linux')
 
 - script: |
     export PATH="/home/docker/.cargo/bin:$PATH"
@@ -64,6 +71,7 @@ steps:
     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
     python3 ./scripts/build_translator.py --debug
   displayName: 'Developer build against local clang/LLVM'
+  condition: eq(variables['agent.os'], 'Linux')
 
 - script: |
     export PATH="/home/docker/.cargo/bin:$PATH"
@@ -71,3 +79,19 @@ steps:
     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
     python3 ./scripts/test_translator.py --debug ./tests
   displayName: 'Test translator (dev build)'
+  condition: eq(variables['agent.os'], 'Linux')
+
+- script: |
+    ./scripts/provision_mac.sh
+  displayName: 'Provision macOS'
+  condition: eq(variables['agent.os'], 'Darwin')
+
+- script: |
+    cargo build
+  displayName: 'Fast build against host clang/LLVM'
+  condition: eq(variables['agent.os'], 'Darwin')
+
+  - script: |
+    python3 ./scripts/test_translator.py --debug ./tests
+  displayName: 'Test translator (fast build)'
+  condition: eq(variables['agent.os'], 'Darwin')
