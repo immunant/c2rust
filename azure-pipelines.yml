@@ -81,7 +81,7 @@ jobs:
 
   - script: |
       source $HOME/.cargo/env
-      cargo build
+      cargo build -vv
     displayName: 'Fast build against host clang/LLVM'
 
   - script: |
