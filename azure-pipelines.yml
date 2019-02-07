@@ -81,6 +81,7 @@ jobs:
 
   - script: |
       source $HOME/.cargo/env
+      export CFLAGS_x86_64-apple-darwin=-mmacosx-version-min=10.13
       cargo build -vv
     displayName: 'Fast build against host clang/LLVM'
 
