@@ -50,9 +50,9 @@ impl Transform for ReconstructForRange {
         let labels = &["", "$'label:"];
         let cmps = &[("<", ".."), ("<=", "..=")];
         let incrs = &["+=", "= $i +"];
-        let steps = &[("1", ""), ("$step:expr", ".step_by($step)")];
+        let steps = &[("1", "", ""), ("$step:expr", "(", ").step_by($step)")];
         let scs = &["", ";"];
-        for (label, (cmp_from, cmp_to), incr, (step_from, step_to), sc) in
+        for (label, (cmp_from, cmp_to), incr, (step_from, step_to_prefix, step_to), sc) in
             iproduct!(labels, cmps, incrs, steps, scs) {
             let mut mcx = MatchCtxt::new(st, cx);
             let pat_str = format!(r#"
@@ -66,11 +66,11 @@ impl Transform for ReconstructForRange {
             mcx.merge_binding_types(pat_bt);
 
             let repl_str = format!(r#"
-                {} for $i in $start {} $end{} {{
+                {} for $i in {}$start {} $end{} {{
                     $body;
                     {}
                 }}
-            "#, label, cmp_to, step_to, sc);
+            "#, label, step_to_prefix, cmp_to, step_to, sc);
             let (repl_step, repl_bt) = parse_free_stmts(cx.session(), &repl_str);
             mcx.merge_binding_types(repl_bt);
 
