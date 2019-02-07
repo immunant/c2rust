@@ -91,7 +91,7 @@ steps:
   displayName: 'Fast build against host clang/LLVM'
   condition: eq(variables['agent.os'], 'Darwin')
 
-  - script: |
+- script: |
     python3 ./scripts/test_translator.py --debug ./tests
   displayName: 'Test translator (fast build)'
   condition: eq(variables['agent.os'], 'Darwin')
