@@ -15,7 +15,7 @@ trigger:
     - docs/*
 
 jobs:
-- job: Linux tests
+- job: LinuxTests
   pool:
     vmImage: 'Ubuntu-16.04'
   strategy:
@@ -71,7 +71,7 @@ jobs:
       python3 ./scripts/test_translator.py --debug ./tests
     displayName: 'Test translator (dev build)'
 
-- job: Darwin tests
+- job: DarwinTests
   pool:
     vmImage: 'macos-10.13'
   steps:
