@@ -17,8 +17,6 @@ impl TryMatch for Ident {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if mcx.maybe_capture_ident(self, target)? {
             return Ok(());
-        } else if mcx.maybe_capture_label(self, target)? {
-            return Ok(());
         }
 
         if self == target {
@@ -179,11 +177,27 @@ impl<T: TryMatch> TryMatch for Spanned<T> {
 }
 
 impl<T: TryMatch> TryMatch for Option<T> {
-    fn try_match(&self, target: &Option<T>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+    default fn try_match(&self, target: &Option<T>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         match (self, target) {
             (&Some(ref x), &Some(ref y)) => mcx.try_match(x, y),
             (&None, &None) => Ok(()),
             (_, _) => Err(matcher::Error::VariantMismatch),
+        }
+    }
+}
+
+impl TryMatch for Option<Label> {
+    fn try_match(&self, target: &Option<Label>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        match (self, target) {
+            (&Some(ref x), ref y) => {
+                if mcx.maybe_capture_label(&x, &y)? {
+                    Ok(())
+                } else {
+                    Err(matcher::Error::SymbolMismatch)
+                }
+            }
+            (&None, &None) => Ok(()),
+            (&None, &Some(_)) => Err(matcher::Error::VariantMismatch),
         }
     }
 }

@@ -17,10 +17,11 @@
 //!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
 
-use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem};
+use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem, Label};
 use syntax::ast::Mac;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
+use syntax::util::move_map::MoveMap;
 use smallvec::SmallVec;
 
 use crate::ast_manip::Fold;
@@ -38,6 +39,61 @@ struct SubstFolder<'a, 'tcx: 'a> {
     st: &'a CommandState,
     cx: &'a driver::Ctxt<'a, 'tcx>,
     bindings: &'a Bindings,
+}
+
+impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
+    fn fold_opt_label(&mut self, l: Option<Label>) -> Option<Label> {
+        l.and_then(|l| {
+            let ps = l.ident.pattern_symbol();
+            if let Some(i) = ps.and_then(|sym| self.bindings.get_ident(sym)) {
+                Some(Label { ident: i.clone() })
+            } else if let Some(ol) = ps.and_then(|sym| self.bindings.get_opt_label(sym)) {
+                ol.map(|l| Label { ident: l.ident.clone() })
+            } else {
+                Some(fold::noop_fold_label(l, self))
+            }
+        })
+    }
+
+    fn fold_expr_inner(&mut self, Expr { id, node, span, attrs }: Expr) -> Expr {
+        // This is ugly, but we need to do it:
+        // all the Option<Label>s are embedded inside the ExprKind's
+        // so we need to mutate the latter if we want to substitute optional labels
+        let folded_node = match node {
+            ExprKind::While(cond, body, opt_label) => {
+                ExprKind::While(self.fold_expr(cond),
+                                self.fold_block(body),
+                                self.fold_opt_label(opt_label))
+            }
+            ExprKind::WhileLet(pats, expr, body, opt_label) => {
+                ExprKind::WhileLet(pats.move_map(|pat| self.fold_pat(pat)),
+                                   self.fold_expr(expr),
+                                   self.fold_block(body),
+                                   self.fold_opt_label(opt_label))
+            }
+            ExprKind::ForLoop(pat, iter, body, opt_label) => {
+                ExprKind::ForLoop(self.fold_pat(pat),
+                                  self.fold_expr(iter),
+                                  self.fold_block(body),
+                                  self.fold_opt_label(opt_label))
+            }
+            ExprKind::Loop(body, opt_label) => {
+                ExprKind::Loop(self.fold_block(body), self.fold_opt_label(opt_label))
+            }
+            ExprKind::Block(blk, opt_label) => {
+                ExprKind::Block(self.fold_block(blk), self.fold_opt_label(opt_label))
+            }
+            ExprKind::Break(opt_label, opt_expr) => {
+                ExprKind::Break(self.fold_opt_label(opt_label),
+                                opt_expr.map(|e| self.fold_expr(e)))
+            }
+            ExprKind::Continue(opt_label) => {
+                ExprKind::Continue(self.fold_opt_label(opt_label))
+            }
+            node @ _ => return fold::noop_fold_expr(Expr { id, node, span, attrs }, self)
+        };
+        Expr { id, span, attrs, node: folded_node }
+    }
 }
 
 impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
@@ -78,7 +134,7 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
             }
         }
 
-        e.map(|e| fold::noop_fold_expr(e, self))
+        e.map(|e| self.fold_expr_inner(e))
     }
 
     fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> {

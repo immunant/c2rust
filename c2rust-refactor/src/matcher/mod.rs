@@ -34,7 +34,7 @@
 use std::cmp;
 use std::result;
 use rustc::hir::def_id::DefId;
-use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, Stmt, Block};
+use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, Stmt, Block, Label};
 use syntax::symbol::Symbol;
 use syntax::fold::{self, Folder};
 use syntax::parse::PResult;
@@ -173,22 +173,32 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
-    pub fn maybe_capture_label(&mut self, pattern: &Ident, target: &Ident) -> Result<bool> {
-        let sym = match pattern.pattern_symbol() {
+    pub fn maybe_capture_label(&mut self, pattern: &Label, target: &Option<Label>) -> Result<bool> {
+        let sym = match pattern.ident.pattern_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
 
         // Labels use lifetime syntax, but are `Ident`s instead of `Lifetime`s.
         match self.types.get(&sym) {
-            Some(&bindings::Type::Ident) => {},
-            Some(&bindings::Type::Unknown) => {},
-            None if sym.as_str().starts_with("'__") => {},
-            _ => return Ok(false),
-        }
+            Some(&bindings::Type::OptLabel) => {
+                let ok = self.bindings.try_add_opt_label(sym, target.clone());
+                if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+            }
 
-        let ok = self.bindings.try_add_ident(sym, target.clone());
-        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+            Some(&bindings::Type::Ident) |
+            Some(&bindings::Type::Unknown) |
+            None if sym.as_str().starts_with("'__") => {
+                if let Some(Label{ ref ident }) = target {
+                    let ok = self.bindings.try_add_ident(sym, ident.clone());
+                    if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+                } else {
+                    Err(Error::VariantMismatch)
+                }
+            }
+
+            _ => Ok(false)
+        }
     }
 
     pub fn maybe_capture_path(&mut self, pattern: &Path, target: &Path) -> Result<bool> {

@@ -386,7 +386,7 @@ volatile, alignstack, dialect, ctxt
 struct GlobalAsm { asm, ctxt }
 struct InlineAsmOutput { constraint, expr, is_rw, is_indirect }
 
-struct Label { ident }
+#[match=custom] struct Label { ident }
 
 enum MacDelimiter {
     Parenthesis,

@@ -47,30 +47,29 @@ pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
     fn transform(&self, mut krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        let labels = &["", "$'label:"];
         let cmps = &[("<", ".."), ("<=", "..=")];
         let incrs = &["+=", "= $i +"];
         let steps = &[("1", "", ""), ("$step:expr", "(", ").step_by($step)")];
         let scs = &["", ";"];
-        for (label, (cmp_from, cmp_to), incr, (step_from, step_to_prefix, step_to), sc) in
-            iproduct!(labels, cmps, incrs, steps, scs) {
+        for ((cmp_from, cmp_to), incr, (step_from, step_to_prefix, step_to), sc) in
+            iproduct!(cmps, incrs, steps, scs) {
             let mut mcx = MatchCtxt::new(st, cx);
             let pat_str = format!(r#"
                 $i:ident = $start:expr;
-                {} while $i {} $end:expr {{
+                $'label:opt_label: while $i {} $end:expr {{
                     $body:multi_stmt;
                     $i {} {} {}
                 }}
-            "#, label, cmp_from, incr, step_from, sc);
+            "#, cmp_from, incr, step_from, sc);
             let (pat, pat_bt) = parse_free_stmts(cx.session(), &pat_str);
             mcx.merge_binding_types(pat_bt);
 
             let repl_str = format!(r#"
-                {} for $i in {}$start {} $end{} {{
+                $'label: for $i in {}$start {} $end{} {{
                     $body;
                     {}
                 }}
-            "#, label, step_to_prefix, cmp_to, step_to, sc);
+            "#, step_to_prefix, cmp_to, step_to, sc);
             let (repl_step, repl_bt) = parse_free_stmts(cx.session(), &repl_str);
             mcx.merge_binding_types(repl_bt);
 

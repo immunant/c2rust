@@ -1,10 +1,10 @@
 //! The `Bindings` type, for mapping names to AST fragments.
 use std::collections::hash_map::{HashMap, Entry};
-use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Item};
+use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Item, Label};
 use syntax::parse::token::Token;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{Delimited, TokenTree, TokenStream, TokenStreamBuilder};
+use syntax::tokenstream::{Cursor, Delimited, TokenTree, TokenStream, TokenStreamBuilder};
 
 use crate::ast_manip::AstEquiv;
 use c2rust_ast_builder::IntoSymbol;
@@ -104,10 +104,10 @@ macro_rules! define_binding_values {
         }
 
         impl Type {
-            fn from_ast_ident(ty_ident: Ident) -> Type {
+            fn from_ast_ident(ty_ident: Ident) -> Option<Type> {
                 match &*ty_ident.as_str() {
-                    $(stringify!($thing) => Type::$Thing,)*
-                    ty @ _ => panic!("unknown binding type: {}", ty)
+                    $(stringify!($thing) => Some(Type::$Thing),)*
+                    _ => None
                 }
             }
         }
@@ -182,6 +182,23 @@ define_binding_values! {
     Stmt(Stmt), add_stmt, try_add_stmt, stmt, get_stmt;
     MultiStmt(Vec<Stmt>), add_multi_stmt, try_add_multi_stmt, multi_stmt, get_multi_stmt;
     Item(P<Item>), add_item, try_add_item, item, get_item;
+    OptLabel(Option<Label>), add_opt_label, try_add_opt_label, opt_label, get_opt_label;
+}
+
+fn maybe_get_type(c: &mut Cursor) -> Type {
+    if let Some(TokenTree::Token(_, Token::Colon)) = c.look_ahead(0) {
+        match c.look_ahead(1) {
+            Some(TokenTree::Token(_, Token::Ident(ty_ident, _))) => {
+                if let Some(ty) = Type::from_ast_ident(ty_ident) {
+                    c.next();
+                    c.next();
+                    return ty;
+                }
+            }
+            _ => {}
+        }
+    }
+    Type::Unknown
 }
 
 /// Rewrite tokens like `$foo:ty` into `$foo` and extract the types
@@ -194,16 +211,7 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                 Some(TokenTree::Token(sp, Token::Ident(ident, is_raw))) => {
                     c.next();
                     let dollar_sym = Symbol::intern(&format!("${}", ident));
-                    let ident_ty = if let Some(TokenTree::Token(_, Token::Colon)) = c.look_ahead(0) {
-                        c.next();
-                        match c.next() {
-                            Some(TokenTree::Token(_, Token::Ident(ty_ident, _))) =>
-                                Type::from_ast_ident(ty_ident),
-                            tt @ _ => panic!("expected identifier, got {:?}", tt)
-                        }
-                    } else {
-                        Type::Unknown
-                    };
+                    let ident_ty = maybe_get_type(&mut c);
                     bt.set_type(dollar_sym, ident_ty);
                     TokenTree::Token(sp, Token::Ident(Ident::new(dollar_sym, ident.span), is_raw))
                 }
@@ -214,7 +222,8 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                     let (prefix, label) = ident_str.split_at(1);
                     assert!(prefix == "'", "Lifetime identifier does not start with ': {}", ident);
                     let dollar_sym = Symbol::intern(&format!("'${}", label));
-                    bt.set_type(dollar_sym, Type::Ident);
+                    let label_ty = maybe_get_type(&mut c);
+                    bt.set_type(dollar_sym, label_ty);
                     TokenTree::Token(sp, Token::Lifetime(Ident::new(dollar_sym, ident.span)))
                 }
 

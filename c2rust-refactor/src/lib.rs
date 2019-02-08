@@ -1,6 +1,7 @@
 #![feature(
     rustc_private,
     trace_macros,
+    specialization,
 )]
 extern crate arena;
 extern crate ena;
