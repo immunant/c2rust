@@ -423,7 +423,7 @@ pub trait Pattern: TryMatch+Sized {
                           callback: F,
                           target: T) -> <T as Fold>::Result
         where T: Fold,
-              F: FnMut(Self, Bindings) -> Self;
+              F: FnMut(Self, MatchCtxt) -> Self;
 }
 
 
@@ -439,20 +439,20 @@ macro_rules! gen_pattern_impl {
     ) => {
         /// Automatically generated `Folder` implementation, for use by `Pattern`.
         pub struct $PatternFolder<'a, 'tcx: 'a, F>
-                where F: FnMut($Pat, Bindings) -> $Pat {
+                where F: FnMut($Pat, MatchCtxt) -> $Pat {
             pattern: $Pat,
             init_mcx: MatchCtxt<'a, 'tcx>,
             callback: F,
         }
 
         impl<'a, 'tcx, F> Folder for $PatternFolder<'a, 'tcx, F>
-                where F: FnMut($Pat, Bindings) -> $Pat {
+                where F: FnMut($Pat, MatchCtxt) -> $Pat {
             #[allow(unused_mut)]
             fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
                 let $arg = $walk;
                 let mut $match_one = |x| {
                     if let Ok(mcx) = $slf.init_mcx.clone_match(&$slf.pattern, &x) {
-                        ($slf.callback)(x, mcx.bindings)
+                        ($slf.callback)(x, mcx)
                     } else {
                         x
                     }
@@ -467,7 +467,7 @@ macro_rules! gen_pattern_impl {
                                   callback: F,
                                   target: T) -> <T as Fold>::Result
                 where T: Fold,
-                      F: FnMut(Self, Bindings) -> Self {
+                      F: FnMut(Self, MatchCtxt) -> Self {
                 let mut f = $PatternFolder {
                     pattern: self,
                     init_mcx: init_mcx,
@@ -518,14 +518,14 @@ gen_pattern_impl! {
 
 /// Custom `Folder` for multi-statement `Pattern`s.
 pub struct MultiStmtPatternFolder<'a, 'tcx: 'a, F>
-        where F: FnMut(Vec<Stmt>, Bindings) -> Vec<Stmt> {
+        where F: FnMut(Vec<Stmt>, MatchCtxt) -> Vec<Stmt> {
     pattern: Vec<Stmt>,
     init_mcx: MatchCtxt<'a, 'tcx>,
     callback: F,
 }
 
 impl<'a, 'tcx, F> Folder for MultiStmtPatternFolder<'a, 'tcx, F>
-        where F: FnMut(Vec<Stmt>, Bindings) -> Vec<Stmt> {
+        where F: FnMut(Vec<Stmt>, MatchCtxt) -> Vec<Stmt> {
     fn fold_block(&mut self, b: P<Block>) -> P<Block> {
         assert!(self.pattern.len() > 0);
 
@@ -542,7 +542,7 @@ impl<'a, 'tcx, F> Folder for MultiStmtPatternFolder<'a, 'tcx, F>
                 new_stmts.extend_from_slice(&b.stmts[last .. i]);
 
                 let consumed_stmts = b.stmts[i .. i + consumed].to_owned();
-                let mut replacement = (self.callback)(consumed_stmts, mcx.bindings);
+                let mut replacement = (self.callback)(consumed_stmts, mcx);
                 new_stmts.append(&mut replacement);
 
                 i += cmp::max(consumed, 1);
@@ -633,7 +633,7 @@ impl Pattern for Vec<Stmt> {
                           callback: F,
                           target: T) -> <T as Fold>::Result
         where T: Fold,
-              F: FnMut(Self, Bindings) -> Self {
+              F: FnMut(Self, MatchCtxt) -> Self {
         let mut f = MultiStmtPatternFolder {
             pattern: self,
             init_mcx: init_mcx,
@@ -652,7 +652,7 @@ pub fn fold_match<P, T, F>(st: &CommandState,
                            callback: F) -> <T as Fold>::Result
         where P: Pattern,
               T: Fold,
-              F: FnMut(P, Bindings) -> P {
+              F: FnMut(P, MatchCtxt) -> P {
     fold_match_with(MatchCtxt::new(st, cx), pattern, target, callback)
 }
 
@@ -663,6 +663,6 @@ pub fn fold_match_with<P, T, F>(init_mcx: MatchCtxt,
                                 callback: F) -> <T as Fold>::Result
         where P: Pattern,
               T: Fold,
-              F: FnMut(P, Bindings) -> P {
+              F: FnMut(P, MatchCtxt) -> P {
     pattern.apply_folder(init_mcx, callback, target)
 }

@@ -103,10 +103,10 @@ impl Transform for Ionize {
         mcx.set_type("__val", BindingType::Expr);
 
         // Replace union assignment with enum assignment
-        let krate = fold_match_with(mcx, outer_assignment_pat, krate, |e, bnd| {
-            let field = bnd.ident("__field");
-            let _expr = bnd.expr("__expr");
-            let val = bnd.expr("__val");
+        let krate = fold_match_with(mcx, outer_assignment_pat, krate, |e, mcx| {
+            let field = mcx.bindings.ident("__field");
+            let _expr = mcx.bindings.expr("__expr");
+            let val = mcx.bindings.expr("__val");
 
 
             let ty0 = cx.adjusted_node_type(val.id);
@@ -115,7 +115,7 @@ impl Transform for Ionize {
 
                     let (_qself, mut path) = reflect_def_path(cx.ty_ctxt(), adt.did);
                     path.segments.push(mk().path_segment(field));
-                    let mut bnd1 = bnd.clone();
+                    let mut bnd1 = mcx.bindings.clone();
                     bnd1.add_expr("__con", mk().path_expr(path));
 
                     outer_assignment_repl.clone().subst(st, cx, &bnd1)

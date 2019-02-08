@@ -626,9 +626,9 @@ impl Transform for BitcastRetype {
             // and `U::SomeTy` could be totally unrelated).
 
             let mut matched = false;
-            let new_ty = fold_match(st, cx, pat.clone(), ty.clone(), |_, bnd| {
+            let new_ty = fold_match(st, cx, pat.clone(), ty.clone(), |_, mcx| {
                 matched = true;
-                repl.clone().subst(st, cx, &bnd)
+                repl.clone().subst(st, cx, &mcx.bindings)
             });
             if matched {
                 Some(new_ty)

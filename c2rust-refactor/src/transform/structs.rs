@@ -33,8 +33,8 @@ impl Transform for AssignToUpdate {
         let pat = parse_expr(cx.session(), "__x.__f = __y");
         let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }");
 
-        fold_match(st, cx, pat, krate, |orig, mut bnd| {
-            let x = bnd.expr("__x").clone();
+        fold_match(st, cx, pat, krate, |orig, mut mcx| {
+            let x = mcx.bindings.expr("__x").clone();
 
             let struct_def_id = match cx.node_type(x.id).sty {
                 ty::TyKind::Adt(ref def, _) => def.did,
@@ -42,8 +42,8 @@ impl Transform for AssignToUpdate {
             };
             let struct_path = cx.def_path(struct_def_id);
 
-            bnd.add_path("__s", struct_path);
-            repl.clone().subst(st, cx, &bnd)
+            mcx.bindings.add_path("__s", struct_path);
+            repl.clone().subst(st, cx, &mcx.bindings)
         })
     }
 

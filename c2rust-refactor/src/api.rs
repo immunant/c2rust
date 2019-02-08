@@ -39,7 +39,7 @@ pub fn replace_expr<T: Fold>(st: &CommandState,
     mcx.merge_binding_types(pat_bt);
     let (repl, repl_bt) = parse_free_expr(cx.session(), repl);
     mcx.merge_binding_types(repl_bt);
-    fold_match_with(mcx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
+    fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
 }
 
 /// Replace all instances of the statement sequence `pat` with `repl`.
@@ -53,7 +53,7 @@ pub fn replace_stmts<T: Fold>(st: &CommandState,
     mcx.merge_binding_types(pat_bt);
     let (repl, repl_bt) = parse_free_stmts(cx.session(), repl);
     mcx.merge_binding_types(repl_bt);
-    fold_match_with(mcx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
+    fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
 }
 
 
@@ -64,9 +64,9 @@ pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
                              target: T) -> Option<Bindings>
         where P: Pattern, T: Fold {
     let mut result = None;
-    fold_match_with(init_mcx, pattern, target, |p, bnd| {
+    fold_match_with(init_mcx, pattern, target, |p, mcx| {
         if result.is_none() {
-            result = Some(bnd);
+            result = Some(mcx.bindings);
         }
         p
     });

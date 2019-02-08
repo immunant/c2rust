@@ -112,8 +112,8 @@ impl Transform for CollectToStruct {
         init_mcx.bindings.add_ident(
             "__s", Ident::with_empty_ctxt((&self.instance_name as &str).into_symbol()));
 
-        let krate = fold_match_with(init_mcx, ident_pat, krate, |orig, bnd| {
-            let static_id = match old_statics.get(&bnd.ident("__x").name) {
+        let krate = fold_match_with(init_mcx, ident_pat, krate, |orig, mcx| {
+            let static_id = match old_statics.get(&mcx.bindings.ident("__x").name) {
                 Some(&x) => x,
                 None => return orig,
             };
@@ -124,7 +124,7 @@ impl Transform for CollectToStruct {
 
             // This really is a reference to one of the collected statics.  Replace it with a
             // reference to the generated struct.
-            ident_repl.clone().subst(st, cx, &bnd)
+            ident_repl.clone().subst(st, cx, &mcx.bindings)
         });
 
         krate

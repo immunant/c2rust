@@ -52,14 +52,14 @@ impl Transform for RewriteExpr {
         mcx.merge_binding_types(pat_bt);
         let (repl, repl_bt) = parse_free_expr(cx.session(), &self.repl);
         mcx.merge_binding_types(repl_bt);
-        fold_match_with(mcx, pat, krate, |ast, bnd| {
+        fold_match_with(mcx, pat, krate, |ast, mcx| {
             if let Some(filter) = self.filter {
                 if !contains_mark(&*ast, filter, st) {
                     return ast;
                 }
             }
 
-            repl.clone().subst(st, cx, &bnd)
+            repl.clone().subst(st, cx, &mcx.bindings)
         })
     }
 
@@ -100,14 +100,14 @@ impl Transform for RewriteTy {
         mcx.merge_binding_types(pat_bt);
         let (repl, repl_bt) = parse_free_ty(cx.session(), &self.repl);
         mcx.merge_binding_types(repl_bt);
-        fold_match_with(mcx, pat, krate, |ast, bnd| {
+        fold_match_with(mcx, pat, krate, |ast, mcx| {
             if let Some(filter) = self.filter {
                 if !contains_mark(&*ast, filter, st) {
                     return ast;
                 }
             }
 
-            repl.clone().subst(st, cx, &bnd)
+            repl.clone().subst(st, cx, &mcx.bindings)
         })
     }
 
@@ -141,8 +141,8 @@ impl Transform for RewriteStmts {
         mcx.merge_binding_types(pat_bt);
         let (repl, repl_bt) = parse_free_stmts(cx.session(), &self.repl);
         mcx.merge_binding_types(repl_bt);
-        fold_match_with(mcx, pat, krate, |_, bnd| {
-            repl.clone().subst(st, cx, &bnd)
+        fold_match_with(mcx, pat, krate, |_, mcx| {
+            repl.clone().subst(st, cx, &mcx.bindings)
         })
     }
 
@@ -163,7 +163,7 @@ impl Transform for DebugMatchExpr {
         let mut init_mcx = MatchCtxt::new(st, cx);
         init_mcx.debug = true;
         init_mcx.merge_binding_types(pat_bt);
-        fold_match_with(init_mcx, pat, krate, |ast, _bnd| {
+        fold_match_with(init_mcx, pat, krate, |ast, _mcx| {
             eprintln!("matched node {:?}", ast);
             ast
         })
