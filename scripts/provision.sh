@@ -31,10 +31,10 @@ function provisionLinux() {
         VER=$(cat /etc/debian_version)
     elif [ -f /etc/SuSe-release ]; then
         # Older SuSE/etc.
-        ...
+        unsupportedOS "UNKNOWN-DISTRO:OLD-SUSE"
     elif [ -f /etc/redhat-release ]; then
         # Older Red Hat, CentOS, etc.
-        ...
+        unsupportedOS "UNKNOWN-DISTRO:OLD-RHEL-OR-CENTOS"
     else
         # Fall back to uname, e.g. "Linux <version>", also works for BSD, etc.
         OS=$(uname -s)
@@ -45,9 +45,10 @@ function provisionLinux() {
         "Arch Linux"*)            ${SCRIPT_DIR}/provision_arch.sh;;
         "Debian GNU/Linux"*)      ${SCRIPT_DIR}/provision_deb.sh;;
         "Ubuntu"*)                ${SCRIPT_DIR}/provision_deb.sh;;
-        "CentOS Linux"*)          ${SCRIPT_DIR}/provision_rpm.sh;;
-        "Fedora"*)                ${SCRIPT_DIR}/provision_rpm.sh;;
-        "Red Hat Enterprise Linux Server"*)  ${SCRIPT_DIR}/provision_rpm.sh;;
+        "Fedora"*)                ${SCRIPT_DIR}/provision_dnf.sh;;
+        # NOTE: CentOS and RHEL are much less developer friendly, skip for now
+        # "CentOS Linux"*)          ${SCRIPT_DIR}/provision_yum.sh;;
+        # "Red Hat Enterprise Linux Server"*)  ${SCRIPT_DIR}/provision_rpm.sh;;
         *)                        unsupportedOS "UNKNOWN-DISTRO:${OS}";;
     esac
 }
