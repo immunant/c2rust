@@ -142,7 +142,7 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
 
     let (find_continue, _) = parse_free_expr(cx.session(), "continue $'label");
     let (find_break, _) = parse_free_expr(cx.session(), "break $'label");
-    let (find_break_expr, _) = parse_free_expr(cx.session(), "break $'label __expr");
+    let (find_break_expr, _) = parse_free_expr(cx.session(), "break $'label $bv:expr");
 
     fold_match_with(mcx, pat, krate, |orig, mcx| {
         let body = mcx.bindings.multi_stmt("$body");
