@@ -11,6 +11,6 @@ fi
 
 # redhat-rpm-config avoids problem when pip3-installing psutils
 dnf install --quiet --assumeyes \
-    ninja-build make cmake llvm-devel clang-devel openssl-devel redhat-rpm-config python3-devel
+    ninja-build make cmake llvm-devel clang-devel openssl-devel redhat-rpm-config python3-devel xz
 
 pip3 install --no-cache-dir --disable-pip-version-check -r $SCRIPT_DIR/requirements.txt    
