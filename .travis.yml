@@ -5,12 +5,6 @@ sudo: required
 git:
   submodules: false
 
-env:
-  global:
-    - USE_CCACHE=1
-    - CCACHE_COMPRESS=1
-    - CCACHE_CPP2=1
-
 
 matrix:
   fast_finish: true
@@ -21,6 +15,7 @@ matrix:
           # https://docs.travis-ci.com/user/caching/#caches-and-build-matrices
           CACHE_NAME=OSX_DEV_BUILD
           PATH="/usr/local/opt/ccache/libexec:$PATH"
+          CCACHE_COMPRESS=1
 
     - os: osx
       env: >-
@@ -33,6 +28,7 @@ matrix:
       env: >-
           CACHE_NAME=LINUX_DEV_BUILD
           PATH="/usr/lib/ccache:/usr/bin:$PATH"
+          CCACHE_COMPRESS=1
       before_script:
         # Clang is not in `/usr/lib/ccache/`, so it needs to be added
         - sudo /usr/sbin/update-ccache-symlinks
