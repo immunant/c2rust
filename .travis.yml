@@ -1,5 +1,4 @@
 language: generic
-dist: xenial
 sudo: required
 
 # TODO: figure out why submodule checkout fails
@@ -30,6 +29,7 @@ matrix:
           LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
 
     - os: linux
+      dist: xenial
       env: >-
           CACHE_NAME=LINUX_DEV_BUILD
           PATH="/usr/lib/ccache:/usr/bin:$PATH"
@@ -38,6 +38,7 @@ matrix:
         - sudo /usr/sbin/update-ccache-symlinks
 
     - os: linux
+      dist: xenial
       env: >-
           CACHE_NAME=LINUX_FAST_BUILD
 
