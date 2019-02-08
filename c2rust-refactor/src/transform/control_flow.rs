@@ -97,10 +97,10 @@ impl Transform for ReconstructForRange {
             }
 
             let step = mcx.bindings.expr("$step");
-            let repl_step = match (range_excl, is_one_expr(&*step)) {
+            let repl_step = match (is_one_expr(&*step), range_excl) {
                 (true, true) => range_one_excl.clone(),
-                (false, true) => range_one_incl.clone(),
-                (true, false) => range_step_excl.clone(),
+                (true, false) => range_one_incl.clone(),
+                (false, true) => range_step_excl.clone(),
                 (false, false) => range_step_incl.clone(),
             };
             repl_step.subst(st, cx, &mcx.bindings)
