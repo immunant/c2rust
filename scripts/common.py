@@ -234,7 +234,7 @@ def on_mac() -> bool:
 def on_linux() -> bool:
     if on_mac():
         return False
-    elif on_ubuntu() or on_arch() or on_debian():
+    elif on_ubuntu() or on_arch() or on_debian() or on_fedora():
         return True
     else:
         # neither on mac nor on a known distro
@@ -265,6 +265,15 @@ def on_debian() -> bool:
     distro, *_ = platform.linux_distribution()
 
     return distro == "debian"
+
+
+def on_fedora() -> bool:
+    """
+    return true on debian distro (and derivatives?).
+    """
+    distro, *_ = platform.linux_distribution()
+
+    return distro == "Fedora"
 
 
 def regex(raw: str):
