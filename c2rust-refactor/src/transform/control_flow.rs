@@ -62,9 +62,9 @@ impl Transform for ReconstructForRange {
         let (le_cond, bt) = parse_free_expr(cx.session(), "$i <= $end:expr");
         mcx.merge_binding_types(bt);
 
-        let (i_plus_op, bt) = parse_free_expr(cx.session(), "$i += $step:expr");
+        let (i_plus_eq, bt) = parse_free_expr(cx.session(), "$i += $step:expr");
         mcx.merge_binding_types(bt);
-        let (i_op_plus, bt) = parse_free_expr(cx.session(), "$i = $i + $step:expr");
+        let (i_eq_plus, bt) = parse_free_expr(cx.session(), "$i = $i + $step:expr");
         mcx.merge_binding_types(bt);
 
         let (range_one_excl, _) = parse_free_stmts(cx.session(),
@@ -91,8 +91,8 @@ impl Transform for ReconstructForRange {
                 StmtKind::Expr(ref e) => e.clone(),
                 _ => { return orig; }
             };
-            if !mcx.try_match(&*i_plus_op, &incr).is_ok() &&
-               !mcx.try_match(&*i_op_plus, &incr).is_ok() {
+            if !mcx.try_match(&*i_plus_eq, &incr).is_ok() &&
+               !mcx.try_match(&*i_eq_plus, &incr).is_ok() {
                 return orig;
             }
 
