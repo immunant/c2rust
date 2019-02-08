@@ -30,8 +30,8 @@ matrix:
           CACHE_NAME=LINUX_DEV_BUILD
           PATH="/usr/lib/ccache:/usr/bin:$PATH"
           USE_CCACHE=1
-          CCACHE_COMPRESS=1
           CCACHE_CPP2=1
+          CCACHE_COMPRESS=1
       before_script:
         # Clang is not in `/usr/lib/ccache/`, so it needs to be added
         - sudo /usr/sbin/update-ccache-symlinks
