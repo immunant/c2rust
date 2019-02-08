@@ -22,11 +22,12 @@ jobs:
     matrix:
       arch:
         containerImage: immunant/c2rust:base-archlinux-20190206
-        env: 
       debian8:
         containerImage: immunant/c2rust:debian-jessie-20190206
       debian9:
         containerImage: immunant/c2rust:debian-stretch-20190206
+      fedora:
+        containerImage: immunant/c2rust:fedora-29-20190208
       ubuntu16:
         containerImage: immunant/c2rust:ubuntu-xenial-20190206
       ubuntu18:
