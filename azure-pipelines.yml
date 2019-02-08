@@ -77,12 +77,15 @@ jobs:
   steps:
   - script: |
       ./scripts/provision_mac.sh
-      sudo xcode-select --switch /Applications/Xcode_9.4.1.app/Contents/Developer
+      ls /Applications | grep Xcode
+      sudo xcode-select --switch /Applications/Xcode_10.1.app/Contents/Developer
+      xcode-select -p 
+      clang -v
     displayName: 'Provision macOS'
 
   - script: |
       source $HOME/.cargo/env
-      cargo build -vv
+      cargo build # -vv
     displayName: 'Fast build against host clang/LLVM'
 
   - script: |
