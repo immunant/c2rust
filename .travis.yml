@@ -5,7 +5,6 @@ sudo: required
 git:
   submodules: false
 
-
 matrix:
   fast_finish: true
   include:
@@ -15,7 +14,9 @@ matrix:
           # https://docs.travis-ci.com/user/caching/#caches-and-build-matrices
           CACHE_NAME=OSX_DEV_BUILD
           PATH="/usr/local/opt/ccache/libexec:$PATH"
+          USE_CCACHE=1
           CCACHE_COMPRESS=1
+          CCACHE_CPP2=1
 
     - os: osx
       env: >-
@@ -28,7 +29,9 @@ matrix:
       env: >-
           CACHE_NAME=LINUX_DEV_BUILD
           PATH="/usr/lib/ccache:/usr/bin:$PATH"
+          USE_CCACHE=1
           CCACHE_COMPRESS=1
+          CCACHE_CPP2=1
       before_script:
         # Clang is not in `/usr/lib/ccache/`, so it needs to be added
         - sudo /usr/sbin/update-ccache-symlinks
@@ -50,7 +53,6 @@ cache:
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/runtime/target
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
     - $TRAVIS_BUILD_DIR/rust-refactor/target
-
 
 install:
   - /usr/bin/env python3 --version
