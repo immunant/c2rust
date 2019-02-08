@@ -18,12 +18,9 @@ COPY provision*.sh /tmp/
 COPY requirements.txt /tmp/requirements.txt
 RUN chmod +x /tmp/provision*.sh && /tmp/provision.sh
 
-COPY provision_rust.sh /tmp/provision_rust.sh
-RUN chmod +x /tmp/provision_rust.sh 
-
 USER $USER
 # Provision rust language and packages (should not run as root)
-ARG RUST_VER=nightly-2018-06-20 
+ARG RUST_VER=nightly-2018-12-03
 RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
 
 # Need to switch back to root for Azure DevOps compatibility
