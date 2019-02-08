@@ -192,8 +192,10 @@ impl TryMatch for Option<Label> {
             (&Some(ref x), ref y) => {
                 if mcx.maybe_capture_label(&x, &y)? {
                     Ok(())
+                } else if let Some(y) = y {
+                    mcx.try_match(x, y)
                 } else {
-                    Err(matcher::Error::SymbolMismatch)
+                    Err(matcher::Error::VariantMismatch)
                 }
             }
             (&None, &None) => Ok(()),

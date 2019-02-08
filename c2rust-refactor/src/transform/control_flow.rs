@@ -20,7 +20,7 @@ impl Transform for ReconstructWhile {
         let krate = replace_expr(
             st, cx, krate,
             r#"
-                $'label: loop {
+                $'label:opt_label: loop {
                     if !($cond:expr) {
                         break;
                     }
@@ -94,15 +94,18 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
                                        cx: &driver::Ctxt,
                                        pat: &str,
                                        repl: &str) -> Crate {
-    let pat = parse_expr(cx.session(), pat);
-    let repl = parse_expr(cx.session(), repl);
+    let mut mcx = MatchCtxt::new(st, cx);
+    let (pat, pat_bt) = parse_free_expr(cx.session(), pat);
+    mcx.merge_binding_types(pat_bt);
+    let (repl, repl_bt) = parse_free_expr(cx.session(), repl);
+    mcx.merge_binding_types(repl_bt);
 
-    let find_continue = parse_expr(cx.session(), "continue '__label");
-    let find_break = parse_expr(cx.session(), "break '__label");
-    let find_break_expr = parse_expr(cx.session(), "break '__label __expr");
+    let (find_continue, _) = parse_free_expr(cx.session(), "continue $'label");
+    let (find_break, _) = parse_free_expr(cx.session(), "break $'label");
+    let (find_break_expr, _) = parse_free_expr(cx.session(), "break $'label __expr");
 
-    fold_match(st, cx, pat, krate, |orig, bnd| {
-        let body = bnd.multi_stmt("__m_body");
+    fold_match_with(mcx, pat, krate, |orig, bnd| {
+        let body = bnd.multi_stmt("$body");
         // TODO: Would be nice to get rid of the clones of body.  Might require making
         // `find_first` use a visitor instead of a `fold`, which means duplicating a lot of the
         // `PatternFolder` definitions in matcher.rs to make `PatternVisitor` variants.
@@ -119,17 +122,17 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
 impl Transform for RemoveUnusedLabels {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
-                "'__label: loop { __m_body; }",
-                "loop { __m_body; }");
+                "$'label:ident: loop { $body:multi_stmt; }",
+                "loop { $body; }");
         let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
-                "'__label: while __cond { __m_body; }",
-                "while __cond { __m_body; }");
+                "$'label:ident: while $cond:expr { $body:multi_stmt; }",
+                "while $cond { $body; }");
         let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
-                "'__label: while let __pat = __expr { __m_body; }",
-                "while let __pat = __expr { __m_body; }");
+                "$'label:ident: while let $pat:pat = $init:expr { $body:multi_stmt; }",
+                "while let $pat = $init { $body; }");
         let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
-                "'__label: for __pat in __iter { __m_body; }",
-                "for __pat in __iter { __m_body; }");
+                "$'label:ident: for $pat:pat in $iter { $body:multi_stmt; }",
+                "for $pat in $iter { $body; }");
         krate
     }
 }
