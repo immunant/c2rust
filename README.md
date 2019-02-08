@@ -1,4 +1,6 @@
-[![Build Status](https://travis-ci.org/immunant/c2rust.svg?branch=master)](https://travis-ci.org/immunant/c2rust)
+[![Travis (master)](https://travis-ci.org/immunant/c2rust.svg?branch=master)](https://travis-ci.org/immunant/c2rust)
+
+[![Azure Devops (master)](https://dev.azure.com/immunant/c2rust/_apis/build/status/immunant.c2rust?branchName=master)](https://dev.azure.com/immunant/c2rust/_build/latest?definitionId=1&branchName=master)
 
 # What is C2Rust?
 
