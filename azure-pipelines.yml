@@ -77,14 +77,16 @@ jobs:
   steps:
   - script: |
       ./scripts/provision_mac.sh
-      # ls /Applications | grep Xcode
+      # Pick the most recent toolchain (the default is Xcode 8.3.3)
       sudo xcode-select --switch /Applications/Xcode_10.1.app/Contents/Developer
-      # xcode-select -p 
-      clang -v
+      # speeds up provisioning
+      export HOMEBREW_NO_AUTO_UPDATE=1
+      # helps the `curl-sys` create determine how to link in libcurl.
       brew install pkg-config 
-      which curl
-      which curl-config
-      curl-config --features
+      # we want to use the host curl because it has the `HTTP2` feature
+      # whereas the brew version does not, this causes curl-sys to 
+      # build its own curl which then fails to link on Azure Devops.
+      brew remove curl
     displayName: 'Provision macOS'
 
   - script: |
