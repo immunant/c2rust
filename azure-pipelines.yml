@@ -81,6 +81,8 @@ jobs:
       sudo xcode-select --switch /Applications/Xcode_10.1.app/Contents/Developer
       # xcode-select -p 
       clang -v
+      brew install pkg-config curl
+      pkg-config --libs libcurl
     displayName: 'Provision macOS'
 
   - script: |
