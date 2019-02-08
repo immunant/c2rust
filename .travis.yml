@@ -1,6 +1,6 @@
 language: generic
-sudo: required
 dist: xenial
+sudo: required
 
 # TODO: figure out why submodule checkout fails
 git:
