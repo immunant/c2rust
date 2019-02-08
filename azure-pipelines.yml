@@ -15,7 +15,7 @@ trigger:
     - docs/*
 
 jobs:
-- job: LinuxTests
+- job: Linux
   pool:
     vmImage: 'Ubuntu-16.04'
   strategy:
@@ -72,7 +72,7 @@ jobs:
       python3 ./scripts/test_translator.py --debug ./tests
     displayName: 'Test translator (dev build)'
 
-- job: DarwinTests
+- job: Darwin
   pool:
     vmImage: 'macos-10.13'
   steps:
@@ -99,3 +99,18 @@ jobs:
       source $HOME/.cargo/env
       python3 ./scripts/test_translator.py --debug ./tests
     displayName: 'Test translator (fast build)'
+
+  - script: |
+      source $HOME/.cargo/env
+      cargo clean
+    displayName: 'Clean'
+
+  - script: |
+      source $HOME/.cargo/env
+      python3 ./scripts/build_translator.py --debug ./tests
+    displayName: 'Developer build against local clang/LLVM'
+
+  - script: |
+      source $HOME/.cargo/env
+      python3 ./scripts/test_translator.py --debug ./tests
+    displayName: 'Test translator (dev build)'
