@@ -6,5 +6,5 @@ if [ `uname` = 'Darwin' ]; then
 fi
 
 $refactor \
-    rewrite_expr 'typed!($i:ident, u16)' '1000u16' \; \
+    rewrite_expr 'typed!($i:Ident, u16)' '1000u16' \; \
     -- old.rs $rustflags

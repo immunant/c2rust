@@ -20,16 +20,16 @@ impl Transform for ReconstructWhile {
         let krate = replace_expr(
             st, cx, krate,
             r#"
-                $'label:opt_label: loop {
-                    if !($cond:expr) {
+                $'label:?Ident: loop {
+                    if !($cond:Expr) {
                         break;
                     }
-                    $body:multi_stmt;
+                    $body:MultiStmt;
                 }
             "#,
             r#"
                 $'label: while $cond {
-                    $body:multi_stmt;
+                    $body:MultiStmt;
                 }
             "#);
         krate
@@ -49,22 +49,22 @@ impl Transform for ReconstructForRange {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat_str = r#"
-            $i:ident = $start:expr;
-            $'label:opt_label: while $cond:expr {
-                $body:multi_stmt;
-                $incr:stmt;
+            $i:Ident = $start:Expr;
+            $'label:?Ident: while $cond:Expr {
+                $body:MultiStmt;
+                $incr:Stmt;
             }"#;
         let (pat, pat_bt) = parse_free_stmts(cx.session(), &pat_str);
         mcx.merge_binding_types(pat_bt);
 
-        let (lt_cond, bt) = parse_free_expr(cx.session(), "$i < $end:expr");
+        let (lt_cond, bt) = parse_free_expr(cx.session(), "$i < $end:Expr");
         mcx.merge_binding_types(bt);
-        let (le_cond, bt) = parse_free_expr(cx.session(), "$i <= $end:expr");
+        let (le_cond, bt) = parse_free_expr(cx.session(), "$i <= $end:Expr");
         mcx.merge_binding_types(bt);
 
-        let (i_plus_eq, bt) = parse_free_expr(cx.session(), "$i += $step:expr");
+        let (i_plus_eq, bt) = parse_free_expr(cx.session(), "$i += $step:Expr");
         mcx.merge_binding_types(bt);
-        let (i_eq_plus, bt) = parse_free_expr(cx.session(), "$i = $i + $step:expr");
+        let (i_eq_plus, bt) = parse_free_expr(cx.session(), "$i = $i + $step:Expr");
         mcx.merge_binding_types(bt);
 
         let (range_one_excl, _) = parse_free_stmts(cx.session(),
@@ -142,7 +142,7 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
 
     let (find_continue, _) = parse_free_expr(cx.session(), "continue $'label");
     let (find_break, _) = parse_free_expr(cx.session(), "break $'label");
-    let (find_break_expr, _) = parse_free_expr(cx.session(), "break $'label $bv:expr");
+    let (find_break_expr, _) = parse_free_expr(cx.session(), "break $'label $bv:Expr");
 
     fold_match_with(mcx, pat, krate, |orig, mcx| {
         let body = mcx.bindings.multi_stmt("$body");
@@ -162,16 +162,16 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
 impl Transform for RemoveUnusedLabels {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
-                "$'label:ident: loop { $body:multi_stmt; }",
+                "$'label:Ident: loop { $body:MultiStmt; }",
                 "loop { $body; }");
         let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
-                "$'label:ident: while $cond:expr { $body:multi_stmt; }",
+                "$'label:Ident: while $cond:Expr { $body:MultiStmt; }",
                 "while $cond { $body; }");
         let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
-                "$'label:ident: while let $pat:pat = $init:expr { $body:multi_stmt; }",
+                "$'label:Ident: while let $pat:Pat = $init:Expr { $body:MultiStmt; }",
                 "while let $pat = $init { $body; }");
         let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
-                "$'label:ident: for $pat:pat in $iter { $body:multi_stmt; }",
+                "$'label:Ident: for $pat:Pat in $iter { $body:MultiStmt; }",
                 "for $pat in $iter { $body; }");
         krate
     }

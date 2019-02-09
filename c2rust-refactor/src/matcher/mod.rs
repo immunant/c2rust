@@ -152,6 +152,30 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         self.types.merge(other)
     }
 
+    fn is_opt_binding<P: PatternSymbol>(&self, pattern: &P) -> bool {
+        let sym = match pattern.pattern_symbol() {
+            Some(x) => x,
+            None => return false,
+        };
+        match self.types.get(&sym) {
+            Some(&bindings::Type::Optional(_)) => true,
+            _ => false,
+        }
+    }
+
+    fn capture_opt_none<P: PatternSymbol>(&mut self, pattern: &P) -> Result<()> {
+        let sym = match pattern.pattern_symbol() {
+            Some(x) => x,
+            None => panic!("should never reach this"),
+        };
+        match self.types.get(&sym) {
+            Some(&bindings::Type::Optional(_)) => {
+                let ok = self.bindings.try_add_opt_none(sym);
+                if ok { Ok(()) } else { Err(Error::NonlinearMismatch) }
+            }
+            bt @ _ => panic!("expected optional binding, got {:?}", bt)
+        }
+    }
     /// Try to capture an ident.  Returns `Ok(true)` if it captured, `Ok(false)` if `pattern` is
     /// not a capturing pattern, or `Err(_)` if capturing failed.
     pub fn maybe_capture_ident(&mut self, pattern: &Ident, target: &Ident) -> Result<bool> {
@@ -163,6 +187,12 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         // This is a valid ident pattern if it was explicitly given type "ident".  Or, if its name
         // starts with "__", then it's a valid pattern for any binding type.
         match self.types.get(&sym) {
+            Some(&bindings::Type::Optional(bindings::Type::Ident)) => {
+                let ok = self.bindings.try_add_opt_ident(sym, Some(target.clone()));
+                let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
+                return res;
+            }
+
             Some(&bindings::Type::Ident) => {},
             Some(&bindings::Type::Unknown) => {},
             None if sym.as_str().starts_with("__") => {},
@@ -173,32 +203,28 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
-    pub fn maybe_capture_label(&mut self, pattern: &Label, target: &Option<Label>) -> Result<bool> {
-        let sym = match pattern.ident.pattern_symbol() {
+    pub fn maybe_capture_label(&mut self, pattern: &Label, target: &Label) -> Result<bool> {
+        let sym = match pattern.pattern_symbol() {
             Some(x) => x,
             None => return Ok(false),
         };
 
         // Labels use lifetime syntax, but are `Ident`s instead of `Lifetime`s.
         match self.types.get(&sym) {
-            Some(&bindings::Type::OptLabel) => {
-                let ok = self.bindings.try_add_opt_label(sym, target.clone());
-                if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+            Some(&bindings::Type::Optional(bindings::Type::Ident)) => {
+                let ok = self.bindings.try_add_opt_ident(sym, Some(target.ident.clone()));
+                let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
+                return res;
             }
 
-            Some(&bindings::Type::Ident) |
-            Some(&bindings::Type::Unknown) |
-            None if sym.as_str().starts_with("'__") => {
-                if let Some(Label{ ref ident }) = target {
-                    let ok = self.bindings.try_add_ident(sym, ident.clone());
-                    if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
-                } else {
-                    Err(Error::VariantMismatch)
-                }
-            }
-
-            _ => Ok(false)
+            Some(&bindings::Type::Ident) => {},
+            Some(&bindings::Type::Unknown) => {},
+            None if sym.as_str().starts_with("'__") => {},
+            _ => return Ok(false),
         }
+
+        let ok = self.bindings.try_add_ident(sym, target.ident.clone());
+        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
     pub fn maybe_capture_path(&mut self, pattern: &Path, target: &Path) -> Result<bool> {

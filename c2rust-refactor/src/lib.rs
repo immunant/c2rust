@@ -2,6 +2,7 @@
     rustc_private,
     trace_macros,
     specialization,
+    box_patterns,
 )]
 extern crate arena;
 extern crate ena;
