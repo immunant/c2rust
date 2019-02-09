@@ -2705,7 +2705,10 @@ impl<'c> Translation<'c> {
         } else if resolved_ty.is_integral_type() {
             Ok(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)))
         } else if resolved_ty.is_floating_type() {
-            Ok(mk().lit_expr(mk().float_unsuffixed_lit("0.")))
+            match self.ast_context[ty_id].kind {
+                CTypeKind::LongDouble => Ok(mk().path_expr(vec!["f128", "f128", "ZERO"])),
+                _ => Ok(mk().lit_expr(mk().float_unsuffixed_lit("0."))),
+            }
         } else if let &CTypeKind::Pointer(_) = resolved_ty {
             self.null_ptr(resolved_ty_id, is_static)
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
