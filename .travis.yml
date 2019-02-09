@@ -36,6 +36,7 @@ matrix:
       before_script:
         # Clang is not in `/usr/lib/ccache/`, so it needs to be added
         - sudo /usr/sbin/update-ccache-symlinks
+        - cat /proc/cpuinfo | grep sse | uniq
 
     - os: linux
       env: >-
