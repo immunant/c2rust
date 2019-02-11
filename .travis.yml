@@ -36,7 +36,6 @@ matrix:
       before_script:
         # Clang is not in `/usr/lib/ccache/`, so it needs to be added
         - sudo /usr/sbin/update-ccache-symlinks
-        - cat /proc/cpuinfo | grep sse | uniq
 
     - os: linux
       env: >-
@@ -75,6 +74,7 @@ script:
         ccache -s
         python3 ./scripts/build_translator.py --debug || travis_terminate 1
         ccache -s
+        PATH="/usr/bin:$PATH"
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
       LINUX_FAST_BUILD|OSX_FAST_BUILD)
