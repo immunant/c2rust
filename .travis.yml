@@ -74,8 +74,8 @@ script:
         ccache -s
         python3 ./scripts/build_translator.py --debug || travis_terminate 1
         ccache -s
-        # Don't want to use `ccache` when running the tests
-        PATH="/usr/bin:$PATH"
+        # Disable `ccache` when running the tests
+        export CCACHE_DISABLE=1
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
       LINUX_FAST_BUILD|OSX_FAST_BUILD)
