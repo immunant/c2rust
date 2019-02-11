@@ -48,9 +48,9 @@ pub struct RewriteExpr {
 impl Transform for RewriteExpr {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
-        let (pat, pat_bt) = parse_free_expr(cx.session(), &self.pat);
+        let (pat, pat_bt) = parse_var_expr(cx.session(), &self.pat);
         mcx.merge_binding_types(pat_bt);
-        let (repl, repl_bt) = parse_free_expr(cx.session(), &self.repl);
+        let (repl, repl_bt) = parse_var_expr(cx.session(), &self.repl);
         mcx.merge_binding_types(repl_bt);
         fold_match_with(mcx, pat, krate, |ast, mcx| {
             if let Some(filter) = self.filter {
@@ -96,9 +96,9 @@ pub struct RewriteTy {
 impl Transform for RewriteTy {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
-        let (pat, pat_bt) = parse_free_ty(cx.session(), &self.pat);
+        let (pat, pat_bt) = parse_var_ty(cx.session(), &self.pat);
         mcx.merge_binding_types(pat_bt);
-        let (repl, repl_bt) = parse_free_ty(cx.session(), &self.repl);
+        let (repl, repl_bt) = parse_var_ty(cx.session(), &self.repl);
         mcx.merge_binding_types(repl_bt);
         fold_match_with(mcx, pat, krate, |ast, mcx| {
             if let Some(filter) = self.filter {
@@ -137,9 +137,9 @@ pub struct RewriteStmts {
 impl Transform for RewriteStmts {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
-        let (pat, pat_bt) = parse_free_stmts(cx.session(), &self.pat);
+        let (pat, pat_bt) = parse_var_stmts(cx.session(), &self.pat);
         mcx.merge_binding_types(pat_bt);
-        let (repl, repl_bt) = parse_free_stmts(cx.session(), &self.repl);
+        let (repl, repl_bt) = parse_var_stmts(cx.session(), &self.repl);
         mcx.merge_binding_types(repl_bt);
         fold_match_with(mcx, pat, krate, |_, mcx| {
             repl.clone().subst(st, cx, &mcx.bindings)
@@ -158,7 +158,7 @@ pub struct DebugMatchExpr {
 
 impl Transform for DebugMatchExpr {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        let (pat, pat_bt) = parse_free_expr(cx.session(), &self.pat);
+        let (pat, pat_bt) = parse_var_expr(cx.session(), &self.pat);
 
         let mut init_mcx = MatchCtxt::new(st, cx);
         init_mcx.debug = true;

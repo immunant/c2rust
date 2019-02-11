@@ -17,7 +17,7 @@ pub use crate::ast_manip::fn_edit::{fold_fns, fold_fns_multi};
 pub use crate::ast_manip::lr_expr::fold_expr_with_context;
 pub use c2rust_ast_builder::mk;
 pub use crate::driver::{parse_expr, parse_pat, parse_ty, parse_stmts, parse_items};
-pub use crate::driver::{parse_free_expr, parse_free_pat, parse_free_ty, parse_free_stmts, parse_free_items};
+pub use crate::driver::{parse_var_expr, parse_var_pat, parse_var_ty, parse_var_stmts, parse_var_items};
 pub use crate::matcher::{MatchCtxt, Bindings, BindingType, Subst};
 pub use crate::matcher::{fold_match, fold_match_with};
 pub use crate::path_edit::{self, fold_resolved_paths, fold_resolved_paths_with_id};
@@ -35,9 +35,9 @@ pub fn replace_expr<T: Fold>(st: &CommandState,
                              pat: &str,
                              repl: &str) -> <T as Fold>::Result {
     let mut mcx = MatchCtxt::new(st, cx);
-    let (pat, pat_bt) = parse_free_expr(cx.session(), pat);
+    let (pat, pat_bt) = parse_var_expr(cx.session(), pat);
     mcx.merge_binding_types(pat_bt);
-    let (repl, repl_bt) = parse_free_expr(cx.session(), repl);
+    let (repl, repl_bt) = parse_var_expr(cx.session(), repl);
     mcx.merge_binding_types(repl_bt);
     fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
 }
@@ -49,9 +49,9 @@ pub fn replace_stmts<T: Fold>(st: &CommandState,
                               pat: &str,
                               repl: &str) -> <T as Fold>::Result {
     let mut mcx = MatchCtxt::new(st, cx);
-    let (pat, pat_bt) = parse_free_stmts(cx.session(), pat);
+    let (pat, pat_bt) = parse_var_stmts(cx.session(), pat);
     mcx.merge_binding_types(pat_bt);
-    let (repl, repl_bt) = parse_free_stmts(cx.session(), repl);
+    let (repl, repl_bt) = parse_var_stmts(cx.session(), repl);
     mcx.merge_binding_types(repl_bt);
     fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
 }

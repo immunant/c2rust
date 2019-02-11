@@ -463,7 +463,7 @@ pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
     }
 }
 
-pub fn parse_free_expr(sess: &Session, src: &str) -> (P<Expr>, BindingTypes) {
+pub fn parse_var_expr(sess: &Session, src: &str) -> (P<Expr>, BindingTypes) {
     let (mut p, bt) = make_bindings_parser(sess, "<expr>", src);
     match p.parse_expr() {
         Ok(expr) => (remove_paren(expr), bt),
@@ -479,7 +479,7 @@ pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     }
 }
 
-pub fn parse_free_pat(sess: &Session, src: &str) -> (P<Pat>, BindingTypes) {
+pub fn parse_var_pat(sess: &Session, src: &str) -> (P<Pat>, BindingTypes) {
     let (mut p, bt) = make_bindings_parser(sess, "<pat>", src);
     match p.parse_pat(None) {
         Ok(pat) => (remove_paren(pat), bt),
@@ -495,7 +495,7 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
     }
 }
 
-pub fn parse_free_ty(sess: &Session, src: &str) -> (P<Ty>, BindingTypes) {
+pub fn parse_var_ty(sess: &Session, src: &str) -> (P<Ty>, BindingTypes) {
     let (mut p, bt) = make_bindings_parser(sess, "<ty>", src);
     match p.parse_ty() {
         Ok(ty) => (remove_paren(ty), bt),
@@ -513,7 +513,7 @@ pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     }
 }
 
-pub fn parse_free_stmts(sess: &Session, src: &str) -> (Vec<Stmt>, BindingTypes) {
+pub fn parse_var_stmts(sess: &Session, src: &str) -> (Vec<Stmt>, BindingTypes) {
     // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
     // workaround that may cause suboptimal error messages.
     let (mut p, bt) = make_bindings_parser(sess, "<stmt>", &format!("{{ {} }}", src));
@@ -536,7 +536,7 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
     items
 }
 
-pub fn parse_free_items(sess: &Session, src: &str) -> (Vec<P<Item>>, BindingTypes) {
+pub fn parse_var_items(sess: &Session, src: &str) -> (Vec<P<Item>>, BindingTypes) {
     let (mut p, bt) = make_bindings_parser(sess, "<item>", src);
     let mut items = Vec::new();
     loop {
