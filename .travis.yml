@@ -74,7 +74,9 @@ script:
         ccache -s
         python3 ./scripts/build_translator.py --debug || travis_terminate 1
         ccache -s
-        # Disable `ccache` when running the tests
+        # `ccache` needs to be disabled when running tests, because in some instances
+        # the cached result would differ from the actual result thus causing a failure.
+        # This issue would usually occur in the `test_shuffle_vectors` test.
         export CCACHE_DISABLE=1
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
