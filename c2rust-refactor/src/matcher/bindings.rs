@@ -269,8 +269,10 @@ define_binding_values! {
     }
     Expr(P<Expr>) {
         add_thing=[add_expr, try_add_expr];
+        add_opt_thing=[add_opt_expr, try_add_opt_expr];
         thing=[expr];
-        get_thing=[get_expr]
+        get_thing=[get_expr];
+        get_opt_thing=[get_opt_expr]
     }
     Pat(P<Pat>) {
         add_thing=[add_pat, try_add_pat];
@@ -279,8 +281,10 @@ define_binding_values! {
     }
     Ty(P<Ty>) {
         add_thing=[add_ty, try_add_ty];
+        add_opt_thing=[add_opt_ty, try_add_opt_ty];
         thing=[ty];
-        get_thing=[get_ty]
+        get_thing=[get_ty];
+        get_opt_thing=[get_opt_ty]
     }
     Stmt(Stmt) {
         add_thing=[add_stmt, try_add_stmt];

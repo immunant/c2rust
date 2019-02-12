@@ -223,6 +223,17 @@ impl<T: TryMatch + PatternSymbol> TryMatch for Option<T> {
     }
 }
 
+impl<T: TryMatch + PatternSymbol> TryMatch for Option<P<T>> {
+    fn try_match(&self, target: &Option<P<T>>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        match (self, target) {
+            (&Some(ref x), None) if mcx.is_opt_binding(&**x) => {
+                mcx.capture_opt_none(&**x)
+            }
+            _ => default_option_match(self, target, mcx)
+        }
+    }
+}
+
 impl<A: TryMatch, B: TryMatch> TryMatch for (A, B) {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         mcx.try_match(&self.0, &target.0)?;

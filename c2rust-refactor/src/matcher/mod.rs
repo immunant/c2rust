@@ -251,6 +251,12 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         };
 
         match self.types.get(&sym) {
+            Some(&bindings::Type::Optional(bindings::Type::Expr)) => {
+                let ok = self.bindings.try_add_opt_expr(sym, Some(P(target.clone())));
+                let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
+                return res;
+            }
+
             Some(&bindings::Type::Expr) => {},
             Some(&bindings::Type::Unknown) => {},
             None if sym.as_str().starts_with("__") => {},
@@ -285,6 +291,12 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         };
 
         match self.types.get(&sym) {
+            Some(&bindings::Type::Optional(bindings::Type::Ty)) => {
+                let ok = self.bindings.try_add_opt_ty(sym, Some(P(target.clone())));
+                let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
+                return res;
+            }
+
             Some(&bindings::Type::Ty) => {},
             Some(&bindings::Type::Unknown) => {},
             None if sym.as_str().starts_with("__") => {},

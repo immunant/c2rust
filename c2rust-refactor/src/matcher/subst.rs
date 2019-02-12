@@ -17,9 +17,9 @@
 //!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
 
-use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem, Label};
+use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem, Label, Local};
 use syntax::ast::Mac;
-use syntax::fold::{self, Folder};
+use syntax::fold::{self, Folder, fold_attrs};
 use syntax::ptr::P;
 use syntax::util::move_map::MoveMap;
 use smallvec::SmallVec;
@@ -50,7 +50,33 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             } else if let Some(i) = ps.and_then(|sym| self.bindings.get_opt_ident(sym)) {
                 i.map(|i| Label { ident: i.clone() })
             } else {
-                Some(fold::noop_fold_label(l, self))
+                Some(self.fold_label(l))
+            }
+        })
+    }
+
+    fn fold_opt_expr(&mut self, e: Option<P<Expr>>) -> Option<P<Expr>> {
+        e.and_then(|e| {
+            let ps = e.pattern_symbol();
+            if let Some(e) = ps.and_then(|sym| self.bindings.get_expr(sym)) {
+                Some(e.clone())
+            } else if let Some(e) = ps.and_then(|sym| self.bindings.get_opt_expr(sym)) {
+                e.map(P::<Expr>::clone)
+            } else {
+                Some(self.fold_expr(e))
+            }
+        })
+    }
+
+    fn fold_opt_ty(&mut self, t: Option<P<Ty>>) -> Option<P<Ty>> {
+        t.and_then(|t| {
+            let ps = t.pattern_symbol();
+            if let Some(t) = ps.and_then(|sym| self.bindings.get_ty(sym)) {
+                Some(t.clone())
+            } else if let Some(t) = ps.and_then(|sym| self.bindings.get_opt_ty(sym)) {
+                t.map(P::<Ty>::clone)
+            } else {
+                Some(self.fold_ty(t))
             }
         })
     }
@@ -176,6 +202,17 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
         } else {
             fold::noop_fold_item(i, self)
         }
+    }
+
+    fn fold_local(&mut self, l: P<Local>) -> P<Local> {
+       l.map(|l| Local {
+           id: self.new_id(l.id),
+           pat: self.fold_pat(l.pat),
+           ty: self.fold_opt_ty(l.ty),
+           init: self.fold_opt_expr(l.init),
+           span: self.new_span(l.span),
+           attrs: fold_attrs(l.attrs.into(), self).into()
+       })
     }
 
     fn fold_mac(&mut self, mac: Mac) -> Mac {
