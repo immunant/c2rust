@@ -17,7 +17,8 @@ from common import (
     invoke,
     regex,
     setup_logging,
-    transpile
+    transpile,
+    on_mac
 )
 
 cargo = get_cmd_or_die('cargo')
@@ -394,6 +395,20 @@ class Xzoom(Test):
             invoke(rustc, *self.build_flags)
 
 
+def _is_excluded(name):
+    """
+    The examples that use x11 need to be excluded on macOS.
+    This function can be extended to exclude examples
+    on the linux platform as well.
+    """
+    mac_exclusion_set = {
+        "grabc",
+        "xzoom",
+    }
+
+    return name in mac_exclusion_set and on_mac()
+
+
 def _parser_args():
     desc = 'Build and test examples.'
     parser = argparse.ArgumentParser(description=desc)
@@ -424,7 +439,8 @@ def run(args):
         Xzoom(args),
     ]
     for example in examples:
-        if args.regex_examples.fullmatch(example.project_name):
+        if args.regex_examples.fullmatch(example.project_name) and\
+        not _is_excluded(example.project_name):
             example.build_and_test()
 
     print(Colors.OKGREEN + "Done building and testing the examples." +
