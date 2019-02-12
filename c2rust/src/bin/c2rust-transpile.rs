@@ -66,6 +66,7 @@ fn main() {
         overwrite_existing:     matches.is_present("overwrite-existing"),
         reduce_type_annotations:matches.is_present("reduce-type-annotations"),
         reorganize_definitions: matches.is_present("reorganize-definitions"),
+        run_refactor_tool:      matches.is_present("run-refactor-tool"),
         emit_modules:           matches.is_present("emit-modules"),
         emit_build_files:       matches.is_present("emit-build-files"),
         build_directory_name:   matches.value_of("build-directory-name")

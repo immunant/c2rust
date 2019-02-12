@@ -159,6 +159,10 @@ args:
       short: r
       help: Output file in such a way that the refactoring tool can deduplicate code
       takes_value: false
+  - run-refactor-tool:
+      long: run-refactor-tool
+      help: Run the refactor tool after translation, used in conjuction with `reorganize-definitions`
+      takes_value: false
   - extra-clang-args:
       help: Extra arguments to pass to clang frontend during parsing the input C file
       takes_value: true
