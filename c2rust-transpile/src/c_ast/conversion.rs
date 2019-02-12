@@ -867,12 +867,21 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagOffsetOfExpr if expected_ty & (EXPR | STMT) != 0 => {
-                    let value = node.extras[0].as_u64().expect("Expected offset value");
-
                     let ty_old = node.type_id.expect("Expected expression to have type");
                     let ty = self.visit_qualified_type(ty_old);
+                    // Either we're able to evaluate the offsetof to an int constant expr
+                    // or else we have to use the offset_of! macro from the memoffset crate
+                    let offset_of = if let Some(value) = node.extras[0].as_u64() {
+                        let kind = OffsetOfKind::Constant(value);
 
-                    let offset_of = CExprKind::OffsetOf(ty, value);
+                        CExprKind::OffsetOf(ty, kind)
+                    } else {
+                        let qty_int = node.extras[1].as_u64().expect("Expected offset of to have struct type");
+                        let qty = self.visit_qualified_type(qty_int);
+                        let kind = OffsetOfKind::Variable(qty);
+
+                        CExprKind::OffsetOf(ty, kind)
+                    };
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, offset_of);
                 }

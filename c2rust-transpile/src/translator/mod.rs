@@ -8,10 +8,10 @@ use dtoa;
 use indexmap::{IndexMap, IndexSet};
 
 use syntax::ast::*;
-use syntax::parse::token::{Token,Nonterminal};
+use syntax::parse::token::{Token, Nonterminal};
 use syntax::print::pprust::*;
 use syntax::ptr::*;
-use syntax::tokenstream::{TokenStream};
+use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{with_globals, ast};
 use syntax_pos::{DUMMY_SP, Span};
 
@@ -2102,8 +2102,27 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new(val))
             }
 
-            CExprKind::OffsetOf(ty, val) =>
-                Ok(WithStmts::new(self.mk_int_lit(ty, val, IntBase::Dec))),
+            CExprKind::OffsetOf(ty, ref kind) => match kind {
+                OffsetOfKind::Constant(val) => Ok(WithStmts::new(self.mk_int_lit(ty, *val, IntBase::Dec))),
+                OffsetOfKind::Variable(qty) => {
+                    self.extern_crates.borrow_mut().insert("memoffset");
+                    self.item_store.borrow_mut()
+                        .uses
+                        .get_mut(vec!["memoffset".into()])
+                        .insert("offset_of");
+
+                    let decl_id = self.ast_context.c_types[&qty.ctype].kind.as_decl_or_typedef().unwrap();
+                    let name = self.ast_context[decl_id].kind.get_name().unwrap();
+                    // REVIEW: Does this have to go through renamer?
+                    let ty_ident = Nonterminal::NtIdent(mk().ident(name), false);
+                    let mut macro_body = vec![
+                        TokenTree::Token(DUMMY_SP, Token::interpolated(ty_ident)),
+                    ];
+                    let mac = mk().mac(mk().path("offset_of"), macro_body, MacDelimiter::Brace);
+
+                    Ok(WithStmts::new(mk().mac_expr(mac)))
+                },
+            }
 
             CExprKind::Literal(ty, ref kind) => self.convert_literal(ctx.is_static, ty, kind),
 

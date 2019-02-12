@@ -803,7 +803,27 @@ class TranslateASTVisitor final
               if (is_constant) {
                   cbor_encode_uint(extras, value.getZExtValue());
               } else {
+                  // It's possible to get a non ICE in a field array like so:
+                  // offsetof(S, field[idx]) so here we are encoding the type,
+                  // field, and array input expr
+                  auto ty = E->getTypeSourceInfo()->getType();
+                  auto qt = typeEncoder.encodeQualType(ty);
+
+                  assert(E->getNumComponents() == 2 && "Found unsupported number of offsetof components");
+
+                  auto c0 = E->getComponent(0);
+                  auto c1 = E->getComponent(1);
+
+                  assert(c0.getKind() == 1 && "Found unsupported offsetof component kind");
+                  assert(c1.getKind() == 0 && "Found unsupported offsetof component kind");
+
+                  auto field = c0.getField();
+                  auto e0 = E->getIndexExpr(0);
+
                   cbor_encode_null(extras);
+                  cbor_encode_uint(extras, qt);
+                  cbor_encode_uint(extras, uintptr_t(field));
+                //   cbor_encode_null(extras);
               }
           });
           return true;

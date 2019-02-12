@@ -564,6 +564,16 @@ impl CDeclKind {
     }
 }
 
+/// An OffsetOf Expr may or may not be a constant
+#[derive(Debug, Clone)]
+pub enum OffsetOfKind {
+    /// An Integer Constant Expr
+    Constant(u64),
+    /// Contains more information to generate
+    /// an offset_of! macro invocation
+    Variable(CQualTypeId),
+}
+
 /// Represents an expression in C (6.5 Expressions)
 ///
 /// We've kept a qualified type on every node since Clang has this information available, and since
@@ -583,7 +593,7 @@ pub enum CExprKind {
     UnaryType(CQualTypeId, UnTypeOp, Option<CExprId>, CQualTypeId),
 
     // Offsetof expression.
-    OffsetOf(CQualTypeId, u64),
+    OffsetOf(CQualTypeId, OffsetOfKind),
 
     // Binary operator
     Binary(CQualTypeId, BinOp, CExprId, CExprId, Option<CQualTypeId>, Option<CQualTypeId>),
