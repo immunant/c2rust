@@ -9,7 +9,7 @@ use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
 use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
 
-use crate::ast_manip::util::macro_name;
+use crate::ast_manip::util::{macro_name, PatternSymbol};
 use crate::matcher::{self, TryMatch, MatchCtxt};
 
 
@@ -20,6 +20,20 @@ impl TryMatch for Ident {
         }
 
         if self == target {
+            Ok(())
+        } else {
+            Err(matcher::Error::SymbolMismatch)
+        }
+    }
+}
+
+impl TryMatch for Label {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        if mcx.maybe_capture_label(self, target)? {
+            return Ok(());
+        }
+
+        if self.ident == target.ident {
             Ok(())
         } else {
             Err(matcher::Error::SymbolMismatch)
@@ -176,30 +190,46 @@ impl<T: TryMatch> TryMatch for Spanned<T> {
     }
 }
 
+#[inline]
+fn default_option_match<T: TryMatch>(
+    pattern: &Option<T>,
+    target: &Option<T>,
+    mcx: &mut MatchCtxt
+) -> matcher::Result<()> {
+    match (pattern, target) {
+        (&Some(ref x), &Some(ref y)) => mcx.try_match(x, y),
+        (&None, &None) => Ok(()),
+        (_, _) => Err(matcher::Error::VariantMismatch),
+    }
+}
+
+// Default implementation for Option nodes without PatternSymbol
 impl<T: TryMatch> TryMatch for Option<T> {
     default fn try_match(&self, target: &Option<T>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        default_option_match(self, target, mcx)
+    }
+}
+
+// Specialized implementation for Option<T: PatternSymbol> nodes,
+// which lets us check the pattern against optional bindings
+impl<T: TryMatch + PatternSymbol> TryMatch for Option<T> {
+    fn try_match(&self, target: &Option<T>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         match (self, target) {
-            (&Some(ref x), &Some(ref y)) => mcx.try_match(x, y),
-            (&None, &None) => Ok(()),
-            (_, _) => Err(matcher::Error::VariantMismatch),
+            (&Some(ref x), None) if mcx.is_opt_binding(x) => {
+                mcx.capture_opt_none(x)
+            }
+            _ => default_option_match(self, target, mcx)
         }
     }
 }
 
-impl TryMatch for Option<Label> {
-    fn try_match(&self, target: &Option<Label>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+impl<T: TryMatch + PatternSymbol> TryMatch for Option<P<T>> {
+    fn try_match(&self, target: &Option<P<T>>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         match (self, target) {
-            (&Some(ref x), ref y) => {
-                if mcx.maybe_capture_label(&x, &y)? {
-                    Ok(())
-                } else if let Some(y) = y {
-                    mcx.try_match(x, y)
-                } else {
-                    Err(matcher::Error::VariantMismatch)
-                }
+            (&Some(ref x), None) if mcx.is_opt_binding(&**x) => {
+                mcx.capture_opt_none(&**x)
             }
-            (&None, &None) => Ok(()),
-            (&None, &Some(_)) => Err(matcher::Error::VariantMismatch),
+            _ => default_option_match(self, target, mcx)
         }
     }
 }

@@ -16,6 +16,12 @@ impl PatternSymbol for Ident {
     }
 }
 
+impl PatternSymbol for Label {
+    fn pattern_symbol(&self) -> Option<Symbol> {
+        self.ident.pattern_symbol()
+    }
+}
+
 impl PatternSymbol for Path {
     fn pattern_symbol(&self) -> Option<Symbol> {
         if self.segments.len() != 1 {

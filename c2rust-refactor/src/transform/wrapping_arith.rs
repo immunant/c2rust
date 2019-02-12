@@ -17,32 +17,32 @@ pub struct WrappingToNormal;
 impl Transform for WrappingToNormal {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let krate = replace_expr(st, cx, krate,
-                                 "$x:expr.wrapping_add($y:expr)",
+                                 "$x:Expr.wrapping_add($y:Expr)",
                                  "$x + $y");
         let krate = replace_expr(st, cx, krate,
-                                 "$x:expr.wrapping_sub($y:expr)",
+                                 "$x:Expr.wrapping_sub($y:Expr)",
                                  "$x - $y");
         let krate = replace_expr(st, cx, krate,
-                                 "$x:expr.wrapping_mul($y:expr)",
+                                 "$x:Expr.wrapping_mul($y:Expr)",
                                  "$x * $y");
         let krate = replace_expr(st, cx, krate,
-                                 "$x:expr.wrapping_div($y:expr)",
+                                 "$x:Expr.wrapping_div($y:Expr)",
                                  "$x / $y");
         let krate = replace_expr(st, cx, krate,
-                                 "$x:expr.wrapping_rem($y:expr)",
+                                 "$x:Expr.wrapping_rem($y:Expr)",
                                  "$x % $y");
         let krate = replace_expr(st, cx, krate,
-                                 "$x:expr.wrapping_neg()",
+                                 "$x:Expr.wrapping_neg()",
                                  "-$x");
         let krate = replace_expr(st, cx, krate,
-                                 "$x:expr.wrapping_shl($y:expr)",
+                                 "$x:Expr.wrapping_shl($y:Expr)",
                                  "$x << $y");
         let krate = replace_expr(st, cx, krate,
-                                 "$x:expr.wrapping_shr($y:expr)",
+                                 "$x:Expr.wrapping_shr($y:Expr)",
                                  "$x >> $y");
         let krate = replace_expr(st, cx, krate,
-                                 "$x:expr.wrapping_abs()",
-                                 "$x:expr.abs()");
+                                 "$x:Expr.wrapping_abs()",
+                                 "$x:Expr.abs()");
         krate
     }
 }
