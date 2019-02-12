@@ -47,8 +47,8 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             let ps = l.ident.pattern_symbol();
             if let Some(i) = ps.and_then(|sym| self.bindings.get_ident(sym)) {
                 Some(Label { ident: i.clone() })
-            } else if let Some(ident) = ps.and_then(|sym| self.bindings.get_opt_ident(sym)) {
-                ident.map(|ident| Label { ident: ident.clone() })
+            } else if let Some(i) = ps.and_then(|sym| self.bindings.get_opt_ident(sym)) {
+                i.map(|i| Label { ident: i.clone() })
             } else {
                 Some(fold::noop_fold_label(l, self))
             }
