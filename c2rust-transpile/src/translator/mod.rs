@@ -2117,19 +2117,17 @@ impl<'c> Translation<'c> {
                         .kind
                         .as_decl_or_typedef()
                         .expect("Did not find decl_id for offsetof struct");
-                    let name = self.ast_context[decl_id]
-                        .kind
-                        .get_name()
+                    let name = self.type_converter
+                        .borrow()
+                        .resolve_decl_name(decl_id)
                         .expect("Did not find name for offsetof struct");
-                    // REVIEW: Does this have to go through renamer?
                     let ty_ident = Nonterminal::NtIdent(mk().ident(name), false);
 
                     // Field name
-                    let field_name = self.ast_context[*field_id]
-                        .kind
-                        .get_name()
+                    let field_name = self.type_converter
+                        .borrow()
+                        .resolve_field_name(None, *field_id)
                         .expect("Did not find name for offsetof struct field");
-                    // REVIEW: Does this have to go through renamer?
                     let field_ident = Nonterminal::NtIdent(mk().ident(field_name), false);
 
                     // Index Expr
@@ -2137,7 +2135,7 @@ impl<'c> Translation<'c> {
                     let expr = mk().cast_expr(expr, mk().ident_ty("usize"));
                     let index_expr = Nonterminal::NtExpr(expr);
 
-                    // offset_of!{Struct, field[(expr) as usize] as ty}
+                    // offset_of!(Struct, field[expr as usize]) as ty
                     let mut macro_body = vec![
                         TokenTree::Token(DUMMY_SP, Token::interpolated(ty_ident)),
                         TokenTree::Token(DUMMY_SP, Token::Comma),
