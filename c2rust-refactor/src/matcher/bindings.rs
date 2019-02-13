@@ -190,7 +190,7 @@ macro_rules! define_binding_values {
             $( $Thing, )*
         }
 
-        static STATIC_TYPES: &[Type] = &[
+        static INTERNED_TYPES: &[Type] = &[
             Type::Unknown,
             $( Type::$Thing, )*
         ];
@@ -212,7 +212,7 @@ macro_rules! define_binding_values {
                 self.map.get(&name.into_symbol()).map(|v| {
                     match v {
                         $( &Value::Optional(Some(box Value::$Thing(_))) =>
-                           Type::Optional(Type::$Thing.as_static_ref()), )*
+                           Type::Optional(Type::$Thing.interned()), )*
                         $( &Value::$Thing(_) => Type::$Thing, )*
                         &Value::Optional(None) => Type::Unknown,
                         &Value::Optional(Some(box Value::Optional(_))) => {
@@ -304,13 +304,13 @@ define_binding_values! {
 }
 
 impl Type {
-    fn as_static_ref(self) -> &'static Self {
-        for ty in STATIC_TYPES {
+    fn interned(self) -> &'static Self {
+        for ty in INTERNED_TYPES {
             if *ty == self {
                 return ty;
             }
         }
-        panic!("as_static_ref() for invalid type: {:?}", self);
+        panic!("Type::interned() for invalid type: {:?}", self);
     }
 }
 
@@ -330,7 +330,7 @@ fn maybe_get_type(c: &mut Cursor) -> Type {
                 if let Some(ty) = Type::from_ast_ident(ty_ident) {
                     c.nth(c_idx);
                     if is_optional {
-                        return Type::Optional(ty.as_static_ref());
+                        return Type::Optional(ty.interned());
                     } else {
                         return ty;
                     }
