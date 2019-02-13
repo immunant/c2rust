@@ -149,7 +149,24 @@ fn build_format_macro(
 ///
 /// Marks: none
 ///
-/// TODO
+/// Converts each call to `printf(...)` and `fprintf(stderr, ...)` into
+/// equivalent `print!` or `eprint!` calls.
+///
+/// This command checks that the callees are foreign functions imported
+/// using `extern "C"` and marked `#[no_mangle]`, to make sure the caller
+/// is actually calling the libc functions.
+///
+/// Example:
+///
+/// ```
+/// printf("Number: %d\n", 123);
+/// ```
+///
+/// gets converted to:
+///
+/// ```
+/// print!("Number: {}\n", 123);
+/// ```
 pub struct ConvertPrintfs;
 
 impl Transform for ConvertPrintfs {
@@ -183,11 +200,11 @@ impl Transform for ConvertPrintfs {
                         match (cx.try_resolve_expr(f), cx.try_resolve_expr(&*args[0])) {
                             (Some(ref f_id), Some(ref arg0_id)) if fprintf_defs.contains(f_id) &&
                                 stderr_defs.contains(arg0_id) => {
-                                let mac = build_format_macro("eprintln", None, &args[1..]);
+                                let mac = build_format_macro("eprint", None, &args[1..]);
                                 return smallvec![mk().mac_stmt(mac)];
                             }
                             (Some(ref f_id), _) if printf_defs.contains(f_id) => {
-                                let mac = build_format_macro("println", None, &args[..]);
+                                let mac = build_format_macro("print", None, &args[..]);
                                 return smallvec![mk().mac_stmt(mac)];
                             },
                             _ => {}
