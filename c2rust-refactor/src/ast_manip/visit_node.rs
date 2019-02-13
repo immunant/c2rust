@@ -131,6 +131,14 @@ gen_visit_node_impl! {
     walk = visit::walk_foreign_item(self, i);
 }
 
+gen_visit_node_impl! {
+    node = Stmt;
+    visitor = StmtNodeVisitor;
+    visitor_post = StmtNodeVisitorPost;
+    fn visit_stmt(&mut self, s: &'ast Stmt);
+    walk = visit::walk_stmt(self, s);
+}
+
 /// Visit nodes of the callback's argument type within `target`.  This function performs a preorder
 /// traversal.
 pub fn visit_nodes<N, T, F>(target: &T, callback: F)

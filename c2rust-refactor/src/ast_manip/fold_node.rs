@@ -134,6 +134,14 @@ gen_fold_node_impl! {
     map = ni.move_flat_map(|ni| (self.callback)(ni));
 }
 
+gen_fold_node_impl! {
+    node = Stmt;
+    folder = StmtNodeFolder;
+    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]>;
+    walk = fold::noop_fold_stmt(s, self);
+    map = s.move_flat_map(|s| (self.callback)(s));
+}
+
 /// Rewrite nodes of the callback's argument type within `target`.  This function performs a
 /// postorder traversal.
 pub fn fold_nodes<N, T, F>(target: T, callback: F) -> <T as Fold>::Result
