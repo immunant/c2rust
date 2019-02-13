@@ -811,19 +811,19 @@ class TranslateASTVisitor final
 
                   assert(E->getNumComponents() == 2 && "Found unsupported number of offsetof components");
 
-                  auto c0 = E->getComponent(0);
-                  auto c1 = E->getComponent(1);
+                  auto component0 = E->getComponent(0);
+                  auto component1 = E->getComponent(1);
 
-                  assert(c0.getKind() == 1 && "Found unsupported offsetof component kind");
-                  assert(c1.getKind() == 0 && "Found unsupported offsetof component kind");
+                  assert(component0.getKind() == 1 && "Found unsupported offsetof component kind");
+                  assert(component1.getKind() == 0 && "Found unsupported offsetof component kind");
 
-                  auto field = c0.getField();
-                  auto e0 = E->getIndexExpr(0);
+                  auto field = component0.getField()->getCanonicalDecl();
+                  auto expr0 = E->getIndexExpr(0);
 
                   cbor_encode_null(extras);
                   cbor_encode_uint(extras, qt);
                   cbor_encode_uint(extras, uintptr_t(field));
-                //   cbor_encode_null(extras);
+                  cbor_encode_uint(extras, uintptr_t(expr0));
               }
           });
           return true;

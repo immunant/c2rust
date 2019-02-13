@@ -878,7 +878,11 @@ impl ConversionContext {
                     } else {
                         let qty_int = node.extras[1].as_u64().expect("Expected offset of to have struct type");
                         let qty = self.visit_qualified_type(qty_int);
-                        let kind = OffsetOfKind::Variable(qty);
+                        let field = node.extras[2].as_u64().expect("Expected offset of field");
+                        let field_id = self.visit_decl(field);
+                        let index = node.extras[3].as_u64().expect("Expected offset of index expr");
+                        let index_expr_id = self.visit_expr(index);
+                        let kind = OffsetOfKind::Variable(qty, field_id, index_expr_id);
 
                         CExprKind::OffsetOf(ty, kind)
                     };

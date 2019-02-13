@@ -100,12 +100,22 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b" ")?;
                 Ok(())
             }
+
             Some(&CExprKind::OffsetOf(_, ref kind)) => {
                 match kind {
                     OffsetOfKind::Constant(val) => self.writer.write_fmt(format_args!("{}", val)),
-                    OffsetOfKind::Variable(qty) => unimplemented!("print"),
-                }
+                    OffsetOfKind::Variable(qty, decl_id, expr_id) => {
+                        self.writer.write_all(b"offset_of!(")?;
+                        self.print_qtype(*qty, None, context)?;
+                        self.writer.write_all(b", ")?;
+                        self.print_decl_name(*decl_id, context)?;
+                        self.writer.write_all(b"[")?;
+                        self.print_expr(*expr_id, context)?;
+                        self.writer.write_all(b"])")?;
 
+                        Ok(())
+                    },
+                }
             },
             Some(&CExprKind::Literal(_, ref lit)) => self.print_lit(&lit, context),
             Some(&CExprKind::Unary(_, op, rhs, _)) => {

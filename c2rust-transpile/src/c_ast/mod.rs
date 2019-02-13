@@ -571,7 +571,8 @@ pub enum OffsetOfKind {
     Constant(u64),
     /// Contains more information to generate
     /// an offset_of! macro invocation
-    Variable(CQualTypeId),
+    /// Struct Type, Field Decl Id, Index Expr
+    Variable(CQualTypeId, CDeclId, CExprId),
 }
 
 /// Represents an expression in C (6.5 Expressions)
