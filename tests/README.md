@@ -47,6 +47,8 @@ To completely skip the translation of a C file, you must add the comment `//! sk
 
 You can also mark a Rust file as unexpected to compile, by adding `//! xfail` to the top of the file, or just expect an individual test function to fail to run by adding `// xfail` prior to the function definition.
 
+Adding `//! extern_crate_X` to the top of a test file will ensure `extern crate X;` gets added to the main binary driver. Be sure to also add the `X` crate to the test directory's `Cargo.toml`.
+
 ## Running the tests
 
 _From the project root_, run `./scripts/test_translator.py tests` to run all of the tests in the
