@@ -65,14 +65,14 @@ $ ./scripts/test_translator.py --help
 
 ## What happens under the hood
 
-This `test` directory contains regression, feature, and unit tests. A test directory goes through the following set of steps:
+This `tests` directory contains regression, feature, and unit tests. A test directory goes through the following set of steps:
 
   1. A `compile_commands.json` file is created for the Clang plugin in `c2rust-ast-exporter` to recognize its C source input
 
-  2. This JSON and the C source file are fed to the `c2rust-ast-exporter` to produce a CBOR file of the Clang type-annotated abstract syntax tree.
+  2. This JSON and the C source file are fed to the `c2rust-ast-exporter` to produce CBOR data of the Clang type-annotated abstract syntax tree.
 
-  3. This CBOR file is fed to the `ast-importer` to produce a Rust source file supposedly preserving the semantics of the initial C source file.
+  3. This CBOR data is fed to the `c2rust-transpile` to produce a Rust source file supposedly preserving the semantics of the initial C source file.
 
-  4. Rust test files (test_xyz.rs) are compiled into a single main wrapper and main test binary and are automatically linked against other Rust and C files thanks to `rustc`.
+  4. Rust test files (test_xyz.rs) are compiled into a single main wrapper and main test binary and are automatically linked against other Rust and C files thanks to `cargo`.
 
   5. The executable from the previous step is run one or more times parameterized to a specific test function.
