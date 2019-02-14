@@ -35,7 +35,6 @@ use syntax_pos::Span;
 use arena::SyncDroplessArena;
 
 use crate::ast_manip::remove_paren;
-use crate::matcher::{BindingTypes, parse_bindings};
 use crate::span_fix;
 use crate::util::Lone;
 
@@ -439,17 +438,7 @@ fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
                                       src.to_owned())
 }
 
-fn make_bindings_parser<'a>(sess: &'a Session, name: &str, src: &str) -> (Parser<'a>, BindingTypes) {
-    let ts =
-        parse::parse_stream_from_source_str(FileName::Real(PathBuf::from(name)),
-                                            src.to_owned(),
-                                            &sess.parse_sess,
-                                            None);
-    let (ts, bt) = parse_bindings(ts);
-    (parse::stream_to_parser(&sess.parse_sess, ts), bt)
-}
-
-fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
+pub fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
     db.emit();
     panic!("error parsing {}", what);
 }
@@ -463,26 +452,10 @@ pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
     }
 }
 
-pub fn parse_var_expr(sess: &Session, src: &str) -> (P<Expr>, BindingTypes) {
-    let (mut p, bt) = make_bindings_parser(sess, "<expr>", src);
-    match p.parse_expr() {
-        Ok(expr) => (remove_paren(expr), bt),
-        Err(db) => emit_and_panic(db, "expr"),
-    }
-}
-
 pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     let mut p = make_parser(sess, "<pat>", src);
     match p.parse_pat(None) {
         Ok(pat) => remove_paren(pat),
-        Err(db) => emit_and_panic(db, "pat"),
-    }
-}
-
-pub fn parse_var_pat(sess: &Session, src: &str) -> (P<Pat>, BindingTypes) {
-    let (mut p, bt) = make_bindings_parser(sess, "<pat>", src);
-    match p.parse_pat(None) {
-        Ok(pat) => (remove_paren(pat), bt),
         Err(db) => emit_and_panic(db, "pat"),
     }
 }
@@ -495,30 +468,12 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
     }
 }
 
-pub fn parse_var_ty(sess: &Session, src: &str) -> (P<Ty>, BindingTypes) {
-    let (mut p, bt) = make_bindings_parser(sess, "<ty>", src);
-    match p.parse_ty() {
-        Ok(ty) => (remove_paren(ty), bt),
-        Err(db) => emit_and_panic(db, "ty"),
-    }
-}
-
 pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, "<stmt>", &format!("{{ {} }}", src));
     match p.parse_block() {
         Ok(blk) => blk.into_inner().stmts.into_iter().map(|s| remove_paren(s).lone()).collect(),
-        Err(db) => emit_and_panic(db, "stmts"),
-    }
-}
-
-pub fn parse_var_stmts(sess: &Session, src: &str) -> (Vec<Stmt>, BindingTypes) {
-    // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
-    // workaround that may cause suboptimal error messages.
-    let (mut p, bt) = make_bindings_parser(sess, "<stmt>", &format!("{{ {} }}", src));
-    match p.parse_block() {
-        Ok(blk) => (blk.into_inner().stmts.into_iter().map(|s| remove_paren(s).lone()).collect(), bt),
         Err(db) => emit_and_panic(db, "stmts"),
     }
 }
@@ -534,19 +489,6 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
         }
     }
     items
-}
-
-pub fn parse_var_items(sess: &Session, src: &str) -> (Vec<P<Item>>, BindingTypes) {
-    let (mut p, bt) = make_bindings_parser(sess, "<item>", src);
-    let mut items = Vec::new();
-    loop {
-        match p.parse_item() {
-            Ok(Some(item)) => items.push(remove_paren(item).lone()),
-            Ok(None) => break,
-            Err(db) => emit_and_panic(db, "items"),
-        }
-    }
-    (items, bt)
 }
 
 pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {

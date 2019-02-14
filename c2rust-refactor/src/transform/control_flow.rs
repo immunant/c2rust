@@ -1,8 +1,8 @@
 use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind, StmtKind};
 
-use crate::api::*;
 use crate::command::{CommandState, Registry};
 use crate::driver;
+use crate::matcher::{MatchCtxt, Subst, replace_expr, fold_match_with, find_first};
 use crate::transform::Transform;
 
 
@@ -54,27 +54,18 @@ impl Transform for ReconstructForRange {
                 $body:MultiStmt;
                 $incr:Stmt;
             }"#;
-        let (pat, pat_bt) = parse_var_stmts(cx.session(), &pat_str);
-        mcx.merge_binding_types(pat_bt);
+        let pat = mcx.parse_stmts(&pat_str);
 
-        let (lt_cond, bt) = parse_var_expr(cx.session(), "$i < $end:Expr");
-        mcx.merge_binding_types(bt);
-        let (le_cond, bt) = parse_var_expr(cx.session(), "$i <= $end:Expr");
-        mcx.merge_binding_types(bt);
+        let lt_cond = mcx.parse_expr("$i < $end:Expr");
+        let le_cond = mcx.parse_expr("$i <= $end:Expr");
 
-        let (i_plus_eq, bt) = parse_var_expr(cx.session(), "$i += $step:Expr");
-        mcx.merge_binding_types(bt);
-        let (i_eq_plus, bt) = parse_var_expr(cx.session(), "$i = $i + $step:Expr");
-        mcx.merge_binding_types(bt);
+        let i_plus_eq = mcx.parse_expr("$i += $step:Expr");
+        let i_eq_plus = mcx.parse_expr("$i = $i + $step:Expr");
 
-        let (range_one_excl, _) = parse_var_stmts(cx.session(),
-            "$'label: for $i in $start .. $end { $body; }");
-        let (range_one_incl, _) = parse_var_stmts(cx.session(),
-            "$'label: for $i in $start ..= $end { $body; }");
-        let (range_step_excl, _) = parse_var_stmts(cx.session(),
-            "$'label: for $i in ($start .. $end).step_by($step) { $body; }");
-        let (range_step_incl, _) = parse_var_stmts(cx.session(),
-            "$'label: for $i in ($start ..= $end).step_by($step) { $body; }");
+        let range_one_excl = mcx.parse_stmts("$'label: for $i in $start .. $end { $body; }");
+        let range_one_incl = mcx.parse_stmts("$'label: for $i in $start ..= $end { $body; }");
+        let range_step_excl = mcx.parse_stmts("$'label: for $i in ($start .. $end).step_by($step) { $body; }");
+        let range_step_incl = mcx.parse_stmts("$'label: for $i in ($start ..= $end).step_by($step) { $body; }");
 
         fold_match_with(mcx, pat, krate, |orig, mut mcx| {
             let cond = mcx.bindings.expr("$cond").clone();
@@ -135,14 +126,12 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
                                        pat: &str,
                                        repl: &str) -> Crate {
     let mut mcx = MatchCtxt::new(st, cx);
-    let (pat, pat_bt) = parse_var_expr(cx.session(), pat);
-    mcx.merge_binding_types(pat_bt);
-    let (repl, repl_bt) = parse_var_expr(cx.session(), repl);
-    mcx.merge_binding_types(repl_bt);
+    let pat = mcx.parse_expr(pat);
+    let repl = mcx.parse_expr(repl);
 
-    let (find_continue, _) = parse_var_expr(cx.session(), "continue $'label");
-    let (find_break, _) = parse_var_expr(cx.session(), "break $'label");
-    let (find_break_expr, _) = parse_var_expr(cx.session(), "break $'label $bv:Expr");
+    let find_continue = mcx.parse_expr("continue $'label");
+    let find_break = mcx.parse_expr("break $'label");
+    let find_break_expr = mcx.parse_expr("break $'label $bv:Expr");
 
     fold_match_with(mcx, pat, krate, |orig, mcx| {
         let body = mcx.bindings.multi_stmt("$body");

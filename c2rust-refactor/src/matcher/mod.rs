@@ -31,26 +31,30 @@
 //!
 //!  * `cast!(x)`: Matches the `Expr`s `x`, `x as __t`, `x as __t as __u`, etc.
 
+use rustc::hir::def_id::DefId;
+use rustc::session::Session;
+use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use rustc::hir::def_id::DefId;
-use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, Stmt, Block, Label};
-use syntax::symbol::Symbol;
+use std::path::PathBuf;
+use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Pat, Path, Stmt, Ty};
 use syntax::fold::{self, Folder};
-use syntax::parse::PResult;
 use syntax::parse::parser::{Parser, PathStyle};
 use syntax::parse::token::Token;
+use syntax::parse::{self, PResult};
 use syntax::ptr::P;
+use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenStream, ThinTokenStream};
 use syntax::util::move_map::MoveMap;
-use smallvec::SmallVec;
+use syntax_pos::FileName;
 
 use crate::api::DriverCtxtExt;
-use crate::ast_manip::{Fold, GetNodeId};
 use crate::ast_manip::util::PatternSymbol;
+use crate::ast_manip::{Fold, GetNodeId, remove_paren};
 use crate::command::CommandState;
-use crate::driver;
+use crate::driver::{self, emit_and_panic};
 use crate::reflect;
+use crate::util::Lone;
 use c2rust_ast_builder::IntoSymbol;
 
 mod bindings;
@@ -113,6 +117,67 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         }
     }
 
+
+    pub fn parse_expr(&mut self, src: &str) -> P<Expr> {
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), "<expr>", src);
+        match p.parse_expr() {
+            Ok(expr) => {
+                self.types.merge(bt);
+                remove_paren(expr)
+            }
+            Err(db) => emit_and_panic(db, "expr"),
+        }
+    }
+
+    pub fn parse_pat(&mut self, src: &str) -> P<Pat> {
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), "<pat>", src);
+        match p.parse_pat(None) {
+            Ok(pat) => {
+                self.types.merge(bt);
+                remove_paren(pat)
+            }
+            Err(db) => emit_and_panic(db, "pat"),
+        }
+    }
+
+    pub fn parse_ty(&mut self, src: &str) -> P<Ty> {
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), "<ty>", src);
+        match p.parse_ty() {
+            Ok(ty) => {
+                self.types.merge(bt);
+                remove_paren(ty)
+            }
+            Err(db) => emit_and_panic(db, "ty"),
+        }
+    }
+
+    pub fn parse_stmts(&mut self, src: &str) -> Vec<Stmt> {
+        // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
+        // workaround that may cause suboptimal error messages.
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), "<stmt>", &format!("{{ {} }}", src));
+        match p.parse_block() {
+            Ok(blk) => {
+                self.types.merge(bt);
+                blk.into_inner().stmts.into_iter().map(|s| remove_paren(s).lone()).collect()
+            }
+            Err(db) => emit_and_panic(db, "stmts"),
+        }
+    }
+
+    pub fn parse_items(&mut self, src: &str) -> Vec<P<Item>> {
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), "<item>", src);
+        let mut items = Vec::new();
+        loop {
+            match p.parse_item() {
+                Ok(Some(item)) => items.push(remove_paren(item).lone()),
+                Ok(None) => break,
+                Err(db) => emit_and_panic(db, "items"),
+            }
+        }
+        self.types.merge(bt);
+        items
+    }
+
     /// Try to match `target` against `pat`, updating `self.bindings` with the results.
     pub fn try_match<T: TryMatch>(&mut self, pat: &T, target: &T) -> Result<()> {
         let r = pat.try_match(target, self);
@@ -146,10 +211,6 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         }
 
         self.types.set_type(name, ty)
-    }
-
-    pub fn merge_binding_types(&mut self, other: BindingTypes) {
-        self.types.merge(other)
     }
 
     fn is_opt_binding<P: PatternSymbol>(&self, pattern: &P) -> bool {
@@ -448,6 +509,16 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 }
 
+fn make_bindings_parser<'a>(sess: &'a Session, name: &str, src: &str) -> (Parser<'a>, BindingTypes) {
+    let ts =
+        parse::parse_stream_from_source_str(FileName::Real(PathBuf::from(name)),
+                                            src.to_owned(),
+                                            &sess.parse_sess,
+                                            None);
+    let (ts, bt) = parse_bindings(ts);
+    (parse::stream_to_parser(&sess.parse_sess, ts), bt)
+}
+
 pub trait TryMatch {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> Result<()>;
 }
@@ -456,12 +527,14 @@ pub trait TryMatch {
 
 /// Trait for AST types that can be used as patterns in a search-and-replace (`fold_match`).
 pub trait Pattern: TryMatch+Sized {
-    fn apply_folder<T, F>(self,
-                          init_mcx: MatchCtxt,
-                          callback: F,
-                          target: T) -> <T as Fold>::Result
-        where T: Fold,
-              F: FnMut(Self, MatchCtxt) -> Self;
+    fn apply_folder<'a, 'tcx, T, F>(
+        self,
+        init_mcx: MatchCtxt<'a, 'tcx>,
+        callback: F,
+        target: T,
+    ) -> <T as Fold>::Result
+    where T: Fold,
+          F: FnMut(Self, MatchCtxt<'a, 'tcx>) -> Self;
 }
 
 
@@ -477,14 +550,14 @@ macro_rules! gen_pattern_impl {
     ) => {
         /// Automatically generated `Folder` implementation, for use by `Pattern`.
         pub struct $PatternFolder<'a, 'tcx: 'a, F>
-                where F: FnMut($Pat, MatchCtxt) -> $Pat {
+                where F: FnMut($Pat, MatchCtxt<'a, 'tcx>) -> $Pat {
             pattern: $Pat,
             init_mcx: MatchCtxt<'a, 'tcx>,
             callback: F,
         }
 
         impl<'a, 'tcx, F> Folder for $PatternFolder<'a, 'tcx, F>
-                where F: FnMut($Pat, MatchCtxt) -> $Pat {
+                where F: FnMut($Pat, MatchCtxt<'a, 'tcx>) -> $Pat {
             #[allow(unused_mut)]
             fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
                 let $arg = $walk;
@@ -500,12 +573,15 @@ macro_rules! gen_pattern_impl {
         }
 
         impl Pattern for $Pat {
-            fn apply_folder<T, F>(self,
-                                  init_mcx: MatchCtxt,
-                                  callback: F,
-                                  target: T) -> <T as Fold>::Result
-                where T: Fold,
-                      F: FnMut(Self, MatchCtxt) -> Self {
+            fn apply_folder<'a, 'tcx, T, F>(
+                self,
+                init_mcx: MatchCtxt<'a, 'tcx>,
+                callback: F,
+                target: T,
+            ) -> <T as Fold>::Result
+            where T: Fold,
+                  F: FnMut(Self, MatchCtxt<'a, 'tcx>) -> Self
+            {
                 let mut f = $PatternFolder {
                     pattern: self,
                     init_mcx: init_mcx,
@@ -556,14 +632,14 @@ gen_pattern_impl! {
 
 /// Custom `Folder` for multi-statement `Pattern`s.
 pub struct MultiStmtPatternFolder<'a, 'tcx: 'a, F>
-        where F: FnMut(Vec<Stmt>, MatchCtxt) -> Vec<Stmt> {
+        where F: FnMut(Vec<Stmt>, MatchCtxt<'a, 'tcx>) -> Vec<Stmt> {
     pattern: Vec<Stmt>,
     init_mcx: MatchCtxt<'a, 'tcx>,
     callback: F,
 }
 
 impl<'a, 'tcx, F> Folder for MultiStmtPatternFolder<'a, 'tcx, F>
-        where F: FnMut(Vec<Stmt>, MatchCtxt) -> Vec<Stmt> {
+        where F: FnMut(Vec<Stmt>, MatchCtxt<'a, 'tcx>) -> Vec<Stmt> {
     fn fold_block(&mut self, b: P<Block>) -> P<Block> {
         assert!(self.pattern.len() > 0);
 
@@ -666,12 +742,12 @@ fn is_multi_stmt_glob(mcx: &MatchCtxt, pattern: &Stmt) -> bool {
 }
 
 impl Pattern for Vec<Stmt> {
-    fn apply_folder<T, F>(self,
-                          init_mcx: MatchCtxt,
+    fn apply_folder<'a, 'tcx, T, F>(self,
+                          init_mcx: MatchCtxt<'a, 'tcx>,
                           callback: F,
                           target: T) -> <T as Fold>::Result
         where T: Fold,
-              F: FnMut(Self, MatchCtxt) -> Self {
+              F: FnMut(Self, MatchCtxt<'a, 'tcx>) -> Self {
         let mut f = MultiStmtPatternFolder {
             pattern: self,
             init_mcx: init_mcx,
@@ -695,12 +771,66 @@ pub fn fold_match<P, T, F>(st: &CommandState,
 }
 
 /// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
-pub fn fold_match_with<P, T, F>(init_mcx: MatchCtxt,
-                                pattern: P,
-                                target: T,
-                                callback: F) -> <T as Fold>::Result
-        where P: Pattern,
-              T: Fold,
-              F: FnMut(P, MatchCtxt) -> P {
+pub fn fold_match_with<'a, 'tcx, P, T, F>(
+    init_mcx: MatchCtxt<'a, 'tcx>,
+    pattern: P,
+    target: T,
+    callback: F,
+) -> <T as Fold>::Result
+where P: Pattern,
+      T: Fold,
+      F: FnMut(P, MatchCtxt<'a, 'tcx>) -> P
+{
     pattern.apply_folder(init_mcx, callback, target)
+}
+
+/// Find the first place where `pattern` matches under initial context `init_mcx`, and return the
+/// resulting `Bindings`.
+pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
+                             pattern: P,
+                             target: T) -> Option<Bindings>
+        where P: Pattern, T: Fold {
+    let mut result = None;
+    fold_match_with(init_mcx, pattern, target, |p, mcx| {
+        if result.is_none() {
+            result = Some(mcx.bindings);
+        }
+        p
+    });
+    result
+}
+
+/// Find the first place where `pattern` matches, and return the resulting `Bindings`.
+pub fn find_first<P, T>(st: &CommandState,
+                        cx: &driver::Ctxt,
+                        pattern: P,
+                        target: T) -> Option<Bindings>
+        where P: Pattern, T: Fold {
+    find_first_with(MatchCtxt::new(st, cx), pattern, target)
+}
+
+// TODO: find a better place to put this
+/// Replace all instances of expression `pat` with expression `repl`.
+pub fn replace_expr<T: Fold>(st: &CommandState,
+                             cx: &driver::Ctxt,
+                             ast: T,
+                             pat: &str,
+                             repl: &str) -> <T as Fold>::Result {
+    let mut mcx = MatchCtxt::new(st, cx);
+    let pat = mcx.parse_expr(pat);
+    let repl = mcx.parse_expr(repl);
+    fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
+}
+
+
+/// Replace all instances of the statement sequence `pat` with `repl`.
+pub fn replace_stmts<T: Fold>(st: &CommandState,
+                              cx: &driver::Ctxt,
+                              ast: T,
+                              pat: &str,
+                              repl: &str) -> <T as Fold>::Result {
+    let mut mcx = MatchCtxt::new(st, cx);
+    let pat = mcx.parse_stmts(pat);
+    let repl = mcx.parse_stmts(repl);
+    fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
 }

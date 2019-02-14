@@ -1,10 +1,10 @@
 use syntax::ast::Crate;
 use syntax::symbol::Symbol;
 
-use crate::api::*;
 use crate::command::{CommandState, Registry};
 use crate::contains_mark::contains_mark;
 use crate::driver::{self, Phase};
+use crate::matcher::{MatchCtxt, Subst, fold_match_with};
 use crate::transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
 
@@ -48,10 +48,8 @@ pub struct RewriteExpr {
 impl Transform for RewriteExpr {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
-        let (pat, pat_bt) = parse_var_expr(cx.session(), &self.pat);
-        mcx.merge_binding_types(pat_bt);
-        let (repl, repl_bt) = parse_var_expr(cx.session(), &self.repl);
-        mcx.merge_binding_types(repl_bt);
+        let pat = mcx.parse_expr(&self.pat);
+        let repl = mcx.parse_expr(&self.repl);
         fold_match_with(mcx, pat, krate, |ast, mcx| {
             if let Some(filter) = self.filter {
                 if !contains_mark(&*ast, filter, st) {
@@ -96,10 +94,8 @@ pub struct RewriteTy {
 impl Transform for RewriteTy {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
-        let (pat, pat_bt) = parse_var_ty(cx.session(), &self.pat);
-        mcx.merge_binding_types(pat_bt);
-        let (repl, repl_bt) = parse_var_ty(cx.session(), &self.repl);
-        mcx.merge_binding_types(repl_bt);
+        let pat = mcx.parse_ty(&self.pat);
+        let repl = mcx.parse_ty(&self.repl);
         fold_match_with(mcx, pat, krate, |ast, mcx| {
             if let Some(filter) = self.filter {
                 if !contains_mark(&*ast, filter, st) {
@@ -137,10 +133,8 @@ pub struct RewriteStmts {
 impl Transform for RewriteStmts {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
-        let (pat, pat_bt) = parse_var_stmts(cx.session(), &self.pat);
-        mcx.merge_binding_types(pat_bt);
-        let (repl, repl_bt) = parse_var_stmts(cx.session(), &self.repl);
-        mcx.merge_binding_types(repl_bt);
+        let pat = mcx.parse_stmts(&self.pat);
+        let repl = mcx.parse_stmts(&self.repl);
         fold_match_with(mcx, pat, krate, |_, mcx| {
             repl.clone().subst(st, cx, &mcx.bindings)
         })
@@ -158,11 +152,10 @@ pub struct DebugMatchExpr {
 
 impl Transform for DebugMatchExpr {
     fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        let (pat, pat_bt) = parse_var_expr(cx.session(), &self.pat);
 
         let mut init_mcx = MatchCtxt::new(st, cx);
         init_mcx.debug = true;
-        init_mcx.merge_binding_types(pat_bt);
+        let pat = init_mcx.parse_expr(&self.pat);
         fold_match_with(init_mcx, pat, krate, |ast, _mcx| {
             eprintln!("matched node {:?}", ast);
             ast
