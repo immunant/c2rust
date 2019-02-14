@@ -129,6 +129,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         cc_db.to_string_lossy()
     ));
 
+    // apply the filter argument, if any
     let cmds = match tcfg.filter {
         Some(ref re) => cmds
             .into_iter()
@@ -138,15 +139,11 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     };
 
     let build_dir = get_build_dir(&tcfg, cc_db);
-
     let mut modules = Vec::<PathBuf>::new();
     for mut cmd in cmds {
-        let CompileCmd { directory: d, file: f, ..} = cmd;
-        println!("Transpiling {}", f.to_str().unwrap());
-        let input_file_abs = d.join(f);
         if let Some(m) = transpile_single(
             &tcfg,
-            input_file_abs.as_path(),
+            cmd.abs_file().as_path(),
             cc_db,
             &build_dir,
             extra_clang_args) {
@@ -155,6 +152,10 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     }
 
     if tcfg.emit_build_files {
+        // make sure we only output each module once
+        modules.sort();
+        modules.dedup();
+
         let crate_file = emit_build_files(&tcfg, &build_dir, modules);
         // We only run the reorganization refactoring if we emitted a fresh crate file
         if let Some(output_file) = crate_file {
@@ -220,6 +221,15 @@ struct CompileCmd {
     output: Option<String>,
 }
 
+impl CompileCmd {
+    pub fn abs_file(&self) -> PathBuf {
+        match self.file.is_absolute() {
+            true  => self.file.clone(),
+            false => self.directory.join(&self.file)
+        }
+    }
+}
+
 fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Box<Error>> {
     let f = File::open(compile_commands)?; // open read-only
 
@@ -242,6 +252,9 @@ fn transpile_single(
         println!("Skipping existing file {}", output_path.display());
         return Some(output_path);
     }
+
+    let file = input_path.file_name().unwrap().to_str().unwrap();
+    println!("Transpiling {}", file);
 
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(input_path, cc_db, extra_clang_args) {
