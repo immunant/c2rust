@@ -116,7 +116,12 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
         .iter()
         .map(|m| {
             let relpath = diff_paths(m, build_dir).unwrap();
-            let name = m.file_stem().unwrap().to_str().unwrap();
+            let name = m
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .replace(".", "_");
             Module {
                 path: relpath.to_str().unwrap().to_string(),
                 name: name.to_string(),
