@@ -248,8 +248,8 @@ impl CastType {
                 mk().cast_expr(e, mk().ident_ty("char"))
             },
             CastType::Str => {
-                // CStr::from_ptr(e as *const i8).to_str().unwrap()
-                let e = mk().cast_expr(e, mk().ptr_ty(mk().ident_ty("i8")));
+                // CStr::from_ptr(e as *const libc::c_char).to_str().unwrap()
+                let e = mk().cast_expr(e, mk().ptr_ty(mk().path_ty(vec!["libc", "c_char"])));
                 let cs = mk().call_expr(
                     mk().path_expr(mk().abs_path(vec!["std", "ffi", "CStr", "from_ptr"])),
                     vec![e]);
