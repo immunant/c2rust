@@ -16,7 +16,7 @@ use super::TranspilerConfig;
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
     Nothing,
-    BuildOnly,
+    Minimal,
     Full,
 }
 
@@ -26,7 +26,7 @@ impl FromStr for BuildDirectoryContents {
     fn from_str(s: &str) -> Result<BuildDirectoryContents, ()> {
         match s {
             "nothing" => Ok(BuildDirectoryContents::Nothing),
-            "build-only" => Ok(BuildDirectoryContents::BuildOnly),
+            "minimal" => Ok(BuildDirectoryContents::Minimal),
             "full" => Ok(BuildDirectoryContents::Full),
             _ => Err(())
         }
