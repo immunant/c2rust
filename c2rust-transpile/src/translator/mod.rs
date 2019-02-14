@@ -2112,11 +2112,15 @@ impl<'c> Translation<'c> {
                         .insert("offset_of");
 
                     // Struct Type
-                    let decl_id = self.ast_context
-                        .c_types[&qty.ctype]
-                        .kind
-                        .as_decl_or_typedef()
-                        .expect("Did not find decl_id for offsetof struct");
+                    let decl_id = {
+                        let kind = match self.ast_context.c_types[&qty.ctype].kind {
+                            CTypeKind::Elaborated(ty_id) => &self.ast_context[ty_id].kind,
+                            ref kind => kind,
+                        };
+
+                        kind.as_decl_or_typedef()
+                            .expect("Did not find decl_id for offsetof struct")
+                    };
                     let name = self.type_converter
                         .borrow()
                         .resolve_decl_name(decl_id)
