@@ -1,17 +1,9 @@
 language: generic
-dist: xenial
 sudo: required
 
 # TODO: figure out why submodule checkout fails
 git:
   submodules: false
-
-env:
-  global:
-    - USE_CCACHE=1
-    - CCACHE_COMPRESS=1
-    - CCACHE_CPP2=1
-
 
 matrix:
   fast_finish: true
@@ -19,17 +11,35 @@ matrix:
     - os: osx
       # osx_image: xcode9.3 # request macOS 10.13
       env: >-
-          PATH="/usr/local/opt/ccache/libexec:$PATH"
           # https://docs.travis-ci.com/user/caching/#caches-and-build-matrices
           CACHE_NAME=OSX_DEV_BUILD
-    - os: linux
-      env: CACHE_NAME=LINUX_DEV_BUILD
+          PATH="/usr/local/opt/ccache/libexec:$PATH"
+          USE_CCACHE=1
+          CCACHE_COMPRESS=1
+          CCACHE_CPP2=1
+
     - os: osx
       env: >-
-           CACHE_NAME=OSX_FAST_BUILD
-           LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
+          CACHE_NAME=OSX_FAST_BUILD
+          # https://github.com/immunant/c2rust/blob/master/README.md#building-c2rust
+          LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
+
     - os: linux
-      env: CACHE_NAME=LINUX_FAST_BUILD
+      dist: xenial
+      env: >-
+          CACHE_NAME=LINUX_DEV_BUILD
+          PATH="/usr/lib/ccache:/usr/bin:$PATH"
+          USE_CCACHE=1
+          CCACHE_CPP2=1
+          CCACHE_COMPRESS=1
+      before_script:
+        # Clang is not in `/usr/lib/ccache/`, so it needs to be added
+        - sudo /usr/sbin/update-ccache-symlinks
+
+    - os: linux
+      dist: xenial
+      env: >-
+          CACHE_NAME=LINUX_FAST_BUILD
 
 cache:
   # https://docs.travis-ci.com/user/caching/#Rust-Cargo-cache
@@ -43,7 +53,6 @@ cache:
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/runtime/target
     - $TRAVIS_BUILD_DIR/cross-checks/rust-checks/derive-macros/target
     - $TRAVIS_BUILD_DIR/rust-refactor/target
-
 
 install:
   - /usr/bin/env python3 --version
@@ -65,6 +74,10 @@ script:
         ccache -s
         python3 ./scripts/build_translator.py --debug || travis_terminate 1
         ccache -s
+        # `ccache` needs to be disabled when running tests, because in some instances
+        # the cached result would differ from the actual result thus causing a failure.
+        # This issue would usually occur in the `test_shuffle_vectors` test.
+        export CCACHE_DISABLE=1
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
       LINUX_FAST_BUILD|OSX_FAST_BUILD)
