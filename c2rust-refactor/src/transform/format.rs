@@ -75,7 +75,7 @@ impl Transform for ConvertFormatArgs {
                     old_fmt_str_expr = Some(P(e.clone()));
                 }
             });
-            let mac = build_format_macro("format_args", old_fmt_str_expr, &args[fmt_idx..]);
+            let mac = build_format_macro("format_args", None, old_fmt_str_expr, &args[fmt_idx..]);
             let mut new_args = args[..fmt_idx].to_owned();
             new_args.push(mk().mac_expr(mac));
 
@@ -87,6 +87,7 @@ impl Transform for ConvertFormatArgs {
 
 fn build_format_macro(
     macro_name: &str,
+    ln_macro_name: Option<&str>,
     old_fmt_str_expr: Option<P<Expr>>,
     fmt_args: &[P<Expr>],
 ) -> Mac {
@@ -123,6 +124,13 @@ fn build_format_macro(
     while new_s.ends_with("\0") {
         new_s.pop();
     }
+    let macro_name = if new_s.ends_with("\n") && ln_macro_name.is_some() {
+        // Format string ends with "\n", call println!/eprintln! versions instead
+        new_s.pop();
+        ln_macro_name.unwrap()
+    } else {
+        macro_name
+    };
 
     let new_fmt_str_expr = mk().lit_expr(mk().str_lit(&new_s));
 
@@ -150,7 +158,7 @@ fn build_format_macro(
 /// Marks: none
 ///
 /// Converts each call to `printf(...)` and `fprintf(stderr, ...)` into
-/// equivalent `print!` or `eprint!` calls.
+/// equivalent `print!`, `println!`, `eprint!` or `eprintln!` calls.
 ///
 /// This command checks that the callees are foreign functions imported
 /// using `extern "C"` and marked `#[no_mangle]`, to make sure the caller
@@ -200,11 +208,11 @@ impl Transform for ConvertPrintfs {
                         match (cx.try_resolve_expr(f), cx.try_resolve_expr(&*args[0])) {
                             (Some(ref f_id), Some(ref arg0_id)) if fprintf_defs.contains(f_id) &&
                                 stderr_defs.contains(arg0_id) => {
-                                let mac = build_format_macro("eprint", None, &args[1..]);
+                                let mac = build_format_macro("eprint", Some("eprintln"), None, &args[1..]);
                                 return smallvec![mk().mac_stmt(mac)];
                             }
                             (Some(ref f_id), _) if printf_defs.contains(f_id) => {
-                                let mac = build_format_macro("print", None, &args[..]);
+                                let mac = build_format_macro("print", Some("println"), None, &args[..]);
                                 return smallvec![mk().mac_stmt(mac)];
                             },
                             _ => {}
