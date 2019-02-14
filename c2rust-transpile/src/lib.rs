@@ -139,17 +139,16 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     };
 
     let build_dir = get_build_dir(&tcfg, cc_db);
-    let mut modules = Vec::<PathBuf>::new();
-    for mut cmd in cmds {
-        if let Some(m) = transpile_single(
-            &tcfg,
-            cmd.abs_file().as_path(),
-            cc_db,
-            &build_dir,
-            extra_clang_args) {
-            modules.push(m);
-        };
-    }
+    let mut modules = cmds
+        .iter()
+        .filter_map(|cmd|
+            transpile_single(
+                &tcfg,
+                cmd.abs_file().as_path(),
+                cc_db,
+                &build_dir,
+                extra_clang_args))
+        .collect::<Vec<PathBuf>>();
 
     if tcfg.emit_build_files {
         // make sure we only output each module once
