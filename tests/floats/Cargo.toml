@@ -3,3 +3,5 @@ name = "float-tests"
 version = "0.1.0"
 
 [dependencies]
+f128 = { git = "https://github.com/jkarns275/f128", rev = "a2e9377e14aaea4260bc70642a8ba7302a24afa4" }
+num-traits = "0.2.6"

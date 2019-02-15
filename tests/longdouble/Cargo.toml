@@ -1,7 +1,0 @@
-[package]
-name = "long-double-tests"
-version = "0.1.0"
-
-[dependencies]
-f128 = { git = "https://github.com/jkarns275/f128", rev = "da362b10704a0ab1f05b8aef34156aaf38779116" }
-num-traits = "0.2.6"
