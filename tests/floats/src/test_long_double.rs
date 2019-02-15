@@ -7,7 +7,6 @@ extern crate num_traits;
 use long_double::{rust_long_double_ops, rust_cast2double, rust_cast2float, rust_cast2uint};
 use self::float128::f128;
 use self::libc::{c_double, c_float, c_uint};
-use std::mem::transmute;
 
 pub fn test_long_double_ops() {
     let input_result = f128::parse("-4.40000000000000013322676295501878485").unwrap();
