@@ -737,7 +737,7 @@ impl<'c> Translation<'c> {
         } else {
             c_ast::BinOp::AssignSubtract
         };
-        let one = match self.ast_context[ty.ctype].kind {
+        let one = match self.ast_context.resolve_type(ty.ctype).kind {
             // TODO: If rust gets f16 support:
             // CTypeKind::Half |
             CTypeKind::Float |
