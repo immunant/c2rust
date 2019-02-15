@@ -1474,10 +1474,10 @@ fn can_coerce<'a, 'tcx>(
 }
 
 /// # `remove_redundant_casts` Command
-/// 
+///
 /// Usage: `remove_redundant_casts`
-/// 
-/// Removes all casts of the form `$e as $t` where the expression already has the `$t` type. 
+///
+/// Removes all casts of the form `$e as $t` where the expression already has the `$t` type.
 pub struct RemoveRedundantCasts;
 
 impl Transform for RemoveRedundantCasts {
