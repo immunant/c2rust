@@ -808,6 +808,10 @@ impl<'c> Translation<'c> {
                         return true
                     }
                 },
+                CExprKind::ImplicitCast(_, _, CastKind::IntegralToPointer, _, _) |
+                CExprKind::ExplicitCast(_, _, CastKind::IntegralToPointer, _, _) => {
+                    return true;
+                },
                 _ => {},
             }
         }
@@ -2480,6 +2484,10 @@ impl<'c> Translation<'c> {
         // A reference must be decayed if a bitcast is required
         if kind == CastKind::BitCast || kind == CastKind::PointerToIntegral {
             ctx.decay_ref = DecayRef::Yes;
+        }
+
+        if kind == CastKind::IntegralToPointer && ctx.is_static {
+            self.features.borrow_mut().insert("const_transmute");
         }
 
         let val = if is_explicit {
