@@ -533,11 +533,14 @@ def readable_directory(directory: str) -> str:
 
 def get_testdirectories(
         directory: str, files: str,
-        keep: List[str]) -> Generator[TestDirectory, None, None]:
+        keep: List[str], test_longdoubles: bool) -> Generator[TestDirectory, None, None]:
     for entry in os.listdir(directory):
         path = os.path.abspath(os.path.join(directory, entry))
 
         if os.path.isdir(path):
+            if path.endswith("longdouble") and not test_longdoubles:
+                continue
+
             yield TestDirectory(path, files, keep)
 
 
@@ -563,12 +566,17 @@ def main() -> None:
         choices=intermediate_files + ['all'], default=[],
         help="Which intermediate files to not clear"
     )
+    parser.add_argument(
+        '--test-longdoubles', dest='test_longdoubles',
+        default=False, action="store_true",
+        help="Enables testing of long double translation which requires gcc headers",
+    )
     c.add_args(parser)
 
     args = parser.parse_args()
     c.update_args(args)
     test_directories = get_testdirectories(args.directory, args.regex_files,
-                                           args.keep)
+                                           args.keep, args.test_longdoubles)
     setup_logging(args.logLevel)
 
     logging.debug("args: %s", " ".join(sys.argv))
