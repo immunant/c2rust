@@ -397,12 +397,14 @@ class Xzoom(Test):
 
 def _is_excluded(name):
     """
-    The examples that use x11 need to be excluded on macOS.
+    The examples that use x11 and the `f128` crate need to be excluded on macOS.
     This function can be extended to exclude examples
     on the linux platform as well.
     """
     mac_exclusion_set = {
         "grabc",
+        "libxml2",
+        "tinycc",
         "xzoom",
     }
 
