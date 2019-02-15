@@ -1473,6 +1473,39 @@ fn can_coerce<'a, 'tcx>(
     }
 }
 
+/// # `remove_redundant_casts` Command
+/// 
+/// Usage: `remove_redundant_casts`
+/// 
+/// Removes all casts of the form `$e as $t` where the expression already has the `$t` type. 
+pub struct RemoveRedundantCasts;
+
+impl Transform for RemoveRedundantCasts {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let tcx = cx.ty_ctxt();
+        let mut mcx = MatchCtxt::new(st, cx);
+        let pat = mcx.parse_expr("$e:Expr as $t:Ty");
+        fold_match_with(mcx, pat, krate, |ast, mcx| {
+            let e = mcx.bindings.expr("$e");
+            let e_ty = cx.adjusted_node_type(e.id);
+            let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
+
+            let t = mcx.bindings.ty("$t");
+            let t_ty = cx.adjusted_node_type(t.id);
+            let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
+            if e_ty == t_ty {
+                e.clone()
+            } else {
+                ast
+            }
+        })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -1504,4 +1537,6 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("type_fix_rules", |args| Box::new(TypeFixRules { rules: args.to_owned() }));
 
     reg.register("autoretype", |args| Box::new(AutoRetype::new(args)));
+
+    reg.register("remove_redundant_casts", |_| mk(RemoveRedundantCasts));
 }
