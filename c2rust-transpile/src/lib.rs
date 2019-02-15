@@ -87,7 +87,6 @@ pub struct TranspilerConfig {
     pub overwrite_existing: bool,
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
-    pub run_refactor_tool: bool,
     pub enabled_warnings: HashSet<Diagnostic>,
     pub emit_no_std: bool,
 
@@ -158,7 +157,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         let crate_file = emit_build_files(&tcfg, &build_dir, modules);
         // We only run the reorganization refactoring if we emitted a fresh crate file
         if let Some(output_file) = crate_file {
-            if tcfg.reorganize_definitions && tcfg.run_refactor_tool {
+            if tcfg.reorganize_definitions {
                 reorganize_definitions(&build_dir, &output_file);
             }
         }
