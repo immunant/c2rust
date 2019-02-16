@@ -8,6 +8,7 @@ use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::TokenTree;
+use syntax_pos::Span;
 
 use crate::api::*;
 use crate::command::{CommandState, Registry};
@@ -75,7 +76,7 @@ impl Transform for ConvertFormatArgs {
                     old_fmt_str_expr = Some(P(e.clone()));
                 }
             });
-            let mac = build_format_macro("format_args", None, old_fmt_str_expr, &args[fmt_idx..]);
+            let mac = build_format_macro("format_args", None, old_fmt_str_expr, &args[fmt_idx..], None);
             let mut new_args = args[..fmt_idx].to_owned();
             new_args.push(mk().mac_expr(mac));
 
@@ -90,6 +91,7 @@ fn build_format_macro(
     ln_macro_name: Option<&str>,
     old_fmt_str_expr: Option<P<Expr>>,
     fmt_args: &[P<Expr>],
+    span: Option<Span>,
 ) -> Mac {
     let old_fmt_str_expr = old_fmt_str_expr.unwrap_or_else(|| fmt_args[0].clone());
 
@@ -132,7 +134,7 @@ fn build_format_macro(
         macro_name
     };
 
-    let new_fmt_str_expr = mk().lit_expr(mk().str_lit(&new_s));
+    let new_fmt_str_expr = mk().span(old_fmt_str_expr.span).lit_expr(mk().str_lit(&new_s));
 
     info!("old fmt str expr: {:?}", old_fmt_str_expr);
     info!("new fmt str expr: {:?}", new_fmt_str_expr);
@@ -148,7 +150,12 @@ fn build_format_macro(
             macro_tts.push(tt);
         }
     }
-    mk().mac(vec![macro_name], macro_tts, MacDelimiter::Parenthesis)
+    let b = if let Some(span) = span {
+        mk().span(span)
+    } else {
+        mk()
+    };
+    b.mac(vec![macro_name], macro_tts, MacDelimiter::Parenthesis)
 }
 
 /// # `convert_printfs` Command
@@ -208,12 +215,12 @@ impl Transform for ConvertPrintfs {
                         match (cx.try_resolve_expr(f), cx.try_resolve_expr(&*args[0])) {
                             (Some(ref f_id), Some(ref arg0_id)) if fprintf_defs.contains(f_id) &&
                                 stderr_defs.contains(arg0_id) => {
-                                let mac = build_format_macro("eprint", Some("eprintln"), None, &args[1..]);
-                                return smallvec![mk().mac_stmt(mac)];
+                                let mac = build_format_macro("eprint", Some("eprintln"), None, &args[1..], Some(expr.span));
+                                return smallvec![mk().span(s.span).mac_stmt(mac)];
                             }
                             (Some(ref f_id), _) if printf_defs.contains(f_id) => {
-                                let mac = build_format_macro("print", Some("println"), None, &args[..]);
-                                return smallvec![mk().mac_stmt(mac)];
+                                let mac = build_format_macro("print", Some("println"), None, &args[..], Some(expr.span));
+                                return smallvec![mk().span(s.span).mac_stmt(mac)];
                             },
                             _ => {}
                         };
@@ -238,14 +245,18 @@ enum CastType {
 
 impl CastType {
     fn apply(&self, e: P<Expr>) -> P<Expr> {
+        // Since these get passed to the new print! macros, they need to have spans,
+        // and the spans need to match the original expressions
+        // FIXME: should all the inner nodes have spans too???
+        let span = e.span;
         match *self {
-            CastType::Int => mk().cast_expr(e, mk().ident_ty("i32")),
-            CastType::Uint => mk().cast_expr(e, mk().ident_ty("u32")),
-            CastType::Usize => mk().cast_expr(e, mk().ident_ty("usize")),
+            CastType::Int => mk().span(span).cast_expr(e, mk().ident_ty("i32")),
+            CastType::Uint => mk().span(span).cast_expr(e, mk().ident_ty("u32")),
+            CastType::Usize => mk().span(span).cast_expr(e, mk().ident_ty("usize")),
             CastType::Char => {
                 // e as u8 as char
                 let e = mk().cast_expr(e, mk().ident_ty("u8"));
-                mk().cast_expr(e, mk().ident_ty("char"))
+                mk().span(span).cast_expr(e, mk().ident_ty("char"))
             },
             CastType::Str => {
                 // CStr::from_ptr(e as *const libc::c_char).to_str().unwrap()
@@ -256,7 +267,7 @@ impl CastType {
                 let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
                 let call = mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new());
                 let b = mk().unsafe_().block(vec![mk().expr_stmt(call)]);
-                mk().block_expr(b)
+                mk().span(span).block_expr(b)
             },
         }
     }
