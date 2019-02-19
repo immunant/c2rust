@@ -14,6 +14,9 @@ void use_arrays(const int n, const int m, int a[const][n*n][m]) {
                 }
         }
 
+        // Test that we can get the address of the element past the end of the
+        // array
+        int *past_end = &a[2][n*n][m];
 }
 
 /* Same thing as use_arrays, but using addition and deref */
@@ -55,6 +58,11 @@ void variable_arrays(int buf[const]) {
                 var1[i] = 3*i;
                 buf[counter++] = var1[i];
         }
+
+        // Test that we can get the address of the element past the end of the
+        // array
+        int *past_end = &grid[4][4][5];
+        past_end = &var1[n];
 }
 
 /* Same as variable_arrays but using an alloca */
@@ -82,4 +90,9 @@ void alloca_arrays(int buf[const]) {
                 var1[i] = 3*i;
                 buf[counter++] = var1[i];
         }
+
+        // Test that we can get the address of the element past the end of the
+        // array
+        int *past_end = &grid[4][4][5];
+        past_end = &var1[n];
 }

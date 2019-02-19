@@ -92,6 +92,7 @@ pub struct ExprContext {
     decay_ref: DecayRef,
     va_decl: Option<CDeclId>,
     is_bitfield_write: bool,
+    needs_address: bool,
 }
 
 impl ExprContext {
@@ -107,6 +108,10 @@ impl ExprContext {
     pub fn is_bitfield_write(&self) -> bool { self.is_bitfield_write }
     pub fn set_bitfield_write(self, is_bitfield_write: bool) -> Self {
         ExprContext { is_bitfield_write, .. self }
+    }
+    pub fn needs_address(&self) -> bool { self.needs_address }
+    pub fn set_needs_address(self, needs_address: bool) -> Self {
+        ExprContext { needs_address, .. self }
     }
 }
 
@@ -322,6 +327,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
         decay_ref: DecayRef::Default,
         va_decl: None,
         is_bitfield_write: false,
+        needs_address: false,
     };
 
     if t.tcfg.reorganize_definitions {
@@ -2239,18 +2245,23 @@ impl<'c> Translation<'c> {
                 let mut rhs = self.convert_expr(ctx.used(), *rhs)?;
                 stmts.extend(rhs.stmts);
 
-                let simple_index_array =
-                match lhs_node {
-                    &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _, _) => {
-                        let arr_type = self.ast_context[arr].kind.get_type().ok_or_else(|| format!("bad arr type"))?;
-                        match self.ast_context.resolve_type(arr_type).kind {
-                            // These get translated to 0-element arrays, this avoids the bounds check
-                            // that using an array subscript in Rust would cause
-                            CTypeKind::IncompleteArray(_) => None,
-                            _ => Some(arr),
+                let simple_index_array = if ctx.needs_address() {
+                    // We can't necessarily index into an array if we're using
+                    // that element to compute an address.
+                    None
+                } else {
+                    match lhs_node {
+                        &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _, _) => {
+                            let arr_type = self.ast_context[arr].kind.get_type().ok_or_else(|| format!("bad arr type"))?;
+                            match self.ast_context.resolve_type(arr_type).kind {
+                                // These get translated to 0-element arrays, this avoids the bounds check
+                                // that using an array subscript in Rust would cause
+                                CTypeKind::IncompleteArray(_) => None,
+                                _ => Some(arr),
+                            }
                         }
+                        _ => None,
                     }
-                    _ => None,
                 };
 
                 let val = if let Some(arr) = simple_index_array {

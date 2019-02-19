@@ -889,7 +889,7 @@ impl<'c> Translation<'c> {
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
-                let arg = self.convert_expr(ctx.used(), arg)?;
+                let arg = self.convert_expr(ctx.used().set_needs_address(true), arg)?;
 
                 if self.ast_context.is_function_pointer(ctype) {
                     Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))

@@ -81,4 +81,8 @@ void entry(const unsigned buffer_size, int buffer[const])
     buffer[i++] = foo[5];
     buffer[i++] = foo[6];
     buffer[i++] = foo[7];
+
+    // Test that we can get the address of the element past the end of the array
+    char *past_end = &simple[sizeof(simple)];
+    past_end = &foo[8];
 }
