@@ -106,6 +106,11 @@ Directory `/usr/include` was not found! Please install the following package:
 /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
  (or the equivalent version on your host.)";
 
+const DUPLICATE_CMDS_EMSG: &str = "
+Error, expected one compiler invocation per input source file. The compile
+commands database (compile_commands.json) contains multiple invocations
+for the following input source file(s)";
+
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
@@ -137,8 +142,28 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         None => cmds,
     };
 
+    // some build scripts repeatedly compile the same input file with different
+    // command line flags thus creating multiple outputs. We don't handle such
+    // cases since we don't know what compiler flags to use for the generated
+    // Rust code or how to link the result.
+    let mut sorted = cmds
+        .iter()
+        .map(|cmd| cmd.abs_file())
+        .collect::<Vec<PathBuf>>();
+    sorted.sort();
+    let mut duplicates = sorted
+        .windows(2)
+        .filter(|w| w[0] == w[1])
+        .map(|w| w[0].to_str().unwrap())
+        .collect::<Vec<&str>>();
+    duplicates.dedup(); // report each duplicate once
+    if duplicates.len() > 0 {
+        eprintln!("{}:\n{}", DUPLICATE_CMDS_EMSG, duplicates.join(",\n"));
+        return;
+    }
+
     let build_dir = get_build_dir(&tcfg, cc_db);
-    let mut modules = cmds
+    let modules = cmds
         .iter()
         .filter_map(|cmd|
             transpile_single(
@@ -150,9 +175,6 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         .collect::<Vec<PathBuf>>();
 
     if tcfg.emit_build_files {
-        // make sure we only output each module once
-        modules.sort();
-        modules.dedup();
 
         let crate_file = emit_build_files(&tcfg, &build_dir, modules);
         // We only run the reorganization refactoring if we emitted a fresh crate file
