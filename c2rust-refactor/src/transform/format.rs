@@ -236,8 +236,8 @@ impl Transform for ConvertPrintfs {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum CastType {
-    Int,
-    Uint,
+    Int(Length),
+    Uint(Length),
     Usize,
     Char,
     Str,
@@ -250,8 +250,8 @@ impl CastType {
         // FIXME: should all the inner nodes have spans too???
         let span = e.span;
         match *self {
-            CastType::Int => mk().span(span).cast_expr(e, mk().ident_ty("i32")),
-            CastType::Uint => mk().span(span).cast_expr(e, mk().ident_ty("u32")),
+            CastType::Int(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
+            CastType::Uint(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
             CastType::Usize => mk().span(span).cast_expr(e, mk().ident_ty("usize")),
             CastType::Char => {
                 // e as u8 as char
@@ -271,14 +271,50 @@ impl CastType {
             },
         }
     }
+
+    fn as_rust_ty(&self) -> Vec<&str> {
+        match *self {
+            CastType::Int(Length::None) => vec!["libc", "c_int"],
+            CastType::Uint(Length::None) => vec!["libc", "c_uint"],
+            CastType::Int(Length::Char) => vec!["libc", "c_schar"],
+            CastType::Uint(Length::Char) => vec!["libc", "c_uchar"],
+            CastType::Int(Length::Short) => vec!["libc", "c_short"],
+            CastType::Uint(Length::Short) => vec!["libc", "c_ushort"],
+            CastType::Int(Length::Long) => vec!["libc", "c_long"],
+            CastType::Uint(Length::Long) => vec!["libc", "c_ulong"],
+            CastType::Int(Length::LongLong) => vec!["libc", "c_longlong"],
+            CastType::Uint(Length::LongLong) => vec!["libc", "c_ulonglong"],
+            // FIXME: should we use the types emitted by the transpiler instead?
+            CastType::Int(Length::IntMax) => vec!["libc", "intmax_t"],
+            CastType::Uint(Length::IntMax) => vec!["libc", "uintmax_t"],
+            CastType::Int(Length::Size) => vec!["libc", "ssize_t"],
+            CastType::Uint(Length::Size) => vec!["libc", "size_t"],
+            CastType::Int(Length::PtrDiff) => vec!["libc", "ptrdiff_t"],
+            _ => panic!("invalid length modifier type: {:?}", self)
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Length {
+    None,
+    Char,
+    Short,
+    Long,
+    LongLong,
+    IntMax,
+    Size,
+    PtrDiff,
+    //TODO
+    //LongDouble,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ConvType {
-    Int,
-    Uint,
+    Int(Length),
+    Uint(Length),
     /// Hexadecimal uint, maybe capitalized.
-    Hex(bool),
+    Hex(Length, bool),
     Char,
     Str,
 }
@@ -299,7 +335,7 @@ struct Conv {
 impl Conv {
     fn new() -> Conv {
         Conv {
-            ty: ConvType::Int,
+            ty: ConvType::Int(Length::None),
             width: None,
             prec: None,
         }
@@ -316,9 +352,9 @@ impl Conv {
         }
 
         let cast = match self.ty {
-            ConvType::Int => CastType::Int,
-            ConvType::Uint |
-            ConvType::Hex(_) => CastType::Uint,
+            ConvType::Int(len) => CastType::Int(len),
+            ConvType::Uint(len) |
+            ConvType::Hex(len, _) => CastType::Uint(len),
             ConvType::Char => CastType::Char,
             ConvType::Str => CastType::Str,
         };
@@ -346,8 +382,8 @@ impl Conv {
         }
 
         match self.ty {
-            ConvType::Hex(false) => buf.push('x'),
-            ConvType::Hex(true) => buf.push('X'),
+            ConvType::Hex(_, false) => buf.push('x'),
+            ConvType::Hex(_, true) => buf.push('X'),
             _ => {},
         }
 
@@ -441,15 +477,54 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
         Amount::Number(usize::from_str(&self.s[start..end]).unwrap())
     }
 
+    fn parse_length(&mut self) -> Length {
+        match self.peek() {
+            b'h' => {
+                self.skip();
+                if self.peek() == b'h' {
+                    // %hhd
+                    self.skip();
+                    Length::Char
+                } else {
+                    Length::Short
+                }
+            }
+            b'l' => {
+                self.skip();
+                if self.peek() == b'l' {
+                    // %lld
+                    self.skip();
+                    Length::LongLong
+                } else {
+                    Length::Long
+                }
+            }
+            b'j' => {
+                self.skip();
+                Length::IntMax
+            }
+            b'z' => {
+                self.skip();
+                Length::Size
+            }
+            b't' => {
+                self.skip();
+                Length::PtrDiff
+            }
+            _ => Length::None
+        }
+    }
+
     fn parse_conv_type(&mut self) -> ConvType {
+        let il = self.parse_length();
         let c = self.peek() as char;
         self.skip();
 
         match c {
-            'd' => ConvType::Int,
-            'u' => ConvType::Uint,
-            'x' => ConvType::Hex(false),
-            'X' => ConvType::Hex(true),
+            'd' => ConvType::Int(il),
+            'u' => ConvType::Uint(il),
+            'x' => ConvType::Hex(il, false),
+            'X' => ConvType::Hex(il, true),
             'c' => ConvType::Char,
             's' => ConvType::Str,
             _ => panic!("unrecognized conversion spec `{}`", c),
