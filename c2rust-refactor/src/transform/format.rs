@@ -116,7 +116,27 @@ fn build_format_macro(
 
     let mut idx = 0;
     Parser::new(&s, |piece| match piece {
-        Piece::Text(s) => new_s.push_str(s),
+        Piece::Text(s) => {
+            // Find all occurrences of brace characters in `s`
+            let mut brace_indices = s.match_indices('{')
+                .chain(s.match_indices('}'))
+                .collect::<Vec<_>>();
+            brace_indices.sort();
+
+            // Replace all "{" with "{{" and "}" with "}}"
+            let mut last = 0;
+            for (idx, brace) in brace_indices.into_iter() {
+                new_s.push_str(&s[last..idx]);
+                if brace == "{" {
+                    new_s.push_str("{{");
+                } else {
+                    assert_eq!(brace, "}");
+                    new_s.push_str("}}");
+                }
+                last = idx + 1;
+            }
+            new_s.push_str(&s[last..]);
+        },
         Piece::Conv(c) => {
             c.push_spec(&mut new_s);
             c.add_casts(&mut idx, &mut casts);
