@@ -16,4 +16,5 @@ exclude = [
     "cross-checks/rust-checks",
     "examples",
     "analysis/test",
+    "tests",
 ]

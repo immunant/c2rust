@@ -47,6 +47,8 @@ To completely skip the translation of a C file, you must add the comment `//! sk
 
 You can also mark a Rust file as unexpected to compile, by adding `//! xfail` to the top of the file, or just expect an individual test function to fail to run by adding `// xfail` prior to the function definition.
 
+Adding `//! extern_crate_X` to the top of a test file will ensure `extern crate X;` gets added to the main binary driver. Be sure to also add the `X` crate to the test directory's `Cargo.toml`.
+
 ## Running the tests
 
 _From the project root_, run `./scripts/test_translator.py tests` to run all of the tests in the
@@ -65,14 +67,14 @@ $ ./scripts/test_translator.py --help
 
 ## What happens under the hood
 
-This `test` directory contains regression, feature, and unit tests. A test directory goes through the following set of steps:
+This `tests` directory contains regression, feature, and unit tests. A test directory goes through the following set of steps:
 
   1. A `compile_commands.json` file is created for the Clang plugin in `c2rust-ast-exporter` to recognize its C source input
 
-  2. This JSON and the C source file are fed to the `c2rust-ast-exporter` to produce a CBOR file of the Clang type-annotated abstract syntax tree.
+  2. This JSON and the C source file are fed to the `c2rust-ast-exporter` to produce CBOR data of the Clang type-annotated abstract syntax tree.
 
-  3. This CBOR file is fed to the `ast-importer` to produce a Rust source file supposedly preserving the semantics of the initial C source file.
+  3. This CBOR data is fed to the `c2rust-transpile` to produce a Rust source file supposedly preserving the semantics of the initial C source file.
 
-  4. Rust test files (test_xyz.rs) are compiled into a single main wrapper and main test binary and are automatically linked against other Rust and C files thanks to `rustc`.
+  4. Rust test files (test_xyz.rs) are compiled into a single main wrapper and main test binary and are automatically linked against other Rust and C files thanks to `cargo`.
 
   5. The executable from the previous step is run one or more times parameterized to a specific test function.

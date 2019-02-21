@@ -33,9 +33,10 @@ pub fn replace_expr<T: Fold>(st: &CommandState,
                              ast: T,
                              pat: &str,
                              repl: &str) -> <T as Fold>::Result {
-    let pat = parse_expr(cx.session(), pat);
-    let repl = parse_expr(cx.session(), repl);
-    fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
+    let mut mcx = MatchCtxt::new(st, cx);
+    let pat = mcx.parse_expr(pat);
+    let repl = mcx.parse_expr(repl);
+    fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
 }
 
 /// Replace all instances of the statement sequence `pat` with `repl`.
@@ -44,9 +45,10 @@ pub fn replace_stmts<T: Fold>(st: &CommandState,
                               ast: T,
                               pat: &str,
                               repl: &str) -> <T as Fold>::Result {
-    let pat = parse_stmts(cx.session(), pat);
-    let repl = parse_stmts(cx.session(), repl);
-    fold_match(st, cx, pat, ast, |_, bnd| repl.clone().subst(st, cx, &bnd))
+    let mut mcx = MatchCtxt::new(st, cx);
+    let pat = mcx.parse_stmts(pat);
+    let repl = mcx.parse_stmts(repl);
+    fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
 }
 
 
@@ -57,9 +59,9 @@ pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
                              target: T) -> Option<Bindings>
         where P: Pattern, T: Fold {
     let mut result = None;
-    fold_match_with(init_mcx, pattern, target, |p, bnd| {
+    fold_match_with(init_mcx, pattern, target, |p, mcx| {
         if result.is_none() {
-            result = Some(bnd);
+            result = Some(mcx.bindings);
         }
         p
     });

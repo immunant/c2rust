@@ -7,5 +7,5 @@ fi
 
 $refactor \
     select target 'crate; desc(match_expr(1));' \; \
-    rewrite_expr 'marked!(__e) + __f' '__f + __e' \
+    rewrite_expr 'marked!($e:Expr) + $f:Expr' '$f + $e' \
     -- old.rs $rustflags

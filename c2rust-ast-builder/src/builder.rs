@@ -842,7 +842,7 @@ impl Builder {
         let guard = guard.map(|g| Guard::If(g.make(&self)));
         let body = body.make(&self);
         Arm {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             pats: pats,
             guard,
             body,

@@ -16,7 +16,7 @@ use super::TranspilerConfig;
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
     Nothing,
-    BuildOnly,
+    Minimal,
     Full,
 }
 
@@ -26,7 +26,7 @@ impl FromStr for BuildDirectoryContents {
     fn from_str(s: &str) -> Result<BuildDirectoryContents, ()> {
         match s {
             "nothing" => Ok(BuildDirectoryContents::Nothing),
-            "build-only" => Ok(BuildDirectoryContents::BuildOnly),
+            "minimal" => Ok(BuildDirectoryContents::Minimal),
             "full" => Ok(BuildDirectoryContents::Full),
             _ => Err(())
         }
@@ -116,7 +116,12 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
         .iter()
         .map(|m| {
             let relpath = diff_paths(m, build_dir).unwrap();
-            let name = m.file_stem().unwrap().to_str().unwrap();
+            let name = m
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .replace(".", "_");
             Module {
                 path: relpath.to_str().unwrap().to_string(),
                 name: name.to_string(),

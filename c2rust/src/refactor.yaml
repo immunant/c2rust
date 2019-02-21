@@ -65,7 +65,13 @@ args:
       help: Refactoring transformations
       takes_value: true
       multiple: true
-      required: true
+      required_unless: transforms-file
+  - transforms-file:
+      short: f
+      long: transforms-file
+      help: File to read refactoring transformations from
+      takes_value: true
+      value_name: "FILE"
   - rustc-args:
       help: Arguments to pass to rustc
       takes_value: true

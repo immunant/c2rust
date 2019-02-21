@@ -6,7 +6,6 @@
 *.log
 # ignore rust build dirs everywhere
 **/target/
-**/dependencies/
 **/tests/
 /build
 *.pyc
@@ -15,6 +14,9 @@
 **/Cargo.lock
 !/Cargo.lock
 .python-version
+# ignore Clion build dirs
+/cmake-build-debug
+/cmake-build-release
 
 # xcode-project
 c2rust-ast-exporter/xcode/

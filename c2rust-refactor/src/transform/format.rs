@@ -1,11 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str;
 use std::str::FromStr;
+use rustc::hir::def_id::DefId;
 use syntax::ast::*;
+use syntax::attr;
 use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::TokenTree;
+use syntax_pos::Span;
 
 use crate::api::*;
 use crate::command::{CommandState, Registry};
@@ -73,50 +76,7 @@ impl Transform for ConvertFormatArgs {
                     old_fmt_str_expr = Some(P(e.clone()));
                 }
             });
-            let old_fmt_str_expr = old_fmt_str_expr.unwrap_or_else(|| args[fmt_idx].clone());
-
-            info!("  found fmt str {:?}", old_fmt_str_expr);
-
-            let lit = expect!([old_fmt_str_expr.node] ExprKind::Lit(ref l) => l);
-            let s = expect!([lit.node]
-                LitKind::Str(s, _) => (&s.as_str() as &str).to_owned(),
-                LitKind::ByteStr(ref b) => str::from_utf8(b).unwrap().to_owned());
-
-            let mut new_s = String::with_capacity(s.len());
-            let mut casts = HashMap::new();
-
-            let mut idx = 0;
-            Parser::new(&s, |piece| match piece {
-                Piece::Text(s) => new_s.push_str(s),
-                Piece::Conv(c) => {
-                    c.push_spec(&mut new_s);
-                    c.add_casts(&mut idx, &mut casts);
-                },
-            }).parse();
-
-            while new_s.ends_with("\0") {
-                new_s.pop();
-            }
-
-
-            let new_fmt_str_expr = mk().lit_expr(mk().str_lit(&new_s));
-
-            info!("old fmt str expr: {:?}", old_fmt_str_expr);
-            info!("new fmt str expr: {:?}", new_fmt_str_expr);
-
-            let mut macro_tts: Vec<TokenTree> = Vec::new();
-            let expr_tt = |e: P<Expr>| TokenTree::Token(e.span, Token::interpolated(
-                    Nonterminal::NtExpr(e)));
-            macro_tts.push(expr_tt(new_fmt_str_expr));
-            for (i, arg) in args[fmt_idx + 1 ..].iter().enumerate() {
-                if let Some(cast) = casts.get(&i) {
-                    let tt = expr_tt(cast.apply(arg.clone()));
-                    macro_tts.push(TokenTree::Token(DUMMY_SP, Token::Comma));
-                    macro_tts.push(tt);
-                }
-            }
-            let mac = mk().mac(vec!["format_args"], macro_tts, MacDelimiter::Parenthesis);
-
+            let mac = build_format_macro("format_args", None, old_fmt_str_expr, &args[fmt_idx..], None);
             let mut new_args = args[..fmt_idx].to_owned();
             new_args.push(mk().mac_expr(mac));
 
@@ -126,10 +86,158 @@ impl Transform for ConvertFormatArgs {
 }
 
 
+fn build_format_macro(
+    macro_name: &str,
+    ln_macro_name: Option<&str>,
+    old_fmt_str_expr: Option<P<Expr>>,
+    fmt_args: &[P<Expr>],
+    span: Option<Span>,
+) -> Mac {
+    let old_fmt_str_expr = old_fmt_str_expr.unwrap_or_else(|| fmt_args[0].clone());
+
+    info!("  found fmt str {:?}", old_fmt_str_expr);
+
+    let mut ep = &old_fmt_str_expr;
+    let lit = loop {
+        // Peel off any casts and retrieve the inner string
+        match ep.node {
+            ExprKind::Lit(ref l) => break l,
+            ExprKind::Cast(ref e, _) |
+            ExprKind::Type(ref e, _) => ep = &*e,
+            _ => panic!("unexpected format string: {:?}", old_fmt_str_expr)
+        }
+    };
+    let s = expect!([lit.node]
+        LitKind::Str(s, _) => (&s.as_str() as &str).to_owned(),
+        LitKind::ByteStr(ref b) => str::from_utf8(b).unwrap().to_owned());
+
+    let mut new_s = String::with_capacity(s.len());
+    let mut casts = HashMap::new();
+
+    let mut idx = 0;
+    Parser::new(&s, |piece| match piece {
+        Piece::Text(s) => new_s.push_str(s),
+        Piece::Conv(c) => {
+            c.push_spec(&mut new_s);
+            c.add_casts(&mut idx, &mut casts);
+        },
+    }).parse();
+
+    while new_s.ends_with("\0") {
+        new_s.pop();
+    }
+    let macro_name = if new_s.ends_with("\n") && ln_macro_name.is_some() {
+        // Format string ends with "\n", call println!/eprintln! versions instead
+        new_s.pop();
+        ln_macro_name.unwrap()
+    } else {
+        macro_name
+    };
+
+    let new_fmt_str_expr = mk().span(old_fmt_str_expr.span).lit_expr(mk().str_lit(&new_s));
+
+    info!("old fmt str expr: {:?}", old_fmt_str_expr);
+    info!("new fmt str expr: {:?}", new_fmt_str_expr);
+
+    let mut macro_tts: Vec<TokenTree> = Vec::new();
+    let expr_tt = |e: P<Expr>| TokenTree::Token(e.span, Token::interpolated(
+            Nonterminal::NtExpr(e)));
+    macro_tts.push(expr_tt(new_fmt_str_expr));
+    for (i, arg) in fmt_args[1..].iter().enumerate() {
+        if let Some(cast) = casts.get(&i) {
+            let tt = expr_tt(cast.apply(arg.clone()));
+            macro_tts.push(TokenTree::Token(DUMMY_SP, Token::Comma));
+            macro_tts.push(tt);
+        }
+    }
+    let b = if let Some(span) = span {
+        mk().span(span)
+    } else {
+        mk()
+    };
+    b.mac(vec![macro_name], macro_tts, MacDelimiter::Parenthesis)
+}
+
+/// # `convert_printfs` Command
+///
+/// Usage: `convert_printfs`
+///
+/// Marks: none
+///
+/// Converts each call to `printf(...)` and `fprintf(stderr, ...)` into
+/// equivalent `print!`, `println!`, `eprint!` or `eprintln!` calls.
+///
+/// This command checks that the callees are foreign functions imported
+/// using `extern "C"` and marked `#[no_mangle]`, to make sure the caller
+/// is actually calling the libc functions.
+///
+/// Example:
+///
+/// ```
+/// printf("Number: %d\n", 123);
+/// ```
+///
+/// gets converted to:
+///
+/// ```
+/// print!("Number: {}\n", 123);
+/// ```
+pub struct ConvertPrintfs;
+
+impl Transform for ConvertPrintfs {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let mut printf_defs = HashSet::<DefId>::new();
+        let mut fprintf_defs = HashSet::<DefId>::new();
+        let mut stderr_defs = HashSet::<DefId>::new();
+        visit_nodes(&krate, |fi: &ForeignItem| {
+            if attr::contains_name(&fi.attrs, "no_mangle") {
+                match (&*fi.ident.as_str(), &fi.node) {
+                    ("printf", ForeignItemKind::Fn(_, _)) => {
+                        printf_defs.insert(cx.node_def_id(fi.id));
+                    }
+                    ("fprintf", ForeignItemKind::Fn(_, _)) => {
+                        fprintf_defs.insert(cx.node_def_id(fi.id));
+                    }
+                    ("stderr", ForeignItemKind::Static(_, _)) => {
+                        stderr_defs.insert(cx.node_def_id(fi.id));
+                    }
+                    _ => {}
+                }
+            }
+        });
+        fold_nodes(krate, |s: Stmt| {
+            match s.node {
+                StmtKind::Semi(ref expr) => {
+                    if let ExprKind::Call(ref f, ref args) = expr.node {
+                        if args.len() < 1 {
+                            return smallvec![s];
+                        }
+                        match (cx.try_resolve_expr(f), cx.try_resolve_expr(&*args[0])) {
+                            (Some(ref f_id), Some(ref arg0_id)) if fprintf_defs.contains(f_id) &&
+                                stderr_defs.contains(arg0_id) => {
+                                let mac = build_format_macro("eprint", Some("eprintln"), None, &args[1..], Some(expr.span));
+                                return smallvec![mk().span(s.span).mac_stmt(mac)];
+                            }
+                            (Some(ref f_id), _) if printf_defs.contains(f_id) => {
+                                let mac = build_format_macro("print", Some("println"), None, &args[..], Some(expr.span));
+                                return smallvec![mk().span(s.span).mac_stmt(mac)];
+                            },
+                            _ => {}
+                        };
+                    };
+                    smallvec![s]
+                },
+                _ => smallvec![s]
+            }
+        })
+    }
+}
+
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum CastType {
-    Int,
-    Uint,
+    Int(Length),
+    Uint(Length),
     Usize,
     Char,
     Str,
@@ -137,36 +245,76 @@ enum CastType {
 
 impl CastType {
     fn apply(&self, e: P<Expr>) -> P<Expr> {
+        // Since these get passed to the new print! macros, they need to have spans,
+        // and the spans need to match the original expressions
+        // FIXME: should all the inner nodes have spans too???
+        let span = e.span;
         match *self {
-            CastType::Int => mk().cast_expr(e, mk().ident_ty("i32")),
-            CastType::Uint => mk().cast_expr(e, mk().ident_ty("u32")),
-            CastType::Usize => mk().cast_expr(e, mk().ident_ty("usize")),
+            CastType::Int(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
+            CastType::Uint(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
+            CastType::Usize => mk().span(span).cast_expr(e, mk().ident_ty("usize")),
             CastType::Char => {
                 // e as u8 as char
                 let e = mk().cast_expr(e, mk().ident_ty("u8"));
-                mk().cast_expr(e, mk().ident_ty("char"))
+                mk().span(span).cast_expr(e, mk().ident_ty("char"))
             },
             CastType::Str => {
-                // CStr::from_ptr(e as *const i8).to_str().unwrap()
-                let e = mk().cast_expr(e, mk().ptr_ty(mk().ident_ty("i8")));
+                // CStr::from_ptr(e as *const libc::c_char).to_str().unwrap()
+                let e = mk().cast_expr(e, mk().ptr_ty(mk().path_ty(vec!["libc", "c_char"])));
                 let cs = mk().call_expr(
                     mk().path_expr(mk().abs_path(vec!["std", "ffi", "CStr", "from_ptr"])),
                     vec![e]);
                 let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
                 let call = mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new());
                 let b = mk().unsafe_().block(vec![mk().expr_stmt(call)]);
-                mk().block_expr(b)
+                mk().span(span).block_expr(b)
             },
+        }
+    }
+
+    fn as_rust_ty(&self) -> Vec<&str> {
+        match *self {
+            CastType::Int(Length::None) => vec!["libc", "c_int"],
+            CastType::Uint(Length::None) => vec!["libc", "c_uint"],
+            CastType::Int(Length::Char) => vec!["libc", "c_schar"],
+            CastType::Uint(Length::Char) => vec!["libc", "c_uchar"],
+            CastType::Int(Length::Short) => vec!["libc", "c_short"],
+            CastType::Uint(Length::Short) => vec!["libc", "c_ushort"],
+            CastType::Int(Length::Long) => vec!["libc", "c_long"],
+            CastType::Uint(Length::Long) => vec!["libc", "c_ulong"],
+            CastType::Int(Length::LongLong) => vec!["libc", "c_longlong"],
+            CastType::Uint(Length::LongLong) => vec!["libc", "c_ulonglong"],
+            // FIXME: should we use the types emitted by the transpiler instead?
+            CastType::Int(Length::IntMax) => vec!["libc", "intmax_t"],
+            CastType::Uint(Length::IntMax) => vec!["libc", "uintmax_t"],
+            CastType::Int(Length::Size) => vec!["libc", "ssize_t"],
+            CastType::Uint(Length::Size) => vec!["libc", "size_t"],
+            CastType::Int(Length::PtrDiff) => vec!["libc", "ptrdiff_t"],
+            _ => panic!("invalid length modifier type: {:?}", self)
         }
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Length {
+    None,
+    Char,
+    Short,
+    Long,
+    LongLong,
+    IntMax,
+    Size,
+    PtrDiff,
+    //TODO
+    //LongDouble,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ConvType {
-    Int,
-    Uint,
+    Int(Length),
+    Uint(Length),
     /// Hexadecimal uint, maybe capitalized.
-    Hex(bool),
+    Hex(Length, bool),
     Char,
     Str,
 }
@@ -187,7 +335,7 @@ struct Conv {
 impl Conv {
     fn new() -> Conv {
         Conv {
-            ty: ConvType::Int,
+            ty: ConvType::Int(Length::None),
             width: None,
             prec: None,
         }
@@ -204,9 +352,9 @@ impl Conv {
         }
 
         let cast = match self.ty {
-            ConvType::Int => CastType::Int,
-            ConvType::Uint |
-            ConvType::Hex(_) => CastType::Uint,
+            ConvType::Int(len) => CastType::Int(len),
+            ConvType::Uint(len) |
+            ConvType::Hex(len, _) => CastType::Uint(len),
             ConvType::Char => CastType::Char,
             ConvType::Str => CastType::Str,
         };
@@ -234,8 +382,8 @@ impl Conv {
         }
 
         match self.ty {
-            ConvType::Hex(false) => buf.push('x'),
-            ConvType::Hex(true) => buf.push('X'),
+            ConvType::Hex(_, false) => buf.push('x'),
+            ConvType::Hex(_, true) => buf.push('X'),
             _ => {},
         }
 
@@ -329,15 +477,54 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
         Amount::Number(usize::from_str(&self.s[start..end]).unwrap())
     }
 
+    fn parse_length(&mut self) -> Length {
+        match self.peek() {
+            b'h' => {
+                self.skip();
+                if self.peek() == b'h' {
+                    // %hhd
+                    self.skip();
+                    Length::Char
+                } else {
+                    Length::Short
+                }
+            }
+            b'l' => {
+                self.skip();
+                if self.peek() == b'l' {
+                    // %lld
+                    self.skip();
+                    Length::LongLong
+                } else {
+                    Length::Long
+                }
+            }
+            b'j' => {
+                self.skip();
+                Length::IntMax
+            }
+            b'z' => {
+                self.skip();
+                Length::Size
+            }
+            b't' => {
+                self.skip();
+                Length::PtrDiff
+            }
+            _ => Length::None
+        }
+    }
+
     fn parse_conv_type(&mut self) -> ConvType {
+        let len = self.parse_length();
         let c = self.peek() as char;
         self.skip();
 
         match c {
-            'd' => ConvType::Int,
-            'u' => ConvType::Uint,
-            'x' => ConvType::Hex(false),
-            'X' => ConvType::Hex(true),
+            'd' => ConvType::Int(len),
+            'u' => ConvType::Uint(len),
+            'x' => ConvType::Hex(len, false),
+            'X' => ConvType::Hex(len, true),
             'c' => ConvType::Char,
             's' => ConvType::Str,
             _ => panic!("unrecognized conversion spec `{}`", c),
@@ -350,4 +537,5 @@ pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
     reg.register("convert_format_args", |_args| mk(ConvertFormatArgs));
+    reg.register("convert_printfs", |_| mk(ConvertPrintfs));
 }

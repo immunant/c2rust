@@ -791,13 +791,13 @@ impl Transform for Abstract {
             init_mcx.set_type(name.name, BindingType::Ty);
         }
 
-        let krate = fold_match_with(init_mcx, pat, krate, |_ast, mut bnd| {
+        let krate = fold_match_with(init_mcx, pat, krate, |_ast, mut mcx| {
             for name in &type_args {
-                if bnd.get_ty(name.name).is_none() {
-                    bnd.add_ty(name.name, mk().infer_ty());
+                if mcx.bindings.get_ty(name.name).is_none() {
+                    mcx.bindings.add_ty(name.name, mk().infer_ty());
                 }
             }
-            call_expr.clone().subst(st, cx, &bnd)
+            call_expr.clone().subst(st, cx, &mcx.bindings)
         });
 
         // Add the function definition to the crate

@@ -195,7 +195,7 @@ impl<'c> Translation<'c> {
                 .is_enum();
             let result_type = self.convert_type(lhs_ty.ctype)?;
             let val = if is_enum_result {
-                transmute_expr(lhs_type, result_type, val)
+                transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std)
             } else {
                 mk().cast_expr(val, result_type)
             };
@@ -379,7 +379,7 @@ impl<'c> Translation<'c> {
                     .is_enum();
                     let result_type = self.convert_type(qtype.ctype)?;
                     let val = if is_enum_result {
-                        transmute_expr(lhs_type, result_type, val)
+                        transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std)
                     } else {
                         mk().cast_expr(val, result_type)
                     };
@@ -737,7 +737,7 @@ impl<'c> Translation<'c> {
         } else {
             c_ast::BinOp::AssignSubtract
         };
-        let one = match self.ast_context[ty.ctype].kind {
+        let one = match self.ast_context.resolve_type(ty.ctype).kind {
             // TODO: If rust gets f16 support:
             // CTypeKind::Half |
             CTypeKind::Float |
@@ -889,7 +889,7 @@ impl<'c> Translation<'c> {
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
-                let arg = self.convert_expr(ctx.used(), arg)?;
+                let arg = self.convert_expr(ctx.used().set_needs_address(true), arg)?;
 
                 if self.ast_context.is_function_pointer(ctype) {
                     Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))

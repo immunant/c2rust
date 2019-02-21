@@ -32,8 +32,6 @@ from rust_file import (
 )
 from typing import Generator, List, Optional, Set, Iterable
 
-COMPILED_BITFIELDS_CRATE = False
-
 # Tools we will need
 clang = get_cmd_or_die("clang")
 rustc = get_cmd_or_die("rustc")
@@ -44,7 +42,7 @@ cargo = get_cmd_or_die("cargo")
 
 # Intermediate files
 intermediate_files = [
-    'cc_db', 'cbor', 'c_obj', 'c_lib', 'rust_src', 'rust_test_exec',
+    'cc_db', 'cbor', 'c_obj', 'c_lib', 'rust_src',
 ]
 
 
@@ -149,9 +147,12 @@ def build_static_library(c_files: Iterable[CFile],
     obj_files = []
 
     for c_file in c_files:
-        extensionless_file_name, _ = os.path.splitext(c_file.path)
-        args.append(extensionless_file_name + ".o")
-        obj_files.append(extensionless_file_name + ".o")
+        extensionless_file_path, _ = os.path.splitext(c_file.path)
+        extensionless_file_name = os.path.basename(extensionless_file_path)
+        obj_file_path = os.path.join(output_path, extensionless_file_name + ".o")
+
+        args.append(obj_file_path)
+        obj_files.append(obj_file_path)
 
     logging.debug("combination command:\n %s", str(ar[args]))
     retcode, stdout, stderr = ar[args].run(retcode=None)
@@ -182,7 +183,7 @@ class TestFile(RustFile):
 
         self.test_functions = test_functions or []
         self.pass_expected = "xfail" not in flags
-        self.link_in_bitfields_crate = "link_in_bitfields_crate" in flags
+        self.extern_crates = {flag[13:] for flag in flags if flag.startswith("extern_crate_")}
 
 
 class TestDirectory:
@@ -190,6 +191,7 @@ class TestDirectory:
         self.c_files = []
         self.rs_test_files = []
         self.full_path = full_path
+        self.full_path_src = os.path.join(full_path, "src")
         self.files = files
         self.name = full_path.split('/')[-1]
         self.keep = keep
@@ -198,12 +200,11 @@ class TestDirectory:
             "cbor": [],
             "c_obj": [],
             "c_lib": [],
-            "rust_test_exec": [],
             "cc_db": [],
         }
 
-        for entry in os.listdir(full_path):
-            path = os.path.abspath(os.path.join(full_path, entry))
+        for entry in os.listdir(self.full_path_src):
+            path = os.path.abspath(os.path.join(self.full_path_src, entry))
 
             if os.path.isfile(path):
                 _, ext = os.path.splitext(path)
@@ -214,6 +215,7 @@ class TestDirectory:
 
                     if c_file:
                         self.c_files.append(c_file)
+
                 elif (filename.startswith("test_") and ext == ".rs" and
                       files.search(filename)):
                     rs_test_file = self._read_rust_test_file(path)
@@ -373,23 +375,8 @@ class TestDirectory:
 
         # Build one binary that can call all the tests
         for test_file in self.rs_test_files:
-            # Compile our bitfields crate only once
-            if test_file.link_in_bitfields_crate and not COMPILED_BITFIELDS_CRATE:
-                description = "Compiling c2rust-bitfields"
-                self.print_status(Colors.WARNING, "RUNNING", description)
-
-                success = compile_bitfields_crate()
-
-                if not success:
-                    description = "Failed to compile c2rust-bitfields"
-
-                    self.print_status(Colors.FAIL, "FAILED", description)
-                    outcomes.append(TestOutcome.Failure)
-
-                    continue
-
-                rustc_extra_args.append(["-L", "crate={}".format(c.TARGET_DIR)])
-                rust_file_builder.add_extern_crate("c2rust_bitfields")
+            # rustc_extra_args.append(["-L", "crate={}".format(c.TARGET_DIR)])
+            rust_file_builder.add_extern_crates(test_file.extern_crates)
 
             _, file_name = os.path.split(test_file.path)
             extensionless_file_name, _ = os.path.splitext(file_name)
@@ -436,26 +423,29 @@ class TestDirectory:
 
         rust_file_builder.add_function(test_main)
 
-        main_file = rust_file_builder.build(self.full_path + "/tests_main.rs")
+        main_file = rust_file_builder.build(self.full_path + "/src/main.rs")
 
         self.generated_files["rust_src"].append(main_file)
 
         # Try and build test binary
-        try:
-            main = main_file.compile(CrateType.Binary, save_output=True,
-                                     extra_args=rustc_extra_args)
-        except NonZeroReturn as exception:
+        with pb.local.cwd(self.full_path):
+            args = ["build"]
+
+            if c.BUILD_TYPE == 'release':
+                args.append('--release')
+
+            retcode, stdout, stderr = cargo[args].run(retcode=None)
+
+        if retcode != 0:
             _, main_file_path_short = os.path.split(main_file.path)
 
             self.print_status(Colors.FAIL, "FAILED", "compile {}".format(main_file_path_short))
             sys.stdout.write('\n')
-            sys.stdout.write(str(exception))
+            sys.stdout.write(stderr)
 
             outcomes.append(TestOutcome.UnexpectedFailure)
 
             return outcomes
-
-        self.generated_files["rust_test_exec"].append(str(main.executable))
 
         for test_file in self.rs_test_files:
             if not test_file.pass_expected:
@@ -465,9 +455,13 @@ class TestDirectory:
             extensionless_file_name, _ = os.path.splitext(file_name)
 
             for test_function in test_file.test_functions:
-                args = ["{}::{}".format(extensionless_file_name, test_function.name)]
+                args = ["run", "{}::{}".format(extensionless_file_name, test_function.name)]
 
-                retcode, stdout, stderr = main[args].run(retcode=None)
+                if c.BUILD_TYPE == 'release':
+                    args.append('--release')
+
+                with pb.local.cwd(self.full_path):
+                    retcode, stdout, stderr = cargo[args].run(retcode=None)
 
                 logging.debug("stdout:%s\n", stdout)
 
@@ -522,28 +516,6 @@ class TestDirectory:
                     pass
 
 
-def compile_bitfields_crate() -> bool:
-    with pb.local.cwd(c.BITFIELDS_CRATE_DIR):
-        args = ["build"]
-
-        if c.BUILD_TYPE == 'release':
-            args.append('--release')
-
-        retcode, stdout, stderr = cargo[args].run(retcode=None)
-
-        if retcode != 0:
-            print("stderr:", stderr)
-            return False
-
-        global COMPILED_BITFIELDS_CRATE
-
-        COMPILED_BITFIELDS_CRATE = True
-
-        return True
-
-    return False
-
-
 def readable_directory(directory: str) -> str:
     """
     Check that a directory is exists and is readable
@@ -561,11 +533,14 @@ def readable_directory(directory: str) -> str:
 
 def get_testdirectories(
         directory: str, files: str,
-        keep: List[str]) -> Generator[TestDirectory, None, None]:
+        keep: List[str], test_longdoubles: bool) -> Generator[TestDirectory, None, None]:
     for entry in os.listdir(directory):
         path = os.path.abspath(os.path.join(directory, entry))
 
         if os.path.isdir(path):
+            if path.endswith("longdouble") and not test_longdoubles:
+                continue
+
             yield TestDirectory(path, files, keep)
 
 
@@ -591,12 +566,17 @@ def main() -> None:
         choices=intermediate_files + ['all'], default=[],
         help="Which intermediate files to not clear"
     )
+    parser.add_argument(
+        '--test-longdoubles', dest='test_longdoubles',
+        default=False, action="store_true",
+        help="Enables testing of long double translation which requires gcc headers",
+    )
     c.add_args(parser)
 
     args = parser.parse_args()
     c.update_args(args)
     test_directories = get_testdirectories(args.directory, args.regex_files,
-                                           args.keep)
+                                           args.keep, args.test_longdoubles)
     setup_logging(args.logLevel)
 
     logging.debug("args: %s", " ".join(sys.argv))

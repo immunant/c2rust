@@ -24,8 +24,8 @@ impl Transform for CharLits {
         let mut mcx = MatchCtxt::new(st, cx);
         mcx.set_type("__number", BindingType::Expr);
 
-        let krate = fold_match_with(mcx, pattern.clone(), krate, |e, bnd| {
-            let field: &P<Expr> = bnd.expr("__number");
+        let krate = fold_match_with(mcx, pattern.clone(), krate, |e, mcx| {
+            let field: &P<Expr> = mcx.bindings.expr("__number");
             if let ExprKind::Lit(ref l) = field.node {
                 if let LitKind::Int(i, _) = l.node {
                     if i < 256 {

@@ -5,6 +5,7 @@
 - [Quickstart](quickstart.md)
 - [Translator](c2rust-transpile/README.md):
     - [Known limitations](docs/known-limitations.md)
+    - [Bitfield Support Crate](c2rust-bitfields/README.md)
 - [Refactoring Tool](c2rust-refactor/README.md)
     - [Commands](c2rust-refactor/commands.md)
     - [`rewrite_expr` tutorial](c2rust-refactor/rewrite.md)

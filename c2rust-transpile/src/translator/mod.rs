@@ -8,10 +8,10 @@ use dtoa;
 use indexmap::{IndexMap, IndexSet};
 
 use syntax::ast::*;
-use syntax::parse::token::{Token,Nonterminal};
+use syntax::parse::token::{DelimToken, Token, Nonterminal};
 use syntax::print::pprust::*;
 use syntax::ptr::*;
-use syntax::tokenstream::{TokenStream};
+use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{with_globals, ast};
 use syntax_pos::{DUMMY_SP, Span};
 
@@ -92,6 +92,7 @@ pub struct ExprContext {
     decay_ref: DecayRef,
     va_decl: Option<CDeclId>,
     is_bitfield_write: bool,
+    needs_address: bool,
 }
 
 impl ExprContext {
@@ -107,6 +108,10 @@ impl ExprContext {
     pub fn is_bitfield_write(&self) -> bool { self.is_bitfield_write }
     pub fn set_bitfield_write(self, is_bitfield_write: bool) -> Self {
         ExprContext { is_bitfield_write, .. self }
+    }
+    pub fn needs_address(&self) -> bool { self.needs_address }
+    pub fn set_needs_address(self, needs_address: bool) -> Self {
+        ExprContext { needs_address, .. self }
     }
 }
 
@@ -188,11 +193,16 @@ fn unwrap_function_pointer(ptr: P<Expr>) -> P<Expr> {
     mk().method_call_expr(ptr, "expect", vec![err_msg])
 }
 
-fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>) -> P<Expr> {
+fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>, no_std: bool) -> P<Expr> {
     let type_args = vec![source_ty, target_ty];
+    let std_or_core = if no_std {
+        "core"
+    } else {
+        "std"
+    };
     let path = vec![
         mk().path_segment(""),
-        mk().path_segment("std"),
+        mk().path_segment(std_or_core),
         mk().path_segment("mem"),
         mk().path_segment_with_args("transmute",
                                       mk().angle_bracketed_args(type_args)),
@@ -317,10 +327,15 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
         decay_ref: DecayRef::Default,
         va_decl: None,
         is_bitfield_write: false,
+        needs_address: false,
     };
 
     if t.tcfg.reorganize_definitions {
         t.features.borrow_mut().insert("custom_attribute");
+    }
+
+    if tcfg.emit_no_std {
+        t.extern_crates.borrow_mut().insert("core");
     }
 
     t.extern_crates.borrow_mut().insert("libc");
@@ -648,6 +663,10 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
             }
         }
 
+        if t.tcfg.emit_no_std {
+            s.print_attribute(&mk().single_attr("no_std").as_inner_attrs()[0])?;
+        }
+
         // Add `extern crate X;` to the top of the file
         for crate_name in t.extern_crates.borrow().iter() {
             s.print_item(&mk().extern_crate_item(*crate_name, None))?;
@@ -714,7 +733,7 @@ pub enum ConvertedDecl {
 impl<'c> Translation<'c> {
     pub fn new(mut ast_context: TypedAstContext, tcfg: &'c TranspilerConfig, main_file: PathBuf) -> Self {
         let comment_context = RefCell::new(CommentContext::new(&mut ast_context));
-        let mut type_converter = TypeConverter::new();
+        let mut type_converter = TypeConverter::new(tcfg.emit_no_std);
 
         if tcfg.translate_valist { type_converter.translate_valist = true }
 
@@ -794,6 +813,10 @@ impl<'c> Translation<'c> {
                     if let CTypeKind::Vector(..) = self.ast_context.resolve_type(ctype).kind {
                         return true
                     }
+                },
+                CExprKind::ImplicitCast(_, _, CastKind::IntegralToPointer, _, _) |
+                CExprKind::ExplicitCast(_, _, CastKind::IntegralToPointer, _, _) => {
+                    return true;
                 },
                 _ => {},
             }
@@ -1840,8 +1863,13 @@ impl<'c> Translation<'c> {
                 mk().cast_expr(addr_lhs, ty)
             },
         };
+        let std_or_core = if self.tcfg.emit_no_std {
+            "core"
+        } else {
+            "std"
+        };
 
-        Ok(mk().call_expr(mk().path_expr(vec!["", "std", "ptr", "write_volatile"]), vec![addr_lhs, rhs]))
+        Ok(mk().call_expr(mk().path_expr(vec!["", std_or_core, "ptr", "write_volatile"]), vec![addr_lhs, rhs]))
     }
 
     /// Read from a `lhs` that is volatile
@@ -1866,12 +1894,17 @@ impl<'c> Translation<'c> {
                 mk().cast_expr(addr_lhs, ty)
             }
         };
+        let std_or_core = if self.tcfg.emit_no_std {
+            "core"
+        } else {
+            "std"
+        };
 
         // We explicitly annotate the type of pointer we're reading from
         // in order to avoid omitted bit-casts to const from causing the
         // wrong type to be inferred via the result of the pointer.
         let mut path_parts: Vec<PathSegment> = vec![];
-        for elt in vec!["", "std", "ptr"] {
+        for elt in vec!["", std_or_core, "ptr"] {
             path_parts.push(mk().path_segment(elt))
         }
         let elt_ty = self.convert_type(lhs_type.ctype)?;
@@ -1964,12 +1997,16 @@ impl<'c> Translation<'c> {
 
             return Ok(WithStmts { stmts, val })
         }
-
+        let std_or_core = if self.tcfg.emit_no_std {
+            "core"
+        } else {
+            "std"
+        };
         let ty = self.convert_type(type_id)?;
         let name = "size_of";
         let params = mk().angle_bracketed_args(vec![ty]);
         let path = vec![mk().path_segment(""),
-                        mk().path_segment("std"),
+                        mk().path_segment(std_or_core),
                         mk().path_segment("mem"),
                         mk().path_segment_with_args(name, params)];
         let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
@@ -1983,11 +2020,15 @@ impl<'c> Translation<'c> {
         type_id = self.variable_array_base_type(type_id);
 
         let ty = self.convert_type(type_id)?;
-
+        let std_or_core = if self.tcfg.emit_no_std {
+            "core"
+        } else {
+            "std"
+        };
         let name = "align_of";
         let tys = vec![ty];
         let path = vec![mk().path_segment(""),
-                        mk().path_segment("std"),
+                        mk().path_segment(std_or_core),
                         mk().path_segment("mem"),
                         mk().path_segment_with_args(name,
                                                       mk().angle_bracketed_args(tys)),
@@ -2071,8 +2112,62 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new(val))
             }
 
-            CExprKind::OffsetOf(ty, val) =>
-                Ok(WithStmts::new(self.mk_int_lit(ty, val, IntBase::Dec))),
+            CExprKind::OffsetOf(ty, ref kind) => match kind {
+                OffsetOfKind::Constant(val) => Ok(WithStmts::new(self.mk_int_lit(ty, *val, IntBase::Dec))),
+                OffsetOfKind::Variable(qty, field_id, expr_id) => {
+                    self.extern_crates.borrow_mut().insert("memoffset");
+                    self.item_store.borrow_mut()
+                        .uses
+                        .get_mut(vec!["memoffset".into()])
+                        .insert("offset_of");
+
+                    // Struct Type
+                    let decl_id = {
+                        let kind = match self.ast_context.c_types[&qty.ctype].kind {
+                            CTypeKind::Elaborated(ty_id) => &self.ast_context[ty_id].kind,
+                            ref kind => kind,
+                        };
+
+                        kind.as_decl_or_typedef()
+                            .expect("Did not find decl_id for offsetof struct")
+                    };
+                    let name = self.type_converter
+                        .borrow()
+                        .resolve_decl_name(decl_id)
+                        .expect("Did not find name for offsetof struct");
+                    let ty_ident = Nonterminal::NtIdent(mk().ident(name), false);
+
+                    // Field name
+                    let field_name = self.type_converter
+                        .borrow()
+                        .resolve_field_name(None, *field_id)
+                        .expect("Did not find name for offsetof struct field");
+                    let field_ident = Nonterminal::NtIdent(mk().ident(field_name), false);
+
+                    // Index Expr
+                    let expr = self.convert_expr(ctx, *expr_id)?.val;
+                    let expr = mk().cast_expr(expr, mk().ident_ty("usize"));
+                    let index_expr = Nonterminal::NtExpr(expr);
+
+                    // offset_of!(Struct, field[expr as usize]) as ty
+                    let mut macro_body = vec![
+                        TokenTree::Token(DUMMY_SP, Token::interpolated(ty_ident)),
+                        TokenTree::Token(DUMMY_SP, Token::Comma),
+                        TokenTree::Token(DUMMY_SP, Token::interpolated(field_ident)),
+                        TokenTree::Token(DUMMY_SP, Token::OpenDelim(DelimToken::Bracket)),
+                        TokenTree::Token(DUMMY_SP, Token::interpolated(index_expr)),
+                        TokenTree::Token(DUMMY_SP, Token::CloseDelim(DelimToken::Bracket)),
+                    ];
+                    let path = mk().path("offset_of");
+                    let mac = mk().mac_expr(mk().mac(path, macro_body, MacDelimiter::Parenthesis));
+
+                    // Cast type
+                    let cast_ty = self.convert_type(ty.ctype)?;
+                    let cast_expr = mk().cast_expr(mac, cast_ty);
+
+                    Ok(WithStmts::new(cast_expr))
+                },
+            }
 
             CExprKind::Literal(ty, ref kind) => self.convert_literal(ctx.is_static, ty, kind),
 
@@ -2150,18 +2245,23 @@ impl<'c> Translation<'c> {
                 let mut rhs = self.convert_expr(ctx.used(), *rhs)?;
                 stmts.extend(rhs.stmts);
 
-                let simple_index_array =
-                match lhs_node {
-                    &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _, _) => {
-                        let arr_type = self.ast_context[arr].kind.get_type().ok_or_else(|| format!("bad arr type"))?;
-                        match self.ast_context.resolve_type(arr_type).kind {
-                            // These get translated to 0-element arrays, this avoids the bounds check
-                            // that using an array subscript in Rust would cause
-                            CTypeKind::IncompleteArray(_) => None,
-                            _ => Some(arr),
+                let simple_index_array = if ctx.needs_address() {
+                    // We can't necessarily index into an array if we're using
+                    // that element to compute an address.
+                    None
+                } else {
+                    match lhs_node {
+                        &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _, _) => {
+                            let arr_type = self.ast_context[arr].kind.get_type().ok_or_else(|| format!("bad arr type"))?;
+                            match self.ast_context.resolve_type(arr_type).kind {
+                                // These get translated to 0-element arrays, this avoids the bounds check
+                                // that using an array subscript in Rust would cause
+                                CTypeKind::IncompleteArray(_) => None,
+                                _ => Some(arr),
+                            }
                         }
+                        _ => None,
                     }
-                    _ => None,
                 };
 
                 let val = if let Some(arr) = simple_index_array {
@@ -2397,6 +2497,10 @@ impl<'c> Translation<'c> {
             ctx.decay_ref = DecayRef::Yes;
         }
 
+        if kind == CastKind::IntegralToPointer && ctx.is_static {
+            self.features.borrow_mut().insert("const_transmute");
+        }
+
         let val = if is_explicit {
             let mut stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
             let mut val = self.convert_expr(ctx, expr)?;
@@ -2422,7 +2526,7 @@ impl<'c> Translation<'c> {
                        self.ast_context.is_function_pointer(source_ty_id) {
                         let source_ty = self.convert_type(source_ty_id)?;
                         let target_ty = self.convert_type(ty.ctype)?;
-                        Ok(transmute_expr(source_ty, target_ty, x))
+                        Ok(transmute_expr(source_ty, target_ty, x, self.tcfg.emit_no_std))
                     } else {
                         // Normal case
                         let target_ty = self.convert_type(ty.ctype)?;
@@ -2436,7 +2540,7 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|x| {
                     let intptr_t = mk().path_ty(vec!["libc","intptr_t"]);
                     let intptr = mk().cast_expr(x, intptr_t.clone());
-                    transmute_expr(intptr_t, target_ty, intptr)
+                    transmute_expr(intptr_t, target_ty, intptr, self.tcfg.emit_no_std)
                 }))
             }
 
@@ -2492,7 +2596,7 @@ impl<'c> Translation<'c> {
                     // unless the cast is to a function pointer then use `transmute`.
                     Ok(val.map(|x| {
                         if self.ast_context.is_function_pointer(source_ty_ctype_id) {
-                            transmute_expr(source_ty, target_ty, x)
+                            transmute_expr(source_ty, target_ty, x, self.tcfg.emit_no_std)
                         } else  {
                             mk().cast_expr(x, target_ty)
                         }
@@ -2674,7 +2778,10 @@ impl<'c> Translation<'c> {
         } else if resolved_ty.is_integral_type() {
             Ok(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)))
         } else if resolved_ty.is_floating_type() {
-            Ok(mk().lit_expr(mk().float_unsuffixed_lit("0.")))
+            match self.ast_context[ty_id].kind {
+                CTypeKind::LongDouble => Ok(mk().path_expr(vec!["f128", "f128", "ZERO"])),
+                _ => Ok(mk().lit_expr(mk().float_unsuffixed_lit("0."))),
+            }
         } else if let &CTypeKind::Pointer(_) = resolved_ty {
             self.null_ptr(resolved_ty_id, is_static)
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {

@@ -124,14 +124,14 @@ args:
           Accepts one of the following:
               nothing - does not create a build directory; instead, it places Cargo.toml and c2rust-lib.rs
                         in the same directory as the input compilation database
-              build-only - creates a c2rust-directory containing only Cargo.toml and lib.rs
+              minimal - creates a c2rust-directory containing only Cargo.toml and lib.rs
               full - creates a standalone build directory containing both the build files and Rust source code
       takes_value: true
       possible_values:
           - nothing
-          - build-only
+          - minimal
           - full
-      default_value: build-only
+      default_value: minimal
   - filter:
       long: filter
       short: f
@@ -167,3 +167,7 @@ args:
       short: W
       help: Enable the specified warning (all enables all warnings)
       takes_value: true
+  - emit-no-std:
+      long: emit-no-std
+      help: Emit code using core rather than std
+      takes_value: false

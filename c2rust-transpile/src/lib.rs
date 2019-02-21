@@ -88,6 +88,7 @@ pub struct TranspilerConfig {
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
     pub enabled_warnings: HashSet<Diagnostic>,
+    pub emit_no_std: bool,
 
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
@@ -104,6 +105,11 @@ const USR_INCL_MACOS_EMSG: &str = "
 Directory `/usr/include` was not found! Please install the following package:
 /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
  (or the equivalent version on your host.)";
+
+const DUPLICATE_CMDS_EMSG: &str = "
+Error, expected one compiler invocation per input source file. The compile
+commands database (compile_commands.json) contains multiple invocations
+for the following input source file(s)";
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
@@ -127,6 +133,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         cc_db.to_string_lossy()
     ));
 
+    // apply the filter argument, if any
     let cmds = match tcfg.filter {
         Some(ref re) => cmds
             .into_iter()
@@ -135,24 +142,40 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         None => cmds,
     };
 
-    let build_dir = get_build_dir(&tcfg, cc_db);
-
-    let mut modules = Vec::<PathBuf>::new();
-    for mut cmd in cmds {
-        let CompileCmd { directory: d, file: f, ..} = cmd;
-        println!("Transpiling {}", f.to_str().unwrap());
-        let input_file_abs = d.join(f);
-        if let Some(m) = transpile_single(
-            &tcfg,
-            input_file_abs.as_path(),
-            cc_db,
-            &build_dir,
-            extra_clang_args) {
-            modules.push(m);
-        };
+    // some build scripts repeatedly compile the same input file with different
+    // command line flags thus creating multiple outputs. We don't handle such
+    // cases since we don't know what compiler flags to use for the generated
+    // Rust code or how to link the result.
+    let mut sorted = cmds
+        .iter()
+        .map(|cmd| cmd.abs_file())
+        .collect::<Vec<PathBuf>>();
+    sorted.sort();
+    let mut duplicates = sorted
+        .windows(2)
+        .filter(|w| w[0] == w[1])
+        .map(|w| w[0].to_str().unwrap())
+        .collect::<Vec<&str>>();
+    duplicates.dedup(); // report each duplicate once
+    if duplicates.len() > 0 {
+        eprintln!("{}:\n{}", DUPLICATE_CMDS_EMSG, duplicates.join(",\n"));
+        return;
     }
 
+    let build_dir = get_build_dir(&tcfg, cc_db);
+    let modules = cmds
+        .iter()
+        .filter_map(|cmd|
+            transpile_single(
+                &tcfg,
+                cmd.abs_file().as_path(),
+                cc_db,
+                &build_dir,
+                extra_clang_args))
+        .collect::<Vec<PathBuf>>();
+
     if tcfg.emit_build_files {
+
         let crate_file = emit_build_files(&tcfg, &build_dir, modules);
         // We only run the reorganization refactoring if we emitted a fresh crate file
         if let Some(output_file) = crate_file {
@@ -218,6 +241,15 @@ struct CompileCmd {
     output: Option<String>,
 }
 
+impl CompileCmd {
+    pub fn abs_file(&self) -> PathBuf {
+        match self.file.is_absolute() {
+            true  => self.file.clone(),
+            false => self.directory.join(&self.file)
+        }
+    }
+}
+
 fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Box<Error>> {
     let f = File::open(compile_commands)?; // open read-only
 
@@ -240,6 +272,9 @@ fn transpile_single(
         println!("Skipping existing file {}", output_path.display());
         return Some(output_path);
     }
+
+    let file = input_path.file_name().unwrap().to_str().unwrap();
+    println!("Transpiling {}", file);
 
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(input_path, cc_db, extra_clang_args) {

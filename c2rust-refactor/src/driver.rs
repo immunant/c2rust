@@ -432,14 +432,13 @@ fn rebuild_session(old_session: &Session) -> (Session, CStore, Box<CodegenBacken
     (session, cstore, codegen_backend)
 }
 
-
 fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
     parse::new_parser_from_source_str(&sess.parse_sess,
                                       FileName::Real(PathBuf::from(name)),
                                       src.to_owned())
 }
 
-fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
+pub fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
     db.emit();
     panic!("error parsing {}", what);
 }
@@ -462,8 +461,8 @@ pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
 }
 
 pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
-    let mut ty = make_parser(sess, "<ty>", src);
-    match ty.parse_ty() {
+    let mut p = make_parser(sess, "<ty>", src);
+    match p.parse_ty() {
         Ok(ty) => remove_paren(ty),
         Err(db) => emit_and_panic(db, "ty"),
     }

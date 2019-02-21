@@ -1,0 +1,7 @@
+[package]
+name = "structs-tests"
+version = "0.1.0"
+
+[dependencies]
+c2rust-bitfields = { path = "../../c2rust-bitfields" }
+memoffset = "0.2"

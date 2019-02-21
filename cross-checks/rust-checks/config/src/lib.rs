@@ -9,6 +9,10 @@ extern crate serde_yaml;
 
 extern crate globset;
 
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
+
 pub mod attr;
 #[cfg(feature = "scopes")]
 pub mod scopes;
@@ -437,14 +441,15 @@ impl Config {
     }
 }
 
-#[derive(Debug)]
-pub enum Error {
-    YAML(serde_yaml::Error),
+#[derive(Fail, Debug)]
+pub enum ParseError {
+    #[fail(display = "YAML parse error")]
+    YAML(#[cause] serde_yaml::Error),
 }
 
-pub fn parse_string(s: &str) -> Result<Config, Error> {
+pub fn parse_string(s: &str) -> Result<Config, ParseError> {
     serde_yaml::from_str::<RootConfig>(s)
-        .map_err(Error::YAML)
+        .map_err(ParseError::YAML)
         .map(Config::new)
 }
 
