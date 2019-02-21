@@ -108,14 +108,16 @@ def configure_and_build_llvm(args) -> None:
 
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
+            clang = get_cmd_or_die("clang")
+            clangpp = get_cmd_or_die("clang++")
             max_link_jobs = est_parallel_link_jobs()
             assertions = "1" if args.assertions else "0"
             ast_ext_dir = "-DLLVM_EXTERNAL_C2RUST_AST_EXPORTER_SOURCE_DIR={}"
             ast_ext_dir = ast_ext_dir.format(c.AST_EXPO_SRC_DIR)
             cargs = ["-G", "Ninja", c.LLVM_SRC,
                      "-Wno-dev",
-                     "-DCMAKE_C_COMPILER=clang",
-                     "-DCMAKE_CXX_COMPILER=clang++",
+                     "-DCMAKE_C_COMPILER={}".format(clang),
+                     "-DCMAKE_CXX_COMPILER={}".format(clangpp),
                      "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
@@ -173,6 +175,9 @@ def build_transpiler(args):
     if not args.debug:
         build_flags.append("--release")
 
+    if args.verbose:
+        build_flags.append("-vv")
+
     llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
     assert os.path.isfile(llvm_config), "missing binary: " + llvm_config
 
@@ -185,6 +190,8 @@ def build_transpiler(args):
 
     # log how we run `cargo build` to aid troubleshooting, IDE setup, etc.
     msg = "invoking cargo build as\ncd {} && \\\n".format(c.C2RUST_DIR)
+    msg += "LIBCURL_NO_PKG_CONFIG=1\\\n"
+    msg += "ZLIB_NO_PKG_CONFIG=1\\\n"
     msg += "LLVM_CONFIG_PATH={} \\\n".format(llvm_config)
     msg += "LLVM_SYSTEM_LIBS='{}' \\\n".format(llvm_system_libs)
     msg += "C2RUST_AST_EXPORTER_LIB_DIR={} \\\n".format(llvm_libdir)
@@ -192,8 +199,16 @@ def build_transpiler(args):
     msg += " ".join(build_flags)
     logging.debug(msg)
 
+    # NOTE: the `curl-rust` and `libz-sys` crates use the `pkg_config`
+    # crate to locate the system libraries they wrap. This causes
+    # `pkg_config` to add `/usr/lib` to `rustc`s library search path
+    # which means that our `cargo` invocation picks up the system
+    # libraries even when we're trying to link against libs we built.
+    # https://docs.rs/pkg-config/0.3.14/pkg_config/
     with pb.local.cwd(c.C2RUST_DIR):
-        with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
+        with pb.local.env(LIBCURL_NO_PKG_CONFIG=1,
+                          ZLIB_NO_PKG_CONFIG=1,
+                          LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs,
                           C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
             # build with custom rust toolchain
@@ -218,6 +233,9 @@ def _parse_args():
     parser.add_argument('-x', '--xcode', default=False,
                         action='store_true', dest='xcode',
                         help='generate Xcode project files (macOS only)')
+    parser.add_argument('-v', '--verbose', default=False,
+                        action='store_true', dest='verbose',
+                        help='emit verbose information during build')
     c.add_args(parser)
     args = parser.parse_args()
 
@@ -235,6 +253,19 @@ def binary_in_path(binary_name) -> bool:
         return True
     except pb.CommandNotFound:
         return False
+
+
+def print_success_msg(args):
+    """
+    print a helpful message on how to run the c2rust binary.
+    """
+    c2rust_bin_path = 'target/debug/c2rust' if args.debug \
+                      else 'target/release/c2rust'
+    c2rust_bin_path = os.path.join(c.ROOT_DIR, c2rust_bin_path)
+
+    abs_curdir = os.path.abspath(os.path.curdir)
+    c2rust_bin_path = os.path.relpath(c2rust_bin_path, abs_curdir)
+    print("success! you may now run", c2rust_bin_path)
 
 
 def _main():
@@ -284,16 +315,7 @@ def _main():
 
     build_transpiler(args)
 
-    # print a helpful message on how to run c2rust bin directly
-    c2rust_bin_path = 'target/debug/c2rust' if args.debug \
-                      else 'target/release/c2rust'
-    c2rust_bin_path = os.path.join(c.ROOT_DIR, c2rust_bin_path)
-    # if os.path.curdir
-    abs_curdir = os.path.abspath(os.path.curdir)
-    common_path = os.path.commonpath([abs_curdir, c2rust_bin_path])
-    if common_path != "/":
-        c2rust_bin_path = "." + c2rust_bin_path[len(common_path):]
-    print("success! you may now run", c2rust_bin_path)
+    print_success_msg(args)
 
 
 if __name__ == "__main__":
