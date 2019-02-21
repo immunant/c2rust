@@ -421,6 +421,16 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
         self.pos += 1;
     }
 
+    /// Check if the next character is `c` and, if true, consume it
+    fn eat(&mut self, c: u8) -> bool {
+        if self.peek() == c {
+            self.skip();
+            true
+        } else {
+            false
+        }
+    }
+
     /// Try to advance to the next conversion specifier.  Return `true` if a conversion was found.
     fn next_conv(&mut self) -> bool {
         if let Some(conv_offset) = self.s[self.pos..].find('%') {
@@ -440,8 +450,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
             self.skip();
             let mut conv = Conv::new();
 
-            if self.peek() == b'%' {
-                self.skip();
+            if self.eat(b'%') {
                 (self.callback)(Piece::Text("%"));
                 continue;
             }
@@ -449,8 +458,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
             if b'1' <= self.peek() && self.peek() <= b'9' || self.peek() == b'*'{
                 conv.width = Some(self.parse_amount());
             } 
-            if self.peek() == b'.' {
-                self.skip();
+            if self.eat(b'.') {
                 conv.prec = Some(self.parse_amount());
             }
             conv.ty = self.parse_conv_type();
@@ -463,8 +471,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
     }
 
     fn parse_amount(&mut self) -> Amount {
-        if self.peek() == b'*' {
-            self.skip();
+        if self.eat(b'*') {
             return Amount::NextArg;
         }
 
@@ -481,9 +488,8 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
         match self.peek() {
             b'h' => {
                 self.skip();
-                if self.peek() == b'h' {
+                if self.eat(b'h') {
                     // %hhd
-                    self.skip();
                     Length::Char
                 } else {
                     Length::Short
@@ -491,9 +497,8 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
             }
             b'l' => {
                 self.skip();
-                if self.peek() == b'l' {
+                if self.eat(b'l') {
                     // %lld
-                    self.skip();
                     Length::LongLong
                 } else {
                     Length::Long
