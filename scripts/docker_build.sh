@@ -34,4 +34,5 @@ docker build -f $SCRIPT_DIR/../docker/Dockerfile \
     --build-arg GID=$(id -g $(logname)) \
     --build-arg RUST_VER=$RUST_VER \
     --tag "$REPO_NAME:$IMAGE_TAG-$DATE_TAG" \
+    --tag "$REPO_NAME:$IMAGE_TAG-latest" \
      $SCRIPT_DIR

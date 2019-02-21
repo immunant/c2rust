@@ -21,17 +21,17 @@ jobs:
   strategy:
     matrix:
       arch:
-        containerImage: immunant/c2rust:base-archlinux-20190206
+        containerImage: immunant/c2rust:base-archlinux-latest
       debian8:
-        containerImage: immunant/c2rust:debian-jessie-20190206
+        containerImage: immunant/c2rust:debian-jessie-latest
       debian9:
-        containerImage: immunant/c2rust:debian-stretch-20190206
+        containerImage: immunant/c2rust:debian-stretch-latest
       fedora29:
-        containerImage: immunant/c2rust:fedora-29-20190208
+        containerImage: immunant/c2rust:fedora-29-latest
       ubuntu16:
-        containerImage: immunant/c2rust:ubuntu-xenial-20190206
+        containerImage: immunant/c2rust:ubuntu-xenial-latest
       ubuntu18:
-        containerImage: immunant/c2rust:ubuntu-bionic-20190206
+        containerImage: immunant/c2rust:ubuntu-bionic-latest
   container: $[ variables['containerImage'] ]
   steps:
   - script: |
