@@ -516,15 +516,15 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
     }
 
     fn parse_conv_type(&mut self) -> ConvType {
-        let il = self.parse_length();
+        let len = self.parse_length();
         let c = self.peek() as char;
         self.skip();
 
         match c {
-            'd' => ConvType::Int(il),
-            'u' => ConvType::Uint(il),
-            'x' => ConvType::Hex(il, false),
-            'X' => ConvType::Hex(il, true),
+            'd' => ConvType::Int(len),
+            'u' => ConvType::Uint(len),
+            'x' => ConvType::Hex(len, false),
+            'X' => ConvType::Hex(len, true),
             'c' => ConvType::Char,
             's' => ConvType::Str,
             _ => panic!("unrecognized conversion spec `{}`", c),
