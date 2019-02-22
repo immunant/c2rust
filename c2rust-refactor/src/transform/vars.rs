@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::mem;
 use rustc::hir::def_id::LOCAL_CRATE;
 use rustc::hir::HirId;
-use rustc::ty::TyKind;
+use rustc::ty::{TyKind, ParamEnv};
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
@@ -474,6 +474,42 @@ impl Transform for UninitToDefault {
 }
 
 
+/// # `remove_redundant_let_types` Command
+///
+/// Usage: `remove_redundant_let_types`
+///
+/// Removes types from all `let` statements where the initializer's type matches the declared one,
+/// so the latter can be omitted and inferred.
+/// For example, replace `let x: u32 = 1u32;` with `let x = 1u32;`
+pub struct RemoveRedundantLetTypes;
+
+impl Transform for RemoveRedundantLetTypes {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let tcx = cx.ty_ctxt();
+        let mut mcx = MatchCtxt::new(st, cx);
+        let pat = mcx.parse_stmts("let $pat:Pat : $ty:Ty = $init:Expr;");
+        let repl = mcx.parse_stmts("let $pat = $init;");
+        fold_match_with(mcx, pat, krate, |ast, mcx| {
+            let e = mcx.bindings.expr("$init");
+            let e_ty = cx.adjusted_node_type(e.id);
+            let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
+
+            let t = mcx.bindings.ty("$ty");
+            let t_ty = cx.adjusted_node_type(t.id);
+            let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
+            if e_ty == t_ty {
+                repl.clone().subst(st, cx, &mcx.bindings)
+            } else {
+                ast
+            }
+        })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
 
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
@@ -482,4 +518,5 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("sink_lets", |_args| mk(SinkLets));
     reg.register("fold_let_assign", |_args| mk(FoldLetAssign));
     reg.register("uninit_to_default", |_args| mk(UninitToDefault));
+    reg.register("remove_redundant_let_types", |_args| mk(RemoveRedundantLetTypes));
 }
