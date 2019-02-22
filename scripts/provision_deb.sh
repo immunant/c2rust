@@ -27,7 +27,8 @@ apt-get install -qq \
     python3-pip \
     python3-setuptools \
     software-properties-common \
-    unzip
+    unzip \
+    libncurses5-dev
 
 # Older releases do not include clang 6 and later so we grab 
 # the latest versions of those packages from the LLVM project. 
