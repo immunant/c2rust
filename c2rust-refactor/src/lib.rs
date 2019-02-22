@@ -75,6 +75,7 @@ use std::sync::Arc;
 use cargo::util::paths;
 use syntax::ast::NodeId;
 use rustc::ty;
+use rustc_driver::CompilationFailure;
 use rustc_data_structures::sync::Lock;
 
 use c2rust_ast_builder::IntoSymbol;
@@ -388,7 +389,7 @@ fn main_impl(opts: Options) {
     }
 }
 
-pub fn lib_main(opts: Options) {
+pub fn lib_main(opts: Options) -> Result<(), CompilationFailure> {
     env_logger::init();
 
     // Make sure we compile with the toolchain version that the refactoring tool
@@ -396,8 +397,10 @@ pub fn lib_main(opts: Options) {
     env::set_var("RUSTUP_TOOLCHAIN", env!("RUSTUP_TOOLCHAIN"));
 
     ty::tls::GCX_PTR.set(&Lock::new(0), || {
-        syntax::with_globals(move || {
-            main_impl(opts);
-        });
-    });
+        rustc_driver::monitor(move || {
+            syntax::with_globals(move || {
+                main_impl(opts);
+            });
+        })
+    })
 }

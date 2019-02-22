@@ -6,6 +6,7 @@ extern crate c2rust_refactor;
 
 use std::fs::File;
 use std::io::Read;
+use std::process;
 use std::str::FromStr;
 use clap::{App, ArgMatches};
 
@@ -20,7 +21,11 @@ fn main() {
         None => return,
     };
 
-    c2rust_refactor::lib_main(opts);
+    let ret = match c2rust_refactor::lib_main(opts) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    };
+    process::exit(ret);
 }
 
 fn parse_opts(args: &ArgMatches) -> Option<Options> {

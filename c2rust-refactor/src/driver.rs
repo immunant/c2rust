@@ -317,8 +317,15 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
     let outputs = build_output_filenames(&input, &out_dir, &output, &krate.attrs, &session);
     let crate_name = link::find_crate_name(Some(&session), &krate.attrs, &input);
     let mut expand_result = driver::phase_2_configure_and_expand(
-        &session, &cstore, krate, /*registry*/ None, &crate_name,
-        /*addl_plugins*/ None, MakeGlobMap::No, |_| Ok(())).unwrap();
+        &session,
+        &cstore,
+        krate,
+        /*registry*/ None,
+        &crate_name,
+        /*addl_plugins*/ None,
+        MakeGlobMap::No,
+        |_| Ok(())
+    ).unwrap_or_else(|e| panic!("Error running compiler phase 2: {:?}", e));
     let krate = expand_result.expanded_crate;
 
     let arenas = AllArenas::new();
