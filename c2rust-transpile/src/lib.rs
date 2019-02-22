@@ -101,11 +101,6 @@ pub struct TranspilerConfig {
     pub main: Option<String>,
 }
 
-const USR_INCL_MACOS_EMSG: &str = "
-Directory `/usr/include` was not found! Please install the following package:
-/Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
- (or the equivalent version on your host.)";
-
 const DUPLICATE_CMDS_EMSG: &str = "
 Error, expected one compiler invocation per input source file. The compile
 commands database (compile_commands.json) contains multiple invocations
@@ -115,18 +110,6 @@ for the following input source file(s)";
 /// clap::App::get_matches().
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
     diagnostics::init(tcfg.enabled_warnings.clone());
-
-    // TODO: bindgen may have a more elegant solution to this issue
-    // MacOS Mojave does not have `/usr/include` even if Xcode or the
-    // command line developer tools are installed.
-    // See https://forums.developer.apple.com/thread/104296
-    if cfg!(target_os = "macos") {
-        let usr_incl = Path::new("/usr/include");
-        if !usr_incl.exists() {
-            eprintln!("{}", USR_INCL_MACOS_EMSG);
-            return;
-        }
-    }
 
     let cmds = get_compile_commands(cc_db).expect(&format!(
         "Could not parse compile commands from {}",
@@ -162,6 +145,14 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         return;
     }
 
+    // we may need to specify path to system include dir on macOS
+    let clang_args: Vec<String> = get_isystem_args();
+    let mut clang_args: Vec<&str> = clang_args
+        .iter()
+        .map(AsRef::as_ref)
+        .collect();
+    clang_args.extend_from_slice(extra_clang_args);
+
     let build_dir = get_build_dir(&tcfg, cc_db);
     let modules = cmds
         .iter()
@@ -171,7 +162,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                 cmd.abs_file().as_path(),
                 cc_db,
                 &build_dir,
-                extra_clang_args))
+                &clang_args))
         .collect::<Vec<PathBuf>>();
 
     if tcfg.emit_build_files {
@@ -184,6 +175,35 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             }
         }
     }
+}
+
+/// Ensure that clang can locate the system headers on macOS 10.14+.
+///
+/// MacOS 10.14 does not have a `/usr/include` folder even if Xcode
+/// or the command line developer tools are installed as explained in
+/// this [thread](https://forums.developer.apple.com/thread/104296).
+/// It is possible to install a package which puts the headers in
+/// `/usr/include` but the user doesn't have to since we can find
+/// the system headers we need by running `xcrun --show-sdk-path`.
+fn get_isystem_args() -> Vec<String>  {
+    let mut args = vec![];
+    if cfg!(target_os = "macos") {
+        let usr_incl = Path::new("/usr/include");
+        if !usr_incl.exists() {
+            let output = process::Command::new("xcrun")
+                .args(&["--show-sdk-path"])
+                .output()
+                .expect("failed to run `xcrun` subcommand");
+            let mut sdk_path = String::from_utf8(output.stdout).unwrap();
+            let olen = sdk_path.len();
+            sdk_path.truncate(olen - 1);
+            sdk_path.push_str("/usr/include");
+
+            args.push("-isystem".to_owned());
+            args.push(sdk_path);
+        }
+    }
+    args
 }
 
 fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) {
