@@ -40,15 +40,13 @@ impl Transform for LetXUninitialized {
 
 /// # `sink_lets` Command
 /// 
-/// Obsolete - works around translator problems that no longer exist.
-/// 
 /// Usage: `sink_lets`
 /// 
 /// For each local variable with a trivial initializer, move the local's
 /// declaration to the innermost block containing all its uses.
 /// 
-/// "Trivial" is currently defined as no initializer (`let x;`) or a call to
-/// `mem::uninitialized()`.  This transform requires trivial assignments to avoid
+/// "Trivial" is currently defined as no initializer (`let x;`) or an initializer
+/// without any side effects.  This transform requires trivial assignments to avoid
 /// reordering side effects.
 pub struct SinkLets;
 
@@ -64,7 +62,7 @@ impl Transform for SinkLets {
         let mut locals: HashMap<HirId, LocalInfo> = HashMap::new();
         visit_nodes(&krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
-                if l.init.is_none() || is_uninit_call(cx, l.init.as_ref().unwrap()) {
+                if l.init.is_none() || !expr_has_side_effects(cx, l.init.as_ref().unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
                     locals.insert(hir_id, LocalInfo {
                         local: P(Local {
@@ -223,7 +221,41 @@ impl Transform for SinkLets {
 
         krate
     }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
 }
+
+
+fn expr_has_side_effects(cx: &driver::Ctxt, e: &P<Expr>) -> bool {
+    match e.node {
+        // Literals never have side effects
+        ExprKind::Lit(_) => false,
+        ExprKind::Array(ref elems) => elems.iter().any(|e| expr_has_side_effects(cx, e)),
+        ExprKind::Call(ref func, ref args) => {
+            let func_is_const_fn = cx.try_resolve_expr(func)
+                .map(|func_id| cx.ty_ctxt().is_const_fn(func_id))
+                .unwrap_or_default();
+            !func_is_const_fn ||
+                args.iter().any(|e| expr_has_side_effects(cx, e))
+        },
+        ExprKind::Tup(ref elems) => elems.iter().any(|e| expr_has_side_effects(cx, e)),
+        ExprKind::Cast(ref expr, _) => expr_has_side_effects(cx, expr),
+        ExprKind::Type(ref expr, _) => expr_has_side_effects(cx, expr),
+        // TODO: ExprKind::Path safe???
+        ExprKind::Struct(_, ref fields, ref base) => {
+            fields.iter().any(|f| expr_has_side_effects(cx, &f.expr)) ||
+                base.as_ref().map(|e| expr_has_side_effects(cx, e)).unwrap_or_default()
+        }
+        ExprKind::Repeat(ref expr, _) => expr_has_side_effects(cx, expr),
+        ExprKind::Paren(ref expr) => expr_has_side_effects(cx, expr),
+
+        // We conservatively assume that all others have side effects
+        _ => true,
+    }
+}
+
 
 fn is_uninit_call(cx: &driver::Ctxt, e: &Expr) -> bool {
     let func = match_or!([e.node] ExprKind::Call(ref func, _) => func; return false);
@@ -244,12 +276,10 @@ fn is_uninit_call(cx: &driver::Ctxt, e: &Expr) -> bool {
 
 /// # `fold_let_assign` Command
 /// 
-/// Obsolete - works around translator problems that no longer exist.
-/// 
 /// Usage: `fold_let_assign`
 /// 
-/// Fold together `let`s with no initializer and subsequent assignments.  For
-/// example, replace `let x; x = 10;` with `let x = 10;`.
+/// Fold together `let`s with no initializer or a trivial one, and subsequent assignments.
+/// For example, replace `let x; x = 10;` with `let x = 10;`.
 pub struct FoldLetAssign;
 
 impl Transform for FoldLetAssign {
@@ -259,7 +289,7 @@ impl Transform for FoldLetAssign {
         let mut locals: HashMap<HirId, P<Local>> = HashMap::new();
         visit_nodes(&krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
-                if l.init.is_none() || is_uninit_call(cx, l.init.as_ref().unwrap()) {
+                if l.init.is_none() || !expr_has_side_effects(cx, l.init.as_ref().unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
                     locals.insert(hir_id, P(l.clone()));
                 }
@@ -394,6 +424,10 @@ impl Transform for FoldLetAssign {
                 curs.advance();
             }
         })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
     }
 }
 
