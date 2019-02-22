@@ -22,6 +22,8 @@ c2rust-ast-builder = { version = "0.9.0", path = "../c2rust-ast-builder" }
 indexmap = { version = "1.0.1", features = ["serde-1"] }
 cargo = "0.32.0"
 clap = {version = "~2.32.0", features = ["yaml"]}
+env_logger = "0.6"
+log = "0.4"
 
 [lib]
 name = "c2rust_refactor"
