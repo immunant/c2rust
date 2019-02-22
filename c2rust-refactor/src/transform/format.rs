@@ -160,8 +160,12 @@ fn build_format_macro(
     info!("new fmt str expr: {:?}", new_fmt_str_expr);
 
     let mut macro_tts: Vec<TokenTree> = Vec::new();
-    let expr_tt = |e: P<Expr>| TokenTree::Token(e.span, Token::interpolated(
-            Nonterminal::NtExpr(e)));
+    let expr_tt = |mut e: P<Expr>| {
+        let span = e.span;
+        e.span = DUMMY_SP;
+        TokenTree::Token(span, Token::interpolated(
+            Nonterminal::NtExpr(e)))
+    };
     macro_tts.push(expr_tt(new_fmt_str_expr));
     for (i, arg) in fmt_args[1..].iter().enumerate() {
         if let Some(cast) = casts.get(&i) {
@@ -264,11 +268,12 @@ enum CastType {
 }
 
 impl CastType {
-    fn apply(&self, e: P<Expr>) -> P<Expr> {
+    fn apply(&self, mut e: P<Expr>) -> P<Expr> {
         // Since these get passed to the new print! macros, they need to have spans,
         // and the spans need to match the original expressions
         // FIXME: should all the inner nodes have spans too???
         let span = e.span;
+        e.span = DUMMY_SP;
         match *self {
             CastType::Int(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
             CastType::Uint(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
