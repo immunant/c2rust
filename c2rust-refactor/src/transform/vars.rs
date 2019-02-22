@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::mem;
 use rustc::hir::def_id::LOCAL_CRATE;
 use rustc::hir::HirId;
-use rustc::ty::TyKind;
+use rustc::ty::{TyKind, ParamEnv};
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
@@ -40,15 +40,13 @@ impl Transform for LetXUninitialized {
 
 /// # `sink_lets` Command
 /// 
-/// Obsolete - works around translator problems that no longer exist.
-/// 
 /// Usage: `sink_lets`
 /// 
 /// For each local variable with a trivial initializer, move the local's
 /// declaration to the innermost block containing all its uses.
 /// 
-/// "Trivial" is currently defined as no initializer (`let x;`) or a call to
-/// `mem::uninitialized()`.  This transform requires trivial assignments to avoid
+/// "Trivial" is currently defined as no initializer (`let x;`) or an initializer
+/// without any side effects.  This transform requires trivial assignments to avoid
 /// reordering side effects.
 pub struct SinkLets;
 
@@ -64,7 +62,7 @@ impl Transform for SinkLets {
         let mut locals: HashMap<HirId, LocalInfo> = HashMap::new();
         visit_nodes(&krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
-                if l.init.is_none() || is_uninit_call(cx, l.init.as_ref().unwrap()) {
+                if l.init.is_none() || !expr_has_side_effects(cx, l.init.as_ref().unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
                     locals.insert(hir_id, LocalInfo {
                         local: P(Local {
@@ -223,7 +221,41 @@ impl Transform for SinkLets {
 
         krate
     }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
 }
+
+
+fn expr_has_side_effects(cx: &driver::Ctxt, e: &P<Expr>) -> bool {
+    match e.node {
+        // Literals never have side effects
+        ExprKind::Lit(_) => false,
+        ExprKind::Array(ref elems) => elems.iter().any(|e| expr_has_side_effects(cx, e)),
+        ExprKind::Call(ref func, ref args) => {
+            let func_is_const_fn = cx.try_resolve_expr(func)
+                .map(|func_id| cx.ty_ctxt().is_const_fn(func_id))
+                .unwrap_or_default();
+            !func_is_const_fn ||
+                args.iter().any(|e| expr_has_side_effects(cx, e))
+        },
+        ExprKind::Tup(ref elems) => elems.iter().any(|e| expr_has_side_effects(cx, e)),
+        ExprKind::Cast(ref expr, _) => expr_has_side_effects(cx, expr),
+        ExprKind::Type(ref expr, _) => expr_has_side_effects(cx, expr),
+        // TODO: ExprKind::Path safe???
+        ExprKind::Struct(_, ref fields, ref base) => {
+            fields.iter().any(|f| expr_has_side_effects(cx, &f.expr)) ||
+                base.as_ref().map(|e| expr_has_side_effects(cx, e)).unwrap_or_default()
+        }
+        ExprKind::Repeat(ref expr, _) => expr_has_side_effects(cx, expr),
+        ExprKind::Paren(ref expr) => expr_has_side_effects(cx, expr),
+
+        // We conservatively assume that all others have side effects
+        _ => true,
+    }
+}
+
 
 fn is_uninit_call(cx: &driver::Ctxt, e: &Expr) -> bool {
     let func = match_or!([e.node] ExprKind::Call(ref func, _) => func; return false);
@@ -244,12 +276,10 @@ fn is_uninit_call(cx: &driver::Ctxt, e: &Expr) -> bool {
 
 /// # `fold_let_assign` Command
 /// 
-/// Obsolete - works around translator problems that no longer exist.
-/// 
 /// Usage: `fold_let_assign`
 /// 
-/// Fold together `let`s with no initializer and subsequent assignments.  For
-/// example, replace `let x; x = 10;` with `let x = 10;`.
+/// Fold together `let`s with no initializer or a trivial one, and subsequent assignments.
+/// For example, replace `let x; x = 10;` with `let x = 10;`.
 pub struct FoldLetAssign;
 
 impl Transform for FoldLetAssign {
@@ -259,7 +289,7 @@ impl Transform for FoldLetAssign {
         let mut locals: HashMap<HirId, P<Local>> = HashMap::new();
         visit_nodes(&krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
-                if l.init.is_none() || is_uninit_call(cx, l.init.as_ref().unwrap()) {
+                if l.init.is_none() || !expr_has_side_effects(cx, l.init.as_ref().unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
                     locals.insert(hir_id, P(l.clone()));
                 }
@@ -395,6 +425,10 @@ impl Transform for FoldLetAssign {
             }
         })
     }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
 }
 
 
@@ -440,6 +474,42 @@ impl Transform for UninitToDefault {
 }
 
 
+/// # `remove_redundant_let_types` Command
+///
+/// Usage: `remove_redundant_let_types`
+///
+/// Removes types from all `let` statements where the initializer's type matches the declared one,
+/// so the latter can be omitted and inferred.
+/// For example, replace `let x: u32 = 1u32;` with `let x = 1u32;`
+pub struct RemoveRedundantLetTypes;
+
+impl Transform for RemoveRedundantLetTypes {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let tcx = cx.ty_ctxt();
+        let mut mcx = MatchCtxt::new(st, cx);
+        let pat = mcx.parse_stmts("let $pat:Pat : $ty:Ty = $init:Expr;");
+        let repl = mcx.parse_stmts("let $pat = $init;");
+        fold_match_with(mcx, pat, krate, |ast, mcx| {
+            let e = mcx.bindings.expr("$init");
+            let e_ty = cx.adjusted_node_type(e.id);
+            let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
+
+            let t = mcx.bindings.ty("$ty");
+            let t_ty = cx.adjusted_node_type(t.id);
+            let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
+            if e_ty == t_ty {
+                repl.clone().subst(st, cx, &mcx.bindings)
+            } else {
+                ast
+            }
+        })
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
 
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
@@ -448,4 +518,5 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("sink_lets", |_args| mk(SinkLets));
     reg.register("fold_let_assign", |_args| mk(FoldLetAssign));
     reg.register("uninit_to_default", |_args| mk(UninitToDefault));
+    reg.register("remove_redundant_let_types", |_args| mk(RemoveRedundantLetTypes));
 }
