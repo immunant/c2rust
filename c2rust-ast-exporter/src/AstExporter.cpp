@@ -186,7 +186,7 @@ public:
 
     void VisitEnumType(const EnumType *T) {
         encodeType(T, TagEnumType, [T](CborEncoder *local) {
-            cbor_encode_uint(local, uintptr_t(T->getDecl()->getCanonicalDecl()));
+            cbor_encode_uint(local, uintptr_t(T->getDecl()->getDefinition()));
         });
     }
 
@@ -1310,8 +1310,10 @@ class TranslateASTVisitor final
 
       bool VisitEnumDecl(EnumDecl *D)
       {
-          // Skip non-canonical decls
-          if(!D->isCanonicalDecl())
+          // Skip non-definition decls. We previously skipped non-canonical
+          // decls here, however a canonical decl is not guaranteed to also
+          // be the definition
+          if(!D->isCompleteDefinition())
               return true;
 
           std::vector<void*> childIds;
