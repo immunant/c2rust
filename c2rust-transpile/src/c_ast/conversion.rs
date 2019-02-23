@@ -1409,7 +1409,8 @@ impl ConversionContext {
                     let is_static = node.extras[1].as_boolean().expect("Expected to find duration");
                     let is_extern = node.extras[2].as_boolean().expect("Expected to find visibility");
                     let is_defn   = node.extras[3].as_boolean().expect("Expected to find whether decl is definition");
-                    assert!(if is_extern { is_static } else { true }, "Something cannot be extern without also being static");
+                    assert!(if is_extern { is_static } else { true },
+                            format!("Variable cannot be extern without also being static: {}", ident));
 
                     let initializer = node.children[0]
                         .map(|id| self.visit_expr(id));
