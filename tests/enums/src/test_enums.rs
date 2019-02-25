@@ -5,6 +5,7 @@ use enum_ret::{Color, rust_entry2};
 use enum_duplicate::{e, rust_entry3};
 use top_enum::{E as otherE, rust_entry4};
 use big_enum::{E1, E2, E3, rust_entry5};
+use non_canonical_enum_def::{rust_abc, hrtimer_restart, HRTIMER_RESTART, HRTIMER_NORESTART};
 
 use self::libc::{c_int, c_uint};
 
