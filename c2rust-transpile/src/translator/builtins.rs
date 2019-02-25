@@ -201,6 +201,141 @@ impl<'c> Translation<'c> {
                 self.convert_simd_builtin(ctx, "_mm256_shufflehi_epi16", args),
             "__builtin_ia32_pshuflw256" =>
                 self.convert_simd_builtin(ctx, "_mm256_shufflelo_epi16", args),
+
+            "__sync_val_compare_and_swap_1" |
+            "__sync_val_compare_and_swap_2" |
+            "__sync_val_compare_and_swap_4" |
+            "__sync_val_compare_and_swap_8" |
+            "__sync_val_compare_and_swap_16" |
+            "__sync_bool_compare_and_swap_1" |
+            "__sync_bool_compare_and_swap_2" |
+            "__sync_bool_compare_and_swap_4" |
+            "__sync_bool_compare_and_swap_8" |
+            "__sync_bool_compare_and_swap_16" => {
+                self.extern_crates.borrow_mut().insert("core");
+                self.use_feature("core_intrinsics");
+
+                // Emit `atomic_cxchg(a0, a1, a2).idx`
+                let atomic_cxchg = mk().path_expr(vec!["", "core", "intrinsics", "atomic_cxchg"]);
+                let arg0 = self.convert_expr(ctx.used(), args[0])?;
+                let arg1 = self.convert_expr(ctx.used(), args[1])?;
+                let arg2 = self.convert_expr(ctx.used(), args[2])?;
+                Ok(arg0.and_then(|arg0| arg1.and_then(|arg1| arg2.map(|arg2| {
+                    let call = mk().call_expr(atomic_cxchg, vec![arg0, arg1, arg2]);
+                    let field_idx = if builtin_name.starts_with("__sync_val") {
+                        "0"
+                    } else {
+                        "1"
+                    };
+                    mk().field_expr(call, field_idx)
+                }))))
+            }
+
+            // FIXME: add support for _nand_
+            "__sync_fetch_and_add_1" |
+            "__sync_fetch_and_add_2" |
+            "__sync_fetch_and_add_4" |
+            "__sync_fetch_and_add_8" |
+            "__sync_fetch_and_add_16" |
+            "__sync_fetch_and_sub_1" |
+            "__sync_fetch_and_sub_2" |
+            "__sync_fetch_and_sub_4" |
+            "__sync_fetch_and_sub_8" |
+            "__sync_fetch_and_sub_16" |
+            "__sync_fetch_and_or_1" |
+            "__sync_fetch_and_or_2" |
+            "__sync_fetch_and_or_4" |
+            "__sync_fetch_and_or_8" |
+            "__sync_fetch_and_or_16" |
+            "__sync_fetch_and_and_1" |
+            "__sync_fetch_and_and_2" |
+            "__sync_fetch_and_and_4" |
+            "__sync_fetch_and_and_8" |
+            "__sync_fetch_and_and_16" |
+            "__sync_fetch_and_xor_1" |
+            "__sync_fetch_and_xor_2" |
+            "__sync_fetch_and_xor_4" |
+            "__sync_fetch_and_xor_8" |
+            "__sync_fetch_and_xor_16" |
+            "__sync_add_and_fetch_1" |
+            "__sync_add_and_fetch_2" |
+            "__sync_add_and_fetch_4" |
+            "__sync_add_and_fetch_8" |
+            "__sync_add_and_fetch_16" |
+            "__sync_sub_and_fetch_1" |
+            "__sync_sub_and_fetch_2" |
+            "__sync_sub_and_fetch_4" |
+            "__sync_sub_and_fetch_8" |
+            "__sync_sub_and_fetch_16" |
+            "__sync_or_and_fetch_1" |
+            "__sync_or_and_fetch_2" |
+            "__sync_or_and_fetch_4" |
+            "__sync_or_and_fetch_8" |
+            "__sync_or_and_fetch_16" |
+            "__sync_and_and_fetch_1" |
+            "__sync_and_and_fetch_2" |
+            "__sync_and_and_fetch_4" |
+            "__sync_and_and_fetch_8" |
+            "__sync_and_and_fetch_16" |
+            "__sync_xor_and_fetch_1" |
+            "__sync_xor_and_fetch_2" |
+            "__sync_xor_and_fetch_4" |
+            "__sync_xor_and_fetch_8" |
+            "__sync_xor_and_fetch_16" => {
+                self.extern_crates.borrow_mut().insert("core");
+                self.use_feature("core_intrinsics");
+
+                let (func_name, binary_op) = if builtin_name.contains("_add_") {
+                    ("atomic_xadd", BinOpKind::Add)
+                } else if builtin_name.contains("_sub_") {
+                    ("atomic_xsub", BinOpKind::Sub)
+                } else if builtin_name.contains("_or_") {
+                    ("atomic_or", BinOpKind::BitOr)
+                } else if builtin_name.contains("_xor_") {
+                    ("atomic_xor", BinOpKind::BitXor)
+                } else {
+                    // We can't explicitly check for "_and_" since they all contain it
+                    ("atomic_and", BinOpKind::BitAnd)
+                };
+
+                // Emit `atomic_func(a0, a1) (op a1)?`
+                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", func_name]);
+                let arg0 = self.convert_expr(ctx.used(), args[0])?;
+                let arg1 = self.convert_expr(ctx.used(), args[1])?;
+                if builtin_name.starts_with("__sync_fetch") {
+                    // __sync_fetch_and_XXX
+                    Ok(arg0.and_then(|arg0| arg1.map(|arg1| {
+                        mk().call_expr(atomic_func, vec![arg0, arg1])
+                    })))
+                } else {
+                    // __sync_XXX_and_fetch
+                    Ok(arg0.and_then(|arg0| arg1.and_then(|arg1| {
+                        // Since the value of `arg1` is used twice, we need to copy
+                        // it into a local temporary so we don't duplicate any side-effects
+                        // To preserve ordering of side-effects, we also do this for arg0
+                        let arg0_name = self.renamer.borrow_mut().fresh();
+                        let arg0_let = mk().local_stmt(P(mk().local(
+                            mk().ident_pat(&arg0_name),
+                            None as Option<P<Ty>>,
+                            Some(arg0))));
+
+                        let arg1_name = self.renamer.borrow_mut().fresh();
+                        let arg1_let = mk().local_stmt(P(mk().local(
+                            mk().ident_pat(&arg1_name),
+                            None as Option<P<Ty>>,
+                            Some(arg1))));
+
+                        let call = mk().call_expr(atomic_func,
+                                                  vec![mk().ident_expr(&arg0_name),
+                                                       mk().ident_expr(&arg1_name)]);
+                        WithStmts {
+                            stmts: vec![arg0_let, arg1_let],
+                            val: mk().binary_expr(binary_op, call, mk().ident_expr(arg1_name))
+                        }
+                    })))
+                }
+            }
+
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }
     }
