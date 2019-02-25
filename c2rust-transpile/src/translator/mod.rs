@@ -1171,7 +1171,7 @@ impl<'c> Translation<'c> {
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
-                if is_static && self.static_initializer_is_uncompilable(initializer) {
+                if self.static_initializer_is_uncompilable(initializer) {
                     // Note: We don't pass is_static through here. Extracted initializers
                     // are run outside of the static initializer.
                     let (ty, _, init) = self.convert_variable(ctx.not_static(), initializer, typ)?;
@@ -1188,11 +1188,11 @@ impl<'c> Translation<'c> {
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
 
                     Ok(ConvertedDecl::Item(mk_linkage(false, new_name, ident)
-                    .span(s)
-                    .pub_()
-                    .abi("C")
-                    .mutbl()
-                    .static_item(new_name, ty, init)))
+                        .span(s)
+                        .pub_()
+                        .abi("C")
+                        .mutbl()
+                        .static_item(new_name, ty, init)))
                 } else {
                     let (ty, _, init) = self.convert_variable(ctx.set_static(is_static), initializer, typ)?;
 
