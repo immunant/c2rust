@@ -1409,6 +1409,8 @@ impl ConversionContext {
                     let is_static = node.extras[1].as_boolean().expect("Expected to find duration");
                     let is_extern = node.extras[2].as_boolean().expect("Expected to find visibility");
                     let is_defn   = node.extras[3].as_boolean().expect("Expected to find whether decl is definition");
+                    let attributes = node.extras[4].as_array().expect("Expected attribute array on var decl");
+
                     assert!(if is_extern { is_static } else { true },
                             format!("Variable cannot be extern without also being static: {}", ident));
 
@@ -1418,7 +1420,27 @@ impl ConversionContext {
                     let typ_id = node.type_id.expect("Expected to find type on variable declaration");
                     let typ = self.visit_qualified_type(typ_id);
 
-                    let variable_decl = CDeclKind::Variable { is_static, is_extern, is_defn, ident, initializer, typ };
+                    let mut attrs = IndexSet::new();
+                    let mut expect_section_value = false;
+
+                    for attr in attributes {
+                        let attr_str = attr.as_string()
+                            .expect("Var decl attributes should be strings")
+                            .as_str();
+
+                        match attr_str {
+                            "used" => { attrs.insert(VariableAttribute::Used); },
+                            "section" => expect_section_value = true,
+                            s if expect_section_value => {
+                                attrs.insert(VariableAttribute::Section(s.into()));
+
+                                expect_section_value = false;
+                            },
+                            _ => {},
+                        }
+                    }
+
+                    let variable_decl = CDeclKind::Variable { is_static, is_extern, is_defn, ident, initializer, typ, attrs };
 
                     self.add_decl(new_id, located(node, variable_decl));
                     self.processed_nodes.insert(new_id, VAR_DECL);

@@ -1142,7 +1142,7 @@ impl<'c> Translation<'c> {
             },
 
             // Extern variable without intializer (definition elsewhere)
-            CDeclKind::Variable { is_extern: true, is_static, is_defn: false, ref ident, initializer, typ } => {
+            CDeclKind::Variable { is_extern: true, is_static, is_defn: false, ref ident, initializer, typ, .. } => {
                 assert!(is_static, "An extern variable must be static");
                 assert!(initializer.is_none(), "An extern variable that isn't a definition can't have an initializer");
 
@@ -1164,14 +1164,14 @@ impl<'c> Translation<'c> {
             }
 
             // Extern variable with initializer (definition here)
-            CDeclKind::Variable { is_extern: true, is_static, ref ident, initializer, typ, .. } => {
+            CDeclKind::Variable { is_extern: true, is_static, ref ident, initializer, typ, ref attrs, .. } => {
                 assert!(is_static, "An extern variable must be static");
 
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
-                if self.static_initializer_is_uncompilable(initializer) {
+                let (ty, init) = if self.static_initializer_is_uncompilable(initializer) {
                     // Note: We don't pass is_static through here. Extracted initializers
                     // are run outside of the static initializer.
                     let (ty, _, init) = self.convert_variable(ctx.not_static(), initializer, typ)?;
@@ -1187,12 +1187,7 @@ impl<'c> Translation<'c> {
 
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
 
-                    Ok(ConvertedDecl::Item(mk_linkage(false, new_name, ident)
-                        .span(s)
-                        .pub_()
-                        .abi("C")
-                        .mutbl()
-                        .static_item(new_name, ty, init)))
+                    (ty, init)
                 } else {
                     let (ty, _, init) = self.convert_variable(ctx.set_static(is_static), initializer, typ)?;
 
@@ -1206,15 +1201,26 @@ impl<'c> Translation<'c> {
                         init?.val
                     };
 
-                    // Force mutability due to the potential for raw pointers occuring in the type
-                    // and because we're assigning to these variables in the external initializer
-                    Ok(ConvertedDecl::Item(mk_linkage(false, new_name, ident)
-                        .span(s)
-                        .pub_()
-                        .abi("C")
-                        .mutbl()
-                        .static_item(new_name, ty, init)))
+                    (ty, init)
+                };
+
+                // Force mutability due to the potential for raw pointers occuring in the type
+                // and because we may be assigning to these variables in the external initializer
+                let mut static_def = mk_linkage(false, new_name, ident)
+                    .span(s)
+                    .pub_()
+                    .abi("C")
+                    .mutbl();
+
+                // Add static attributes
+                for attr in attrs {
+                    static_def = match attr {
+                        VariableAttribute::Used => static_def.single_attr("used"),
+                        VariableAttribute::Section(name) => static_def.str_attr("link_section", name),
+                    }
                 }
+
+                Ok(ConvertedDecl::Item(static_def.static_item(new_name, ty, init)))
             }
 
             // Static variable (definition here)
@@ -1601,7 +1607,7 @@ impl<'c> Translation<'c> {
         };
 
         match self.ast_context.index(decl_id).kind {
-            CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ } if !is_static && !is_extern => {
+            CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ, .. } if !is_static && !is_extern => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
                 let has_self_reference =

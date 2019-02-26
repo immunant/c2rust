@@ -1217,6 +1217,32 @@ class TranslateASTVisitor final
                                  cbor_encode_boolean(array, is_extern);
 
                                  cbor_encode_boolean(array, is_defn);
+
+                                 // Encode attribute names and relevant info if supported
+                                 CborEncoder attr_info;
+                                 size_t attr_info_n = 0;
+
+                                 for (auto attr: VD->attrs()) {
+                                     attr_info_n++;
+
+                                     if (attr->getKind() == attr::Kind::Section) {
+                                         attr_info_n++;
+                                     }
+                                 }
+
+                                 cbor_encoder_create_array(array, &attr_info, attr_info_n);
+
+                                 for (auto attr: VD->attrs()) {
+                                     cbor_encode_text_stringz(&attr_info, attr->getSpelling());
+
+                                     if (attr->getKind() == attr::Kind::Section) {
+                                        auto sa = VD->getAttr<SectionAttr>();
+
+                                        cbor_encode_text_stringz(&attr_info, sa->getName().str().c_str());
+                                     }
+                                 }
+
+                                 cbor_encoder_close_container(array, &attr_info);
                              });
 
           typeEncoder.VisitQualType(T);

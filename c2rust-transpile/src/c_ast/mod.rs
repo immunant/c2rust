@@ -1,6 +1,6 @@
 use c2rust_ast_exporter::clang_ast::LRValue;
 use std::collections::{HashMap,HashSet,BTreeMap};
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use std::ops::Index;
 use std::path::PathBuf;
 
@@ -33,6 +33,13 @@ use super::diagnostics::Diagnostic;
 mod conversion;
 mod print;
 pub mod iterators;
+
+/// Enumeration of supported attributes for Variable Declarations
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum VariableAttribute {
+    Section(String),
+    Used,
+}
 
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug, Clone)]
@@ -500,6 +507,7 @@ pub enum CDeclKind {
         ident: String,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
+        attrs: IndexSet<VariableAttribute>,
     },
 
     // Enum (http://clang.llvm.org/doxygen/classclang_1_1EnumDecl.html)
