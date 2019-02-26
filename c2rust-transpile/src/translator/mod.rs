@@ -1224,7 +1224,7 @@ impl<'c> Translation<'c> {
             }
 
             // Static variable (definition here)
-            CDeclKind::Variable { is_static: true, initializer, typ, .. } => {
+            CDeclKind::Variable { is_static: true, initializer, typ, ref attrs, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
 
@@ -1250,7 +1250,17 @@ impl<'c> Translation<'c> {
 
                 // Force mutability due to the potential for raw pointers occurring in the type
                 // and because we're assigning to these variables in the external initializer
-                Ok(ConvertedDecl::Item(mk().span(s).mutbl().static_item(new_name, ty, init)))
+                let mut static_def = mk().span(s).mutbl();
+
+                // Add static attributes
+                for attr in attrs {
+                    static_def = match attr {
+                        VariableAttribute::Used => static_def.single_attr("used"),
+                        VariableAttribute::Section(name) => static_def.str_attr("link_section", name),
+                    }
+                }
+
+                Ok(ConvertedDecl::Item(static_def.static_item(new_name, ty, init)))
             }
 
             CDeclKind::Variable { .. } => Err(format!("This should be handled in 'convert_decl_stmt'")),

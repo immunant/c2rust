@@ -37,7 +37,9 @@ pub mod iterators;
 /// Enumeration of supported attributes for Variable Declarations
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum VariableAttribute {
+    /// __attribute__((section("foo"), __section__("foo")))
     Section(String),
+    /// __attribute__((used, __used__))
     Used,
 }
 
