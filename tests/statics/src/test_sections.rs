@@ -1,6 +1,6 @@
 extern crate libc;
 
-use attributes::{rust_used_static, rust_used_static2, rust_used_static3, rust_used_static4, rust_no_attrs};
+use attributes::{rust_used_static, rust_used_static2, rust_used_static3, rust_no_attrs};
 use sections::*;
 use self::libc::c_uint;
 
