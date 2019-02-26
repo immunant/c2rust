@@ -231,7 +231,6 @@ impl<'c> Translation<'c> {
                 }))))
             }
 
-            // FIXME: add support for _nand_
             "__sync_fetch_and_add_1" |
             "__sync_fetch_and_add_2" |
             "__sync_fetch_and_add_4" |
@@ -257,6 +256,11 @@ impl<'c> Translation<'c> {
             "__sync_fetch_and_xor_4" |
             "__sync_fetch_and_xor_8" |
             "__sync_fetch_and_xor_16" |
+            "__sync_fetch_and_nand_1" |
+            "__sync_fetch_and_nand_2" |
+            "__sync_fetch_and_nand_4" |
+            "__sync_fetch_and_nand_8" |
+            "__sync_fetch_and_nand_16" |
             "__sync_add_and_fetch_1" |
             "__sync_add_and_fetch_2" |
             "__sync_add_and_fetch_4" |
@@ -281,21 +285,28 @@ impl<'c> Translation<'c> {
             "__sync_xor_and_fetch_2" |
             "__sync_xor_and_fetch_4" |
             "__sync_xor_and_fetch_8" |
-            "__sync_xor_and_fetch_16" => {
+            "__sync_xor_and_fetch_16" |
+            "__sync_nand_and_fetch_1" |
+            "__sync_nand_and_fetch_2" |
+            "__sync_nand_and_fetch_4" |
+            "__sync_nand_and_fetch_8" |
+            "__sync_nand_and_fetch_16" => {
                 self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
-                let (func_name, binary_op) = if builtin_name.contains("_add_") {
-                    ("atomic_xadd", BinOpKind::Add)
+                let (func_name, binary_op, is_nand) = if builtin_name.contains("_add_") {
+                    ("atomic_xadd", BinOpKind::Add, false)
                 } else if builtin_name.contains("_sub_") {
-                    ("atomic_xsub", BinOpKind::Sub)
+                    ("atomic_xsub", BinOpKind::Sub, false)
                 } else if builtin_name.contains("_or_") {
-                    ("atomic_or", BinOpKind::BitOr)
+                    ("atomic_or", BinOpKind::BitOr, false)
                 } else if builtin_name.contains("_xor_") {
-                    ("atomic_xor", BinOpKind::BitXor)
+                    ("atomic_xor", BinOpKind::BitXor, false)
+                } else if builtin_name.contains("_nand_") {
+                    ("atomic_nand", BinOpKind::BitAnd, true)
                 } else {
                     // We can't explicitly check for "_and_" since they all contain it
-                    ("atomic_and", BinOpKind::BitAnd)
+                    ("atomic_and", BinOpKind::BitAnd, false)
                 };
 
                 // Emit `atomic_func(a0, a1) (op a1)?`
@@ -328,12 +339,60 @@ impl<'c> Translation<'c> {
                         let call = mk().call_expr(atomic_func,
                                                   vec![mk().ident_expr(&arg0_name),
                                                        mk().ident_expr(&arg1_name)]);
+                        let lhs = if is_nand {
+                            // For nand, return `!atomic_nand(arg0, arg1) & arg1`
+                            mk().unary_expr(UnOp::Not, call)
+                        } else {
+                            call
+                        };
                         WithStmts {
                             stmts: vec![arg0_let, arg1_let],
-                            val: mk().binary_expr(binary_op, call, mk().ident_expr(arg1_name))
+                            val: mk().binary_expr(binary_op, lhs, mk().ident_expr(arg1_name))
                         }
                     })))
                 }
+            }
+
+            "__sync_synchronize" => {
+                self.extern_crates.borrow_mut().insert("core");
+                self.use_feature("core_intrinsics");
+
+                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_fence"]);
+                Ok(WithStmts::new(mk().call_expr(atomic_func, vec![] as Vec<P<Expr>>)))
+            }
+
+            "__sync_lock_test_and_set_1" |
+            "__sync_lock_test_and_set_2" |
+            "__sync_lock_test_and_set_4" |
+            "__sync_lock_test_and_set_8" |
+            "__sync_lock_test_and_set_16" => {
+                self.extern_crates.borrow_mut().insert("core");
+                self.use_feature("core_intrinsics");
+
+                // Emit `atomic_xchg_acq(arg0, arg1)`
+                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_xchg_acq"]);
+                let arg0 = self.convert_expr(ctx.used(), args[0])?;
+                let arg1 = self.convert_expr(ctx.used(), args[1])?;
+                Ok(arg0.and_then(|arg0| arg1.map(|arg1| {
+                    mk().call_expr(atomic_func, vec![arg0, arg1])
+                })))
+            }
+
+            "__sync_lock_release_1" |
+            "__sync_lock_release_2" |
+            "__sync_lock_release_4" |
+            "__sync_lock_release_8" |
+            "__sync_lock_release_16" => {
+                self.extern_crates.borrow_mut().insert("core");
+                self.use_feature("core_intrinsics");
+
+                // Emit `atomic_store_rel(arg0, 0)`
+                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_store_rel"]);
+                let arg0 = self.convert_expr(ctx.used(), args[0])?;
+                Ok(arg0.map(|arg0| {
+                    let zero = mk().lit_expr(mk().int_lit(0, ""));
+                    mk().call_expr(atomic_func, vec![arg0, zero])
+                }))
             }
 
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
