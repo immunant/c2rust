@@ -220,14 +220,16 @@ impl<'c> Translation<'c> {
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 let arg2 = self.convert_expr(ctx.used(), args[2])?;
-                Ok(arg0.and_then(|arg0| arg1.and_then(|arg1| arg2.map(|arg2| {
+                Ok(arg0.and_then(|arg0| arg1.and_then(|arg1| arg2.and_then(|arg2| {
                     let call = mk().call_expr(atomic_cxchg, vec![arg0, arg1, arg2]);
                     let field_idx = if builtin_name.starts_with("__sync_val") {
                         "0"
                     } else {
                         "1"
                     };
-                    mk().field_expr(call, field_idx)
+                    let call_expr = mk().field_expr(call, field_idx);
+                    self.convert_side_effects_expr(ctx, vec![], call_expr,
+                                                   "Builtin is not supposed to be used")
                 }))))
             }
 
@@ -315,8 +317,10 @@ impl<'c> Translation<'c> {
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 if builtin_name.starts_with("__sync_fetch") {
                     // __sync_fetch_and_XXX
-                    Ok(arg0.and_then(|arg0| arg1.map(|arg1| {
-                        mk().call_expr(atomic_func, vec![arg0, arg1])
+                    Ok(arg0.and_then(|arg0| arg1.and_then(|arg1| {
+                        let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
+                        self.convert_side_effects_expr(ctx, vec![], call_expr,
+                                                       "Builtin is not supposed to be used")
                     })))
                 } else {
                     // __sync_XXX_and_fetch
@@ -346,10 +350,8 @@ impl<'c> Translation<'c> {
                         } else {
                             val
                         };
-                        WithStmts {
-                            stmts: vec![arg0_let, arg1_let],
-                            val
-                        }
+                        self.convert_side_effects_expr(ctx, vec![arg0_let, arg1_let], val,
+                                                       "Builtin is not supposed to be used")
                     })))
                 }
             }
@@ -359,7 +361,9 @@ impl<'c> Translation<'c> {
                 self.use_feature("core_intrinsics");
 
                 let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_fence"]);
-                Ok(WithStmts::new(mk().call_expr(atomic_func, vec![] as Vec<P<Expr>>)))
+                let call_expr = mk().call_expr(atomic_func, vec![] as Vec<P<Expr>>);
+                Ok(self.convert_side_effects_expr(ctx, vec![], call_expr,
+                                                  "Builtin is not supposed to be used"))
             }
 
             "__sync_lock_test_and_set_1" |
@@ -374,8 +378,10 @@ impl<'c> Translation<'c> {
                 let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_xchg_acq"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
-                Ok(arg0.and_then(|arg0| arg1.map(|arg1| {
-                    mk().call_expr(atomic_func, vec![arg0, arg1])
+                Ok(arg0.and_then(|arg0| arg1.and_then(|arg1| {
+                    let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
+                    self.convert_side_effects_expr(ctx, vec![], call_expr,
+                                                   "Builtin is not supposed to be used")
                 })))
             }
 
@@ -390,9 +396,11 @@ impl<'c> Translation<'c> {
                 // Emit `atomic_store_rel(arg0, 0)`
                 let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_store_rel"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
-                Ok(arg0.map(|arg0| {
+                Ok(arg0.and_then(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
-                    mk().call_expr(atomic_func, vec![arg0, zero])
+                    let call_expr = mk().call_expr(atomic_func, vec![arg0, zero]);
+                    self.convert_side_effects_expr(ctx, vec![], call_expr,
+                                                   "Builtin is not supposed to be used")
                 }))
             }
 

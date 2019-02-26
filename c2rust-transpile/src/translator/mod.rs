@@ -2353,17 +2353,8 @@ impl<'c> Translation<'c> {
                 }
 
                 let call_expr = mk().call_expr(func, args_new);
-
-                if ctx.is_unused() {
-                    // Recall that if `used` is false, the `stmts` field of the output must contain
-                    // all side-effects (and a function call can always have side-effects)
-                    stmts.push(mk().semi_stmt(call_expr));
-
-                    let val = self.panic("Function call expression is not supposed to be used");
-                    Ok(WithStmts { stmts, val })
-                } else {
-                    Ok(WithStmts { stmts, val: call_expr })
-                }
+                Ok(self.convert_side_effects_expr(ctx, stmts, call_expr,
+                                                  "Function call expression is not supposed to be used"))
             }
 
             CExprKind::Member(_, expr, decl, kind, _) => {
@@ -2429,6 +2420,23 @@ impl<'c> Translation<'c> {
             }
         } else {
             false
+        }
+    }
+
+    fn convert_side_effects_expr(
+        &self,
+        ctx: ExprContext,
+        mut stmts: Vec<Stmt>,
+        expr: P<Expr>,
+        panic_msg: &str,
+    ) -> WithStmts<P<Expr>> {
+        if ctx.is_unused() {
+            // Recall that if `used` is false, the `stmts` field of the output must contain
+            // all side-effects (and a function call can always have side-effects)
+            stmts.push(mk().semi_stmt(expr));
+            WithStmts { stmts, val: self.panic(panic_msg) }
+        } else {
+            WithStmts { stmts, val: expr }
         }
     }
 
