@@ -30,6 +30,7 @@ strum = "0.13"
 strum_macros = "0.13"
 log = "0.4"
 fern = { version = "0.5", features = ["colored"] }
+failure = "0.1.5"
 
 [features]
 # Force static linking of LLVM

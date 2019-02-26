@@ -23,6 +23,8 @@ extern crate fern;
 extern crate strum;
 #[macro_use]
 extern crate strum_macros;
+#[macro_use]
+extern crate failure;
 
 #[macro_use]
 mod diagnostics;
@@ -37,13 +39,13 @@ pub mod translator;
 pub mod with_stmts;
 
 use std::collections::HashSet;
-use std::error::Error;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
 
+use failure::Error;
 use regex::Regex;
 
 use c2rust_ast_exporter as ast_exporter;
@@ -166,7 +168,10 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         // We only run the reorganization refactoring if we emitted a fresh crate file
         if let Some(output_file) = crate_file {
             if tcfg.reorganize_definitions {
-                reorganize_definitions(&build_dir, &output_file);
+                reorganize_definitions(&build_dir, &output_file)
+                    .unwrap_or_else(|e| {
+                        warn!("Failed to reorganize definitions. {}", e.as_fail());
+                    })
             }
         }
     }
@@ -201,36 +206,55 @@ fn get_isystem_args() -> Vec<String>  {
     args
 }
 
-fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) {
+fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) -> Result<(), Error> {
+    // Make sure the crate builds cleanly
+    let status = process::Command::new("cargo")
+        .args(&["check"])
+        .env("RUSTFLAGS", "-Awarnings")
+        .current_dir(build_dir)
+        .status()?;
+    if !status.success() {
+        return Err(format_err!("Crate does not compile."));
+    }
+
     // Assumes the subcommand executable is in the same directory as this program.
     let cmd_path = std::env::current_exe().expect("Cannot get current executable path");
     let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
     cmd_path.pop(); // remove current executable
     cmd_path.push(format!("c2rust-refactor"));
     assert!(cmd_path.exists(), format!("{:?} is missing", cmd_path));
-    let crate_path = crate_path.to_str().unwrap();
-    let args = ["-r", "inplace", "reorganize_definitions", "--", crate_path];
-    let code = process::Command::new(cmd_path.into_os_string())
+    let crate_path = crate_path
+        .strip_prefix(build_dir)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let args = ["--rewrite-mode", "inplace", "reorganize_definitions", "--", crate_path];
+    let status = process::Command::new(cmd_path.into_os_string())
         .args(&args)
         .current_dir(build_dir)
-        .status()
-        .expect("failed to start c2rust-refactor subcommand")
-        .code()
-        .unwrap_or(-1);
-    assert_eq!(code, 0);
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format_err!(
+            "Refactoring failed. Please fix errors above and re-run:\n    c2rust refactor {}",
+            args.join(" "),
+        ))
+    }
 }
 
-fn reorganize_definitions(build_dir: &PathBuf, crate_path: &PathBuf) {
-    invoke_refactor(build_dir, crate_path);
+fn reorganize_definitions(build_dir: &PathBuf, crate_path: &PathBuf) -> Result<(), Error> {
+    invoke_refactor(build_dir, crate_path)?;
     // fix the formatting of the output of `c2rust-refactor`
-    let code = process::Command::new("cargo")
+    let status = process::Command::new("cargo")
         .args(&["fmt"])
         .current_dir(build_dir)
-        .status()
-        .expect("failed to run cargo fmt subcommand")
-        .code()
-        .unwrap_or(-1);
-    assert_eq!(code, 0);
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format_err!("cargo fmt failed"))
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -265,7 +289,7 @@ impl CompileCmd {
     }
 }
 
-fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Box<Error>> {
+fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Error> {
     let f = File::open(compile_commands)?; // open read-only
 
     // Read the JSON contents of the file as an instance of `Value`

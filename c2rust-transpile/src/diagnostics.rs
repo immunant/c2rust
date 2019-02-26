@@ -30,17 +30,25 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>) {
                 Level::Debug => "debug",
                 Level::Trace => "trace",
             };
+            let target = record.target();
+            let warn_flag = if let Ok(_) = Diagnostic::from_str(target) {
+                format!(" [-W{}]", target)
+            } else {
+                String::new()
+            };
             out.finish(format_args!(
-                "\x1B[{}m{}:\x1B[0m {} [-W{}]",
+                "\x1B[{}m{}:\x1B[0m {}{}",
                 colors.get_color(&record.level()).to_fg_str(),
                 level_label,
                 message,
-                record.target(),
+                warn_flag,
             ))
         })
         .level(log::LevelFilter::Warn)
         .filter(move |metadata| {
-            enabled_warnings.contains(&Diagnostic::from_str(metadata.target()).unwrap())
+            Diagnostic::from_str(metadata.target())
+                .map(|d| enabled_warnings.contains(&d))
+                .unwrap_or(true)
         })
         .chain(io::stderr())
         .apply()
