@@ -114,6 +114,7 @@ args:
       takes_value: false
   - output-dir:
       long: output-dir
+      short: o
       value_name: DIR
       help: Path to output directory. Rust sources will be emitted in DIR/src/ and build files will be emitted in DIR/.
       takes_value: true
