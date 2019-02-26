@@ -339,15 +339,16 @@ impl<'c> Translation<'c> {
                         let call = mk().call_expr(atomic_func,
                                                   vec![mk().ident_expr(&arg0_name),
                                                        mk().ident_expr(&arg1_name)]);
-                        let lhs = if is_nand {
-                            // For nand, return `!atomic_nand(arg0, arg1) & arg1`
-                            mk().unary_expr(UnOp::Not, call)
+                        let val = mk().binary_expr(binary_op, call, mk().ident_expr(arg1_name));
+                        let val = if is_nand {
+                            // For nand, return `!(atomic_nand(arg0, arg1) & arg1)`
+                            mk().unary_expr(UnOp::Not, val)
                         } else {
-                            call
+                            val
                         };
                         WithStmts {
                             stmts: vec![arg0_let, arg1_let],
-                            val: mk().binary_expr(binary_op, lhs, mk().ident_expr(arg1_name))
+                            val
                         }
                     })))
                 }
