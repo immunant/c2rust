@@ -1,12 +1,14 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from plumbum.cmd import mv, mkdir, rename
+from plumbum.cmd import mv, mkdir
 from plumbum import local
 from typing import Tuple
 from common import (
     Colors,
     Config,
+    Command,
+    die,
     get_cmd_or_die,
     pb,
     setup_logging,
@@ -14,6 +16,7 @@ from common import (
 )
 
 import argparse
+import errno
 import logging
 import multiprocessing
 import os
@@ -182,13 +185,26 @@ Retcode = int
 StdErr = str
 StdOut = str
 
+
 def move(from_, to) -> Tuple[Retcode, StdOut, StdErr]:
     mv_args = [from_, to]
 
     return mv[mv_args].run()
 
+
+def get_rename_cmd() -> Command:
+    try:
+        return pb.local['prename']
+    except pb.CommandNotFound:
+        try:
+            return pb.local['perl-rename']
+        except pb.CommandNotFound:
+            die("prename and perl-rename not in path", errno.ENOENT)
+
+
 def rename_(*args) -> Tuple[Retcode, StdOut, StdErr]:
-    return rename[args].run()
+    return get_rename_cmd()[args].run()
+
 
 def add_mods(path: str):
     with open(path, "r+") as file:

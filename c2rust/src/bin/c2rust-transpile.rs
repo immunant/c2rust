@@ -3,7 +3,7 @@ extern crate clap;
 extern crate c2rust_transpile;
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use clap::{App, Values};
 use regex::Regex;
@@ -68,12 +68,7 @@ fn main() {
         reorganize_definitions: matches.is_present("reorganize-definitions"),
         emit_modules:           matches.is_present("emit-modules"),
         emit_build_files:       matches.is_present("emit-build-files"),
-        build_directory_name:   matches.value_of("build-directory-name")
-            .map(String::from)
-            .unwrap(),
-        build_directory_contents: matches.value_of("build-directory-contents")
-            .and_then(|x| x.parse().ok())
-            .unwrap(),
+        output_dir:             matches.value_of("output-dir").map(PathBuf::from),
         main: {
             if matches.is_present("main") {
                 Some(String::from(matches.value_of("main").unwrap()))

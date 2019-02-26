@@ -112,26 +112,11 @@ args:
       short: e
       help: Emit Rust build files, i.e., Cargo.toml for a library (or a binary if -m/--main is given). Implies --emit-modules.
       takes_value: false
-  - build-directory-name:
-      long: build-directory-name
-      help: Name of the directory to store the build files into, e.g., c2rust-build
+  - output-dir:
+      long: output-dir
+      value_name: DIR
+      help: Path to output directory. Rust sources will be emitted in DIR/src/ and build files will be emitted in DIR/.
       takes_value: true
-      default_value: c2rust-build
-  - build-directory-contents:
-      long: build-directory-contents
-      long_help: |
-          Contents of the build directory, e.g., c2rust-build.
-          Accepts one of the following:
-              nothing - does not create a build directory; instead, it places Cargo.toml and c2rust-lib.rs
-                        in the same directory as the input compilation database
-              minimal - creates a c2rust-directory containing only Cargo.toml and lib.rs
-              full - creates a standalone build directory containing both the build files and Rust source code
-      takes_value: true
-      possible_values:
-          - nothing
-          - minimal
-          - full
-      default_value: minimal
   - filter:
       long: filter
       short: f

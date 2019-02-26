@@ -1,8 +1,7 @@
 extern crate handlebars;
 extern crate pathdiff;
 
-use std::fs::File;
-use std::fs::DirBuilder;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::io::Write;
 use std::str::FromStr;
@@ -39,37 +38,21 @@ pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
         .parent() // get directory of `compile_commands.json`
         .unwrap();
 
-    if !tcfg.emit_build_files {
-        return cc_db_dir.into();
-    }
-
-    if let BuildDirectoryContents::Nothing = tcfg.build_directory_contents {
-        // We do not put anything in the build directory;
-        // everything, including `Cargo.toml` and `lib.rs`, goes in the
-        // same place as the compilation database
-        return cc_db_dir.into();
-    }
-
-    let db = DirBuilder::new();
-    let build_dir = cc_db_dir.join(&tcfg.build_directory_name);
-    if !build_dir.exists() {
-        db.create(&build_dir).expect(&format!(
-            "couldn't create build directory: {}",
-            build_dir.display()
-        ));
-    }
-
-    if let BuildDirectoryContents::Full = tcfg.build_directory_contents {
-        let build_src_dir = build_dir.join("src");
-        if !build_src_dir.exists() {
-            db.create(&build_src_dir).expect(&format!(
-                "couldn't create build source directory: {}",
-                build_src_dir.display()
-            ));
+    match &tcfg.output_dir {
+        Some(dir) => {
+            let output_dir = dir.clone();
+            if !output_dir.exists() {
+                fs::create_dir(&output_dir).expect(&format!(
+                    "couldn't create build directory: {}",
+                    output_dir.display()
+                ));
+            }
+            output_dir
+        }
+        None => {
+            cc_db_dir.into()
         }
     }
-
-    build_dir
 }
 
 /// Emit `Cargo.toml` and `lib.rs` for a library or `main.rs` for a binary.
@@ -94,11 +77,11 @@ struct Module {
 }
 
 fn get_root_rs_file_name(tcfg: &TranspilerConfig) -> &str {
-    match (&tcfg.main, &tcfg.build_directory_contents) {
-        (Some(_), BuildDirectoryContents::Nothing) => "c2rust-main.rs",
-        (None, BuildDirectoryContents::Nothing) => "c2rust-lib.rs",
-        (Some(_), _) => "main.rs",
-        (None, _) => "lib.rs",
+    match (&tcfg.main, &tcfg.output_dir) {
+        (Some(_), None) => "c2rust-main.rs",
+        (None, None) => "c2rust-lib.rs",
+        (Some(_), Some(_)) => "main.rs",
+        (None, Some(_)) => "lib.rs",
     }
 }
 
@@ -151,7 +134,9 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) 
     // rust_checks_path is gone because we don't want to refer to the source
     // path but instead want the cross-check libs to be installed via cargo.
     let json = json!({
-        "crate_name": tcfg.build_directory_name,
+        "crate_name": tcfg.output_dir.as_ref().and_then(
+            |x| x.file_name().map(|x| x.to_string_lossy())
+        ).unwrap_or("c2rust".into()),
         "root_rs_file": get_root_rs_file_name(tcfg),
         "main_module": tcfg.main,
         "cross_checks": tcfg.cross_checks,

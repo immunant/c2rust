@@ -26,16 +26,18 @@ The following arguments control the basic transpiler behavior:
 The transpiler can create skeleton cargo build files for the translated Rust sources, controlled by the following options:
 
 - `-e`, `--emit-build-files` - Emit cargo build files to build the translated
-  Rust code as a library. Build files are emitted into the `c2rust-build` in the
-  current directory. This will not overwrite existing files, so remove this
-  build file directory before re-creating build files. (implies `--emit-modules`)
+  Rust code as a library. Build files are emitted in the directory specified by
+  `--output-dir`, or if not specified, the directory containing
+  `compile_commands.json`. This will not overwrite existing files, so remove
+  these build files before re-creating build files. (implies `--emit-modules`)
 - `-m <main_module>`, `--main <main_module>` - Emit cargo build files to build
   the translated Rust code as a binary. The main function must be found in the
   specified module (C source file) `<main_module>`. `<main_module>` should be
   the bare module name, not including the `.rs` extension. Build files are
-  emitted into the `c2rust-build` in the current directory. This will not
-  overwrite existing files, so remove this build file directory before
-  re-creating build files. (implies `--emit-build-files`)
+  emitted in the directory specified by `--output-dir`, or if not specified, the
+  directory containing `compile_commands.json`. This will not overwrite existing
+  files, so remove this build file directory before re-creating build
+  files. (implies `--emit-build-files`)
 
 ## Cross-check instrumentation
 

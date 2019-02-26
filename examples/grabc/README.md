@@ -15,6 +15,6 @@ The steps to get the transpiled code are as follows:
 If you want to have the transpiler create a crate:
 
     $ intercept-build make
-    $ c2rust transpile compile_commands.json --emit-build-files -m grabc
-    $ cd c2rust-build
+    $ c2rust transpile compile_commands.json --emit-build-files -m grabc --output-dir rust
+    $ cd rust
     $ RUSTFLAGS="-L/usr/X11R6/lib -lX11" cargo build

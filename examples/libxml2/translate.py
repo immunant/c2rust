@@ -6,7 +6,8 @@ from common import (
     Config,
     get_cmd_or_die,
     pb,
-    transpile
+    transpile,
+    setup_logging,
 )
 from plumbum.cmd import mv, mkdir
 from plumbum import local
@@ -61,6 +62,7 @@ TESTS = [
 ]
 
 if __name__ == "__main__":
+    setup_logging()
     args = parser.parse_args()
 
     assert os.path.isfile(COMPILE_COMMANDS), "Could not find {}".format(COMPILE_COMMANDS)
@@ -77,7 +79,8 @@ if __name__ == "__main__":
     transpile(COMPILE_COMMANDS,
               emit_build_files=True,
               cross_checks=args.cross_checks,
-              cross_check_config=[CROSS_CHECK_CONFIG_YAML])
+              cross_check_config=[CROSS_CHECK_CONFIG_YAML],
+              output_dir=RUST_ROOT_DIR)
 
     # Create rust/examples directory if it doesn't exist
     mkdir_args = ["-p", RUST_EXAMPLES_DIR]
@@ -92,11 +95,4 @@ if __name__ == "__main__":
 
     assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
 
-    # Move source files to src directory
-    plumbum_rs_glob = local.path(LIBXML2_REPO) // "*.rs"
-
-    mv_args = [plumbum_rs_glob, RUST_SRC_DIR]
-    retcode, stdout, stderr = mv[mv_args].run()
-
-    assert retcode != 1, "Could not move translated rs files:\n{}".format(stderr)
     print(Colors.OKGREEN + "Done!" + Colors.NO_COLOR)
