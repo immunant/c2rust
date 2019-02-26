@@ -184,6 +184,7 @@ class TestFile(RustFile):
         self.test_functions = test_functions or []
         self.pass_expected = "xfail" not in flags
         self.extern_crates = {flag[13:] for flag in flags if flag.startswith("extern_crate_")}
+        self.features = {flag[8:] for flag in flags if flag.startswith("feature_")}
 
 
 class TestDirectory:
@@ -376,6 +377,7 @@ class TestDirectory:
         # Build one binary that can call all the tests
         for test_file in self.rs_test_files:
             # rustc_extra_args.append(["-L", "crate={}".format(c.TARGET_DIR)])
+            rust_file_builder.add_features(test_file.features)
             rust_file_builder.add_extern_crates(test_file.extern_crates)
 
             _, file_name = os.path.split(test_file.path)
