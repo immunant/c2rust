@@ -153,7 +153,7 @@ fn parse_attributes(attributes: &[Value]) -> IndexSet<Attribute> {
 
     for attr in attributes {
         let attr_str = attr.as_string()
-            .expect("Var decl attributes should be strings")
+            .expect("Decl attributes should be strings")
             .as_str();
 
         match attr_str {
