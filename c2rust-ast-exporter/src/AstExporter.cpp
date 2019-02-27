@@ -1165,6 +1165,19 @@ class TranslateASTVisitor final
                                  auto bid = FD->getBuiltinID();
                                  cbor_encode_boolean(array,
                                          bid && !Context->BuiltinInfo.getHeaderName(bid));
+
+                                // Encode attribute names and relevant info if supported
+                                CborEncoder attr_info;
+                                size_t attr_info_n = FD->hasAttrs() ? FD->getAttrs().size() : 0;
+
+                                cbor_encoder_create_array(array, &attr_info, attr_info_n);
+
+                                for (auto attr: FD->attrs()) {
+                                    cbor_encode_text_stringz(&attr_info, attr->getSpelling());
+                                }
+
+                                cbor_encoder_close_container(array, &attr_info);
+
                              });
           typeEncoder.VisitQualType(functionType);
 

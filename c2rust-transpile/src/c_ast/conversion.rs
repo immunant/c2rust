@@ -147,6 +147,33 @@ fn parse_cast_kind(kind: &str) -> CastKind {
     }
 }
 
+fn parse_attributes(attributes: &[Value]) -> IndexSet<Attribute> {
+    let mut attrs = IndexSet::new();
+    let mut expect_section_value = false;
+
+    for attr in attributes {
+        let attr_str = attr.as_string()
+            .expect("Var decl attributes should be strings")
+            .as_str();
+
+        match attr_str {
+            "always_inline" => { attrs.insert(Attribute::AlwaysInline); },
+            "gnu_inline" => { attrs.insert(Attribute::Inline); },
+            "noinline" => { attrs.insert(Attribute::NeverInline); },
+            "used" => { attrs.insert(Attribute::Used); },
+            "section" => expect_section_value = true,
+            s if expect_section_value => {
+                attrs.insert(Attribute::Section(s.into()));
+
+                expect_section_value = false;
+            },
+            _ => {},
+        }
+    }
+
+    attrs
+}
+
 /// This stores the information needed to convert an `AstContext` into a `TypedAstContext`.
 pub struct ConversionContext {
 
@@ -1331,6 +1358,8 @@ impl ConversionContext {
                     }
 
                     let is_implicit = node.extras[4].as_boolean().expect("Expected to find implicit");
+                    let attributes = node.extras[5].as_array().expect("Expected to find attributes");
+                    let attrs = parse_attributes(attributes);
 
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
                     let typ = CTypeId(self.visit_node_type(typ_old, TYPE));
@@ -1349,7 +1378,7 @@ impl ConversionContext {
                         .collect();
 
                     let function_decl =
-                        CDeclKind::Function { is_extern, is_inline, is_implicit, typ, name, parameters, body };
+                        CDeclKind::Function { is_extern, is_inline, is_implicit, typ, name, parameters, body, attrs };
 
                     self.add_decl(new_id, located(node, function_decl));
                     self.processed_nodes.insert(new_id, OTHER_DECL);
@@ -1420,25 +1449,7 @@ impl ConversionContext {
                     let typ_id = node.type_id.expect("Expected to find type on variable declaration");
                     let typ = self.visit_qualified_type(typ_id);
 
-                    let mut attrs = IndexSet::new();
-                    let mut expect_section_value = false;
-
-                    for attr in attributes {
-                        let attr_str = attr.as_string()
-                            .expect("Var decl attributes should be strings")
-                            .as_str();
-
-                        match attr_str {
-                            "used" => { attrs.insert(VariableAttribute::Used); },
-                            "section" => expect_section_value = true,
-                            s if expect_section_value => {
-                                attrs.insert(VariableAttribute::Section(s.into()));
-
-                                expect_section_value = false;
-                            },
-                            _ => {},
-                        }
-                    }
+                    let mut attrs = parse_attributes(attributes);
 
                     let variable_decl = CDeclKind::Variable { is_static, is_extern, is_defn, ident, initializer, typ, attrs };
 

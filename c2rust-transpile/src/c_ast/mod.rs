@@ -34,15 +34,6 @@ mod conversion;
 mod print;
 pub mod iterators;
 
-/// Enumeration of supported attributes for Variable Declarations
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum VariableAttribute {
-    /// __attribute__((section("foo"), __section__("foo")))
-    Section(String),
-    /// __attribute__((used, __used__))
-    Used,
-}
-
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug, Clone)]
 pub struct TypedAstContext {
@@ -499,6 +490,7 @@ pub enum CDeclKind {
         name: String,
         parameters: Vec<CParamId>,
         body: Option<CStmtId>,
+        attrs: IndexSet<Attribute>,
     },
 
     // http://clang.llvm.org/doxygen/classclang_1_1VarDecl.html
@@ -509,7 +501,7 @@ pub enum CDeclKind {
         ident: String,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
-        attrs: IndexSet<VariableAttribute>,
+        attrs: IndexSet<Attribute>,
     },
 
     // Enum (http://clang.llvm.org/doxygen/classclang_1_1EnumDecl.html)
@@ -1106,11 +1098,20 @@ pub enum Designator {
     Field(CFieldId),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+/// Enumeration of supported attributes for Declarations
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Attribute {
+    AlwaysInline,
+    Inline,
+    NeverInline,
     NoReturn,
     NotNull,
     Nullable,
+    /// __attribute__((section("foo"), __section__("foo")))
+    Section(String),
+    /// __attribute__((used, __used__))
+    Used,
+
 }
 
 impl CTypeKind {

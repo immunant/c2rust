@@ -1094,7 +1094,7 @@ impl<'c> Translation<'c> {
             }
 
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
-            CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, .. } => {
+            CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, ref attrs, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
                 if self.import_simd_function(new_name)? {
@@ -1119,13 +1119,13 @@ impl<'c> Translation<'c> {
 
                 let converted_function =
                     self.convert_function(ctx, s, is_extern, is_inline, is_main, is_var,
-                                          new_name, name, &args, ret, body);
+                                          new_name, name, &args, ret, body, attrs);
 
                 converted_function.or_else(|e|
                     match self.tcfg.replace_unsupported_decls {
                         ReplaceMode::Extern if body.is_none() =>
                             self.convert_function(ctx, s, is_extern, false, is_main, is_var,
-                                                  new_name, name, &args, ret, None),
+                                                  new_name, name, &args, ret, None, attrs),
                         _ => Err(e),
                     })
             },
@@ -1215,8 +1215,9 @@ impl<'c> Translation<'c> {
                 // Add static attributes
                 for attr in attrs {
                     static_def = match attr {
-                        VariableAttribute::Used => static_def.single_attr("used"),
-                        VariableAttribute::Section(name) => static_def.str_attr("link_section", name),
+                        c_ast::Attribute::Used => static_def.single_attr("used"),
+                        c_ast::Attribute::Section(name) => static_def.str_attr("link_section", name),
+                        _ => continue,
                     }
                 }
 
@@ -1255,8 +1256,9 @@ impl<'c> Translation<'c> {
                 // Add static attributes
                 for attr in attrs {
                     static_def = match attr {
-                        VariableAttribute::Used => static_def.single_attr("used"),
-                        VariableAttribute::Section(name) => static_def.str_attr("link_section", name),
+                        c_ast::Attribute::Used => static_def.single_attr("used"),
+                        c_ast::Attribute::Section(name) => static_def.str_attr("link_section", name),
+                        _ => continue,
                     }
                 }
 
@@ -1282,6 +1284,7 @@ impl<'c> Translation<'c> {
         arguments: &[(CDeclId, String, CQualTypeId)],
         return_type: Option<CQualTypeId>,
         body: Option<CStmtId>,
+        attrs: &IndexSet<c_ast::Attribute>,
     ) -> Result<ConvertedDecl, String> {
 
         if is_variadic {
@@ -1369,7 +1372,7 @@ impl<'c> Translation<'c> {
                 let block = stmts_block(body_stmts);
 
                 // Only add linkage attributes if the function is `extern`
-                let mk_ = if is_main {
+                let mut mk_ = if is_main {
                     // Cross-check this function as if it was called `main`
                     // FIXME: pass in a vector of NestedMetaItem elements,
                     // but strings have to do for now
@@ -1382,6 +1385,14 @@ impl<'c> Translation<'c> {
                 } else {
                     mk().abi("C")
                 };
+
+                for attr in attrs {
+                    mk_ = match attr {
+                        c_ast::Attribute::AlwaysInline => mk_.single_attr("inline(always)"),
+                        c_ast::Attribute::NeverInline => mk_.single_attr("inline(never)"),
+                        _ => continue,
+                    };
+                }
 
                 Ok(ConvertedDecl::Item(mk_.span(span).unsafe_().fn_item(new_name, decl, block)))
             } else {
