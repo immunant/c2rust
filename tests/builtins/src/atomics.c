@@ -1,8 +1,6 @@
 void atomics_entry(const unsigned buffer_size, int buffer[const])
 {
-    int i = 0;
-
-    volatile int x = 34;
+    int i = 0, x = 34;
     buffer[i++] = __sync_fetch_and_add(&x, 55);    buffer[i++] = x;
     buffer[i++] = __sync_fetch_and_sub(&x, 17);    buffer[i++] = x;
     buffer[i++] = __sync_fetch_and_or(&x, 128);    buffer[i++] = x;
