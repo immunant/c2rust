@@ -485,13 +485,13 @@ impl<W: Write> Printer<W> {
                 }
             },
 
-            Some(&CDeclKind::Variable { is_static, is_extern, is_thread, ref ident, ref initializer, ref typ, .. }) => {
-                if is_extern {
+            Some(&CDeclKind::Variable { has_static_duration, has_thread_duration, is_externally_visible, is_defn, ref ident, ref initializer, ref typ, .. }) => {
+                if is_externally_visible && !is_defn {
                     self.writer.write_all(b"extern ")?;
-                } else if is_static {
+                } else if !is_externally_visible && (has_static_duration || has_thread_duration) {
                     self.writer.write_all(b"static ")?;
                 }
-                if is_thread {
+                if has_thread_duration {
                     self.writer.write_all(b"__thread ")?;
                 }
                 self.print_qtype(*typ, Some(ident.as_str()), context)?;

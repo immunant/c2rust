@@ -1223,14 +1223,14 @@ class TranslateASTVisitor final
                                  auto name = VD->getNameAsString();
                                  cbor_encode_string(array, name);
 
-                                 auto is_static = VD->getStorageClass() == clang::SC_Static;
-                                 cbor_encode_boolean(array, is_static);
+                                 auto has_static_duration = VD->getStorageDuration() == SD_Static;
+                                 cbor_encode_boolean(array, has_static_duration);
 
-                                 auto is_extern = VD->getStorageClass() == clang::SC_Extern;
-                                 cbor_encode_boolean(array, is_extern);
+                                 auto has_thread_duration = VD->getStorageDuration() == SD_Thread;
+                                 cbor_encode_boolean(array, has_thread_duration);
 
-                                 auto is_thread = VD->getTSCSpec() != TSCS_unspecified;
-                                 cbor_encode_boolean(array, is_thread);
+                                 auto is_externally_visible = VD->isExternallyVisible();
+                                 cbor_encode_boolean(array, is_externally_visible);
 
                                  cbor_encode_boolean(array, is_defn);
 

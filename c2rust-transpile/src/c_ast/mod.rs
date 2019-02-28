@@ -227,7 +227,7 @@ impl TypedAstContext {
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 },
-                CDeclKind::Variable { is_defn: true, is_static: false, .. } => {
+                CDeclKind::Variable { is_defn: true, is_externally_visible: true, .. } => {
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 },
@@ -495,9 +495,9 @@ pub enum CDeclKind {
 
     // http://clang.llvm.org/doxygen/classclang_1_1VarDecl.html
     Variable {
-        is_static: bool,
-        is_extern: bool,
-        is_thread: bool,
+        has_static_duration: bool,
+        has_thread_duration: bool,
+        is_externally_visible: bool,
         is_defn: bool,
         ident: String,
         initializer: Option<CExprId>,
