@@ -1170,10 +1170,9 @@ impl<'c> Translation<'c> {
                 Ok(ConvertedDecl::ForeignItem(extern_item.static_foreign_item(&new_name, ty)))
             }
 
-            // Extern linkage variable with initializer (definition here)
-            CDeclKind::Variable { is_externally_visible: true, has_static_duration, has_thread_duration, ref ident, initializer, typ, ref attrs, .. } => {
-                assert!(has_static_duration || has_thread_duration, "An extern variable must be non-static");
-
+            // Static-storage or thread-local variable with initializer (definition here)
+            CDeclKind::Variable { has_static_duration, has_thread_duration, is_externally_visible, ref ident, initializer, typ, ref attrs, .. }
+            if has_static_duration || has_thread_duration => {
                 if has_thread_duration {
                     self.use_feature("thread_local");
                 }
@@ -1219,58 +1218,10 @@ impl<'c> Translation<'c> {
                 // and because we may be assigning to these variables in the external initializer
                 let mut static_def = mk_linkage(false, new_name, ident)
                     .span(s)
-                    .pub_()
-                    .abi("C")
                     .mutbl();
-                if has_thread_duration {
-                    static_def = static_def.single_attr("thread_local");
+                if is_externally_visible {
+                    static_def = static_def.pub_().abi("C");
                 }
-
-                // Add static attributes
-                for attr in attrs {
-                    static_def = match attr {
-                        c_ast::Attribute::Used => static_def.single_attr("used"),
-                        c_ast::Attribute::Section(name) => static_def.str_attr("link_section", name),
-                        _ => continue,
-                    }
-                }
-
-                Ok(ConvertedDecl::Item(static_def.static_item(new_name, ty, init)))
-            }
-
-            // Internal linkage variable (definition here)
-            CDeclKind::Variable { has_static_duration, has_thread_duration, initializer, typ, ref attrs, .. }
-            if has_static_duration || has_thread_duration => {
-                if has_thread_duration {
-                    self.use_feature("thread_local");
-                }
-
-                let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
-                let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
-
-                let mut init = if self.static_initializer_is_unsafe(initializer) {
-                    let mut init = init?;
-                    init.stmts.push(mk().expr_stmt(init.val));
-                    let init = mk().unsafe_().block(init.stmts);
-
-                    mk().block_expr(init)
-                } else {
-                    init?.val
-                };
-
-                // Collect problematic static initializers and offload them to sections for the linker
-                // to initialize for us
-                if self.static_initializer_is_uncompilable(initializer) {
-                    let comment = String::from("// Initialized in run_static_initializers");
-                    // REVIEW: We might want to add the comment to the original span comments
-                    s = self.comment_store.borrow_mut().add_comment_lines(vec![comment]);
-
-                    self.add_static_initializer_to_section(new_name, typ, &mut init)?;
-                }
-
-                // Force mutability due to the potential for raw pointers occurring in the type
-                // and because we're assigning to these variables in the external initializer
-                let mut static_def = mk().span(s).mutbl();
                 if has_thread_duration {
                     static_def = static_def.single_attr("thread_local");
                 }
