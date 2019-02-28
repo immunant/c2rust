@@ -1367,6 +1367,11 @@ impl<'c> Translation<'c> {
                     };
                 }
 
+                // If this function is just a regular inline
+                if is_inline && !attrs.contains(&c_ast::Attribute::AlwaysInline) {
+                    mk_ = mk_.single_attr("inline");
+                }
+
                 Ok(ConvertedDecl::Item(mk_.span(span).unsafe_().fn_item(new_name, decl, block)))
             } else {
                 // Translating an extern function declaration

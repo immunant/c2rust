@@ -16,10 +16,13 @@ pub fn test_fn_attrs() {
     //   This makes the inline keyword an alternative to static for defining functions inside
     //   header files, which may be included in multiple translation units of the same program.
     // * always_inline implies inline - https://gcc.gnu.org/ml/gcc-help/2007-01/msg00051.html
+    //   even if the `inline` keyword isn't present
 
     assert!(src.contains("#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_static"));
     assert!(src.contains("#[inline(never)]\nunsafe extern \"C\" fn rust_never_inline_static"));
+    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_inline_static"));
 
     assert!(src.contains("#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_nonstatic"));
     assert!(src.contains("#[inline(never)]\npub unsafe extern \"C\" fn rust_never_inline_nonstatic"));
+    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_inline_nonstatic"));
 }
