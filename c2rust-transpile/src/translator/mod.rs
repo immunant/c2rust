@@ -1094,7 +1094,7 @@ impl<'c> Translation<'c> {
             }
 
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
-            CDeclKind::Function { is_extern, is_inline, typ, ref name, ref parameters, body, ref attrs, .. } => {
+            CDeclKind::Function { is_global, is_inline, typ, ref name, ref parameters, body, ref attrs, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
                 if self.import_simd_function(new_name)? {
@@ -1118,13 +1118,13 @@ impl<'c> Translation<'c> {
                 let is_main = self.ast_context.c_main == Some(decl_id);
 
                 let converted_function =
-                    self.convert_function(ctx, s, is_extern, is_inline, is_main, is_var,
+                    self.convert_function(ctx, s, is_global, is_inline, is_main, is_var,
                                           new_name, name, &args, ret, body, attrs);
 
                 converted_function.or_else(|e|
                     match self.tcfg.replace_unsupported_decls {
                         ReplaceMode::Extern if body.is_none() =>
-                            self.convert_function(ctx, s, is_extern, false, is_main, is_var,
+                            self.convert_function(ctx, s, is_global, false, is_main, is_var,
                                                   new_name, name, &args, ret, None, attrs),
                         _ => Err(e),
                     })
@@ -1142,9 +1142,13 @@ impl<'c> Translation<'c> {
             },
 
             // Extern variable without intializer (definition elsewhere)
-            CDeclKind::Variable { is_extern: true, is_static, is_defn: false, ref ident, initializer, typ, .. } => {
-                assert!(is_static, "An extern variable must be static");
+            CDeclKind::Variable { is_extern: true, is_static, is_thread, is_defn: false, ref ident, initializer, typ, .. } => {
+                assert!(!is_static, "An extern variable must be non-static");
                 assert!(initializer.is_none(), "An extern variable that isn't a definition can't have an initializer");
+
+                if is_thread {
+                    self.use_feature("thread_local");
+                }
 
                 let new_name = self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, mutbl, _) = self.convert_variable(ctx.set_static(is_static), None, typ)?;
@@ -1154,18 +1158,24 @@ impl<'c> Translation<'c> {
                 } else {
                     ""
                 };
-                let extern_item = mk_linkage(true, &new_name, ident)
+                let mut extern_item = mk_linkage(true, &new_name, ident)
                     .span(s)
                     .set_mutbl(mutbl)
-                    .vis(visibility)
-                    .static_foreign_item(&new_name, ty);
+                    .vis(visibility);
+                if is_thread {
+                    extern_item = extern_item.single_attr("thread_local");
+                }
 
-                Ok(ConvertedDecl::ForeignItem(extern_item))
+                Ok(ConvertedDecl::ForeignItem(extern_item.static_foreign_item(&new_name, ty)))
             }
 
             // Extern variable with initializer (definition here)
-            CDeclKind::Variable { is_extern: true, is_static, ref ident, initializer, typ, ref attrs, .. } => {
-                assert!(is_static, "An extern variable must be static");
+            CDeclKind::Variable { is_extern: true, is_static, is_thread, ref ident, initializer, typ, ref attrs, .. } => {
+                assert!(!is_static, "An extern variable must be non-static");
+
+                if is_thread {
+                    self.use_feature("thread_local");
+                }
 
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
 
@@ -1211,6 +1221,9 @@ impl<'c> Translation<'c> {
                     .pub_()
                     .abi("C")
                     .mutbl();
+                if is_thread {
+                    static_def = static_def.single_attr("thread_local");
+                }
 
                 // Add static attributes
                 for attr in attrs {
@@ -1225,7 +1238,11 @@ impl<'c> Translation<'c> {
             }
 
             // Static variable (definition here)
-            CDeclKind::Variable { is_static: true, initializer, typ, ref attrs, .. } => {
+            CDeclKind::Variable { is_static, is_thread, initializer, typ, ref attrs, .. } => {
+                if is_thread {
+                    self.use_feature("thread_local");
+                }
+
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
                 let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
 
@@ -1252,6 +1269,13 @@ impl<'c> Translation<'c> {
                 // Force mutability due to the potential for raw pointers occurring in the type
                 // and because we're assigning to these variables in the external initializer
                 let mut static_def = mk().span(s).mutbl();
+                if !is_static {
+                    // `static` => internal linkage, everything else => external
+                    static_def = static_def.pub_();
+                }
+                if is_thread {
+                    static_def = static_def.single_attr("thread_local");
+                }
 
                 // Add static attributes
                 for attr in attrs {
@@ -1265,7 +1289,7 @@ impl<'c> Translation<'c> {
                 Ok(ConvertedDecl::Item(static_def.static_item(new_name, ty, init)))
             }
 
-            CDeclKind::Variable { .. } => Err(format!("This should be handled in 'convert_decl_stmt'")),
+            //CDeclKind::Variable { .. } => Err(format!("This should be handled in 'convert_decl_stmt'")),
 
             //ref k => Err(format!("Translation not implemented for {:?}", k)),
         }
@@ -1275,7 +1299,7 @@ impl<'c> Translation<'c> {
         &self,
         mut ctx: ExprContext,
         span: Span,
-        is_extern: bool,
+        is_global: bool,
         is_inline: bool,
         is_main: bool,
         is_variadic: bool,
@@ -1378,7 +1402,7 @@ impl<'c> Translation<'c> {
                     // but strings have to do for now
                     self.mk_cross_check(mk(), vec!["entry(djb2=\"main\")",
                                                    "exit(djb2=\"main\")"])
-                } else if is_extern && !is_inline {
+                } else if is_global && !is_inline {
                     mk_linkage(false, new_name, name)
                         .abi("C")
                         .pub_()
@@ -1602,7 +1626,7 @@ impl<'c> Translation<'c> {
         }
 
         match self.ast_context.index(decl_id).kind {
-            CDeclKind::Variable { ref ident, is_static: true, is_extern: false, is_defn: true, initializer, typ, .. } => {
+            CDeclKind::Variable { ref ident, is_extern: false, is_defn: true, initializer, typ, .. } => {
                 if self.static_initializer_is_uncompilable(initializer) {
                     let err_msg = || String::from("Unable to rename function scoped static initializer");
                     let ident2 = self.renamer.borrow_mut().insert_root(decl_id, ident).ok_or_else(err_msg)?;
@@ -1628,7 +1652,7 @@ impl<'c> Translation<'c> {
         };
 
         match self.ast_context.index(decl_id).kind {
-            CDeclKind::Variable { is_static, is_extern, is_defn, ref ident, initializer, typ, .. } if !is_static && !is_extern => {
+            CDeclKind::Variable { is_static: false, is_extern: false, is_thread: false, is_defn, ref ident, initializer, typ, .. } => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
                 let has_self_reference =
@@ -1650,7 +1674,7 @@ impl<'c> Translation<'c> {
 
                 if has_self_reference {
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
-                    let zeroed = self.implicit_default_expr(typ.ctype, is_static)?;
+                    let zeroed = self.implicit_default_expr(typ.ctype, false)?;
                     let local_mut = mk().local(pat_mut, Some(ty), Some(zeroed));
 
                     let assign = mk().assign_expr(mk().ident_expr(rust_name), init.val);
@@ -1669,7 +1693,7 @@ impl<'c> Translation<'c> {
                     ))
                 } else {
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
-                    let zeroed = self.implicit_default_expr(typ.ctype, is_static)?;
+                    let zeroed = self.implicit_default_expr(typ.ctype, false)?;
                     let local_mut = mk().local(pat_mut, Some(ty.clone()), Some(zeroed));
 
                     let pat = mk().set_mutbl(mutbl).ident_pat(rust_name.clone());
@@ -3146,15 +3170,15 @@ impl<'c> Translation<'c> {
                     .get_mut(vec!["super".into()])
                     .insert("libc");
             }
-            CDeclKind::Variable { is_static: true, is_extern: true, typ, .. } |
+            CDeclKind::Variable { is_extern: true, typ, .. } |
             CDeclKind::Typedef { typ, .. } => self.match_type_kind(typ.ctype, item_store, decl_file_path),
-            CDeclKind::Function { is_extern: true, typ, .. } => self.match_type_kind(typ, item_store, decl_file_path),
+            CDeclKind::Function { is_global: true, typ, .. } => self.match_type_kind(typ, item_store, decl_file_path),
             CDeclKind::Function { .. } => {
                 // TODO: We may need to explicitly skip SIMD functions here when getting types for
                 // a fn definition in a header since SIMD headers define functions but we're using imports
                 // rather than translating the original definition
             },
-            CDeclKind::Variable { is_static: true, is_extern: false, .. } => {},
+            CDeclKind::Variable { is_extern: false, .. } => {},
             ref e => unimplemented!("{:?}", e),
         }
     }

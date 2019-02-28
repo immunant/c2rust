@@ -1152,8 +1152,8 @@ class TranslateASTVisitor final
                                  auto name = FD->getNameAsString();
                                  cbor_encode_string(array, name);
 
-                                 auto is_extern = FD->isExternC();
-                                 cbor_encode_boolean(array, is_extern);
+                                 auto is_global = FD->isGlobal();
+                                 cbor_encode_boolean(array, is_global);
 
                                  auto def = FD->getDefinition();
                                  bool is_inline = def && def->isInlineSpecified();
@@ -1223,11 +1223,14 @@ class TranslateASTVisitor final
                                  auto name = VD->getNameAsString();
                                  cbor_encode_string(array, name);
 
-                                 auto is_static = VD->getStorageDuration() == clang::SD_Static;
+                                 auto is_static = VD->getStorageClass() == clang::SC_Static;
                                  cbor_encode_boolean(array, is_static);
 
-                                 auto is_extern = VD->isExternC();
+                                 auto is_extern = VD->getStorageClass() == clang::SC_Extern;
                                  cbor_encode_boolean(array, is_extern);
+
+                                 auto is_thread = VD->getTSCSpec() != TSCS_unspecified;
+                                 cbor_encode_boolean(array, is_thread);
 
                                  cbor_encode_boolean(array, is_defn);
 

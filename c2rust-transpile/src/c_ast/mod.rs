@@ -223,11 +223,11 @@ impl TypedAstContext {
         for &decl_id in &self.c_decls_top {
             let decl = self.index(decl_id);
             match decl.kind {
-                CDeclKind::Function { body: Some(_), is_extern: true, is_inline: false, .. } => {
+                CDeclKind::Function { body: Some(_), is_global: true, is_inline: false, .. } => {
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 },
-                CDeclKind::Variable { is_defn: true, is_extern: true, .. } => {
+                CDeclKind::Variable { is_defn: true, is_static: false, .. } => {
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 },
@@ -483,7 +483,7 @@ pub type CType = Located<CTypeKind>;
 pub enum CDeclKind {
     // http://clang.llvm.org/doxygen/classclang_1_1FunctionDecl.html
     Function {
-        is_extern: bool,
+        is_global: bool,
         is_inline: bool,
         is_implicit: bool,
         typ: CFuncTypeId,
@@ -497,6 +497,7 @@ pub enum CDeclKind {
     Variable {
         is_static: bool,
         is_extern: bool,
+        is_thread: bool,
         is_defn: bool,
         ident: String,
         initializer: Option<CExprId>,

@@ -1349,7 +1349,7 @@ impl ConversionContext {
                     let name = node.extras[0].as_string()
                         .expect("Expected to find function name").to_owned();
 
-                    let is_extern = node.extras[1].as_boolean().expect("Expected to find visibility");
+                    let is_global = node.extras[1].as_boolean().expect("Expected to find visibility");
                     let is_inline = node.extras[2].as_boolean().expect("Expected to find inline");
 
                     let is_main = node.extras[3].as_boolean().expect("Expected to find main");
@@ -1378,7 +1378,7 @@ impl ConversionContext {
                         .collect();
 
                     let function_decl =
-                        CDeclKind::Function { is_extern, is_inline, is_implicit, typ, name, parameters, body, attrs };
+                        CDeclKind::Function { is_global, is_inline, is_implicit, typ, name, parameters, body, attrs };
 
                     self.add_decl(new_id, located(node, function_decl));
                     self.processed_nodes.insert(new_id, OTHER_DECL);
@@ -1437,11 +1437,12 @@ impl ConversionContext {
 
                     let is_static = node.extras[1].as_boolean().expect("Expected to find duration");
                     let is_extern = node.extras[2].as_boolean().expect("Expected to find visibility");
-                    let is_defn   = node.extras[3].as_boolean().expect("Expected to find whether decl is definition");
-                    let attributes = node.extras[4].as_array().expect("Expected attribute array on var decl");
+                    let is_thread = node.extras[3].as_boolean().expect("Expected to find thread duration");
+                    let is_defn   = node.extras[4].as_boolean().expect("Expected to find whether decl is definition");
+                    let attributes = node.extras[5].as_array().expect("Expected attribute array on var decl");
 
-                    assert!(if is_extern { is_static } else { true },
-                            format!("Variable cannot be extern without also being static: {}", ident));
+                    assert!(!is_static || !is_extern,
+                            format!("Variable cannot be both static and extern: {}", ident));
 
                     let initializer = node.children[0]
                         .map(|id| self.visit_expr(id));
@@ -1451,7 +1452,7 @@ impl ConversionContext {
 
                     let mut attrs = parse_attributes(attributes);
 
-                    let variable_decl = CDeclKind::Variable { is_static, is_extern, is_defn, ident, initializer, typ, attrs };
+                    let variable_decl = CDeclKind::Variable { is_static, is_extern, is_thread, is_defn, ident, initializer, typ, attrs };
 
                     self.add_decl(new_id, located(node, variable_decl));
                     self.processed_nodes.insert(new_id, VAR_DECL);

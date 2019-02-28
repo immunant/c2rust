@@ -458,9 +458,9 @@ impl<W: Write> Printer<W> {
         }
 
         match context.c_decls.get(&decl_id).map(|l| &l.kind) {
-            Some(&CDeclKind::Function { is_extern, ref name, ref parameters, ref body, .. }) => {
-                if is_extern {
-                    self.writer.write_all(b"extern ")?;
+            Some(&CDeclKind::Function { is_global, ref name, ref parameters, ref body, .. }) => {
+                if !is_global {
+                    self.writer.write_all(b"static ")?;
                 }
                 // TODO typ
                 self.writer.write_fmt(format_args!("{}", name))?;
@@ -485,11 +485,14 @@ impl<W: Write> Printer<W> {
                 }
             },
 
-            Some(&CDeclKind::Variable { is_static, is_extern, ref ident, ref initializer, ref typ, .. }) => {
+            Some(&CDeclKind::Variable { is_static, is_extern, is_thread, ref ident, ref initializer, ref typ, .. }) => {
                 if is_extern {
                     self.writer.write_all(b"extern ")?;
                 } else if is_static {
                     self.writer.write_all(b"static ")?;
+                }
+                if is_thread {
+                    self.writer.write_all(b"__thread ")?;
                 }
                 self.print_qtype(*typ, Some(ident.as_str()), context)?;
                 match initializer {
