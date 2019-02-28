@@ -1350,7 +1350,7 @@ impl ConversionContext {
                         .expect("Expected to find function name").to_owned();
 
                     let is_global = node.extras[1].as_boolean().expect("Expected to find visibility");
-                    let is_inline = node.extras[2].as_boolean().expect("Expected to find inline");
+                    let mut is_inline = node.extras[2].as_boolean().expect("Expected to find inline");
 
                     let is_main = node.extras[3].as_boolean().expect("Expected to find main");
                     if is_main {
@@ -1360,6 +1360,10 @@ impl ConversionContext {
                     let is_implicit = node.extras[4].as_boolean().expect("Expected to find implicit");
                     let attributes = node.extras[5].as_array().expect("Expected to find attributes");
                     let attrs = parse_attributes(attributes);
+
+                    // The always_inline attribute implies inline even if the
+                    // inline keyword is not present
+                    is_inline |= attrs.contains(&Attribute::AlwaysInline);
 
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
                     let typ = CTypeId(self.visit_node_type(typ_old, TYPE));
