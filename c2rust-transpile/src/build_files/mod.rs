@@ -85,6 +85,14 @@ fn get_root_rs_file_name(tcfg: &TranspilerConfig) -> &str {
     }
 }
 
+/// Make sure module name does not contain illegal characters.
+fn get_module_name(main: &Option<String>) -> Option<String> {
+    if let Some(ref name) = main {
+        return Some(name.replace(".", "_"));
+    }
+    None
+}
+
 /// Emit `lib.rs` for a library or `main.rs` for a binary. Returns the path
 /// to `lib.rs` or `main.rs` (or `None` if the output file existed already).
 fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
@@ -119,7 +127,7 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
         "reorganize_definitions": tcfg.reorganize_definitions,
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": rs_xcheck_backend,
-        "main_module": tcfg.main,
+        "main_module": get_module_name(&tcfg.main),
         "plugin_args": plugin_args,
         "modules": modules
     });
@@ -138,7 +146,7 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) 
             |x| x.file_name().map(|x| x.to_string_lossy())
         ).unwrap_or("c2rust".into()),
         "root_rs_file": get_root_rs_file_name(tcfg),
-        "main_module": tcfg.main,
+        "main_module": get_module_name(&tcfg.main),
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": tcfg.cross_check_backend,
     });
