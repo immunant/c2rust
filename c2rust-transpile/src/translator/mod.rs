@@ -1152,7 +1152,7 @@ impl<'c> Translation<'c> {
                 }
 
                 let new_name = self.renamer.borrow().get(&decl_id).expect("Variables should already be renamed");
-                let (ty, mutbl, _) = self.convert_variable(ctx.set_static(has_static_duration), None, typ)?;
+                let (ty, mutbl, _) = self.convert_variable(ctx.static_(), None, typ)?;
                 // When putting extern statics into submodules, they need to be public to be accessible
                 let visibility = if self.tcfg.reorganize_definitions {
                     "pub"
@@ -1200,7 +1200,7 @@ impl<'c> Translation<'c> {
 
                     (ty, init)
                 } else {
-                    let (ty, _, init) = self.convert_variable(ctx.set_static(has_static_duration), initializer, typ)?;
+                    let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
 
                     let init = if self.static_initializer_is_unsafe(initializer) {
                         let mut init = init?;
