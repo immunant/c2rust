@@ -1626,7 +1626,7 @@ impl<'c> Translation<'c> {
         }
 
         match self.ast_context.index(decl_id).kind {
-            CDeclKind::Variable { ref ident, is_extern: false, is_defn: true, initializer, typ, .. } => {
+            CDeclKind::Variable { ref ident, is_static: true, is_extern: false, is_defn: true, initializer, typ, .. } => {
                 if self.static_initializer_is_uncompilable(initializer) {
                     let err_msg = || String::from("Unable to rename function scoped static initializer");
                     let ident2 = self.renamer.borrow_mut().insert_root(decl_id, ident).ok_or_else(err_msg)?;
