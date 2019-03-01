@@ -1401,7 +1401,6 @@ impl<'c> Translation<'c> {
 
                 // If this function is just a regular inline
                 if is_inline && !attrs.contains(&c_ast::Attribute::AlwaysInline) {
-                    println!("Inlining {}", name);
                     mk_ = mk_.single_attr("inline");
                 }
 

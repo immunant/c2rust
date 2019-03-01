@@ -158,7 +158,7 @@ fn parse_attributes(attributes: &[Value]) -> IndexSet<Attribute> {
 
         match attr_str {
             "always_inline" => { attrs.insert(Attribute::AlwaysInline); },
-            "gnu_inline" => { attrs.insert(Attribute::GnuInline); }
+            "gnu_inline" => { attrs.insert(Attribute::GnuInline); },
             "noinline" => { attrs.insert(Attribute::NoInline); },
             "used" => { attrs.insert(Attribute::Used); },
             "section" => expect_section_value = true,
