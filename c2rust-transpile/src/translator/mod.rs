@@ -1208,7 +1208,9 @@ impl<'c> Translation<'c> {
 
                         mk().block_expr(init)
                     } else {
-                        init?.val
+                        let init = init?;
+                        assert!(init.stmts.is_empty(), "Expected no side-effects in static initializer");
+                        init.val
                     };
 
                     (ty, init)
