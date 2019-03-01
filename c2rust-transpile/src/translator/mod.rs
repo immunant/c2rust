@@ -1362,7 +1362,7 @@ impl<'c> Translation<'c> {
                 for attr in attrs {
                     mk_ = match attr {
                         c_ast::Attribute::AlwaysInline => mk_.single_attr("inline(always)"),
-                        c_ast::Attribute::NeverInline => mk_.single_attr("inline(never)"),
+                        c_ast::Attribute::NoInline => mk_.single_attr("inline(never)"),
                         _ => continue,
                     };
                 }
@@ -1377,15 +1377,35 @@ impl<'c> Translation<'c> {
                 // Translating an extern function declaration
 
                 // When putting extern fns into submodules, they need to be public to be accessible
+                // Otherwise, c99 extern inline functions should be pub, but not gnu_inline attributed
+                // extern inlines, which become subject to their gnu89 visibility (private)
                 let visibility = if self.tcfg.reorganize_definitions {
+                    "pub"
+                } else if is_inline && !attrs.contains(&c_ast::Attribute::GnuInline) {
                     "pub"
                 } else {
                     ""
                 };
-                let function_decl = mk_linkage(true, new_name, name)
+
+                let mut mk_ = mk_linkage(true, new_name, name)
                     .span(span)
-                    .vis(visibility)
-                    .fn_foreign_item(new_name, decl);
+                    .vis(visibility);
+
+                for attr in attrs {
+                    mk_ = match attr {
+                        c_ast::Attribute::AlwaysInline => mk_.single_attr("inline(always)"),
+                        c_ast::Attribute::NoInline => mk_.single_attr("inline(never)"),
+                        _ => continue,
+                    };
+                }
+
+                // If this function is just a regular inline
+                if is_inline && !attrs.contains(&c_ast::Attribute::AlwaysInline) {
+                    println!("Inlining {}", name);
+                    mk_ = mk_.single_attr("inline");
+                }
+
+                let function_decl = mk_.fn_foreign_item(new_name, decl);
 
                 Ok(ConvertedDecl::ForeignItem(function_decl))
             }

@@ -1102,9 +1102,12 @@ pub enum Designator {
 /// Enumeration of supported attributes for Declarations
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Attribute {
+    /// __attribute__((always_inline, __always_inline__))
     AlwaysInline,
-    Inline,
-    NeverInline,
+    /// __attribute__((gnu_inline, __gnu_inline__))
+    GnuInline,
+    /// __attribute__((no_inline, __no_inline__))
+    NoInline,
     NoReturn,
     NotNull,
     Nullable,
@@ -1112,7 +1115,6 @@ pub enum Attribute {
     Section(String),
     /// __attribute__((used, __used__))
     Used,
-
 }
 
 impl CTypeKind {

@@ -158,8 +158,8 @@ fn parse_attributes(attributes: &[Value]) -> IndexSet<Attribute> {
 
         match attr_str {
             "always_inline" => { attrs.insert(Attribute::AlwaysInline); },
-            "gnu_inline" => { attrs.insert(Attribute::Inline); },
-            "noinline" => { attrs.insert(Attribute::NeverInline); },
+            "gnu_inline" => { attrs.insert(Attribute::GnuInline); }
+            "noinline" => { attrs.insert(Attribute::NoInline); },
             "used" => { attrs.insert(Attribute::Used); },
             "section" => expect_section_value = true,
             s if expect_section_value => {
@@ -1362,8 +1362,11 @@ impl ConversionContext {
                     let attrs = parse_attributes(attributes);
 
                     // The always_inline attribute implies inline even if the
-                    // inline keyword is not present
+                    // inline keyword is not present. The gnu_inline attribute
+                    // requires the inline keyword to be present, however, it does
+                    // not seem to set is_inline to true for some reason.
                     is_inline |= attrs.contains(&Attribute::AlwaysInline);
+                    is_inline |= attrs.contains(&Attribute::GnuInline);
 
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
                     let typ = CTypeId(self.visit_node_type(typ_old, TYPE));
