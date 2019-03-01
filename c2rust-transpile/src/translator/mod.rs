@@ -884,32 +884,15 @@ impl<'c> Translation<'c> {
     }
 
     fn add_static_initializer_to_section(&self, name: &str, typ: CQualTypeId, init: &mut P<Expr>) -> Result<(), String> {
+        let mut default_init = self.implicit_default_expr(typ.ctype, true)?;
+
+        std::mem::swap(init, &mut default_init);
+
         let root_lhs_expr = mk().path_expr(vec![name]);
-        let assign_expr = {
-            let first_stmt = match &init.node {
-                ExprKind::Block(block, _) => block.stmts[0].clone(),
-                // This only seems to appear when an array init is a private static
-                ExprKind::Array(args) => {
-                    let array_expr = mk().array_expr(args.clone());
-
-                    mk().expr_stmt(array_expr)
-                },
-                ref e => unreachable!("Found static initializer type other than block or array: {:?}", e),
-            };
-
-            let expr = match first_stmt.node {
-                StmtKind::Expr(ref expr) => expr,
-                _ => unreachable!("Found static initializer type other than Expr"),
-            };
-
-            mk().assign_expr(root_lhs_expr, expr)
-        };
-
+        let assign_expr = mk().assign_expr(root_lhs_expr, default_init);
         let stmt = mk().expr_stmt(assign_expr);
 
         self.sectioned_static_initializers.borrow_mut().push(stmt);
-
-        *init = self.implicit_default_expr(typ.ctype, true)?;
 
         Ok(())
     }
