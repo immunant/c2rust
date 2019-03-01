@@ -1214,14 +1214,15 @@ impl<'c> Translation<'c> {
                     (ty, init)
                 };
 
+                let static_def = if is_externally_visible {
+                    mk_linkage(false, new_name, ident).pub_().abi("C")
+                } else {
+                    mk()
+                };
+
                 // Force mutability due to the potential for raw pointers occuring in the type
                 // and because we may be assigning to these variables in the external initializer
-                let mut static_def = mk_linkage(false, new_name, ident)
-                    .span(s)
-                    .mutbl();
-                if is_externally_visible {
-                    static_def = static_def.pub_().abi("C");
-                }
+                let mut static_def = static_def.span(s).mutbl();
                 if has_thread_duration {
                     static_def = static_def.single_attr("thread_local");
                 }
