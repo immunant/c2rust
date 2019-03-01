@@ -486,6 +486,7 @@ pub enum CDeclKind {
         is_global: bool,
         is_inline: bool,
         is_implicit: bool,
+        is_extern: bool,
         typ: CFuncTypeId,
         name: String,
         parameters: Vec<CParamId>,

@@ -1095,7 +1095,7 @@ impl<'c> Translation<'c> {
             }
 
             CDeclKind::Function { .. } if !toplevel => Err(format!("Function declarations must be top-level")),
-            CDeclKind::Function { is_global, is_inline, typ, ref name, ref parameters, body, ref attrs, .. } => {
+            CDeclKind::Function { is_global, is_inline, is_extern, typ, ref name, ref parameters, body, ref attrs, .. } => {
                 let new_name = &self.renamer.borrow().get(&decl_id).expect("Functions should already be renamed");
 
                 if self.import_simd_function(new_name)? {
@@ -1120,13 +1120,13 @@ impl<'c> Translation<'c> {
 
                 let converted_function =
                     self.convert_function(ctx, s, is_global, is_inline, is_main, is_var,
-                                          new_name, name, &args, ret, body, attrs);
+                                          is_extern, new_name, name, &args, ret, body, attrs);
 
                 converted_function.or_else(|e|
                     match self.tcfg.replace_unsupported_decls {
                         ReplaceMode::Extern if body.is_none() =>
                             self.convert_function(ctx, s, is_global, false, is_main, is_var,
-                                                  new_name, name, &args, ret, None, attrs),
+                                                  is_extern, new_name, name, &args, ret, None, attrs),
                         _ => Err(e),
                     })
             },
@@ -1252,6 +1252,7 @@ impl<'c> Translation<'c> {
         is_inline: bool,
         is_main: bool,
         is_variadic: bool,
+        is_extern: bool,
         new_name: &str,
         name: &str,
         arguments: &[(CDeclId, String, CQualTypeId)],
@@ -1355,6 +1356,13 @@ impl<'c> Translation<'c> {
                     mk_linkage(false, new_name, name)
                         .abi("C")
                         .pub_()
+                } else if is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
+                    // c99 extern inline functions should be pub, but not gnu_inline attributed
+                    // extern inlines, which become subject to their gnu89 visibility (private)
+
+                    mk_linkage(false, new_name, name)
+                        .abi("C")
+                        .pub_()
                 } else {
                     mk().abi("C")
                 };
@@ -1377,34 +1385,16 @@ impl<'c> Translation<'c> {
                 // Translating an extern function declaration
 
                 // When putting extern fns into submodules, they need to be public to be accessible
-                // Otherwise, c99 extern inline functions should be pub, but not gnu_inline attributed
-                // extern inlines, which become subject to their gnu89 visibility (private)
                 let visibility = if self.tcfg.reorganize_definitions {
-                    "pub"
-                } else if is_inline && !attrs.contains(&c_ast::Attribute::GnuInline) {
                     "pub"
                 } else {
                     ""
                 };
 
-                let mut mk_ = mk_linkage(true, new_name, name)
+                let function_decl = mk_linkage(true, new_name, name)
                     .span(span)
-                    .vis(visibility);
-
-                for attr in attrs {
-                    mk_ = match attr {
-                        c_ast::Attribute::AlwaysInline => mk_.single_attr("inline(always)"),
-                        c_ast::Attribute::NoInline => mk_.single_attr("inline(never)"),
-                        _ => continue,
-                    };
-                }
-
-                // If this function is just a regular inline
-                if is_inline && !attrs.contains(&c_ast::Attribute::AlwaysInline) {
-                    mk_ = mk_.single_attr("inline");
-                }
-
-                let function_decl = mk_.fn_foreign_item(new_name, decl);
+                    .vis(visibility)
+                    .fn_foreign_item(new_name, decl);
 
                 Ok(ConvertedDecl::ForeignItem(function_decl))
             }

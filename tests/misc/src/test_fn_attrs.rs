@@ -1,6 +1,6 @@
 extern crate libc;
 
-use fn_attrs::{rust_ensure_use, rust_noinline_nonstatic, always_inline_extern};
+use fn_attrs::{rust_ensure_use, rust_noinline_nonstatic, rust_inline_extern};
 
 pub fn test_fn_attrs() {
     // There's no way to directly test that a function is inlined or not
@@ -20,15 +20,22 @@ pub fn test_fn_attrs() {
     // * gnu_inline instead applies gnu89 rules. extern inline will not emit an externally
     //   visible function.
 
+    // static __attribute__((always_inline)) void always_inline_static(void) {}
+    // static __attribute__((__noinline__)) void noinline_static(void) {}
+    // static void inline inline_static(void) {}
     assert!(src.contains("#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_static"));
     assert!(src.contains("#[inline(never)]\nunsafe extern \"C\" fn rust_noinline_static"));
     assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_inline_static"));
 
+    // __attribute__((__always_inline__)) void always_inline_nonstatic(void) {}
+    // __attribute__((noinline)) void noinline_nonstatic(void) {}
+    // void inline inline_nonstatic(void) {}
     assert!(src.contains("#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_nonstatic"));
     assert!(src.contains("#[inline(never)]\npub unsafe extern \"C\" fn rust_noinline_nonstatic"));
     assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_inline_nonstatic"));
 
-    assert!(src.contains("#[inline(always)]\n    pub fn always_inline_extern"));
-    assert!(src.contains("#[inline(never)]\n    fn noinline_extern"));
-    assert!(src.contains("#[inline]\n    fn gnu_inline_extern"));
+    // extern void inline inline_extern(void) {}
+    // extern void inline __attribute__((__gnu_inline__)) gnu_inline_extern(void) {}
+    assert!(src.contains("#[inline]\npub unsafe extern \"C\" fn rust_inline_extern"));
+    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_extern"));
 }

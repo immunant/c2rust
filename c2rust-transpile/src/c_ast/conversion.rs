@@ -1358,15 +1358,13 @@ impl ConversionContext {
                     }
 
                     let is_implicit = node.extras[4].as_boolean().expect("Expected to find implicit");
-                    let attributes = node.extras[5].as_array().expect("Expected to find attributes");
+                    let is_extern = node.extras[5].as_boolean().expect("Expected to find externness");
+                    let attributes = node.extras[6].as_array().expect("Expected to find attributes");
                     let attrs = parse_attributes(attributes);
 
                     // The always_inline attribute implies inline even if the
-                    // inline keyword is not present. The gnu_inline attribute
-                    // requires the inline keyword to be present, however, it does
-                    // not seem to set is_inline to true for some reason.
+                    // inline keyword is not present.
                     is_inline |= attrs.contains(&Attribute::AlwaysInline);
-                    is_inline |= attrs.contains(&Attribute::GnuInline);
 
                     let typ_old = node.type_id.expect("Expected to find a type on a function decl");
                     let typ = CTypeId(self.visit_node_type(typ_old, TYPE));
@@ -1384,8 +1382,17 @@ impl ConversionContext {
                         })
                         .collect();
 
-                    let function_decl =
-                        CDeclKind::Function { is_global, is_inline, is_implicit, typ, name, parameters, body, attrs };
+                    let function_decl = CDeclKind::Function {
+                        attrs,
+                        body,
+                        is_extern,
+                        is_global,
+                        is_implicit,
+                        is_inline,
+                        name,
+                        parameters,
+                        typ,
+                    };
 
                     self.add_decl(new_id, located(node, function_decl));
                     self.processed_nodes.insert(new_id, OTHER_DECL);
