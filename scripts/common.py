@@ -31,9 +31,16 @@ class Colors:
 
 
 class Config:
-    HOST_SUFFIX = os.getenv('TRAVIS')
-    # use hostname outside travis continuous integration builds
-    HOST_SUFFIX = "travis" if HOST_SUFFIX == "true" else platform.node()
+    HOST_SUFFIX = ""
+    # use custom host suffix if requested via environment variable
+    if os.getenv('C2RUST_HOST_SUFFIX'):
+        HOST_SUFFIX = "." + os.getenv('C2RUST_HOST_SUFFIX')
+    elif os.getenv('TRAVIS') == "true":  # when on Travis-CI
+        HOST_SUFFIX = ".travis"
+    elif os.path.isfile("/.dockerenv"):  # when in docker
+        HOST_SUFFIX = ".docker"
+    elif os.path.isfile("/.vagrantenv"):  # when in *our* vagrant box
+        HOST_SUFFIX = ".vagrant"
 
     NCPUS = str(multiprocessing.cpu_count())
 
@@ -63,9 +70,7 @@ class Config:
     XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'backends', 'dynamic-dlsym')
     XCHECK_CONFIG_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'config')
 
-    CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
-    # use an install prefix unique to the host
-    CBOR_PREFIX += HOST_SUFFIX
+    CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor")
 
     LLVM_VER = "7.0.0"
     # make the build directory unique to the hostname such that
@@ -83,16 +88,16 @@ class Config:
     LLVM_CFG_DIR = os.path.join(LLVM_SRC, 'cmake/modules')
     LLVM_BLD = os.path.join(
         DEPS_DIR,
-        'llvm-{ver}/build.{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
+        'llvm-{ver}/build{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
     LLVM_INSTALL = os.path.join(
         DEPS_DIR,
-        'llvm-{ver}/install.{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
+        'llvm-{ver}/install{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
     LLVM_BIN = os.path.join(LLVM_INSTALL, 'bin')
 
     CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR,
                                            "c-checks", "clang-plugin")
     CLANG_XCHECK_PLUGIN_BLD = os.path.join(DEPS_DIR,
-                                           'clang-xcheck-plugin.')
+                                           'clang-xcheck-plugin')
     CLANG_XCHECK_PLUGIN_BLD += HOST_SUFFIX
 
     MIN_PLUMBUM_VERSION = (1, 6, 3)

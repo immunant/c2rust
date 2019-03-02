@@ -118,6 +118,12 @@ Vagrant.configure("2") do |config|
     s.privileged = false
     s.inline = "sudo sed -i '/tty/!s/mesg n/tty -s \\&\\& mesg n/' /root/.profile"
   end
+
+  # mark that we're in a vagrant environment
+  config.vm.provision "mark-vagrant-env", type: "shell" do |s|
+    s.privileged = false
+    s.inline = "sudo touch /.vagrantenv"
+  end
   
   config.vm.provision "file", source: "../scripts/requirements.txt", destination: "/tmp/requirements.txt"
   
