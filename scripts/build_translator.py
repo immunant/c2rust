@@ -38,7 +38,7 @@ def download_llvm_sources():
     # make sure we have the gpg public key installed first
     install_sig(c.LLVM_PUBKEY)
 
-    with pb.local.cwd(c.DEPS_DIR):
+    with pb.local.cwd(c.BUILD_DIR):
         # download archives and signatures
         for (aurl, asig, afile, _) in zip(
                 c.LLVM_ARCHIVE_URLS,
@@ -297,24 +297,20 @@ def _main():
         logging.info("cleaning all dependencies and previous built files")
         shutil.rmtree(c.LLVM_SRC, ignore_errors=True)
         shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
-        shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
+        shutil.rmtree(c.BUILD_DIR, ignore_errors=True)
         shutil.rmtree(c.AST_EXPO_PRJ_DIR, ignore_errors=True)
         cargo = get_cmd_or_die("cargo")
         with pb.local.cwd(c.ROOT_DIR):
             invoke(cargo, "clean")
 
     ensure_dir(c.LLVM_BLD)
-    ensure_dir(c.DEPS_DIR)
-    git_ignore_dir(c.DEPS_DIR)
+    ensure_dir(c.BUILD_DIR)
+    git_ignore_dir(c.BUILD_DIR)
 
     download_llvm_sources()
-
     update_cmakelists()
-
     configure_and_build_llvm(args)
-
     build_transpiler(args)
-
     print_success_msg(args)
 
 

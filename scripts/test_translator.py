@@ -590,7 +590,6 @@ def main() -> None:
             msg = b + " not found; run cargo build --release first?"
             die(msg, errno.ENOENT)
 
-    ensure_dir(c.DEPS_DIR)
     # NOTE: it seems safe to disable this check since we now
     # that we use a rust-toolchain file for rustc versioning.
     # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)

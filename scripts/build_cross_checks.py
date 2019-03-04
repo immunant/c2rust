@@ -131,8 +131,8 @@ def _main():
     # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
     ensure_dir(c.CLANG_XCHECK_PLUGIN_BLD)
-    ensure_dir(c.DEPS_DIR)
-    git_ignore_dir(c.DEPS_DIR)
+    ensure_dir(c.BUILD_DIR)
+    git_ignore_dir(c.BUILD_DIR)
 
     build_clang_plugin(args)
 

@@ -32,18 +32,18 @@ from common import (
 LUA_URL = "https://github.com/LuaDist/lua/archive/5.3.2.tar.gz"
 LUA_ARCHIVE = "lua-5.3.2.tar.gz"
 LUA_SRC = LUA_ARCHIVE.replace(".tar.gz", "")
-LUA_SRC = os.path.join(c.DEPS_DIR, LUA_SRC)
+LUA_SRC = os.path.join(c.BUILD_DIR, LUA_SRC)
 
 RUBY_URL = "https://cache.ruby-lang.org/pub/ruby/2.4/ruby-2.4.1.tar.gz"
 RUBY_ARCHIVE = os.path.basename(RUBY_URL)
 RUBY_SRC = RUBY_ARCHIVE.replace(".tar.gz", "")
-RUBY_SRC = os.path.join(c.DEPS_DIR, RUBY_SRC)
+RUBY_SRC = os.path.join(c.BUILD_DIR, RUBY_SRC)
 
 JSON_C_URL = "https://s3.amazonaws.com/" + \
              "json-c_releases/releases/json-c-0.13.1.tar.gz"
 JSON_C_ARCHIVE = os.path.basename(JSON_C_URL)
 JSON_C_SRC = JSON_C_ARCHIVE.replace(".tar.gz", "")
-JSON_C_SRC = os.path.join(c.DEPS_DIR, JSON_C_SRC)
+JSON_C_SRC = os.path.join(c.BUILD_DIR, JSON_C_SRC)
 
 TAR = get_cmd_or_die("tar")
 SED = get_cmd_or_die("sed")
@@ -115,8 +115,8 @@ def test_hello_world(_: argparse.Namespace) -> None:
 
 
 def test_json_c(args: argparse.Namespace) -> bool:
-    if not os.path.isfile(os.path.join(c.DEPS_DIR, JSON_C_ARCHIVE)):
-        with pb.local.cwd(c.DEPS_DIR):
+    if not os.path.isfile(os.path.join(c.BUILD_DIR, JSON_C_ARCHIVE)):
+        with pb.local.cwd(c.BUILD_DIR):
             download_archive(JSON_C_URL, JSON_C_ARCHIVE)
             invoke_quietly(TAR, "xf", JSON_C_ARCHIVE)
 
@@ -143,11 +143,11 @@ def test_lua(args: argparse.Namespace) -> bool:
     drive the transpiler.
     """
 
-    if not os.path.isfile(os.path.join(c.DEPS_DIR, LUA_ARCHIVE)):
-        with pb.local.cwd(c.DEPS_DIR):
+    if not os.path.isfile(os.path.join(c.BUILD_DIR, LUA_ARCHIVE)):
+        with pb.local.cwd(c.BUILD_DIR):
             download_archive(LUA_URL, LUA_ARCHIVE)
     if not os.path.isdir(LUA_SRC):
-        with pb.local.cwd(c.DEPS_DIR):
+        with pb.local.cwd(c.BUILD_DIR):
             invoke_quietly(TAR, "xf", LUA_ARCHIVE)
 
     # unconditionally compile lua since we don't know if
@@ -170,8 +170,8 @@ def test_ruby(args: argparse.Namespace) -> bool:
     if on_mac():
         die("transpiling ruby on mac is not supported.")
 
-    if not os.path.isfile(os.path.join(c.DEPS_DIR, RUBY_ARCHIVE)):
-        with pb.local.cwd(c.DEPS_DIR):
+    if not os.path.isfile(os.path.join(c.BUILD_DIR, RUBY_ARCHIVE)):
+        with pb.local.cwd(c.BUILD_DIR):
             download_archive(RUBY_URL, RUBY_ARCHIVE)
             invoke_quietly(TAR, "xf", RUBY_ARCHIVE)
 
@@ -221,7 +221,7 @@ def main() -> None:
             msg = b + " not found; run build_translator.py first?"
             die(msg, errno.ENOENT)
 
-    ensure_dir(c.DEPS_DIR)
+    ensure_dir(c.BUILD_DIR)
 
     args = parse_args()
     JOBS = '-j' + str(args.jobs)

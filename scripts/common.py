@@ -32,7 +32,7 @@ class Colors:
 
 class Config:
     BUILD_SUFFIX = ""
-    # use custom host suffix if requested via environment variable
+    # use custom build directory suffix if requested via env. variable
     if os.getenv('C2RUST_BUILD_SUFFIX'):
         BUILD_SUFFIX = "." + os.getenv('C2RUST_BUILD_SUFFIX')
 
@@ -40,7 +40,7 @@ class Config:
 
     ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
     ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
-    DEPS_DIR = os.path.join(ROOT_DIR, 'build' + BUILD_SUFFIX)
+    BUILD_DIR = os.path.join(ROOT_DIR, 'build' + BUILD_SUFFIX)
     RREF_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
     C2RUST_DIR = os.path.join(ROOT_DIR, 'c2rust')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
@@ -64,7 +64,7 @@ class Config:
     XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'backends', 'dynamic-dlsym')
     XCHECK_CONFIG_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'config')
 
-    CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor")
+    CBOR_PREFIX = os.path.join(BUILD_DIR, "tinycbor")
 
     LLVM_VER = "7.0.0"
     # make the build directory unique to the hostname such that
@@ -78,17 +78,17 @@ class Config:
     # See http://releases.llvm.org/download.html#7.0.0
     LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=LLVM_VER)
     LLVM_PUBKEY = os.path.join(ROOT_DIR, LLVM_PUBKEY)
-    LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
+    LLVM_SRC = os.path.join(BUILD_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
     LLVM_CFG_DIR = os.path.join(LLVM_SRC, 'cmake/modules')
     LLVM_BLD = os.path.join(
-        DEPS_DIR, 'llvm-{ver}/build'.format(ver=LLVM_VER))
+        BUILD_DIR, 'llvm-{ver}/build'.format(ver=LLVM_VER))
     LLVM_INSTALL = os.path.join(
-        DEPS_DIR, 'llvm-{ver}/install'.format(ver=LLVM_VER))
+        BUILD_DIR, 'llvm-{ver}/install'.format(ver=LLVM_VER))
     LLVM_BIN = os.path.join(LLVM_INSTALL, 'bin')
 
     CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR,
                                            "c-checks", "clang-plugin")
-    CLANG_XCHECK_PLUGIN_BLD = os.path.join(DEPS_DIR,
+    CLANG_XCHECK_PLUGIN_BLD = os.path.join(BUILD_DIR,
                                            'clang-xcheck-plugin')
 
     MIN_PLUMBUM_VERSION = (1, 6, 3)
@@ -109,7 +109,7 @@ add_subdirectory(c2rust-ast-exporter)
                                    for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "")
                                   for s in self.LLVM_ARCHIVE_FILES]
-        self.LLVM_ARCHIVE_FILES = [os.path.join(Config.DEPS_DIR, s)
+        self.LLVM_ARCHIVE_FILES = [os.path.join(Config.BUILD_DIR, s)
                                    for s in self.LLVM_ARCHIVE_FILES]
         self.TRANSPILER = None  # set in `update_args`
         self.RREF_BIN = None  # set in `update_args`
