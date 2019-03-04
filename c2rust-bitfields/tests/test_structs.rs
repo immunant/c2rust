@@ -570,3 +570,54 @@ fn test_three_byte_date() {
         assert_eq!(check_three_byte_date(&date, 4, 3, 2), 1)
     }
 }
+
+#[repr(C)]
+#[derive(BitfieldStruct)]
+struct BoolBits {
+    #[bitfield(name = "x", ty = "bool", bits = "0..=0")]
+    #[bitfield(name = "y", ty = "bool", bits = "1..=1")]
+    #[bitfield(name = "z", ty = "bool", bits = "7..=7")]
+    x_y_z: [u8; 1]
+}
+
+#[test]
+fn test_bool_bits() {
+    let mut bool_bits = BoolBits {
+        x_y_z: [u8::max_value(); 1],
+    };
+
+    assert!(bool_bits.x());
+    assert!(bool_bits.y());
+    assert!(bool_bits.z());
+
+    bool_bits.set_y(false);
+
+    assert!(bool_bits.x());
+    assert!(!bool_bits.y());
+    assert!(bool_bits.z());
+
+    bool_bits.set_x(false);
+
+    assert!(!bool_bits.x());
+    assert!(!bool_bits.y());
+    assert!(bool_bits.z());
+
+    bool_bits.set_z(false);
+
+    assert!(!bool_bits.x());
+    assert!(!bool_bits.y());
+    assert!(!bool_bits.z());
+
+    bool_bits.set_x(true);
+    bool_bits.set_z(true);
+
+    assert!(bool_bits.x());
+    assert!(!bool_bits.y());
+    assert!(bool_bits.z());
+
+    bool_bits.set_y(true);
+
+    assert!(bool_bits.x());
+    assert!(bool_bits.y());
+    assert!(bool_bits.z());
+}

@@ -232,7 +232,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                         let byte_index = bit_index / 8;
                         let mut byte = &mut field[byte_index];
                         let bit = 1 << i;
-                        let read_bit = int & bit;
+                        let read_bit = (int as usize) & bit;
 
                         if read_bit == 0 {
                             zero_bit(byte, (bit_index % 8) as u64);
@@ -246,7 +246,53 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                 pub fn #method_names(&self) -> #field_types {
                     type IntType = #field_types2;
 
-                    const is_signed: bool = IntType::min_value() != 0;
+                    trait BoolOrInt {
+                        fn is_signed() -> bool;
+                    }
+
+                    /// This wrapper allows us to convert an int value
+                    /// to the return type which may be an int or a bool.
+                    /// We must use a wrapper because rust doesn't let
+                    /// you impl std traits on std types.
+                    struct Wrapper<T>(T);
+
+                    macro_rules! impl_int {
+                        ($($typ: ident),+) => {
+                            $(
+                                impl BoolOrInt for $typ {
+                                    fn is_signed() -> bool {
+                                        $typ::min_value() != 0
+                                    }
+                                }
+
+                                impl Into<$typ> for Wrapper<$typ> {
+                                    fn into(self) -> $typ {
+                                        self.0
+                                    }
+                                }
+
+                                impl Into<bool> for Wrapper<$typ> {
+                                    fn into(self) -> bool {
+                                        if self.0 != 0 {
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                }
+                            )+
+                        };
+                    }
+
+                    impl_int!{u8, u16, u32, u64, u128, i8, i16, i32, i64, i128}
+
+                    impl BoolOrInt for bool {
+                        fn is_signed() -> bool {
+                            false
+                        }
+                    }
+
+                    let is_signed = <IntType as BoolOrInt>::is_signed();
 
                     let field = self.#field_names2;
                     let (lhs_bit, rhs_bit) = #field_bit_info2;
@@ -261,7 +307,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                         if read_bit != 0 {
                             let write_bit = 1 << i;
 
-                            val |= write_bit as IntType;
+                            val |= write_bit;
                         }
                     }
 
@@ -277,7 +323,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                         val >>= unused_bits;
                     }
 
-                    val
+                    Wrapper(val).into()
                 }
             )*
         }
