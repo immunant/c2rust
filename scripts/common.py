@@ -31,22 +31,16 @@ class Colors:
 
 
 class Config:
-    HOST_SUFFIX = ""
+    BUILD_SUFFIX = ""
     # use custom host suffix if requested via environment variable
-    if os.getenv('C2RUST_HOST_SUFFIX'):
-        HOST_SUFFIX = "." + os.getenv('C2RUST_HOST_SUFFIX')
-    elif os.getenv('TRAVIS') == "true":  # when on Travis-CI
-        HOST_SUFFIX = ".travis"
-    elif os.path.isfile("/.dockerenv"):  # when in docker
-        HOST_SUFFIX = ".docker"
-    elif os.path.isfile("/.vagrantenv"):  # when in *our* vagrant box
-        HOST_SUFFIX = ".vagrant"
+    if os.getenv('C2RUST_BUILD_SUFFIX'):
+        BUILD_SUFFIX = "." + os.getenv('C2RUST_BUILD_SUFFIX')
 
     NCPUS = str(multiprocessing.cpu_count())
 
     ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
     ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
-    DEPS_DIR = os.path.join(ROOT_DIR, 'build')
+    DEPS_DIR = os.path.join(ROOT_DIR, 'build' + BUILD_SUFFIX)
     RREF_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
     C2RUST_DIR = os.path.join(ROOT_DIR, 'c2rust')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
@@ -87,18 +81,15 @@ class Config:
     LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
     LLVM_CFG_DIR = os.path.join(LLVM_SRC, 'cmake/modules')
     LLVM_BLD = os.path.join(
-        DEPS_DIR,
-        'llvm-{ver}/build{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
+        DEPS_DIR, 'llvm-{ver}/build'.format(ver=LLVM_VER))
     LLVM_INSTALL = os.path.join(
-        DEPS_DIR,
-        'llvm-{ver}/install{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
+        DEPS_DIR, 'llvm-{ver}/install'.format(ver=LLVM_VER))
     LLVM_BIN = os.path.join(LLVM_INSTALL, 'bin')
 
     CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR,
                                            "c-checks", "clang-plugin")
     CLANG_XCHECK_PLUGIN_BLD = os.path.join(DEPS_DIR,
                                            'clang-xcheck-plugin')
-    CLANG_XCHECK_PLUGIN_BLD += HOST_SUFFIX
 
     MIN_PLUMBUM_VERSION = (1, 6, 3)
     CMAKELISTS_COMMANDS = """
