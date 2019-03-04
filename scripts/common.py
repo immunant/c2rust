@@ -34,7 +34,7 @@ class Config:
     BUILD_SUFFIX = ""
     # use custom build directory suffix if requested via env. variable
     if os.getenv('C2RUST_BUILD_SUFFIX'):
-        BUILD_SUFFIX = "." + os.getenv('C2RUST_BUILD_SUFFIX')
+        BUILD_SUFFIX = os.getenv('C2RUST_BUILD_SUFFIX')
 
     NCPUS = str(multiprocessing.cpu_count())
 
