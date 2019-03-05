@@ -176,17 +176,21 @@ def need_cargo_clean(args) -> bool:
     """
     c2rust = c2rust_bin_path(args)
     if not os.path.isfile(c2rust):
+        logging.debug("need_cargo_clean:False:no-c2rust-bin")
         return False
 
     find = get_cmd_or_die("find")
     _retcode, stdout, _ = invoke_quietly(find, c.BUILD_DIR, "-cnewer", c2rust)
-    for line in stdout.split("\n")[:-1]:
+    include_pattern = "install/lib/clang/{ver}/include".format(ver=c.LLVM_VER)
+    for line in stdout.split("\n")[:-1]:  # skip empty last line
         if line.endswith("install_manifest_clang-headers.txt") or \
                 line.endswith("ninja_log") or \
-                line.endswith(".h"):
+                include_pattern in line:
             continue
         else:
+            logging.debug("need_cargo_clean:True:%s", line)
             return True
+    logging.debug("need_cargo_clean:False")
     return False
 
 
@@ -194,10 +198,7 @@ def build_transpiler(args):
     cargo = get_cmd_or_die("cargo")
 
     if need_cargo_clean(args):
-        logging.debug("need_cargo_clean:True")
         invoke(cargo, "clean")
-    else:
-        logging.debug("need_cargo_clean:False")
 
     build_flags = ["build", "--features", "llvm-static"]
 
