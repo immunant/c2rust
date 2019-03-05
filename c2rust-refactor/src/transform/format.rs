@@ -104,6 +104,10 @@ fn build_format_macro(
             ExprKind::Lit(ref l) => break l,
             ExprKind::Cast(ref e, _) |
             ExprKind::Type(ref e, _) => ep = &*e,
+            // `e.as_ptr()` or `e.as_mut_ptr()` => e
+            ExprKind::MethodCall(ref ps, ref args) if args.len() == 1 &&
+                (ps.ident.as_str() == "as_ptr" ||
+                 ps.ident.as_str() == "as_mut_ptr") => ep = &args[0],
             _ => panic!("unexpected format string: {:?}", old_fmt_str_expr)
         }
     };
