@@ -19,6 +19,7 @@ from common import (
     die,
     est_parallel_link_jobs,
     invoke,
+    invoke_quietly,
     install_sig,
     ensure_dir,
     on_x86,
@@ -71,7 +72,7 @@ def download_llvm_sources():
 
 def update_cmakelists():
     """
-    Even though we build the ast-exporter out-of-tree, we still need 
+    Even though we build the ast-exporter out-of-tree, we still need
     it to be treated as if it was in a subdirectory of clang to pick
     up the required clang headers, etc.
     """
@@ -168,8 +169,36 @@ def configure_and_build_llvm(args) -> None:
         os.makedirs(os.path.join(c.LLVM_INSTALL, 'bin'), exist_ok=True)
 
 
+def need_cargo_clean(args) -> bool:
+    """
+    Cargo may not pick up changes in c.BUILD_DIR that would require
+    a rebuild. This function tries to detect when we need to clean.
+    """
+    c2rust = c2rust_bin_path(args)
+    if not os.path.isfile(c2rust):
+        return False
+
+    find = get_cmd_or_die("find")
+    _retcode, stdout, _ = invoke_quietly(find, c.BUILD_DIR, "-cnewer", c2rust)
+    for line in stdout.split("\n")[:-1]:
+        if line.endswith("install_manifest_clang-headers.txt") or \
+                line.endswith("ninja_log") or \
+                line.endswith(".h"):
+            continue
+        else:
+            return True
+    return False
+
+
 def build_transpiler(args):
     cargo = get_cmd_or_die("cargo")
+
+    if need_cargo_clean(args):
+        logging.debug("need_cargo_clean:True")
+        invoke(cargo, "clean")
+    else:
+        logging.debug("need_cargo_clean:False")
+
     build_flags = ["build", "--features", "llvm-static"]
 
     if not args.debug:
@@ -255,17 +284,20 @@ def binary_in_path(binary_name) -> bool:
         return False
 
 
-def print_success_msg(args):
-    """
-    print a helpful message on how to run the c2rust binary.
-    """
+def c2rust_bin_path(args):
     c2rust_bin_path = 'target/debug/c2rust' if args.debug \
                       else 'target/release/c2rust'
     c2rust_bin_path = os.path.join(c.ROOT_DIR, c2rust_bin_path)
 
     abs_curdir = os.path.abspath(os.path.curdir)
-    c2rust_bin_path = os.path.relpath(c2rust_bin_path, abs_curdir)
-    print("success! you may now run", c2rust_bin_path)
+    return os.path.relpath(c2rust_bin_path, abs_curdir)
+
+
+def print_success_msg(args):
+    """
+    print a helpful message on how to run the c2rust binary.
+    """
+    print("success! you may now run", c2rust_bin_path(args))
 
 
 def _main():
