@@ -44,6 +44,7 @@ use std::io::prelude::*;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::ffi::OsStr;
 
 use failure::Error;
 use regex::Regex;
@@ -123,6 +124,13 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             .collect::<Vec<CompileCmd>>(),
         None => cmds,
     };
+
+    // filter out likely C++ files
+    let cpp_ext = Some(OsStr::new("cpp"));
+    let cmds = cmds
+        .into_iter()
+        .filter(|c| c.file.extension() == cpp_ext)
+        .collect::<Vec<CompileCmd>>();
 
     // some build scripts repeatedly compile the same input file with different
     // command line flags thus creating multiple outputs. We don't handle such
