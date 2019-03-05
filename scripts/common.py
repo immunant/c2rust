@@ -92,9 +92,6 @@ class Config:
                                            'clang-xcheck-plugin')
 
     MIN_PLUMBUM_VERSION = (1, 6, 3)
-    CMAKELISTS_COMMANDS = """
-add_subdirectory(c2rust-ast-exporter)
-""".format(prefix=CBOR_PREFIX)  # nopep8
     CC_DB_JSON = "compile_commands.json"
 
     CUSTOM_RUST_NAME = 'nightly-2018-12-03'
