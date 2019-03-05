@@ -1506,6 +1506,36 @@ impl Transform for RemoveRedundantCasts {
     }
 }
 
+/// # `convert_cast_as_ptr` Command
+///
+/// Usage: `convert_cast_as_ptr`
+///
+/// Converts all expressions like `$e as *const $t` (with mutable or const pointers)
+/// where `$e` is a slice or array into `$e.as_ptr()` calls.
+pub struct ConvertCastAsPtr;
+
+impl Transform for ConvertCastAsPtr {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+        let krate = replace_expr(st, cx, krate,
+            "typed!($expr:Expr, &[$ty:Ty]) as *const $ty",
+            "$expr.as_ptr()");
+        let krate = replace_expr(st, cx, krate,
+            "typed!($expr:Expr, &[$ty:Ty]) as *mut $ty",
+            "$expr.as_mut_ptr()");
+        let krate = replace_expr(st, cx, krate,
+            "typed!($expr:Expr, &[$ty:Ty; $len]) as *const $ty",
+            "$expr.as_ptr()");
+        let krate = replace_expr(st, cx, krate,
+            "typed!($expr:Expr, &[$ty:Ty; $len]) as *mut $ty",
+            "$expr.as_mut_ptr()");
+        krate
+    }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
+}
+
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -1539,4 +1569,5 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("autoretype", |args| Box::new(AutoRetype::new(args)));
 
     reg.register("remove_redundant_casts", |_| mk(RemoveRedundantCasts));
+    reg.register("convert_cast_as_ptr", |_| mk(ConvertCastAsPtr));
 }
