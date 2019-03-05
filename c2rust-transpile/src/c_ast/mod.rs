@@ -231,6 +231,10 @@ impl TypedAstContext {
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 },
+                CDeclKind::Variable { ref attrs, .. } if attrs.contains(&Attribute::Used) => {
+                    to_walk.push(decl_id);
+                    used.insert(decl_id);
+                },
                 _ => {},
             }
         }

@@ -28,3 +28,12 @@ pub fn test_sectioned_statics() {
         rust_use_sectioned_array();
     }
 }
+
+pub fn test_sectioned_used_static() {
+    // This static variable is private and unused (but with the used attribute)
+    // so there's no way to directly test it was generated except through looking
+    // directly at the source file
+    let src = include_str!("attributes.rs");
+
+    assert!(src.contains("#[link_section = \"barz\"]\n#[used]\nstatic mut rust_used_static4: libc::c_int = 1i32;"));
+}

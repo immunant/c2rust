@@ -8,8 +8,3 @@ const int __attribute__((used, section("baz"))) used_static3 = 1 + 1U;
 
 // Attribute-less static
 int no_attrs = 1;
-
-/// private static variables get pruned out when not used:
-void ensure_use(void) {
-    used_static4++;
-}
