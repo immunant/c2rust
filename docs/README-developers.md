@@ -55,6 +55,12 @@ The following from source full build script has been tested on recent versions o
 
     $ ./scripts/build_translator.py
 
+This downloads and builds LLVM under a new top-level folder named `build`. Use the `C2RUST_BUILD_SUFFIX` variable to do multiple side-by-side builds against a local copy of LLVM like this:
+
+    $ C2RUST_BUILD_SUFFIX=.debug ./scripts/build_translator.py --debug
+
+NOTE: Set `C2RUST_BUILD_SUFFIX` if building inside and outside of the provided Docker or Vagrant environments from a single C2Rust checkout.
+
 # Testing (Optional)
 
 Tests are found in the [`tests`](../tests/) folder. If you build the translator successfully, you should be able to run the tests with:
