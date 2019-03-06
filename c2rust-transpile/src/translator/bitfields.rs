@@ -486,6 +486,8 @@ impl<'a> Translation<'a> {
         let lhs_expr = named_reference.val.0;
         let setter_name = format!("set_{}", field_name);
         let lhs_expr_read = mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<P<Expr>>::new());
+        // Allow the value of this assignment to be used as the RHS of other assignments
+        let val = lhs_expr_read.clone();
         let param_expr = match op {
             BinOp::AssignAdd => mk().binary_expr(BinOpKind::Add, lhs_expr_read, rhs_expr),
             BinOp::AssignSubtract => mk().binary_expr(BinOpKind::Sub, lhs_expr_read, rhs_expr),
@@ -502,7 +504,6 @@ impl<'a> Translation<'a> {
         };
 
         let expr = mk().method_call_expr(lhs_expr, setter_name, vec![param_expr]);
-        let val = self.panic("Empty statement expression is not supposed to be used");
         let mut stmts = named_reference.stmts;
 
         stmts.push(mk().expr_stmt(expr));
