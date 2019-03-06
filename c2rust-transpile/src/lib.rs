@@ -129,7 +129,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let cpp_ext = Some(OsStr::new("cpp"));
     let cmds = cmds
         .into_iter()
-        .filter(|c| c.file.extension() == cpp_ext)
+        .filter(|c| c.file.extension() != cpp_ext)
         .collect::<Vec<CompileCmd>>();
 
     // some build scripts repeatedly compile the same input file with different
