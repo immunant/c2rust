@@ -119,15 +119,15 @@ fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
     };
 
     let mut segments = Punctuated::new();
-    let mut segement_strings = field.ty.split("::").peekable();
+    let mut segment_strings = field.ty.split("::").peekable();
 
-    while let Some(segment_string) = segement_strings.next() {
+    while let Some(segment_string) = segment_strings.next() {
         segments.push_value(PathSegment {
             ident: Ident::new(segment_string, Span::call_site().into()),
             arguments: PathArguments::None,
         });
 
-        if segement_strings.peek().is_some() {
+        if segment_strings.peek().is_some() {
             segments.push_punct(Token![::]([
                 Span::call_site().into(),
                 Span::call_site().into(),

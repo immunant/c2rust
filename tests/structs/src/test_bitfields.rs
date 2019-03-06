@@ -5,7 +5,7 @@ use bitfields::{
     three_byte_date, rust_compare_three_byte_date, rust_write_three_byte_date, padded_bitfield,
     rust_ops_padded_bitfield, rust_ops_padded_bitfield_init, mixed_bitfields, rust_init_bitfield_array,
     rust_static_date, from_csmith, rust_init_from_csmith, rust_get_bf_ptr, rust_modify_bf_ptr,
-    two_eight_bits, rust_two_eight_bits_init,
+    two_eight_bits, rust_two_eight_bits_init, rust_multiple_assignments, rust_ma_results,
 };
 
 extern "C" {
@@ -33,6 +33,10 @@ extern "C" {
     fn size_of_from_csmith() -> usize;
     #[no_mangle]
     fn size_of_two_eight_bits() -> usize;
+    #[no_mangle]
+    fn multiple_assignments();
+    #[no_mangle]
+    static ma_results: [u8; 17];
 }
 
 pub fn test_three_byte_date() {
@@ -258,4 +262,16 @@ pub fn test_size_of_two_eight_bits() {
     };
 
     assert_eq!(size_of::<two_eight_bits>(), c_size_of);
+}
+
+pub fn test_multiple_assignments() {
+    unsafe {
+        multiple_assignments();
+
+        assert_eq!(ma_results, [4, 4, 2, 2, 8, 8, 8, 9, 9, 9, 9, 5, 5, 9, 9, 15, 10]);
+
+        rust_multiple_assignments();
+
+        assert_eq!(ma_results, rust_ma_results);
+    }
 }

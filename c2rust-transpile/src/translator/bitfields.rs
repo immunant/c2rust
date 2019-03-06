@@ -7,7 +7,7 @@ use std::ops::Index;
 
 use c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CQualTypeId, CTypeId, MemberKind, UnOp};
 use c2rust_ast_builder::mk;
-use syntax::ast::{AttrStyle, BinOpKind, Expr, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StrStyle, StructField, Ty, TyKind, self};
+use syntax::ast::{AttrStyle, BinOpKind, Expr, ExprKind, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StmtKind, StrStyle, StructField, Ty, TyKind, self};
 use syntax::ext::quote::rt::Span;
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
@@ -31,6 +31,19 @@ enum FieldType {
     },
     Padding { bytes: u64 },
     Regular { name: String, ctype: CTypeId, field: StructField },
+}
+
+fn contains_block(expr_kind: &ExprKind) -> bool {
+    match expr_kind {
+        ExprKind::Block(..) => true,
+        ExprKind::Assign(lhs, rhs) => contains_block(&lhs.node) || contains_block(&rhs.node),
+        ExprKind::AssignOp(_, lhs, rhs) => contains_block(&lhs.node) || contains_block(&rhs.node),
+        ExprKind::Binary(_, lhs, rhs) => contains_block(&lhs.node) || contains_block(&rhs.node),
+        ExprKind::Unary(_, e) => contains_block(&e.node),
+        ExprKind::MethodCall(_, exprs) => exprs.iter().map(|e| contains_block(&e.node)).any(|b| b),
+        ExprKind::Cast(e, _) => contains_block(&e.node),
+        _ => false,
+    }
 }
 
 fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
@@ -503,10 +516,46 @@ impl<'a> Translation<'a> {
             _ => panic!("Cannot convert non-assignment operator"),
         };
 
-        let expr = mk().method_call_expr(lhs_expr, setter_name, vec![param_expr]);
         let mut stmts = named_reference.stmts;
 
-        stmts.push(mk().expr_stmt(expr));
+        // If there's just one statement we should be able to be able to fit it into one line without issue
+        // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
+        // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
+        match param_expr.node {
+            ExprKind::Block(ref block, _) => {
+                let last = block.stmts.len() - 1;
+
+                for (i, stmt) in block.stmts.iter().enumerate() {
+                    if i == last {
+                        break
+                    }
+
+                    stmts.push(stmt.clone());
+                }
+
+                let last_expr = match block.stmts[last].node {
+                    StmtKind::Expr(ref expr) => expr.clone(),
+                    _ => return Err("Expected Expr StmtKind".into()),
+                };
+                let method_call = mk().method_call_expr(lhs_expr, setter_name, vec![last_expr]);
+
+                stmts.push(mk().expr_stmt(method_call));
+            },
+            _  if contains_block(&param_expr.node) => {
+                let name = self.renamer.borrow_mut().pick_name("rhs");
+                let name_ident = mk().mutbl().ident_pat(name.clone());
+                let temporary_stmt = mk().local(name_ident, None as Option<P<Ty>>, Some(param_expr.clone()));
+                let assignment_expr = mk().method_call_expr(lhs_expr, setter_name, vec![mk().ident_expr(name)]);
+
+                stmts.push(mk().local_stmt(P(temporary_stmt)));
+                stmts.push(mk().expr_stmt(assignment_expr));
+            },
+            _ => {
+                let assignment_expr = mk().method_call_expr(lhs_expr, setter_name, vec![param_expr.clone()]);
+
+                stmts.push(mk().expr_stmt(assignment_expr));
+            },
+        };
 
         return Ok(WithStmts { stmts, val });
     }
