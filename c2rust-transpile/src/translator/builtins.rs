@@ -209,11 +209,10 @@ impl<'c> Translation<'c> {
             "__sync_bool_compare_and_swap_4" |
             "__sync_bool_compare_and_swap_8" |
             "__sync_bool_compare_and_swap_16" => {
-                self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
                 // Emit `atomic_cxchg(a0, a1, a2).idx`
-                let atomic_cxchg = mk().path_expr(vec!["", "core", "intrinsics", "atomic_cxchg"]);
+                let atomic_cxchg = mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_cxchg"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 let arg2 = self.convert_expr(ctx.used(), args[2])?;
@@ -290,7 +289,6 @@ impl<'c> Translation<'c> {
             "__sync_nand_and_fetch_4" |
             "__sync_nand_and_fetch_8" |
             "__sync_nand_and_fetch_16" => {
-                self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
                 let (func_name, binary_op, is_nand) = if builtin_name.contains("_add_") {
@@ -309,7 +307,7 @@ impl<'c> Translation<'c> {
                 };
 
                 // Emit `atomic_func(a0, a1) (op a1)?`
-                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", func_name]);
+                let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", func_name]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 if builtin_name.starts_with("__sync_fetch") {
@@ -354,10 +352,9 @@ impl<'c> Translation<'c> {
             },
 
             "__sync_synchronize" => {
-                self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
-                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_fence"]);
+                let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_fence"]);
                 let call_expr = mk().call_expr(atomic_func, vec![] as Vec<P<Expr>>);
                 Ok(self.convert_side_effects_expr(ctx, vec![], call_expr,
                                                   "Builtin is not supposed to be used"))
@@ -368,11 +365,10 @@ impl<'c> Translation<'c> {
             "__sync_lock_test_and_set_4" |
             "__sync_lock_test_and_set_8" |
             "__sync_lock_test_and_set_16" => {
-                self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
                 // Emit `atomic_xchg_acq(arg0, arg1)`
-                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_xchg_acq"]);
+                let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_xchg_acq"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 Ok(arg0.and_then(|arg0| arg1.and_then(|arg1| {
@@ -387,11 +383,10 @@ impl<'c> Translation<'c> {
             "__sync_lock_release_4" |
             "__sync_lock_release_8" |
             "__sync_lock_release_16" => {
-                self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
                 // Emit `atomic_store_rel(arg0, 0)`
-                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_store_rel"]);
+                let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_store_rel"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 Ok(arg0.and_then(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
