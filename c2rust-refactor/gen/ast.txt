@@ -56,7 +56,7 @@ enum ItemKind {
 }
 
 enum UseTreeKind {
-    Simple(ident, span1, span2),
+    Simple(ident, id1, id2),
     Glob,
     Nested(nested),
 }
@@ -374,7 +374,9 @@ struct QSelf { ty, path_span, position }
 
 struct Mac_ { path, delim, tts }
 flag MacStmtStyle;
+#[equiv_mode=ignore]
 flag TokenStream;
+#[equiv_mode=ignore]
 flag ThinTokenStream;
 struct MacroDef { tokens, legacy }
 
@@ -399,7 +401,7 @@ struct AnonConst {
     value,
 }
 
-#[match=custom] flag Ident;
+#[match=custom] struct Ident { name, span }
 #[match=eq] flag Name;
 #[match=eq] flag SyntaxContext;
 
