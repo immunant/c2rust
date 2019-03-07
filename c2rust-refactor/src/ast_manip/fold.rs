@@ -109,8 +109,8 @@ gen_folder_impls! {
         ) -> AngleBracketedArgs { ... }
         fn fold_parenthesized_parameter_data(
             &mut self, 
-            p: ParenthesisedArgs
-        ) -> ParenthesisedArgs { ... }
+            p: ParenthesizedArgs
+        ) -> ParenthesizedArgs { ... }
         fn fold_local(&mut self, l: P<Local>) -> P<Local> { ... }
         fn fold_mac(&mut self, _mac: Mac) -> Mac { ... }
         fn fold_macro_def(&mut self, def: MacroDef) -> MacroDef { ... }

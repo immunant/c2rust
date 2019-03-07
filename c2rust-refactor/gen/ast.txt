@@ -364,7 +364,7 @@ enum GenericArgs {
     Parenthesized(ppd),
 }
 struct AngleBracketedArgs { span, args, bindings }
-struct ParenthesisedArgs { span, inputs, output }
+struct ParenthesizedArgs { span, inputs, output }
 enum GenericArg {
     Lifetime(lt),
     Type(ty),
