@@ -127,9 +127,9 @@ impl<'c> Translation<'c> {
                             }
                             va_end_found = true;
                         }
-                    }  
+                    }
                 }
-            }    
+            }
         }
 
         if va_end_found { va_started } else { None }
