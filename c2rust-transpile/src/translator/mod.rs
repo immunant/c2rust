@@ -14,6 +14,7 @@ use syntax::ptr::*;
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{with_globals, ast};
 use syntax_pos::{DUMMY_SP, Span};
+use rustc_data_structures::sync::Lrc;
 
 use rust_ast::comment_store::CommentStore;
 use rust_ast::item_store::ItemStore;
@@ -783,7 +784,7 @@ impl<'c> Translation<'c> {
     pub fn panic(&self, msg: &str) -> P<Expr> {
         let macro_name = if self.tcfg.panic_on_translator_failure { "panic" } else { "compile_error" };
         let macro_msg = vec![
-            Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit(msg)))),
+            Token::Interpolated(Lrc::new(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit(msg))))),
         ].into_iter().collect::<TokenStream>();
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
     }
@@ -2151,11 +2152,11 @@ impl<'c> Translation<'c> {
 
                     // offset_of!(Struct, field[expr as usize]) as ty
                     let mut macro_body = vec![
-                        TokenTree::Token(DUMMY_SP, Token::interpolated(ty_ident)),
+                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(ty_ident))),
                         TokenTree::Token(DUMMY_SP, Token::Comma),
-                        TokenTree::Token(DUMMY_SP, Token::interpolated(field_ident)),
+                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(field_ident))),
                         TokenTree::Token(DUMMY_SP, Token::OpenDelim(DelimToken::Bracket)),
-                        TokenTree::Token(DUMMY_SP, Token::interpolated(index_expr)),
+                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(index_expr))),
                         TokenTree::Token(DUMMY_SP, Token::CloseDelim(DelimToken::Bracket)),
                     ];
                     let path = mk().path("offset_of");

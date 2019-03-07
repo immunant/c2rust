@@ -8,10 +8,9 @@ use std::ops::Index;
 use c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CQualTypeId, CTypeId, MemberKind, UnOp};
 use c2rust_ast_builder::mk;
 use syntax::ast::{AttrStyle, BinOpKind, Expr, ExprKind, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StmtKind, StrStyle, StructField, Ty, TyKind, self};
-use syntax::ext::quote::rt::Span;
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
-use syntax_pos::DUMMY_SP;
+use syntax_pos::{Span, DUMMY_SP};
 use translator::{ExprContext, Translation, ConvertedDecl, simple_metaitem};
 use with_stmts::WithStmts;
 

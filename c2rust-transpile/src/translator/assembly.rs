@@ -29,7 +29,7 @@ impl<'c> Translation<'c> {
         self.use_feature("asm");
 
         fn push_expr(tokens: &mut Vec<Token>, expr: P<Expr>) {
-            tokens.push(Token::interpolated(Nonterminal::NtExpr(expr)));
+            tokens.push(Token::Interpolated(Lrc::new(Nonterminal::NtExpr(expr))));
         }
 
         let mut stmts: Vec<Stmt> = vec![];

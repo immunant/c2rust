@@ -198,6 +198,7 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
         ),
         ExprKind::Async(cap, nod, block) => ExprKind::Async(cap, nod, block.traverse(walk)),
         ExprKind::TryBlock(blk) => ExprKind::TryBlock(blk.traverse(walk)),
+        ExprKind::Err => unimplemented!(),
     };
     e
 }
