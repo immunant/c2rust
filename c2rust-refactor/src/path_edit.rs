@@ -1,11 +1,14 @@
 //! `fold_resolved_paths` function, for rewriting paths based on their resolved `DefId`.
 use rustc::hir;
 use rustc::hir::def::Def;
+use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
+use syntax::util::move_map::MoveMap;
 
 use crate::ast_manip::Fold;
+use crate::ast_manip::util::split_uses;
 use crate::driver;
 
 
@@ -126,18 +129,34 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
         }
     }
 
+    pub fn alter_use_path(&mut self, mut item: P<Item>, hir: &hir::Item) -> P<Item> {
+        // We are ignoring the extra namespaces in the Simple case. If we
+        // need to handle these we can look up HIR nodes with the other
+        // NodeIds in Simple().
+        let id = item.id;
+        unpack!([&mut item.node] ItemKind::Use(tree));
+        if let hir::ItemKind::Use(ref hir_path, _) = hir.node {
+            debug!("{:?}", hir_path);
+            let (_, new_path) = (self.callback)(id, None, tree.prefix.clone(), &hir_path.def);
+            tree.prefix = new_path;
+        }
+
+        item
+    }
 
     /// Common implementation of path rewriting.  If the resolved `Def` of the path is available,
     /// rewrites the path using `self.callback`.  Otherwise the path is left unchanged.
-    fn handle_qpath(&mut self,
-                    id: NodeId,
-                    qself: Option<QSelf>,
-                    path: Path,
-                    hir_qpath: &hir::QPath) -> (Option<QSelf>, Path) {
+    fn handle_qpath(
+        &mut self,
+        id: NodeId,
+        qself: Option<QSelf>,
+        path: Path,
+        hir_qpath: &hir::QPath,
+    ) -> (Option<QSelf>, Path) {
         match *hir_qpath {
             hir::QPath::Resolved(_, ref hir_path) => {
                 (self.callback)(id, qself, path, &hir_path.def)
-            },
+            }
 
             hir::QPath::TypeRelative(ref hir_ty, _) => {
                 // If the path is type-relative, then no `DefId` is available for the whole path.
@@ -149,20 +168,20 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
                 let (new_qself, mut new_path) = self.handle_relative_path(id, qself, path, hir_ty);
                 new_path.segments.push(tail);
                 (new_qself, new_path)
-            },
+            }
         }
     }
 
     /// Handle the base of a type-relative path.
-    fn handle_relative_path(&mut self,
-                            id: NodeId,
-                            qself: Option<QSelf>,
-                            path: Path,
-                            hir_ty: &hir::Ty) -> (Option<QSelf>, Path) {
+    fn handle_relative_path(
+        &mut self,
+        id: NodeId,
+        qself: Option<QSelf>,
+        path: Path,
+        hir_ty: &hir::Ty,
+    ) -> (Option<QSelf>, Path) {
         match hir_ty.node {
-            hir::TyKind::Path(ref qpath) => {
-                self.handle_qpath(id, qself, path, qpath)
-            },
+            hir::TyKind::Path(ref qpath) => self.handle_qpath(id, qself, path, qpath),
 
             _ => (qself, path),
         }
@@ -184,6 +203,7 @@ impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
     //  - Attribute.path
     //  - TraitRef.path
     //  - Visibility::Restricted.path
+    //  - UseTree.prefix
     //
     // We currently support the PatKind, ExprKind, and TyKind cases.  The rest are NYI.
 
@@ -195,7 +215,7 @@ impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
                                   hir::Node::Binding(pat) => pat);
 
                 self.alter_pat_path(p, hir)
-            },
+            }
             None => p,
         };
 
@@ -209,7 +229,7 @@ impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
                                   hir::Node::Expr(expr) => expr);
 
                 self.alter_expr_path(e, hir)
-            },
+            }
             None => e,
         };
 
@@ -223,18 +243,45 @@ impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
                                   hir::Node::Ty(ty) => ty);
 
                 self.alter_ty_path(t, hir)
-            },
+            }
             None => t,
         };
 
         fold::noop_fold_ty(t, self)
     }
+
+    fn fold_item(&mut self, item: P<Item>) -> SmallVec<[P<Item>; 1]> {
+        let v = match item.node {
+            ItemKind::Use(..) => {
+                // We split nested uses into simple uses to make path rewriting
+                // of use statements simpler.
+                split_uses(item).move_map(|item| {
+                    if let Some(node) = self.cx.hir_map().find(item.id) {
+                        let hir = expect!([node] hir::Node::Item(i) => i);
+                        self.alter_use_path(item, hir)
+                    } else {
+                        debug!("Couldn't find HIR node for {:?}", item);
+                        item
+                    }
+                })
+            }
+            _ => smallvec![item],
+        };
+
+        v.move_flat_map(|item| fold::noop_fold_item(item, self))
+    }
 }
 
 /// Rewrite paths, with access to their resolved `Def`s in the callback.
-pub fn fold_resolved_paths<T, F>(target: T, cx: &driver::Ctxt, mut callback: F) -> <T as Fold>::Result
-        where T: Fold,
-              F: FnMut(Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path) {
+pub fn fold_resolved_paths<T, F>(
+    target: T,
+    cx: &driver::Ctxt,
+    mut callback: F,
+) -> <T as Fold>::Result
+where
+    T: Fold,
+    F: FnMut(Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path),
+{
     let mut f = ResolvedPathFolder {
         cx: cx,
         callback: |_, q, p, d| callback(q, p, d),
@@ -244,9 +291,15 @@ pub fn fold_resolved_paths<T, F>(target: T, cx: &driver::Ctxt, mut callback: F) 
 
 /// Like `fold_resolved_paths`, but also passes the `NodeId` of the AST node containing the path.
 /// (Paths don't have `NodeId`s of their own.)
-pub fn fold_resolved_paths_with_id<T, F>(target: T, cx: &driver::Ctxt, callback: F) -> <T as Fold>::Result
-        where T: Fold,
-              F: FnMut(NodeId, Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path) {
+pub fn fold_resolved_paths_with_id<T, F>(
+    target: T,
+    cx: &driver::Ctxt,
+    callback: F,
+) -> <T as Fold>::Result
+where
+    T: Fold,
+    F: FnMut(NodeId, Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path),
+{
     let mut f = ResolvedPathFolder {
         cx: cx,
         callback: callback,
