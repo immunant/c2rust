@@ -18,7 +18,7 @@ use syntax::ThinVec;
 use syntax::ast::*;
 use syntax::source_map::{Span, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream};
 
 use std::rc::Rc;
 use syntax::ptr::P;

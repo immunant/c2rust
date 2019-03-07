@@ -2,7 +2,7 @@
 use syntax::ast::*;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenStream};
 
 
 /// Extract the symbol from a pattern-like AST.
@@ -74,7 +74,7 @@ impl PatternSymbol for Ty {
 
 impl PatternSymbol for Mac {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        if self.node.tts != ThinTokenStream::from(TokenStream::empty()) {
+        if self.node.tts != TokenStream::empty() {
             return None;
         }
         self.node.path.pattern_symbol()

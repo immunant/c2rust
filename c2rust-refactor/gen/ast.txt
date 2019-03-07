@@ -375,7 +375,6 @@ struct QSelf { ty, path_span, position }
 struct Mac_ { path, delim, tts }
 flag MacStmtStyle;
 flag TokenStream;
-flag ThinTokenStream;
 struct MacroDef { tokens, legacy }
 
 

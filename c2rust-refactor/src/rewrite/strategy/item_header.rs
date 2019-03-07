@@ -16,7 +16,7 @@ use syntax::parse::PResult;
 use syntax::parse::parser::Parser;
 use syntax::parse::token::{Token, DelimToken};
 use syntax::symbol::keywords;
-use syntax::tokenstream::{TokenStream, ThinTokenStream, TokenTree};
+use syntax::tokenstream::{TokenStream, TokenTree};
 
 use crate::ast_manip::AstEquiv;
 use crate::driver;
@@ -158,7 +158,7 @@ fn find_item_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, ItemHeaderSpans
 }
 
 fn find_fn_header_arg_list(ts: TokenStream,
-                           generics_span: Span) -> Option<(ThinTokenStream, Span)> {
+                           generics_span: Span) -> Option<(TokenStream, Span)> {
     // Take the body of the first paren-delimited subtree that's strictly after `generics_span`.
     ts.trees().filter_map(|tt| {
         match tt {

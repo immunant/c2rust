@@ -12,7 +12,7 @@ use syntax::source_map::{Span, BytePos};
 use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
-use syntax::tokenstream::{self, TokenStream, ThinTokenStream, TokenTree, Delimited};
+use syntax::tokenstream::{self, TokenStream, TokenTree, Delimited};
 use smallvec::SmallVec;
 use c2rust_ast_builder::mk;
 
@@ -405,7 +405,7 @@ fn rewrite_tokens(invoc_id: InvocId,
 fn convert_token_rewrites(rewrite_vec: Vec<RewriteItem>,
                           mac_table: &MacTable,
                           matched_ids: &mut Vec<(NodeId, NodeId)>)
-                          -> HashMap<InvocId, ThinTokenStream> {
+                          -> HashMap<InvocId, TokenStream> {
     let mut rewrite_map = token_rewrite_map(rewrite_vec, matched_ids);
     let invoc_ids = rewrite_map.values().map(|r| r.invoc_id).collect::<HashSet<_>>();
     invoc_ids.into_iter().filter_map(|invoc_id| {
@@ -429,7 +429,7 @@ fn convert_token_rewrites(rewrite_vec: Vec<RewriteItem>,
 /// remaining nodes that were unaffected by the collapsing.
 struct ReplaceTokens<'a> {
     mac_table: &'a MacTable<'a>,
-    new_tokens: HashMap<InvocId, ThinTokenStream>,
+    new_tokens: HashMap<InvocId, TokenStream>,
     matched_ids: &'a mut Vec<(NodeId, NodeId)>,
 }
 

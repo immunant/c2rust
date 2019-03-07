@@ -20,7 +20,7 @@ use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream};
 use syntax::util::parser;
 
 use crate::ast_manip::{GetNodeId, GetSpan, AstDeref};

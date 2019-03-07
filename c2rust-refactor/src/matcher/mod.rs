@@ -44,7 +44,7 @@ use syntax::parse::token::Token;
 use syntax::parse::{self, PResult};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::tokenstream::TokenStream;
 use syntax::util::move_map::MoveMap;
 use syntax_pos::FileName;
 
@@ -393,7 +393,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
     /// Handle the `marked!(...)` matching form.
     pub fn do_marked<T, F>(&mut self,
-                           tts: &ThinTokenStream,
+                           tts: &TokenStream,
                            func: F,
                            target: &T) -> Result<()>
             where T: TryMatch + GetNodeId,
@@ -419,7 +419,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
     /// Core implementation of the `def!(...)` matching form.
     fn do_def_impl(&mut self,
-                   tts: &ThinTokenStream,
+                   tts: &TokenStream,
                    style: PathStyle,
                    opt_def_id: Option<DefId>) -> Result<()> {
         let mut p = Parser::new(&self.cx.session().parse_sess,
@@ -445,20 +445,20 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     /// Handle the `def!(...)` matching form for exprs.
-    pub fn do_def_expr(&mut self, tts: &ThinTokenStream, target: &Expr) -> Result<()> {
+    pub fn do_def_expr(&mut self, tts: &TokenStream, target: &Expr) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_expr(target);
         self.do_def_impl(tts, PathStyle::Expr, opt_def_id)
     }
 
     /// Handle the `def!(...)` matching form for exprs.
-    pub fn do_def_ty(&mut self, tts: &ThinTokenStream, target: &Ty) -> Result<()> {
+    pub fn do_def_ty(&mut self, tts: &TokenStream, target: &Ty) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_ty(target);
         self.do_def_impl(tts, PathStyle::Type, opt_def_id)
     }
 
     /// Handle the `typed!(...)` matching form.
     pub fn do_typed<T, F>(&mut self,
-                          tts: &ThinTokenStream,
+                          tts: &TokenStream,
                           func: F,
                           target: &T) -> Result<()>
             where T: TryMatch + GetNodeId,
@@ -485,7 +485,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         self.try_match(&pattern, target)
     }
 
-    pub fn do_cast<F>(&mut self, tts: &ThinTokenStream, func: F, target: &Expr) -> Result<()>
+    pub fn do_cast<F>(&mut self, tts: &TokenStream, func: F, target: &Expr) -> Result<()>
             where F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, P<Expr>> {
         let ts: TokenStream = tts.clone().into();
         let pattern = driver::run_parser_tts(self.cx.session(), ts.into_trees().collect(), func);

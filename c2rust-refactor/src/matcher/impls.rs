@@ -7,7 +7,7 @@ use syntax::source_map::{Span, Spanned};
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream};
 
 use crate::ast_manip::util::{macro_name, PatternSymbol};
 use crate::matcher::{self, TryMatch, MatchCtxt};
