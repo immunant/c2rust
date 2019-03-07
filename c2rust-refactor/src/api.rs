@@ -9,7 +9,8 @@ use rustc::ty::subst::Substs;
 use syntax::ast;    // Can't glob-import because `Ty` already refers to `rustc::ty::Ty`.
 use syntax::ast::{NodeId, DUMMY_NODE_ID};
 use syntax::ast::{Expr, ExprKind};
-use syntax::ast::{Path, QSelf};
+use syntax::ast::{Path, QSelf, FunctionRetTy, Item, FnDecl};
+use syntax::ptr::P;
 
 // Reexports of various helpers
 pub use crate::ast_manip::*;
@@ -464,4 +465,124 @@ fn try_resolve_node_type_dep(cx: &driver::Ctxt, id: NodeId) -> Option<Def> {
     let tdd = tables.type_dependent_defs();
     let def = match_or!([tdd.get(hir_id)] Some(x) => x; return None);
     Some(*def)
+}
+
+/// Attempt to resolve a `Use` item to the `hir::Path` of the imported item. The
+/// given item _must_ be a `Use`.
+pub fn resolve_use(cx: &driver::Ctxt, u: &Item) -> P<hir::Path> {
+    let hir_node = cx
+        .hir_map()
+        .find(u.id)
+        .unwrap_or_else(|| panic!("Couldn't find HIR node for {:?}", u));
+    let hir_item = expect!([hir_node] hir::Node::Item(i) => i);
+    let path = expect!([&hir_item.node] hir::ItemKind::Use(path, _) => path);
+    path.clone()
+}
+
+/// Compare two items for internal structural equivalence, ignoring field names.
+pub fn structural_eq(cx: &driver::Ctxt, item1: &Item, item2: &Item) -> bool {
+    if item1.ast_equiv(item2) {
+        return true;
+    }
+
+    use syntax::ast::ItemKind::*;
+    match (&item1.node, &item2.node) {
+        // * Assure that these two items are in fact of the same type, just to be safe.
+        (Ty(..), Ty(..)) => true,
+
+        (Const(..), Const(..)) => true,
+
+        (Use(_), Use(_)) => panic!("We should have already handled the use statement case"),
+
+        (Struct(variant1, _), Struct(variant2, _)) | (Union(variant1, _), Union(variant2, _)) => {
+            let mut fields = variant1.fields().iter().zip(variant2.fields().iter());
+            fields.all(|(field1, field2)| structural_eq_tys(cx, &field1.ty, &field2.ty))
+        }
+
+        (Enum(enum1, _), Enum(enum2, _)) => {
+            let variants = enum1.variants.iter().zip(enum2.variants.iter());
+            let mut fields = variants.flat_map(|(variant1, variant2)| {
+                variant1
+                    .node
+                    .data
+                    .fields()
+                    .iter()
+                    .zip(variant2.node.data.fields().iter())
+            });
+            fields.all(|(field1, field2)| {
+                match (cx.opt_node_type(field1.id), cx.opt_node_type(field2.id)) {
+                    (Some(ty1), Some(ty2)) => ty1 == ty2,
+                    _ => false,
+                }
+            })
+        }
+
+        _ => {
+            debug!("Mismatched node types: {:?}, {:?}", item1.node, item2.node);
+            false
+        }
+    }
+}
+
+/// Compare two function declarations for equivalent argument and return types,
+/// ignoring argument names.
+pub fn compatible_fn_prototypes(cx: &driver::Ctxt, decl1: &FnDecl, decl2: &FnDecl) -> bool {
+    let mut args = decl1.inputs.iter().zip(decl2.inputs.iter());
+    if !args.all(|(arg1, arg2)| structural_eq_tys(cx, &arg1.ty, &arg2.ty)) {
+        return false;
+    }
+
+    // We assume we're dealing with function declaration prototypes, not
+    // closures, so the default return type is ()
+    let unit_ty = mk().tuple_ty::<P<ast::Ty>>(vec![]);
+    let ty1 = match &decl1.output {
+        FunctionRetTy::Default(..) => &unit_ty,
+        FunctionRetTy::Ty(ty) => &ty,
+    };
+    let ty2 = match &decl2.output {
+        FunctionRetTy::Default(..) => &unit_ty,
+        FunctionRetTy::Ty(ty) => &ty,
+    };
+
+    structural_eq_tys(cx, ty1, ty2)
+}
+
+/// Compare two AST types for structural equivalence, ignoring names.
+fn structural_eq_tys(cx: &driver::Ctxt, ty1: &ast::Ty, ty2: &ast::Ty) -> bool {
+    if ty1.ast_equiv(ty2) {
+        return true;
+    }
+
+    match (cx.try_resolve_ty(ty1), cx.try_resolve_ty(ty1)) {
+        (Some(did1), Some(did2)) => structural_eq_defs(cx, did1, did2),
+        _ => false,
+    }
+}
+
+/// Compare two Defs for structural equivalence, ignoring names.
+fn structural_eq_defs(cx: &driver::Ctxt, did1: DefId, did2: DefId) -> bool {
+    // Convert to TyCtxt types
+    let ty1 = cx.def_type(did1);
+    let ty2 = cx.def_type(did2);
+
+    // TODO: Make this follow the C rules for structural equivalence rather than
+    // strict equivalence
+    if ty1 == ty2 {
+        return true;
+    }
+
+    match (&ty1.sty, &ty2.sty) {
+        (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
+            if !substs1.is_empty() || !substs2.is_empty() {
+                // TODO: handle substs?
+                return false;
+            }
+
+            def1.all_fields()
+                .zip(def2.all_fields())
+                .all(|(field1, field2)| structural_eq_defs(cx, field1.did, field2.did))
+        }
+
+        _ => false,
+    }
 }
