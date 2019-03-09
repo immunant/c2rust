@@ -3,14 +3,14 @@
 
 use syntax::ast::Crate;
 
-use crate::command::{Command, RefactorState, CommandState, Registry};
-use crate::driver::{self, Phase};
-
+use crate::command::{Command, CommandState, RefactorState, Registry};
+use crate::driver::Phase;
+use crate::RefactorCtxt;
 
 /// An AST transformation that can be applied to a crate.
 pub trait Transform {
     /// Apply the transformation.
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate;
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate;
 
     /// Return the minimum phase at which this transform can operate.  See the `Phase` docs for
     /// details.  The default is `Phase2`.

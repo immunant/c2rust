@@ -10,10 +10,11 @@ use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::TokenTree;
 use syntax_pos::Span;
 
-use crate::api::*;
+use c2rust_ast_builder::mk;
+use crate::ast_manip::{fold_nodes, visit_nodes};
 use crate::command::{CommandState, Registry};
-use crate::driver;
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `convert_format_args` Command
@@ -47,7 +48,7 @@ use crate::transform::Transform;
 pub struct ConvertFormatArgs;
 
 impl Transform for ConvertFormatArgs {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
         fold_nodes(krate, |e: P<Expr>| {
             let fmt_idx = match e.node {
                 ExprKind::Call(_, ref args) =>
@@ -213,7 +214,7 @@ fn build_format_macro(
 pub struct ConvertPrintfs;
 
 impl Transform for ConvertPrintfs {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let mut printf_defs = HashSet::<DefId>::new();
         let mut fprintf_defs = HashSet::<DefId>::new();
         let mut stderr_defs = HashSet::<DefId>::new();

@@ -51,22 +51,22 @@ impl<'c> Translation<'c> {
                     let zeros = mk().method_call_expr(x, "leading_zeros", vec![] as Vec<P<Expr>>);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
-            }
+            },
             "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "trailing_zeros", vec![] as Vec<P<Expr>>);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
-            }
+            },
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![] as Vec<P<Expr>>)))
-            }
+            },
             "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![] as Vec<P<Expr>>)))
-            }
+            },
             "__builtin_expect" => self.convert_expr(ctx.used(), args[0]),
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
@@ -75,7 +75,7 @@ impl<'c> Translation<'c> {
                     let zeros = mk().method_call_expr(x, "count_ones", vec![] as Vec<P<Expr>>);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
-            }
+            },
             "__builtin_bzero" => {
                 let ptr_stmts = self.convert_expr(ctx.used(), args[0])?;
                 let n_stmts = self.convert_expr(ctx.used(), args[1])?;
@@ -84,14 +84,12 @@ impl<'c> Translation<'c> {
                 Ok(ptr_stmts.and_then(|ptr| {
                     n_stmts.map(|n| mk().call_expr(write_bytes, vec![ptr, zero, n]))
                 }))
-            }
+            },
 
             // If the target does not support data prefetch, the address expression is evaluated if
             // it includes side effects but no other code is generated and GCC does not issue a warning.
             // void __builtin_prefetch (const void *addr, ...);
-            "__builtin_prefetch" => {
-                self.convert_expr(ctx.unused(), args[0])
-            }
+            "__builtin_prefetch" => self.convert_expr(ctx.unused(), args[0]),
 
             "__builtin_memcpy" => self.convert_memcpy(ctx, args),
 
@@ -103,7 +101,7 @@ impl<'c> Translation<'c> {
             | "__builtin_uaddl_overflow"
             | "__builtin_uaddll_overflow" => {
                 self.convert_overflow_arith(ctx, "overflowing_add", args)
-            }
+            },
 
             "__builtin_sub_overflow"
             | "__builtin_ssub_overflow"
@@ -113,7 +111,7 @@ impl<'c> Translation<'c> {
             | "__builtin_usubl_overflow"
             | "__builtin_usubll_overflow" => {
                 self.convert_overflow_arith(ctx, "overflowing_sub", args)
-            }
+            },
 
             "__builtin_mul_overflow"
             | "__builtin_smul_overflow"
@@ -123,7 +121,7 @@ impl<'c> Translation<'c> {
             | "__builtin_umull_overflow"
             | "__builtin_umulll_overflow" => {
                 self.convert_overflow_arith(ctx, "overflowing_mul", args)
-            }
+            },
 
             // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
             // value is *not* a constant, but merely that GCC cannot prove it is a constant with
@@ -139,8 +137,7 @@ impl<'c> Translation<'c> {
                     }
                 }
                 Err(format!("Unsupported va_start"))
-            }
-            ,
+            },
             "__builtin_va_copy" => Err(format!(
                 "va_copy not supported"
             )),
@@ -153,7 +150,7 @@ impl<'c> Translation<'c> {
                     }
                 }
                 Err(format!("Unsupported va_end"))
-            }
+            },
 
             "__builtin_alloca" => {
                 let count = self.convert_expr(ctx.used(), args[0])?;
@@ -174,7 +171,7 @@ impl<'c> Translation<'c> {
                         vec![] as Vec<P<Expr>>,
                     ),
                 })
-            }
+            },
 
             // In clang 6 this first one is the only true SIMD builtin, clang 7 converted a bunch more after it:
             "__builtin_ia32_pshufw" =>
@@ -212,11 +209,10 @@ impl<'c> Translation<'c> {
             "__sync_bool_compare_and_swap_4" |
             "__sync_bool_compare_and_swap_8" |
             "__sync_bool_compare_and_swap_16" => {
-                self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
                 // Emit `atomic_cxchg(a0, a1, a2).idx`
-                let atomic_cxchg = mk().path_expr(vec!["", "core", "intrinsics", "atomic_cxchg"]);
+                let atomic_cxchg = mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_cxchg"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 let arg2 = self.convert_expr(ctx.used(), args[2])?;
@@ -231,7 +227,7 @@ impl<'c> Translation<'c> {
                     self.convert_side_effects_expr(ctx, vec![], call_expr,
                                                    "Builtin is not supposed to be used")
                 }))))
-            }
+            },
 
             "__sync_fetch_and_add_1" |
             "__sync_fetch_and_add_2" |
@@ -293,7 +289,6 @@ impl<'c> Translation<'c> {
             "__sync_nand_and_fetch_4" |
             "__sync_nand_and_fetch_8" |
             "__sync_nand_and_fetch_16" => {
-                self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
                 let (func_name, binary_op, is_nand) = if builtin_name.contains("_add_") {
@@ -312,7 +307,7 @@ impl<'c> Translation<'c> {
                 };
 
                 // Emit `atomic_func(a0, a1) (op a1)?`
-                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", func_name]);
+                let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", func_name]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 if builtin_name.starts_with("__sync_fetch") {
@@ -354,28 +349,26 @@ impl<'c> Translation<'c> {
                                                        "Builtin is not supposed to be used")
                     })))
                 }
-            }
+            },
 
             "__sync_synchronize" => {
-                self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
-                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_fence"]);
+                let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_fence"]);
                 let call_expr = mk().call_expr(atomic_func, vec![] as Vec<P<Expr>>);
                 Ok(self.convert_side_effects_expr(ctx, vec![], call_expr,
                                                   "Builtin is not supposed to be used"))
-            }
+            },
 
             "__sync_lock_test_and_set_1" |
             "__sync_lock_test_and_set_2" |
             "__sync_lock_test_and_set_4" |
             "__sync_lock_test_and_set_8" |
             "__sync_lock_test_and_set_16" => {
-                self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
                 // Emit `atomic_xchg_acq(arg0, arg1)`
-                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_xchg_acq"]);
+                let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_xchg_acq"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 Ok(arg0.and_then(|arg0| arg1.and_then(|arg1| {
@@ -383,18 +376,17 @@ impl<'c> Translation<'c> {
                     self.convert_side_effects_expr(ctx, vec![], call_expr,
                                                    "Builtin is not supposed to be used")
                 })))
-            }
+            },
 
             "__sync_lock_release_1" |
             "__sync_lock_release_2" |
             "__sync_lock_release_4" |
             "__sync_lock_release_8" |
             "__sync_lock_release_16" => {
-                self.extern_crates.borrow_mut().insert("core");
                 self.use_feature("core_intrinsics");
 
                 // Emit `atomic_store_rel(arg0, 0)`
-                let atomic_func = mk().path_expr(vec!["", "core", "intrinsics", "atomic_store_rel"]);
+                let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_store_rel"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 Ok(arg0.and_then(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
@@ -402,7 +394,7 @@ impl<'c> Translation<'c> {
                     self.convert_side_effects_expr(ctx, vec![], call_expr,
                                                    "Builtin is not supposed to be used")
                 }))
-            }
+            },
 
             _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
         }

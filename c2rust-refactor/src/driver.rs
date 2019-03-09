@@ -37,24 +37,7 @@ use arena::SyncDroplessArena;
 use crate::ast_manip::remove_paren;
 use crate::span_fix;
 use crate::util::Lone;
-
-
-/// Driver context.  Contains all available analysis results as of the current compiler phase.
-///
-/// Accessor methods will panic if the requested results are not available.
-#[derive(Clone)]
-pub struct Ctxt<'a, 'tcx: 'a> {
-    sess: &'a Session,
-    map: Option<&'a hir_map::Map<'tcx>>,
-    tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
-
-    /// This is a reference to the same `DroplessArena` used in `tcx`.  Analyses working with types
-    /// use this to allocate extra values with the same lifetime `'tcx` as the types themselves.
-    /// This way `Ty` wrappers don't need two lifetime parameters everywhere.
-    tcx_arena: Option<&'tcx SyncDroplessArena>,
-
-    cstore: &'a CStore,
-}
+use crate::RefactorCtxt;
 
 /// Compiler phase selection.  Later phases have more analysis results available, but are less
 /// robust against broken code.  (For example, phase 3 provides typechecking results, but can't be
@@ -69,71 +52,25 @@ pub enum Phase {
     Phase3,
 }
 
-impl<'a, 'tcx: 'a> Ctxt<'a, 'tcx> {
-    fn new_phase_1(sess: &'a Session, cstore: &'a CStore) -> Ctxt<'a, 'tcx> {
-        Ctxt {
-            sess,
-            cstore,
-            map: None,
-            tcx: None,
-            tcx_arena: None,
-        }
+impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
+    fn new_phase_1(sess: &'a Session, cstore: &'a CStore) -> RefactorCtxt<'a, 'tcx> {
+        RefactorCtxt::new(sess, cstore, None, None, None)
     }
 
     fn new_phase_2(sess: &'a Session,
                    cstore: &'a CStore,
-                   map: &'a hir_map::Map<'tcx>) -> Ctxt<'a, 'tcx> {
-        Ctxt {
-            sess,
-            cstore,
-            map: Some(map),
-            tcx: None,
-            tcx_arena: None,
-        }
+                   map: &'a hir_map::Map<'tcx>) -> RefactorCtxt<'a, 'tcx> {
+        RefactorCtxt::new(sess, cstore, Some(map), None, None)
     }
 
     fn new_phase_3(sess: &'a Session,
                    cstore: &'a CStore,
                    map: &'a hir_map::Map<'tcx>,
                    tcx: TyCtxt<'a, 'tcx, 'tcx>,
-                   tcx_arena: &'tcx SyncDroplessArena) -> Ctxt<'a, 'tcx> {
-        Ctxt {
-            sess,
-            cstore,
-            map: Some(map),
-            tcx: Some(tcx),
-            tcx_arena: Some(tcx_arena),
-        }
-    }
-
-    pub fn session(&self) -> &'a Session {
-        self.sess
-    }
-
-    pub fn cstore(&self) -> &'a CStore { self.cstore }
-
-    pub fn hir_map(&self) -> &'a hir_map::Map<'tcx> {
-        self.map
-            .expect("hir map is not available in this context (requires phase 2)")
-    }
-
-    pub fn ty_ctxt(&self) -> TyCtxt<'a, 'tcx, 'tcx> {
-        self.tcx
-            .expect("ty ctxt is not available in this context (requires phase 3)")
-    }
-
-    pub fn ty_arena(&self) -> &'tcx SyncDroplessArena {
-        self.tcx_arena
-            .expect("ty ctxt is not available in this context (requires phase 3)")
-    }
-
-    pub fn has_ty_ctxt(&self) -> bool {
-        self.tcx.is_some()
+                   tcx_arena: &'tcx SyncDroplessArena) -> RefactorCtxt<'a, 'tcx> {
+        RefactorCtxt::new(sess, cstore, Some(map), Some(tcx), Some(tcx_arena))
     }
 }
-
-
-
 
 /// Various driver bits that we have lying around at the end of `phase_1_parse_input`.  This is
 /// everything we need to (re-)run the compiler from phase 1 onward.
@@ -300,7 +237,7 @@ pub fn run_compiler_to_phase1(args: &[String],
 pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
                                       phase: Phase,
                                       func: F) -> R
-        where F: FnOnce(Crate, Ctxt) -> R {
+        where F: FnOnce(Crate, RefactorCtxt) -> R {
     let Phase1Bits {
         session, cstore, codegen_backend, input, output, out_dir, control, krate,
     } = bits;
@@ -310,7 +247,7 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
     let krate = span_fix::fix_attr_spans(krate);
 
     if phase == Phase::Phase1 {
-        let cx = Ctxt::new_phase_1(&session, &cstore);
+        let cx = RefactorCtxt::new_phase_1(&session, &cstore);
         return func(krate, cx);
     }
 
@@ -333,7 +270,7 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
     let hir_map = hir_map::map_crate(&session, &cstore, &mut expand_result.hir_forest, &expand_result.defs);
 
     if phase == Phase::Phase2 {
-        let cx = Ctxt::new_phase_2(&session, &cstore, &hir_map);
+        let cx = RefactorCtxt::new_phase_2(&session, &cstore, &hir_map);
         return func(krate, cx);
     }
 
@@ -345,7 +282,7 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
         &arenas, &crate_name, &outputs,
         |tcx, _analysis, _incremental_hashes_map, _result| {
             if phase == Phase::Phase3 {
-                let cx = Ctxt::new_phase_3(&session, &cstore, &tcx.hir, tcx, &arenas.interner);
+                let cx = RefactorCtxt::new_phase_3(&session, &cstore, &tcx.hir, tcx, &arenas.interner);
                 result = Some(func(krate, cx));
                 return;
             }
@@ -364,7 +301,7 @@ pub fn run_compiler<F, R>(args: &[String],
                           file_loader: Option<Box<FileLoader+Sync+Send>>,
                           phase: Phase,
                           func: F) -> R
-        where F: FnOnce(Crate, Ctxt) -> R {
+        where F: FnOnce(Crate, RefactorCtxt) -> R {
     let bits = run_compiler_to_phase1(args, file_loader);
     run_compiler_from_phase1(bits, phase, func)
 }

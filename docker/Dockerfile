@@ -23,5 +23,9 @@ USER $USER
 ARG RUST_VER=nightly-2018-12-03
 RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
 
+ENV PATH="/home/${USER}/.cargo/bin:${PATH}"
+ENV CARGO_HOME="/tmp/.cargo"
+ENV RUSTUP_HOME="/home/${USER}/.rustup"
+
 # Need to switch back to root for Azure DevOps compatibility
 USER root

@@ -4,15 +4,15 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 use syntax::ast::*;
-use syntax::source_map::{Span, BytePos};
 use syntax::ext::hygiene::SyntaxContext;
-use syntax::visit::{self, Visitor, FnKind};
+use syntax::source_map::{BytePos, Span};
+use syntax::visit::{self, FnKind, Visitor};
 use syntax_pos::FileName;
 
 use crate::ast_manip::Visit;
-use crate::command::{Registry, DriverCommand};
-use crate::driver::{self, Phase};
-
+use crate::command::{DriverCommand, Registry};
+use crate::driver::Phase;
+use crate::RefactorCtxt;
 
 /// The ID and span of a selected node.
 #[derive(Debug)]
@@ -252,7 +252,7 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
 
 /// Select an AST node by its file, line, and column numbers.
 pub fn pick_node_at_loc(krate: &Crate,
-                        cx: &driver::Ctxt,
+                        cx: &RefactorCtxt,
                         kind: NodeKind,
                         file: &str,
                         line: u32,
@@ -290,7 +290,7 @@ pub fn pick_node_at_loc(krate: &Crate,
 /// 
 /// Find a node of kind `KIND` at location `FILE:LINE:COL`.
 /// If successful, logs the node's ID and span at level `info`.
-pub fn pick_node_command(krate: &Crate, cx: &driver::Ctxt, args: &[String]) {
+pub fn pick_node_command(krate: &Crate, cx: &RefactorCtxt, args: &[String]) {
     let kind = NodeKind::from_str(&args[0]).unwrap();
     let file = &args[1];
     let line = u32::from_str(&args[2]).unwrap();

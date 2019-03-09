@@ -11,19 +11,24 @@
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
 
-
 extern crate libc;
+
+type outside = i32;
 
 pub mod bar {
     use libc;
 
     #[header_src = "/home/user/some/workspace/foobar/bar.h"]
     pub mod bar_h {
+        // Test relative paths
+        use super::super::outside;
+
         #[derive(Copy, Clone)]
         #[repr(C)]
         pub struct bar_t {
             pub alloc: *mut libc::c_char,
             pub data: *mut libc::c_char,
+            pub i: outside,
         }
         use super::libc;
     }
@@ -34,11 +39,15 @@ pub mod foo {
 
     #[header_src = "/home/user/some/workspace/foobar/bar.h"]
     pub mod bar_h {
+        // Test relative paths
+        use super::super::outside;
+
         #[derive(Copy, Clone)]
         #[repr(C)]
         pub struct bar_t {
             pub alloc: *mut libc::c_char,
             pub data: *mut libc::c_char,
+            pub i: outside,
         }
         use super::libc;
     }

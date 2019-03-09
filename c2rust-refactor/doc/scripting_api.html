@@ -1,0 +1,616 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<head>
+    <title>Reference</title>
+    <link rel="stylesheet" href="ldoc.css" type="text/css" />
+</head>
+<body>
+
+<div id="container">
+
+<div id="product">
+	<div id="product_logo"></div>
+	<div id="product_name"><big><b></b></big></div>
+	<div id="product_description"></div>
+</div> <!-- id="product" -->
+
+
+<div id="main">
+
+
+<!-- Menu -->
+
+<div id="navigation">
+<br/>
+<h1>c2rust-refactor</h1>
+
+
+<h2>Contents</h2>
+<ul>
+<li><a href="#Tables">Tables</a></li>
+<li><a href="#Fields">Fields</a></li>
+<li><a href="#Class_RefactorState">Class RefactorState </a></li>
+<li><a href="#Class_MatchCtxt">Class MatchCtxt </a></li>
+<li><a href="#Class_TransformCtxt">Class TransformCtxt </a></li>
+</ul>
+
+
+<h2>Modules</h2>
+<ul class="nowrap">
+  <li><strong>Refactor</strong></li>
+</ul>
+
+</div>
+
+<div id="content">
+
+<h1>Module <code>Refactor</code></h1>
+<p>Refactoring module</p>
+<p>
+
+</p>
+
+
+<h2><a href="#Tables">Tables</a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Stmt">Stmt</a></td>
+	<td class="summary">AST Stmt</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Expr">Expr</a></td>
+	<td class="summary">AST Expr</td>
+	</tr>
+</table>
+<h2><a href="#Fields">Fields</a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#refactor">refactor</a></td>
+	<td class="summary">Global refactoring state</td>
+	</tr>
+</table>
+<h2><a href="#Class_RefactorState">Class RefactorState </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#RefactorState:run_command">RefactorState:run_command (name, args)</a></td>
+	<td class="summary">Run a builtin refactoring command</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#RefactorState:transform">RefactorState:transform (callback)</a></td>
+	<td class="summary">Run a custom refactoring transformation</td>
+	</tr>
+</table>
+<h2><a href="#Class_MatchCtxt">Class MatchCtxt </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#MatchCtxt:parse_stmts">MatchCtxt:parse_stmts (pat)</a></td>
+	<td class="summary">Parse statements and add them to this MatchCtxt</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#MatchCtxt:parse_expr">MatchCtxt:parse_expr (pat)</a></td>
+	<td class="summary">Parse an expressiong and add it to this MatchCtxt</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#MatchCtxt:fold_with">MatchCtxt:fold_with (needle, crate, callback)</a></td>
+	<td class="summary">Find matches of <code>pattern</code> within <code>crate</code> and rewrite using <code>callback</code></td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#MatchCtxt:get_expr">MatchCtxt:get_expr (Expression)</a></td>
+	<td class="summary">Get matched binding for an expression variable</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#MatchCtxt:get_stmt">MatchCtxt:get_stmt (Statement)</a></td>
+	<td class="summary">Get matched binding for a statement variable</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#MatchCtxt:try_match">MatchCtxt:try_match (pat, target)</a></td>
+	<td class="summary">Attempt to match <code>target</code> against <code>pat</code>, updating bindings if matched.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#MatchCtxt:subst">MatchCtxt:subst (replacement)</a></td>
+	<td class="summary">Substitute the currently matched AST node with a new AST node</td>
+	</tr>
+</table>
+<h2><a href="#Class_TransformCtxt">Class TransformCtxt </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#TransformCtxt:replace_stmts_with">TransformCtxt:replace_stmts_with (needle, callback)</a></td>
+	<td class="summary">Replace matching statements using given callback</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TransformCtxt:replace_expr_with">TransformCtxt:replace_expr_with (needle, callback)</a></td>
+	<td class="summary">Replace matching expressions using given callback</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TransformCtxt:match">TransformCtxt:match ()</a></td>
+	<td class="summary">Create a new, empty <a href="scripting_api.html#MatchCtxt">MatchCtxt</a></td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TransformCtxt:get_ast">TransformCtxt:get_ast (node)</a></td>
+	<td class="summary">Retrieve a Lua version of an AST node</td>
+	</tr>
+</table>
+
+<br/>
+<br/>
+
+
+    <h2 class="section-header "><a name="Tables"></a>Tables</h2>
+
+    <dl class="function">
+    <dt>
+    <a name = "Stmt"></a>
+    <strong>Stmt</strong>
+    </dt>
+    <dd>
+    AST Stmt
+
+
+    <h3>Fields:</h3>
+    <ul>
+        <li><span class="parameter">type</span>
+         "Stmt"
+        </li>
+        <li><span class="parameter">kind</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         <code>StmtKind</code> of this statement</p>
+
+<p> <code>StmtKind::Local</code> only:
+        </li>
+        <li><span class="parameter">ty</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         Type of local
+         (<em>optional</em>)
+        </li>
+        <li><span class="parameter">init</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         Initializer of local
+         (<em>optional</em>)
+        </li>
+        <li><span class="parameter">pat</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         Name of local</p>
+
+<p> <code>StmtKind::Item</code> only:
+        </li>
+        <li><span class="parameter">item</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         Item node</p>
+
+<p> <code>StmtKind::Semi</code> and <code>StmtKind::Expr</code> only:
+        </li>
+        <li><span class="parameter">expr</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         Expression in this statement
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Expr"></a>
+    <strong>Expr</strong>
+    </dt>
+    <dd>
+    AST Expr
+
+
+    <h3>Fields:</h3>
+    <ul>
+        <li><span class="parameter">type</span>
+         "Expr"
+        </li>
+        <li><span class="parameter">kind</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         <code>ExprKind</code> of this expression</p>
+
+<p> <code>ExprKind::Lit</code> only:
+        </li>
+        <li><span class="parameter">value</span>
+         Literal value of this expression
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header "><a name="Fields"></a>Fields</h2>
+
+    <dl class="function">
+    <dt>
+    <a name = "refactor"></a>
+    <strong>refactor</strong>
+    </dt>
+    <dd>
+    Global refactoring state
+
+
+    <ul>
+        <li><span class="parameter">refactor</span>
+         RefactorState object
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_RefactorState"></a>Class RefactorState </h2>
+
+          <div class="section-description">
+          Refactoring context
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "RefactorState:run_command"></a>
+    <strong>RefactorState:run_command (name, args)</strong>
+    </dt>
+    <dd>
+    Run a builtin refactoring command
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">name</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         Command to run
+        </li>
+        <li><span class="parameter">args</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">{string,...}</a></span>
+         List of arguments for the command
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "RefactorState:transform"></a>
+    <strong>RefactorState:transform (callback)</strong>
+    </dt>
+    <dd>
+    Run a custom refactoring transformation
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">callback</span>
+            <span class="types"><span class="type">function(TransformCtxt,AstNode)</span></span>
+         Transformation function called with a fresh <a href="scripting_api.html#TransformCtxt">TransformCtxt</a> and the crate to be transformed.
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_MatchCtxt"></a>Class MatchCtxt </h2>
+
+          <div class="section-description">
+          A match context
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "MatchCtxt:parse_stmts"></a>
+    <strong>MatchCtxt:parse_stmts (pat)</strong>
+    </dt>
+    <dd>
+    Parse statements and add them to this MatchCtxt
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">pat</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         Pattern to parse
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+        The parsed statements
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "MatchCtxt:parse_expr"></a>
+    <strong>MatchCtxt:parse_expr (pat)</strong>
+    </dt>
+    <dd>
+    Parse an expressiong and add it to this MatchCtxt
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">pat</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         Pattern to parse
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+        The parsed expression
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "MatchCtxt:fold_with"></a>
+    <strong>MatchCtxt:fold_with (needle, crate, callback)</strong>
+    </dt>
+    <dd>
+    Find matches of <code>pattern</code> within <code>crate</code> and rewrite using <code>callback</code>
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">needle</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         Pattern to search for
+        </li>
+        <li><span class="parameter">crate</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         Crate to fold over
+        </li>
+        <li><span class="parameter">callback</span>
+            <span class="types"><span class="type">function(AstNode,MatchCtxt)</span></span>
+         Function called for each match. Takes the matching node and a new <a href="scripting_api.html#MatchCtxt">MatchCtxt</a> for that match.
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "MatchCtxt:get_expr"></a>
+    <strong>MatchCtxt:get_expr (Expression)</strong>
+    </dt>
+    <dd>
+    Get matched binding for an expression variable
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">Expression</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         variable pattern
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+        Expression matched by this binding
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "MatchCtxt:get_stmt"></a>
+    <strong>MatchCtxt:get_stmt (Statement)</strong>
+    </dt>
+    <dd>
+    Get matched binding for a statement variable
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">Statement</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         variable pattern
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+        Statement matched by this binding
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "MatchCtxt:try_match"></a>
+    <strong>MatchCtxt:try_match (pat, target)</strong>
+    </dt>
+    <dd>
+    Attempt to match <code>target</code> against <code>pat</code>, updating bindings if matched.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">pat</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         AST (potentially with variable bindings) to match with
+        </li>
+        <li><span class="parameter">target</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         AST to match against
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">bool</span></span>
+        true if match was successful
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "MatchCtxt:subst"></a>
+    <strong>MatchCtxt:subst (replacement)</strong>
+    </dt>
+    <dd>
+    Substitute the currently matched AST node with a new AST node
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">replacement</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         New AST node to replace the currently matched AST. May include variable bindings if these bindings were matched by the search pattern.
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+        New AST node with variable bindings replaced by their matched values
+    </ol>
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_TransformCtxt"></a>Class TransformCtxt </h2>
+
+          <div class="section-description">
+          Transformation context
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "TransformCtxt:replace_stmts_with"></a>
+    <strong>TransformCtxt:replace_stmts_with (needle, callback)</strong>
+    </dt>
+    <dd>
+    Replace matching statements using given callback
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">needle</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         Statements pattern to search for, may include variable bindings
+        </li>
+        <li><span class="parameter">callback</span>
+            <span class="types"><span class="type">function(AstNode,MatchCtxt)</span></span>
+         Function called for each match. Takes the matching node and a new <a href="scripting_api.html#MatchCtxt">MatchCtxt</a> for that match. See <a href="scripting_api.html#MatchCtxt:fold_with">MatchCtxt:fold_with</a>
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TransformCtxt:replace_expr_with"></a>
+    <strong>TransformCtxt:replace_expr_with (needle, callback)</strong>
+    </dt>
+    <dd>
+    Replace matching expressions using given callback
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">needle</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         Expression pattern to search for, may include variable bindings
+        </li>
+        <li><span class="parameter">callback</span>
+            <span class="types"><span class="type">function(AstNode,MatchCtxt)</span></span>
+         Function called for each match. Takes the matching node and a new <a href="scripting_api.html#MatchCtxt">MatchCtxt</a> for that match. See <a href="scripting_api.html#MatchCtxt:fold_with">MatchCtxt:fold_with</a>
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TransformCtxt:match"></a>
+    <strong>TransformCtxt:match ()</strong>
+    </dt>
+    <dd>
+    Create a new, empty <a href="scripting_api.html#MatchCtxt">MatchCtxt</a>
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="scripting_api.html#MatchCtxt">MatchCtxt</a></span>
+        New match context
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TransformCtxt:get_ast"></a>
+    <strong>TransformCtxt:get_ast (node)</strong>
+    </dt>
+    <dd>
+    Retrieve a Lua version of an AST node
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">node</span>
+            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+         AST node handle
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        Struct representation of this AST node. Valid return types are <a href="scripting_api.html#Stmt">Stmt</a>, and <a href="scripting_api.html#Expr">Expr</a>.
+    </ol>
+
+
+
+
+</dd>
+</dl>
+
+
+</div> <!-- id="content" -->
+</div> <!-- id="main" -->
+<div id="about">
+<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
+<i style="float:right;">Last updated 2019-02-21 10:38:12 </i>
+</div> <!-- id="about" -->
+</div> <!-- id="container" -->
+</body>
+</html>

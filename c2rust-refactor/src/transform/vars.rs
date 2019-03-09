@@ -8,11 +8,14 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
-use crate::api::*;
+use c2rust_ast_builder::mk;
+use crate::ast_manip::{fold_nodes, fold_blocks, visit_nodes};
 use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase};
+use crate::matcher::{MatchCtxt, Subst, fold_match_with, replace_stmts};
 use crate::transform::Transform;
 use rustc::middle::cstore::CrateStore;
+use crate::RefactorCtxt;
 
 
 /// # `let_x_uninitialized` Command
@@ -26,7 +29,7 @@ use rustc::middle::cstore::CrateStore;
 pub struct LetXUninitialized;
 
 impl Transform for LetXUninitialized {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let krate = replace_stmts(st, cx, krate,
                                   "let __pat;",
                                   "let __pat = ::std::mem::uninitialized();");
@@ -51,7 +54,7 @@ impl Transform for LetXUninitialized {
 pub struct SinkLets;
 
 impl Transform for SinkLets {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Collect info on every local that might be worth moving.
 
         struct LocalInfo {
@@ -94,7 +97,7 @@ impl Transform for SinkLets {
             cur: HashMap<HirId, UseKind>,
             block_locals: HashMap<NodeId, HashMap<HirId, UseKind>>,
 
-            cx: &'a driver::Ctxt<'a, 'tcx>,
+            cx: &'a RefactorCtxt<'a, 'tcx>,
             locals: &'a HashMap<HirId, LocalInfo>,
         }
 
@@ -228,7 +231,7 @@ impl Transform for SinkLets {
 }
 
 
-fn expr_has_side_effects(cx: &driver::Ctxt, e: &P<Expr>) -> bool {
+fn expr_has_side_effects(cx: &RefactorCtxt, e: &P<Expr>) -> bool {
     match e.node {
         // Literals never have side effects
         ExprKind::Lit(_) => false,
@@ -257,7 +260,7 @@ fn expr_has_side_effects(cx: &driver::Ctxt, e: &P<Expr>) -> bool {
 }
 
 
-fn is_uninit_call(cx: &driver::Ctxt, e: &Expr) -> bool {
+fn is_uninit_call(cx: &RefactorCtxt, e: &Expr) -> bool {
     let func = match_or!([e.node] ExprKind::Call(ref func, _) => func; return false);
     let def_id = cx.resolve_expr(func);
     if def_id.krate == LOCAL_CRATE {
@@ -283,7 +286,7 @@ fn is_uninit_call(cx: &driver::Ctxt, e: &Expr) -> bool {
 pub struct FoldLetAssign;
 
 impl Transform for FoldLetAssign {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Find all locals that might be foldable.
 
         let mut locals: HashMap<HirId, P<Local>> = HashMap::new();
@@ -302,7 +305,7 @@ impl Transform for FoldLetAssign {
             cur: HashSet<HirId>,
             stmt_locals: HashMap<NodeId, HashSet<HirId>>,
 
-            cx: &'a driver::Ctxt<'a, 'tcx>,
+            cx: &'a RefactorCtxt<'a, 'tcx>,
             locals: &'a HashMap<HirId, P<Local>>,
         }
 
@@ -443,7 +446,7 @@ impl Transform for FoldLetAssign {
 pub struct UninitToDefault;
 
 impl Transform for UninitToDefault {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
         fold_nodes(krate, |l: P<Local>| {
             if !l.init.as_ref().map_or(false, |e| is_uninit_call(cx, e)) {
                 return l;
@@ -484,17 +487,17 @@ impl Transform for UninitToDefault {
 pub struct RemoveRedundantLetTypes;
 
 impl Transform for RemoveRedundantLetTypes {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let tcx = cx.ty_ctxt();
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_stmts("let $pat:Pat : $ty:Ty = $init:Expr;");
         let repl = mcx.parse_stmts("let $pat = $init;");
         fold_match_with(mcx, pat, krate, |ast, mcx| {
-            let e = mcx.bindings.expr("$init");
+            let e = mcx.bindings.get::<_, P<Expr>>("$init").unwrap();
             let e_ty = cx.adjusted_node_type(e.id);
             let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
 
-            let t = mcx.bindings.ty("$ty");
+            let t = mcx.bindings.get::<_, P<Ty>>("$ty").unwrap();
             let t_ty = cx.adjusted_node_type(t.id);
             let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
             if e_ty == t_ty {

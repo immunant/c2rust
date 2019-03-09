@@ -2,11 +2,14 @@ use rustc::ty;
 use syntax::ast::*;
 use syntax::ptr::P;
 
-use crate::api::*;
+use crate::ast_manip::{fold_blocks, fold_nodes, AstEquiv};
 use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase, parse_expr};
+use crate::matcher::{fold_match, Subst};
+use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
-use c2rust_ast_builder::IntoSymbol;
+use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::RefactorCtxt;
 
 
 /// # `struct_assign_to_update` Command
@@ -29,12 +32,12 @@ use c2rust_ast_builder::IntoSymbol;
 pub struct AssignToUpdate;
 
 impl Transform for AssignToUpdate {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let pat = parse_expr(cx.session(), "__x.__f = __y");
         let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }");
 
         fold_match(st, cx, pat, krate, |orig, mut mcx| {
-            let x = mcx.bindings.expr("__x").clone();
+            let x = mcx.bindings.get::<_, P<Expr>>("__x").unwrap().clone();
 
             let struct_def_id = match cx.node_type(x.id).sty {
                 ty::TyKind::Adt(ref def, _) => def.did,
@@ -42,7 +45,7 @@ impl Transform for AssignToUpdate {
             };
             let struct_path = cx.def_path(struct_def_id);
 
-            mcx.bindings.add_path("__s", struct_path);
+            mcx.bindings.add("__s", struct_path);
             repl.clone().subst(st, cx, &mcx.bindings)
         })
     }
@@ -72,7 +75,7 @@ impl Transform for AssignToUpdate {
 pub struct MergeUpdates;
 
 impl Transform for MergeUpdates {
-    fn transform(&self, krate: Crate, _st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, _cx: &RefactorCtxt) -> Crate {
         fold_blocks(krate, |curs| {
             loop {
                 // Find a struct update.
@@ -139,7 +142,7 @@ fn build_struct_update(path: Path, fields: Vec<Field>, base: P<Expr>) -> Stmt {
 pub struct Rename(pub String);
 
 impl Transform for Rename {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let new_ident = Ident::with_empty_ctxt((&self.0 as &str).into_symbol());
         let mut target_def_id = None;
 

@@ -14,8 +14,8 @@ use syntax::visit::{self, Visitor};
 
 use crate::ast_manip::Visit;
 use crate::command::CommandState;
-use crate::driver;
 use crate::type_map::{self, TypeSource};
+use crate::RefactorCtxt;
 
 use super::{LTy, LFnSig, ConcretePerm, PermVar, Var};
 use super::constraint::{ConstraintSet, Perm};
@@ -65,7 +65,7 @@ impl<'c, 'a, 'tcx> TypeSource for LTySource<'c, 'a, 'tcx> {
 
 pub fn handle_marks<'a, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
                               st: &CommandState,
-                              dcx: &driver::Ctxt<'a, 'tcx>) {
+                              dcx: &RefactorCtxt<'a, 'tcx>) {
     let mut fixed_vars = Vec::new();
     {
         let source = LTySource {
@@ -161,7 +161,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
 
 pub fn handle_attrs<'a, 'hir, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
                                     st: &CommandState,
-                                    dcx: &driver::Ctxt<'a, 'tcx>) {
+                                    dcx: &RefactorCtxt<'a, 'tcx>) {
 
     let krate = st.krate();
     let mut v = AttrVisitor {

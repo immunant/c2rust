@@ -32,7 +32,7 @@ pub fn cleanup_rewrites(cm: &SourceMap, rws: Vec<TextRewrite>) -> Vec<TextRewrit
     let mut rws = rws;
     // Sort by start position ascending, then by end position descending.  This way, in case of a
     // pair of overlapping rewrites with the same start position, we see the longest one first.
-    rws.sort_by_key(|rw| (rw.old_span.lo().0, !rw.old_span.hi().0));
+    rws.sort_by_key(|rw| (rw.old_span.lo().0, rw.old_span.hi().0));
 
     let mut new_rws: Vec<TextRewrite> = Vec::with_capacity(rws.len());
 
@@ -60,10 +60,11 @@ pub fn cleanup_rewrites(cm: &SourceMap, rws: Vec<TextRewrite>) -> Vec<TextRewrit
 
         let prev = new_rws.last().unwrap();
 
-        if rw.old_span.hi().0 <= prev.old_span.hi().0 &&
-           empty_span(rw.new_span) && empty_span(prev.new_span) {
-            // This rewrite deletes some content, but lies within a larger deletion.  We can drop
-            // it with no effect.
+        if rw.old_span.lo().0 <= prev.old_span.hi().0 &&
+            empty_span(rw.new_span) && empty_span(prev.new_span)
+        {
+            rw.old_span = rw.old_span.with_lo(prev.old_span.hi());
+            new_rws.push(rw);
             continue;
         }
 
@@ -77,7 +78,7 @@ pub fn cleanup_rewrites(cm: &SourceMap, rws: Vec<TextRewrite>) -> Vec<TextRewrit
             continue;
         }
 
-        panic!("conflicting rewrites:\nprev = {:?}\ncur = {:?}", prev, rw);
+        panic!("conflicting rewrites:\nprev = {:#?}\ncur = {:#?}", prev, rw);
     }
 
     new_rws

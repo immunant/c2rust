@@ -3,10 +3,10 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use crate::api::*;
+use crate::ast_manip::fold_nodes;
 use crate::command::{CommandState, Registry};
-use crate::driver;
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `bytestr_to_str` Command
@@ -23,7 +23,7 @@ use crate::transform::Transform;
 pub struct ByteStrToStr;
 
 impl Transform for ByteStrToStr {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
         fold_nodes(krate, |e: P<Expr>| {
             if !st.marked(e.id, "target") {
                 return e;
@@ -64,7 +64,7 @@ impl Transform for ByteStrToStr {
 pub struct RemoveNullTerminator;
 
 impl Transform for RemoveNullTerminator {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
         fold_nodes(krate, |e: P<Expr>| {
             if !st.marked(e.id, "target") {
                 return e;

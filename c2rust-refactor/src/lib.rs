@@ -3,6 +3,7 @@
     trace_macros,
     specialization,
     box_patterns,
+    try_from,
 )]
 extern crate arena;
 extern crate ena;
@@ -45,7 +46,6 @@ pub mod pick_node;
 
 pub mod path_edit;
 pub mod illtyped;
-pub mod api;
 pub mod contains_mark;
 pub mod reflect;
 pub mod type_map;
@@ -67,6 +67,9 @@ pub mod mark_adjust;
 pub mod select;
 pub mod print_spans;
 
+mod context;
+mod scripting;
+
 use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -80,7 +83,7 @@ use rustc_data_structures::sync::Lock;
 
 use c2rust_ast_builder::IntoSymbol;
 
-
+pub use crate::context::RefactorCtxt;
 
 #[derive(Clone, Debug)]
 pub struct Cursor {
@@ -189,6 +192,17 @@ fn get_rustc_executable(path: &Path) -> String {
 }
 
 fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
+    match src {
+        RustcArgSource::CmdLine(mut args) => {
+            let mut rustc_args = vec!(get_rustc_executable(Path::new("rustc")));
+            rustc_args.append(&mut args);
+            rustc_args
+        }
+        RustcArgSource::Cargo => get_rustc_cargo_args(),
+    }
+}
+
+fn get_rustc_cargo_args() -> Vec<String> {
     use std::sync::{Arc, Mutex};
     use cargo::Config;
     use cargo::core::{Workspace, PackageId, Target, maybe_allow_nightly_features};
@@ -202,15 +216,6 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
     // `cargo`-built `libcargo` is always on the `dev` channel, so `maybe_allow_nightly_features`
     // really does allow nightly features.
     maybe_allow_nightly_features();
-
-    match src {
-        RustcArgSource::CmdLine(mut args) => {
-            let mut rustc_args = vec!(get_rustc_executable(Path::new("rustc")));
-            rustc_args.append(&mut args);
-            return rustc_args;
-        }
-        RustcArgSource::Cargo => {},
-    }
 
     let config = Config::default().unwrap();
     let mode = CompileMode::Check { test: false };
@@ -360,6 +365,14 @@ fn main_impl(opts: Options) {
         interact::interact_command(&opts.commands[0].args,
                                    rustc_args,
                                    cmd_reg);
+    } else if opts.commands.len() == 1 && opts.commands[0].name == "script" {
+        assert_eq!(opts.commands[0].args.len(), 1);
+        scripting::run_lua_file(
+            Path::new(&opts.commands[0].args[0]),
+            rustc_args,
+            cmd_reg,
+            opts.rewrite_modes,
+        ).expect("Error loading user script");
     } else {
         let mut state = command::RefactorState::from_rustc_args(
             &rustc_args,

@@ -48,11 +48,11 @@ use syntax::tokenstream::TokenStream;
 use syntax::util::move_map::MoveMap;
 use syntax_pos::FileName;
 
-use crate::api::DriverCtxtExt;
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{Fold, GetNodeId, remove_paren};
 use crate::command::CommandState;
 use crate::driver::{self, emit_and_panic};
+use crate::RefactorCtxt;
 use crate::reflect;
 use crate::util::Lone;
 use c2rust_ast_builder::IntoSymbol;
@@ -101,13 +101,13 @@ pub struct MatchCtxt<'a, 'tcx: 'a> {
     pub bindings: Bindings,
     pub types: BindingTypes,
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     pub debug: bool,
 }
 
 impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     pub fn new(st: &'a CommandState,
-               cx: &'a driver::Ctxt<'a, 'tcx>) -> MatchCtxt<'a, 'tcx> {
+               cx: &'a RefactorCtxt<'a, 'tcx>) -> MatchCtxt<'a, 'tcx> {
         MatchCtxt {
             bindings: Bindings::new(),
             types: BindingTypes::new(),
@@ -186,7 +186,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
     /// Build a new `MatchCtxt`, and try to match `target` against `pat` in that context.
     pub fn from_match<T: TryMatch>(st: &'a CommandState,
-                                   cx: &'a driver::Ctxt<'a, 'tcx>,
+                                   cx: &'a RefactorCtxt<'a, 'tcx>,
                                    pat: &T,
                                    target: &T) -> Result<MatchCtxt<'a, 'tcx>> {
         let mut m = MatchCtxt::new(st, cx);
@@ -231,7 +231,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         };
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(_)) => {
-                let ok = self.bindings.try_add_opt_none(sym);
+                let ok = self.bindings.try_add_none(sym);
                 if ok { Ok(()) } else { Err(Error::NonlinearMismatch) }
             }
             bt @ _ => panic!("expected optional binding, got {:?}", bt)
@@ -249,7 +249,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         // starts with "__", then it's a valid pattern for any binding type.
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(bindings::Type::Ident)) => {
-                let ok = self.bindings.try_add_opt_ident(sym, Some(target.clone()));
+                let ok = self.bindings.try_add(sym, Some(target.clone()));
                 let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
                 return res;
             }
@@ -260,7 +260,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             _ => return Ok(false),
         }
 
-        let ok = self.bindings.try_add_ident(sym, target.clone());
+        let ok = self.bindings.try_add(sym, target.clone());
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
@@ -273,7 +273,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         // Labels use lifetime syntax, but are `Ident`s instead of `Lifetime`s.
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(bindings::Type::Ident)) => {
-                let ok = self.bindings.try_add_opt_ident(sym, Some(target.ident.clone()));
+                let ok = self.bindings.try_add(sym, Some(target.ident.clone()));
                 let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
                 return res;
             }
@@ -284,7 +284,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             _ => return Ok(false),
         }
 
-        let ok = self.bindings.try_add_ident(sym, target.ident.clone());
+        let ok = self.bindings.try_add(sym, target.ident.clone());
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
@@ -301,7 +301,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             _ => return Ok(false),
         }
 
-        let ok = self.bindings.try_add_path(sym, target.clone());
+        let ok = self.bindings.try_add(sym, target.clone());
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
@@ -313,7 +313,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(bindings::Type::Expr)) => {
-                let ok = self.bindings.try_add_opt_expr(sym, Some(P(target.clone())));
+                let ok = self.bindings.try_add(sym, Some(P(target.clone())));
                 let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
                 return res;
             }
@@ -324,7 +324,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             _ => return Ok(false),
         }
 
-        let ok = self.bindings.try_add_expr(sym, P(target.clone()));
+        let ok = self.bindings.try_add(sym, P(target.clone()));
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
@@ -341,7 +341,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             _ => return Ok(false),
         }
 
-        let ok = self.bindings.try_add_pat(sym, P(target.clone()));
+        let ok = self.bindings.try_add(sym, P(target.clone()));
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
@@ -353,7 +353,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(bindings::Type::Ty)) => {
-                let ok = self.bindings.try_add_opt_ty(sym, Some(P(target.clone())));
+                let ok = self.bindings.try_add(sym, Some(P(target.clone())));
                 let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
                 return res;
             }
@@ -364,7 +364,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             _ => return Ok(false),
         }
 
-        let ok = self.bindings.try_add_ty(sym, P(target.clone()));
+        let ok = self.bindings.try_add(sym, P(target.clone()));
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
@@ -381,7 +381,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             _ => return Ok(false),
         }
 
-        let ok = self.bindings.try_add_stmt(sym, target.clone());
+        let ok = self.bindings.try_add(sym, target.clone());
         if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
     }
 
@@ -691,7 +691,7 @@ pub fn match_multi_stmt(mcx: &mut MatchCtxt, pattern: &[Stmt], target: &[Stmt]) 
         for i in (0 .. target.len() + 1).rev() {
             let orig_mcx = mcx.clone();
             if let Some(consumed) = match_multi_stmt(mcx, &pattern[1..], &target[i..]) {
-                let ok = mcx.bindings.try_add_multi_stmt(name, target[..i].to_owned());
+                let ok = mcx.bindings.try_add(name, target[..i].to_owned());
                 if ok {
                     return Some(i + consumed);
                 }
@@ -760,7 +760,7 @@ impl Pattern for Vec<Stmt> {
 
 /// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
 pub fn fold_match<P, T, F>(st: &CommandState,
-                           cx: &driver::Ctxt,
+                           cx: &RefactorCtxt,
                            pattern: P,
                            target: T,
                            callback: F) -> <T as Fold>::Result
@@ -802,7 +802,7 @@ pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
 
 /// Find the first place where `pattern` matches, and return the resulting `Bindings`.
 pub fn find_first<P, T>(st: &CommandState,
-                        cx: &driver::Ctxt,
+                        cx: &RefactorCtxt,
                         pattern: P,
                         target: T) -> Option<Bindings>
         where P: Pattern, T: Fold {
@@ -812,7 +812,7 @@ pub fn find_first<P, T>(st: &CommandState,
 // TODO: find a better place to put this
 /// Replace all instances of expression `pat` with expression `repl`.
 pub fn replace_expr<T: Fold>(st: &CommandState,
-                             cx: &driver::Ctxt,
+                             cx: &RefactorCtxt,
                              ast: T,
                              pat: &str,
                              repl: &str) -> <T as Fold>::Result {
@@ -822,10 +822,9 @@ pub fn replace_expr<T: Fold>(st: &CommandState,
     fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
 }
 
-
 /// Replace all instances of the statement sequence `pat` with `repl`.
 pub fn replace_stmts<T: Fold>(st: &CommandState,
-                              cx: &driver::Ctxt,
+                              cx: &RefactorCtxt,
                               ast: T,
                               pat: &str,
                               repl: &str) -> <T as Fold>::Result {

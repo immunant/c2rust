@@ -24,6 +24,9 @@ cargo = "0.32.0"
 clap = {version = "~2.32.0", features = ["yaml"]}
 env_logger = "0.6"
 log = "0.4"
+rlua = "0.16"
+slotmap = {version = "0.3", features = ["unstable"]}
+derive_more = "0.14"
 
 [lib]
 name = "c2rust_refactor"

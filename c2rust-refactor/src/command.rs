@@ -23,6 +23,7 @@ use crate::node_map::NodeMap;
 use crate::rewrite;
 use crate::rewrite::files;
 use crate::span_fix;
+use crate::RefactorCtxt;
 use c2rust_ast_builder::IntoSymbol;
 
 
@@ -187,7 +188,7 @@ impl RefactorState {
     }
 
     pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> R
-            where F: FnOnce(&CommandState, &driver::Ctxt) -> R {
+            where F: FnOnce(&CommandState, &RefactorCtxt) -> R {
         let krate = mem::replace(&mut self.krate, dummy_crate());
         let marks = mem::replace(&mut self.marks, HashSet::new());
 
@@ -257,7 +258,7 @@ impl RefactorState {
     }
 
     pub fn run_typeck_loop<F>(&mut self, mut func: F) -> Result<(), &'static str>
-            where F: FnMut(Crate, &CommandState, &driver::Ctxt) -> TypeckLoopResult {
+            where F: FnMut(Crate, &CommandState, &RefactorCtxt) -> TypeckLoopResult {
         let func = &mut func;
 
         let mut result = None;
@@ -314,7 +315,7 @@ pub enum TypeckLoopResult {
 
 
 /// Mutable state that can be modified by a "driver" command.  This is normally paired with a
-/// `driver::Ctxt`, which contains immutable analysis results from the original input `Crate`.
+/// `RefactorCtxt`, which contains immutable analysis results from the original input `Crate`.
 pub struct CommandState {
     krate: RefCell<Crate>,
     marks: RefCell<HashSet<(NodeId, Symbol)>>,
@@ -430,14 +431,14 @@ impl CommandState {
     }
 
     /// Parse an `Expr`, keeping the original `src` around for use during rewriting.
-    pub fn parse_expr(&self, cx: &driver::Ctxt, src: &str) -> P<Expr> {
+    pub fn parse_expr(&self, cx: &RefactorCtxt, src: &str) -> P<Expr> {
         let e = driver::parse_expr(cx.session(), src);
         let e = self.process_parsed(e);
         self.parsed_nodes.borrow_mut().exprs.push(e.clone());
         e
     }
 
-    pub fn parse_items(&self, cx: &driver::Ctxt, src: &str) -> Vec<P<Item>> {
+    pub fn parse_items(&self, cx: &RefactorCtxt, src: &str) -> Vec<P<Item>> {
         let is = driver::parse_items(cx.session(), src);
         let is: Vec<P<Item>> = is.into_iter()
             .flat_map(|i| self.process_parsed(i)).collect();
@@ -507,20 +508,20 @@ impl<F> Command for FuncCommand<F>
 /// Wrap a `FnMut` to produce a command that invokes the `rustc` driver and operates over the
 /// results.
 pub struct DriverCommand<F>
-        where F: FnMut(&CommandState, &driver::Ctxt) {
+        where F: FnMut(&CommandState, &RefactorCtxt) {
     func: F,
     phase: Phase,
 }
 
 impl<F> DriverCommand<F>
-        where F: FnMut(&CommandState, &driver::Ctxt) {
+        where F: FnMut(&CommandState, &RefactorCtxt) {
     pub fn new(phase: Phase, func: F) -> DriverCommand<F> {
         DriverCommand { func, phase }
     }
 }
 
 impl<F> Command for DriverCommand<F>
-        where F: FnMut(&CommandState, &driver::Ctxt) {
+        where F: FnMut(&CommandState, &RefactorCtxt) {
     fn run(&mut self, state: &mut RefactorState) {
         state.transform_crate(self.phase, |st, cx| (self.func)(st, cx));
     }

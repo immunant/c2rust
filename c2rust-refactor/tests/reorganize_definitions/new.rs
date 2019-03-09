@@ -12,15 +12,19 @@
 
 extern crate libc;
 
-pub mod bar {
-    use libc;
+type outside = i32;
 
+pub mod bar {
+    use outside;
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct bar_t {
         pub alloc: *mut libc::c_char,
         pub data: *mut libc::c_char,
+        pub i: outside,
     }
+    use libc;
+
 }
 
 pub mod foo {

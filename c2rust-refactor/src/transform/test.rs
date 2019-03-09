@@ -8,10 +8,14 @@ use rustc::hir;
 use rustc::ty::{self, TyCtxt, ParamEnv};
 use rustc::ty::subst::Substs;
 
-use crate::api::*;
+use c2rust_ast_builder::mk;
+use crate::ast_manip::{visit_nodes};
+use crate::ast_manip::fn_edit::fold_fns;
 use crate::command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase};
+use crate::matcher::{replace_expr, replace_stmts};
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `test_one_plus_one` Command
@@ -24,7 +28,7 @@ use crate::transform::Transform;
 pub struct OnePlusOne;
 
 impl Transform for OnePlusOne {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let krate = replace_expr(st, cx, krate, "2", "1 + 1");
         krate
     }
@@ -41,7 +45,7 @@ impl Transform for OnePlusOne {
 pub struct FPlusOne;
 
 impl Transform for FPlusOne {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let krate = replace_expr(st, cx, krate, "f(__x)", "__x + 1");
         krate
     }
@@ -58,7 +62,7 @@ impl Transform for FPlusOne {
 pub struct ReplaceStmts(pub String, pub String);
 
 impl Transform for ReplaceStmts {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let krate = replace_stmts(st, cx, krate, &self.0, &self.1);
         krate
     }
@@ -82,7 +86,7 @@ pub struct InsertRemoveArgs {
 }
 
 impl Transform for InsertRemoveArgs {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
         let krate = fold_fns(krate, |mut fl| {
             if !st.marked(fl.id, "target") {
                 return fl;
@@ -158,11 +162,11 @@ impl Command for TestTypeckLoop {
 /// Usage: `test_debug_callees`
 /// 
 /// Inspect the details of each Call expression.  Used to debug
-/// `api::DriverCtxtExt::opt_callee_info`.
+/// `RefactorCtxt::opt_callee_info`.
 pub struct TestDebugCallees;
 
 impl Transform for TestDebugCallees {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
         visit_nodes(&krate, |e: &Expr| {
             let tcx = cx.ty_ctxt();
             let hir_map = cx.hir_map();

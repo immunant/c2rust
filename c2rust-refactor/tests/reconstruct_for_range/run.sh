@@ -5,4 +5,4 @@ if [ `uname` = 'Darwin' ]; then
     export LD_LIBRARY_PATH=$not_LD_LIBRARY_PATH
 fi
 
-$refactor reconstruct_for_range -- old.rs $rustflags
+$refactor script ../../scripts/reconstruct_for_range.lua -- old.rs $rustflags

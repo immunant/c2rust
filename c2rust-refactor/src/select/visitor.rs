@@ -4,17 +4,16 @@
 use std::collections::HashSet;
 use syntax::ast::*;
 use syntax::source_map::Span;
-use syntax::visit::{self, Visitor, FnKind};
+use syntax::visit::{self, FnKind, Visitor};
 
 use crate::command::CommandState;
-use crate::driver;
-use crate::select::Filter;
 use crate::select::filter::{self, AnyNode};
-
+use crate::select::Filter;
+use crate::RefactorCtxt;
 
 struct ChildMatchVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     old: HashSet<NodeId>,
     new: HashSet<NodeId>,
     /// Are we at a child of a node that was selected in the `old` set?
@@ -138,7 +137,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
 }
 
 pub fn matching_children(st: &CommandState,
-                         cx: &driver::Ctxt,
+                         cx: &RefactorCtxt,
                          krate: &Crate,
                          sel: HashSet<NodeId>,
                          filt: &Filter) -> HashSet<NodeId> {
@@ -158,7 +157,7 @@ pub fn matching_children(st: &CommandState,
 
 struct DescMatchVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     old: HashSet<NodeId>,
     new: HashSet<NodeId>,
     /// Are we at a descendant of a node that was selected in the `old` set?
@@ -286,7 +285,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
 }
 
 pub fn matching_descendants(st: &CommandState,
-                            cx: &driver::Ctxt,
+                            cx: &RefactorCtxt,
                             krate: &Crate,
                             sel: HashSet<NodeId>,
                             filt: &Filter) -> HashSet<NodeId> {
@@ -306,7 +305,7 @@ pub fn matching_descendants(st: &CommandState,
 
 struct FilterVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     old: HashSet<NodeId>,
     new: HashSet<NodeId>,
     filt: &'a Filter,
@@ -414,7 +413,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
 }
 
 pub fn filter(st: &CommandState,
-              cx: &driver::Ctxt,
+              cx: &RefactorCtxt,
               krate: &Crate,
               sel: HashSet<NodeId>,
               filt: &Filter) -> HashSet<NodeId> {

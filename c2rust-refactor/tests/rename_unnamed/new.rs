@@ -58,8 +58,9 @@ pub mod foo {
         }
     }
 
+    use self::foo_h::foo_t;
+    use self::foo_h::unnamed_2;
     use self::foo_h::unnamed_3;
-    use self::foo_h::{foo_t, unnamed_2};
 
     #[repr(C)]
     #[derive(Copy, Clone)]

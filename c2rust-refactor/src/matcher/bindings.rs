@@ -1,6 +1,9 @@
 //! The `Bindings` type, for mapping names to AST fragments.
-use std::collections::hash_map::{HashMap, Entry};
-use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Item};
+use std::collections::hash_map::{Entry, HashMap};
+use std::convert::{TryInto, TryFrom};
+
+use derive_more::{From, TryInto};
+use syntax::ast::{Expr, Ident, Item, Pat, Path, Stmt, Ty};
 use syntax::parse::token::Token;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
@@ -71,113 +74,88 @@ impl Bindings {
         }
     }
 
-    /// Try to add a binding, mapping `sym` to `val`.  Fails if `sym` is already bound to a value
-    /// and that value is not equal to `val`.
-    fn try_add<S: IntoSymbol>(&mut self, sym: S, val: Value) -> bool {
-        match self.map.entry(sym.into_symbol()) {
+    /// Try to add a binding, mapping `name` to `val`. Returns false if `name`
+    /// is already bound to a value and that value is not equal to `val`.
+    pub fn try_add<S, T>(&mut self, name: S, val: T) -> bool
+    where
+        S: IntoSymbol,
+        T: Into<Value>,
+    {
+        let name = name.into_symbol();
+        let val = val.into();
+        match self.map.entry(name) {
             Entry::Vacant(e) => {
                 e.insert(val);
                 true
-            },
-            Entry::Occupied(e) => {
-                val.ast_equiv(e.get())
-            },
+            }
+            Entry::Occupied(e) => val.ast_equiv(e.get()),
         }
     }
 
-    pub fn add_opt_none<S: IntoSymbol>(&mut self, name: S) {
+    /// Unconditionally add a binding. Panics if the `name` is already bound to
+    /// a value and that value is not equal to `val`.
+    pub fn add<S, T>(&mut self, name: S, val: T)
+    where
+        S: IntoSymbol,
+        T: Into<Value>,
+    {
         let name = name.into_symbol();
-        let ok = self.try_add_opt_none(name);
+        let ok = self.try_add(name, val);
         assert!(ok, "cannot alter existing binding {:?}", name);
     }
 
-    pub fn try_add_opt_none<S: IntoSymbol>(&mut self, name: S) -> bool {
-        self.try_add(name, Value::Optional(None))
+    pub fn try_add_none<S>(&mut self, name: S) -> bool
+    where S: IntoSymbol,
+    {
+        self.try_add(name.into_symbol(), Value::Optional(None))
+    }
+
+    pub fn add_none<S>(&mut self, name: S)
+    where S: IntoSymbol,
+    {
+        self.add(name, Value::Optional(None));
+    }
+
+    pub fn get<'a, S, T>(&'a self, name: S) -> Option<&'a T>
+    where
+        S: IntoSymbol,
+        &'a T: TryFrom<&'a Value>,
+    {
+        let name = name.into_symbol();
+        self.map.get(&name).and_then(|v| v.try_into().ok())
+    }
+
+    pub fn get_opt<'a, S, T>(&'a self, name: S) -> Option<Option<&'a T>>
+    where
+        S: IntoSymbol,
+        &'a T: TryFrom<&'a Value>,
+    {
+        let name = name.into_symbol();
+        self.map.get(&name).and_then(|v| match v {
+            Value::Optional(Some(box val)) => Some(val.try_into().ok()),
+            Value::Optional(None) => Some(None),
+            _ => None,
+        })
     }
 }
 
-macro_rules! define_binding_functions {
-    ($Thing:ident($Repr:ty):add_thing=[$add_thing:ident, $try_add_thing:ident]) => {
-        pub fn $add_thing<S: IntoSymbol>(&mut self, name: S, val: $Repr) {
-            let name = name.into_symbol();
-            let ok = self.$try_add_thing(name, val);
-            assert!(ok, "cannot alter existing binding {:?}", name);
+impl<T> From<Option<T>> for Value
+where T: Into<Value>,
+{
+    fn from(val: Option<T>) -> Value {
+        match val {
+            Some(v) => Value::Optional(Some(Box::new(v.into()))),
+            None => Value::Optional(None)
         }
-
-        pub fn $try_add_thing<S: IntoSymbol>(&mut self, name: S, val: $Repr) -> bool {
-            self.try_add(name, Value::$Thing(val))
-        }
-    };
-    ($Thing:ident($Repr:ty):add_opt_thing=[$add_opt_thing:ident, $try_add_opt_thing:ident]) => {
-        pub fn $add_opt_thing<S: IntoSymbol>(&mut self, name: S, val: Option<$Repr>) {
-            let name = name.into_symbol();
-            let ok = self.$try_add_opt_thing(name, val);
-            assert!(ok, "cannot alter existing binding {:?}", name);
-        }
-
-        pub fn $try_add_opt_thing<S: IntoSymbol>(&mut self, name: S, val: Option<$Repr>) -> bool {
-            if let Some(val) = val {
-                self.try_add(name, Value::Optional(Some(Box::new(Value::$Thing(val)))))
-            } else {
-                self.try_add_opt_none(name)
-            }
-        }
-    };
-    ($Thing:ident($Repr:ty):thing=[$thing:ident]) => {
-        pub fn $thing<S: IntoSymbol>(&self, name: S) -> &$Repr {
-            let name = name.into_symbol();
-            match self.map.get(&name) {
-                Some(&Value::$Thing(ref val)) => val,
-                Some(_) => panic!(
-                    concat!("found binding for {}, but its type is not ",
-                            stringify!($Thing)),
-                    name),
-                None => panic!("found no binding for {}", name),
-            }
-        }
-    };
-    ($Thing:ident($Repr:ty):opt_thing=[$opt_thing:ident]) => {
-        pub fn $opt_thing<S: IntoSymbol>(&self, name: S) -> Option<&$Repr> {
-            let name = name.into_symbol();
-            match self.map.get(&name) {
-                Some(&Value::Optional(Some(box Value::$Thing(ref val)))) => Some(val),
-                Some(&Value::Optional(None)) => None,
-                Some(_) => panic!(
-                    concat!("found binding for {}, but its type is not ",
-                            stringify!($Thing)),
-                    name),
-                None => panic!("found no binding for {}", name),
-            }
-        }
-    };
-    ($Thing:ident($Repr:ty):get_thing=[$get_thing:ident]) => {
-        pub fn $get_thing<S: IntoSymbol>(&self, name: S) -> Option<&$Repr> {
-            let name = name.into_symbol();
-            match self.map.get(&name) {
-                Some(&Value::$Thing(ref val)) => Some(val),
-                Some(_) => None,
-                None => None,
-            }
-        }
-    };
-    ($Thing:ident($Repr:ty):get_opt_thing=[$get_opt_thing:ident]) => {
-        pub fn $get_opt_thing<S: IntoSymbol>(&self, name: S) -> Option<Option<&$Repr>> {
-            let name = name.into_symbol();
-            match self.map.get(&name) {
-                Some(&Value::Optional(Some(box Value::$Thing(ref val)))) => Some(Some(val)),
-                Some(&Value::Optional(None)) => Some(None),
-                Some(_) => None,
-                None => None,
-            }
-        }
-    };
+    }
 }
 
+
 macro_rules! define_binding_values {
-    ($( $Thing:ident($Repr:ty) { $($Fn:tt=[$($Fnames:ident),+]);* } )*) => {
+    ($( $Thing:ident($Repr:ty) ),*) => {
         /// An AST fragment, of any of the supported node types.
-        #[derive(Clone, Debug)]
-        enum Value {
+        #[derive(Clone, Debug, From, TryInto)]
+        pub enum Value {
             Optional(Option<Box<Value>>),
             $( $Thing($Repr), )*
         }
@@ -205,8 +183,6 @@ macro_rules! define_binding_values {
         }
 
         impl Bindings {
-            $( $( define_binding_functions!($Thing($Repr):$Fn=[$($Fnames),+]); )* )*
-
             /// Get the type of fragment associated with `name`, if any.
             pub fn get_type<S: IntoSymbol>(&self, name: S) -> Option<Type> {
                 self.map.get(&name.into_symbol()).map(|v| {
@@ -249,58 +225,31 @@ macro_rules! define_binding_values {
                 }
             }
         }
+
+        $(
+            impl<'a> TryFrom<&'a Value> for &'a $Repr {
+                type Error = String;
+                fn try_from(value: &'a Value) -> Result<Self, Self::Error> {
+                    match value {
+                        Value::$Thing(ref x) => Ok(x),
+                        _ => Err(format!("Only &Value::{} can be converted to &{}", stringify!($Thing), stringify!($Repr))),
+                    }
+                }
+            }
+        )*
     };
 }
 
 // To allow bindings to contain more types of AST nodes, add more lines to this macro.
 define_binding_values! {
-    Ident(Ident) {
-        add_thing=[add_ident, try_add_ident];
-        add_opt_thing=[add_opt_ident, try_add_opt_ident];
-        thing=[ident];
-        opt_thing=[opt_ident];
-        get_thing=[get_ident];
-        get_opt_thing=[get_opt_ident]
-    }
-    Path(Path) {
-        add_thing=[add_path, try_add_path];
-        thing=[path];
-        get_thing=[get_path]
-    }
-    Expr(P<Expr>) {
-        add_thing=[add_expr, try_add_expr];
-        add_opt_thing=[add_opt_expr, try_add_opt_expr];
-        thing=[expr];
-        get_thing=[get_expr];
-        get_opt_thing=[get_opt_expr]
-    }
-    Pat(P<Pat>) {
-        add_thing=[add_pat, try_add_pat];
-        thing=[pat];
-        get_thing=[get_pat]
-    }
-    Ty(P<Ty>) {
-        add_thing=[add_ty, try_add_ty];
-        add_opt_thing=[add_opt_ty, try_add_opt_ty];
-        thing=[ty];
-        get_thing=[get_ty];
-        get_opt_thing=[get_opt_ty]
-    }
-    Stmt(Stmt) {
-        add_thing=[add_stmt, try_add_stmt];
-        thing=[stmt];
-        get_thing=[get_stmt]
-    }
-    MultiStmt(Vec<Stmt>) {
-        add_thing=[add_multi_stmt, try_add_multi_stmt];
-        thing=[multi_stmt];
-        get_thing=[get_multi_stmt]
-    }
-    Item(P<Item>) {
-        add_thing=[add_item, try_add_item];
-        thing=[item];
-        get_thing=[get_item]
-    }
+    Ident(Ident),
+    Path(Path),
+    Expr(P<Expr>),
+    Pat(P<Pat>),
+    Ty(P<Ty>),
+    Stmt(Stmt),
+    MultiStmt(Vec<Stmt>),
+    Item(P<Item>)
 }
 
 impl Type {

@@ -28,8 +28,8 @@ use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::command::CommandState;
-use crate::driver;
 use crate::type_map;
+use crate::RefactorCtxt;
 
 
 pub mod constraint;
@@ -196,7 +196,7 @@ fn analyze_inter(cx: &mut Ctxt) {
 
 /// Run the analysis.
 pub fn analyze<'a, 'tcx>(st: &CommandState,
-                         dcx: &driver::Ctxt<'a, 'tcx>)
+                         dcx: &RefactorCtxt<'a, 'tcx>)
                          -> AnalysisResult<'tcx> {
     let mut cx = Ctxt::new(dcx.ty_ctxt(), dcx.ty_arena());
 
@@ -459,7 +459,7 @@ fn convert_results<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>) -> AnalysisResult<'tcx> {
 }
 
 /// Print the analysis results to stderr, for debugging.
-pub fn dump_results(dcx: &driver::Ctxt,
+pub fn dump_results(dcx: &RefactorCtxt,
                     results: &AnalysisResult) {
     eprintln!("\n === summary ===");
 
