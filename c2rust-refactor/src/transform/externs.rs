@@ -42,7 +42,7 @@ fn is_foreign_symbol(tcx: TyCtxt, did: DefId) -> bool {
 }
 
 impl Transform for CanonicalizeExterns {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let tcx = cx.ty_ctxt();
 
 
@@ -141,7 +141,7 @@ impl Transform for CanonicalizeExterns {
                 bail!("old and new sig differ in arg count");
             }
 
-            if old_sig.variadic != new_sig.variadic {
+            if old_sig.c_variadic != new_sig.c_variadic {
                 bail!("old and new sig differ in variadicness");
             }
 
@@ -188,7 +188,7 @@ impl Transform for CanonicalizeExterns {
 
         // Add casts to rewritten calls and exprs
 
-        let krate = fold_nodes(krate, |mut e: P<Expr>| {
+        let krate = mut_visit_nodes(krate, |mut e: P<Expr>| {
             if let Some(&old_did) = path_ids.get(&e.id) {
                 // This whole expr was a reference to the old extern `old_did`.  See if we need a
                 // cast around the whole thing.  (This should only be true for statics.)
@@ -239,7 +239,7 @@ impl Transform for CanonicalizeExterns {
 
         // Remove the old externs
 
-        let krate = fold_nodes(krate, |mut fm: ForeignMod| {
+        let krate = mut_visit_nodes(krate, |mut fm: ForeignMod| {
             fm.items.retain(|fi| {
                 let did = cx.node_def_id(fi.id);
                 !replace_map.contains_key(&did)

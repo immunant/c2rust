@@ -79,7 +79,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         let parent = self.hir_map().get_parent_did(id);
         let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
-        tables.node_id_to_type(hir_id)
+        tables.node_type(hir_id)
     }
 
     pub fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
@@ -90,7 +90,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         }
         let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
-        tables.node_id_to_type_opt(hir_id)
+        tables.node_type_opt(hir_id)
     }
 
     /// Get the `ty::Ty` computed for a node, taking into account any
@@ -111,7 +111,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         if let Some(adj) = tables.adjustments().get(hir_id).and_then(|adjs| adjs.last()) {
             Some(adj.target)
         } else {
-            tables.node_id_to_type_opt(hir_id)
+            tables.node_type_opt(hir_id)
         }
     }
 
@@ -133,7 +133,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
     pub fn node_def_id(&self, id: NodeId) -> DefId {
         match self.hir_map().find(id) {
             Some(Node::Binding(_)) => self.node_def_id(self.hir_map().get_parent_node(id)),
-            Some(Node::Item(item)) => self.hir_map().local_def_id(item.id),
+            Some(Node::Item(item)) => self.hir_map().local_def_id_from_hir_id(item.hir_id),
             _ => self.hir_map().local_def_id(id),
         }
     }
@@ -549,5 +549,5 @@ pub struct CalleeInfo<'tcx> {
     pub def_id: Option<DefId>,
 
     /// The type and region arguments that were substituted in at the call site.
-    pub substs: Option<&'tcx Substs<'tcx>>,
+    pub substs: Option<&'tcx InternalSubsts<'tcx>>,
 }

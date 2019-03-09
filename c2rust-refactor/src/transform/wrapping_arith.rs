@@ -15,7 +15,7 @@ use crate::RefactorCtxt;
 pub struct WrappingToNormal;
 
 impl Transform for WrappingToNormal {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_expr(st, cx, krate,
                                  "$x:Expr.wrapping_add($y:Expr)",
                                  "$x + $y");

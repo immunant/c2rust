@@ -200,6 +200,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "c2rust-macros"
+version = "0.9.0"
+dependencies = [
+ "proc-macro2 0.4.24 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 0.15.24 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "c2rust-manual-preprocessors"
 version = "0.1.0"
 dependencies = [
@@ -219,6 +228,7 @@ name = "c2rust-refactor"
 version = "0.9.0"
 dependencies = [
  "c2rust-ast-builder 0.9.0",
+ "c2rust-macros 0.9.0",
  "cargo 0.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "derive_more 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",

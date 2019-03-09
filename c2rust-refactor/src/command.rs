@@ -13,7 +13,7 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::visit::Visitor;
 
-use crate::ast_manip::{ListNodeIds, remove_paren, Visit, Fold};
+use crate::ast_manip::{ListNodeIds, remove_paren, Visit, MutVisit};
 use crate::ast_manip::ast_map::map_ast_into;
 use crate::ast_manip::number_nodes::{number_nodes, number_nodes_with, NodeIdCounter, reset_node_ids};
 use crate::collapse;
@@ -356,7 +356,7 @@ impl CommandState {
         self.krate.borrow_mut()
     }
 
-    pub fn map_krate<F: FnOnce(Crate) -> Crate>(&self, func: F) {
+    pub fn map_krate<F: FnOnce(&mut Crate)>(&self, func: F) {
         let dummy_crate = Crate {
             module: Mod {
                 inner: DUMMY_SP,
@@ -422,8 +422,8 @@ impl CommandState {
     }
 
 
-    fn process_parsed<T>(&self, x: T) -> <T as Fold>::Result
-            where T: Fold, <T as Fold>::Result: ListNodeIds {
+    fn process_parsed<T>(&self, x: T)
+            where T: MutVisit + ListNodeIds {
         let x = number_nodes_with(x, &self.counter);
         self.new_parsed_node_ids.borrow_mut()
             .extend(x.list_node_ids());

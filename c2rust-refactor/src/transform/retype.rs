@@ -4,13 +4,12 @@ use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc::ty::{self, TyKind, TyCtxt, ParamEnv};
 use syntax::ast::*;
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::parse::PResult;
 use syntax::parse::parser::Parser;
 use syntax::parse::token::{Token, BinOpToken};
 use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax::util::move_map::MoveMap;
 use syntax_pos::Span;
 use smallvec::SmallVec;
 
@@ -47,7 +46,7 @@ pub struct RetypeArgument {
 }
 
 impl Transform for RetypeArgument {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Change argument types and rewrite function bodies.
 
         let new_ty = parse_ty(cx.session(), &self.new_ty);
@@ -58,7 +57,7 @@ impl Transform for RetypeArgument {
         // modified.
         let mut mod_fns: HashMap<DefId, HashSet<usize>> = HashMap::new();
 
-        let krate = fold_fns(krate, |mut fl| {
+        let krate = mut_visit_fns(krate, |mut fl| {
             let fn_id = fl.id;
 
             // Def IDs of changed arguments.
@@ -82,11 +81,11 @@ impl Transform for RetypeArgument {
             // An argument was changed, so we need to rewrite uses of that argument inside the
             // function body.
 
-            // `fold_nodes` does a preorder traversal, so if we replace `x` with `wrap(x)`, we will
+            // `mut_visit_nodes` does a preorder traversal, so if we replace `x` with `wrap(x)`, we will
             // see `x` again in the recursive call.  We keep track of which nodes have already been
             // rewritten so that we don't end up with a stack overflow.
             let mut rewritten_nodes = HashSet::new();
-            fl.block = fold_nodes(fl.block.take(), |e: P<Expr>| {
+            fl.block = mut_visit_nodes(fl.block.take(), |e: P<Expr>| {
                 if let Some(hir_id) = cx.try_resolve_expr_to_hid(&e) {
                     if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
                         rewritten_nodes.insert(e.id);
@@ -105,7 +104,7 @@ impl Transform for RetypeArgument {
 
         // We don't need any protection against infinite recursion here, because it doesn't make
         // sense for `wrap` to call the function whose args we're changing.
-        let krate = fold_nodes(krate, |e: P<Expr>| {
+        let krate = mut_visit_nodes(krate, |e: P<Expr>| {
             let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return e);
             let mod_args = match_or!([mod_fns.get(&callee)] Some(x) => x; return e);
             e.map(|mut e| {
@@ -156,7 +155,7 @@ pub struct RetypeReturn {
 }
 
 impl Transform for RetypeReturn {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Change argument types and rewrite function bodies.
 
         let new_ty = parse_ty(cx.session(), &self.new_ty);
@@ -166,7 +165,7 @@ impl Transform for RetypeReturn {
         // Modified functions, by DefId.
         let mut mod_fns: HashSet<DefId> = HashSet::new();
 
-        let krate = fold_fns(krate, |mut fl| {
+        let krate = mut_visit_fns(krate, |mut fl| {
             if !st.marked(fl.id, "target") {
                 return fl;
             }
@@ -192,7 +191,7 @@ impl Transform for RetypeReturn {
 
         // We don't need any protection against infinite recursion here, because it doesn't make
         // sense for `unwrap` to call the function whose args we're changing.
-        let krate = fold_nodes(krate, |e: P<Expr>| {
+        let krate = mut_visit_nodes(krate, |e: P<Expr>| {
             let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return e);
             if !mod_fns.contains(&callee) {
                 return e;
@@ -243,7 +242,7 @@ pub struct RetypeStatic {
 }
 
 impl Transform for RetypeStatic {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Change the types of marked statics, and update their initializer expressions.
 
         let new_ty = parse_ty(cx.session(), &self.new_ty);
@@ -255,7 +254,7 @@ impl Transform for RetypeStatic {
         // Modified statics, by DefId.
         let mut mod_statics: HashSet<DefId> = HashSet::new();
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -275,7 +274,7 @@ impl Transform for RetypeStatic {
             })]
         });
 
-        let krate = fold_nodes(krate, |mut fi: ForeignItem| {
+        let krate = mut_visit_nodes(krate, |mut fi: ForeignItem| {
             if !st.marked(fi.id, "target") {
                 return smallvec![fi];
             }
@@ -297,7 +296,7 @@ impl Transform for RetypeStatic {
         // its own thing with them.  Note we assume the input AST is properly numbered.
         let mut handled_ids: HashSet<NodeId> = HashSet::new();
 
-        let krate = fold_nodes(krate, |e: P<Expr>| {
+        let krate = mut_visit_nodes(krate, |e: P<Expr>| {
             if !matches!([e.node] ExprKind::Assign(..), ExprKind::AssignOp(..)) {
                 return e;
             }
@@ -370,9 +369,9 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: Crate, ret
         changed_defs: HashMap<NodeId, (P<Ty>, P<Ty>)>,
     }
 
-    impl<F> Folder for ChangeTypeFolder<F>
+    impl<F> MutVisitor for ChangeTypeFolder<F>
             where F: FnMut(&P<Ty>) -> Option<P<Ty>> {
-        fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+        fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             let i = if matches!([i.node] ItemKind::Fn(..)) {
                 i.map(|mut i| {
                     let mut fd = expect!([i.node]
@@ -446,15 +445,15 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: Crate, ret
                 i
             };
 
-            fold::noop_fold_item(i, self)
+            mut_visit::noop_flat_map_item(i, self)
         }
 
-        fn fold_struct_field(&mut self, mut sf: StructField) -> StructField {
+        fn visit_struct_field(&mut self, mut sf: &mut StructField) {
             if let Some(new_ty) = (self.retype)(&sf.ty) {
                 let old_ty = mem::replace(&mut sf.ty, new_ty.clone());
                 self.changed_defs.insert(sf.id, (old_ty, new_ty));
             }
-            fold::noop_fold_struct_field(sf, self)
+            mut_visit::noop_visit_struct_field(sf, self)
         }
     }
 
@@ -465,7 +464,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: Crate, ret
         changed_funcs: HashSet::new(),
         changed_defs: HashMap::new(),
     };
-    let krate = krate.fold(&mut f);
+    let krate = krate.visit(&mut f);
     let ChangeTypeFolder { changed_inputs, changed_outputs, changed_funcs,
                            changed_defs, .. } = f;
 
@@ -479,21 +478,21 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: Crate, ret
     let lvalue_mut_repl = parse_expr(cx.session(),
             "*::std::mem::transmute::<&mut __old_ty, &mut __new_ty>(&mut __e)");
 
-    // Folder for rewriting top-level exprs only
+    // MutVisitor for rewriting top-level exprs only
     struct ExprFolder<F> {
         callback: F,
     }
 
-    impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for ExprFolder<F> {
-        fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+    impl<F: FnMut(P<Expr>) -> P<Expr>> MutVisitor for ExprFolder<F> {
+        fn visit_expr(&mut self, e: &mut P<Expr>) {
             (self.callback)(e)
         }
     }
 
-    fn fold_top_exprs<T, F>(x: T, callback: F) -> <T as Fold>::Result
-            where T: Fold, F: FnMut(P<Expr>) -> P<Expr> {
+    fn fold_top_exprs<T, F>(x: T, callback: F)
+            where T: MutVisit, F: FnMut(P<Expr>) -> P<Expr> {
         let mut f = ExprFolder { callback: callback };
-        x.fold(&mut f)
+        x.visit(&mut f)
     }
 
     let transmute = |e, context, old_ty: &P<Ty>, new_ty: &P<Ty>| {
@@ -584,7 +583,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: Crate, ret
 
     // (3) Wrap output expressions from functions whose return types were modified.
 
-    let krate = fold_fns(krate, |mut fl| {
+    let krate = mut_visit_fns(krate, |mut fl| {
         if let Some(&(ref old_ty, ref new_ty)) = changed_outputs.get(&fl.id) {
             fl.block = fl.block.map(|b| fold_output_exprs(b, true, |e| {
                 transmute(e, lr_expr::Context::Rvalue, old_ty, new_ty)
@@ -617,7 +616,7 @@ pub struct BitcastRetype {
 }
 
 impl Transform for BitcastRetype {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let pat = parse_ty(cx.session(), &self.pat);
         let repl = parse_ty(cx.session(), &self.repl);
 
@@ -751,9 +750,9 @@ struct TypeFixRulesFolder<'a, 'tcx: 'a> {
 
 impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
     fn fix_expr(&mut self,
-                e: P<Expr>,
+                e: &mut P<Expr>,
                 actual: ty::Ty<'tcx>,
-                expected: ty::Ty<'tcx>) -> P<Expr> {
+                expected: ty::Ty<'tcx>) {
         let ectx = self.lr_map.get(&e.id).cloned().unwrap_or(lr_expr::Context::Rvalue);
         let actual_ty_ast = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), actual);
         let expected_ty_ast = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), expected);
@@ -830,7 +829,7 @@ impl Command for AutoRetype {
         let type_annotations = state.transform_crate(Phase::Phase3, |st, cx| {
             let mut retype_prep = RetypePrepFolder::new(st, cx, &self.mark_types);
             st.map_krate(|krate| {
-                krate.fold(&mut retype_prep)
+                krate.visit(&mut retype_prep)
             });
             retype_prep.type_annotations
         });
@@ -846,7 +845,7 @@ impl Command for AutoRetype {
         state.transform_crate(Phase::Phase3, |st, cx| {
             st.map_krate(|krate| {
                 let mut folder = RestoreAnnotationsFolder::new(cx, type_annotations);
-                krate.fold(&mut folder)
+                krate.visit(&mut folder)
             });
         });
     }
@@ -892,9 +891,9 @@ impl<'a> RetypePrepFolder<'a> {
     }
 }
 
-impl<'a> Folder for RetypePrepFolder<'a> {
+impl<'a> MutVisitor for RetypePrepFolder<'a> {
     /// Replace marked argument types with their new types
-    fn fold_fn_decl(&mut self, decl: P<FnDecl>) -> P<FnDecl> {
+    fn visit_fn_decl(&mut self, decl: &mut P<FnDecl>) {
         decl.map(|FnDecl {inputs, output, variadic}| FnDecl {
             inputs: inputs.move_map(|arg| Arg {
                 ty: self.map_type(arg.ty),
@@ -909,7 +908,7 @@ impl<'a> Folder for RetypePrepFolder<'a> {
     }
 
     /// Replace marked struct field types with their new types
-    fn fold_struct_field(&mut self, field: StructField) -> StructField {
+    fn visit_struct_field(&mut self, field: &mut StructField) {
         StructField {
             ty: self.map_type(field.ty),
             ..field
@@ -918,14 +917,14 @@ impl<'a> Folder for RetypePrepFolder<'a> {
 
     /// Remove all local variable types forcing type inference to update their
     /// types. We will replace these types if needed.
-    fn fold_local(&mut self, local: P<Local>) -> P<Local> {
+    fn visit_local(&mut self, local: &mut P<Local>) {
         local.map(|local| {
             if let Some(ty) = &local.ty {
                 self.type_annotations.insert(local.span, ty.clone());
             }
             Local {
                 ty: None,
-                init: local.init.map(|e| self.fold_expr(e)),
+                init: local.init.map(|e| self.visit_expr(e)),
                 ..local
             }
         })
@@ -952,8 +951,8 @@ impl<'a, 'tcx> RestoreAnnotationsFolder<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> Folder for RestoreAnnotationsFolder<'a, 'tcx> {
-    fn fold_local(&mut self, local: P<Local>) -> P<Local> {
+impl<'a, 'tcx> MutVisitor for RestoreAnnotationsFolder<'a, 'tcx> {
+    fn visit_local(&mut self, local: &mut P<Local>) {
         local.map(|local| {
             let ty = local.ty.clone().or_else(|| {
                 if self.type_annotations.contains_key(&local.span) {
@@ -1013,7 +1012,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         // If we find any remaining type errors, restore the explicit type
         // annotation to see if that will fix the error.
         let mut local_type_restored = false;
-        let krate = fold_nodes(krate, |local: P<Local>| {
+        let krate = mut_visit_nodes(krate, |local: P<Local>| {
             local.map(|local| {
                 let ty = self.cx.node_type(local.id);
                 if let TyKind::Error = ty.sty {
@@ -1061,10 +1060,10 @@ struct RetypeIterationFolder<'a, 'b, 'tcx, 'c> {
 impl<'a, 'b, 'tcx, 'c> IlltypedFolder<'tcx> for RetypeIterationFolder<'a, 'b, 'tcx, 'c> {
     fn fix_expr(
         &mut self,
-        e: P<Expr>,
+        e: &mut P<Expr>,
         actual: ty::Ty<'tcx>,
         expected: ty::Ty<'tcx>
-    ) -> P<Expr> {
+    ) {
         info!("Retyping {:?} into type {:?}", e, expected);
         if let TyKind::Error = actual.sty {
             return e;
@@ -1483,7 +1482,7 @@ fn can_coerce<'a, 'tcx>(
 pub struct RemoveRedundantCasts;
 
 impl Transform for RemoveRedundantCasts {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let tcx = cx.ty_ctxt();
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_expr("$e:Expr as $t:Ty");
@@ -1517,7 +1516,7 @@ impl Transform for RemoveRedundantCasts {
 pub struct ConvertCastAsPtr;
 
 impl Transform for ConvertCastAsPtr {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_expr(st, cx, krate,
             "typed!($expr:Expr, &[$ty:Ty]) as *const $ty",
             "$expr.as_ptr()");

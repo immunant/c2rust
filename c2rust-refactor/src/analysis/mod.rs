@@ -73,7 +73,8 @@ fn register_mark_related_types(reg: &mut Registry) {
             let mut related_classes = HashSet::new();
             for &(id, l) in st.marks().iter() {
                 if l == label {
-                    if let Some(&cls) = ty_class.get(&id) {
+                    let hir_id = cx.hir_map().node_to_hir_id(id);
+                    if let Some(&cls) = ty_class.get(&hir_id) {
                         related_classes.insert(cls);
                     }
                 }
@@ -81,7 +82,7 @@ fn register_mark_related_types(reg: &mut Registry) {
 
             for (&id, &cls) in &ty_class {
                 if related_classes.contains(&cls) {
-                    st.add_mark(id, label);
+                    st.add_mark(cx.hir_map().hir_to_node_id(id), label);
                 }
             }
         }))

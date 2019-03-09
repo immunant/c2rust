@@ -6,7 +6,7 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use rustc::hir;
 use rustc::ty::{self, TyCtxt, ParamEnv};
-use rustc::ty::subst::Substs;
+use rustc::ty::subst::InternalSubsts;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{visit_nodes};
@@ -28,7 +28,7 @@ use crate::RefactorCtxt;
 pub struct OnePlusOne;
 
 impl Transform for OnePlusOne {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_expr(st, cx, krate, "2", "1 + 1");
         krate
     }
@@ -45,7 +45,7 @@ impl Transform for OnePlusOne {
 pub struct FPlusOne;
 
 impl Transform for FPlusOne {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_expr(st, cx, krate, "f(__x)", "__x + 1");
         krate
     }
@@ -62,7 +62,7 @@ impl Transform for FPlusOne {
 pub struct ReplaceStmts(pub String, pub String);
 
 impl Transform for ReplaceStmts {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_stmts(st, cx, krate, &self.0, &self.1);
         krate
     }
@@ -86,8 +86,8 @@ pub struct InsertRemoveArgs {
 }
 
 impl Transform for InsertRemoveArgs {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
-        let krate = fold_fns(krate, |mut fl| {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
+        let krate = mut_visit_fns(krate, |mut fl| {
             if !st.marked(fl.id, "target") {
                 return fl;
             }
@@ -166,7 +166,7 @@ impl Command for TestTypeckLoop {
 pub struct TestDebugCallees;
 
 impl Transform for TestDebugCallees {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         visit_nodes(&krate, |e: &Expr| {
             let tcx = cx.ty_ctxt();
             let hir_map = cx.hir_map();
@@ -186,7 +186,7 @@ impl Transform for TestDebugCallees {
             fn describe_ty<'a, 'tcx: 'a>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
                                          desc: &str,
                                          ty: ty::Ty<'tcx>,
-                                         substs: Option<&'tcx Substs<'tcx>>) {
+                                         substs: Option<&'tcx InternalSubsts<'tcx>>) {
                 info!("    {}: {:?}", desc, ty);
                 if let Some(substs) = substs {
                     info!("      subst: {:?}",

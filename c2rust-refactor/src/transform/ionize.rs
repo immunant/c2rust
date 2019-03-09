@@ -3,7 +3,7 @@ use rustc::ty::TyKind;
 use std::collections::HashSet;
 use std::fmt::Display;
 use syntax::ast::*;
-use syntax::fold::Folder;
+use syntax::mut_visit::MutVisitor;
 use syntax::ptr::P;
 
 use c2rust_ast_builder::mk;
@@ -35,16 +35,16 @@ struct ExprFolder<F> {
     callback: F,
 }
 
-impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for ExprFolder<F> {
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+impl<F: FnMut(P<Expr>) -> P<Expr>> MutVisitor for ExprFolder<F> {
+    fn visit_expr(&mut self, e: &mut P<Expr>) {
         (self.callback)(e)
     }
 }
 
-fn fold_top_exprs<T, F>(x: T, callback: F) -> <T as Fold>::Result
-    where T: Fold, F: FnMut(P<Expr>) -> P<Expr> {
+fn fold_top_exprs<T, F>(x: T, callback: F)
+    where T: MutVisit, F: FnMut(P<Expr>) -> P<Expr> {
     let mut f = ExprFolder { callback: callback };
-    x.fold(&mut f)
+    x.visit(&mut f)
 }
 
 fn accessor_name<T: Display>(fieldname: T) -> Ident {
@@ -77,7 +77,7 @@ fn generate_enum_accessors(cx: &RefactorCtxt) -> Vec<ImplItem> {
 
 impl Transform for Ionize {
     fn min_phase(&self) -> Phase { Phase::Phase3 }
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
 
         let _as_variant_methods = generate_enum_accessors(cx);
         let outer_assignment_pat = parse_stmts(cx.session(), "__val.__field = __expr;");
@@ -153,7 +153,7 @@ impl Transform for Ionize {
         });
 
         // Replace union with enum
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             match cx.hir_map().opt_local_def_id(i.id) {
                 Some(ref def_id) if targets.contains(def_id) => {}
                 _ => return smallvec![i]

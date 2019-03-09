@@ -4,7 +4,7 @@ use syntax::ThinVec;
 use syntax::ast::*;
 use syntax::source_map::{Span, Spanned, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream};
+use syntax::tokenstream::{TokenTree, DelimSpan, TokenStream};
 use rustc_target::spec::abi::Abi;
 
 use std::rc::Rc;

@@ -47,13 +47,13 @@ def expr_kind_match(d, mode):
 def expr_kind_impl(d):
     yield '#[allow(unused)]'
     yield 'impl LRExpr for %s {' % d.name
-    yield '  fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
+    yield '  fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield indent(expr_kind_match(d, 'rvalue'), '    ')
     yield '  }'
-    yield '  fn fold_lvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
+    yield '  fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield indent(expr_kind_match(d, 'lvalue'), '    ')
     yield '  }'
-    yield '  fn fold_lvalue_mut<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
+    yield '  fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield indent(expr_kind_match(d, 'lvalue_mut'), '    ')
     yield '  }'
     yield '}'
@@ -62,15 +62,15 @@ def expr_kind_impl(d):
 def expr_impl(d):
     yield '#[allow(unused)]'
     yield 'impl LRExpr for %s {' % d.name
-    yield '  fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
+    yield '  fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield '    let e = Expr { node: self.node.fold_rvalue(lr), ..self };'
     yield '    lr.fold_rvalue(e)'
     yield '  }'
-    yield '  fn fold_lvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
+    yield '  fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield '    let e = Expr { node: self.node.fold_lvalue(lr), ..self };'
     yield '    lr.fold_lvalue(e)'
     yield '  }'
-    yield '  fn fold_lvalue_mut<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
+    yield '  fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield '    let e = Expr { node: self.node.fold_lvalue_mut(lr), ..self };'
     yield '    lr.fold_lvalue_mut(e)'
     yield '  }'
@@ -80,13 +80,13 @@ def expr_impl(d):
 def null_impl(d):
     yield '#[allow(unused)]'
     yield 'impl LRExpr for %s {' % d.name
-    yield '  fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
+    yield '  fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield '    self'
     yield '  }'
-    yield '  fn fold_lvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
+    yield '  fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield '    self'
     yield '  }'
-    yield '  fn fold_lvalue_mut<LR: LRRewrites>(self, lr: &mut LR) -> Self {'
+    yield '  fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield '    self'
     yield '  }'
     yield '}'

@@ -90,7 +90,7 @@ type LTy<'tcx> = LabeledTy<'tcx, Label>;
 struct LFnSig<'tcx> {
     inputs: &'tcx [LTy<'tcx>],
     output: LTy<'tcx>,
-    variadic: bool,
+    c_variadic: bool,
 }
 
 
@@ -122,7 +122,7 @@ impl<'tcx> LTyTable<'tcx> {
         LFnSig {
             inputs: self.label_slice(sig.inputs()),
             output: self.label(sig.output()),
-            variadic: sig.variadic,
+            c_variadic: sig.c_variadic,
         }
     }
 
@@ -141,7 +141,7 @@ impl<'tcx> LTyTable<'tcx> {
         LFnSig {
             inputs: self.non_unifiable_slice(sig.inputs()),
             output: self.non_unifiable(sig.output()),
-            variadic: sig.variadic,
+            c_variadic: sig.c_variadic,
         }
     }
 
@@ -158,7 +158,7 @@ impl<'tcx> LTyTable<'tcx> {
         LFnSig {
             inputs: self.subst_slice(sig.inputs, substs),
             output: self.subst(sig.output, substs),
-            variadic: sig.variadic,
+            c_variadic: sig.c_variadic,
         }
     }
 
@@ -270,7 +270,7 @@ impl<'a, 'tcx> LabelTysSource<'a, 'tcx> {
     fn node_lty(&self, id: NodeId) -> LTy<'tcx> {
         let tables = self.get_tables(id);
         let hir_id = self.hir_map.node_to_hir_id(id);
-        let ty = tables.node_id_to_type(hir_id);
+        let ty = tables.node_type(hir_id);
         self.ltt.label(ty)
     }
 }
@@ -327,7 +327,7 @@ fn label_tys<'a, 'tcx>(hir_map: &hir::map::Map<'tcx>,
                        tcx: TyCtxt<'a, 'tcx, 'tcx>,
                        ltt: &'a LTyTable<'tcx>,
                        krate: &ast::Crate)
-                       -> HashMap<NodeId, LTy<'tcx>> {
+                       -> HashMap<HirId, LTy<'tcx>> {
     let mut ty_nodes = HashMap::new();
     let source = LabelTysSource {
         hir_map: hir_map,
@@ -335,9 +335,9 @@ fn label_tys<'a, 'tcx>(hir_map: &hir::map::Map<'tcx>,
         ltt: ltt,
     };
     type_map::map_types(hir_map, source, krate, |_, ast_ty, lty| {
-        // Note that HIR `Ty` nodes don't have `HirId`s, so we index everything by the old `NodeId`
+        // Note that AST `Ty` nodes don't have `HirId`s, so we index everything by the old `NodeId`
         // instead.
-        ty_nodes.insert(ast_ty.id, lty);
+        ty_nodes.insert(hir_map.node_to_hir_id(ast_ty.id), lty);
     });
     ty_nodes
 }
@@ -370,7 +370,7 @@ struct UnifyVisitor<'a, 'tcx: 'a> {
     unadjusted_nodes: &'a HashMap<HirId, LTy<'tcx>>,
     nodes: &'a HashMap<HirId, LTy<'tcx>>,
     node_substs: &'a HashMap<HirId, &'tcx [LTy<'tcx>]>,
-    ty_nodes: &'a HashMap<NodeId, LTy<'tcx>>,
+    ty_nodes: &'a HashMap<HirId, LTy<'tcx>>,
     prims: &'a HashMap<&'static str, LTy<'tcx>>,
 
     /// Cache of labeled types for each definition.
@@ -390,9 +390,9 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     // Helpers for looking up labeled types in the various precomputed tables.
 
     fn node_lty(&self, id: NodeId) -> LTy<'tcx> {
-        let tables = self.get_tables(id);
         let hir_id = self.hir_map.node_to_hir_id(id);
-        let ty = tables.node_id_to_type(hir_id);
+        let tables = self.get_tables(hir_id);
+        let ty = tables.node_type(hir_id);
         self.ltt.label(ty)
     }
 
@@ -421,7 +421,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     }
 
     fn ty_lty(&self, t: &Ty) -> LTy<'tcx> {
-        self.ty_nodes.get(&t.id)
+        self.ty_nodes.get(&t.hir_id)
             .unwrap_or_else(|| panic!("ty_lty: no lty for {:?} @ {:?}",
                                       t, self.tcx.sess.source_map().span_to_string(t.span)))
     }
@@ -523,10 +523,10 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
         use rustc::ty::TyKind::*;
         match lty.ty.sty {
             FnDef(id, _) => {
-                self.def_sig(id).variadic
+                self.def_sig(id).c_variadic
             },
             FnPtr(ty_sig) => {
-                ty_sig.skip_binder().variadic
+                ty_sig.skip_binder().c_variadic
             },
             // TODO: Closure
             _ => panic!("fn_is_variadic: not a fn type"),
@@ -534,8 +534,8 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     }
 
 
-    fn get_tables(&self, id: NodeId) -> &'tcx TypeckTables<'tcx> {
-        let parent = self.hir_map.get_parent(id);
+    fn get_tables(&self, id: HirId) -> &'tcx TypeckTables<'tcx> {
+        let parent = self.hir_map.get_parent(self.hir_map.hir_to_node_id(id));
         let parent_body = self.hir_map.body_owned_by(parent);
         self.tcx.body_tables(parent_body)
     }
@@ -543,7 +543,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     /// Get the signature of the method being called by an expression.  This includes substituting
     /// in the type arguments, if the method is generic.
     fn method_sig(&self, e: &Expr) -> LFnSig<'tcx> {
-        let def_id = self.get_tables(e.id).type_dependent_defs()[e.hir_id].def_id();
+        let def_id = self.get_tables(e.hir_id).type_dependent_defs()[e.hir_id].def_id();
         let sig = self.def_sig(def_id);
         let substs = self.node_substs.get(&e.hir_id).map_or_else(|| &[] as &[_], |x| x);
         self.ltt.subst_sig(sig, substs)
@@ -772,7 +772,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
             },
         }
 
-        if let Some(adjs) = self.get_tables(e.id).adjustments().get(e.hir_id) {
+        if let Some(adjs) = self.get_tables(e.hir_id).adjustments().get(e.hir_id) {
             // Relate the unadjusted and adjusted types for this expr by stepping through the
             // intermediate adjustments one by one.
             let mut prev_ty = rty;
@@ -823,7 +823,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
         match p.node {
             PatKind::Wild => {},
 
-            PatKind::Binding(_, node_id, _, ref opt_pat) => {
+            PatKind::Binding(_, node_id, _, _, ref opt_pat) => {
 
                 let lty = self.node_lty(node_id);
                 self.ltt.unify(rty, lty);
@@ -880,13 +880,13 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
                 decl: &'hir FnDecl,
                 body_id: BodyId,
                 span: Span,
-                id: NodeId) {
+                id: HirId) {
         if let intravisit::FnKind::Closure(..) = kind {
             return;
         }
 
         let body = self.hir_map.body(body_id);
-        let def_id = self.hir_map.local_def_id(id);
+        let def_id = self.hir_map.local_def_id_from_hir_id(id);
         let sig = self.def_sig(def_id);
         // The results of `def_sig` and `def_lty` are produced by calling `tcx.fn_sig` /
         // `tcx.type_of` and giving the results fresh labels, so they initially have no connection
@@ -915,13 +915,13 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
 
     fn visit_struct_field(&mut self, field: &'hir StructField) {
         // Unify the field's type annotation with the definition type.
-        let def_id = self.hir_map.local_def_id(field.id);
+        let def_id = self.hir_map.local_def_id_from_hir_id(field.hir_id);
         self.ltt.unify(self.ty_lty(&field.ty), self.def_lty(def_id));
         intravisit::walk_struct_field(self, field);
     }
 
     fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
-        let def_id = self.hir_map.local_def_id(i.id);
+        let def_id = self.hir_map.local_def_id_from_hir_id(i.hir_id);
         match i.node {
             ForeignItemKind::Fn(ref decl, _, _) => {
                 let sig = self.def_sig(def_id);
@@ -958,7 +958,7 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
 pub fn analyze<'a, 'tcx>(hir_map: &hir::map::Map<'tcx>,
                          tcx: TyCtxt<'a, 'tcx, 'tcx>,
                          tcx_arena: &'tcx SyncDroplessArena,
-                         krate: &ast::Crate) -> HashMap<NodeId, u32> {
+                         krate: &ast::Crate) -> HashMap<HirId, u32> {
     let ltt = LTyTable::new(tcx_arena);
 
     // Collect labeled expr/pat types from the TypeckTables of each item.

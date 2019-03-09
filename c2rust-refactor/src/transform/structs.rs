@@ -32,7 +32,7 @@ use crate::RefactorCtxt;
 pub struct AssignToUpdate;
 
 impl Transform for AssignToUpdate {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let pat = parse_expr(cx.session(), "__x.__f = __y");
         let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }");
 
@@ -75,7 +75,7 @@ impl Transform for AssignToUpdate {
 pub struct MergeUpdates;
 
 impl Transform for MergeUpdates {
-    fn transform(&self, krate: Crate, _st: &CommandState, _cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, _cx: &RefactorCtxt) {
         fold_blocks(krate, |curs| {
             loop {
                 // Find a struct update.
@@ -142,12 +142,12 @@ fn build_struct_update(path: Path, fields: Vec<Field>, base: P<Expr>) -> Stmt {
 pub struct Rename(pub String);
 
 impl Transform for Rename {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let new_ident = Ident::with_empty_ctxt((&self.0 as &str).into_symbol());
         let mut target_def_id = None;
 
         // Find the struct definition and rename it.
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             if target_def_id.is_some() || !st.marked(i.id, "target") {
                 return smallvec![i];
             }

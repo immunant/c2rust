@@ -29,7 +29,7 @@ use crate::RefactorCtxt;
 pub struct LetXUninitialized;
 
 impl Transform for LetXUninitialized {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_stmts(st, cx, krate,
                                   "let __pat;",
                                   "let __pat = ::std::mem::uninitialized();");
@@ -54,7 +54,7 @@ impl Transform for LetXUninitialized {
 pub struct SinkLets;
 
 impl Transform for SinkLets {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         // (1) Collect info on every local that might be worth moving.
 
         struct LocalInfo {
@@ -164,7 +164,7 @@ impl Transform for SinkLets {
             // Check if there are any locals we should place in this block.  We place a local here
             // if its use kind is `Other` and it hasn't been placed already.  A use kind of
             // `InsideOneBlock` means the local can be placed somewhere deeper, so this strategy
-            // ensures we place the local in the deepest legal position.  We rely on `fold_nodes`
+            // ensures we place the local in the deepest legal position.  We rely on `mut_visit_nodes`
             // doing a preorder traversal to avoid placing them too deep.
             let mut place_here = used_locals.iter()
                 .filter(|&(&id, &kind)| kind == UseKind::Other && !placed_locals.contains(&id))
@@ -184,7 +184,7 @@ impl Transform for SinkLets {
 
         // (4) Place new locals in the appropriate locations.
 
-        let krate = fold_nodes(krate, |b: P<Block>| {
+        let krate = mut_visit_nodes(krate, |b: P<Block>| {
             let place_here = match_or!([local_placement.get(&b.id)]
                                        Some(x) => x; return b);
 
@@ -210,7 +210,7 @@ impl Transform for SinkLets {
             .map(|(_, info)| info.old_node_id)
             .collect::<HashSet<_>>();
 
-        let krate = fold_nodes(krate, |b: P<Block>| {
+        let krate = mut_visit_nodes(krate, |b: P<Block>| {
             b.map(|mut b| {
                 b.stmts.retain(|s| {
                     match s.node {
@@ -286,7 +286,7 @@ fn is_uninit_call(cx: &RefactorCtxt, e: &Expr) -> bool {
 pub struct FoldLetAssign;
 
 impl Transform for FoldLetAssign {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         // (1) Find all locals that might be foldable.
 
         let mut locals: HashMap<HirId, P<Local>> = HashMap::new();
@@ -446,8 +446,8 @@ impl Transform for FoldLetAssign {
 pub struct UninitToDefault;
 
 impl Transform for UninitToDefault {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
-        fold_nodes(krate, |l: P<Local>| {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
+        mut_visit_nodes(krate, |l: P<Local>| {
             if !l.init.as_ref().map_or(false, |e| is_uninit_call(cx, e)) {
                 return l;
             }
@@ -487,7 +487,7 @@ impl Transform for UninitToDefault {
 pub struct RemoveRedundantLetTypes;
 
 impl Transform for RemoveRedundantLetTypes {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let tcx = cx.ty_ctxt();
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_stmts("let $pat:Pat : $ty:Ty = $init:Expr;");

@@ -5,7 +5,7 @@ use rustc_target::spec::abi::Abi;
 use syntax::ast;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use smallvec::SmallVec;
 
@@ -38,12 +38,12 @@ use crate::RefactorCtxt;
 pub struct ToMethod;
 
 impl Transform for ToMethod {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Find the impl we're inserting into.
 
         let mut dest = None;
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
             if !st.marked(i.id, "dest") ||
                !matches!([i.node] ItemKind::Impl(_, _, _, _, None, _, _)) {
@@ -192,7 +192,7 @@ impl Transform for ToMethod {
 
         let mut fns = Some(fns);
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             if i.id != dest.id || fns.is_none() {
                 return smallvec![i];
             }
@@ -230,7 +230,7 @@ impl Transform for ToMethod {
 
         // (5) Find all uses of marked functions, and rewrite them into method calls.
 
-        let krate = fold_nodes(krate, |e: P<Expr>| {
+        let krate = mut_visit_nodes(krate, |e: P<Expr>| {
             if !matches!([e.node] ExprKind::Call(..)) {
                 return e;
             }
@@ -288,8 +288,8 @@ impl Transform for ToMethod {
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
-        fold_nodes(krate, |mut b: P<Block>| {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
+        mut_visit_nodes(krate, |mut b: P<Block>| {
             if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
                 let parent = cx.hir_map().get_parent_did(b.id);
                 let result = cx.ty_ctxt().unsafety_check_result(parent);
@@ -328,8 +328,8 @@ struct SinkUnsafeFolder<'a> {
     st: &'a CommandState,
 }
 
-impl<'a> Folder for SinkUnsafeFolder<'a> {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
+    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let i = if self.st.marked(i.id, "target") {
             i.map(|mut i| {
                 match i.node {
@@ -345,10 +345,10 @@ impl<'a> Folder for SinkUnsafeFolder<'a> {
         };
 
 
-        fold::noop_fold_item(i, self)
+        mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if self.st.marked(i.id, "target") {
             match i.node {
                 ImplItemKind::Method(MethodSig { ref mut header, .. }, ref mut block) => {
@@ -358,7 +358,7 @@ impl<'a> Folder for SinkUnsafeFolder<'a> {
             }
         }
 
-        fold::noop_fold_impl_item(i, self)
+        mut_visit::noop_flat_map_impl_item(i, self)
     }
 }
 
@@ -372,8 +372,8 @@ fn sink_unsafe(unsafety: &mut Unsafety, block: &mut P<Block>) {
 }
 
 impl Transform for SinkUnsafe {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
-        krate.fold(&mut SinkUnsafeFolder { st })
+    fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
+        krate.visit(&mut SinkUnsafeFolder { st })
     }
 }
 
@@ -426,7 +426,7 @@ impl Transform for SinkUnsafe {
 pub struct WrapExtern;
 
 impl Transform for WrapExtern {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Collect the marked externs.
         #[derive(Debug)]
         struct FuncInfo {
@@ -463,7 +463,7 @@ impl Transform for WrapExtern {
 
         // (2) Generate wrappers in the destination module.
         let mut dest_path = None;
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "dest") {
                 return smallvec![i];
             }
@@ -572,12 +572,12 @@ impl Transform for WrapExtern {
 pub struct WrapApi;
 
 impl Transform for WrapApi {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // Map from original function HirId to new function name
         let mut wrapper_map = HashMap::new();
 
         // Add wrapper functions
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -751,7 +751,7 @@ struct Abstract {
 }
 
 impl Transform for Abstract {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let pat = parse_expr(cx.session(), &self.pat);
 
         let func_src = format!("unsafe fn {} {{\n    {}\n}}",

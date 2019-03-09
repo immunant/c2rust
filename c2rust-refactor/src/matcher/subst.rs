@@ -19,12 +19,10 @@
 
 use syntax::ast::{Ident, Path, Expr, ExprKind, Pat, Ty, TyKind, Stmt, Item, ImplItem, Label, Local};
 use syntax::ast::Mac;
-use syntax::fold::{self, Folder, fold_attrs};
+use syntax::mut_visit::{self, MutVisitor, visit_attrs};
 use syntax::ptr::P;
-use syntax::util::move_map::MoveMap;
 use smallvec::SmallVec;
 
-use crate::ast_manip::Fold;
 use crate::ast_manip::util::{PatternSymbol, macro_name};
 use crate::command::CommandState;
 use crate::matcher::Bindings;
@@ -49,7 +47,7 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             } else if let Some(i) = ps.and_then(|sym| self.bindings.get_opt::<_, Ident>(sym)) {
                 i.map(|i| Label { ident: i.clone() })
             } else {
-                Some(self.fold_label(l))
+                Some(self.visit_label(l))
             }
         })
     }
@@ -62,7 +60,7 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             } else if let Some(e) = ps.and_then(|sym| self.bindings.get_opt::<_, P<Expr>>(sym)) {
                 e.map(P::<Expr>::clone)
             } else {
-                Some(self.fold_expr(e))
+                Some(self.visit_expr(e))
             }
         })
     }
@@ -75,7 +73,7 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             } else if let Some(t) = ps.and_then(|sym| self.bindings.get_opt::<_, P<Ty>>(sym)) {
                 t.map(P::<Ty>::clone)
             } else {
-                Some(self.fold_ty(t))
+                Some(self.visit_ty(t))
             }
         })
     }
@@ -86,43 +84,43 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
         // so we need to mutate the latter if we want to substitute optional labels
         let folded_node = match node {
             ExprKind::While(cond, body, opt_label) => {
-                ExprKind::While(self.fold_expr(cond),
-                                self.fold_block(body),
-                                self.fold_opt_label(opt_label))
+                ExprKind::While(self.visit_expr(cond),
+                                self.visit_block(body),
+                                self.visit_opt_label(opt_label))
             }
             ExprKind::WhileLet(pats, expr, body, opt_label) => {
-                ExprKind::WhileLet(pats.move_map(|pat| self.fold_pat(pat)),
-                                   self.fold_expr(expr),
-                                   self.fold_block(body),
-                                   self.fold_opt_label(opt_label))
+                ExprKind::WhileLet(pats.move_map(|pat| self.visit_pat(pat)),
+                                   self.visit_expr(expr),
+                                   self.visit_block(body),
+                                   self.visit_opt_label(opt_label))
             }
             ExprKind::ForLoop(pat, iter, body, opt_label) => {
-                ExprKind::ForLoop(self.fold_pat(pat),
-                                  self.fold_expr(iter),
-                                  self.fold_block(body),
-                                  self.fold_opt_label(opt_label))
+                ExprKind::ForLoop(self.visit_pat(pat),
+                                  self.visit_expr(iter),
+                                  self.visit_block(body),
+                                  self.visit_opt_label(opt_label))
             }
             ExprKind::Loop(body, opt_label) => {
-                ExprKind::Loop(self.fold_block(body), self.fold_opt_label(opt_label))
+                ExprKind::Loop(self.visit_block(body), self.visit_opt_label(opt_label))
             }
             ExprKind::Block(blk, opt_label) => {
-                ExprKind::Block(self.fold_block(blk), self.fold_opt_label(opt_label))
+                ExprKind::Block(self.visit_block(blk), self.visit_opt_label(opt_label))
             }
             ExprKind::Break(opt_label, opt_expr) => {
-                ExprKind::Break(self.fold_opt_label(opt_label),
-                                opt_expr.map(|e| self.fold_expr(e)))
+                ExprKind::Break(self.visit_opt_label(opt_label),
+                                opt_expr.map(|e| self.visit_expr(e)))
             }
             ExprKind::Continue(opt_label) => {
-                ExprKind::Continue(self.fold_opt_label(opt_label))
+                ExprKind::Continue(self.visit_opt_label(opt_label))
             }
-            node @ _ => return fold::noop_fold_expr(Expr { id, node, span, attrs }, self)
+            node @ _ => return mut_visit::noop_visit_expr(Expr { id, node, span, attrs }, self)
         };
         Expr { id, span, attrs, node: folded_node }
     }
 }
 
-impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
-    fn fold_ident(&mut self, i: Ident) -> Ident {
+impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
+    fn visit_ident(&mut self, i: &mut Ident) {
         // The `Ident` case is a bit different from the others.  If `fold_stmt` finds a non-`Stmt`
         // in `self.bindings`, it can ignore the problem and hope `fold_expr` or `fold_ident` will
         // find an `Expr`/`Ident` for the symbol later on.  If `fold_ident` fails, there is no
@@ -137,18 +135,18 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
             }
             // Otherwise, fall through
         }
-        fold::noop_fold_ident(i, self)
+        mut_visit::noop_visit_ident(i, self)
     }
 
-    fn fold_path(&mut self, p: Path) -> Path {
+    fn visit_path(&mut self, p: &mut Path) {
         if let Some(path) = p.pattern_symbol().and_then(|sym| self.bindings.get::<_, Path>(sym)) {
             path.clone()
         } else {
-            fold::noop_fold_path(p, self)
+            mut_visit::noop_visit_path(p, self)
         }
     }
 
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+    fn visit_expr(&mut self, e: &mut P<Expr>) {
         if let Some(expr) = e.pattern_symbol().and_then(|sym| self.bindings.get::<_, P<Expr>>(sym)) {
             return expr.clone();
         }
@@ -159,18 +157,18 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
             }
         }
 
-        e.map(|e| self.fold_expr_inner(e))
+        e.map(|e| self.visit_expr_inner(e))
     }
 
-    fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> {
+    fn visit_pat(&mut self, p: &mut P<Pat>) {
         if let Some(pat) = p.pattern_symbol().and_then(|sym| self.bindings.get::<_, P<Pat>>(sym)) {
             pat.clone()
         } else {
-            fold::noop_fold_pat(p, self)
+            mut_visit::noop_visit_pat(p, self)
         }
     }
 
-    fn fold_ty(&mut self, ty: P<Ty>) -> P<Ty> {
+    fn visit_ty(&mut self, ty: &mut P<Ty>) {
         if let Some(ty) = ty.pattern_symbol().and_then(|sym| self.bindings.get::<_, P<Ty>>(sym)) {
             return ty.clone();
         }
@@ -181,41 +179,41 @@ impl<'a, 'tcx> Folder for SubstFolder<'a, 'tcx> {
             }
         }
 
-        fold::noop_fold_ty(ty, self)
+        mut_visit::noop_visit_ty(ty, self)
     }
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
+    fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(stmt) = s.pattern_symbol().and_then(|sym| self.bindings.get::<_, Stmt>(sym)) {
             smallvec![stmt.clone()]
         } else if let Some(stmts) = s.pattern_symbol()
                 .and_then(|sym| self.bindings.get::<_, Vec<Stmt>>(sym)) {
             SmallVec::from_vec(stmts.clone())
         } else {
-            fold::noop_fold_stmt(s, self)
+            mut_visit::noop_flat_map_stmt(s, self)
         }
     }
 
-    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         if let Some(item) = i.pattern_symbol().and_then(|sym| self.bindings.get::<_, P<Item>>(sym)) {
             smallvec![item.clone()]
         } else {
-            fold::noop_fold_item(i, self)
+            mut_visit::noop_flat_map_item(i, self)
         }
     }
 
-    fn fold_local(&mut self, l: P<Local>) -> P<Local> {
+    fn visit_local(&mut self, l: &mut P<Local>) {
        l.map(|l| Local {
            id: self.new_id(l.id),
-           pat: self.fold_pat(l.pat),
-           ty: self.fold_opt_ty(l.ty),
-           init: self.fold_opt_expr(l.init),
+           pat: self.visit_pat(l.pat),
+           ty: self.visit_opt_ty(l.ty),
+           init: self.visit_opt_expr(l.init),
            span: self.new_span(l.span),
-           attrs: fold_attrs(l.attrs.into(), self).into()
+           attrs: visit_attrs(l.attrs.into(), self).into()
        })
     }
 
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
+    fn visit_mac(&mut self, mac: &mut Mac) {
+        mut_visit::noop_visit_mac(mac, self)
     }
 }
 
@@ -233,7 +231,7 @@ macro_rules! subst_impl {
                     cx: cx,
                     bindings: bindings,
                 };
-                let result = self.fold(&mut f);
+                let result = self.visit(&mut f);
                 result.lone()
             }
         }
@@ -251,7 +249,7 @@ macro_rules! multi_subst_impl {
                 };
                 let mut results = Vec::with_capacity(self.len());
                 for x in self {
-                    results.extend_from_slice(&x.fold(&mut f));
+                    results.extend_from_slice(&x.visit(&mut f));
                 }
                 results
             }

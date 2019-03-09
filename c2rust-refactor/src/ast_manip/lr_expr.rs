@@ -1,19 +1,17 @@
 //! `fold_expr_with_context` function, for rewriting exprs with knowledge of their contexts (rvalue
 //! / lvalue / mut lvalue).
-use std::rc::Rc;
 use rustc_target::spec::abi::Abi;
 use smallvec::SmallVec;
 use syntax::ThinVec;
 use syntax::ast::*;
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream};
-use syntax::util::move_map::MoveMap;
+use syntax::tokenstream::{TokenTree, DelimSpan, TokenStream};
 use syntax_pos::hygiene::SyntaxContext;
 
-use crate::ast_manip::Fold;
+use crate::ast_manip::MutVisit;
 
 
 // TODO: Check for autoborrow adjustments.  Some method receivers are actually Lvalue / LvalueMut
@@ -25,16 +23,16 @@ use crate::ast_manip::Fold;
 
 /// Trait implemented by all AST types, allowing folding over exprs while tracking the context.
 trait LRExpr {
-    fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self;
-    fn fold_lvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self;
-    fn fold_lvalue_mut<LR: LRRewrites>(self, lr: &mut LR) -> Self;
+    fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR);
+    fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR);
+    fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR);
 }
 
 /// A set of expr rewrites, one for each kind of context where an expr may appear.
 trait LRRewrites {
-    fn fold_rvalue(&mut self, e: Expr) -> Expr;
-    fn fold_lvalue(&mut self, e: Expr) -> Expr;
-    fn fold_lvalue_mut(&mut self, e: Expr) -> Expr;
+    fn fold_rvalue(&mut self, e: &mut P<Expr>);
+    fn fold_lvalue(&mut self, e: &mut P<Expr>);
+    fn fold_lvalue_mut(&mut self, e: &mut P<Expr>);
 }
 
 
@@ -43,20 +41,20 @@ trait LRRewrites {
 macro_rules! lr_expr_fn {
     (($slf:ident, $next:ident($T:ty)) => $e:expr) => {
         #[allow(unused_mut)]
-        fn fold_rvalue<LR: LRRewrites>($slf, lr: &mut LR) -> Self {
-            let mut $next = |x: $T| x.fold_rvalue(lr);
+        fn fold_rvalue<LR: LRRewrites>(&mut $slf, lr: &mut LR) {
+            let mut $next = |x: &mut $T| x.fold_rvalue(lr);
             $e
         }
 
         #[allow(unused_mut)]
-        fn fold_lvalue<LR: LRRewrites>($slf, lr: &mut LR) -> Self {
-            let mut $next = |x: $T| x.fold_lvalue(lr);
+        fn fold_lvalue<LR: LRRewrites>(&mut $slf, lr: &mut LR) {
+            let mut $next = |x: &mut $T| x.fold_lvalue(lr);
             $e
         }
 
         #[allow(unused_mut)]
-        fn fold_lvalue_mut<LR: LRRewrites>($slf, lr: &mut LR) -> Self {
-            let mut $next = |x: $T| x.fold_lvalue_mut(lr);
+        fn fold_lvalue_mut<LR: LRRewrites>(&mut $slf, lr: &mut LR) {
+            let mut $next = |x: &mut $T| x.fold_lvalue_mut(lr);
             $e
         }
     };
@@ -64,83 +62,76 @@ macro_rules! lr_expr_fn {
 
 impl<T: LRExpr> LRExpr for Vec<T> {
     lr_expr_fn!((self, next(T)) => {
-        self.move_map(next)
+        mut_visit::visit_vec(self, next)
     });
 }
 
 impl<T: LRExpr> LRExpr for ThinVec<T> {
-    lr_expr_fn!((self, next(Vec<T>)) => {
-        next(self.into()).into()
+    lr_expr_fn!((self, next(T)) => {
+        for x in self.iter_mut() {
+            next(x);
+        }
     });
 }
 
-impl<T: LRExpr+'static> LRExpr for P<T> {
-    lr_expr_fn!((self, next(T)) => {
-        self.map(next)
-    });
-}
+// impl<T: LRExpr+'static> LRExpr for P<T> {
+//     lr_expr_fn!((self, next(T)) => {
+//         self.map(next)
+//     });
+// }
 
-impl<T: LRExpr + Clone> LRExpr for Rc<T> {
-    lr_expr_fn!((self, next(T)) => {
-        Rc::new(next((*self).clone()))
-    });
-}
+// impl<T: LRExpr + Clone> LRExpr for Rc<T> {
+//     lr_expr_fn!((self, next(T)) => {
+//         Rc::new(next((*self).clone()))
+//     });
+// }
 
 impl<T: LRExpr> LRExpr for Spanned<T> {
     lr_expr_fn!((self, next(T)) => {
-        Spanned { node: next(self.node), ..self }
+        next(&mut self.node)
     });
 }
 
 impl<T: LRExpr> LRExpr for Option<T> {
     lr_expr_fn!((self, next(T)) => {
-        match self {
-            Some(x) => Some(next(x)),
-            None => None,
-        }
+        mut_visit::visit_opt(self, next)
     });
 }
 
 impl<A: LRExpr, B: LRExpr> LRExpr for (A, B) {
-    fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {
-        let (a, b) = self;
-        (a.fold_rvalue(lr),
-         b.fold_rvalue(lr))
+    fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        self.0.fold_rvalue(lr);
+        self.1.fold_rvalue(lr);
     }
 
-    fn fold_lvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {
-        let (a, b) = self;
-        (a.fold_lvalue(lr),
-         b.fold_lvalue(lr))
+    fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        self.0.fold_lvalue(lr);
+        self.1.fold_lvalue(lr);
     }
 
-    fn fold_lvalue_mut<LR: LRRewrites>(self, lr: &mut LR) -> Self {
-        let (a, b) = self;
-        (a.fold_lvalue_mut(lr),
-         b.fold_lvalue_mut(lr))
+    fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        self.0.fold_lvalue_mut(lr);
+        self.1.fold_lvalue_mut(lr);
     }
 }
 
 impl<A: LRExpr, B: LRExpr, C: LRExpr> LRExpr for (A, B, C) {
-    fn fold_rvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {
-        let (a, b, c) = self;
-        (a.fold_rvalue(lr),
-         b.fold_rvalue(lr),
-         c.fold_rvalue(lr))
+    fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        self.0.fold_rvalue(lr);
+        self.1.fold_rvalue(lr);
+        self.2.fold_rvalue(lr);
     }
 
-    fn fold_lvalue<LR: LRRewrites>(self, lr: &mut LR) -> Self {
-        let (a, b, c) = self;
-        (a.fold_lvalue(lr),
-         b.fold_lvalue(lr),
-         c.fold_lvalue(lr))
+    fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        self.0.fold_lvalue(lr);
+        self.1.fold_lvalue(lr);
+        self.2.fold_lvalue(lr);
     }
 
-    fn fold_lvalue_mut<LR: LRRewrites>(self, lr: &mut LR) -> Self {
-        let (a, b, c) = self;
-        (a.fold_lvalue_mut(lr),
-         b.fold_lvalue_mut(lr),
-         c.fold_lvalue_mut(lr))
+    fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        self.0.fold_lvalue_mut(lr);
+        self.1.fold_lvalue_mut(lr);
+        self.2.fold_lvalue_mut(lr);
     }
 }
 
@@ -156,22 +147,23 @@ pub enum Context {
 }
 
 
-struct Rewrites<F: FnMut(P<Expr>, Context) -> P<Expr>> {
+struct Rewrites<F: FnMut(&mut P<Expr>, Context)> {
     callback: F,
 }
 
 impl<F> LRRewrites for Rewrites<F>
-        where F: FnMut(P<Expr>, Context) -> P<Expr> {
-    fn fold_rvalue(&mut self, e: Expr) -> Expr {
-        (self.callback)(P(e), Context::Rvalue).into_inner()
+    where F: FnMut(&mut P<Expr>, Context)
+{
+    fn fold_rvalue(&mut self, e: &mut P<Expr>) {
+        (self.callback)(e, Context::Rvalue)
     }
 
-    fn fold_lvalue(&mut self, e: Expr) -> Expr {
-        (self.callback)(P(e), Context::Lvalue).into_inner()
+    fn fold_lvalue(&mut self, e: &mut P<Expr>) {
+        (self.callback)(e, Context::Lvalue)
     }
 
-    fn fold_lvalue_mut(&mut self, e: Expr) -> Expr {
-        (self.callback)(P(e), Context::LvalueMut).into_inner()
+    fn fold_lvalue_mut(&mut self, e: &mut P<Expr>) {
+        (self.callback)(e, Context::LvalueMut)
     }
 }
 
@@ -179,8 +171,8 @@ impl<F> LRRewrites for Rewrites<F>
 /// rvalue, (immutable) lvalue, or mutable lvalue context.
 ///
 /// `start` is the context of the outermost expression `e`.
-pub fn fold_expr_with_context<F>(e: P<Expr>, start: Context, callback: F) -> P<Expr>
-        where F: FnMut(P<Expr>, Context) -> P<Expr> {
+pub fn fold_expr_with_context<F>(e: &mut P<Expr>, start: Context, callback: F)
+        where F: FnMut(&mut P<Expr>, Context) {
     let mut lr = Rewrites { callback: callback };
     match start {
         Context::Rvalue => e.fold_rvalue(&mut lr),
@@ -190,7 +182,7 @@ pub fn fold_expr_with_context<F>(e: P<Expr>, start: Context, callback: F) -> P<E
 }
 
 
-// Folder for rewriting exprs that aren't children of other exprs.
+// MutVisitor for rewriting exprs that aren't children of other exprs.
 struct TopExprFolder<F> {
     callback: F,
     in_expr: bool,
@@ -206,39 +198,39 @@ impl<F> TopExprFolder<F> {
     }
 }
 
-impl<F: FnMut(P<Expr>) -> P<Expr>> Folder for TopExprFolder<F> {
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-        let e = self.in_expr(true, |this| e.map(|e| fold::noop_fold_expr(e, this)));
+impl<F: FnMut(&mut P<Expr>)> MutVisitor for TopExprFolder<F> {
+    fn visit_expr(&mut self, e: &mut P<Expr>) {
+        self.in_expr(true, |this| mut_visit::noop_visit_expr(e, this));
         if !self.in_expr {
-            (self.callback)(e)
-        } else {
-            e
+            (self.callback)(e);
         }
     }
 
 
     // Clear the `in_expr` flag upon entry to a non-expr node that may contain exprs.
-    fn fold_ty(&mut self, ty: P<Ty>) -> P<Ty> {
-        self.in_expr(false, |this| fold::noop_fold_ty(ty, this))
+    fn visit_ty(&mut self, ty: &mut P<Ty>) {
+        self.in_expr(false, |this| mut_visit::noop_visit_ty(ty, this))
     }
 
-    fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> {
-        self.in_expr(false, |this| fold::noop_fold_pat(p, this))
+    fn visit_pat(&mut self, p: &mut P<Pat>) {
+        self.in_expr(false, |this| mut_visit::noop_visit_pat(p, this))
     }
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
-        self.in_expr(false, |this| fold::noop_fold_stmt(s, this))
+    fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
+        self.in_expr(false, |this| mut_visit::noop_flat_map_stmt(s, this))
     }
 }
 
-fn fold_top_exprs<T, F>(x: T, callback: F) -> <T as Fold>::Result
-        where T: Fold, F: FnMut(P<Expr>) -> P<Expr> {
+fn fold_top_exprs<T, F>(x: T, callback: F)
+    where T: MutVisit, F: FnMut(&mut P<Expr>)
+{
     let mut f = TopExprFolder { callback: callback, in_expr: false };
-    x.fold(&mut f)
+    x.visit(&mut f)
 }
 
-pub fn fold_exprs_with_context<T, F>(x: T, mut callback: F) -> <T as Fold>::Result
-        where T: Fold, F: FnMut(P<Expr>, Context) -> P<Expr> {
+pub fn fold_exprs_with_context<T, F>(x: T, mut callback: F)
+    where T: MutVisit, F: FnMut(&mut P<Expr>, Context)
+{
     fold_top_exprs(x, |e| {
         fold_expr_with_context(e, Context::Rvalue, |e, ctx| callback(e, ctx))
     })

@@ -23,8 +23,8 @@ use crate::RefactorCtxt;
 pub struct ByteStrToStr;
 
 impl Transform for ByteStrToStr {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
-        fold_nodes(krate, |e: P<Expr>| {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
+        mut_visit_nodes(krate, |e: P<Expr>| {
             if !st.marked(e.id, "target") {
                 return e;
             }
@@ -64,8 +64,8 @@ impl Transform for ByteStrToStr {
 pub struct RemoveNullTerminator;
 
 impl Transform for RemoveNullTerminator {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
-        fold_nodes(krate, |e: P<Expr>| {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
+        mut_visit_nodes(krate, |e: P<Expr>| {
             if !st.marked(e.id, "target") {
                 return e;
             }

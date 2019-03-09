@@ -232,18 +232,18 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
     fn place_lty_downcast(&mut self,
                            lv: &Place<'tcx>) -> (ITy<'tcx>, Perm<'tcx>, Option<VariantIdx>) {
         match *lv {
-            Place::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
+            Place::Base(PlaceBase::Local(l)) => (self.local_var_ty(l), Perm::move_(), None),
 
-            Place::Static(ref s) => (self.static_ty(s.def_id), Perm::move_(), None),
+            Place::Base(PlaceBase::Static(ref s)) => (self.static_ty(s.def_id), Perm::move_(), None),
 
-            Place::Promoted(ref _p) => {
+            Place::Base(PlaceBase::Promoted(ref _p)) => {
                 // TODO: test this
                 let pty = lv.ty(self.mir, self.cx.tcx);
                 let ty = expect!([pty] PlaceTy::Ty { ty } => ty);
                 (self.local_ty(ty), Perm::read(), None)
             },
 
-            Place::Projection(ref p) => {
+            Place::Projection(box p) => {
                 let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&p.base);
 
                 // Sanity check
@@ -528,7 +528,6 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 // with them without analysing the actual asm code.
                 StatementKind::InlineAsm { .. } |
                 StatementKind::Retag { .. } |
-                StatementKind::EscapeToRaw(_) |
                 StatementKind::AscribeUserType(..) |
                 StatementKind::Nop => {},
             }

@@ -6,7 +6,7 @@ use rustc::hir::map::definitions::DefPathData;
 use rustc::hir::map::Map as HirMap;
 use rustc::hir::Node;
 use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
-use rustc::mir::interpret::ConstValue;
+use rustc::ty::{self, LazyConst, TyCtxt, GenericParamDefKind};
 use rustc::ty::subst::Subst;
 use rustc::ty::{self, GenericParamDefKind, TyCtxt};
 use syntax::ast::*;
@@ -51,8 +51,8 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         Str => mk().ident_ty("str"),
         Array(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),
-            match len.val {
-                ConstValue::Unevaluated(did, _substs) => anon_const_to_expr(&tcx.hir, did),
+            match len {
+                LazyConst::Unevaluated(did, _substs) => anon_const_to_expr(tcx.hir(), *did),
                 _ => mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize")),
             },
         ),
@@ -105,7 +105,7 @@ fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
         Unary(op, ref a) => {
             mk().unary_expr(op.as_str(), hir_expr_to_expr(a))
         },
-        Lit(ref l) => mk().lit_expr((**l).clone()),
+        Lit(ref l) => mk().lit_expr(l.clone()),
         ref k => panic!("unsupported variant in hir_expr_to_expr: {:?}", k),
     }
 }
@@ -132,7 +132,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         match dk.disambiguated_data.data {
             DefPathData::CrateRoot => {
                 if id.krate == LOCAL_CRATE {
-                    segments.push(mk().path_segment(keywords::CrateRoot.ident()));
+                    segments.push(mk().path_segment(keywords::DollarCrate.ident()));
                     break;
                 } else {
                     if let Some(ExternCrate { src: ExternCrateSource::Extern(def_id), .. }) = *tcx.extern_crate(id) {
@@ -145,7 +145,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                         // in the previous case), but the resulting error should be obvious to the
                         // user.
                         segments.push(mk().path_segment(tcx.crate_name(id.krate)));
-                        segments.push(mk().path_segment(keywords::CrateRoot.ident()));
+                        segments.push(mk().path_segment(keywords::DollarCrate.ident()));
                         break;
                     }
                 }
@@ -329,7 +329,7 @@ fn register_test_reflect(reg: &mut Registry) {
             st.map_krate(|krate| {
                 use rustc::ty::TyKind;
 
-                let krate = fold_nodes(krate, |e: P<Expr>| {
+                mut_visit_nodes(krate, |e: &mut P<Expr>| {
                     let ty = cx.node_type(e.id);
 
                     let e = if let TyKind::FnDef(def_id, ref substs) = ty.sty {
@@ -348,13 +348,11 @@ fn register_test_reflect(reg: &mut Registry) {
                             cx.ty_ctxt(), def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
                     } else {
-                        e
+                        *e
                     };
 
-                    mk().type_expr(e, reflect_tcx_ty(cx.ty_ctxt(), ty))
+                    *e = *mk().type_expr(e, reflect_tcx_ty(cx.ty_ctxt(), ty));
                 });
-
-                krate
             });
         }))
     });

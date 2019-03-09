@@ -5,11 +5,11 @@ use std::collections::{HashMap, HashSet};
 use std::mem;
 use smallvec::SmallVec;
 use syntax::ast::*;
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
-use crate::ast_manip::{Fold, GetNodeId, ListNodeIds, Visit};
+use crate::ast_manip::{MutVisit, GetNodeId, ListNodeIds, Visit};
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
 use crate::node_map::NodeMap;
 use crate::util::Lone;
@@ -151,8 +151,7 @@ struct RestoreDeletedNodes<'a, 'ast> {
 
 impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
     fn restore_seq<T>(&mut self, parent: NodeId, nodes: &mut Vec<T>)
-            where T: GetNodeId + ListNodeIds + Fold + AsMacNodeRef,
-                  <T as Fold>::Result: Lone<T> {
+            where T: GetNodeId + ListNodeIds + MutVisit + AsMacNodeRef {
         let deleted = match_or!([self.deleted.get(&parent)]
                                 Some(x) => x; return);
         // Set of nodes that are currently present in the parent.  We use this to find the last
@@ -199,13 +198,13 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
     }
 }
 
-impl<'a, 'ast> Folder for RestoreDeletedNodes<'a, 'ast> {
-    fn fold_crate(&mut self, mut x: Crate) -> Crate {
+impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
+    fn visit_crate(&mut self, mut x: &mut Crate) {
         self.restore_seq(CRATE_NODE_ID, &mut x.module.items);
-        fold::noop_fold_crate(x, self)
+        mut_visit::noop_visit_crate(x, self)
     }
 
-    fn fold_item(&mut self, x: P<Item>) -> SmallVec<[P<Item>; 1]> {
+    fn flat_map_item(&mut self, x: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let x = x.map(|mut x| {
             match x.node {
                 ItemKind::Mod(ref mut m) =>
@@ -220,11 +219,11 @@ impl<'a, 'ast> Folder for RestoreDeletedNodes<'a, 'ast> {
             }
             x
         });
-        fold::noop_fold_item(x, self)
+        mut_visit::noop_flat_map_item(x, self)
     }
 
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
+    fn visit_mac(&mut self, mac: &mut Mac) {
+        mut_visit::noop_visit_mac(mac, self)
     }
 }
 
@@ -253,5 +252,5 @@ pub fn restore_deleted_nodes(krate: Crate,
     let deleted = index_deleted_nodes(deleted);
 
     let mut f = RestoreDeletedNodes { node_map, counter, deleted };
-    krate.fold(&mut f)
+    krate.visit(&mut f)
 }

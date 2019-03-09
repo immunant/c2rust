@@ -58,7 +58,7 @@ use crate::RefactorCtxt;
 pub struct LinkFuncs;
 
 impl Transform for LinkFuncs {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         // (1) Find all `#[no_mangle]` or `#[export_name=...]` functions, and index them by symbol.
         // (2) Find all extern fns, and index them by def_id.
         let mut symbol_to_def = HashMap::new();
@@ -90,7 +90,7 @@ impl Transform for LinkFuncs {
         });
 
         // (4) Remove unused externs
-        let krate = fold_nodes(krate, |mut fm: ForeignMod| {
+        let krate = mut_visit_nodes(krate, |mut fm: ForeignMod| {
             fm.items.retain(|i| {
                 let def_id = cx.node_def_id(i.id);
                 // Drop any items that resolve to a symbol in another module.
@@ -150,7 +150,7 @@ impl Transform for LinkFuncs {
 pub struct LinkIncompleteTypes;
 
 impl Transform for LinkIncompleteTypes {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         // (1) Find complete type definitions, and index them by name.
         let mut name_to_complete = HashMap::new();
         let mut incomplete_to_name = HashMap::new();
@@ -244,7 +244,7 @@ impl Transform for LinkIncompleteTypes {
 pub struct CanonicalizeStructs;
 
 impl Transform for CanonicalizeStructs {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Find all marked structs.
         let mut canon_ids: HashMap<Symbol, DefId>  = HashMap::new();
 
@@ -259,7 +259,7 @@ impl Transform for CanonicalizeStructs {
         // Map removed struct IDs to their replacements.
         let mut removed_id_map = HashMap::new();
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             let should_remove = match i.node {
                 ItemKind::Struct(..) => {
                     if let Some(&canon_def_id) = canon_ids.get(&i.ident.name) {
@@ -286,7 +286,7 @@ impl Transform for CanonicalizeStructs {
 
         // (3) Remove impls for removed structs.
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             let should_remove = match i.node {
                 ItemKind::Impl(_, _, _, _, _, ref ty, _) => {
                     if let Some(ty_def_id) = cx.try_resolve_ty(ty) {

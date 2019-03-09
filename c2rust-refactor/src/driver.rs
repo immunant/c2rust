@@ -10,12 +10,13 @@ use rustc::ty::query::Providers;
 use rustc::session::{self, Session};
 use rustc::session::config::{Input, Options};
 use rustc_driver;
-use rustc_driver::driver::{self, build_output_filenames, CompileController};
+use rustc_driver::driver::{self, CompileController};
 use rustc_errors::DiagnosticBuilder;
+use rustc_interface::util::get_codegen_backend;
 use rustc_metadata::cstore::CStore;
-use rustc_resolve::MakeGlobMap;
 use rustc_codegen_utils::link;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
+use rustc_interface::util::build_output_filenames;
 use syntax::ast::{
     Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Block, Arg, BlockCheckMode,
     UnsafeSource,
@@ -260,7 +261,6 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
         /*registry*/ None,
         &crate_name,
         /*addl_plugins*/ None,
-        MakeGlobMap::No,
         |_| Ok(())
     ).unwrap_or_else(|e| panic!("Error running compiler phase 2: {:?}", e));
     let krate = expand_result.expanded_crate;
@@ -340,7 +340,7 @@ fn build_session(sopts: Options,
         sopts, in_path, descriptions, source_map, emitter_dest
     );
 
-    let codegen_backend = rustc_driver::get_codegen_backend(&sess);
+    let codegen_backend = get_codegen_backend(&sess);
     let cstore = CStore::new(codegen_backend.metadata_loader());
 
     (sess, cstore, codegen_backend)
@@ -370,7 +370,7 @@ fn rebuild_session(old_session: &Session) -> (Session, CStore, Box<CodegenBacken
         emitter_dest,
     );
 
-    let codegen_backend = rustc_driver::get_codegen_backend(&session);
+    let codegen_backend = get_codegen_backend(&session);
     let cstore = CStore::new(codegen_backend.metadata_loader());
 
     (session, cstore, codegen_backend)

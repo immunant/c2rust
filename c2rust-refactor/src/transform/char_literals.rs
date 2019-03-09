@@ -21,7 +21,7 @@ struct CharLits {
 
 impl Transform for CharLits {
     fn min_phase(&self) -> Phase { Phase::Phase2 }
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &driver::Ctxt) {
 
         let pattern = driver::parse_expr(cx.session(), "__number as libc::c_char");
         let mut mcx = MatchCtxt::new(st, cx);

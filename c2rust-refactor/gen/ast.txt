@@ -445,10 +445,6 @@ enum TokenTree {
     Delimited(sp, d),
 }
 
-struct Delimited {
-    delim, tts
-}
-
 struct DelimSpan { open, close }
 
 flag DelimToken;

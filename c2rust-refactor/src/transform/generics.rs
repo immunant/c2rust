@@ -69,7 +69,7 @@ pub struct GeneralizeItems {
 }
 
 impl Transform for GeneralizeItems {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Find marked types and replace with the named type variable.
 
         // Map from item NodeId to the concrete type that was replaced with the type variable.
@@ -78,7 +78,7 @@ impl Transform for GeneralizeItems {
         let mut replacement_ty = self.replacement_ty.as_ref()
             .map(|s| parse_ty(cx.session(), s));
 
-        let krate = fold_nodes(krate, |ty: P<Ty>| {
+        let krate = mut_visit_nodes(krate, |ty: P<Ty>| {
             if !st.marked(ty.id, "target") {
                 return ty;
             }
@@ -97,7 +97,7 @@ impl Transform for GeneralizeItems {
         // (2) Add parameters to rewritten items.
 
         let mut item_def_ids = HashSet::new();
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }

@@ -65,11 +65,11 @@ pub struct CollectToStruct {
 }
 
 impl Transform for CollectToStruct {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // Map from Symbol (the name) to the DefId of the old `static`.
         let mut old_statics = HashMap::new();
 
-        let krate = fold_modules(krate, |curs| {
+        fold_modules(krate, |curs| {
             let mut matches = Vec::new();
             let mut insert_point = None;
 
@@ -119,19 +119,17 @@ impl Transform for CollectToStruct {
         let krate = fold_match_with(init_mcx, ident_pat, krate, |orig, mcx| {
             let static_id = match old_statics.get(&mcx.bindings.get::<_, Ident>("__x").unwrap().name) {
                 Some(&x) => x,
-                None => return orig,
+                None => return,
             };
 
             if cx.resolve_expr(&orig) != static_id {
-                return orig;
+                return;
             }
 
             // This really is a reference to one of the collected statics.  Replace it with a
             // reference to the generated struct.
-            ident_repl.clone().subst(st, cx, &mcx.bindings)
+            *orig = ident_repl.clone().subst(st, cx, &mcx.bindings)
         });
-
-        krate
     }
 }
 
@@ -212,7 +210,7 @@ fn build_struct_instance(struct_name: &str,
 pub struct Localize;
 
 impl Transform for Localize {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Collect all marked statics.
 
         struct StaticInfo {
@@ -223,7 +221,7 @@ impl Transform for Localize {
         }
         let mut statics = HashMap::new();
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -251,7 +249,7 @@ impl Transform for Localize {
 
         // Collect all outgoing references from marked functions.
         let mut fn_refs = HashMap::new();
-        let krate = fold_fns(krate, |mut fl| {
+        let krate = mut_visit_fns(krate, |mut fl| {
             if !st.marked(fl.id, "user") {
                 return fl;
             }
@@ -317,7 +315,7 @@ impl Transform for Localize {
         // the statics they reference.  Replace uses of statics in the bodies of marked functions
         // with the corresponding parameter. 
 
-        let krate = fold_fns(krate, |mut fl| {
+        let krate = mut_visit_fns(krate, |mut fl| {
             let fn_def_id = cx.node_def_id(fl.id);
             if let Some(static_ids) = fn_statics.get(&fn_def_id) {
 
@@ -333,7 +331,7 @@ impl Transform for Localize {
                 });
 
                 // Update uses of statics.
-                fl.block = fold_nodes(fl.block, |e: P<Expr>| {
+                fl.block = mut_visit_nodes(fl.block, |e: P<Expr>| {
                     if let Some(def_id) = cx.try_resolve_expr(&e) {
                         if let Some(info) = statics.get(&def_id) {
                             return mk().unary_expr("*", mk().ident_expr(info.arg_name));
@@ -343,7 +341,7 @@ impl Transform for Localize {
                 });
 
                 // Update calls to other marked functions.
-                fl.block = fold_nodes(fl.block, |e: P<Expr>| {
+                fl.block = mut_visit_nodes(fl.block, |e: P<Expr>| {
                     match e.node {
                         ExprKind::Call(_, _) => {},
                         _ => return e,
@@ -370,7 +368,7 @@ impl Transform for Localize {
 
             } else {
                 // Update calls only.
-                fl.block = fold_nodes(fl.block, |e: P<Expr>| {
+                fl.block = mut_visit_nodes(fl.block, |e: P<Expr>| {
                     match e.node {
                         ExprKind::Call(_, _) => {},
                         _ => return e,
@@ -446,7 +444,7 @@ impl Transform for Localize {
 struct StaticToLocal;
 
 impl Transform for StaticToLocal {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Collect all marked statics.
 
         struct StaticInfo {
@@ -457,7 +455,7 @@ impl Transform for StaticToLocal {
         }
         let mut statics = HashMap::new();
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        let krate = mut_visit_nodes(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -482,7 +480,7 @@ impl Transform for StaticToLocal {
 
         // (2) Add a new local to every function that uses a marked static.
 
-        let krate = fold_fns(krate, |mut fl| {
+        let krate = mut_visit_fns(krate, |mut fl| {
             // Figure out which statics (if any) this function uses.
             let mut ref_ids = HashSet::new();
             let mut refs = Vec::new();

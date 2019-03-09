@@ -1,9 +1,9 @@
 //! Functions for rewriting sequences of stmts or items, using `Cursor<T>`.
 use syntax::ast::{Block, Stmt, Item, Mod};
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 
-use crate::ast_manip::Fold;
+use crate::ast_manip::MutVisit;
 use crate::util::cursor::Cursor;
 
 
@@ -11,23 +11,20 @@ struct BlockFolder<F: FnMut(&mut Cursor<Stmt>)> {
     f: F,
 }
 
-impl<F: FnMut(&mut Cursor<Stmt>)> Folder for BlockFolder<F> {
-    fn fold_block(&mut self, b: P<Block>) -> P<Block> {
-        let b = b.map(|mut b| {
-            let mut stmt_cursor = Cursor::from_vec(b.stmts);
-            (self.f)(&mut stmt_cursor);
-            b.stmts = stmt_cursor.into_vec();
-            b
-        });
-        fold::noop_fold_block(b, self)
+impl<F: FnMut(&mut Cursor<Stmt>)> MutVisitor for BlockFolder<F> {
+    fn visit_block(&mut self, b: &mut P<Block>) {
+        let mut stmt_cursor = Cursor::from_vec(b.stmts);
+        (self.f)(&mut stmt_cursor);
+        b.stmts = stmt_cursor.into_vec();
+        mut_visit::noop_visit_block(b, self)
     }
 }
 
 /// Rewrite every block by manipulating a `Cursor` for the `Stmt`s inside.
-pub fn fold_blocks<T, F>(target: T, callback: F) -> <T as Fold>::Result
-        where T: Fold,
+pub fn fold_blocks<T, F>(target: &mut T, callback: F)
+        where T: MutVisit,
               F: FnMut(&mut Cursor<Stmt>) {
-    target.fold(&mut BlockFolder { f: callback })
+    target.visit(&mut BlockFolder { f: callback })
 }
 
 
@@ -35,18 +32,18 @@ struct ModuleFolder<F: FnMut(&mut Cursor<P<Item>>)> {
     f: F,
 }
 
-impl<F: FnMut(&mut Cursor<P<Item>>)> Folder for ModuleFolder<F> {
-    fn fold_mod(&mut self, mut m: Mod) -> Mod {
+impl<F: FnMut(&mut Cursor<P<Item>>)> MutVisitor for ModuleFolder<F> {
+    fn visit_mod(&mut self, mut m: &mut Mod) {
         let mut curs = Cursor::from_vec(m.items);
         (self.f)(&mut curs);
         m.items = curs.into_vec();
-        fold::noop_fold_mod(m, self)
+        mut_visit::noop_visit_mod(m, self)
     }
 }
 
 /// Rewrite every module by manipulating a `Cursor` for the `Item`s inside.
-pub fn fold_modules<T, F>(target: T, callback: F) -> <T as Fold>::Result
-        where T: Fold,
+pub fn fold_modules<T, F>(target: &mut T, callback: F)
+        where T: MutVisit,
               F: FnMut(&mut Cursor<P<Item>>) {
-    target.fold(&mut ModuleFolder { f: callback })
+    target.visit(&mut ModuleFolder { f: callback })
 }

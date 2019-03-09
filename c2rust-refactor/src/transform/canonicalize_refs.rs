@@ -3,7 +3,7 @@ use syntax::ast::{Crate, Expr, ExprKind, Mutability, UnOp};
 use syntax::ptr::P;
 
 use c2rust_ast_builder::mk;
-use crate::ast_manip::fold_nodes;
+use crate::ast_manip::mut_visit_nodes;
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
 use crate::transform::Transform;
@@ -13,8 +13,8 @@ use crate::RefactorCtxt;
 struct CanonicalizeRefs;
 
 impl Transform for CanonicalizeRefs {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
-        fold_nodes(krate, |mut expr: P<Expr>| {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
+        mut_visit_nodes(krate, |mut expr: P<Expr>| {
             let hir_expr = cx.hir_map().expect_expr(expr.id);
             let parent = cx.hir_map().get_parent_did(expr.id);
             let tables = cx.ty_ctxt().typeck_tables_of(parent);
@@ -47,8 +47,8 @@ impl Transform for CanonicalizeRefs {
 struct RemoveUnnecessaryRefs;
 
 impl Transform for RemoveUnnecessaryRefs {
-    fn transform(&self, krate: Crate, _st: &CommandState, _cx: &RefactorCtxt) -> Crate {
-        fold_nodes(krate, |expr: P<Expr>| {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, _cx: &driver::Ctxt) {
+        mut_visit_nodes(krate, |expr: P<Expr>| {
             expr.map(|expr| match expr.node {
                 ExprKind::MethodCall(path, args) => {
                     let (receiver, rest) = args.split_first().unwrap();

@@ -17,7 +17,7 @@ use crate::RefactorCtxt;
 pub struct ReconstructWhile;
 
 impl Transform for ReconstructWhile {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_expr(
             st, cx, krate,
             r#"
@@ -47,7 +47,7 @@ impl Transform for ReconstructWhile {
 pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat_str = r#"
             $i:Ident = $start:Expr;
@@ -150,7 +150,7 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
 }
 
 impl Transform for RemoveUnusedLabels {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
                 "$'label:Ident: loop { $body:MultiStmt; }",
                 "loop { $body; }");

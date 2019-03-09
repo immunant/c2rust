@@ -7,11 +7,11 @@ use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::parse::token::{self, Token, DelimToken};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenTree, TokenStream, Delimited, DelimSpan};
+use syntax::tokenstream::{TokenTree, TokenStream, DelimSpan};
 use smallvec::SmallVec;
 
 use crate::ast_manip::{fold_nodes, Fold};
@@ -115,13 +115,13 @@ fn do_annotate(st: &CommandState,
         }
     }
 
-    impl<'a, 'tcx> Folder for AnnotateFolder<'a, 'tcx> {
-        fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+    impl<'a, 'tcx> MutVisitor for AnnotateFolder<'a, 'tcx> {
+        fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             if !self.st.marked(i.id, self.label) {
-                return fold::noop_fold_item(i, self);
+                return mut_visit::noop_flat_map_item(i, self);
             }
 
-            fold::noop_fold_item(i.map(|mut i| {
+            mut_visit::noop_flat_map_item(i.map(|mut i| {
                 match i.node {
                     ItemKind::Static(..) | ItemKind::Const(..) => {
                         self.clean_attrs(&mut i.attrs);
@@ -145,17 +145,17 @@ fn do_annotate(st: &CommandState,
             }), self)
         }
 
-        fn fold_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+        fn flat_map_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
             if !self.st.marked(i.id, self.label) {
-                return fold::noop_fold_impl_item(i, self);
+                return mut_visit::noop_flat_map_impl_item(i, self);
             }
 
-            fold::noop_fold_impl_item(i, self)
+            mut_visit::noop_flat_map_impl_item(i, self)
         }
 
-        fn fold_struct_field(&mut self, mut sf: StructField) -> StructField {
+        fn visit_struct_field(&mut self, mut sf: &mut StructField) {
             if !self.st.marked(sf.id, self.label) {
-                return fold::noop_fold_struct_field(sf, self);
+                return mut_visit::noop_visit_struct_field(sf, self);
             }
 
             self.clean_attrs(&mut sf.attrs);
@@ -163,12 +163,12 @@ fn do_annotate(st: &CommandState,
                 sf.attrs.push(attr);
             }
 
-            fold::noop_fold_struct_field(sf, self)
+            mut_visit::noop_visit_struct_field(sf, self)
         }
     }
 
     st.map_krate(|krate| {
-        krate.fold(&mut AnnotateFolder {
+        krate.visit(&mut AnnotateFolder {
             label: label,
             ana: analysis,
             hir_map: cx.hir_map(),
@@ -263,10 +263,11 @@ fn token(t: Token) -> TokenTree {
 }
 
 fn parens(ts: Vec<TokenTree>) -> TokenTree {
-    TokenTree::Delimited(DelimSpan::dummy(), Delimited {
-        delim: DelimToken::Paren,
-        tts: ts.into_iter().collect::<TokenStream>().into(),
-    })
+    TokenTree::Delimited(
+        DelimSpan::dummy(),
+        DelimToken::Paren,
+        ts.into_iter().collect::<TokenStream>().into(),
+    )
 }
 
 fn make_attr(name: &str, tokens: TokenStream) -> Attribute {
@@ -318,7 +319,7 @@ fn do_split_variants(st: &CommandState,
         // (1) Duplicate marked fns with `mono` attrs to produce multiple variants.  We rewrite
         // references to other fns during this process, since afterward it would be difficult to
         // distinguish the different copies - their bodies have identical spans and `NodeId`s.
-        let krate = fold_fns_multi(krate, |fl| {
+        let krate = flat_map_fns(krate, |fl| {
             if !st.marked(fl.id, label) {
                 return smallvec![fl];
             }
@@ -366,7 +367,7 @@ fn do_split_variants(st: &CommandState,
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
                 fl.attrs.push(build_variant_attr(&path_str));
 
-                fl.block = fl.block.map(|b| fold_nodes(b, |e: P<Expr>| {
+                fl.block = fl.block.map(|b| mut_visit_nodes(b, |e: P<Expr>| {
                     let fref_idx = match_or!([span_fref_idx.get(&e.span)]
                                              Some(&x) => x; return e);
                     handled_spans.insert(e.span);
@@ -397,7 +398,7 @@ fn do_split_variants(st: &CommandState,
 
         // (2) Find calls from other functions into functions being split.  Retarget those calls to
         // an appropriate monomorphization.
-        let krate = fold_nodes(krate, |e: P<Expr>| {
+        let krate = mut_visit_nodes(krate, |e: P<Expr>| {
             let fref_idx = match_or!([span_fref_idx.get(&e.span)]
                                      Some(&x) => x; return e);
             if handled_spans.contains(&e.span) {

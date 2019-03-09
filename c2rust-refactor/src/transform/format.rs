@@ -48,8 +48,8 @@ use crate::RefactorCtxt;
 pub struct ConvertFormatArgs;
 
 impl Transform for ConvertFormatArgs {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
-        fold_nodes(krate, |e: P<Expr>| {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
+        mut_visit_nodes(krate, |e: P<Expr>| {
             let fmt_idx = match e.node {
                 ExprKind::Call(_, ref args) =>
                     args.iter().position(|e| st.marked(e.id, "target")),
@@ -214,7 +214,7 @@ fn build_format_macro(
 pub struct ConvertPrintfs;
 
 impl Transform for ConvertPrintfs {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         let mut printf_defs = HashSet::<DefId>::new();
         let mut fprintf_defs = HashSet::<DefId>::new();
         let mut stderr_defs = HashSet::<DefId>::new();
@@ -234,7 +234,7 @@ impl Transform for ConvertPrintfs {
                 }
             }
         });
-        fold_nodes(krate, |s: Stmt| {
+        mut_visit_nodes(krate, |s: Stmt| {
             match s.node {
                 StmtKind::Semi(ref expr) => {
                     if let ExprKind::Call(ref f, ref args) = expr.node {
