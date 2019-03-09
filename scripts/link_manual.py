@@ -8,7 +8,7 @@ from common import (
 )
 
 
-EXTENSIONS = ['*.md', '*.png']
+EXTENSIONS = ['*.md', '*.png', '*.html', '*.css']
 
 
 def list_files(untracked=False):

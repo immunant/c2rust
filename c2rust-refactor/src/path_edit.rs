@@ -9,12 +9,12 @@ use syntax::util::move_map::MoveMap;
 
 use crate::ast_manip::Fold;
 use crate::ast_manip::util::split_uses;
-use crate::driver;
+use crate::RefactorCtxt;
 
 
 struct ResolvedPathFolder<'a, 'tcx: 'a, F>
         where F: FnMut(NodeId, Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path) {
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     callback: F,
 }
 
@@ -275,7 +275,7 @@ impl<'a, 'tcx, F> Folder for ResolvedPathFolder<'a, 'tcx, F>
 /// Rewrite paths, with access to their resolved `Def`s in the callback.
 pub fn fold_resolved_paths<T, F>(
     target: T,
-    cx: &driver::Ctxt,
+    cx: &RefactorCtxt,
     mut callback: F,
 ) -> <T as Fold>::Result
 where
@@ -293,7 +293,7 @@ where
 /// (Paths don't have `NodeId`s of their own.)
 pub fn fold_resolved_paths_with_id<T, F>(
     target: T,
-    cx: &driver::Ctxt,
+    cx: &RefactorCtxt,
     callback: F,
 ) -> <T as Fold>::Result
 where

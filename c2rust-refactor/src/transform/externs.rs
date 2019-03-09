@@ -5,12 +5,15 @@ use rustc::ty::{Instance, TyCtxt, TyKind, Ty};
 use syntax::ast::*;
 use syntax::ptr::P;
 
-use crate::api::*;
+use c2rust_ast_builder::mk;
+use crate::ast_manip::{fold_nodes, visit_nodes};
 use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase};
+use crate::path_edit::fold_resolved_paths_with_id;
 use crate::reflect;
 use crate::resolve;
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 
@@ -39,7 +42,7 @@ fn is_foreign_symbol(tcx: TyCtxt, did: DefId) -> bool {
 }
 
 impl Transform for CanonicalizeExterns {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let tcx = cx.ty_ctxt();
 
 

@@ -13,10 +13,11 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
 use crate::command::CommandState;
-use crate::command::{Registry, DriverCommand};
-use crate::driver::{self, Phase};
+use crate::command::{DriverCommand, Registry};
+use crate::driver::Phase;
 use crate::pick_node::NodeKind;
 use crate::resolve;
+use crate::RefactorCtxt;
 use c2rust_ast_builder::IntoSymbol;
 
 pub use self::filter::ItemLikeKind;
@@ -121,7 +122,7 @@ pub enum AnyPattern {
 
 /// Implementation of the `select` command.  See module docs for more details.
 pub fn run_select<S: IntoSymbol>(st: &CommandState,
-                                 cx: &driver::Ctxt,
+                                 cx: &RefactorCtxt,
                                  ops: &[SelectOp],
                                  label: S) {
     let mut sel = HashSet::new();

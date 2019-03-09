@@ -9,12 +9,15 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use smallvec::SmallVec;
 
-use crate::api::*;
+use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::ast_manip::{fold_nodes, fold_modules, visit_nodes, Fold};
 use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase, parse_expr};
+use crate::matcher::{BindingType, MatchCtxt, Subst, fold_match_with};
+use crate::path_edit::{fold_resolved_paths, fold_resolved_paths_with_id};
 use crate::transform::Transform;
-use c2rust_ast_builder::IntoSymbol;
 use crate::util::Lone;
+use crate::RefactorCtxt;
 
 
 /// # `func_to_method` Command
@@ -35,7 +38,7 @@ use crate::util::Lone;
 pub struct ToMethod;
 
 impl Transform for ToMethod {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Find the impl we're inserting into.
 
         let mut dest = None;
@@ -285,7 +288,7 @@ impl Transform for ToMethod {
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
         fold_nodes(krate, |mut b: P<Block>| {
             if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
                 let parent = cx.hir_map().get_parent_did(b.id);
@@ -369,7 +372,7 @@ fn sink_unsafe(unsafety: &mut Unsafety, block: &mut P<Block>) {
 }
 
 impl Transform for SinkUnsafe {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
         krate.fold(&mut SinkUnsafeFolder { st })
     }
 }
@@ -423,7 +426,7 @@ impl Transform for SinkUnsafe {
 pub struct WrapExtern;
 
 impl Transform for WrapExtern {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Collect the marked externs.
         #[derive(Debug)]
         struct FuncInfo {
@@ -569,7 +572,7 @@ impl Transform for WrapExtern {
 pub struct WrapApi;
 
 impl Transform for WrapApi {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // Map from original function HirId to new function name
         let mut wrapper_map = HashMap::new();
 
@@ -748,7 +751,7 @@ struct Abstract {
 }
 
 impl Transform for Abstract {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let pat = parse_expr(cx.session(), &self.pat);
 
         let func_src = format!("unsafe fn {} {{\n    {}\n}}",
@@ -793,8 +796,8 @@ impl Transform for Abstract {
 
         let krate = fold_match_with(init_mcx, pat, krate, |_ast, mut mcx| {
             for name in &type_args {
-                if mcx.bindings.get_ty(name.name).is_none() {
-                    mcx.bindings.add_ty(name.name, mk().infer_ty());
+                if mcx.bindings.get::<_, P<Ty>>(name.name).is_none() {
+                    mcx.bindings.add(name.name, mk().infer_ty());
                 }
             }
             call_expr.clone().subst(st, cx, &mcx.bindings)

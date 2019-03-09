@@ -8,8 +8,8 @@ use syntax::fold::{self, Folder};
 use syntax::ptr::P;
 use syntax::util::move_map::MoveMap;
 
-use crate::api::*;
-use crate::driver;
+use crate::ast_manip::Fold;
+use crate::RefactorCtxt;
 
 
 fn types_approx_equal<'tcx>(tcx: TyCtxt<'_, 'tcx, 'tcx>,
@@ -84,7 +84,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> IlltypedFolder<'tcx> for &'a mut F {
 
 
 struct FoldIlltyped<'a, 'tcx, F> {
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     inner: F,
 }
 
@@ -377,7 +377,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> Folder for FoldIlltyped<'a, 'tcx, F> {
     }
 }
 
-fn handle_struct<'tcx, F>(cx: &driver::Ctxt<'_, 'tcx>,
+fn handle_struct<'tcx, F>(cx: &RefactorCtxt<'_, 'tcx>,
                           expr_id: NodeId,
                           ty: ty::Ty<'tcx>,
                           fields: Vec<Field>,
@@ -404,7 +404,7 @@ fn handle_struct<'tcx, F>(cx: &driver::Ctxt<'_, 'tcx>,
     (fields, maybe_expr)
 }
 
-fn resolve_struct_path(cx: &driver::Ctxt, id: NodeId) -> Option<Def> {
+fn resolve_struct_path(cx: &RefactorCtxt, id: NodeId) -> Option<Def> {
     let node = match_or!([cx.hir_map().find(id)] Some(x) => x; return None);
     let expr = match_or!([node] hir::Node::Expr(e) => e; return None);
     let qpath = match_or!([expr.node] hir::ExprKind::Struct(ref q, ..) => q; return None);
@@ -413,7 +413,7 @@ fn resolve_struct_path(cx: &driver::Ctxt, id: NodeId) -> Option<Def> {
 }
 
 
-pub fn fold_illtyped<'tcx, F, T>(cx: &driver::Ctxt<'_, 'tcx>, x: T, f: F) -> <T as Fold>::Result
+pub fn fold_illtyped<'tcx, F, T>(cx: &RefactorCtxt<'_, 'tcx>, x: T, f: F) -> <T as Fold>::Result
         where F: IlltypedFolder<'tcx>, T: Fold {
     let mut f2 = FoldIlltyped { cx, inner: f };
     x.fold(&mut f2)

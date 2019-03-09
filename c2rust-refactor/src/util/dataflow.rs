@@ -91,7 +91,7 @@ impl<'a, K, V> Index<K> for Ctxt<'a, K, V>
 /// Use `ctx[other_k]` to obtain data for other nodes.
 ///
 /// TODO: Right now, indexing panics if `other_k == k`.  If we change the signature of `update` to
-/// `FnMut(K, &Ctxt<K, V>) -> V` then we can avoid this issue.  Being unable to mutate the value
+/// `FnMut(K, &RefactorCtxt<K, V>) -> V` then we can avoid this issue.  Being unable to mutate the value
 /// in-place might be slightly less efficient for some use cases, though.
 pub fn iterate<K, V, F>(data: &mut HashMap<K, V>, mut update: F)
         where K: Hash+Eq+Clone+::std::fmt::Debug,

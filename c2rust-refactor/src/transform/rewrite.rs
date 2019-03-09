@@ -3,10 +3,11 @@ use syntax::symbol::Symbol;
 
 use crate::command::{CommandState, Registry};
 use crate::contains_mark::contains_mark;
-use crate::driver::{self, Phase};
+use crate::driver::Phase;
 use crate::matcher::{MatchCtxt, Subst, fold_match_with};
 use crate::transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
+use crate::RefactorCtxt;
 
 
 /// # `rewrite_expr` Command
@@ -46,7 +47,7 @@ pub struct RewriteExpr {
 }
 
 impl Transform for RewriteExpr {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_expr(&self.pat);
         let repl = mcx.parse_expr(&self.repl);
@@ -92,7 +93,7 @@ pub struct RewriteTy {
 }
 
 impl Transform for RewriteTy {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_ty(&self.pat);
         let repl = mcx.parse_ty(&self.repl);
@@ -131,7 +132,7 @@ pub struct RewriteStmts {
 }
 
 impl Transform for RewriteStmts {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_stmts(&self.pat);
         let repl = mcx.parse_stmts(&self.repl);
@@ -151,7 +152,7 @@ pub struct DebugMatchExpr {
 }
 
 impl Transform for DebugMatchExpr {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
 
         let mut init_mcx = MatchCtxt::new(st, cx);
         init_mcx.debug = true;

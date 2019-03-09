@@ -2,17 +2,18 @@ use rustc::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
 use syntax::ast::{Crate, Expr, ExprKind, Mutability, UnOp};
 use syntax::ptr::P;
 
-use crate::api::*;
+use c2rust_ast_builder::mk;
 use crate::ast_manip::fold_nodes;
 use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase};
+use crate::driver::Phase;
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 /// Transformation that makes all autorefs and autoderefs explicit.
 struct CanonicalizeRefs;
 
 impl Transform for CanonicalizeRefs {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
         fold_nodes(krate, |mut expr: P<Expr>| {
             let hir_expr = cx.hir_map().expect_expr(expr.id);
             let parent = cx.hir_map().get_parent_did(expr.id);
@@ -46,7 +47,7 @@ impl Transform for CanonicalizeRefs {
 struct RemoveUnnecessaryRefs;
 
 impl Transform for RemoveUnnecessaryRefs {
-    fn transform(&self, krate: Crate, _st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, _cx: &RefactorCtxt) -> Crate {
         fold_nodes(krate, |expr: P<Expr>| {
             expr.map(|expr| match expr.node {
                 ExprKind::MethodCall(path, args) => {

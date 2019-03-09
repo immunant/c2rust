@@ -5,11 +5,13 @@ use syntax::attr;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use crate::api::*;
+use crate::ast_manip::{fold_nodes, visit_nodes};
 use crate::ast_manip::fn_edit::{visit_fns, FnKind};
 use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase};
+use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `link_funcs` Command
@@ -56,7 +58,7 @@ use crate::transform::Transform;
 pub struct LinkFuncs;
 
 impl Transform for LinkFuncs {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Find all `#[no_mangle]` or `#[export_name=...]` functions, and index them by symbol.
         // (2) Find all extern fns, and index them by def_id.
         let mut symbol_to_def = HashMap::new();
@@ -148,7 +150,7 @@ impl Transform for LinkFuncs {
 pub struct LinkIncompleteTypes;
 
 impl Transform for LinkIncompleteTypes {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Find complete type definitions, and index them by name.
         let mut name_to_complete = HashMap::new();
         let mut incomplete_to_name = HashMap::new();
@@ -242,7 +244,7 @@ impl Transform for LinkIncompleteTypes {
 pub struct CanonicalizeStructs;
 
 impl Transform for CanonicalizeStructs {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Find all marked structs.
         let mut canon_ids: HashMap<Symbol, DefId>  = HashMap::new();
 

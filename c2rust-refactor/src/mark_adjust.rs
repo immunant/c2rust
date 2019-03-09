@@ -8,18 +8,17 @@ use syntax::ast::*;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
 
-use crate::api::DriverCtxtExt;
-use crate::ast_manip::{Visit, visit_nodes};
+use crate::ast_manip::{visit_nodes, Visit};
 use crate::command::CommandState;
-use crate::command::{Registry, DriverCommand, RefactorState, FuncCommand};
-use crate::driver::{self, Phase};
+use crate::command::{DriverCommand, FuncCommand, RefactorState, Registry};
+use crate::driver::Phase;
+use crate::RefactorCtxt;
 use c2rust_ast_builder::IntoSymbol;
-
 
 /// Find all nodes that refer to marked nodes.
 struct MarkUseVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     label: Symbol,
 }
 
@@ -143,7 +142,7 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
 
 pub fn find_mark_uses<T: Visit>(target: &T,
                                 st: &CommandState,
-                                cx: &driver::Ctxt,
+                                cx: &RefactorCtxt,
                                 label: &str) {
     let old_ids = st.marks().iter().filter(|&&(_, l)| l == label)
         .map(|&(id, _)| id).collect::<Vec<_>>();
@@ -168,14 +167,14 @@ pub fn find_mark_uses<T: Visit>(target: &T,
 /// 
 /// For every top-level definition bearing `MARK`, apply `MARK` to uses of that
 /// definition.  Removes `MARK` from the original definitions.
-pub fn find_mark_uses_command(st: &CommandState, cx: &driver::Ctxt, label: &str) {
+pub fn find_mark_uses_command(st: &CommandState, cx: &RefactorCtxt, label: &str) {
     find_mark_uses(&*st.krate(), st, cx, label);
 }
 
 
 pub fn find_field_uses<T: Visit>(target: &T,
                                  st: &CommandState,
-                                 cx: &driver::Ctxt,
+                                 cx: &RefactorCtxt,
                                  field: &str,
                                  label: &str) {
     let field = field.into_symbol();
@@ -226,14 +225,14 @@ pub fn find_field_uses<T: Visit>(target: &T,
 /// 
 /// For every struct definition bearing `MARK`, apply `MARK` to expressions
 /// that use `FIELD` of that struct.  Removes `MARK` from the original struct.
-pub fn find_field_uses_command(st: &CommandState, cx: &driver::Ctxt, field: &str, label: &str) {
+pub fn find_field_uses_command(st: &CommandState, cx: &RefactorCtxt, field: &str, label: &str) {
     find_field_uses(&*st.krate(), st, cx, field, label);
 }
 
 
 pub fn find_arg_uses<T: Visit>(target: &T,
                                st: &CommandState,
-                               cx: &driver::Ctxt,
+                               cx: &RefactorCtxt,
                                arg_idx: usize,
                                label: &str) {
     let label = label.into_symbol();
@@ -270,14 +269,14 @@ pub fn find_arg_uses<T: Visit>(target: &T,
 /// For every `fn` definition bearing `MARK`, apply `MARK` to expressions
 /// passed in as argument `ARG_IDX` in calls to that function.
 /// Removes `MARK` from the original function.
-pub fn find_arg_uses_command(st: &CommandState, cx: &driver::Ctxt, arg_idx: usize, label: &str) {
+pub fn find_arg_uses_command(st: &CommandState, cx: &RefactorCtxt, arg_idx: usize, label: &str) {
     find_arg_uses(&*st.krate(), st, cx, arg_idx, label);
 }
 
 
 pub fn find_callers<T: Visit>(target: &T,
                               st: &CommandState,
-                              cx: &driver::Ctxt,
+                              cx: &RefactorCtxt,
                               label: &str) {
     let label = label.into_symbol();
 
@@ -308,7 +307,7 @@ pub fn find_callers<T: Visit>(target: &T,
 /// For every `fn` definition bearing `MARK`, apply `MARK` to call
 /// expressions that call that function.
 /// Removes `MARK` from the original function.
-pub fn find_callers_command(st: &CommandState, cx: &driver::Ctxt, label: &str) {
+pub fn find_callers_command(st: &CommandState, cx: &RefactorCtxt, label: &str) {
     find_callers(&*st.krate(), st, cx, label);
 }
 

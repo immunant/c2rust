@@ -1,21 +1,22 @@
 //! Functions for building AST representations of higher-level values.
+use c2rust_ast_builder::mk;
 use rustc::hir;
-use rustc::hir::map::Map as HirMap;
-use rustc::hir::Node;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::map::definitions::DefPathData;
-use rustc::mir::interpret::ConstValue;
-use rustc::ty::{self, TyCtxt, GenericParamDefKind};
-use rustc::ty::subst::Subst;
-use syntax::ast::*;
-use syntax::source_map::DUMMY_SP;
-use syntax::ptr::P;
-use syntax::symbol::keywords;
+use rustc::hir::map::Map as HirMap;
+use rustc::hir::Node;
 use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
-use c2rust_ast_builder::mk;
-use crate::command::{Registry, DriverCommand};
-use crate::driver::Phase;
+use rustc::mir::interpret::ConstValue;
+use rustc::ty::subst::Subst;
+use rustc::ty::{self, GenericParamDefKind, TyCtxt};
+use syntax::ast::*;
+use syntax::ptr::P;
+use syntax::source_map::DUMMY_SP;
+use syntax::symbol::keywords;
 
+use crate::ast_manip::fold_nodes;
+use crate::command::{DriverCommand, Registry};
+use crate::driver::Phase;
 
 /// Build an AST representing a `ty::Ty`.
 pub fn reflect_tcx_ty<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
@@ -326,7 +327,6 @@ fn register_test_reflect(reg: &mut Registry) {
     reg.register("test_reflect", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             st.map_krate(|krate| {
-                use crate::api::*;
                 use rustc::ty::TyKind;
 
                 let krate = fold_nodes(krate, |e: P<Expr>| {

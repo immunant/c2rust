@@ -4,6 +4,7 @@
 // Modules with simple APIs are private, with their public definitions reexported.
 mod ast_deref;
 mod ast_equiv;
+mod ast_names;
 mod fold;
 mod fold_node;
 mod get_node_id;
@@ -17,6 +18,7 @@ mod visit_node;
 
 pub use self::ast_deref::AstDeref;
 pub use self::ast_equiv::AstEquiv;
+pub use self::ast_names::AstName;
 pub use self::fold::Fold;
 pub use self::fold_node::{FoldNode, fold_nodes};
 pub use self::get_node_id::{GetNodeId, MaybeGetNodeId};

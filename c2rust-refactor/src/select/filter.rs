@@ -7,9 +7,9 @@ use syntax::visit::{self, Visitor, FnKind};
 
 use crate::ast_manip::AstEquiv;
 use crate::command::CommandState;
-use crate::driver;
 use crate::matcher::MatchCtxt;
 use crate::pick_node::NodeKind;
+use crate::RefactorCtxt;
 use crate::reflect;
 use crate::select::{Filter, AnyPattern};
 
@@ -235,7 +235,7 @@ impl ItemLikeKind {
 
 
 pub fn matches_filter(st: &CommandState,
-                      cx: &driver::Ctxt,
+                      cx: &RefactorCtxt,
                       node: AnyNode,
                       filter: &Filter) -> bool {
     match *filter {

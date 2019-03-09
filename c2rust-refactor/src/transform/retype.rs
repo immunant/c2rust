@@ -12,17 +12,19 @@ use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax::util::move_map::MoveMap;
 use syntax_pos::Span;
-use crate::reflect::reflect_tcx_ty;
 use smallvec::SmallVec;
 
-use crate::api::*;
-use crate::ast_manip::lr_expr::{self, fold_exprs_with_context};
+use c2rust_ast_builder::mk;
+use crate::ast_manip::{Fold, fold_nodes, fold_output_exprs};
+use crate::ast_manip::fn_edit::{fold_fns, visit_fns};
+use crate::ast_manip::lr_expr::{self, fold_expr_with_context, fold_exprs_with_context};
 use crate::command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
-use crate::driver::{self, Phase};
+use crate::driver::{self, Phase, parse_ty, parse_expr};
 use crate::illtyped::{IlltypedFolder, fold_illtyped};
-use crate::reflect;
+use crate::matcher::{Bindings, MatchCtxt, Subst, fold_match, fold_match_with, replace_expr};
+use crate::reflect::{self, reflect_tcx_ty};
 use crate::transform::Transform;
-use crate::ast_manip::fn_edit::visit_fns;
+use crate::RefactorCtxt;
 
 /// # `retype_argument` Command
 /// 
@@ -45,7 +47,7 @@ pub struct RetypeArgument {
 }
 
 impl Transform for RetypeArgument {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Change argument types and rewrite function bodies.
 
         let new_ty = parse_ty(cx.session(), &self.new_ty);
@@ -89,7 +91,7 @@ impl Transform for RetypeArgument {
                     if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
                         rewritten_nodes.insert(e.id);
                         let mut bnd = Bindings::new();
-                        bnd.add_expr("__new", e.clone());
+                        bnd.add("__new", e.clone());
                         return unwrap.clone().subst(st, cx, &bnd);
                     }
                 }
@@ -116,7 +118,7 @@ impl Transform for RetypeArgument {
                         };
                     for &idx in mod_args {
                         let mut bnd = Bindings::new();
-                        bnd.add_expr("__old", args[idx].clone());
+                        bnd.add("__old", args[idx].clone());
                         args[idx] = wrap.clone().subst(st, cx, &bnd);
                     }
                 }
@@ -154,7 +156,7 @@ pub struct RetypeReturn {
 }
 
 impl Transform for RetypeReturn {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Change argument types and rewrite function bodies.
 
         let new_ty = parse_ty(cx.session(), &self.new_ty);
@@ -178,7 +180,7 @@ impl Transform for RetypeReturn {
             // Rewrite output expressions using `wrap`.
             fl.block = fl.block.map(|b| fold_output_exprs(b, true, |e| {
                 let mut bnd = Bindings::new();
-                bnd.add_expr("__old", e.clone());
+                bnd.add("__old", e.clone());
                 return wrap.clone().subst(st, cx, &bnd);
             }));
 
@@ -196,7 +198,7 @@ impl Transform for RetypeReturn {
                 return e;
             }
             let mut bnd = Bindings::new();
-            bnd.add_expr("__new", e);
+            bnd.add("__new", e);
             unwrap.clone().subst(st, cx, &bnd)
         });
 
@@ -241,7 +243,7 @@ pub struct RetypeStatic {
 }
 
 impl Transform for RetypeStatic {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Change the types of marked statics, and update their initializer expressions.
 
         let new_ty = parse_ty(cx.session(), &self.new_ty);
@@ -263,7 +265,7 @@ impl Transform for RetypeStatic {
                     ItemKind::Static(ref mut ty, _, ref mut init) => {
                         *ty = new_ty.clone();
                         let mut bnd = Bindings::new();
-                        bnd.add_expr("__old", init.clone());
+                        bnd.add("__old", init.clone());
                         *init = rev_conv_assign.clone().subst(st, cx, &bnd);
                         mod_statics.insert(cx.node_def_id(i.id));
                     },
@@ -307,7 +309,7 @@ impl Transform for RetypeStatic {
                         if cx.try_resolve_expr(lhs)
                              .map_or(false, |did| mod_statics.contains(&did)) {
                             let mut bnd = Bindings::new();
-                            bnd.add_expr("__old", rhs.clone());
+                            bnd.add("__old", rhs.clone());
                             *rhs = rev_conv_assign.clone().subst(st, cx, &bnd);
                             handled_ids.insert(lhs.id);
                         }
@@ -328,7 +330,7 @@ impl Transform for RetypeStatic {
             }
 
             let mut bnd = Bindings::new();
-            bnd.add_expr("__new", e.clone());
+            bnd.add("__new", e.clone());
             match ectx {
                 lr_expr::Context::Rvalue => conv_rval.clone().subst(st, cx, &bnd),
                 lr_expr::Context::Lvalue => conv_lval.clone().subst(st, cx, &bnd),
@@ -354,7 +356,7 @@ impl Transform for RetypeStatic {
 /// 
 /// This function currently handles only direct function calls.  Creation and use of function
 /// pointers is not handled correctly yet.
-pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, retype: F) -> Crate
+pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: Crate, retype: F) -> Crate
         where F: FnMut(&P<Ty>) -> Option<P<Ty>> {
     // (1) Walk over all supported nodes, replacing type annotations.  Also record which nodes had
     // type annotations replaced, for future reference.
@@ -496,9 +498,9 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &driver::Ctxt, krate: Crate, ret
 
     let transmute = |e, context, old_ty: &P<Ty>, new_ty: &P<Ty>| {
         let mut bnd = Bindings::new();
-        bnd.add_expr("__e", e);
-        bnd.add_ty("__old_ty", (*old_ty).clone());
-        bnd.add_ty("__new_ty", (*new_ty).clone());
+        bnd.add("__e", e);
+        bnd.add("__old_ty", (*old_ty).clone());
+        bnd.add("__new_ty", (*new_ty).clone());
 
         let repl = match context {
             lr_expr::Context::Rvalue => rvalue_repl.clone(),
@@ -615,7 +617,7 @@ pub struct BitcastRetype {
 }
 
 impl Transform for BitcastRetype {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let pat = parse_ty(cx.session(), &self.pat);
         let repl = parse_ty(cx.session(), &self.repl);
 
@@ -740,7 +742,7 @@ impl Command for TypeFixRules {
 
 struct TypeFixRulesFolder<'a, 'tcx: 'a> {
     st: &'a CommandState,
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     rules: &'a [Rule],
 
     num_inserted_casts: &'a mut u32,
@@ -777,7 +779,7 @@ impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
             }
 
             let mut bnd = mcx.bindings;
-            bnd.add_expr("__old", e);
+            bnd.add("__old", e);
             info!("rewriting with bindings {:?}", bnd);
             *self.num_inserted_casts += 1;
             return r.cast_expr.clone().subst(self.st, self.cx, &bnd);
@@ -864,7 +866,7 @@ struct RetypePrepFolder<'a> {
 }
 
 impl<'a> RetypePrepFolder<'a> {
-    fn new<'tcx: 'a>(st: &'a CommandState, cx: &'a driver::Ctxt<'a, 'tcx>,
+    fn new<'tcx: 'a>(st: &'a CommandState, cx: &'a RefactorCtxt<'a, 'tcx>,
                      mark_types: &HashMap<String, String>) -> Self {
         let mark_types = mark_types
             .iter()
@@ -936,13 +938,13 @@ impl<'a> Folder for RetypePrepFolder<'a> {
 /// semantically equivalent to the original but may not match textually
 /// (i.e. typedef aliases are replaced by their aliasee)
 struct RestoreAnnotationsFolder<'a, 'tcx: 'a> {
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
 
     type_annotations: HashMap<Span, P<Ty>>,
 }
 
 impl<'a, 'tcx> RestoreAnnotationsFolder<'a, 'tcx> {
-    fn new(cx: &'a driver::Ctxt<'a, 'tcx>, type_annotations: HashMap<Span, P<Ty>>) -> Self {
+    fn new(cx: &'a RefactorCtxt<'a, 'tcx>, type_annotations: HashMap<Span, P<Ty>>) -> Self {
         RestoreAnnotationsFolder {
             cx,
             type_annotations,
@@ -984,7 +986,7 @@ impl<'a, 'tcx> Folder for RestoreAnnotationsFolder<'a, 'tcx> {
 /// point, or bail out with an error indicating the expression that is blocking
 /// retyping.
 struct RetypeIteration<'a, 'tcx: 'a, 'b> {
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
 
     num_inserted_casts: u32,
 
@@ -992,7 +994,7 @@ struct RetypeIteration<'a, 'tcx: 'a, 'b> {
 }
 
 impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
-    fn new(cx: &'a driver::Ctxt<'a, 'tcx>, type_annotations: &'b HashMap<Span, P<Ty>>) -> Self {
+    fn new(cx: &'a RefactorCtxt<'a, 'tcx>, type_annotations: &'b HashMap<Span, P<Ty>>) -> Self {
         RetypeIteration {
             cx,
             num_inserted_casts: 0,
@@ -1481,16 +1483,16 @@ fn can_coerce<'a, 'tcx>(
 pub struct RemoveRedundantCasts;
 
 impl Transform for RemoveRedundantCasts {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let tcx = cx.ty_ctxt();
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_expr("$e:Expr as $t:Ty");
         fold_match_with(mcx, pat, krate, |ast, mcx| {
-            let e = mcx.bindings.expr("$e");
+            let e = mcx.bindings.get::<_, P<Expr>>("$e").unwrap();
             let e_ty = cx.adjusted_node_type(e.id);
             let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
 
-            let t = mcx.bindings.ty("$t");
+            let t = mcx.bindings.get::<_, P<Ty>>("$t").unwrap();
             let t_ty = cx.adjusted_node_type(t.id);
             let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
             if e_ty == t_ty {
@@ -1515,7 +1517,7 @@ impl Transform for RemoveRedundantCasts {
 pub struct ConvertCastAsPtr;
 
 impl Transform for ConvertCastAsPtr {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let krate = replace_expr(st, cx, krate,
             "typed!($expr:Expr, &[$ty:Ty]) as *const $ty",
             "$expr.as_ptr()");

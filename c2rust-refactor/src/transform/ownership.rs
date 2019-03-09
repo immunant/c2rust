@@ -14,14 +14,16 @@ use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream, Delimited, DelimSpan};
 use smallvec::SmallVec;
 
+use crate::ast_manip::{fold_nodes, Fold};
+use crate::ast_manip::fn_edit::fold_fns_multi;
 use crate::analysis::labeled_ty::LabeledTyCtxt;
 use crate::analysis::ownership::{self, ConcretePerm, Var, PTy};
 use crate::analysis::ownership::constraint::{ConstraintSet, Perm};
-use crate::api::*;
 use crate::command::{CommandState, Registry, DriverCommand};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase};
 use crate::type_map;
-use c2rust_ast_builder::IntoSymbol;
+use crate::RefactorCtxt;
+use c2rust_ast_builder::{mk, IntoSymbol};
 
 pub fn register_commands(reg: &mut Registry) {
     reg.register("ownership_annotate", |args| {
@@ -58,7 +60,7 @@ pub fn register_commands(reg: &mut Registry) {
 /// ownership properties.
 /// See `analysis/ownership/README.md` for details on ownership inference.
 fn do_annotate(st: &CommandState,
-               cx: &driver::Ctxt,
+               cx: &RefactorCtxt,
                label: Symbol) {
     let analysis = ownership::analyze(&st, &cx);
 
@@ -296,7 +298,7 @@ fn build_variant_attr(group: &str) -> Attribute {
 /// monomorphic variants.
 /// See `analysis/ownership/README.md` for details on ownership inference.
 fn do_split_variants(st: &CommandState,
-                     cx: &driver::Ctxt,
+                     cx: &RefactorCtxt,
                      label: Symbol) {
     let ana = ownership::analyze(&st, &cx);
 
@@ -458,7 +460,7 @@ fn rename_callee(e: P<Expr>, new_name: &str) -> P<Expr> {
     })
 }
 
-fn callee_new_name(cx: &driver::Ctxt,
+fn callee_new_name(cx: &RefactorCtxt,
                    ana: &ownership::AnalysisResult,
                    dest: DefId,
                    dest_mono_idx: usize) -> String {
@@ -494,7 +496,7 @@ fn callee_new_name(cx: &driver::Ctxt,
 /// apply one of the marks `ref`, `mut`, or `box`, reflecting the results
 /// of the ownership analysis.
 /// See `analysis/ownership/README.md` for details on ownership inference.
-fn do_mark_pointers(st: &CommandState, cx: &driver::Ctxt) {
+fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     let ana = ownership::analyze(&st, &cx);
 
     struct AnalysisTypeSource<'a, 'tcx: 'a> {

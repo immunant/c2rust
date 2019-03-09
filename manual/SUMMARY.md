@@ -8,6 +8,7 @@
     - [Bitfield Support Crate](c2rust-bitfields/README.md)
 - [Refactoring Tool](c2rust-refactor/README.md)
     - [Commands](c2rust-refactor/commands.md)
+    - [Lua Scripting API](c2rust-refactor/doc/scripting_api.html)
     - [`rewrite_expr` tutorial](c2rust-refactor/rewrite.md)
     - [Marks tutorial](c2rust-refactor/select.md)
     - [Ownership analysis](c2rust-refactor/src/analysis/ownership/README.md)

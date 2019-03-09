@@ -1,9 +1,9 @@
 use syntax::ast::Crate;
 
-use crate::api::*;
 use crate::command::{CommandState, Registry};
-use crate::driver;
+use crate::matcher::replace_expr;
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `wrapping_arith_to_normal` Command
@@ -15,7 +15,7 @@ use crate::transform::Transform;
 pub struct WrappingToNormal;
 
 impl Transform for WrappingToNormal {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let krate = replace_expr(st, cx, krate,
                                  "$x:Expr.wrapping_add($y:Expr)",
                                  "$x + $y");

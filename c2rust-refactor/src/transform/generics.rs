@@ -3,11 +3,13 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use crate::api::*;
+use crate::ast_manip::fold_nodes;
 use crate::command::{CommandState, Registry};
-use crate::driver;
+use crate::driver::{parse_ty};
+use crate::path_edit::fold_resolved_paths_with_id;
 use crate::transform::Transform;
-use c2rust_ast_builder::IntoSymbol;
+use crate::RefactorCtxt;
+use c2rust_ast_builder::{mk, IntoSymbol};
 
 
 /// # `generalize_items` Command
@@ -67,7 +69,7 @@ pub struct GeneralizeItems {
 }
 
 impl Transform for GeneralizeItems {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Find marked types and replace with the named type variable.
 
         // Map from item NodeId to the concrete type that was replaced with the type variable.

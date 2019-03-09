@@ -22,8 +22,14 @@ pub trait FileIO {
     /// object) are part of the logical rewrite.
     fn end_rewrite(&self, sm: &SourceMap) -> io::Result<()> { Ok(()) }
 
-    fn file_exists(&self, path: &Path) -> bool;
-    fn abs_path(&self, path: &Path) -> io::Result<PathBuf>;
+    fn file_exists(&self, path: &Path) -> bool {
+        fs::metadata(path).is_ok()
+    }
+
+    fn abs_path(&self, path: &Path) -> io::Result<PathBuf> {
+        fs::canonicalize(path)
+    }
+
     fn read_file(&self, path: &Path) -> io::Result<String>;
     fn write_file(&self, path: &Path, s: &str) -> io::Result<()>;
     fn save_rewrites(&self,
@@ -112,14 +118,6 @@ impl FileIO for RealFileIO {
         }
         state.rewrite_counter += 1;
         Ok(())
-    }
-
-    fn file_exists(&self, path: &Path) -> bool {
-        fs::metadata(path).is_ok()
-    }
-
-    fn abs_path(&self, path: &Path) -> io::Result<PathBuf> {
-        fs::canonicalize(path)
     }
 
     fn read_file(&self, path: &Path) -> io::Result<String> {

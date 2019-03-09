@@ -4,12 +4,16 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use crate::api::*;
+use crate::ast_manip::{fold_nodes, fold_modules};
+use crate::ast_manip::fn_edit::fold_fns;
 use crate::command::{CommandState, Registry};
-use crate::driver;
+use crate::driver::{parse_expr};
+use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, fold_match_with};
+use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
-use c2rust_ast_builder::IntoSymbol;
+use c2rust_ast_builder::{mk, IntoSymbol};
 use crate::util::dataflow;
+use crate::RefactorCtxt;
 
 
 /// # `static_collect_to_struct` Command
@@ -61,7 +65,7 @@ pub struct CollectToStruct {
 }
 
 impl Transform for CollectToStruct {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // Map from Symbol (the name) to the DefId of the old `static`.
         let mut old_statics = HashMap::new();
 
@@ -88,9 +92,9 @@ impl Transform for CollectToStruct {
                 curs.remove();
 
                 let mut bnd = Bindings::new();
-                bnd.add_ident("__x", ident);
-                bnd.add_ty("__t", ty);
-                bnd.add_expr("__init", init);
+                bnd.add("__x", ident);
+                bnd.add("__t", ty);
+                bnd.add("__init", init);
                 matches.push(bnd);
             }
 
@@ -109,11 +113,11 @@ impl Transform for CollectToStruct {
         let ident_repl = parse_expr(cx.session(), "__s.__x");
         let mut init_mcx = MatchCtxt::new(st, cx);
         init_mcx.set_type("__x", BindingType::Ident);
-        init_mcx.bindings.add_ident(
+        init_mcx.bindings.add(
             "__s", Ident::with_empty_ctxt((&self.instance_name as &str).into_symbol()));
 
         let krate = fold_match_with(init_mcx, ident_pat, krate, |orig, mcx| {
-            let static_id = match old_statics.get(&mcx.bindings.ident("__x").name) {
+            let static_id = match old_statics.get(&mcx.bindings.get::<_, Ident>("__x").unwrap().name) {
                 Some(&x) => x,
                 None => return orig,
             };
@@ -133,7 +137,7 @@ impl Transform for CollectToStruct {
 
 fn build_collected_struct(name: &str, matches: &[Bindings]) -> P<Item> {
     let fields = matches.iter().map(
-        |bnd| mk().struct_field(bnd.ident("__x"), bnd.ty("__t"))).collect::<Vec<_>>();
+        |bnd| mk().struct_field(bnd.get::<_, Ident>("__x").unwrap(), bnd.get::<_, P<Ty>>("__t").unwrap())).collect::<Vec<_>>();
     mk().struct_item(name, fields)
 }
 
@@ -141,7 +145,7 @@ fn build_struct_instance(struct_name: &str,
                          instance_name: &str,
                          matches: &[Bindings]) -> P<Item> {
     let fields = matches.iter().map(
-        |bnd| mk().field(bnd.ident("__x"), bnd.expr("__init"))).collect::<Vec<_>>();
+        |bnd| mk().field(bnd.get::<_, Ident>("__x").unwrap(), bnd.get::<_, P<Expr>>("__init").unwrap())).collect::<Vec<_>>();
     mk().mutbl()
         .static_item(instance_name,
                      mk().path_ty(vec![struct_name]),
@@ -208,7 +212,7 @@ fn build_struct_instance(struct_name: &str,
 pub struct Localize;
 
 impl Transform for Localize {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Collect all marked statics.
 
         struct StaticInfo {
@@ -442,7 +446,7 @@ impl Transform for Localize {
 struct StaticToLocal;
 
 impl Transform for StaticToLocal {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Collect all marked statics.
 
         struct StaticInfo {

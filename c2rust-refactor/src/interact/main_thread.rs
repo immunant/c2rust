@@ -26,6 +26,7 @@ use crate::interact::WrapSender;
 use crate::interact::{plain_backend, vim8_backend};
 use crate::interact::worker::{self, ToWorker};
 use crate::pick_node;
+use crate::RefactorCtxt;
 use c2rust_ast_builder::IntoSymbol;
 
 use super::MarkInfo;
@@ -77,7 +78,7 @@ impl InteractState {
     }
 
     fn run_compiler<F, R>(&mut self, phase: driver::Phase, func: F) -> R
-            where F: FnOnce(&Crate, &driver::Ctxt) -> R {
+            where F: FnOnce(&Crate, &RefactorCtxt) -> R {
         self.state.transform_crate(phase, |st, cx| {
             func(&st.krate(), cx)
         })
@@ -197,7 +198,7 @@ fn filename_to_str(filename: &FileName) -> String {
 
 fn collect_mark_infos(marks: &HashSet<(NodeId, Symbol)>,
                       krate: &Crate,
-                      cx: &driver::Ctxt) -> Vec<MarkInfo> {
+                      cx: &RefactorCtxt) -> Vec<MarkInfo> {
     let ids = marks.iter().map(|&(id, _)| id).collect();
     let span_map = collect_spans(krate, ids);
 
@@ -260,14 +261,6 @@ struct InteractiveFileIO {
 }
 
 impl FileIO for InteractiveFileIO {
-    fn file_exists(&self, path: &Path) -> bool {
-        fs::metadata(path).is_ok()
-    }
-
-    fn abs_path(&self, path: &Path) -> io::Result<PathBuf> {
-        fs::canonicalize(path)
-    }
-
     fn read_file(&self, path: &Path) -> io::Result<String> {
         let canon = fs::canonicalize(path)?;
 

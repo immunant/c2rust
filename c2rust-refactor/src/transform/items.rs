@@ -10,11 +10,13 @@ use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use smallvec::SmallVec;
 
-use crate::api::*;
 use c2rust_ast_builder::{mk, Make, IntoSymbol};
+use crate::ast_manip::{fold_nodes, Fold, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{self, Phase};
+use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `rename_items_regex` Command
@@ -32,7 +34,7 @@ pub struct RenameRegex {
 }
 
 impl Transform for RenameRegex {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let re = Regex::new(&self.pattern).unwrap();
 
         // (1) Fold over items and rewrite their `ident`s.  Records the new paths of modified items
@@ -118,7 +120,7 @@ impl Transform for RenameRegex {
 pub struct RenameUnnamed;
 
 impl Transform for RenameUnnamed {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, _st: &CommandState, cx: &RefactorCtxt) -> Crate {
         #[derive(Debug, Default)]
         struct Renamer {
             items_to_change: HashSet<NodeId>,
@@ -293,7 +295,7 @@ impl Transform for RenameUnnamed {
 pub struct ReplaceItems;
 
 impl Transform for ReplaceItems {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         // (1) Scan items for `target` and `repl` marks, collecting the relevant `DefId`s and
         // removing all `target` items.
 
@@ -390,7 +392,7 @@ pub struct SetVisibility {
 }
 
 impl Transform for SetVisibility {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let vis = driver::run_parser(cx.session(), &self.vis_str,
                                      |p| p.parse_visibility(false));
 
@@ -460,7 +462,7 @@ pub struct SetMutability {
 }
 
 impl Transform for SetMutability {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
         let mutbl = <&str as Make<Mutability>>::make(&self.mut_str, &mk());
 
         struct SetMutFolder<'a> {
@@ -505,7 +507,7 @@ pub struct SetUnsafety {
 }
 
 impl Transform for SetUnsafety {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
         let unsafety = <&str as Make<Unsafety>>::make(&self.unsafe_str, &mk());
 
         struct SetUnsafetyFolder<'a> {
@@ -578,7 +580,7 @@ pub struct CreateItem {
 }
 
 impl Transform for CreateItem {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let mark = self.mark;
 
         let inside = match &self.pos as &str {
@@ -709,7 +711,7 @@ impl Transform for CreateItem {
 pub struct DeleteItems;
 
 impl Transform for DeleteItems {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, _cx: &RefactorCtxt) -> Crate {
         let mark = "target".into_symbol();
 
         struct DeleteFolder<'a> {

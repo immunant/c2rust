@@ -1,8 +1,3 @@
-use crate::api::*;
-use crate::ast_manip::lr_expr::*;
-use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase, parse_impl_items};
-use crate::reflect::reflect_def_path;
 use rustc::hir::def_id::DefId;
 use rustc::ty::TyKind;
 use std::collections::HashSet;
@@ -10,7 +5,16 @@ use std::fmt::Display;
 use syntax::ast::*;
 use syntax::fold::Folder;
 use syntax::ptr::P;
+
+use c2rust_ast_builder::mk;
+use crate::ast_manip::{Fold, visit_nodes, fold_nodes};
+use crate::ast_manip::lr_expr::{self, fold_expr_with_context};
+use crate::command::{CommandState, Registry};
+use crate::driver::{Phase, parse_impl_items, parse_stmts, parse_expr};
+use crate::reflect::reflect_def_path;
+use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, fold_match_with};
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 /// # `ionize` Command
 /// 
@@ -51,7 +55,7 @@ fn mut_accessor_name<T: Display>(fieldname: T) -> Ident {
     mk().ident(format!("as_{}_mut", fieldname))
 }
 
-fn generate_enum_accessors(cx: &driver::Ctxt) -> Vec<ImplItem> {
+fn generate_enum_accessors(cx: &RefactorCtxt) -> Vec<ImplItem> {
     parse_impl_items(cx.session(), r#"
 
     fn __as_variant(&self) -> &__type {
@@ -73,7 +77,7 @@ fn generate_enum_accessors(cx: &driver::Ctxt) -> Vec<ImplItem> {
 
 impl Transform for Ionize {
     fn min_phase(&self) -> Phase { Phase::Phase3 }
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
 
         let _as_variant_methods = generate_enum_accessors(cx);
         let outer_assignment_pat = parse_stmts(cx.session(), "__val.__field = __expr;");
@@ -104,9 +108,9 @@ impl Transform for Ionize {
 
         // Replace union assignment with enum assignment
         let krate = fold_match_with(mcx, outer_assignment_pat, krate, |e, mcx| {
-            let field = mcx.bindings.ident("__field");
-            let _expr = mcx.bindings.expr("__expr");
-            let val = mcx.bindings.expr("__val");
+            let field = mcx.bindings.get::<_, Ident>("__field").unwrap();
+            let _expr = mcx.bindings.get::<_, P<Expr>>("__expr").unwrap();
+            let val = mcx.bindings.get::<_, P<Expr>>("__val").unwrap();
 
 
             let ty0 = cx.adjusted_node_type(val.id);
@@ -116,7 +120,7 @@ impl Transform for Ionize {
                     let (_qself, mut path) = reflect_def_path(cx.ty_ctxt(), adt.did);
                     path.segments.push(mk().path_segment(field));
                     let mut bnd1 = mcx.bindings.clone();
-                    bnd1.add_expr("__con", mk().path_expr(path));
+                    bnd1.add("__con", mk().path_expr(path));
 
                     outer_assignment_repl.clone().subst(st, cx, &bnd1)
                 }
@@ -132,12 +136,12 @@ impl Transform for Ionize {
 
         let krate = fold_top_exprs(krate, |e: P<Expr>| {
             fold_expr_with_context(e, lr_expr::Context::Rvalue, |e, context| {
-                if Context::Rvalue == context {
+                if lr_expr::Context::Rvalue == context {
                     match mcx.clone_match(&*outer_access_pat, &*e) {
                         Ok(mcx1) => {
                             let mut bnd = mcx1.bindings.clone();
-                            let accessor = accessor_name(bnd.ident("__field"));
-                            bnd.add_ident("__accessor", accessor);
+                            let accessor = accessor_name(bnd.get::<_, Ident>("__field").unwrap());
+                            bnd.add("__accessor", accessor);
                             outer_access_repl.clone().subst(st, cx, &bnd)
                         }
                         Err(_) => e,
@@ -161,11 +165,11 @@ impl Transform for Ionize {
                     let fieldname = x.ident.expect("missing union field");
                     let accessor = accessor_name(fieldname);
                     let accessor_mut = mut_accessor_name(fieldname);
-                    bnd.add_ident("__enum", i.ident);
-                    bnd.add_ident("__constructor", fieldname);
-                    bnd.add_ty("__type", x.ty.clone());
-                    bnd.add_ident("__as_variant", accessor);
-                    bnd.add_ident("__as_variant_mut", accessor_mut);
+                    bnd.add("__enum", i.ident);
+                    bnd.add("__constructor", fieldname);
+                    bnd.add("__type", x.ty.clone());
+                    bnd.add("__as_variant", accessor);
+                    bnd.add("__as_variant_mut", accessor_mut);
                     generate_enum_accessors(cx).subst(st, cx, &bnd)
                 }).collect();
 

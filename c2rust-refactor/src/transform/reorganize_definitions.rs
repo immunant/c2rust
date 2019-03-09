@@ -11,11 +11,13 @@ use syntax::print::pprust::{foreign_item_to_string, item_to_string};
 use syntax::ptr::P;
 use syntax::symbol::keywords;
 
-use crate::api::*;
+use c2rust_ast_builder::mk;
 use crate::ast_manip::util::{join_visibility, is_relative_path, namespace, split_uses};
-use crate::ast_manip::AstEquiv;
+use crate::ast_manip::{AstEquiv, fold_nodes, visit_nodes};
 use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase};
+use crate::path_edit::fold_resolved_paths_with_id;
+use crate::RefactorCtxt;
 
 /// # `reoganize_definitions` Command
 ///
@@ -32,7 +34,7 @@ pub struct ReorganizeDefinitions;
 /// Holds the information of the current `Crate`, which includes a `HashMap` to look up Items
 /// quickly, as well as other members that hold important information.
 pub struct Reorganizer<'a, 'tcx: 'a> {
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     st: &'a CommandState,
 
     modules: HashMap<Ident, ModuleInfo>,
@@ -50,7 +52,7 @@ struct ModuleInfo {
 }
 
 impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
-    fn new(st: &'a CommandState, cx: &'a driver::Ctxt<'a, 'tcx>) -> Self {
+    fn new(st: &'a CommandState, cx: &'a RefactorCtxt<'a, 'tcx>) -> Self {
         let mut modules = HashMap::new();
         let stdlib_ident = Ident::from_str("stdlib");
         modules.insert(
@@ -309,13 +311,13 @@ enum IdentDecl {
 
 /// Store and de-duplicate items in a singlea module
 struct ModuleDefines<'a, 'tcx: 'a> {
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     idents: PerNS<IndexMap<Ident, IdentDecl>>,
     impls: Vec<P<Item>>,
 }
 
 impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
-    pub fn new(cx: &'a driver::Ctxt<'a, 'tcx>) -> Self {
+    pub fn new(cx: &'a RefactorCtxt<'a, 'tcx>) -> Self {
         Self {
             cx,
             idents: PerNS::default(),
@@ -335,7 +337,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
             ItemKind::Use(_) => {
                 for u in split_uses(item).into_iter() {
                     let use_tree = expect!([&u.node] ItemKind::Use(u) => u);
-                    let path = resolve_use(self.cx, &u);
+                    let path = self.cx.resolve_use(&u);
                     let ns = namespace(&path.def).expect("Could not identify def namespace");
                     self.insert_ident(ns, use_tree.ident(), u);
                 }
@@ -427,7 +429,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     // Otherwise make sure these items are structurally
                     // equivalent.
                     _ => {
-                        if !structural_eq(self.cx, &new, &existing_item) {
+                        if !self.cx.structural_eq(&new, &existing_item) {
                             panic!(
                                 "Could not disambiguate item for ident: {:?}\n  {}\n  {}",
                                 existing_item.ident,
@@ -442,7 +444,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     if let ItemKind::Use(..) = new.node {
                         // If the import refers to the existing foreign item, do
                         // not replace it.
-                        let path = resolve_use(self.cx, &new);
+                        let path = self.cx.resolve_use(&new);
                         if let Some(did) = path.def.opt_def_id() {
                             if self.cx.node_def_id(existing_foreign.id) == did {
                                 existing_foreign.vis.node =
@@ -507,7 +509,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     }
                     let matches_existing = match (&existing_foreign.node, &new.node) {
                         (ForeignItemKind::Fn(decl1, _), ForeignItemKind::Fn(decl2, _)) => {
-                            compatible_fn_prototypes(self.cx, decl1, decl2)
+                            self.cx.compatible_fn_prototypes(decl1, decl2)
                         }
 
                         _ => existing_foreign.ast_equiv(&new),
@@ -613,7 +615,7 @@ fn is_std(attrs: &Vec<Attribute>) -> bool {
 }
 
 impl Transform for ReorganizeDefinitions {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
         let mut reorg = Reorganizer::new(st, cx);
         reorg.run(krate)
     }
