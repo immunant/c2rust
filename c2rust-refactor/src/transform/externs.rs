@@ -6,7 +6,7 @@ use syntax::ast::*;
 use syntax::ptr::P;
 
 use c2rust_ast_builder::mk;
-use crate::ast_manip::{fold_nodes, visit_nodes};
+use crate::ast_manip::{MutVisitNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase};
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -188,7 +188,7 @@ impl Transform for CanonicalizeExterns {
 
         // Add casts to rewritten calls and exprs
 
-        let krate = mut_visit_nodes(krate, |mut e: P<Expr>| {
+        let krate = MutVisitNodes::visit(krate, |mut e: P<Expr>| {
             if let Some(&old_did) = path_ids.get(&e.id) {
                 // This whole expr was a reference to the old extern `old_did`.  See if we need a
                 // cast around the whole thing.  (This should only be true for statics.)
@@ -239,7 +239,7 @@ impl Transform for CanonicalizeExterns {
 
         // Remove the old externs
 
-        let krate = mut_visit_nodes(krate, |mut fm: ForeignMod| {
+        let krate = MutVisitNodes::visit(krate, |mut fm: ForeignMod| {
             fm.items.retain(|fi| {
                 let did = cx.node_def_id(fi.id);
                 !replace_map.contains_key(&did)

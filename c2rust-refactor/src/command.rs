@@ -44,11 +44,11 @@ struct ParsedNodes {
 
 impl Visit for ParsedNodes {
     fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V) {
-        self.exprs.iter().for_each(|x| x.visit(v));
-        self.pats.iter().for_each(|x| x.visit(v));
-        self.tys.iter().for_each(|x| x.visit(v));
+        self.exprs.iter().for_each(|x| (&**x).visit(v));
+        self.pats.iter().for_each(|x| (&**x).visit(v));
+        self.tys.iter().for_each(|x| (&**x).visit(v));
         self.stmts.iter().for_each(|x| x.visit(v));
-        self.items.iter().for_each(|x| x.visit(v));
+        self.items.iter().for_each(|x| (&**x).visit(v));
     }
 }
 
@@ -147,9 +147,9 @@ impl RefactorState {
     /// rewriting with the previous `orig_crate` any more.
     pub fn load_crate(&mut self) {
         // Discard any existing krate, overwriting it with one loaded from disk.
-        let krate = self.load_crate_inner();
-        let krate = remove_paren(krate);
-        let krate = number_nodes(krate);
+        let mut krate = self.load_crate_inner();
+        remove_paren(&mut krate);
+        number_nodes(&mut krate);
         self.orig_krate = krate.clone();
         self.krate = krate;
 
@@ -189,14 +189,14 @@ impl RefactorState {
 
     pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> R
             where F: FnOnce(&CommandState, &RefactorCtxt) -> R {
-        let krate = mem::replace(&mut self.krate, dummy_crate());
+        let mut krate = mem::replace(&mut self.krate, dummy_crate());
         let marks = mem::replace(&mut self.marks, HashSet::new());
 
         let unexpanded = krate.clone();
-        let krate = reset_node_ids(krate);
+        reset_node_ids(&mut krate);
         let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
-        driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
-            let krate = span_fix::fix_format(krate);
+        driver::run_compiler_from_phase1(bits, phase, |mut krate, cx| {
+            span_fix::fix_format(&mut krate);
             let expanded = krate.clone();
 
             // Collect info + update node_map, then transfer and commit
@@ -235,16 +235,16 @@ impl RefactorState {
 
             // Collapse macros + update node_map.  The cfg_attr step requires the updated node_map
             // TODO: we should be able to skip some of these steps if `!cmd_state.krate_changed()`
-            let new_krate = collapse::collapse_injected(new_krate);
-            let (new_krate, matched_ids) = collapse::collapse_macros(new_krate, &mac_table);
+            let mut new_krate = collapse::collapse_injected(new_krate);
+            let matched_ids = collapse::collapse_macros(&mut new_krate, &mac_table);
             self.node_map.add_edges(&matched_ids);
             self.node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
 
             let cfg_attr_info = self.node_map.transfer_map(cfg_attr_info);
-            let new_krate = collapse::restore_cfg_attrs(new_krate, cfg_attr_info);
+            collapse::restore_cfg_attrs(&mut new_krate, cfg_attr_info);
 
-            let new_krate = collapse::restore_deleted_nodes(
-                new_krate, &mut self.node_map, &mut self.node_id_counter, deleted_info);
+            collapse::restore_deleted_nodes(
+                &mut new_krate, &mut self.node_map, &mut self.node_id_counter, deleted_info);
 
             let new_marks = self.node_map.transfer_marks(&new_marks);
             self.node_map.commit();
@@ -258,7 +258,7 @@ impl RefactorState {
     }
 
     pub fn run_typeck_loop<F>(&mut self, mut func: F) -> Result<(), &'static str>
-            where F: FnMut(Crate, &CommandState, &RefactorCtxt) -> TypeckLoopResult {
+            where F: FnMut(&mut Crate, &CommandState, &RefactorCtxt) -> TypeckLoopResult {
         let func = &mut func;
 
         let mut result = None;
@@ -266,15 +266,13 @@ impl RefactorState {
             self.transform_crate(Phase::Phase3, |st, cx| {
                 st.map_krate(|krate| {
                     match func(krate, st, cx) {
-                        TypeckLoopResult::Iterate(krate) => krate,
-                        TypeckLoopResult::Err(e, krate) => {
+                        TypeckLoopResult::Iterate => {}
+                        TypeckLoopResult::Err(e) => {
                             result = Some(Err(e));
-                            krate
-                        },
-                        TypeckLoopResult::Finished(krate) => {
+                        }
+                        TypeckLoopResult::Finished => {
                             result = Some(Ok(()));
-                            krate
-                        },
+                        }
                     }
                 });
             });
@@ -308,9 +306,9 @@ impl RefactorState {
 }
 
 pub enum TypeckLoopResult {
-    Iterate(Crate),
-    Err(&'static str, Crate),
-    Finished(Crate),
+    Iterate,
+    Err(&'static str),
+    Finished,
 }
 
 
@@ -357,18 +355,7 @@ impl CommandState {
     }
 
     pub fn map_krate<F: FnOnce(&mut Crate)>(&self, func: F) {
-        let dummy_crate = Crate {
-            module: Mod {
-                inner: DUMMY_SP,
-                items: Vec::new(),
-                inline: true,
-            },
-            attrs: Vec::new(),
-            span: DUMMY_SP,
-        };
-        let old_krate = mem::replace(&mut *self.krate_mut(), dummy_crate);
-        let new_krate = func(old_krate);
-        *self.krate_mut() = new_krate;
+        func(&mut self.krate_mut());
     }
 
     pub fn krate_changed(&self) -> bool {
@@ -422,27 +409,25 @@ impl CommandState {
     }
 
 
-    fn process_parsed<T>(&self, x: T)
+    fn process_parsed<T>(&self, x: &mut T)
             where T: MutVisit + ListNodeIds {
-        let x = number_nodes_with(x, &self.counter);
+        number_nodes_with(x, &self.counter);
         self.new_parsed_node_ids.borrow_mut()
             .extend(x.list_node_ids());
-        x
     }
 
     /// Parse an `Expr`, keeping the original `src` around for use during rewriting.
     pub fn parse_expr(&self, cx: &RefactorCtxt, src: &str) -> P<Expr> {
-        let e = driver::parse_expr(cx.session(), src);
-        let e = self.process_parsed(e);
+        let mut e = driver::parse_expr(cx.session(), src);
+        self.process_parsed(&mut e);
         self.parsed_nodes.borrow_mut().exprs.push(e.clone());
         e
     }
 
     pub fn parse_items(&self, cx: &RefactorCtxt, src: &str) -> Vec<P<Item>> {
         let is = driver::parse_items(cx.session(), src);
-        let is: Vec<P<Item>> = is.into_iter()
-            .flat_map(|i| self.process_parsed(i)).collect();
-        for i in &is {
+        for i in &mut is {
+            self.process_parsed(i);
             self.parsed_nodes.borrow_mut().items.push(i.clone());
         }
         is

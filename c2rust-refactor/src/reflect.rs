@@ -8,13 +8,12 @@ use rustc::hir::Node;
 use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
 use rustc::ty::{self, LazyConst, TyCtxt, GenericParamDefKind};
 use rustc::ty::subst::Subst;
-use rustc::ty::{self, GenericParamDefKind, TyCtxt};
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::DUMMY_SP;
 use syntax::symbol::keywords;
 
-use crate::ast_manip::fold_nodes;
+use crate::ast_manip::MutVisitNodes;
 use crate::command::{DriverCommand, Registry};
 use crate::driver::Phase;
 
@@ -329,7 +328,7 @@ fn register_test_reflect(reg: &mut Registry) {
             st.map_krate(|krate| {
                 use rustc::ty::TyKind;
 
-                mut_visit_nodes(krate, |e: &mut P<Expr>| {
+                MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
                     let ty = cx.node_type(e.id);
 
                     let e = if let TyKind::FnDef(def_id, ref substs) = ty.sty {

@@ -182,7 +182,7 @@ enum GenericBound {
 
 struct PolyTraitRef { trait_ref, span, bound_generic_params }
 
-struct FnDecl { inputs, output, variadic }
+struct FnDecl { inputs, output, c_variadic }
 struct FnHeader { unsafety, asyncness, constness, abi }
 #[rewrite_print]
 struct Arg { ty, pat, id }
@@ -283,7 +283,7 @@ enum Guard {
     If(expr),
 }
 #[match=custom] #[rewrite_print_recover] #[nonterminal]
-struct Block { #[mac_table_seq] stmts, id, rules, span, recovered }
+struct Block { #[mac_table_seq] stmts, id, rules, span }
 
 
 #[match=custom] #[mac_table_record] #[nonterminal]
@@ -442,7 +442,7 @@ enum Nonterminal {
 
 enum TokenTree {
     Token(sp, t),
-    Delimited(sp, d),
+    Delimited(sp, d, tts),
 }
 
 struct DelimSpan { open, close }

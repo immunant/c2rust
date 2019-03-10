@@ -10,7 +10,7 @@ use rustc::ty::subst::InternalSubsts;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{visit_nodes};
-use crate::ast_manip::fn_edit::fold_fns;
+use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
 use crate::driver::{Phase};
 use crate::matcher::{replace_expr, replace_stmts};

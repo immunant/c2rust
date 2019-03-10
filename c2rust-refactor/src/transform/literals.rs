@@ -3,7 +3,7 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use crate::ast_manip::fold_nodes;
+use crate::ast_manip::MutVisitNodes;
 use crate::command::{CommandState, Registry};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
@@ -24,7 +24,7 @@ pub struct ByteStrToStr;
 
 impl Transform for ByteStrToStr {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
-        mut_visit_nodes(krate, |e: P<Expr>| {
+        MutVisitNodes::visit(krate, |e: P<Expr>| {
             if !st.marked(e.id, "target") {
                 return e;
             }
@@ -65,7 +65,7 @@ pub struct RemoveNullTerminator;
 
 impl Transform for RemoveNullTerminator {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
-        mut_visit_nodes(krate, |e: P<Expr>| {
+        MutVisitNodes::visit(krate, |e: P<Expr>| {
             if !st.marked(e.id, "target") {
                 return e;
             }

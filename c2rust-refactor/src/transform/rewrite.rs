@@ -4,7 +4,7 @@ use syntax::symbol::Symbol;
 use crate::command::{CommandState, Registry};
 use crate::contains_mark::contains_mark;
 use crate::driver::Phase;
-use crate::matcher::{MatchCtxt, Subst, fold_match_with};
+use crate::matcher::{MatchCtxt, Subst, mut_visit_match_with};
 use crate::transform::Transform;
 use c2rust_ast_builder::IntoSymbol;
 use crate::RefactorCtxt;
@@ -51,7 +51,7 @@ impl Transform for RewriteExpr {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_expr(&self.pat);
         let repl = mcx.parse_expr(&self.repl);
-        fold_match_with(mcx, pat, krate, |ast, mcx| {
+        mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             if let Some(filter) = self.filter {
                 if !contains_mark(&*ast, filter, st) {
                     return ast;
@@ -97,7 +97,7 @@ impl Transform for RewriteTy {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_ty(&self.pat);
         let repl = mcx.parse_ty(&self.repl);
-        fold_match_with(mcx, pat, krate, |ast, mcx| {
+        mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             if let Some(filter) = self.filter {
                 if !contains_mark(&*ast, filter, st) {
                     return ast;
@@ -136,7 +136,7 @@ impl Transform for RewriteStmts {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_stmts(&self.pat);
         let repl = mcx.parse_stmts(&self.repl);
-        fold_match_with(mcx, pat, krate, |_, mcx| {
+        mut_visit_match_with(mcx, pat, krate, |_, mcx| {
             repl.clone().subst(st, cx, &mcx.bindings)
         })
     }
@@ -157,7 +157,7 @@ impl Transform for DebugMatchExpr {
         let mut init_mcx = MatchCtxt::new(st, cx);
         init_mcx.debug = true;
         let pat = init_mcx.parse_expr(&self.pat);
-        fold_match_with(init_mcx, pat, krate, |ast, _mcx| {
+        mut_visit_match_with(init_mcx, pat, krate, |ast, _mcx| {
             eprintln!("matched node {:?}", ast);
             ast
         })

@@ -14,13 +14,13 @@ use syntax_pos::Span;
 use smallvec::SmallVec;
 
 use c2rust_ast_builder::mk;
-use crate::ast_manip::{Fold, fold_nodes, fold_output_exprs};
-use crate::ast_manip::fn_edit::{fold_fns, visit_fns};
+use crate::ast_manip::{FlatMapNodes, MutVisit, MutVisitNodes, fold_output_exprs};
+use crate::ast_manip::fn_edit::{mut_visit_fns, visit_fns};
 use crate::ast_manip::lr_expr::{self, fold_expr_with_context, fold_exprs_with_context};
 use crate::command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
 use crate::driver::{self, Phase, parse_ty, parse_expr};
 use crate::illtyped::{IlltypedFolder, fold_illtyped};
-use crate::matcher::{Bindings, MatchCtxt, Subst, fold_match, fold_match_with, replace_expr};
+use crate::matcher::{Bindings, MatchCtxt, Subst, mut_visit_match, mut_visit_match_with, replace_expr};
 use crate::reflect::{self, reflect_tcx_ty};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
@@ -85,7 +85,7 @@ impl Transform for RetypeArgument {
             // see `x` again in the recursive call.  We keep track of which nodes have already been
             // rewritten so that we don't end up with a stack overflow.
             let mut rewritten_nodes = HashSet::new();
-            fl.block = mut_visit_nodes(fl.block.take(), |e: P<Expr>| {
+            fl.block = MutVisitNodes::visit(fl.block.take(), |e: P<Expr>| {
                 if let Some(hir_id) = cx.try_resolve_expr_to_hid(&e) {
                     if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
                         rewritten_nodes.insert(e.id);
@@ -104,7 +104,7 @@ impl Transform for RetypeArgument {
 
         // We don't need any protection against infinite recursion here, because it doesn't make
         // sense for `wrap` to call the function whose args we're changing.
-        let krate = mut_visit_nodes(krate, |e: P<Expr>| {
+        let krate = MutVisitNodes::visit(krate, |e: P<Expr>| {
             let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return e);
             let mod_args = match_or!([mod_fns.get(&callee)] Some(x) => x; return e);
             e.map(|mut e| {
@@ -191,7 +191,7 @@ impl Transform for RetypeReturn {
 
         // We don't need any protection against infinite recursion here, because it doesn't make
         // sense for `unwrap` to call the function whose args we're changing.
-        let krate = mut_visit_nodes(krate, |e: P<Expr>| {
+        let krate = MutVisitNodes::visit(krate, |e: P<Expr>| {
             let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return e);
             if !mod_fns.contains(&callee) {
                 return e;
@@ -254,7 +254,7 @@ impl Transform for RetypeStatic {
         // Modified statics, by DefId.
         let mut mod_statics: HashSet<DefId> = HashSet::new();
 
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -274,7 +274,7 @@ impl Transform for RetypeStatic {
             })]
         });
 
-        let krate = mut_visit_nodes(krate, |mut fi: ForeignItem| {
+        FlatMapNodes::visit(krate, |mut fi: ForeignItem| {
             if !st.marked(fi.id, "target") {
                 return smallvec![fi];
             }
@@ -296,36 +296,33 @@ impl Transform for RetypeStatic {
         // its own thing with them.  Note we assume the input AST is properly numbered.
         let mut handled_ids: HashSet<NodeId> = HashSet::new();
 
-        let krate = mut_visit_nodes(krate, |e: P<Expr>| {
+        MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             if !matches!([e.node] ExprKind::Assign(..), ExprKind::AssignOp(..)) {
-                return e;
+                return;
             }
 
-            e.map(|mut e| {
-                match e.node {
-                    ExprKind::Assign(ref lhs, ref mut rhs) |
-                    ExprKind::AssignOp(_, ref lhs, ref mut rhs) => {
-                        if cx.try_resolve_expr(lhs)
-                             .map_or(false, |did| mod_statics.contains(&did)) {
+            match e.node {
+                ExprKind::Assign(ref lhs, ref mut rhs) |
+                ExprKind::AssignOp(_, ref lhs, ref mut rhs) => {
+                    if cx.try_resolve_expr(lhs)
+                        .map_or(false, |did| mod_statics.contains(&did)) {
                             let mut bnd = Bindings::new();
                             bnd.add("__old", rhs.clone());
                             *rhs = rev_conv_assign.clone().subst(st, cx, &bnd);
                             handled_ids.insert(lhs.id);
                         }
-                    },
-                    _ => {},
-                }
-                e
-            })
+                },
+                _ => {},
+            }
         });
 
         // (3) Rewrite use sites of modified statics.
 
-        let krate = fold_exprs_with_context(krate, |e, ectx| {
+        fold_exprs_with_context(krate, |e, ectx| {
             if !matches!([e.node] ExprKind::Path(..)) ||
                handled_ids.contains(&e.id) ||
                !cx.try_resolve_expr(&e).map_or(false, |did| mod_statics.contains(&did)) {
-                return e;
+                return;
             }
 
             let mut bnd = Bindings::new();
@@ -333,15 +330,14 @@ impl Transform for RetypeStatic {
             match ectx {
                 lr_expr::Context::Rvalue => conv_rval.clone().subst(st, cx, &bnd),
                 lr_expr::Context::Lvalue => conv_lval.clone().subst(st, cx, &bnd),
-                lr_expr::Context::LvalueMut =>
-                    conv_lval_mut.clone().unwrap_or_else(
+                lr_expr::Context::LvalueMut => {
+                    *e = conv_lval_mut.clone().unwrap_or_else(
                         || panic!("need conv_lval_mut to handle LvalueMut expression `{}`",
                                   pprust::expr_to_string(&e)))
-                        .subst(st, cx, &bnd),
+                        .subst(st, cx, &bnd);
+                }
             }
         });
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {
@@ -464,7 +460,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: Crate, ret
         changed_funcs: HashSet::new(),
         changed_defs: HashMap::new(),
     };
-    let krate = krate.visit(&mut f);
+    krate.visit(&mut f);
     let ChangeTypeFolder { changed_inputs, changed_outputs, changed_funcs,
                            changed_defs, .. } = f;
 
@@ -509,7 +505,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: Crate, ret
         repl.subst(st, cx, &bnd)
     };
 
-    let krate = fold_top_exprs(krate, |e: P<Expr>| {
+    fold_top_exprs(krate, |e: &mut P<Expr>| {
         fold_expr_with_context(e, lr_expr::Context::Rvalue, |e, context| {
             match e.node {
                 ExprKind::Path(..) => {
@@ -627,7 +623,7 @@ impl Transform for BitcastRetype {
             // and `U::SomeTy` could be totally unrelated).
 
             let mut matched = false;
-            let new_ty = fold_match(st, cx, pat.clone(), ty.clone(), |_, mcx| {
+            let new_ty = mut_visit_match(st, cx, pat.clone(), ty.clone(), |_, mcx| {
                 matched = true;
                 repl.clone().subst(st, cx, &mcx.bindings)
             });
@@ -1012,7 +1008,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         // If we find any remaining type errors, restore the explicit type
         // annotation to see if that will fix the error.
         let mut local_type_restored = false;
-        let krate = mut_visit_nodes(krate, |local: P<Local>| {
+        let krate = MutVisitNodes::visit(krate, |local: P<Local>| {
             local.map(|local| {
                 let ty = self.cx.node_type(local.id);
                 if let TyKind::Error = ty.sty {
@@ -1486,7 +1482,7 @@ impl Transform for RemoveRedundantCasts {
         let tcx = cx.ty_ctxt();
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_expr("$e:Expr as $t:Ty");
-        fold_match_with(mcx, pat, krate, |ast, mcx| {
+        mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             let e = mcx.bindings.get::<_, P<Expr>>("$e").unwrap();
             let e_ty = cx.adjusted_node_type(e.id);
             let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);

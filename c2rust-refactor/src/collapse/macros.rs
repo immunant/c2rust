@@ -6,6 +6,7 @@
 //! added in different places: macro invocations in `CollapseMacros`, macro arguments in
 //! `token_rewrite_map`, and nodes outside of macros in `ReplaceTokens`.
 use std::collections::{HashMap, HashSet, BTreeMap};
+use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::source_map::{Span, BytePos};
@@ -20,7 +21,7 @@ use super::mac_table::{MacTable, InvocId, InvocKind};
 use super::nt_match::{self, NtMatch};
 use super::root_callsite_span;
 
-use crate::ast_manip::{AstEquiv, ListNodeIds};
+use crate::ast_manip::{AstEquiv, ListNodeIds, MutVisit};
 
 
 
@@ -56,8 +57,10 @@ impl<'a> CollapseMacros<'a> {
         for (span, nt) in nt_match::match_nonterminals(old, new) {
             trace!("  got {} at {:?}",
                    ::syntax::print::pprust::token_to_string(
-                       &Token::interpolated(nt.clone())),
-                       span);
+                       &Token::Interpolated(Lrc::new(nt.clone()))
+                   ),
+                   span,
+            );
             self.token_rewrites.push(RewriteItem { invoc_id, span, nt });
         }
     }
@@ -77,12 +80,12 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 let new_e = mk().id(e.id).span(root_callsite_span(e.span)).mac_expr(mac);
                 trace!("collapse: {:?} -> {:?}", e, new_e);
                 self.record_matched_ids(e.id, new_e.id);
-                return new_e;
+                *e = new_e;
             } else {
                 warn!("bad macro kind for expr: {:?}", info.invoc);
             }
         }
-        e.map(|e| mut_visit::noop_visit_expr(e, self))
+        mut_visit::noop_visit_expr(e, self)
     }
 
     fn visit_pat(&mut self, p: &mut P<Pat>) {
@@ -94,7 +97,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 let new_p = mk().id(p.id).span(root_callsite_span(p.span)).mac_pat(mac);
                 trace!("collapse: {:?} -> {:?}", p, new_p);
                 self.record_matched_ids(p.id, new_p.id);
-                return new_p;
+                *p = new_p;
             } else {
                 warn!("bad macro kind for pat: {:?}", info.invoc);
             }
@@ -111,7 +114,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 let new_t = mk().id(t.id).span(root_callsite_span(t.span)).mac_ty(mac);
                 trace!("collapse: {:?} -> {:?}", t, new_t);
                 self.record_matched_ids(t.id, new_t.id);
-                return new_t;
+                *t = new_t;
             } else {
                 warn!("bad macro kind for ty: {:?}", info.invoc);
             }
@@ -379,7 +382,7 @@ fn rewrite_tokens(invoc_id: InvocId,
 
         if let Some(item) = rewrites.remove(&tt.span().lo()) {
             assert!(item.invoc_id == invoc_id);
-            new_tts.push(TokenTree::Token(item.span, Token::interpolated(item.nt)));
+            new_tts.push(TokenTree::Token(item.span, Token::Interpolated(Lrc::new(item.nt))));
             ignore_until = Some(item.span.hi());
             continue;
         }
@@ -438,22 +441,16 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 // NB: Don't walk, so we never run `self.new_id` on `e.id`.  matched_ids entries
                 // for macro invocations get handled by the CollapseMacros pass.
-                return e.map(|mut e| {
-                    expect!([e.node] ExprKind::Mac(ref mut mac) => mac.node.tts = new_tts);
-                    e
-                });
+                expect!([e.node] ExprKind::Mac(ref mut mac) => mac.node.tts = new_tts);
             }
         }
-        e.map(|e| mut_visit::noop_visit_expr(e, self))
+        mut_visit::noop_visit_expr(e, self)
     }
 
     fn visit_pat(&mut self, p: &mut P<Pat>) {
         if let Some(invoc_id) = self.mac_table.get(p.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
-                return p.map(|mut p| {
-                    expect!([p.node] PatKind::Mac(ref mut mac) => mac.node.tts = new_tts);
-                    p
-                });
+                expect!([p.node] PatKind::Mac(ref mut mac) => mac.node.tts = new_tts);
             }
         }
         mut_visit::noop_visit_pat(p, self)
@@ -462,10 +459,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
     fn visit_ty(&mut self, t: &mut P<Ty>) {
         if let Some(invoc_id) = self.mac_table.get(t.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
-                return t.map(|mut t| {
-                    expect!([t.node] TyKind::Mac(ref mut mac) => mac.node.tts = new_tts);
-                    t
-                });
+                expect!([t.node] TyKind::Mac(ref mut mac) => mac.node.tts = new_tts);
             }
         }
         mut_visit::noop_visit_ty(t, self)
@@ -535,13 +529,13 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
     }
 
     fn visit_id(&mut self, i: &mut NodeId) {
-        self.matched_ids.push((i, i));
+        self.matched_ids.push((*i, *i));
     }
 }
 
 
-pub fn collapse_macros(mut krate: Crate,
-                       mac_table: &MacTable) -> (Crate, Vec<(NodeId, NodeId)>) {
+pub fn collapse_macros(krate: &mut Crate,
+                       mac_table: &MacTable) -> Vec<(NodeId, NodeId)> {
     let mut matched_ids = Vec::new();
 
     let token_rewrites: Vec<RewriteItem>;
@@ -552,7 +546,7 @@ pub fn collapse_macros(mut krate: Crate,
             token_rewrites: Vec::new(),
             matched_ids: &mut matched_ids,
         };
-        krate = krate.visit(&mut collapse_macros);
+        krate.visit(&mut collapse_macros);
         token_rewrites = collapse_macros.token_rewrites;
     }
 
@@ -563,8 +557,8 @@ pub fn collapse_macros(mut krate: Crate,
               ::syntax::print::pprust::tokens_to_string(v.clone().into()));
     }
 
-    krate = krate.visit(&mut ReplaceTokens {
+    krate.visit(&mut ReplaceTokens {
         mac_table, new_tokens, matched_ids: &mut matched_ids });
 
-    (krate, matched_ids)
+    matched_ids
 }

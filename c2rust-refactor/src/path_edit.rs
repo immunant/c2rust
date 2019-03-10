@@ -5,7 +5,7 @@ use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
-use syntax::util::move_map::MoveMap;
+use syntax::util::map_in_place::MapInPlace;
 
 use crate::ast_manip::util::split_uses;
 use crate::ast_manip::MutVisit;
@@ -116,7 +116,7 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
         }
     }
 
-    pub fn alter_use_path(&mut self, mut item: P<Item>, hir: &hir::Item) -> P<Item> {
+    pub fn alter_use_path(&mut self, item: &mut P<Item>, hir: &hir::Item) {
         // We are ignoring the extra namespaces in the Simple case. If we
         // need to handle these we can look up HIR nodes with the other
         // NodeIds in Simple().
@@ -127,8 +127,6 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
             let (_, new_path) = (self.callback)(id, None, tree.prefix.clone(), &hir_path.def);
             tree.prefix = new_path;
         }
-
-        item
     }
 
     /// Common implementation of path rewriting.  If the resolved `Def` of the path is available,
@@ -228,25 +226,25 @@ impl<'a, 'tcx, F> MutVisitor for ResolvedPathFolder<'a, 'tcx, F>
         mut_visit::noop_visit_ty(t, self)
     }
 
-    fn fold_item(&mut self, item: P<Item>) -> SmallVec<[P<Item>; 1]> {
+    fn flat_map_item(&mut self, item: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let v = match item.node {
             ItemKind::Use(..) => {
                 // We split nested uses into simple uses to make path rewriting
                 // of use statements simpler.
-                split_uses(item).move_map(|item| {
+                let uses = split_uses(item);
+                for item in uses.iter_mut() {
                     if let Some(node) = self.cx.hir_map().find(item.id) {
                         let hir = expect!([node] hir::Node::Item(i) => i);
                         self.alter_use_path(item, hir)
-                    } else {
-                        debug!("Couldn't find HIR node for {:?}", item);
-                        item
                     }
-                })
+                }
+                uses
             }
             _ => smallvec![item],
         };
 
-        v.move_flat_map(|item| fold::noop_fold_item(item, self))
+        v.flat_map_in_place(|item| mut_visit::noop_flat_map_item(item, self));
+        v
     }
 }
 

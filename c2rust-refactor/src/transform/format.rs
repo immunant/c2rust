@@ -11,7 +11,7 @@ use syntax::tokenstream::TokenTree;
 use syntax_pos::Span;
 
 use c2rust_ast_builder::mk;
-use crate::ast_manip::{fold_nodes, visit_nodes};
+use crate::ast_manip::{MutVisitNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
@@ -49,7 +49,7 @@ pub struct ConvertFormatArgs;
 
 impl Transform for ConvertFormatArgs {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
-        mut_visit_nodes(krate, |e: P<Expr>| {
+        MutVisitNodes::visit(krate, |e: P<Expr>| {
             let fmt_idx = match e.node {
                 ExprKind::Call(_, ref args) =>
                     args.iter().position(|e| st.marked(e.id, "target")),
@@ -234,7 +234,7 @@ impl Transform for ConvertPrintfs {
                 }
             }
         });
-        mut_visit_nodes(krate, |s: Stmt| {
+        MutVisitNodes::visit(krate, |s: Stmt| {
             match s.node {
                 StmtKind::Semi(ref expr) => {
                     if let ExprKind::Call(ref f, ref args) = expr.node {

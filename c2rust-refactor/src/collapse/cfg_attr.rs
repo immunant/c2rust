@@ -67,60 +67,55 @@ struct RestoreCfgAttrs {
 }
 
 impl RestoreCfgAttrs {
-    fn restore<T: HasAttrs + GetNodeId>(&mut self, x: T) -> T {
+    fn restore<T: HasAttrs + GetNodeId>(&mut self, x: &mut T) {
         if let Some(cfg_attrs) = self.node_attrs.get(&x.get_node_id()) {
             info!("RESTORE ATTRS {:?} onto {:?}",
                   cfg_attrs.iter().map(|a| ::syntax::print::pprust::attr_to_string(a))
                     .collect::<Vec<_>>(),
                   x.attrs().iter().map(|a| ::syntax::print::pprust::attr_to_string(a))
                     .collect::<Vec<_>>());
-            let x2 =
-            x.map_attrs(|mut attrs| {
+            x.visit_attrs(|attrs| {
                 // Drop attrs that were produced by evaluation of one of the `#[cfg_attr]`s.
                 attrs.retain(|a| !cfg_attrs.iter().any(|ca| ca.span.contains(a.span)));
                 // Now put the #[cfg_attr]s themselves back in.
                 attrs.extend(cfg_attrs.iter().cloned());
-                attrs
             });
             info!("  attrs changed to {:?}",
-                  x2.attrs().iter().map(|a| ::syntax::print::pprust::attr_to_string(a))
+                  x.attrs().iter().map(|a| ::syntax::print::pprust::attr_to_string(a))
                     .collect::<Vec<_>>());
-            x2
-        } else {
-            x
         }
     }
 }
 
 impl MutVisitor for RestoreCfgAttrs {
-    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        let i = self.restore(i);
-        mut_visit::noop_flat_map_item(i)
+    fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+        self.restore(&mut i);
+        mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn flat_map_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
-        let i = self.restore(i);
-        mut_visit::noop_flat_map_impl_item(i)
+    fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+        self.restore(&mut i);
+        mut_visit::noop_flat_map_impl_item(i, self)
     }
 
-    fn flat_map_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> {
-        let i = self.restore(i);
-        mut_visit::noop_flat_map_trait_item(i)
+    fn flat_map_trait_item(&mut self, mut i: TraitItem) -> SmallVec<[TraitItem; 1]> {
+        self.restore(&mut i);
+        mut_visit::noop_flat_map_trait_item(i, self)
     }
 
-    fn flat_map_foreign_item(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
-        let i = self.restore(i);
-        mut_visit::noop_flat_map_foreign_item(i)
+    fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+        self.restore(&mut i);
+        mut_visit::noop_flat_map_foreign_item(i, self)
     }
 
-    fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
-        let s = self.restore(s);
-        mut_visit::noop_flat_map_stmt(s)
+    fn flat_map_stmt(&mut self, mut s: Stmt) -> SmallVec<[Stmt; 1]> {
+        self.restore(&mut s);
+        mut_visit::noop_flat_map_stmt(s, self)
     }
 
     fn visit_expr(&mut self, e: &mut P<Expr>) {
-        *e = self.restore(e);
-        mut_visit::noop_visit_expr(e)
+        self.restore(e);
+        mut_visit::noop_visit_expr(e, self)
     }
 
     fn visit_mac(&mut self, mac: &mut Mac) {
@@ -130,7 +125,7 @@ impl MutVisitor for RestoreCfgAttrs {
     // TODO: extend this impl with the remaining node types
 }
 
-pub fn restore_cfg_attrs(krate: Crate, node_attrs: HashMap<NodeId, Vec<Attribute>>) -> Crate {
+pub fn restore_cfg_attrs(krate: &mut Crate, node_attrs: HashMap<NodeId, Vec<Attribute>>) {
     let mut f = RestoreCfgAttrs { node_attrs };
     krate.visit(&mut f)
 }

@@ -5,7 +5,7 @@ use c2rust_ast_builder::mk;
 use crate::command::{CommandState, Registry};
 use crate::RefactorCtxt;
 use crate::driver::{self, Phase};
-use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, fold_match_with};
+use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, mut_visit_match_with};
 use crate::transform::Transform;
 
 /// # `char_literals` Command
@@ -21,13 +21,13 @@ struct CharLits {
 
 impl Transform for CharLits {
     fn min_phase(&self) -> Phase { Phase::Phase2 }
-    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &driver::Ctxt) {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
 
         let pattern = driver::parse_expr(cx.session(), "__number as libc::c_char");
         let mut mcx = MatchCtxt::new(st, cx);
         mcx.set_type("__number", BindingType::Expr);
 
-        let krate = fold_match_with(mcx, pattern.clone(), krate, |e, mcx| {
+        let krate = mut_visit_match_with(mcx, pattern.clone(), krate, |e, mcx| {
             let field: &P<Expr> = mcx.bindings.get::<_, P<Expr>>("__number").unwrap();
             if let ExprKind::Lit(ref l) = field.node {
                 if let LitKind::Int(i, _) = l.node {

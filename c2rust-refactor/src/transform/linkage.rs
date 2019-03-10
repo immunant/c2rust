@@ -5,7 +5,7 @@ use syntax::attr;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use crate::ast_manip::{fold_nodes, visit_nodes};
+use crate::ast_manip::{MutVisitNodes, visit_nodes};
 use crate::ast_manip::fn_edit::{visit_fns, FnKind};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase};
@@ -90,7 +90,7 @@ impl Transform for LinkFuncs {
         });
 
         // (4) Remove unused externs
-        let krate = mut_visit_nodes(krate, |mut fm: ForeignMod| {
+        let krate = MutVisitNodes::visit(krate, |mut fm: ForeignMod| {
             fm.items.retain(|i| {
                 let def_id = cx.node_def_id(i.id);
                 // Drop any items that resolve to a symbol in another module.
@@ -259,7 +259,7 @@ impl Transform for CanonicalizeStructs {
         // Map removed struct IDs to their replacements.
         let mut removed_id_map = HashMap::new();
 
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             let should_remove = match i.node {
                 ItemKind::Struct(..) => {
                     if let Some(&canon_def_id) = canon_ids.get(&i.ident.name) {
@@ -286,7 +286,7 @@ impl Transform for CanonicalizeStructs {
 
         // (3) Remove impls for removed structs.
 
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             let should_remove = match i.node {
                 ItemKind::Impl(_, _, _, _, _, ref ty, _) => {
                     if let Some(ty_def_id) = cx.try_resolve_ty(ty) {

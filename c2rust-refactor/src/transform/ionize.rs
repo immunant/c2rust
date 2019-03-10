@@ -7,12 +7,12 @@ use syntax::mut_visit::MutVisitor;
 use syntax::ptr::P;
 
 use c2rust_ast_builder::mk;
-use crate::ast_manip::{Fold, visit_nodes, fold_nodes};
+use crate::ast_manip::{MutVisit, MutVisitNodes, visit_nodes};
 use crate::ast_manip::lr_expr::{self, fold_expr_with_context};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_impl_items, parse_stmts, parse_expr};
 use crate::reflect::reflect_def_path;
-use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, fold_match_with};
+use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, mut_visit_match_with};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
 
@@ -107,7 +107,7 @@ impl Transform for Ionize {
         mcx.set_type("__val", BindingType::Expr);
 
         // Replace union assignment with enum assignment
-        let krate = fold_match_with(mcx, outer_assignment_pat, krate, |e, mcx| {
+        let krate = mut_visit_match_with(mcx, outer_assignment_pat, krate, |e, mcx| {
             let field = mcx.bindings.get::<_, Ident>("__field").unwrap();
             let _expr = mcx.bindings.get::<_, P<Expr>>("__expr").unwrap();
             let val = mcx.bindings.get::<_, P<Expr>>("__val").unwrap();
@@ -153,7 +153,7 @@ impl Transform for Ionize {
         });
 
         // Replace union with enum
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             match cx.hir_map().opt_local_def_id(i.id) {
                 Some(ref def_id) if targets.contains(def_id) => {}
                 _ => return smallvec![i]

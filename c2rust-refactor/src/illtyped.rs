@@ -6,7 +6,7 @@ use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 
-use crate::ast_manip::Fold;
+use crate::ast_manip::MutVisit;
 use crate::RefactorCtxt;
 
 

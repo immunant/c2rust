@@ -4,11 +4,11 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use crate::ast_manip::{fold_nodes, fold_modules};
-use crate::ast_manip::fn_edit::fold_fns;
+use crate::ast_manip::{MutVisitNodes, fold_modules};
+use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::command::{CommandState, Registry};
 use crate::driver::{parse_expr};
-use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, fold_match_with};
+use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, mut_visit_match_with};
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
 use c2rust_ast_builder::{mk, IntoSymbol};
@@ -116,7 +116,7 @@ impl Transform for CollectToStruct {
         init_mcx.bindings.add(
             "__s", Ident::with_empty_ctxt((&self.instance_name as &str).into_symbol()));
 
-        let krate = fold_match_with(init_mcx, ident_pat, krate, |orig, mcx| {
+        let krate = mut_visit_match_with(init_mcx, ident_pat, krate, |orig, mcx| {
             let static_id = match old_statics.get(&mcx.bindings.get::<_, Ident>("__x").unwrap().name) {
                 Some(&x) => x,
                 None => return,
@@ -221,7 +221,7 @@ impl Transform for Localize {
         }
         let mut statics = HashMap::new();
 
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -331,7 +331,7 @@ impl Transform for Localize {
                 });
 
                 // Update uses of statics.
-                fl.block = mut_visit_nodes(fl.block, |e: P<Expr>| {
+                fl.block = MutVisitNodes::visit(fl.block, |e: P<Expr>| {
                     if let Some(def_id) = cx.try_resolve_expr(&e) {
                         if let Some(info) = statics.get(&def_id) {
                             return mk().unary_expr("*", mk().ident_expr(info.arg_name));
@@ -341,7 +341,7 @@ impl Transform for Localize {
                 });
 
                 // Update calls to other marked functions.
-                fl.block = mut_visit_nodes(fl.block, |e: P<Expr>| {
+                fl.block = MutVisitNodes::visit(fl.block, |e: P<Expr>| {
                     match e.node {
                         ExprKind::Call(_, _) => {},
                         _ => return e,
@@ -368,7 +368,7 @@ impl Transform for Localize {
 
             } else {
                 // Update calls only.
-                fl.block = mut_visit_nodes(fl.block, |e: P<Expr>| {
+                fl.block = MutVisitNodes::visit(fl.block, |e: P<Expr>| {
                     match e.node {
                         ExprKind::Call(_, _) => {},
                         _ => return e,
@@ -455,7 +455,7 @@ impl Transform for StaticToLocal {
         }
         let mut statics = HashMap::new();
 
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }

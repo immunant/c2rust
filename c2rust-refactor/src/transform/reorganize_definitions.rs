@@ -13,7 +13,7 @@ use syntax::symbol::keywords;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::util::{join_visibility, is_relative_path, namespace, split_uses};
-use crate::ast_manip::{AstEquiv, fold_nodes, visit_nodes};
+use crate::ast_manip::{AstEquiv, MutVisitNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase};
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -130,7 +130,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         krate: Crate,
         module_items: &mut HashMap<NodeId, ModuleDefines<'a, 'tcx>>,
     ) -> Crate {
-        fold_nodes(krate, |item: P<Item>| {
+        MutVisitNodes::visit(krate, |item: P<Item>| {
             if has_source_header(&item.attrs) {
                 let header_item = item;
                 if let ItemKind::Mod(_) = &header_item.node {
@@ -147,7 +147,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         if let ItemKind::ForeignMod(m) = &item.node {
                             for foreign_item in &m.items {
                                 let dest_path = mk().path(vec![
-                                    keywords::CrateRoot.ident(),
+                                    keywords::DollarCrate.ident(),
                                     dest_module_ident,
                                     foreign_item.ident,
                                 ]);
@@ -162,7 +162,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         // a simple path in the crate root and it is flat,
                         // i.e. has no submodules which contain target items.
                         let dest_path = mk().path(vec![
-                            keywords::CrateRoot.ident(),
+                            keywords::DollarCrate.ident(),
                             dest_module_ident,
                             item.ident,
                         ]);
@@ -189,7 +189,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     /// Add items in `module_items` to their respective modules and create any
     /// new modules.
     fn move_items(&self, krate: Crate, mut module_items: HashMap<NodeId, ModuleDefines>) -> Crate {
-        let mut krate = fold_nodes(krate, |item: P<Item>| {
+        let mut krate = MutVisitNodes::visit(krate, |item: P<Item>| {
             smallvec![if let Some(new_defines) = module_items.remove(&item.id) {
                 new_defines.move_into_module(item)
             } else {
@@ -237,7 +237,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         });
 
         // Remove use statements that now refer to their self module.
-        fold_nodes(krate, |mut item: P<Item>| {
+        MutVisitNodes::visit(krate, |mut item: P<Item>| {
             let parent_id = item.id;
             if let ItemKind::Mod(m) = &mut item.node {
                 let mut uses: HashMap<Ident, Path> = HashMap::new();
@@ -615,7 +615,7 @@ fn is_std(attrs: &Vec<Attribute>) -> bool {
 }
 
 impl Transform for ReorganizeDefinitions {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let mut reorg = Reorganizer::new(st, cx);
         reorg.run(krate)
     }

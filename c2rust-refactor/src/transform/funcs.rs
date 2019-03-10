@@ -10,10 +10,10 @@ use syntax::ptr::P;
 use smallvec::SmallVec;
 
 use c2rust_ast_builder::{mk, IntoSymbol};
-use crate::ast_manip::{fold_nodes, fold_modules, visit_nodes, Fold};
+use crate::ast_manip::{MutVisitNodes, fold_modules, visit_nodes, MutVisit};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
-use crate::matcher::{BindingType, MatchCtxt, Subst, fold_match_with};
+use crate::matcher::{BindingType, MatchCtxt, Subst, mut_visit_match_with};
 use crate::path_edit::{fold_resolved_paths, fold_resolved_paths_with_id};
 use crate::transform::Transform;
 use crate::util::Lone;
@@ -43,7 +43,7 @@ impl Transform for ToMethod {
 
         let mut dest = None;
 
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
             if !st.marked(i.id, "dest") ||
                !matches!([i.node] ItemKind::Impl(_, _, _, _, None, _, _)) {
@@ -192,7 +192,7 @@ impl Transform for ToMethod {
 
         let mut fns = Some(fns);
 
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             if i.id != dest.id || fns.is_none() {
                 return smallvec![i];
             }
@@ -230,7 +230,7 @@ impl Transform for ToMethod {
 
         // (5) Find all uses of marked functions, and rewrite them into method calls.
 
-        let krate = mut_visit_nodes(krate, |e: P<Expr>| {
+        let krate = MutVisitNodes::visit(krate, |e: P<Expr>| {
             if !matches!([e.node] ExprKind::Call(..)) {
                 return e;
             }
@@ -289,7 +289,7 @@ pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        mut_visit_nodes(krate, |mut b: P<Block>| {
+        MutVisitNodes::visit(krate, |mut b: P<Block>| {
             if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
                 let parent = cx.hir_map().get_parent_did(b.id);
                 let result = cx.ty_ctxt().unsafety_check_result(parent);
@@ -463,7 +463,7 @@ impl Transform for WrapExtern {
 
         // (2) Generate wrappers in the destination module.
         let mut dest_path = None;
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             if !st.marked(i.id, "dest") {
                 return smallvec![i];
             }
@@ -577,7 +577,7 @@ impl Transform for WrapApi {
         let mut wrapper_map = HashMap::new();
 
         // Add wrapper functions
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -794,7 +794,7 @@ impl Transform for Abstract {
             init_mcx.set_type(name.name, BindingType::Ty);
         }
 
-        let krate = fold_match_with(init_mcx, pat, krate, |_ast, mut mcx| {
+        let krate = mut_visit_match_with(init_mcx, pat, krate, |_ast, mut mcx| {
             for name in &type_args {
                 if mcx.bindings.get::<_, P<Ty>>(name.name).is_none() {
                     mcx.bindings.add(name.name, mk().infer_ty());

@@ -121,7 +121,7 @@ impl MutVisitor for FixAttrs {
 }
 
 
-pub fn fix_format<T: MutVisit>(node: T) {
+pub fn fix_format<T: MutVisit>(node: &mut T) {
     let mut fix_format = FixFormat {
         parent_span: DUMMY_SP,
         in_format: false,

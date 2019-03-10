@@ -9,10 +9,10 @@ use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
 use c2rust_ast_builder::mk;
-use crate::ast_manip::{fold_nodes, fold_blocks, visit_nodes};
+use crate::ast_manip::{MutVisitNodes, fold_blocks, visit_nodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase};
-use crate::matcher::{MatchCtxt, Subst, fold_match_with, replace_stmts};
+use crate::matcher::{MatchCtxt, Subst, mut_visit_match_with, replace_stmts};
 use crate::transform::Transform;
 use rustc::middle::cstore::CrateStore;
 use crate::RefactorCtxt;
@@ -184,7 +184,7 @@ impl Transform for SinkLets {
 
         // (4) Place new locals in the appropriate locations.
 
-        let krate = mut_visit_nodes(krate, |b: P<Block>| {
+        let krate = MutVisitNodes::visit(krate, |b: P<Block>| {
             let place_here = match_or!([local_placement.get(&b.id)]
                                        Some(x) => x; return b);
 
@@ -210,7 +210,7 @@ impl Transform for SinkLets {
             .map(|(_, info)| info.old_node_id)
             .collect::<HashSet<_>>();
 
-        let krate = mut_visit_nodes(krate, |b: P<Block>| {
+        let krate = MutVisitNodes::visit(krate, |b: P<Block>| {
             b.map(|mut b| {
                 b.stmts.retain(|s| {
                     match s.node {
@@ -447,7 +447,7 @@ pub struct UninitToDefault;
 
 impl Transform for UninitToDefault {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        mut_visit_nodes(krate, |l: P<Local>| {
+        MutVisitNodes::visit(krate, |l: P<Local>| {
             if !l.init.as_ref().map_or(false, |e| is_uninit_call(cx, e)) {
                 return l;
             }
@@ -492,7 +492,7 @@ impl Transform for RemoveRedundantLetTypes {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_stmts("let $pat:Pat : $ty:Ty = $init:Expr;");
         let repl = mcx.parse_stmts("let $pat = $init;");
-        fold_match_with(mcx, pat, krate, |ast, mcx| {
+        mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             let e = mcx.bindings.get::<_, P<Expr>>("$init").unwrap();
             let e_ty = cx.adjusted_node_type(e.id);
             let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);

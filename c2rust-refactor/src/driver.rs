@@ -7,7 +7,7 @@ use std::rc::Rc;
 use rustc::hir::map as hir_map;
 use rustc::ty::{TyCtxt, AllArenas};
 use rustc::ty::query::Providers;
-use rustc::session::{self, Session};
+use rustc::session::{self, DiagnosticOutput, Session};
 use rustc::session::config::{Input, Options};
 use rustc_driver;
 use rustc_driver::driver::{self, CompileController};
@@ -245,7 +245,7 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
 
     // Immediately fix up the attr spans, since during expansion, any `derive` attrs will be
     // removed.
-    let krate = span_fix::fix_attr_spans(krate);
+    span_fix::fix_attr_spans(krate);
 
     if phase == Phase::Phase1 {
         let cx = RefactorCtxt::new_phase_1(&session, &cstore);
@@ -265,7 +265,7 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
     ).unwrap_or_else(|e| panic!("Error running compiler phase 2: {:?}", e));
     let krate = expand_result.expanded_crate;
 
-    let arenas = AllArenas::new();
+    let mut arenas = AllArenas::new();
 
     let hir_map = hir_map::map_crate(&session, &cstore, &mut expand_result.hir_forest, &expand_result.defs);
 
@@ -278,11 +278,11 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
     let _ = driver::phase_3_run_analysis_passes(
         &*codegen_backend,
         &control,
-        &session, &cstore, hir_map, expand_result.analysis, expand_result.resolutions,
-        &arenas, &crate_name, &outputs,
-        |tcx, _analysis, _incremental_hashes_map, _result| {
+        &session, &cstore, hir_map, expand_result.resolutions,
+        &mut arenas, &crate_name, &outputs,
+        |tcx, _rcv, _result| {
             if phase == Phase::Phase3 {
-                let cx = RefactorCtxt::new_phase_3(&session, &cstore, &tcx.hir, tcx, &arenas.interner);
+                let cx = RefactorCtxt::new_phase_3(&session, &cstore, tcx.hir(), tcx, &arenas.interner);
                 result = Some(func(krate, cx));
                 return;
             }
@@ -334,10 +334,8 @@ fn build_session(sopts: Options,
     // collide with `DUMMY_SP` (which is `0 .. 0`).
     source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
-    let emitter_dest = None;
-
     let sess = session::build_session_with_source_map(
-        sopts, in_path, descriptions, source_map, emitter_dest
+        sopts, in_path, descriptions, source_map, DiagnosticOutput::Default, Default::default(),
     );
 
     let codegen_backend = get_codegen_backend(&sess);
@@ -360,14 +358,13 @@ fn rebuild_session(old_session: &Session) -> (Session, CStore, Box<CodegenBacken
         source_map
     };
 
-    let emitter_dest = None;
-
     let session = session::build_session_with_source_map(
         old_session.opts.clone(),
         old_session.local_crate_source_file.clone(),
         descriptions,
         source_map,
-        emitter_dest,
+        DiagnosticOutput::Default,
+        Default::default(),
     );
 
     let codegen_backend = get_codegen_backend(&session);
@@ -391,7 +388,10 @@ pub fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
 pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
     let mut p = make_parser(sess, "<expr>", src);
     match p.parse_expr() {
-        Ok(expr) => remove_paren(expr),
+        Ok(mut expr) => {
+            remove_paren(&mut expr);
+            expr
+        }
         Err(db) => emit_and_panic(db, "expr"),
     }
 }
@@ -399,7 +399,10 @@ pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
 pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     let mut p = make_parser(sess, "<pat>", src);
     match p.parse_pat(None) {
-        Ok(pat) => remove_paren(pat),
+        Ok(mut pat) => {
+            remove_paren(&mut pat);
+            pat
+        }
         Err(db) => emit_and_panic(db, "pat"),
     }
 }
@@ -407,7 +410,10 @@ pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
 pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
     let mut p = make_parser(sess, "<ty>", src);
     match p.parse_ty() {
-        Ok(ty) => remove_paren(ty),
+        Ok(mut ty) => {
+            remove_paren(&mut ty);
+            ty
+        }
         Err(db) => emit_and_panic(db, "ty"),
     }
 }
@@ -417,7 +423,10 @@ pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, "<stmt>", &format!("{{ {} }}", src));
     match p.parse_block() {
-        Ok(blk) => blk.into_inner().stmts.into_iter().map(|s| remove_paren(s).lone()).collect(),
+        Ok(blk) => blk.into_inner().stmts.into_iter().map(|mut s| {
+            remove_paren(&mut s);
+            s.lone()
+        }).collect(),
         Err(db) => emit_and_panic(db, "stmts"),
     }
 }
@@ -427,7 +436,10 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
     let mut items = Vec::new();
     loop {
         match p.parse_item() {
-            Ok(Some(item)) => items.push(remove_paren(item).lone()),
+            Ok(Some(mut item)) => {
+                remove_paren(&mut item);
+                items.push(item.lone());
+            }
             Ok(None) => break,
             Err(db) => emit_and_panic(db, "items"),
         }
@@ -475,9 +487,10 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
     };
 
     match p.parse_block() {
-        Ok(block) => {
-            let block = remove_paren(block);
-            block.map(|b| Block { rules, ..b })
+        Ok(mut block) => {
+            remove_paren(&mut block);
+            block.rules = rules;
+            block
         },
         Err(db) => emit_and_panic(db, "block"),
     }
@@ -494,7 +507,10 @@ fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
 pub fn parse_arg(sess: &Session, src: &str) -> Arg {
     let mut p = make_parser(sess, "<arg>", src);
     match parse_arg_inner(&mut p) {
-        Ok(arg) => remove_paren(arg),
+        Ok(mut arg) => {
+            remove_paren(&mut arg);
+            arg
+        }
         Err(db) => emit_and_panic(db, "arg"),
     }
 }

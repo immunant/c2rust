@@ -221,14 +221,14 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for TopExprFolder<F> {
     }
 }
 
-fn fold_top_exprs<T, F>(x: T, callback: F)
+fn fold_top_exprs<T, F>(x: &mut T, callback: F)
     where T: MutVisit, F: FnMut(&mut P<Expr>)
 {
     let mut f = TopExprFolder { callback: callback, in_expr: false };
     x.visit(&mut f)
 }
 
-pub fn fold_exprs_with_context<T, F>(x: T, mut callback: F)
+pub fn fold_exprs_with_context<T, F>(x: &mut T, mut callback: F)
     where T: MutVisit, F: FnMut(&mut P<Expr>, Context)
 {
     fold_top_exprs(x, |e| {

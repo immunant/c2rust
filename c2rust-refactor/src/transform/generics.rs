@@ -3,7 +3,7 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use crate::ast_manip::fold_nodes;
+use crate::ast_manip::MutVisitNodes;
 use crate::command::{CommandState, Registry};
 use crate::driver::{parse_ty};
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -78,7 +78,7 @@ impl Transform for GeneralizeItems {
         let mut replacement_ty = self.replacement_ty.as_ref()
             .map(|s| parse_ty(cx.session(), s));
 
-        let krate = mut_visit_nodes(krate, |ty: P<Ty>| {
+        let krate = MutVisitNodes::visit(krate, |ty: P<Ty>| {
             if !st.marked(ty.id, "target") {
                 return ty;
             }
@@ -97,7 +97,7 @@ impl Transform for GeneralizeItems {
         // (2) Add parameters to rewritten items.
 
         let mut item_def_ids = HashSet::new();
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }

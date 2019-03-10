@@ -14,8 +14,8 @@ use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream, DelimSpan};
 use smallvec::SmallVec;
 
-use crate::ast_manip::{fold_nodes, Fold};
-use crate::ast_manip::fn_edit::fold_fns_multi;
+use crate::ast_manip::{MutVisitNodes, MutVisit};
+use crate::ast_manip::fn_edit::flat_map_fns;
 use crate::analysis::labeled_ty::LabeledTyCtxt;
 use crate::analysis::ownership::{self, ConcretePerm, Var, PTy};
 use crate::analysis::ownership::constraint::{ConstraintSet, Perm};
@@ -367,7 +367,7 @@ fn do_split_variants(st: &CommandState,
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
                 fl.attrs.push(build_variant_attr(&path_str));
 
-                fl.block = fl.block.map(|b| mut_visit_nodes(b, |e: P<Expr>| {
+                fl.block = fl.block.map(|b| MutVisitNodes::visit(b, |e: P<Expr>| {
                     let fref_idx = match_or!([span_fref_idx.get(&e.span)]
                                              Some(&x) => x; return e);
                     handled_spans.insert(e.span);
@@ -398,7 +398,7 @@ fn do_split_variants(st: &CommandState,
 
         // (2) Find calls from other functions into functions being split.  Retarget those calls to
         // an appropriate monomorphization.
-        let krate = mut_visit_nodes(krate, |e: P<Expr>| {
+        let krate = MutVisitNodes::visit(krate, |e: P<Expr>| {
             let fref_idx = match_or!([span_fref_idx.get(&e.span)]
                                      Some(&x) => x; return e);
             if handled_spans.contains(&e.span) {

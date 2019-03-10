@@ -15,7 +15,6 @@ use syntax_pos::FileName;
 use crate::pick_node::NodeKind;
 use crate::ast_manip::remove_paren;
 use crate::select::{SelectOp, Filter, AnyPattern, ItemLikeKind};
-use crate::util::Lone;
 
 type PResult<T> = Result<T, String>;
 
@@ -98,11 +97,11 @@ impl<'a> Stream<'a> {
 
     fn parens_raw(&mut self) -> PResult<TokenStream> {
         match self.take()? {
-            TokenTree::Delimited(_, d) => {
-                if d.delim != DelimToken::Paren {
-                    fail!("expected parens, but got {:?}", d.delim);
+            TokenTree::Delimited(_, delim, tts) => {
+                if delim != DelimToken::Paren {
+                    fail!("expected parens, but got {:?}", delim);
                 }
-                Ok(d.tts.into())
+                Ok(tts.into())
             },
             TokenTree::Token(_, tok) => fail!("expected parens, but got {:?}", tok),
         }
@@ -114,7 +113,7 @@ impl<'a> Stream<'a> {
 
     fn maybe_parens(&mut self) -> Option<Stream<'a>> {
         let has_parens = match self.peek() {
-            Some(&TokenTree::Delimited(_, ref d)) => d.delim == DelimToken::Paren,
+            Some(&TokenTree::Delimited(_, delim, _)) => delim == DelimToken::Paren,
             _ => false,
         };
 
@@ -272,12 +271,12 @@ impl<'a> Stream<'a> {
                     let ts = self.parens_raw()?;
 
                     let mut p = Parser::new(self.sess, ts, None, false, false);
-                    let x = p.parse_expr()
+                    let mut x = p.parse_expr()
                         .map_err(|e| format!("error parsing expr: {}", e.message()))?;
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing expr: {}", e.message()))?;
 
-                    let x = remove_paren(x);
+                    remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Expr(x)))
                 },
 
@@ -285,12 +284,12 @@ impl<'a> Stream<'a> {
                     let ts = self.parens_raw()?;
 
                     let mut p = Parser::new(self.sess, ts, None, false, false);
-                    let x = p.parse_pat(None)
+                    let mut x = p.parse_pat(None)
                         .map_err(|e| format!("error parsing pat: {}", e.message()))?;
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing pat: {}", e.message()))?;
 
-                    let x = remove_paren(x);
+                    remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Pat(x)))
                 },
 
@@ -298,12 +297,12 @@ impl<'a> Stream<'a> {
                     let ts = self.parens_raw()?;
 
                     let mut p = Parser::new(self.sess, ts, None, false, false);
-                    let x = p.parse_ty()
+                    let mut x = p.parse_ty()
                         .map_err(|e| format!("error parsing ty: {}", e.message()))?;
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing ty: {}", e.message()))?;
 
-                    let x = remove_paren(x);
+                    remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Ty(x)))
                 },
 
@@ -311,7 +310,7 @@ impl<'a> Stream<'a> {
                     let ts = self.parens_raw()?;
 
                     let mut p = Parser::new(self.sess, ts, None, false, false);
-                    let x = match p.parse_stmt() {
+                    let mut x = match p.parse_stmt() {
                         Ok(Some(x)) => x,
                         Ok(None) => fail!("expected stmt"),
                         Err(e) => fail!("error parsing stmt: {}", e.message()),
@@ -322,7 +321,7 @@ impl<'a> Stream<'a> {
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing stmt: {}", e.message()))?;
 
-                    let x = remove_paren(x).lone();
+                    remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Stmt(x)))
                 },
 
@@ -457,7 +456,7 @@ pub fn parse(sess: &Session, src: &str) -> Vec<SelectOp> {
                                                src.to_owned());
     eprintln!("src = {:?}", src);
     eprintln!("fm = {:?}", fm);
-    let ts = parse::source_file_to_stream(&sess.parse_sess, fm, None);
+    let (ts, _) = parse::source_file_to_stream(&sess.parse_sess, fm, None);
     eprintln!("tokens = {:?}", ts);
 
     let mut stream = Stream::new(&sess.parse_sess, ts.into_trees().collect());

@@ -11,7 +11,7 @@ use syntax::symbol::Symbol;
 use smallvec::SmallVec;
 
 use c2rust_ast_builder::{mk, Make, IntoSymbol};
-use crate::ast_manip::{fold_nodes, Fold, AstEquiv};
+use crate::ast_manip::{MutVisitNodes, MutVisit, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{self, Phase};
 use crate::path_edit::fold_resolved_paths;
@@ -41,7 +41,7 @@ impl Transform for RenameRegex {
         // into `new_paths`.
 
         let mut new_idents = HashMap::new();
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             if let Some(label) = self.filter {
                 if !st.marked(i.id, label) {
                     return smallvec![i];
@@ -135,7 +135,7 @@ impl Transform for RenameUnnamed {
         let make_name = |counter| { Ident::from_str(&format!("unnamed_{}", counter)) };
 
         // 1. Rename Anonymous types to the unique Ident
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             if attr::contains_name(&i.attrs, "header_src") && !renamer.is_source {
                 renamer.is_source = true;
             }
@@ -179,7 +179,7 @@ impl Transform for RenameUnnamed {
         }
 
         // 3. Update paths to from the old AnonymousType `Ident` to the new AnonymousType `Ident`
-        let krate = mut_visit_nodes(krate, |mut i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |mut i: P<Item>| {
             // This pass is only intended to be ran when the `--reorganize-definition` flag is used
             // on `c2rust-transpile`, and the reason is due to having use statements importing
             // `Item`s within submodules (also the only time the `c2rust-transpile`r uses use
@@ -303,7 +303,7 @@ impl Transform for ReplaceItems {
         let mut repl_id = None;
 
         // (1a) Top-level items
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             if st.marked(i.id, "repl") {
                 if repl_id.is_none() {
                     repl_id = Some(cx.node_def_id(i.id));
@@ -322,7 +322,7 @@ impl Transform for ReplaceItems {
 
         // (1b) Impl items
         // TODO: Only inherent impls are supported for now.  May not work on trait impls.
-        let krate = mut_visit_nodes(krate, |i: ImplItem| {
+        let krate = MutVisitNodes::visit(krate, |i: ImplItem| {
             if st.marked(i.id, "repl") {
                 if repl_id.is_none() {
                     repl_id = Some(cx.node_def_id(i.id));
@@ -354,7 +354,7 @@ impl Transform for ReplaceItems {
         // (3) Find impls for `target` types, and remove them.  This way, if a struct is removed,
         // we also remove the associated `Clone` impl.
 
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             let opt_def_id = match i.node {
                 ItemKind::Impl(_, _, _, _, _, ref ty, _) => cx.try_resolve_ty(ty),
                 _ => None,

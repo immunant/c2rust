@@ -2,7 +2,7 @@ use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
 use syntax::ptr::P;
 
 use crate::command::{CommandState, Registry};
-use crate::matcher::{MatchCtxt, Subst, replace_expr, fold_match_with, find_first};
+use crate::matcher::{MatchCtxt, Subst, replace_expr, mut_visit_match_with, find_first};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
 
@@ -68,7 +68,7 @@ impl Transform for ReconstructForRange {
         let range_step_excl = mcx.parse_stmts("$'label: for $i in ($start .. $end).step_by($step) { $body; }");
         let range_step_incl = mcx.parse_stmts("$'label: for $i in ($start ..= $end).step_by($step) { $body; }");
 
-        fold_match_with(mcx, pat, krate, |orig, mut mcx| {
+        mut_visit_match_with(mcx, pat, krate, |orig, mut mcx| {
             let cond = mcx.bindings.get::<_, P<Expr>>("$cond").unwrap().clone();
             let range_excl = if mcx.try_match(&*lt_cond, &cond).is_ok() {
                 true
@@ -134,7 +134,7 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
     let find_break = mcx.parse_expr("break $'label");
     let find_break_expr = mcx.parse_expr("break $'label $bv:Expr");
 
-    fold_match_with(mcx, pat, krate, |orig, mcx| {
+    mut_visit_match_with(mcx, pat, krate, |orig, mcx| {
         let body = mcx.bindings.get::<_, Vec<Stmt>>("$body").unwrap();
         // TODO: Would be nice to get rid of the clones of body.  Might require making
         // `find_first` use a visitor instead of a `fold`, which means duplicating a lot of the

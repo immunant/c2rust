@@ -12,7 +12,6 @@ use syntax::visit::{self, Visitor};
 use crate::ast_manip::{MutVisit, GetNodeId, ListNodeIds, Visit};
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
 use crate::node_map::NodeMap;
-use crate::util::Lone;
 
 use super::mac_table::{MacTable, MacNodeRef, AsMacNodeRef};
 
@@ -177,8 +176,8 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
         let node_map = &mut *self.node_map;
         let mut push_ins_after = |nodes: &mut Vec<_>, id| {
             for dn in ins_after.remove(&id).into_iter().flat_map(|x| x) {
-                let n = T::clone_from_mac_node_ref(dn.node);
-                let n = number_nodes_with(n, counter).lone();
+                let mut n = T::clone_from_mac_node_ref(dn.node);
+                number_nodes_with(&mut n, counter);
 
                 for (id, &origin) in n.list_node_ids().into_iter().zip(&dn.saved_origins) {
                     node_map.restore_origin(id, origin);
@@ -243,10 +242,10 @@ fn index_deleted_nodes<'ast>(vec: Vec<DeletedNode<'ast>>)
 ///
 /// The `DeletedNode`s in `deleted` should use expanded IDs, as returned from
 /// `collect_deleted_nodes`.
-pub fn restore_deleted_nodes(krate: Crate,
+pub fn restore_deleted_nodes(krate: &mut Crate,
                              node_map: &mut NodeMap,
                              counter: &mut NodeIdCounter,
-                             deleted: Vec<DeletedNode>) -> Crate {
+                             deleted: Vec<DeletedNode>) {
     // Transfer `deleted` to `collapsed` IDs, which is what `krate` is currently using.
     let deleted = transfer_deleted_nodes(node_map, deleted);
     let deleted = index_deleted_nodes(deleted);

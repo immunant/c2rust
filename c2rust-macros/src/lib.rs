@@ -55,8 +55,8 @@ impl VisitorImpls {
                 }
             }
 
-            impl MutVisitNode for #ty {
-                fn visit_nodes<T, F>(target: &mut T, callback: F)
+            impl MutVisitNodes for #ty {
+                fn visit<T, F>(target: &mut T, callback: F)
                     where T: MutVisit,
                           F: FnMut(&mut Self)
                 {
@@ -108,8 +108,16 @@ impl VisitorImpls {
                 }
             }
 
-            impl FlatMapNode for #ty {
-                fn flat_map_nodes<T, F>(target: T, callback: F) -> SmallVec<[T; 1]>
+            impl FlatMapNodes for #ty {
+                fn visit<T, F>(target: &mut T, callback: F)
+                    where T: MutVisit,
+                          F: FnMut(#ty) -> SmallVec<[#ty; 1]>
+                {
+                    let mut f = #folder_ident { callback };
+                    target.visit(&mut f)
+                }
+
+                fn flat_map<T, F>(target: T, callback: F) -> SmallVec<[T; 1]>
                     where T: MutVisit,
                           F: FnMut(#ty) -> SmallVec<[#ty; 1]>
                 {

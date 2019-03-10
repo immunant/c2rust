@@ -533,16 +533,25 @@ pub trait TryMatch {
 
 
 
-/// Trait for AST types that can be used as patterns in a search-and-replace (`fold_match`).
-pub trait Pattern: TryMatch+Sized {
-    fn apply_folder<'a, 'tcx, T, F>(
+/// Trait for AST types that can be used as patterns in a search-and-replace (`mut_visit_match`).
+pub trait Pattern<V>: TryMatch+Sized {
+    fn visit<'a, 'tcx, T, F>(
         self,
         init_mcx: MatchCtxt<'a, 'tcx>,
         callback: F,
         target: &mut T,
     )
     where T: MutVisit,
-          F: FnMut(&mut Self, MatchCtxt<'a, 'tcx>);
+          F: FnMut(&mut V, MatchCtxt<'a, 'tcx>) {}
+
+    fn flat_map<'a, 'tcx, T, F>(
+        self,
+        init_mcx: MatchCtxt<'a, 'tcx>,
+        callback: F,
+        target: &mut T,
+    )
+    where T: MutVisit,
+          F: FnMut(V, MatchCtxt<'a, 'tcx>) -> Vec<V> {}
 }
 
 
@@ -558,30 +567,28 @@ macro_rules! gen_pattern_impl {
     ) => {
         /// Automatically generated `Folder` implementation, for use by `Pattern`.
         pub struct $PatternFolder<'a, 'tcx: 'a, F>
-                where F: FnMut($Pat, MatchCtxt<'a, 'tcx>) -> $Pat {
+                where F: FnMut(&mut $Pat, MatchCtxt<'a, 'tcx>) {
             pattern: $Pat,
             init_mcx: MatchCtxt<'a, 'tcx>,
             callback: F,
         }
 
         impl<'a, 'tcx, F> MutVisitor for $PatternFolder<'a, 'tcx, F>
-                where F: FnMut($Pat, MatchCtxt<'a, 'tcx>) -> $Pat {
+                where F: FnMut(&mut $Pat, MatchCtxt<'a, 'tcx>) {
             #[allow(unused_mut)]
             fn $fold_thing(&mut $slf, $arg: $ArgTy) -> $RetTy {
                 let $arg = $walk;
-                let mut $match_one = |x| {
+                let mut $match_one = |x: &mut $ArgTy| {
                     if let Ok(mcx) = $slf.init_mcx.clone_match(&$slf.pattern, &x) {
                         ($slf.callback)(x, mcx)
-                    } else {
-                        x
                     }
                 };
                 $map
             }
         }
 
-        impl Pattern for $Pat {
-            fn apply_folder<'a, 'tcx, T, F>(
+        impl Pattern<$Pat> for $Pat {
+            fn visit<'a, 'tcx, T, F>(
                 self,
                 init_mcx: MatchCtxt<'a, 'tcx>,
                 callback: F,
@@ -610,30 +617,29 @@ macro_rules! gen_pattern_impl {
     ) => {
         /// Automatically generated `Folder` implementation, for use by `Pattern`.
         pub struct $PatternFolder<'a, 'tcx: 'a, F>
-                where F: FnMut($Pat, MatchCtxt<'a, 'tcx>) -> $Pat {
+                where F: FnMut(&mut $Pat, MatchCtxt<'a, 'tcx>) {
             pattern: $Pat,
             init_mcx: MatchCtxt<'a, 'tcx>,
             callback: F,
         }
 
         impl<'a, 'tcx, F> MutVisitor for $PatternFolder<'a, 'tcx, F>
-                where F: FnMut($Pat, MatchCtxt<'a, 'tcx>) -> $Pat {
+            where F: FnMut(&mut $Pat, MatchCtxt<'a, 'tcx>)
+        {
             #[allow(unused_mut)]
             fn $fold_thing(&mut $slf, $arg: &mut $ArgTy) {
-                let $arg = $walk;
-                let mut $match_one = |x| {
+                $walk;
+                let mut $match_one = |x: &mut $ArgTy| {
                     if let Ok(mcx) = $slf.init_mcx.clone_match(&$slf.pattern, &x) {
-                        ($slf.callback)(x, mcx)
-                    } else {
-                        x
+                        ($slf.callback)(x, mcx);
                     }
                 };
                 $map
             }
         }
 
-        impl Pattern for $Pat {
-            fn apply_folder<'a, 'tcx, T, F>(
+        impl Pattern<$Pat> for $Pat {
+            fn visit<'a, 'tcx, T, F>(
                 self,
                 init_mcx: MatchCtxt<'a, 'tcx>,
                 callback: F,
@@ -663,7 +669,7 @@ gen_pattern_impl! {
     fn visit_expr(&mut self, e: &mut P<Expr>);
     // Expr that runs the default `Folder` action for this node type.  Can refer to the argument of
     // the `Folder` method using the name that appears in the signature above.
-    walk = e.map(|e| mut_visit::noop_visit_expr(e, self));
+    walk = mut_visit::noop_visit_expr(e, self);
     // Expr that runs the callback on the result of the `walk` expression.  This is parameterized
     // by the `match_one` closure.
     map(match_one) = match_one(e);
@@ -684,7 +690,7 @@ gen_pattern_impl! {
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]>;
     walk = mut_visit::noop_flat_map_stmt(s, self);
-    map(match_one) = s.move_map(match_one);
+    map(match_one) = { s.iter_mut().for_each(match_one); s };
 }
 
 
@@ -692,18 +698,18 @@ gen_pattern_impl! {
 
 /// Custom `Folder` for multi-statement `Pattern`s.
 pub struct MultiStmtPatternFolder<'a, 'tcx: 'a, F>
-        where F: FnMut(Vec<Stmt>, MatchCtxt<'a, 'tcx>) -> Vec<Stmt> {
+        where F: FnMut(Stmt, MatchCtxt<'a, 'tcx>) -> Vec<Stmt> {
     pattern: Vec<Stmt>,
     init_mcx: MatchCtxt<'a, 'tcx>,
     callback: F,
 }
 
 impl<'a, 'tcx, F> MutVisitor for MultiStmtPatternFolder<'a, 'tcx, F>
-        where F: FnMut(Vec<Stmt>, MatchCtxt<'a, 'tcx>) -> Vec<Stmt> {
+        where F: FnMut(Stmt, MatchCtxt<'a, 'tcx>) -> Vec<Stmt> {
     fn visit_block(&mut self, b: &mut P<Block>) {
         assert!(self.pattern.len() > 0);
 
-        let b = mut_visit::noop_visit_block(b, self);
+        mut_visit::noop_visit_block(b, self);
 
         let mut new_stmts = Vec::with_capacity(b.stmts.len());
         let mut last = 0;
@@ -716,8 +722,8 @@ impl<'a, 'tcx, F> MutVisitor for MultiStmtPatternFolder<'a, 'tcx, F>
                 new_stmts.extend_from_slice(&b.stmts[last .. i]);
 
                 let consumed_stmts = b.stmts[i .. i + consumed].to_owned();
-                let mut replacement = (self.callback)(consumed_stmts, mcx);
-                new_stmts.append(&mut replacement);
+                let replacement = consumed_stmts.into_iter().flat_map(|s| (self.callback)(s, mcx));
+                new_stmts.extend(replacement);
 
                 i += cmp::max(consumed, 1);
                 last = i;
@@ -732,11 +738,9 @@ impl<'a, 'tcx, F> MutVisitor for MultiStmtPatternFolder<'a, 'tcx, F>
             }
         }
 
-        if last == 0 {
-            b
-        } else {
+        if last != 0 {
             new_stmts.extend_from_slice(&b.stmts[last ..]);
-            b.map(|b| Block { stmts: new_stmts, ..b })
+            b.stmts = new_stmts;
         }
     }
 }
@@ -801,13 +805,15 @@ fn is_multi_stmt_glob(mcx: &MatchCtxt, pattern: &Stmt) -> bool {
     true
 }
 
-impl Pattern for Vec<Stmt> {
-    fn apply_folder<'a, 'tcx, T, F>(self,
-                          init_mcx: MatchCtxt<'a, 'tcx>,
-                          callback: F,
-                          target: &mut T)
-        where T: MutVisit,
-              F: FnMut(&mut Self, MatchCtxt<'a, 'tcx>) {
+impl Pattern<Stmt> for Vec<Stmt> {
+    fn flat_map<'a, 'tcx, T, F>(
+        self,
+        init_mcx: MatchCtxt<'a, 'tcx>,
+        callback: F,
+        target: &mut T,
+    ) where T: MutVisit,
+            F: FnMut(Stmt, MatchCtxt<'a, 'tcx>) -> Vec<Stmt>
+    {
         let mut f = MultiStmtPatternFolder {
             pattern: self,
             init_mcx: init_mcx,
@@ -819,43 +825,55 @@ impl Pattern for Vec<Stmt> {
 
 
 /// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
-pub fn fold_match<P, T, F>(st: &CommandState,
+pub fn mut_visit_match<P, T, F>(st: &CommandState,
                            cx: &RefactorCtxt,
                            pattern: P,
-                           target: T,
+                           target: &mut T,
                            callback: F)
-        where P: Pattern,
+        where P: Pattern<P>,
               T: MutVisit,
-              F: FnMut(P, MatchCtxt) -> P {
-    fold_match_with(MatchCtxt::new(st, cx), pattern, target, callback)
+              F: FnMut(&mut P, MatchCtxt) {
+    mut_visit_match_with(MatchCtxt::new(st, cx), pattern, target, callback)
 }
 
 /// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
-pub fn fold_match_with<'a, 'tcx, P, T, F>(
+pub fn mut_visit_match_with<'a, 'tcx, P, T, V, F>(
     init_mcx: MatchCtxt<'a, 'tcx>,
     pattern: P,
     target: &mut T,
     callback: F,
 )
-where P: Pattern,
+where P: Pattern<V>,
       T: MutVisit,
-      F: FnMut(&mut P, MatchCtxt<'a, 'tcx>)
+      F: FnMut(&mut V, MatchCtxt<'a, 'tcx>)
 {
-    pattern.apply_folder(init_mcx, callback, target)
+    pattern.visit(init_mcx, callback, target)
+}
+
+pub fn flat_map_match_with<'a, 'tcx, P, T, V, F>(
+    init_mcx: MatchCtxt<'a, 'tcx>,
+    pattern: P,
+    target: &mut T,
+    callback: F,
+)
+where P: Pattern<V>,
+      T: MutVisit,
+      F: FnMut(V, MatchCtxt<'a, 'tcx>) -> Vec<V>
+{
+    pattern.flat_map(init_mcx, callback, target)
 }
 
 /// Find the first place where `pattern` matches under initial context `init_mcx`, and return the
 /// resulting `Bindings`.
 pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
                              pattern: P,
-                             target: T) -> Option<Bindings>
-        where P: Pattern, T: MutVisit {
+                             target: &mut T) -> Option<Bindings>
+        where P: Pattern<P>, T: MutVisit {
     let mut result = None;
-    fold_match_with(init_mcx, pattern, target, |p, mcx| {
+    mut_visit_match_with(init_mcx, pattern, target, |p, mcx| {
         if result.is_none() {
             result = Some(mcx.bindings);
         }
-        p
     });
     result
 }
@@ -864,8 +882,8 @@ pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
 pub fn find_first<P, T>(st: &CommandState,
                         cx: &RefactorCtxt,
                         pattern: P,
-                        target: T) -> Option<Bindings>
-        where P: Pattern, T: MutVisit {
+                        target: &mut T) -> Option<Bindings>
+        where P: Pattern<P>, T: MutVisit {
     find_first_with(MatchCtxt::new(st, cx), pattern, target)
 }
 
@@ -873,23 +891,25 @@ pub fn find_first<P, T>(st: &CommandState,
 /// Replace all instances of expression `pat` with expression `repl`.
 pub fn replace_expr<T: MutVisit>(st: &CommandState,
                              cx: &RefactorCtxt,
-                             ast: T,
+                             ast: &mut T,
                              pat: &str,
                              repl: &str) {
     let mut mcx = MatchCtxt::new(st, cx);
     let pat = mcx.parse_expr(pat);
     let repl = mcx.parse_expr(repl);
-    fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
+    // TODO: Make Subst modify in place
+    mut_visit_match_with(mcx, pat, ast, |x, mcx| *x = repl.clone().subst(st, cx, &mcx.bindings))
 }
 
 /// Replace all instances of the statement sequence `pat` with `repl`.
 pub fn replace_stmts<T: MutVisit>(st: &CommandState,
                               cx: &RefactorCtxt,
-                              ast: T,
+                              ast: &mut T,
                               pat: &str,
                               repl: &str) {
     let mut mcx = MatchCtxt::new(st, cx);
     let pat = mcx.parse_stmts(pat);
     let repl = mcx.parse_stmts(repl);
-    fold_match_with(mcx, pat, ast, |_, mcx| repl.clone().subst(st, cx, &mcx.bindings))
+    // TODO: Make Subst modify in place
+    flat_map_match_with(mcx, pat, ast, |x, mcx| repl.clone().subst(st, cx, &mcx.bindings))
 }

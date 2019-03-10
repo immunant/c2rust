@@ -203,7 +203,7 @@ pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
 /// Is a path relative to the current module?
 pub fn is_relative_path(path: &Path) -> bool {
     !path.segments.is_empty()
-        && (path.segments[0].ident.name == keywords::SelfValue.name()
+        && (path.segments[0].ident.name == keywords::SelfLower.name()
             || path.segments[0].ident.name == keywords::Super.name())
 }
 

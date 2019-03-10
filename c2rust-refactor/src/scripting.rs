@@ -20,7 +20,7 @@ use crate::command::{self, CommandState, RefactorState};
 use crate::context::RefactorCtxt;
 use crate::driver::Phase;
 use crate::file_io::{OutputMode, RealFileIO};
-use crate::matcher::{self, fold_match_with, Bindings, MatchCtxt, Pattern, Subst, TryMatch};
+use crate::matcher::{self, mut_visit_match_with, Bindings, MatchCtxt, Pattern, Subst, TryMatch};
 
 /// Refactoring module
 // @module Refactor
@@ -176,12 +176,12 @@ impl UserData for RefactorState {
                 st.map_krate(|krate| {
                     let transform = TransformCtxt::new(st, cx);
                     let res: LuaResult<ast::Crate> = lua_ctx.scope(|scope| {
-                        let krate = transform.intern(krate);
+                        let krate = transform.intern(*krate);
                         let transform_data = scope.create_nonstatic_userdata(transform.clone())?;
                         let krate: LuaAstNode = callback.call::<_, LuaAstNode>((transform_data, krate))?;
                         Ok(ast::Crate::try_from(transform.remove_ast(krate)).unwrap())
                     });
-                    res.unwrap_or_else(|e| panic!("Could not run transform: {:#?}", e))
+                    *krate = res.unwrap_or_else(|e| panic!("Could not run transform: {:#?}", e));
                 });
             });
             this.save_crate();
@@ -325,19 +325,19 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
         Self { mcx, transform }
     }
 
-    fn fold_with<'lua, P>(
+    fn fold_with<'lua, P, V>(
         &self,
         lua_ctx: LuaContext<'lua>,
         pattern: P,
-        krate: ast::Crate,
+        krate: &mut ast::Crate,
         callback: LuaFunction<'lua>,
-    ) -> ast::Crate
-    where
-        P: Pattern + TryFrom<RustAstNode> + Into<RustAstNode>,
-        <P as TryFrom<RustAstNode>>::Error: Debug,
+    ) where
+        P: Pattern<V>,
+        V: TryFrom<RustAstNode> + Into<RustAstNode>,
+        <V as TryFrom<RustAstNode>>::Error: Debug,
     {
-        fold_match_with(self.mcx.clone(), pattern, krate, |x, mcx| {
-            let orig_node = self.transform.intern(x);
+        mut_visit_match_with(self.mcx.clone(), pattern, krate, |x, mcx| {
+            let orig_node = self.transform.intern(*x);
             let mcx = ScriptingMatchCtxt::wrap(self.transform.clone(), mcx);
             let new_node = lua_ctx
                 .scope(|scope| {
@@ -347,7 +347,7 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
                 .unwrap_or_else(|e| {
                     panic!("Could not execute callback in match:fold_with {:#?}", e)
                 });
-            self.transform.remove_ast(new_node).try_into().unwrap()
+            *x = self.transform.remove_ast(new_node).try_into().unwrap();
         })
     }
 }
@@ -396,13 +396,13 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         methods.add_method(
             "fold_with",
             |lua_ctx, this, (needle, krate, f): (LuaAstNode, LuaAstNode, LuaFunction)| {
-                let krate = ast::Crate::try_from(this.transform.remove_ast(krate)).unwrap();
-                let krate = match this.transform.remove_ast(needle).clone() {
-                    RustAstNode::Expr(pattern) => this.fold_with(lua_ctx, pattern, krate, f),
-                    RustAstNode::Ty(pattern) => this.fold_with(lua_ctx, pattern, krate, f),
-                    RustAstNode::Stmts(pattern) => this.fold_with(lua_ctx, pattern, krate, f),
+                let mut krate = ast::Crate::try_from(this.transform.remove_ast(krate)).unwrap();
+                match this.transform.remove_ast(needle).clone() {
+                    RustAstNode::Expr(pattern) => this.fold_with(lua_ctx, pattern, &mut krate, f),
+                    RustAstNode::Ty(pattern) => this.fold_with(lua_ctx, pattern, &mut krate, f),
+                    RustAstNode::Stmts(pattern) => this.fold_with(lua_ctx, pattern, &mut krate, f),
                     _ => return Err(LuaError::external("Unexpected Ast node type")),
-                };
+                }
                 Ok(this.transform.intern(krate))
             },
         );
@@ -522,14 +522,14 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                 this.st.map_krate(|krate| {
                     let mut mcx = MatchCtxt::new(this.st, this.cx);
                     let pat = mcx.parse_stmts(&pat);
-                    fold_match_with(mcx, pat, krate, |pat, _mcx| {
-                        let i = f.call::<_, LuaAstNode>(this.intern(pat)).unwrap();
-                        this.nodes
+                    mut_visit_match_with(mcx, pat, krate, |pat, _mcx| {
+                        let i = f.call::<_, LuaAstNode>(this.intern(*pat)).unwrap();
+                        *pat = this.nodes
                             .borrow_mut()
                             .remove(i)
                             .unwrap()
                             .try_into()
-                            .unwrap()
+                            .unwrap();
                     })
                 });
                 Ok(())
@@ -546,14 +546,14 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                 this.st.map_krate(|krate| {
                     let mut mcx = MatchCtxt::new(this.st, this.cx);
                     let pat = mcx.parse_expr(&pat);
-                    fold_match_with(mcx, pat, krate, |pat, _mcx| {
-                        let i = f.call::<_, LuaAstNode>(this.intern(pat)).unwrap();
-                        this.nodes
+                    mut_visit_match_with(mcx, pat, krate, |pat, _mcx| {
+                        let i = f.call::<_, LuaAstNode>(this.intern(*pat)).unwrap();
+                        *pat = this.nodes
                             .borrow_mut()
                             .remove(i)
                             .unwrap()
                             .try_into()
-                            .unwrap()
+                            .unwrap();
                     })
                 });
                 Ok(())

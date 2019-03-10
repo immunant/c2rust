@@ -35,13 +35,13 @@ impl<'a> MutVisitor for NumberNodes<'a> {
 }
 
 /// Assign new `NodeId`s to all nodes in `x`.
-pub fn number_nodes<T: MutVisit>(x: T) {
+pub fn number_nodes<T: MutVisit>(x: &mut T) {
     // 0 is a valid node id.  DUMMY_NODE_ID is -1.
     number_nodes_with(x, &NodeIdCounter::new(0))
 }
 
 /// Assign new `NodeId`s to all nodes in `x`.
-pub fn number_nodes_with<T: MutVisit>(x: T, counter: &NodeIdCounter) {
+pub fn number_nodes_with<T: MutVisit>(x: &mut T, counter: &NodeIdCounter) {
     x.visit(&mut NumberNodes { counter })
 }
 
@@ -57,6 +57,6 @@ impl MutVisitor for ResetNodeIds {
     }
 }
 
-pub fn reset_node_ids<T: MutVisit>(x: T) {
+pub fn reset_node_ids<T: MutVisit>(x: &mut T) {
     x.visit(&mut ResetNodeIds)
 }

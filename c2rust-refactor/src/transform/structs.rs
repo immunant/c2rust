@@ -2,10 +2,10 @@ use rustc::ty;
 use syntax::ast::*;
 use syntax::ptr::P;
 
-use crate::ast_manip::{fold_blocks, fold_nodes, AstEquiv};
+use crate::ast_manip::{fold_blocks, MutVisitNodes, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
-use crate::matcher::{fold_match, Subst};
+use crate::matcher::{mut_visit_match, Subst};
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
 use c2rust_ast_builder::{mk, IntoSymbol};
@@ -36,7 +36,7 @@ impl Transform for AssignToUpdate {
         let pat = parse_expr(cx.session(), "__x.__f = __y");
         let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }");
 
-        fold_match(st, cx, pat, krate, |orig, mut mcx| {
+        mut_visit_match(st, cx, pat, krate, |orig, mut mcx| {
             let x = mcx.bindings.get::<_, P<Expr>>("__x").unwrap().clone();
 
             let struct_def_id = match cx.node_type(x.id).sty {
@@ -147,7 +147,7 @@ impl Transform for Rename {
         let mut target_def_id = None;
 
         // Find the struct definition and rename it.
-        let krate = mut_visit_nodes(krate, |i: P<Item>| {
+        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
             if target_def_id.is_some() || !st.marked(i.id, "target") {
                 return smallvec![i];
             }

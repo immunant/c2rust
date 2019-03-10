@@ -20,27 +20,22 @@ pub trait MutVisit: Sized {
     }
 }
 
-/// Trait for AST node types that can be rewritten with a fold.
-pub trait MutVisitNode: MutVisit + Sized {
-    fn visit_nodes<T, F>(target: &mut T, callback: F)
+/// Trait for AST node types that can be rewritten with a mutable visit.
+pub trait MutVisitNodes: MutVisit + Sized {
+    fn visit<T, F>(target: &mut T, callback: F)
         where T: MutVisit,
               F: FnMut(&mut Self);
 }
 
-/// Trait for AST node types that can be rewritten with a fold.
-pub trait FlatMapNode: MutVisit + Sized {
-    fn flat_map_nodes<T, F>(target: T, callback: F) -> SmallVec<[T; 1]>
+/// Trait for AST node types that can be rewritten with a flat_map.
+pub trait FlatMapNodes: MutVisit + Sized {
+    fn visit<T, F>(target: &mut T, callback: F)
         where T: MutVisit,
               F: FnMut(Self) -> SmallVec<[Self; 1]>;
-}
 
-/// Rewrite nodes of the callback's argument type within `target`.  This function performs a
-/// postorder traversal.
-pub fn mut_visit_nodes<N, T, F>(target: &mut T, callback: F)
-        where N: MutVisitNode,
-              T: MutVisit,
-              F: FnMut(&mut N) {
-    N::visit_nodes(target, callback)
+    fn flat_map<T, F>(target: T, callback: F) -> SmallVec<[T; 1]>
+        where T: MutVisit,
+              F: FnMut(Self) -> SmallVec<[Self; 1]>;
 }
 
 gen_visitor_impls!(pub trait MutVisitor: Sized {
