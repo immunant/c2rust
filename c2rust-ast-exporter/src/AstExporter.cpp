@@ -733,7 +733,7 @@ class TranslateASTVisitor final
           copy(E->begin_inputs(),  E->end_inputs(),  std::back_inserter(childIds));
           copy(E->begin_outputs(), E->end_outputs(), std::back_inserter(childIds));
 
-          encode_entry(E, TagAsmStmt, childIds, [E](CborEncoder *local) {
+          encode_entry(E, TagAsmStmt, childIds, [E, this](CborEncoder *local) {
 
               auto writeList = [E,local]
                 (unsigned(AsmStmt::*NumFunc)() const,
@@ -752,7 +752,7 @@ class TranslateASTVisitor final
               };
 
               cbor_encode_boolean(local, E->isVolatile());
-              cbor_encode_string(local, E->getAsmString()->getString().str());
+              cbor_encode_string(local, E->generateAsmString(*Context));
               writeList(&AsmStmt::getNumInputs,   &AsmStmt::getInputConstraint);
               writeList(&AsmStmt::getNumOutputs,  &AsmStmt::getOutputConstraint);
               writeList(&AsmStmt::getNumClobbers, &AsmStmt::getClobber);
