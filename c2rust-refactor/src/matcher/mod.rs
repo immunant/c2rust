@@ -537,21 +537,21 @@ pub trait TryMatch {
 pub trait Pattern<V>: TryMatch+Sized {
     fn visit<'a, 'tcx, T, F>(
         self,
-        init_mcx: MatchCtxt<'a, 'tcx>,
-        callback: F,
-        target: &mut T,
+        _init_mcx: MatchCtxt<'a, 'tcx>,
+        _callback: F,
+        _target: &mut T,
     )
     where T: MutVisit,
           F: FnMut(&mut V, MatchCtxt<'a, 'tcx>) {}
 
     fn flat_map<'a, 'tcx, T, F>(
         self,
-        init_mcx: MatchCtxt<'a, 'tcx>,
-        callback: F,
-        target: &mut T,
+        _init_mcx: MatchCtxt<'a, 'tcx>,
+        _callback: F,
+        _target: &mut T,
     )
     where T: MutVisit,
-          F: FnMut(V, MatchCtxt<'a, 'tcx>) -> Vec<V> {}
+          F: FnMut(V, MatchCtxt<'a, 'tcx>) -> SmallVec<[V; 1]> {}
 }
 
 
@@ -690,7 +690,7 @@ gen_pattern_impl! {
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]>;
     walk = mut_visit::noop_flat_map_stmt(s, self);
-    map(match_one) = { s.iter_mut().for_each(match_one); s };
+    map(match_one) = { let mut s = s; s.iter_mut().for_each(match_one); s };
 }
 
 
@@ -698,14 +698,14 @@ gen_pattern_impl! {
 
 /// Custom `Folder` for multi-statement `Pattern`s.
 pub struct MultiStmtPatternFolder<'a, 'tcx: 'a, F>
-        where F: FnMut(Stmt, MatchCtxt<'a, 'tcx>) -> Vec<Stmt> {
+        where F: FnMut(&mut Vec<Stmt>, MatchCtxt<'a, 'tcx>) {
     pattern: Vec<Stmt>,
     init_mcx: MatchCtxt<'a, 'tcx>,
     callback: F,
 }
 
 impl<'a, 'tcx, F> MutVisitor for MultiStmtPatternFolder<'a, 'tcx, F>
-        where F: FnMut(Stmt, MatchCtxt<'a, 'tcx>) -> Vec<Stmt> {
+        where F: FnMut(&mut Vec<Stmt>, MatchCtxt<'a, 'tcx>) {
     fn visit_block(&mut self, b: &mut P<Block>) {
         assert!(self.pattern.len() > 0);
 
@@ -721,9 +721,9 @@ impl<'a, 'tcx, F> MutVisitor for MultiStmtPatternFolder<'a, 'tcx, F>
             if let Some(consumed) = result {
                 new_stmts.extend_from_slice(&b.stmts[last .. i]);
 
-                let consumed_stmts = b.stmts[i .. i + consumed].to_owned();
-                let replacement = consumed_stmts.into_iter().flat_map(|s| (self.callback)(s, mcx));
-                new_stmts.extend(replacement);
+                let mut consumed_stmts = b.stmts[i .. i + consumed].to_owned();
+                (self.callback)(&mut consumed_stmts, mcx);
+                new_stmts.extend(consumed_stmts);
 
                 i += cmp::max(consumed, 1);
                 last = i;
@@ -805,14 +805,14 @@ fn is_multi_stmt_glob(mcx: &MatchCtxt, pattern: &Stmt) -> bool {
     true
 }
 
-impl Pattern<Stmt> for Vec<Stmt> {
-    fn flat_map<'a, 'tcx, T, F>(
+impl Pattern<Vec<Stmt>> for Vec<Stmt> {
+    fn visit<'a, 'tcx, T, F>(
         self,
         init_mcx: MatchCtxt<'a, 'tcx>,
         callback: F,
         target: &mut T,
     ) where T: MutVisit,
-            F: FnMut(Stmt, MatchCtxt<'a, 'tcx>) -> Vec<Stmt>
+            F: FnMut(&mut Vec<Stmt>, MatchCtxt<'a, 'tcx>)
     {
         let mut f = MultiStmtPatternFolder {
             pattern: self,
@@ -858,7 +858,7 @@ pub fn flat_map_match_with<'a, 'tcx, P, T, V, F>(
 )
 where P: Pattern<V>,
       T: MutVisit,
-      F: FnMut(V, MatchCtxt<'a, 'tcx>) -> Vec<V>
+      F: FnMut(V, MatchCtxt<'a, 'tcx>) -> SmallVec<[V; 1]>
 {
     pattern.flat_map(init_mcx, callback, target)
 }
@@ -870,7 +870,7 @@ pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
                              target: &mut T) -> Option<Bindings>
         where P: Pattern<P>, T: MutVisit {
     let mut result = None;
-    mut_visit_match_with(init_mcx, pattern, target, |p, mcx| {
+    mut_visit_match_with(init_mcx, pattern, target, |_p, mcx| {
         if result.is_none() {
             result = Some(mcx.bindings);
         }
@@ -911,5 +911,5 @@ pub fn replace_stmts<T: MutVisit>(st: &CommandState,
     let pat = mcx.parse_stmts(pat);
     let repl = mcx.parse_stmts(repl);
     // TODO: Make Subst modify in place
-    flat_map_match_with(mcx, pat, ast, |x, mcx| repl.clone().subst(st, cx, &mcx.bindings))
+    mut_visit_match_with(mcx, pat, ast, |x, mcx| *x = repl.clone().subst(st, cx, &mcx.bindings))
 }

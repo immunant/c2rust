@@ -240,12 +240,12 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
                                       func: F) -> R
         where F: FnOnce(Crate, RefactorCtxt) -> R {
     let Phase1Bits {
-        session, cstore, codegen_backend, input, output, out_dir, control, krate,
+        session, cstore, codegen_backend, input, output, out_dir, control, mut krate,
     } = bits;
 
     // Immediately fix up the attr spans, since during expansion, any `derive` attrs will be
     // removed.
-    span_fix::fix_attr_spans(krate);
+    span_fix::fix_attr_spans(&mut krate);
 
     if phase == Phase::Phase1 {
         let cx = RefactorCtxt::new_phase_1(&session, &cstore);

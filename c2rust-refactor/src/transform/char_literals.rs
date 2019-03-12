@@ -27,21 +27,18 @@ impl Transform for CharLits {
         let mut mcx = MatchCtxt::new(st, cx);
         mcx.set_type("__number", BindingType::Expr);
 
-        let krate = mut_visit_match_with(mcx, pattern.clone(), krate, |e, mcx| {
+        mut_visit_match_with(mcx, pattern.clone(), krate, |e, mcx| {
             let field: &P<Expr> = mcx.bindings.get::<_, P<Expr>>("__number").unwrap();
             if let ExprKind::Lit(ref l) = field.node {
                 if let LitKind::Int(i, _) = l.node {
                     if i < 256 {
                         let mut bnd = Bindings::new();
                         bnd.add("__number", mk().lit_expr(mk().char_lit(i as u8 as char)));
-                        return pattern.clone().subst(st, cx, &bnd)
+                        *e = pattern.clone().subst(st, cx, &bnd);
                     }
                 }
             }
-            e
         });
-
-        krate
     }
 }
 

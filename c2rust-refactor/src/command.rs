@@ -425,7 +425,7 @@ impl CommandState {
     }
 
     pub fn parse_items(&self, cx: &RefactorCtxt, src: &str) -> Vec<P<Item>> {
-        let is = driver::parse_items(cx.session(), src);
+        let mut is = driver::parse_items(cx.session(), src);
         for i in &mut is {
             self.process_parsed(i);
             self.parsed_nodes.borrow_mut().items.push(i.clone());

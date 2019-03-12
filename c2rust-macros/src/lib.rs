@@ -102,7 +102,7 @@ impl VisitorImpls {
                 where F: FnMut(#ty) -> SmallVec<[#ty; 1]>
             {
                 fn #method_name(&mut self, #arg_pat: #ty) -> SmallVec<[#ty; 1]> {
-                    let v = #walk;
+                    let mut v = #walk;
                     v.flat_map_in_place(|x| (self.callback)(x));
                     v
                 }

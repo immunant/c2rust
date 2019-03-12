@@ -319,7 +319,7 @@ fn do_split_variants(st: &CommandState,
         // (1) Duplicate marked fns with `mono` attrs to produce multiple variants.  We rewrite
         // references to other fns during this process, since afterward it would be difficult to
         // distinguish the different copies - their bodies have identical spans and `NodeId`s.
-        let krate = flat_map_fns(krate, |fl| {
+        flat_map_fns(krate, |fl| {
             if !st.marked(fl.id, label) {
                 return smallvec![fl];
             }
@@ -367,9 +367,9 @@ fn do_split_variants(st: &CommandState,
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
                 fl.attrs.push(build_variant_attr(&path_str));
 
-                fl.block = fl.block.map(|b| MutVisitNodes::visit(b, |e: P<Expr>| {
+                fl.block.as_mut().map(|b| MutVisitNodes::visit(b, |e: &mut P<Expr>| {
                     let fref_idx = match_or!([span_fref_idx.get(&e.span)]
-                                             Some(&x) => x; return e);
+                                             Some(&x) => x; return);
                     handled_spans.insert(e.span);
 
                     let dest = vr.func_refs[fref_idx].def_id;
@@ -383,12 +383,12 @@ fn do_split_variants(st: &CommandState,
                     if !dest_marked && dest_fr.variants.is_none() {
                         // A call from a split function to a non-split function.  Leave the call
                         // unchanged.
-                        return e;
+                        return;
                     }
                     let dest_mono_idx = mr.callee_mono_idxs[fref_idx];
 
                     let new_name = callee_new_name(cx, &ana, dest, dest_mono_idx);
-                    rename_callee(e, &new_name)
+                    rename_callee(e, &new_name);
                 }));
 
                 fls.push(fl);
@@ -398,12 +398,12 @@ fn do_split_variants(st: &CommandState,
 
         // (2) Find calls from other functions into functions being split.  Retarget those calls to
         // an appropriate monomorphization.
-        let krate = MutVisitNodes::visit(krate, |e: P<Expr>| {
+        MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             let fref_idx = match_or!([span_fref_idx.get(&e.span)]
-                                     Some(&x) => x; return e);
+                                     Some(&x) => x; return);
             if handled_spans.contains(&e.span) {
                 // This span was handled while splitting a function into variants.
-                return e;
+                return;
             }
 
             // Figure out where we are.
@@ -417,7 +417,7 @@ fn do_split_variants(st: &CommandState,
             let dest_marked = cx.hir_map().as_local_node_id(dest)
                 .map_or(false, |id| st.marked(id, label));
             if !dest_marked && dest_fr.variants.is_none() {
-                return e;
+                return;
             }
 
             // Pick a monomorphization.
@@ -436,29 +436,23 @@ fn do_split_variants(st: &CommandState,
             let new_name = callee_new_name(cx, &ana, dest, dest_mono_idx);
             rename_callee(e, &new_name)
         });
-
-        krate
     });
 }
 
-fn rename_callee(e: P<Expr>, new_name: &str) -> P<Expr> {
-    e.map(|mut e| {
-        match e.node {
-            ExprKind::Path(_, ref mut path) => {
-                // Change the last path segment.
-                let seg = path.segments.last_mut().unwrap();
-                seg.ident = mk().ident(new_name);
-            },
+fn rename_callee(e: &mut P<Expr>, new_name: &str) {
+    match &mut e.node {
+        ExprKind::Path(_, ref mut path) => {
+            // Change the last path segment.
+            let seg = path.segments.last_mut().unwrap();
+            seg.ident = mk().ident(new_name);
+        },
 
-            ExprKind::MethodCall(ref mut seg, _) => {
-                seg.ident = mk().ident(new_name);
-            },
+        ExprKind::MethodCall(ref mut seg, _) => {
+            seg.ident = mk().ident(new_name);
+        },
 
-            _ => panic!("rename_callee: unexpected expr kind: {:?}", e),
-        }
-
-        e
-    })
+        _ => panic!("rename_callee: unexpected expr kind: {:?}", e),
+    }
 }
 
 fn callee_new_name(cx: &RefactorCtxt,

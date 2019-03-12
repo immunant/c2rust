@@ -155,6 +155,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
             Def::TyParam(did) |
             Def::Fn(did) |
             Def::Const(did) |
+            Def::ConstParam(did) |
             Def::Static(did, _) |
             Def::StructCtor(did, _) |
             Def::VariantCtor(did, _) |

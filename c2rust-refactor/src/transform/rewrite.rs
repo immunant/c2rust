@@ -53,12 +53,12 @@ impl Transform for RewriteExpr {
         let repl = mcx.parse_expr(&self.repl);
         mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             if let Some(filter) = self.filter {
-                if !contains_mark(&*ast, filter, st) {
-                    return ast;
+                if !contains_mark(&**ast, filter, st) {
+                    return;
                 }
             }
 
-            repl.clone().subst(st, cx, &mcx.bindings)
+            *ast = repl.clone().subst(st, cx, &mcx.bindings);
         })
     }
 
@@ -99,12 +99,12 @@ impl Transform for RewriteTy {
         let repl = mcx.parse_ty(&self.repl);
         mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             if let Some(filter) = self.filter {
-                if !contains_mark(&*ast, filter, st) {
-                    return ast;
+                if !contains_mark(&**ast, filter, st) {
+                    return;
                 }
             }
 
-            repl.clone().subst(st, cx, &mcx.bindings)
+            *ast = repl.clone().subst(st, cx, &mcx.bindings);
         })
     }
 
@@ -136,8 +136,8 @@ impl Transform for RewriteStmts {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_stmts(&self.pat);
         let repl = mcx.parse_stmts(&self.repl);
-        mut_visit_match_with(mcx, pat, krate, |_, mcx| {
-            repl.clone().subst(st, cx, &mcx.bindings)
+        mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
+            *ast = repl.clone().subst(st, cx, &mcx.bindings);
         })
     }
 
@@ -159,7 +159,6 @@ impl Transform for DebugMatchExpr {
         let pat = init_mcx.parse_expr(&self.pat);
         mut_visit_match_with(init_mcx, pat, krate, |ast, _mcx| {
             eprintln!("matched node {:?}", ast);
-            ast
         })
     }
 

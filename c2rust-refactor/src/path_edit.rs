@@ -24,33 +24,34 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
     // Some helper functions that get both the AST node and its HIR equivalent.
 
     pub fn alter_pat_path(&mut self, p: &mut P<Pat>, hir: &hir::Pat) {
+        let id = p.id;
         match hir.node {
             hir::PatKind::Struct(ref qpath, _, _) => {
-                unpack!([p.node] PatKind::Struct(path, fields, dotdot));
-                let (new_qself, new_path) = self.handle_qpath(p.id, None, path, qpath);
+                unpack!([&mut p.node] PatKind::Struct(path, _fields, _dotdot));
+                let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(new_qself.is_none(),
                         "can't insert QSelf at this location (PatKind::Struct)");
-                p.node = PatKind::Struct(new_path, fields, dotdot);
+                *path = new_path;
             }
 
             hir::PatKind::TupleStruct(ref qpath, _, _) => {
-                unpack!([p.node] PatKind::TupleStruct(path, fields, dotdot_pos));
-                let (new_qself, new_path) = self.handle_qpath(p.id, None, path, qpath);
+                unpack!([&mut p.node] PatKind::TupleStruct(path, _fields, _dotdot_pos));
+                let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(new_qself.is_none(),
                         "can't insert QSelf at this location (PatKind::TupleStruct)");
-                p.node = PatKind::TupleStruct(new_path, fields, dotdot_pos);
+                *path = new_path;
             }
 
             hir::PatKind::Path(ref qpath) => {
                 let (qself, path) =
-                    match p.node {
+                    match &mut p.node {
                         PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
                                        ident, None) =>
-                            (None, Path::from_ident(ident)),
-                        PatKind::Path(qself, path) => (qself, path),
+                            (None, Path::from_ident(*ident)),
+                        PatKind::Path(qself, path) => (qself.clone(), path.clone()),
                         _ => panic!("expected PatKind::Ident or PatKind::Path"),
                     };
-                let (new_qself, new_path) = self.handle_qpath(p.id, qself, path, qpath);
+                let (new_qself, new_path) = self.handle_qpath(id, qself, path, qpath);
 
                 // If it's a single-element path like `None`, emit PatKind::Ident instead of
                 // PatKind::Path.  The parser treats `None` as an Ident, so if we emit Paths
@@ -71,10 +72,11 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
     }
 
     pub fn alter_expr_path(&mut self, e: &mut P<Expr>, hir: &hir::Expr) {
+        let id = e.id;
         match hir.node {
             hir::ExprKind::Path(ref qpath) => {
-                unpack!([e.node] ExprKind::Path(qself, path));
-                let (new_qself, new_path) = self.handle_qpath(e.id, qself, path, qpath);
+                unpack!([&mut e.node] ExprKind::Path(qself, path));
+                let (new_qself, new_path) = self.handle_qpath(id, qself.clone(), path.clone(), qpath);
                 e.node = ExprKind::Path(new_qself, new_path);
             }
 
@@ -87,11 +89,11 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
                     _ => {},
                 }
 
-                unpack!([e.node] ExprKind::Struct(path, fields, base));
-                let (new_qself, new_path) = self.handle_qpath(e.id, None, path, qpath);
+                unpack!([&mut e.node] ExprKind::Struct(path, _fields, _base));
+                let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(new_qself.is_none(),
                         "can't insert QSelf at this location (ExprKind::Struct)");
-                e.node = ExprKind::Struct(new_path, fields, base);
+                *path = new_path;
             }
 
             _ => {}
@@ -99,6 +101,7 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
     }
 
     pub fn alter_ty_path(&mut self, t: &mut P<Ty>, hir: &hir::Ty) {
+        let id = t.id;
         match hir.node {
             hir::TyKind::Path(ref qpath) => {
                 // Bail out early if it's not really a path type in the original AST.
@@ -107,9 +110,10 @@ impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
                     _ => {},
                 }
 
-                unpack!([t.node] TyKind::Path(qself, path));
-                let (new_qself, new_path) = self.handle_qpath(t.id, qself, path, qpath);
-                t.node = TyKind::Path(new_qself, new_path);
+                unpack!([&mut t.node] TyKind::Path(qself, path));
+                let (new_qself, new_path) = self.handle_qpath(id, qself.clone(), path.clone(), qpath);
+                *qself = new_qself;
+                *path = new_path;
             }
 
             _ => {}
@@ -227,11 +231,11 @@ impl<'a, 'tcx, F> MutVisitor for ResolvedPathFolder<'a, 'tcx, F>
     }
 
     fn flat_map_item(&mut self, item: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        let v = match item.node {
+        let mut v = match item.node {
             ItemKind::Use(..) => {
                 // We split nested uses into simple uses to make path rewriting
                 // of use statements simpler.
-                let uses = split_uses(item);
+                let mut uses = split_uses(item);
                 for item in uses.iter_mut() {
                     if let Some(node) = self.cx.hir_map().find(item.id) {
                         let hir = expect!([node] hir::Node::Item(i) => i);
@@ -249,7 +253,7 @@ impl<'a, 'tcx, F> MutVisitor for ResolvedPathFolder<'a, 'tcx, F>
 }
 
 /// Rewrite paths, with access to their resolved `Def`s in the callback.
-pub fn fold_resolved_paths<T, F>(target: T, cx: &RefactorCtxt, mut callback: F)
+pub fn fold_resolved_paths<T, F>(target: &mut T, cx: &RefactorCtxt, mut callback: F)
         where T: MutVisit,
               F: FnMut(Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path) {
     let mut f = ResolvedPathFolder {
@@ -261,7 +265,7 @@ pub fn fold_resolved_paths<T, F>(target: T, cx: &RefactorCtxt, mut callback: F)
 
 /// Like `fold_resolved_paths`, but also passes the `NodeId` of the AST node containing the path.
 /// (Paths don't have `NodeId`s of their own.)
-pub fn fold_resolved_paths_with_id<T, F>(target: T, cx: &RefactorCtxt, callback: F)
+pub fn fold_resolved_paths_with_id<T, F>(target: &mut T, cx: &RefactorCtxt, callback: F)
         where T: MutVisit,
               F: FnMut(NodeId, Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path) {
     let mut f = ResolvedPathFolder {

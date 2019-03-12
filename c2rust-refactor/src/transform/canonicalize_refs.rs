@@ -14,27 +14,26 @@ struct CanonicalizeRefs;
 
 impl Transform for CanonicalizeRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |mut expr: P<Expr>| {
+        MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
             let hir_expr = cx.hir_map().expect_expr(expr.id);
             let parent = cx.hir_map().get_parent_did(expr.id);
             let tables = cx.ty_ctxt().typeck_tables_of(parent);
             for adjustment in tables.expr_adjustments(hir_expr) {
                 match adjustment.kind {
                     Adjust::Deref(_) => {
-                        expr = mk().unary_expr(UnOp::Deref, expr);
+                        *expr = mk().unary_expr(UnOp::Deref, *expr);
                     }
                     Adjust::Borrow(AutoBorrow::Ref(_, ref mutability)) => {
                         let mutability = match mutability {
                             AutoBorrowMutability::Mutable{..} => Mutability::Mutable,
                             AutoBorrowMutability::Immutable => Mutability::Immutable,
                         };
-                        expr = mk().set_mutbl(mutability).addr_of_expr(expr);
+                        *expr = mk().set_mutbl(mutability).addr_of_expr(*expr);
                     }
                     _ => {},
                 }
             }
-            expr
-        })
+        });
     }
 
     fn min_phase(&self) -> Phase {
@@ -48,8 +47,8 @@ struct RemoveUnnecessaryRefs;
 
 impl Transform for RemoveUnnecessaryRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, _cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |expr: P<Expr>| {
-            expr.map(|expr| match expr.node {
+        MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
+            match expr.node {
                 ExprKind::MethodCall(path, args) => {
                     let (receiver, rest) = args.split_first().unwrap();
                     let receiver = remove_all_derefs(remove_ref(remove_reborrow(receiver.clone())));
@@ -57,21 +56,15 @@ impl Transform for RemoveUnnecessaryRefs {
                     let mut args = Vec::with_capacity(args.len() + 1);
                     args.push(receiver);
                     args.extend(rest);
-                    Expr {
-                        node: ExprKind::MethodCall(path, args),
-                        ..expr
-                    }
+                    expr.node = ExprKind::MethodCall(path, args);
                 }
                 ExprKind::Call(callee, args) => {
                     let args = args.iter().map(|arg| remove_reborrow(arg.clone())).collect();
-                    Expr {
-                        node: ExprKind::Call(callee, args),
-                        ..expr
-                    }
+                    expr.node = ExprKind::Call(callee, args);
                 }
-                _ => expr,
-            })
-        })
+                _ => {}
+            }
+        });
     }
 
     fn min_phase(&self) -> Phase {

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::str;
 use std::str::FromStr;
+use rustc_data_structures::sync::Lrc;
 use rustc::hir::def_id::DefId;
 use syntax::ast::*;
 use syntax::attr;
@@ -11,7 +12,7 @@ use syntax::tokenstream::TokenTree;
 use syntax_pos::Span;
 
 use c2rust_ast_builder::mk;
-use crate::ast_manip::{MutVisitNodes, visit_nodes};
+use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
@@ -49,14 +50,14 @@ pub struct ConvertFormatArgs;
 
 impl Transform for ConvertFormatArgs {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |e: P<Expr>| {
+        MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             let fmt_idx = match e.node {
                 ExprKind::Call(_, ref args) =>
                     args.iter().position(|e| st.marked(e.id, "target")),
                 _ => None,
             };
             if fmt_idx.is_none() {
-                return e;
+                return;
             }
             let fmt_idx = fmt_idx.unwrap();
 
@@ -81,7 +82,7 @@ impl Transform for ConvertFormatArgs {
             let mut new_args = args[..fmt_idx].to_owned();
             new_args.push(mk().mac_expr(mac));
 
-            mk().id(st.transfer_marks(e.id)).call_expr(func, new_args)
+            *e = mk().id(st.transfer_marks(e.id)).call_expr(func, new_args)
         })
     }
 }
@@ -168,8 +169,7 @@ fn build_format_macro(
     let expr_tt = |mut e: P<Expr>| {
         let span = e.span;
         e.span = DUMMY_SP;
-        TokenTree::Token(span, Token::interpolated(
-            Nonterminal::NtExpr(e)))
+        TokenTree::Token(span, Token::Interpolated(Lrc::new(Nonterminal::NtExpr(e))))
     };
     macro_tts.push(expr_tt(new_fmt_str_expr));
     for (i, arg) in fmt_args[1..].iter().enumerate() {
@@ -218,7 +218,7 @@ impl Transform for ConvertPrintfs {
         let mut printf_defs = HashSet::<DefId>::new();
         let mut fprintf_defs = HashSet::<DefId>::new();
         let mut stderr_defs = HashSet::<DefId>::new();
-        visit_nodes(&krate, |fi: &ForeignItem| {
+        visit_nodes(krate, |fi: &ForeignItem| {
             if attr::contains_name(&fi.attrs, "no_mangle") {
                 match (&*fi.ident.as_str(), &fi.node) {
                     ("printf", ForeignItemKind::Fn(_, _)) => {
@@ -234,7 +234,7 @@ impl Transform for ConvertPrintfs {
                 }
             }
         });
-        MutVisitNodes::visit(krate, |s: Stmt| {
+        FlatMapNodes::visit(krate, |s: Stmt| {
             match s.node {
                 StmtKind::Semi(ref expr) => {
                     if let ExprKind::Call(ref f, ref args) = expr.node {

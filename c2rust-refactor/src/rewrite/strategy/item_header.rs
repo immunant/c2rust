@@ -162,9 +162,13 @@ fn find_fn_header_arg_list(ts: TokenStream,
     // Take the body of the first paren-delimited subtree that's strictly after `generics_span`.
     ts.trees().filter_map(|tt| {
         match tt {
-            TokenTree::Delimited(sp, delim, tts)
-                    if delim == DelimToken::Paren && sp.open.lo() >= generics_span.hi() =>
-                Some((tts.clone(), sp.open.between(sp.close))),
+            TokenTree::Delimited(sp, delim, tts) => {
+                if delim == DelimToken::Paren && sp.open.lo() >= generics_span.hi() {
+                    Some((tts, sp.open.between(sp.close)))
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }).next()

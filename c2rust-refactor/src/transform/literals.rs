@@ -1,4 +1,3 @@
-use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
@@ -24,27 +23,23 @@ pub struct ByteStrToStr;
 
 impl Transform for ByteStrToStr {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |e: P<Expr>| {
+        MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             if !st.marked(e.id, "target") {
-                return e;
+                return;
             }
 
-            e.map(|e| {
-                let node = match e.node {
-                    ExprKind::Lit(l) => {
-                        let node = match l.node {
-                            LitKind::ByteStr(bs) => {
-                                let s = String::from_utf8((*bs).clone()).unwrap();
-                                LitKind::Str(Symbol::intern(&s), StrStyle::Cooked)
-                            },
-                            n => n,
-                        };
-                        ExprKind::Lit(Lit { node, ..l })
-                    },
-                    n => n,
-                };
-                Expr { node, ..e }
-            })
+            match e.node {
+                ExprKind::Lit(l) => {
+                    match l.node {
+                        LitKind::ByteStr(ref bs) => {
+                            let s = String::from_utf8((**bs).clone()).unwrap();
+                            l.node = LitKind::Str(Symbol::intern(&s), StrStyle::Cooked)
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
         })
     }
 }
@@ -65,42 +60,31 @@ pub struct RemoveNullTerminator;
 
 impl Transform for RemoveNullTerminator {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |e: P<Expr>| {
+        MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             if !st.marked(e.id, "target") {
-                return e;
+                return;
             }
 
-            e.map(|e| {
-                let node = match e.node {
-                    ExprKind::Lit(l) => {
-                        let node = match l.node {
-                            LitKind::ByteStr(bs) => {
-                                if bs.last() == Some(&0) {
-                                    let mut bs = (*bs).clone();
-                                    bs.pop();
-                                    LitKind::ByteStr(Lrc::new(bs))
-                                } else {
-                                    LitKind::ByteStr(bs)
-                                }
-                            },
-                            LitKind::Str(s, style) => {
-                                if s.as_str().ends_with("\0") {
-                                    let end = s.as_str().len() - 1;
-                                    let new_s = Symbol::intern(&s.as_str()[..end]);
-                                    LitKind::Str(new_s, style)
-                                } else {
-                                    LitKind::Str(s, style)
-                                }
-                            },
-                            n => n,
-                        };
-                        ExprKind::Lit(Lit { node, ..l })
-                    },
-                    n => n,
-                };
-                Expr { node, ..e }
-            })
-        })
+            match e.node {
+                ExprKind::Lit(l) => {
+                    match &mut l.node {
+                        LitKind::ByteStr(bs) => {
+                            if bs.last() == Some(&0) {
+                                bs.pop();
+                            }
+                        }
+                        LitKind::Str(s, _style) => {
+                            if s.as_str().ends_with("\0") {
+                                let end = s.as_str().len() - 1;
+                                *s = Symbol::intern(&s.as_str()[..end]);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        });
     }
 }
 

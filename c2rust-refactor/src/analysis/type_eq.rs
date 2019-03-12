@@ -770,6 +770,8 @@ impl<'a, 'hir> Visitor<'hir> for UnifyVisitor<'a, 'hir> {
             ExprKind::Repeat(ref e, _) => {
                 self.ltt.unify(rty.args[0], self.expr_lty(e));
             },
+
+            _ => {}
         }
 
         if let Some(adjs) = self.get_tables(e.hir_id).adjustments().get(e.hir_id) {

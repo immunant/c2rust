@@ -87,9 +87,9 @@ pub struct InsertRemoveArgs {
 
 impl Transform for InsertRemoveArgs {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
-        let krate = mut_visit_fns(krate, |mut fl| {
+        mut_visit_fns(krate, |fl| {
             if !st.marked(fl.id, "target") {
-                return fl;
+                return;
             }
 
             let mut counter = 0;
@@ -100,31 +100,24 @@ impl Transform for InsertRemoveArgs {
                 arg
             };
 
-            fl.decl = fl.decl.clone().map(|mut decl| {
-                let mut new_args = Vec::new();
-                let old_arg_count = decl.inputs.len();
-                for (i, arg) in decl.inputs.into_iter().enumerate() {
-                    for _ in 0 .. self.insert_idxs.get(&i).cloned().unwrap_or(0) {
-                        new_args.push(mk_arg());
-                    }
-
-                    if !self.remove_idxs.contains(&i) {
-                        new_args.push(arg);
-                    }
-                }
-
-                for _ in 0 .. self.insert_idxs.get(&old_arg_count).cloned().unwrap_or(0) {
+            let mut new_args = Vec::new();
+            let old_arg_count = fl.decl.inputs.len();
+            for (i, arg) in fl.decl.inputs.iter().enumerate() {
+                for _ in 0 .. self.insert_idxs.get(&i).cloned().unwrap_or(0) {
                     new_args.push(mk_arg());
                 }
 
-                decl.inputs = new_args;
-                decl
-            });
+                if !self.remove_idxs.contains(&i) {
+                    new_args.push(*arg);
+                }
+            }
 
-            fl
+            for _ in 0 .. self.insert_idxs.get(&old_arg_count).cloned().unwrap_or(0) {
+                new_args.push(mk_arg());
+            }
+
+            fl.decl.inputs = new_args;
         });
-
-        krate
     }
 }
 
@@ -142,13 +135,13 @@ pub struct TestTypeckLoop;
 impl Command for TestTypeckLoop {
     fn run(&mut self, state: &mut RefactorState) {
         let mut i = 3;
-        state.run_typeck_loop(|krate, _st, _cx| {
+        state.run_typeck_loop(|_krate, _st, _cx| {
             i -= 1;
             info!("ran typeck loop iteration {}", i);
             if i == 0 {
-                TypeckLoopResult::Finished(krate)
+                TypeckLoopResult::Finished
             } else {
-                TypeckLoopResult::Iterate(krate)
+                TypeckLoopResult::Iterate
             }
         }).unwrap();
     }
@@ -167,7 +160,7 @@ pub struct TestDebugCallees;
 
 impl Transform for TestDebugCallees {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        visit_nodes(&krate, |e: &Expr| {
+        visit_nodes(krate, |e: &Expr| {
             let tcx = cx.ty_ctxt();
             let hir_map = cx.hir_map();
 
@@ -261,7 +254,6 @@ impl Transform for TestDebugCallees {
                 _ => {},
             }
         });
-        krate
     }
 
     fn min_phase(&self) -> Phase {

@@ -75,17 +75,17 @@ impl Transform for ReconstructForRange {
             } else if mcx.try_match(&*le_cond, &cond).is_ok() {
                 false
             } else {
-                return orig;
+                return;
             };
 
             let incr = match mcx.bindings.get::<_, Stmt>("$incr").unwrap().node {
                 StmtKind::Semi(ref e) |
                 StmtKind::Expr(ref e) => e.clone(),
-                _ => { return orig; }
+                _ => { return; }
             };
             if !mcx.try_match(&*i_plus_eq, &incr).is_ok() &&
                !mcx.try_match(&*i_eq_plus, &incr).is_ok() {
-                return orig;
+                return;
             }
 
             let step = mcx.bindings.get::<_, P<Expr>>("$step").unwrap();
@@ -95,8 +95,8 @@ impl Transform for ReconstructForRange {
                 (false, true) => range_step_excl.clone(),
                 (false, false) => range_step_incl.clone(),
             };
-            repl_step.subst(st, cx, &mcx.bindings)
-        })
+            *orig = repl_step.subst(st, cx, &mcx.bindings);
+        });
     }
 }
 
@@ -121,11 +121,11 @@ fn is_one_lit(l: &Lit) -> bool {
 /// Removes loop labels that are not used in a named `break` or `continue`.
 pub struct RemoveUnusedLabels;
 
-fn remove_unused_labels_from_loop_kind(krate: Crate,
+fn remove_unused_labels_from_loop_kind(krate: &mut Crate,
                                        st: &CommandState,
                                        cx: &RefactorCtxt,
                                        pat: &str,
-                                       repl: &str) -> Crate {
+                                       repl: &str) {
     let mut mcx = MatchCtxt::new(st, cx);
     let pat = mcx.parse_expr(pat);
     let repl = mcx.parse_expr(repl);
@@ -139,31 +139,29 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
         // TODO: Would be nice to get rid of the clones of body.  Might require making
         // `find_first` use a visitor instead of a `fold`, which means duplicating a lot of the
         // `PatternFolder` definitions in matcher.rs to make `PatternVisitor` variants.
-        if find_first(st, cx, find_continue.clone().subst(st, cx, &mcx.bindings), body.clone()).is_none() &&
-           find_first(st, cx, find_break.clone().subst(st, cx, &mcx.bindings), body.clone()).is_none() &&
-           find_first(st, cx, find_break_expr.clone().subst(st, cx, &mcx.bindings), body.clone()).is_none() {
-            repl.clone().subst(st, cx, &mcx.bindings)
-        } else {
-            orig
+        if find_first(st, cx, find_continue.clone().subst(st, cx, &mcx.bindings), &mut body.clone()).is_none() &&
+            find_first(st, cx, find_break.clone().subst(st, cx, &mcx.bindings), &mut body.clone()).is_none() &&
+            find_first(st, cx, find_break_expr.clone().subst(st, cx, &mcx.bindings), &mut body.clone()).is_none()
+        {
+            *orig = repl.clone().subst(st, cx, &mcx.bindings);
         }
-    })
+    });
 }
 
 impl Transform for RemoveUnusedLabels {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
+        remove_unused_labels_from_loop_kind(krate, st, cx,
                 "$'label:Ident: loop { $body:MultiStmt; }",
                 "loop { $body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
+        remove_unused_labels_from_loop_kind(krate, st, cx,
                 "$'label:Ident: while $cond:Expr { $body:MultiStmt; }",
                 "while $cond { $body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
+        remove_unused_labels_from_loop_kind(krate, st, cx,
                 "$'label:Ident: while let $pat:Pat = $init:Expr { $body:MultiStmt; }",
                 "while let $pat = $init { $body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
+        remove_unused_labels_from_loop_kind(krate, st, cx,
                 "$'label:Ident: for $pat:Pat in $iter { $body:MultiStmt; }",
                 "for $pat in $iter { $body; }");
-        krate
     }
 }
 

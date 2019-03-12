@@ -13,7 +13,7 @@ use syntax::symbol::keywords;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::util::{join_visibility, is_relative_path, namespace, split_uses};
-use crate::ast_manip::{AstEquiv, MutVisitNodes, visit_nodes};
+use crate::ast_manip::{AstEquiv, FlatMapNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase};
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -68,13 +68,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     }
 
     /// Run the reorganization pass
-    pub fn run(&mut self, krate: Crate) -> Crate {
+    pub fn run(&mut self, krate: &mut Crate) {
         self.find_destination_modules(&krate);
 
         let mut module_items = HashMap::new();
-        let krate = self.remove_header_items(krate, &mut module_items);
+        self.remove_header_items(krate, &mut module_items);
 
-        let krate = self.move_items(krate, module_items);
+        self.move_items(krate, module_items);
 
         self.update_paths(krate)
     }
@@ -127,10 +127,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     /// mapping.
     fn remove_header_items(
         &mut self,
-        krate: Crate,
+        krate: &mut Crate,
         module_items: &mut HashMap<NodeId, ModuleDefines<'a, 'tcx>>,
-    ) -> Crate {
-        MutVisitNodes::visit(krate, |item: P<Item>| {
+    ) {
+        FlatMapNodes::visit(krate, |item: P<Item>| {
             if has_source_header(&item.attrs) {
                 let header_item = item;
                 if let ItemKind::Mod(_) = &header_item.node {
@@ -188,8 +188,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
     /// Add items in `module_items` to their respective modules and create any
     /// new modules.
-    fn move_items(&self, krate: Crate, mut module_items: HashMap<NodeId, ModuleDefines>) -> Crate {
-        let mut krate = MutVisitNodes::visit(krate, |item: P<Item>| {
+    fn move_items(&self, krate: &mut Crate, mut module_items: HashMap<NodeId, ModuleDefines>) {
+        FlatMapNodes::visit(krate, |item: P<Item>| {
             smallvec![if let Some(new_defines) = module_items.remove(&item.id) {
                 new_defines.move_into_module(item)
             } else {
@@ -208,17 +208,15 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 }
             }
         }
-
-        krate
     }
 
     /// Update paths to moved items and remove redundant imports.
-    fn update_paths(&self, krate: Crate) -> Crate {
+    fn update_paths(&self, krate: &mut Crate) {
         // Maps NodeId of an AST element with an updated path to the NodeId of
         // the module it's target is now located in.
         let mut remapped_path_nodes = HashMap::new();
 
-        let krate = fold_resolved_paths_with_id(krate, self.cx, |id, qself, path, def| {
+        fold_resolved_paths_with_id(krate, self.cx, |id, qself, path, def| {
             debug!("Folding path {:?} (def: {:?})", path, def);
             if let Some(def_id) = def.opt_def_id() {
                 if let Some((new_path, mod_id)) = self.path_mapping.get(&def_id) {
@@ -237,7 +235,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         });
 
         // Remove use statements that now refer to their self module.
-        MutVisitNodes::visit(krate, |mut item: P<Item>| {
+        FlatMapNodes::visit(krate, |mut item: P<Item>| {
             let parent_id = item.id;
             if let ItemKind::Mod(m) = &mut item.node {
                 let mut uses: HashMap<Ident, Path> = HashMap::new();
@@ -281,7 +279,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 });
             }
             smallvec![item]
-        })
+        });
     }
 }
 

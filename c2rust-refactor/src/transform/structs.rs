@@ -2,7 +2,7 @@ use rustc::ty;
 use syntax::ast::*;
 use syntax::ptr::P;
 
-use crate::ast_manip::{fold_blocks, MutVisitNodes, AstEquiv};
+use crate::ast_manip::{fold_blocks, FlatMapNodes, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
 use crate::matcher::{mut_visit_match, Subst};
@@ -41,13 +41,13 @@ impl Transform for AssignToUpdate {
 
             let struct_def_id = match cx.node_type(x.id).sty {
                 ty::TyKind::Adt(ref def, _) => def.did,
-                _ => return orig,
+                _ => return,
             };
             let struct_path = cx.def_path(struct_def_id);
 
             mcx.bindings.add("__s", struct_path);
-            repl.clone().subst(st, cx, &mcx.bindings)
-        })
+            *orig = repl.clone().subst(st, cx, &mcx.bindings);
+        });
     }
 
     fn min_phase(&self) -> Phase {
@@ -147,7 +147,7 @@ impl Transform for Rename {
         let mut target_def_id = None;
 
         // Find the struct definition and rename it.
-        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if target_def_id.is_some() || !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -172,7 +172,7 @@ impl Transform for Rename {
         let target_def_id = target_def_id
             .expect("found no struct to rename");
 
-        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def| {
+        fold_resolved_paths(krate, cx, |qself, mut path, def| {
             if let Some(def_id) = def.opt_def_id() {
                 if def_id == target_def_id {
                     path.segments.last_mut().unwrap().ident = new_ident;
@@ -180,8 +180,6 @@ impl Transform for Rename {
             }
             (qself, path)
         });
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {

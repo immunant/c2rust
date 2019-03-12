@@ -211,7 +211,8 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 }
             },
 
-            DefPathData::TypeParam(name) => {
+            DefPathData::TypeParam(name) |
+            DefPathData::ConstParam(name) => {
                 if name != "" {
                     segments.push(mk().path_segment(name));
                     break;
@@ -226,7 +227,8 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             DefPathData::LifetimeParam(_) |
             DefPathData::StructCtor |
             DefPathData::AnonConst |
-            DefPathData::ImplTrait => {},
+            DefPathData::ImplTrait |
+            DefPathData::TraitAlias(_) => {},
         }
 
         // Special logic for certain node kinds
@@ -331,7 +333,7 @@ fn register_test_reflect(reg: &mut Registry) {
                 MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
                     let ty = cx.node_type(e.id);
 
-                    let e = if let TyKind::FnDef(def_id, ref substs) = ty.sty {
+                    let new_expr = if let TyKind::FnDef(def_id, ref substs) = ty.sty {
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) = reflect_def_path_inner(
                             cx.ty_ctxt(), def_id, Some(&substs));
@@ -347,10 +349,10 @@ fn register_test_reflect(reg: &mut Registry) {
                             cx.ty_ctxt(), def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
                     } else {
-                        *e
+                        e.clone()
                     };
 
-                    *e = *mk().type_expr(e, reflect_tcx_ty(cx.ty_ctxt(), ty));
+                    *e = mk().type_expr(new_expr, reflect_tcx_ty(cx.ty_ctxt(), ty));
                 });
             });
         }))

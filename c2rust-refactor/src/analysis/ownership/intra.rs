@@ -231,8 +231,8 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
 
     fn place_lty_downcast(&mut self,
                            lv: &Place<'tcx>) -> (ITy<'tcx>, Perm<'tcx>, Option<VariantIdx>) {
-        match *lv {
-            Place::Base(PlaceBase::Local(l)) => (self.local_var_ty(l), Perm::move_(), None),
+        match lv {
+            Place::Base(PlaceBase::Local(l)) => (self.local_var_ty(*l), Perm::move_(), None),
 
             Place::Base(PlaceBase::Static(ref s)) => (self.static_ty(s.def_id), Perm::move_(), None),
 

@@ -175,13 +175,15 @@ impl UserData for RefactorState {
             this.transform_crate(Phase::Phase2, |st, cx| {
                 st.map_krate(|krate| {
                     let transform = TransformCtxt::new(st, cx);
-                    let res: LuaResult<ast::Crate> = lua_ctx.scope(|scope| {
-                        let krate = transform.intern(*krate);
-                        let transform_data = scope.create_nonstatic_userdata(transform.clone())?;
-                        let krate: LuaAstNode = callback.call::<_, LuaAstNode>((transform_data, krate))?;
-                        Ok(ast::Crate::try_from(transform.remove_ast(krate)).unwrap())
-                    });
-                    *krate = res.unwrap_or_else(|e| panic!("Could not run transform: {:#?}", e));
+                    *krate = {
+                        let res: LuaResult<ast::Crate> = lua_ctx.scope(|scope| {
+                            let krate = transform.intern(krate.clone());
+                            let transform_data = scope.create_nonstatic_userdata(transform.clone())?;
+                            let krate: LuaAstNode = callback.call::<_, LuaAstNode>((transform_data, krate))?;
+                            Ok(ast::Crate::try_from(transform.remove_ast(krate)).unwrap())
+                        });
+                        res.unwrap_or_else(|e| panic!("Could not run transform: {:#?}", e))
+                    };
                 });
             });
             this.save_crate();

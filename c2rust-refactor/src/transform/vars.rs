@@ -30,13 +30,12 @@ pub struct LetXUninitialized;
 
 impl Transform for LetXUninitialized {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let krate = replace_stmts(st, cx, krate,
+        replace_stmts(st, cx, krate,
                                   "let __pat;",
                                   "let __pat = ::std::mem::uninitialized();");
-        let krate = replace_stmts(st, cx, krate,
+        replace_stmts(st, cx, krate,
                                   "let __pat: __ty;",
                                   "let __pat: __ty = ::std::mem::uninitialized();");
-        krate
     }
 }
 
@@ -63,7 +62,7 @@ impl Transform for SinkLets {
         }
 
         let mut locals: HashMap<HirId, LocalInfo> = HashMap::new();
-        visit_nodes(&krate, |l: &Local| {
+        visit_nodes(krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
                 if l.init.is_none() || !expr_has_side_effects(cx, l.init.as_ref().unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
@@ -158,7 +157,7 @@ impl Transform for SinkLets {
 
         // This is separate from the actual rewrite because we need to do a preorder traversal, but
         // folds are always postorder to avoid infinite recursion.
-        visit_nodes(&krate, |b: &Block| {
+        visit_nodes(krate, |b: &Block| {
             let used_locals = &block_locals[&b.id];
 
             // Check if there are any locals we should place in this block.  We place a local here
@@ -184,20 +183,15 @@ impl Transform for SinkLets {
 
         // (4) Place new locals in the appropriate locations.
 
-        let krate = MutVisitNodes::visit(krate, |b: P<Block>| {
+        MutVisitNodes::visit(krate, |b: &mut P<Block>| {
             let place_here = match_or!([local_placement.get(&b.id)]
-                                       Some(x) => x; return b);
+                                       Some(x) => x; return);
 
-            b.map(|mut b| {
-                let mut new_stmts = place_here.iter()
-                    .map(|&id| mk().local_stmt(&locals[&id].local))
-                    .collect::<Vec<_>>();
-                new_stmts.append(&mut b.stmts);
-                Block {
-                    stmts: new_stmts,
-                    .. b
-                }
-            })
+            let mut new_stmts = place_here.iter()
+                .map(|&id| mk().local_stmt(&locals[&id].local))
+                .collect::<Vec<_>>();
+            new_stmts.append(&mut b.stmts);
+            b.stmts = new_stmts;
         });
 
         // (5) Remove old locals
@@ -210,19 +204,14 @@ impl Transform for SinkLets {
             .map(|(_, info)| info.old_node_id)
             .collect::<HashSet<_>>();
 
-        let krate = MutVisitNodes::visit(krate, |b: P<Block>| {
-            b.map(|mut b| {
-                b.stmts.retain(|s| {
-                    match s.node {
-                        StmtKind::Local(ref l) => !remove_local_ids.contains(&l.id),
-                        _ => true,
-                    }
-                });
-                b
-            })
+        MutVisitNodes::visit(krate, |b: &mut P<Block>| {
+            b.stmts.retain(|s| {
+                match s.node {
+                    StmtKind::Local(ref l) => !remove_local_ids.contains(&l.id),
+                    _ => true,
+                }
+            });
         });
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {
@@ -290,7 +279,7 @@ impl Transform for FoldLetAssign {
         // (1) Find all locals that might be foldable.
 
         let mut locals: HashMap<HirId, P<Local>> = HashMap::new();
-        visit_nodes(&krate, |l: &Local| {
+        visit_nodes(krate, |l: &Local| {
             if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
                 if l.init.is_none() || !expr_has_side_effects(cx, l.init.as_ref().unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
@@ -345,7 +334,7 @@ impl Transform for FoldLetAssign {
                 cx: cx,
                 locals: &locals,
             };
-            visit::walk_crate(&mut v, &krate);
+            visit::walk_crate(&mut v, krate);
             v.stmt_locals
         };
 
@@ -447,9 +436,9 @@ pub struct UninitToDefault;
 
 impl Transform for UninitToDefault {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |l: P<Local>| {
+        MutVisitNodes::visit(krate, |l: &mut P<Local>| {
             if !l.init.as_ref().map_or(false, |e| is_uninit_call(cx, e)) {
-                return l;
+                return;
             }
 
             let init = l.init.as_ref().unwrap().clone();
@@ -460,14 +449,9 @@ impl Transform for UninitToDefault {
                 TyKind::Int(ity) => mk().int_lit(0, ity),
                 TyKind::Uint(uty) => mk().int_lit(0, uty),
                 TyKind::Float(fty) => mk().float_lit("0", fty),
-                _ => return l,
+                _ => return,
             };
-            l.map(|l| {
-                Local {
-                    init: Some(mk().lit_expr(new_init_lit)),
-                    .. l
-                }
-            })
+            l.init = Some(mk().lit_expr(new_init_lit));
         })
     }
 
@@ -501,9 +485,7 @@ impl Transform for RemoveRedundantLetTypes {
             let t_ty = cx.adjusted_node_type(t.id);
             let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
             if e_ty == t_ty {
-                repl.clone().subst(st, cx, &mcx.bindings)
-            } else {
-                ast
+                *ast = repl.clone().subst(st, cx, &mcx.bindings);
             }
         })
     }

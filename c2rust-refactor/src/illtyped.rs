@@ -54,7 +54,7 @@ pub trait IlltypedFolder<'tcx> {
 
     /// Called on each expr `e` that contains a subexpr whose actual type doesn't match the
     /// expected type propagated down from `e`.
-    fn fix_expr_parent(&mut self, e: &mut P<Expr>) {
+    fn fix_expr_parent(&mut self, _e: &mut P<Expr>) {
     }
 }
 
@@ -135,6 +135,8 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
 
         let tcx = self.cx.ty_ctxt();
 
+        let id = e.id;
+
         match &mut e.node {
             ExprKind::Box(content) => {
                 illtyped |= self.ensure(content, ty.boxed_ty());
@@ -146,7 +148,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     illtyped |= self.ensure(e, expected_elem_ty);
                 }
             }
-            ExprKind::Repeat(elem, count) => {
+            ExprKind::Repeat(elem, _count) => {
                 let expected_elem_ty = ty.builtin_index().unwrap();
                 illtyped |= self.ensure(elem, expected_elem_ty);
             }
@@ -156,7 +158,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     illtyped |= self.ensure(elem, elem_ty);
                 }
             }
-            ExprKind::Call(callee, args) => {
+            ExprKind::Call(_callee, args) => {
                 if let Some(fn_sig) = opt_fn_sig {
                     for (i, arg) in args.iter_mut().enumerate() {
                         if let Some(&ty) = fn_sig.inputs().get(i) {
@@ -165,7 +167,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     }
                 }
             }
-            ExprKind::MethodCall(seg, args) => {
+            ExprKind::MethodCall(_seg, args) => {
                 if let Some(fn_sig) = opt_fn_sig {
                     for (i, arg) in args.iter_mut().enumerate() {
                         if let Some(&ty) = fn_sig.inputs().get(i) {
@@ -199,11 +201,11 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     }
                 }
             }
-            ExprKind::Unary(binop, ohs) => {
+            ExprKind::Unary(_binop, _ohs) => {
                 // TODO: need cases for deref, neg/not, and a check for overloads
             }
-            ExprKind::Lit(l) => {} // TODO
-            ExprKind::Cast(sub_e, target) => {
+            ExprKind::Lit(_l) => {} // TODO
+            ExprKind::Cast(sub_e, _target) => {
                 // Check if the cast is erroneous.  We do this by looking up the subexpression
                 // (yes, the subexpression) in the `cast_kinds` table - if there's nothing
                 // there, it's not a valid cast.
@@ -214,22 +216,22 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     illtyped |= self.ensure_cast(sub_e, ty);
                 }
             }
-            ExprKind::AddrOf(m, ohs) => {} // TODO
-            ExprKind::If(cond, tr, fl) => {
+            ExprKind::AddrOf(_m, _ohs) => {} // TODO
+            ExprKind::If(cond, _tr, _fl) => {
                 // TODO: do something clever with tr + fl
                 illtyped |= self.ensure(cond, tcx.mk_bool());
             }
-            ExprKind::IfLet(pats, expr, tr, fl) => {
+            ExprKind::IfLet(pats, expr, _tr, _fl) => {
                 if let Some(pat_ty) = self.cx.opt_node_type(pats[0].id) {
                     illtyped |= self.ensure(expr, pat_ty);
                 }
                 // TODO: do something clever with tr + fl
                 // TODO: handle discrepancies between different pattern tys
             }
-            ExprKind::While(cond, body, opt_label) => {
+            ExprKind::While(cond, _body, _opt_label) => {
                 illtyped |= self.ensure(cond, tcx.mk_bool());
             }
-            ExprKind::WhileLet(pats, expr, body, opt_label) => {
+            ExprKind::WhileLet(pats, expr, _body, _opt_label) => {
                 if let Some(pat_ty) = self.cx.opt_node_type(pats[0].id) {
                     illtyped |= self.ensure(expr, pat_ty);
                 }
@@ -241,27 +243,27 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 }
                 // TODO: self.ensure arm bodies match ty
             }
-            ExprKind::Block(blk, opt_label) => {
+            ExprKind::Block(_blk, _opt_label) => {
                 // TODO: self.ensure last expr matches ty
             }
             ExprKind::Assign(el, er) => {
                 let lhs_ty = self.cx.node_type(el.id);
                 illtyped |= self.ensure(er, lhs_ty);
             }
-            ExprKind::AssignOp(op, el, er) => {
+            ExprKind::AssignOp(_op, el, er) => {
                 // TODO: need cases for arith/bitwise, shift, &&/||, and a check for overloads
                 let lhs_ty = self.cx.node_type(el.id);
                 illtyped |= self.ensure(er, lhs_ty);
             }
-            ExprKind::Index(el, er) => {
+            ExprKind::Index(_el, er) => {
                 // TODO: check for overloads
                 illtyped |= self.ensure(er, tcx.mk_mach_uint(UintTy::Usize));
             }
-            ExprKind::Range(e1, e2, lim) => {
+            ExprKind::Range(_e1, _e2, _lim) => {
                 // TODO: e1 & e2 should have the same type if both present
             }
-            ExprKind::Struct(path, fields, maybe_expr) => {
-                handle_struct(self.cx, e.id, ty, fields, maybe_expr, |e, ty| illtyped |= self.ensure(e, ty));
+            ExprKind::Struct(_path, fields, maybe_expr) => {
+                handle_struct(self.cx, id, ty, fields, maybe_expr, |e, ty| illtyped |= self.ensure(e, ty));
             }
 
         _ => {}
@@ -273,11 +275,11 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
     }
 
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        let items = mut_visit::noop_flat_map_item(i, self);
+        let mut items = mut_visit::noop_flat_map_item(i, self);
         for i in items.iter_mut() {
+            let did = self.cx.node_def_id(i.id);
             match &mut i.node {
-                ItemKind::Static(ty, mutbl, expr) => {
-                    let did = self.cx.node_def_id(i.id);
+                ItemKind::Static(_ty, _mutbl, expr) => {
                     let expected_ty = self.cx.ty_ctxt().type_of(did);
                     info!("STATIC: expected ty {:?}, expr {:?}", expected_ty, expr);
 
@@ -295,8 +297,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
 
                     self.ensure(expr, expected_ty);
                 }
-                ItemKind::Const(ty, expr) => {
-                    let did = self.cx.node_def_id(i.id);
+                ItemKind::Const(_ty, expr) => {
                     let expected_ty = self.cx.ty_ctxt().type_of(did);
                     self.ensure(expr, expected_ty);
                 }
@@ -343,7 +344,7 @@ fn resolve_struct_path(cx: &RefactorCtxt, id: NodeId) -> Option<Def> {
 }
 
 
-pub fn fold_illtyped<'tcx, F, T>(cx: &RefactorCtxt<'_, 'tcx>, x: T, f: F)
+pub fn fold_illtyped<'tcx, F, T>(cx: &RefactorCtxt<'_, 'tcx>, x: &mut T, f: F)
         where F: IlltypedFolder<'tcx>, T: MutVisit {
     let mut f2 = FoldIlltyped { cx, inner: f };
     x.visit(&mut f2)

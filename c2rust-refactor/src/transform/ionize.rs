@@ -7,7 +7,7 @@ use syntax::mut_visit::MutVisitor;
 use syntax::ptr::P;
 
 use c2rust_ast_builder::mk;
-use crate::ast_manip::{MutVisit, MutVisitNodes, visit_nodes};
+use crate::ast_manip::{FlatMapNodes, MutVisit, visit_nodes};
 use crate::ast_manip::lr_expr::{self, fold_expr_with_context};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_impl_items, parse_stmts, parse_expr};
@@ -35,14 +35,14 @@ struct ExprFolder<F> {
     callback: F,
 }
 
-impl<F: FnMut(P<Expr>) -> P<Expr>> MutVisitor for ExprFolder<F> {
+impl<F: FnMut(&mut P<Expr>)> MutVisitor for ExprFolder<F> {
     fn visit_expr(&mut self, e: &mut P<Expr>) {
         (self.callback)(e)
     }
 }
 
-fn fold_top_exprs<T, F>(x: T, callback: F)
-    where T: MutVisit, F: FnMut(P<Expr>) -> P<Expr> {
+fn fold_top_exprs<T, F>(x: &mut T, callback: F)
+    where T: MutVisit, F: FnMut(&mut P<Expr>) {
     let mut f = ExprFolder { callback: callback };
     x.visit(&mut f)
 }
@@ -87,7 +87,7 @@ impl Transform for Ionize {
         let mut targets: HashSet<DefId> = HashSet::new();
 
         // Find marked unions
-        visit_nodes(&krate, |i: &Item| {
+        visit_nodes(krate, |i: &Item| {
             if st.marked(i.id, "target") {
                 if let ItemKind::Union(VariantData::Struct(ref _fields, _), _) = i.node {
                     if let Some(def_id) = cx.hir_map().opt_local_def_id(i.id) {
@@ -107,7 +107,7 @@ impl Transform for Ionize {
         mcx.set_type("__val", BindingType::Expr);
 
         // Replace union assignment with enum assignment
-        let krate = mut_visit_match_with(mcx, outer_assignment_pat, krate, |e, mcx| {
+        mut_visit_match_with(mcx, outer_assignment_pat, krate, |e, mcx| {
             let field = mcx.bindings.get::<_, Ident>("__field").unwrap();
             let _expr = mcx.bindings.get::<_, P<Expr>>("__expr").unwrap();
             let val = mcx.bindings.get::<_, P<Expr>>("__val").unwrap();
@@ -122,9 +122,9 @@ impl Transform for Ionize {
                     let mut bnd1 = mcx.bindings.clone();
                     bnd1.add("__con", mk().path_expr(path));
 
-                    outer_assignment_repl.clone().subst(st, cx, &bnd1)
+                    *e = outer_assignment_repl.clone().subst(st, cx, &bnd1);
                 }
-                _ => e
+                _ => {}
             }
         });
 
@@ -134,7 +134,7 @@ impl Transform for Ionize {
         mcx.set_type("__field", BindingType::Ident);
         mcx.set_type("__val", BindingType::Expr);
 
-        let krate = fold_top_exprs(krate, |e: P<Expr>| {
+        fold_top_exprs(krate, |e: &mut P<Expr>| {
             fold_expr_with_context(e, lr_expr::Context::Rvalue, |e, context| {
                 if lr_expr::Context::Rvalue == context {
                     match mcx.clone_match(&*outer_access_pat, &*e) {
@@ -142,18 +142,16 @@ impl Transform for Ionize {
                             let mut bnd = mcx1.bindings.clone();
                             let accessor = accessor_name(bnd.get::<_, Ident>("__field").unwrap());
                             bnd.add("__accessor", accessor);
-                            outer_access_repl.clone().subst(st, cx, &bnd)
+                            *e = outer_access_repl.clone().subst(st, cx, &bnd);
                         }
-                        Err(_) => e,
+                        Err(_) => {}
                     }
-                } else {
-                    e
                 }
-            })
+            });
         });
 
         // Replace union with enum
-        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             match cx.hir_map().opt_local_def_id(i.id) {
                 Some(ref def_id) if targets.contains(def_id) => {}
                 _ => return smallvec![i]
@@ -189,8 +187,6 @@ impl Transform for Ionize {
                 panic!("ionize: Marked target not a union")
             }
         });
-
-        krate
     }
 }
 

@@ -118,6 +118,7 @@ struct GenericParam { id, ident, attrs, bounds, kind }
 enum GenericParamKind {
     Lifetime,
     Type { default },
+    Const { ty },
 }
 #[nonterminal]
 struct WhereClause { id, predicates, span }
@@ -165,6 +166,7 @@ enum TyKind {
     ImplicitSelf,
     #[mac_table_record] Mac(mac),
     Err,
+    CVarArgs,
 }
 
 flag TraitObjectSyntax;
@@ -257,6 +259,7 @@ enum ExprKind {
     Paren(expr),
     Try(#[prec=POSTFIX] expr),
     Yield(#[prec=JUMP] expr),
+    Err,
 }
 
 enum IsAsync {
@@ -317,6 +320,7 @@ enum LitKind {
     Float(sym, ty),
     FloatUnsuffixed(sym),
     Bool(x),
+    Err(sym),
 }
 
 
@@ -368,6 +372,7 @@ struct ParenthesizedArgs { span, inputs, output }
 enum GenericArg {
     Lifetime(lt),
     Type(ty),
+    Const(c),
 }
 struct QSelf { ty, path_span, position }
 

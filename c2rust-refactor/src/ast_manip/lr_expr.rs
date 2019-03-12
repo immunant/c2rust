@@ -1,5 +1,6 @@
 //! `fold_expr_with_context` function, for rewriting exprs with knowledge of their contexts (rvalue
 //! / lvalue / mut lvalue).
+use std::rc::Rc;
 use rustc_target::spec::abi::Abi;
 use smallvec::SmallVec;
 use syntax::ThinVec;
@@ -74,17 +75,17 @@ impl<T: LRExpr> LRExpr for ThinVec<T> {
     });
 }
 
-// impl<T: LRExpr+'static> LRExpr for P<T> {
-//     lr_expr_fn!((self, next(T)) => {
-//         self.map(next)
-//     });
-// }
+impl<T: LRExpr+'static> LRExpr for P<T> {
+    lr_expr_fn!((self, next(T)) => {
+        next(self);
+    });
+}
 
-// impl<T: LRExpr + Clone> LRExpr for Rc<T> {
-//     lr_expr_fn!((self, next(T)) => {
-//         Rc::new(next((*self).clone()))
-//     });
-// }
+impl<T: LRExpr + Clone> LRExpr for Rc<T> {
+    lr_expr_fn!((self, next(T)) => {
+        next(Rc::make_mut(self));
+    });
+}
 
 impl<T: LRExpr> LRExpr for Spanned<T> {
     lr_expr_fn!((self, next(T)) => {
@@ -134,6 +135,22 @@ impl<A: LRExpr, B: LRExpr, C: LRExpr> LRExpr for (A, B, C) {
         self.2.fold_lvalue_mut(lr);
     }
 }
+
+impl LRExpr for P<Expr> {
+  fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
+    self.node.fold_rvalue(lr);
+    lr.fold_rvalue(self)
+  }
+  fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
+    self.node.fold_lvalue(lr);
+    lr.fold_lvalue(self)
+  }
+  fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {
+    self.node.fold_lvalue_mut(lr);
+    lr.fold_lvalue_mut(self)
+  }
+}
+
 
 include!(concat!(env!("OUT_DIR"), "/lr_expr_gen.inc.rs"));
 

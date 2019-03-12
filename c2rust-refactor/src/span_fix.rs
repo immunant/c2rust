@@ -129,6 +129,6 @@ pub fn fix_format<T: MutVisit>(node: &mut T) {
     node.visit(&mut fix_format)
 }
 
-pub fn fix_attr_spans<T: MutVisit>(node: T) {
+pub fn fix_attr_spans<T: MutVisit>(node: &mut T) {
     node.visit(&mut FixAttrs)
 }

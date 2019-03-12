@@ -20,7 +20,7 @@ impl<F: FnMut(&mut P<Expr>)> OutputFolder<F> {
     fn with_trailing<G: FnOnce(&mut Self) -> R, R>(&mut self, trailing: bool, g: G) -> R {
         let old = self.trailing;
         self.trailing = trailing;
-        let r = g(&mut self);
+        let r = g(self);
         self.trailing = old;
         r
     }
@@ -58,16 +58,14 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
         }
 
         let last = b.stmts.len() - 1;
-        let new_stmts = b.stmts.into_iter().enumerate().map(|(i, s)| {
+        for (i, s) in b.stmts.iter_mut().enumerate() {
             if i != last {
-                self.with_trailing(false, |f| f.flat_map_stmt(s)).lone()
+                *s = self.with_trailing(false, |f| f.flat_map_stmt(s.clone())).lone();
             } else {
                 // Last stmt is trailing if the block is trailing
-                self.flat_map_stmt(s).lone()
+                *s = self.flat_map_stmt(s.clone()).lone();
             }
-        }).collect();
-
-        b.stmts = new_stmts;
+        }
     }
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
@@ -102,7 +100,7 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
                 visit_vec(arms, |arm| self.visit_arm(arm));
             }
 
-            ExprKind::Block(b, lbl) => {
+            ExprKind::Block(b, _lbl) => {
                 self.visit_block(b);
             }
 
@@ -122,7 +120,7 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
             // Not sure what to do with ExprKind::Try.  It can return (on error), but doesn't
             // have an actual output expression.
 
-            node => {
+            _ => {
                 self.with_trailing(false, |f| mut_visit::noop_visit_expr(e, f));
                 if self.trailing {
                     (self.callback)(e);

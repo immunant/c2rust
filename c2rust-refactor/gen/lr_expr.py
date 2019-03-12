@@ -23,24 +23,24 @@ from util import *
 def expr_kind_match(d, mode):
     yield 'match self {'
     for v, path in variants_paths(d):
-        yield '  %s => %s(' % (struct_pattern(v, path, bind_mode=''), path)
+        yield '  %s => {' % struct_pattern(v, path, bind_mode='')
         for f in v.fields:
             if 'lvalue_mut' in f.attrs:
-                yield '    %s.fold_lvalue_mut(lr),' % f.name
+                yield '    %s.fold_lvalue_mut(lr);' % f.name
             elif 'lvalue_imm' in f.attrs:
-                yield '    %s.fold_lvalue(lr),' % f.name
+                yield '    %s.fold_lvalue(lr);' % f.name
             elif 'lr_propagate' in f.attrs:
-                yield '    %s.fold_%s(lr),' % (f.name, mode)
+                yield '    %s.fold_%s(lr);' % (f.name, mode)
             elif 'lvalue_kind' in f.attrs:
                 yield '    match %s {' % f.attrs['lvalue_kind']
                 yield '      Mutability::Mutable =>'
                 yield '        %s.fold_lvalue_mut(lr),' % f.name
                 yield '      Mutability::Immutable =>'
                 yield '        %s.fold_lvalue(lr),' % f.name
-                yield '    },'
+                yield '    }'
             else:
-                yield '    %s.fold_rvalue(lr),' % f.name
-        yield '  ),'
+                yield '    %s.fold_rvalue(lr);' % f.name
+        yield '  }'
     yield '}'
 
 @linewise
@@ -63,16 +63,16 @@ def expr_impl(d):
     yield '#[allow(unused)]'
     yield 'impl LRExpr for %s {' % d.name
     yield '  fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
-    yield '    let e = Expr { node: self.node.fold_rvalue(lr), ..self };'
-    yield '    lr.fold_rvalue(e)'
+    yield '    self.node.fold_rvalue(lr);'
+    yield '    lr.fold_rvalue(self)'
     yield '  }'
     yield '  fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
-    yield '    let e = Expr { node: self.node.fold_lvalue(lr), ..self };'
-    yield '    lr.fold_lvalue(e)'
+    yield '    self.node.fold_lvalue(lr);'
+    yield '    lr.fold_lvalue(self)'
     yield '  }'
     yield '  fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {'
-    yield '    let e = Expr { node: self.node.fold_lvalue_mut(lr), ..self };'
-    yield '    lr.fold_lvalue_mut(e)'
+    yield '    self.node.fold_lvalue_mut(lr);'
+    yield '    lr.fold_lvalue_mut(self)'
     yield '  }'
     yield '}'
 
@@ -81,13 +81,10 @@ def null_impl(d):
     yield '#[allow(unused)]'
     yield 'impl LRExpr for %s {' % d.name
     yield '  fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
-    yield '    self'
     yield '  }'
     yield '  fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
-    yield '    self'
     yield '  }'
     yield '  fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {'
-    yield '    self'
     yield '  }'
     yield '}'
 
@@ -99,7 +96,9 @@ def generate(decls):
 
     for d in decls:
         if d.name == 'Expr':
-            yield expr_impl(d)
+            # We implement P<Expr> manually
+            # yield expr_impl(d)
+            pass
         elif d.name == 'ExprKind':
             yield expr_kind_impl(d)
         else:

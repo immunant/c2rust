@@ -10,7 +10,7 @@ use syntax::ptr::P;
 use smallvec::SmallVec;
 
 use c2rust_ast_builder::{mk, IntoSymbol};
-use crate::ast_manip::{MutVisitNodes, fold_modules, visit_nodes, MutVisit};
+use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules, visit_nodes, MutVisit};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
 use crate::matcher::{BindingType, MatchCtxt, Subst, mut_visit_match_with};
@@ -43,7 +43,7 @@ impl Transform for ToMethod {
 
         let mut dest = None;
 
-        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
             if !st.marked(i.id, "dest") ||
                !matches!([i.node] ItemKind::Impl(_, _, _, _, None, _, _)) {
@@ -58,7 +58,7 @@ impl Transform for ToMethod {
         });
 
         if dest.is_none() {
-            return krate;
+            return;
         }
         let dest = dest.unwrap();
 
@@ -80,7 +80,7 @@ impl Transform for ToMethod {
         }
         let mut fns = Vec::new();
 
-        let krate = fold_modules(krate, |curs| {
+        fold_modules(krate, |curs| {
             while let Some(arg_idx) = curs.advance_until_match(|i| {
                 // Find the argument under the cursor.
                 let decl = match_or!([i.node] ItemKind::Fn(ref decl, ..) => decl; return None);
@@ -173,7 +173,7 @@ impl Transform for ToMethod {
             // FIXME: rustc changed how locals args are represented, and we
             // don't have a Def for locals any more, and thus no def_id. We need
             // to fix this in path_edit.rs
-            f.block = fold_resolved_paths(f.block.clone(), cx, |qself, path, def| {
+            fold_resolved_paths(&mut f.block, cx, |qself, path, def| {
                 match cx.def_to_hir_id(&def) {
                     Some(hir_id) =>
                         if hir_id == arg_hir_id {
@@ -192,7 +192,7 @@ impl Transform for ToMethod {
 
         let mut fns = Some(fns);
 
-        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if i.id != dest.id || fns.is_none() {
                 return smallvec![i];
             }
@@ -230,14 +230,14 @@ impl Transform for ToMethod {
 
         // (5) Find all uses of marked functions, and rewrite them into method calls.
 
-        let krate = MutVisitNodes::visit(krate, |e: P<Expr>| {
+        MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             if !matches!([e.node] ExprKind::Call(..)) {
-                return e;
+                return;
             }
 
             unpack!([e.node.clone()] ExprKind::Call(func, args));
-            let def_id = match_or!([cx.try_resolve_expr(&func)] Some(x) => x; return e);
-            let info = match_or!([fn_ref_info.get(&def_id)] Some(x) => x; return e);
+            let def_id = match_or!([cx.try_resolve_expr(&func)] Some(x) => x; return);
+            let info = match_or!([fn_ref_info.get(&def_id)] Some(x) => x; return);
 
             // At this point, we know `func` is a reference to a marked function, and we have the
             // function's `FnRefInfo`.
@@ -248,30 +248,18 @@ impl Transform for ToMethod {
                 let self_arg = args.remove(arg_idx);
                 args.insert(0, self_arg);
 
-                e.map(|e| {
-                    Expr {
-                        node: ExprKind::MethodCall(
-                                  mk().path_segment(&info.ident),
-                                  args),
-                        .. e
-                    }
-                })
+                e.node = ExprKind::MethodCall(
+                    mk().path_segment(&info.ident),
+                    args
+                );
             } else {
                 // There is no `self` argument, but change the function reference to the new path.
                 let mut new_path = cx.def_path(cx.node_def_id(dest.id));
                 new_path.segments.push(mk().path_segment(&info.ident));
 
-                e.map(|e| {
-                    Expr {
-                        node: ExprKind::Call(mk().path_expr(new_path), args),
-                        .. e
-                    }
-                })
+                e.node = ExprKind::Call(mk().path_expr(new_path), args);
             }
         });
-
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {
@@ -289,22 +277,18 @@ pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |mut b: P<Block>| {
+        MutVisitNodes::visit(krate, |b: &mut P<Block>| {
             if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
                 let parent = cx.hir_map().get_parent_did(b.id);
                 let result = cx.ty_ctxt().unsafety_check_result(parent);
                 let unused = result.unsafe_blocks.iter().any(|&(id, used)| {
-                    id == b.id && !used
+                    id == cx.hir_map().node_to_hir_id(b.id) && !used
                 });
                 if unused {
-                    b = b.map(|b| Block {
-                        rules: BlockCheckMode::Default,
-                        .. b
-                    });
+                    b.rules = BlockCheckMode::Default;
                 }
             }
-            b
-        })
+        });
     }
 
     fn min_phase(&self) -> Phase {
@@ -437,7 +421,7 @@ impl Transform for WrapExtern {
         }
         let mut fns = Vec::new();
 
-        visit_nodes(&krate, |fi: &ForeignItem| {
+        visit_nodes(krate, |fi: &ForeignItem| {
             if !st.marked(fi.id, "target") {
                 return;
             }
@@ -463,7 +447,7 @@ impl Transform for WrapExtern {
 
         // (2) Generate wrappers in the destination module.
         let mut dest_path = None;
-        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if !st.marked(i.id, "dest") {
                 return smallvec![i];
             }
@@ -507,7 +491,7 @@ impl Transform for WrapExtern {
                     let decl = P(FnDecl {
                         inputs: wrapper_args,
                         output: f.decl.output.clone(),
-                        variadic: false,
+                        c_variadic: false,
                     });
                     let body = mk().block(vec![
                             mk().expr_stmt(mk().call_expr(
@@ -526,13 +510,13 @@ impl Transform for WrapExtern {
 
         if dest_path.is_none() {
             info!("warning: found no \"dest\" mark");
-            return krate;
+            return;
         }
         let dest_path = dest_path.unwrap();
 
         // (3) Rewrite call sites to use the new wrappers.
         let ident_map = fns.iter().map(|f| (f.def_id, f.ident)).collect::<HashMap<_, _>>();
-        let krate = fold_resolved_paths(krate, cx, |qself, path, def| {
+        fold_resolved_paths(krate, cx, |qself, path, def| {
             match def.opt_def_id() {
                 Some(def_id) if ident_map.contains_key(&def_id) => {
                     let ident = ident_map.get(&def_id).unwrap();
@@ -543,8 +527,6 @@ impl Transform for WrapExtern {
                 _ => (qself, path),
             }
         });
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {
@@ -577,7 +559,7 @@ impl Transform for WrapApi {
         let mut wrapper_map = HashMap::new();
 
         // Add wrapper functions
-        let krate = MutVisitNodes::visit(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -688,13 +670,13 @@ impl Transform for WrapApi {
         // these, we edit them to refer to the wrapper, which has the same type (specifically, the
         // same ABI) as the old function.
         let mut callees = HashSet::new();
-        visit_nodes(&krate, |e: &Expr| {
+        visit_nodes(krate, |e: &Expr| {
             if let ExprKind::Call(ref callee, _) = e.node {
                 callees.insert(callee.id);
             }
         });
 
-        let krate = fold_resolved_paths_with_id(krate, cx, |id, q, p, d| {
+        fold_resolved_paths_with_id(krate, cx, |id, q, p, d| {
             if callees.contains(&id) || q.is_some() {
                 return (q, p);
             }
@@ -706,8 +688,6 @@ impl Transform for WrapApi {
             new_path.segments.push(mk().path_segment(name));
             (q, new_path)
         });
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {
@@ -794,21 +774,18 @@ impl Transform for Abstract {
             init_mcx.set_type(name.name, BindingType::Ty);
         }
 
-        let krate = mut_visit_match_with(init_mcx, pat, krate, |_ast, mut mcx| {
+        mut_visit_match_with(init_mcx, pat, krate, |ast, mut mcx| {
             for name in &type_args {
                 if mcx.bindings.get::<_, P<Ty>>(name.name).is_none() {
                     mcx.bindings.add(name.name, mk().infer_ty());
                 }
             }
-            call_expr.clone().subst(st, cx, &mcx.bindings)
+            *ast = call_expr.clone().subst(st, cx, &mcx.bindings);
         });
 
         // Add the function definition to the crate
 
-        let mut krate = krate;
         krate.module.items.push(func);
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {
