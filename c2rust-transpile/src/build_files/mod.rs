@@ -67,7 +67,8 @@ pub fn emit_build_files(tcfg: &TranspilerConfig, build_dir: &Path,
     reg.register_template_string("lib.rs", include_str!("lib.rs.hbs")).unwrap();
 
     emit_cargo_toml(tcfg,&reg, &build_dir);
-    emit_lib_rs(tcfg, &reg, &build_dir, modules)
+    emit_rust_toolchain(tcfg, &build_dir);
+    emit_lib_rs(tcfg, &reg, &build_dir, modules)    
 }
 
 #[derive(Serialize)]
@@ -136,6 +137,15 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
     let output = reg.render("lib.rs", &json).unwrap();
 
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)
+}
+
+/// If we translate variadic functions, the output will only compile
+/// on a nightly toolchain until the `c_variadics` feature is stable.
+fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) { 
+    let output_path = build_dir.join("rust-toolchain");
+    // TODO: use value of $C2RUST_HOME/rust-toolchain?
+    let output = String::from("nightly-2019-03-13\n");
+    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
 }
 
 fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) {
