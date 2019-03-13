@@ -12,11 +12,11 @@
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
 
-{{~#if reorganize_definitions~}}
+{{#if reorganize_definitions~}}
     #![feature(custom_attribute)]
 {{/if}}
-{{~#if translate_valist~}}
-    #![feature(c_variadics)]
+{{#if translate_valist~}}
+    #![feature(c_variadic)]
 {{/if}}
 
 {{#if cross_checks~}}
