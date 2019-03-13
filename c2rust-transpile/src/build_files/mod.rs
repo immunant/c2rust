@@ -67,8 +67,8 @@ pub fn emit_build_files(tcfg: &TranspilerConfig, build_dir: &Path,
     reg.register_template_string("lib.rs", include_str!("lib.rs.hbs")).unwrap();
 
     emit_cargo_toml(tcfg,&reg, &build_dir);
-    emit_rust_toolchain(tcfg, &build_dir);
-    emit_lib_rs(tcfg, &reg, &build_dir, modules)    
+    if tcfg.translate_valist { emit_rust_toolchain(tcfg, &build_dir); }
+    emit_lib_rs(tcfg, &reg, &build_dir, modules)
 }
 
 #[derive(Serialize)]
@@ -126,6 +126,7 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
     let json = json!({
         "root_rs_file": file_name,
         "reorganize_definitions": tcfg.reorganize_definitions,
+        "translate_valist": tcfg.translate_valist,
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": rs_xcheck_backend,
         "main_module": get_module_name(&tcfg.main),

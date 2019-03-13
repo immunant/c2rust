@@ -15,6 +15,9 @@
 {{~#if reorganize_definitions~}}
     #![feature(custom_attribute)]
 {{/if}}
+{{~#if translate_valist~}}
+    #![feature(c_variadics)]
+{{/if}}
 
 {{#if cross_checks~}}
 #![feature(plugin, custom_attribute)]
