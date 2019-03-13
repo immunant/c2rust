@@ -1265,6 +1265,7 @@ impl<'c> Translation<'c> {
         self.with_scope(|| {
             let mut args: Vec<Arg> = vec![];
 
+            // handle regular (non-variadic) arguments
             for &(decl_id, ref var, typ) in arguments {
 
 
@@ -1286,6 +1287,24 @@ impl<'c> Translation<'c> {
                 args.push(mk().arg(ty, pat))
             }
 
+            // handle variadic arguments
+            if is_variadic {
+                let ty = mk().ident_ty("...");
+                if let Some(va_decl_id) = ctx.va_decl { 
+                    // `register_va_arg` succeeded
+                    let var = self.renamer.borrow_mut()
+                            .get(&va_decl_id)
+                            .expect(&format!("Failed to get name for variadic argument"));
+
+                    // FIXME: detect mutability requirements
+                    let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(var);
+                    args.push(mk().arg(ty, pat))
+                } else  {
+                    args.push(mk().arg(ty, mk().wild_pat()))
+                }
+            }
+
+            // handle return type
             let ret = match return_type {
                 Some(return_type) => self.convert_type(return_type.ctype)?,
                 None => mk().never_ty(),
