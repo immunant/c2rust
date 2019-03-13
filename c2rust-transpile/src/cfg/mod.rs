@@ -73,7 +73,7 @@ impl Label {
     }
 
     fn debug_print(&self) -> String {
-        String::from(self.pretty_print().trim_left_matches('\''))
+        String::from(self.pretty_print().trim_start_matches('\''))
     }
 
     fn to_num_expr(&self) -> P<Expr> {
