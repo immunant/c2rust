@@ -1005,9 +1005,6 @@ impl<'c> Translation<'c> {
                 if is_packed || max_field_alignment == Some(1) { reprs.push(simple_metaitem("packed")); };
                 // https://github.com/rust-lang/rust/issues/33626
                 if let Some(alignment) = manual_alignment {
-                    self.use_feature("repr_align");
-                    self.use_feature("attr_literals");
-
                     let lit = mk().int_lit(alignment as u128, LitIntType::Unsuffixed);
                     let inner = mk().meta_item(
                         vec!["align"],
