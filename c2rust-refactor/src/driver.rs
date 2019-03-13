@@ -33,7 +33,6 @@ use syntax::symbol::keywords;
 use syntax::tokenstream::TokenTree;
 use syntax_pos::FileName;
 use syntax_pos::Span;
-use arena::SyncDroplessArena;
 
 use crate::ast_manip::remove_paren;
 use crate::span_fix;
@@ -55,21 +54,21 @@ pub enum Phase {
 
 impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
     fn new_phase_1(sess: &'a Session, cstore: &'a CStore) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, cstore, None, None, None)
+        RefactorCtxt::new(sess, cstore, None, None)
     }
 
     fn new_phase_2(sess: &'a Session,
                    cstore: &'a CStore,
                    map: &'a hir_map::Map<'tcx>) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, cstore, Some(map), None, None)
+        RefactorCtxt::new(sess, cstore, Some(map), None)
     }
 
     fn new_phase_3(sess: &'a Session,
                    cstore: &'a CStore,
                    map: &'a hir_map::Map<'tcx>,
                    tcx: TyCtxt<'a, 'tcx, 'tcx>,
-                   tcx_arena: &'tcx SyncDroplessArena) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, cstore, Some(map), Some(tcx), Some(tcx_arena))
+    ) -> RefactorCtxt<'a, 'tcx> {
+        RefactorCtxt::new(sess, cstore, Some(map), Some(tcx))
     }
 }
 
@@ -282,7 +281,7 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
         &mut arenas, &crate_name, &outputs,
         |tcx, _rcv, _result| {
             if phase == Phase::Phase3 {
-                let cx = RefactorCtxt::new_phase_3(&session, &cstore, tcx.hir(), tcx, &arenas.interner);
+                let cx = RefactorCtxt::new_phase_3(&session, &cstore, tcx.hir(), tcx);
                 result = Some(func(krate, cx));
                 return;
             }

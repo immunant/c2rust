@@ -1,4 +1,3 @@
-use arena::SyncDroplessArena;
 use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
 use rustc::hir::map as hir_map;
@@ -23,11 +22,6 @@ pub struct RefactorCtxt<'a, 'tcx: 'a> {
     map: Option<&'a hir_map::Map<'tcx>>,
     tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
 
-    /// This is a reference to the same `DroplessArena` used in `tcx`.  Analyses working with types
-    /// use this to allocate extra values with the same lifetime `'tcx` as the types themselves.
-    /// This way `Ty` wrappers don't need two lifetime parameters everywhere.
-    tcx_arena: Option<&'tcx SyncDroplessArena>,
-
     cstore: &'a CStore,
 }
 
@@ -37,9 +31,8 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         cstore: &'a CStore,
         map: Option<&'a hir_map::Map<'tcx>>,
         tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
-        tcx_arena: Option<&'tcx SyncDroplessArena>,
     ) -> Self {
-        Self {sess, cstore, map, tcx, tcx_arena}
+        Self {sess, cstore, map, tcx}
     }
 }
 
@@ -59,11 +52,6 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 
     pub fn ty_ctxt(&self) -> TyCtxt<'a, 'tcx, 'tcx> {
         self.tcx
-            .expect("ty ctxt is not available in this context (requires phase 3)")
-    }
-
-    pub fn ty_arena(&self) -> &'tcx SyncDroplessArena {
-        self.tcx_arena
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
 
