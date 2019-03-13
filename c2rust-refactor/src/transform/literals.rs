@@ -1,3 +1,4 @@
+use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
@@ -28,7 +29,7 @@ impl Transform for ByteStrToStr {
                 return;
             }
 
-            match e.node {
+            match &mut e.node {
                 ExprKind::Lit(l) => {
                     match l.node {
                         LitKind::ByteStr(ref bs) => {
@@ -65,15 +66,15 @@ impl Transform for RemoveNullTerminator {
                 return;
             }
 
-            match e.node {
+            match &mut e.node {
                 ExprKind::Lit(l) => {
                     match &mut l.node {
                         LitKind::ByteStr(bs) => {
                             if bs.last() == Some(&0) {
-                                bs.pop();
+                                Lrc::get_mut(bs).unwrap().pop();
                             }
                         }
-                        LitKind::Str(s, _style) => {
+                        LitKind::Str(ref mut s, _style) => {
                             if s.as_str().ends_with("\0") {
                                 let end = s.as_str().len() - 1;
                                 *s = Symbol::intern(&s.as_str()[..end]);

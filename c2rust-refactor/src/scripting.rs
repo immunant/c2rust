@@ -335,11 +335,11 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
         callback: LuaFunction<'lua>,
     ) where
         P: Pattern<V>,
-        V: TryFrom<RustAstNode> + Into<RustAstNode>,
+        V: TryFrom<RustAstNode> + Into<RustAstNode> + Clone,
         <V as TryFrom<RustAstNode>>::Error: Debug,
     {
         mut_visit_match_with(self.mcx.clone(), pattern, krate, |x, mcx| {
-            let orig_node = self.transform.intern(*x);
+            let orig_node = self.transform.intern(x.clone());
             let mcx = ScriptingMatchCtxt::wrap(self.transform.clone(), mcx);
             let new_node = lua_ctx
                 .scope(|scope| {
@@ -525,7 +525,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                     let mut mcx = MatchCtxt::new(this.st, this.cx);
                     let pat = mcx.parse_stmts(&pat);
                     mut_visit_match_with(mcx, pat, krate, |pat, _mcx| {
-                        let i = f.call::<_, LuaAstNode>(this.intern(*pat)).unwrap();
+                        let i = f.call::<_, LuaAstNode>(this.intern(pat.clone())).unwrap();
                         *pat = this.nodes
                             .borrow_mut()
                             .remove(i)
@@ -549,7 +549,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                     let mut mcx = MatchCtxt::new(this.st, this.cx);
                     let pat = mcx.parse_expr(&pat);
                     mut_visit_match_with(mcx, pat, krate, |pat, _mcx| {
-                        let i = f.call::<_, LuaAstNode>(this.intern(*pat)).unwrap();
+                        let i = f.call::<_, LuaAstNode>(this.intern(pat.clone())).unwrap();
                         *pat = this.nodes
                             .borrow_mut()
                             .remove(i)

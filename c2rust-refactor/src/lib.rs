@@ -3,7 +3,6 @@
     trace_macros,
     specialization,
     box_patterns,
-    try_from,
 )]
 extern crate arena;
 extern crate ena;

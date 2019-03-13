@@ -21,14 +21,14 @@ impl Transform for CanonicalizeRefs {
             for adjustment in tables.expr_adjustments(hir_expr) {
                 match adjustment.kind {
                     Adjust::Deref(_) => {
-                        *expr = mk().unary_expr(UnOp::Deref, *expr);
+                        *expr = mk().unary_expr(UnOp::Deref, expr.clone());
                     }
                     Adjust::Borrow(AutoBorrow::Ref(_, ref mutability)) => {
                         let mutability = match mutability {
                             AutoBorrowMutability::Mutable{..} => Mutability::Mutable,
                             AutoBorrowMutability::Immutable => Mutability::Immutable,
                         };
-                        *expr = mk().set_mutbl(mutability).addr_of_expr(*expr);
+                        *expr = mk().set_mutbl(mutability).addr_of_expr(expr.clone());
                     }
                     _ => {},
                 }
@@ -48,19 +48,20 @@ struct RemoveUnnecessaryRefs;
 impl Transform for RemoveUnnecessaryRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, _cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
-            match expr.node {
-                ExprKind::MethodCall(path, args) => {
-                    let (receiver, rest) = args.split_first().unwrap();
-                    let receiver = remove_all_derefs(remove_ref(remove_reborrow(receiver.clone())));
-                    let rest = rest.iter().map(|arg| remove_reborrow(arg.clone()));
-                    let mut args = Vec::with_capacity(args.len() + 1);
-                    args.push(receiver);
-                    args.extend(rest);
-                    expr.node = ExprKind::MethodCall(path, args);
+            match &mut expr.node {
+                ExprKind::MethodCall(_path, args) => {
+                    let (receiver, rest) = args.split_first_mut().unwrap();
+                    remove_reborrow(receiver);
+                    remove_ref(receiver);
+                    remove_all_derefs(receiver);
+                    for arg in rest {
+                        remove_reborrow(arg);
+                    }
                 }
-                ExprKind::Call(callee, args) => {
-                    let args = args.iter().map(|arg| remove_reborrow(arg.clone())).collect();
-                    expr.node = ExprKind::Call(callee, args);
+                ExprKind::Call(_callee, args) => {
+                    for arg in args.iter_mut() {
+                        remove_reborrow(arg);
+                    }
                 }
                 _ => {}
             }
@@ -72,27 +73,30 @@ impl Transform for RemoveUnnecessaryRefs {
     }
 }
 
-fn remove_ref(expr: P<Expr>) -> P<Expr> {
-    expr.map(|expr| match expr.node {
-        ExprKind::AddrOf(_, expr) => expr.into_inner(),
-        _ => expr,
-    })
+fn remove_ref(expr: &mut P<Expr>) {
+    match &expr.node {
+        ExprKind::AddrOf(_, inner) => *expr = inner.clone(),
+        _ => {}
+    }
 }
 
-fn remove_all_derefs(expr: P<Expr>) -> P<Expr> {
-    expr.map(|expr| match expr.node {
-        ExprKind::Unary(UnOp::Deref, expr) => remove_all_derefs(expr).into_inner(),
-        _ => expr,
-    })
+fn remove_all_derefs(expr: &mut P<Expr>) {
+    match &expr.node {
+        ExprKind::Unary(UnOp::Deref, inner) => {
+            *expr = inner.clone();
+            remove_all_derefs(expr);
+        }
+        _ => {}
+    }
 }
 
-fn remove_reborrow(expr: P<Expr>) -> P<Expr> {
+fn remove_reborrow(expr: &mut P<Expr>) {
     if let ExprKind::AddrOf(_, ref subexpr) = expr.node {
         if let ExprKind::Unary(UnOp::Deref, ref subexpr) = subexpr.node {
-            return remove_reborrow(subexpr.clone());
+            *expr = subexpr.clone();
+            remove_reborrow(expr);
         }
     }
-    expr
 }
 
 pub fn register_commands(reg: &mut Registry) {

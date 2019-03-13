@@ -313,20 +313,17 @@ impl Transform for Localize {
         // the statics they reference.  Replace uses of statics in the bodies of marked functions
         // with the corresponding parameter. 
 
-        mut_visit_fns(krate, |mut fl| {
+        mut_visit_fns(krate, |fl| {
             let fn_def_id = cx.node_def_id(fl.id);
             if let Some(static_ids) = fn_statics.get(&fn_def_id) {
 
                 // Add new argument to function signature.
-                fl.decl = fl.decl.map(|mut decl| {
-                    for &static_id in static_ids {
-                        let info = &statics[&static_id];
-                        decl.inputs.push(mk().arg(
-                                mk().set_mutbl(info.mutbl).ref_ty(&info.ty),
-                                mk().ident_pat(info.arg_name)));
-                    }
-                    decl
-                });
+                for &static_id in static_ids {
+                    let info = &statics[&static_id];
+                    fl.decl.inputs.push(mk().arg(
+                        mk().set_mutbl(info.mutbl).ref_ty(&info.ty),
+                        mk().ident_pat(info.arg_name)));
+                }
 
                 // Update uses of statics.
                 MutVisitNodes::visit(&mut fl.block, |e: &mut P<Expr>| {
@@ -469,7 +466,8 @@ impl Transform for StaticToLocal {
             refs.sort_by_key(|info| info.name.name);
 
             if let Some(block) = &mut fl.block {
-                let old_stmts = mem::replace(&mut block.stmts, Vec::with_capacity(refs.len() + block.stmts.len()));
+                let new_stmts = Vec::with_capacity(refs.len() + block.stmts.len());
+                let old_stmts = mem::replace(&mut block.stmts, new_stmts);
 
                 for &info in &refs {
                     let pat = mk().set_mutbl(info.mutbl).ident_pat(info.name);

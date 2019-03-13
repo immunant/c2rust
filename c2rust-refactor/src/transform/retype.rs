@@ -62,17 +62,14 @@ impl Transform for RetypeArgument {
 
             // Def IDs of changed arguments.
             let mut changed_args = HashSet::new();
-            fl.decl = fl.decl.map(|mut decl| {
-                for (i, arg) in decl.inputs.iter_mut().enumerate() {
-                    if st.marked(arg.id, "target") {
-                        arg.ty = new_ty.clone();
-                        mod_fns.entry(cx.node_def_id(fn_id)).or_insert_with(HashSet::new).insert(i);
+            for (i, arg) in fl.decl.inputs.iter_mut().enumerate() {
+                if st.marked(arg.id, "target") {
+                    arg.ty = new_ty.clone();
+                    mod_fns.entry(cx.node_def_id(fn_id)).or_insert_with(HashSet::new).insert(i);
 
-                        changed_args.insert(cx.hir_map().node_to_hir_id(arg.pat.id));
-                    }
+                    changed_args.insert(cx.hir_map().node_to_hir_id(arg.pat.id));
                 }
-                decl
-            });
+            }
 
             if changed_args.len() == 0 {
                 return;
@@ -160,10 +157,7 @@ impl Transform for RetypeReturn {
             }
 
             // Change the return type annotation
-            fl.decl = fl.decl.map(|mut decl| {
-                decl.output = FunctionRetTy::Ty(new_ty.clone());
-                decl
-            });
+            fl.decl.output = FunctionRetTy::Ty(new_ty.clone());
 
             // Rewrite output expressions using `wrap`.
             fl.block.as_mut().map(|b| fold_output_exprs(b, true, |e| {
@@ -185,7 +179,7 @@ impl Transform for RetypeReturn {
                 return;
             }
             let mut bnd = Bindings::new();
-            bnd.add("__new", *e);
+            bnd.add("__new", e.clone());
             *e = unwrap.clone().subst(st, cx, &bnd)
         });
     }
@@ -372,7 +366,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                                 // Note that `PatKind::Ident` doesn't guarantee that this is a
                                 // variable binding.  But if it's not, then no name will ever
                                 // resolve to `arg.pat`'s DefId, so it doesn't matter.
-                                self.changed_defs.insert(arg.pat.id, (old_ty, arg.ty));
+                                self.changed_defs.insert(arg.pat.id, (old_ty, arg.ty.clone()));
                             } else {
                                 // TODO: Would be nice to warn the user (or skip rewriting) if a
                                 // nontrivial pattern gets its type changed, as we'll likely miss
@@ -430,10 +424,10 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
             mut_visit::noop_flat_map_item(i, self)
         }
 
-        fn visit_struct_field(&mut self, mut sf: &mut StructField) {
+        fn visit_struct_field(&mut self, sf: &mut StructField) {
             let old_ty = sf.ty.clone();
             if (self.retype)(&mut sf.ty) {
-                self.changed_defs.insert(sf.id, (old_ty, sf.ty));
+                self.changed_defs.insert(sf.id, (old_ty, sf.ty.clone()));
             }
             mut_visit::noop_visit_struct_field(sf, self)
         }
@@ -538,7 +532,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                                     ExprKind::Call(_, ref mut args) => *args = new_args);
 
                             if let Some(&(ref old_ty, ref new_ty)) = changed_outputs.get(&func_id) {
-                                *e = transmute(*e, context, new_ty, old_ty);
+                                *e = transmute(e.clone(), context, new_ty, old_ty);
                             }
                         }
                     }
@@ -558,7 +552,7 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
     mut_visit_fns(krate, |fl| {
         if let Some(&(ref old_ty, ref new_ty)) = changed_outputs.get(&fl.id) {
             fl.block.as_mut().map(|b| fold_output_exprs(b, true, |e| {
-                *e = transmute(*e, lr_expr::Context::Rvalue, old_ty, new_ty);
+                *e = transmute(e.clone(), lr_expr::Context::Rvalue, old_ty, new_ty);
             }));
         }
     });
@@ -594,7 +588,7 @@ impl Transform for BitcastRetype {
             // and `U::SomeTy` could be totally unrelated).
 
             let mut matched = false;
-            mut_visit_match(st, cx, pat.clone(), ty, |_, mcx| {
+            mut_visit_match(st, cx, pat.clone(), ty, |ty, mcx| {
                 matched = true;
                 *ty = repl.clone().subst(st, cx, &mcx.bindings);
             });
@@ -740,7 +734,7 @@ impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
             }
 
             let mut bnd = mcx.bindings;
-            bnd.add("__old", *e);
+            bnd.add("__old", e.clone());
             info!("rewriting with bindings {:?}", bnd);
             *self.num_inserted_casts += 1;
             *e = r.cast_expr.clone().subst(self.st, self.cx, &bnd);
@@ -859,7 +853,7 @@ impl<'a> MutVisitor for RetypePrepFolder<'a> {
         for arg in inputs {
             self.map_type(&mut arg.ty);
         }
-        match &mut output {
+        match output {
             FunctionRetTy::Ty(ty) => self.map_type(ty),
             _ => {}
         }
@@ -1303,7 +1297,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 return self.try_retype(e, sub_expected);
             }
             (ExprKind::AddrOf(expr_mut, e), TyKind::Ref(_, subty, expected_mut)) => {
-                let mutbl = match (expr_mut, expected_mut) {
+                let mutbl = match (&expr_mut, expected_mut) {
                     (Mutability::Mutable, _) |
                     (Mutability::Immutable, hir::Mutability::MutImmutable) => expected_mut,
                     _ => return false,
@@ -1349,13 +1343,13 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             _ => (),
         };
 
-        if self.try_transmute_fix(&mut expr, expected.clone()) {
+        if self.try_transmute_fix(expr, expected.clone()) {
             return true;
         }
 
         if self.can_cast(cur_ty, expected.ty, self.cx.hir_map().get_parent_did(expr.id)) {
             self.num_inserted_casts += 1;
-            *expr = mk().cast_expr(*expr, reflect_tcx_ty(self.cx.ty_ctxt(), expected.ty));
+            *expr = mk().cast_expr(expr.clone(), reflect_tcx_ty(self.cx.ty_ctxt(), expected.ty));
             return true;
         }
 

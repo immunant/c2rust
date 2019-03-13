@@ -108,7 +108,7 @@ impl Transform for InsertRemoveArgs {
                 }
 
                 if !self.remove_idxs.contains(&i) {
-                    new_args.push(*arg);
+                    new_args.push(arg.clone());
                 }
             }
 

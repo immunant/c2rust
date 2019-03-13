@@ -194,7 +194,7 @@ impl Transform for CanonicalizeExterns {
                 // cast around the whole thing.  (This should only be true for statics.)
                 if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Whole)) {
                     // The rewritten expr has type `new_ty`, but its context expects `old_ty`.
-                    *e = mk().cast_expr(*e, reflect::reflect_tcx_ty(tcx, old_ty));
+                    *e = mk().cast_expr(e.clone(), reflect::reflect_tcx_ty(tcx, old_ty));
                 }
             }
 
@@ -225,7 +225,7 @@ impl Transform for CanonicalizeExterns {
 
                 if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Ret)) {
                     // The new fn returns `new_ty`, where the old context requires `old_ty`.
-                    *e = mk().cast_expr(*e, reflect::reflect_tcx_ty(tcx, old_ty));
+                    *e = mk().cast_expr(e.clone(), reflect::reflect_tcx_ty(tcx, old_ty));
                     info!("  return - rewrote e = {:?}", e);
                 }
             }

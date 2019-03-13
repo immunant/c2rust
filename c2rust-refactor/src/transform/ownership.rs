@@ -62,16 +62,17 @@ pub fn register_commands(reg: &mut Registry) {
 fn do_annotate(st: &CommandState,
                cx: &RefactorCtxt,
                label: Symbol) {
-    let analysis = ownership::analyze(&st, &cx);
+    let arena = SyncDroplessArena::default();
+    let analysis = ownership::analyze(&st, &cx, &arena);
 
     struct AnnotateFolder<'a, 'tcx: 'a> {
         label: Symbol,
-        ana: ownership::AnalysisResult<'tcx>,
+        ana: ownership::AnalysisResult<'tcx, 'tcx>,
         hir_map: &'a hir::map::Map<'tcx>,
         st: &'a CommandState,
     }
 
-    impl<'a, 'tcx> AnnotateFolder<'a, 'tcx> {
+    impl<'lty, 'a, 'tcx> AnnotateFolder<'a, 'tcx> {
         fn static_attr_for(&self, id: NodeId) -> Option<Attribute> {
             self.hir_map.opt_local_def_id(id)
                 .and_then(|def_id| self.ana.statics.get(&def_id))
@@ -115,7 +116,7 @@ fn do_annotate(st: &CommandState,
         }
     }
 
-    impl<'a, 'tcx> MutVisitor for AnnotateFolder<'a, 'tcx> {
+    impl<'lty, 'a, 'tcx> MutVisitor for AnnotateFolder<'a, 'tcx> {
         fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             if !self.st.marked(i.id, self.label) {
                 return mut_visit::noop_flat_map_item(i, self);
@@ -153,7 +154,7 @@ fn do_annotate(st: &CommandState,
             mut_visit::noop_flat_map_impl_item(i, self)
         }
 
-        fn visit_struct_field(&mut self, mut sf: &mut StructField) {
+        fn visit_struct_field(&mut self, sf: &mut StructField) {
             if !self.st.marked(sf.id, self.label) {
                 return mut_visit::noop_visit_struct_field(sf, self);
             }
@@ -301,7 +302,8 @@ fn build_variant_attr(group: &str) -> Attribute {
 fn do_split_variants(st: &CommandState,
                      cx: &RefactorCtxt,
                      label: Symbol) {
-    let ana = ownership::analyze(&st, &cx);
+    let arena = SyncDroplessArena::default();
+    let ana = ownership::analyze(&st, &cx, &arena);
 
     // Map from ExprPath/ExprMethodCall span to function ref idx within the caller.
     let mut span_fref_idx = HashMap::new();
@@ -492,16 +494,16 @@ fn callee_new_name(cx: &RefactorCtxt,
 /// of the ownership analysis.
 /// See `analysis/ownership/README.md` for details on ownership inference.
 fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
-    let ana = ownership::analyze(&st, &cx);
+    let arena = SyncDroplessArena::default();
+    let ana = ownership::analyze(&st, &cx, &arena);
 
-    struct AnalysisTypeSource<'a, 'tcx: 'a> {
-        ana: &'a ownership::AnalysisResult<'tcx>,
-        arena: &'tcx SyncDroplessArena,
+    struct AnalysisTypeSource<'lty, 'tcx: 'lty> {
+        ana: &'lty ownership::AnalysisResult<'lty, 'tcx>,
     }
 
-    impl<'a, 'tcx> type_map::TypeSource for AnalysisTypeSource<'a, 'tcx> {
-        type Type = ownership::PTy<'tcx>;
-        type Signature = ownership::PFnSig<'tcx>;
+    impl<'lty, 'tcx> type_map::TypeSource for AnalysisTypeSource<'lty, 'tcx> {
+        type Type = ownership::PTy<'lty, 'tcx>;
+        type Signature = ownership::PFnSig<'lty, 'tcx>;
 
         fn def_type(&mut self, did: DefId) -> Option<Self::Type> {
             self.ana.statics.get(&did).cloned()
@@ -522,7 +524,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
             let mr = &self.ana.monos[&(vr.func_id, mono_idx)];
 
-            let lcx = LabeledTyCtxt::new(self.arena);
+            let lcx = LabeledTyCtxt::new(self.ana.arena());
 
             let sig = {
                 let mut f = |l: &Option<_>| {
@@ -546,7 +548,6 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
     let source = AnalysisTypeSource {
         ana: &ana,
-        arena: cx.ty_arena(),
     };
 
     let s_ref = "ref".into_symbol();

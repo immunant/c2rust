@@ -604,7 +604,7 @@ impl Transform for CreateItem {
                 // When true, insert before the next item that satisfies `skip_dummy`
                 let mut insert_inside = self.inside && self.st.marked(parent_id, self.mark);
 
-                for i in m.items {
+                for i in &m.items {
                     if insert_inside {
                         // Special case for `inside` mode with the Crate marked.  We want to insert
                         // after the injected std and prelude items, because inserting before an
@@ -616,7 +616,7 @@ impl Transform for CreateItem {
                     }
 
                     let insert = !self.inside && self.st.marked(i.id, self.mark);
-                    items.push(i);
+                    items.push(i.clone());
                     if insert {
                         items.extend(self.items.iter().cloned());
                     }
@@ -644,8 +644,9 @@ impl Transform for CreateItem {
             }
 
             fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+                let id = i.id;
                 if let ItemKind::Mod(m) = &mut i.node {
-                    self.handle_mod(i.id, m, false);
+                    self.handle_mod(id, m, false);
                 }
                 mut_visit::noop_flat_map_item(i, self)
             }
@@ -657,9 +658,9 @@ impl Transform for CreateItem {
                     stmts.extend(self.items.iter().cloned().map(|i| mk().item_stmt(i)));
                 }
 
-                for s in b.stmts {
+                for s in &b.stmts {
                     let insert = !self.inside && self.st.marked(s.id, self.mark);
-                    stmts.push(s);
+                    stmts.push(s.clone());
                     if insert {
                         stmts.extend(self.items.iter().cloned().map(|i| mk().item_stmt(i)));
                     }
@@ -699,7 +700,7 @@ impl Transform for DeleteItems {
         }
 
         impl<'a> MutVisitor for DeleteFolder<'a> {
-            fn visit_mod(&mut self, mut m: &mut Mod) {
+            fn visit_mod(&mut self, m: &mut Mod) {
                 m.items.retain(|i| !self.st.marked(i.id, self.mark));
                 mut_visit::noop_visit_mod(m, self)
             }
