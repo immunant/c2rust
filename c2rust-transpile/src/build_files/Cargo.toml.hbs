@@ -14,9 +14,6 @@ path = "{{root_rs_file}}"
 crate-type = ["staticlib"]
 {{~/if}}
 
-[dependencies]
-libc = "*"
-
 {{#if cross_checks~}}
 [dependencies.c2rust-xcheck-plugin]
 version = "*"
