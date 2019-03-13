@@ -1333,7 +1333,7 @@ class TranslateASTVisitor final
               if (align == 0) {
                   cbor_encode_null(local);
               } else {
-                  cbor_encode_uint(local, align);
+                  cbor_encode_uint(local, align / 8);
               }
 
               // 5. Encode pragma pack(n)
