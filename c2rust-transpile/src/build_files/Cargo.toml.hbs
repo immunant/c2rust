@@ -15,7 +15,7 @@ crate-type = ["staticlib"]
 {{~/if}}
 
 [dependencies]
-libc = "*"
+libc = "0.2"
 
 {{#if cross_checks~}}
 [dependencies.c2rust-xcheck-plugin]

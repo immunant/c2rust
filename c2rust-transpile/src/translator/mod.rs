@@ -616,7 +616,7 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
     if t.tcfg.emit_modules {
         s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
     } else {
-        let mut features = vec!["libc"];
+        let mut features = vec![];
         features.extend(t.features.borrow().iter());
         features.extend(t.type_converter.borrow().features_used());
         let mut pragmas: Vec<(&str, Vec<&str>)> =
