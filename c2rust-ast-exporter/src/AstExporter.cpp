@@ -1127,10 +1127,10 @@ class TranslateASTVisitor final
           if (!FD->isCanonicalDecl())
               return true;
 
-          if (FD->hasBody() && FD->isVariadic()) {
-            //   auto fname = FD->getNameString();
-              printWarning("variadic functions are not fully supported.", FD);
-          }
+          // if (FD->hasBody() && FD->isVariadic()) {
+          //   //   auto fname = FD->getNameString();
+          //     printWarning("variadic functions are not fully supported.", FD);
+          // }
 
           // Use the parameters from the function declaration
           // the defines the body, if one exists.
