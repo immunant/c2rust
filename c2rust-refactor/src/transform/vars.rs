@@ -238,8 +238,7 @@ fn expr_has_side_effects(cx: &RefactorCtxt, e: &P<Expr>) -> bool {
         ExprKind::Array(ref elems) => elems.iter().any(|e| expr_has_side_effects(cx, e)),
         ExprKind::Call(ref func, ref args) => {
             let func_is_const_fn = cx.try_resolve_expr(func)
-                .map(|func_id| cx.ty_ctxt().is_const_fn(func_id))
-                .unwrap_or_default();
+                .map_or(false, |func_id| cx.ty_ctxt().is_const_fn(func_id));
             !func_is_const_fn ||
                 args.iter().any(|e| expr_has_side_effects(cx, e))
         },
@@ -249,7 +248,7 @@ fn expr_has_side_effects(cx: &RefactorCtxt, e: &P<Expr>) -> bool {
         // TODO: ExprKind::Path safe???
         ExprKind::Struct(_, ref fields, ref base) => {
             fields.iter().any(|f| expr_has_side_effects(cx, &f.expr)) ||
-                base.as_ref().map(|e| expr_has_side_effects(cx, e)).unwrap_or_default()
+                base.as_ref().map_or(false, |e| expr_has_side_effects(cx, e))
         }
         ExprKind::Repeat(ref expr, _) => expr_has_side_effects(cx, expr),
         ExprKind::Paren(ref expr) => expr_has_side_effects(cx, expr),
