@@ -3,7 +3,7 @@ This document tracks things that we know the translator can't handle, as well as
 
 ## Unimplemented
 
-  * variadic function definitions (blocking [Rust issue](https://github.com/rust-lang/rust/issues/44930))
+  * variadic function definitions and macros that operate on `va_list`s (work in progress)
   * preserving comments (work in progress)
   * `long double` and `_Complex` types (partially blocked by Rust language)
   * Non x86/64 SIMD function/types and x86/64 SIMD function/types which have no rust equivalent
