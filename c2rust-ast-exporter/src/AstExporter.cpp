@@ -1222,7 +1222,7 @@ class TranslateASTVisitor final
           auto T = def->getType();
 
           encode_entry(VD, TagVarDecl, childIds, T,
-                             [VD, is_defn](CborEncoder *array){
+                             [VD, is_defn, def](CborEncoder *array){
                                  auto name = VD->getNameAsString();
                                  cbor_encode_string(array, name);
 
@@ -1241,7 +1241,7 @@ class TranslateASTVisitor final
                                  CborEncoder attr_info;
                                  size_t attr_info_n = 0;
 
-                                 for (auto attr: VD->attrs()) {
+                                 for (auto attr: def->attrs()) {
                                      attr_info_n++;
 
                                      if (attr->getKind() == attr::Kind::Section) {
@@ -1251,11 +1251,11 @@ class TranslateASTVisitor final
 
                                  cbor_encoder_create_array(array, &attr_info, attr_info_n);
 
-                                 for (auto attr: VD->attrs()) {
+                                 for (auto attr: def->attrs()) {
                                      cbor_encode_text_stringz(&attr_info, attr->getSpelling());
 
                                      if (attr->getKind() == attr::Kind::Section) {
-                                        auto sa = VD->getAttr<SectionAttr>();
+                                        auto sa = def->getAttr<SectionAttr>();
 
                                         cbor_encode_text_stringz(&attr_info, sa->getName().str().c_str());
                                      }

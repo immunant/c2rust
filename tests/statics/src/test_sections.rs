@@ -36,4 +36,7 @@ pub fn test_sectioned_used_static() {
     let src = include_str!("attributes.rs");
 
     assert!(src.contains("#[link_section = \"barz\"]\n#[used]\nstatic mut rust_used_static4: libc::c_int = 1i32;"));
+
+    // This static is pub, but we want to ensure it has attributes applied
+    assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: libc::c_int = 1i32;"));
 }

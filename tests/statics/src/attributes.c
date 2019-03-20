@@ -8,3 +8,10 @@ const int __attribute__((used, section("baz"))) used_static3 = 1 + 1U;
 
 // Attribute-less static
 int no_attrs = 1;
+
+// In the following case the extern var creates the canonical var decl
+// and the variable definition is non canonical. This previously
+// meant that attributes were not persisted to the definition.
+extern int initialized_extern;
+
+int __attribute__((section("fb"))) initialized_extern = 1;
