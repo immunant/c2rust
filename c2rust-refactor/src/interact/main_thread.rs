@@ -10,6 +10,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, SyncSender, Receiver};
 use std::thread;
+use rustc_interface::interface::{self, Config};
 use syntax::ast::*;
 use syntax::source_map::{FileLoader, RealFileLoader};
 use syntax::source_map::Span;
@@ -20,7 +21,7 @@ use syntax_pos::FileName;
 use crate::ast_manip::{GetNodeId, GetSpan, Visit};
 use crate::command::{self, RefactorState};
 use crate::driver;
-use crate::file_io::FileIO;
+use crate::file_io::{ArcFileIO, FileIO};
 use crate::interact::{ToServer, ToClient};
 use crate::interact::WrapSender;
 use crate::interact::{plain_backend, vim8_backend};
@@ -32,29 +33,18 @@ use c2rust_ast_builder::IntoSymbol;
 use super::MarkInfo;
 
 
-struct InteractState {
+struct InteractState<'a> {
     to_client: SyncSender<ToClient>,
     buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
 
-    state: RefactorState,
+    state: RefactorState<'a>,
 }
 
-impl InteractState {
-    fn new(rustc_args: Vec<String>,
-           registry: command::Registry,
-           to_worker: SyncSender<ToWorker>,
-           to_client: SyncSender<ToClient>) -> InteractState {
-
-        let buffers_available = Arc::new(Mutex::new(HashSet::new()));
-
-        let file_io = Arc::new(InteractiveFileIO {
-            buffers_available: buffers_available.clone(),
-            to_worker: to_worker.clone(),
-            to_client: to_client.clone(),
-        });
-
-        let state = RefactorState::from_rustc_args(
-            &rustc_args, registry, file_io, HashSet::new());
+impl<'a> InteractState<'a> {
+    fn new(state: RefactorState<'a>,
+           buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
+           _to_worker: SyncSender<ToWorker>,
+           to_client: SyncSender<ToClient>) -> InteractState<'a> {
 
         InteractState { to_client, buffers_available, state }
     }
@@ -77,7 +67,7 @@ impl InteractState {
         }
     }
 
-    fn run_compiler<F, R>(&mut self, phase: driver::Phase, func: F) -> R
+    fn run_compiler<F, R>(&mut self, phase: driver::Phase, func: F) -> interface::Result<R>
             where F: FnOnce(&Crate, &RefactorCtxt) -> R {
         self.state.transform_crate(phase, |st, cx| {
             func(&st.krate(), cx)
@@ -95,7 +85,7 @@ impl InteractState {
 
                 let (id, mark_info) = self.run_compiler(driver::Phase::Phase2, |krate, cx| {
                     let info = pick_node::pick_node_at_loc(
-                            &krate, &cx, kind, &file, line, col)
+                            &krate, cx.session(), kind, &file, line, col)
                         .unwrap_or_else(
                             || panic!("no {:?} node at {}:{}:{}", kind, file, line, col));
 
@@ -112,7 +102,7 @@ impl InteractState {
                          end_col: hi.col.0 as u32,
                          labels: vec![(&label.as_str() as &str).to_owned()],
                      })
-                });
+                }).expect("Failed to run compiler");
 
                 self.state.marks_mut().insert((id, label));
                 self.to_client.send(Mark { info: mark_info }).unwrap();
@@ -126,7 +116,7 @@ impl InteractState {
                 let id = NodeId::from_usize(id);
 
                 let mut labels = Vec::new();
-                for &(mark_id, label) in self.state.marks() {
+                for &(mark_id, label) in &*self.state.marks() {
                     if mark_id == id {
                         labels.push((&label.as_str() as &str).to_owned());
                     }
@@ -148,7 +138,7 @@ impl InteractState {
                         labels: labels,
                     };
                     Mark { info: info }
-                });
+                }).expect("Failed to run compiler");
                 self.to_client.send(msg).unwrap();
             },
 
@@ -156,7 +146,7 @@ impl InteractState {
                 let msg = self.state.transform_crate(driver::Phase::Phase2, |st, cx| {
                     let infos = collect_mark_infos(&st.marks(), &st.krate(), &cx);
                     MarkList { infos: infos }
-                });
+                }).expect("Failed to run compiler");
                 self.to_client.send(msg).unwrap();
             },
 
@@ -232,9 +222,11 @@ fn collect_mark_infos(marks: &HashSet<(NodeId, Symbol)>,
     infos_vec
 }
 
-pub fn interact_command(args: &[String],
-                        rustc_args: Vec<String>,
-                        registry: command::Registry) {
+pub fn interact_command(
+    args: &[String],
+    config: Config,
+    registry: command::Registry,
+) {
     let (to_main, main_recv) = mpsc::channel();
     let (to_worker, worker_recv) = mpsc::sync_channel(1);
 
@@ -248,8 +240,20 @@ pub fn interact_command(args: &[String],
         worker::run_worker(worker_recv, to_client_, to_main);
     });
 
-    InteractState::new(rustc_args, registry, to_worker, to_client)
-        .run_loop(main_recv);
+    let buffers_available = Arc::new(Mutex::new(HashSet::new()));
+
+    let file_io = Arc::new(InteractiveFileIO {
+        buffers_available: buffers_available.clone(),
+        to_worker: to_worker.clone(),
+        to_client: to_client.clone(),
+    });
+
+    driver::run_compiler(config, Some(Box::new(ArcFileIO(file_io.clone()))), |compiler| {
+        let state = RefactorState::new(compiler, registry, file_io, HashSet::new());
+
+        InteractState::new(state, buffers_available, to_worker, to_client)
+            .run_loop(main_recv);
+    });
 }
 
 

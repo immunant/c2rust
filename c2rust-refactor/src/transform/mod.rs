@@ -27,8 +27,8 @@ pub struct TransformCommand<T: Transform>(pub T);
 impl<T: Transform> Command for TransformCommand<T> {
     fn run(&mut self, state: &mut RefactorState) {
         state.transform_crate(self.0.min_phase(), |st, cx| {
-            self.0.transform(&mut st.krate_mut(), st, cx)
-        });
+            self.0.transform(&mut *st.krate_mut(), st, cx)
+        }).expect("Failed to run compiler");
     }
 }
 

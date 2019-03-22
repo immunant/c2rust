@@ -680,7 +680,7 @@ impl Command for TypeFixRules {
             });
 
             let mut inserted = 0;
-            fold_illtyped(cx, krate, TypeFixRulesFolder {
+            fold_illtyped(cx, &mut *st.krate_mut(), TypeFixRulesFolder {
                 st, cx,
                 rules: &rules,
                 num_inserted_casts: &mut inserted,
@@ -787,7 +787,7 @@ impl Command for AutoRetype {
                 krate.visit(&mut retype_prep)
             });
             retype_prep.type_annotations
-        });
+        }).expect("Failed to run compiler");
         state.run_typeck_loop(|krate, _st, cx| {
             info!("Starting retyping iteration");
             RetypeIteration::new(cx, &type_annotations).run(krate)
@@ -802,7 +802,7 @@ impl Command for AutoRetype {
                 let mut folder = RestoreAnnotationsFolder::new(cx, type_annotations);
                 krate.visit(&mut folder)
             });
-        });
+        }).expect("Failed to run compiler");
     }
 }
 

@@ -19,10 +19,10 @@ use crate::reflect;
 #[derive(Clone)]
 pub struct RefactorCtxt<'a, 'tcx: 'a> {
     sess: &'a Session,
+    cstore: &'a CStore,
+
     map: Option<&'a hir_map::Map<'tcx>>,
     tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
-
-    cstore: &'a CStore,
 }
 
 impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {

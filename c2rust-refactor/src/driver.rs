@@ -1,24 +1,22 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `rustc_driver::driver::compile_input`.
 
-use std::mem::{self, ManuallyDrop};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use rustc::hir::map as hir_map;
-use rustc::ty::{TyCtxt, AllArenas};
-use rustc::ty::query::Providers;
+use rustc::ty::{self, TyCtxt};
+use rustc_data_structures::sync::Lock;
 use rustc::session::{self, DiagnosticOutput, Session};
-use rustc::session::config::{Input, Options};
+use rustc::session::config::{Input};
+use rustc::session::config::Options as SessionOptions;
 use rustc_driver;
-use rustc_driver::driver::{self, CompileController};
 use rustc_errors::DiagnosticBuilder;
 use rustc_interface::util::get_codegen_backend;
 use rustc_metadata::cstore::CStore;
-use rustc_codegen_utils::link;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
-use rustc_interface::util::build_output_filenames;
+use rustc_interface::interface;
 use syntax::ast::{
-    Crate, Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Block, Arg, BlockCheckMode,
+    Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Block, Arg, BlockCheckMode,
     UnsafeSource,
 };
 use syntax::ast::DUMMY_NODE_ID;
@@ -35,7 +33,8 @@ use syntax_pos::FileName;
 use syntax_pos::Span;
 
 use crate::ast_manip::remove_paren;
-use crate::span_fix;
+// TODO: don't forget to call span_fix after parsing
+// use crate::span_fix;
 use crate::util::Lone;
 use crate::RefactorCtxt;
 
@@ -53,139 +52,139 @@ pub enum Phase {
 }
 
 impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
-    fn new_phase_1(sess: &'a Session, cstore: &'a CStore) -> RefactorCtxt<'a, 'tcx> {
+    pub fn new_phase_1(sess: &'a Session, cstore: &'a CStore) -> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, cstore, None, None)
     }
 
-    fn new_phase_2(sess: &'a Session,
-                   cstore: &'a CStore,
-                   map: &'a hir_map::Map<'tcx>) -> RefactorCtxt<'a, 'tcx> {
+    pub fn new_phase_2(sess: &'a Session,
+                       cstore: &'a CStore,
+                       map: &'a hir_map::Map<'tcx>) -> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, cstore, Some(map), None)
     }
 
-    fn new_phase_3(sess: &'a Session,
-                   cstore: &'a CStore,
-                   map: &'a hir_map::Map<'tcx>,
-                   tcx: TyCtxt<'a, 'tcx, 'tcx>,
+    pub fn new_phase_3(sess: &'a Session,
+                       cstore: &'a CStore,
+                       map: &'a hir_map::Map<'tcx>,
+                       tcx: TyCtxt<'a, 'tcx, 'tcx>,
     ) -> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, cstore, Some(map), Some(tcx))
     }
 }
 
-/// Various driver bits that we have lying around at the end of `phase_1_parse_input`.  This is
-/// everything we need to (re-)run the compiler from phase 1 onward.
-pub struct Phase1Bits {
-    session: Session,
-    cstore: CStore,
-    codegen_backend: Box<CodegenBackend>,
-    input: Input,
-    output: Option<PathBuf>,
-    out_dir: Option<PathBuf>,
-    control: CompileController<'static>,
-    krate: Crate,
-}
+// /// Various driver bits that we have lying around at the end of `phase_1_parse_input`.  This is
+// /// everything we need to (re-)run the compiler from phase 1 onward.
+// pub struct Phase1Bits {
+//     session: Session,
+//     cstore: CStore,
+//     codegen_backend: Box<CodegenBackend>,
+//     input: Input,
+//     output: Option<PathBuf>,
+//     out_dir: Option<PathBuf>,
+//     control: CompileController<'static>,
+//     krate: Crate,
+// }
 
-impl Phase1Bits {
-    /// Set up the compiler again, using a previously-constructed `Session`.
-    ///
-    /// A `Crate` is mostly self-contained, but its `Span`s are really indexes into external
-    /// tables.  So if you actually plan to run the compiler after calling `reset()`, the new
-    /// `krate` passed here should satisfy a few properties:
-    ///
-    ///  1. The crate must have been parsed under the same `SourceMap` used by `session`.  Spans'
-    ///     `hi` and `lo` byte positions are indices into the `SourceMap` used for parsing, so
-    ///     transferring those spans to a different `SourceMap` produces nonsensical results.
-    ///
-    ///  2. The crate must not contain any paths starting with `$crate` from a non-empty
-    ///     `SyntaxCtxt`.  These types of paths appear during macro expansion, and can only be
-    ///     resolved using tables populated by the macro expander.
-    ///
-    ///  3. All `NodeId`s in the crate must be DUMMY_NODE_ID.
-    ///
-    ///  4. The crate must not contain automatically-injected `extern crate` declarations.  The
-    ///     compilation process will inject new copies of these, and then fail due to the name
-    ///     collision.
-    ///
-    /// A crate that has only been compiled to `Phase1` already satisfies points 2-4.  If you want
-    /// to re-compile a crate from `Phase2` or later, use `recheck::prepare_recheck` to fix things
-    /// up first.
-    pub fn from_session_and_crate(old_session: &Session, krate: Crate) -> Phase1Bits {
-        let (session, cstore, codegen_backend) = rebuild_session(old_session);
+// impl Phase1Bits {
+//     /// Set up the compiler again, using a previously-constructed `Session`.
+//     ///
+//     /// A `Crate` is mostly self-contained, but its `Span`s are really indexes into external
+//     /// tables.  So if you actually plan to run the compiler after calling `reset()`, the new
+//     /// `krate` passed here should satisfy a few properties:
+//     ///
+//     ///  1. The crate must have been parsed under the same `SourceMap` used by `session`.  Spans'
+//     ///     `hi` and `lo` byte positions are indices into the `SourceMap` used for parsing, so
+//     ///     transferring those spans to a different `SourceMap` produces nonsensical results.
+//     ///
+//     ///  2. The crate must not contain any paths starting with `$crate` from a non-empty
+//     ///     `SyntaxCtxt`.  These types of paths appear during macro expansion, and can only be
+//     ///     resolved using tables populated by the macro expander.
+//     ///
+//     ///  3. All `NodeId`s in the crate must be DUMMY_NODE_ID.
+//     ///
+//     ///  4. The crate must not contain automatically-injected `extern crate` declarations.  The
+//     ///     compilation process will inject new copies of these, and then fail due to the name
+//     ///     collision.
+//     ///
+//     /// A crate that has only been compiled to `Phase1` already satisfies points 2-4.  If you want
+//     /// to re-compile a crate from `Phase2` or later, use `recheck::prepare_recheck` to fix things
+//     /// up first.
+//     pub fn from_session_and_crate(old_session: &Session, krate: Crate) -> Phase1Bits {
+//         let (session, cstore, codegen_backend) = rebuild_session(old_session);
 
-        let in_path = old_session.local_crate_source_file.clone();
-        let input = Input::File(in_path.unwrap());
+//         let in_path = old_session.local_crate_source_file.clone();
+//         let input = Input::File(in_path.unwrap());
 
-        let mut control = CompileController::basic();
-        control.provide = Box::new(move |providers| {
-            use rustc::hir::def_id::CrateNum;
-            use rustc::middle::privacy::AccessLevels;
-            use rustc_data_structures::sync::Lrc;
-            use rustc_privacy;
+//         let mut control = CompileController::basic();
+//         control.provide = Box::new(move |providers| {
+//             use rustc::hir::def_id::CrateNum;
+//             use rustc::middle::privacy::AccessLevels;
+//             use rustc_data_structures::sync::Lrc;
+//             use rustc_privacy;
 
-            fn privacy_access_levels<'tcx>(tcx: TyCtxt<'_, 'tcx, 'tcx>,
-                                           krate: CrateNum) -> Lrc<AccessLevels> {
-                // Get and call the original implementation, resetting the error count before
-                // returning so that `abort_if_errors` won't abort.
-                // NOTE: It's possible in theory for the codegen_backend to override the
-                // implementation, since `codegen_backend.provide` runs after `default_provide`.
-                // We wouldn't handle that since we call only `rustc_privacy::provide` here.
-                // Privacy checking would be a weird thing for a backend to override, though.
-                let mut p = Providers::default();
-                rustc_privacy::provide(&mut p);
-                let r = (p.privacy_access_levels)(tcx, krate);
-                tcx.sess.diagnostic().reset_err_count();
-                r
-            }
-            providers.privacy_access_levels = privacy_access_levels;
+//             fn privacy_access_levels<'tcx>(tcx: TyCtxt<'_, 'tcx, 'tcx>,
+//                                            krate: CrateNum) -> Lrc<AccessLevels> {
+//                 // Get and call the original implementation, resetting the error count before
+//                 // returning so that `abort_if_errors` won't abort.
+//                 // NOTE: It's possible in theory for the codegen_backend to override the
+//                 // implementation, since `codegen_backend.provide` runs after `default_provide`.
+//                 // We wouldn't handle that since we call only `rustc_privacy::provide` here.
+//                 // Privacy checking would be a weird thing for a backend to override, though.
+//                 let mut p = Providers::default();
+//                 rustc_privacy::provide(&mut p);
+//                 let r = (p.privacy_access_levels)(tcx, krate);
+//                 tcx.sess.diagnostic().reset_err_count();
+//                 r
+//             }
+//             providers.privacy_access_levels = privacy_access_levels;
 
-            // TODO: provide error-resetting versions of other "query + `abort_if_errors`" passes
-            // in `phase_3_run_analysis_passes`.
-        });
+//             // TODO: provide error-resetting versions of other "query + `abort_if_errors`" passes
+//             // in `phase_3_run_analysis_passes`.
+//         });
 
-        Phase1Bits {
-            session, cstore, codegen_backend,
+//         Phase1Bits {
+//             session, cstore, codegen_backend,
 
-            input,
-            output: None,
-            out_dir: None,
+//             input,
+//             output: None,
+//             out_dir: None,
 
-            control, krate,
-        }
-    }
+//             control, krate,
+//         }
+//     }
 
-    /// Set up the compiler using a previously-created session, repeating phase 1 (input parsing).
-    pub fn from_session_reparse(old_session: &Session) -> Phase1Bits {
-        let (session, cstore, codegen_backend) = rebuild_session(old_session);
+//     /// Set up the compiler using a previously-created session, repeating phase 1 (input parsing).
+//     pub fn from_session_reparse(old_session: &Session) -> Phase1Bits {
+//         let (session, cstore, codegen_backend) = rebuild_session(old_session);
 
-        let in_path = old_session.local_crate_source_file.clone();
-        let input = Input::File(in_path.unwrap());
+//         let in_path = old_session.local_crate_source_file.clone();
+//         let input = Input::File(in_path.unwrap());
 
-        let control = CompileController::basic();
+//         let control = CompileController::basic();
 
-        // Start of `compile_input` code
-        let krate = driver::phase_1_parse_input(&control, &session, &input).unwrap();
+//         // Start of `compile_input` code
+//         let krate = driver::phase_1_parse_input(&control, &session, &input).unwrap();
 
-        Phase1Bits {
-            session, cstore, codegen_backend,
+//         Phase1Bits {
+//             session, cstore, codegen_backend,
 
-            input,
-            output: None,
-            out_dir: None,
+//             input,
+//             output: None,
+//             out_dir: None,
 
-            control, krate,
-        }
-    }
+//             control, krate,
+//         }
+//     }
 
-    pub fn into_crate(self) -> Crate {
-        self.krate
-    }
-}
+//     pub fn into_crate(self) -> Crate {
+//         self.krate
+//     }
+// }
 
 
 /// Sysroot adjustment: if the sysroot is unset, and args[0] is an absolute path, use args[0] to
 /// infer a sysroot.  Rustc's own sysroot detection (filesearch::get_or_default_sysroot) uses
 /// env::current_exe, which will point to c2rust-refactor, not rustc.
-fn maybe_set_sysroot(mut sopts: Options, args: &[String]) -> Options {
+fn maybe_set_sysroot(mut sopts: SessionOptions, args: &[String]) -> SessionOptions {
     if sopts.maybe_sysroot.is_none() && args.len() > 0 {
         let p = Path::new(&args[0]);
         if p.is_absolute() {
@@ -197,98 +196,89 @@ fn maybe_set_sysroot(mut sopts: Options, args: &[String]) -> Options {
     sopts
 }
 
-pub fn run_compiler_to_phase1(args: &[String],
-                              file_loader: Option<Box<FileLoader+Sync+Send>>) -> Phase1Bits {
+pub fn create_config(args: &[String]) -> interface::Config {
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
-    let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
+    let (sopts, cfg) = session::config::build_session_options_and_crate_config(&matches);
     let sopts = maybe_set_sysroot(sopts, args);
-    let out_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
-    let output = matches.opt_str("o").map(|o| PathBuf::from(&o));
+    let output_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
+    let output_file = matches.opt_str("o").map(|o| PathBuf::from(&o));
 
     assert!(matches.free.len() == 1,
-           "expected exactly one input file");
-    let in_path = Some(Path::new(&matches.free[0]).to_owned());
-    let input = Input::File(in_path.as_ref().unwrap().clone());
+            "expected exactly one input file");
+    let input_path = Some(Path::new(&matches.free[0]).to_owned());
+    let input = Input::File(input_path.as_ref().unwrap().clone());
 
-    let (session, cstore, codegen_backend) = build_session(sopts, in_path, file_loader);
-
-    // It might seem tempting to set up a custom CompileController and invoke `compile_input` here,
-    // in order to avoid duplicating a bunch of `compile_input`'s logic.  Unfortunately, that
-    // doesn't work well with the current API.  The `CompileState`s provided to the PhaseController
-    // callbacks only contain the data relevant to th ecurrent  phase - for example, in the
-    // after_analysis callback, `tcx` is available but `krate`, `arena`, and `hir_map` are not.
-    // Furthermore, the callback type is such that the `CompileState`s for separate callbacks have
-    // unrelated lifetimes, so we can't (safely) collect up the relevant pieces ourselves from
-    // multiple callback invocations.
-
-    let control = CompileController::basic();
-
-    // Start of `compile_input` code
-    let krate = driver::phase_1_parse_input(&control, &session, &input).unwrap();
-
-    Phase1Bits {
-        session, cstore, codegen_backend,
-        input, output, out_dir,
-        control, krate,
+    interface::Config {
+        opts: sopts,
+        crate_cfg: cfg,
+        input,
+        input_path,
+        output_file,
+        output_dir,
+        file_loader: None,
+        diagnostic_output: DiagnosticOutput::Default,
+        stderr: None,
+        crate_name: None,
+        lint_caps: Default::default(),
     }
 }
 
-pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
-                                      phase: Phase,
-                                      func: F) -> R
-        where F: FnOnce(Crate, RefactorCtxt) -> R {
-    let Phase1Bits {
-        session, cstore, codegen_backend, input, output, out_dir, control, mut krate,
-    } = bits;
+pub fn run_compiler<F, R>(mut config: interface::Config, file_loader: Option<Box<dyn FileLoader + Send + Sync>>, f: F) -> R
+    where F: FnOnce(&interface::Compiler) -> R,
+          R: Send,
+{
+    // Force disable incremental compilation.  It causes panics with multiple typechecking.
+    config.opts.incremental = None;
+    config.file_loader = file_loader;
 
-    // Immediately fix up the attr spans, since during expansion, any `derive` attrs will be
-    // removed.
-    span_fix::fix_attr_spans(&mut krate);
-
-    if phase == Phase::Phase1 {
-        let cx = RefactorCtxt::new_phase_1(&session, &cstore);
-        return func(krate, cx);
-    }
-
-    let outputs = build_output_filenames(&input, &out_dir, &output, &krate.attrs, &session);
-    let crate_name = link::find_crate_name(Some(&session), &krate.attrs, &input);
-    let mut expand_result = driver::phase_2_configure_and_expand(
-        &session,
-        &cstore,
-        krate,
-        /*registry*/ None,
-        &crate_name,
-        /*addl_plugins*/ None,
-        |_| Ok(())
-    ).unwrap_or_else(|e| panic!("Error running compiler phase 2: {:?}", e));
-    let krate = expand_result.expanded_crate;
-
-    let mut arenas = AllArenas::new();
-
-    let hir_map = hir_map::map_crate(&session, &cstore, &mut expand_result.hir_forest, &expand_result.defs);
-
-    if phase == Phase::Phase2 {
-        let cx = RefactorCtxt::new_phase_2(&session, &cstore, &hir_map);
-        return func(krate, cx);
-    }
-
-    let mut result = None;
-    let _ = driver::phase_3_run_analysis_passes(
-        &*codegen_backend,
-        &control,
-        &session, &cstore, hir_map, expand_result.resolutions,
-        &mut arenas, &crate_name, &outputs,
-        |tcx, _rcv, _result| {
-            if phase == Phase::Phase3 {
-                let cx = RefactorCtxt::new_phase_3(&session, &cstore, tcx.hir(), tcx);
-                result = Some(func(krate, cx));
-                return;
-            }
-            unreachable!();
-        });
-    result.unwrap()
+    syntax::with_globals(move || {
+        ty::tls::GCX_PTR.set(&Lock::new(0), || {
+            ty::tls::with_thread_locals(|| {
+                interface::run_compiler_in_existing_thread_pool(config, f)
+            })
+        })
+    })
 }
+
+
+// pub fn run_compiler_to_phase1(args: &[String],
+//                               file_loader: Option<Box<FileLoader+Sync+Send>>) -> Phase1Bits {
+//     let matches = rustc_driver::handle_options(args)
+//         .expect("rustc arg parsing failed");
+//     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
+//     let sopts = maybe_set_sysroot(sopts, args);
+//     let out_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
+//     let output = matches.opt_str("o").map(|o| PathBuf::from(&o));
+
+//     assert!(matches.free.len() == 1,
+//            "expected exactly one input file");
+//     let in_path = Some(Path::new(&matches.free[0]).to_owned());
+//     let input = Input::File(in_path.as_ref().unwrap().clone());
+
+//     let (session, cstore, codegen_backend) = build_session(sopts, in_path, file_loader);
+
+//     // It might seem tempting to set up a custom CompileController and invoke `compile_input` here,
+//     // in order to avoid duplicating a bunch of `compile_input`'s logic.  Unfortunately, that
+//     // doesn't work well with the current API.  The `CompileState`s provided to the PhaseController
+//     // callbacks only contain the data relevant to th ecurrent  phase - for example, in the
+//     // after_analysis callback, `tcx` is available but `krate`, `arena`, and `hir_map` are not.
+//     // Furthermore, the callback type is such that the `CompileState`s for separate callbacks have
+//     // unrelated lifetimes, so we can't (safely) collect up the relevant pieces ourselves from
+//     // multiple callback invocations.
+
+//     let control = CompileController::basic();
+
+//     // Start of `compile_input` code
+//     let krate = driver::phase_1_parse_input(&control, &session, &input).unwrap();
+
+//     Phase1Bits {
+//         session, cstore, codegen_backend,
+//         input, output, out_dir,
+//         control, krate,
+//     }
+// }
+
 
 /// Run the compiler with some command line `args`.  Stops compiling and invokes the callback
 /// `func` after the indicated `phase`.
@@ -296,14 +286,14 @@ pub fn run_compiler_from_phase1<F, R>(bits: Phase1Bits,
 /// `file_loader` can be `None` to read source code from the file system.  Otherwise, the provided
 /// loader will be used within the compiler.  For example, editor integration uses a custom file
 /// loader to provide the compiler with buffer contents for currently open files.
-pub fn run_compiler<F, R>(args: &[String],
-                          file_loader: Option<Box<FileLoader+Sync+Send>>,
-                          phase: Phase,
-                          func: F) -> R
-        where F: FnOnce(Crate, RefactorCtxt) -> R {
-    let bits = run_compiler_to_phase1(args, file_loader);
-    run_compiler_from_phase1(bits, phase, func)
-}
+// pub fn run_compiler<F, R>(args: &[String],
+//                           file_loader: Option<Box<FileLoader+Sync+Send>>,
+//                           phase: Phase,
+//                           func: F) -> R
+//         where F: FnOnce(Crate, RefactorCtxt) -> R {
+//     let bits = run_compiler_to_phase1(args, file_loader);
+//     run_compiler_from_phase1(bits, phase, func)
+// }
 
 pub fn build_session_from_args(args: &[String],
                                file_loader: Option<Box<FileLoader+Sync+Send>>) -> Session {
@@ -320,11 +310,11 @@ pub fn build_session_from_args(args: &[String],
     session
 }
 
-fn build_session(sopts: Options,
+fn build_session(sopts: SessionOptions,
                  in_path: Option<PathBuf>,
                  file_loader: Option<Box<FileLoader+Sync+Send>>) -> (Session, CStore, Box<CodegenBackend>) {
     // Corresponds roughly to `run_compiler`.
-    let descriptions = rustc_driver::diagnostics_registry();
+    let descriptions = rustc_interface::util::diagnostics_registry();
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
     // Note: `source_map` is expected to be an `Lrc<SourceMap>`, which is an alias for `Rc<SourceMap>`.
     // If this ever changes, we'll need a new trick to obtain the `SourceMap` in `rebuild_session`.
@@ -341,35 +331,6 @@ fn build_session(sopts: Options,
     let cstore = CStore::new(codegen_backend.metadata_loader());
 
     (sess, cstore, codegen_backend)
-}
-
-/// Build a new session from an existing one.  This uses the same `SourceMap`, so spans will be
-/// compatible across both sessions.
-fn rebuild_session(old_session: &Session) -> (Session, CStore, Box<CodegenBackend>) {
-    let descriptions = rustc_driver::diagnostics_registry();
-
-    // We happen to know that the `&SourceMap` we get from `old_session.source_map()` is inside an `Rc`
-    // pointer, so we can clone that `Rc` with a little unsafe code.
-    let source_map = unsafe {
-        let temp_rc = ManuallyDrop::new(Rc::from_raw(old_session.source_map()));
-        let source_map = (*temp_rc).clone();
-        mem::forget(temp_rc);
-        source_map
-    };
-
-    let session = session::build_session_with_source_map(
-        old_session.opts.clone(),
-        old_session.local_crate_source_file.clone(),
-        descriptions,
-        source_map,
-        DiagnosticOutput::Default,
-        Default::default(),
-    );
-
-    let codegen_backend = get_codegen_backend(&session);
-    let cstore = CStore::new(codegen_backend.metadata_loader());
-
-    (session, cstore, codegen_backend)
 }
 
 fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {

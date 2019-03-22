@@ -143,7 +143,7 @@ pub fn collect_deleted_nodes<'ast>(krate: &'ast Crate,
 
 struct RestoreDeletedNodes<'a, 'ast> {
     node_map: &'a mut NodeMap,
-    counter: &'a mut NodeIdCounter,
+    counter: &'a NodeIdCounter,
     /// Map of deleted nodes inside each parent, keyed on collapsed parent `NodeId`.
     deleted: HashMap<NodeId, Vec<DeletedNode<'ast>>>
 }
@@ -172,7 +172,7 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
 
         let result = Vec::with_capacity(nodes.len() + deleted.len());
         let old_nodes = mem::replace(nodes, result);
-        let counter = &mut *self.counter;
+        let counter = self.counter;
         let node_map = &mut *self.node_map;
         let mut push_ins_after = |nodes: &mut Vec<_>, id| {
             for dn in ins_after.remove(&id).into_iter().flat_map(|x| x) {
@@ -244,7 +244,7 @@ fn index_deleted_nodes<'ast>(vec: Vec<DeletedNode<'ast>>)
 /// `collect_deleted_nodes`.
 pub fn restore_deleted_nodes(krate: &mut Crate,
                              node_map: &mut NodeMap,
-                             counter: &mut NodeIdCounter,
+                             counter: &NodeIdCounter,
                              deleted: Vec<DeletedNode>) {
     // Transfer `deleted` to `collapsed` IDs, which is what `krate` is currently using.
     let deleted = transfer_deleted_nodes(node_map, deleted);

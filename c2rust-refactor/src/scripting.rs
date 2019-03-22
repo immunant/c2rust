@@ -12,15 +12,16 @@ use std::sync::Arc;
 use derive_more::{From, TryInto};
 use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaTable};
 use rlua::{Lua, UserData, UserDataMethods};
+use rustc_interface::interface;
 use slotmap::{new_key_type, SlotMap};
 use syntax::ast;
 use syntax::ptr::P;
 
 use crate::command::{self, CommandState, RefactorState};
-use crate::context::RefactorCtxt;
-use crate::driver::Phase;
-use crate::file_io::{OutputMode, RealFileIO};
+use crate::driver::{self, Phase};
+use crate::file_io::{ArcFileIO, OutputMode, RealFileIO};
 use crate::matcher::{self, mut_visit_match_with, Bindings, MatchCtxt, Pattern, Subst, TryMatch};
+use crate::RefactorCtxt;
 
 /// Refactoring module
 // @module Refactor
@@ -30,7 +31,7 @@ use crate::matcher::{self, mut_visit_match_with, Bindings, MatchCtxt, Pattern, S
 
 pub fn run_lua_file(
     script_path: &Path,
-    rustc_args: Vec<String>,
+    config: interface::Config,
     registry: command::Registry,
     rewrite_modes: Vec<OutputMode>,
 ) -> io::Result<()> {
@@ -39,15 +40,16 @@ pub fn run_lua_file(
     file.read_to_end(&mut script)?;
     let io = Arc::new(RealFileIO::new(rewrite_modes));
 
-    let lua = Lua::new();
-    lua.context(|lua_ctx| {
-        lua_ctx.scope(|scope| {
-            let state =
-                RefactorState::from_rustc_args(&rustc_args, registry, io.clone(), HashSet::new());
-            let refactor = scope.create_static_userdata(state)?;
-            lua_ctx.globals().set("refactor", refactor)?;
+    driver::run_compiler(config, Some(Box::new(ArcFileIO(io.clone()))), |compiler| {
+        let lua = Lua::new();
+        lua.context(|lua_ctx| {
+            lua_ctx.scope(|scope| {
+                let state = RefactorState::new(compiler, registry, io, HashSet::new());
+                let refactor = scope.create_nonstatic_userdata(state)?;
+                lua_ctx.globals().set("refactor", refactor)?;
 
-            lua_ctx.load(&script).exec()
+                lua_ctx.load(&script).exec()
+            })
         })
     })
     .unwrap_or_else(|e| panic!("User script failed: {:#?}", e));
@@ -151,7 +153,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
 /// Refactoring context
 // @type RefactorState
 #[allow(unused_doc_comments)]
-impl UserData for RefactorState {
+impl<'a> UserData for RefactorState<'a> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         /// Run a builtin refactoring command
         // @function run_command
@@ -173,19 +175,16 @@ impl UserData for RefactorState {
         methods.add_method_mut("transform", |lua_ctx, this, callback: LuaFunction| {
             this.load_crate();
             this.transform_crate(Phase::Phase2, |st, cx| {
-                st.map_krate(|krate| {
-                    let transform = TransformCtxt::new(st, cx);
-                    *krate = {
-                        let res: LuaResult<ast::Crate> = lua_ctx.scope(|scope| {
-                            let krate = transform.intern(krate.clone());
-                            let transform_data = scope.create_nonstatic_userdata(transform.clone())?;
-                            let krate: LuaAstNode = callback.call::<_, LuaAstNode>((transform_data, krate))?;
-                            Ok(ast::Crate::try_from(transform.remove_ast(krate)).unwrap())
-                        });
-                        res.unwrap_or_else(|e| panic!("Could not run transform: {:#?}", e))
-                    };
+                let transform = TransformCtxt::new(st, cx);
+                let res: LuaResult<ast::Crate> = lua_ctx.scope(|scope| {
+                    let krate = transform.intern(st.krate().clone());
+                    let transform_data = scope.create_nonstatic_userdata(transform.clone())?;
+                    let krate: LuaAstNode = callback.call::<_, LuaAstNode>((transform_data, krate))?;
+                    Ok(ast::Crate::try_from(transform.remove_ast(krate)).unwrap())
                 });
-            });
+                let new_krate = res.unwrap_or_else(|e| panic!("Could not run transform: {:#?}", e));
+                *st.krate_mut() = new_krate;
+            }).map_err(|e| LuaError::external(format!("Failed to run compiler: {:#?}", e)))?;
             this.save_crate();
             Ok(())
         });
