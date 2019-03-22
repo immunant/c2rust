@@ -260,7 +260,7 @@ struct LabelTysSource<'lty, 'a: 'lty, 'tcx: 'a> {
 
 impl<'lty, 'a, 'tcx> LabelTysSource<'lty, 'a, 'tcx> {
     fn get_tables(&self, id: NodeId) -> &'tcx TypeckTables<'tcx> {
-        let parent = self.tcx.hir().get_parent(id);
+        let parent = self.tcx.hir().get_parent_item(self.tcx.hir().node_to_hir_id(id));
         let parent_body = self.tcx.hir().body_owned_by(parent);
         self.tcx.body_tables(parent_body)
     }
@@ -531,7 +531,7 @@ impl<'lty, 'a, 'tcx> UnifyVisitor<'lty, 'a, 'tcx> {
 
 
     fn get_tables(&self, id: HirId) -> &'tcx TypeckTables<'tcx> {
-        let parent = self.tcx.hir().get_parent(self.tcx.hir().hir_to_node_id(id));
+        let parent = self.tcx.hir().get_parent_item(id);
         let parent_body = self.tcx.hir().body_owned_by(parent);
         self.tcx.body_tables(parent_body)
     }
@@ -821,9 +821,9 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'a, 'hir> {
         match p.node {
             PatKind::Wild => {},
 
-            PatKind::Binding(_, node_id, _, _, ref opt_pat) => {
+            PatKind::Binding(_, node_id, _, ref opt_pat) => {
 
-                let lty = self.node_lty(node_id);
+                let lty = self.node_lty(self.tcx.hir().hir_to_node_id(node_id));
                 self.ltt.unify(rty, lty);
                 if let Some(ref p) = *opt_pat {
                     self.ltt.unify(rty, self.pat_lty(p));

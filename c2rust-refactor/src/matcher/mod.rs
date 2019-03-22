@@ -518,7 +518,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 }
 
 fn make_bindings_parser<'a>(sess: &'a Session, name: &str, src: &str) -> (Parser<'a>, BindingTypes) {
-    let (ts, _) =
+    let ts =
         parse::parse_stream_from_source_str(FileName::Real(PathBuf::from(name)),
                                             src.to_owned(),
                                             &sess.parse_sess,

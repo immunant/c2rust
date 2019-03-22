@@ -205,16 +205,24 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 // TODO: need cases for deref, neg/not, and a check for overloads
             }
             ExprKind::Lit(_l) => {} // TODO
-            ExprKind::Cast(sub_e, _target) => {
+            ExprKind::Cast(_sub_e, _target) => {
                 // Check if the cast is erroneous.  We do this by looking up the subexpression
                 // (yes, the subexpression) in the `cast_kinds` table - if there's nothing
                 // there, it's not a valid cast.
-                let parent = self.cx.hir_map().get_parent_did(sub_e.id);
-                let tables = self.cx.ty_ctxt().typeck_tables_of(parent);
-                let hir_id = self.cx.hir_map().node_to_hir_id(sub_e.id);
-                if tables.cast_kinds().get(hir_id).is_none() {
-                    illtyped |= self.ensure_cast(sub_e, ty);
-                }
+
+                // Updating to nightly-2019-03-13 note: cast_kinds is gone now,
+                // and cast checking only marks coercion casts. We don't need to
+                // implement the logic for coercions, but it looks like we need
+                // to implement logic for real cast typechecking.
+
+                // TODO: Implement
+
+                // let parent = self.cx.hir_map().get_parent_did(sub_e.id);
+                // let tables = self.cx.ty_ctxt().typeck_tables_of(parent);
+                // let hir_id = self.cx.hir_map().node_to_hir_id(sub_e.id);
+                // if tables.cast_kinds().get(hir_id).is_none() {
+                //     illtyped |= self.ensure_cast(sub_e, ty);
+                // }
             }
             ExprKind::AddrOf(_m, _ohs) => {} // TODO
             ExprKind::If(cond, _tr, _fl) => {

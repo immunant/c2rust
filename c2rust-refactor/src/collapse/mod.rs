@@ -52,11 +52,11 @@ fn injected_items(krate: &Crate) -> (&'static [&'static str], bool) {
 }
 
 /// Reverse the effect of `std`/prelude injection, by deleting the injected items.
-pub fn collapse_injected(mut krate: Crate) -> Crate {
-    let (crate_names, mut expect_prelude) = injected_items(&krate);
+pub fn collapse_injected(krate: &mut Crate) {
+    let (crate_names, mut expect_prelude) = injected_items(krate);
     let mut crate_names = crate_names.iter().map(|x| x.into_symbol()).collect::<HashSet<_>>();
 
-    let new_items = krate.module.items.into_iter().filter(|i| {
+    krate.module.items.retain(|i| {
         match i.node {
             ItemKind::ExternCrate(_) => {
                 // Remove the first `extern crate` matching each entry in `crate_names`.
@@ -76,9 +76,7 @@ pub fn collapse_injected(mut krate: Crate) -> Crate {
             },
             _ => true,
         }
-    }).collect();
-    krate.module.items = new_items;
-    krate
+    });
 }
 
 fn root_callsite_span(sp: Span) -> Span {

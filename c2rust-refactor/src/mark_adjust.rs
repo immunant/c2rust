@@ -168,7 +168,7 @@ pub fn find_mark_uses<T: Visit>(target: &T,
 /// For every top-level definition bearing `MARK`, apply `MARK` to uses of that
 /// definition.  Removes `MARK` from the original definitions.
 pub fn find_mark_uses_command(st: &CommandState, cx: &RefactorCtxt, label: &str) {
-    find_mark_uses(&*st.krate(), st, cx, label);
+    find_mark_uses(&*st.krate_mut(), st, cx, label);
 }
 
 

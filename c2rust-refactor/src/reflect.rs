@@ -239,6 +239,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 let num_params = gen.params.iter().filter(|x| match x.kind {
                     GenericParamDefKind::Lifetime{..} => false,
                     GenericParamDefKind::Type{..} => true,
+                    GenericParamDefKind::Const => false,
                 }).count();
                 if let Some(substs) = opt_substs {
                     if substs.len() > 0 {
@@ -339,7 +340,7 @@ fn register_test_reflect(reg: &mut Registry) {
                             cx.ty_ctxt(), def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
                     } else if let Some(def_id) = cx.try_resolve_expr(&e) {
-                        let parent = cx.hir_map().get_parent(e.id);
+                        let parent = cx.hir_map().get_parent_item(cx.hir_map().node_to_hir_id(e.id));
                         let parent_body = cx.hir_map().body_owned_by(parent);
                         let tables = cx.ty_ctxt().body_tables(parent_body);
                         let hir_id = cx.hir_map().node_to_hir_id(e.id);
