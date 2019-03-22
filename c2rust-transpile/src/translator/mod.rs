@@ -91,6 +91,7 @@ pub struct ExprContext {
     used: bool,
     is_static: bool,
     decay_ref: DecayRef,
+    /// The va_list whose name to use for the Rust variadic argument
     va_decl: Option<CDeclId>,
     is_bitfield_write: bool,
     needs_address: bool,
