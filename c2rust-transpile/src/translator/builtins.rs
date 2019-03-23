@@ -131,7 +131,8 @@ impl<'c> Translation<'c> {
             "__builtin_va_start" => {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some(va_id) = self.match_vastart(args[0]) {
-                        if ctx.is_va_decl(va_id) {
+                        if self.is_promoted_va_decl(va_id) {
+                            // `va_start` is automatically called for the promoted decl.
                             return Ok(WithStmts::new(self.panic("va_start stub")))
                         }
                     }
@@ -142,20 +143,13 @@ impl<'c> Translation<'c> {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
 
-                        let dst_val = self.convert_expr(ctx.used(), args[0])?;
-                        let src_val = self.convert_expr(ctx.used(), args[1])?;
+                        let dst = self.convert_expr(ctx.used(), args[0])?;
+                        let src = self.convert_expr(ctx.used(), args[1])?;
 
-                        // FIXME: we emit a call to non-existent `raw_copy` in anticipation of
-                        // it being added to `VaList`. https://github.com/immunant/c2rust/issues/43
-                        let call_expr = src_val.map(|va| {
-                            let path = mk().path_segment(
-                                mk().ident("raw_copy"));
-                            mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
-                        });
+                        let path = mk().path_expr(vec!["va_copy"]);
+                        let call_expr = mk().call_expr(path, vec![dst.val, src.val] as Vec<P<Expr>>);
 
-                        let stmt = mk().semi_stmt(
-                          mk().assign_expr(dst_val.val, call_expr.val)
-                        );
+                        let stmt = mk().semi_stmt(call_expr);
 
                         let mut res = WithStmts::new(self.panic("va_copy stub"));
                         res.stmts.push(stmt);
@@ -167,22 +161,17 @@ impl<'c> Translation<'c> {
             "__builtin_va_end" => {
                 if ctx.is_unused() && args.len() == 1 {
                     if let Some(va_id) = self.match_vaend(args[0]) {
-                        if ctx.is_va_decl(va_id) {
+                        if self.is_promoted_va_decl(va_id)  {
                             // no need to call end on `va_end` on `va_list` promoted to arg
                             return Ok(WithStmts::new(self.panic("va_end stub")))
-                        } else {
+                        } else if self.is_copied_va_decl(va_id)  {
                             // call to `va_end` on non-promoted `va_list`
                             let val = self.convert_expr(ctx.used(), args[0])?;
 
-                            // FIXME: we emit a call to non-existent `raw_end` in anticipation of
-                            // it being added to `VaList`. https://github.com/immunant/c2rust/issues/43
-                            let call_expr = val.map(|va| {
-                                let path = mk().path_segment(
-                                    mk().ident("raw_end"));
-                                mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
-                            });
+                            let path = mk().path_expr(vec!["va_end"]);
+                            let call_expr = mk().call_expr(path, vec![val.val] as Vec<P<Expr>>);
 
-                            let stmt = mk().semi_stmt(call_expr.val);
+                            let stmt = mk().semi_stmt(call_expr);
 
                             let mut res = WithStmts::new(self.panic("va_end stub"));
                             res.stmts.push(stmt);

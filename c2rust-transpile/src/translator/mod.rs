@@ -91,8 +91,6 @@ pub struct ExprContext {
     used: bool,
     is_static: bool,
     decay_ref: DecayRef,
-    /// The va_list whose name to use for the Rust variadic argument
-    va_decl: Option<CDeclId>,
     is_bitfield_write: bool,
     needs_address: bool,
 }
@@ -106,7 +104,6 @@ impl ExprContext {
     pub fn not_static(self) -> Self { ExprContext { is_static: false, .. self } }
     pub fn static_(self) -> Self { ExprContext { is_static: true, .. self } }
     pub fn set_static(self, is_static: bool) -> Self { ExprContext { is_static, .. self } }
-    pub fn is_va_decl(&self, decl_id: CDeclId) -> bool { Some(decl_id) == self.va_decl }
     pub fn is_bitfield_write(&self) -> bool { self.is_bitfield_write }
     pub fn set_bitfield_write(self, is_bitfield_write: bool) -> Self {
         ExprContext { is_bitfield_write, .. self }
@@ -114,6 +111,28 @@ impl ExprContext {
     pub fn needs_address(&self) -> bool { self.needs_address }
     pub fn set_needs_address(self, needs_address: bool) -> Self {
         ExprContext { needs_address, .. self }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FunContext {
+    /// The va_list decl that we promote to a Rust function arg
+    promoted_va_decl: Option<CDeclId>,
+    /// The va_list decls that we did not promote because they were `va_copy`ed.
+    copied_va_decls: Option<IndexSet<CDeclId>>
+}
+
+impl FunContext {
+    pub fn new() -> Self {
+        FunContext {
+            promoted_va_decl: None,
+            copied_va_decls: None
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.promoted_va_decl = None;
+        self.copied_va_decls = None;
     }
 }
 
@@ -133,6 +152,7 @@ pub struct Translation<'c> {
     type_converter: RefCell<TypeConverter>,
     renamer: RefCell<Renamer<CDeclId>>,
     zero_inits: RefCell<IndexMap<CDeclId, Result<P<Expr>, String>>>,
+    function_context: RefCell<FunContext>,
 
     // Comment support
     pub comment_context: RefCell<CommentContext>, // Incoming comments
@@ -328,7 +348,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
         used: true,
         is_static: false,
         decay_ref: DecayRef::Default,
-        va_decl: None,
         is_bitfield_write: false,
         needs_address: false,
     };
@@ -765,6 +784,7 @@ impl<'c> Translation<'c> {
                 "drop", "Some", "None", "Ok", "Err",
             ])),
             zero_inits: RefCell::new(IndexMap::new()),
+            function_context: RefCell::new(FunContext::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             sectioned_static_initializers: RefCell::new(Vec::new()),
@@ -1234,7 +1254,7 @@ impl<'c> Translation<'c> {
 
     fn convert_function(
         &self,
-        mut ctx: ExprContext,
+        ctx: ExprContext,
         span: Span,
         is_global: bool,
         is_inline: bool,
@@ -1249,16 +1269,13 @@ impl<'c> Translation<'c> {
         attrs: &IndexSet<c_ast::Attribute>,
     ) -> Result<ConvertedDecl, String> {
 
+        self.function_context.borrow_mut().clear(); // start function context
+
         if is_variadic {
             if let Some(body_id) = body {
-                match self.well_formed_variadic(body_id) {
-                    None =>
-                        return Err(format!(
-                            "Failed to translate {}; unsupported variadic function.", name)),
-                    Some(va_id) => {
-                        self.register_va_arg(va_id);
-                        ctx.va_decl = Some(va_id);
-                    }
+                if !self.is_well_formed_variadic(body_id) {
+                    return Err(format!(
+                            "Failed to translate {}; unsupported variadic function.", name));
                 }
             }
         }
@@ -1291,7 +1308,7 @@ impl<'c> Translation<'c> {
             // handle variadic arguments
             if is_variadic {
                 let ty = mk().ident_ty("...");
-                if let Some(va_decl_id) = ctx.va_decl { 
+                if let Some(va_decl_id) = self.get_promoted_va_decl() {
                     // `register_va_arg` succeeded
                     let var = self.renamer.borrow_mut()
                             .get(&va_decl_id)
@@ -1591,9 +1608,10 @@ impl<'c> Translation<'c> {
     }
 
     pub fn convert_decl_stmt_info(&self, ctx: ExprContext, decl_id: CDeclId) -> Result<cfg::DeclStmtInfo, String> {
-        if ctx.is_va_decl(decl_id) {
+        if self.is_promoted_va_decl(decl_id) {
+            // `va_list` decl was promoted to arg; nothing to do
             return Ok(cfg::DeclStmtInfo::empty())
-        }
+        } 
 
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable { ref ident, has_static_duration: true, is_externally_visible: false, is_defn: true, initializer, typ, .. } => {
@@ -1625,6 +1643,28 @@ impl<'c> Translation<'c> {
             CDeclKind::Variable { has_static_duration: false, has_thread_duration: false, is_externally_visible: false, is_defn, ref ident, initializer, typ, .. } => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
+                let rust_name = self.renamer.borrow_mut()
+                    .insert(decl_id, &ident)
+                    .expect(&format!("Failed to insert variable '{}'", ident));
+
+                if self.is_copied_va_decl(decl_id) {
+                    // translate `va_list` declarations not promoted to an arg
+                    // to `VaList` and do not emit an initializer.
+                    let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());                    
+                    let ty = {
+                        let std_or_core = if self.tcfg.emit_no_std { "core"  } else { "std" };
+                        let path = vec!["", std_or_core, "ffi", "VaList"];
+                        mk().path_ty(path)
+                    };
+                    let local_mut = mk().local::<_, _, P<Expr>>(pat_mut, Some(ty), None);
+
+                    return Ok(cfg::DeclStmtInfo::new(
+                        vec![], // decl
+                        vec![], // assign
+                        vec![mk().local_stmt(P(local_mut))], // decl_and_assign
+                    ));
+                }
+
                 let has_self_reference =
                     if let Some(expr_id) = initializer {
                         self.has_decl_reference(decl_id, expr_id)
@@ -1633,10 +1673,7 @@ impl<'c> Translation<'c> {
                     };
 
                 let mut stmts = self.compute_variable_array_sizes(ctx, typ.ctype)?;
-
-                let rust_name = self.renamer.borrow_mut()
-                    .insert(decl_id, &ident)
-                    .expect(&format!("Failed to insert variable '{}'", ident));
+                
                 let (ty, mutbl, init) = self.convert_variable(ctx, initializer, typ)?;
                 let mut init = init?;
 
