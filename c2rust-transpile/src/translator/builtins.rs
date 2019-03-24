@@ -147,9 +147,9 @@ impl<'c> Translation<'c> {
                         let src = self.convert_expr(ctx.used(), args[1])?;
 
                         let path = mk().path_expr(vec!["va_copy"]);
-                        let call_expr = mk().call_expr(path, vec![dst.val, src.val] as Vec<P<Expr>>);
-
-                        let stmt = mk().semi_stmt(call_expr);
+                        let call_expr = mk().call_expr(path, vec![src.val] as Vec<P<Expr>>);
+                        let assign_expr = mk().assign_expr(dst.val, call_expr);
+                        let stmt = mk().semi_stmt(assign_expr);
 
                         let mut res = WithStmts::new(self.panic("va_copy stub"));
                         res.stmts.push(stmt);
