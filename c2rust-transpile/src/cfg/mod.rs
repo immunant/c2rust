@@ -496,7 +496,8 @@ pub enum ImplicitReturnType {
     /// > used by the caller, the behavior is undefined."
     NoImplicitReturnType,
 
-    /// This is for handling statement expressions
+    /// This is for handling GNU C statement expressions
+    /// https://gcc.gnu.org/onlinedocs/gcc-3.2.3/gcc/Statement-Exprs.html
     ///
     /// TODO: document
     StmtExpr(ExprContext, CExprId, Label),
