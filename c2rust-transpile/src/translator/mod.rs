@@ -1610,7 +1610,7 @@ impl<'c> Translation<'c> {
     pub fn convert_decl_stmt_info(&self, ctx: ExprContext, decl_id: CDeclId) -> Result<cfg::DeclStmtInfo, String> {
         if self.is_promoted_va_decl(decl_id) {
             // `va_list` decl was promoted to arg
-            self.use_feature("c_variadics");
+            self.use_feature("c_variadic");
             return Ok(cfg::DeclStmtInfo::empty())
         } 
 
