@@ -2520,12 +2520,17 @@ impl<'c> Translation<'c> {
 
                 if let Some(stmt) = stmts.pop() {
                     match as_semi_break_stmt(&stmt, &lbl) {
-                        Some(val) => return Ok(WithStmts::new(mk().block_expr({
-                            match val {
-                                None => mk().block(stmts),
-                                Some(val) => WithStmts { stmts, val }.to_block()
-                            }
-                        }))),
+                        Some(val) => {
+                            let block = mk().block_expr({
+                                match val {
+                                    None => mk().block(stmts),
+                                    Some(val) => WithStmts { stmts, val }.to_block()
+                                }
+                            });
+                            // enclose block in parentheses to work around
+                            // https://github.com/rust-lang/rust/issues/54482
+                            return Ok(WithStmts::new(mk().paren_expr(block)))
+                        },
                         _ => {
                             self.use_feature("label_break_value");
                             stmts.push(stmt)
