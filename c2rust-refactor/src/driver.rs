@@ -465,9 +465,9 @@ fn build_session(sopts: SessionOptions,
     (sess, cstore, codegen_backend)
 }
 
-fn make_parser<'a>(sess: &'a Session, name: &str, src: &str) -> Parser<'a> {
+fn make_parser<'a>(sess: &'a Session, src: &str) -> Parser<'a> {
     parse::new_parser_from_source_str(&sess.parse_sess,
-                                      FileName::Real(PathBuf::from(name)),
+                                      FileName::anon_source_code(src),
                                       src.to_owned())
 }
 
@@ -478,7 +478,7 @@ pub fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
 
 // Helper functions for parsing source code in an existing `Session`.
 pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
-    let mut p = make_parser(sess, "<expr>", src);
+    let mut p = make_parser(sess, src);
     match p.parse_expr() {
         Ok(mut expr) => {
             remove_paren(&mut expr);
@@ -489,7 +489,7 @@ pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
 }
 
 pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
-    let mut p = make_parser(sess, "<pat>", src);
+    let mut p = make_parser(sess, src);
     match p.parse_pat(None) {
         Ok(mut pat) => {
             remove_paren(&mut pat);
@@ -500,7 +500,7 @@ pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
 }
 
 pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
-    let mut p = make_parser(sess, "<ty>", src);
+    let mut p = make_parser(sess, src);
     match p.parse_ty() {
         Ok(mut ty) => {
             remove_paren(&mut ty);
@@ -513,7 +513,7 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
 pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
     // workaround that may cause suboptimal error messages.
-    let mut p = make_parser(sess, "<stmt>", &format!("{{ {} }}", src));
+    let mut p = make_parser(sess, &format!("{{ {} }}", src));
     match p.parse_block() {
         Ok(blk) => blk.into_inner().stmts.into_iter().map(|mut s| {
             remove_paren(&mut s);
@@ -524,7 +524,7 @@ pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
 }
 
 pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
-    let mut p = make_parser(sess, "<item>", src);
+    let mut p = make_parser(sess, src);
     let mut items = Vec::new();
     loop {
         match p.parse_item() {
@@ -542,7 +542,7 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
 pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
     // TODO: rustc no longer exposes `parse_impl_item_`. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
-    let mut p = make_parser(sess, "<impl>", &format!("impl ! {{ {} }}", src));
+    let mut p = make_parser(sess, &format!("impl ! {{ {} }}", src));
     match p.parse_item() {
         Ok(item) => {
             match item.expect("expected to find an item").into_inner().node {
@@ -557,7 +557,7 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
 pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
     // TODO: rustc no longer exposes a method for parsing ForeignItems. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
-    let mut p = make_parser(sess, "<foreign_item>", &format!("extern {{ {} }}", src));
+    let mut p = make_parser(sess, &format!("extern {{ {} }}", src));
     match p.parse_item() {
         Ok(item) => {
             match item.expect("expected to find an item").into_inner().node {
@@ -570,7 +570,7 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
 }
 
 pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
-    let mut p = make_parser(sess, "<block>", src);
+    let mut p = make_parser(sess, src);
 
     let rules = if p.eat_keyword(keywords::Unsafe) {
         BlockCheckMode::Unsafe(UnsafeSource::UserProvided)
@@ -597,7 +597,7 @@ fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
 }
 
 pub fn parse_arg(sess: &Session, src: &str) -> Arg {
-    let mut p = make_parser(sess, "<arg>", src);
+    let mut p = make_parser(sess, src);
     match parse_arg_inner(&mut p) {
         Ok(mut arg) => {
             remove_paren(&mut arg);
@@ -610,7 +610,7 @@ pub fn parse_arg(sess: &Session, src: &str) -> Arg {
 
 pub fn run_parser<F, R>(sess: &Session, src: &str, f: F) -> R
         where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
-    let mut p = make_parser(sess, "<src>", src);
+    let mut p = make_parser(sess, src);
     match f(&mut p) {
         Ok(x) => x,
         Err(db) => emit_and_panic(db, "src"),
@@ -628,7 +628,7 @@ pub fn run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> R
 
 pub fn try_run_parser<F, R>(sess: &Session, src: &str, f: F) -> Option<R>
         where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
-    let mut p = make_parser(sess, "<src>", src);
+    let mut p = make_parser(sess, src);
     match f(&mut p) {
         Ok(x) => Some(x),
         Err(mut db) => {
