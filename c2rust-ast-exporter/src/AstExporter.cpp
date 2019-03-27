@@ -1171,16 +1171,17 @@ class TranslateASTVisitor final
 
                                  // Encode attribute names and relevant info if supported
                                  CborEncoder attr_info;
-                                 size_t attr_info_n = FD->hasAttrs() ? FD->getAttrs().size() : 0;
+                                 size_t attr_info_n = def && def->hasAttrs() ? def->getAttrs().size() : 0;
 
                                  cbor_encoder_create_array(array, &attr_info, attr_info_n);
 
-                                 for (auto attr: FD->attrs()) {
-                                     cbor_encode_text_stringz(&attr_info, attr->getSpelling());
+                                 if (def) {
+                                     for (auto attr: def->attrs()) {
+                                         cbor_encode_text_stringz(&attr_info, attr->getSpelling());
+                                     }
                                  }
 
                                  cbor_encoder_close_container(array, &attr_info);
-
                              });
           typeEncoder.VisitQualType(functionType);
 

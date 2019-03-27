@@ -44,4 +44,5 @@ pub fn test_fn_attrs() {
     assert!(src.contains("#[inline(always)]\npub unsafe extern \"C\" fn rust_always_inline_extern"));
     assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_extern"));
     assert!(src.contains("#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_gnu_inline_extern"));
+    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_non_canonical_definition_extern"));
 }
