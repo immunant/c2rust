@@ -1,13 +1,26 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `rustc_driver::driver::compile_input`.
 
+use std::any::Any;
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::mem;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::mpsc;
+use rustc::dep_graph::DepGraph;
 use rustc::hir::map as hir_map;
-use rustc::ty::{self, TyCtxt};
-use rustc_data_structures::sync::Lock;
+use rustc::util::common::ErrorReported;
+use rustc::ty::{self, GlobalCtxt, Resolutions, TyCtxt};
+use rustc::ty::steal::Steal;
+use rustc_data_structures::declare_box_region_type;
+use rustc_data_structures::sync::{Lock, Lrc};
+use rustc_incremental::DepGraphFuture;
+use rustc_interface::{util, Config};
+use rustc_interface::interface::BoxedResolver;
 use rustc::session::{self, DiagnosticOutput, Session};
-use rustc::session::config::{Input};
+use rustc::session::config::{Input, OutputFilenames};
 use rustc::session::config::Options as SessionOptions;
 use rustc_driver;
 use rustc_errors::DiagnosticBuilder;
@@ -15,11 +28,14 @@ use rustc_interface::util::get_codegen_backend;
 use rustc_metadata::cstore::CStore;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
 use rustc_interface::interface;
+use syntax::ast;
 use syntax::ast::{
     Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Block, Arg, BlockCheckMode,
-    UnsafeSource,
+    UnsafeSource, NodeId
 };
 use syntax::ast::DUMMY_NODE_ID;
+use syntax::ext::base::NamedSyntaxExtension;
+use syntax::feature_gate::AttributeType;
 use syntax::source_map::SourceMap;
 use syntax::source_map::{FileLoader, RealFileLoader};
 use syntax::ext::hygiene::SyntaxContext;
@@ -27,12 +43,14 @@ use syntax::parse::{self, PResult};
 use syntax::parse::token::Token;
 use syntax::parse::parser::Parser;
 use syntax::ptr::P;
-use syntax::symbol::keywords;
+use syntax::symbol::{keywords, Symbol};
 use syntax::tokenstream::TokenTree;
 use syntax_pos::FileName;
 use syntax_pos::Span;
 
 use crate::ast_manip::remove_paren;
+use crate::command::{Registry, RefactorState};
+use crate::file_io::{ArcFileIO, FileIO};
 // TODO: don't forget to call span_fix after parsing
 // use crate::span_fix;
 use crate::util::Lone;
@@ -240,6 +258,120 @@ pub fn run_compiler<F, R>(mut config: interface::Config, file_loader: Option<Box
         })
     })
 }
+
+pub fn run_refactoring<F, R>(
+    mut config: interface::Config,
+    cmd_reg: Registry,
+    file_io: Arc<FileIO+Sync+Send>,
+    marks: HashSet<(NodeId, Symbol)>,
+    f: F,
+) -> R
+    where F: FnOnce(RefactorState) -> R,
+          R: Send,
+{
+    // Force disable incremental compilation.  It causes panics with multiple typechecking.
+    config.opts.incremental = None;
+    config.file_loader = Some(Box::new(ArcFileIO(file_io.clone())));
+
+    syntax::with_globals(move || {
+        ty::tls::GCX_PTR.set(&Lock::new(0), || {
+            ty::tls::with_thread_locals(|| {
+                let compiler = make_compiler(config);
+                let compiler = unsafe { mem::transmute(compiler) };
+                let state = RefactorState::new(compiler, cmd_reg, file_io, marks);
+                f(state)
+            })
+        })
+    })
+}
+
+pub struct Compiler {
+    pub sess: Lrc<Session>,
+    pub codegen_backend: Lrc<Box<dyn CodegenBackend>>,
+    source_map: Lrc<SourceMap>,
+    input: Input,
+    input_path: Option<PathBuf>,
+    output_dir: Option<PathBuf>,
+    output_file: Option<PathBuf>,
+    queries: Queries,
+    pub cstore: Lrc<CStore>,
+    crate_name: Option<String>,
+}
+
+#[derive(Default)]
+struct Queries {
+    dep_graph_future: Query<Option<DepGraphFuture>>,
+    parse: Query<ast::Crate>,
+    crate_name: Query<String>,
+    register_plugins: Query<(ast::Crate, PluginInfo)>,
+    expansion: Query<(ast::Crate, Rc<Option<RefCell<BoxedResolver>>>)>,
+    dep_graph: Query<DepGraph>,
+    lower_to_hir: Query<(Steal<hir_map::Forest>, ExpansionResult)>,
+    prepare_outputs: Query<OutputFilenames>,
+    codegen_channel: Query<(Steal<mpsc::Sender<Box<dyn Any + Send>>>,
+                            Steal<mpsc::Receiver<Box<dyn Any + Send>>>)>,
+    global_ctxt: Query<BoxedGlobalCtxt>,
+    ongoing_codegen: Query<Box<dyn Any>>,
+    link: Query<()>,
+}
+
+struct Query<T> {
+    result: RefCell<Option<Result<T, ErrorReported>>>,
+}
+
+impl<T> Default for Query<T> {
+    fn default() -> Self {
+        Query {
+            result: RefCell::new(None),
+        }
+    }
+}
+
+struct PluginInfo {
+    syntax_exts: Vec<NamedSyntaxExtension>,
+    attributes: Vec<(String, AttributeType)>,
+}
+
+struct ExpansionResult {
+    pub defs: Steal<hir_map::Definitions>,
+    pub resolutions: Steal<Resolutions>,
+}
+
+declare_box_region_type!(
+    pub BoxedGlobalCtxt,
+    for('gcx),
+    (&'gcx GlobalCtxt<'gcx>) -> ((), ())
+);
+
+
+fn make_compiler(config: Config) -> Compiler {
+    let (sess, codegen_backend, source_map) = util::create_session(
+        config.opts,
+        config.crate_cfg,
+        config.diagnostic_output,
+        config.file_loader,
+        config.input_path.clone(),
+        config.lint_caps,
+    );
+
+    let cstore = Lrc::new(CStore::new(codegen_backend.metadata_loader()));
+
+    Compiler {
+        sess,
+        codegen_backend,
+        source_map,
+        cstore,
+        input: config.input,
+        input_path: config.input_path,
+        output_dir: config.output_dir,
+        output_file: config.output_file,
+        queries: Default::default(),
+        crate_name: config.crate_name,
+    }
+}
+
+
+
 
 
 // pub fn run_compiler_to_phase1(args: &[String],

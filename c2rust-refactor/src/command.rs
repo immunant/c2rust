@@ -3,13 +3,19 @@
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::iter;
+use std::mem;
 use std::sync::Arc;
 use rustc::hir;
 use rustc::hir::def_id::LOCAL_CRATE;
-use rustc::session::Session;
-use rustc_interface::interface::{self, Compiler};
+use rustc::session::{self, DiagnosticOutput, Session};
+use rustc_data_structures::sync::Lrc;
+use rustc_interface::util;
+use rustc_interface::interface;
+use rustc_metadata::cstore::CStore;
 use syntax::ast::{NodeId, Crate, CRATE_NODE_ID};
 use syntax::ast::{Expr, Pat, Ty, Stmt, Item};
+use syntax::ext::base::NamedSyntaxExtension;
+use syntax::feature_gate::AttributeType;
 use syntax::source_map::SourceMap;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
@@ -18,7 +24,7 @@ use syntax::visit::Visitor;
 use crate::ast_manip::{ListNodeIds, remove_paren, Visit, MutVisit};
 use crate::ast_manip::ast_map::map_ast_into;
 use crate::ast_manip::number_nodes::{number_nodes, number_nodes_with, NodeIdCounter, reset_node_ids};
-use crate::collapse;
+use crate::collapse::CollapseInfo;
 use crate::driver::{self, Phase};
 use crate::file_io::FileIO;
 use crate::node_map::NodeMap;
@@ -54,11 +60,17 @@ impl Visit for ParsedNodes {
     }
 }
 
+#[derive(Default)]
+struct PluginInfo {
+    _syntax_exts: Vec<NamedSyntaxExtension>,
+    _attributes: Vec<(String, AttributeType)>,
+}
+
 
 /// Stores the overall state of the refactoring process, which can be read and updated by
 /// `Command`s.
-pub struct RefactorState<'c> {
-    compiler: &'c Compiler,
+pub struct RefactorState {
+    compiler: interface::Compiler,
     cmd_reg: Registry,
     file_io: Arc<FileIO+Sync+Send>,
 
@@ -73,21 +85,21 @@ pub struct RefactorState<'c> {
     cs: CommandState,
 }
 
-fn parse_crate(compiler: &Compiler) -> Crate {
+fn parse_crate(compiler: &interface::Compiler) -> Crate {
     let mut krate = compiler.parse().unwrap().take();
     remove_paren(&mut krate);
     number_nodes(&mut krate);
     krate
 }
 
-impl<'c> RefactorState<'c> {
+impl RefactorState {
     pub fn new(
-        compiler: &'c Compiler,
+        compiler: interface::Compiler,
         cmd_reg: Registry,
         file_io: Arc<FileIO+Sync+Send>,
         marks: HashSet<(NodeId, Symbol)>,
-    ) -> RefactorState<'c> {
-        let krate = parse_crate(compiler);
+    ) -> RefactorState {
+        let krate = parse_crate(&compiler);
         let orig_krate = krate.clone();
         RefactorState {
             compiler,
@@ -119,7 +131,7 @@ impl<'c> RefactorState<'c> {
     /// rewriting with the previous `orig_crate` any more.
     pub fn load_crate(&mut self) {
         // Discard any existing krate, overwriting it with one loaded from disk.
-        let krate = parse_crate(self.compiler);
+        let krate = parse_crate(&self.compiler);
         self.orig_krate = krate.clone();
 
         // Re-initialize `node_map` and `marks`.
@@ -173,97 +185,124 @@ impl<'c> RefactorState<'c> {
         let unexpanded = self.cs.krate().clone();
         reset_node_ids(self.cs.krate.get_mut());
 
-        let sess = self.compiler.session().clone();
-        let cstore = self.compiler.cstore().clone();
-
         // Immediately fix up the attr spans, since during expansion, any `derive` attrs will be
         // removed.
         span_fix::fix_attr_spans(self.cs.krate.get_mut());
 
         match phase {
             Phase::Phase1 => {
-                let cx = RefactorCtxt::new_phase_1(&sess, &cstore);
-                Ok(self.transform_crate_inner(&unexpanded, f, cx))
+                let cx = RefactorCtxt::new_phase_1(&self.compiler.session(), &self.compiler.cstore());
+
+                // TODO: Do I need to run prepare and collapse?
+                let r = f(&self.cs, &cx);
+                Ok(r)
             }
 
             Phase::Phase2 => {
+                // Ensure we've dropped the resolver since it keeps a copy of the session Rc
+                if let Ok(resolver) = Lrc::try_unwrap(self.compiler.expansion()?.take().1) {
+                    resolver.map(|x| x.into_inner().complete());
+                } else {
+                    panic!("Could not drop resolver");
+                }
+
                 // TODO: replace cs.krate with an Option so we can pull it temporarily
-                let parse_query = self.compiler.parse().unwrap();
-                let _ = parse_query.take();
-                parse_query.give(self.cs.krate().clone());
+                let parse = self.compiler.parse().unwrap();
+                let _ = parse.take();
+                parse.give(self.cs.krate().clone());
 
-                // We can't steal the expansion result as that will reinitialize
-                // the session
-                self.cs.krate.replace(self.compiler.expansion().unwrap().peek().0.clone());
+                self.rebuild_session();
 
-                let hir = self.compiler.lower_to_hir()?;
-                let hir = hir.peek();
-                let (ref hir_forest, ref expansion) = *hir;
+                self.cs.krate.replace(self.compiler.expansion()?.peek().0.clone());
+                let expanded = self.cs.krate().clone();
+                let collapse_info = CollapseInfo::collect(
+                    &unexpanded,
+                    &expanded,
+                    &mut self.node_map,
+                    &self.cs,
+                );
+
+                let hir = self.compiler.lower_to_hir()?.take();
+                let (ref hir_forest, ref expansion) = hir;
                 let hir_forest = hir_forest.borrow();
                 let defs = expansion.defs.borrow();
-                let map = hir::map::map_crate(&sess, &*cstore, &hir_forest, &defs);
-                let cx = RefactorCtxt::new_phase_2(&sess, &cstore, &map);
-                Ok(self.transform_crate_inner(&unexpanded, f, cx))
+                let map = hir::map::map_crate(
+                    self.compiler.session(),
+                    &*self.compiler.cstore().clone(),
+                    &hir_forest,
+                    &defs,
+                );
+
+                let cx = RefactorCtxt::new_phase_2(self.compiler.session(), self.compiler.cstore(), &map);
+                // Run the transform
+                let r = f(&self.cs, &cx);
+
+                collapse_info.collapse(&mut self.node_map, &self.cs);
+
+                Ok(r)
             }
 
             Phase::Phase3 => {
-                let parse_query = self.compiler.parse().unwrap();
-                let _ = parse_query.take();
-                parse_query.give(self.cs.krate().clone());
-                self.cs.krate.replace(self.compiler.expansion().unwrap().peek().0.clone());
-                self.compiler.global_ctxt()?.peek_mut().enter(|tcx| {
+                if let Ok(resolver) = Lrc::try_unwrap(self.compiler.expansion()?.take().1) {
+                    resolver.map(|x| x.into_inner().complete());
+                } else {
+                    panic!("Could not drop resolver");
+                }
+
+                let parse = self.compiler.parse().unwrap();
+                let _ = parse.take();
+                parse.give(self.cs.krate().clone());
+
+                self.rebuild_session();
+
+                self.cs.krate.replace(self.compiler.expansion()?.peek().0.clone());
+                let expanded = self.cs.krate().clone();
+                let collapse_info = CollapseInfo::collect(
+                    &unexpanded,
+                    &expanded,
+                    &mut self.node_map,
+                    &self.cs,
+                );
+
+                let r = self.compiler.global_ctxt()?.take().enter(|tcx| {
                     let _result = tcx.analysis(LOCAL_CRATE);
-                    let cx = RefactorCtxt::new_phase_3(&sess, &cstore, tcx.hir(), tcx);
-                    Ok(self.transform_crate_inner(&unexpanded, f, cx))
-                })
+                    let cx = RefactorCtxt::new_phase_3(self.compiler.session(), self.compiler.cstore(), tcx.hir(), tcx);
+
+                    // Run the transform
+                    f(&self.cs, &cx)
+                });
+
+                collapse_info.collapse(&mut self.node_map, &self.cs);
+
+                let _ = self.compiler.lower_to_hir()?.take();
+                let _ = self.compiler.codegen_channel()?.take();
+
+                Ok(r)
             }
         }
     }
 
-    fn transform_crate_inner<F, R>(&mut self, unexpanded: &Crate, f: F, cx: RefactorCtxt) -> R
-        where F: FnOnce(&CommandState, &RefactorCtxt) -> R
-    {
-        span_fix::fix_format(self.cs.krate.get_mut());
-        let expanded = self.cs.krate().clone();
+    fn rebuild_session(&mut self) {
+        let compiler: &mut driver::Compiler = unsafe { mem::transmute(&mut self.compiler) };
+        let old_session = &compiler.sess;
 
-        // Collect info + update node_map, then transfer and commit
-        let (mac_table, matched_ids) =
-            collapse::collect_macro_invocations(&unexpanded, &expanded);
-        self.node_map.add_edges(&matched_ids);
-        self.node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
-        let cfg_attr_info = collapse::collect_cfg_attrs(&unexpanded);
-        let deleted_info = collapse::collect_deleted_nodes(
-            &unexpanded, &self.node_map, &mac_table);
-        collapse::match_nonterminal_ids(&mut self.node_map, &mac_table);
-
-        self.node_map.transfer_marks(self.cs.marks.get_mut());
-        let cfg_attr_info = self.node_map.transfer_map(cfg_attr_info);
-        self.node_map.commit();
-
-        // Run the transform
-        let r = f(&self.cs, &cx);
-
-        // Collapse macros + update node_map.  The cfg_attr step requires the updated node_map
-        // TODO: we should be able to skip some of these steps if `!cmd_state.krate_changed()`
-        collapse::collapse_injected(self.cs.krate.get_mut());
-        let matched_ids = collapse::collapse_macros(self.cs.krate.get_mut(), &mac_table);
-        self.node_map.add_edges(&matched_ids);
-        self.node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
-
-        let cfg_attr_info = self.node_map.transfer_map(cfg_attr_info);
-        collapse::restore_cfg_attrs(self.cs.krate.get_mut(), cfg_attr_info);
-
-        collapse::restore_deleted_nodes(
-            &mut *self.cs.krate_mut(),
-            &mut self.node_map,
-            &self.cs.node_id_counter,
-            deleted_info,
+        let descriptions = util::diagnostics_registry();
+        let mut new_sess = session::build_session_with_source_map(
+            old_session.opts.clone(),
+            old_session.local_crate_source_file.clone(),
+            descriptions,
+            self.compiler.source_map().clone(),
+            DiagnosticOutput::Default,
+            Default::default(),
         );
+        let new_codegen_backend = util::get_codegen_backend(&new_sess);
+        let new_cstore = CStore::new(new_codegen_backend.metadata_loader());
 
-        self.node_map.transfer_marks(self.cs.marks.get_mut());
-        self.node_map.commit();
+        new_sess.parse_sess.config = old_session.parse_sess.config.clone();
 
-        r
+        *Lrc::get_mut(&mut compiler.sess).unwrap() = new_sess;
+        *Lrc::get_mut(&mut compiler.codegen_backend).unwrap() = new_codegen_backend;
+        *Lrc::get_mut(&mut compiler.cstore).unwrap() = new_cstore;
     }
 
     pub fn run_typeck_loop<F>(&mut self, mut func: F) -> Result<(), &'static str>
@@ -410,6 +449,9 @@ impl CommandState {
         self.marks_changed.get()
     }
 
+    pub fn node_id_counter(&self) -> &NodeIdCounter {
+        &self.node_id_counter
+    }
 
     /// Generate a fresh NodeId.
     pub fn next_node_id(&self) -> NodeId {

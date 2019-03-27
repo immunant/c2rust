@@ -3,6 +3,7 @@
     trace_macros,
     specialization,
     box_patterns,
+    generator_trait,
 )]
 extern crate arena;
 extern crate ena;
@@ -19,6 +20,7 @@ extern crate rustc;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
+extern crate rustc_incremental;
 extern crate rustc_interface;
 extern crate rustc_metadata;
 extern crate rustc_privacy;
@@ -82,9 +84,6 @@ use rustc_interface::interface;
 use c2rust_ast_builder::IntoSymbol;
 
 pub use crate::context::RefactorCtxt;
-
-use crate::command::RefactorState;
-use crate::file_io::ArcFileIO;
 
 #[derive(Clone, Debug)]
 pub struct Cursor {
@@ -388,9 +387,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
             .expect("Error loading user script");
     } else {
         let file_io = Arc::new(file_io::RealFileIO::new(opts.rewrite_modes.clone()));
-        driver::run_compiler(config, Some(Box::new(ArcFileIO(file_io.clone()))), |compiler| {
-            let mut state = RefactorState::new(compiler, cmd_reg, file_io, marks);
-
+        driver::run_refactoring(config, cmd_reg, file_io, marks, |mut state| {
             state.load_crate();
 
             for cmd in opts.commands.clone() {

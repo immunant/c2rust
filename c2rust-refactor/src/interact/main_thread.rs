@@ -21,7 +21,7 @@ use syntax_pos::FileName;
 use crate::ast_manip::{GetNodeId, GetSpan, Visit};
 use crate::command::{self, RefactorState};
 use crate::driver;
-use crate::file_io::{ArcFileIO, FileIO};
+use crate::file_io::{FileIO};
 use crate::interact::{ToServer, ToClient};
 use crate::interact::WrapSender;
 use crate::interact::{plain_backend, vim8_backend};
@@ -33,18 +33,18 @@ use c2rust_ast_builder::IntoSymbol;
 use super::MarkInfo;
 
 
-struct InteractState<'a> {
+struct InteractState {
     to_client: SyncSender<ToClient>,
     buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
 
-    state: RefactorState<'a>,
+    state: RefactorState,
 }
 
-impl<'a> InteractState<'a> {
-    fn new(state: RefactorState<'a>,
+impl InteractState {
+    fn new(state: RefactorState,
            buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
            _to_worker: SyncSender<ToWorker>,
-           to_client: SyncSender<ToClient>) -> InteractState<'a> {
+           to_client: SyncSender<ToClient>) -> InteractState {
 
         InteractState { to_client, buffers_available, state }
     }
@@ -248,9 +248,7 @@ pub fn interact_command(
         to_client: to_client.clone(),
     });
 
-    driver::run_compiler(config, Some(Box::new(ArcFileIO(file_io.clone()))), |compiler| {
-        let state = RefactorState::new(compiler, registry, file_io, HashSet::new());
-
+    driver::run_refactoring(config, registry, file_io, HashSet::new(), |state| {
         InteractState::new(state, buffers_available, to_worker, to_client)
             .run_loop(main_recv);
     });

@@ -19,7 +19,7 @@ use syntax::ptr::P;
 
 use crate::command::{self, CommandState, RefactorState};
 use crate::driver::{self, Phase};
-use crate::file_io::{ArcFileIO, OutputMode, RealFileIO};
+use crate::file_io::{OutputMode, RealFileIO};
 use crate::matcher::{self, mut_visit_match_with, Bindings, MatchCtxt, Pattern, Subst, TryMatch};
 use crate::RefactorCtxt;
 
@@ -40,11 +40,10 @@ pub fn run_lua_file(
     file.read_to_end(&mut script)?;
     let io = Arc::new(RealFileIO::new(rewrite_modes));
 
-    driver::run_compiler(config, Some(Box::new(ArcFileIO(io.clone()))), |compiler| {
+    driver::run_refactoring(config, registry, io, HashSet::new(), |state| {
         let lua = Lua::new();
         lua.context(|lua_ctx| {
             lua_ctx.scope(|scope| {
-                let state = RefactorState::new(compiler, registry, io, HashSet::new());
                 let refactor = scope.create_nonstatic_userdata(state)?;
                 lua_ctx.globals().set("refactor", refactor)?;
 
@@ -153,7 +152,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
 /// Refactoring context
 // @type RefactorState
 #[allow(unused_doc_comments)]
-impl<'a> UserData for RefactorState<'a> {
+impl UserData for RefactorState {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         /// Run a builtin refactoring command
         // @function run_command
