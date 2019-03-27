@@ -602,7 +602,7 @@ class TranslateASTVisitor final
       }
 
       bool VisitIndirectGotoStmt(IndirectGotoStmt *IGS) {
-          std:: string msg = "GCC labels-as-values extention is not supported. Aborting.";
+          std:: string msg = "the GNU C labels-as-values extension is not supported. Aborting.";
 
           printError(msg, IGS);
           abort();
@@ -617,7 +617,6 @@ class TranslateASTVisitor final
                              });
           return true;
       }
-
 
       bool VisitNullStmt(NullStmt *NS) {
           std::vector<void*> childIds;
@@ -1422,7 +1421,7 @@ class TranslateASTVisitor final
           if (warnOnFlexibleArrayDecl(D)) {
               printWarning("this may be an unsupported flexible array member with size of 1, "
                            "omit the size if this field is intended to be a flexible array member. "
-                           "Note that you must be sure to fix any struct size calculations after "
+                           "Note that you must fix any struct size calculations after "
                            "doing so or else it will likely be off (by one). "
                            "See section 6.7.2.1 of the C99 standard.", D);
           }
