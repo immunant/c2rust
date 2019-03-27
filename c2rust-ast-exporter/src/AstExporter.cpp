@@ -601,6 +601,13 @@ class TranslateASTVisitor final
           return true;
       }
 
+      bool VisitIndirectGotoStmt(IndirectGotoStmt *IGS) {
+          std:: string msg = "GCC labels-as-values extention is not supported. Aborting.";
+
+          printError(msg, IGS);
+          abort();
+      }
+
       bool VisitLabelStmt(LabelStmt *LS) {
 
           std::vector<void*> childIds = { LS->getSubStmt() };
@@ -685,8 +692,7 @@ class TranslateASTVisitor final
           APSInt value;
           if (!expr->isIntegerConstantExpr(value, *Context)) {
               if (!expr->EvaluateAsInt(value, *Context)) {
-                  std:: string msg = "Aborting due to the expression in `CaseStmt`\
-                                      not being an integer.";
+                  std:: string msg = "Expression in case statement is not an integer. Aborting.";
                   printError(msg, CS);
                   abort();
               }
