@@ -285,9 +285,10 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let mut items = mut_visit::noop_flat_map_item(i, self);
         for i in items.iter_mut() {
-            let did = self.cx.node_def_id(i.id);
+            let id = i.id;
             match &mut i.node {
                 ItemKind::Static(_ty, _mutbl, expr) => {
+                    let did = self.cx.node_def_id(id);
                     let expected_ty = self.cx.ty_ctxt().type_of(did);
                     info!("STATIC: expected ty {:?}, expr {:?}", expected_ty, expr);
 
@@ -306,6 +307,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     self.ensure(expr, expected_ty);
                 }
                 ItemKind::Const(_ty, expr) => {
+                    let did = self.cx.node_def_id(id);
                     let expected_ty = self.cx.ty_ctxt().type_of(did);
                     self.ensure(expr, expected_ty);
                 }
