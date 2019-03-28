@@ -36,7 +36,6 @@ use rustc::session::Session;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use std::path::PathBuf;
 use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::parse::parser::{Parser, PathStyle};
@@ -117,7 +116,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
 
     pub fn parse_expr(&mut self, src: &str) -> P<Expr> {
-        let (mut p, bt) = make_bindings_parser(self.cx.session(), "<expr>", src);
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
         match p.parse_expr() {
             Ok(mut expr) => {
                 self.types.merge(bt);
@@ -129,7 +128,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     pub fn parse_pat(&mut self, src: &str) -> P<Pat> {
-        let (mut p, bt) = make_bindings_parser(self.cx.session(), "<pat>", src);
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
         match p.parse_pat(None) {
             Ok(mut pat) => {
                 self.types.merge(bt);
@@ -141,7 +140,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     pub fn parse_ty(&mut self, src: &str) -> P<Ty> {
-        let (mut p, bt) = make_bindings_parser(self.cx.session(), "<ty>", src);
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
         match p.parse_ty() {
             Ok(mut ty) => {
                 self.types.merge(bt);
@@ -155,7 +154,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     pub fn parse_stmts(&mut self, src: &str) -> Vec<Stmt> {
         // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
         // workaround that may cause suboptimal error messages.
-        let (mut p, bt) = make_bindings_parser(self.cx.session(), "<stmt>", &format!("{{ {} }}", src));
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), &format!("{{ {} }}", src));
         match p.parse_block() {
             Ok(blk) => {
                 self.types.merge(bt);
@@ -170,7 +169,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     pub fn parse_items(&mut self, src: &str) -> Vec<P<Item>> {
-        let (mut p, bt) = make_bindings_parser(self.cx.session(), "<item>", src);
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
         let mut items = Vec::new();
         loop {
             match p.parse_item() {
@@ -517,9 +516,9 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 }
 
-fn make_bindings_parser<'a>(sess: &'a Session, name: &str, src: &str) -> (Parser<'a>, BindingTypes) {
+fn make_bindings_parser<'a>(sess: &'a Session, src: &str) -> (Parser<'a>, BindingTypes) {
     let ts =
-        parse::parse_stream_from_source_str(FileName::Real(PathBuf::from(name)),
+        parse::parse_stream_from_source_str(FileName::anon_source_code(src),
                                             src.to_owned(),
                                             &sess.parse_sess,
                                             None);
