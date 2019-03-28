@@ -37,6 +37,7 @@ pub mod renamer;
 pub mod rust_ast;
 pub mod translator;
 pub mod with_stmts;
+mod compile_cmds;
 
 use std::collections::HashSet;
 use std::fs::{self, File};
@@ -44,7 +45,6 @@ use std::io::prelude::*;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
-use std::ffi::OsStr;
 
 use failure::Error;
 use regex::Regex;
@@ -55,6 +55,7 @@ use c_ast::*;
 pub use diagnostics::Diagnostic;
 
 use build_files::{get_build_dir, emit_build_files};
+use compile_cmds::{get_compile_commands};
 use std::prelude::v1::Vec;
 pub use translator::ReplaceMode;
 
@@ -101,56 +102,16 @@ pub struct TranspilerConfig {
     pub main: Option<String>,
 }
 
-const DUPLICATE_CMDS_EMSG: &str = "
-Error, expected one compiler invocation per input source file. The compile
-commands database (compile_commands.json) contains multiple invocations
-for the following input source file(s)";
-
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
     diagnostics::init(tcfg.enabled_warnings.clone());
 
-    let cmds = get_compile_commands(cc_db).expect(&format!(
-        "Could not parse compile commands from {}",
-        cc_db.to_string_lossy()
+    let cmds = get_compile_commands(cc_db, &tcfg.filter)
+        .expect(&format!("Could not parse compile commands from {}",
+                cc_db.to_string_lossy()
     ));
 
-    // apply the filter argument, if any
-    let cmds = match tcfg.filter {
-        Some(ref re) => cmds
-            .into_iter()
-            .filter(|c| re.is_match(c.file.to_str().unwrap()))
-            .collect::<Vec<CompileCmd>>(),
-        None => cmds,
-    };
-
-    // filter out likely C++ files
-    let cpp_ext = Some(OsStr::new("cpp"));
-    let cmds = cmds
-        .into_iter()
-        .filter(|c| c.file.extension() != cpp_ext)
-        .collect::<Vec<CompileCmd>>();
-
-    // some build scripts repeatedly compile the same input file with different
-    // command line flags thus creating multiple outputs. We don't handle such
-    // cases since we don't know what compiler flags to use for the generated
-    // Rust code or how to link the result.
-    let mut sorted = cmds
-        .iter()
-        .map(|cmd| cmd.abs_file())
-        .collect::<Vec<PathBuf>>();
-    sorted.sort();
-    let mut duplicates = sorted
-        .windows(2)
-        .filter(|w| w[0] == w[1])
-        .map(|w| w[0].to_str().unwrap())
-        .collect::<Vec<&str>>();
-    duplicates.dedup(); // report each duplicate once
-    if duplicates.len() > 0 {
-        eprintln!("{}:\n{}", DUPLICATE_CMDS_EMSG, duplicates.join(",\n"));
-        return;
-    }
 
     // we may need to specify path to system include dir on macOS
     let clang_args: Vec<String> = get_isystem_args();
@@ -263,47 +224,6 @@ fn reorganize_definitions(build_dir: &PathBuf, crate_path: &PathBuf) -> Result<(
     } else {
         Err(format_err!("cargo fmt failed"))
     }
-}
-
-#[derive(Deserialize, Debug)]
-struct CompileCmd {
-    /// The working directory of the compilation. All paths specified in the command
-    /// or file fields must be either absolute or relative to this directory.
-    directory: PathBuf,
-    /// The main translation unit source processed by this compilation step. This is
-    /// used by tools as the key into the compilation database. There can be multiple
-    /// command objects for the same file, for example if the same source file is compiled
-    /// with different configurations.
-    file: PathBuf,
-    /// The compile command executed. After JSON unescaping, this must be a valid command
-    /// to rerun the exact compilation step for the translation unit in the environment
-    /// the build system uses. Parameters use shell quoting and shell escaping of quotes,
-    /// with ‘"’ and ‘\’ being the only special characters. Shell expansion is not supported.
-    command: Option<String>,
-    /// The compile command executed as list of strings. Either arguments or command is required.
-    #[serde(default)]
-    arguments: Vec<String>,
-    /// The name of the output created by this compilation step. This field is optional. It can
-    /// be used to distinguish different processing modes of the same input file.
-    output: Option<String>,
-}
-
-impl CompileCmd {
-    pub fn abs_file(&self) -> PathBuf {
-        match self.file.is_absolute() {
-            true  => self.file.clone(),
-            false => self.directory.join(&self.file)
-        }
-    }
-}
-
-fn get_compile_commands(compile_commands: &Path) -> Result<Vec<CompileCmd>, Error> {
-    let f = File::open(compile_commands)?; // open read-only
-
-    // Read the JSON contents of the file as an instance of `Value`
-    let v = serde_json::from_reader(f)?;
-
-    Ok(v)
 }
 
 fn transpile_single(
