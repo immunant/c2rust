@@ -2,6 +2,7 @@ static __attribute__((always_inline)) void always_inline_static(void) {}
 static __attribute__((__noinline__)) void noinline_static(void) {}
 static void inline inline_static(void) {}
 static void inline __attribute__((__gnu_inline__)) gnu_inline_static(void) {}
+static void __attribute__((used, __cold__)) cold_used_attrs(void) {}
 void __attribute__((__always_inline__)) always_inline_nonstatic(void) {}
 void inline __attribute__((gnu_inline)) gnu_inline_nonstatic(void) {}
 void __attribute__((noinline)) noinline_nonstatic(void) {}

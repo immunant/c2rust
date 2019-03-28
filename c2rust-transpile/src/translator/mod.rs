@@ -1353,6 +1353,7 @@ impl<'c> Translation<'c> {
                 for attr in attrs {
                     mk_ = match attr {
                         c_ast::Attribute::AlwaysInline => mk_.single_attr("inline(always)"),
+                        c_ast::Attribute::Cold => mk_.single_attr("cold"),
                         c_ast::Attribute::NoInline => mk_.single_attr("inline(never)"),
                         _ => continue,
                     };
