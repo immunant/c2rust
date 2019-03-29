@@ -192,6 +192,9 @@ impl<'c> Translation<'c> {
                         third_expr_id
                     }
                 },
+                // For some reason there seems to be an incorrect implicit cast here to char
+                // it's possible the builtin takes a char even though the function takes an int
+                ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
                 _ => third_expr_id,
             };
             let third_param = self.convert_expr(ctx.used(), third_expr_id)?;
