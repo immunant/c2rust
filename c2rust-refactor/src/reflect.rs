@@ -131,7 +131,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         match dk.disambiguated_data.data {
             DefPathData::CrateRoot => {
                 if id.krate == LOCAL_CRATE {
-                    segments.push(mk().path_segment(keywords::DollarCrate.ident()));
+                    segments.push(mk().path_segment(keywords::PathRoot.ident()));
                     break;
                 } else {
                     if let Some(ExternCrate { src: ExternCrateSource::Extern(def_id), .. }) = *tcx.extern_crate(id) {
@@ -144,7 +144,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                         // in the previous case), but the resulting error should be obvious to the
                         // user.
                         segments.push(mk().path_segment(tcx.crate_name(id.krate)));
-                        segments.push(mk().path_segment(keywords::DollarCrate.ident()));
+                        segments.push(mk().path_segment(keywords::PathRoot.ident()));
                         break;
                     }
                 }

@@ -147,7 +147,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         if let ItemKind::ForeignMod(m) = &item.node {
                             for foreign_item in &m.items {
                                 let dest_path = mk().path(vec![
-                                    keywords::DollarCrate.ident(),
+                                    keywords::PathRoot.ident(),
                                     dest_module_ident,
                                     foreign_item.ident,
                                 ]);
@@ -162,7 +162,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         // a simple path in the crate root and it is flat,
                         // i.e. has no submodules which contain target items.
                         let dest_path = mk().path(vec![
-                            keywords::DollarCrate.ident(),
+                            keywords::PathRoot.ident(),
                             dest_module_ident,
                             item.ident,
                         ]);
