@@ -153,6 +153,27 @@ impl<'c> Translation<'c> {
         Ok(false)
     }
 
+    /// This function will strip either an implicitly casted int or explicitly casted
+    /// vector as both casts are unnecessary (and problematic) for our purposes
+    fn clean_int_or_vector_param(&self, expr_id: CExprId) -> CExprId {
+        match self.ast_context.c_exprs[&expr_id].kind {
+            // For some reason there seems to be an incorrect implicit cast here to char
+            // it's possible the builtin takes a char even though the function takes an int
+            ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
+            // (internal)(external)(vector input)
+            ExplicitCast(qty, _, BitCast, _, _) => {
+                if let CTypeKind::Vector(..) = self.ast_context.resolve_type(qty.ctype).kind {
+                    let (_, stripped_expr_id, _) = self.strip_vector_explicit_cast(expr_id);
+
+                    stripped_expr_id
+                } else {
+                    expr_id
+                }
+            },
+            _ => expr_id,
+        }
+    }
+
     /// Generate a call to a rust SIMD function based on a builtin function. Clang 6 only supports one of these
     /// but clang 7 converts a bunch more from "super builtins"
     pub fn convert_simd_builtin(
@@ -165,38 +186,14 @@ impl<'c> Translation<'c> {
 
         let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
         let first_param = self.convert_expr(ctx.used(), first_expr_id)?;
-        let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
-            // For some reason there seems to be an incorrect implicit cast here to char
-            // it's possible the builtin takes a char even though the function takes an int
-            ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
-            ExplicitCast(_, _, BitCast, _, _) => {
-                let (_, expr_id, _) = self.strip_vector_explicit_cast(args[1]);
-
-                expr_id
-            },
-            _ => args[1],
-        };
+        let second_expr_id = self.clean_int_or_vector_param(args[1]);
         let second_param = self.convert_expr(ctx.used(), second_expr_id)?;
         let mut call_params = vec![first_param.val, second_param.val];
 
         if let Some(&third_expr_id) = args.get(2) {
             // Sometimes the third param is a vector, so it's necessary to strip the explicit cast
             // to an internal type
-            let third_expr_id = match self.ast_context.c_exprs[&third_expr_id].kind {
-                ExplicitCast(qty, _, _, _, _) => {
-                    if let CTypeKind::Vector(..) = self.ast_context.resolve_type(qty.ctype).kind {
-                        let (_, expr_id, _) = self.strip_vector_explicit_cast(third_expr_id);
-
-                        expr_id
-                    } else {
-                        third_expr_id
-                    }
-                },
-                // For some reason there seems to be an incorrect implicit cast here to char
-                // it's possible the builtin takes a char even though the function takes an int
-                ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
-                _ => third_expr_id,
-            };
+            let third_expr_id = self.clean_int_or_vector_param(third_expr_id);
             let third_param = self.convert_expr(ctx.used(), third_expr_id)?;
 
             // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
@@ -211,13 +208,7 @@ impl<'c> Translation<'c> {
 
         // Fourth+ params seem to always be integers so far
         for param_expr_id in args.iter().skip(3) {
-            let param_expr_id = match self.ast_context.c_exprs[&param_expr_id].kind {
-                // For some reason there seems to be an incorrect implicit cast here to char
-                // it's possible the builtin takes a char even though the function takes an int
-                ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
-                _ => *param_expr_id,
-            };
-
+            let param_expr_id = self.clean_int_or_vector_param(*param_expr_id);
             let param = self.convert_expr(ctx.used(), param_expr_id)?;
 
             call_params.push(param.val);
