@@ -210,21 +210,21 @@ impl<'c> Translation<'c> {
 
     /// Generate a zero value to be used for initialization of a given vector type. The type
     /// is specified with the underlying element type and the number of elements in the vector.
-    pub fn implicit_vector_default(&self, ctype: CTypeId, len: usize) -> Result<P<Expr>, String> {
+    pub fn implicit_vector_default(&self, ctype: CTypeId, len: usize, is_static: bool) -> Result<P<Expr>, String> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
-        let fn_name = match (&self.ast_context[ctype].kind, len) {
-            (Float, 4) => "_mm_setzero_ps",
-            (Float, 8) => "_mm256_setzero_ps",
-            (Double, 2) => "_mm_setzero_pd",
-            (Double, 4) => "_mm256_setzero_pd",
-            (LongLong, 2) => "_mm_setzero_si128",
-            (LongLong, 4) => "_mm256_setzero_si256",
+        let (fn_name, bytes) = match (&self.ast_context[ctype].kind, len) {
+            (Float, 4) => ("_mm_setzero_ps", 16),
+            (Float, 8) => ("_mm256_setzero_ps", 32),
+            (Double, 2) => ("_mm_setzero_pd", 16),
+            (Double, 4) => ("_mm256_setzero_pd", 32),
+            (LongLong, 2) => ("_mm_setzero_si128", 16),
+            (LongLong, 4) => ("_mm256_setzero_si256", 32),
             (LongLong, 1) => {
                 // __m64 is still unstable as of rust 1.29
                 self.features.borrow_mut().insert("stdsimd");
 
-                "_mm_setzero_si64"
+                ("_mm_setzero_si64", 8)
             }
             (kind, len) => {
                 return Err(format!(
@@ -234,10 +234,20 @@ impl<'c> Translation<'c> {
             }
         };
 
-        self.import_simd_function(fn_name)
-            .expect("None of these fns should be unsupported in rust");
+        if is_static {
+            self.features.borrow_mut().insert("const_transmute");
 
-        Ok(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>))
+            let zero_expr = mk().lit_expr(mk().int_lit(0, "u8"));
+            let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
+            let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
+
+            Ok(transmute_expr(mk().infer_ty(), mk().infer_ty(), expr, self.tcfg.emit_no_std))
+        } else {
+            self.import_simd_function(fn_name)
+                .expect("None of these fns should be unsupported in rust");
+
+            Ok(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>))
+        }
     }
 
     /// Translate a list initializer corresponding to a vector type.

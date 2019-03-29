@@ -173,9 +173,11 @@ impl<'c> Translation<'c> {
                 })
             },
 
-            // In clang 6 this first one is the only true SIMD builtin, clang 7 converted a bunch more after it:
+            // SIMD builtins
+            // Clang 6+:
             "__builtin_ia32_pshufw" =>
                 self.convert_simd_builtin(ctx, "_mm_shuffle_pi16", args),
+            // Clang 7+:
             "__builtin_ia32_shufps" =>
                 self.convert_simd_builtin(ctx, "_mm_shuffle_ps", args),
             "__builtin_ia32_shufpd" =>
@@ -198,6 +200,9 @@ impl<'c> Translation<'c> {
                 self.convert_simd_builtin(ctx, "_mm256_shufflehi_epi16", args),
             "__builtin_ia32_pshuflw256" =>
                 self.convert_simd_builtin(ctx, "_mm256_shufflelo_epi16", args),
+            // Clang 8+:
+            "__builtin_ia32_vec_ext_v4si" =>
+                self.convert_simd_builtin(ctx, "_mm_extract_epi32", args),
 
             "__sync_val_compare_and_swap_1" |
             "__sync_val_compare_and_swap_2" |

@@ -194,19 +194,29 @@ fn unwrap_function_pointer(ptr: P<Expr>) -> P<Expr> {
 }
 
 fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>, no_std: bool) -> P<Expr> {
-    let type_args = vec![source_ty, target_ty];
+    let type_args = match (&source_ty.node, &target_ty.node) {
+        (TyKind::Infer, TyKind::Infer) => Vec::new(),
+        (_, TyKind::Infer) => vec![source_ty],
+        _ => vec![source_ty, target_ty],
+    };
     let std_or_core = if no_std {
         "core"
     } else {
         "std"
     };
-    let path = vec![
+    let mut path = vec![
         mk().path_segment(""),
         mk().path_segment(std_or_core),
         mk().path_segment("mem"),
-        mk().path_segment_with_args("transmute",
-                                      mk().angle_bracketed_args(type_args)),
     ];
+
+    if type_args.is_empty() {
+        path.push(mk().path_segment("transmute"));
+    } else {
+        path.push(mk().path_segment_with_args("transmute",
+                  mk().angle_bracketed_args(type_args)));
+    }
+
     mk().call_expr(mk().path_expr(path), vec![expr])
 }
 
@@ -794,12 +804,27 @@ impl<'c> Translation<'c> {
         } else { mk }
     }
 
-    fn static_initializer_is_unsafe(&self, expr_id: Option<CExprId>) -> bool {
+    fn static_initializer_is_unsafe(&self, expr_id: Option<CExprId>, qty: CQualTypeId) -> bool {
+        // SIMD types are always unsafe in statics
+        match self.ast_context.resolve_type(qty.ctype).kind {
+            CTypeKind::Vector(..) => return true,
+            CTypeKind::ConstantArray(ctype, ..) => {
+                let kind = &self.ast_context.resolve_type(ctype).kind;
+
+                if let CTypeKind::Vector(..) = kind {
+                    return true;
+                }
+            }
+            _ => {},
+        }
+
+        // Get the initializer if there is one
         let expr_id = match expr_id {
             Some(expr_id) => expr_id,
             None => return false,
         };
 
+        // Look for code which can only be translated unsafely
         let iter = DFExpr::new(&self.ast_context, expr_id.into());
 
         for i in iter {
@@ -810,11 +835,6 @@ impl<'c> Translation<'c> {
 
             match self.ast_context[expr_id].kind {
                 CExprKind::DeclRef(_, _, LRValue::LValue) => return true,
-                CExprKind::InitList(CQualTypeId { ctype, .. }, ..) => {
-                    if let CTypeKind::Vector(..) = self.ast_context.resolve_type(ctype).kind {
-                        return true
-                    }
-                },
                 CExprKind::ImplicitCast(_, _, CastKind::IntegralToPointer, _, _) |
                 CExprKind::ExplicitCast(_, _, CastKind::IntegralToPointer, _, _) => {
                     return true;
@@ -1181,7 +1201,7 @@ impl<'c> Translation<'c> {
                 } else {
                     let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
 
-                    let init = if self.static_initializer_is_unsafe(initializer) {
+                    let init = if self.static_initializer_is_unsafe(initializer, typ) {
                         let mut init = init?;
                         init.stmts.push(mk().expr_stmt(init.val));
                         let init = mk().unsafe_().block(init.stmts);
@@ -2809,7 +2829,7 @@ impl<'c> Translation<'c> {
             let val = self.implicit_default_expr(inner, is_static)?;
             Ok(vec_expr(val, count))
         } else if let &CTypeKind::Vector(CQualTypeId { ctype, .. }, len) = resolved_ty {
-            self.implicit_vector_default(ctype, len)
+            self.implicit_vector_default(ctype, len, is_static)
         } else {
             Err(format!("Unsupported default initializer: {:?}", resolved_ty))
         }

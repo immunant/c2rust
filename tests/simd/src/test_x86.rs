@@ -1,7 +1,10 @@
 extern crate libc;
 
 use x86::{ShuffleVectors, VectorInitLists, rust_unpack_128_2x128, rust_zero_init_all, rust_call_all, rust_call_all_used, rust_vector_init_lists, rust_vector_init_lists_used};
-use x86::{rust_static_m128, rust_static_m256, rust_static_m128d, rust_static_m256d, rust_static_m128i, rust_static_m256i};
+use x86::{
+    rust_static_m128, rust_static_m256, rust_static_m128d, rust_static_m256d, rust_static_m128i, rust_static_m256i,
+    rust_static_uninit_m128, rust_static_uninit_m256, rust_static_uninit_m128d, rust_static_uninit_m256d, rust_static_uninit_m128i, rust_static_uninit_m256i,
+};
 
 #[cfg(target_arch = "x86")]
 use std::arch::x86::{__m128, __m128i, __m128d, __m256, __m256d, __m256i, _mm_setzero_si128, _mm_set_epi32};

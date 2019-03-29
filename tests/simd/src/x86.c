@@ -179,3 +179,10 @@ __m128d static_m128d = {2.2, 4.4};
 __m256d static_m256d = {2.2, 3.3, 4.4, 5.5};
 __m128i static_m128i = {45LL, 32LL};
 __m256i static_m256i = {12LL, 34LL, 56LL, 78LL};
+
+__m128 static_uninit_m128;
+__m256 static_uninit_m256;
+__m128d static_uninit_m128d;
+__m256d static_uninit_m256d;
+__m128i static_uninit_m128i;
+__m256i static_uninit_m256i;
