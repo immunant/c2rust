@@ -802,13 +802,23 @@ impl<'c> Translation<'c> {
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
     // if it does.
+    pub fn panic_or_err(&self, msg: &str) -> P<Expr> {
+        self.panic_or_err_helper(msg, self.tcfg.panic_on_translator_failure)
+    }
+
     pub fn panic(&self, msg: &str) -> P<Expr> {
-        let macro_name = if self.tcfg.panic_on_translator_failure { "panic" } else { "compile_error" };
+        self.panic_or_err_helper(msg, true)
+    }
+
+    fn panic_or_err_helper(&self, msg: &str, panic: bool) -> P<Expr> {
+        let macro_name = if panic { "panic" } else { "compile_error" };
         let macro_msg = vec![
             Token::Interpolated(Lrc::new(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit(msg))))),
         ].into_iter().collect::<TokenStream>();
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
     }
+
+
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
         if self.tcfg.cross_checks {
@@ -2251,7 +2261,7 @@ impl<'c> Translation<'c> {
 
                     Ok(cond.and_then(|c| WithStmts {
                         stmts: vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(els)))],
-                        val: self.panic("Conditional expression is not supposed to be used"),
+                        val: self.panic_or_err("Conditional expression is not supposed to be used"),
                     }))
                 } else {
                     let then: P<Block> = lhs.to_block();
@@ -2272,7 +2282,7 @@ impl<'c> Translation<'c> {
                                            None as Option<P<Expr>>)));
                     Ok(WithStmts {
                         stmts: lhs.stmts,
-                        val: self.panic("Binary conditional expression is not supposed to be used"),
+                        val: self.panic_or_err("Binary conditional expression is not supposed to be used"),
                     })
                 } else {
                     self.name_reference_write_read(ctx, lhs)?.result_map(|(_, lhs_val)| {
@@ -2477,7 +2487,7 @@ impl<'c> Translation<'c> {
             // Recall that if `used` is false, the `stmts` field of the output must contain
             // all side-effects (and a function call can always have side-effects)
             stmts.push(mk().semi_stmt(expr));
-            WithStmts { stmts, val: self.panic(panic_msg) }
+            WithStmts { stmts, val: self.panic_or_err(panic_msg) }
         } else {
             WithStmts { stmts, val: expr }
         }
@@ -2546,7 +2556,7 @@ impl<'c> Translation<'c> {
             }
             _ => {
                 if ctx.is_unused()  {
-                    let val = self.panic("Empty statement expression is not supposed to be used");
+                    let val = self.panic_or_err("Empty statement expression is not supposed to be used");
                     Ok(WithStmts { stmts: vec![], val })
                 } else {
                     Err(format!("Bad statement expression"))

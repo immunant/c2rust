@@ -120,7 +120,7 @@ impl<'c> Translation<'c> {
             });
             if ctx.is_unused() {
                 res.stmts.push(mk().expr_stmt(res.val));
-                res.val = self.panic("convert_vaarg unused");
+                res.val = self.panic_or_err("convert_vaarg unused");
             }
 
             Ok(res)

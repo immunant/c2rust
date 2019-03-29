@@ -550,6 +550,8 @@ impl Cfg<Label, StmtOrDecl> {
                         wip.body.push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(None as Option<P<Expr>>))));
                     },
                     ImplicitReturnType::NoImplicitReturnType => {
+                        // NOTE: emitting `ret_expr` is not necessarily an error. For instance,
+                        // this statement exit may be dominated by one or more return statements.
                         let ret_expr: P<Expr> =
                             translator.panic("Reached end of non-void function without returning");
                         wip.body.push(StmtOrDecl::Stmt(mk().semi_stmt(ret_expr)));

@@ -203,7 +203,7 @@ impl<'c> Translation<'c> {
         } else {
             Ok(WithStmts {
                 stmts: vec![mk().expr_stmt(call)],
-                val: self.panic("No value for unused shuffle vector return"),
+                val: self.panic_or_err("No value for unused shuffle vector return"),
             })
         }
     }
@@ -304,7 +304,7 @@ impl<'c> Translation<'c> {
         } else {
             Ok(WithStmts {
                 stmts: vec![mk().expr_stmt(call)],
-                val: self.panic("No value for unused shuffle vector return"),
+                val: self.panic_or_err("No value for unused shuffle vector return"),
             })
         }
     }
@@ -421,7 +421,7 @@ impl<'c> Translation<'c> {
         } else {
             Ok(WithStmts {
                 stmts: vec![mk().expr_stmt(call)],
-                val: self.panic("No value for unused shuffle vector return"),
+                val: self.panic_or_err("No value for unused shuffle vector return"),
             })
         }
     }

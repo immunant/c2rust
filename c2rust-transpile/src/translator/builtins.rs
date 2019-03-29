@@ -133,7 +133,7 @@ impl<'c> Translation<'c> {
                     if let Some(va_id) = self.match_vastart(args[0]) {
                         if self.is_promoted_va_decl(va_id) {
                             // `va_start` is automatically called for the promoted decl.
-                            return Ok(WithStmts::new(self.panic("va_start stub")))
+                            return Ok(WithStmts::new(self.panic_or_err("va_start stub")))
                         }
                     }
                 }
@@ -156,7 +156,7 @@ impl<'c> Translation<'c> {
                         let assign_expr = mk().assign_expr(dst.val, call_expr);
                         let stmt = mk().semi_stmt(assign_expr);
 
-                        let mut res = WithStmts::new(self.panic("va_copy stub"));
+                        let mut res = WithStmts::new(self.panic_or_err("va_copy stub"));
                         res.stmts.push(stmt);
                         return Ok(res);
                     }
@@ -168,7 +168,7 @@ impl<'c> Translation<'c> {
                     if let Some(va_id) = self.match_vaend(args[0]) {
                         if self.is_promoted_va_decl(va_id)  {
                             // no need to call end on `va_end` on `va_list` promoted to arg
-                            return Ok(WithStmts::new(self.panic("va_end stub")))
+                            return Ok(WithStmts::new(self.panic_or_err("va_end stub")))
                         } else if self.is_copied_va_decl(va_id)  {
                             // call to `va_end` on non-promoted `va_list`
 
@@ -184,7 +184,7 @@ impl<'c> Translation<'c> {
 
                             let stmt = mk().semi_stmt(call_expr);
 
-                            let mut res = WithStmts::new(self.panic("va_end stub"));
+                            let mut res = WithStmts::new(self.panic_or_err("va_end stub"));
                             res.stmts.push(stmt);
                             return Ok(res);
 
@@ -507,7 +507,7 @@ impl<'c> Translation<'c> {
                 memcpy_expr
             } else {
                 stmts.push(mk().semi_stmt(memcpy_expr));
-                self.panic("__builtin_memcpy not used")
+                self.panic_or_err("__builtin_memcpy not used")
             };
 
         Ok(WithStmts { stmts, val })
