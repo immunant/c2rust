@@ -50,7 +50,7 @@ static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
     "_mm_xor_si64",
 ];
 
-static SIMD_X86_64_ONLY: [&str; 11] = [
+static SIMD_X86_64_ONLY: &[&str] = &[
     "_mm_cvtsd_si64",
     "_mm_cvtsi128_si64",
     "_mm_cvtsi128_si64x",
@@ -62,6 +62,9 @@ static SIMD_X86_64_ONLY: [&str; 11] = [
     "_mm_cvttsd_si64x",
     "_mm_cvttss_si64",
     "_mm_stream_si64",
+    "_mm_extract_epi64",
+    "_mm_insert_epi64",
+    "_mm_crc32_u64",
 ];
 
 impl<'c> Translation<'c> {
