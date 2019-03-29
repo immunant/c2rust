@@ -206,7 +206,7 @@ impl<'c> Translation<'c> {
             }
         }
 
-        // Four+ params seem to always be integers so far
+        // Fourth+ params seem to always be integers so far
         for param_expr_id in args.iter().skip(3) {
             let param_expr_id = match self.ast_context.c_exprs[&param_expr_id].kind {
                 // For some reason there seems to be an incorrect implicit cast here to char
@@ -485,11 +485,21 @@ impl<'c> Translation<'c> {
                 match &self.ast_context.resolve_type(ctype).kind {
                     CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                         (&self.ast_context.c_types[ctype].kind, expr_id, *len)
-                    }
+                    },
                     _ => unreachable!("Found type other than vector"),
                 }
-            }
-            _ => unreachable!("Found cast other than explicit cast"),
+            },
+            // _mm_insert_ps seems to be the exception to the rule as it has an implicit cast rather
+            // than an explicit one
+            ImplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
+                match &self.ast_context.resolve_type(ctype).kind {
+                    CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
+                        (&self.ast_context.c_types[ctype].kind, expr_id, *len)
+                    },
+                    _ => unreachable!("Found type other than vector"),
+                }
+            },
+            ref e => unreachable!("Found something other than a cast cast: {:?}", e),
         }
     }
 
