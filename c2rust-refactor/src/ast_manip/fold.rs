@@ -10,12 +10,16 @@ use syntax::util::map_in_place::MapInPlace;
 use smallvec::SmallVec;
 
 use c2rust_macros::gen_visitor_impls;
+use crate::util::Lone;
 
 /// A trait for AST nodes that can accept a `MutVisitor`.
 pub trait MutVisit: Sized {
-    fn visit<F: MutVisitor>(&mut self, _: &mut F) {}
+    fn visit<F: MutVisitor>(&mut self, _: &mut F) {
+        unimplemented!("visit is not implemented for {}", stringify!(Self));
+    }
 
-    fn flat_map<F: MutVisitor>(self, _: &mut F) -> SmallVec<[Self; 1]> {
+    fn flat_map<F: MutVisitor>(mut self, f: &mut F) -> SmallVec<[Self; 1]> {
+        self.visit(f);
         smallvec![self]
     }
 }
