@@ -48,7 +48,7 @@ fn filter_likely_cpp(cmds: Vec<CompileCmd>) -> Vec<CompileCmd> {
     cmds.into_iter()
         .filter(|c| {
             let key = c.file.extension().unwrap();
-            cpp_exts.contains(key)
+            !cpp_exts.contains(key)
         })
         .collect::<Vec<CompileCmd>>()
 }
