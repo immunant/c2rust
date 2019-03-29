@@ -354,6 +354,10 @@ fn make_compiler(config: Config) -> Compiler {
         config.lint_caps,
     );
 
+    // Put a dummy file at the beginning of the source_map, so that no real `Span` will accidentally
+    // collide with `DUMMY_SP` (which is `0 .. 0`).
+    source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
+
     let cstore = Lrc::new(CStore::new(codegen_backend.metadata_loader()));
 
     Compiler {
