@@ -221,4 +221,10 @@ void simd_fn_codegen(__m128i i, __m128d d, __m128 y) {
     x = _mm_crc32_u16(1, 2);
     x = _mm_crc32_u32(2, 2);
     x = _mm_crc32_u64(2, 2);
+    i = _mm_cmpestrm(i, 2, i, 3, 2);
+    x = _mm_cmpestra(i, 2, i, 2, 1);
+    x = _mm_cmpestrc(i, 2, i, 2, 1);
+    x = _mm_cmpestro(i, 2, i, 2, 1);
+    x = _mm_cmpestrs(i, 2, i, 2, 1);
+    x = _mm_cmpestrz(i, 2, i, 2, 1);
 }

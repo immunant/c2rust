@@ -177,10 +177,23 @@ impl<'c> Translation<'c> {
             _ => args[1],
         };
         let second_param = self.convert_expr(ctx.used(), second_expr_id)?;
-        let third_expr_id = args.get(2);
         let mut call_params = vec![first_param.val, second_param.val];
 
-        if let Some(&third_expr_id) = third_expr_id {
+        if let Some(&third_expr_id) = args.get(2) {
+            // Sometimes the third param is a vector, so it's necessary to strip the explicit cast
+            // to an internal type
+            let third_expr_id = match self.ast_context.c_exprs[&third_expr_id].kind {
+                ExplicitCast(qty, _, _, _, _) => {
+                    if let CTypeKind::Vector(..) = self.ast_context.resolve_type(qty.ctype).kind {
+                        let (_, expr_id, _) = self.strip_vector_explicit_cast(third_expr_id);
+
+                        expr_id
+                    } else {
+                        third_expr_id
+                    }
+                },
+                _ => third_expr_id,
+            };
             let third_param = self.convert_expr(ctx.used(), third_expr_id)?;
 
             // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
@@ -191,6 +204,20 @@ impl<'c> Translation<'c> {
             } else {
                 call_params.push(third_param.val);
             }
+        }
+
+        // Four+ params seem to always be integers so far
+        for param_expr_id in args.iter().skip(3) {
+            let param_expr_id = match self.ast_context.c_exprs[&param_expr_id].kind {
+                // For some reason there seems to be an incorrect implicit cast here to char
+                // it's possible the builtin takes a char even though the function takes an int
+                ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
+                _ => *param_expr_id,
+            };
+
+            let param = self.convert_expr(ctx.used(), param_expr_id)?;
+
+            call_params.push(param.val);
         }
 
         let call = mk().call_expr(
