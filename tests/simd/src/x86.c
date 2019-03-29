@@ -227,4 +227,15 @@ void simd_fn_codegen(__m128i i, __m128d d, __m128 y) {
     x = _mm_cmpestro(i, 2, i, 2, 1);
     x = _mm_cmpestrs(i, 2, i, 2, 1);
     x = _mm_cmpestrz(i, 2, i, 2, 1);
+    y = _mm_dp_ps(y, y, 2);
+    d = _mm_dp_pd(d, d, 2);
+    y = _mm_insert_ps(y, y, 1);
+    i = _mm_mpsadbw_epu8(i, i, 2);
+    i = _mm_cmpistrm(i, i, 2);
+    x = _mm_cmpistri(i, i, 2);
+    x = _mm_cmpistra(i, i, 2);
+    x = _mm_cmpistrc(i, i, 2);
+    x = _mm_cmpistro(i, i, 2);
+    x = _mm_cmpistrs(i, i, 2);
+    x = _mm_cmpistrz(i, i, 2);
 }
