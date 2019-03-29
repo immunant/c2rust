@@ -600,6 +600,10 @@ fn register_commit(reg: &mut Registry) {
     reg.register("write", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
         rs.save_crate();
     })));
+
+    reg.register("dump_crate", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
+        eprintln!("{:#?}", rs.cs.krate());
+    })));
 }
 
 pub fn register_commands(reg: &mut Registry) {
