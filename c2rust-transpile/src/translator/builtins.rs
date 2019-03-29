@@ -171,19 +171,24 @@ impl<'c> Translation<'c> {
                             return Ok(WithStmts::new(self.panic("va_end stub")))
                         } else if self.is_copied_va_decl(va_id)  {
                             // call to `va_end` on non-promoted `va_list`
-                            return Ok(WithStmts::new(self.panic("va_end stub")))
 
-//                            let val = self.convert_expr(ctx.used(), args[0])?;
-//
-//                            let path = mk().path_expr(vec!["va_end"]);
-//                            let ref_val = mk().addr_of_expr(val.val);
-//                            let call_expr = mk().call_expr(path, vec![ref_val] as Vec<P<Expr>>);
-//
-//                            let stmt = mk().semi_stmt(call_expr);
-//
-//                            let mut res = WithStmts::new(self.panic("va_end stub"));
-//                            res.stmts.push(stmt);
-//                            return Ok(res);
+                            let val = self.convert_expr(ctx.used(), args[0])?;
+
+                            let path = {
+                                let std_or_core = if self.tcfg.emit_no_std { "core"  } else { "std" };
+                                let path = vec!["", std_or_core, "intrinsics", "va_end"];
+                                mk().path_expr(path)
+                            };
+                            let ref_val = mk().mutbl().addr_of_expr(val.val);
+                            let call_expr = mk().call_expr(path, vec![ref_val] as Vec<P<Expr>>);
+
+                            let stmt = mk().semi_stmt(call_expr);
+
+                            let mut res = WithStmts::new(self.panic("va_end stub"));
+                            res.stmts.push(stmt);
+                            return Ok(res);
+
+                            // return Ok(WithStmts::new(self.panic("va_end stub")))
                         }
                     }
                 }
