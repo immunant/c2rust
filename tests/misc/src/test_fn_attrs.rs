@@ -27,6 +27,7 @@ pub fn test_fn_attrs() {
     assert!(src.contains("#[inline(never)]\nunsafe extern \"C\" fn rust_noinline_static"));
     assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_inline_static"));
     assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_static"));
+    assert!(src.contains("#[cold]\nunsafe extern \"C\" fn rust_cold_used_attrs"));
 
     // __attribute__((__always_inline__)) void always_inline_nonstatic(void) {}
     // __attribute__((noinline)) void noinline_nonstatic(void) {}
