@@ -36,7 +36,6 @@ pub use self::macros::collapse_macros;
 
 use crate::command::CommandState;
 use crate::node_map::NodeMap;
-use crate::span_fix;
 use deleted::DeletedNode;
 
 pub struct CollapseInfo<'ast> {
@@ -53,8 +52,6 @@ impl<'ast> CollapseInfo<'ast> {
         node_map: &mut NodeMap,
         cs: &CommandState,
     ) -> Self {
-        span_fix::fix_format(&mut *cs.krate_mut());
-
         // Collect info + update node_map, then transfer and commit
         let (mac_table, matched_ids) =
             collect_macro_invocations(unexpanded, expanded);
@@ -89,7 +86,7 @@ impl<'ast> CollapseInfo<'ast> {
         restore_cfg_attrs(&mut cs.krate_mut(), cfg_attr_info);
 
         restore_deleted_nodes(
-            &mut *cs.krate_mut(),
+            &mut cs.krate_mut(),
             node_map,
             cs.node_id_counter(),
             self.deleted_info,

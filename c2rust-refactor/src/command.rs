@@ -130,7 +130,9 @@ impl RefactorState {
     /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
     /// rewriting with the previous `orig_crate` any more.
     pub fn load_crate(&mut self) {
+        self.rebuild_session();
         // Discard any existing krate, overwriting it with one loaded from disk.
+        let _ = self.compiler.parse().unwrap().take();
         let krate = parse_crate(&self.compiler);
         self.orig_krate = krate.clone();
 
@@ -183,45 +185,46 @@ impl RefactorState {
         // let marks = mem::replace(&mut self.marks, HashSet::new());
 
         let unexpanded = self.cs.krate().clone();
-        reset_node_ids(self.cs.krate.get_mut());
 
-        // Immediately fix up the attr spans, since during expansion, any `derive` attrs will be
-        // removed.
+        self.cs.reset();
+
+        self.rebuild_session();
+
+        // Immediately fix up the attr spans, since during expansion, any
+        // `derive` attrs will be removed.
         span_fix::fix_attr_spans(self.cs.krate.get_mut());
 
+        // Replace current parse query results
+        let parse = self.compiler.parse()?;
+        let _ = parse.take();
+        parse.give(self.cs.krate().clone());
+
         match phase {
+            Phase::Phase1 => {}
+
+            Phase::Phase2 | Phase::Phase3 => {
+                self.cs.krate.replace(self.compiler.expansion()?.peek().0.clone());
+            }
+        }
+
+        span_fix::fix_format(self.cs.krate.get_mut());
+        let expanded = self.cs.krate().clone();
+        let collapse_info = CollapseInfo::collect(
+            &unexpanded,
+            &expanded,
+            &mut self.node_map,
+            &self.cs,
+        );
+
+        // Run the transform
+        let r = match phase {
             Phase::Phase1 => {
                 let cx = RefactorCtxt::new_phase_1(&self.compiler.session(), &self.compiler.cstore());
 
-                // TODO: Do I need to run prepare and collapse?
-                let r = f(&self.cs, &cx);
-                Ok(r)
+                f(&self.cs, &cx)
             }
 
             Phase::Phase2 => {
-                // Ensure we've dropped the resolver since it keeps a copy of the session Rc
-                if let Ok(resolver) = Lrc::try_unwrap(self.compiler.expansion()?.take().1) {
-                    resolver.map(|x| x.into_inner().complete());
-                } else {
-                    panic!("Could not drop resolver");
-                }
-
-                // TODO: replace cs.krate with an Option so we can pull it temporarily
-                let parse = self.compiler.parse().unwrap();
-                let _ = parse.take();
-                parse.give(self.cs.krate().clone());
-
-                self.rebuild_session();
-
-                self.cs.krate.replace(self.compiler.expansion()?.peek().0.clone());
-                let expanded = self.cs.krate().clone();
-                let collapse_info = CollapseInfo::collect(
-                    &unexpanded,
-                    &expanded,
-                    &mut self.node_map,
-                    &self.cs,
-                );
-
                 let hir = self.compiler.lower_to_hir()?.take();
                 let (ref hir_forest, ref expansion) = hir;
                 let hir_forest = hir_forest.borrow();
@@ -234,55 +237,43 @@ impl RefactorState {
                 );
 
                 let cx = RefactorCtxt::new_phase_2(self.compiler.session(), self.compiler.cstore(), &map);
-                // Run the transform
-                let r = f(&self.cs, &cx);
 
-                collapse_info.collapse(&mut self.node_map, &self.cs);
-
-                Ok(r)
+                f(&self.cs, &cx)
             }
 
             Phase::Phase3 => {
-                if let Ok(resolver) = Lrc::try_unwrap(self.compiler.expansion()?.take().1) {
-                    resolver.map(|x| x.into_inner().complete());
-                } else {
-                    panic!("Could not drop resolver");
-                }
-
-                let parse = self.compiler.parse().unwrap();
-                let _ = parse.take();
-                parse.give(self.cs.krate().clone());
-
-                self.rebuild_session();
-
-                self.cs.krate.replace(self.compiler.expansion()?.peek().0.clone());
-                let expanded = self.cs.krate().clone();
-                let collapse_info = CollapseInfo::collect(
-                    &unexpanded,
-                    &expanded,
-                    &mut self.node_map,
-                    &self.cs,
-                );
-
                 let r = self.compiler.global_ctxt()?.take().enter(|tcx| {
                     let _result = tcx.analysis(LOCAL_CRATE);
                     let cx = RefactorCtxt::new_phase_3(self.compiler.session(), self.compiler.cstore(), tcx.hir(), tcx);
 
-                    // Run the transform
                     f(&self.cs, &cx)
                 });
 
-                collapse_info.collapse(&mut self.node_map, &self.cs);
-
+                // Ensure that we've dropped any copies of the session Lrc
                 let _ = self.compiler.lower_to_hir()?.take();
                 let _ = self.compiler.codegen_channel()?.take();
 
-                Ok(r)
+                r
             }
-        }
+        };
+
+        self.node_map.init(self.cs.new_parsed_node_ids.get_mut().drain(..));
+
+        collapse_info.collapse(&mut self.node_map, &self.cs);
+
+        Ok(r)
     }
 
     fn rebuild_session(&mut self) {
+        // Ensure we've dropped the resolver since it keeps a copy of the session Rc
+        if let Ok(expansion) = self.compiler.expansion() {
+            if let Ok(resolver) = Lrc::try_unwrap(expansion.take().1) {
+                resolver.map(|x| x.into_inner().complete());
+            } else {
+                panic!("Could not drop resolver");
+            }
+        }
+
         let compiler: &mut driver::Compiler = unsafe { mem::transmute(&mut self.compiler) };
         let old_session = &compiler.sess;
 
@@ -403,6 +394,15 @@ impl CommandState {
 
             node_id_counter
         }
+    }
+
+    /// Reset the command state in preparation for a new transform iteration
+    fn reset(&mut self) {
+        reset_node_ids(self.krate.get_mut());
+
+        self.new_parsed_node_ids.get_mut().clear();
+        self.krate_changed.set(false);
+        self.marks_changed.set(false);
     }
 
 
