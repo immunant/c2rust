@@ -452,12 +452,14 @@ impl<'a> Stream<'a> {
 
 
 pub fn parse(sess: &Session, src: &str) -> Vec<SelectOp> {
-    let fm = sess.source_map().new_source_file(FileName::Macros("select".to_owned()),
-                                               src.to_owned());
-    eprintln!("src = {:?}", src);
-    eprintln!("fm = {:?}", fm);
-    let (ts, _) = parse::source_file_to_stream(&sess.parse_sess, fm, None);
-    eprintln!("tokens = {:?}", ts);
+    debug!("src = {:?}", src);
+    let ts = parse::parse_stream_from_source_str(
+        FileName::macro_expansion_source_code(src),
+        src.to_string(),
+        &sess.parse_sess,
+        None
+    );
+    debug!("tokens = {:?}", ts);
 
     let mut stream = Stream::new(&sess.parse_sess, ts.into_trees().collect());
     let mut ops = Vec::new();

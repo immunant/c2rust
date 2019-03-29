@@ -658,6 +658,6 @@ pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Op
 /// Create a span whose text is `s`.  Note this is somewhat expensive, as it adds a new dummy file
 /// to the `SourceMap` on every call.
 pub fn make_span_for_text(cm: &SourceMap, s: &str) -> Span {
-    let fm = cm.new_source_file(FileName::Custom("<text>".to_string()), s.to_string());
+    let fm = cm.new_source_file(FileName::anon_source_code(s), s.to_string());
     Span::new(fm.start_pos, fm.end_pos, SyntaxContext::empty())
 }
