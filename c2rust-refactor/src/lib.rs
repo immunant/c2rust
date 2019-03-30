@@ -388,8 +388,6 @@ fn main_impl(opts: Options) -> interface::Result<()> {
     } else {
         let file_io = Arc::new(file_io::RealFileIO::new(opts.rewrite_modes.clone()));
         driver::run_refactoring(config, cmd_reg, file_io, marks, |mut state| {
-            state.load_crate();
-
             for cmd in opts.commands.clone() {
                 if &cmd.name == "interact" {
                     panic!("`interact` must be the only command");

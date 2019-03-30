@@ -214,6 +214,29 @@ fn maybe_set_sysroot(mut sopts: SessionOptions, args: &[String]) -> SessionOptio
     sopts
 }
 
+pub fn clone_config(config: &interface::Config) -> interface::Config {
+    let input = match &config.input {
+        Input::File(f) => Input::File(f.clone()),
+        Input::Str { name, input } => Input::Str {
+            name: name.clone(),
+            input: input.clone(),
+        },
+    };
+    interface::Config {
+        opts: config.opts.clone(),
+        crate_cfg: config.crate_cfg.clone(),
+        input,
+        input_path: config.input_path.clone(),
+        output_file: config.output_file.clone(),
+        output_dir: config.output_dir.clone(),
+        file_loader: None,
+        diagnostic_output: DiagnosticOutput::Default,
+        stderr: config.stderr.clone(),
+        crate_name: config.crate_name.clone(),
+        lint_caps: config.lint_caps.clone(),
+    }
+}
+
 pub fn create_config(args: &[String]) -> interface::Config {
     let matches = rustc_driver::handle_options(args)
         .expect("rustc arg parsing failed");
@@ -271,14 +294,11 @@ pub fn run_refactoring<F, R>(
 {
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
-    config.file_loader = Some(Box::new(ArcFileIO(file_io.clone())));
 
     syntax::with_globals(move || {
         ty::tls::GCX_PTR.set(&Lock::new(0), || {
             ty::tls::with_thread_locals(|| {
-                let compiler = make_compiler(config);
-                let compiler = unsafe { mem::transmute(compiler) };
-                let state = RefactorState::new(compiler, cmd_reg, file_io, marks);
+                let state = RefactorState::new(config, cmd_reg, file_io, marks);
                 f(state)
             })
         })
@@ -344,7 +364,9 @@ declare_box_region_type!(
 );
 
 
-fn make_compiler(config: Config) -> Compiler {
+pub fn make_compiler(config: &Config, file_io: Arc<FileIO+Sync+Send>) -> interface::Compiler {
+    let mut config = clone_config(config);
+    config.file_loader = Some(Box::new(ArcFileIO(file_io)));
     let (sess, codegen_backend, source_map) = util::create_session(
         config.opts,
         config.crate_cfg,
@@ -360,7 +382,7 @@ fn make_compiler(config: Config) -> Compiler {
 
     let cstore = Lrc::new(CStore::new(codegen_backend.metadata_loader()));
 
-    Compiler {
+    let compiler = Compiler {
         sess,
         codegen_backend,
         source_map,
@@ -371,7 +393,10 @@ fn make_compiler(config: Config) -> Compiler {
         output_file: config.output_file,
         queries: Default::default(),
         crate_name: config.crate_name,
-    }
+    };
+
+    let compiler = unsafe { mem::transmute(compiler) };
+    compiler
 }
 
 

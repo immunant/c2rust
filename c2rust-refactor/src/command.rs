@@ -70,6 +70,7 @@ struct PluginInfo {
 /// Stores the overall state of the refactoring process, which can be read and updated by
 /// `Command`s.
 pub struct RefactorState {
+    config: interface::Config,
     compiler: interface::Compiler,
     cmd_reg: Registry,
     file_io: Arc<FileIO+Sync+Send>,
@@ -94,29 +95,51 @@ fn parse_crate(compiler: &interface::Compiler) -> Crate {
 
 impl RefactorState {
     pub fn new(
-        compiler: interface::Compiler,
+        config: interface::Config,
         cmd_reg: Registry,
         file_io: Arc<FileIO+Sync+Send>,
         marks: HashSet<(NodeId, Symbol)>,
     ) -> RefactorState {
+        let compiler = driver::make_compiler(&config, file_io.clone());
         let krate = parse_crate(&compiler);
         let orig_krate = krate.clone();
+        let (node_map, cs) = Self::init(krate, Some(marks));
         RefactorState {
+            config,
             compiler,
             cmd_reg,
             file_io,
 
             orig_krate,
 
-            node_map: NodeMap::new(),
+            node_map,
 
-            cs: CommandState::new(
-                krate,
-                marks,
-                ParsedNodes::default(),
-                NodeIdCounter::new(0x8000_0000),
-            ),
+            cs,
         }
+    }
+
+    /// Initialization shared between new() and load_crate()
+    fn init(krate: Crate, marks: Option<HashSet<(NodeId, Symbol)>>) -> (NodeMap, CommandState) {
+        // (Re)initialize `node_map` and `marks`.
+        let mut node_map = NodeMap::new();
+        node_map.init(krate.list_node_ids().into_iter());
+        // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
+        node_map.init(iter::once(CRATE_NODE_ID));
+        let marks = marks.unwrap_or_else(|| HashSet::new());
+
+        // The newly loaded `krate` and reinitialized `node_map` reference none of the old
+        // `parsed_nodes`.  That means we can reset the ID counter without risk of ID collisions.
+        let parsed_nodes = ParsedNodes::default();
+        let node_id_counter = NodeIdCounter::new(0x8000_0000);
+
+        let cs = CommandState::new(
+            krate,
+            marks,
+            parsed_nodes,
+            node_id_counter,
+        );
+
+        (node_map, cs)
     }
 
     pub fn session(&self) -> &Session {
@@ -130,30 +153,12 @@ impl RefactorState {
     /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
     /// rewriting with the previous `orig_crate` any more.
     pub fn load_crate(&mut self) {
-        self.rebuild_session();
-        // Discard any existing krate, overwriting it with one loaded from disk.
-        let _ = self.compiler.parse().unwrap().take();
+        self.compiler = driver::make_compiler(&self.config, self.file_io.clone());
         let krate = parse_crate(&self.compiler);
         self.orig_krate = krate.clone();
-
-        // Re-initialize `node_map` and `marks`.
-        self.node_map = NodeMap::new();
-        self.node_map.init(krate.list_node_ids().into_iter());
-        // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
-        self.node_map.init(iter::once(CRATE_NODE_ID));
-        let marks = HashSet::new();
-
-        // The newly loaded `krate` and reinitialized `node_map` reference none of the old
-        // `parsed_nodes`.  That means we can reset the ID counter without risk of ID collisions.
-        let parsed_nodes = ParsedNodes::default();
-        let node_id_counter = NodeIdCounter::new(0x8000_0000);
-
-        self.cs = CommandState::new(
-            krate,
-            marks,
-            parsed_nodes,
-            node_id_counter,
-        );
+        let (node_map, cs) = Self::init(krate, None);
+        self.node_map = node_map;
+        self.cs = cs;
     }
 
     /// Save the crate to disk, by writing out the new source text produced by rewriting.
