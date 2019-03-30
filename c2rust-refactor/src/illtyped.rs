@@ -161,8 +161,10 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             ExprKind::Call(_callee, args) => {
                 if let Some(fn_sig) = opt_fn_sig {
                     for (i, arg) in args.iter_mut().enumerate() {
-                        if let Some(&ty) = fn_sig.inputs().get(i) {
-                            illtyped |= self.ensure(arg, ty);
+                        if !fn_sig.c_variadic || i < fn_sig.inputs().len() - 1 {
+                            if let Some(&ty) = fn_sig.inputs().get(i) {
+                                illtyped |= self.ensure(arg, ty);
+                            }
                         }
                     }
                 }
