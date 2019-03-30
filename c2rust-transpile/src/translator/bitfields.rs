@@ -429,8 +429,10 @@ impl<'a> Translation<'a> {
     ) -> Result<P<Expr>, String> {
         let field_info: Vec<FieldInfo> = field_ids.iter()
             .map(|field_id| match self.ast_context.index(*field_id).kind {
-                CDeclKind::Field { ref name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth, .. } =>
-                    (name.clone(), typ, bitfield_width, platform_bit_offset, platform_type_bitwidth),
+                CDeclKind::Field { typ, bitfield_width, platform_bit_offset, platform_type_bitwidth, .. } => {
+                    let name = self.type_converter.borrow().resolve_field_name(None, *field_id).unwrap();
+                    (name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth)
+                },
                 _ => unreachable!("Found non-field in record field list"),
             }).collect();
         let reorganized_fields = self.get_field_types(field_info, platform_byte_size)?;
@@ -466,7 +468,6 @@ impl<'a> Translation<'a> {
                 },
                 FieldType::Regular { ctype, name, .. } => {
                     let field_init = self.implicit_default_expr(ctype, is_static)?;
-
                     fields.push(mk().field(name, field_init));
                 },
             }
