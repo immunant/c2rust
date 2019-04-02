@@ -116,6 +116,8 @@ impl ExprContext {
 
 #[derive(Clone, Debug)]
 pub struct FunContext {
+    /// The name of the function we're currently translating
+    name: Option<String>,
     /// The va_list decl that we promote to a Rust function arg
     promoted_va_decl: Option<CDeclId>,
     /// The va_list decls that we did not promote because they were `va_copy`ed.
@@ -125,14 +127,20 @@ pub struct FunContext {
 impl FunContext {
     pub fn new() -> Self {
         FunContext {
+            name: None,
             promoted_va_decl: None,
             copied_va_decls: None
         }
     }
 
-    pub fn clear(&mut self) {
+    pub fn enter_new(&mut self, fn_name: &str) {
+        self.name = Some(fn_name.to_string());
         self.promoted_va_decl = None;
         self.copied_va_decls = None;
+    }
+
+    pub fn get_name<'a>(&'a self) -> &'a str {
+        return self.name.as_ref().unwrap()
     }
 }
 
@@ -1279,9 +1287,19 @@ impl<'c> Translation<'c> {
         attrs: &IndexSet<c_ast::Attribute>,
     ) -> Result<ConvertedDecl, String> {
 
-        self.function_context.borrow_mut().clear(); // start function context
+        self.function_context.borrow_mut().enter_new(name);
 
-        if is_variadic {
+
+        let is_valist: bool = if arguments.len() > 0 {
+            let mut found = false;
+            for &(_decl_id, ref _var, typ) in arguments {
+                if TypeConverter::is_inner_type_valist(&self.ast_context, typ) {
+                    found = true;
+                }
+            }
+            found
+        } else { false };
+        if is_variadic || is_valist {
             if let Some(body_id) = body {
                 if !self.is_well_formed_variadic(body_id) {
                     return Err(format!(
