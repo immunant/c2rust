@@ -1270,6 +1270,28 @@ impl<'c> Translation<'c> {
         }
     }
 
+    /// Returns true iff type is a (pointer to)* the `va_list` structure type.
+    /// Note: the logic is based on `TypeConverter::convert_pointer`.
+    pub fn is_inner_type_valist(
+        ctxt: &TypedAstContext,
+        qtype: CQualTypeId
+    ) -> bool {
+        match ctxt.resolve_type(qtype.ctype).kind {
+            CTypeKind::Struct(struct_id) => {
+                if let CDeclKind::Struct { name: Some(ref struct_name), .. } = ctxt[struct_id].kind {
+                    if struct_name == "__va_list_tag" {
+                        return true;
+                    }
+                }
+                false
+            },
+            CTypeKind::Pointer(pointer_id) => {
+                Self::is_inner_type_valist(ctxt, pointer_id)
+            },
+            _ => false,
+        }
+    }
+
     fn convert_function(
         &self,
         ctx: ExprContext,
@@ -1289,16 +1311,9 @@ impl<'c> Translation<'c> {
 
         self.function_context.borrow_mut().enter_new(name);
 
-
-        let is_valist: bool = if arguments.len() > 0 {
-            let mut found = false;
-            for &(_decl_id, ref _var, typ) in arguments {
-                if TypeConverter::is_inner_type_valist(&self.ast_context, typ) {
-                    found = true;
-                }
-            }
-            found
-        } else { false };
+        let is_valist: bool = arguments
+            .iter()
+            .any(|&(_, _, typ)| Self::is_inner_type_valist(&self.ast_context, typ));
         if is_variadic || is_valist {
             if let Some(body_id) = body {
                 if !self.is_well_formed_variadic(body_id) {
