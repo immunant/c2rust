@@ -370,7 +370,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
     }
 
     // Used for testing; so that we don't overlap with C function names
-    if let Some(ref prefix) = t.tc for testsprefix_function_names {
+    if let Some(ref prefix) = t.tcfg.prefix_function_names {
         prefix_names(&mut t, prefix);
     }
 
