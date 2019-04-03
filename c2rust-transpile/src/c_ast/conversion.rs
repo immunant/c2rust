@@ -150,6 +150,7 @@ fn parse_cast_kind(kind: &str) -> CastKind {
 fn parse_attributes(attributes: &[Value]) -> IndexSet<Attribute> {
     let mut attrs = IndexSet::new();
     let mut expect_section_value = false;
+    let mut expect_alias_value = false;
 
     for attr in attributes {
         let attr_str = attr.as_string()
@@ -157,6 +158,7 @@ fn parse_attributes(attributes: &[Value]) -> IndexSet<Attribute> {
             .as_str();
 
         match attr_str {
+            "alias" => expect_alias_value = true,
             "always_inline" => { attrs.insert(Attribute::AlwaysInline); },
             "cold" => { attrs.insert(Attribute::Cold); },
             "gnu_inline" => { attrs.insert(Attribute::GnuInline); },
@@ -167,6 +169,11 @@ fn parse_attributes(attributes: &[Value]) -> IndexSet<Attribute> {
                 attrs.insert(Attribute::Section(s.into()));
 
                 expect_section_value = false;
+            },
+            s if expect_alias_value => {
+                attrs.insert(Attribute::Alias(s.into()));
+
+                expect_alias_value = false;
             },
             _ => {},
         }

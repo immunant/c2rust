@@ -264,7 +264,7 @@ pub fn signed_int_expr(value: i64) -> P<Expr> {
 }
 
 // This should only be used for tests
-fn prefix_names(translation: &mut Translation, prefix: String) {
+fn prefix_names(translation: &mut Translation, prefix: &str) {
     for (&decl_id, ref mut decl) in &mut translation.ast_context.c_decls {
         match decl.kind {
             CDeclKind::Function { ref mut name, ref body, .. } if body.is_some() => {
@@ -273,7 +273,7 @@ fn prefix_names(translation: &mut Translation, prefix: String) {
                     continue;
                 }
 
-                name.insert_str(0, &prefix);
+                name.insert_str(0, prefix);
 
                 translation.renamer.borrow_mut().insert(decl_id, &name);
             },
@@ -370,7 +370,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
     }
 
     // Used for testing; so that we don't overlap with C function names
-    if let Some(prefix) = t.tcfg.prefix_function_names.clone() {
+    if let Some(ref prefix) = t.tc for testsprefix_function_names {
         prefix_names(&mut t, prefix);
     }
 
@@ -1395,10 +1395,18 @@ impl<'c> Translation<'c> {
                     ""
                 };
 
-                let function_decl = mk_linkage(true, new_name, name)
+                let mut mk_ = mk_linkage(true, new_name, name)
                     .span(span)
-                    .vis(visibility)
-                    .fn_foreign_item(new_name, decl);
+                    .vis(visibility);
+
+                for attr in attrs {
+                    mk_ = match attr {
+                        c_ast::Attribute::Alias(aliasee) => mk_.str_attr("link_name", aliasee),
+                        _ => continue,
+                    };
+                }
+
+                let function_decl = mk_.fn_foreign_item(new_name, decl);
 
                 Ok(ConvertedDecl::ForeignItem(function_decl))
             }

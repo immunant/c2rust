@@ -1108,6 +1108,8 @@ pub enum Designator {
 /// Enumeration of supported attributes for Declarations
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Attribute {
+    /// __attribute__((alias("foo"), __alias__("foo")))
+    Alias(String),
     /// __attribute__((always_inline, __always_inline__))
     AlwaysInline,
     /// __attribute__((cold, __cold__))
