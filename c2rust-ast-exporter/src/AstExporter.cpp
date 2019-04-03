@@ -1172,21 +1172,8 @@ class TranslateASTVisitor final
                                  // Encode attribute names and relevant info if supported
                                  CborEncoder attr_info;
                                  bool has_attrs = def ? def->hasAttrs() : FD->hasAttrs();
-                                 size_t attr_info_n = 0;
 
-                                 if (has_attrs) {
-                                    auto attrs = def ? def->getAttrs() : FD->getAttrs();
-
-                                    for (auto attr: attrs) {
-                                        attr_info_n++;
-
-                                        if (attr->getKind() == attr::Kind::Alias) {
-                                            attr_info_n++;
-                                        }
-                                    }
-                                 }
-
-                                 cbor_encoder_create_array(array, &attr_info, attr_info_n);
+                                 cbor_encoder_create_array(array, &attr_info, CborIndefiniteLength);
 
                                  if (has_attrs) {
                                     auto attrs = def ? def->getAttrs() : FD->getAttrs();
