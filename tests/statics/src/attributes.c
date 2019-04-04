@@ -15,3 +15,5 @@ int no_attrs = 1;
 extern int initialized_extern;
 
 int __attribute__((section("fb"))) initialized_extern = 1;
+
+extern int __attribute__((alias("no_attrs"), used)) aliased_static;

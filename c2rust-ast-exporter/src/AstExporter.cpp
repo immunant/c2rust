@@ -1248,26 +1248,27 @@ class TranslateASTVisitor final
 
                                  // Encode attribute names and relevant info if supported
                                  CborEncoder attr_info;
-                                 size_t attr_info_n = 0;
 
-                                 for (auto attr: def->attrs()) {
-                                     attr_info_n++;
+                                 cbor_encoder_create_array(array, &attr_info, CborIndefiniteLength);
 
-                                     if (attr->getKind() == attr::Kind::Section) {
-                                         attr_info_n++;
-                                     }
-                                 }
+                                 bool has_attrs = def ? def->hasAttrs() : VD->hasAttrs();
 
-                                 cbor_encoder_create_array(array, &attr_info, attr_info_n);
+                                 if (has_attrs) {
+                                    auto attrs = def ? def->getAttrs() : VD->getAttrs();
 
-                                 for (auto attr: def->attrs()) {
-                                     cbor_encode_text_stringz(&attr_info, attr->getSpelling());
+                                    for (auto attr: def->attrs()) {
+                                        cbor_encode_text_stringz(&attr_info, attr->getSpelling());
 
-                                     if (attr->getKind() == attr::Kind::Section) {
-                                        auto sa = def->getAttr<SectionAttr>();
+                                        if (attr->getKind() == attr::Kind::Section) {
+                                            auto sa = def->getAttr<SectionAttr>();
 
-                                        cbor_encode_text_stringz(&attr_info, sa->getName().str().c_str());
-                                     }
+                                            cbor_encode_text_stringz(&attr_info, sa->getName().str().c_str());
+                                        } else if (attr->getKind() == attr::Kind::Alias) {
+                                            auto aa = def->getAttr<AliasAttr>();
+
+                                            cbor_encode_text_stringz(&attr_info, aa->getAliasee().str().c_str());
+                                        }
+                                    }
                                  }
 
                                  cbor_encoder_close_container(array, &attr_info);

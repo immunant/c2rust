@@ -1143,7 +1143,7 @@ impl<'c> Translation<'c> {
             },
 
             // Externally-visible variable without initializer (definition elsewhere)
-            CDeclKind::Variable { is_externally_visible: true, has_static_duration, has_thread_duration, is_defn: false, ref ident, initializer, typ, .. } => {
+            CDeclKind::Variable { is_externally_visible: true, has_static_duration, has_thread_duration, is_defn: false, ref ident, initializer, typ, ref attrs, .. } => {
                 assert!(has_static_duration || has_thread_duration, "An extern variable must be static or thread-local");
                 assert!(initializer.is_none(), "An extern variable that isn't a definition can't have an initializer");
 
@@ -1165,6 +1165,13 @@ impl<'c> Translation<'c> {
                     .vis(visibility);
                 if has_thread_duration {
                     extern_item = extern_item.single_attr("thread_local");
+                }
+
+                for attr in attrs {
+                    extern_item = match attr {
+                        c_ast::Attribute::Alias(aliasee) => extern_item.str_attr("link_name", aliasee),
+                        _ => continue,
+                    };
                 }
 
                 Ok(ConvertedDecl::ForeignItem(extern_item.static_foreign_item(&new_name, ty)))
