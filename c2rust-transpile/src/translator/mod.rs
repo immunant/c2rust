@@ -2559,7 +2559,7 @@ impl<'c> Translation<'c> {
         }
 
         match kind {
-            CastKind::BitCast => {
+            CastKind::BitCast | CastKind::NoOp => {
                 val.result_map(|x| {
                     let source_ty_id = self.ast_context[expr].kind.get_type().ok_or_else(|| format!("bad source type"))?;
 
@@ -2645,7 +2645,7 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            CastKind::LValueToRValue | CastKind::NoOp | CastKind::ToVoid | CastKind::ConstCast => Ok(val),
+            CastKind::LValueToRValue | CastKind::ToVoid | CastKind::ConstCast => Ok(val),
 
             CastKind::FunctionToPointerDecay =>
                 Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x]))),
