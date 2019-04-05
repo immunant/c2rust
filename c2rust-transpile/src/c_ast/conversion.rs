@@ -1351,6 +1351,23 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
                 }
 
+                ASTEntryTag::TagConstantExpr => {
+                    let kids: Vec<CExprId> = node.children
+                        .iter()
+                        .map(|id| {
+                            let child_id = id.expect("Missing constant subexpr");
+                            self.visit_expr(child_id)
+                        })
+                        .collect();
+
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let e = CExprKind::ConvertVector(ty, kids);
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
+                }
+
                 // Declarations
 
                 ASTEntryTag::TagFunctionDecl if expected_ty & OTHER_DECL != 0 => {

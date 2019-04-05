@@ -25,6 +25,7 @@
 #include "clang/Tooling/Tooling.h"
 
 #include <tinycbor/cbor.h>
+#include "Common.hpp"
 #include "ast_tags.hpp"
 #include "FloatingLexer.h"
 #include "ExportResult.hpp"
@@ -158,10 +159,18 @@ public:
 
             const char *tag;
             switch (k) {
-                default: tag = nullptr; break;
-                case AttributedType::attr_noreturn: tag = "noreturn"; break;
-                case AttributedType::attr_nonnull: tag = "notnull"; break;
-                case AttributedType::attr_nullable: tag = "nullable"; break;
+            default:
+                tag = nullptr;
+                break;
+            case LLVM8_COMPAT(attr::NoReturn, AttributedType::attr_noreturn):
+                tag = "noreturn";
+                break;
+            case LLVM8_COMPAT(attr::TypeNonNull, AttributedType::attr_nonnull):
+                tag = "notnull";
+                break;
+            case LLVM8_COMPAT(attr::TypeNullable, AttributedType::attr_nullable):
+                tag = "nullable";
+                break;
             }
             if (tag) {
                 cbor_encode_text_stringz(local, tag);
@@ -478,7 +487,8 @@ class TranslateASTVisitor final
        ) {
           auto ty = ast->getType();
           auto isVaList = false;
-          encode_entry_raw(ast, tag, ast->getLocStart(), ty, ast->isRValue(), isVaList, childIds, extra);
+          SourceLocation loc = LLVM8_COMPAT(ast->getBeginLoc(), ast->getLocStart());
+          encode_entry_raw(ast, tag, loc, ty, ast->isRValue(), isVaList, childIds, extra);
           typeEncoder.VisitQualType(ty);
       }
 
@@ -491,7 +501,8 @@ class TranslateASTVisitor final
           QualType s = QualType(static_cast<clang::Type*>(nullptr), 0);
           auto rvalue = false;
           auto isVaList = false;
-          encode_entry_raw(ast, tag, ast->getLocStart(), s, rvalue, isVaList, childIds, extra);
+          SourceLocation loc = LLVM8_COMPAT(ast->getBeginLoc(), ast->getLocStart());
+          encode_entry_raw(ast, tag, loc, s, rvalue, isVaList, childIds, extra);
       }
 
       void encode_entry
@@ -684,12 +695,14 @@ class TranslateASTVisitor final
 
           APSInt value;
           if (!expr->isIntegerConstantExpr(value, *Context)) {
-              if (!expr->EvaluateAsInt(value, *Context)) {
+              LLVM8_COMPAT(Expr::EvalResult, APSInt) eval_result;
+              if (!expr->EvaluateAsInt(eval_result, *Context)) {
                   std:: string msg = "Aborting due to the expression in `CaseStmt`\
                                       not being an integer.";
                   printError(msg, CS);
                   abort();
               }
+              value = LLVM8_COMPAT(eval_result.Val.getInt(), eval_result);
           }
 
           std::vector<void*> childIds { expr, CS->getSubStmt() };
@@ -1114,6 +1127,15 @@ class TranslateASTVisitor final
           encode_entry(E, TagConvertVectorExpr, childIds);
           return true;
       }
+
+#if CLANG_VERSION_MAJOR >= 8
+    bool VisitConstantExpr(ConstantExpr *E) {
+        auto children = E->children();
+        std::vector<void*> childIds(std::begin(children), std::end(children));
+        encode_entry(E, TagConstantExpr, childIds);
+        return true;
+    }
+#endif // CLANG_VERSION_MAJOR
 
       //
       // Declarations
@@ -1635,7 +1657,8 @@ private:
       }
 
       void printError(std::string Message, Stmt *S) {
-          auto DiagBuilder = getDiagBuilder(S->getLocStart(), DiagnosticsEngine::Error);
+          SourceLocation loc = LLVM8_COMPAT(S->getBeginLoc(), S->getLocStart());
+          auto DiagBuilder = getDiagBuilder(loc, DiagnosticsEngine::Error);
           DiagBuilder.AddString(Message);
           DiagBuilder.AddSourceRange(CharSourceRange::getCharRange(S->getSourceRange()));
       }
@@ -1756,7 +1779,8 @@ public:
             for (auto comment : comments) {
                 CborEncoder entry;
                 cbor_encoder_create_array(&array, &entry, 4);
-                visitor.encodeSourcePos(&entry, comment->getLocStart()); // emits 3 values
+                SourceLocation loc = LLVM8_COMPAT(comment->getBeginLoc(), comment->getLocStart());
+                visitor.encodeSourcePos(&entry, loc); // emits 3 values
                 auto raw_text = comment->getRawText(Context.getSourceManager());
                 cbor_encode_byte_string(&entry, raw_text.bytes_begin(), raw_text.size());
                 cbor_encoder_close_container(&array, &entry);
