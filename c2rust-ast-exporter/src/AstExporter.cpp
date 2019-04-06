@@ -787,12 +787,42 @@ class TranslateASTVisitor final
           std::vector<void*> childIds { E->isArgumentType() ? nullptr : E->getArgumentExpr() };
           auto t = E->getTypeOfArgument();
           auto qt = typeEncoder.encodeQualType(t);
-          encode_entry(E, TagUnaryExprOrTypeTraitExpr, childIds, [E,qt](CborEncoder *extras){
+          encode_entry(E, TagUnaryExprOrTypeTraitExpr, childIds, [E,t,qt,this](CborEncoder *extras){
               switch(E->getKind()) {
                   case UETT_SizeOf: cbor_encode_text_stringz(extras, "sizeof"); break;
                   case UETT_AlignOf: cbor_encode_text_stringz(extras, "alignof"); break;
                   case UETT_VecStep: cbor_encode_text_stringz(extras, "vecstep"); break;
                   case UETT_OpenMPRequiredSimdAlign: cbor_encode_text_stringz(extras, "openmprequiredsimdalign"); break;
+                  case UETT_PreferredAlignOf: {
+                      // This is GCC's `__alignof` intrinsic. To match its
+                      // behavior, we only want to use preferred alignment if
+                      // we're dealing with a double, long long, or unsigned
+                      // long long. Otherwise, we should use the ABI-specified
+                      // alignment. See ASTContext::getPreferredTypeAlign
+                      // (clang/lib/AST/ASTContext.cpp:2215) for more
+                      // details. We replicate this logic here and use the
+                      // preferred alignment if needed.
+
+                      const clang::Type *T = t.getTypePtr();
+                      TypeInfo TI = this->Context->getTypeInfo(T);
+                      unsigned ABIAlign = TI.Align;
+                      T = T->getBaseElementTypeUnsafe();
+                      // Double and long long should be naturally aligned if possible.
+                      if (const auto *CT = T->getAs<ComplexType>())
+                          T = CT->getElementType().getTypePtr();
+                      if (const auto *ET = T->getAs<EnumType>())
+                          T = ET->getDecl()->getIntegerType().getTypePtr();
+                      if (T->isSpecificBuiltinType(BuiltinType::Double) ||
+                          T->isSpecificBuiltinType(BuiltinType::LongLong) ||
+                          T->isSpecificBuiltinType(BuiltinType::ULongLong))
+                          cbor_encode_text_stringz(extras, "preferredalignof");
+                      else
+                          cbor_encode_text_stringz(extras, "alignof");
+                      break;
+                  }
+                  default:
+                      this->printError("Could not match UnaryExprOrTypeTrait", E);
+                      abort();
               }
               cbor_encode_uint(extras, qt);
           });

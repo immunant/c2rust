@@ -2047,25 +2047,27 @@ impl<'c> Translation<'c> {
         Ok(WithStmts::new(call))
     }
 
-    pub fn compute_align_of_type(&self, mut type_id: CTypeId)
+    pub fn compute_align_of_type(&self, mut type_id: CTypeId, preferred: bool)
         -> Result<WithStmts<P<Expr>>, String> {
 
         type_id = self.variable_array_base_type(type_id);
 
         let ty = self.convert_type(type_id)?;
-        let std_or_core = if self.tcfg.emit_no_std {
-            "core"
-        } else {
-            "std"
-        };
-        let name = "align_of";
         let tys = vec![ty];
-        let path = vec![mk().path_segment(""),
-                        mk().path_segment(std_or_core),
-                        mk().path_segment("mem"),
-                        mk().path_segment_with_args(name,
-                                                      mk().angle_bracketed_args(tys)),
-        ];
+        let mut path = vec![mk().path_segment("")];
+        if self.tcfg.emit_no_std {
+            path.push(mk().path_segment("core"));
+        } else {
+            path.push(mk().path_segment("std"));
+        }
+        if preferred {
+            self.use_feature("core_intrinsics");
+            path.push(mk().path_segment("intrinsics"));
+            path.push(mk().path_segment_with_args("pref_align_of", mk().angle_bracketed_args(tys)));
+        } else {
+            path.push(mk().path_segment("mem"));
+            path.push(mk().path_segment_with_args("align_of", mk().angle_bracketed_args(tys)));
+        }
         let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<P<Expr>>);
         Ok(WithStmts::new(call))
     }
@@ -2105,7 +2107,8 @@ impl<'c> Translation<'c> {
                                     }
                                 },
                         }
-                    UnTypeOp::AlignOf => self.compute_align_of_type(arg_ty.ctype)?,
+                    UnTypeOp::AlignOf => self.compute_align_of_type(arg_ty.ctype, false)?,
+                    UnTypeOp::PreferredAlignOf => self.compute_align_of_type(arg_ty.ctype, true)?,
                 };
 
                 Ok(result.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc","c_ulong"]))))

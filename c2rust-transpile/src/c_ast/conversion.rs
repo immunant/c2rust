@@ -1209,6 +1209,7 @@ impl ConversionContext {
                     let kind = match kind_name {
                         "sizeof" => UnTypeOp::SizeOf,
                         "alignof" => UnTypeOp::AlignOf,
+                        "preferredalignof" => UnTypeOp::PreferredAlignOf,
                         str => panic!("Unsupported operation: {}", str),
                     };
 

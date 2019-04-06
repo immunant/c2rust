@@ -780,6 +780,7 @@ pub enum UnOp {
 pub enum UnTypeOp {
     SizeOf,
     AlignOf,
+    PreferredAlignOf,
 }
 
 impl UnOp {
