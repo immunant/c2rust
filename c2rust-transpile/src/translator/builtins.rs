@@ -131,21 +131,64 @@ impl<'c> Translation<'c> {
             "__builtin_va_start" => {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some(va_id) = self.match_vastart(args[0]) {
-                        if ctx.is_va_decl(va_id) {
-                            return Ok(WithStmts::new(self.panic("va_start stub")))
+                        if self.is_promoted_va_decl(va_id) {
+                            // `va_start` is automatically called for the promoted decl.
+                            return Ok(WithStmts::new(self.panic_or_err("va_start stub")))
                         }
                     }
                 }
                 Err(format!("Unsupported va_start"))
             },
-            "__builtin_va_copy" => Err(format!(
-                "va_copy not supported"
-            )),
+            "__builtin_va_copy" => {
+                if ctx.is_unused() && args.len() == 2 {
+                    if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
+
+                        let dst = self.convert_expr(ctx.used(), args[0])?;
+                        let src = self.convert_expr(ctx.used(), args[1])?;
+
+                        let path = {
+                            let std_or_core = if self.tcfg.emit_no_std { "core"  } else { "std" };
+                            let path = vec!["", std_or_core, "intrinsics", "va_copy"];
+                            mk().path_expr(path)
+                        };
+                        let mut_ref_src = mk().mutbl().addr_of_expr(src.val);
+                        let call_expr = mk().call_expr(path, vec![mut_ref_src] as Vec<P<Expr>>);
+                        let assign_expr = mk().assign_expr(dst.val, call_expr);
+                        let stmt = mk().semi_stmt(assign_expr);
+
+                        let mut res = WithStmts::new(self.panic_or_err("va_copy stub"));
+                        res.stmts.push(stmt);
+                        return Ok(res);
+                    }
+                }
+                Err(format!("Unsupported va_copy"))
+            },
             "__builtin_va_end" => {
                 if ctx.is_unused() && args.len() == 1 {
                     if let Some(va_id) = self.match_vaend(args[0]) {
-                        if ctx.is_va_decl(va_id) {
-                            return Ok(WithStmts::new(self.panic("va_end stub")))
+                        if self.is_promoted_va_decl(va_id)  {
+                            // no need to call end on `va_end` on `va_list` promoted to arg
+                            return Ok(WithStmts::new(self.panic_or_err("va_end stub")))
+                        } else if self.is_copied_va_decl(va_id)  {
+                            // call to `va_end` on non-promoted `va_list`
+
+                            let val = self.convert_expr(ctx.used(), args[0])?;
+
+                            let path = {
+                                let std_or_core = if self.tcfg.emit_no_std { "core"  } else { "std" };
+                                let path = vec!["", std_or_core, "intrinsics", "va_end"];
+                                mk().path_expr(path)
+                            };
+                            let ref_val = mk().mutbl().addr_of_expr(val.val);
+                            let call_expr = mk().call_expr(path, vec![ref_val] as Vec<P<Expr>>);
+
+                            let stmt = mk().semi_stmt(call_expr);
+
+                            let mut res = WithStmts::new(self.panic_or_err("va_end stub"));
+                            res.stmts.push(stmt);
+                            return Ok(res);
+
+                            // return Ok(WithStmts::new(self.panic("va_end stub")))
                         }
                     }
                 }
@@ -524,7 +567,7 @@ impl<'c> Translation<'c> {
                 memcpy_expr
             } else {
                 stmts.push(mk().semi_stmt(memcpy_expr));
-                self.panic("__builtin_memcpy not used")
+                self.panic_or_err("__builtin_memcpy not used")
             };
 
         Ok(WithStmts { stmts, val })

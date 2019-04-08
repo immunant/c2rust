@@ -184,6 +184,26 @@ impl TypeConverter {
         Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
     }
 
+    pub fn is_inner_type_valist(
+        ctxt: &TypedAstContext,
+        qtype: CQualTypeId
+    ) -> bool {
+        match ctxt.resolve_type(qtype.ctype).kind {
+            CTypeKind::Struct(struct_id) => {
+                if let CDeclKind::Struct { name: Some(ref struct_name), .. } = ctxt[struct_id].kind {
+                    if struct_name == "__va_list_tag" {
+                        return true;
+                    }
+                }
+                false
+            },
+            CTypeKind::Pointer(pointer_id) => {
+                Self::is_inner_type_valist(ctxt, pointer_id)
+            },
+            _ => false,
+        }
+    }
+
     /// Convert a `C` type to a `Rust` one. For the moment, these are expected to have compatible
     /// memory layouts.
     pub fn convert(&mut self, ctxt: &TypedAstContext, ctype: CTypeId) -> Result<P<Ty>, String> {

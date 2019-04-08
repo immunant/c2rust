@@ -3,6 +3,7 @@ name = "{{crate_name}}"
 authors = ["C2Rust"]
 version = "0.0.0"
 publish = false
+edition = 2018
 
 {{#if main_module~}}
 [[bin]]
@@ -13,6 +14,9 @@ name = "{{main_module}}"
 path = "{{root_rs_file}}"
 crate-type = ["staticlib"]
 {{~/if}}
+
+[dependencies]
+libc = "0.2"
 
 {{#if cross_checks~}}
 [dependencies.c2rust-xcheck-plugin]
