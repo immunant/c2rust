@@ -50,7 +50,7 @@ static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
     "_mm_xor_si64",
 ];
 
-static SIMD_X86_64_ONLY: [&str; 11] = [
+static SIMD_X86_64_ONLY: &[&str] = &[
     "_mm_cvtsd_si64",
     "_mm_cvtsi128_si64",
     "_mm_cvtsi128_si64x",
@@ -62,6 +62,9 @@ static SIMD_X86_64_ONLY: [&str; 11] = [
     "_mm_cvttsd_si64x",
     "_mm_cvttss_si64",
     "_mm_stream_si64",
+    "_mm_extract_epi64",
+    "_mm_insert_epi64",
+    "_mm_crc32_u64",
 ];
 
 impl<'c> Translation<'c> {
@@ -150,6 +153,27 @@ impl<'c> Translation<'c> {
         Ok(false)
     }
 
+    /// This function will strip either an implicitly casted int or explicitly casted
+    /// vector as both casts are unnecessary (and problematic) for our purposes
+    fn clean_int_or_vector_param(&self, expr_id: CExprId) -> CExprId {
+        match self.ast_context.c_exprs[&expr_id].kind {
+            // For some reason there seems to be an incorrect implicit cast here to char
+            // it's possible the builtin takes a char even though the function takes an int
+            ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
+            // (internal)(external)(vector input)
+            ExplicitCast(qty, _, BitCast, _, _) => {
+                if let CTypeKind::Vector(..) = self.ast_context.resolve_type(qty.ctype).kind {
+                    let (_, stripped_expr_id, _) = self.strip_vector_explicit_cast(expr_id);
+
+                    stripped_expr_id
+                } else {
+                    expr_id
+                }
+            },
+            _ => expr_id,
+        }
+    }
+
     /// Generate a call to a rust SIMD function based on a builtin function. Clang 6 only supports one of these
     /// but clang 7 converts a bunch more from "super builtins"
     pub fn convert_simd_builtin(
@@ -162,22 +186,14 @@ impl<'c> Translation<'c> {
 
         let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
         let first_param = self.convert_expr(ctx.used(), first_expr_id)?;
-        let second_expr_id = match self.ast_context.c_exprs[&args[1]].kind {
-            // For some reason there seems to be an incorrect implicit cast here to char
-            // it's possible the builtin takes a char even though the function takes an int
-            ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
-            ExplicitCast(_, _, BitCast, _, _) => {
-                let (_, expr_id, _) = self.strip_vector_explicit_cast(args[1]);
-
-                expr_id
-            },
-            _ => args[1],
-        };
+        let second_expr_id = self.clean_int_or_vector_param(args[1]);
         let second_param = self.convert_expr(ctx.used(), second_expr_id)?;
-        let third_expr_id = args.get(2);
         let mut call_params = vec![first_param.val, second_param.val];
 
-        if let Some(&third_expr_id) = third_expr_id {
+        if let Some(&third_expr_id) = args.get(2) {
+            // Sometimes the third param is a vector, so it's necessary to strip the explicit cast
+            // to an internal type
+            let third_expr_id = self.clean_int_or_vector_param(third_expr_id);
             let third_param = self.convert_expr(ctx.used(), third_expr_id)?;
 
             // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
@@ -188,6 +204,14 @@ impl<'c> Translation<'c> {
             } else {
                 call_params.push(third_param.val);
             }
+        }
+
+        // Fourth+ params seem to always be integers so far
+        for param_expr_id in args.iter().skip(3) {
+            let param_expr_id = self.clean_int_or_vector_param(*param_expr_id);
+            let param = self.convert_expr(ctx.used(), param_expr_id)?;
+
+            call_params.push(param.val);
         }
 
         let call = mk().call_expr(
@@ -210,21 +234,21 @@ impl<'c> Translation<'c> {
 
     /// Generate a zero value to be used for initialization of a given vector type. The type
     /// is specified with the underlying element type and the number of elements in the vector.
-    pub fn implicit_vector_default(&self, ctype: CTypeId, len: usize) -> Result<P<Expr>, String> {
+    pub fn implicit_vector_default(&self, ctype: CTypeId, len: usize, is_static: bool) -> Result<P<Expr>, String> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
-        let fn_name = match (&self.ast_context[ctype].kind, len) {
-            (Float, 4) => "_mm_setzero_ps",
-            (Float, 8) => "_mm256_setzero_ps",
-            (Double, 2) => "_mm_setzero_pd",
-            (Double, 4) => "_mm256_setzero_pd",
-            (LongLong, 2) => "_mm_setzero_si128",
-            (LongLong, 4) => "_mm256_setzero_si256",
+        let (fn_name, bytes) = match (&self.ast_context[ctype].kind, len) {
+            (Float, 4) => ("_mm_setzero_ps", 16),
+            (Float, 8) => ("_mm256_setzero_ps", 32),
+            (Double, 2) => ("_mm_setzero_pd", 16),
+            (Double, 4) => ("_mm256_setzero_pd", 32),
+            (LongLong, 2) => ("_mm_setzero_si128", 16),
+            (LongLong, 4) => ("_mm256_setzero_si256", 32),
             (LongLong, 1) => {
                 // __m64 is still unstable as of rust 1.29
                 self.features.borrow_mut().insert("stdsimd");
 
-                "_mm_setzero_si64"
+                ("_mm_setzero_si64", 8)
             }
             (kind, len) => {
                 return Err(format!(
@@ -234,10 +258,20 @@ impl<'c> Translation<'c> {
             }
         };
 
-        self.import_simd_function(fn_name)
-            .expect("None of these fns should be unsupported in rust");
+        if is_static {
+            self.features.borrow_mut().insert("const_transmute");
 
-        Ok(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>))
+            let zero_expr = mk().lit_expr(mk().int_lit(0, "u8"));
+            let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
+            let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
+
+            Ok(transmute_expr(mk().infer_ty(), mk().infer_ty(), expr, self.tcfg.emit_no_std))
+        } else {
+            self.import_simd_function(fn_name)
+                .expect("None of these fns should be unsupported in rust");
+
+            Ok(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>))
+        }
     }
 
     /// Translate a list initializer corresponding to a vector type.
@@ -445,11 +479,21 @@ impl<'c> Translation<'c> {
                 match &self.ast_context.resolve_type(ctype).kind {
                     CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                         (&self.ast_context.c_types[ctype].kind, expr_id, *len)
-                    }
+                    },
                     _ => unreachable!("Found type other than vector"),
                 }
-            }
-            _ => unreachable!("Found cast other than explicit cast"),
+            },
+            // _mm_insert_ps seems to be the exception to the rule as it has an implicit cast rather
+            // than an explicit one
+            ImplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
+                match &self.ast_context.resolve_type(ctype).kind {
+                    CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
+                        (&self.ast_context.c_types[ctype].kind, expr_id, *len)
+                    },
+                    _ => unreachable!("Found type other than vector"),
+                }
+            },
+            ref e => unreachable!("Found something other than a cast cast: {:?}", e),
         }
     }
 

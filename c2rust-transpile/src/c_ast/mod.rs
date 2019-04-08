@@ -231,7 +231,8 @@ impl TypedAstContext {
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 },
-                CDeclKind::Variable { ref attrs, .. } if attrs.contains(&Attribute::Used) => {
+                CDeclKind::Variable { ref attrs, .. } |
+                CDeclKind::Function { ref attrs, .. } if attrs.contains(&Attribute::Used) => {
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 },
@@ -1107,8 +1108,12 @@ pub enum Designator {
 /// Enumeration of supported attributes for Declarations
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Attribute {
+    /// __attribute__((alias("foo"), __alias__("foo")))
+    Alias(String),
     /// __attribute__((always_inline, __always_inline__))
     AlwaysInline,
+    /// __attribute__((cold, __cold__))
+    Cold,
     /// __attribute__((gnu_inline, __gnu_inline__))
     GnuInline,
     /// __attribute__((no_inline, __no_inline__))

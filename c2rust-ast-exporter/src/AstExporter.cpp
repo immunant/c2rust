@@ -733,7 +733,7 @@ class TranslateASTVisitor final
           copy(E->begin_inputs(),  E->end_inputs(),  std::back_inserter(childIds));
           copy(E->begin_outputs(), E->end_outputs(), std::back_inserter(childIds));
 
-          encode_entry(E, TagAsmStmt, childIds, [E](CborEncoder *local) {
+          encode_entry(E, TagAsmStmt, childIds, [E, this](CborEncoder *local) {
 
               auto writeList = [E,local]
                 (unsigned(AsmStmt::*NumFunc)() const,
@@ -752,7 +752,7 @@ class TranslateASTVisitor final
               };
 
               cbor_encode_boolean(local, E->isVolatile());
-              cbor_encode_string(local, E->getAsmString()->getString().str());
+              cbor_encode_string(local, E->generateAsmString(*Context));
               writeList(&AsmStmt::getNumInputs,   &AsmStmt::getInputConstraint);
               writeList(&AsmStmt::getNumOutputs,  &AsmStmt::getOutputConstraint);
               writeList(&AsmStmt::getNumClobbers, &AsmStmt::getClobber);
@@ -1171,16 +1171,25 @@ class TranslateASTVisitor final
 
                                  // Encode attribute names and relevant info if supported
                                  CborEncoder attr_info;
-                                 size_t attr_info_n = FD->hasAttrs() ? FD->getAttrs().size() : 0;
+                                 bool has_attrs = def ? def->hasAttrs() : FD->hasAttrs();
 
-                                 cbor_encoder_create_array(array, &attr_info, attr_info_n);
+                                 cbor_encoder_create_array(array, &attr_info, CborIndefiniteLength);
 
-                                 for (auto attr: FD->attrs()) {
-                                     cbor_encode_text_stringz(&attr_info, attr->getSpelling());
+                                 if (has_attrs) {
+                                    auto attrs = def ? def->getAttrs() : FD->getAttrs();
+
+                                    for (auto attr: attrs) {
+                                        cbor_encode_text_stringz(&attr_info, attr->getSpelling());
+
+                                        if (attr->getKind() == attr::Kind::Alias) {
+                                            auto aa = def->getAttr<AliasAttr>();
+
+                                            cbor_encode_text_stringz(&attr_info, aa->getAliasee().str().c_str());
+                                        }
+                                    }
                                  }
 
                                  cbor_encoder_close_container(array, &attr_info);
-
                              });
           typeEncoder.VisitQualType(functionType);
 
@@ -1222,7 +1231,7 @@ class TranslateASTVisitor final
           auto T = def->getType();
 
           encode_entry(VD, TagVarDecl, childIds, T,
-                             [VD, is_defn](CborEncoder *array){
+                             [VD, is_defn, def](CborEncoder *array){
                                  auto name = VD->getNameAsString();
                                  cbor_encode_string(array, name);
 
@@ -1239,26 +1248,27 @@ class TranslateASTVisitor final
 
                                  // Encode attribute names and relevant info if supported
                                  CborEncoder attr_info;
-                                 size_t attr_info_n = 0;
 
-                                 for (auto attr: VD->attrs()) {
-                                     attr_info_n++;
+                                 cbor_encoder_create_array(array, &attr_info, CborIndefiniteLength);
 
-                                     if (attr->getKind() == attr::Kind::Section) {
-                                         attr_info_n++;
-                                     }
-                                 }
+                                 bool has_attrs = def ? def->hasAttrs() : VD->hasAttrs();
 
-                                 cbor_encoder_create_array(array, &attr_info, attr_info_n);
+                                 if (has_attrs) {
+                                    auto attrs = def ? def->getAttrs() : VD->getAttrs();
 
-                                 for (auto attr: VD->attrs()) {
-                                     cbor_encode_text_stringz(&attr_info, attr->getSpelling());
+                                    for (auto attr: def->attrs()) {
+                                        cbor_encode_text_stringz(&attr_info, attr->getSpelling());
 
-                                     if (attr->getKind() == attr::Kind::Section) {
-                                        auto sa = VD->getAttr<SectionAttr>();
+                                        if (attr->getKind() == attr::Kind::Section) {
+                                            auto sa = def->getAttr<SectionAttr>();
 
-                                        cbor_encode_text_stringz(&attr_info, sa->getName().str().c_str());
-                                     }
+                                            cbor_encode_text_stringz(&attr_info, sa->getName().str().c_str());
+                                        } else if (attr->getKind() == attr::Kind::Alias) {
+                                            auto aa = def->getAttr<AliasAttr>();
+
+                                            cbor_encode_text_stringz(&attr_info, aa->getAliasee().str().c_str());
+                                        }
+                                    }
                                  }
 
                                  cbor_encoder_close_container(array, &attr_info);
@@ -1333,7 +1343,7 @@ class TranslateASTVisitor final
               if (align == 0) {
                   cbor_encode_null(local);
               } else {
-                  cbor_encode_uint(local, align);
+                  cbor_encode_uint(local, align / 8);
               }
 
               // 5. Encode pragma pack(n)

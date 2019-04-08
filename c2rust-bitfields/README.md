@@ -23,7 +23,7 @@ struct date {
     unsigned char day: 5;
     unsigned char month: 4;
     unsigned short year: 15;
-} __attribute((packed));
+} __attribute__((packed));
 ```
 
 Clang helpfully provides us with this information:

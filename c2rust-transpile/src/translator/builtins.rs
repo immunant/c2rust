@@ -173,7 +173,7 @@ impl<'c> Translation<'c> {
                 })
             },
 
-            // In clang 6 this first one is the only true SIMD builtin, clang 7 converted a bunch more after it:
+            // SIMD builtins:
             "__builtin_ia32_pshufw" =>
                 self.convert_simd_builtin(ctx, "_mm_shuffle_pi16", args),
             "__builtin_ia32_shufps" =>
@@ -198,6 +198,66 @@ impl<'c> Translation<'c> {
                 self.convert_simd_builtin(ctx, "_mm256_shufflehi_epi16", args),
             "__builtin_ia32_pshuflw256" =>
                 self.convert_simd_builtin(ctx, "_mm256_shufflelo_epi16", args),
+            "__builtin_ia32_vec_ext_v4si" =>
+                self.convert_simd_builtin(ctx, "_mm_extract_epi32", args),
+            "__builtin_ia32_vec_ext_v16qi" =>
+                self.convert_simd_builtin(ctx, "_mm_extract_epi8", args),
+            "__builtin_ia32_vec_ext_v2di" =>
+                self.convert_simd_builtin(ctx, "_mm_extract_epi64", args),
+            "__builtin_ia32_roundps" =>
+                self.convert_simd_builtin(ctx, "_mm_round_ps", args),
+            "__builtin_ia32_roundss" =>
+                self.convert_simd_builtin(ctx, "_mm_round_ss", args),
+            "__builtin_ia32_roundpd" =>
+                self.convert_simd_builtin(ctx, "_mm_round_pd", args),
+            "__builtin_ia32_roundsd" =>
+                self.convert_simd_builtin(ctx, "_mm_round_sd", args),
+            "__builtin_ia32_blendpd" =>
+                self.convert_simd_builtin(ctx, "_mm_blend_pd", args),
+            "__builtin_ia32_blendps" =>
+                self.convert_simd_builtin(ctx, "_mm_blend_ps", args),
+            "__builtin_ia32_pblendw128" =>
+                self.convert_simd_builtin(ctx, "_mm_blend_epi16", args),
+            "__builtin_ia32_dpps" =>
+                self.convert_simd_builtin(ctx, "_mm_dp_ps", args),
+            "__builtin_ia32_dppd" =>
+                self.convert_simd_builtin(ctx, "_mm_dp_pd", args),
+            "__builtin_ia32_insertps128" =>
+                self.convert_simd_builtin(ctx, "_mm_insert_ps", args),
+            "__builtin_ia32_vec_ext_v4sf" =>
+                self.convert_simd_builtin(ctx, "_mm_extract_ps", args),
+            "__builtin_ia32_vec_set_v16qi" =>
+                self.convert_simd_builtin(ctx, "_mm_insert_epi8", args),
+            "__builtin_ia32_vec_set_v2di" =>
+                self.convert_simd_builtin(ctx, "_mm_insert_epi64", args),
+            "__builtin_ia32_mpsadbw128" =>
+                self.convert_simd_builtin(ctx, "_mm_mpsadbw_epu8", args),
+            "__builtin_ia32_pcmpistrm128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpistrm", args),
+            "__builtin_ia32_pcmpistri128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpistri", args),
+            "__builtin_ia32_pcmpestrm128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpestrm", args),
+            "__builtin_ia32_pcmpistria128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpistra", args),
+            "__builtin_ia32_pcmpistric128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpistrc", args),
+            "__builtin_ia32_pcmpistrio128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpistro", args),
+            "__builtin_ia32_pcmpistris128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpistrs", args),
+            "__builtin_ia32_pcmpistriz128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpistrz", args),
+            "__builtin_ia32_pcmpestria128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpestra", args),
+            "__builtin_ia32_pcmpestric128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpestrc", args),
+            "__builtin_ia32_pcmpestrio128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpestro", args),
+            "__builtin_ia32_pcmpestris128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpestrs", args),
+            "__builtin_ia32_pcmpestriz128" =>
+                self.convert_simd_builtin(ctx, "_mm_cmpestrz", args),
 
             "__sync_val_compare_and_swap_1" |
             "__sync_val_compare_and_swap_2" |
