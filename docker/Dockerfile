@@ -11,7 +11,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 USER root
 RUN groupadd -f -g $GID $USER
-RUN useradd --create-home -u $UID -g $GID --create-home --shell /bin/bash $USER 
+RUN useradd --create-home -u $UID -g $GID --create-home --shell /bin/bash $USER
+
+# /home/docker needs to be accessible by other users because we always run the
+# cargo binary from /home/docker.cargo/bin
+RUN chmod 755 /home/docker
 
 # Provision debian and python packages 
 COPY provision*.sh /tmp/
