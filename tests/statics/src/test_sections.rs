@@ -1,5 +1,6 @@
 extern crate libc;
 
+#[cfg(not(target_os = "macos"))]
 use attributes::{rust_used_static, rust_used_static2, rust_used_static3, rust_no_attrs};
 use sections::*;
 use self::libc::c_uint;
@@ -30,14 +31,16 @@ pub fn test_sectioned_statics() {
 }
 
 pub fn test_sectioned_used_static() {
-    // This static variable is private and unused (but with the used attribute)
-    // so there's no way to directly test it was generated except through looking
-    // directly at the source file
-    let src = include_str!("attributes.rs");
+    if cfg!(not(target_os = "macos")) {
+        // This static variable is private and unused (but with the used attribute)
+        // so there's no way to directly test it was generated except through looking
+        // directly at the source file
+        let src = include_str!("attributes.rs");
 
-    assert!(src.contains("#[link_section = \"barz\"]\n#[used]\nstatic mut rust_used_static4: libc::c_int = 1i32;"));
+        assert!(src.contains("#[link_section = \"barz\"]\n#[used]\nstatic mut rust_used_static4: libc::c_int = 1i32;"));
 
-    // This static is pub, but we want to ensure it has attributes applied
-    assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: libc::c_int = 1i32;"));
-    assert!(src.contains("#[no_mangle]\n    #[link_name = \"no_attrs\"]\n    static mut rust_aliased_static: libc::c_int;"))
+        // This static is pub, but we want to ensure it has attributes applied
+        assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: libc::c_int = 1i32;"));
+        assert!(src.contains("#[no_mangle]\n    #[link_name = \"no_attrs\"]\n    static mut rust_aliased_static: libc::c_int;"))
+    }
 }

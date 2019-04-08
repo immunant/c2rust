@@ -13,7 +13,10 @@ extern void inline __attribute__((always_inline)) always_inline_extern(void) {}
 extern void inline __attribute__((__gnu_inline__)) gnu_inline_extern(void) {}
 extern void inline __attribute__((gnu_inline, always_inline)) always_inline_gnu_inline_extern(void) {}
 extern void inline __attribute__((gnu_inline)) gnu_inline_non_canonical_definition_extern(void) {}
+#ifndef __APPLE__
+// aliases are not allowed on darwin
 void __attribute__((alias("inline_extern"))) aliased_fn(void);
+#endif // __APPLE__
 
 void ensure_use(void) {
     always_inline_static();
@@ -28,5 +31,7 @@ void ensure_use(void) {
     gnu_inline_extern();
     always_inline_gnu_inline_extern();
     gnu_inline_non_canonical_definition_extern();
+#ifndef __APPLE__
     aliased_fn();
+#endif // __APPLE__
 }
