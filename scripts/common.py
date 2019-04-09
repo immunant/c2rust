@@ -35,6 +35,7 @@ class Config:
     # use custom build directory suffix if requested via env. variable
     if os.getenv('C2RUST_BUILD_SUFFIX'):
         BUILD_SUFFIX = os.getenv('C2RUST_BUILD_SUFFIX')
+    BUILD_TYPE = "release"
 
     NCPUS = str(multiprocessing.cpu_count())
 
@@ -98,8 +99,8 @@ class Config:
     # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
     CUSTOM_RUST_RUSTC_VERSION = "rustc 1.32.0-nightly (21f268495 2018-12-02)"
 
-    def __init__(self):
-        self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER)
+    def _init_llvm_ver_deps(self):
+        self.LLVM_ARCHIVE_URLS = [s.format(ver=self.LLVM_VER)
                                   for s in Config.LLVM_ARCHIVE_URLS]
         self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_FILES = [os.path.basename(s)
@@ -108,8 +109,13 @@ class Config:
                                   for s in self.LLVM_ARCHIVE_FILES]
         self.LLVM_ARCHIVE_FILES = [os.path.join(Config.BUILD_DIR, s)
                                    for s in self.LLVM_ARCHIVE_FILES]
+
+    def __init__(self):
+        self._init_llvm_ver_deps()
         self.TRANSPILER = None  # set in `update_args`
-        self.RREF_BIN = None  # set in `update_args`
+        self.RREF_BIN = None    # set in `update_args`
+        self.C2RUST_BIN = None  # set in `update_args`
+        self.TARGET_DIR = None  # set in `update_args`
         self.check_rust_toolchain()
         self.update_args()
 
@@ -130,8 +136,13 @@ class Config:
 
     def update_args(self, args=None):
         build_type = 'debug' if args and args.debug else 'release'
+        has_ver = args and hasattr(args, 'llvm_ver') and args.llvm_ver
+        llvm_ver = args.llvm_ver if has_ver else self.LLVM_VER
 
         self.BUILD_TYPE = build_type
+        self.LLVM_VER = llvm_ver
+        # update dependent variables
+        self._init_llvm_ver_deps()
 
         self.TRANSPILER = "target/{}/c2rust-transpile".format(build_type)
         self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)

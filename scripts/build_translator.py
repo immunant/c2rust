@@ -257,6 +257,12 @@ def _parse_args():
     parser.add_argument('--with-clang', default=False,
                         action='store_true', dest='with_clang',
                         help='build clang with this tool')
+    llvm_ver_help = 'fetch and build specified version of clang/LLVM (default: {})'.format(c.LLVM_VER)
+    # FIXME: build this list by globbing for scripts/llvm-*.0.*-key.asc
+    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0"]
+    parser.add_argument('--with-llvm-version', default=None,
+                        action='store', dest='llvm_ver',
+                        help=llvm_ver_help, choices=llvm_ver_choices)
     parser.add_argument('--without-assertions', default=True,
                         action='store_false', dest='assertions',
                         help='build the tool and clang without assertions')
@@ -305,7 +311,7 @@ def _main():
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
-    # FIXME: allow env/cli override of LLVM_SRC, LLVM_VER, and LLVM_BLD
+    # FIXME: allow env/cli override of LLVM_SRC and LLVM_BLD
     # FIXME: check that cmake and ninja are installed
     # FIXME: option to build LLVM/Clang from master?
 
