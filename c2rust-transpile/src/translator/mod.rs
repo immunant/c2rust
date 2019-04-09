@@ -88,9 +88,7 @@ impl Fail for TranslationError {
 impl Display for TranslationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(ref loc) = self.loc {
-            if let Some(ref file_path) = loc.file_path {
-                write!(f, "{:?}:{}:{}\n    ", file_path, loc.line, loc.column)?;
-            }
+            write!(f, "{}\n    ", loc)?;
         }
         Debug::fmt(&*self.inner, f)
     }
@@ -598,7 +596,22 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
                     Ok(ConvertedDecl::NoItem) => {},
                     Err(e) => {
                         let ref decl = t.ast_context.c_decls.get(top_id);
-                        let msg = format!("Failed translating declaration due to error: {}, decl: {:?}", e, decl);
+                        let msg = match decl {
+                            Some(decl) if !tcfg.verbose => {
+                                let decl_identifier = decl
+                                    .kind
+                                    .get_name()
+                                    .map_or_else(
+                                        || decl.loc.as_ref().map_or(
+                                            "Unknown".to_string(),
+                                            |l| format!("at {}", l),
+                                        ),
+                                        |name| name.clone(),
+                                    );
+                                format!("Failed to translate declaration {} due to error:\n{}", decl_identifier, e)
+                            }
+                            _ => format!("Failed to translate declaration due to error: {}, decl: {:?}", e, decl)
+                        };
                         translate_failure(&t.tcfg, &msg)
                     },
                 }
