@@ -242,9 +242,9 @@ impl<'c> Translation<'c> {
             (Float, 8) => ("_mm256_setzero_ps", 32),
             (Double, 2) => ("_mm_setzero_pd", 16),
             (Double, 4) => ("_mm256_setzero_pd", 32),
-            (LongLong, 2) => ("_mm_setzero_si128", 16),
-            (LongLong, 4) => ("_mm256_setzero_si256", 32),
-            (LongLong, 1) => {
+            (Char, 16) | (Int, 4) | (LongLong, 2) => ("_mm_setzero_si128", 16),
+            (Char, 32) | (Int, 8) | (LongLong, 4) => ("_mm256_setzero_si256", 32),
+            (Char, 8) | (Int, 2) | (LongLong, 1) => {
                 // __m64 is still unstable as of rust 1.29
                 self.features.borrow_mut().insert("stdsimd");
 

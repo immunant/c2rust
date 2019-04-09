@@ -1207,4 +1207,11 @@ impl CTypeKind {
             _ => None
         }
     }
+
+    pub fn is_vector(&self) -> bool {
+        match *self {
+            CTypeKind::Vector{..} => true,
+            _ => false,
+        }
+    }
 }

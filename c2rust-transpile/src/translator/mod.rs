@@ -26,6 +26,7 @@ use c_ast::iterators::{DFExpr, SomeId};
 use c_ast;
 use cfg;
 use c2rust_ast_exporter::clang_ast::LRValue;
+use c2rust_ast_exporter::get_clang_major_version;
 use convert_type::TypeConverter;
 use renamer::Renamer;
 use with_stmts::WithStmts;
@@ -2267,11 +2268,21 @@ impl<'c> Translation<'c> {
                 let rhs_node = &self.ast_context.index(*rhs).kind;
 
                 let lhs_node_type = lhs_node.get_type().ok_or_else(|| format!("lhs node bad type"))?;
-                let lhs_is_pointer = self.ast_context.resolve_type(lhs_node_type).kind.is_pointer();
+                let lhs_node_kind = &self.ast_context.resolve_type(lhs_node_type).kind;
+                let lhs_is_indexable = lhs_node_kind.is_pointer() || lhs_node_kind.is_vector();
 
                 // From here on in, the LHS is the pointer/array and the RHS the index
                 let (lhs, rhs, lhs_node) =
-                    if lhs_is_pointer { (lhs, rhs, lhs_node) } else { (rhs, lhs, rhs_node) };
+                    if lhs_is_indexable { (lhs, rhs, lhs_node) } else { (rhs, lhs, rhs_node) };
+
+                let lhs_node_type = lhs_node.get_type().ok_or_else(|| format!("lhs node bad type"))?;
+                if self.ast_context.resolve_type(lhs_node_type).kind.is_vector() {
+                    if get_clang_major_version().map_or(false, |v| v < 7) {
+                        return Err(format!("Vector instructions require LLVM 7 or greater. Please build C2Rust against a newer LLVM version."));
+                    } else {
+                        return Err(format!("Vector value {:?} is indexed as an array.", lhs_node));
+                    }
+                }
 
                 let mut stmts = vec![];
 
@@ -2331,7 +2342,7 @@ impl<'c> Translation<'c> {
                     // Determine the type of element being indexed
                     let pointee_type_id = match self.ast_context.resolve_type(lhs_type_id).kind {
                         CTypeKind::Pointer(pointee_id) => pointee_id,
-                        _ => return Err(format!("Subscript applied to non-pointer")),
+                        _ => return Err(format!("Subscript applied to non-pointer: {:?}", lhs.val)),
                     };
 
                     if let Some(sz) = self.compute_size_of_expr(pointee_type_id.ctype) {

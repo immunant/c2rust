@@ -188,7 +188,12 @@ __m128i static_uninit_m128i;
 __m256i static_uninit_m256i;
 
 void simd_fn_codegen(__m128i i, __m128d d, __m128 y) {
-    int x = _mm_extract_epi32(i, 0);
+    int x;
+#if __clang_major__ >= 7
+    // LLVM < 7 uses an internal-only definition of _mm_extract_epi32 that we
+    // can't translate.
+    x = _mm_extract_epi32(i, 0);
+#endif // __clang_major__
     x = _mm_extract_epi8(i, 0);
     x = _mm_extract_epi64(i, 0);
     x = _mm_testz_si128(i, i);
