@@ -54,24 +54,24 @@ pub struct TranslationError {
 pub enum TranslationErrorKind {
     Generic,
 
-    VectorIndexing,
+    OldLLVMSimd,
 }
 
 impl Display for TranslationErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::TranslationErrorKind::*;
         match self {
-            Generic => Ok(()),
+            Generic => {}
 
-            VectorIndexing => {
+            OldLLVMSimd => {
                 if let Some(version) = get_clang_major_version() {
                     if version < 7 {
                         return write!(f, "SIMD intrinsics require LLVM 7 or newer. Please build C2Rust against a newer LLVM version.");
                     }
                 }
-                write!(f, "Attempted to index a vector type value")
             }
         }
+        Ok(())
     }
 }
 
@@ -99,10 +99,10 @@ impl TranslationError {
         self.inner.get_context().clone()
     }
 
-    pub fn new(loc: &Option<SrcLoc>, inner: TranslationErrorKind) -> Self {
+    pub fn new(loc: &Option<SrcLoc>, inner: Context<TranslationErrorKind>) -> Self {
         TranslationError {
             loc: loc.clone(),
-            inner: Arc::new(Context::new(inner)),
+            inner: Arc::new(inner),
         }
     }
 
@@ -137,6 +137,15 @@ impl From<TranslationErrorKind> for TranslationError {
         TranslationError {
             loc: None,
             inner: Arc::new(Context::new(kind)),
+        }
+    }
+}
+
+impl From<Context<TranslationErrorKind>> for TranslationError {
+    fn from(ctx: Context<TranslationErrorKind>) -> TranslationError {
+        TranslationError {
+            loc: None,
+            inner: Arc::new(ctx),
         }
     }
 }
@@ -608,7 +617,7 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
                                         ),
                                         |name| name.clone(),
                                     );
-                                format!("Failed to translate declaration {} due to error:\n{}", decl_identifier, e)
+                                format!("Failed to translate declaration {} due to error:\n\n{}", decl_identifier, e)
                             }
                             _ => format!("Failed to translate declaration due to error: {}, decl: {:?}", e, decl)
                         };
@@ -2203,8 +2212,10 @@ impl<'c> Translation<'c> {
         match self.ast_context[expr_id].kind {
             CExprKind::DesignatedInitExpr(..) => Err(TranslationError::generic("Unexpected designated init expr")),
             CExprKind::BadExpr => Err(TranslationError::generic("convert_expr: expression kind not supported")),
-            CExprKind::ShuffleVector(_, ref child_expr_ids) =>
-                self.convert_shuffle_vector(ctx, child_expr_ids),
+            CExprKind::ShuffleVector(_, ref child_expr_ids) => {
+                self.convert_shuffle_vector(ctx, child_expr_ids)
+                    .map_err(|e| TranslationError::new(src_loc, e.context(TranslationErrorKind::OldLLVMSimd)))
+            }
             CExprKind::ConvertVector(..) => Err(TranslationError::generic("convert vector not supported")),
 
             CExprKind::UnaryType(_ty, kind, opt_expr, arg_ty) => {
@@ -2399,7 +2410,8 @@ impl<'c> Translation<'c> {
                     return Err(
                         TranslationError::new(
                             src_loc,
-                            TranslationErrorKind::VectorIndexing,
+                            err_msg("Attempting to index a vector type")
+                                .context(TranslationErrorKind::OldLLVMSimd),
                         )
                     );
                 }
