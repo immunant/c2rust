@@ -37,7 +37,15 @@ pub fn test_sectioned_used_static() {
         // directly at the source file
         let src = include_str!("attributes.rs");
 
-        assert!(src.contains("#[link_section = \"barz\"]\n#[used]\nstatic mut rust_used_static4: libc::c_int = 1i32;"));
+        let lines: Vec<&str> = src.lines().collect();
+
+        let pos = lines
+            .iter()
+            .position(|&x| x == "static mut rust_used_static4: libc::c_int = 1i32;")
+            .unwrap(); // Will fail if line was not found
+        // The ordering of these attributes is not stable between LLVM versions
+        assert!((lines[pos-1] == "#[used]" && lines[pos-2] == "#[link_section = \"barz\"]") ||
+                (lines[pos-2] == "#[used]" && lines[pos-1] == "#[link_section = \"barz\"]"));
 
         // This static is pub, but we want to ensure it has attributes applied
         assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: libc::c_int = 1i32;"));

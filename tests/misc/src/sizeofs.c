@@ -1,3 +1,5 @@
+#include <assert.h>
+
 struct a_struct {
         char a;
         int b;
@@ -7,6 +9,8 @@ union a_union {
         char a;
         int b;
 };
+
+typedef unsigned long long ull_typedef;
 
 void sizeofs(const unsigned n, int * const buffer) {
 
@@ -23,7 +27,14 @@ void sizeofs(const unsigned n, int * const buffer) {
         CHECK(unsigned);
         CHECK(unsigned long);
         CHECK(float);
+
+        /* these should have 8 byte __alignof__ even on 32-bit systems, because
+         * __align gives "preferred" alignment for these types, not the ABI
+         * alignment. */
         CHECK(double);
+        CHECK(long long);
+        CHECK(unsigned long long);
+        CHECK(ull_typedef);
 
         CHECK(void*);
         CHECK(int*);
@@ -61,4 +72,6 @@ void sizeofs(const unsigned n, int * const buffer) {
         CHECK(x5);
         CHECK(x6);
         CHECK(x7);
+
+        assert(i == n);
 }

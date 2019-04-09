@@ -90,6 +90,7 @@ impl<W: Write> Printer<W> {
                 let kind_str = match kind {
                     UnTypeOp::SizeOf => b"sizeof(".as_ref(),
                     UnTypeOp::AlignOf => b"alignof(".as_ref(),
+                    UnTypeOp::PreferredAlignOf => b"__alignof(".as_ref(),
                 };
                 self.writer.write_all(kind_str)?;
                 match opt_expr {

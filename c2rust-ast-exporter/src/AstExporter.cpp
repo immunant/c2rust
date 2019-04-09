@@ -21,6 +21,7 @@
 #include "clang/AST/RecordLayout.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/Version.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/Tooling.h"
 
@@ -158,10 +159,33 @@ public:
 
             const char *tag;
             switch (k) {
-                default: tag = nullptr; break;
-                case AttributedType::attr_noreturn: tag = "noreturn"; break;
-                case AttributedType::attr_nonnull: tag = "notnull"; break;
-                case AttributedType::attr_nullable: tag = "nullable"; break;
+            default:
+                tag = nullptr;
+                break;
+
+#if CLANG_VERSION_MAJOR < 8
+            case AttributedType::attr_noreturn:
+#else
+            case attr::NoReturn:
+#endif // CLANG_VERSION_MAJOR
+                tag = "noreturn";
+                break;
+
+#if CLANG_VERSION_MAJOR < 8
+            case AttributedType::attr_nonnull:
+#else
+            case attr::TypeNonNull:
+#endif // CLANG_VERSION_MAJOR
+                tag = "notnull";
+                break;
+
+#if CLANG_VERSION_MAJOR < 8
+            case AttributedType::attr_nullable:
+#else
+            case attr::TypeNullable:
+#endif // CLANG_VERSION_MAJOR
+                tag = "nullable";
+                break;
             }
             if (tag) {
                 cbor_encode_text_stringz(local, tag);
@@ -478,7 +502,12 @@ class TranslateASTVisitor final
        ) {
           auto ty = ast->getType();
           auto isVaList = false;
-          encode_entry_raw(ast, tag, ast->getLocStart(), ty, ast->isRValue(), isVaList, childIds, extra);
+#if CLANG_VERSION_MAJOR < 8
+          SourceLocation loc = ast->getLocStart();
+#else
+          SourceLocation loc = ast->getBeginLoc();
+#endif // CLANG_VERSION_MAJOR
+          encode_entry_raw(ast, tag, loc, ty, ast->isRValue(), isVaList, childIds, extra);
           typeEncoder.VisitQualType(ty);
       }
 
@@ -491,7 +520,12 @@ class TranslateASTVisitor final
           QualType s = QualType(static_cast<clang::Type*>(nullptr), 0);
           auto rvalue = false;
           auto isVaList = false;
-          encode_entry_raw(ast, tag, ast->getLocStart(), s, rvalue, isVaList, childIds, extra);
+#if CLANG_VERSION_MAJOR < 8
+          SourceLocation loc = ast->getLocStart();
+#else
+          SourceLocation loc = ast->getBeginLoc();
+#endif // CLANG_VERSION_MAJOR
+          encode_entry_raw(ast, tag, loc, s, rvalue, isVaList, childIds, extra);
       }
 
       void encode_entry
@@ -684,12 +718,22 @@ class TranslateASTVisitor final
 
           APSInt value;
           if (!expr->isIntegerConstantExpr(value, *Context)) {
-              if (!expr->EvaluateAsInt(value, *Context)) {
+#if CLANG_VERSION_MAJOR < 8
+              APSInt eval_result;
+#else
+              Expr::EvalResult eval_result;
+#endif // CLANG_VERSION_MAJOR
+              if (!expr->EvaluateAsInt(eval_result, *Context)) {
                   std:: string msg = "Aborting due to the expression in `CaseStmt`\
                                       not being an integer.";
                   printError(msg, CS);
                   abort();
               }
+#if CLANG_VERSION_MAJOR < 8
+              value = eval_result;
+#else
+              value = eval_result.Val.getInt();
+#endif // CLANG_VERSION_MAJOR
           }
 
           std::vector<void*> childIds { expr, CS->getSubStmt() };
@@ -774,12 +818,44 @@ class TranslateASTVisitor final
           std::vector<void*> childIds { E->isArgumentType() ? nullptr : E->getArgumentExpr() };
           auto t = E->getTypeOfArgument();
           auto qt = typeEncoder.encodeQualType(t);
-          encode_entry(E, TagUnaryExprOrTypeTraitExpr, childIds, [E,qt](CborEncoder *extras){
+          encode_entry(E, TagUnaryExprOrTypeTraitExpr, childIds, [E,t,qt,this](CborEncoder *extras){
               switch(E->getKind()) {
                   case UETT_SizeOf: cbor_encode_text_stringz(extras, "sizeof"); break;
                   case UETT_AlignOf: cbor_encode_text_stringz(extras, "alignof"); break;
                   case UETT_VecStep: cbor_encode_text_stringz(extras, "vecstep"); break;
                   case UETT_OpenMPRequiredSimdAlign: cbor_encode_text_stringz(extras, "openmprequiredsimdalign"); break;
+#if CLANG_VERSION_MAJOR >= 8
+                  case UETT_PreferredAlignOf: {
+                      // This is GCC's `__alignof` intrinsic. To match its
+                      // behavior, we only want to use preferred alignment if
+                      // we're dealing with a double, long long, or unsigned
+                      // long long. Otherwise, we should use the ABI-specified
+                      // alignment. See ASTContext::getPreferredTypeAlign
+                      // (clang/lib/AST/ASTContext.cpp:2215) for more
+                      // details. We replicate this logic here and use the
+                      // preferred alignment if needed.
+
+                      const clang::Type *T = t.getTypePtr();
+                      TypeInfo TI = this->Context->getTypeInfo(T);
+                      unsigned ABIAlign = TI.Align;
+                      T = T->getBaseElementTypeUnsafe();
+                      // Double and long long should be naturally aligned if possible.
+                      if (const auto *CT = T->getAs<ComplexType>())
+                          T = CT->getElementType().getTypePtr();
+                      if (const auto *ET = T->getAs<EnumType>())
+                          T = ET->getDecl()->getIntegerType().getTypePtr();
+                      if (T->isSpecificBuiltinType(BuiltinType::Double) ||
+                          T->isSpecificBuiltinType(BuiltinType::LongLong) ||
+                          T->isSpecificBuiltinType(BuiltinType::ULongLong))
+                          cbor_encode_text_stringz(extras, "preferredalignof");
+                      else
+                          cbor_encode_text_stringz(extras, "alignof");
+                      break;
+                  }
+#endif // CLANG_VERSION_MAJOR
+                  default:
+                      this->printError("Could not match UnaryExprOrTypeTrait", E);
+                      abort();
               }
               cbor_encode_uint(extras, qt);
           });
@@ -967,7 +1043,13 @@ class TranslateASTVisitor final
                              [ICE](CborEncoder *array){
                                  auto cast_name = ICE->getCastKindName();
 
+#if CLANG_VERSION_MAJOR < 8
                                  if (ICE->getCastKind() == CastKind::CK_BitCast) {
+#else // Incompatible const qualifier pointer casts are now NoOp casts if they
+      // are in the same namespace. See Sema::CheckAssignmentConstraints
+      // (SemaExpr.cpp:7951)
+                                 if (ICE->getCastKind() == CastKind::CK_NoOp) {
+#endif // CLANG_VERSION_MAJOR
                                      auto source_type = ICE->getSubExpr()->getType();
                                      auto target_type = ICE->getType();
 
@@ -1114,6 +1196,15 @@ class TranslateASTVisitor final
           encode_entry(E, TagConvertVectorExpr, childIds);
           return true;
       }
+
+#if CLANG_VERSION_MAJOR >= 8
+    bool VisitConstantExpr(ConstantExpr *E) {
+        auto children = E->children();
+        std::vector<void*> childIds(std::begin(children), std::end(children));
+        encode_entry(E, TagConstantExpr, childIds);
+        return true;
+    }
+#endif // CLANG_VERSION_MAJOR
 
       //
       // Declarations
@@ -1635,7 +1726,12 @@ private:
       }
 
       void printError(std::string Message, Stmt *S) {
-          auto DiagBuilder = getDiagBuilder(S->getLocStart(), DiagnosticsEngine::Error);
+#if CLANG_VERSION_MAJOR < 8
+          SourceLocation loc = S->getLocStart();
+#else
+          SourceLocation loc = S->getBeginLoc();
+#endif // CLANG_VERSION_MAJOR
+          auto DiagBuilder = getDiagBuilder(loc, DiagnosticsEngine::Error);
           DiagBuilder.AddString(Message);
           DiagBuilder.AddSourceRange(CharSourceRange::getCharRange(S->getSourceRange()));
       }
@@ -1756,7 +1852,12 @@ public:
             for (auto comment : comments) {
                 CborEncoder entry;
                 cbor_encoder_create_array(&array, &entry, 4);
-                visitor.encodeSourcePos(&entry, comment->getLocStart()); // emits 3 values
+#if CLANG_VERSION_MAJOR < 8
+          SourceLocation loc = comment->getLocStart();
+#else
+          SourceLocation loc = comment->getBeginLoc();
+#endif // CLANG_VERSION_MAJOR
+                visitor.encodeSourcePos(&entry, loc); // emits 3 values
                 auto raw_text = comment->getRawText(Context.getSourceManager());
                 cbor_encode_byte_string(&entry, raw_text.bytes_begin(), raw_text.size());
                 cbor_encoder_close_container(&array, &entry);
