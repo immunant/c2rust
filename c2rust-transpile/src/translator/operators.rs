@@ -20,7 +20,7 @@ impl<'c> Translation<'c> {
         rhs: CExprId,
         opt_lhs_type_id: Option<CQualTypeId>,
         opt_res_type_id: Option<CQualTypeId>,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         match op {
             c_ast::BinOp::Comma => {
                 // The value of the LHS of a comma expression is always discarded
@@ -104,13 +104,13 @@ impl<'c> Translation<'c> {
                     .index(lhs)
                     .kind
                     .get_qual_type()
-                    .ok_or_else(|| format!("bad lhs type"))?;
+                    .ok_or_else(|| format_err!("bad lhs type"))?;
                 let rhs_type = self
                     .ast_context
                     .index(rhs)
                     .kind
                     .get_qual_type()
-                    .ok_or_else(|| format!("bad rhs type"))?;
+                    .ok_or_else(|| format_err!("bad rhs type"))?;
 
                 let mut stmts = vec![];
 
@@ -167,7 +167,7 @@ impl<'c> Translation<'c> {
         compute_res_ty: Option<CQualTypeId>,
         lhs_ty: CQualTypeId,
         rhs_ty: CQualTypeId,
-    ) -> Result<P<Expr>, String> {
+    ) -> Result<P<Expr>, TranslationError> {
         let compute_lhs_ty = compute_lhs_ty.unwrap();
         let compute_res_ty = compute_res_ty.unwrap();
 
@@ -212,13 +212,13 @@ impl<'c> Translation<'c> {
         rhs: CExprId,
         compute_type: Option<CQualTypeId>,
         result_type: Option<CQualTypeId>,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let rhs_type_id = self
             .ast_context
             .index(rhs)
             .kind
             .get_qual_type()
-            .ok_or_else(|| format!("bad assignment rhs type"))?;
+            .ok_or_else(|| format_err!("bad assignment rhs type"))?;
         let rhs_translation = self.convert_expr(ctx.used(), rhs)?;
         self.convert_assignment_operator_with_rhs(
             ctx,
@@ -243,7 +243,7 @@ impl<'c> Translation<'c> {
         rhs_translation: WithStmts<P<Expr>>,
         compute_type: Option<CQualTypeId>,
         result_type: Option<CQualTypeId>,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let ty = self.convert_type(qtype.ctype)?;
 
         let result_type_id = result_type.unwrap_or(qtype);
@@ -253,7 +253,7 @@ impl<'c> Translation<'c> {
             .kind;
         let initial_lhs_type_id = initial_lhs
             .get_qual_type()
-            .ok_or_else(|| format!("bad initial lhs type"))?;
+            .ok_or_else(|| format_err!("bad initial lhs type"))?;
 
         let bitfield_name = match initial_lhs {
             CExprKind::Member(_, _, decl_id, _, _) => {
@@ -731,7 +731,7 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         up: bool,
         arg: CExprId,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let op = if up {
             c_ast::BinOp::AssignAdd
         } else {
@@ -755,7 +755,7 @@ impl<'c> Translation<'c> {
         let arg_type = self.ast_context[arg]
             .kind
             .get_qual_type()
-            .ok_or_else(|| format!("bad arg type"))?;
+            .ok_or_else(|| format_err!("bad arg type"))?;
         self.convert_assignment_operator_with_rhs(
             ctx.used(),
             op,
@@ -774,7 +774,7 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         up: bool,
         arg: CExprId,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         // If we aren't going to be using the result, may as well do a simple pre-increment
         if ctx.is_unused() {
             return self.convert_pre_increment(ctx, ty, up, arg);
@@ -785,7 +785,7 @@ impl<'c> Translation<'c> {
             .index(arg)
             .kind
             .get_qual_type()
-            .ok_or_else(|| format!("bad post inc type"))?;
+            .ok_or_else(|| format_err!("bad post inc type"))?;
 
         let WithStmts {
             val: (write, read),
@@ -866,7 +866,7 @@ impl<'c> Translation<'c> {
         cqual_type: CQualTypeId,
         arg: CExprId,
         lrvalue: LRValue,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let CQualTypeId { ctype, .. } = cqual_type;
         let ty = self.convert_type(ctype)?;
         let resolved_ctype = self.ast_context.resolve_type(ctype);
@@ -896,7 +896,7 @@ impl<'c> Translation<'c> {
                 } else {
                     let pointee = match resolved_ctype.kind {
                         CTypeKind::Pointer(pointee) => pointee,
-                        _ => return Err(format!("Address-of should return a pointer")),
+                        _ => return Err(TranslationError::generic("Address-of should return a pointer")),
                     };
 
                     let mutbl = if pointee.qualifiers.is_const {

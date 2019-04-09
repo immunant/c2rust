@@ -74,7 +74,7 @@ impl<'c> Translation<'c> {
         }
     }
 
-    pub fn convert_vaarg(&self, ctx: ExprContext, ty: CQualTypeId, val_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
+    pub fn convert_vaarg(&self, ctx: ExprContext, ty: CQualTypeId, val_id: CExprId) -> Result<WithStmts<P<Expr>>, TranslationError> {
         if self.tcfg.translate_valist {
             // https://github.com/rust-lang/rust/pull/49878/files
 
@@ -94,7 +94,7 @@ impl<'c> Translation<'c> {
 
             Ok(res)
         } else {
-            Err(format!("Variable argument lists are not supported (requires --translate-valist)"))
+            Err(format_err!("Variable argument lists are not supported (requires --translate-valist)"))?
         }
     }
 

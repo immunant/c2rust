@@ -6,12 +6,12 @@
 use super::*;
 
 impl<'c> Translation<'c> {
-    pub fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, String> {
+    pub fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, TranslationError> {
         if let CDeclKind::Function { ref parameters, typ, .. } = self.ast_context.index(main_id).kind {
 
             let ret: CTypeKind = match self.ast_context.resolve_type(typ).kind {
                 CTypeKind::Function(ret, _, _, _, _) => self.ast_context.resolve_type(ret.ctype).kind.clone(),
-                ref k => return Err(format!("Type of main function {:?} was not a function type, got {:?}", main_id, k))
+                ref k => Err(format_err!("Type of main function {:?} was not a function type, got {:?}", main_id, k))?
             };
 
             let decl = mk().fn_decl(
@@ -94,11 +94,11 @@ impl<'c> Translation<'c> {
 
                 let argc_ty: P<Ty> = match self.ast_context.index(parameters[0]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
-                    _ => Err(format!("Cannot find type of 'argc' argument in main function")),
+                    _ => Err(TranslationError::generic("Cannot find type of 'argc' argument in main function")),
                 }?;
                 let argv_ty: P<Ty> = match self.ast_context.index(parameters[1]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
-                    _ => Err(format!("Cannot find type of 'argv' argument in main function")),
+                    _ => Err(TranslationError::generic("Cannot find type of 'argv' argument in main function")),
                 }?;
 
                 let args = mk().ident_expr("args");
@@ -186,7 +186,7 @@ impl<'c> Translation<'c> {
 
                 let envp_ty: P<Ty> = match self.ast_context.index(parameters[2]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
-                    _ => Err(format!("Cannot find type of 'envp' argument in main function")),
+                    _ => Err(TranslationError::generic("Cannot find type of 'envp' argument in main function")),
                 }?;
 
                 let envp = mk().method_call_expr(mk().ident_expr("vars"), "as_mut_ptr", no_args);
@@ -196,7 +196,7 @@ impl<'c> Translation<'c> {
 
             // Check `main` has the right form
             if n != 0 && n != 2 && n != 3 {
-                Err(format!("Main function should have 0, 2, or 3 parameters, not {}.", n))?;
+                Err(format_err!("Main function should have 0, 2, or 3 parameters, not {}.", n))?;
             };
 
             if let CTypeKind::Void = ret {
@@ -225,7 +225,7 @@ impl<'c> Translation<'c> {
             let main_attributes = self.mk_cross_check(mk(), vec!["none"]);
             Ok(main_attributes.pub_().fn_item("main", decl, block))
         } else {
-            Err(format!("Cannot translate non-function main entry point"))
+            Err(TranslationError::generic("Cannot translate non-function main entry point"))
         }
     }
 }
