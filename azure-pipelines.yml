@@ -56,21 +56,42 @@ jobs:
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       cargo clean
-    displayName: 'Clean'
+    displayName: 'Cargo clean'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/build_translator.py --debug
-    displayName: 'Developer build against local clang/LLVM'
+      python3 ./scripts/build_translator.py --debug --with-llvm-version=7.0.1
+    displayName: 'Developer build against local LLVM 7'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       python3 ./scripts/test_translator.py --debug ./tests
-    displayName: 'Test translator (dev build)'
+    displayName: 'Test translator against developer build (LLVM 7)'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      cargo clean
+    displayName: 'Cargo clean'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      python3 ./scripts/build_translator.py --debug --with-llvm-version=8.0.0
+    displayName: 'Developer build against local LLVM 8'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      python3 ./scripts/test_translator.py --debug ./tests
+    displayName: 'Test translator against developer build (LLVM 8)'
 
 - job: Darwin
   pool:
