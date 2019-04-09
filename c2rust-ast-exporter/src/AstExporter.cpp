@@ -793,7 +793,7 @@ class TranslateASTVisitor final
                   case UETT_AlignOf: cbor_encode_text_stringz(extras, "alignof"); break;
                   case UETT_VecStep: cbor_encode_text_stringz(extras, "vecstep"); break;
                   case UETT_OpenMPRequiredSimdAlign: cbor_encode_text_stringz(extras, "openmprequiredsimdalign"); break;
-#if CLANG_MAJOR_VERSION >= 8
+#if CLANG_VERSION_MAJOR >= 8
                   case UETT_PreferredAlignOf: {
                       // This is GCC's `__alignof` intrinsic. To match its
                       // behavior, we only want to use preferred alignment if
@@ -821,7 +821,7 @@ class TranslateASTVisitor final
                           cbor_encode_text_stringz(extras, "alignof");
                       break;
                   }
-#endif // CLANG_MAJOR_VERSION
+#endif // CLANG_VERSION_MAJOR
                   default:
                       this->printError("Could not match UnaryExprOrTypeTrait", E);
                       abort();
@@ -1012,13 +1012,13 @@ class TranslateASTVisitor final
                              [ICE](CborEncoder *array){
                                  auto cast_name = ICE->getCastKindName();
 
-#if CLANG_MAJOR_VERSION < 8
+#if CLANG_VERSION_MAJOR < 8
                                  if (ICE->getCastKind() == CastKind::CK_BitCast) {
 #else // Incompatible const qualifier pointer casts are now NoOp casts if they
       // are in the same namespace. See Sema::CheckAssignmentConstraints
       // (SemaExpr.cpp:7951)
                                  if (ICE->getCastKind() == CastKind::CK_NoOp) {
-#endif // CLANG_MAJOR_VERSION
+#endif // CLANG_VERSION_MAJOR
                                      auto source_type = ICE->getSubExpr()->getType();
                                      auto target_type = ICE->getType();
 
