@@ -180,7 +180,7 @@ public:
                 break;
 
 #if CLANG_VERSION_MAJOR < 8
-            case AttributedType:attr_nullable:
+            case AttributedType::attr_nullable:
 #else
             case attr::TypeNullable:
 #endif // CLANG_VERSION_MAJOR
