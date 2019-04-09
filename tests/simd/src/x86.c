@@ -189,24 +189,14 @@ __m256i static_uninit_m256i;
 
 void simd_fn_codegen(__m128i i, __m128d d, __m128 y) {
     int x;
-#if __clang_major__ >= 7
-    // LLVM < 7 uses an internal-only definition of _mm_extract_epi32 that we
-    // can't translate.
-    x = _mm_extract_epi32(i, 0);
-#endif // __clang_major__
-    x = _mm_extract_epi8(i, 0);
-    x = _mm_extract_epi64(i, 0);
     x = _mm_testz_si128(i, i);
     y = _mm_round_ps(y, 3);
     y = _mm_round_ss(y, y, 3);
     d = _mm_round_pd(d, 2);
     d = _mm_round_sd(d, d, 1);
-    d = _mm_blend_pd(d, d, 3);
-    y = _mm_blend_ps(y, y, 1);
     d = _mm_blendv_pd(d, d, d);
     y = _mm_blendv_ps(y, y, y);
     i = _mm_blendv_epi8(i, i, i);
-    i = _mm_blend_epi16(i, i, 2);
     i = _mm_mul_epi32(i, i);
     i = _mm_min_epi8(i, i);
     i = _mm_max_epi8(i, i);
@@ -216,8 +206,6 @@ void simd_fn_codegen(__m128i i, __m128d d, __m128 y) {
     i = _mm_max_epi32(i, i);
     i = _mm_min_epu32(i, i);
     i = _mm_max_epu32(i, i);
-    i = _mm_insert_epi8(i, 2, 1);
-    i = _mm_insert_epi64(i, 2, 1);
     x = _mm_testc_si128(i, i);
     x = _mm_testnzc_si128(i, i);
     i = _mm_packus_epi32(i, i);
@@ -243,4 +231,17 @@ void simd_fn_codegen(__m128i i, __m128d d, __m128 y) {
     x = _mm_cmpistro(i, i, 2);
     x = _mm_cmpistrs(i, i, 2);
     x = _mm_cmpistrz(i, i, 2);
+
+#if __clang_major__ >= 7
+    // LLVM < 7 uses an internal-only definition of _mm_extract_epi32 that we
+    // can't translate.
+    x = _mm_extract_epi32(i, 0);
+    x = _mm_extract_epi8(i, 0);
+    x = _mm_extract_epi64(i, 0);
+    d = _mm_blend_pd(d, d, 3);
+    y = _mm_blend_ps(y, y, 1);
+    i = _mm_blend_epi16(i, i, 2);
+    i = _mm_insert_epi8(i, 2, 1);
+    i = _mm_insert_epi64(i, 2, 1);
+#endif // __clang_major__
 }
