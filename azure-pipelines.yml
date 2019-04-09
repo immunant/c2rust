@@ -141,7 +141,7 @@ jobs:
       cargo clean
     displayName: 'Cargo clean'
 
-      - script: |
+  - script: |
       source $HOME/.cargo/env
       python3 ./scripts/build_translator.py --debug --with-llvm-version=8.0.0
     displayName: 'Developer build against local LLVM 7'
