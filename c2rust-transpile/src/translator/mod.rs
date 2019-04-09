@@ -495,8 +495,8 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
                     Ok(ConvertedDecl::ForeignItem(item)) => t.insert_foreign_item(item, decl_file_path, main_file_path),
                     Ok(ConvertedDecl::NoItem) => {},
                     Err(e) => {
-                        let ref k = t.ast_context.c_decls.get(top_id).map(|x| &x.kind);
-                        let msg = format!("Failed translating declaration due to error: {}, kind: {:?}", e, k);
+                        let ref decl = t.ast_context.c_decls.get(top_id);
+                        let msg = format!("Failed translating declaration due to error: {}, decl: {:?}", e, decl);
                         translate_failure(&t.tcfg, &msg)
                     },
                 }
@@ -2081,6 +2081,7 @@ impl<'c> Translation<'c> {
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
     pub fn convert_expr(&self, mut ctx: ExprContext, expr_id: CExprId) -> Result<WithStmts<P<Expr>>, String> {
+        let src_loc = &self.ast_context[expr_id].loc;
         match self.ast_context[expr_id].kind {
             CExprKind::DesignatedInitExpr(..) => Err(format!("Unexpected designated init expr")),
             CExprKind::BadExpr => Err(format!("convert_expr: expression kind not supported")),
@@ -2278,9 +2279,9 @@ impl<'c> Translation<'c> {
                 let lhs_node_type = lhs_node.get_type().ok_or_else(|| format!("lhs node bad type"))?;
                 if self.ast_context.resolve_type(lhs_node_type).kind.is_vector() {
                     if get_clang_major_version().map_or(false, |v| v < 7) {
-                        return Err(format!("Vector instructions require LLVM 7 or greater. Please build C2Rust against a newer LLVM version."));
+                        return Err(format!("Vector instructions require LLVM 7 or greater. Please build C2Rust against a newer LLVM version. Invalid indexing occured at: {:?}", src_loc));
                     } else {
-                        return Err(format!("Vector value {:?} is indexed as an array.", lhs_node));
+                        return Err(format!("Vector value {:?} is indexed as an array at: {:?}", lhs_node, src_loc));
                     }
                 }
 
