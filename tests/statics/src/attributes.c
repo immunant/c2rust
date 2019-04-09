@@ -1,3 +1,5 @@
+#ifndef __APPLE__
+
 // These three are initialized normally
 int __attribute__((used, section("foo"))) used_static = 1;
 int __attribute__((__used__, __section__("bar"))) used_static2 = 2;
@@ -17,3 +19,5 @@ extern int initialized_extern;
 int __attribute__((section("fb"))) initialized_extern = 1;
 
 extern int __attribute__((alias("no_attrs"), used)) aliased_static;
+
+#endif // __APPLE__

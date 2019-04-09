@@ -1919,4 +1919,8 @@ extern "C" {
     void drop_export_result(ExportResult *result) {
         delete result;
     }
+
+    const char *clang_version() {
+        return "" CLANG_VERSION_STRING;
+    }
 }

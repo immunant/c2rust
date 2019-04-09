@@ -85,6 +85,7 @@ fn main() {
         },
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: matches.is_present("emit-no-std"),
+        verbose: matches.is_present("verbose"),
         enabled_warnings
     };
     // main implies emit-build-files

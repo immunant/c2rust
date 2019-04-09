@@ -13,6 +13,7 @@ use syntax::source_map::symbol::Symbol;
 use syntax_pos::{Span, DUMMY_SP};
 use translator::{ExprContext, Translation, ConvertedDecl, simple_metaitem};
 use with_stmts::WithStmts;
+use super::TranslationError;
 
 use itertools::Itertools;
 use itertools::EitherOrBoth::{Both, Right};
@@ -67,7 +68,7 @@ impl<'a> Translation<'a> {
         &self,
         field_info: Vec<FieldInfo>,
         platform_byte_size: u64,
-    ) -> Result<Vec<FieldType>, String> {
+    ) -> Result<Vec<FieldType>, TranslationError> {
         let mut reorganized_fields = Vec::new();
         let mut last_bitfield_group: Option<FieldType> = None;
         let mut next_byte_pos = 0;
@@ -216,7 +217,7 @@ impl<'a> Translation<'a> {
         platform_byte_size: u64,
         span: Span,
         field_info: Vec<FieldInfo>,
-    ) -> Result<ConvertedDecl, String> {
+    ) -> Result<ConvertedDecl, TranslationError> {
         self.extern_crates.borrow_mut().insert("c2rust_bitfields");
 
         let mut item_store = self.item_store.borrow_mut();
@@ -322,7 +323,7 @@ impl<'a> Translation<'a> {
         field_ids: &[CExprId],
         field_info: Vec<FieldInfo>,
         ctx: ExprContext,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let mut fields = Vec::with_capacity(field_ids.len());
         let reorganized_fields = self.get_field_types(field_info.clone(), platform_byte_size)?;
         let local_pat = mk().mutbl().ident_pat("init");
@@ -426,7 +427,7 @@ impl<'a> Translation<'a> {
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
-    ) -> Result<P<Expr>, String> {
+    ) -> Result<P<Expr>, TranslationError> {
         let field_info: Vec<FieldInfo> = field_ids.iter()
             .map(|field_id| match self.ast_context.index(*field_id).kind {
                 CDeclKind::Field { typ, bitfield_width, platform_bit_offset, platform_type_bitwidth, .. } => {
@@ -493,7 +494,7 @@ impl<'a> Translation<'a> {
         field_name: &str,
         lhs: CExprId,
         rhs_expr: P<Expr>,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
         let lhs_expr = named_reference.val.0;
@@ -535,7 +536,7 @@ impl<'a> Translation<'a> {
 
                 let last_expr = match block.stmts[last].node {
                     StmtKind::Expr(ref expr) => expr.clone(),
-                    _ => return Err("Expected Expr StmtKind".into()),
+                    _ => return Err(TranslationError::generic("Expected Expr StmtKind")),
                 };
                 let method_call = mk().method_call_expr(lhs_expr, setter_name, vec![last_expr]);
 
@@ -577,7 +578,7 @@ impl<'a> Translation<'a> {
         field_name: String,
         expr_id: CExprId,
         kind: MemberKind,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let mut val = match kind {
             MemberKind::Dot => self.convert_expr(ctx, expr_id)?,
             MemberKind::Arrow => {

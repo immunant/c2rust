@@ -512,7 +512,7 @@ impl Cfg<Label, StmtOrDecl> {
         ctx: ExprContext,
         stmt_ids: &[CStmtId],
         ret: ImplicitReturnType,
-    ) -> Result<(Self, DeclStmtStore), String> {
+    ) -> Result<(Self, DeclStmtStore), TranslationError> {
 
         let mut c_label_to_goto: IndexMap<CLabelId, IndexSet<CStmtId>> = IndexMap::new();
         for (target, x) in stmt_ids
@@ -533,7 +533,7 @@ impl Cfg<Label, StmtOrDecl> {
         let entry = cfg_builder.entry;
         cfg_builder.per_stmt_stack.push(PerStmt::new(stmt_ids.get(0).cloned(), entry, IndexSet::new()));
 
-        translator.with_scope(|| -> Result<(), String> {
+        translator.with_scope(|| -> Result<(), TranslationError> {
 
             let body_exit = cfg_builder.convert_stmts_help(translator, ctx, stmt_ids, Some(ret), entry)?;
 
@@ -943,12 +943,12 @@ impl DeclStmtStore {
 
     /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
     /// want to move just a declaration to a larger scope.
-    pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+    pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
         let DeclStmtInfo { decl, assign, .. } = self.store
             .remove(&decl_id)
-            .ok_or(format!("Cannot find information on declaration 1 {:?}", decl_id))?;
+            .ok_or(format_err!("Cannot find information on declaration 1 {:?}", decl_id))?;
 
-        let decl: Vec<Stmt> = decl.ok_or(format!("Declaration for {:?} has already been extracted", decl_id))?;
+        let decl: Vec<Stmt> = decl.ok_or(format_err!("Declaration for {:?} has already been extracted", decl_id))?;
 
         let pruned = DeclStmtInfo { decl: None, assign, decl_and_assign: None };
         self.store.insert(decl_id, pruned);
@@ -959,12 +959,12 @@ impl DeclStmtStore {
    /// Extract _just_ the Rust statements for an initializer (without the declaration it was
    /// initially attached to). Used when you've moved a declaration but now you need to also run the
    /// initializer.
-    pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+    pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
         let DeclStmtInfo { decl, assign, .. } = self.store
             .remove(&decl_id)
-            .ok_or(format!("Cannot find information on declaration 2 {:?}", decl_id))?;
+            .ok_or(format_err!("Cannot find information on declaration 2 {:?}", decl_id))?;
 
-        let assign: Vec<Stmt> = assign.ok_or(format!("Assignment for {:?} has already been extracted", decl_id))?;
+        let assign: Vec<Stmt> = assign.ok_or(format_err!("Assignment for {:?} has already been extracted", decl_id))?;
 
         let pruned = DeclStmtInfo { decl, assign: None, decl_and_assign: None };
         self.store.insert(decl_id, pruned);
@@ -974,12 +974,12 @@ impl DeclStmtStore {
 
     /// Extract the Rust statements for the full declaration and initializers. Used for when you
     /// didn't need to move a declaration at all.
-    pub fn extract_decl_and_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+    pub fn extract_decl_and_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
         let DeclStmtInfo { decl_and_assign, .. } = self.store
             .remove(&decl_id)
-            .ok_or(format!("Cannot find information on declaration 3 {:?}", decl_id))?;
+            .ok_or(format_err!("Cannot find information on declaration 3 {:?}", decl_id))?;
 
-        let decl_and_assign: Vec<Stmt> = decl_and_assign.ok_or(format!("Declaration with assignment for {:?} has already been extracted", decl_id))?;
+        let decl_and_assign: Vec<Stmt> = decl_and_assign.ok_or(format_err!("Declaration with assignment for {:?} has already been extracted", decl_id))?;
 
         let pruned = DeclStmtInfo { decl: None, assign: None, decl_and_assign: None };
         self.store.insert(decl_id, pruned);
@@ -988,12 +988,12 @@ impl DeclStmtStore {
     }
 
     /// Extract the Rust statements for the full declaration and initializers. DEBUGGING ONLY.
-    pub fn peek_decl_and_assign(&self, decl_id: CDeclId) -> Result<Vec<Stmt>, String> {
+    pub fn peek_decl_and_assign(&self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
         let &DeclStmtInfo { ref decl_and_assign, .. } = self.store
             .get(&decl_id)
-            .ok_or(format!("Cannot find information on declaration 4 {:?}", decl_id))?;
+            .ok_or(format_err!("Cannot find information on declaration 4 {:?}", decl_id))?;
 
-        let decl_and_assign: Vec<Stmt> = decl_and_assign.clone().ok_or(format!("Declaration with assignment for {:?} has already been extracted", decl_id))?;
+        let decl_and_assign: Vec<Stmt> = decl_and_assign.clone().ok_or(format_err!("Declaration with assignment for {:?} has already been extracted", decl_id))?;
 
         Ok(decl_and_assign)
     }
@@ -1193,8 +1193,8 @@ impl CfgBuilder {
         stmt_ids: &[CStmtId],     // C statements to translate
         in_tail: Option<ImplicitReturnType>,  // Are we in tail position (is there anything to fallthrough to)?
         entry: Label,             // Current WIP block
-    ) -> Result<Option<Label>, String> {
-        self.with_scope(translator, |slf| -> Result<Option<Label>, String> {
+    ) -> Result<Option<Label>, TranslationError> {
+        self.with_scope(translator, |slf| -> Result<Option<Label>, TranslationError> {
             let mut lbl = Some(entry);
             let last = stmt_ids.last();
 
@@ -1231,7 +1231,7 @@ impl CfgBuilder {
 
         // Entry label
         entry: Label,
-    ) -> Result<Option<Label>, String> {
+    ) -> Result<Option<Label>, TranslationError> {
 
         // Add to the per_stmt_stack
         let live_in: IndexSet<CDeclId> = self.currently_live.last().unwrap().clone();
@@ -1244,7 +1244,7 @@ impl CfgBuilder {
             wip.push_comment(cmmt);
         }
 
-        let out_wip: Result<Option<WipBlock>, String> = match translator.ast_context.index(stmt_id).kind {
+        let out_wip: Result<Option<WipBlock>, TranslationError> = match translator.ast_context.index(stmt_id).kind {
             CStmtKind::Empty => Ok(Some(wip)),
 
             CStmtKind::Decls(ref decls) => {
@@ -1419,7 +1419,7 @@ impl CfgBuilder {
                 let incr_entry = self.fresh_label();
                 let next_label = self.fresh_label();
 
-                self.with_scope(translator, |slf| -> Result<(), String> {
+                self.with_scope(translator, |slf| -> Result<(), TranslationError> {
                     // Init
                     slf.add_wip_block(wip, Jump(init_entry));
                     let init_stuff: Option<Label> = match init {
@@ -1559,7 +1559,7 @@ impl CfgBuilder {
 
             CStmtKind::Break => {
                 self.last_per_stmt_mut().saw_unmatched_break = true;
-                let tgt_label = *self.break_labels.last().ok_or(format!(
+                let tgt_label = *self.break_labels.last().ok_or(format_err!(
                     "Cannot find what to break from in this ({:?}) 'break' statement",
                     stmt_id,
                 ))?;
@@ -1570,7 +1570,7 @@ impl CfgBuilder {
 
             CStmtKind::Continue => {
                 self.last_per_stmt_mut().saw_unmatched_continue = true;
-                let tgt_label = *self.continue_labels.last().ok_or(format!(
+                let tgt_label = *self.continue_labels.last().ok_or(format_err!(
                     "Cannot find what to continue from in this ({:?}) 'continue' statement",
                     stmt_id,
                 ))?;
@@ -1600,7 +1600,7 @@ impl CfgBuilder {
                 };
                 self.switch_expr_cases
                     .last_mut()
-                    .ok_or(format!(
+                    .ok_or(format_err!(
                         "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
                         stmt_id,
                     ))?
@@ -1732,7 +1732,7 @@ impl CfgBuilder {
 
         // Exit WIP
         out_wip: Option<WipBlock>,
-    ) -> Result<Option<Label>, String> {
+    ) -> Result<Option<Label>, TranslationError> {
 
         // Close off the `wip` using a `break` terminator
         let brk_lbl: Label = self.fresh_label();

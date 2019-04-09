@@ -10,15 +10,15 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         fexp: CExprId,
         args: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let decl_id = match self.ast_context[fexp].kind {
             CExprKind::DeclRef(_, decl_id, _) => decl_id,
-            _ => return Err(format!("Expected declref when processing builtin")),
+            _ => return Err(TranslationError::generic("Expected declref when processing builtin")),
         };
 
         let builtin_name: &str = match self.ast_context[decl_id].kind {
             CDeclKind::Function { ref name, .. } => name,
-            _ => return Err(format!("Expected function when processing builtin")),
+            _ => return Err(TranslationError::generic("Expected function when processing builtin")),
         };
         let std_or_core = if self.tcfg.emit_no_std {
             "core"
@@ -137,7 +137,7 @@ impl<'c> Translation<'c> {
                         }
                     }
                 }
-                Err(format!("Unsupported va_start"))
+                Err(TranslationError::generic("Unsupported va_start"))
             },
             "__builtin_va_copy" => {
                 if ctx.is_unused() && args.len() == 2 {
@@ -161,7 +161,7 @@ impl<'c> Translation<'c> {
                         return Ok(res);
                     }
                 }
-                Err(format!("Unsupported va_copy"))
+                Err(TranslationError::generic("Unsupported va_copy"))
             },
             "__builtin_va_end" => {
                 if ctx.is_unused() && args.len() == 1 {
@@ -192,7 +192,7 @@ impl<'c> Translation<'c> {
                         }
                     }
                 }
-                Err(format!("Unsupported va_end"))
+                Err(TranslationError::generic("Unsupported va_end"))
             },
 
             "__builtin_alloca" => {
@@ -499,7 +499,7 @@ impl<'c> Translation<'c> {
                 }))
             },
 
-            _ => Err(format!("Unimplemented builtin: {}", builtin_name)),
+            _ => Err(format_err!("Unimplemented builtin: {}", builtin_name).into()),
         }
     }
 
@@ -510,7 +510,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         method_name: &str,
         args: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let a = self.convert_expr(ctx.used(), args[0])?;
         let mut b = self.convert_expr(ctx.used(), args[1])?;
         let mut c = self.convert_expr(ctx.used(), args[2])?;
@@ -549,7 +549,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         args: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let memcpy = mk().path_expr(vec!["", "libc", "memcpy"]);
         let dst = self.convert_expr(ctx.used(), args[0])?;
         let mut src = self.convert_expr(ctx.used(), args[1])?;

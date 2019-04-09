@@ -12,6 +12,11 @@ use std::slice;
 
 pub mod clang_ast;
 
+pub fn get_clang_major_version() -> Option<u32> {
+    let s = unsafe { CStr::from_ptr(clang_version()) };
+    s.to_str().unwrap().split('.').next().unwrap().parse::<u32>().ok()
+}
+
 pub fn get_untyped_ast(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> Result<clang_ast::AstContext, Error> {
     let cbors = get_ast_cbors(file_path, cc_db, extra_args);
     let buffer = cbors.values().next()
@@ -64,6 +69,9 @@ extern "C" {
     // void drop_export_result(ExportResult *result);
     #[no_mangle]
     fn drop_export_result(ptr: *mut ExportResult);
+
+    #[no_mangle]
+    fn clang_version() -> *const libc::c_char;
 }
 
 unsafe fn marshal_result(result: *const ExportResult) -> HashMap<String, Vec<u8>> {

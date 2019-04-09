@@ -95,6 +95,7 @@ pub struct TranspilerConfig {
     pub enabled_warnings: HashSet<Diagnostic>,
     pub emit_no_std: bool,
     pub output_dir: Option<PathBuf>,
+    pub verbose: bool,
 
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
@@ -242,6 +243,10 @@ fn transpile_single(
 
     let file = input_path.file_name().unwrap().to_str().unwrap();
     println!("Transpiling {}", file);
+
+    if tcfg.verbose {
+        println!("Additional Clang arguments: {}", extra_clang_args.join(" "));
+    }
 
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(input_path, cc_db, extra_clang_args) {
