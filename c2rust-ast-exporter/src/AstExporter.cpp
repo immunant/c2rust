@@ -793,6 +793,7 @@ class TranslateASTVisitor final
                   case UETT_AlignOf: cbor_encode_text_stringz(extras, "alignof"); break;
                   case UETT_VecStep: cbor_encode_text_stringz(extras, "vecstep"); break;
                   case UETT_OpenMPRequiredSimdAlign: cbor_encode_text_stringz(extras, "openmprequiredsimdalign"); break;
+#if CLANG_MAJOR_VERSION >= 8
                   case UETT_PreferredAlignOf: {
                       // This is GCC's `__alignof` intrinsic. To match its
                       // behavior, we only want to use preferred alignment if
@@ -820,6 +821,7 @@ class TranslateASTVisitor final
                           cbor_encode_text_stringz(extras, "alignof");
                       break;
                   }
+#endif // CLANG_MAJOR_VERSION
                   default:
                       this->printError("Could not match UnaryExprOrTypeTrait", E);
                       abort();
