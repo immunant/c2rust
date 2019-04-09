@@ -20,10 +20,10 @@ impl<'c> Translation<'c> {
          inputs: &[AsmOperand],
          outputs: &[AsmOperand],
          clobbers: &[String])
-        -> Result<Vec<Stmt>, String> {
+        -> Result<Vec<Stmt>, TranslationError> {
 
         if !self.tcfg.translate_asm {
-            return Err(format!("Inline assembly not enabled, to enable use --translate-asm"))
+            return Err(TranslationError::generic("Inline assembly not enabled, to enable use --translate-asm"))
         }
 
         self.use_feature("asm");

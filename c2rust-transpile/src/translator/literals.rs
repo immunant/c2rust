@@ -70,7 +70,7 @@ impl<'c> Translation<'c> {
         is_static: bool,
         ty: CQualTypeId,
         kind: &CLiteral,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         match *kind {
             CLiteral::Integer(val, base) => Ok(WithStmts::new(self.mk_int_lit(ty, val, base))),
 
@@ -165,7 +165,7 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         ids: &[CExprId],
         opt_union_field_id: Option<CFieldId>,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         match self.ast_context.resolve_type(ty.ctype).kind {
             CTypeKind::ConstantArray(ty, n) => {
                 // Convert all of the provided initializer values
@@ -237,7 +237,7 @@ impl<'c> Translation<'c> {
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
             }
-            ref t => Err(format!("Init list not implemented for {:?}", t)),
+            ref t => Err(format_err!("Init list not implemented for {:?}", t).into()),
         }
     }
 
@@ -248,7 +248,7 @@ impl<'c> Translation<'c> {
         ids: &[CExprId],
         _ty: CQualTypeId,
         opt_union_field_id: Option<CFieldId>,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let union_field_id = opt_union_field_id.expect("union field ID");
 
         match self.ast_context.index(union_id).kind {
@@ -292,7 +292,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         struct_id: CRecordId,
         ids: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let mut has_bitfields = false;
         let (field_decls, platform_byte_size) = match self.ast_context.index(struct_id).kind {
             CDeclKind::Struct { ref fields, platform_byte_size, .. } => {
@@ -300,7 +300,7 @@ impl<'c> Translation<'c> {
 
                 let fields = match fields {
                     &Some(ref fields) => fields,
-                    &None => return Err(format!("Attempted to construct forward-declared struct")),
+                    &None => return Err(TranslationError::generic("Attempted to construct forward-declared struct")),
                 };
 
                 for &x in fields {

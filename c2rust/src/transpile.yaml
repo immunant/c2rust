@@ -157,3 +157,8 @@ args:
       long: emit-no-std
       help: Emit code using core rather than std
       takes_value: false
+  - verbose:
+      long: verbose
+      short: v
+      help: Verbose mode
+      takes_value: false

@@ -8,7 +8,7 @@ impl<'c> Translation<'c> {
     /// Get back a Rust lvalue corresponding to the expression passed in.
     ///
     /// Do not use the output lvalue expression more than once.
-    pub fn name_reference_write(&self, ctx: ExprContext, reference: CExprId) -> Result<WithStmts<P<Expr>>, String> {
+    pub fn name_reference_write(&self, ctx: ExprContext, reference: CExprId) -> Result<WithStmts<P<Expr>>, TranslationError> {
         self.name_reference(ctx, reference, false)
             .map(|ws| ws.map(|(lvalue, _)| lvalue))
     }
@@ -20,7 +20,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         reference: CExprId,
-    ) -> Result<WithStmts<(P<Expr>, P<Expr>)>, String> {
+    ) -> Result<WithStmts<(P<Expr>, P<Expr>)>, TranslationError> {
         let msg: &str = "When called with `uses_read = true`, `name_reference` should always \
                          return an rvalue (something from which to read the memory location)";
 
@@ -41,13 +41,13 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         reference: CExprId,
         uses_read: bool,
-    ) -> Result<WithStmts<(P<Expr>, Option<P<Expr>>)>, String> {
+    ) -> Result<WithStmts<(P<Expr>, Option<P<Expr>>)>, TranslationError> {
         let reference_ty = self
             .ast_context
             .index(reference)
             .kind
             .get_qual_type()
-            .ok_or_else(|| format!("bad reference type"))?;
+            .ok_or_else(|| format_err!("bad reference type"))?;
         let WithStmts {
             val: reference,
             mut stmts,
@@ -76,7 +76,7 @@ impl<'c> Translation<'c> {
         }
 
         // Given the LHS access to a variable, produce the RHS one
-        let read = |write: P<Expr>| -> Result<P<Expr>, String> {
+        let read = |write: P<Expr>| -> Result<P<Expr>, TranslationError> {
             if reference_ty.qualifiers.is_volatile {
                 self.volatile_read(&write, reference_ty)
             } else {

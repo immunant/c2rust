@@ -114,11 +114,11 @@ impl<'c> Translation<'c> {
 
     /// Determine if a particular function name is an SIMD primitive. If so an appropriate
     /// use statement is generated, `true` is returned, and no further processing will need to be done.
-    pub fn import_simd_function(&self, name: &str) -> Result<bool, String> {
+    pub fn import_simd_function(&self, name: &str) -> Result<bool, TranslationError> {
         if name.starts_with("_mm") {
             // REVIEW: This will do a linear lookup against all SIMD fns. Could use a lazy static hashset
             if MISSING_SIMD_FUNCTIONS.contains(&name) {
-                return Err(format!("SIMD function {} doesn't currently have a rust counterpart", name));
+                Err(format_err!("SIMD function {} doesn't currently have a rust counterpart", name))?;
             }
 
             // The majority of x86/64 SIMD is stable, however there are still some
@@ -181,7 +181,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         fn_name: &str,
         args: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         self.import_simd_function(fn_name)?;
 
         let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
@@ -234,7 +234,7 @@ impl<'c> Translation<'c> {
 
     /// Generate a zero value to be used for initialization of a given vector type. The type
     /// is specified with the underlying element type and the number of elements in the vector.
-    pub fn implicit_vector_default(&self, ctype: CTypeId, len: usize, is_static: bool) -> Result<P<Expr>, String> {
+    pub fn implicit_vector_default(&self, ctype: CTypeId, len: usize, is_static: bool) -> Result<P<Expr>, TranslationError> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
         let (fn_name, bytes) = match (&self.ast_context[ctype].kind, len) {
@@ -242,19 +242,19 @@ impl<'c> Translation<'c> {
             (Float, 8) => ("_mm256_setzero_ps", 32),
             (Double, 2) => ("_mm_setzero_pd", 16),
             (Double, 4) => ("_mm256_setzero_pd", 32),
-            (LongLong, 2) => ("_mm_setzero_si128", 16),
-            (LongLong, 4) => ("_mm256_setzero_si256", 32),
-            (LongLong, 1) => {
+            (Char, 16) | (Int, 4) | (LongLong, 2) => ("_mm_setzero_si128", 16),
+            (Char, 32) | (Int, 8) | (LongLong, 4) => ("_mm256_setzero_si256", 32),
+            (Char, 8) | (Int, 2) | (LongLong, 1) => {
                 // __m64 is still unstable as of rust 1.29
                 self.features.borrow_mut().insert("stdsimd");
 
                 ("_mm_setzero_si64", 8)
             }
             (kind, len) => {
-                return Err(format!(
+                Err(format_err!(
                     "Unsupported vector default initializer: {:?} x {}",
                     kind, len
-                ))
+                ))?
             }
         };
 
@@ -281,7 +281,7 @@ impl<'c> Translation<'c> {
         ids: &[CExprId],
         ctype: CTypeId,
         len: usize,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let mut params: Vec<P<Expr>> = vec![];
 
         for param_id in ids {
@@ -316,7 +316,7 @@ impl<'c> Translation<'c> {
                 (Short, 4) => "_mm_setr_pi16",
                 (Short, 8) => "_mm_setr_epi16",
                 (Short, 16) => "_mm256_setr_epi16",
-                ref e => return Err(format!("Unknown vector init list: {:?}", e)),
+                ref e => Err(format_err!("Unknown vector init list: {:?}", e))?,
             };
 
             self.import_simd_function(fn_call_name)?;
@@ -352,15 +352,15 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         child_expr_ids: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
         // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm256_shuffle_epi8
 
         if ![4, 6, 10, 18].contains(&child_expr_ids.len()) {
-            return Err(format!(
+            Err(format_err!(
                 "Unsupported shuffle vector without 4, 6, 10, or 18 input params: {}",
                 child_expr_ids.len()
-            ));
+            ))?
         };
 
         // There is some internal explicit casting which is okay for us to strip off
@@ -431,7 +431,7 @@ impl<'c> Translation<'c> {
                     "_mm256_shufflelo_epi16"
                 }
             },
-            e => return Err(format!("Unknown shuffle vector signature: {:?}", e)),
+            e => Err(format_err!("Unknown shuffle vector signature: {:?}", e))?,
         };
 
         // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
@@ -500,7 +500,7 @@ impl<'c> Translation<'c> {
     /// This function takes the expr ids belonging to a shuffle vector "super builtin" call,
     /// excluding the first two (which are always vector exprs). These exprs contain mathematical
     /// offsets applied to a mask expr (or are otherwise a numeric constant) which we'd like to extract.
-    fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> Result<CExprId, String> {
+    fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> Result<CExprId, TranslationError> {
         match self.ast_context.c_exprs[&expr_ids[0]].kind {
             // Need to unmask which looks like this most of the time: X + (((mask) >> Y) & Z):
             Binary(_, Add, _, rhs_expr_id, None, None) =>
@@ -509,7 +509,7 @@ impl<'c> Translation<'c> {
             Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
                 match self.ast_context.c_exprs[&lhs_expr_id].kind {
                     Binary(_, ShiftRight, lhs_expr_id, _, None, None) => Ok(lhs_expr_id),
-                    ref e => Err(format!("Found unknown mask format: {:?}", e)),
+                    ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
                 }
             }
             // Sometimes you find a constant and the mask is used further down the expr list
@@ -522,16 +522,16 @@ impl<'c> Translation<'c> {
                             ImplicitCast(_, expr_id, IntegralCast, _, _) => {
                                 match self.ast_context.c_exprs[&expr_id].kind {
                                     ExplicitCast(_, expr_id, IntegralCast, _, _) => Ok(expr_id),
-                                    ref e => Err(format!("Found unknown mask format: {:?}", e))
+                                    ref e => Err(format_err!("Found unknown mask format: {:?}", e))?
                                 }
                             },
-                            ref e => Err(format!("Found unknown mask format: {:?}", e)),
+                            ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
                         }
                     },
-                    ref e => Err(format!("Found unknown mask format: {:?}", e)),
+                    ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
                 }
             },
-            ref e => Err(format!("Found unknown mask format: {:?}", e)),
+            ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
         }
     }
 

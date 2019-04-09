@@ -6,6 +6,7 @@ use std::ops::Index;
 use renamer::*;
 use std::collections::{HashSet,HashMap};
 use c_ast::CDeclId;
+use translator::TranslationError;
 
 pub struct TypeConverter {
     pub translate_valist: bool,
@@ -106,7 +107,7 @@ impl TypeConverter {
       ret: Option<CQualTypeId>,
       params: &Vec<CQualTypeId>,
       is_variadic: bool
-    ) -> Result<P<Ty>, String> {
+    ) -> Result<P<Ty>, TranslationError> {
         let inputs = params.iter().map(|x|
             mk().arg(self.convert(ctxt, x.ctype).unwrap(),
                                  mk().wild_pat())
@@ -121,7 +122,7 @@ impl TypeConverter {
         return Ok(mk().unsafe_().abi("C").barefn_ty(fn_ty));
     }
 
-    pub fn convert_pointer(&mut self, ctxt: &TypedAstContext, qtype: CQualTypeId) -> Result<P<Ty>, String> {
+    pub fn convert_pointer(&mut self, ctxt: &TypedAstContext, qtype: CQualTypeId) -> Result<P<Ty>, TranslationError> {
 
         match ctxt.resolve_type(qtype.ctype).kind {
 
@@ -146,7 +147,7 @@ impl TypeConverter {
             CTypeKind::Function(ret, ref params, is_var, is_noreturn, has_proto) => {
 
                 if !has_proto {
-                    return Err(format!("Unable to convert function pointer type without prototype"))
+                    return Err(TranslationError::generic("Unable to convert function pointer type without prototype"))
                 }
 
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
@@ -186,7 +187,7 @@ impl TypeConverter {
 
     /// Convert a `C` type to a `Rust` one. For the moment, these are expected to have compatible
     /// memory layouts.
-    pub fn convert(&mut self, ctxt: &TypedAstContext, ctype: CTypeId) -> Result<P<Ty>, String> {
+    pub fn convert(&mut self, ctxt: &TypedAstContext, ctype: CTypeId) -> Result<P<Ty>, TranslationError> {
 
         match ctxt.index(ctype).kind {
             CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
@@ -215,7 +216,7 @@ impl TypeConverter {
             CTypeKind::Paren(ref ctype) => self.convert(ctxt, *ctype),
 
             CTypeKind::Struct(decl_id) => {
-                let new_name = self.resolve_decl_name(decl_id).ok_or_else(|| format!("Unknown decl id {:?}", decl_id))?;
+                let new_name = self.resolve_decl_name(decl_id).ok_or_else(|| format_err!("Unknown decl id {:?}", decl_id))?;
                 Ok(mk().path_ty(mk().path(vec![new_name])))
             }
 
@@ -264,7 +265,7 @@ impl TypeConverter {
 
             CTypeKind::TypeOf(ty) => self.convert(ctxt, ty),
 
-            ref t => Err(format!("Unsupported type {:?}", t)),
+            ref t => Err(format_err!("Unsupported type {:?}", t).into()),
         }
     }
 }

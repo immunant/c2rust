@@ -11,7 +11,7 @@ pub fn structured_cfg(
     current_block: P<Expr>,
     debug_labels: bool,
     cut_out_trailing_ret: bool,
-) -> Result<Vec<Stmt>, String> {
+) -> Result<Vec<Stmt>, TranslationError> {
 
 
     let ast: StructuredAST<P<Expr>, P<Pat>, Label, StmtOrComment> = structured_cfg_help(
@@ -194,7 +194,7 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
     next: &IndexSet<Label>,
     root: &Vec<Structure<StmtOrComment>>,
     used_loop_labels: &mut IndexSet<Label>,
-) -> Result<S, String> {
+) -> Result<S, TranslationError> {
 
     let mut next: &IndexSet<Label> = next;
     let mut rest: S = S::empty();
@@ -213,7 +213,7 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
                     if target.len() == 1 { S::empty() } else { S::mk_goto(to) }
                 };
 
-                let mut branch = |slbl: &StructureLabel<StmtOrComment>| -> Result<S, String> {
+                let mut branch = |slbl: &StructureLabel<StmtOrComment>| -> Result<S, TranslationError> {
                     match slbl {
                         &StructureLabel::Nested(ref nested) =>
                             structured_cfg_help(
@@ -248,13 +248,13 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
                                 immediate = false;
                             }
 
-                            Err(format!("Not a valid exit: {:?} has nothing to exit to", to))
+                            Err(format_err!("Not a valid exit: {:?} has nothing to exit to", to).into())
                         }
 
-                        &StructureLabel::GoTo(to) => Err(format!(
+                        &StructureLabel::GoTo(to) => Err(format_err!(
                             "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
                             to, next
-                        )),
+                        ).into()),
                     }
                 };
 
@@ -266,7 +266,7 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
                         let branched_cases: Vec<(Vec<P<Pat>>, S)> = cases
                             .iter()
                             .map(|&(ref pats, ref slbl)| Ok((pats.clone(), branch(slbl)?)))
-                            .collect::<Result<Vec<(Vec<P<Pat>>, S)>, String>>()?;
+                            .collect::<Result<Vec<(Vec<P<Pat>>, S)>, TranslationError>>()?;
 
                         S::mk_match(expr.clone(), branched_cases)
                     },
@@ -276,7 +276,7 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
             &Structure::Multiple { ref branches, ref then, .. } => {
                 let cases: Vec<(Label, S)> = branches
                     .iter()
-                    .map(|(lbl, body)| -> Result<(Label, S), String> {
+                    .map(|(lbl, body)| -> Result<(Label, S), TranslationError> {
                         let stmts = structured_cfg_help(
                             exits.clone(),
                             next,
@@ -285,7 +285,7 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
                         )?;
                         Ok((*lbl, stmts))
                     })
-                    .collect::<Result<Vec<(Label, S)>, String>>()?;
+                    .collect::<Result<Vec<(Label, S)>, TranslationError>>()?;
 
                 let then: S = structured_cfg_help(
                     exits.clone(),
@@ -299,7 +299,7 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
 
             &Structure::Loop { ref body, ref entries } => {
                 let label = entries.iter().next()
-                    .ok_or(format!("The loop {:?} has no entry", structure))?;
+                    .ok_or(format_err!("The loop {:?} has no entry", structure))?;
 
                 let mut these_exits = IndexMap::new();
                 these_exits.extend(entries
