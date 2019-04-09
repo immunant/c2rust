@@ -1,3 +1,4 @@
+//! feature_core_intrinsics,
 extern crate libc;
 
 use sizeofs::rust_sizeofs;
@@ -10,7 +11,7 @@ extern "C" {
     fn sizeofs(_: c_uint, _: *mut c_int);
 }
 
-const BUFFER_SIZE: usize = 48;
+const BUFFER_SIZE: usize = 60;
 
 pub fn test_sizeofs() {
     let mut buffer = [0; BUFFER_SIZE];
