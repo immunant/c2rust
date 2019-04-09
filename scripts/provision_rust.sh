@@ -27,3 +27,7 @@ source ~/.cargo/env
 # required for c2rust-refactor tests
 # rustup run $RUST_VER cargo install --force rustfmt
 rustup component add rustfmt-preview
+
+# Make rustup directory world-writable so other test users can install new rust
+# versions
+chmod -R a+w ~/.rustup
