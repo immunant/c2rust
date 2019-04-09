@@ -2,7 +2,7 @@ extern crate libc;
 
 use x86::{
     ShuffleVectors, VectorInitLists, rust_unpack_128_2x128, rust_zero_init_all, rust_call_all, rust_call_all_used, rust_vector_init_lists, rust_vector_init_lists_used,
-    rust_static_m128, rust_static_m256, rust_static_m128d, rust_static_m256d, rust_static_m128i, rust_static_m256i, rust_simd_fn_codegen,
+    rust_static_m128, rust_static_m256, rust_static_m128d, rust_static_m256d, rust_static_m128i, rust_static_m256i, 
     rust_static_uninit_m128, rust_static_uninit_m256, rust_static_uninit_m128d, rust_static_uninit_m256d, rust_static_uninit_m128i, rust_static_uninit_m256i,
 };
 
