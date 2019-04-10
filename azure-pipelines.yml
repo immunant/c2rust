@@ -2,7 +2,6 @@ trigger:
   branches:
     include:
     - master
-    - feature/*
   paths:
     exclude:
     - README.md
