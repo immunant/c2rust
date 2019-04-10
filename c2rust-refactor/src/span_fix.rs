@@ -10,15 +10,15 @@ use std::mem;
 use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::source_map::{Span, DUMMY_SP};
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax_pos::hygiene::SyntaxContext;
 
-use crate::ast_manip::Fold;
+use crate::ast_manip::MutVisit;
 use crate::ast_manip::util::extended_span;
 
 
-/// Folder for fixing expansions of `format!`.  `format!(..., foo)` generates an expression `&foo`,
+/// MutVisitor for fixing expansions of `format!`.  `format!(..., foo)` generates an expression `&foo`,
 /// and gives it the same span as `foo` itself (notably, *not* a macro generated span), which
 /// causes problems for us later on.  This folder detects nodes like `&foo` and gives them a
 /// macro-generated span to fix the problem.
@@ -60,8 +60,8 @@ impl FixFormat {
     }
 }
 
-impl Folder for FixFormat {
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+impl MutVisitor for FixFormat {
+    fn visit_expr(&mut self, e: &mut P<Expr>) {
         if self.in_format &&
            e.span.ctxt() == SyntaxContext::empty() &&
            matches!([e.node] ExprKind::AddrOf(..)) {
@@ -69,32 +69,31 @@ impl Folder for FixFormat {
             // Current node is the `&foo`.  We need to change its span.  On recursing into `foo`,
             // we are no longer inside a `format!` invocation.
             let new_span = self.parent_span;
-            self.descend(false, e.span, |this| e.map(|e| {
-                let mut e = fold::noop_fold_expr(e, this);
+            self.descend(false, e.span, |this| {
+                mut_visit::noop_visit_expr(e, this);
                 e.span = new_span;
-                e
-            }))
+            })
         } else if !self.in_format && self.is_format_entry(&e) {
             trace!("ENTERING format! at {:?}", e);
-            self.descend(true, e.span, |this| e.map(|e| fold::noop_fold_expr(e, this)))
+            self.descend(true, e.span, |this| mut_visit::noop_visit_expr(e, this))
         } else {
             let in_format = self.in_format;
-            self.descend(in_format, e.span, |this| e.map(|e| fold::noop_fold_expr(e, this)))
+            self.descend(in_format, e.span, |this| mut_visit::noop_visit_expr(e, this))
         }
     }
 
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
+    fn visit_mac(&mut self, mac: &mut Mac) {
+        mut_visit::noop_visit_mac(mac, self)
     }
 }
 
 
-/// Folder for fixing up spans of items with attributes.  We set the span of the item to include
+/// MutVisitor for fixing up spans of items with attributes.  We set the span of the item to include
 /// all its attrs, so that removing the item will also remove the attrs from the source text.
 struct FixAttrs;
 
-impl Folder for FixAttrs {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+impl MutVisitor for FixAttrs {
+    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let new_span = extended_span(i.span, &i.attrs);
         let i =
             if new_span != i.span {
@@ -102,10 +101,10 @@ impl Folder for FixAttrs {
             } else {
                 i
             };
-        fold::noop_fold_item(i, self)
+        mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         let new_span = extended_span(fi.span, &fi.attrs);
         let fi =
             if new_span != fi.span {
@@ -113,23 +112,23 @@ impl Folder for FixAttrs {
             } else {
                 fi
             };
-        fold::noop_fold_foreign_item(fi, self)
+        mut_visit::noop_flat_map_foreign_item(fi, self)
     }
 
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
+    fn visit_mac(&mut self, mac: &mut Mac) {
+        mut_visit::noop_visit_mac(mac, self)
     }
 }
 
 
-pub fn fix_format<T: Fold>(node: T) -> <T as Fold>::Result {
+pub fn fix_format<T: MutVisit>(node: &mut T) {
     let mut fix_format = FixFormat {
         parent_span: DUMMY_SP,
         in_format: false,
     };
-    node.fold(&mut fix_format)
+    node.visit(&mut fix_format)
 }
 
-pub fn fix_attr_spans<T: Fold>(node: T) -> <T as Fold>::Result {
-    node.fold(&mut FixAttrs)
+pub fn fix_attr_spans<T: MutVisit>(node: &mut T) {
+    node.visit(&mut FixAttrs)
 }

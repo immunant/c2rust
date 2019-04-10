@@ -11,11 +11,11 @@ use super::constraint::ConstraintSet;
 use super::context::{Ctxt, VariantSumm, Instantiation};
 
 
-pub struct InstCtxt<'a, 'tcx: 'a> {
-    cx: &'a Ctxt<'a, 'tcx>,
+pub struct InstCtxt<'lty, 'a: 'lty, 'tcx: 'a> {
+    cx: &'lty Ctxt<'lty, 'a, 'tcx>,
 
-    insts: &'a [Instantiation],
-    cset: ConstraintSet<'tcx>,
+    insts: &'lty [Instantiation],
+    cset: ConstraintSet<'lty>,
 
     /// Selected mono idx for each instantiation.
     inst_sel: Vec<Option<usize>>,
@@ -24,11 +24,11 @@ pub struct InstCtxt<'a, 'tcx: 'a> {
     inst_assign: IndexVec<Var, Option<ConcretePerm>>,
 }
 
-impl<'a, 'tcx> InstCtxt<'a, 'tcx> {
-    pub fn new(cx: &'a Ctxt<'a, 'tcx>,
+impl<'lty, 'a, 'tcx> InstCtxt<'lty, 'a, 'tcx> {
+    pub fn new(cx: &'lty Ctxt<'lty, 'a, 'tcx>,
                func_did: DefId,
                mono_idx: usize)
-               -> InstCtxt<'a, 'tcx> {
+               -> InstCtxt<'lty, 'a, 'tcx> {
         let variant = cx.get_mono_variant_summ(func_did, mono_idx);
         let mono = cx.get_mono_summ(func_did, mono_idx);
         let cset = build_inst_cset(cx, variant, &mono.assign);
@@ -154,10 +154,10 @@ pub fn find_instantiations(cx: &mut Ctxt) {
 }
 
 
-pub fn build_inst_cset<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>,
-                                 variant: &VariantSumm<'tcx>,
+pub fn build_inst_cset<'lty, 'a, 'tcx>(cx: &'lty Ctxt<'lty, 'a, 'tcx>,
+                                 variant: &VariantSumm<'lty>,
                                  assign: &IndexVec<Var, ConcretePerm>)
-                                 -> ConstraintSet<'tcx> {
+                                 -> ConstraintSet<'lty> {
     let mut cset = variant.inst_cset.clone_substituted(cx.arena, |p| {
         match p {
             Perm::SigVar(v) => Perm::Concrete(assign[v]),

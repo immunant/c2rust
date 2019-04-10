@@ -2,6 +2,7 @@
 #![feature(label_break_value)]
 extern crate dtoa;
 extern crate rustc_target;
+extern crate rustc_data_structures;
 extern crate serde_cbor;
 extern crate syntax;
 extern crate syntax_pos;

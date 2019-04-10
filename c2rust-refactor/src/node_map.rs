@@ -107,9 +107,9 @@ impl NodeMap {
 
 
     /// Update mark NodeIds to account for the pending (not committed) NodeId changes.
-    pub fn transfer_marks(&self, marks: &HashSet<(NodeId, Symbol)>) -> HashSet<(NodeId, Symbol)> {
+    pub fn transfer_marks(&self, marks: &mut HashSet<(NodeId, Symbol)>) {
         let mut new_marks = HashSet::new();
-        for &(old_id, label) in marks {
+        for &(old_id, label) in marks.iter() {
             let lo = (old_id, NodeId::from_u32(0));
             let hi = (old_id, NodeId::MAX);
             let mut empty = true;
@@ -122,7 +122,7 @@ impl NodeMap {
                 debug!("  {:?}: {:?} -> DROPPED", label, old_id);
             }
         }
-        new_marks
+        *marks = new_marks;
     }
 
     /// Update keys of an arbitrary `HashMap` to account for the pending (not committed) NodeId

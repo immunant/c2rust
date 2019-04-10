@@ -6,13 +6,14 @@
 //! added in different places: macro invocations in `CollapseMacros`, macro arguments in
 //! `token_rewrite_map`, and nodes outside of macros in `ReplaceTokens`.
 use std::collections::{HashMap, HashSet, BTreeMap};
+use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::source_map::{Span, BytePos};
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::parse::token::{Token, Nonterminal};
-use syntax::tokenstream::{self, TokenStream, ThinTokenStream, TokenTree, Delimited};
+use syntax::tokenstream::{self, TokenStream, TokenTree};
 use smallvec::SmallVec;
 use c2rust_ast_builder::mk;
 
@@ -20,8 +21,7 @@ use super::mac_table::{MacTable, InvocId, InvocKind};
 use super::nt_match::{self, NtMatch};
 use super::root_callsite_span;
 
-use crate::ast_manip::{Fold, ListNodeIds};
-use crate::ast_manip::AstEquiv;
+use crate::ast_manip::{AstEquiv, ListNodeIds, MutVisit};
 
 
 
@@ -57,8 +57,10 @@ impl<'a> CollapseMacros<'a> {
         for (span, nt) in nt_match::match_nonterminals(old, new) {
             trace!("  got {} at {:?}",
                    ::syntax::print::pprust::token_to_string(
-                       &Token::interpolated(nt.clone())),
-                       span);
+                       &Token::Interpolated(Lrc::new(nt.clone()))
+                   ),
+                   span,
+            );
             self.token_rewrites.push(RewriteItem { invoc_id, span, nt });
         }
     }
@@ -68,8 +70,8 @@ impl<'a> CollapseMacros<'a> {
     }
 }
 
-impl<'a> Folder for CollapseMacros<'a> {
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+impl<'a> MutVisitor for CollapseMacros<'a> {
+    fn visit_expr(&mut self, e: &mut P<Expr>) {
         if let Some(info) = self.mac_table.get(e.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_expr()
@@ -78,15 +80,15 @@ impl<'a> Folder for CollapseMacros<'a> {
                 let new_e = mk().id(e.id).span(root_callsite_span(e.span)).mac_expr(mac);
                 trace!("collapse: {:?} -> {:?}", e, new_e);
                 self.record_matched_ids(e.id, new_e.id);
-                return new_e;
+                *e = new_e;
             } else {
                 warn!("bad macro kind for expr: {:?}", info.invoc);
             }
         }
-        e.map(|e| fold::noop_fold_expr(e, self))
+        mut_visit::noop_visit_expr(e, self)
     }
 
-    fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> {
+    fn visit_pat(&mut self, p: &mut P<Pat>) {
         if let Some(info) = self.mac_table.get(p.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_pat()
@@ -95,15 +97,15 @@ impl<'a> Folder for CollapseMacros<'a> {
                 let new_p = mk().id(p.id).span(root_callsite_span(p.span)).mac_pat(mac);
                 trace!("collapse: {:?} -> {:?}", p, new_p);
                 self.record_matched_ids(p.id, new_p.id);
-                return new_p;
+                *p = new_p;
             } else {
                 warn!("bad macro kind for pat: {:?}", info.invoc);
             }
         }
-        fold::noop_fold_pat(p, self)
+        mut_visit::noop_visit_pat(p, self)
     }
 
-    fn fold_ty(&mut self, t: P<Ty>) -> P<Ty> {
+    fn visit_ty(&mut self, t: &mut P<Ty>) {
         if let Some(info) = self.mac_table.get(t.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_ty()
@@ -112,15 +114,15 @@ impl<'a> Folder for CollapseMacros<'a> {
                 let new_t = mk().id(t.id).span(root_callsite_span(t.span)).mac_ty(mac);
                 trace!("collapse: {:?} -> {:?}", t, new_t);
                 self.record_matched_ids(t.id, new_t.id);
-                return new_t;
+                *t = new_t;
             } else {
                 warn!("bad macro kind for ty: {:?}", info.invoc);
             }
         }
-        fold::noop_fold_ty(t, self)
+        mut_visit::noop_visit_ty(t, self)
     }
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
+    fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(info) = self.mac_table.get(s.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_stmt()
@@ -141,10 +143,10 @@ impl<'a> Folder for CollapseMacros<'a> {
                 warn!("bad macro kind for stmt: {:?}", info.invoc);
             }
         }
-        fold::noop_fold_stmt(s, self)
+        mut_visit::noop_flat_map_stmt(s, self)
     }
 
-    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         if let Some(info) = self.mac_table.get(i.id) {
             match info.invoc {
                 InvocKind::Mac(mac) => {
@@ -175,10 +177,10 @@ impl<'a> Folder for CollapseMacros<'a> {
                 },
             }
         }
-        fold::noop_fold_item(i, self)
+        mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, ii: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if let Some(info) = self.mac_table.get(ii.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_impl_item()
@@ -200,10 +202,10 @@ impl<'a> Folder for CollapseMacros<'a> {
                 warn!("bad macro kind for impl item: {:?}", info.invoc);
             }
         }
-        fold::noop_fold_impl_item(ii, self)
+        mut_visit::noop_flat_map_impl_item(ii, self)
     }
 
-    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVec<[TraitItem; 1]> {
+    fn flat_map_trait_item(&mut self, ti: TraitItem) -> SmallVec<[TraitItem; 1]> {
         if let Some(info) = self.mac_table.get(ti.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_trait_item()
@@ -225,10 +227,10 @@ impl<'a> Folder for CollapseMacros<'a> {
                 warn!("bad macro kind for trait item: {:?}", info.invoc);
             }
         }
-        fold::noop_fold_trait_item(ti, self)
+        mut_visit::noop_flat_map_trait_item(ti, self)
     }
 
-    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         if let Some(info) = self.mac_table.get(fi.id) {
             if let InvocKind::Mac(mac) = info.invoc {
                 let old = info.expanded.as_foreign_item()
@@ -250,11 +252,11 @@ impl<'a> Folder for CollapseMacros<'a> {
                 warn!("bad macro kind for trait item: {:?}", info.invoc);
             }
         }
-        fold::noop_fold_foreign_item(fi, self)
+        mut_visit::noop_flat_map_foreign_item(fi, self)
     }
 
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
+    fn visit_mac(&mut self, mac: &mut Mac) {
+        mut_visit::noop_visit_mac(mac, self)
     }
 }
 
@@ -380,7 +382,7 @@ fn rewrite_tokens(invoc_id: InvocId,
 
         if let Some(item) = rewrites.remove(&tt.span().lo()) {
             assert!(item.invoc_id == invoc_id);
-            new_tts.push(TokenTree::Token(item.span, Token::interpolated(item.nt)));
+            new_tts.push(TokenTree::Token(item.span, Token::Interpolated(Lrc::new(item.nt))));
             ignore_until = Some(item.span.hi());
             continue;
         }
@@ -389,12 +391,12 @@ fn rewrite_tokens(invoc_id: InvocId,
             TokenTree::Token(sp, t) => {
                 new_tts.push(TokenTree::Token(sp, t));
             },
-            TokenTree::Delimited(sp, d) => {
-                let d_tts: TokenStream = d.tts.into();
-                new_tts.push(TokenTree::Delimited(sp, Delimited {
-                    tts: rewrite_tokens(invoc_id, d_tts.into_trees(), rewrites).into(),
-                    ..d
-                }));
+            TokenTree::Delimited(sp, delim, tts) => {
+                new_tts.push(TokenTree::Delimited(
+                    sp,
+                    delim, 
+                    rewrite_tokens(invoc_id, tts.into_trees(), rewrites).into(),
+                ));
             },
         }
     }
@@ -405,7 +407,7 @@ fn rewrite_tokens(invoc_id: InvocId,
 fn convert_token_rewrites(rewrite_vec: Vec<RewriteItem>,
                           mac_table: &MacTable,
                           matched_ids: &mut Vec<(NodeId, NodeId)>)
-                          -> HashMap<InvocId, ThinTokenStream> {
+                          -> HashMap<InvocId, TokenStream> {
     let mut rewrite_map = token_rewrite_map(rewrite_vec, matched_ids);
     let invoc_ids = rewrite_map.values().map(|r| r.invoc_id).collect::<HashSet<_>>();
     invoc_ids.into_iter().filter_map(|invoc_id| {
@@ -422,57 +424,48 @@ fn convert_token_rewrites(rewrite_vec: Vec<RewriteItem>,
 }
 
 
-/// Folder for updating the `TokenStream`s of macro invocations.  This is where we actually copy
+/// MutVisitor for updating the `TokenStream`s of macro invocations.  This is where we actually copy
 /// the rewritten token streams produced by `convert_token_rewrites` into the AST.
 ///
 /// As a side effect, this updates `matched_ids` with identity edges (`x.id -> x.id`) for any
 /// remaining nodes that were unaffected by the collapsing.
 struct ReplaceTokens<'a> {
     mac_table: &'a MacTable<'a>,
-    new_tokens: HashMap<InvocId, ThinTokenStream>,
+    new_tokens: HashMap<InvocId, TokenStream>,
     matched_ids: &'a mut Vec<(NodeId, NodeId)>,
 }
 
-impl<'a> Folder for ReplaceTokens<'a> {
-    fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
+impl<'a> MutVisitor for ReplaceTokens<'a> {
+    fn visit_expr(&mut self, e: &mut P<Expr>) {
         if let Some(invoc_id) = self.mac_table.get(e.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 // NB: Don't walk, so we never run `self.new_id` on `e.id`.  matched_ids entries
                 // for macro invocations get handled by the CollapseMacros pass.
-                return e.map(|mut e| {
-                    expect!([e.node] ExprKind::Mac(ref mut mac) => mac.node.tts = new_tts);
-                    e
-                });
+                expect!([e.node] ExprKind::Mac(ref mut mac) => mac.node.tts = new_tts);
             }
         }
-        e.map(|e| fold::noop_fold_expr(e, self))
+        mut_visit::noop_visit_expr(e, self)
     }
 
-    fn fold_pat(&mut self, p: P<Pat>) -> P<Pat> {
+    fn visit_pat(&mut self, p: &mut P<Pat>) {
         if let Some(invoc_id) = self.mac_table.get(p.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
-                return p.map(|mut p| {
-                    expect!([p.node] PatKind::Mac(ref mut mac) => mac.node.tts = new_tts);
-                    p
-                });
+                expect!([p.node] PatKind::Mac(ref mut mac) => mac.node.tts = new_tts);
             }
         }
-        fold::noop_fold_pat(p, self)
+        mut_visit::noop_visit_pat(p, self)
     }
 
-    fn fold_ty(&mut self, t: P<Ty>) -> P<Ty> {
+    fn visit_ty(&mut self, t: &mut P<Ty>) {
         if let Some(invoc_id) = self.mac_table.get(t.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
-                return t.map(|mut t| {
-                    expect!([t.node] TyKind::Mac(ref mut mac) => mac.node.tts = new_tts);
-                    t
-                });
+                expect!([t.node] TyKind::Mac(ref mut mac) => mac.node.tts = new_tts);
             }
         }
-        fold::noop_fold_ty(t, self)
+        mut_visit::noop_visit_ty(t, self)
     }
 
-    fn fold_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
+    fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(invoc_id) = self.mac_table.get(s.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 unpack!([s.node] StmtKind::Mac(mac));
@@ -483,10 +476,10 @@ impl<'a> Folder for ReplaceTokens<'a> {
                 return smallvec![Stmt { node: StmtKind::Mac(mac), ..s }];
             }
         }
-        fold::noop_fold_stmt(s, self)
+        mut_visit::noop_flat_map_stmt(s, self)
     }
 
-    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         if let Some(invoc_id) = self.mac_table.get(i.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 return smallvec![i.map(|mut i| {
@@ -495,10 +488,10 @@ impl<'a> Folder for ReplaceTokens<'a> {
                 })];
             }
         }
-        fold::noop_fold_item(i, self)
+        mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn fold_impl_item(&mut self, ii: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, ii: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if let Some(invoc_id) = self.mac_table.get(ii.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut ii = ii;
@@ -506,10 +499,10 @@ impl<'a> Folder for ReplaceTokens<'a> {
                 return smallvec![ii];
             }
         }
-        fold::noop_fold_impl_item(ii, self)
+        mut_visit::noop_flat_map_impl_item(ii, self)
     }
 
-    fn fold_trait_item(&mut self, ti: TraitItem) -> SmallVec<[TraitItem; 1]> {
+    fn flat_map_trait_item(&mut self, ti: TraitItem) -> SmallVec<[TraitItem; 1]> {
         if let Some(invoc_id) = self.mac_table.get(ti.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut ti = ti;
@@ -517,10 +510,10 @@ impl<'a> Folder for ReplaceTokens<'a> {
                 return smallvec![ti];
             }
         }
-        fold::noop_fold_trait_item(ti, self)
+        mut_visit::noop_flat_map_trait_item(ti, self)
     }
 
-    fn fold_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         if let Some(invoc_id) = self.mac_table.get(fi.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut fi = fi;
@@ -528,22 +521,21 @@ impl<'a> Folder for ReplaceTokens<'a> {
                 return smallvec![fi];
             }
         }
-        fold::noop_fold_foreign_item(fi, self)
+        mut_visit::noop_flat_map_foreign_item(fi, self)
     }
 
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
+    fn visit_mac(&mut self, mac: &mut Mac) {
+        mut_visit::noop_visit_mac(mac, self)
     }
 
-    fn new_id(&mut self, i: NodeId) -> NodeId {
-        self.matched_ids.push((i, i));
-        i
+    fn visit_id(&mut self, i: &mut NodeId) {
+        self.matched_ids.push((*i, *i));
     }
 }
 
 
-pub fn collapse_macros(mut krate: Crate,
-                       mac_table: &MacTable) -> (Crate, Vec<(NodeId, NodeId)>) {
+pub fn collapse_macros(krate: &mut Crate,
+                       mac_table: &MacTable) -> Vec<(NodeId, NodeId)> {
     let mut matched_ids = Vec::new();
 
     let token_rewrites: Vec<RewriteItem>;
@@ -554,7 +546,7 @@ pub fn collapse_macros(mut krate: Crate,
             token_rewrites: Vec::new(),
             matched_ids: &mut matched_ids,
         };
-        krate = krate.fold(&mut collapse_macros);
+        krate.visit(&mut collapse_macros);
         token_rewrites = collapse_macros.token_rewrites;
     }
 
@@ -565,8 +557,8 @@ pub fn collapse_macros(mut krate: Crate,
               ::syntax::print::pprust::tokens_to_string(v.clone().into()));
     }
 
-    krate = krate.fold(&mut ReplaceTokens {
+    krate.visit(&mut ReplaceTokens {
         mac_table, new_tokens, matched_ids: &mut matched_ids });
 
-    (krate, matched_ids)
+    matched_ids
 }

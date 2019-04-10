@@ -33,8 +33,7 @@ impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
                         }
 
                         // For struct and node constructors, also check the parent item
-                        if matches!([path.def] Def::StructCtor(..)) ||
-                           matches!([path.def] Def::VariantCtor(..)) {
+                        if matches!([path.def] Def::Ctor(..)) {
                             let parent_id = self.cx.hir_map().get_parent(id);
                             if self.st.marked(parent_id, self.label) {
                                 self.st.add_mark(use_id, self.label);
@@ -168,7 +167,7 @@ pub fn find_mark_uses<T: Visit>(target: &T,
 /// For every top-level definition bearing `MARK`, apply `MARK` to uses of that
 /// definition.  Removes `MARK` from the original definitions.
 pub fn find_mark_uses_command(st: &CommandState, cx: &RefactorCtxt, label: &str) {
-    find_mark_uses(&*st.krate(), st, cx, label);
+    find_mark_uses(&*st.krate_mut(), st, cx, label);
 }
 
 

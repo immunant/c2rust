@@ -12,15 +12,16 @@ use std::sync::Arc;
 use derive_more::{From, TryInto};
 use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaTable};
 use rlua::{Lua, UserData, UserDataMethods};
+use rustc_interface::interface;
 use slotmap::{new_key_type, SlotMap};
 use syntax::ast;
 use syntax::ptr::P;
 
 use crate::command::{self, CommandState, RefactorState};
-use crate::context::RefactorCtxt;
-use crate::driver::Phase;
+use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
-use crate::matcher::{self, fold_match_with, Bindings, MatchCtxt, Pattern, Subst, TryMatch};
+use crate::matcher::{self, mut_visit_match_with, Bindings, MatchCtxt, Pattern, Subst, TryMatch};
+use crate::RefactorCtxt;
 
 /// Refactoring module
 // @module Refactor
@@ -30,7 +31,7 @@ use crate::matcher::{self, fold_match_with, Bindings, MatchCtxt, Pattern, Subst,
 
 pub fn run_lua_file(
     script_path: &Path,
-    rustc_args: Vec<String>,
+    config: interface::Config,
     registry: command::Registry,
     rewrite_modes: Vec<OutputMode>,
 ) -> io::Result<()> {
@@ -39,15 +40,15 @@ pub fn run_lua_file(
     file.read_to_end(&mut script)?;
     let io = Arc::new(RealFileIO::new(rewrite_modes));
 
-    let lua = Lua::new();
-    lua.context(|lua_ctx| {
-        lua_ctx.scope(|scope| {
-            let state =
-                RefactorState::from_rustc_args(&rustc_args, registry, io.clone(), HashSet::new());
-            let refactor = scope.create_static_userdata(state)?;
-            lua_ctx.globals().set("refactor", refactor)?;
+    driver::run_refactoring(config, registry, io, HashSet::new(), |state| {
+        let lua = Lua::new();
+        lua.context(|lua_ctx| {
+            lua_ctx.scope(|scope| {
+                let refactor = scope.create_nonstatic_userdata(state)?;
+                lua_ctx.globals().set("refactor", refactor)?;
 
-            lua_ctx.load(&script).exec()
+                lua_ctx.load(&script).exec()
+            })
         })
     })
     .unwrap_or_else(|e| panic!("User script failed: {:#?}", e));
@@ -173,17 +174,16 @@ impl UserData for RefactorState {
         methods.add_method_mut("transform", |lua_ctx, this, callback: LuaFunction| {
             this.load_crate();
             this.transform_crate(Phase::Phase2, |st, cx| {
-                st.map_krate(|krate| {
-                    let transform = TransformCtxt::new(st, cx);
-                    let res: LuaResult<ast::Crate> = lua_ctx.scope(|scope| {
-                        let krate = transform.intern(krate);
-                        let transform_data = scope.create_nonstatic_userdata(transform.clone())?;
-                        let krate: LuaAstNode = callback.call::<_, LuaAstNode>((transform_data, krate))?;
-                        Ok(ast::Crate::try_from(transform.remove_ast(krate)).unwrap())
-                    });
-                    res.unwrap_or_else(|e| panic!("Could not run transform: {:#?}", e))
+                let transform = TransformCtxt::new(st, cx);
+                let res: LuaResult<ast::Crate> = lua_ctx.scope(|scope| {
+                    let krate = transform.intern(st.krate().clone());
+                    let transform_data = scope.create_nonstatic_userdata(transform.clone())?;
+                    let krate: LuaAstNode = callback.call::<_, LuaAstNode>((transform_data, krate))?;
+                    Ok(ast::Crate::try_from(transform.remove_ast(krate)).unwrap())
                 });
-            });
+                let new_krate = res.unwrap_or_else(|e| panic!("Could not run transform: {:#?}", e));
+                *st.krate_mut() = new_krate;
+            }).map_err(|e| LuaError::external(format!("Failed to run compiler: {:#?}", e)))?;
             this.save_crate();
             Ok(())
         });
@@ -325,19 +325,19 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
         Self { mcx, transform }
     }
 
-    fn fold_with<'lua, P>(
+    fn fold_with<'lua, P, V>(
         &self,
         lua_ctx: LuaContext<'lua>,
         pattern: P,
-        krate: ast::Crate,
+        krate: &mut ast::Crate,
         callback: LuaFunction<'lua>,
-    ) -> ast::Crate
-    where
-        P: Pattern + TryFrom<RustAstNode> + Into<RustAstNode>,
-        <P as TryFrom<RustAstNode>>::Error: Debug,
+    ) where
+        P: Pattern<V>,
+        V: TryFrom<RustAstNode> + Into<RustAstNode> + Clone,
+        <V as TryFrom<RustAstNode>>::Error: Debug,
     {
-        fold_match_with(self.mcx.clone(), pattern, krate, |x, mcx| {
-            let orig_node = self.transform.intern(x);
+        mut_visit_match_with(self.mcx.clone(), pattern, krate, |x, mcx| {
+            let orig_node = self.transform.intern(x.clone());
             let mcx = ScriptingMatchCtxt::wrap(self.transform.clone(), mcx);
             let new_node = lua_ctx
                 .scope(|scope| {
@@ -347,7 +347,7 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
                 .unwrap_or_else(|e| {
                     panic!("Could not execute callback in match:fold_with {:#?}", e)
                 });
-            self.transform.remove_ast(new_node).try_into().unwrap()
+            *x = self.transform.remove_ast(new_node).try_into().unwrap();
         })
     }
 }
@@ -396,13 +396,13 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         methods.add_method(
             "fold_with",
             |lua_ctx, this, (needle, krate, f): (LuaAstNode, LuaAstNode, LuaFunction)| {
-                let krate = ast::Crate::try_from(this.transform.remove_ast(krate)).unwrap();
-                let krate = match this.transform.remove_ast(needle).clone() {
-                    RustAstNode::Expr(pattern) => this.fold_with(lua_ctx, pattern, krate, f),
-                    RustAstNode::Ty(pattern) => this.fold_with(lua_ctx, pattern, krate, f),
-                    RustAstNode::Stmts(pattern) => this.fold_with(lua_ctx, pattern, krate, f),
+                let mut krate = ast::Crate::try_from(this.transform.remove_ast(krate)).unwrap();
+                match this.transform.remove_ast(needle).clone() {
+                    RustAstNode::Expr(pattern) => this.fold_with(lua_ctx, pattern, &mut krate, f),
+                    RustAstNode::Ty(pattern) => this.fold_with(lua_ctx, pattern, &mut krate, f),
+                    RustAstNode::Stmts(pattern) => this.fold_with(lua_ctx, pattern, &mut krate, f),
                     _ => return Err(LuaError::external("Unexpected Ast node type")),
-                };
+                }
                 Ok(this.transform.intern(krate))
             },
         );
@@ -522,14 +522,14 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                 this.st.map_krate(|krate| {
                     let mut mcx = MatchCtxt::new(this.st, this.cx);
                     let pat = mcx.parse_stmts(&pat);
-                    fold_match_with(mcx, pat, krate, |pat, _mcx| {
-                        let i = f.call::<_, LuaAstNode>(this.intern(pat)).unwrap();
-                        this.nodes
+                    mut_visit_match_with(mcx, pat, krate, |pat, _mcx| {
+                        let i = f.call::<_, LuaAstNode>(this.intern(pat.clone())).unwrap();
+                        *pat = this.nodes
                             .borrow_mut()
                             .remove(i)
                             .unwrap()
                             .try_into()
-                            .unwrap()
+                            .unwrap();
                     })
                 });
                 Ok(())
@@ -546,14 +546,14 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                 this.st.map_krate(|krate| {
                     let mut mcx = MatchCtxt::new(this.st, this.cx);
                     let pat = mcx.parse_expr(&pat);
-                    fold_match_with(mcx, pat, krate, |pat, _mcx| {
-                        let i = f.call::<_, LuaAstNode>(this.intern(pat)).unwrap();
-                        this.nodes
+                    mut_visit_match_with(mcx, pat, krate, |pat, _mcx| {
+                        let i = f.call::<_, LuaAstNode>(this.intern(pat.clone())).unwrap();
+                        *pat = this.nodes
                             .borrow_mut()
                             .remove(i)
                             .unwrap()
                             .try_into()
-                            .unwrap()
+                            .unwrap();
                     })
                 });
                 Ok(())

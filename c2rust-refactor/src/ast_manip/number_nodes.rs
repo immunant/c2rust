@@ -1,8 +1,8 @@
 use std::cell::Cell;
 use syntax::ast::{NodeId, Mac, DUMMY_NODE_ID};
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 
-use crate::ast_manip::Fold;
+use crate::ast_manip::MutVisit;
 
 
 pub struct NodeIdCounter(Cell<u32>);
@@ -24,37 +24,39 @@ struct NumberNodes<'a> {
     counter: &'a NodeIdCounter,
 }
 
-impl<'a> Folder for NumberNodes<'a> {
-    fn new_id(&mut self, _i: NodeId) -> NodeId {
-        self.counter.next()
+impl<'a> MutVisitor for NumberNodes<'a> {
+    fn visit_id(&mut self, i: &mut NodeId) {
+        *i = self.counter.next()
     }
 
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
+    fn visit_mac(&mut self, mac: &mut Mac) {
+        mut_visit::noop_visit_mac(mac, self)
     }
 }
 
 /// Assign new `NodeId`s to all nodes in `x`.
-pub fn number_nodes<T: Fold>(x: T) -> <T as Fold>::Result {
+pub fn number_nodes<T: MutVisit>(x: &mut T) {
     // 0 is a valid node id.  DUMMY_NODE_ID is -1.
     number_nodes_with(x, &NodeIdCounter::new(0))
 }
 
 /// Assign new `NodeId`s to all nodes in `x`.
-pub fn number_nodes_with<T: Fold>(x: T, counter: &NodeIdCounter) -> <T as Fold>::Result {
-    x.fold(&mut NumberNodes { counter })
+pub fn number_nodes_with<T: MutVisit>(x: &mut T, counter: &NodeIdCounter) {
+    x.visit(&mut NumberNodes { counter })
 }
 
 
 struct ResetNodeIds;
-impl Folder for ResetNodeIds {
-    fn new_id(&mut self, _i: NodeId) -> NodeId { DUMMY_NODE_ID }
+impl MutVisitor for ResetNodeIds {
+    fn visit_id(&mut self, i: &mut NodeId) {
+        *i = DUMMY_NODE_ID;
+    }
 
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
+    fn visit_mac(&mut self, mac: &mut Mac) {
+        mut_visit::noop_visit_mac(mac, self)
     }
 }
 
-pub fn reset_node_ids<T: Fold>(x: T) -> <T as Fold>::Result {
-    x.fold(&mut ResetNodeIds)
+pub fn reset_node_ids<T: MutVisit>(x: &mut T) {
+    x.visit(&mut ResetNodeIds)
 }

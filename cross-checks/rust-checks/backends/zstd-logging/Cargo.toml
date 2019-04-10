@@ -17,3 +17,4 @@ path = "src/bin/printer.rs"
 [dependencies]
 lazy_static = "1.1.0"
 zstd = "0.4"
+libc = "0.2.50"

@@ -2,7 +2,7 @@ use syntax::ast::*;
 use syntax::parse::token::Nonterminal;
 use syntax::ptr::P;
 use syntax::source_map::Spanned;
-use syntax::tokenstream::{DelimSpan, Delimited, TokenTree};
+use syntax::tokenstream::{DelimSpan, TokenTree};
 
 pub trait AstName {
     fn ast_name(&self) -> String;

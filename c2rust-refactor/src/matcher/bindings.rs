@@ -7,7 +7,7 @@ use syntax::ast::{Expr, Ident, Item, Pat, Path, Stmt, Ty};
 use syntax::parse::token::Token;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{Cursor, Delimited, TokenTree, TokenStream, TokenStreamBuilder};
+use syntax::tokenstream::{Cursor, TokenTree, TokenStream, TokenStreamBuilder};
 
 use crate::ast_manip::AstEquiv;
 use c2rust_ast_builder::IntoSymbol;
@@ -320,11 +320,9 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                 _ => TokenTree::Token(sp, Token::Dollar)
             },
 
-            TokenTree::Delimited(sp, del) => {
-                let Delimited { delim, tts } = del;
+            TokenTree::Delimited(sp, delim, tts) => {
                 let dts = rewrite_token_stream(tts.into(), bt);
-                let del = Delimited { delim, tts: dts.into() };
-                TokenTree::Delimited(sp, del)
+                TokenTree::Delimited(sp, delim, dts.into() )
             }
 
             tt @ _ => tt

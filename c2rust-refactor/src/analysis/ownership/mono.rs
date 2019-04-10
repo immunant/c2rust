@@ -19,9 +19,9 @@ pub fn infer_outputs(summ: &FuncSumm) -> IndexVec<Var, bool> {
         }
     }
 
-    fn walk_input<'tcx>(ty: LTy<'tcx>,
+    fn walk_input<'lty, 'tcx>(ty: LTy<'lty, 'tcx>,
                         is_out: &mut IndexVec<Var, bool>,
-                        cset: &ConstraintSet<'tcx>) {
+                        cset: &ConstraintSet<'lty>) {
         let mut target_out = false;
         if let Some(p) = ty.label {
             if cset.lower_bound(Perm::var(p)) >= ConcretePerm::Write {
@@ -66,16 +66,16 @@ fn for_each_output_assignment<F>(summ: &FuncSumm,
                                  mut callback: F)
         where F: FnMut(&IndexVec<Var, Option<ConcretePerm>>) {
 
-    struct State<'a, 'tcx: 'a, F: 'a> {
+    struct State<'lty, F: 'lty> {
         max: Var,
-        is_out: &'a IndexVec<Var, bool>,
-        is_bounded: &'a IndexVec<Var, bool>,
-        cset: &'a ConstraintSet<'tcx>,
+        is_out: &'lty IndexVec<Var, bool>,
+        is_bounded: &'lty IndexVec<Var, bool>,
+        cset: &'lty ConstraintSet<'lty>,
         assignment: IndexVec<Var, Option<ConcretePerm>>,
-        callback: &'a mut F,
+        callback: &'lty mut F,
     }
 
-    impl<'a, 'tcx, F> State<'a, 'tcx, F>
+    impl<'lty, 'tcx, F> State<'lty, F>
             where F: FnMut(&IndexVec<Var, Option<ConcretePerm>>) {
         fn walk_vars(&mut self, cur: Var) {
             if cur >= self.max {
@@ -124,14 +124,14 @@ fn for_each_output_assignment<F>(summ: &FuncSumm,
 fn find_input_assignment(summ: &FuncSumm,
                          out_assign: &IndexVec<Var, Option<ConcretePerm>>)
                          -> Option<IndexVec<Var, ConcretePerm>> {
-    struct State<'a, 'tcx: 'a> {
+    struct State<'lty> {
         max: Var,
-        out_assign: &'a IndexVec<Var, Option<ConcretePerm>>,
-        cset: &'a ConstraintSet<'tcx>,
+        out_assign: &'lty IndexVec<Var, Option<ConcretePerm>>,
+        cset: &'lty ConstraintSet<'lty>,
         assignment: IndexVec<Var, ConcretePerm>,
     }
 
-    impl<'a, 'tcx> State<'a, 'tcx> {
+    impl<'lty, 'tcx> State<'lty> {
         fn walk_vars(&mut self, cur: Var) -> bool {
             if cur >= self.max {
                 return true;

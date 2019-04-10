@@ -6,7 +6,7 @@ use syntax::ast::*;
 use syntax::ptr::P;
 
 use c2rust_ast_builder::mk;
-use crate::ast_manip::{fold_nodes, visit_nodes};
+use crate::ast_manip::{MutVisitNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase};
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -42,7 +42,7 @@ fn is_foreign_symbol(tcx: TyCtxt, did: DefId) -> bool {
 }
 
 impl Transform for CanonicalizeExterns {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let tcx = cx.ty_ctxt();
 
 
@@ -75,7 +75,7 @@ impl Transform for CanonicalizeExterns {
         // Map from replaced fn DefId to replacement fn DefId
         let mut replace_map = HashMap::new();
 
-        visit_nodes(&krate, |fi: &ForeignItem| {
+        visit_nodes(krate, |fi: &ForeignItem| {
             if !st.marked(fi.id, "target") {
                 return;
             }
@@ -141,7 +141,7 @@ impl Transform for CanonicalizeExterns {
                 bail!("old and new sig differ in arg count");
             }
 
-            if old_sig.variadic != new_sig.variadic {
+            if old_sig.c_variadic != new_sig.c_variadic {
                 bail!("old and new sig differ in variadicness");
             }
 
@@ -177,7 +177,7 @@ impl Transform for CanonicalizeExterns {
         // Maps the NodeId of each rewritten path expr to the DefId of the old extern that was
         // previously referenced by that path.
         let mut path_ids = HashMap::new();
-        let krate = fold_resolved_paths_with_id(krate, cx, |id, qself, path, def| {
+        fold_resolved_paths_with_id(krate, cx, |id, qself, path, def| {
             let old_did = match_or!([def.opt_def_id()] Some(x) => x; return (qself, path));
             let new_did = match_or!([replace_map.get(&old_did)] Some(&x) => x;
                                     return (qself, path));
@@ -188,13 +188,13 @@ impl Transform for CanonicalizeExterns {
 
         // Add casts to rewritten calls and exprs
 
-        let krate = fold_nodes(krate, |mut e: P<Expr>| {
+        MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             if let Some(&old_did) = path_ids.get(&e.id) {
                 // This whole expr was a reference to the old extern `old_did`.  See if we need a
                 // cast around the whole thing.  (This should only be true for statics.)
                 if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Whole)) {
                     // The rewritten expr has type `new_ty`, but its context expects `old_ty`.
-                    e = mk().cast_expr(e, reflect::reflect_tcx_ty(tcx, old_ty));
+                    *e = mk().cast_expr(e.clone(), reflect::reflect_tcx_ty(tcx, old_ty));
                 }
             }
 
@@ -213,14 +213,11 @@ impl Transform for CanonicalizeExterns {
                 for i in 0 .. arg_count {
                     let k = (old_did, TyLoc::Arg(i));
                     if let Some(&(_old_ty, new_ty)) = ty_replace_map.get(&k) {
-                        e = e.map(|mut e| {
-                            expect!([e.node] ExprKind::Call(_, ref mut args) => {
-                                // The new fn requires `new_ty`, where the old one needed `old_ty`.
-                                let ty_ast = reflect::reflect_tcx_ty(tcx, new_ty);
-                                let new_arg = mk().cast_expr(&args[i], ty_ast);
-                                args[i] = new_arg;
-                            });
-                            e
+                        expect!([e.node] ExprKind::Call(_, ref mut args) => {
+                            // The new fn requires `new_ty`, where the old one needed `old_ty`.
+                            let ty_ast = reflect::reflect_tcx_ty(tcx, new_ty);
+                            let new_arg = mk().cast_expr(&args[i], ty_ast);
+                            args[i] = new_arg;
                         });
                         info!("  arg {} - rewrote e = {:?}", i, e);
                     }
@@ -228,27 +225,21 @@ impl Transform for CanonicalizeExterns {
 
                 if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Ret)) {
                     // The new fn returns `new_ty`, where the old context requires `old_ty`.
-                    e = mk().cast_expr(e, reflect::reflect_tcx_ty(tcx, old_ty));
+                    *e = mk().cast_expr(e.clone(), reflect::reflect_tcx_ty(tcx, old_ty));
                     info!("  return - rewrote e = {:?}", e);
                 }
             }
-
-            e
         });
 
 
         // Remove the old externs
 
-        let krate = fold_nodes(krate, |mut fm: ForeignMod| {
+        MutVisitNodes::visit(krate, |fm: &mut ForeignMod| {
             fm.items.retain(|fi| {
                 let did = cx.node_def_id(fi.id);
                 !replace_map.contains_key(&did)
             });
-            fm
         });
-
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {

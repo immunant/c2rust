@@ -11,9 +11,9 @@ use crate::analysis::labeled_ty::LabeledTy;
 use super::{ConcretePerm, Perm};
 
 
-pub struct Pretty<'tcx, L: 'tcx>(pub LabeledTy<'tcx, L>);
+pub struct Pretty<'lty, 'tcx, L: 'lty>(pub LabeledTy<'lty, 'tcx, L>);
 
-pub fn pretty_slice<'a, 'tcx, L>(tys: &'a [LabeledTy<'tcx, L>]) -> &'a [Pretty<'tcx, L>] {
+pub fn pretty_slice<'lty, 'tcx, L>(tys: &'lty [LabeledTy<'lty, 'tcx, L>]) -> &'lty [Pretty<'lty, 'tcx, L>] {
     unsafe { ::std::mem::transmute(tys) }
 }
 
@@ -89,7 +89,7 @@ impl<'tcx> fmt::Debug for PrettyLabel<PrintVar<'tcx>> {
 
 
 
-impl<'tcx, L> fmt::Debug for Pretty<'tcx, L> where L: Copy + fmt::Debug, PrettyLabel<L>: fmt::Debug {
+impl<'lty, 'tcx, L> fmt::Debug for Pretty<'lty, 'tcx, L> where L: Copy + fmt::Debug, PrettyLabel<L>: fmt::Debug {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.0.ty.sty {
             TyKind::Ref(_, _, m) =>

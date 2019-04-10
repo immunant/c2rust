@@ -5,20 +5,28 @@ use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::mem;
 use std::sync::Arc;
-use rustc::session::Session;
-use syntax::ast::{NodeId, Crate, CRATE_NODE_ID, Mod};
+use rustc::hir;
+use rustc::hir::def_id::LOCAL_CRATE;
+use rustc::session::{self, DiagnosticOutput, Session};
+use rustc_data_structures::sync::Lrc;
+use rustc_interface::util;
+use rustc_interface::interface;
+use rustc_metadata::cstore::CStore;
+use syntax::ast::{NodeId, Crate, CRATE_NODE_ID};
 use syntax::ast::{Expr, Pat, Ty, Stmt, Item};
-use syntax::source_map::DUMMY_SP;
+use syntax::ext::base::NamedSyntaxExtension;
+use syntax::feature_gate::AttributeType;
+use syntax::source_map::SourceMap;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::visit::Visitor;
 
-use crate::ast_manip::{ListNodeIds, remove_paren, Visit, Fold};
+use crate::ast_manip::{ListNodeIds, remove_paren, Visit, MutVisit};
 use crate::ast_manip::ast_map::map_ast_into;
 use crate::ast_manip::number_nodes::{number_nodes, number_nodes_with, NodeIdCounter, reset_node_ids};
-use crate::collapse;
-use crate::driver::{self, Phase, Phase1Bits};
-use crate::file_io::{FileIO, ArcFileIO};
+use crate::collapse::CollapseInfo;
+use crate::driver::{self, Phase};
+use crate::file_io::FileIO;
 use crate::node_map::NodeMap;
 use crate::rewrite;
 use crate::rewrite::files;
@@ -44,35 +52,28 @@ struct ParsedNodes {
 
 impl Visit for ParsedNodes {
     fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V) {
-        self.exprs.iter().for_each(|x| x.visit(v));
-        self.pats.iter().for_each(|x| x.visit(v));
-        self.tys.iter().for_each(|x| x.visit(v));
+        self.exprs.iter().for_each(|x| (&**x).visit(v));
+        self.pats.iter().for_each(|x| (&**x).visit(v));
+        self.tys.iter().for_each(|x| (&**x).visit(v));
         self.stmts.iter().for_each(|x| x.visit(v));
-        self.items.iter().for_each(|x| x.visit(v));
+        self.items.iter().for_each(|x| (&**x).visit(v));
     }
+}
+
+#[derive(Default)]
+struct PluginInfo {
+    _syntax_exts: Vec<NamedSyntaxExtension>,
+    _attributes: Vec<(String, AttributeType)>,
 }
 
 
 /// Stores the overall state of the refactoring process, which can be read and updated by
 /// `Command`s.
 pub struct RefactorState {
-    file_io: Arc<FileIO+Sync+Send>,
+    config: interface::Config,
+    compiler: interface::Compiler,
     cmd_reg: Registry,
-    session: Session,
-
-    parsed_nodes: ParsedNodes,
-    /// Counter for assigning fresh `NodeId`s to newly parsed nodes (among others).
-    ///
-    /// It's important that this counter is preserved across `transform_crate` calls.  Parsed
-    /// nodes' IDs stick around after the originating `transform_crate` ends: they remain in
-    /// `parsed_nodes`, and they can be referenced by `node_map` as "old" IDs.  Preserving this
-    /// counter ensures that every parsed node has a distinct `NodeId`.
-    node_id_counter: NodeIdCounter,
-
-    /// The current crate AST.  This is used as the "new" AST when rewriting.  This is always
-    /// "unexpanded" - meaning either actually unexpanded, or expanded and then subsequently
-    /// macro-collapsed.
-    krate: Crate,
+    file_io: Arc<FileIO+Sync+Send>,
 
     /// The original crate AST.  This is used as the "old" AST when rewriting.  This is always a
     /// real unexpanded AST, as it was loaded from disk, with full user-provided source text.
@@ -81,89 +82,83 @@ pub struct RefactorState {
     /// Mapping from `krate` IDs to `disk_krate` IDs
     node_map: NodeMap,
 
-    /// Current marks.  The `NodeId`s here refer to nodes in `krate`.
-    marks: HashSet<(NodeId, Symbol)>,
+    /// Mutable state available to a driver command
+    cs: CommandState,
 }
 
-fn dummy_crate() -> Crate {
-    Crate {
-        module: Mod {
-            inner: DUMMY_SP,
-            items: vec![],
-            inline: false,
-        },
-        attrs: vec![],
-        span: DUMMY_SP,
-    }
+fn parse_crate(compiler: &interface::Compiler) -> Crate {
+    let mut krate = compiler.parse().unwrap().take();
+    remove_paren(&mut krate);
+    number_nodes(&mut krate);
+    krate
 }
 
 impl RefactorState {
-    pub fn new(session: Session,
-               cmd_reg: Registry,
-               file_io: Arc<FileIO+Sync+Send>,
-               marks: HashSet<(NodeId, Symbol)>) -> RefactorState {
-        let mut session = session;
-        // Force disable incremental compilation.  It causes panics with multiple typechecking.
-        session.opts.incremental = None;
-
+    pub fn new(
+        config: interface::Config,
+        cmd_reg: Registry,
+        file_io: Arc<FileIO+Sync+Send>,
+        marks: HashSet<(NodeId, Symbol)>,
+    ) -> RefactorState {
+        let compiler = driver::make_compiler(&config, file_io.clone());
+        let krate = parse_crate(&compiler);
+        let orig_krate = krate.clone();
+        let (node_map, cs) = Self::init(krate, Some(marks));
         RefactorState {
-            file_io,
+            config,
+            compiler,
             cmd_reg,
-            session,
+            file_io,
 
-            parsed_nodes: ParsedNodes::default(),
-            node_id_counter: NodeIdCounter::new(0x8000_0000),
+            orig_krate,
 
-            krate: dummy_crate(),
-            orig_krate: dummy_crate(),
+            node_map,
 
-            node_map: NodeMap::new(),
-
-            marks: marks,
+            cs,
         }
     }
 
-    pub fn from_rustc_args(rustc_args: &[String],
-                           cmd_reg: Registry,
-                           file_io: Arc<FileIO+Sync+Send>,
-                           marks: HashSet<(NodeId, Symbol)>) -> RefactorState {
-        let session = driver::build_session_from_args(
-            rustc_args, Some(Box::new(ArcFileIO(file_io.clone()))));
-        Self::new(session, cmd_reg, file_io, marks)
-    }
+    /// Initialization shared between new() and load_crate()
+    fn init(krate: Crate, marks: Option<HashSet<(NodeId, Symbol)>>) -> (NodeMap, CommandState) {
+        // (Re)initialize `node_map` and `marks`.
+        let mut node_map = NodeMap::new();
+        node_map.init(krate.list_node_ids().into_iter());
+        // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
+        node_map.init(iter::once(CRATE_NODE_ID));
+        let marks = marks.unwrap_or_else(|| HashSet::new());
 
+        // The newly loaded `krate` and reinitialized `node_map` reference none of the old
+        // `parsed_nodes`.  That means we can reset the ID counter without risk of ID collisions.
+        let parsed_nodes = ParsedNodes::default();
+        let node_id_counter = NodeIdCounter::new(0x8000_0000);
+
+        let cs = CommandState::new(
+            krate,
+            marks,
+            parsed_nodes,
+            node_id_counter,
+        );
+
+        (node_map, cs)
+    }
 
     pub fn session(&self) -> &Session {
-        &self.session
+        self.compiler.session()
     }
 
-
-    fn load_crate_inner(&self) -> Crate {
-        let bits = Phase1Bits::from_session_reparse(&self.session);
-        bits.into_crate()
+    pub fn source_map(&self) -> &SourceMap {
+        self.compiler.source_map()
     }
 
     /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
     /// rewriting with the previous `orig_crate` any more.
     pub fn load_crate(&mut self) {
-        // Discard any existing krate, overwriting it with one loaded from disk.
-        let krate = self.load_crate_inner();
-        let krate = remove_paren(krate);
-        let krate = number_nodes(krate);
+        self.compiler = driver::make_compiler(&self.config, self.file_io.clone());
+        let krate = parse_crate(&self.compiler);
         self.orig_krate = krate.clone();
-        self.krate = krate;
-
-        // Re-initialize `node_map` and `marks`.
-        self.node_map = NodeMap::new();
-        self.node_map.init(self.krate.list_node_ids().into_iter());
-        // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
-        self.node_map.init(iter::once(CRATE_NODE_ID));
-        self.marks = HashSet::new();
-
-        // The newly loaded `krate` and reinitialized `node_map` reference none of the old
-        // `parsed_nodes`.  That means we can reset the ID counter without risk of ID collisions.
-        self.parsed_nodes = ParsedNodes::default();
-        self.node_id_counter = NodeIdCounter::new(0x8000_0000);
+        let (node_map, cs) = Self::init(krate, None);
+        self.node_map = node_map;
+        self.cs = cs;
     }
 
     /// Save the crate to disk, by writing out the new source text produced by rewriting.
@@ -173,117 +168,162 @@ impl RefactorState {
     /// matches the text on disk) as the basis for rewriting.
     pub fn save_crate(&mut self) {
         let old = &self.orig_krate;
-        let new = &self.krate;
+        let new = &self.cs.krate();
         let node_id_map = self.node_map.clone().into_inner();
 
         self.file_io.save_marks(
-            new, self.session.source_map(), &node_id_map, &self.marks).unwrap();
+            new, self.session().source_map(), &node_id_map, &self.cs.marks()).unwrap();
 
-        let rw = rewrite::rewrite(&self.session, old, new, node_id_map, |map| {
-            map_ast_into(&self.parsed_nodes, map);
+        let parsed_nodes = self.cs.parsed_nodes.borrow();
+        let rw = rewrite::rewrite(self.session(), old, new, node_id_map, |map| {
+            map_ast_into(&*parsed_nodes, map);
         });
         // Note that `rewrite_files_with` does not read any files from disk - it uses the
         // `SourceMap` to get files' original source text.
-        files::rewrite_files_with(self.session.source_map(), &rw, &*self.file_io).unwrap();
+        files::rewrite_files_with(self.source_map(), &rw, &*self.file_io).unwrap();
     }
 
-    pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> R
-            where F: FnOnce(&CommandState, &RefactorCtxt) -> R {
-        let krate = mem::replace(&mut self.krate, dummy_crate());
-        let marks = mem::replace(&mut self.marks, HashSet::new());
+    pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> interface::Result<R>
+        where F: FnOnce(&CommandState, &RefactorCtxt) -> R
+    {
+        // let mut krate = mem::replace(&mut self.krate, dummy_crate());
+        // let marks = mem::replace(&mut self.marks, HashSet::new());
 
-        let unexpanded = krate.clone();
-        let krate = reset_node_ids(krate);
-        let bits = Phase1Bits::from_session_and_crate(&self.session, krate);
-        driver::run_compiler_from_phase1(bits, phase, |krate, cx| {
-            let krate = span_fix::fix_format(krate);
-            let expanded = krate.clone();
+        let unexpanded = self.cs.krate().clone();
 
-            // Collect info + update node_map, then transfer and commit
-            let (mac_table, matched_ids) =
-                collapse::collect_macro_invocations(&unexpanded, &expanded);
-            self.node_map.add_edges(&matched_ids);
-            self.node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
-            let cfg_attr_info = collapse::collect_cfg_attrs(&unexpanded);
-            let deleted_info = collapse::collect_deleted_nodes(
-                &unexpanded, &self.node_map, &mac_table);
-            collapse::match_nonterminal_ids(&mut self.node_map, &mac_table);
+        self.cs.reset();
 
-            let marks = self.node_map.transfer_marks(&marks);
-            let cfg_attr_info = self.node_map.transfer_map(cfg_attr_info);
-            self.node_map.commit();
+        self.rebuild_session();
 
-            // Run the transform
-            let r: R;
-            let new_krate: Crate;
-            let new_marks: HashSet<(NodeId, Symbol)>;
-            {
-                let parsed_nodes = mem::replace(&mut self.parsed_nodes,
-                                                ParsedNodes::default());
-                let node_id_counter = mem::replace(&mut self.node_id_counter,
-                                                   NodeIdCounter::new(0));
-                let cmd_state = CommandState::new(krate, marks, parsed_nodes, node_id_counter);
-                r = f(&cmd_state, &cx);
+        // Immediately fix up the attr spans, since during expansion, any
+        // `derive` attrs will be removed.
+        span_fix::fix_attr_spans(self.cs.krate.get_mut());
 
-                new_krate = cmd_state.krate.into_inner();
-                new_marks = cmd_state.marks.into_inner();
-                self.parsed_nodes = cmd_state.parsed_nodes.into_inner();
-                self.node_id_counter = cmd_state.counter;
+        // Replace current parse query results
+        let parse = self.compiler.parse()?;
+        let _ = parse.take();
+        parse.give(self.cs.krate().clone());
 
-                self.node_map.init(cmd_state.new_parsed_node_ids.into_inner().into_iter());
+        match phase {
+            Phase::Phase1 => {}
+
+            Phase::Phase2 | Phase::Phase3 => {
+                self.cs.krate.replace(self.compiler.expansion()?.peek().0.clone());
+            }
+        }
+
+        span_fix::fix_format(self.cs.krate.get_mut());
+        let expanded = self.cs.krate().clone();
+        let collapse_info = CollapseInfo::collect(
+            &unexpanded,
+            &expanded,
+            &mut self.node_map,
+            &self.cs,
+        );
+
+        // Run the transform
+        let r = match phase {
+            Phase::Phase1 => {
+                let cx = RefactorCtxt::new_phase_1(&self.compiler.session(), &self.compiler.cstore());
+
+                f(&self.cs, &cx)
             }
 
-            // Collapse macros + update node_map.  The cfg_attr step requires the updated node_map
-            // TODO: we should be able to skip some of these steps if `!cmd_state.krate_changed()`
-            let new_krate = collapse::collapse_injected(new_krate);
-            let (new_krate, matched_ids) = collapse::collapse_macros(new_krate, &mac_table);
-            self.node_map.add_edges(&matched_ids);
-            self.node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
+            Phase::Phase2 => {
+                let hir = self.compiler.lower_to_hir()?.take();
+                let (ref hir_forest, ref expansion) = hir;
+                let hir_forest = hir_forest.borrow();
+                let defs = expansion.defs.borrow();
+                let map = hir::map::map_crate(
+                    self.compiler.session(),
+                    &*self.compiler.cstore().clone(),
+                    &hir_forest,
+                    &defs,
+                );
 
-            let cfg_attr_info = self.node_map.transfer_map(cfg_attr_info);
-            let new_krate = collapse::restore_cfg_attrs(new_krate, cfg_attr_info);
+                let cx = RefactorCtxt::new_phase_2(self.compiler.session(), self.compiler.cstore(), &map);
 
-            let new_krate = collapse::restore_deleted_nodes(
-                new_krate, &mut self.node_map, &mut self.node_id_counter, deleted_info);
+                f(&self.cs, &cx)
+            }
 
-            let new_marks = self.node_map.transfer_marks(&new_marks);
-            self.node_map.commit();
+            Phase::Phase3 => {
+                let r = self.compiler.global_ctxt()?.take().enter(|tcx| {
+                    let _result = tcx.analysis(LOCAL_CRATE);
+                    let cx = RefactorCtxt::new_phase_3(self.compiler.session(), self.compiler.cstore(), tcx.hir(), tcx);
 
-            // Write back new crate and marks
-            self.krate = new_krate;
-            self.marks = new_marks;
+                    f(&self.cs, &cx)
+                });
 
-            r
-        })
+                // Ensure that we've dropped any copies of the session Lrc
+                let _ = self.compiler.lower_to_hir()?.take();
+                let _ = self.compiler.codegen_channel()?.take();
+
+                r
+            }
+        };
+
+        self.node_map.init(self.cs.new_parsed_node_ids.get_mut().drain(..));
+
+        collapse_info.collapse(&mut self.node_map, &self.cs);
+
+        Ok(r)
+    }
+
+    fn rebuild_session(&mut self) {
+        // Ensure we've dropped the resolver since it keeps a copy of the session Rc
+        if let Ok(expansion) = self.compiler.expansion() {
+            if let Ok(resolver) = Lrc::try_unwrap(expansion.take().1) {
+                resolver.map(|x| x.into_inner().complete());
+            } else {
+                panic!("Could not drop resolver");
+            }
+        }
+
+        let compiler: &mut driver::Compiler = unsafe { mem::transmute(&mut self.compiler) };
+        let old_session = &compiler.sess;
+
+        let descriptions = util::diagnostics_registry();
+        let mut new_sess = session::build_session_with_source_map(
+            old_session.opts.clone(),
+            old_session.local_crate_source_file.clone(),
+            descriptions,
+            self.compiler.source_map().clone(),
+            DiagnosticOutput::Default,
+            Default::default(),
+        );
+        let new_codegen_backend = util::get_codegen_backend(&new_sess);
+        let new_cstore = CStore::new(new_codegen_backend.metadata_loader());
+
+        new_sess.parse_sess.config = old_session.parse_sess.config.clone();
+
+        *Lrc::get_mut(&mut compiler.sess).unwrap() = new_sess;
+        *Lrc::get_mut(&mut compiler.codegen_backend).unwrap() = new_codegen_backend;
+        *Lrc::get_mut(&mut compiler.cstore).unwrap() = new_cstore;
     }
 
     pub fn run_typeck_loop<F>(&mut self, mut func: F) -> Result<(), &'static str>
-            where F: FnMut(Crate, &CommandState, &RefactorCtxt) -> TypeckLoopResult {
+            where F: FnMut(&mut Crate, &CommandState, &RefactorCtxt) -> TypeckLoopResult {
         let func = &mut func;
 
         let mut result = None;
         while result.is_none() {
             self.transform_crate(Phase::Phase3, |st, cx| {
-                st.map_krate(|krate| {
-                    match func(krate, st, cx) {
-                        TypeckLoopResult::Iterate(krate) => krate,
-                        TypeckLoopResult::Err(e, krate) => {
-                            result = Some(Err(e));
-                            krate
-                        },
-                        TypeckLoopResult::Finished(krate) => {
-                            result = Some(Ok(()));
-                            krate
-                        },
+                match func(&mut st.krate_mut(), st, cx) {
+                    TypeckLoopResult::Iterate => {}
+                    TypeckLoopResult::Err(e) => {
+                        result = Some(Err(e));
                     }
-                });
-            });
+                    TypeckLoopResult::Finished => {
+                        result = Some(Ok(()));
+                    }
+                }
+            }).expect("Failed to run compiler");
         }
         result.unwrap()
     }
 
     pub fn clear_marks(&mut self) {
-        self.marks.clear()
+        self.cs.marks.get_mut().clear()
     }
 
 
@@ -298,41 +338,56 @@ impl RefactorState {
     }
 
 
-    pub fn marks(&self) -> &HashSet<(NodeId, Symbol)> {
-        &self.marks
+    pub fn marks(&self) -> cell::Ref<HashSet<(NodeId, Symbol)>> {
+        self.cs.marks.borrow()
     }
 
-    pub fn marks_mut(&mut self) -> &mut HashSet<(NodeId, Symbol)> {
-        &mut self.marks
+    pub fn marks_mut(&mut self) -> cell::RefMut<HashSet<(NodeId, Symbol)>> {
+        self.cs.marks.borrow_mut()
     }
 }
 
 pub enum TypeckLoopResult {
-    Iterate(Crate),
-    Err(&'static str, Crate),
-    Finished(Crate),
+    Iterate,
+    Err(&'static str),
+    Finished,
 }
 
 
 /// Mutable state that can be modified by a "driver" command.  This is normally paired with a
 /// `RefactorCtxt`, which contains immutable analysis results from the original input `Crate`.
 pub struct CommandState {
-    krate: RefCell<Crate>,
-    marks: RefCell<HashSet<(NodeId, Symbol)>>,
     parsed_nodes: RefCell<ParsedNodes>,
+    /// Counter for assigning fresh `NodeId`s to newly parsed nodes (among others).
+    ///
+    /// It's important that this counter is preserved across `transform_crate` calls.  Parsed
+    /// nodes' IDs stick around after the originating `transform_crate` ends: they remain in
+    /// `parsed_nodes`, and they can be referenced by `node_map` as "old" IDs.  Preserving this
+    /// counter ensures that every parsed node has a distinct `NodeId`.
+    node_id_counter: NodeIdCounter,
+
+    /// The current crate AST.  This is used as the "new" AST when rewriting.
+    /// This is always starts "unexpanded" - meaning either actually unexpanded,
+    /// or expanded and then subsequently macro-collapsed.
+    krate: RefCell<Crate>,
+
+    /// Current marks.  The `NodeId`s here refer to nodes in `krate`.
+    marks: RefCell<HashSet<(NodeId, Symbol)>>,
+
+    // krate: RefCell<Crate>,
+    // marks: RefCell<HashSet<(NodeId, Symbol)>>,
+    // parsed_nodes: RefCell<ParsedNodes>,
     new_parsed_node_ids: RefCell<Vec<NodeId>>,
 
     krate_changed: Cell<bool>,
     marks_changed: Cell<bool>,
-
-    counter: NodeIdCounter,
 }
 
 impl CommandState {
     fn new(krate: Crate,
            marks: HashSet<(NodeId, Symbol)>,
            parsed_nodes: ParsedNodes,
-           counter: NodeIdCounter) -> CommandState {
+           node_id_counter: NodeIdCounter) -> CommandState {
         CommandState {
             krate: RefCell::new(krate),
             marks: RefCell::new(marks),
@@ -342,8 +397,17 @@ impl CommandState {
             krate_changed: Cell::new(false),
             marks_changed: Cell::new(false),
 
-            counter
+            node_id_counter
         }
+    }
+
+    /// Reset the command state in preparation for a new transform iteration
+    fn reset(&mut self) {
+        reset_node_ids(self.krate.get_mut());
+
+        self.new_parsed_node_ids.get_mut().clear();
+        self.krate_changed.set(false);
+        self.marks_changed.set(false);
     }
 
 
@@ -356,19 +420,8 @@ impl CommandState {
         self.krate.borrow_mut()
     }
 
-    pub fn map_krate<F: FnOnce(Crate) -> Crate>(&self, func: F) {
-        let dummy_crate = Crate {
-            module: Mod {
-                inner: DUMMY_SP,
-                items: Vec::new(),
-                inline: true,
-            },
-            attrs: Vec::new(),
-            span: DUMMY_SP,
-        };
-        let old_krate = mem::replace(&mut *self.krate_mut(), dummy_crate);
-        let new_krate = func(old_krate);
-        *self.krate_mut() = new_krate;
+    pub fn map_krate<F: FnOnce(&mut Crate)>(&self, func: F) {
+        func(&mut self.krate_mut());
     }
 
     pub fn krate_changed(&self) -> bool {
@@ -401,10 +454,13 @@ impl CommandState {
         self.marks_changed.get()
     }
 
+    pub fn node_id_counter(&self) -> &NodeIdCounter {
+        &self.node_id_counter
+    }
 
     /// Generate a fresh NodeId.
     pub fn next_node_id(&self) -> NodeId {
-        self.counter.next()
+        self.node_id_counter.next()
     }
 
     /// Transfer marks on `old` to a fresh NodeId, and return that fresh NodeId.
@@ -422,27 +478,25 @@ impl CommandState {
     }
 
 
-    fn process_parsed<T>(&self, x: T) -> <T as Fold>::Result
-            where T: Fold, <T as Fold>::Result: ListNodeIds {
-        let x = number_nodes_with(x, &self.counter);
+    fn process_parsed<T>(&self, x: &mut T)
+            where T: MutVisit + ListNodeIds {
+        number_nodes_with(x, &self.node_id_counter);
         self.new_parsed_node_ids.borrow_mut()
             .extend(x.list_node_ids());
-        x
     }
 
     /// Parse an `Expr`, keeping the original `src` around for use during rewriting.
     pub fn parse_expr(&self, cx: &RefactorCtxt, src: &str) -> P<Expr> {
-        let e = driver::parse_expr(cx.session(), src);
-        let e = self.process_parsed(e);
+        let mut e = driver::parse_expr(cx.session(), src);
+        self.process_parsed(&mut e);
         self.parsed_nodes.borrow_mut().exprs.push(e.clone());
         e
     }
 
     pub fn parse_items(&self, cx: &RefactorCtxt, src: &str) -> Vec<P<Item>> {
-        let is = driver::parse_items(cx.session(), src);
-        let is: Vec<P<Item>> = is.into_iter()
-            .flat_map(|i| self.process_parsed(i)).collect();
-        for i in &is {
+        let mut is = driver::parse_items(cx.session(), src);
+        for i in &mut is {
+            self.process_parsed(i);
             self.parsed_nodes.borrow_mut().items.push(i.clone());
         }
         is
@@ -465,7 +519,7 @@ pub trait Command {
 }
 
 /// A command builder is a function that takes some string arguments and produces a `Command`.
-pub type Builder = FnMut(&[String]) -> Box<Command>;
+pub type Builder = FnMut(&[String]) -> Box<Command> + Send;
 
 /// Tracks known refactoring command builders, and allows invoking them by name.
 pub struct Registry {
@@ -480,7 +534,7 @@ impl Registry {
     }
 
     pub fn register<B>(&mut self, name: &str, builder: B)
-            where B: FnMut(&[String]) -> Box<Command> + 'static {
+            where B: FnMut(&[String]) -> Box<Command> + 'static + Send {
         self.commands.insert(name.to_owned(), Box::new(builder));
     }
 
@@ -523,7 +577,8 @@ impl<F> DriverCommand<F>
 impl<F> Command for DriverCommand<F>
         where F: FnMut(&CommandState, &RefactorCtxt) {
     fn run(&mut self, state: &mut RefactorState) {
-        state.transform_crate(self.phase, |st, cx| (self.func)(st, cx));
+        state.transform_crate(self.phase, |st, cx| (self.func)(st, cx))
+            .expect("Failed to run compiler");
     }
 }
 
@@ -549,6 +604,10 @@ fn register_commit(reg: &mut Registry) {
 
     reg.register("write", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
         rs.save_crate();
+    })));
+
+    reg.register("dump_crate", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
+        eprintln!("{:#?}", rs.cs.krate());
     })));
 }
 

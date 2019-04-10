@@ -10,7 +10,7 @@ use crate::RefactorCtxt;
 /// An AST transformation that can be applied to a crate.
 pub trait Transform {
     /// Apply the transformation.
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate;
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt);
 
     /// Return the minimum phase at which this transform can operate.  See the `Phase` docs for
     /// details.  The default is `Phase2`.
@@ -27,10 +27,8 @@ pub struct TransformCommand<T: Transform>(pub T);
 impl<T: Transform> Command for TransformCommand<T> {
     fn run(&mut self, state: &mut RefactorState) {
         state.transform_crate(self.0.min_phase(), |st, cx| {
-            st.map_krate(|krate| {
-                self.0.transform(krate, st, cx)
-            });
-        });
+            self.0.transform(&mut *st.krate_mut(), st, cx)
+        }).expect("Failed to run compiler");
     }
 }
 

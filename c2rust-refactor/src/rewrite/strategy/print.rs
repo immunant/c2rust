@@ -9,6 +9,7 @@
 //! pretty-printer output, since it likely has nicer formatting, comments, etc.  So there is some
 //! logic in this module for "recovering" from needing to use this strategy by splicing old AST
 //! text back into the new AST's pretty printer output.
+use std::fmt::Debug;
 use std::rc::Rc;
 use rustc::session::Session;
 use rustc_target::spec::abi::Abi;
@@ -20,7 +21,7 @@ use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
 use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, DelimSpan, TokenStream};
 use syntax::util::parser;
 
 use crate::ast_manip::{GetNodeId, GetSpan, AstDeref};
@@ -574,7 +575,7 @@ fn recover<'s, T>(maybe_restricted_span: Option<Span>,
 }
 
 pub fn rewrite<T>(old: &T, new: &T, rcx: RewriteCtxtRef) -> bool
-        where T: PrintParse + RecoverChildren + Splice {
+        where T: PrintParse + RecoverChildren + Splice + Debug {
     if !is_rewritable(old.splice_span()) {
         // If we got here, it means rewriting failed somewhere inside macro-generated code, and
         // outside any chunks of AST that the macro copied out of its arguments (those chunks
@@ -590,7 +591,7 @@ pub fn rewrite<T>(old: &T, new: &T, rcx: RewriteCtxtRef) -> bool
 }
 
 pub fn rewrite_at<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
-        where T: PrintParse + RecoverChildren + Splice {
+        where T: PrintParse + RecoverChildren + Splice + Debug {
     let printed = new.to_string();
     let reparsed = T::parse(rcx.session(), &printed);
     let reparsed = reparsed.ast_deref();

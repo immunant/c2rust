@@ -3,6 +3,7 @@
 //! This is used in various parts of the frontend to set marks at specific locations.
 use std::path::PathBuf;
 use std::str::FromStr;
+use rustc::session::Session;
 use syntax::ast::*;
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::source_map::{BytePos, Span};
@@ -252,12 +253,12 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
 
 /// Select an AST node by its file, line, and column numbers.
 pub fn pick_node_at_loc(krate: &Crate,
-                        cx: &RefactorCtxt,
+                        session: &Session,
                         kind: NodeKind,
                         file: &str,
                         line: u32,
                         col: u32) -> Option<NodeInfo> {
-    let fm = match cx.session().source_map().get_source_file(
+    let fm = match session.source_map().get_source_file(
             &FileName::Real(PathBuf::from(file))) {
         Some(x) => x,
         None => {
@@ -296,7 +297,7 @@ pub fn pick_node_command(krate: &Crate, cx: &RefactorCtxt, args: &[String]) {
     let line = u32::from_str(&args[2]).unwrap();
     let col = u32::from_str(&args[3]).unwrap();
 
-    let result = pick_node_at_loc(krate, cx, kind, file, line, col);
+    let result = pick_node_at_loc(krate, cx.session(), kind, file, line, col);
 
     if let Some(ref result) = result {
         let lo_loc = cx.session().source_map().lookup_char_pos(result.span.lo());
