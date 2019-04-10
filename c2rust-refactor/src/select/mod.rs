@@ -5,9 +5,9 @@
 //! `select` command marks all nodes in the current selection with the given label.  See the docs
 //! for `SelectOp` for descriptions of the available commands.
 
-use std::collections::HashSet;
 use regex::Regex;
 use rustc::hir::def_id::LocalDefId;
+use std::collections::HashSet;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
@@ -25,8 +25,6 @@ pub use self::filter::ItemLikeKind;
 pub mod filter;
 pub mod parse;
 pub mod visitor;
-
-
 
 /// Commands of the select scripting language.  In the concrete syntax, each command ends with a
 /// semicolon.
@@ -63,7 +61,6 @@ pub enum SelectOp {
     /// `last`: Select the last (highest `NodeId`) of the selected nodes.
     Last,
 }
-
 
 /// Filters used in certain script commands.
 #[derive(Clone, Debug)]
@@ -119,12 +116,8 @@ pub enum AnyPattern {
     Stmt(Stmt),
 }
 
-
 /// Implementation of the `select` command.  See module docs for more details.
-pub fn run_select<S: IntoSymbol>(st: &CommandState,
-                                 cx: &RefactorCtxt,
-                                 ops: &[SelectOp],
-                                 label: S) {
+pub fn run_select<S: IntoSymbol>(st: &CommandState, cx: &RefactorCtxt, ops: &[SelectOp], label: S) {
     let mut sel = HashSet::new();
     for op in ops {
         match *op {
@@ -134,55 +127,59 @@ pub fn run_select<S: IntoSymbol>(st: &CommandState,
                         sel.insert(id);
                     }
                 }
-            },
+            }
 
             SelectOp::Mark(label) => {
                 for &id in &sel {
                     st.add_mark(id, label);
                 }
-            },
+            }
 
             SelectOp::Unmark(label) => {
                 for &id in &sel {
                     st.remove_mark(id, label);
                 }
-            },
+            }
 
             SelectOp::Reset => {
                 sel = HashSet::new();
-            },
+            }
 
             SelectOp::Crate => {
                 sel.insert(CRATE_NODE_ID);
-            },
+            }
 
             SelectOp::Item(ref path) => {
-                let segs = path.segments.iter().map(|seg| seg.ident).collect::<Vec<_>>();
+                let segs = path
+                    .segments
+                    .iter()
+                    .map(|seg| seg.ident)
+                    .collect::<Vec<_>>();
                 let def = resolve::resolve_absolute(cx.ty_ctxt(), &segs);
                 let ldid = LocalDefId::from_def_id(def.def_id());
                 let node_id = cx.hir_map().local_def_id_to_node_id(ldid);
                 sel.insert(node_id);
-            },
+            }
 
             SelectOp::ChildMatch(ref filt) => {
                 sel = visitor::matching_children(st, cx, &st.krate(), sel, filt);
-            },
+            }
 
             SelectOp::DescMatch(ref filt) => {
                 sel = visitor::matching_descendants(st, cx, &st.krate(), sel, filt);
-            },
+            }
 
             SelectOp::Filter(ref filt) => {
                 sel = visitor::filter(st, cx, &st.krate(), sel, filt);
-            },
+            }
 
             SelectOp::First => {
                 sel = sel.into_iter().min().into_iter().collect();
-            },
+            }
 
             SelectOp::Last => {
                 sel = sel.into_iter().max().into_iter().collect();
-            },
+            }
         }
     }
 
@@ -192,13 +189,12 @@ pub fn run_select<S: IntoSymbol>(st: &CommandState,
     }
 }
 
-
 /// # `select` Command
-/// 
+///
 /// Usage: `select MARK SCRIPT`
-/// 
+///
 /// Marks: sets `MARK`; may set/clear other marks depending on `SCRIPT`
-/// 
+///
 /// Run node-selection script `SCRIPT`, and apply `MARK` to the nodes it selects.
 /// See `select::SelectOp`, `select::Filter`, and `select::parser` for details on
 /// select script syntax.
@@ -215,11 +211,11 @@ fn register_select(reg: &mut Registry) {
 }
 
 /// # `select_phase2` Command
-/// 
+///
 /// Usage: `select_phase2 MARK SCRIPT`
-/// 
+///
 /// Marks: sets `MARK`; may set/clear other marks depending on `SCRIPT`
-/// 
+///
 /// Works like [`select`](#select), but stops the compiler's analyses before typechecking happens.
 /// This means type information will not available, and script commands that refer to it will fail.
 fn register_select_phase2(reg: &mut Registry) {
@@ -237,5 +233,4 @@ fn register_select_phase2(reg: &mut Registry) {
 pub fn register_commands(reg: &mut Registry) {
     register_select(reg);
     register_select_phase2(reg);
-
 }

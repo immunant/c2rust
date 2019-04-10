@@ -2,13 +2,12 @@
 //!
 //! Labeled type data is manipulated by reference, the same as with `Ty`s, and the data is stored
 //! in the same arena as the underlying `Ty`s.
-use std::fmt;
-use std::marker::PhantomData;
 use arena::SyncDroplessArena;
 use rustc::ty::{Ty, TyKind};
+use std::fmt;
+use std::marker::PhantomData;
 
 use crate::type_map;
-
 
 /// The actual data for a labeled type.
 ///
@@ -49,7 +48,6 @@ impl<'lty, 'tcx, L> LabeledTyS<'lty, 'tcx, L> {
     }
 }
 
-
 /// Context for constructing `LabeledTy`s.
 pub struct LabeledTyCtxt<'lty, L: 'lty> {
     arena: &'lty SyncDroplessArena,
@@ -76,7 +74,12 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
 
     /// Manually construct a labeled type.  Note that this does not do any checks on `args`!  The
     /// caller is responsible for making sure the number of arguments matches `ty.sty`.
-    pub fn mk(&self, ty: Ty<'tcx>, args: &'lty [LabeledTy<'lty, 'tcx, L>], label: L) -> LabeledTy<'lty, 'tcx, L> {
+    pub fn mk(
+        &self,
+        ty: Ty<'tcx>,
+        args: &'lty [LabeledTy<'lty, 'tcx, L>],
+        label: L,
+    ) -> LabeledTy<'lty, 'tcx, L> {
         self.arena.alloc(LabeledTyS {
             ty: ty,
             args: args,
@@ -84,82 +87,86 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         })
     }
 
-
     /// Label a `Ty` using a callback.  The callback runs at every type constructor to produce a
     /// label for that node in the tree.
-    pub fn label<F: FnMut(Ty<'tcx>) -> L>(&self, ty: Ty<'tcx>, f: &mut F) -> LabeledTy<'lty, 'tcx, L> {
+    pub fn label<F: FnMut(Ty<'tcx>) -> L>(
+        &self,
+        ty: Ty<'tcx>,
+        f: &mut F,
+    ) -> LabeledTy<'lty, 'tcx, L> {
         use rustc::ty::TyKind::*;
         let label = f(ty);
         match ty.sty {
             // Types with no arguments
-            Bool |
-            Char |
-            Int(_) |
-            Uint(_) |
-            Float(_) |
-            Str |
-            Foreign(_) |
-            Never => self.mk(ty, &[], label),
+            Bool | Char | Int(_) | Uint(_) | Float(_) | Str | Foreign(_) | Never => {
+                self.mk(ty, &[], label)
+            }
 
             // Types with arguments
             Adt(_, substs) => {
                 let args = substs.types().map(|t| self.label(t, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
-            },
+            }
             Array(elem, _) => {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
-            },
+            }
             Slice(elem) => {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
-            },
+            }
             RawPtr(mty) => {
                 let args = [self.label(mty.ty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
-            },
+            }
             Ref(_, mty, _) => {
                 let args = [self.label(mty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
-            },
+            }
             FnDef(_, substs) => {
-                let args = substs.types().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
+                let args = substs
+                    .types()
+                    .map(|ty| self.label(ty, f))
+                    .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
-            },
+            }
             FnPtr(ref sig) => {
-                let args = sig.skip_binder().inputs_and_output.iter()
-                    .map(|ty| self.label(ty, f)).collect::<Vec<_>>();
+                let args = sig
+                    .skip_binder()
+                    .inputs_and_output
+                    .iter()
+                    .map(|ty| self.label(ty, f))
+                    .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
-            },
+            }
             Tuple(ref elems) => {
                 let args = elems.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
-            },
+            }
 
             // Types that aren't actually supported by this code yet
-            Dynamic(..) |
-            Closure(..) |
-            Generator(..) |
-            GeneratorWitness(..) |
-            Projection(..) |
-            UnnormalizedProjection(..) |
-            Opaque(..) |
-            Param(..) |
-            Bound(..) |
-            Placeholder(..) |
-            Infer(..) |
-            Error => self.mk(ty, &[], label),
+            Dynamic(..)
+            | Closure(..)
+            | Generator(..)
+            | GeneratorWitness(..)
+            | Projection(..)
+            | UnnormalizedProjection(..)
+            | Opaque(..)
+            | Param(..)
+            | Bound(..)
+            | Placeholder(..)
+            | Infer(..)
+            | Error => self.mk(ty, &[], label),
         }
     }
 
     /// Label multiple `Ty`s using a callback.
-    pub fn label_slice<F>(&self,
-                          tys: &[Ty<'tcx>],
-                          f: &mut F) -> &'lty [LabeledTy<'lty, 'tcx, L>]
-            where F: FnMut(Ty<'tcx>) -> L {
+    pub fn label_slice<F>(&self, tys: &[Ty<'tcx>], f: &mut F) -> &'lty [LabeledTy<'lty, 'tcx, L>]
+    where
+        F: FnMut(Ty<'tcx>) -> L,
+    {
         self.mk_slice(&tys.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>())
     }
-
 
     /// Substitute in arguments for any type parameter references (`Param`) in a labeled type.
     /// Panics if `lty` contains a reference to a type parameter that is past the end of `substs`
@@ -169,42 +176,65 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
     /// substitution on the underlying `Ty`s!  This means if you substitute `u32` for `T`, you can
     /// end up with a `LabeledTy` whose `ty` is `S<T>`, but whose args are `[u32]`.  By some
     /// miracle, this hasn't broken anything yet, but we may need to fix it eventually.
-    pub fn subst(&self,
-                 lty: LabeledTy<'lty, 'tcx, L>,
-                 substs: &[LabeledTy<'lty, 'tcx, L>]) -> LabeledTy<'lty, 'tcx, L> {
+    pub fn subst(
+        &self,
+        lty: LabeledTy<'lty, 'tcx, L>,
+        substs: &[LabeledTy<'lty, 'tcx, L>],
+    ) -> LabeledTy<'lty, 'tcx, L> {
         match lty.ty.sty {
-            TyKind::Param(ref tp) => {
-                substs[tp.idx as usize]
-            },
-            _ => self.mk(lty.ty, self.subst_slice(lty.args, substs), lty.label.clone()),
+            TyKind::Param(ref tp) => substs[tp.idx as usize],
+            _ => self.mk(
+                lty.ty,
+                self.subst_slice(lty.args, substs),
+                lty.label.clone(),
+            ),
         }
     }
 
     /// Substitute arguments in multiple labeled types.
-    pub fn subst_slice(&self,
-                       ltys: &[LabeledTy<'lty, 'tcx, L>],
-                       substs: &[LabeledTy<'lty, 'tcx, L>]) -> &'lty [LabeledTy<'lty, 'tcx, L>] {
-        self.mk_slice(&ltys.iter().map(|lty| self.subst(lty, substs)).collect::<Vec<_>>())
+    pub fn subst_slice(
+        &self,
+        ltys: &[LabeledTy<'lty, 'tcx, L>],
+        substs: &[LabeledTy<'lty, 'tcx, L>],
+    ) -> &'lty [LabeledTy<'lty, 'tcx, L>] {
+        self.mk_slice(
+            &ltys
+                .iter()
+                .map(|lty| self.subst(lty, substs))
+                .collect::<Vec<_>>(),
+        )
     }
 
-
     /// Run a callback to replace the labels on a type.
-    pub fn relabel<L2, F>(&self, lty: LabeledTy<'lty, 'tcx, L2>, func: &mut F) -> LabeledTy<'lty, 'tcx, L>
-            where F: FnMut(&L2) -> L {
+    pub fn relabel<L2, F>(
+        &self,
+        lty: LabeledTy<'lty, 'tcx, L2>,
+        func: &mut F,
+    ) -> LabeledTy<'lty, 'tcx, L>
+    where
+        F: FnMut(&L2) -> L,
+    {
         let args = self.relabel_slice(lty.args, func);
         self.mk(lty.ty, args, func(&lty.label))
     }
 
     /// Replace the labels on several labeled types.
-    pub fn relabel_slice<L2, F>(&self,
-                                ltys: &'lty [LabeledTy<'lty, 'tcx, L2>],
-                                func: &mut F) -> &'lty [LabeledTy<'lty, 'tcx, L>]
-            where F: FnMut(&L2) -> L {
-        let ltys = ltys.iter().cloned().map(|lty| self.relabel(lty, func)).collect::<Vec<_>>();
+    pub fn relabel_slice<L2, F>(
+        &self,
+        ltys: &'lty [LabeledTy<'lty, 'tcx, L2>],
+        func: &mut F,
+    ) -> &'lty [LabeledTy<'lty, 'tcx, L>]
+    where
+        F: FnMut(&L2) -> L,
+    {
+        let ltys = ltys
+            .iter()
+            .cloned()
+            .map(|lty| self.relabel(lty, func))
+            .collect::<Vec<_>>();
         self.mk_slice(&ltys)
     }
 }
-
 
 impl<'lty, 'tcx, L: fmt::Debug> type_map::Type for LabeledTy<'lty, 'tcx, L> {
     fn sty(&self) -> &TyKind {

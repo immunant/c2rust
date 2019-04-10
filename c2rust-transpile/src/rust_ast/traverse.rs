@@ -104,7 +104,6 @@ impl<A: Traversable + 'static> Traversable for ptr::P<A> {
     }
 }
 
-
 pub fn traverse_stmt_def<W: Traversal>(walk: &mut W, mut s: Stmt) -> Stmt {
     s.node = match s.node {
         StmtKind::Local(p_local) => StmtKind::Local(p_local.traverse(walk)),
@@ -123,63 +122,44 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
         ExprKind::Call(func, args) => ExprKind::Call(func.traverse(walk), args.traverse(walk)),
         ExprKind::MethodCall(meth, args) => ExprKind::MethodCall(meth, args.traverse(walk)),
         ExprKind::Tup(elems) => ExprKind::Tup(elems.traverse(walk)),
-        ExprKind::Binary(op, lhs, rhs) => ExprKind::Binary(
-            op,
-            lhs.traverse(walk),
-            rhs.traverse(walk),
-        ),
+        ExprKind::Binary(op, lhs, rhs) => {
+            ExprKind::Binary(op, lhs.traverse(walk), rhs.traverse(walk))
+        }
         ExprKind::Unary(op, arg) => ExprKind::Unary(op, arg.traverse(walk)),
         ExprKind::Cast(arg, t) => ExprKind::Cast(arg.traverse(walk), t),
         ExprKind::Type(arg, t) => ExprKind::Type(arg.traverse(walk), t),
-        ExprKind::If(cond, thn, els) => ExprKind::If(
-            cond.traverse(walk),
-            thn.traverse(walk),
-            els.traverse(walk),
-        ),
+        ExprKind::If(cond, thn, els) => {
+            ExprKind::If(cond.traverse(walk), thn.traverse(walk), els.traverse(walk))
+        }
         ExprKind::IfLet(pats, cond, thn, els) => ExprKind::IfLet(
             pats,
             cond.traverse(walk),
             thn.traverse(walk),
             els.traverse(walk),
         ),
-        ExprKind::While(cond, block, lbl) => ExprKind::While(
-            cond.traverse(walk),
-            block.traverse(walk),
-            lbl,
-        ),
-        ExprKind::WhileLet(pats, cond, block, lbl) => ExprKind::WhileLet(
-            pats,
-            cond.traverse(walk),
-            block.traverse(walk),
-            lbl,
-        ),
-        ExprKind::ForLoop(pat, cond, block, lbl) => ExprKind::ForLoop(
-            pat,
-            cond.traverse(walk),
-            block.traverse(walk),
-            lbl,
-        ),
+        ExprKind::While(cond, block, lbl) => {
+            ExprKind::While(cond.traverse(walk), block.traverse(walk), lbl)
+        }
+        ExprKind::WhileLet(pats, cond, block, lbl) => {
+            ExprKind::WhileLet(pats, cond.traverse(walk), block.traverse(walk), lbl)
+        }
+        ExprKind::ForLoop(pat, cond, block, lbl) => {
+            ExprKind::ForLoop(pat, cond.traverse(walk), block.traverse(walk), lbl)
+        }
         ExprKind::Loop(block, lbl) => ExprKind::Loop(block.traverse(walk), lbl),
         ExprKind::Match(cond, arm) => ExprKind::Match(cond.traverse(walk), arm.traverse(walk)),
-        ExprKind::Closure(cap, isasync, mov, fn_decl, expr, s) => ExprKind::Closure(
-            cap,
-            isasync,
-            mov,
-            fn_decl,
-            expr.traverse(walk),
-            s,
-        ),
+        ExprKind::Closure(cap, isasync, mov, fn_decl, expr, s) => {
+            ExprKind::Closure(cap, isasync, mov, fn_decl, expr.traverse(walk), s)
+        }
         ExprKind::Block(block, lbl) => ExprKind::Block(block.traverse(walk), lbl),
         ExprKind::Assign(lhs, rhs) => ExprKind::Assign(lhs.traverse(walk), rhs.traverse(walk)),
-        ExprKind::AssignOp(op, lhs, rhs) => ExprKind::AssignOp(
-            op,
-            lhs.traverse(walk),
-            rhs.traverse(walk),
-        ),
+        ExprKind::AssignOp(op, lhs, rhs) => {
+            ExprKind::AssignOp(op, lhs.traverse(walk), rhs.traverse(walk))
+        }
         ExprKind::Field(expr, f) => ExprKind::Field(expr.traverse(walk), f),
         ExprKind::Index(lhs, rhs) => ExprKind::Index(lhs.traverse(walk), rhs.traverse(walk)),
         ExprKind::Range(lhs, rhs, l) => ExprKind::Range(lhs.traverse(walk), rhs.traverse(walk), l),
-        ExprKind::Path(qself,p) => ExprKind::Path(qself,p),
+        ExprKind::Path(qself, p) => ExprKind::Path(qself, p),
         ExprKind::AddrOf(m, expr) => ExprKind::AddrOf(m, expr.traverse(walk)),
         ExprKind::Break(lbl, arg) => ExprKind::Break(lbl, arg.traverse(walk)),
         ExprKind::Continue(lbl) => ExprKind::Continue(lbl),
@@ -192,10 +172,9 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
         ExprKind::Try(arg) => ExprKind::Try(arg.traverse(walk)),
         ExprKind::Yield(arg) => ExprKind::Yield(arg.traverse(walk)),
         ExprKind::Lit(l) => ExprKind::Lit(l),
-        ExprKind::ObsoleteInPlace(lhs, rhs) => ExprKind::ObsoleteInPlace(
-            lhs.traverse(walk),
-            rhs.traverse(walk),
-        ),
+        ExprKind::ObsoleteInPlace(lhs, rhs) => {
+            ExprKind::ObsoleteInPlace(lhs.traverse(walk), rhs.traverse(walk))
+        }
         ExprKind::Async(cap, nod, block) => ExprKind::Async(cap, nod, block.traverse(walk)),
         ExprKind::TryBlock(blk) => ExprKind::TryBlock(blk.traverse(walk)),
         ExprKind::Err => unimplemented!(),
@@ -269,16 +248,17 @@ pub fn traverse_item_def<W: Traversal>(walk: &mut W, mut i: Item) -> Item {
         ItemKind::Mod(m) => ItemKind::Mod(m.traverse(walk)),
         ItemKind::ForeignMod(fm) => ItemKind::ForeignMod(fm.traverse(walk)),
         ItemKind::Trait(a, u, gen, bds, tis) => ItemKind::Trait(a, u, gen, bds, tis.traverse(walk)),
-        ItemKind::Impl(u, p, d, gen, tr, ty, iis) =>
-            ItemKind::Impl(u, p, d, gen, tr, ty, iis.traverse(walk)),
+        ItemKind::Impl(u, p, d, gen, tr, ty, iis) => {
+            ItemKind::Impl(u, p, d, gen, tr, ty, iis.traverse(walk))
+        }
         ItemKind::Use(u) => ItemKind::Use(u),
         ItemKind::ExternCrate(u) => ItemKind::ExternCrate(u),
         ItemKind::GlobalAsm(u) => ItemKind::GlobalAsm(u),
-        ItemKind::Ty(l,r) => ItemKind::Ty(l,r),
-        ItemKind::Enum(l,r) => ItemKind::Enum(l,r),
-        ItemKind::Struct(l,r) => ItemKind::Struct(l,r),
-        ItemKind::Union(l,r) => ItemKind::Union(l,r),
-        ItemKind::TraitAlias(l,r) => ItemKind::TraitAlias(l,r),
+        ItemKind::Ty(l, r) => ItemKind::Ty(l, r),
+        ItemKind::Enum(l, r) => ItemKind::Enum(l, r),
+        ItemKind::Struct(l, r) => ItemKind::Struct(l, r),
+        ItemKind::Union(l, r) => ItemKind::Union(l, r),
+        ItemKind::TraitAlias(l, r) => ItemKind::TraitAlias(l, r),
         ItemKind::Mac(m) => ItemKind::Mac(m),
         ItemKind::MacroDef(m) => ItemKind::MacroDef(m),
         ItemKind::Existential(genbnds, gens) => ItemKind::Existential(genbnds, gens),

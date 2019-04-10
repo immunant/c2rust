@@ -2,7 +2,6 @@ use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 
 use crate::rewrite::TextRewrite;
 
-
 fn empty_span(sp: Span) -> bool {
     sp.lo() == sp.hi()
 }
@@ -14,16 +13,21 @@ fn equal_span_text(cm: &SourceMap, sp1: Span, sp2: Span) -> bool {
 
     let lo1 = cm.lookup_byte_offset(sp1.lo());
     let hi1 = cm.lookup_byte_offset(sp1.hi());
-    let src1 = lo1.sf.src.as_ref()
+    let src1 = lo1
+        .sf
+        .src
+        .as_ref()
         .unwrap_or_else(|| panic!("source of file {} is not available", lo1.sf.name));
 
     let lo2 = cm.lookup_byte_offset(sp2.lo());
     let hi2 = cm.lookup_byte_offset(sp2.hi());
-    let src2 = lo2.sf.src.as_ref()
+    let src2 = lo2
+        .sf
+        .src
+        .as_ref()
         .unwrap_or_else(|| panic!("source of file {} is not available", lo2.sf.name));
 
-    src1[lo1.pos.0 as usize .. hi1.pos.0 as usize] ==
-    src2[lo2.pos.0 as usize .. hi2.pos.0 as usize]
+    src1[lo1.pos.0 as usize..hi1.pos.0 as usize] == src2[lo2.pos.0 as usize..hi2.pos.0 as usize]
 }
 
 /// Clean up a list of rewrites, sorting them and trying to remove all overlapping rewrites without
@@ -40,13 +44,19 @@ pub fn cleanup_rewrites(cm: &SourceMap, rws: Vec<TextRewrite>) -> Vec<TextRewrit
         if rw.old_span == DUMMY_SP {
             // This should only happen when dummy content gets deleted, in which case it is a
             // no-op.
-            assert!(rw.new_span == DUMMY_SP, "tried to insert text at dummy location");
+            assert!(
+                rw.new_span == DUMMY_SP,
+                "tried to insert text at dummy location"
+            );
             continue;
         }
 
         rw.rewrites = cleanup_rewrites(cm, rw.rewrites);
 
-        if new_rws.last().map_or(true, |prev| prev.old_span.hi().0 <= rw.old_span.lo().0) {
+        if new_rws
+            .last()
+            .map_or(true, |prev| prev.old_span.hi().0 <= rw.old_span.lo().0)
+        {
             // This rewrite doesn't overlap the previous rewrite, so we can keep it.
             //
             // Note this covers the case of multiple insertions at the same point (rewriting at
@@ -60,8 +70,9 @@ pub fn cleanup_rewrites(cm: &SourceMap, rws: Vec<TextRewrite>) -> Vec<TextRewrit
 
         let prev = new_rws.last().unwrap();
 
-        if rw.old_span.lo().0 <= prev.old_span.hi().0 &&
-            empty_span(rw.new_span) && empty_span(prev.new_span)
+        if rw.old_span.lo().0 <= prev.old_span.hi().0
+            && empty_span(rw.new_span)
+            && empty_span(prev.new_span)
         {
             rw.old_span = rw.old_span.with_lo(prev.old_span.hi());
             new_rws.push(rw);
@@ -71,10 +82,11 @@ pub fn cleanup_rewrites(cm: &SourceMap, rws: Vec<TextRewrite>) -> Vec<TextRewrit
         // If the two rewrites have identical old_span, new text, sub-rewrites, and adjustment,
         // then we can drop the second one.  But note that even when new_span differs, the new text
         // may be the same.
-        if rw.old_span == prev.old_span &&
-           equal_span_text(cm, rw.new_span, prev.new_span) &&
-           rw.rewrites == prev.rewrites &&
-           rw.adjust == prev.adjust {
+        if rw.old_span == prev.old_span
+            && equal_span_text(cm, rw.new_span, prev.new_span)
+            && rw.rewrites == prev.rewrites
+            && rw.adjust == prev.adjust
+        {
             continue;
         }
 
@@ -83,4 +95,3 @@ pub fn cleanup_rewrites(cm: &SourceMap, rws: Vec<TextRewrite>) -> Vec<TextRewrit
 
     new_rws
 }
-

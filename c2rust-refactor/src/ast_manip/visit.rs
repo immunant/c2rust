@@ -3,8 +3,6 @@ use syntax;
 use syntax::ast::*;
 use syntax::visit::Visitor;
 
-
-
 /// A trait for AST nodes that can accept a `Visitor`.
 pub trait Visit {
     fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V);
@@ -16,7 +14,6 @@ impl Visit for Crate {
         syntax::visit::walk_crate(v, self);
     }
 }
-
 
 // This macro takes as input the definition of `syntax::visit::Visitor` as it appears the libsyntax
 // docs, and emits a `Visit` impl for each method it finds.
@@ -37,7 +34,6 @@ macro_rules! gen_visit_impls {
         )*
     };
 }
-
 
 gen_visit_impls! {
     // Copy-pasted from the syntax::visit::Visitor docs.  Some methods take multiple arguments, so
@@ -63,10 +59,10 @@ gen_visit_impls! {
         fn visit_generics(&mut self, g: &'ast Generics) { ... }
         fn visit_where_predicate(&mut self, p: &'ast WherePredicate) { ... }
         //fn visit_fn(
-        //    &mut self, 
-        //    fk: FnKind<'ast>, 
-        //    fd: &'ast FnDecl, 
-        //    s: Span, 
+        //    &mut self,
+        //    fk: FnKind<'ast>,
+        //    fd: &'ast FnDecl,
+        //    s: Span,
         //    _: NodeId
         //) { ... }
         fn visit_trait_item(&mut self, ti: &'ast TraitItem) { ... }
@@ -74,30 +70,30 @@ gen_visit_impls! {
         fn visit_trait_ref(&mut self, t: &'ast TraitRef) { ... }
         fn visit_param_bound(&mut self, bounds: &'ast GenericBound) { ... }
         //fn visit_poly_trait_ref(
-        //    &mut self, 
-        //    t: &'ast PolyTraitRef, 
+        //    &mut self,
+        //    t: &'ast PolyTraitRef,
         //    m: &'ast TraitBoundModifier
         //) { ... }
         //fn visit_variant_data(
-        //    &mut self, 
-        //    s: &'ast VariantData, 
-        //    _: Ident, 
-        //    _: &'ast Generics, 
-        //    _: NodeId, 
+        //    &mut self,
+        //    s: &'ast VariantData,
+        //    _: Ident,
+        //    _: &'ast Generics,
+        //    _: NodeId,
         //    _: Span
         //) { ... }
         fn visit_struct_field(&mut self, s: &'ast StructField) { ... }
         //fn visit_enum_def(
-        //    &mut self, 
-        //    enum_definition: &'ast EnumDef, 
-        //    generics: &'ast Generics, 
-        //    item_id: NodeId, 
+        //    &mut self,
+        //    enum_definition: &'ast EnumDef,
+        //    generics: &'ast Generics,
+        //    item_id: NodeId,
         //    _: Span
         //) { ... }
         //fn visit_variant(
-        //    &mut self, 
-        //    v: &'ast Variant, 
-        //    g: &'ast Generics, 
+        //    &mut self,
+        //    v: &'ast Variant,
+        //    g: &'ast Generics,
         //    item_id: NodeId
         //) { ... }
         fn visit_label(&mut self, label: &'ast Label) { ... }
@@ -107,13 +103,13 @@ gen_visit_impls! {
         //fn visit_path(&mut self, path: &'ast Path, _id: NodeId) { ... }
         //fn visit_use_tree(&mut self, use_tree: &'ast UseTree, id: NodeId, _nested: bool) { ... }
         //fn visit_path_segment(
-        //    &mut self, 
-        //    path_span: Span, 
+        //    &mut self,
+        //    path_span: Span,
         //    path_segment: &'ast PathSegment
         //) { ... }
         //fn visit_generic_args(
-        //    &mut self, 
-        //    path_span: Span, 
+        //    &mut self,
+        //    path_span: Span,
         //    generic_args: &'ast GenericArgs
         //) { ... }
         fn visit_generic_arg(&mut self, generic_arg: &'ast GenericArg) { ... }

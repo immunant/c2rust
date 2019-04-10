@@ -1,13 +1,13 @@
 //! The `Bindings` type, for mapping names to AST fragments.
 use std::collections::hash_map::{Entry, HashMap};
-use std::convert::{TryInto, TryFrom};
+use std::convert::{TryFrom, TryInto};
 
 use derive_more::{From, TryInto};
 use syntax::ast::{Expr, Ident, Item, Pat, Path, Stmt, Ty};
 use syntax::parse::token::Token;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{Cursor, TokenTree, TokenStream, TokenStreamBuilder};
+use syntax::tokenstream::{Cursor, TokenStream, TokenStreamBuilder, TokenTree};
 
 use crate::ast_manip::AstEquiv;
 use c2rust_ast_builder::IntoSymbol;
@@ -36,7 +36,7 @@ impl BindingTypes {
         match self.types.entry(name.into_symbol()) {
             Entry::Vacant(e) => {
                 e.insert(ty);
-            },
+            }
             Entry::Occupied(mut e) => {
                 let old_ty = *e.get();
                 match (old_ty, ty) {
@@ -105,13 +105,15 @@ impl Bindings {
     }
 
     pub fn try_add_none<S>(&mut self, name: S) -> bool
-    where S: IntoSymbol,
+    where
+        S: IntoSymbol,
     {
         self.try_add(name.into_symbol(), Value::Optional(None))
     }
 
     pub fn add_none<S>(&mut self, name: S)
-    where S: IntoSymbol,
+    where
+        S: IntoSymbol,
     {
         self.add(name, Value::Optional(None));
     }
@@ -140,16 +142,16 @@ impl Bindings {
 }
 
 impl<T> From<Option<T>> for Value
-where T: Into<Value>,
+where
+    T: Into<Value>,
 {
     fn from(val: Option<T>) -> Value {
         match val {
             Some(v) => Value::Optional(Some(Box::new(v.into()))),
-            None => Value::Optional(None)
+            None => Value::Optional(None),
         }
     }
 }
-
 
 macro_rules! define_binding_values {
     ($( $Thing:ident($Repr:ty) ),*) => {
@@ -272,7 +274,7 @@ fn maybe_get_type(c: &mut Cursor) -> Type {
                 c_idx += 1;
                 true
             }
-            _ => false
+            _ => false,
         };
         match c.look_ahead(c_idx) {
             Some(TokenTree::Token(_, Token::Ident(ty_ident, _))) => {
@@ -310,22 +312,26 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                     c.next();
                     let ident_str = &*ident.as_str();
                     let (prefix, label) = ident_str.split_at(1);
-                    assert!(prefix == "'", "Lifetime identifier does not start with ': {}", ident);
+                    assert!(
+                        prefix == "'",
+                        "Lifetime identifier does not start with ': {}",
+                        ident
+                    );
                     let dollar_sym = Symbol::intern(&format!("'${}", label));
                     let label_ty = maybe_get_type(&mut c);
                     bt.set_type(dollar_sym, label_ty);
                     TokenTree::Token(sp, Token::Lifetime(Ident::new(dollar_sym, ident.span)))
                 }
 
-                _ => TokenTree::Token(sp, Token::Dollar)
+                _ => TokenTree::Token(sp, Token::Dollar),
             },
 
             TokenTree::Delimited(sp, delim, tts) => {
                 let dts = rewrite_token_stream(tts.into(), bt);
-                TokenTree::Delimited(sp, delim, dts.into() )
+                TokenTree::Delimited(sp, delim, dts.into())
             }
 
-            tt @ _ => tt
+            tt @ _ => tt,
         };
         tsb.push(new_tt);
     }

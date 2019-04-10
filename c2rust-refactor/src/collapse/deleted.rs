@@ -1,20 +1,19 @@
+use smallvec::SmallVec;
 /// Special handling for nodes that were deleted by macro expansion.  This is mostly for `#[cfg]`
 /// and `#[test]` attrs.  We collect info on deleted nodes right after expansion, then use that
 /// info later to re-insert those nodes during macro collapsing.
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
-use crate::ast_manip::{MutVisit, GetNodeId, ListNodeIds, Visit};
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
+use crate::ast_manip::{GetNodeId, ListNodeIds, MutVisit, Visit};
 use crate::node_map::NodeMap;
 
-use super::mac_table::{MacTable, MacNodeRef, AsMacNodeRef};
-
+use super::mac_table::{AsMacNodeRef, MacNodeRef, MacTable};
 
 /// Record of a node deletion.
 ///
@@ -47,16 +46,21 @@ struct CollectDeletedNodes<'a, 'ast> {
 
 impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
     fn handle_seq<T>(&mut self, parent: NodeId, nodes: &'ast [T])
-            where T: GetNodeId + ListNodeIds + AsMacNodeRef {
+    where
+        T: GetNodeId + ListNodeIds + AsMacNodeRef,
+    {
         let mut history = Vec::with_capacity(nodes.len());
         for n in nodes {
             let id = n.get_node_id();
             if self.table.empty_invocs.contains_key(&id) {
-                let origins = n.list_node_ids().into_iter()
+                let origins = n
+                    .list_node_ids()
+                    .into_iter()
                     .map(|id| self.node_map.save_origin(id))
                     .collect();
                 self.deleted.push(DeletedNode {
-                    id, parent,
+                    id,
+                    parent,
                     preds: history.clone(),
                     node: n.as_mac_node_ref(),
                     saved_origins: origins,
@@ -75,15 +79,11 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
 impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
     fn visit_item(&mut self, x: &'ast Item) {
         match x.node {
-            ItemKind::Mod(ref m) =>
-                self.handle_seq(x.id, &m.items),
-            ItemKind::ForeignMod(ref fm) =>
-                self.handle_seq(x.id, &fm.items),
-            ItemKind::Trait(_, _, _, _, ref items) =>
-                self.handle_seq(x.id, items),
-            ItemKind::Impl(_, _, _, _, _, _, ref items) =>
-                self.handle_seq(x.id, items),
-            _ => {},
+            ItemKind::Mod(ref m) => self.handle_seq(x.id, &m.items),
+            ItemKind::ForeignMod(ref fm) => self.handle_seq(x.id, &fm.items),
+            ItemKind::Trait(_, _, _, _, ref items) => self.handle_seq(x.id, items),
+            ItemKind::Impl(_, _, _, _, _, _, ref items) => self.handle_seq(x.id, items),
+            _ => {}
         }
         visit::walk_item(self, x);
     }
@@ -93,17 +93,22 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
     }
 }
 
-
 /// Transfer (in the sense of `NodeMap::transfer`) the `parent` and `preds` IDs of each
 /// `DeletedNode` in `dns` across the pending edges of `node_map`.
-fn transfer_deleted_nodes<'ast>(node_map: &NodeMap,
-                                dns: Vec<DeletedNode<'ast>>) -> Vec<DeletedNode<'ast>> {
+fn transfer_deleted_nodes<'ast>(
+    node_map: &NodeMap,
+    dns: Vec<DeletedNode<'ast>>,
+) -> Vec<DeletedNode<'ast>> {
     let mut result = Vec::with_capacity(dns.len());
 
     for mut dn in dns {
-        dn.preds = dn.preds.iter().flat_map(|&id| node_map.transfer(id)).collect::<Vec<_>>();
+        dn.preds = dn
+            .preds
+            .iter()
+            .flat_map(|&id| node_map.transfer(id))
+            .collect::<Vec<_>>();
 
-        // Emit a copy of `dn` for each transferred parent ID, avoiding unnecessary clones.  
+        // Emit a copy of `dn` for each transferred parent ID, avoiding unnecessary clones.
         let mut iter = node_map.transfer(dn.parent).peekable();
         let mut opt_dn = Some(dn);
         while let Some(new_parent) = iter.next() {
@@ -125,12 +130,14 @@ fn transfer_deleted_nodes<'ast>(node_map: &NodeMap,
 /// Collect info on all nodes deleted from (unexpanded) `krate` by macro expansion.
 ///
 /// The resulting `DeletedNode`s use expanded IDs.
-pub fn collect_deleted_nodes<'ast>(krate: &'ast Crate,
-                                   node_map: &NodeMap,
-                                   table: &MacTable<'ast>)
-                                   -> Vec<DeletedNode<'ast>> {
+pub fn collect_deleted_nodes<'ast>(
+    krate: &'ast Crate,
+    node_map: &NodeMap,
+    table: &MacTable<'ast>,
+) -> Vec<DeletedNode<'ast>> {
     let mut v = CollectDeletedNodes {
-        table, node_map,
+        table,
+        node_map,
         deleted: Vec::new(),
     };
     v.handle_crate(krate);
@@ -139,23 +146,26 @@ pub fn collect_deleted_nodes<'ast>(krate: &'ast Crate,
     transfer_deleted_nodes(node_map, v.deleted)
 }
 
-
-
 struct RestoreDeletedNodes<'a, 'ast> {
     node_map: &'a mut NodeMap,
     counter: &'a NodeIdCounter,
     /// Map of deleted nodes inside each parent, keyed on collapsed parent `NodeId`.
-    deleted: HashMap<NodeId, Vec<DeletedNode<'ast>>>
+    deleted: HashMap<NodeId, Vec<DeletedNode<'ast>>>,
 }
 
 impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
     fn restore_seq<T>(&mut self, parent: NodeId, nodes: &mut Vec<T>)
-            where T: GetNodeId + ListNodeIds + MutVisit + AsMacNodeRef {
+    where
+        T: GetNodeId + ListNodeIds + MutVisit + AsMacNodeRef,
+    {
         let deleted = match_or!([self.deleted.get(&parent)]
                                 Some(x) => x; return);
         // Set of nodes that are currently present in the parent.  We use this to find the last
         // present node in `preds` for each deleted node.
-        let present = nodes.iter().map(|x| x.get_node_id()).collect::<HashSet<_>>();
+        let present = nodes
+            .iter()
+            .map(|x| x.get_node_id())
+            .collect::<HashSet<_>>();
         // Maps `NodeId`s in `nodes` to lists of `DeletedNode`s to insert afterward.  The entry for
         // `DUMMY_NODE_ID` gives nodes to insert at the start of `nodes`.
         let mut ins_after: HashMap<NodeId, Vec<&DeletedNode>> = HashMap::new();
@@ -164,9 +174,13 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
         // preserved through all steps, so deleting multiple consecutive nodes and reinserting them
         // won't mess anything up.
         for dn in deleted {
-            let last_pred = dn.preds.iter().cloned()
+            let last_pred = dn
+                .preds
+                .iter()
+                .cloned()
                 .filter(|&id| present.contains(&id))
-                .last().unwrap_or(DUMMY_NODE_ID);
+                .last()
+                .unwrap_or(DUMMY_NODE_ID);
             ins_after.entry(last_pred).or_insert_with(Vec::new).push(dn);
         }
 
@@ -206,15 +220,11 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
     fn flat_map_item(&mut self, x: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let x = x.map(|mut x| {
             match x.node {
-                ItemKind::Mod(ref mut m) =>
-                    self.restore_seq(x.id, &mut m.items),
-                ItemKind::ForeignMod(ref mut fm) =>
-                    self.restore_seq(x.id, &mut fm.items),
-                ItemKind::Trait(_, _, _, _, ref mut items) =>
-                    self.restore_seq(x.id, items),
-                ItemKind::Impl(_, _, _, _, _, _, ref mut items) =>
-                    self.restore_seq(x.id, items),
-                _ => {},
+                ItemKind::Mod(ref mut m) => self.restore_seq(x.id, &mut m.items),
+                ItemKind::ForeignMod(ref mut fm) => self.restore_seq(x.id, &mut fm.items),
+                ItemKind::Trait(_, _, _, _, ref mut items) => self.restore_seq(x.id, items),
+                ItemKind::Impl(_, _, _, _, _, _, ref mut items) => self.restore_seq(x.id, items),
+                _ => {}
             }
             x
         });
@@ -229,8 +239,9 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
 /// Convert a flat vector of `DeletedNode`s into a map keyed on parent `NodeId`.
 ///
 /// This preserves relative order inside each sub-`Vec`.
-fn index_deleted_nodes<'ast>(vec: Vec<DeletedNode<'ast>>)
-                             -> HashMap<NodeId, Vec<DeletedNode<'ast>>> {
+fn index_deleted_nodes<'ast>(
+    vec: Vec<DeletedNode<'ast>>,
+) -> HashMap<NodeId, Vec<DeletedNode<'ast>>> {
     let mut map = HashMap::new();
     for dn in vec {
         map.entry(dn.parent).or_insert_with(Vec::new).push(dn);
@@ -242,14 +253,20 @@ fn index_deleted_nodes<'ast>(vec: Vec<DeletedNode<'ast>>)
 ///
 /// The `DeletedNode`s in `deleted` should use expanded IDs, as returned from
 /// `collect_deleted_nodes`.
-pub fn restore_deleted_nodes(krate: &mut Crate,
-                             node_map: &mut NodeMap,
-                             counter: &NodeIdCounter,
-                             deleted: Vec<DeletedNode>) {
+pub fn restore_deleted_nodes(
+    krate: &mut Crate,
+    node_map: &mut NodeMap,
+    counter: &NodeIdCounter,
+    deleted: Vec<DeletedNode>,
+) {
     // Transfer `deleted` to `collapsed` IDs, which is what `krate` is currently using.
     let deleted = transfer_deleted_nodes(node_map, deleted);
     let deleted = index_deleted_nodes(deleted);
 
-    let mut f = RestoreDeletedNodes { node_map, counter, deleted };
+    let mut f = RestoreDeletedNodes {
+        node_map,
+        counter,
+        deleted,
+    };
     krate.visit(&mut f)
 }

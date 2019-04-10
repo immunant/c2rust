@@ -1,9 +1,8 @@
 use std::cell::Cell;
-use syntax::ast::{NodeId, Mac, DUMMY_NODE_ID};
+use syntax::ast::{Mac, NodeId, DUMMY_NODE_ID};
 use syntax::mut_visit::{self, MutVisitor};
 
 use crate::ast_manip::MutVisit;
-
 
 pub struct NodeIdCounter(Cell<u32>);
 
@@ -18,7 +17,6 @@ impl NodeIdCounter {
         id
     }
 }
-
 
 struct NumberNodes<'a> {
     counter: &'a NodeIdCounter,
@@ -44,7 +42,6 @@ pub fn number_nodes<T: MutVisit>(x: &mut T) {
 pub fn number_nodes_with<T: MutVisit>(x: &mut T, counter: &NodeIdCounter) {
     x.visit(&mut NumberNodes { counter })
 }
-
 
 struct ResetNodeIds;
 impl MutVisitor for ResetNodeIds {

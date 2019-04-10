@@ -32,8 +32,8 @@ pub struct CompileCmd {
 impl CompileCmd {
     pub fn abs_file(&self) -> PathBuf {
         match self.file.is_absolute() {
-            true  => self.file.clone(),
-            false => self.directory.join(&self.file)
+            true => self.file.clone(),
+            false => self.directory.join(&self.file),
         }
     }
 }
@@ -76,19 +76,23 @@ fn filter_duplicate_cmds(v: Vec<CompileCmd>) -> Vec<CompileCmd> {
 }
 
 /// Read `compile_commands` file and optionally ignore any entries not matching `filter`.
-pub fn get_compile_commands(compile_commands: &Path, filter: &Option<Regex>)
-    -> Result<Vec<CompileCmd>, Error> {
+pub fn get_compile_commands(
+    compile_commands: &Path,
+    filter: &Option<Regex>,
+) -> Result<Vec<CompileCmd>, Error> {
     let f = File::open(compile_commands)?; // open read-only
 
     // Read the JSON contents of the file as an instance of `Value`
-    let v : Vec<CompileCmd> = serde_json::from_reader(f)?;
+    let v: Vec<CompileCmd> = serde_json::from_reader(f)?;
 
     // apply the filter argument, if any
     let v = if let &Some(ref re) = filter {
         v.into_iter()
-         .filter(|c| re.is_match(c.file.to_str().unwrap()))
-         .collect::<Vec<CompileCmd>>()
-    } else { v };
+            .filter(|c| re.is_match(c.file.to_str().unwrap()))
+            .collect::<Vec<CompileCmd>>()
+    } else {
+        v
+    };
 
     let v = filter_likely_cpp(v);
 

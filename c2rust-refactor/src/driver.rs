@@ -1,55 +1,55 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `rustc_driver::driver::compile_input`.
 
+use rustc::dep_graph::DepGraph;
+use rustc::hir::map as hir_map;
+use rustc::session::config::Options as SessionOptions;
+use rustc::session::config::{Input, OutputFilenames};
+use rustc::session::{self, DiagnosticOutput, Session};
+use rustc::ty::steal::Steal;
+use rustc::ty::{self, GlobalCtxt, Resolutions, TyCtxt};
+use rustc::util::common::ErrorReported;
+use rustc_codegen_utils::codegen_backend::CodegenBackend;
+use rustc_data_structures::declare_box_region_type;
+use rustc_data_structures::sync::{Lock, Lrc};
+use rustc_driver;
+use rustc_errors::DiagnosticBuilder;
+use rustc_incremental::DepGraphFuture;
+use rustc_interface::interface;
+use rustc_interface::interface::BoxedResolver;
+use rustc_interface::util::get_codegen_backend;
+use rustc_interface::{util, Config};
+use rustc_metadata::cstore::CStore;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::mpsc;
-use rustc::dep_graph::DepGraph;
-use rustc::hir::map as hir_map;
-use rustc::util::common::ErrorReported;
-use rustc::ty::{self, GlobalCtxt, Resolutions, TyCtxt};
-use rustc::ty::steal::Steal;
-use rustc_data_structures::declare_box_region_type;
-use rustc_data_structures::sync::{Lock, Lrc};
-use rustc_incremental::DepGraphFuture;
-use rustc_interface::{util, Config};
-use rustc_interface::interface::BoxedResolver;
-use rustc::session::{self, DiagnosticOutput, Session};
-use rustc::session::config::{Input, OutputFilenames};
-use rustc::session::config::Options as SessionOptions;
-use rustc_driver;
-use rustc_errors::DiagnosticBuilder;
-use rustc_interface::util::get_codegen_backend;
-use rustc_metadata::cstore::CStore;
-use rustc_codegen_utils::codegen_backend::CodegenBackend;
-use rustc_interface::interface;
+use std::sync::Arc;
 use syntax::ast;
-use syntax::ast::{
-    Expr, Pat, Ty, Stmt, Item, ImplItem, ForeignItem, ItemKind, Block, Arg, BlockCheckMode,
-    UnsafeSource, NodeId
-};
 use syntax::ast::DUMMY_NODE_ID;
+use syntax::ast::{
+    Arg, Block, BlockCheckMode, Expr, ForeignItem, ImplItem, Item, ItemKind, NodeId, Pat, Stmt, Ty,
+    UnsafeSource,
+};
 use syntax::ext::base::NamedSyntaxExtension;
+use syntax::ext::hygiene::SyntaxContext;
 use syntax::feature_gate::AttributeType;
+use syntax::parse::parser::Parser;
+use syntax::parse::token::Token;
+use syntax::parse::{self, PResult};
+use syntax::ptr::P;
 use syntax::source_map::SourceMap;
 use syntax::source_map::{FileLoader, RealFileLoader};
-use syntax::ext::hygiene::SyntaxContext;
-use syntax::parse::{self, PResult};
-use syntax::parse::token::Token;
-use syntax::parse::parser::Parser;
-use syntax::ptr::P;
 use syntax::symbol::{keywords, Symbol};
 use syntax::tokenstream::TokenTree;
 use syntax_pos::FileName;
 use syntax_pos::Span;
 
 use crate::ast_manip::remove_paren;
-use crate::command::{Registry, RefactorState};
+use crate::command::{RefactorState, Registry};
 use crate::file_io::{ArcFileIO, FileIO};
 // TODO: don't forget to call span_fix after parsing
 // use crate::span_fix;
@@ -74,16 +74,19 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, cstore, None, None)
     }
 
-    pub fn new_phase_2(sess: &'a Session,
-                       cstore: &'a CStore,
-                       map: &'a hir_map::Map<'tcx>) -> RefactorCtxt<'a, 'tcx> {
+    pub fn new_phase_2(
+        sess: &'a Session,
+        cstore: &'a CStore,
+        map: &'a hir_map::Map<'tcx>,
+    ) -> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, cstore, Some(map), None)
     }
 
-    pub fn new_phase_3(sess: &'a Session,
-                       cstore: &'a CStore,
-                       map: &'a hir_map::Map<'tcx>,
-                       tcx: TyCtxt<'a, 'tcx, 'tcx>,
+    pub fn new_phase_3(
+        sess: &'a Session,
+        cstore: &'a CStore,
+        map: &'a hir_map::Map<'tcx>,
+        tcx: TyCtxt<'a, 'tcx, 'tcx>,
     ) -> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, cstore, Some(map), Some(tcx))
     }
@@ -198,7 +201,6 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 //     }
 // }
 
-
 /// Sysroot adjustment: if the sysroot is unset, and args[0] is an absolute path, use args[0] to
 /// infer a sysroot.  Rustc's own sysroot detection (filesearch::get_or_default_sysroot) uses
 /// env::current_exe, which will point to c2rust-refactor, not rustc.
@@ -238,15 +240,13 @@ pub fn clone_config(config: &interface::Config) -> interface::Config {
 }
 
 pub fn create_config(args: &[String]) -> interface::Config {
-    let matches = rustc_driver::handle_options(args)
-        .expect("rustc arg parsing failed");
+    let matches = rustc_driver::handle_options(args).expect("rustc arg parsing failed");
     let (sopts, cfg) = session::config::build_session_options_and_crate_config(&matches);
     let sopts = maybe_set_sysroot(sopts, args);
     let output_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
     let output_file = matches.opt_str("o").map(|o| PathBuf::from(&o));
 
-    assert!(matches.free.len() == 1,
-            "expected exactly one input file");
+    assert!(matches.free.len() == 1, "expected exactly one input file");
     let input_path = Some(Path::new(&matches.free[0]).to_owned());
     let input = Input::File(input_path.as_ref().unwrap().clone());
 
@@ -265,9 +265,14 @@ pub fn create_config(args: &[String]) -> interface::Config {
     }
 }
 
-pub fn run_compiler<F, R>(mut config: interface::Config, file_loader: Option<Box<dyn FileLoader + Send + Sync>>, f: F) -> R
-    where F: FnOnce(&interface::Compiler) -> R,
-          R: Send,
+pub fn run_compiler<F, R>(
+    mut config: interface::Config,
+    file_loader: Option<Box<dyn FileLoader + Send + Sync>>,
+    f: F,
+) -> R
+where
+    F: FnOnce(&interface::Compiler) -> R,
+    R: Send,
 {
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
@@ -285,12 +290,13 @@ pub fn run_compiler<F, R>(mut config: interface::Config, file_loader: Option<Box
 pub fn run_refactoring<F, R>(
     mut config: interface::Config,
     cmd_reg: Registry,
-    file_io: Arc<FileIO+Sync+Send>,
+    file_io: Arc<FileIO + Sync + Send>,
     marks: HashSet<(NodeId, Symbol)>,
     f: F,
 ) -> R
-    where F: FnOnce(RefactorState) -> R,
-          R: Send,
+where
+    F: FnOnce(RefactorState) -> R,
+    R: Send,
 {
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
@@ -330,8 +336,10 @@ struct Queries {
     dep_graph: Query<DepGraph>,
     lower_to_hir: Query<(Steal<hir_map::Forest>, ExpansionResult)>,
     prepare_outputs: Query<OutputFilenames>,
-    codegen_channel: Query<(Steal<mpsc::Sender<Box<dyn Any + Send>>>,
-                            Steal<mpsc::Receiver<Box<dyn Any + Send>>>)>,
+    codegen_channel: Query<(
+        Steal<mpsc::Sender<Box<dyn Any + Send>>>,
+        Steal<mpsc::Receiver<Box<dyn Any + Send>>>,
+    )>,
     global_ctxt: Query<BoxedGlobalCtxt>,
     ongoing_codegen: Query<Box<dyn Any>>,
     link: Query<()>,
@@ -367,8 +375,7 @@ declare_box_region_type!(
     (&'gcx GlobalCtxt<'gcx>) -> ((), ())
 );
 
-
-pub fn make_compiler(config: &Config, file_io: Arc<FileIO+Sync+Send>) -> interface::Compiler {
+pub fn make_compiler(config: &Config, file_io: Arc<FileIO + Sync + Send>) -> interface::Compiler {
     let mut config = clone_config(config);
     config.file_loader = Some(Box::new(ArcFileIO(file_io)));
     let (sess, codegen_backend, source_map) = util::create_session(
@@ -402,10 +409,6 @@ pub fn make_compiler(config: &Config, file_io: Arc<FileIO+Sync+Send>) -> interfa
     let compiler = unsafe { mem::transmute(compiler) };
     compiler
 }
-
-
-
-
 
 // pub fn run_compiler_to_phase1(args: &[String],
 //                               file_loader: Option<Box<FileLoader+Sync+Send>>) -> Phase1Bits {
@@ -444,7 +447,6 @@ pub fn make_compiler(config: &Config, file_io: Arc<FileIO+Sync+Send>) -> interfa
 //     }
 // }
 
-
 /// Run the compiler with some command line `args`.  Stops compiling and invokes the callback
 /// `func` after the indicated `phase`.
 ///
@@ -460,36 +462,46 @@ pub fn make_compiler(config: &Config, file_io: Arc<FileIO+Sync+Send>) -> interfa
 //     run_compiler_from_phase1(bits, phase, func)
 // }
 
-pub fn build_session_from_args(args: &[String],
-                               file_loader: Option<Box<FileLoader+Sync+Send>>) -> Session {
-    let matches = rustc_driver::handle_options(args)
-        .expect("rustc arg parsing failed");
+pub fn build_session_from_args(
+    args: &[String],
+    file_loader: Option<Box<FileLoader + Sync + Send>>,
+) -> Session {
+    let matches = rustc_driver::handle_options(args).expect("rustc arg parsing failed");
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
     let sopts = maybe_set_sysroot(sopts, args);
 
-    assert!(matches.free.len() == 1,
-           "expected exactly one input file");
+    assert!(matches.free.len() == 1, "expected exactly one input file");
     let in_path = Some(Path::new(&matches.free[0]).to_owned());
 
     let (session, _cstore, _codegen_backend) = build_session(sopts, in_path, file_loader);
     session
 }
 
-fn build_session(sopts: SessionOptions,
-                 in_path: Option<PathBuf>,
-                 file_loader: Option<Box<FileLoader+Sync+Send>>) -> (Session, CStore, Box<CodegenBackend>) {
+fn build_session(
+    sopts: SessionOptions,
+    in_path: Option<PathBuf>,
+    file_loader: Option<Box<FileLoader + Sync + Send>>,
+) -> (Session, CStore, Box<CodegenBackend>) {
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_interface::util::diagnostics_registry();
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
     // Note: `source_map` is expected to be an `Lrc<SourceMap>`, which is an alias for `Rc<SourceMap>`.
     // If this ever changes, we'll need a new trick to obtain the `SourceMap` in `rebuild_session`.
-    let source_map = Rc::new(SourceMap::with_file_loader(file_loader, sopts.file_path_mapping()));
+    let source_map = Rc::new(SourceMap::with_file_loader(
+        file_loader,
+        sopts.file_path_mapping(),
+    ));
     // Put a dummy file at the beginning of the source_map, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
     source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
     let sess = session::build_session_with_source_map(
-        sopts, in_path, descriptions, source_map, DiagnosticOutput::Default, Default::default(),
+        sopts,
+        in_path,
+        descriptions,
+        source_map,
+        DiagnosticOutput::Default,
+        Default::default(),
     );
 
     let codegen_backend = get_codegen_backend(&sess);
@@ -499,9 +511,11 @@ fn build_session(sopts: SessionOptions,
 }
 
 fn make_parser<'a>(sess: &'a Session, src: &str) -> Parser<'a> {
-    parse::new_parser_from_source_str(&sess.parse_sess,
-                                      FileName::anon_source_code(src),
-                                      src.to_owned())
+    parse::new_parser_from_source_str(
+        &sess.parse_sess,
+        FileName::anon_source_code(src),
+        src.to_owned(),
+    )
 }
 
 pub fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
@@ -548,10 +562,15 @@ pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("{{ {} }}", src));
     match p.parse_block() {
-        Ok(blk) => blk.into_inner().stmts.into_iter().map(|mut s| {
-            remove_paren(&mut s);
-            s.lone()
-        }).collect(),
+        Ok(blk) => blk
+            .into_inner()
+            .stmts
+            .into_iter()
+            .map(|mut s| {
+                remove_paren(&mut s);
+                s.lone()
+            })
+            .collect(),
         Err(db) => emit_and_panic(db, "stmts"),
     }
 }
@@ -577,12 +596,10 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("impl ! {{ {} }}", src));
     match p.parse_item() {
-        Ok(item) => {
-            match item.expect("expected to find an item").into_inner().node {
-                ItemKind::Impl(_, _, _, _, _, _, items) => items,
-                _ => panic!("expected to find an impl item"),
-            }
-        }
+        Ok(item) => match item.expect("expected to find an item").into_inner().node {
+            ItemKind::Impl(_, _, _, _, _, _, items) => items,
+            _ => panic!("expected to find an impl item"),
+        },
         Err(db) => emit_and_panic(db, "impl items"),
     }
 }
@@ -592,12 +609,10 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("extern {{ {} }}", src));
     match p.parse_item() {
-        Ok(item) => {
-            match item.expect("expected to find an item").into_inner().node {
-                ItemKind::ForeignMod(fm) => fm.items,
-                _ => panic!("expected to find a foreignmod item"),
-            }
-        }
+        Ok(item) => match item.expect("expected to find an item").into_inner().node {
+            ItemKind::ForeignMod(fm) => fm.items,
+            _ => panic!("expected to find a foreignmod item"),
+        },
         Err(db) => emit_and_panic(db, "foreign items"),
     }
 }
@@ -616,7 +631,7 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
             remove_paren(&mut block);
             block.rules = rules;
             block
-        },
+        }
         Err(db) => emit_and_panic(db, "block"),
     }
 }
@@ -626,7 +641,11 @@ fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
     let pat = p.parse_pat(None)?;
     p.expect(&Token::Colon)?;
     let ty = p.parse_ty()?;
-    Ok(Arg { pat, ty, id: DUMMY_NODE_ID })
+    Ok(Arg {
+        pat,
+        ty,
+        id: DUMMY_NODE_ID,
+    })
 }
 
 pub fn parse_arg(sess: &Session, src: &str) -> Arg {
@@ -640,9 +659,10 @@ pub fn parse_arg(sess: &Session, src: &str) -> Arg {
     }
 }
 
-
 pub fn run_parser<F, R>(sess: &Session, src: &str, f: F) -> R
-        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+where
+    F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
+{
     let mut p = make_parser(sess, src);
     match f(&mut p) {
         Ok(x) => x,
@@ -651,7 +671,9 @@ pub fn run_parser<F, R>(sess: &Session, src: &str, f: F) -> R
 }
 
 pub fn run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> R
-        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+where
+    F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
+{
     let mut p = parse::new_parser_from_tts(&sess.parse_sess, tts);
     match f(&mut p) {
         Ok(x) => x,
@@ -660,29 +682,32 @@ pub fn run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> R
 }
 
 pub fn try_run_parser<F, R>(sess: &Session, src: &str, f: F) -> Option<R>
-        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+where
+    F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
+{
     let mut p = make_parser(sess, src);
     match f(&mut p) {
         Ok(x) => Some(x),
         Err(mut db) => {
             db.cancel();
             None
-        },
+        }
     }
 }
 
 pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Option<R>
-        where F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R> {
+where
+    F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
+{
     let mut p = parse::new_parser_from_tts(&sess.parse_sess, tts);
     match f(&mut p) {
         Ok(x) => Some(x),
         Err(mut db) => {
             db.cancel();
             None
-        },
+        }
     }
 }
-
 
 /// Create a span whose text is `s`.  Note this is somewhat expensive, as it adds a new dummy file
 /// to the `SourceMap` on every call.

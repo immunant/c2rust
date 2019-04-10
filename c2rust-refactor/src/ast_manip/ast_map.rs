@@ -4,17 +4,17 @@ use syntax::visit::{self, Visitor};
 
 use crate::ast_manip::Visit;
 
-
-
 /// A table of references to AST nodes of some type, indexed by NodeId.
 #[derive(Clone, Debug)]
-pub struct NodeTable<'s, T: ?Sized+'s> {
+pub struct NodeTable<'s, T: ?Sized + 's> {
     nodes: HashMap<NodeId, &'s T>,
 }
 
 impl<'s, T> Default for NodeTable<'s, T> {
     fn default() -> NodeTable<'s, T> {
-        NodeTable { nodes: HashMap::new() }
+        NodeTable {
+            nodes: HashMap::new(),
+        }
     }
 }
 
@@ -42,7 +42,6 @@ impl<'s, T: ?Sized> NodeTable<'s, T> {
     }
 }
 
-
 /// A lookup table for finding nodes within an AST or AST fragment.
 #[derive(Clone, Default)]
 pub struct AstMap<'s> {
@@ -68,7 +67,6 @@ impl<'s> AstMap<'s> {
         }
     }
 }
-
 
 struct MapAstInto<'a, 's: 'a> {
     map: &'a mut AstMap<'s>,
@@ -119,7 +117,6 @@ impl<'a, 's> Visitor<'s> for MapAstInto<'a, 's> {
         visit::walk_mac(self, mac);
     }
 }
-
 
 pub fn map_ast_into<'s, T: Visit>(x: &'s T, map: &mut AstMap<'s>) {
     x.visit(&mut MapAstInto { map })

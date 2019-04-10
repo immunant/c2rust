@@ -3,18 +3,19 @@ extern crate clap;
 use clap::{App, AppSettings, SubCommand};
 use std::env;
 use std::ffi::OsStr;
-use std::process::{Command, exit};
+use std::process::{exit, Command};
 
 fn main() {
-    let subcommand_yamls = [
-        load_yaml!("transpile.yaml"),
-        load_yaml!("refactor.yaml"),
-    ];
+    let subcommand_yamls = [load_yaml!("transpile.yaml"), load_yaml!("refactor.yaml")];
     let matches = App::new("C2Rust")
         .version(crate_version!())
         .author(crate_authors!(", "))
         .setting(AppSettings::SubcommandRequiredElseHelp)
-        .subcommands(subcommand_yamls.iter().map(|yaml| SubCommand::from_yaml(yaml)))
+        .subcommands(
+            subcommand_yamls
+                .iter()
+                .map(|yaml| SubCommand::from_yaml(yaml)),
+        )
         .get_matches();
 
     let mut os_args = env::args_os();
@@ -48,11 +49,13 @@ where
     cmd_path.pop(); // remove current executable
     cmd_path.push(format!("c2rust-{}", subcommand));
     assert!(cmd_path.exists(), format!("{:?} is missing", cmd_path));
-    exit(Command::new(cmd_path.into_os_string())
-         .args(args)
-         .env("LD_LIBRARY_PATH", ld_library_path)
-         .status()
-         .expect("SubCommand failed to start")
-         .code()
-         .unwrap_or(-1));
+    exit(
+        Command::new(cmd_path.into_os_string())
+            .args(args)
+            .env("LD_LIBRARY_PATH", ld_library_path)
+            .status()
+            .expect("SubCommand failed to start")
+            .code()
+            .unwrap_or(-1),
+    );
 }

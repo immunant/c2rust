@@ -4,7 +4,6 @@ use smallvec::SmallVec;
 pub mod cursor;
 pub mod dataflow;
 
-
 /// Move the lone item out of a 1-element container.
 pub trait Lone<T> {
     fn lone(self) -> T;

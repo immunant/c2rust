@@ -1,6 +1,6 @@
-use indexmap::{IndexMap, IndexSet};
 use c2rust_ast_builder::{mk, Builder};
-use syntax::ast::{Item, ForeignItem};
+use indexmap::{IndexMap, IndexSet};
+use syntax::ast::{ForeignItem, Item};
 use syntax::ptr::P;
 
 use std::borrow::Cow;
@@ -50,15 +50,13 @@ impl PathedMultiImports {
 
     pub fn into_items(self) -> Vec<P<Item>> {
         fn build_items((path, imports): (Vec<String>, MultiImport)) -> P<Item> {
-            imports.attrs
+            imports
+                .attrs
                 .unwrap_or_else(|| mk())
                 .use_multiple_item(path, imports.leaves.iter().collect())
         }
 
-        self.0
-            .into_iter()
-            .map(build_items)
-            .collect()
+        self.0.into_iter().map(build_items).collect()
     }
 }
 

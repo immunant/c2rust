@@ -7,8 +7,7 @@ use syntax::visit::{self, Visitor};
 
 use smallvec::SmallVec;
 
-use crate::ast_manip::{MutVisit, GetNodeId, Visit};
-
+use crate::ast_manip::{GetNodeId, MutVisit, Visit};
 
 struct CollectCfgAttrs {
     node_attrs: HashMap<NodeId, Vec<Attribute>>,
@@ -16,7 +15,9 @@ struct CollectCfgAttrs {
 
 impl CollectCfgAttrs {
     fn collect<T: HasAttrs + GetNodeId>(&mut self, x: &T) {
-        let attrs = x.attrs().iter()
+        let attrs = x
+            .attrs()
+            .iter()
             .filter(|attr| attr.check_name("cfg_attr"))
             .cloned()
             .collect::<Vec<_>>();
@@ -61,7 +62,6 @@ pub fn collect_cfg_attrs(krate: &Crate) -> HashMap<NodeId, Vec<Attribute>> {
     v.node_attrs
 }
 
-
 struct RestoreCfgAttrs {
     node_attrs: HashMap<NodeId, Vec<Attribute>>,
 }
@@ -69,20 +69,30 @@ struct RestoreCfgAttrs {
 impl RestoreCfgAttrs {
     fn restore<T: HasAttrs + GetNodeId>(&mut self, x: &mut T) {
         if let Some(cfg_attrs) = self.node_attrs.get(&x.get_node_id()) {
-            info!("RESTORE ATTRS {:?} onto {:?}",
-                  cfg_attrs.iter().map(|a| ::syntax::print::pprust::attr_to_string(a))
+            info!(
+                "RESTORE ATTRS {:?} onto {:?}",
+                cfg_attrs
+                    .iter()
+                    .map(|a| ::syntax::print::pprust::attr_to_string(a))
                     .collect::<Vec<_>>(),
-                  x.attrs().iter().map(|a| ::syntax::print::pprust::attr_to_string(a))
-                    .collect::<Vec<_>>());
+                x.attrs()
+                    .iter()
+                    .map(|a| ::syntax::print::pprust::attr_to_string(a))
+                    .collect::<Vec<_>>()
+            );
             x.visit_attrs(|attrs| {
                 // Drop attrs that were produced by evaluation of one of the `#[cfg_attr]`s.
                 attrs.retain(|a| !cfg_attrs.iter().any(|ca| ca.span.contains(a.span)));
                 // Now put the #[cfg_attr]s themselves back in.
                 attrs.extend(cfg_attrs.iter().cloned());
             });
-            info!("  attrs changed to {:?}",
-                  x.attrs().iter().map(|a| ::syntax::print::pprust::attr_to_string(a))
-                    .collect::<Vec<_>>());
+            info!(
+                "  attrs changed to {:?}",
+                x.attrs()
+                    .iter()
+                    .map(|a| ::syntax::print::pprust::attr_to_string(a))
+                    .collect::<Vec<_>>()
+            );
         }
     }
 }

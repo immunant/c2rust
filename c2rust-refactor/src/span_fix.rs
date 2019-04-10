@@ -6,17 +6,16 @@
 //!    reference to `std::fmt::Display::fmt` used to format `x`.  We'd like to detect all of these
 //!    bogus spans and reset them.
 
-use std::mem;
 use smallvec::SmallVec;
+use std::mem;
 use syntax::ast::*;
-use syntax::source_map::{Span, DUMMY_SP};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
+use syntax::source_map::{Span, DUMMY_SP};
 use syntax_pos::hygiene::SyntaxContext;
 
-use crate::ast_manip::MutVisit;
 use crate::ast_manip::util::extended_span;
-
+use crate::ast_manip::MutVisit;
 
 /// MutVisitor for fixing expansions of `format!`.  `format!(..., foo)` generates an expression `&foo`,
 /// and gives it the same span as `foo` itself (notably, *not* a macro generated span), which
@@ -31,7 +30,9 @@ struct FixFormat {
 
 impl FixFormat {
     fn descend<F, R>(&mut self, in_format: bool, cur_span: Span, f: F) -> R
-            where F: FnOnce(&mut Self) -> R {
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
         let old_in_format = mem::replace(&mut self.in_format, in_format);
         let old_parent_span = mem::replace(&mut self.parent_span, cur_span);
         let r = f(self);
@@ -62,9 +63,10 @@ impl FixFormat {
 
 impl MutVisitor for FixFormat {
     fn visit_expr(&mut self, e: &mut P<Expr>) {
-        if self.in_format &&
-           e.span.ctxt() == SyntaxContext::empty() &&
-           matches!([e.node] ExprKind::AddrOf(..)) {
+        if self.in_format
+            && e.span.ctxt() == SyntaxContext::empty()
+            && matches!([e.node] ExprKind::AddrOf(..))
+        {
             trace!("EXITING format! at {:?}", e);
             // Current node is the `&foo`.  We need to change its span.  On recursing into `foo`,
             // we are no longer inside a `format!` invocation.
@@ -78,7 +80,9 @@ impl MutVisitor for FixFormat {
             self.descend(true, e.span, |this| mut_visit::noop_visit_expr(e, this))
         } else {
             let in_format = self.in_format;
-            self.descend(in_format, e.span, |this| mut_visit::noop_visit_expr(e, this))
+            self.descend(in_format, e.span, |this| {
+                mut_visit::noop_visit_expr(e, this)
+            })
         }
     }
 
@@ -87,7 +91,6 @@ impl MutVisitor for FixFormat {
     }
 }
 
-
 /// MutVisitor for fixing up spans of items with attributes.  We set the span of the item to include
 /// all its attrs, so that removing the item will also remove the attrs from the source text.
 struct FixAttrs;
@@ -95,23 +98,27 @@ struct FixAttrs;
 impl MutVisitor for FixAttrs {
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let new_span = extended_span(i.span, &i.attrs);
-        let i =
-            if new_span != i.span {
-                i.map(|i| Item { span: new_span, ..i })
-            } else {
-                i
-            };
+        let i = if new_span != i.span {
+            i.map(|i| Item {
+                span: new_span,
+                ..i
+            })
+        } else {
+            i
+        };
         mut_visit::noop_flat_map_item(i, self)
     }
 
     fn flat_map_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         let new_span = extended_span(fi.span, &fi.attrs);
-        let fi =
-            if new_span != fi.span {
-                ForeignItem { span: new_span, ..fi }
-            } else {
-                fi
-            };
+        let fi = if new_span != fi.span {
+            ForeignItem {
+                span: new_span,
+                ..fi
+            }
+        } else {
+            fi
+        };
         mut_visit::noop_flat_map_foreign_item(fi, self)
     }
 
@@ -119,7 +126,6 @@ impl MutVisitor for FixAttrs {
         mut_visit::noop_visit_mac(mac, self)
     }
 }
-
 
 pub fn fix_format<T: MutVisit>(node: &mut T) {
     let mut fix_format = FixFormat {

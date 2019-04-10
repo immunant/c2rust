@@ -5,7 +5,6 @@ use syntax::ptr::P;
 
 use crate::ast_manip::MutVisit;
 
-
 /// AST fold for deleting `ExprKind::Paren` nodes.  These are used only for pretty-printing, but
 /// cause problems when we compare ASTs (for example, "Mul(Add(x, y), z)" prints as "(x + y) * z",
 /// which parses back as "Mul(Paren(Add(x, y)), z)").

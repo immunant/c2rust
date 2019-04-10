@@ -1,20 +1,20 @@
+use regex::Regex;
+use rustc::session::Session;
 use std::mem;
 use std::str::FromStr;
 use std::vec;
-use regex::Regex;
-use rustc::session::Session;
 use syntax::ast::Path;
 use syntax::parse;
-use syntax::parse::ParseSess;
 use syntax::parse::parser::{Parser, PathStyle};
-use syntax::parse::token::{Token, DelimToken, Lit};
+use syntax::parse::token::{DelimToken, Lit, Token};
+use syntax::parse::ParseSess;
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenTree, TokenStream};
+use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax_pos::FileName;
 
-use crate::pick_node::NodeKind;
 use crate::ast_manip::remove_paren;
-use crate::select::{SelectOp, Filter, AnyPattern, ItemLikeKind};
+use crate::pick_node::NodeKind;
+use crate::select::{AnyPattern, Filter, ItemLikeKind, SelectOp};
 
 type PResult<T> = Result<T, String>;
 
@@ -23,7 +23,6 @@ macro_rules! fail {
         return Err(format!($($args)*))
     };
 }
-
 
 struct Stream<'a> {
     toks: vec::IntoIter<TokenTree>,
@@ -60,7 +59,6 @@ impl<'a> Stream<'a> {
             Ok(())
         }
     }
-
 
     fn token(&mut self) -> PResult<Token> {
         match self.take()? {
@@ -102,13 +100,14 @@ impl<'a> Stream<'a> {
                     fail!("expected parens, but got {:?}", delim);
                 }
                 Ok(tts.into())
-            },
+            }
             TokenTree::Token(_, tok) => fail!("expected parens, but got {:?}", tok),
         }
     }
 
     fn parens(&mut self) -> PResult<Stream<'a>> {
-        self.parens_raw().map(|ts| Stream::new(self.sess, ts.into_trees().collect()))
+        self.parens_raw()
+            .map(|ts| Stream::new(self.sess, ts.into_trees().collect()))
     }
 
     fn maybe_parens(&mut self) -> Option<Stream<'a>> {
@@ -134,14 +133,15 @@ impl<'a> Stream<'a> {
     fn path(&mut self) -> PResult<Path> {
         let ts = mem::replace(&mut self.toks, Vec::new().into_iter());
         let mut p = Parser::new(self.sess, ts.collect(), None, false, false);
-        let path = p.parse_path(PathStyle::Mod)
+        let path = p
+            .parse_path(PathStyle::Mod)
             .map_err(|e| format!("error parsing path: {}", e.message()))?;
-        self.toks = p.parse_all_token_trees()
+        self.toks = p
+            .parse_all_token_trees()
             .map_err(|e| format!("error parsing path: {}", e.message()))?
             .into_iter();
         Ok(path)
     }
-
 
     fn filter(&mut self) -> PResult<Filter> {
         self.filter_or()
@@ -193,7 +193,7 @@ impl<'a> Stream<'a> {
                         Err(_) => fail!("invalid node kind `{}`", kind_str.as_str()),
                     };
                     Ok(Filter::Kind(kind))
-                },
+                }
 
                 "item_kind" => {
                     let mut inner = self.parens()?;
@@ -205,14 +205,14 @@ impl<'a> Stream<'a> {
                         Err(_) => fail!("invalid itemlike kind `{}`", subkind_str.as_str()),
                     };
                     Ok(Filter::ItemKind(subkind))
-                },
+                }
 
                 "path" => {
                     let mut inner = self.parens()?;
                     let path = inner.path()?;
                     inner.last()?;
                     Ok(Filter::PathPrefix(0, Box::new(path)))
-                },
+                }
 
                 "path_prefix" => {
                     let mut inner = self.parens()?;
@@ -230,15 +230,11 @@ impl<'a> Stream<'a> {
                     };
 
                     Ok(Filter::PathPrefix(seg_count, Box::new(path)))
-                },
+                }
 
-                "pub" => {
-                    Ok(Filter::Public)
-                },
+                "pub" => Ok(Filter::Public),
 
-                "mut" => {
-                    Ok(Filter::Mutable)
-                },
+                "mut" => Ok(Filter::Mutable),
 
                 "name" => {
                     let mut inner = self.parens()?;
@@ -258,53 +254,56 @@ impl<'a> Stream<'a> {
                     // Then, add ^ ... $ so the regex has to match the entire item name
                     let r = Regex::new(&format!("^({})$", s.as_str())).unwrap();
                     Ok(Filter::Name(r))
-                },
+                }
 
                 "has_attr" => {
                     let mut inner = self.parens()?;
                     let name = inner.name()?;
                     inner.last()?;
                     Ok(Filter::HasAttr(name))
-                },
+                }
 
                 "match_expr" => {
                     let ts = self.parens_raw()?;
 
                     let mut p = Parser::new(self.sess, ts, None, false, false);
-                    let mut x = p.parse_expr()
+                    let mut x = p
+                        .parse_expr()
                         .map_err(|e| format!("error parsing expr: {}", e.message()))?;
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing expr: {}", e.message()))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Expr(x)))
-                },
+                }
 
                 "match_pat" => {
                     let ts = self.parens_raw()?;
 
                     let mut p = Parser::new(self.sess, ts, None, false, false);
-                    let mut x = p.parse_pat(None)
+                    let mut x = p
+                        .parse_pat(None)
                         .map_err(|e| format!("error parsing pat: {}", e.message()))?;
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing pat: {}", e.message()))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Pat(x)))
-                },
+                }
 
                 "match_ty" => {
                     let ts = self.parens_raw()?;
 
                     let mut p = Parser::new(self.sess, ts, None, false, false);
-                    let mut x = p.parse_ty()
+                    let mut x = p
+                        .parse_ty()
                         .map_err(|e| format!("error parsing ty: {}", e.message()))?;
                     p.expect(&Token::Eof)
                         .map_err(|e| format!("error parsing ty: {}", e.message()))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Ty(x)))
-                },
+                }
 
                 "match_stmt" => {
                     let ts = self.parens_raw()?;
@@ -323,42 +322,42 @@ impl<'a> Stream<'a> {
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Stmt(x)))
-                },
+                }
 
                 "marked" => {
                     let mut inner = self.parens()?;
                     let label = inner.name()?;
                     inner.last()?;
                     Ok(Filter::Marked(label))
-                },
+                }
 
                 "any_child" => {
                     let mut inner = self.parens()?;
                     let filt = inner.filter()?;
                     inner.last()?;
                     Ok(Filter::AnyChild(Box::new(filt)))
-                },
+                }
 
                 "every_child" => {
                     let mut inner = self.parens()?;
                     let filt = inner.filter()?;
                     inner.last()?;
                     Ok(Filter::AllChild(Box::new(filt)))
-                },
+                }
 
                 "any_desc" => {
                     let mut inner = self.parens()?;
                     let filt = inner.filter()?;
                     inner.last()?;
                     Ok(Filter::AnyDesc(Box::new(filt)))
-                },
+                }
 
                 "every_desc" => {
                     let mut inner = self.parens()?;
                     let filt = inner.filter()?;
                     inner.last()?;
                     Ok(Filter::AllDesc(Box::new(filt)))
-                },
+                }
 
                 name => {
                     // Shorthand for `kind(x)` and `item_kind(x)`
@@ -369,8 +368,7 @@ impl<'a> Stream<'a> {
                     } else {
                         fail!("unknown filter op `{}`", name)
                     }
-                },
-
+                }
             }
         }
     }
@@ -382,65 +380,57 @@ impl<'a> Stream<'a> {
                 let label = inner.name()?;
                 inner.last()?;
                 SelectOp::Marked(label)
-            },
+            }
 
             "mark" => {
                 let mut inner = self.parens()?;
                 let label = inner.name()?;
                 inner.last()?;
                 SelectOp::Mark(label)
-            },
+            }
 
             "unmark" => {
                 let mut inner = self.parens()?;
                 let label = inner.name()?;
                 inner.last()?;
                 SelectOp::Unmark(label)
-            },
+            }
 
-            "reset" => {
-                SelectOp::Reset
-            },
+            "reset" => SelectOp::Reset,
 
-            "crate" => {
-                SelectOp::Crate
-            },
+            "crate" => SelectOp::Crate,
 
             "item" => {
                 let mut inner = self.parens()?;
                 let path = inner.path()?;
                 inner.last()?;
                 SelectOp::Item(path)
-            },
+            }
 
             "child" => {
                 let mut inner = self.parens()?;
                 let filter = inner.filter()?;
                 inner.last()?;
                 SelectOp::ChildMatch(filter)
-            },
+            }
 
             "desc" => {
                 let mut inner = self.parens()?;
                 let filter = inner.filter()?;
                 inner.last()?;
                 SelectOp::DescMatch(filter)
-            },
+            }
 
             "filter" => {
                 let mut inner = self.parens()?;
                 let filter = inner.filter()?;
                 inner.last()?;
                 SelectOp::Filter(filter)
-            },
+            }
 
-            "first" => {
-                SelectOp::First
-            },
+            "first" => SelectOp::First,
 
-            "last" => {
-                SelectOp::Last
-            },
+            "last" => SelectOp::Last,
 
             name => fail!("unknown select op `{}`", name),
         };
@@ -450,14 +440,13 @@ impl<'a> Stream<'a> {
     }
 }
 
-
 pub fn parse(sess: &Session, src: &str) -> Vec<SelectOp> {
     debug!("src = {:?}", src);
     let ts = parse::parse_stream_from_source_str(
         FileName::macro_expansion_source_code(src),
         src.to_string(),
         &sess.parse_sess,
-        None
+        None,
     );
     debug!("tokens = {:?}", ts);
 

@@ -7,8 +7,6 @@ use crate::ast_manip::Visit;
 use crate::command::CommandState;
 use c2rust_ast_builder::IntoSymbol;
 
-
-
 struct ContainsMarkVisitor<'a> {
     st: &'a CommandState,
     label: Symbol,
@@ -43,7 +41,10 @@ impl<'a, 'ast> Visitor<'ast> for ContainsMarkVisitor<'a> {
 /// Check if any descendant of a node has a particular mark.  It only looks at certain types of
 /// nodes, though, so it's not completely reliable and probably shouldn't be used.
 pub fn contains_mark<T, S>(target: &T, label: S, st: &CommandState) -> bool
-        where T: Visit, S: IntoSymbol {
+where
+    T: Visit,
+    S: IntoSymbol,
+{
     let mut v = ContainsMarkVisitor {
         st: st,
         label: label.into_symbol(),

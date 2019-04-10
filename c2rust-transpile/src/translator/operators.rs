@@ -115,12 +115,8 @@ impl<'c> Translation<'c> {
                 let mut stmts = vec![];
 
                 if ctx.is_unused() {
-                    stmts.extend(
-                        self.convert_expr(ctx, lhs)?.stmts,
-                    );
-                    stmts.extend(
-                        self.convert_expr(ctx, rhs)?.stmts,
-                    );
+                    stmts.extend(self.convert_expr(ctx, lhs)?.stmts);
+                    stmts.extend(self.convert_expr(ctx, rhs)?.stmts);
 
                     Ok(WithStmts {
                         stmts,
@@ -248,9 +244,7 @@ impl<'c> Translation<'c> {
 
         let result_type_id = result_type.unwrap_or(qtype);
         let compute_lhs_type_id = compute_type.unwrap_or(qtype);
-        let initial_lhs = &self.ast_context
-            .index(lhs)
-            .kind;
+        let initial_lhs = &self.ast_context.index(lhs).kind;
         let initial_lhs_type_id = initial_lhs
             .get_qual_type()
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
@@ -259,12 +253,17 @@ impl<'c> Translation<'c> {
             CExprKind::Member(_, _, decl_id, _, _) => {
                 let kind = &self.ast_context[*decl_id].kind;
 
-                if let CDeclKind::Field { bitfield_width: Some(_), name, .. } = kind {
+                if let CDeclKind::Field {
+                    bitfield_width: Some(_),
+                    name,
+                    ..
+                } = kind
+                {
                     Some(name)
                 } else {
                     None
                 }
-            },
+            }
             _ => None,
         };
 
@@ -740,8 +739,7 @@ impl<'c> Translation<'c> {
         let one = match self.ast_context.resolve_type(ty.ctype).kind {
             // TODO: If rust gets f16 support:
             // CTypeKind::Half |
-            CTypeKind::Float |
-            CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
+            CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
             CTypeKind::LongDouble => {
                 self.extern_crates.borrow_mut().insert("f128");
 
@@ -749,7 +747,7 @@ impl<'c> Translation<'c> {
                 let args = vec![mk().ident_expr("1.")];
 
                 mk().call_expr(fn_path, args)
-            },
+            }
             _ => mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)),
         };
         let arg_type = self.ast_context[arg]
@@ -802,8 +800,7 @@ impl<'c> Translation<'c> {
         let mut one = match self.ast_context[ty.ctype].kind {
             // TODO: If rust gets f16 support:
             // CTypeKind::Half |
-            CTypeKind::Float |
-            CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
+            CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
             CTypeKind::LongDouble => {
                 self.extern_crates.borrow_mut().insert("f128");
 
@@ -811,7 +808,7 @@ impl<'c> Translation<'c> {
                 let args = vec![mk().ident_expr("1.")];
 
                 mk().call_expr(fn_path, args)
-            },
+            }
             _ => mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)),
         };
 
@@ -882,7 +879,9 @@ impl<'c> Translation<'c> {
                     }
                     // An AddrOf DeclRef/Member is safe to not decay if the translator isn't already giving a hard
                     // yes to decaying (ie, BitCasts). So we only convert default to no decay.
-                    CExprKind::DeclRef(..) | CExprKind::Member(..) => ctx.decay_ref.set_default_to_no(),
+                    CExprKind::DeclRef(..) | CExprKind::Member(..) => {
+                        ctx.decay_ref.set_default_to_no()
+                    }
                     _ => (),
                 };
 
@@ -896,7 +895,11 @@ impl<'c> Translation<'c> {
                 } else {
                     let pointee = match resolved_ctype.kind {
                         CTypeKind::Pointer(pointee) => pointee,
-                        _ => return Err(TranslationError::generic("Address-of should return a pointer")),
+                        _ => {
+                            return Err(TranslationError::generic(
+                                "Address-of should return a pointer",
+                            ))
+                        }
                     };
 
                     let mutbl = if pointee.qualifiers.is_const {

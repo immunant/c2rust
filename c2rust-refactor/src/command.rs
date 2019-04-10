@@ -1,29 +1,31 @@
 //! Command management and overall refactoring state.
 
+use rustc::hir;
+use rustc::hir::def_id::LOCAL_CRATE;
+use rustc::session::{self, DiagnosticOutput, Session};
+use rustc_data_structures::sync::Lrc;
+use rustc_interface::interface;
+use rustc_interface::util;
+use rustc_metadata::cstore::CStore;
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::mem;
 use std::sync::Arc;
-use rustc::hir;
-use rustc::hir::def_id::LOCAL_CRATE;
-use rustc::session::{self, DiagnosticOutput, Session};
-use rustc_data_structures::sync::Lrc;
-use rustc_interface::util;
-use rustc_interface::interface;
-use rustc_metadata::cstore::CStore;
-use syntax::ast::{NodeId, Crate, CRATE_NODE_ID};
-use syntax::ast::{Expr, Pat, Ty, Stmt, Item};
+use syntax::ast::{Crate, NodeId, CRATE_NODE_ID};
+use syntax::ast::{Expr, Item, Pat, Stmt, Ty};
 use syntax::ext::base::NamedSyntaxExtension;
 use syntax::feature_gate::AttributeType;
-use syntax::source_map::SourceMap;
 use syntax::ptr::P;
+use syntax::source_map::SourceMap;
 use syntax::symbol::Symbol;
 use syntax::visit::Visitor;
 
-use crate::ast_manip::{ListNodeIds, remove_paren, Visit, MutVisit};
 use crate::ast_manip::ast_map::map_ast_into;
-use crate::ast_manip::number_nodes::{number_nodes, number_nodes_with, NodeIdCounter, reset_node_ids};
+use crate::ast_manip::number_nodes::{
+    number_nodes, number_nodes_with, reset_node_ids, NodeIdCounter,
+};
+use crate::ast_manip::{remove_paren, ListNodeIds, MutVisit, Visit};
 use crate::collapse::CollapseInfo;
 use crate::driver::{self, Phase};
 use crate::file_io::FileIO;
@@ -33,7 +35,6 @@ use crate::rewrite::files;
 use crate::span_fix;
 use crate::RefactorCtxt;
 use c2rust_ast_builder::IntoSymbol;
-
 
 /// Extra nodes that were parsed from strings while running a transformation pass.  During
 /// rewriting, we'd like to reuse the original strings for these, rather than pretty-printing them.
@@ -66,14 +67,13 @@ struct PluginInfo {
     _attributes: Vec<(String, AttributeType)>,
 }
 
-
 /// Stores the overall state of the refactoring process, which can be read and updated by
 /// `Command`s.
 pub struct RefactorState {
     config: interface::Config,
     compiler: interface::Compiler,
     cmd_reg: Registry,
-    file_io: Arc<FileIO+Sync+Send>,
+    file_io: Arc<FileIO + Sync + Send>,
 
     /// The original crate AST.  This is used as the "old" AST when rewriting.  This is always a
     /// real unexpanded AST, as it was loaded from disk, with full user-provided source text.
@@ -97,7 +97,7 @@ impl RefactorState {
     pub fn new(
         config: interface::Config,
         cmd_reg: Registry,
-        file_io: Arc<FileIO+Sync+Send>,
+        file_io: Arc<FileIO + Sync + Send>,
         marks: HashSet<(NodeId, Symbol)>,
     ) -> RefactorState {
         let compiler = driver::make_compiler(&config, file_io.clone());
@@ -132,12 +132,7 @@ impl RefactorState {
         let parsed_nodes = ParsedNodes::default();
         let node_id_counter = NodeIdCounter::new(0x8000_0000);
 
-        let cs = CommandState::new(
-            krate,
-            marks,
-            parsed_nodes,
-            node_id_counter,
-        );
+        let cs = CommandState::new(krate, marks, parsed_nodes, node_id_counter);
 
         (node_map, cs)
     }
@@ -171,8 +166,14 @@ impl RefactorState {
         let new = &self.cs.krate();
         let node_id_map = self.node_map.clone().into_inner();
 
-        self.file_io.save_marks(
-            new, self.session().source_map(), &node_id_map, &self.cs.marks()).unwrap();
+        self.file_io
+            .save_marks(
+                new,
+                self.session().source_map(),
+                &node_id_map,
+                &self.cs.marks(),
+            )
+            .unwrap();
 
         let parsed_nodes = self.cs.parsed_nodes.borrow();
         let rw = rewrite::rewrite(self.session(), old, new, node_id_map, |map| {
@@ -184,7 +185,8 @@ impl RefactorState {
     }
 
     pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> interface::Result<R>
-        where F: FnOnce(&CommandState, &RefactorCtxt) -> R
+    where
+        F: FnOnce(&CommandState, &RefactorCtxt) -> R,
     {
         // let mut krate = mem::replace(&mut self.krate, dummy_crate());
         // let marks = mem::replace(&mut self.marks, HashSet::new());
@@ -208,23 +210,22 @@ impl RefactorState {
             Phase::Phase1 => {}
 
             Phase::Phase2 | Phase::Phase3 => {
-                self.cs.krate.replace(self.compiler.expansion()?.peek().0.clone());
+                self.cs
+                    .krate
+                    .replace(self.compiler.expansion()?.peek().0.clone());
             }
         }
 
         span_fix::fix_format(self.cs.krate.get_mut());
         let expanded = self.cs.krate().clone();
-        let collapse_info = CollapseInfo::collect(
-            &unexpanded,
-            &expanded,
-            &mut self.node_map,
-            &self.cs,
-        );
+        let collapse_info =
+            CollapseInfo::collect(&unexpanded, &expanded, &mut self.node_map, &self.cs);
 
         // Run the transform
         let r = match phase {
             Phase::Phase1 => {
-                let cx = RefactorCtxt::new_phase_1(&self.compiler.session(), &self.compiler.cstore());
+                let cx =
+                    RefactorCtxt::new_phase_1(&self.compiler.session(), &self.compiler.cstore());
 
                 f(&self.cs, &cx)
             }
@@ -241,7 +242,11 @@ impl RefactorState {
                     &defs,
                 );
 
-                let cx = RefactorCtxt::new_phase_2(self.compiler.session(), self.compiler.cstore(), &map);
+                let cx = RefactorCtxt::new_phase_2(
+                    self.compiler.session(),
+                    self.compiler.cstore(),
+                    &map,
+                );
 
                 f(&self.cs, &cx)
             }
@@ -249,7 +254,12 @@ impl RefactorState {
             Phase::Phase3 => {
                 let r = self.compiler.global_ctxt()?.take().enter(|tcx| {
                     let _result = tcx.analysis(LOCAL_CRATE);
-                    let cx = RefactorCtxt::new_phase_3(self.compiler.session(), self.compiler.cstore(), tcx.hir(), tcx);
+                    let cx = RefactorCtxt::new_phase_3(
+                        self.compiler.session(),
+                        self.compiler.cstore(),
+                        tcx.hir(),
+                        tcx,
+                    );
 
                     f(&self.cs, &cx)
                 });
@@ -262,7 +272,8 @@ impl RefactorState {
             }
         };
 
-        self.node_map.init(self.cs.new_parsed_node_ids.get_mut().drain(..));
+        self.node_map
+            .init(self.cs.new_parsed_node_ids.get_mut().drain(..));
 
         collapse_info.collapse(&mut self.node_map, &self.cs);
 
@@ -302,7 +313,9 @@ impl RefactorState {
     }
 
     pub fn run_typeck_loop<F>(&mut self, mut func: F) -> Result<(), &'static str>
-            where F: FnMut(&mut Crate, &CommandState, &RefactorCtxt) -> TypeckLoopResult {
+    where
+        F: FnMut(&mut Crate, &CommandState, &RefactorCtxt) -> TypeckLoopResult,
+    {
         let func = &mut func;
 
         let mut result = None;
@@ -317,7 +330,8 @@ impl RefactorState {
                         result = Some(Ok(()));
                     }
                 }
-            }).expect("Failed to run compiler");
+            })
+            .expect("Failed to run compiler");
         }
         result.unwrap()
     }
@@ -326,17 +340,18 @@ impl RefactorState {
         self.cs.marks.get_mut().clear()
     }
 
-
     /// Invoke a registered command with the given command name and arguments.
     pub fn run<S: AsRef<str>>(&mut self, cmd: &str, args: &[S]) -> Result<(), String> {
-        let args = args.iter().map(|s| s.as_ref().to_owned()).collect::<Vec<_>>();
+        let args = args
+            .iter()
+            .map(|s| s.as_ref().to_owned())
+            .collect::<Vec<_>>();
         info!("running command: {} {:?}", cmd, args);
 
         let mut cmd = self.cmd_reg.get_command(cmd, &args)?;
         cmd.run(self);
         Ok(())
     }
-
 
     pub fn marks(&self) -> cell::Ref<HashSet<(NodeId, Symbol)>> {
         self.cs.marks.borrow()
@@ -352,7 +367,6 @@ pub enum TypeckLoopResult {
     Err(&'static str),
     Finished,
 }
-
 
 /// Mutable state that can be modified by a "driver" command.  This is normally paired with a
 /// `RefactorCtxt`, which contains immutable analysis results from the original input `Crate`.
@@ -384,10 +398,12 @@ pub struct CommandState {
 }
 
 impl CommandState {
-    fn new(krate: Crate,
-           marks: HashSet<(NodeId, Symbol)>,
-           parsed_nodes: ParsedNodes,
-           node_id_counter: NodeIdCounter) -> CommandState {
+    fn new(
+        krate: Crate,
+        marks: HashSet<(NodeId, Symbol)>,
+        parsed_nodes: ParsedNodes,
+        node_id_counter: NodeIdCounter,
+    ) -> CommandState {
         CommandState {
             krate: RefCell::new(krate),
             marks: RefCell::new(marks),
@@ -397,7 +413,7 @@ impl CommandState {
             krate_changed: Cell::new(false),
             marks_changed: Cell::new(false),
 
-            node_id_counter
+            node_id_counter,
         }
     }
 
@@ -409,7 +425,6 @@ impl CommandState {
         self.krate_changed.set(false);
         self.marks_changed.set(false);
     }
-
 
     pub fn krate(&self) -> cell::Ref<Crate> {
         self.krate.borrow()
@@ -427,7 +442,6 @@ impl CommandState {
     pub fn krate_changed(&self) -> bool {
         self.krate_changed.get()
     }
-
 
     pub fn marks(&self) -> cell::Ref<HashSet<(NodeId, Symbol)>> {
         self.marks.borrow()
@@ -468,7 +482,11 @@ impl CommandState {
         let new = self.next_node_id();
 
         let mut marks = self.marks_mut();
-        let labels = marks.iter().filter(|x| x.0 == old).map(|x| x.1).collect::<Vec<_>>();
+        let labels = marks
+            .iter()
+            .filter(|x| x.0 == old)
+            .map(|x| x.1)
+            .collect::<Vec<_>>();
         for label in labels {
             marks.remove(&(old, label));
             marks.insert((new, label));
@@ -477,11 +495,13 @@ impl CommandState {
         new
     }
 
-
     fn process_parsed<T>(&self, x: &mut T)
-            where T: MutVisit + ListNodeIds {
+    where
+        T: MutVisit + ListNodeIds,
+    {
         number_nodes_with(x, &self.node_id_counter);
-        self.new_parsed_node_ids.borrow_mut()
+        self.new_parsed_node_ids
+            .borrow_mut()
             .extend(x.list_node_ids());
     }
 
@@ -505,13 +525,10 @@ impl CommandState {
     // TODO: similar methods for other node types
     // TODO: check that parsed_node reuse works for expr and other non-seqitems
 
-
     pub fn into_inner(self) -> (Crate, HashSet<(NodeId, Symbol)>) {
-        (self.krate.into_inner(),
-         self.marks.into_inner())
+        (self.krate.into_inner(), self.marks.into_inner())
     }
 }
-
 
 /// Implementation of a refactoring command.
 pub trait Command {
@@ -534,7 +551,9 @@ impl Registry {
     }
 
     pub fn register<B>(&mut self, name: &str, builder: B)
-            where B: FnMut(&[String]) -> Box<Command> + 'static + Send {
+    where
+        B: FnMut(&[String]) -> Box<Command> + 'static + Send,
+    {
         self.commands.insert(name.to_owned(), Box::new(builder));
     }
 
@@ -547,68 +566,80 @@ impl Registry {
     }
 }
 
-
 /// Wraps a `FnMut` to produce a `Command`.
 pub struct FuncCommand<F>(pub F);
 
 impl<F> Command for FuncCommand<F>
-        where F: FnMut(&mut RefactorState) {
+where
+    F: FnMut(&mut RefactorState),
+{
     fn run(&mut self, state: &mut RefactorState) {
         (self.0)(state);
     }
 }
 
-
 /// Wrap a `FnMut` to produce a command that invokes the `rustc` driver and operates over the
 /// results.
 pub struct DriverCommand<F>
-        where F: FnMut(&CommandState, &RefactorCtxt) {
+where
+    F: FnMut(&CommandState, &RefactorCtxt),
+{
     func: F,
     phase: Phase,
 }
 
 impl<F> DriverCommand<F>
-        where F: FnMut(&CommandState, &RefactorCtxt) {
+where
+    F: FnMut(&CommandState, &RefactorCtxt),
+{
     pub fn new(phase: Phase, func: F) -> DriverCommand<F> {
         DriverCommand { func, phase }
     }
 }
 
 impl<F> Command for DriverCommand<F>
-        where F: FnMut(&CommandState, &RefactorCtxt) {
+where
+    F: FnMut(&CommandState, &RefactorCtxt),
+{
     fn run(&mut self, state: &mut RefactorState) {
-        state.transform_crate(self.phase, |st, cx| (self.func)(st, cx))
+        state
+            .transform_crate(self.phase, |st, cx| (self.func)(st, cx))
             .expect("Failed to run compiler");
     }
 }
 
-
 /// # `commit` Command
-/// 
+///
 /// Usage: `commit`
-/// 
+///
 /// Write the current crate to disk (by rewriting the original source files), then
 /// read it back in, clearing all mark.  This can be useful as a "checkpoint"
 /// between two sets of transformations, if applying both sets of changes at once
 /// proves to be too much for the rewriter.
-/// 
+///
 /// This is only useful when the rewrite mode is `inplace`.  Otherwise the "write"
 /// part of the operation won't actually change the original source files, and the
 /// "read" part will revert the crate to its original form.
 fn register_commit(reg: &mut Registry) {
-    reg.register("commit", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
-        rs.save_crate();
-        rs.load_crate();
-        rs.clear_marks();
-    })));
+    reg.register("commit", |_args| {
+        Box::new(FuncCommand(|rs: &mut RefactorState| {
+            rs.save_crate();
+            rs.load_crate();
+            rs.clear_marks();
+        }))
+    });
 
-    reg.register("write", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
-        rs.save_crate();
-    })));
+    reg.register("write", |_args| {
+        Box::new(FuncCommand(|rs: &mut RefactorState| {
+            rs.save_crate();
+        }))
+    });
 
-    reg.register("dump_crate", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
-        eprintln!("{:#?}", rs.cs.krate());
-    })));
+    reg.register("dump_crate", |_args| {
+        Box::new(FuncCommand(|rs: &mut RefactorState| {
+            eprintln!("{:#?}", rs.cs.krate());
+        }))
+    });
 }
 
 pub fn register_commands(reg: &mut Registry) {

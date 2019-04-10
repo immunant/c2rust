@@ -1,16 +1,18 @@
 extern crate env_logger;
-#[macro_use] extern crate log;
-#[macro_use] extern crate clap;
-extern crate shlex;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate clap;
 extern crate c2rust_refactor;
+extern crate shlex;
 
+use clap::{App, ArgMatches};
 use std::fs::File;
 use std::io::Read;
 use std::process;
 use std::str::FromStr;
-use clap::{App, ArgMatches};
 
-use c2rust_refactor::{file_io, RustcArgSource, Options, Cursor, Mark, Command};
+use c2rust_refactor::{file_io, Command, Cursor, Mark, Options, RustcArgSource};
 
 fn main() {
     let yaml = load_yaml!("../refactor.yaml");
@@ -31,15 +33,17 @@ fn main() {
 fn parse_opts(args: &ArgMatches) -> Option<Options> {
     // Parse rewrite mode
     let rewrite_modes = match args.values_of("rewrite-mode") {
-        Some(values) => values.map(|s| match s {
-            "inplace" => file_io::OutputMode::InPlace,
-            "alongside" => file_io::OutputMode::Alongside,
-            "print" => file_io::OutputMode::Print,
-            "diff" => file_io::OutputMode::PrintDiff,
-            "json" => file_io::OutputMode::Json,
-            "marks" => file_io::OutputMode::Marks,
-            _ => unreachable!(),
-        }).collect(),
+        Some(values) => values
+            .map(|s| match s {
+                "inplace" => file_io::OutputMode::InPlace,
+                "alongside" => file_io::OutputMode::Alongside,
+                "print" => file_io::OutputMode::Print,
+                "diff" => file_io::OutputMode::PrintDiff,
+                "json" => file_io::OutputMode::Json,
+                "marks" => file_io::OutputMode::Marks,
+                _ => unreachable!(),
+            })
+            .collect(),
         None => vec![file_io::OutputMode::Print],
     };
 
@@ -54,7 +58,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
             None => {
                 info!("Bad cursor string: {:?}", s);
                 return None;
-            },
+            }
         };
 
         let line = match parts.next().map(|s| u32::from_str(s).map_err(|_| s)) {
@@ -62,7 +66,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
             Some(Err(s)) => {
                 info!("Bad cursor line number: {:?}", s);
                 return None;
-            },
+            }
             None => {
                 info!("Bad cursor string: {:?}", s);
                 return None;
@@ -74,7 +78,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
             Some(Err(s)) => {
                 info!("Bad cursor column number: {:?}", s);
                 return None;
-            },
+            }
             None => {
                 info!("Bad cursor string: {:?}", s);
                 return None;
@@ -93,7 +97,6 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
             return None;
         }
 
-
         cursors.push(Cursor::new(file, line, col, label, kind));
     }
 
@@ -108,7 +111,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
             Some(Err(s)) => {
                 info!("Bad mark node ID: {:?}", s);
                 return None;
-            },
+            }
             None => {
                 info!("Bad mark string: {:?}", s);
                 return None;
@@ -122,21 +125,16 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
             return None;
         }
 
-
         marks.push(Mark::new(id, label));
     }
-
 
     // Get plugin options
     let plugins = args.values_of_lossy("plugin-name").unwrap_or(vec![]);
     let plugin_dirs = args.values_of_lossy("plugin-dir").unwrap_or(vec![]);
 
-
     // Handle --cargo and rustc-args
     let rustc_args = match args.values_of_lossy("rustc-args") {
-        Some(args) => {
-            RustcArgSource::CmdLine(args)
-        }
+        Some(args) => RustcArgSource::CmdLine(args),
         None => {
             assert!(args.is_present("cargo"));
             RustcArgSource::Cargo
@@ -146,22 +144,20 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
     // Parse command names + args
     let transforms_file = match args.value_of("transforms-file") {
         Some(file_name) => {
-            let mut file = File::open(file_name)
-                .unwrap_or_else(|e| {
-                    panic!("Could not open transforms file {:?}: {}", file_name, e);
-                });
+            let mut file = File::open(file_name).unwrap_or_else(|e| {
+                panic!("Could not open transforms file {:?}: {}", file_name, e);
+            });
             let mut buf = String::new();
-            file.read_to_string(&mut buf)
-                .unwrap_or_else(|e| {
-                    panic!("Could not read transforms file {:?}: {}", file_name, e);
-                });
+            file.read_to_string(&mut buf).unwrap_or_else(|e| {
+                panic!("Could not read transforms file {:?}: {}", file_name, e);
+            });
             buf
-        },
-        None => String::new()
+        }
+        None => String::new(),
     };
     let transforms: Box<Iterator<Item = String>> = match args.value_of("transforms-file") {
         Some(_) => Box::new(shlex::Shlex::new(&transforms_file)),
-        None => Box::new(args.values_of("transforms").unwrap().map(String::from))
+        None => Box::new(args.values_of("transforms").unwrap().map(String::from)),
     };
     let mut commands = Vec::new();
     let mut cur_command = None;
@@ -185,7 +181,6 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
     if let Some(cmd) = cur_command.take() {
         commands.push(cmd);
     }
-
 
     Some(Options {
         rewrite_modes,

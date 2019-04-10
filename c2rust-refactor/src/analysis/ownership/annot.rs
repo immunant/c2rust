@@ -17,10 +17,9 @@ use crate::command::CommandState;
 use crate::type_map::{self, TypeSource};
 use crate::RefactorCtxt;
 
-use super::{LTy, LFnSig, ConcretePerm, PermVar, Var};
 use super::constraint::{ConstraintSet, Perm};
 use super::context::Ctxt;
-
+use super::{ConcretePerm, LFnSig, LTy, PermVar, Var};
 
 struct LTySource<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
     cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
@@ -63,9 +62,11 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> TypeSource for LTySource<'c, 'lty, 'a, 'tcx> 
     }
 }
 
-pub fn handle_marks<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
-                                    st: &CommandState,
-                                    dcx: &RefactorCtxt<'a, 'tcx>) {
+pub fn handle_marks<'a, 'tcx, 'lty>(
+    cx: &mut Ctxt<'lty, 'a, 'tcx>,
+    st: &CommandState,
+    dcx: &RefactorCtxt<'a, 'tcx>,
+) {
     let mut fixed_vars = Vec::new();
     {
         let source = LTySource {
@@ -102,19 +103,18 @@ pub fn handle_marks<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
             PermVar::Static(v) => {
                 let new_perm = cmp::max(min_perm, cx.static_assign[v]);
                 cx.static_assign[v] = new_perm;
-            },
+            }
             PermVar::Sig(_) => {
                 let did = did.expect("expected DefId for SigVar");
-                cx.variant_summ(did).1.inst_cset
-                    .add(Perm::Concrete(min_perm),
-                         Perm::var(p));
+                cx.variant_summ(did)
+                    .1
+                    .inst_cset
+                    .add(Perm::Concrete(min_perm), Perm::var(p));
             }
             _ => panic!("expected Static or Sig var, but got {:?}", p),
         }
     }
 }
-
-
 
 struct AttrVisitor<'ast> {
     def_attrs: Vec<(ast::NodeId, &'ast [ast::Attribute])>,
@@ -123,14 +123,12 @@ struct AttrVisitor<'ast> {
 impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     fn visit_item(&mut self, i: &'ast ast::Item) {
         match i.node {
-            ast::ItemKind::Fn(..) |
-            ast::ItemKind::Static(..) |
-            ast::ItemKind::Const(..) => {
+            ast::ItemKind::Fn(..) | ast::ItemKind::Static(..) | ast::ItemKind::Const(..) => {
                 if i.attrs.len() > 0 {
                     self.def_attrs.push((i.id, &i.attrs));
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
 
         visit::walk_item(self, i);
@@ -138,13 +136,12 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
 
     fn visit_impl_item(&mut self, i: &'ast ast::ImplItem) {
         match i.node {
-            ast::ImplItemKind::Method(..) |
-            ast::ImplItemKind::Const(..) => {
+            ast::ImplItemKind::Method(..) | ast::ImplItemKind::Const(..) => {
                 if i.attrs.len() > 0 {
                     self.def_attrs.push((i.id, &i.attrs));
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
 
         visit::walk_impl_item(self, i);
@@ -159,10 +156,11 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 }
 
-pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
-                                          st: &CommandState,
-                                          dcx: &RefactorCtxt<'a, 'tcx>) {
-
+pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
+    cx: &mut Ctxt<'lty, 'a, 'tcx>,
+    st: &CommandState,
+    dcx: &RefactorCtxt<'a, 'tcx>,
+) {
     let krate = st.krate();
     let mut v = AttrVisitor {
         def_attrs: Vec::new(),
@@ -170,7 +168,6 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
     krate.visit(&mut v);
 
     eprintln!("HANDLE_ATTRS: found {} annotated defs", v.def_attrs.len());
-
 
     // Primary variant ID for each variant group (keyed by group name)
     let mut variant_group_primary = HashMap::new();
@@ -180,18 +177,28 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
 
         // Handle `ownership_variant_of` first.
         let mut is_variant = false;
-        if let Some(attr) = attrs.iter().filter(|a| a.check_name("ownership_variant_of")).next() {
+        if let Some(attr) = attrs
+            .iter()
+            .filter(|a| a.check_name("ownership_variant_of"))
+            .next()
+        {
             let meta = match_or!([attr.meta()] Some(x) => x;
                     panic!("bad meta item in #[ownership_variant_of] (for {:?})", def_id));
             let group_name = parse_variant_of(&meta)
-                .unwrap_or_else(|e| panic!("bad #[ownership_variant_of] for {:?}: {}",
-                                           def_id, e));
+                .unwrap_or_else(|e| panic!("bad #[ownership_variant_of] for {:?}: {}", def_id, e));
             let primary = *variant_group_primary.entry(group_name).or_insert(def_id);
             cx.add_variant(primary, def_id);
 
-            let num_mono = attrs.iter().filter(|a| a.check_name("ownership_mono")).count();
-            assert!(num_mono == 1, "functions with #[ownership_variant_of] \
-                        must also have #[ownership_mono] (on {:?})", def_id);
+            let num_mono = attrs
+                .iter()
+                .filter(|a| a.check_name("ownership_mono"))
+                .count();
+            assert!(
+                num_mono == 1,
+                "functions with #[ownership_variant_of] \
+                 must also have #[ownership_mono] (on {:?})",
+                def_id
+            );
 
             is_variant = true;
         }
@@ -201,9 +208,9 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
             let meta = match_or!([attr.meta()] Some(x) => x; continue);
             match &meta.path.to_string() as &str {
                 "ownership_constraints" => {
-                    let cset = parse_ownership_constraints(&meta, cx.arena)
-                        .unwrap_or_else(|e| panic!("bad #[ownership_constraints] for {:?}: {}",
-                                                   def_id, e));
+                    let cset = parse_ownership_constraints(&meta, cx.arena).unwrap_or_else(|e| {
+                        panic!("bad #[ownership_constraints] for {:?}: {}", def_id, e)
+                    });
 
                     eprintln!("found constraints for {:?}:", def_id);
                     for &(a, b) in cset.iter() {
@@ -211,47 +218,57 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
                     }
 
                     let (func, _var) = cx.variant_summ(def_id);
-                    assert!(!func.cset_provided,
-                            "{} can only have one #[ownership_constraint] annotation (on {:?})",
-                            if is_variant { "variant set" } else { "function" }, def_id);
+                    assert!(
+                        !func.cset_provided,
+                        "{} can only have one #[ownership_constraint] annotation (on {:?})",
+                        if is_variant {
+                            "variant set"
+                        } else {
+                            "function"
+                        },
+                        def_id
+                    );
                     func.sig_cset.import(&cset);
                     func.cset_provided = true;
-                },
+                }
 
                 "ownership_mono" => {
-                    let (suffix, assign) = parse_mono_sig(&meta)
-                        .unwrap_or_else(|e| panic!("bad #[ownership_mono] for {:?}: {}",
-                                                   def_id, e));
+                    let (suffix, assign) = parse_mono_sig(&meta).unwrap_or_else(|e| {
+                        panic!("bad #[ownership_mono] for {:?}: {}", def_id, e)
+                    });
 
                     let (func, _variant, mono) = cx.add_mono(def_id);
                     mono.assign = assign;
                     mono.suffix = suffix;
                     func.monos_provided = true;
-                },
+                }
 
                 "ownership_static" => {
-                    let assign = parse_static_assign(&meta)
-                        .unwrap_or_else(|e| panic!("bad #[ownership_static] for {:?}: {}",
-                                                   def_id, e));
+                    let assign = parse_static_assign(&meta).unwrap_or_else(|e| {
+                        panic!("bad #[ownership_static] for {:?}: {}", def_id, e)
+                    });
 
                     let ty = cx.static_ty(def_id);
                     let mut iter = assign.into_iter();
                     ty.for_each_label(&mut |p| {
                         if let Some(PermVar::Static(v)) = *p {
-                            let c = iter.next().unwrap_or_else(|| panic!("not enough permissions \
-                                        in #[ownership_static] for {:?}", def_id));
+                            let c = iter.next().unwrap_or_else(|| {
+                                panic!(
+                                    "not enough permissions \
+                                     in #[ownership_static] for {:?}",
+                                    def_id
+                                )
+                            });
                             cx.static_assign[v] = c;
                         }
                     });
-                },
+                }
 
-                _ => {},
+                _ => {}
             }
         }
     }
 }
-
-
 
 fn meta_item_list(meta: &ast::MetaItem) -> Result<&[ast::NestedMetaItem], &'static str> {
     match meta.node {
@@ -276,19 +293,18 @@ fn nested_meta_item(nmeta: &ast::NestedMetaItem) -> Result<&ast::MetaItem, &'sta
 
 fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
     match nmeta {
-        ast::NestedMetaItem::Literal(ref lit) => {
-            match lit.node {
-                ast::LitKind::Str(s, _) => Ok(s),
-                _ => Err("expected str"),
-            }
+        ast::NestedMetaItem::Literal(ref lit) => match lit.node {
+            ast::LitKind::Str(s, _) => Ok(s),
+            _ => Err("expected str"),
         },
         _ => Err("expected str"),
     }
 }
 
-fn parse_ownership_constraints<'lty, 'tcx>(meta: &ast::MetaItem,
-                                     arena: &'lty SyncDroplessArena)
-                                     -> Result<ConstraintSet<'lty>, &'static str> {
+fn parse_ownership_constraints<'lty, 'tcx>(
+    meta: &ast::MetaItem,
+    arena: &'lty SyncDroplessArena,
+) -> Result<ConstraintSet<'lty>, &'static str> {
     let args = meta_item_list(meta)?;
 
     let mut cset = ConstraintSet::new();
@@ -311,9 +327,10 @@ fn parse_ownership_constraints<'lty, 'tcx>(meta: &ast::MetaItem,
     Ok(cset)
 }
 
-fn parse_perm<'lty, 'tcx>(meta: &ast::MetaItem,
-                    arena: &'lty SyncDroplessArena)
-                    -> Result<Perm<'lty>, &'static str> {
+fn parse_perm<'lty, 'tcx>(
+    meta: &ast::MetaItem,
+    arena: &'lty SyncDroplessArena,
+) -> Result<Perm<'lty>, &'static str> {
     if meta.check_name("min") {
         let args = meta_item_list(meta)?;
         if args.len() == 0 {
@@ -337,7 +354,7 @@ fn parse_perm<'lty, 'tcx>(meta: &ast::MetaItem,
             "READ" => return Ok(Perm::read()),
             "WRITE" => return Ok(Perm::write()),
             "MOVE" => return Ok(Perm::move_()),
-            _ => {},
+            _ => {}
         }
 
         if !name.starts_with("_") {
@@ -360,8 +377,9 @@ fn parse_concrete(meta: &ast::MetaItem) -> Result<ConcretePerm, &'static str> {
     }
 }
 
-fn parse_mono_sig(meta: &ast::MetaItem)
-                  -> Result<(String, IndexVec<Var, ConcretePerm>), &'static str> {
+fn parse_mono_sig(
+    meta: &ast::MetaItem,
+) -> Result<(String, IndexVec<Var, ConcretePerm>), &'static str> {
     let args = meta_item_list(meta)?;
 
     if args.len() == 0 {

@@ -1,11 +1,10 @@
+use fern::colors::ColoredLevelConfig;
+use log::Level;
 use std::collections::HashSet;
 use std::io;
 use std::str::FromStr;
-use fern::colors::ColoredLevelConfig;
-use log::Level;
 
-const DEFAULT_WARNINGS: &[Diagnostic] = &[
-];
+const DEFAULT_WARNINGS: &[Diagnostic] = &[];
 
 #[derive(PartialEq, Eq, Hash, Debug, Display, EnumString, Clone)]
 #[strum(serialize_all = "kebab_case")]

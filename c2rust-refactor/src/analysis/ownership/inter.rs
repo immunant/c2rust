@@ -1,15 +1,14 @@
 //! Interprocedural part of the analysis.
 
-use std::collections::hash_map::{HashMap, Entry};
+use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use rustc::hir::def_id::DefId;
 
-use super::Var;
-use super::context::Ctxt;
 use super::constraint::{ConstraintSet, Perm};
-
+use super::context::Ctxt;
+use super::Var;
 
 struct WorkList {
     queue: VecDeque<DefId>,
@@ -44,7 +43,6 @@ pub struct InterCtxt<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
     cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
 
     // Note: all IDs here are function IDs.  Variants are ignored.
-
     complete_cset: HashMap<DefId, ConstraintSet<'lty>>,
 
     work_list: WorkList,
@@ -78,33 +76,38 @@ impl<'c, 'lty, 'a, 'tcx> InterCtxt<'c, 'lty, 'a, 'tcx> {
 
         // Add constraints for all used static vars.
         let mut used_statics = HashSet::new();
-        cset.for_each_perm(|p| {
-            match p {
-                Perm::StaticVar(v) => {
-                    used_statics.insert(v);
-                },
-                _ => {},
+        cset.for_each_perm(|p| match p {
+            Perm::StaticVar(v) => {
+                used_statics.insert(v);
             }
+            _ => {}
         });
         for &v in &used_statics {
             eprintln!("  import static: {:?} = {:?}", v, self.cx.static_assign[v]);
             cset.add(Perm::Concrete(self.cx.static_assign[v]), Perm::StaticVar(v));
-            self.static_rev_deps.entry(v).or_insert_with(HashSet::new).insert(def_id);
+            self.static_rev_deps
+                .entry(v)
+                .or_insert_with(HashSet::new)
+                .insert(def_id);
         }
 
         // Copy in complete csets for all instantiations.
         let arena = self.cx.arena;
         for inst in &self.cx.first_variant_summ(def_id).1.insts {
             let complete = self.complete_cset.get(&inst.callee).unwrap_or(&dummy_cset);
-            eprintln!("  instantiate {:?} for vars {}..", inst.callee, inst.first_inst_var);
-            cset.import_substituted(complete, arena, |p| {
-                match p {
-                    Perm::SigVar(v) => Perm::InstVar(Var(v.0 + inst.first_inst_var)),
-                    p => p,
-                }
+            eprintln!(
+                "  instantiate {:?} for vars {}..",
+                inst.callee, inst.first_inst_var
+            );
+            cset.import_substituted(complete, arena, |p| match p {
+                Perm::SigVar(v) => Perm::InstVar(Var(v.0 + inst.first_inst_var)),
+                p => p,
             });
 
-            self.rev_deps.entry(inst.callee).or_insert_with(HashSet::new).insert(def_id);
+            self.rev_deps
+                .entry(inst.callee)
+                .or_insert_with(HashSet::new)
+                .insert(def_id);
         }
 
         // Simplify away inst vars to produce a new complete cset for this fn.
@@ -116,11 +119,9 @@ impl<'c, 'lty, 'a, 'tcx> InterCtxt<'c, 'lty, 'a, 'tcx> {
         cset.remove_useless();
         cset.simplify_min_lhs(self.cx.arena);
 
-        cset.retain_perms(self.cx.arena, |p| {
-            match p {
-                Perm::LocalVar(_) | Perm::InstVar(_) => false,
-                _ => true,
-            }
+        cset.retain_perms(self.cx.arena, |p| match p {
+            Perm::LocalVar(_) | Perm::InstVar(_) => false,
+            _ => true,
         });
 
         eprintln!("  simplified constraints:");
@@ -144,11 +145,9 @@ impl<'c, 'lty, 'a, 'tcx> InterCtxt<'c, 'lty, 'a, 'tcx> {
         }
 
         // Simplify away static vars too.
-        cset.retain_perms(self.cx.arena, |p| {
-            match p {
-                Perm::LocalVar(_) | Perm::InstVar(_) | Perm::StaticVar(_) => false,
-                _ => true,
-            }
+        cset.retain_perms(self.cx.arena, |p| match p {
+            Perm::LocalVar(_) | Perm::InstVar(_) | Perm::StaticVar(_) => false,
+            _ => true,
         });
 
         cset.simplify(self.cx.arena);
@@ -169,7 +168,7 @@ impl<'c, 'lty, 'a, 'tcx> InterCtxt<'c, 'lty, 'a, 'tcx> {
             Entry::Vacant(e) => {
                 e.insert(cset);
                 true
-            },
+            }
             Entry::Occupied(mut e) => {
                 if e.get() != &cset {
                     *e.get_mut() = cset;
@@ -177,7 +176,7 @@ impl<'c, 'lty, 'a, 'tcx> InterCtxt<'c, 'lty, 'a, 'tcx> {
                 } else {
                     false
                 }
-            },
+            }
         };
 
         if did_update {

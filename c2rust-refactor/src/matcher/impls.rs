@@ -1,17 +1,16 @@
 //! `TryMatch` impls, to support the `matcher` module.
-use std::rc::Rc;
 use rustc_target::spec::abi::Abi;
-use syntax::ThinVec;
+use std::rc::Rc;
 use syntax::ast::*;
-use syntax::source_map::{Span, Spanned};
 use syntax::ext::hygiene::SyntaxContext;
-use syntax::parse::token::{Token, DelimToken, Nonterminal};
+use syntax::parse::token::{DelimToken, Nonterminal, Token};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenTree, DelimSpan, TokenStream};
+use syntax::source_map::{Span, Spanned};
+use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use syntax::ThinVec;
 
 use crate::ast_manip::util::{macro_name, PatternSymbol};
-use crate::matcher::{self, TryMatch, MatchCtxt};
-
+use crate::matcher::{self, MatchCtxt, TryMatch};
 
 impl TryMatch for Ident {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
@@ -60,16 +59,18 @@ impl TryMatch for Expr {
         if let ExprKind::Mac(ref mac) = self.node {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
-                "marked" => mcx.do_marked(&mac.node.tts,
-                                          |p| p.parse_expr().map(|p| p.into_inner()),
-                                          target),
+                "marked" => mcx.do_marked(
+                    &mac.node.tts,
+                    |p| p.parse_expr().map(|p| p.into_inner()),
+                    target,
+                ),
                 "def" => mcx.do_def_expr(&mac.node.tts, target),
-                "typed" => mcx.do_typed(&mac.node.tts,
-                                        |p| p.parse_expr().map(|p| p.into_inner()),
-                                        target),
-                "cast" => mcx.do_cast(&mac.node.tts,
-                                      |p| p.parse_expr(),
-                                      target),
+                "typed" => mcx.do_typed(
+                    &mac.node.tts,
+                    |p| p.parse_expr().map(|p| p.into_inner()),
+                    target,
+                ),
+                "cast" => mcx.do_cast(&mac.node.tts, |p| p.parse_expr(), target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
         }
@@ -87,12 +88,16 @@ impl TryMatch for Pat {
         if let PatKind::Mac(ref mac) = self.node {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
-                "marked" => mcx.do_marked(&mac.node.tts,
-                                          |p| p.parse_pat(None).map(|p| p.into_inner()),
-                                          target),
-                "typed" => mcx.do_typed(&mac.node.tts,
-                                        |p| p.parse_pat(None).map(|p| p.into_inner()),
-                                        target),
+                "marked" => mcx.do_marked(
+                    &mac.node.tts,
+                    |p| p.parse_pat(None).map(|p| p.into_inner()),
+                    target,
+                ),
+                "typed" => mcx.do_typed(
+                    &mac.node.tts,
+                    |p| p.parse_pat(None).map(|p| p.into_inner()),
+                    target,
+                ),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
         }
@@ -110,9 +115,11 @@ impl TryMatch for Ty {
         if let TyKind::Mac(ref mac) = self.node {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
-                "marked" => mcx.do_marked(&mac.node.tts,
-                                          |p| p.parse_ty().map(|p| p.into_inner()),
-                                          target),
+                "marked" => mcx.do_marked(
+                    &mac.node.tts,
+                    |p| p.parse_ty().map(|p| p.into_inner()),
+                    target,
+                ),
                 "def" => mcx.do_def_ty(&mac.node.tts, target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
@@ -147,13 +154,12 @@ impl TryMatch for Block {
     }
 }
 
-
 impl<T: TryMatch> TryMatch for [T] {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if self.len() != target.len() {
             return Err(matcher::Error::LengthMismatch);
         }
-        for i in 0 .. self.len() {
+        for i in 0..self.len() {
             mcx.try_match(&self[i], &target[i])?;
         }
         Ok(())
@@ -194,7 +200,7 @@ impl<T: TryMatch> TryMatch for Spanned<T> {
 fn default_option_match<T: TryMatch>(
     pattern: &Option<T>,
     target: &Option<T>,
-    mcx: &mut MatchCtxt
+    mcx: &mut MatchCtxt,
 ) -> matcher::Result<()> {
     match (pattern, target) {
         (&Some(ref x), &Some(ref y)) => mcx.try_match(x, y),
@@ -215,10 +221,8 @@ impl<T: TryMatch> TryMatch for Option<T> {
 impl<T: TryMatch + PatternSymbol> TryMatch for Option<T> {
     fn try_match(&self, target: &Option<T>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         match (self, target) {
-            (&Some(ref x), None) if mcx.is_opt_binding(x) => {
-                mcx.capture_opt_none(x)
-            }
-            _ => default_option_match(self, target, mcx)
+            (&Some(ref x), None) if mcx.is_opt_binding(x) => mcx.capture_opt_none(x),
+            _ => default_option_match(self, target, mcx),
         }
     }
 }
@@ -226,10 +230,8 @@ impl<T: TryMatch + PatternSymbol> TryMatch for Option<T> {
 impl<T: TryMatch + PatternSymbol> TryMatch for Option<P<T>> {
     fn try_match(&self, target: &Option<P<T>>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         match (self, target) {
-            (&Some(ref x), None) if mcx.is_opt_binding(&**x) => {
-                mcx.capture_opt_none(&**x)
-            }
-            _ => default_option_match(self, target, mcx)
+            (&Some(ref x), None) if mcx.is_opt_binding(&**x) => mcx.capture_opt_none(&**x),
+            _ => default_option_match(self, target, mcx),
         }
     }
 }
@@ -250,6 +252,5 @@ impl<A: TryMatch, B: TryMatch, C: TryMatch> TryMatch for (A, B, C) {
         Ok(())
     }
 }
-
 
 include!(concat!(env!("OUT_DIR"), "/matcher_impls_gen.inc.rs"));

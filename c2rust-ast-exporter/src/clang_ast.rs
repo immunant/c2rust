@@ -1,23 +1,28 @@
+use serde_bytes::ByteBuf;
+use serde_cbor::error;
+use serde_cbor::{from_value, Value};
+use std;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use serde_bytes::ByteBuf;
-use serde_cbor::{Value, from_value};
-use serde_cbor::error;
-use std;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum LRValue {
-    LValue, RValue
+    LValue,
+    RValue,
 }
 
 impl LRValue {
-    pub fn is_lvalue(&self) -> bool { *self == LRValue::LValue }
-    pub fn is_rvalue(&self) -> bool { *self == LRValue::RValue }
+    pub fn is_lvalue(&self) -> bool {
+        *self == LRValue::LValue
+    }
+    pub fn is_rvalue(&self) -> bool {
+        *self == LRValue::RValue
+    }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct AstNode {
     pub tag: ASTEntryTag,
     pub children: Vec<Option<u64>>,
@@ -30,13 +35,13 @@ pub struct AstNode {
     pub extras: Vec<Value>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct TypeNode {
     pub tag: TypeTag,
     pub extras: Vec<Value>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct CommentNode {
     pub fileid: u64,
     pub line: u64,
@@ -89,20 +94,19 @@ fn import_type_tag(tag: u64) -> TypeTag {
 }
 
 pub fn process(items: Value) -> error::Result<AstContext> {
-
     let mut asts: HashMap<u64, AstNode> = HashMap::new();
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
     let mut comments: Vec<CommentNode> = vec![];
 
-    let (all_nodes, top_nodes, file_paths, raw_comments):
-        (Vec<Vec<Value>>,
-         Vec<u64>,
-         Vec<String>,
-         Vec<(u64, u64, u64, ByteBuf)>,
-        ) = from_value(items)?;
+    let (all_nodes, top_nodes, file_paths, raw_comments): (
+        Vec<Vec<Value>>,
+        Vec<u64>,
+        Vec<String>,
+        Vec<(u64, u64, u64, ByteBuf)>,
+    ) = from_value(items)?;
 
     for (fileid, line, column, bytes) in raw_comments {
-        comments.push(CommentNode{
+        comments.push(CommentNode {
             fileid,
             line,
             column,
@@ -115,12 +119,12 @@ pub fn process(items: Value) -> error::Result<AstContext> {
         let tag = entry[1].as_u64().unwrap();
 
         if tag < 400 {
-
-            let children =
-                entry[2].as_array().unwrap()
-                    .iter()
-                    .map(|x| expect_opt_u64(x).unwrap())
-                    .collect::<Vec<Option<u64>>>();
+            let children = entry[2]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| expect_opt_u64(x).unwrap())
+                .collect::<Vec<Option<u64>>>();
 
             let type_id: Option<u64> = expect_opt_u64(&entry[6]).unwrap();
             let fileid = entry[3].as_u64().unwrap();
@@ -138,7 +142,11 @@ pub fn process(items: Value) -> error::Result<AstContext> {
                 column: entry[5].as_u64().unwrap(),
                 type_id,
                 file_path,
-                rvalue: if entry[7].as_boolean().unwrap() { LRValue::RValue } else { LRValue::LValue },
+                rvalue: if entry[7].as_boolean().unwrap() {
+                    LRValue::RValue
+                } else {
+                    LRValue::LValue
+                },
                 extras: entry[8..].to_vec(),
             };
 

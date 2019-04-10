@@ -1,14 +1,13 @@
 //! Miscellaneous utility functions.
-use smallvec::SmallVec;
 use rustc::hir::def::{Def, Namespace};
+use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
-use syntax::symbol::{Symbol, keywords};
-use syntax::tokenstream::{TokenStream};
+use syntax::symbol::{keywords, Symbol};
+use syntax::tokenstream::TokenStream;
 
 use super::AstEquiv;
-
 
 /// Extract the symbol from a pattern-like AST.
 pub trait PatternSymbol {
@@ -61,8 +60,9 @@ impl PatternSymbol for Stmt {
 impl PatternSymbol for Pat {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match self.node {
-            PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
-                           ref i, None) => i.pattern_symbol(),
+            PatKind::Ident(BindingMode::ByValue(Mutability::Immutable), ref i, None) => {
+                i.pattern_symbol()
+            }
             _ => None,
         }
     }
@@ -113,7 +113,6 @@ impl PatternSymbol for TraitItem {
     }
 }
 
-
 /// Get the text of a span, and pass it to a callback.  Returns `false` if the span text isn't
 /// available.
 pub fn with_span_text<F: FnOnce(&str)>(cm: &SourceMap, span: Span, callback: F) -> bool {
@@ -123,11 +122,10 @@ pub fn with_span_text<F: FnOnce(&str)>(cm: &SourceMap, span: Span, callback: F) 
         Some(x) => x,
         None => return false,
     };
-    let node_src = &file_src[lo.pos.0 as usize .. hi.pos.0 as usize];
+    let node_src = &file_src[lo.pos.0 as usize..hi.pos.0 as usize];
     callback(node_src);
     true
 }
-
 
 /// Extend a node span to cover its attributes.  (By default, item spans cover only the item body,
 /// not the preceding attrs.)
@@ -142,7 +140,6 @@ pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
     s
 }
 
-
 /// Get the name of a macro invocation.
 pub fn macro_name(mac: &Mac) -> Name {
     let p = &mac.node.path;
@@ -154,9 +151,10 @@ pub fn use_idents(tree: &UseTree) -> Vec<Ident> {
     match &tree.kind {
         UseTreeKind::Simple(..) => vec![tree.ident()],
         UseTreeKind::Glob => unimplemented!(),
-        UseTreeKind::Nested(children) => {
-            children.iter().flat_map(|(tree, _)| use_idents(tree)).collect()
-        }
+        UseTreeKind::Nested(children) => children
+            .iter()
+            .flat_map(|(tree, _)| use_idents(tree))
+            .collect(),
     }
 }
 
@@ -166,7 +164,7 @@ fn split_uses_impl(
     mut path: Path,
     id: NodeId,
     tree: UseTree,
-    out: &mut SmallVec<[P<Item>; 1]>
+    out: &mut SmallVec<[P<Item>; 1]>,
 ) {
     path.segments.extend_from_slice(&tree.prefix.segments);
     match tree.kind {
@@ -189,7 +187,9 @@ fn split_uses_impl(
 /// Split a use statement which may have nesting into one or more simple use
 /// statements without nesting.
 pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
-    let use_tree = expect!([&item.node] ItemKind::Use(u) => u).clone().into_inner();
+    let use_tree = expect!([&item.node] ItemKind::Use(u) => u)
+        .clone()
+        .into_inner();
     let mut out = smallvec![];
     let initial_path = Path {
         span: use_tree.prefix.span,
@@ -229,10 +229,8 @@ pub fn namespace(def: &Def) -> Option<Namespace> {
         | SelfTy(..)
         | ToolMod => Some(Namespace::TypeNS),
 
-        Fn(..) | Const(..) | Static(..) | SelfCtor(..)
-        | Method(..) | AssociatedConst(..) | Local(..) | Upvar(..) | Label(..) => {
-            Some(Namespace::ValueNS)
-        }
+        Fn(..) | Const(..) | Static(..) | SelfCtor(..) | Method(..) | AssociatedConst(..)
+        | Local(..) | Upvar(..) | Label(..) => Some(Namespace::ValueNS),
 
         _ => None,
     }

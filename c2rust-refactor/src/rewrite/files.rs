@@ -1,36 +1,38 @@
 //! Code for applying `TextRewrite`s to the actual source files.
+use diff;
 use std::collections::{HashMap, VecDeque};
 use std::io;
-use diff;
-use syntax::source_map::{SourceMap, SourceFile};
+use syntax::source_map::{SourceFile, SourceMap};
 use syntax_pos::{BytePos, FileName};
 
 use crate::file_io::FileIO;
-use crate::rewrite::{TextRewrite, TextAdjust};
 use crate::rewrite::cleanup::cleanup_rewrites;
-
+use crate::rewrite::{TextAdjust, TextRewrite};
 
 /// Apply a sequence of rewrites to the source code, handling the results by passing the new text
 /// to `callback` along with the `SourceFile` describing the original source file.
-pub fn rewrite_files_with(cm: &SourceMap,
-                          rw: &TextRewrite,
-                          io: &FileIO) -> io::Result<()> {
+pub fn rewrite_files_with(cm: &SourceMap, rw: &TextRewrite, io: &FileIO) -> io::Result<()> {
     let mut by_file = HashMap::new();
 
     for rw in &rw.rewrites {
         let sf = cm.lookup_byte_offset(rw.old_span.lo()).sf;
         let ptr = (&sf as &SourceFile) as *const _;
-        by_file.entry(ptr).or_insert_with(|| (Vec::new(), Vec::new(), sf))
-            .0.push(rw.clone());
+        by_file
+            .entry(ptr)
+            .or_insert_with(|| (Vec::new(), Vec::new(), sf))
+            .0
+            .push(rw.clone());
     }
 
     for &(span, id) in &rw.nodes {
         let sf = cm.lookup_byte_offset(span.lo()).sf;
         let ptr = (&sf as &SourceFile) as *const _;
-        by_file.entry(ptr).or_insert_with(|| (Vec::new(), Vec::new(), sf))
-            .1.push((span, id));
+        by_file
+            .entry(ptr)
+            .or_insert_with(|| (Vec::new(), Vec::new(), sf))
+            .1
+            .push((span, id));
     }
-
 
     for (_, (rewrites, nodes, sf)) in by_file {
         let path = match sf.name {
@@ -38,14 +40,16 @@ pub fn rewrite_files_with(cm: &SourceMap,
             _ => {
                 warn!("can't rewrite virtual file {:?}", sf.name);
                 continue;
-            },
+            }
         };
 
         // TODO: do something with nodes
         io.save_rewrites(cm, &sf, &rewrites, &nodes)?;
         let mut buf = String::new();
         let rewrites = cleanup_rewrites(cm, rewrites);
-        rewrite_range(cm, sf.start_pos, sf.end_pos, &rewrites, &mut |s| buf.push_str(s));
+        rewrite_range(cm, sf.start_pos, sf.end_pos, &rewrites, &mut |s| {
+            buf.push_str(s)
+        });
         io.write_file(path, &buf)?;
     }
 
@@ -56,7 +60,7 @@ pub fn rewrite_files_with(cm: &SourceMap,
 
 #[allow(dead_code)] // Helper function for debugging
 fn print_rewrite(rw: &TextRewrite, depth: usize) {
-    for _ in 0 .. depth {
+    for _ in 0..depth {
         print!("  ");
     }
     info!("{:?} -> {:?}", rw.old_span, rw.new_span);
@@ -69,7 +73,12 @@ fn print_rewrite(rw: &TextRewrite, depth: usize) {
 fn print_rewrites(rws: &[TextRewrite]) {
     info!("{} rewrites:", rws.len());
     for rw in rws {
-        info!("    {:?} -> {:?} (+{} children)", rw.old_span, rw.new_span, rw.rewrites.len());
+        info!(
+            "    {:?} -> {:?} (+{} children)",
+            rw.old_span,
+            rw.new_span,
+            rw.rewrites.len()
+        );
     }
 }
 
@@ -78,11 +87,13 @@ fn print_rewrites(rws: &[TextRewrite]) {
 ///
 /// All rewrites must be in order, and must lie between `start` and `end`.  Otherwise a panic may
 /// occur.
-fn rewrite_range(cm: &SourceMap,
-                 start: BytePos,
-                 end: BytePos,
-                 rewrites: &[TextRewrite],
-                 callback: &mut FnMut(&str)) {
+fn rewrite_range(
+    cm: &SourceMap,
+    start: BytePos,
+    end: BytePos,
+    rewrites: &[TextRewrite],
+    callback: &mut FnMut(&str),
+) {
     let mut cur = start;
 
     for rw in rewrites {
@@ -91,18 +102,24 @@ fn rewrite_range(cm: &SourceMap,
         }
 
         match rw.adjust {
-            TextAdjust::None => {},
+            TextAdjust::None => {}
             TextAdjust::Parenthesize => callback("("),
         }
 
         if rw.rewrites.len() == 0 {
             emit_chunk(cm, rw.new_span.lo(), rw.new_span.hi(), |s| callback(s));
         } else {
-            rewrite_range(cm, rw.new_span.lo(), rw.new_span.hi(), &rw.rewrites, callback);
+            rewrite_range(
+                cm,
+                rw.new_span.lo(),
+                rw.new_span.hi(),
+                &rw.rewrites,
+                callback,
+            );
         }
 
         match rw.adjust {
-            TextAdjust::None => {},
+            TextAdjust::None => {}
             TextAdjust::Parenthesize => callback(")"),
         }
 
@@ -115,17 +132,16 @@ fn rewrite_range(cm: &SourceMap,
 }
 
 /// Runs `callback` on the source text between `lo` and `hi`.
-fn emit_chunk<F: FnMut(&str)>(cm: &SourceMap,
-                              lo: BytePos,
-                              hi: BytePos,
-                              mut callback: F) {
+fn emit_chunk<F: FnMut(&str)>(cm: &SourceMap, lo: BytePos, hi: BytePos, mut callback: F) {
     let lo = cm.lookup_byte_offset(lo);
     let hi = cm.lookup_byte_offset(hi);
-    let src = lo.sf.src.as_ref()
+    let src = lo
+        .sf
+        .src
+        .as_ref()
         .unwrap_or_else(|| panic!("source of file {} is not available", lo.sf.name));
-    callback(&src[lo.pos.0 as usize .. hi.pos.0 as usize]);
+    callback(&src[lo.pos.0 as usize..hi.pos.0 as usize]);
 }
-
 
 /// Print a unified diff between lines of `s1` and lines of `s2`.
 pub fn print_diff(s1: &str, s2: &str) {
@@ -162,14 +178,14 @@ pub fn print_diff(s1: &str, s2: &str) {
         match r {
             diff::Result::Left(..) => {
                 l_line += 1;
-            },
+            }
             diff::Result::Right(..) => {
                 r_line += 1;
-            },
+            }
             diff::Result::Both(..) => {
                 l_line += 1;
                 r_line += 1;
-            },
+            }
         }
 
         buf.push_back(r);
@@ -180,8 +196,12 @@ pub fn print_diff(s1: &str, s2: &str) {
                     while buf.len() > CONTEXT {
                         buf.pop_front();
                     }
-                },
-                State::Hunk { unchanged_limit, l_start, r_start } => {
+                }
+                State::Hunk {
+                    unchanged_limit,
+                    l_start,
+                    r_start,
+                } => {
                     if unchanged_limit == 1 {
                         // End of the hunk
                         let end = buf.len() - CONTEXT;
@@ -192,10 +212,11 @@ pub fn print_diff(s1: &str, s2: &str) {
                     } else {
                         state = State::Hunk {
                             unchanged_limit: unchanged_limit - 1,
-                            l_start, r_start,
+                            l_start,
+                            r_start,
                         };
                     }
-                },
+                }
             }
         } else {
             match state {
@@ -206,43 +227,54 @@ pub fn print_diff(s1: &str, s2: &str) {
                         l_start: l_line_old - (buf.len() - 1),
                         r_start: r_line_old - (buf.len() - 1),
                     };
-                },
-                State::Hunk { l_start, r_start, .. } => {
+                }
+                State::Hunk {
+                    l_start, r_start, ..
+                } => {
                     state = State::Hunk {
                         unchanged_limit: 2 * CONTEXT,
-                        l_start, r_start,
+                        l_start,
+                        r_start,
                     };
-                },
+                }
             }
         }
     }
 
     match state {
-        State::Hunk { unchanged_limit, l_start, r_start } => {
+        State::Hunk {
+            unchanged_limit,
+            l_start,
+            r_start,
+        } => {
             if unchanged_limit < CONTEXT {
                 let end = buf.len() - (CONTEXT - unchanged_limit);
                 buf.truncate(end);
             }
             print_hunk(&buf, l_start, r_start);
         }
-        _ => {},
+        _ => {}
     }
 }
 
 /// Print a single diff hunk, starting at line `l_start` in the left file and `r_start` in the
 /// right file.
-fn print_hunk(buf: &VecDeque<diff::Result<&str>>,
-              l_start: usize,
-              r_start: usize) {
-    let l_size = buf.iter().filter(|r| match r {
-        diff::Result::Right(_) => false,
-        _ => true,
-    }).count();
+fn print_hunk(buf: &VecDeque<diff::Result<&str>>, l_start: usize, r_start: usize) {
+    let l_size = buf
+        .iter()
+        .filter(|r| match r {
+            diff::Result::Right(_) => false,
+            _ => true,
+        })
+        .count();
 
-    let r_size = buf.iter().filter(|r| match r {
-        diff::Result::Left(_) => false,
-        _ => true,
-    }).count();
+    let r_size = buf
+        .iter()
+        .filter(|r| match r {
+            diff::Result::Left(_) => false,
+            _ => true,
+        })
+        .count();
 
     println!("@@ -{},{} +{},{} @@", l_start, l_size, r_start, r_size);
 
@@ -259,10 +291,10 @@ fn print_hunk(buf: &VecDeque<diff::Result<&str>>,
         match r {
             diff::Result::Left(s) => {
                 println!("-{}", s);
-            },
+            }
             diff::Result::Right(s) => {
                 right_buf.push(s);
-            },
+            }
             diff::Result::Both(s1, s2) => {
                 if s1 != s2 {
                     println!("-{}", s1);
@@ -273,7 +305,7 @@ fn print_hunk(buf: &VecDeque<diff::Result<&str>>,
                     }
                     println!(" {}", s1);
                 }
-            },
+            }
         }
     }
 }

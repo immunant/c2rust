@@ -1,6 +1,6 @@
 use rustc::hir;
 use rustc::hir::def::Def;
-use rustc::ty::{self, TyCtxt, ParamEnv};
+use rustc::ty::{self, ParamEnv, TyCtxt};
 use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
@@ -9,10 +9,11 @@ use syntax::ptr::P;
 use crate::ast_manip::MutVisit;
 use crate::RefactorCtxt;
 
-
-fn types_approx_equal<'tcx>(tcx: TyCtxt<'_, 'tcx, 'tcx>,
-                            ty1: ty::Ty<'tcx>,
-                            ty2: ty::Ty<'tcx>) -> bool {
+fn types_approx_equal<'tcx>(
+    tcx: TyCtxt<'_, 'tcx, 'tcx>,
+    ty1: ty::Ty<'tcx>,
+    ty2: ty::Ty<'tcx>,
+) -> bool {
     // Normalizing and erasing regions fixes a few cases where `illtyped` would otherwise falsely
     // report a type error.  Specifically:
     //
@@ -33,11 +34,7 @@ pub trait IlltypedFolder<'tcx> {
     /// down from its parent.  Implementations should attempt to correct `e` to an expr that has
     /// type `expected`.
     #[allow(unused)]
-    fn fix_expr(&mut self,
-                e: &mut P<Expr>,
-                actual: ty::Ty<'tcx>,
-                expected: ty::Ty<'tcx>) {
-    }
+    fn fix_expr(&mut self, e: &mut P<Expr>, actual: ty::Ty<'tcx>, expected: ty::Ty<'tcx>) {}
 
     /// Called on each expr `e` that is the subject of an invalid cast: `e` has type `actual`,
     /// which cannot be cast to `target`.  Implementations should attempt to correct `e` to an expr
@@ -45,31 +42,21 @@ pub trait IlltypedFolder<'tcx> {
     ///
     /// The default implementation dispatches to `fix_expr`, since fixing `e` to have type exactly
     /// `target` will certainly make the cast succeed.
-    fn fix_expr_cast(&mut self,
-                     e: &mut P<Expr>,
-                     actual: ty::Ty<'tcx>,
-                     target: ty::Ty<'tcx>) {
+    fn fix_expr_cast(&mut self, e: &mut P<Expr>, actual: ty::Ty<'tcx>, target: ty::Ty<'tcx>) {
         self.fix_expr(e, actual, target)
     }
 
     /// Called on each expr `e` that contains a subexpr whose actual type doesn't match the
     /// expected type propagated down from `e`.
-    fn fix_expr_parent(&mut self, _e: &mut P<Expr>) {
-    }
+    fn fix_expr_parent(&mut self, _e: &mut P<Expr>) {}
 }
 
 impl<'a, 'tcx, F: IlltypedFolder<'tcx>> IlltypedFolder<'tcx> for &'a mut F {
-    fn fix_expr(&mut self,
-                e: &mut P<Expr>,
-                actual: ty::Ty<'tcx>,
-                expected: ty::Ty<'tcx>) {
+    fn fix_expr(&mut self, e: &mut P<Expr>, actual: ty::Ty<'tcx>, expected: ty::Ty<'tcx>) {
         <F as IlltypedFolder>::fix_expr(self, e, actual, expected)
     }
 
-    fn fix_expr_cast(&mut self,
-                     e: &mut P<Expr>,
-                     actual: ty::Ty<'tcx>,
-                     target: ty::Ty<'tcx>) {
+    fn fix_expr_cast(&mut self, e: &mut P<Expr>, actual: ty::Ty<'tcx>, target: ty::Ty<'tcx>) {
         <F as IlltypedFolder>::fix_expr_cast(self, e, actual, target)
     }
 
@@ -77,7 +64,6 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> IlltypedFolder<'tcx> for &'a mut F {
         <F as IlltypedFolder>::fix_expr_parent(self, e)
     }
 }
-
 
 struct FoldIlltyped<'a, 'tcx, F> {
     cx: &'a RefactorCtxt<'a, 'tcx>,
@@ -87,11 +73,7 @@ struct FoldIlltyped<'a, 'tcx, F> {
 impl<'a, 'tcx, F: IlltypedFolder<'tcx>> FoldIlltyped<'a, 'tcx, F> {
     /// Attempt to ensure that `expr` has the type `expected_ty`. Return true if
     /// retyping was needed.
-    fn ensure(
-        &mut self,
-        expr: &mut P<Expr>,
-        expected_ty: ty::Ty<'tcx>,
-    ) -> bool {
+    fn ensure(&mut self, expr: &mut P<Expr>, expected_ty: ty::Ty<'tcx>) -> bool {
         if let Some(actual_ty) = self.cx.opt_adjusted_node_type(expr.id) {
             if !types_approx_equal(self.cx.ty_ctxt(), actual_ty, expected_ty) {
                 self.inner.fix_expr(expr, actual_ty, expected_ty);
@@ -105,11 +87,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> FoldIlltyped<'a, 'tcx, F> {
     /// casts if needed. Return true if retyping was needed.
     // TODO: Use this when checking casts
     #[allow(dead_code)]
-    fn ensure_cast(
-        &mut self,
-        sub_e: &mut P<Expr>,
-        target_ty: ty::Ty<'tcx>,
-    ) -> bool {
+    fn ensure_cast(&mut self, sub_e: &mut P<Expr>, target_ty: ty::Ty<'tcx>) -> bool {
         if let Some(actual_ty) = self.cx.opt_adjusted_node_type(sub_e.id) {
             self.inner.fix_expr_cast(sub_e, actual_ty, target_ty);
             return true;
@@ -184,8 +162,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 use syntax::ast::BinOpKind::*;
                 // TODO: check for overloads
                 match binop.node {
-                    Add | Sub | Mul | Div | Rem |
-                    BitXor | BitAnd | BitOr => {
+                    Add | Sub | Mul | Div | Rem | BitXor | BitAnd | BitOr => {
                         illtyped |= self.ensure(lhs, ty);
                         illtyped |= self.ensure(rhs, ty);
                     }
@@ -249,8 +226,10 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 }
             }
             ExprKind::Match(expr, arms) => {
-                if let Some(pat_ty) = arms.get(0).and_then(
-                    |arm| self.cx.opt_node_type(arm.pats[0].id)) {
+                if let Some(pat_ty) = arms
+                    .get(0)
+                    .and_then(|arm| self.cx.opt_node_type(arm.pats[0].id))
+                {
                     illtyped |= self.ensure(expr, pat_ty);
                 }
                 // TODO: self.ensure arm bodies match ty
@@ -275,10 +254,12 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 // TODO: e1 & e2 should have the same type if both present
             }
             ExprKind::Struct(_path, fields, maybe_expr) => {
-                handle_struct(self.cx, id, ty, fields, maybe_expr, |e, ty| illtyped |= self.ensure(e, ty));
+                handle_struct(self.cx, id, ty, fields, maybe_expr, |e, ty| {
+                    illtyped |= self.ensure(e, ty)
+                });
             }
 
-        _ => {}
+            _ => {}
         };
 
         if illtyped {
@@ -299,13 +280,11 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     let tcx = self.cx.ty_ctxt();
                     let node_id = tcx.hir().as_local_node_id(did).unwrap();
                     match tcx.hir().get(node_id) {
-                        hir::Node::Item(item) => {
-                            match item.node {
-                                hir::ItemKind::Static(ref t, ..) => info!("  - ty hir = {:?}", t),
-                                _ => {},
-                            }
+                        hir::Node::Item(item) => match item.node {
+                            hir::ItemKind::Static(ref t, ..) => info!("  - ty hir = {:?}", t),
+                            _ => {}
                         },
-                        _ => {},
+                        _ => {}
                     }
 
                     self.ensure(expr, expected_ty);
@@ -323,13 +302,16 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
     }
 }
 
-fn handle_struct<'tcx, F>(cx: &RefactorCtxt<'_, 'tcx>,
-                          expr_id: NodeId,
-                          ty: ty::Ty<'tcx>,
-                          fields: &mut Vec<Field>,
-                          maybe_expr: &mut Option<P<Expr>>,
-                          mut ensure: F)
-        where F: FnMut(&mut P<Expr>, ty::Ty<'tcx>) {
+fn handle_struct<'tcx, F>(
+    cx: &RefactorCtxt<'_, 'tcx>,
+    expr_id: NodeId,
+    ty: ty::Ty<'tcx>,
+    fields: &mut Vec<Field>,
+    maybe_expr: &mut Option<P<Expr>>,
+    mut ensure: F,
+) where
+    F: FnMut(&mut P<Expr>, ty::Ty<'tcx>),
+{
     let (adt_def, substs) = match ty.sty {
         ty::TyKind::Adt(a, s) => (a, s),
         _ => return,
@@ -352,14 +334,17 @@ fn handle_struct<'tcx, F>(cx: &RefactorCtxt<'_, 'tcx>,
 fn resolve_struct_path(cx: &RefactorCtxt, id: NodeId) -> Option<Def> {
     let node = match_or!([cx.hir_map().find(id)] Some(x) => x; return None);
     let expr = match_or!([node] hir::Node::Expr(e) => e; return None);
-    let qpath: &hir::QPath = match_or!([expr.node] hir::ExprKind::Struct(ref q, ..) => q; return None);
+    let qpath: &hir::QPath =
+        match_or!([expr.node] hir::ExprKind::Struct(ref q, ..) => q; return None);
     let path = match_or!([qpath] hir::QPath::Resolved(_, ref path) => path; return None);
     Some(path.def)
 }
 
-
 pub fn fold_illtyped<'tcx, F, T>(cx: &RefactorCtxt<'_, 'tcx>, x: &mut T, f: F)
-        where F: IlltypedFolder<'tcx>, T: MutVisit {
+where
+    F: IlltypedFolder<'tcx>,
+    T: MutVisit,
+{
     let mut f2 = FoldIlltyped { cx, inner: f };
     x.visit(&mut f2)
 }

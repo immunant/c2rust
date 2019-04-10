@@ -8,7 +8,11 @@ impl<'c> Translation<'c> {
     /// Get back a Rust lvalue corresponding to the expression passed in.
     ///
     /// Do not use the output lvalue expression more than once.
-    pub fn name_reference_write(&self, ctx: ExprContext, reference: CExprId) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    pub fn name_reference_write(
+        &self,
+        ctx: ExprContext,
+        reference: CExprId,
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         self.name_reference(ctx, reference, false)
             .map(|ws| ws.map(|(lvalue, _)| lvalue))
     }

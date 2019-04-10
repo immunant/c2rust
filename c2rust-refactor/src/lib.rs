@@ -3,20 +3,23 @@
     trace_macros,
     specialization,
     box_patterns,
-    generator_trait,
+    generator_trait
 )]
 extern crate arena;
-extern crate ena;
-extern crate indexmap;
-extern crate libc;
 extern crate cargo;
 extern crate clap;
 extern crate diff;
+extern crate ena;
 extern crate env_logger;
-#[macro_use] extern crate json;
-#[macro_use] extern crate log;
+extern crate indexmap;
+extern crate libc;
+#[macro_use]
+extern crate json;
+#[macro_use]
+extern crate log;
 extern crate regex;
 extern crate rustc;
+extern crate rustc_codegen_utils;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -26,14 +29,15 @@ extern crate rustc_metadata;
 extern crate rustc_privacy;
 extern crate rustc_resolve;
 extern crate rustc_target;
-extern crate rustc_codegen_utils;
-#[macro_use] extern crate smallvec;
+#[macro_use]
+extern crate smallvec;
+extern crate c2rust_ast_builder;
 extern crate syntax;
 extern crate syntax_ext;
 extern crate syntax_pos;
-extern crate c2rust_ast_builder;
 
-#[macro_use] mod macros;
+#[macro_use]
+mod macros;
 
 pub mod ast_manip;
 
@@ -43,20 +47,20 @@ pub mod rewrite;
 
 pub mod analysis;
 
-pub mod span_fix;
 pub mod pick_node;
+pub mod span_fix;
 
-pub mod path_edit;
-pub mod illtyped;
 pub mod contains_mark;
+pub mod illtyped;
+pub mod path_edit;
 pub mod reflect;
-pub mod type_map;
 pub mod resolve;
+pub mod type_map;
 
 pub mod matcher;
 
-pub mod driver;
 pub mod collapse;
+pub mod driver;
 pub mod node_map;
 
 pub mod command;
@@ -64,22 +68,22 @@ pub mod file_io;
 pub mod interact;
 pub mod plugin;
 
-pub mod transform;
 pub mod mark_adjust;
-pub mod select;
 pub mod print_spans;
+pub mod select;
+pub mod transform;
 
 mod context;
 mod scripting;
 
+use cargo::util::paths;
+use rustc_interface::interface;
 use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::sync::Arc;
-use cargo::util::paths;
 use syntax::ast::NodeId;
-use rustc_interface::interface;
 
 use c2rust_ast_builder::IntoSymbol;
 
@@ -120,10 +124,7 @@ pub struct Mark {
 
 impl Mark {
     pub fn new(id: usize, label: Option<String>) -> Self {
-        Mark {
-            id,
-            label,
-        }
+        Mark { id, label }
     }
 }
 
@@ -179,9 +180,12 @@ fn get_rustc_executable(path: &Path) -> String {
 
     let resolved = paths::resolve_executable(path).unwrap();
     if let Some(rustup_path) = get_rustup_path(&resolved) {
-        let proc = Command::new(rustup_path).arg("which").arg("rustc")
+        let proc = Command::new(rustup_path)
+            .arg("which")
+            .arg("rustc")
             .stdout(Stdio::piped())
-            .spawn().unwrap();
+            .spawn()
+            .unwrap();
         let output = proc.wait_with_output().unwrap();
         assert!(output.status.success());
         let s = str::from_utf8(&output.stdout).unwrap();
@@ -194,7 +198,7 @@ fn get_rustc_executable(path: &Path) -> String {
 fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
     match src {
         RustcArgSource::CmdLine(mut args) => {
-            let mut rustc_args = vec!(get_rustc_executable(Path::new("rustc")));
+            let mut rustc_args = vec![get_rustc_executable(Path::new("rustc"))];
             rustc_args.append(&mut args);
             rustc_args
         }
@@ -203,15 +207,15 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
 }
 
 fn get_rustc_cargo_args() -> Vec<String> {
-    use std::sync::Mutex;
-    use cargo::Config;
-    use cargo::core::{Workspace, PackageId, Target, maybe_allow_nightly_features};
-    use cargo::core::compiler::{CompileMode, Executor, DefaultExecutor, Context, Unit};
+    use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
     use cargo::core::manifest::TargetKind;
+    use cargo::core::{maybe_allow_nightly_features, PackageId, Target, Workspace};
     use cargo::ops;
     use cargo::ops::CompileOptions;
-    use cargo::util::{ProcessBuilder, CargoResult};
     use cargo::util::important_paths::find_root_manifest_for_wd;
+    use cargo::util::{CargoResult, ProcessBuilder};
+    use cargo::Config;
+    use std::sync::Mutex;
 
     // `cargo`-built `libcargo` is always on the `dev` channel, so `maybe_allow_nightly_features`
     // really does allow nightly features.
@@ -231,10 +235,7 @@ fn get_rustc_cargo_args() -> Vec<String> {
     }
 
     impl LoggingExecutor {
-        fn maybe_record_cmd(&self,
-                            cmd: &ProcessBuilder,
-                            id: &PackageId,
-                            target: &Target) {
+        fn maybe_record_cmd(&self, cmd: &ProcessBuilder, id: &PackageId, target: &Target) {
             if id != &self.target_pkg {
                 return;
             }
@@ -242,12 +243,14 @@ fn get_rustc_cargo_args() -> Vec<String> {
             let mut g = self.pkg_args.lock().unwrap();
             match target.kind() {
                 // `lib` builds take priority.  Otherwise, take the first available bin.
-                &TargetKind::Lib(_) => {},
-                &TargetKind::Bin if g.is_none() => {},
+                &TargetKind::Lib(_) => {}
+                &TargetKind::Bin if g.is_none() => {}
                 _ => return,
             }
 
-            let args = cmd.get_args().iter()
+            let args = cmd
+                .get_args()
+                .iter()
                 .map(|os| os.to_str().unwrap().to_owned())
                 .collect();
             *g = Some(args);
@@ -259,24 +262,29 @@ fn get_rustc_cargo_args() -> Vec<String> {
             self.default.init(cx, unit);
         }
 
-        fn exec(&self,
-                cmd: ProcessBuilder,
-                id: PackageId,
-                target: &Target,
-                mode: CompileMode) -> CargoResult<()> {
+        fn exec(
+            &self,
+            cmd: ProcessBuilder,
+            id: PackageId,
+            target: &Target,
+            mode: CompileMode,
+        ) -> CargoResult<()> {
             self.maybe_record_cmd(&cmd, &id, target);
             self.default.exec(cmd, id, target, mode)
         }
 
-        fn exec_json(&self,
-                     cmd: ProcessBuilder,
-                     id: PackageId,
-                     target: &Target,
-                     mode: CompileMode,
-                     handle_stdout: &mut FnMut(&str) -> CargoResult<()>,
-                     handle_stderr: &mut FnMut(&str) -> CargoResult<()>) -> CargoResult<()> {
+        fn exec_json(
+            &self,
+            cmd: ProcessBuilder,
+            id: PackageId,
+            target: &Target,
+            mode: CompileMode,
+            handle_stdout: &mut FnMut(&str) -> CargoResult<()>,
+            handle_stderr: &mut FnMut(&str) -> CargoResult<()>,
+        ) -> CargoResult<()> {
             self.maybe_record_cmd(&cmd, &id, target);
-            self.default.exec_json(cmd, id, target, mode, handle_stdout, handle_stderr)
+            self.default
+                .exec_json(cmd, id, target, mode, handle_stdout, handle_stderr)
         }
 
         fn force_rebuild(&self, unit: &Unit) -> bool {
@@ -335,24 +343,33 @@ fn main_impl(opts: Options) -> interface::Result<()> {
         driver::run_compiler(config, None, |compiler| {
             let expanded_crate = compiler.expansion().unwrap().take().0;
             for c in &opts.cursors {
-                let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any),
-                                                        |s| pick_node::NodeKind::from_str(&s));
+                let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any), |s| {
+                    pick_node::NodeKind::from_str(&s)
+                });
                 let kind = match kind_result {
                     Ok(k) => k,
                     Err(_) => {
                         info!("Bad cursor kind: {:?}", c.kind.as_ref().unwrap());
                         continue;
-                    },
+                    }
                 };
 
                 let id = match pick_node::pick_node_at_loc(
-                    &expanded_crate, compiler.session(), kind, &c.file, c.line, c.col) {
+                    &expanded_crate,
+                    compiler.session(),
+                    kind,
+                    &c.file,
+                    c.line,
+                    c.col,
+                ) {
                     Some(info) => info.id,
                     None => {
-                        info!("Failed to find {:?} at {}:{}:{}",
-                                 kind, c.file, c.line, c.col);
+                        info!(
+                            "Failed to find {:?} at {}:{}:{}",
+                            kind, c.file, c.line, c.col
+                        );
                         continue;
-                    },
+                    }
                 };
 
                 let label = c.label.as_ref().map_or("target", |s| s).into_symbol();
@@ -363,7 +380,6 @@ fn main_impl(opts: Options) -> interface::Result<()> {
             }
         });
     }
-
 
     let mut cmd_reg = command::Registry::new();
     transform::register_commands(&mut cmd_reg);
@@ -383,8 +399,13 @@ fn main_impl(opts: Options) -> interface::Result<()> {
         interact::interact_command(&opts.commands[0].args, config, cmd_reg);
     } else if opts.commands.len() == 1 && opts.commands[0].name == "script" {
         assert_eq!(opts.commands[0].args.len(), 1);
-        scripting::run_lua_file(Path::new(&opts.commands[0].args[0]), config, cmd_reg, opts.rewrite_modes)
-            .expect("Error loading user script");
+        scripting::run_lua_file(
+            Path::new(&opts.commands[0].args[0]),
+            config,
+            cmd_reg,
+            opts.rewrite_modes,
+        )
+        .expect("Error loading user script");
     } else {
         let file_io = Arc::new(file_io::RealFileIO::new(opts.rewrite_modes.clone()));
         driver::run_refactoring(config, cmd_reg, file_io, marks, |mut state| {
@@ -393,12 +414,11 @@ fn main_impl(opts: Options) -> interface::Result<()> {
                     panic!("`interact` must be the only command");
                 } else {
                     match state.run(&cmd.name, &cmd.args) {
-                        Ok(_)=> {},
+                        Ok(_) => {}
                         Err(e) => {
                             eprintln!("{:?}", e);
                             std::process::exit(1);
                         }
-
                     }
                 }
             }

@@ -6,14 +6,15 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::Index;
 
-
 /// Map of dependency relationships using internal mutability.
 struct DepMap<K> {
     map: UnsafeCell<HashMap<K, HashSet<K>>>,
 }
 
 impl<K> DepMap<K>
-        where K: Hash+Eq+::std::fmt::Debug {
+where
+    K: Hash + Eq + ::std::fmt::Debug,
+{
     fn new() -> DepMap<K> {
         DepMap {
             map: UnsafeCell::new(HashMap::new()),
@@ -24,7 +25,10 @@ impl<K> DepMap<K>
     fn insert(&self, src: K, dest: K) {
         info!(" * record dep: {:?} -> {:?}", src, dest);
         unsafe {
-            (*self.map.get()).entry(src).or_insert_with(HashSet::new).insert(dest);
+            (*self.map.get())
+                .entry(src)
+                .or_insert_with(HashSet::new)
+                .insert(dest);
         }
     }
 
@@ -41,7 +45,6 @@ impl<K> DepMap<K>
     }
 }
 
-
 /// Worklist algorithm context.  `K` is the type of keys, which identify nodes, and `V` is the type
 /// of value associated with each node.  Allows indexing to retrieve data from other nodes.
 /// Accessing the current node's data triggers a panic.
@@ -53,10 +56,14 @@ pub struct Ctxt<'a, K: 'a, V: 'a> {
 }
 
 impl<'a, K, V> Ctxt<'a, K, V>
-        where K: Hash+Eq+::std::fmt::Debug {
-    fn new(rev_deps: &'a DepMap<K>,
-           init: &'a mut HashMap<K, V>,
-           cur: K) -> (Ctxt<'a, K, V>, &'a mut V) {
+where
+    K: Hash + Eq + ::std::fmt::Debug,
+{
+    fn new(
+        rev_deps: &'a DepMap<K>,
+        init: &'a mut HashMap<K, V>,
+        cur: K,
+    ) -> (Ctxt<'a, K, V>, &'a mut V) {
         unsafe {
             let data: &'a HashMap<K, UnsafeCell<V>> = mem::transmute(init);
 
@@ -75,14 +82,14 @@ impl<'a, K, V> Ctxt<'a, K, V>
 }
 
 impl<'a, K, V> Index<K> for Ctxt<'a, K, V>
-        where K: Hash+Eq+Clone+::std::fmt::Debug {
+where
+    K: Hash + Eq + Clone + ::std::fmt::Debug,
+{
     type Output = V;
     fn index(&self, key: K) -> &V {
         assert!(key != self.cur, "tried to access current node");
         self.rev_deps.insert(key.clone(), self.cur.clone());
-        unsafe {
-            &*self.data[&key].get()
-        }
+        unsafe { &*self.data[&key].get() }
     }
 }
 
@@ -94,8 +101,10 @@ impl<'a, K, V> Index<K> for Ctxt<'a, K, V>
 /// `FnMut(K, &RefactorCtxt<K, V>) -> V` then we can avoid this issue.  Being unable to mutate the value
 /// in-place might be slightly less efficient for some use cases, though.
 pub fn iterate<K, V, F>(data: &mut HashMap<K, V>, mut update: F)
-        where K: Hash+Eq+Clone+::std::fmt::Debug,
-              F: FnMut(K, &mut V, &Ctxt<K, V>) -> bool {
+where
+    K: Hash + Eq + Clone + ::std::fmt::Debug,
+    F: FnMut(K, &mut V, &Ctxt<K, V>) -> bool,
+{
     let rev_deps = DepMap::new();
 
     let mut pending = data.keys().map(|x| x.clone()).collect::<HashSet<_>>();

@@ -5,7 +5,6 @@ use syntax::source_map::{Span, Spanned};
 
 use crate::ast_manip::util::extended_span;
 
-
 /// Trait for obtaining the `Span` of a generic AST node.
 pub trait GetSpan {
     fn get_span(&self) -> Span;

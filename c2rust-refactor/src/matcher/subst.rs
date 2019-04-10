@@ -17,14 +17,14 @@
 //!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
 
-use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Item, ImplItem, Label};
+use smallvec::SmallVec;
 use syntax::ast::Mac;
+use syntax::ast::{Expr, Ident, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
-use smallvec::SmallVec;
 
-use crate::ast_manip::MutVisit;
 use crate::ast_manip::util::PatternSymbol;
+use crate::ast_manip::MutVisit;
 use crate::command::CommandState;
 use crate::matcher::Bindings;
 use crate::RefactorCtxt;
@@ -50,7 +50,10 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             if let Some(binding) = self.bindings.get::<_, Ident>(sym) {
                 *i = binding.clone();
             } else if let Some(ty) = self.bindings.get::<_, P<Ty>>(sym) {
-                panic!("binding {:?} (of type {:?}) has wrong type for hole", sym, ty);
+                panic!(
+                    "binding {:?} (of type {:?}) has wrong type for hole",
+                    sym, ty
+                );
             }
             // Otherwise, fall through
         }
@@ -58,7 +61,10 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
     }
 
     fn visit_path(&mut self, p: &mut Path) {
-        if let Some(binding) = p.pattern_symbol().and_then(|sym| self.bindings.get::<_, Path>(sym)) {
+        if let Some(binding) = p
+            .pattern_symbol()
+            .and_then(|sym| self.bindings.get::<_, Path>(sym))
+        {
             *p = binding.clone();
         }
 
@@ -78,7 +84,10 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
     }
 
     fn visit_pat(&mut self, p: &mut P<Pat>) {
-        if let Some(binding) = p.pattern_symbol().and_then(|sym| self.bindings.get::<_, P<Pat>>(sym)) {
+        if let Some(binding) = p
+            .pattern_symbol()
+            .and_then(|sym| self.bindings.get::<_, P<Pat>>(sym))
+        {
             *p = binding.clone();
         }
 
@@ -98,10 +107,15 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
     }
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
-        if let Some(stmt) = s.pattern_symbol().and_then(|sym| self.bindings.get::<_, Stmt>(sym)) {
+        if let Some(stmt) = s
+            .pattern_symbol()
+            .and_then(|sym| self.bindings.get::<_, Stmt>(sym))
+        {
             smallvec![stmt.clone()]
-        } else if let Some(stmts) = s.pattern_symbol()
-                .and_then(|sym| self.bindings.get::<_, Vec<Stmt>>(sym)) {
+        } else if let Some(stmts) = s
+            .pattern_symbol()
+            .and_then(|sym| self.bindings.get::<_, Vec<Stmt>>(sym))
+        {
             SmallVec::from_vec(stmts.clone())
         } else {
             mut_visit::noop_flat_map_stmt(s, self)
@@ -109,7 +123,10 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
     }
 
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        if let Some(item) = i.pattern_symbol().and_then(|sym| self.bindings.get::<_, P<Item>>(sym)) {
+        if let Some(item) = i
+            .pattern_symbol()
+            .and_then(|sym| self.bindings.get::<_, P<Item>>(sym))
+        {
             smallvec![item.clone()]
         } else {
             mut_visit::noop_flat_map_item(i, self)
@@ -131,7 +148,6 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         mut_visit::noop_visit_mac(mac, self)
     }
 }
-
 
 pub trait Subst {
     fn subst(self, st: &CommandState, cx: &RefactorCtxt, bindings: &Bindings) -> Self;

@@ -1,5 +1,5 @@
 use super::*;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
 #[derive(Copy, Clone, Debug)]
 pub enum VaPart {
@@ -10,27 +10,37 @@ pub enum VaPart {
 
 macro_rules! match_or {
     ([$e:expr] $p:pat => $r:tt) => {
-        let $r = match $e { $p => $r, _ => return None };
+        let $r = match $e {
+            $p => $r,
+            _ => return None,
+        };
     };
     ([$e:expr] $p:pat if $g:expr => $r:tt) => {
-        let $r = match $e { $p if $g => $r, _ => return None };
+        let $r = match $e {
+            $p if $g => $r,
+            _ => return None,
+        };
     };
 }
 
 impl<'c> Translation<'c> {
-
     /// Install a fake variable into the renamer as a kludge until we have
     /// proper variadic function definition support
-    fn register_va_decls(&self, promoted_decl_id: Option<CDeclId>, copied_decl_ids: IndexSet<CDeclId>) {
+    fn register_va_decls(
+        &self,
+        promoted_decl_id: Option<CDeclId>,
+        copied_decl_ids: IndexSet<CDeclId>,
+    ) {
         let mut fn_ctx = self.function_context.borrow_mut();
         fn_ctx.copied_va_decls = Some(copied_decl_ids);
-        
+
         if let Some(decl_id) = promoted_decl_id {
             // found a promotable `va_list`
             fn_ctx.promoted_va_decl = Some(decl_id);
             match self.ast_context[decl_id].kind {
                 CDeclKind::Variable { ref ident, .. } => {
-                    self.renamer.borrow_mut()
+                    self.renamer
+                        .borrow_mut()
                         .insert(decl_id, ident)
                         .expect(&format!("Failed to install variadic function kludge"));
                 }
@@ -48,7 +58,9 @@ impl<'c> Translation<'c> {
         let fn_ctx = self.function_context.borrow();
         if let Some(ref decls) = fn_ctx.copied_va_decls {
             decls.contains(&decl_id)
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn get_promoted_va_decl(&self) -> Option<CDeclId> {
@@ -57,9 +69,9 @@ impl<'c> Translation<'c> {
 
     pub fn match_vastart(&self, expr: CExprId) -> Option<CDeclId> {
         match_or! { [self.ast_context[expr].kind]
-            CExprKind::ImplicitCast(_, e, _, _, _) => e }
+        CExprKind::ImplicitCast(_, e, _, _, _) => e }
         match_or! { [self.ast_context[e].kind]
-            CExprKind::DeclRef(_, va_id, _) => va_id }
+        CExprKind::DeclRef(_, va_id, _) => va_id }
         Some(va_id)
     }
 
@@ -78,28 +90,33 @@ impl<'c> Translation<'c> {
 
     pub fn match_vapart(&self, expr: CExprId) -> Option<VaPart> {
         match_or! { [self.ast_context[expr].kind]
-            CExprKind::Call(_, func, ref args) => (func, args) }
+        CExprKind::Call(_, func, ref args) => (func, args) }
         match_or! { [self.ast_context[func].kind]
-            CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => fexp }
+        CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => fexp }
         match_or! { [self.ast_context[fexp].kind]
-            CExprKind::DeclRef(_, decl_id, _) => decl_id }
+        CExprKind::DeclRef(_, decl_id, _) => decl_id }
         match_or! { [self.ast_context[decl_id].kind]
-            CDeclKind::Function { ref name, .. } => name }
+        CDeclKind::Function { ref name, .. } => name }
         match name as &str {
             "__builtin_va_start" => {
-                if args.len() != 2 { return None }
+                if args.len() != 2 {
+                    return None;
+                }
                 self.match_vastart(args[0]).map(VaPart::Start)
             }
 
             "__builtin_va_copy" => {
-                if args.len() != 2 { return None }
-                self.match_vacopy(args[0], args[1]).map(
-                    |(did, sid)| VaPart::Copy(did, sid)
-                )
+                if args.len() != 2 {
+                    return None;
+                }
+                self.match_vacopy(args[0], args[1])
+                    .map(|(did, sid)| VaPart::Copy(did, sid))
             }
 
             "__builtin_va_end" => {
-                if args.len() != 1 { return None }
+                if args.len() != 1 {
+                    return None;
+                }
                 self.match_vaend(args[0]).map(VaPart::End)
             }
 
@@ -107,7 +124,12 @@ impl<'c> Translation<'c> {
         }
     }
 
-    pub fn convert_vaarg(&self, ctx: ExprContext, ty: CQualTypeId, val_id: CExprId) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    pub fn convert_vaarg(
+        &self,
+        ctx: ExprContext,
+        ty: CQualTypeId,
+        val_id: CExprId,
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         if self.tcfg.translate_valist {
             // https://github.com/rust-lang/rust/pull/49878/files
 
@@ -115,9 +137,8 @@ impl<'c> Translation<'c> {
             let ty = self.convert_type(ty.ctype)?;
 
             let mut res = val.map(|va| {
-                let path = mk().path_segment_with_args(
-                    mk().ident("arg"),
-                    mk().angle_bracketed_args(vec![ty]));
+                let path = mk()
+                    .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![ty]));
                 mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
             });
             if ctx.is_unused() {
@@ -127,7 +148,9 @@ impl<'c> Translation<'c> {
 
             Ok(res)
         } else {
-            Err(format_err!("Variable argument lists are not supported (requires --translate-valist)"))?
+            Err(format_err!(
+                "Variable argument lists are not supported (requires --translate-valist)"
+            ))?
         }
     }
 
@@ -145,7 +168,7 @@ impl<'c> Translation<'c> {
             if let SomeId::Expr(e) = s {
                 if let Some(part) = self.match_vapart(e) {
                     let id = match part {
-                        VaPart::Start(va_id) | VaPart::End(va_id) => va_id, 
+                        VaPart::Start(va_id) | VaPart::End(va_id) => va_id,
                         VaPart::Copy(dst_va_id, _src_va_id) => dst_va_id,
                     };
                     candidates.entry(id).or_insert(vec![]).push(part);
@@ -155,43 +178,70 @@ impl<'c> Translation<'c> {
 
         if candidates.len() == 0 {
             // no calls to `va_start`, `va_copy` or `va_end` is fine
-            return true
+            return true;
         }
 
-        let start_called = |k: &CDeclId| candidates[k]
+        let start_called = |k: &CDeclId| {
+            candidates[k].iter().any(|e| {
+                if let VaPart::Start(_) = e {
+                    true
+                } else {
+                    false
+                }
+            })
+        };
+        let copy_called = |k: &CDeclId| {
+            candidates[k].iter().any(|e| {
+                if let VaPart::Copy(_, _) = e {
+                    true
+                } else {
+                    false
+                }
+            })
+        };
+        let end_called = |k: &CDeclId| {
+            candidates[k]
                 .iter()
-                .any(|e| if let VaPart::Start( _ ) = e { true } else { false });
-        let copy_called = |k: &CDeclId| candidates[k]
-            .iter()
-            .any(|e| if let VaPart::Copy(_, _) = e { true } else { false });
-        let end_called = |k: &CDeclId| candidates[k]
-                .iter()
-                .any(|e| if let VaPart::End( _ ) = e { true } else { false });
+                .any(|e| if let VaPart::End(_) = e { true } else { false })
+        };
 
         // va_lists initialized by `va_copy` and finalized by `va_end`
         let copied = candidates
             .keys()
-            .filter_map(|k| if copy_called(k) && end_called(k) { Some(*k) } else { None })
+            .filter_map(|k| {
+                if copy_called(k) && end_called(k) {
+                    Some(*k)
+                } else {
+                    None
+                }
+            })
             .collect::<IndexSet<CDeclId>>();
 
         // va_lists initialized by `va_start` and finalized by `va_end`
         let promotable = candidates
             .keys()
-            .filter_map(|k| if start_called(k) && end_called(k) { Some(*k) } else { None })
+            .filter_map(|k| {
+                if start_called(k) && end_called(k) {
+                    Some(*k)
+                } else {
+                    None
+                }
+            })
             .collect::<Vec<CDeclId>>();
 
-        if promotable.len() + copied.len() > 0  {
+        if promotable.len() + copied.len() > 0 {
             // have promotable and/or copied va_lists that need registration
             let promoted = match promotable.len() {
                 0 => None,
                 1 => Some(promotable[0]),
-                _ => panic!("couldn't determine which va_list to promote in {}", 
+                _ => panic!(
+                    "couldn't determine which va_list to promote in {}",
                     self.function_context.borrow().get_name()
-                )
+                ),
             };
             self.register_va_decls(promoted, copied);
-            return true
-        } 
+            return true;
+        }
         false
     }
 }
