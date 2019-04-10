@@ -213,9 +213,13 @@ def _get_rust_toolchain_path(dirtype: str) -> str:
 
     host_triplet = get_host_triplet()
 
-    libpath = ".rustup/toolchains/{}-{}/{}/"
+    if 'RUSTUP_HOME' in pb.local.env:
+        home = pb.local.env['RUSTUP_HOME']
+    else:
+        home = os.path.join(pb.local.env['HOME'], ".rustup")
+    libpath = "toolchains/{}-{}/{}/"
     libpath = libpath.format(config.CUSTOM_RUST_NAME, host_triplet, dirtype)
-    libpath = os.path.join(pb.local.env['HOME'], libpath)
+    libpath = os.path.join(home, libpath)
     emsg = "custom rust compiler lib path missing: " + libpath
     assert os.path.isdir(libpath), emsg
     return libpath
