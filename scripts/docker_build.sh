@@ -37,6 +37,7 @@ build_image() {
     RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain"
     RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')
 
+    docker pull "$BASE_IMAGE"
     docker build -f $SCRIPT_DIR/../docker/Dockerfile \
            --build-arg BASE_IMAGE=$BASE_IMAGE \
            --build-arg PROVISION_SCRIPT=$PROVISION_SCRIPT \
