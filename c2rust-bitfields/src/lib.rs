@@ -5,8 +5,8 @@ extern crate quote;
 extern crate syn;
 
 use proc_macro::{Span, TokenStream};
-use quote::quote;
 use quote::__rt;
+use quote::quote;
 use syn::parse::Error;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -44,7 +44,7 @@ fn parse_bitfield_attr(attr: &Attribute, field_ident: &Ident) -> Result<BFFieldA
                         let span = meta_name_value.ident.span();
 
                         return Err(Error::new(span, err_str));
-                    },
+                    }
                 };
 
                 let lhs_string = meta_name_value.ident.to_string();
@@ -55,8 +55,8 @@ fn parse_bitfield_attr(attr: &Attribute, field_ident: &Ident) -> Result<BFFieldA
                     "bits" => {
                         bits = Some(rhs_string);
                         bits_span = Some(meta_name_value.ident.span());
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
         }
@@ -157,52 +157,62 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     let fields = match struct_item.fields {
         Fields::Named(named_fields) => named_fields.named,
         Fields::Unnamed(_) => {
-            let err_str = "Unnamed struct fields are not currently supported but may be in the future.";
+            let err_str =
+                "Unnamed struct fields are not currently supported but may be in the future.";
             let span = struct_ident.span();
 
             return Err(Error::new(span, err_str));
-        },
+        }
         Fields::Unit => {
             let err_str = "Cannot create bitfield struct out of struct with no fields";
             let span = struct_ident.span();
 
             return Err(Error::new(span, err_str));
-        },
+        }
     };
-    let bitfields: Result<Vec<BFFieldAttr>, Error> = fields.iter().flat_map(filter_and_parse_fields).collect();
+    let bitfields: Result<Vec<BFFieldAttr>, Error> =
+        fields.iter().flat_map(filter_and_parse_fields).collect();
     let bitfields = bitfields?;
     let field_types: Vec<_> = bitfields.iter().map(parse_bitfield_ty_path).collect();
     let field_types2 = field_types.clone();
     let field_type_setters = field_types.clone();
-    let method_names: Vec<_> = bitfields.iter().map(|field| Ident::new(&field.name, Span::call_site().into())).collect();
+    let method_names: Vec<_> = bitfields
+        .iter()
+        .map(|field| Ident::new(&field.name, Span::call_site().into()))
+        .collect();
     let field_names: Vec<_> = bitfields.iter().map(|field| &field.field_name).collect();
     let field_names2 = field_names.clone();
-    let method_name_setters: Vec<_> = method_names.iter().map(|field_ident| {
-        let span = Span::call_site().into();
-        let setter_name = &format!("set_{}", field_ident);
+    let method_name_setters: Vec<_> = method_names
+        .iter()
+        .map(|field_ident| {
+            let span = Span::call_site().into();
+            let setter_name = &format!("set_{}", field_ident);
 
-        Ident::new(setter_name, span)
-    }).collect();
-    let field_bit_info: Result<Vec<_>, Error> = bitfields.iter().map(|field| {
-        let bit_string = &field.bits.0;
-        let nums: Vec<_> = bit_string.split("..=").collect();
-        let err_str = "bits param must be in the format \"1..=4\"";
+            Ident::new(setter_name, span)
+        })
+        .collect();
+    let field_bit_info: Result<Vec<_>, Error> = bitfields
+        .iter()
+        .map(|field| {
+            let bit_string = &field.bits.0;
+            let nums: Vec<_> = bit_string.split("..=").collect();
+            let err_str = "bits param must be in the format \"1..=4\"";
 
-        if nums.len() != 2 {
-            return Err(Error::new(field.bits.1, err_str));
-        }
+            if nums.len() != 2 {
+                return Err(Error::new(field.bits.1, err_str));
+            }
 
-        let lhs = nums[0].parse::<usize>();
-        let rhs = nums[1].parse::<usize>();
+            let lhs = nums[0].parse::<usize>();
+            let rhs = nums[1].parse::<usize>();
 
-        let (lhs, rhs) = match (lhs, rhs) {
-            (Err(_), _) |
-            (_, Err(_)) => return Err(Error::new(field.bits.1, err_str)),
-            (Ok(lhs), Ok(rhs)) => (lhs, rhs),
-        };
+            let (lhs, rhs) = match (lhs, rhs) {
+                (Err(_), _) | (_, Err(_)) => return Err(Error::new(field.bits.1, err_str)),
+                (Ok(lhs), Ok(rhs)) => (lhs, rhs),
+            };
 
-        Ok(quote! { (#lhs, #rhs) })
-    }).collect();
+            Ok(quote! { (#lhs, #rhs) })
+        })
+        .collect();
     let field_bit_info = field_bit_info?;
     let field_bit_info2 = field_bit_info.clone();
     let calc_total_bit_size_fn = generate_calc_total_bit_size_fn(field_bit_info.len());

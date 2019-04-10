@@ -1,5 +1,5 @@
-use syntax::symbol::{InternedString, Symbol};
 use syntax::symbol::keywords::Keyword;
+use syntax::symbol::{InternedString, Symbol};
 
 /// Conversion of string-like values into interned `Symbol`s.
 pub trait IntoSymbol {

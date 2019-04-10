@@ -1,12 +1,11 @@
 //! Functions for rewriting sequences of stmts or items, using `Cursor<T>`.
 use std::mem;
-use syntax::ast::{Block, Stmt, Item, Mod};
+use syntax::ast::{Block, Item, Mod, Stmt};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 
 use crate::ast_manip::MutVisit;
 use crate::util::cursor::Cursor;
-
 
 struct BlockFolder<F: FnMut(&mut Cursor<Stmt>)> {
     f: F,
@@ -24,11 +23,12 @@ impl<F: FnMut(&mut Cursor<Stmt>)> MutVisitor for BlockFolder<F> {
 
 /// Rewrite every block by manipulating a `Cursor` for the `Stmt`s inside.
 pub fn fold_blocks<T, F>(target: &mut T, callback: F)
-        where T: MutVisit,
-              F: FnMut(&mut Cursor<Stmt>) {
+where
+    T: MutVisit,
+    F: FnMut(&mut Cursor<Stmt>),
+{
     target.visit(&mut BlockFolder { f: callback })
 }
-
 
 struct ModuleFolder<F: FnMut(&mut Cursor<P<Item>>)> {
     f: F,
@@ -46,7 +46,9 @@ impl<F: FnMut(&mut Cursor<P<Item>>)> MutVisitor for ModuleFolder<F> {
 
 /// Rewrite every module by manipulating a `Cursor` for the `Item`s inside.
 pub fn fold_modules<T, F>(target: &mut T, callback: F)
-        where T: MutVisit,
-              F: FnMut(&mut Cursor<P<Item>>) {
+where
+    T: MutVisit,
+    F: FnMut(&mut Cursor<P<Item>>),
+{
     target.visit(&mut ModuleFolder { f: callback })
 }

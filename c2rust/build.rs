@@ -17,7 +17,9 @@ fn main() {
     rustlib_path.push("lib/rustlib");
     rustlib_path.push(env::var("TARGET").unwrap());
     rustlib_path.push("lib");
-    let path_string = rustlib_path.into_os_string().into_string()
+    let path_string = rustlib_path
+        .into_os_string()
+        .into_string()
         .expect("Unexpected non-Unicode character in rustlib path");
     println!("cargo:rustc-env=RUSTLIB={}", path_string);
 }

@@ -1,16 +1,16 @@
 //! `MutVisit` trait for AST types that can be modified.
 use syntax::ast::*;
 use syntax::mut_visit::*;
-use syntax::ptr::P;
 use syntax::parse::token::{self, Token};
+use syntax::ptr::P;
 use syntax::source_map::Span;
-use syntax::tokenstream::{TokenTree, TokenStream};
+use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::util::map_in_place::MapInPlace;
 
 use smallvec::SmallVec;
 
-use c2rust_macros::gen_visitor_impls;
 use crate::util::Lone;
+use c2rust_macros::gen_visitor_impls;
 
 /// A trait for AST nodes that can accept a `MutVisitor`.
 pub trait MutVisit: Sized {
@@ -27,23 +27,27 @@ pub trait MutVisit: Sized {
 /// Trait for AST node types that can be rewritten with a mutable visit.
 pub trait MutVisitNodes: MutVisit + Sized {
     fn visit<T, F>(target: &mut T, callback: F)
-        where T: MutVisit,
-              F: FnMut(&mut Self);
+    where
+        T: MutVisit,
+        F: FnMut(&mut Self);
 }
 
 /// Trait for AST node types that can be rewritten with a flat_map.
 pub trait FlatMapNodes: MutVisit + Sized {
     fn visit<T, F>(target: &mut T, callback: F)
-        where T: MutVisit,
-              F: FnMut(Self) -> SmallVec<[Self; 1]>;
+    where
+        T: MutVisit,
+        F: FnMut(Self) -> SmallVec<[Self; 1]>;
 
     fn flat_map<T, F>(target: T, callback: F) -> SmallVec<[T; 1]>
-        where T: MutVisit,
-              F: FnMut(Self) -> SmallVec<[Self; 1]>;
+    where
+        T: MutVisit,
+        F: FnMut(Self) -> SmallVec<[Self; 1]>;
 }
 
 impl<T> MutVisit for Vec<T>
-    where T: MutVisit
+where
+    T: MutVisit,
 {
     fn visit<F: MutVisitor>(&mut self, f: &mut F) {
         for elem in self {
@@ -53,7 +57,8 @@ impl<T> MutVisit for Vec<T>
 }
 
 impl<T> MutVisit for Option<T>
-    where T: MutVisit
+where
+    T: MutVisit,
 {
     fn visit<F: MutVisitor>(&mut self, f: &mut F) {
         if let Some(elem) = self {

@@ -7,21 +7,30 @@ use super::*;
 
 impl<'c> Translation<'c> {
     pub fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, TranslationError> {
-        if let CDeclKind::Function { ref parameters, typ, .. } = self.ast_context.index(main_id).kind {
-
+        if let CDeclKind::Function {
+            ref parameters,
+            typ,
+            ..
+        } = self.ast_context.index(main_id).kind
+        {
             let ret: CTypeKind = match self.ast_context.resolve_type(typ).kind {
-                CTypeKind::Function(ret, _, _, _, _) => self.ast_context.resolve_type(ret.ctype).kind.clone(),
-                ref k => Err(format_err!("Type of main function {:?} was not a function type, got {:?}", main_id, k))?
+                CTypeKind::Function(ret, _, _, _, _) => {
+                    self.ast_context.resolve_type(ret.ctype).kind.clone()
+                }
+                ref k => Err(format_err!(
+                    "Type of main function {:?} was not a function type, got {:?}",
+                    main_id,
+                    k
+                ))?,
             };
 
-            let decl = mk().fn_decl(
-                vec![],
-                FunctionRetTy::Default(DUMMY_SP),
-                false
-            );
+            let decl = mk().fn_decl(vec![], FunctionRetTy::Default(DUMMY_SP), false);
 
-            let main_fn_name = self.renamer.borrow()
-                .get(&main_id).expect("Could not find main function in renamer");
+            let main_fn_name = self
+                .renamer
+                .borrow()
+                .get(&main_id)
+                .expect("Could not find main function in renamer");
             let main_fn = mk().path_expr(vec![main_fn_name]);
 
             let exit_fn = mk().path_expr(vec!["", "std", "process", "exit"]);
@@ -42,70 +51,64 @@ impl<'c> Translation<'c> {
                     mk().mutbl().ident_pat("args"),
                     Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
-                        mk().angle_bracketed_args(
-                            vec![mk().mutbl().ptr_ty(
-                                mk().path_ty(vec!["libc","c_char"])
-                            )]
-                        ),
+                        mk().angle_bracketed_args(vec![
+                            mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
+                        ]),
                     )])),
-                    Some(mk().call_expr(
-                        mk().path_expr(vec!["Vec","new"]),
-                        vec![] as Vec<P<Expr>>)
+                    Some(
+                        mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<P<Expr>>),
                     ),
                 ))));
                 stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().ident_pat("arg"),
                     mk().call_expr(args_fn, vec![] as Vec<P<Expr>>),
-                    mk().block(vec![
-                        mk().semi_stmt(mk().method_call_expr(
-                            mk().path_expr(vec!["args"]),
-                            "push",
-                            vec![
-                                mk().method_call_expr(
-                                    mk().method_call_expr(
-                                        mk().call_expr(
-                                            mk().path_expr(vec!["","std","ffi","CString","new"]),
-                                            vec![mk().path_expr(vec!["arg"])],
-                                        ),
-                                        "expect",
-                                        vec![mk().lit_expr(
-                                            mk().str_lit("Failed to convert argument into CString.")
-                                        )],
-                                    ),
-                                    "into_raw",
-                                    vec![] as Vec<P<Expr>>,
-                                )
-                            ],
-                        ))
-                    ]),
+                    mk().block(vec![mk().semi_stmt(mk().method_call_expr(
+                        mk().path_expr(vec!["args"]),
+                        "push",
+                        vec![mk().method_call_expr(
+                            mk().method_call_expr(
+                                mk().call_expr(
+                                    mk().path_expr(vec!["", "std", "ffi", "CString", "new"]),
+                                    vec![mk().path_expr(vec!["arg"])],
+                                ),
+                                "expect",
+                                vec![mk().lit_expr(
+                                    mk().str_lit("Failed to convert argument into CString."),
+                                )],
+                            ),
+                            "into_raw",
+                            vec![] as Vec<P<Expr>>,
+                        )],
+                    ))]),
                     None as Option<Ident>,
                 )));
                 stmts.push(mk().semi_stmt(mk().method_call_expr(
                     mk().path_expr(vec!["args"]),
                     "push",
-                    vec![
-                        mk().call_expr(
-                            mk().path_expr(vec!["","std","ptr","null_mut"]),
-                            vec![] as Vec<P<Expr>>,
-                        )
-                    ],
+                    vec![mk().call_expr(
+                        mk().path_expr(vec!["", "std", "ptr", "null_mut"]),
+                        vec![] as Vec<P<Expr>>,
+                    )],
                 )));
-
 
                 let argc_ty: P<Ty> = match self.ast_context.index(parameters[0]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
-                    _ => Err(TranslationError::generic("Cannot find type of 'argc' argument in main function")),
+                    _ => Err(TranslationError::generic(
+                        "Cannot find type of 'argc' argument in main function",
+                    )),
                 }?;
                 let argv_ty: P<Ty> = match self.ast_context.index(parameters[1]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
-                    _ => Err(TranslationError::generic("Cannot find type of 'argv' argument in main function")),
+                    _ => Err(TranslationError::generic(
+                        "Cannot find type of 'argv' argument in main function",
+                    )),
                 }?;
 
                 let args = mk().ident_expr("args");
                 let argc = mk().binary_expr(
                     BinOpKind::Sub,
                     mk().method_call_expr(args.clone(), "len", no_args.clone()),
-                    mk().lit_expr(mk().int_lit(1,""))
+                    mk().lit_expr(mk().int_lit(1, "")),
                 );
                 let argv = mk().method_call_expr(args, "as_mut_ptr", no_args.clone());
 
@@ -120,15 +123,12 @@ impl<'c> Translation<'c> {
                     mk().mutbl().ident_pat("vars"),
                     Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
-                        mk().angle_bracketed_args(
-                            vec![mk().mutbl().ptr_ty(
-                                mk().path_ty(vec!["libc","c_char"])
-                            )]
-                        ),
+                        mk().angle_bracketed_args(vec![
+                            mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
+                        ]),
                     )])),
-                    Some(mk().call_expr(
-                        mk().path_expr(vec!["Vec","new"]),
-                        vec![] as Vec<P<Expr>>)
+                    Some(
+                        mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<P<Expr>>),
                     ),
                 ))));
                 stmts.push(mk().semi_stmt(mk().for_expr(
@@ -176,17 +176,17 @@ impl<'c> Translation<'c> {
                 stmts.push(mk().semi_stmt(mk().method_call_expr(
                     mk().path_expr(vec!["vars"]),
                     "push",
-                    vec![
-                        mk().call_expr(
-                            mk().path_expr(vec!["","std","ptr","null_mut"]),
-                            vec![] as Vec<P<Expr>>,
-                        )
-                    ],
+                    vec![mk().call_expr(
+                        mk().path_expr(vec!["", "std", "ptr", "null_mut"]),
+                        vec![] as Vec<P<Expr>>,
+                    )],
                 )));
 
                 let envp_ty: P<Ty> = match self.ast_context.index(parameters[2]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
-                    _ => Err(TranslationError::generic("Cannot find type of 'envp' argument in main function")),
+                    _ => Err(TranslationError::generic(
+                        "Cannot find type of 'envp' argument in main function",
+                    )),
                 }?;
 
                 let envp = mk().method_call_expr(mk().ident_expr("vars"), "as_mut_ptr", no_args);
@@ -196,7 +196,10 @@ impl<'c> Translation<'c> {
 
             // Check `main` has the right form
             if n != 0 && n != 2 && n != 3 {
-                Err(format_err!("Main function should have 0, 2, or 3 parameters, not {}.", n))?;
+                Err(format_err!(
+                    "Main function should have 0, 2, or 3 parameters, not {}.",
+                    n
+                ))?;
             };
 
             if let CTypeKind::Void = ret {
@@ -205,7 +208,7 @@ impl<'c> Translation<'c> {
 
                 stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
 
-                let exit_arg = mk().lit_expr(mk().int_lit(0,"i32"));
+                let exit_arg = mk().lit_expr(mk().int_lit(0, "i32"));
                 let call_exit = mk().call_expr(exit_fn, vec![exit_arg]);
 
                 stmts.push(mk().semi_stmt(call_exit));
@@ -225,7 +228,9 @@ impl<'c> Translation<'c> {
             let main_attributes = self.mk_cross_check(mk(), vec!["none"]);
             Ok(main_attributes.pub_().fn_item("main", decl, block))
         } else {
-            Err(TranslationError::generic("Cannot translate non-function main entry point"))
+            Err(TranslationError::generic(
+                "Cannot translate non-function main entry point",
+            ))
         }
     }
 }

@@ -2,8 +2,8 @@ extern crate handlebars;
 extern crate pathdiff;
 
 use std::fs::{self, File};
-use std::path::{Path, PathBuf};
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use self::handlebars::Handlebars;
@@ -27,7 +27,7 @@ impl FromStr for BuildDirectoryContents {
             "nothing" => Ok(BuildDirectoryContents::Nothing),
             "minimal" => Ok(BuildDirectoryContents::Minimal),
             "full" => Ok(BuildDirectoryContents::Full),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
@@ -49,26 +49,31 @@ pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
             }
             output_dir
         }
-        None => {
-            cc_db_dir.into()
-        }
+        None => cc_db_dir.into(),
     }
 }
 
 /// Emit `Cargo.toml` and `lib.rs` for a library or `main.rs` for a binary.
 /// Returns the path to `lib.rs` or `main.rs` (or `None` if the output file
 /// existed already).
-pub fn emit_build_files(tcfg: &TranspilerConfig, build_dir: &Path,
-                        modules: Vec<PathBuf>) -> Option<PathBuf> {
-
+pub fn emit_build_files(
+    tcfg: &TranspilerConfig,
+    build_dir: &Path,
+    modules: Vec<PathBuf>,
+) -> Option<PathBuf> {
     let mut reg = Handlebars::new();
 
-    reg.register_template_string("Cargo.toml", include_str!("Cargo.toml.hbs")).unwrap();
-    reg.register_template_string("lib.rs", include_str!("lib.rs.hbs")).unwrap();
-    reg.register_template_string("build.rs", include_str!("build.rs.hbs")).unwrap();
+    reg.register_template_string("Cargo.toml", include_str!("Cargo.toml.hbs"))
+        .unwrap();
+    reg.register_template_string("lib.rs", include_str!("lib.rs.hbs"))
+        .unwrap();
+    reg.register_template_string("build.rs", include_str!("build.rs.hbs"))
+        .unwrap();
 
-    emit_cargo_toml(tcfg,&reg, &build_dir);
-    if tcfg.translate_valist { emit_rust_toolchain(tcfg, &build_dir); }
+    emit_cargo_toml(tcfg, &reg, &build_dir);
+    if tcfg.translate_valist {
+        emit_rust_toolchain(tcfg, &build_dir);
+    }
     emit_build_rs(tcfg, &reg, &build_dir);
     emit_lib_rs(tcfg, &reg, &build_dir, modules)
 }
@@ -97,8 +102,7 @@ fn get_module_name(main: &Option<String>) -> Option<String> {
 }
 
 /// Emit `build.rs` to make it easier to link in native libraries
-fn emit_build_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path)
-    -> Option<PathBuf> {
+fn emit_build_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) -> Option<PathBuf> {
     let json = json!({});
     let output = reg.render("build.rs", &json).unwrap();
     let output_path = build_dir.join("build.rs");
@@ -107,9 +111,14 @@ fn emit_build_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path)
 
 /// Emit `lib.rs` for a library or `main.rs` for a binary. Returns the path
 /// to `lib.rs` or `main.rs` (or `None` if the output file existed already).
-fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
-               modules: Vec<PathBuf>) -> Option<PathBuf> {
-    let plugin_args = tcfg.cross_check_configs
+fn emit_lib_rs(
+    tcfg: &TranspilerConfig,
+    reg: &Handlebars,
+    build_dir: &Path,
+    modules: Vec<PathBuf>,
+) -> Option<PathBuf> {
+    let plugin_args = tcfg
+        .cross_check_configs
         .iter()
         .map(|ccc| format!("config_file = \"{}\"", ccc))
         .collect::<Vec<String>>()
@@ -119,12 +128,7 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
         .iter()
         .map(|m| {
             let relpath = diff_paths(m, build_dir).unwrap();
-            let name = m
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .replace(".", "_");
+            let name = m.file_stem().unwrap().to_str().unwrap().replace(".", "_");
             Module {
                 path: relpath.to_str().unwrap().to_string(),
                 name: name.to_string(),
@@ -153,7 +157,7 @@ fn emit_lib_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path,
 
 /// If we translate variadic functions, the output will only compile
 /// on a nightly toolchain until the `c_variadics` feature is stable.
-fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) { 
+fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     let output_path = build_dir.join("rust-toolchain");
     // TODO: use value of $C2RUST_HOME/rust-toolchain?
     let output = String::from("nightly-2019-03-13\n");

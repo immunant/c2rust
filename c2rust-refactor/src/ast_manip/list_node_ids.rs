@@ -1,14 +1,13 @@
-use std::rc::Rc;
 use rustc_target::spec::abi::Abi;
 use smallvec::SmallVec;
-use syntax::ThinVec;
+use std::rc::Rc;
 use syntax::ast::*;
-use syntax::parse::token::{Token, DelimToken, Nonterminal};
+use syntax::parse::token::{DelimToken, Nonterminal, Token};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
-use syntax::tokenstream::{TokenTree, DelimSpan, TokenStream};
+use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use syntax::ThinVec;
 use syntax_pos::hygiene::SyntaxContext;
-
 
 pub trait ListNodeIds {
     fn list_node_ids(&self) -> Vec<NodeId> {

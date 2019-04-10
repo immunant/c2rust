@@ -11,19 +11,20 @@ impl<'c> Translation<'c> {
     /// directly) the resulting translated assembly statements will be unlikely to work
     /// without further manual translation. The translator will properly translate
     /// the arguments to the assembly statement, however.
-    pub fn convert_asm
-        (&self,
-         ctx: ExprContext,
-         span: Span,
-         is_volatile: bool,
-         asm: &str,
-         inputs: &[AsmOperand],
-         outputs: &[AsmOperand],
-         clobbers: &[String])
-        -> Result<Vec<Stmt>, TranslationError> {
-
+    pub fn convert_asm(
+        &self,
+        ctx: ExprContext,
+        span: Span,
+        is_volatile: bool,
+        asm: &str,
+        inputs: &[AsmOperand],
+        outputs: &[AsmOperand],
+        clobbers: &[String],
+    ) -> Result<Vec<Stmt>, TranslationError> {
         if !self.tcfg.translate_asm {
-            return Err(TranslationError::generic("Inline assembly not enabled, to enable use --translate-asm"))
+            return Err(TranslationError::generic(
+                "Inline assembly not enabled, to enable use --translate-asm",
+            ));
         }
 
         self.use_feature("asm");
@@ -41,12 +42,19 @@ impl<'c> Translation<'c> {
 
         // Outputs and Inputs
         for list in vec![outputs, inputs] {
-
             first = true;
             tokens.push(Token::Colon); // Always emitted, even if list is empty
 
-            for &AsmOperand { ref constraints, expression } in list {
-                if first { first = false } else { tokens.push(Token::Comma) }
+            for &AsmOperand {
+                ref constraints,
+                expression,
+            } in list
+            {
+                if first {
+                    first = false
+                } else {
+                    tokens.push(Token::Comma)
+                }
 
                 let mut result = self.convert_expr(ctx.used(), expression)?;
                 stmts.append(&mut result.stmts);
@@ -60,7 +68,11 @@ impl<'c> Translation<'c> {
         first = true;
         tokens.push(Token::Colon);
         for clobber in clobbers {
-            if first { first = false } else { tokens.push(Token::Comma) }
+            if first {
+                first = false
+            } else {
+                tokens.push(Token::Comma)
+            }
             push_expr(&mut tokens, mk().lit_expr(mk().str_lit(clobber)));
         }
 
@@ -70,7 +82,11 @@ impl<'c> Translation<'c> {
             push_expr(&mut tokens, mk().lit_expr(mk().str_lit("volatile")));
         }
 
-        let mac = mk().mac(vec!["asm"], tokens.into_iter().collect::<TokenStream>(), MacDelimiter::Parenthesis);
+        let mac = mk().mac(
+            vec!["asm"],
+            tokens.into_iter().collect::<TokenStream>(),
+            MacDelimiter::Parenthesis,
+        );
         let mac = mk().mac_expr(mac);
         let mac = mk().span(span).expr_stmt(mac);
         stmts.push(mac);

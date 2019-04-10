@@ -10,13 +10,13 @@ use crate::analysis::labeled_ty::LabeledTy;
 
 use super::{ConcretePerm, Perm};
 
-
 pub struct Pretty<'lty, 'tcx, L: 'lty>(pub LabeledTy<'lty, 'tcx, L>);
 
-pub fn pretty_slice<'lty, 'tcx, L>(tys: &'lty [LabeledTy<'lty, 'tcx, L>]) -> &'lty [Pretty<'lty, 'tcx, L>] {
+pub fn pretty_slice<'lty, 'tcx, L>(
+    tys: &'lty [LabeledTy<'lty, 'tcx, L>],
+) -> &'lty [Pretty<'lty, 'tcx, L>] {
     unsafe { ::std::mem::transmute(tys) }
 }
-
 
 pub struct PrettyLabel<L>(pub L);
 
@@ -30,7 +30,11 @@ impl fmt::Debug for PrettyLabel<ConcretePerm> {
     }
 }
 
-impl<L> fmt::Debug for PrettyLabel<Option<L>> where L: Copy, PrettyLabel<L>: fmt::Debug {
+impl<L> fmt::Debug for PrettyLabel<Option<L>>
+where
+    L: Copy,
+    PrettyLabel<L>: fmt::Debug,
+{
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
             Some(x) => write!(fmt, "{:?}", PrettyLabel(x)),
@@ -54,7 +58,12 @@ pub struct PrintVar<'tcx>(pub Perm<'tcx>);
 
 impl<'tcx> fmt::Debug for PrettyLabel<(ConcretePerm, PrintVar<'tcx>)> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{:?}{:?}", PrettyLabel((self.0).0), PrettyLabel((self.0).1))
+        write!(
+            fmt,
+            "{:?}{:?}",
+            PrettyLabel((self.0).0),
+            PrettyLabel((self.0).1)
+        )
     }
 }
 
@@ -73,7 +82,7 @@ impl<'tcx> fmt::Debug for PrettyLabel<PrintVar<'tcx>> {
                 for &p in ps {
                     match p {
                         Perm::Concrete(_) => continue,
-                        _ => {},
+                        _ => {}
                     }
                     if !first {
                         write!(fmt, ", ")?;
@@ -87,21 +96,31 @@ impl<'tcx> fmt::Debug for PrettyLabel<PrintVar<'tcx>> {
     }
 }
 
-
-
-impl<'lty, 'tcx, L> fmt::Debug for Pretty<'lty, 'tcx, L> where L: Copy + fmt::Debug, PrettyLabel<L>: fmt::Debug {
+impl<'lty, 'tcx, L> fmt::Debug for Pretty<'lty, 'tcx, L>
+where
+    L: Copy + fmt::Debug,
+    PrettyLabel<L>: fmt::Debug,
+{
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.0.ty.sty {
-            TyKind::Ref(_, _, m) =>
-                write!(fmt, "&{}{:?} {:?}",
-                       if m == hir::MutImmutable { "" } else { "mut " },
-                       PrettyLabel(self.0.label),
-                       Pretty(self.0.args[0])),
-            TyKind::RawPtr(mty) =>
-                write!(fmt, "*{} {:?} {:?}",
-                       if mty.mutbl == hir::MutImmutable { "const" } else { "mut" },
-                       PrettyLabel(self.0.label),
-                       Pretty(self.0.args[0])),
+            TyKind::Ref(_, _, m) => write!(
+                fmt,
+                "&{}{:?} {:?}",
+                if m == hir::MutImmutable { "" } else { "mut " },
+                PrettyLabel(self.0.label),
+                Pretty(self.0.args[0])
+            ),
+            TyKind::RawPtr(mty) => write!(
+                fmt,
+                "*{} {:?} {:?}",
+                if mty.mutbl == hir::MutImmutable {
+                    "const"
+                } else {
+                    "mut"
+                },
+                PrettyLabel(self.0.label),
+                Pretty(self.0.args[0])
+            ),
             _ => write!(fmt, "{:?}", self.0.ty),
         }
     }

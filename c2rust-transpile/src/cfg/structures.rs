@@ -12,14 +12,8 @@ pub fn structured_cfg(
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> Result<Vec<Stmt>, TranslationError> {
-
-
-    let ast: StructuredAST<P<Expr>, P<Pat>, Label, StmtOrComment> = structured_cfg_help(
-        vec![],
-        &IndexSet::new(),
-        root,
-        &mut IndexSet::new(),
-    )?;
+    let ast: StructuredAST<P<Expr>, P<Pat>, Label, StmtOrComment> =
+        structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
 
     let s = StructureState {
         enable_comments: true,
@@ -37,8 +31,14 @@ pub fn structured_cfg(
     // it with the returned value.
     if cut_out_trailing_ret {
         match stmts.last().cloned() {
-            Some(Stmt { node: StmtKind::Expr(ref ret), .. }) |
-            Some(Stmt { node: StmtKind::Semi(ref ret), .. }) => {
+            Some(Stmt {
+                node: StmtKind::Expr(ref ret),
+                ..
+            })
+            | Some(Stmt {
+                node: StmtKind::Semi(ref ret),
+                ..
+            }) => {
                 match ret.node {
                     ExprKind::Ret(None) => {
                         stmts.pop();
@@ -70,7 +70,6 @@ pub enum ExitStyle {
 
 /// This is precisely what we need to construct structured statements
 pub trait StructuredStatement: Sized {
-
     /// An expression
     type E;
 
@@ -98,47 +97,49 @@ pub trait StructuredStatement: Sized {
     /// Make a `match` statement
     fn mk_match(
         cond: Self::E,                    // expression being matched
-        cases: Vec<(Vec<Self::P>, Self)>  // match arms
+        cases: Vec<(Vec<Self::P>, Self)>, // match arms
     ) -> Self;
 
     /// Make an `if` statement
-    fn mk_if(
-        cond: Self::E,
-        then: Self,
-        else_: Self
-    ) -> Self;
+    fn mk_if(cond: Self::E, then: Self, else_: Self) -> Self;
 
     /// Make a `goto` table
     fn mk_goto_table(
-        cases: Vec<(Self::L, Self)>,      // entries in the goto table
-        then: Self,                       // default case of the goto table
+        cases: Vec<(Self::L, Self)>, // entries in the goto table
+        then: Self,                  // default case of the goto table
     ) -> Self;
 
     /// Make some sort of loop
-    fn mk_loop(
-        lbl: Option<Self::L>,
-        body: Self
-    ) -> Self;
+    fn mk_loop(lbl: Option<Self::L>, body: Self) -> Self;
 
     /// Make an exit from a loop
     fn mk_exit(
-        exit_style: ExitStyle,            // `break` or a `continue`
-        label: Option<Self::L>,           // which loop are we breaking
+        exit_style: ExitStyle,  // `break` or a `continue`
+        label: Option<Self::L>, // which loop are we breaking
     ) -> Self;
 }
-
 
 /// Defunctionalized version of `StructuredStatement` trait
 #[allow(missing_docs)]
 pub enum StructuredAST<E, P, L, S> {
     Empty,
     Singleton(S),
-    Append(Box<StructuredAST<E,P,L,S>>, Box<StructuredAST<E,P,L,S>>),
+    Append(
+        Box<StructuredAST<E, P, L, S>>,
+        Box<StructuredAST<E, P, L, S>>,
+    ),
     Goto(L),
-    Match(E, Vec<(Vec<P>, StructuredAST<E,P,L,S>)>),
-    If(E, Box<StructuredAST<E,P,L,S>>, Box<StructuredAST<E,P,L,S>>),
-    GotoTable(Vec<(L, StructuredAST<E,P,L,S>)>, Box<StructuredAST<E,P,L,S>>),
-    Loop(Option<L>, Box<StructuredAST<E,P,L,S>>),
+    Match(E, Vec<(Vec<P>, StructuredAST<E, P, L, S>)>),
+    If(
+        E,
+        Box<StructuredAST<E, P, L, S>>,
+        Box<StructuredAST<E, P, L, S>>,
+    ),
+    GotoTable(
+        Vec<(L, StructuredAST<E, P, L, S>)>,
+        Box<StructuredAST<E, P, L, S>>,
+    ),
+    Loop(Option<L>, Box<StructuredAST<E, P, L, S>>),
     Exit(ExitStyle, Option<L>),
 }
 
@@ -164,7 +165,7 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
         StructuredAST::Goto(to)
     }
 
-    fn mk_match(cond: Self::E,  cases: Vec<(Vec<Self::P>, Self)>) -> Self {
+    fn mk_match(cond: Self::E, cases: Vec<(Vec<Self::P>, Self)>) -> Self {
         StructuredAST::Match(cond, cases)
     }
 
@@ -185,17 +186,17 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
     }
 }
 
-
 /// Recursive helper for `structured_cfg`
 ///
 /// TODO: move this into `structured_cfg`?
-fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=StmtOrComment>>(
+fn structured_cfg_help<
+    S: StructuredStatement<E = P<Expr>, P = P<Pat>, L = Label, S = StmtOrComment>,
+>(
     exits: Vec<(Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>)>,
     next: &IndexSet<Label>,
     root: &Vec<Structure<StmtOrComment>>,
     used_loop_labels: &mut IndexSet<Label>,
 ) -> Result<S, TranslationError> {
-
     let mut next: &IndexSet<Label> = next;
     let mut rest: S = S::empty();
 
@@ -203,124 +204,137 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
         let mut new_rest: S = S::empty();
 
         match structure {
-            &Structure::Simple { ref body, ref terminator, .. } => {
-
+            &Structure::Simple {
+                ref body,
+                ref terminator,
+                ..
+            } => {
                 for s in body.clone() {
                     new_rest = S::mk_append(new_rest, S::mk_singleton(s));
                 }
 
                 let insert_goto = |to: Label, target: &IndexSet<Label>| -> S {
-                    if target.len() == 1 { S::empty() } else { S::mk_goto(to) }
-                };
-
-                let mut branch = |slbl: &StructureLabel<StmtOrComment>| -> Result<S, TranslationError> {
-                    match slbl {
-                        &StructureLabel::Nested(ref nested) =>
-                            structured_cfg_help(
-                                exits.clone(),
-                                next,
-                                nested,
-                                used_loop_labels,
-                            ),
-
-                        &StructureLabel::GoTo(to) |
-                        &StructureLabel::ExitTo(to) if next.contains(&to) =>
-                            Ok(insert_goto(to, &next)),
-
-                        &StructureLabel::ExitTo(to) => {
-
-                            let mut immediate = true;
-                            for &(label, ref local) in &exits {
-                                if let Some(&(ref follow, exit_style)) = local.get(&to) {
-
-                                    let lbl = if immediate {
-                                        None
-                                    } else {
-                                        used_loop_labels.insert(label);
-                                        Some(label)
-                                    };
-
-                                    return Ok(S::mk_append(
-                                        insert_goto(to, follow),
-                                        S::mk_exit(exit_style, lbl),
-                                    ))
-                                }
-                                immediate = false;
-                            }
-
-                            Err(format_err!("Not a valid exit: {:?} has nothing to exit to", to).into())
-                        }
-
-                        &StructureLabel::GoTo(to) => Err(format_err!(
-                            "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
-                            to, next
-                        ).into()),
+                    if target.len() == 1 {
+                        S::empty()
+                    } else {
+                        S::mk_goto(to)
                     }
                 };
 
-                new_rest = S::mk_append(new_rest, match terminator {
-                    &End => S::empty(),
-                    &Jump(ref to) => branch(to)?,
-                    &Branch(ref c, ref t, ref f) => S::mk_if(c.clone(), branch(t)?, branch(f)?),
-                    &Switch { ref expr, ref cases } => {
-                        let branched_cases: Vec<(Vec<P<Pat>>, S)> = cases
-                            .iter()
-                            .map(|&(ref pats, ref slbl)| Ok((pats.clone(), branch(slbl)?)))
-                            .collect::<Result<Vec<(Vec<P<Pat>>, S)>, TranslationError>>()?;
+                let mut branch =
+                    |slbl: &StructureLabel<StmtOrComment>| -> Result<S, TranslationError> {
+                        match slbl {
+                            &StructureLabel::Nested(ref nested) => {
+                                structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
+                            }
 
-                        S::mk_match(expr.clone(), branched_cases)
+                            &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to)
+                                if next.contains(&to) =>
+                            {
+                                Ok(insert_goto(to, &next))
+                            }
+
+                            &StructureLabel::ExitTo(to) => {
+                                let mut immediate = true;
+                                for &(label, ref local) in &exits {
+                                    if let Some(&(ref follow, exit_style)) = local.get(&to) {
+                                        let lbl = if immediate {
+                                            None
+                                        } else {
+                                            used_loop_labels.insert(label);
+                                            Some(label)
+                                        };
+
+                                        return Ok(S::mk_append(
+                                            insert_goto(to, follow),
+                                            S::mk_exit(exit_style, lbl),
+                                        ));
+                                    }
+                                    immediate = false;
+                                }
+
+                                Err(format_err!(
+                                    "Not a valid exit: {:?} has nothing to exit to",
+                                    to
+                                )
+                                .into())
+                            }
+
+                            &StructureLabel::GoTo(to) => Err(format_err!(
+                                "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
+                                to,
+                                next
+                            )
+                            .into()),
+                        }
+                    };
+
+                new_rest = S::mk_append(
+                    new_rest,
+                    match terminator {
+                        &End => S::empty(),
+                        &Jump(ref to) => branch(to)?,
+                        &Branch(ref c, ref t, ref f) => S::mk_if(c.clone(), branch(t)?, branch(f)?),
+                        &Switch {
+                            ref expr,
+                            ref cases,
+                        } => {
+                            let branched_cases: Vec<(Vec<P<Pat>>, S)> = cases
+                                .iter()
+                                .map(|&(ref pats, ref slbl)| Ok((pats.clone(), branch(slbl)?)))
+                                .collect::<Result<Vec<(Vec<P<Pat>>, S)>, TranslationError>>()?;
+
+                            S::mk_match(expr.clone(), branched_cases)
+                        }
                     },
-                });
+                );
             }
 
-            &Structure::Multiple { ref branches, ref then, .. } => {
+            &Structure::Multiple {
+                ref branches,
+                ref then,
+                ..
+            } => {
                 let cases: Vec<(Label, S)> = branches
                     .iter()
                     .map(|(lbl, body)| -> Result<(Label, S), TranslationError> {
-                        let stmts = structured_cfg_help(
-                            exits.clone(),
-                            next,
-                            body,
-                            used_loop_labels,
-                        )?;
+                        let stmts =
+                            structured_cfg_help(exits.clone(), next, body, used_loop_labels)?;
                         Ok((*lbl, stmts))
                     })
                     .collect::<Result<Vec<(Label, S)>, TranslationError>>()?;
 
-                let then: S = structured_cfg_help(
-                    exits.clone(),
-                    next,
-                    then,
-                    used_loop_labels,
-                )?;
+                let then: S = structured_cfg_help(exits.clone(), next, then, used_loop_labels)?;
 
                 new_rest = S::mk_append(new_rest, S::mk_goto_table(cases, then));
             }
 
-            &Structure::Loop { ref body, ref entries } => {
-                let label = entries.iter().next()
+            &Structure::Loop {
+                ref body,
+                ref entries,
+            } => {
+                let label = entries
+                    .iter()
+                    .next()
                     .ok_or(format_err!("The loop {:?} has no entry", structure))?;
 
                 let mut these_exits = IndexMap::new();
-                these_exits.extend(entries
-                    .iter()
-                    .map(|e| (*e, (entries.clone(), ExitStyle::Continue)))
+                these_exits.extend(
+                    entries
+                        .iter()
+                        .map(|e| (*e, (entries.clone(), ExitStyle::Continue))),
                 );
-                these_exits.extend(next
-                    .iter()
-                    .map(|e| (*e, (next.clone(), ExitStyle::Break)))
-                );
+                these_exits.extend(next.iter().map(|e| (*e, (next.clone(), ExitStyle::Break))));
 
                 let mut exits_new = vec![(*label, these_exits)];
                 exits_new.extend(exits.clone());
 
-                let body = structured_cfg_help(
-                    exits_new,
-                    entries,
-                    body,
-                    used_loop_labels,
-                )?;
-                let loop_lbl = if used_loop_labels.contains(label) { Some(*label) } else { None };
+                let body = structured_cfg_help(exits_new, entries, body, used_loop_labels)?;
+                let loop_lbl = if used_loop_labels.contains(label) {
+                    Some(*label)
+                } else {
+                    None
+                };
                 new_rest = S::mk_append(new_rest, S::mk_loop(loop_lbl, body));
             }
         }
@@ -337,23 +351,20 @@ fn structured_cfg_help<S: StructuredStatement<E=P<Expr>, P=P<Pat>, L=Label, S=St
 /// Checks if there are any `Multiple` structures anywhere. Only if so will there be any need for a
 /// `current_block` variable.
 pub fn has_multiple<Stmt>(root: &Vec<Structure<Stmt>>) -> bool {
-    root.iter().any(|structure| {
-        match structure {
-            &Structure::Simple { ref terminator, .. } => terminator
+    root.iter().any(|structure| match structure {
+        &Structure::Simple { ref terminator, .. } => {
+            terminator
                 .get_labels()
                 .into_iter()
-                .any(|structure_label|
-                    match structure_label {
-                        &StructureLabel::Nested(ref nested) => has_multiple(nested),
-                        _ => false,
-                    }
-                ),
-            &Structure::Multiple { .. } => return true,
-            &Structure::Loop { ref body, .. } => has_multiple(body),
+                .any(|structure_label| match structure_label {
+                    &StructureLabel::Nested(ref nested) => has_multiple(nested),
+                    _ => false,
+                })
         }
+        &Structure::Multiple { .. } => return true,
+        &Structure::Loop { ref body, .. } => has_multiple(body),
     })
 }
-
 
 struct StructureState {
     enable_comments: bool,
@@ -367,16 +378,18 @@ impl StructureState {
         ast: StructuredAST<P<Expr>, P<Pat>, Label, StmtOrComment>,
         comment_store: &mut comment_store::CommentStore,
         queued_comments: &mut Vec<String>,
-        output: &mut Vec<Stmt>
+        output: &mut Vec<Stmt>,
     ) {
         use cfg::structures::StructuredAST::*;
 
         match ast {
-            Empty => { },
+            Empty => {}
 
-            Singleton(StmtOrComment::Comment(c)) => if self.enable_comments {
-                queued_comments.push(c);
-            },
+            Singleton(StmtOrComment::Comment(c)) => {
+                if self.enable_comments {
+                    queued_comments.push(c);
+                }
+            }
             Singleton(StmtOrComment::Stmt(mut s)) => {
                 s.span = comment_store.add_comment_lines(queued_comments.drain(..).collect());
                 output.push(s);
@@ -392,9 +405,16 @@ impl StructureState {
 
                 let s = comment_store.add_comment_lines(queued_comments.drain(..).collect());
 
-                let lbl_expr = if self.debug_labels { to.to_string_expr() } else { to.to_num_expr() };
-                output.push(mk().span(s).semi_stmt(mk().assign_expr(self.current_block.clone(), lbl_expr)));
-            },
+                let lbl_expr = if self.debug_labels {
+                    to.to_string_expr()
+                } else {
+                    to.to_num_expr()
+                };
+                output.push(
+                    mk().span(s)
+                        .semi_stmt(mk().assign_expr(self.current_block.clone(), lbl_expr)),
+                );
+            }
 
             Match(cond, cases) => {
                 // Make a `match`.
@@ -418,7 +438,7 @@ impl StructureState {
                 let e = mk().match_expr(cond, arms);
 
                 output.push(mk().span(s).expr_stmt(e));
-            },
+            }
 
             If(cond, then, els) => {
                 // Construct a Rust `if` statement from a condition and then/else branches
@@ -445,16 +465,17 @@ impl StructureState {
                 let mut if_stmt = match (then.is_empty(), els.is_empty()) {
                     (true, true) => mk().semi_stmt(cond),
                     (false, true) => {
-                        let if_expr = mk().ifte_expr(cond, mk().block(then), None as Option<P<Expr>>);
+                        let if_expr =
+                            mk().ifte_expr(cond, mk().block(then), None as Option<P<Expr>>);
                         mk().expr_stmt(if_expr)
-                    },
+                    }
                     (true, false) => {
                         let negated_cond = not(&cond);
-                        let if_expr = mk().ifte_expr(negated_cond, mk().block(els), None as Option<P<Expr>>);
+                        let if_expr =
+                            mk().ifte_expr(negated_cond, mk().block(els), None as Option<P<Expr>>);
                         mk().expr_stmt(if_expr)
-                    },
+                    }
                     (false, false) => {
-
                         fn is_expr(kind: &StmtKind) -> bool {
                             match kind {
                                 &StmtKind::Expr(_) => true,
@@ -480,7 +501,7 @@ impl StructureState {
 
                 if_stmt.span = s;
                 output.push(if_stmt);
-            },
+            }
 
             GotoTable(cases, then) => {
                 // Dispatch based on the next `current_block` value.
@@ -496,7 +517,11 @@ impl StructureState {
                             output
                         };
 
-                        let lbl_expr = if self.debug_labels { lbl.to_string_expr() } else { lbl.to_num_expr() };
+                        let lbl_expr = if self.debug_labels {
+                            lbl.to_string_expr()
+                        } else {
+                            lbl.to_num_expr()
+                        };
                         let pat = mk().lit_pat(lbl_expr);
                         let body = mk().block_expr(mk().block(stmts));
                         mk().arm(vec![pat], None as Option<P<Expr>>, body)
@@ -512,13 +537,13 @@ impl StructureState {
                 arms.push(mk().arm(
                     vec![mk().wild_pat()],
                     None as Option<P<Expr>>,
-                    mk().block_expr(mk().block(then))
+                    mk().block_expr(mk().block(then)),
                 ));
 
                 let e = mk().match_expr(self.current_block.clone(), arms);
 
                 output.push(mk().span(s).expr_stmt(e));
-            },
+            }
 
             Loop(lbl, body) => {
                 // Make (possibly labelled) `loop`.
@@ -534,13 +559,25 @@ impl StructureState {
                     output
                 };
 
-
                 // TODO: this is ugly but it needn't be. We are just pattern matching on particular ASTs.
-                if let Some(&Stmt{ node: syntax::ast::StmtKind::Expr(ref expr), .. }) = body.iter().nth(0) {
+                if let Some(&Stmt {
+                    node: syntax::ast::StmtKind::Expr(ref expr),
+                    ..
+                }) = body.iter().nth(0)
+                {
                     if let syntax::ast::ExprKind::If(ref cond, ref thn, None) = expr.node {
-                        if let &syntax::ast::Block { ref stmts, rules: syntax::ast::BlockCheckMode::Default, .. } = thn.deref() {
+                        if let &syntax::ast::Block {
+                            ref stmts,
+                            rules: syntax::ast::BlockCheckMode::Default,
+                            ..
+                        } = thn.deref()
+                        {
                             if stmts.len() == 1 {
-                                if let Some(&Stmt{ node: syntax::ast::StmtKind::Semi(ref expr), .. }) = stmts.iter().nth(0) {
+                                if let Some(&Stmt {
+                                    node: syntax::ast::StmtKind::Semi(ref expr),
+                                    ..
+                                }) = stmts.iter().nth(0)
+                                {
                                     if let syntax::ast::ExprKind::Break(None, None) = expr.node {
                                         let e = mk().while_expr(
                                             not(cond),
@@ -559,7 +596,7 @@ impl StructureState {
                 let e = mk().loop_expr(mk().block(body), lbl.map(|l| l.pretty_print()));
 
                 output.push(mk().span(s).expr_stmt(e));
-            },
+            }
 
             Exit(exit_style, lbl) => {
                 // Make a (possibly labelled) `break` or `continue`.
@@ -573,7 +610,7 @@ impl StructureState {
                 };
 
                 output.push(mk().span(s).semi_stmt(e));
-            },
+            }
         }
     }
 }

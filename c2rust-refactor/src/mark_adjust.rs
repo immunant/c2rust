@@ -1,8 +1,8 @@
 //! This module implements commands for manipulating the current set of marked nodes.
-use std::str::FromStr;
 use rustc::hir;
 use rustc::hir::def::Def;
 use rustc::ty::TyKind;
+use std::str::FromStr;
 use syntax::ast;
 use syntax::ast::*;
 use syntax::symbol::Symbol;
@@ -41,8 +41,8 @@ impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
                         }
                     }
                 }
-            },
-            &hir::QPath::TypeRelative(..) => {},
+            }
+            &hir::QPath::TypeRelative(..) => {}
         }
     }
 }
@@ -64,16 +64,16 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
                     info!("looking at ExprKind::Path {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
-            },
+            }
 
             ExprKind::Struct(_, _, _) => {
                 expect!([hir.node] hir::ExprKind::Struct(ref hp, _, _) => {
                     info!("looking at ExprKind::Struct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
-            },
+            }
 
-            _ => {},
+            _ => {}
         }
 
         visit::walk_expr(self, x);
@@ -94,23 +94,23 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
                     info!("looking at PatStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
-            },
+            }
 
             PatKind::TupleStruct(_, _, _) => {
                 expect!([hir.node] hir::PatKind::TupleStruct(ref hp, _, _) => {
                     info!("looking at PatTupleStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
-            },
+            }
 
             PatKind::Path(_, _) => {
                 expect!([hir.node] hir::PatKind::Path(ref hp) => {
                     info!("looking at PatPath {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
-            },
+            }
 
-            _ => {},
+            _ => {}
         }
 
         visit::walk_pat(self, x);
@@ -130,21 +130,22 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
                     info!("looking at TyPath {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
-            },
+            }
 
-            _ => {},
+            _ => {}
         }
 
         visit::walk_ty(self, x);
     }
 }
 
-pub fn find_mark_uses<T: Visit>(target: &T,
-                                st: &CommandState,
-                                cx: &RefactorCtxt,
-                                label: &str) {
-    let old_ids = st.marks().iter().filter(|&&(_, l)| l == label)
-        .map(|&(id, _)| id).collect::<Vec<_>>();
+pub fn find_mark_uses<T: Visit>(target: &T, st: &CommandState, cx: &RefactorCtxt, label: &str) {
+    let old_ids = st
+        .marks()
+        .iter()
+        .filter(|&&(_, l)| l == label)
+        .map(|&(id, _)| id)
+        .collect::<Vec<_>>();
 
     let mut v = MarkUseVisitor {
         st: st,
@@ -159,28 +160,33 @@ pub fn find_mark_uses<T: Visit>(target: &T,
 }
 
 /// # `mark_uses` Command
-/// 
+///
 /// Usage: `mark_uses MARK`
-/// 
+///
 /// Marks: reads `MARK`; sets/clears `MARK`
-/// 
+///
 /// For every top-level definition bearing `MARK`, apply `MARK` to uses of that
 /// definition.  Removes `MARK` from the original definitions.
 pub fn find_mark_uses_command(st: &CommandState, cx: &RefactorCtxt, label: &str) {
     find_mark_uses(&*st.krate_mut(), st, cx, label);
 }
 
-
-pub fn find_field_uses<T: Visit>(target: &T,
-                                 st: &CommandState,
-                                 cx: &RefactorCtxt,
-                                 field: &str,
-                                 label: &str) {
+pub fn find_field_uses<T: Visit>(
+    target: &T,
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    field: &str,
+    label: &str,
+) {
     let field = field.into_symbol();
     let label = label.into_symbol();
 
-    let old_ids = st.marks().iter().filter(|&&(_, l)| l == label)
-        .map(|&(id, _)| id).collect::<Vec<_>>();
+    let old_ids = st
+        .marks()
+        .iter()
+        .filter(|&&(_, l)| l == label)
+        .map(|&(id, _)| id)
+        .collect::<Vec<_>>();
 
     // Fields can only appear in exprs, so we don't need a whole Visitor impl.
     visit_nodes(target, |e: &Expr| {
@@ -198,14 +204,13 @@ pub fn find_field_uses<T: Visit>(target: &T,
                         st.add_mark(e.id, label);
                     }
                 }
-            },
+            }
 
             // TODO: Also handle uses in ExprKind::Struct.  (This case is more complicated since we
             // need to resolve the `Struct` node's `Path`.  Also, the `Field` node type
             // (representing field uses) does not have a NodeId of its own, so it's unclear where
             // we should put the resulting mark.)
-
-            _ => {},
+            _ => {}
         }
     });
 
@@ -215,29 +220,34 @@ pub fn find_field_uses<T: Visit>(target: &T,
 }
 
 /// # `mark_field_uses` Command
-/// 
+///
 /// Obsolete - use `select` with `match_expr!(typed!(::TheStruct).field)` instead
-/// 
+///
 /// Usage: `mark_field_uses FIELD MARK`
-/// 
+///
 /// Marks: reads `MARK`; sets/clears `MARK`
-/// 
+///
 /// For every struct definition bearing `MARK`, apply `MARK` to expressions
 /// that use `FIELD` of that struct.  Removes `MARK` from the original struct.
 pub fn find_field_uses_command(st: &CommandState, cx: &RefactorCtxt, field: &str, label: &str) {
     find_field_uses(&*st.krate(), st, cx, field, label);
 }
 
-
-pub fn find_arg_uses<T: Visit>(target: &T,
-                               st: &CommandState,
-                               cx: &RefactorCtxt,
-                               arg_idx: usize,
-                               label: &str) {
+pub fn find_arg_uses<T: Visit>(
+    target: &T,
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    arg_idx: usize,
+    label: &str,
+) {
     let label = label.into_symbol();
 
-    let old_ids = st.marks().iter().filter(|&&(_, l)| l == label)
-        .map(|&(id, _)| id).collect::<Vec<_>>();
+    let old_ids = st
+        .marks()
+        .iter()
+        .filter(|&&(_, l)| l == label)
+        .map(|&(id, _)| id)
+        .collect::<Vec<_>>();
 
     visit_nodes(target, |e: &Expr| {
         if let Some(def_id) = cx.opt_callee(e) {
@@ -260,11 +270,11 @@ pub fn find_arg_uses<T: Visit>(target: &T,
 }
 
 /// # `mark_arg_uses` Command
-/// 
+///
 /// Usage: `mark_arg_uses ARG_IDX MARK`
-/// 
+///
 /// Marks: reads `MARK`; sets/clears `MARK`
-/// 
+///
 /// For every `fn` definition bearing `MARK`, apply `MARK` to expressions
 /// passed in as argument `ARG_IDX` in calls to that function.
 /// Removes `MARK` from the original function.
@@ -272,15 +282,15 @@ pub fn find_arg_uses_command(st: &CommandState, cx: &RefactorCtxt, arg_idx: usiz
     find_arg_uses(&*st.krate(), st, cx, arg_idx, label);
 }
 
-
-pub fn find_callers<T: Visit>(target: &T,
-                              st: &CommandState,
-                              cx: &RefactorCtxt,
-                              label: &str) {
+pub fn find_callers<T: Visit>(target: &T, st: &CommandState, cx: &RefactorCtxt, label: &str) {
     let label = label.into_symbol();
 
-    let old_ids = st.marks().iter().filter(|&&(_, l)| l == label)
-        .map(|&(id, _)| id).collect::<Vec<_>>();
+    let old_ids = st
+        .marks()
+        .iter()
+        .filter(|&&(_, l)| l == label)
+        .map(|&(id, _)| id)
+        .collect::<Vec<_>>();
 
     visit_nodes(target, |e: &Expr| {
         if let Some(def_id) = cx.opt_callee(e) {
@@ -298,11 +308,11 @@ pub fn find_callers<T: Visit>(target: &T,
 }
 
 /// # `mark_callers` Command
-/// 
+///
 /// Usage: `mark_callers MARK`
-/// 
+///
 /// Marks: reads `MARK`; sets/clears `MARK`
-/// 
+///
 /// For every `fn` definition bearing `MARK`, apply `MARK` to call
 /// expressions that call that function.
 /// Removes `MARK` from the original function.
@@ -310,29 +320,31 @@ pub fn find_callers_command(st: &CommandState, cx: &RefactorCtxt, label: &str) {
     find_callers(&*st.krate(), st, cx, label);
 }
 
-
 /// # `copy_marks` Command
-/// 
+///
 /// Usage: `copy_marks OLD_MARK NEW_MARK`
-/// 
+///
 /// Marks: reads `OLD_MARK`; sets `NEW_MARK`
-/// 
+///
 /// For every node bearing `OLD_MARK`, also apply `NEW_MARK`.
 pub fn copy_marks(st: &CommandState, old: Symbol, new: Symbol) {
     let mut marks = st.marks_mut();
-    let nodes = marks.iter().filter(|&&(_, label)| label == old)
-        .map(|&(id, _)| id).collect::<Vec<_>>();
+    let nodes = marks
+        .iter()
+        .filter(|&&(_, label)| label == old)
+        .map(|&(id, _)| id)
+        .collect::<Vec<_>>();
     for id in nodes {
         marks.insert((id, new));
     }
 }
 
 /// # `delete_marks` Command
-/// 
+///
 /// Usage: `delete_marks MARK`
-/// 
+///
 /// Marks: clears `MARK`
-/// 
+///
 /// Remove `MARK` from every node where it appears.
 pub fn delete_marks(st: &CommandState, old: Symbol) {
     let mut marks = st.marks_mut();
@@ -340,26 +352,25 @@ pub fn delete_marks(st: &CommandState, old: Symbol) {
 }
 
 /// # `rename_marks` Command
-/// 
+///
 /// Usage: `rename_marks OLD_MARK NEW_MARK`
-/// 
+///
 /// Marks: reads/clears `OLD_MARK`; sets `NEW_MARK`
-/// 
+///
 /// For every node bearing `OLD_MARK`, remove `OLD_MARK` and apply `NEW_MARK`.
 pub fn rename_marks(st: &CommandState, old: Symbol, new: Symbol) {
     copy_marks(st, old, new);
     delete_marks(st, old);
 }
 
-
 /// # `mark_pub_in_mod` Command
-/// 
+///
 /// Obsolete - use `select` instead.
-/// 
+///
 /// Usage: `mark_pub_in_mod MARK`
-/// 
+///
 /// Marks: reads `MARK`; sets `MARK`
-/// 
+///
 /// In each `mod` bearing `MARK`, apply `MARK` to every public item in the module.
 pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
     let label = label.into_symbol();
@@ -387,15 +398,14 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
     });
 }
 
-
 /// # `print_marks` Command
-/// 
+///
 /// Test command - not intended for general use.
-/// 
+///
 /// Usage: `print_marks`
-/// 
+///
 /// Marks: reads all
-/// 
+///
 /// Logs the ID and label of every mark, at level `info`.
 fn print_marks(st: &CommandState) {
     let mut marks = st.marks().iter().map(|&x| x).collect::<Vec<_>>();
@@ -406,18 +416,19 @@ fn print_marks(st: &CommandState) {
     }
 }
 
-
 /// # `clear_marks` Command
-/// 
+///
 /// Usage: `clear_marks`
-/// 
+///
 /// Marks: clears all marks
-/// 
+///
 /// Remove all marks from all nodes.
 fn register_clear_marks(reg: &mut Registry) {
-    reg.register("clear_marks", |_args| Box::new(FuncCommand(|rs: &mut RefactorState| {
-        rs.clear_marks();
-    })));
+    reg.register("clear_marks", |_args| {
+        Box::new(FuncCommand(|rs: &mut RefactorState| {
+            rs.clear_marks();
+        }))
+    });
 }
 
 pub fn register_commands(reg: &mut Registry) {

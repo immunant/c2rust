@@ -1,14 +1,14 @@
 #![recursion_limit = "128"]
-extern crate syn;
 extern crate proc_macro;
 extern crate proc_macro2;
 extern crate quote;
+extern crate syn;
 
 use proc_macro2::{Span, TokenStream};
-use syn::parse_macro_input;
-use syn::{ArgCaptured, Block, FnArg, Ident, Pat, TraitItemMethod, Type, TypeReference};
-use syn::visit::Visit;
 use quote::quote;
+use syn::parse_macro_input;
+use syn::visit::Visit;
+use syn::{ArgCaptured, Block, FnArg, Ident, Pat, TraitItemMethod, Type, TypeReference};
 
 #[derive(Default)]
 struct VisitorImpls {
@@ -17,7 +17,13 @@ struct VisitorImpls {
 }
 
 impl VisitorImpls {
-    fn generate_visit(&mut self, method_name: &Ident, arg_pat: &Pat, ty: &Type, noop: &Option<Block>) {
+    fn generate_visit(
+        &mut self,
+        method_name: &Ident,
+        arg_pat: &Pat,
+        ty: &Type,
+        noop: &Option<Block>,
+    ) {
         self.tokens.extend(quote! {
             impl MutVisit for #ty {
                 fn visit<F: MutVisitor>(&mut self, f: &mut F) {
@@ -69,7 +75,13 @@ impl VisitorImpls {
         self.count += 1;
     }
 
-    fn generate_flat_map(&mut self, method_name: &Ident, arg_pat: &Pat, ty: &Type, noop: &Option<Block>) {
+    fn generate_flat_map(
+        &mut self,
+        method_name: &Ident,
+        arg_pat: &Pat,
+        ty: &Type,
+        noop: &Option<Block>,
+    ) {
         self.tokens.extend(quote! {
             impl MutVisit for #ty {
                 fn visit<F: MutVisitor>(&mut self, f: &mut F) {
@@ -141,25 +153,15 @@ impl<'ast> Visit<'ast> for VisitorImpls {
         let method_name = &m.sig.ident;
         let method_noop = &m.default;
         match &m.sig.decl.inputs[1] {
-            FnArg::Captured(
-                ArgCaptured {
-                    pat,
-                    ty,
+            FnArg::Captured(ArgCaptured { pat, ty, .. }) => match ty {
+                Type::Reference(TypeReference {
+                    mutability: Some(_),
+                    elem,
                     ..
-                }
-            ) => {
-                match ty {
-                    Type::Reference(
-                        TypeReference {
-                            mutability: Some(_),
-                            elem,
-                            ..
-                        }
-                    ) => self.generate_visit(method_name, &pat, &elem, method_noop),
+                }) => self.generate_visit(method_name, &pat, &elem, method_noop),
 
-                    _ => self.generate_flat_map(method_name, &pat, &ty, method_noop),
-                }
-            }
+                _ => self.generate_flat_map(method_name, &pat, &ty, method_noop),
+            },
 
             _ => {}
         }
@@ -174,4 +176,3 @@ pub fn gen_visitor_impls(tokens: proc_macro::TokenStream) -> proc_macro::TokenSt
 
     visitor.tokens.into()
 }
-

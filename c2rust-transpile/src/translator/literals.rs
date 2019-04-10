@@ -30,32 +30,41 @@ impl<'c> Translation<'c> {
     /// Given an integer value this attempts to either generate the corresponding enum
     /// variant directly, otherwise it transmutes a number to the enum type.
     pub fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> P<Expr> {
-
         let def_id = match self.ast_context.resolve_type(enum_type_id).kind {
             CTypeKind::Enum(def_id) => def_id,
             _ => panic!("{:?} does not point to an `enum` type"),
         };
 
         let (variants, underlying_type_id) = match self.ast_context[def_id].kind {
-            CDeclKind::Enum { ref variants, integral_type, .. } => (variants, integral_type),
-            _ => panic!("{:?} does not point to an `enum` declaration")
+            CDeclKind::Enum {
+                ref variants,
+                integral_type,
+                ..
+            } => (variants, integral_type),
+            _ => panic!("{:?} does not point to an `enum` declaration"),
         };
 
         for &variant_id in variants {
             match self.ast_context[variant_id].kind {
-                CDeclKind::EnumConstant { value: v, .. } =>
-                if v == ConstIntExpr::I(value) || v == ConstIntExpr::U(value as u64) {
-                    let name = self.renamer.borrow().get(&variant_id).unwrap();
-                    return mk().path_expr(vec![name])
+                CDeclKind::EnumConstant { value: v, .. } => {
+                    if v == ConstIntExpr::I(value) || v == ConstIntExpr::U(value as u64) {
+                        let name = self.renamer.borrow().get(&variant_id).unwrap();
+                        return mk().path_expr(vec![name]);
+                    }
                 }
                 _ => panic!("{:?} does not point to an enum variant", variant_id),
             }
         }
 
-        let underlying_type_id = underlying_type_id.expect("Attempt to construct value of forward declared enum");
+        let underlying_type_id =
+            underlying_type_id.expect("Attempt to construct value of forward declared enum");
         let value = match self.ast_context.resolve_type(underlying_type_id.ctype).kind {
-            CTypeKind::UInt => mk().lit_expr(mk().int_lit((value as u32) as u128, LitIntType::Unsuffixed)),
-            CTypeKind::ULong => mk().lit_expr(mk().int_lit((value as u64) as u128, LitIntType::Unsuffixed)),
+            CTypeKind::UInt => {
+                mk().lit_expr(mk().int_lit((value as u32) as u128, LitIntType::Unsuffixed))
+            }
+            CTypeKind::ULong => {
+                mk().lit_expr(mk().int_lit((value as u64) as u128, LitIntType::Unsuffixed))
+            }
             _ => signed_int_expr(value),
         };
 
@@ -107,7 +116,7 @@ impl<'c> Translation<'c> {
                         let args = vec![mk().ident_expr(str)];
 
                         mk().call_expr(fn_path, args)
-                    },
+                    }
                     CTypeKind::Double => mk().lit_expr(mk().float_lit(str, FloatTy::F64)),
                     CTypeKind::Float => mk().lit_expr(mk().float_lit(str, FloatTy::F32)),
                     ref k => panic!("Unsupported floating point literal type {:?}", k),
@@ -149,7 +158,8 @@ impl<'c> Translation<'c> {
                     };
                     let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
                     let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
-                    let pointer = transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
+                    let pointer =
+                        transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
                     let array = mk().unary_expr(ast::UnOp::Deref, pointer);
                     Ok(WithStmts::new(array))
                 }
@@ -222,13 +232,9 @@ impl<'c> Translation<'c> {
             CTypeKind::Struct(struct_id) => {
                 self.convert_struct_literal(ctx, struct_id, ids.as_ref())
             }
-            CTypeKind::Union(union_id) => self.convert_union_literal(
-                ctx,
-                union_id,
-                ids.as_ref(),
-                ty,
-                opt_union_field_id,
-            ),
+            CTypeKind::Union(union_id) => {
+                self.convert_union_literal(ctx, union_id, ids.as_ref(), ty, opt_union_field_id)
+            }
             CTypeKind::Pointer(_) => {
                 let id = ids.first().unwrap();
                 let mut x = self.convert_expr(ctx.used(), *id);
@@ -295,12 +301,20 @@ impl<'c> Translation<'c> {
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let mut has_bitfields = false;
         let (field_decls, platform_byte_size) = match self.ast_context.index(struct_id).kind {
-            CDeclKind::Struct { ref fields, platform_byte_size, .. } => {
+            CDeclKind::Struct {
+                ref fields,
+                platform_byte_size,
+                ..
+            } => {
                 let mut fieldnames = vec![];
 
                 let fields = match fields {
                     &Some(ref fields) => fields,
-                    &None => return Err(TranslationError::generic("Attempted to construct forward-declared struct")),
+                    &None => {
+                        return Err(TranslationError::generic(
+                            "Attempted to construct forward-declared struct",
+                        ))
+                    }
                 };
 
                 for &x in fields {
@@ -309,10 +323,23 @@ impl<'c> Translation<'c> {
                         .borrow()
                         .resolve_field_name(Some(struct_id), x)
                         .unwrap();
-                    if let CDeclKind::Field { typ, bitfield_width, platform_type_bitwidth, platform_bit_offset, .. } = self.ast_context.index(x).kind {
+                    if let CDeclKind::Field {
+                        typ,
+                        bitfield_width,
+                        platform_type_bitwidth,
+                        platform_bit_offset,
+                        ..
+                    } = self.ast_context.index(x).kind
+                    {
                         has_bitfields |= bitfield_width.is_some();
 
-                        fieldnames.push((name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth));
+                        fieldnames.push((
+                            name,
+                            typ,
+                            bitfield_width,
+                            platform_bit_offset,
+                            platform_type_bitwidth,
+                        ));
                     } else {
                         panic!("Struct field decl type mismatch")
                     }
@@ -330,7 +357,13 @@ impl<'c> Translation<'c> {
             .unwrap();
 
         if has_bitfields {
-            return self.convert_bitfield_struct_literal(struct_name, platform_byte_size, ids, field_decls, ctx);
+            return self.convert_bitfield_struct_literal(
+                struct_name,
+                platform_byte_size,
+                ids,
+                field_decls,
+                ctx,
+            );
         }
 
         let mut stmts: Vec<Stmt> = vec![];
@@ -349,7 +382,10 @@ impl<'c> Translation<'c> {
         // Pad out remaining omitted record fields
         for i in ids.len()..fields.len() {
             let &(ref field_name, ty, _, _, _) = &field_decls[i];
-            fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, ctx.is_static)?));
+            fields.push(mk().field(
+                field_name,
+                self.implicit_default_expr(ty.ctype, ctx.is_static)?,
+            ));
         }
 
         Ok(WithStmts {

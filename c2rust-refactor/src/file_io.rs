@@ -7,20 +7,21 @@ use std::sync::{Arc, Mutex};
 
 use json::{self, JsonValue};
 use syntax::ast::*;
-use syntax::source_map::{SourceMap, SourceFile, FileLoader};
+use syntax::source_map::{FileLoader, SourceFile, SourceMap};
 use syntax::source_map::{Span, DUMMY_SP};
 use syntax::symbol::Symbol;
 use syntax_pos::hygiene::SyntaxContext;
 
 use crate::rewrite::{self, TextRewrite};
 
-
 #[allow(unused_variables)]
 pub trait FileIO {
     /// Called to indicate the end of a rewriting operation.  Any `save_file` or `save_rewrites`
     /// operations since the previous `end_rewrite` (or since the construction of the `FileIO`
     /// object) are part of the logical rewrite.
-    fn end_rewrite(&self, sm: &SourceMap) -> io::Result<()> { Ok(()) }
+    fn end_rewrite(&self, sm: &SourceMap) -> io::Result<()> {
+        Ok(())
+    }
 
     fn file_exists(&self, path: &Path) -> bool {
         fs::metadata(path).is_ok()
@@ -32,18 +33,25 @@ pub trait FileIO {
 
     fn read_file(&self, path: &Path) -> io::Result<String>;
     fn write_file(&self, path: &Path, s: &str) -> io::Result<()>;
-    fn save_rewrites(&self,
-                     sm: &SourceMap,
-                     sf: &SourceFile,
-                     rws: &[TextRewrite],
-                     nodes: &[(Span, NodeId)]) -> io::Result<()> { Ok(()) }
-    fn save_marks(&self,
-                  krate: &Crate,
-                  sm: &SourceMap,
-                  node_id_map: &HashMap<NodeId, NodeId>,
-                  marks: &HashSet<(NodeId, Symbol)>) -> io::Result<()> { Ok(()) }
+    fn save_rewrites(
+        &self,
+        sm: &SourceMap,
+        sf: &SourceFile,
+        rws: &[TextRewrite],
+        nodes: &[(Span, NodeId)],
+    ) -> io::Result<()> {
+        Ok(())
+    }
+    fn save_marks(
+        &self,
+        krate: &Crate,
+        sm: &SourceMap,
+        node_id_map: &HashMap<NodeId, NodeId>,
+        marks: &HashSet<(NodeId, Symbol)>,
+    ) -> io::Result<()> {
+        Ok(())
+    }
 }
-
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum OutputMode {
@@ -76,7 +84,6 @@ impl OutputMode {
         self == OutputMode::Marks
     }
 }
-
 
 struct RealState {
     rewrite_counter: usize,
@@ -111,10 +118,17 @@ impl RealFileIO {
 impl FileIO for RealFileIO {
     fn end_rewrite(&self, _sm: &SourceMap) -> io::Result<()> {
         let mut state = self.state.lock().unwrap();
-        if self.output_modes.iter().any(|&mode| mode.write_rewrites_json()) {
+        if self
+            .output_modes
+            .iter()
+            .any(|&mode| mode.write_rewrites_json())
+        {
             let js = mem::replace(&mut state.rewrites_json, Vec::new());
             let s = json::stringify_pretty(JsonValue::Array(js), 2);
-            fs::write(Path::new(&format!("rewrites.{}.json", state.rewrite_counter)), s)?;
+            fs::write(
+                Path::new(&format!("rewrites.{}.json", state.rewrite_counter)),
+                s,
+            )?;
         }
         state.rewrite_counter += 1;
         Ok(())
@@ -134,20 +148,20 @@ impl FileIO for RealFileIO {
         // Handling for specific cases
         for &mode in &self.output_modes {
             match mode {
-                OutputMode::InPlace => {},      // Will write output below
-                OutputMode::Alongside => {},    // Will write output below
+                OutputMode::InPlace => {}   // Will write output below
+                OutputMode::Alongside => {} // Will write output below
                 OutputMode::Print => {
                     println!(" ==== {:?} ====\n{}\n =========", path, s);
-                },
+                }
                 OutputMode::PrintDiff => {
                     let old_s = self.read_file(path)?;
                     println!();
                     println!("--- old/{}", path.display());
                     println!("+++ new/{}", path.display());
                     rewrite::files::print_diff(&old_s, s);
-                },
-                OutputMode::Json => {},     // Handled in end_rewrite
-                OutputMode::Marks => {},    // Handled in save_marks
+                }
+                OutputMode::Json => {}  // Handled in end_rewrite
+                OutputMode::Marks => {} // Handled in save_marks
             }
         }
 
@@ -173,15 +187,20 @@ impl FileIO for RealFileIO {
         Ok(())
     }
 
-    fn save_rewrites(&self,
-                     sm: &SourceMap,
-                     sf: &SourceFile,
-                     rws: &[TextRewrite],
-                     nodes: &[(Span, NodeId)]) -> io::Result<()> {
-        if !self.output_modes.iter().any(|&mode| mode.write_rewrites_json()) {
+    fn save_rewrites(
+        &self,
+        sm: &SourceMap,
+        sf: &SourceFile,
+        rws: &[TextRewrite],
+        nodes: &[(Span, NodeId)],
+    ) -> io::Result<()> {
+        if !self
+            .output_modes
+            .iter()
+            .any(|&mode| mode.write_rewrites_json())
+        {
             return Ok(());
         }
-
 
         let mut state = self.state.lock().unwrap();
 
@@ -197,27 +216,37 @@ impl FileIO for RealFileIO {
             nodes: nodes.to_owned(),
             adjust: rewrite::TextAdjust::None,
         };
-        state.rewrites_json.push(rewrite::json::encode_rewrite(sm, &rw));
+        state
+            .rewrites_json
+            .push(rewrite::json::encode_rewrite(sm, &rw));
         Ok(())
     }
 
-    fn save_marks(&self,
-                  krate: &Crate,
-                  _sm: &SourceMap,
-                  node_id_map: &HashMap<NodeId, NodeId>,
-                  marks: &HashSet<(NodeId, Symbol)>) -> io::Result<()> {
-        if !self.output_modes.iter().any(|&mode| mode.write_marks_json()) {
+    fn save_marks(
+        &self,
+        krate: &Crate,
+        _sm: &SourceMap,
+        node_id_map: &HashMap<NodeId, NodeId>,
+        marks: &HashSet<(NodeId, Symbol)>,
+    ) -> io::Result<()> {
+        if !self
+            .output_modes
+            .iter()
+            .any(|&mode| mode.write_marks_json())
+        {
             return Ok(());
         }
 
         let s = rewrite::json::stringify_marks(krate, node_id_map, marks);
         let state = self.state.lock().unwrap();
-        fs::write(Path::new(&format!("marks.{}.json", state.rewrite_counter)), s)
+        fs::write(
+            Path::new(&format!("marks.{}.json", state.rewrite_counter)),
+            s,
+        )
     }
 }
 
-
-pub struct ArcFileIO(pub Arc<FileIO+Sync+Send>);
+pub struct ArcFileIO(pub Arc<FileIO + Sync + Send>);
 
 impl FileLoader for ArcFileIO {
     fn file_exists(&self, path: &Path) -> bool {

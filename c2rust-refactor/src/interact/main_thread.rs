@@ -1,37 +1,36 @@
 //! The main thread for interactive mode.
 //!
 //! The main thread runs a loop receiving and processing client requests.
+use rustc_interface::interface::{self, Config};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{self, SyncSender, Receiver};
 use std::thread;
-use rustc_interface::interface::{self, Config};
 use syntax::ast::*;
-use syntax::source_map::{FileLoader, RealFileLoader};
 use syntax::source_map::Span;
+use syntax::source_map::{FileLoader, RealFileLoader};
 use syntax::symbol::Symbol;
-use syntax::visit::{self, Visitor, FnKind};
+use syntax::visit::{self, FnKind, Visitor};
 use syntax_pos::FileName;
 
 use crate::ast_manip::{GetNodeId, GetSpan, Visit};
 use crate::command::{self, RefactorState};
 use crate::driver;
-use crate::file_io::{FileIO};
-use crate::interact::{ToServer, ToClient};
+use crate::file_io::FileIO;
+use crate::interact::worker::{self, ToWorker};
 use crate::interact::WrapSender;
 use crate::interact::{plain_backend, vim8_backend};
-use crate::interact::worker::{self, ToWorker};
+use crate::interact::{ToClient, ToServer};
 use crate::pick_node;
 use crate::RefactorCtxt;
 use c2rust_ast_builder::IntoSymbol;
 
 use super::MarkInfo;
-
 
 struct InteractState {
     to_client: SyncSender<ToClient>,
@@ -41,76 +40,100 @@ struct InteractState {
 }
 
 impl InteractState {
-    fn new(state: RefactorState,
-           buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
-           _to_worker: SyncSender<ToWorker>,
-           to_client: SyncSender<ToClient>) -> InteractState {
-
-        InteractState { to_client, buffers_available, state }
+    fn new(
+        state: RefactorState,
+        buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
+        _to_worker: SyncSender<ToWorker>,
+        to_client: SyncSender<ToClient>,
+    ) -> InteractState {
+        InteractState {
+            to_client,
+            buffers_available,
+            state,
+        }
     }
 
-    fn run_loop(&mut self,
-                main_recv: Receiver<ToServer>) {
+    fn run_loop(&mut self, main_recv: Receiver<ToServer>) {
         for msg in main_recv.iter() {
             let result = panic::catch_unwind(AssertUnwindSafe(|| {
                 self.handle_one(msg);
             }));
 
             if let Err(e) = result {
-                let text =
-                    if let Some(s) = e.downcast_ref::<String>() { s.clone() }
-                    else {
-                        "An error occurred of unknown type".to_owned()
-                    };
+                let text = if let Some(s) = e.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "An error occurred of unknown type".to_owned()
+                };
                 self.to_client.send(ToClient::Error { text }).unwrap();
             }
         }
     }
 
     fn run_compiler<F, R>(&mut self, phase: driver::Phase, func: F) -> interface::Result<R>
-            where F: FnOnce(&Crate, &RefactorCtxt) -> R {
-        self.state.transform_crate(phase, |st, cx| {
-            func(&st.krate(), cx)
-        })
+    where
+        F: FnOnce(&Crate, &RefactorCtxt) -> R,
+    {
+        self.state
+            .transform_crate(phase, |st, cx| func(&st.krate(), cx))
     }
 
     fn handle_one(&mut self, msg: ToServer) {
-        use super::ToServer::*;
         use super::ToClient::*;
+        use super::ToServer::*;
 
         match msg {
-            AddMark { file, line, col, kind, label } => {
+            AddMark {
+                file,
+                line,
+                col,
+                kind,
+                label,
+            } => {
                 let kind = pick_node::NodeKind::from_str(&kind).unwrap();
                 let label = label.into_symbol();
 
-                let (id, mark_info) = self.run_compiler(driver::Phase::Phase2, |krate, cx| {
-                    let info = pick_node::pick_node_at_loc(
-                            &krate, cx.session(), kind, &file, line, col)
-                        .unwrap_or_else(
-                            || panic!("no {:?} node at {}:{}:{}", kind, file, line, col));
+                let (id, mark_info) = self
+                    .run_compiler(driver::Phase::Phase2, |krate, cx| {
+                        let info = pick_node::pick_node_at_loc(
+                            &krate,
+                            cx.session(),
+                            kind,
+                            &file,
+                            line,
+                            col,
+                        )
+                        .unwrap_or_else(|| {
+                            panic!("no {:?} node at {}:{}:{}", kind, file, line, col)
+                        });
 
-                    let lo = cx.session().source_map().lookup_char_pos(info.span.lo());
-                    let hi = cx.session().source_map().lookup_char_pos(info.span.hi());
-                    let file = filename_to_str(&lo.file.name);
-                    (info.id,
-                     MarkInfo {
-                         id: info.id.as_usize(),
-                         file,
-                         start_line: lo.line as u32,
-                         start_col: lo.col.0 as u32,
-                         end_line: hi.line as u32,
-                         end_col: hi.col.0 as u32,
-                         labels: vec![(&label.as_str() as &str).to_owned()],
-                     })
-                }).expect("Failed to run compiler");
+                        let lo = cx.session().source_map().lookup_char_pos(info.span.lo());
+                        let hi = cx.session().source_map().lookup_char_pos(info.span.hi());
+                        let file = filename_to_str(&lo.file.name);
+                        (
+                            info.id,
+                            MarkInfo {
+                                id: info.id.as_usize(),
+                                file,
+                                start_line: lo.line as u32,
+                                start_col: lo.col.0 as u32,
+                                end_line: hi.line as u32,
+                                end_col: hi.col.0 as u32,
+                                labels: vec![(&label.as_str() as &str).to_owned()],
+                            },
+                        )
+                    })
+                    .expect("Failed to run compiler");
 
                 self.state.marks_mut().insert((id, label));
                 self.to_client.send(Mark { info: mark_info }).unwrap();
-            },
+            }
 
             RemoveMark { id } => {
-                self.state.marks_mut().retain(|&(mark_id, _)| mark_id.as_usize() != id);
-            },
+                self.state
+                    .marks_mut()
+                    .retain(|&(mark_id, _)| mark_id.as_usize() != id);
+            }
 
             GetMarkInfo { id } => {
                 let id = NodeId::from_usize(id);
@@ -123,53 +146,58 @@ impl InteractState {
                 }
                 labels.sort();
 
-                let msg = self.run_compiler(driver::Phase::Phase2, |_krate, cx| {
-                    let span = cx.hir_map().span(id);
-                    let lo = cx.session().source_map().lookup_char_pos(span.lo());
-                    let hi = cx.session().source_map().lookup_char_pos(span.hi());
-                    let file = filename_to_str(&lo.file.name);
-                    let info = MarkInfo {
-                        id: id.as_usize(),
-                        file,
-                        start_line: lo.line as u32,
-                        start_col: lo.col.0 as u32,
-                        end_line: hi.line as u32,
-                        end_col: hi.col.0 as u32,
-                        labels: labels,
-                    };
-                    Mark { info: info }
-                }).expect("Failed to run compiler");
+                let msg = self
+                    .run_compiler(driver::Phase::Phase2, |_krate, cx| {
+                        let span = cx.hir_map().span(id);
+                        let lo = cx.session().source_map().lookup_char_pos(span.lo());
+                        let hi = cx.session().source_map().lookup_char_pos(span.hi());
+                        let file = filename_to_str(&lo.file.name);
+                        let info = MarkInfo {
+                            id: id.as_usize(),
+                            file,
+                            start_line: lo.line as u32,
+                            start_col: lo.col.0 as u32,
+                            end_line: hi.line as u32,
+                            end_col: hi.col.0 as u32,
+                            labels: labels,
+                        };
+                        Mark { info: info }
+                    })
+                    .expect("Failed to run compiler");
                 self.to_client.send(msg).unwrap();
-            },
+            }
 
             GetMarkList => {
-                let msg = self.state.transform_crate(driver::Phase::Phase2, |st, cx| {
-                    let infos = collect_mark_infos(&st.marks(), &st.krate(), &cx);
-                    MarkList { infos: infos }
-                }).expect("Failed to run compiler");
+                let msg = self
+                    .state
+                    .transform_crate(driver::Phase::Phase2, |st, cx| {
+                        let infos = collect_mark_infos(&st.marks(), &st.krate(), &cx);
+                        MarkList { infos: infos }
+                    })
+                    .expect("Failed to run compiler");
                 self.to_client.send(msg).unwrap();
-            },
+            }
 
             SetBuffersAvailable { files } => {
                 let mut buffers = self.buffers_available.lock().unwrap();
-                *buffers = files.into_iter()
+                *buffers = files
+                    .into_iter()
                     .filter_map(|x| fs::canonicalize(&x).ok())
                     .collect();
-            },
+            }
 
             RunCommand { name, args } => {
                 info!("running command {} with args {:?}", name, args);
                 self.state.load_crate();
                 match self.state.run(&name, &args) {
-                    Ok(_)=> {},
+                    Ok(_) => {}
                     Err(e) => {
                         eprintln!("{:?}", e);
                         panic!("Invalid command.");
                     }
-
                 }
                 self.state.save_crate();
-            },
+            }
 
             // Other messages are handled by the worker thread
             BufferText { .. } => unreachable!(),
@@ -185,10 +213,11 @@ fn filename_to_str(filename: &FileName) -> String {
     }
 }
 
-
-fn collect_mark_infos(marks: &HashSet<(NodeId, Symbol)>,
-                      krate: &Crate,
-                      cx: &RefactorCtxt) -> Vec<MarkInfo> {
+fn collect_mark_infos(
+    marks: &HashSet<(NodeId, Symbol)>,
+    krate: &Crate,
+    cx: &RefactorCtxt,
+) -> Vec<MarkInfo> {
     let ids = marks.iter().map(|&(id, _)| id).collect();
     let span_map = collect_spans(krate, ids);
 
@@ -222,18 +251,16 @@ fn collect_mark_infos(marks: &HashSet<(NodeId, Symbol)>,
     infos_vec
 }
 
-pub fn interact_command(
-    args: &[String],
-    config: Config,
-    registry: command::Registry,
-) {
+pub fn interact_command(args: &[String], config: Config, registry: command::Registry) {
     let (to_main, main_recv) = mpsc::channel();
     let (to_worker, worker_recv) = mpsc::sync_channel(1);
 
     let backend_to_worker = WrapSender::new(to_worker.clone(), ToWorker::InputMessage);
-    let to_client =
-        if args.len() > 0 && &args[0] == "vim8" { vim8_backend::init(backend_to_worker) }
-        else { plain_backend::init(backend_to_worker) };
+    let to_client = if args.len() > 0 && &args[0] == "vim8" {
+        vim8_backend::init(backend_to_worker)
+    } else {
+        plain_backend::init(backend_to_worker)
+    };
 
     let to_client_ = to_client.clone();
     thread::spawn(move || {
@@ -249,11 +276,9 @@ pub fn interact_command(
     });
 
     driver::run_refactoring(config, registry, file_io, HashSet::new(), |state| {
-        InteractState::new(state, buffers_available, to_worker, to_client)
-            .run_loop(main_recv);
+        InteractState::new(state, buffers_available, to_worker, to_client).run_loop(main_recv);
     });
 }
-
 
 #[derive(Clone)]
 struct InteractiveFileIO {
@@ -266,13 +291,13 @@ impl FileIO for InteractiveFileIO {
     fn read_file(&self, path: &Path) -> io::Result<String> {
         let canon = fs::canonicalize(path)?;
 
-        let available = {
-            self.buffers_available.lock().unwrap().contains(&canon)
-        };
+        let available = { self.buffers_available.lock().unwrap().contains(&canon) };
 
         if available {
             let (send, recv) = mpsc::sync_channel(1);
-            self.to_worker.send(ToWorker::NeedFile(canon, send)).unwrap();
+            self.to_worker
+                .send(ToWorker::NeedFile(canon, send))
+                .unwrap();
             Ok(recv.recv().unwrap())
         } else {
             RealFileLoader.read_file(&canon)
@@ -281,14 +306,15 @@ impl FileIO for InteractiveFileIO {
 
     fn write_file(&self, path: &Path, s: &str) -> io::Result<()> {
         let path = fs::canonicalize(path)?;
-        self.to_client.send(ToClient::NewBufferText {
-            file: path.to_str().unwrap().to_owned(),
-            content: s.to_owned(),
-        }).unwrap();
+        self.to_client
+            .send(ToClient::NewBufferText {
+                file: path.to_str().unwrap().to_owned(),
+                content: s.to_owned(),
+            })
+            .unwrap();
         Ok(())
     }
 }
-
 
 struct CollectSpanVisitor {
     ids: HashSet<NodeId>,

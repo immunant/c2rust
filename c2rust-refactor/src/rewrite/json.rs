@@ -1,17 +1,16 @@
+use json::{self, JsonValue};
 use std::collections::{HashMap, HashSet};
 use syntax::ast::*;
 use syntax::source_map::{SourceMap, Span};
 use syntax::symbol::Symbol;
-use syntax::visit::{self, Visitor, FnKind};
-use json::{self, JsonValue};
+use syntax::visit::{self, FnKind, Visitor};
 
-use crate::rewrite::{TextRewrite, TextAdjust};
-
+use crate::rewrite::{TextAdjust, TextRewrite};
 
 fn encode_span(sm: &SourceMap, sp: Span) -> JsonValue {
     let lo = sm.lookup_byte_offset(sp.lo());
     let hi = sm.lookup_byte_offset(sp.hi());
-    let src = &lo.sf.src.as_ref().unwrap()[lo.pos.0 as usize .. hi.pos.0 as usize];
+    let src = &lo.sf.src.as_ref().unwrap()[lo.pos.0 as usize..hi.pos.0 as usize];
 
     object! {
         "file" => lo.sf.name.to_string(),
@@ -74,7 +73,6 @@ pub fn stringify_rewrites(sm: &SourceMap, rs: &[TextRewrite]) -> String {
     json::stringify_pretty(encode_rewrites(sm, rs), 2)
 }
 
-
 struct MarkVisitor<'a> {
     node_id_map: &'a HashMap<NodeId, NodeId>,
     marks: HashMap<NodeId, Vec<Symbol>>,
@@ -82,17 +80,15 @@ struct MarkVisitor<'a> {
 }
 
 impl<'a> MarkVisitor<'a> {
-    fn encode(&mut self,
-              kind: &'static str,
-              id: NodeId) {
+    fn encode(&mut self, kind: &'static str, id: NodeId) {
         self.encode_inner(kind, id, None)
     }
 
-    fn encode_inner(&mut self,
-                    kind: &'static str,
-                    id: NodeId,
-                    name: Option<Symbol>) {
-        let marks = match self.marks.get(&id) { Some(x) => x, None => return };
+    fn encode_inner(&mut self, kind: &'static str, id: NodeId, name: Option<Symbol>) {
+        let marks = match self.marks.get(&id) {
+            Some(x) => x,
+            None => return,
+        };
         self.j.push(object! {
             "id" => id.as_usize(),
             "orig_id" => self.node_id_map.get(&id).map(|&id| id.as_usize()),
@@ -107,10 +103,7 @@ impl<'a> MarkVisitor<'a> {
         });
     }
 
-    fn encode_named(&mut self,
-                    kind: &'static str,
-                    id: NodeId,
-                    ident: Ident) {
+    fn encode_named(&mut self, kind: &'static str, id: NodeId, ident: Ident) {
         self.encode_inner(kind, id, Some(ident.name))
     }
 }
@@ -177,9 +170,11 @@ impl<'a, 'ast> Visitor<'ast> for MarkVisitor<'a> {
     }
 }
 
-pub fn encode_marks(krate: &Crate,
-                    node_id_map: &HashMap<NodeId, NodeId>,
-                    marks: &HashSet<(NodeId, Symbol)>) -> JsonValue {
+pub fn encode_marks(
+    krate: &Crate,
+    node_id_map: &HashMap<NodeId, NodeId>,
+    marks: &HashSet<(NodeId, Symbol)>,
+) -> JsonValue {
     let mut mark_map = HashMap::new();
     for &(id, label) in marks {
         mark_map.entry(id).or_insert_with(Vec::new).push(label);
@@ -200,8 +195,10 @@ pub fn encode_marks(krate: &Crate,
     JsonValue::Array(v.j)
 }
 
-pub fn stringify_marks(krate: &Crate,
-                       node_id_map: &HashMap<NodeId, NodeId>,
-                       marks: &HashSet<(NodeId, Symbol)>) -> String {
+pub fn stringify_marks(
+    krate: &Crate,
+    node_id_map: &HashMap<NodeId, NodeId>,
+    marks: &HashSet<(NodeId, Symbol)>,
+) -> String {
     json::stringify_pretty(encode_marks(krate, node_id_map, marks), 2)
 }

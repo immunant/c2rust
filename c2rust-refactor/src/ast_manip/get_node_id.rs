@@ -1,14 +1,13 @@
 //! `GetNodeId` trait for obtaining the `NodeId` of a generic AST node.
-use std::rc::Rc;
 use rustc_target::spec::abi::Abi;
-use syntax::ThinVec;
+use std::rc::Rc;
 use syntax::ast::*;
-use syntax::parse::token::{Token, DelimToken, Nonterminal};
+use syntax::parse::token::{DelimToken, Nonterminal, Token};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
-use syntax::tokenstream::{TokenTree, DelimSpan, TokenStream};
+use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use syntax::ThinVec;
 use syntax_pos::hygiene::SyntaxContext;
-
 
 /// Trait for obtaining the `NodeId` of a generic AST node.
 pub trait GetNodeId {
@@ -22,18 +21,30 @@ impl<T: GetNodeId> GetNodeId for P<T> {
 }
 
 pub trait MaybeGetNodeId {
-    fn supported() -> bool { false }
-    fn get_node_id(&self) -> NodeId { DUMMY_NODE_ID }
+    fn supported() -> bool {
+        false
+    }
+    fn get_node_id(&self) -> NodeId {
+        DUMMY_NODE_ID
+    }
 }
 
 impl<T: MaybeGetNodeId> MaybeGetNodeId for P<T> {
-    fn supported() -> bool { <T as MaybeGetNodeId>::supported() }
-    fn get_node_id(&self) -> NodeId { <T as MaybeGetNodeId>::get_node_id(self) }
+    fn supported() -> bool {
+        <T as MaybeGetNodeId>::supported()
+    }
+    fn get_node_id(&self) -> NodeId {
+        <T as MaybeGetNodeId>::get_node_id(self)
+    }
 }
 
 impl<T: MaybeGetNodeId> MaybeGetNodeId for Rc<T> {
-    fn supported() -> bool { <T as MaybeGetNodeId>::supported() }
-    fn get_node_id(&self) -> NodeId { <T as MaybeGetNodeId>::get_node_id(self) }
+    fn supported() -> bool {
+        <T as MaybeGetNodeId>::supported()
+    }
+    fn get_node_id(&self) -> NodeId {
+        <T as MaybeGetNodeId>::get_node_id(self)
+    }
 }
 
 impl<T> MaybeGetNodeId for Spanned<T> {}

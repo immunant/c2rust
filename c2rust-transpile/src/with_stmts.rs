@@ -1,5 +1,5 @@
-use syntax::ast::{Stmt, Block, Expr};
 use c2rust_ast_builder::mk;
+use syntax::ast::{Block, Expr, Stmt};
 use syntax::ptr::P;
 
 #[derive(Debug)]
@@ -13,8 +13,9 @@ impl<T> WithStmts<T> {
         WithStmts { stmts: vec![], val }
     }
     pub fn and_then<U, F>(self, f: F) -> WithStmts<U>
-        where F: FnOnce(T) -> WithStmts<U> {
-
+    where
+        F: FnOnce(T) -> WithStmts<U>,
+    {
         let mut next = f(self.val);
         let mut stmts = self.stmts;
         stmts.append(&mut next.stmts);
@@ -24,16 +25,18 @@ impl<T> WithStmts<T> {
         }
     }
     pub fn map<U, F>(self, f: F) -> WithStmts<U>
-        where F: FnOnce(T) -> U {
-
+    where
+        F: FnOnce(T) -> U,
+    {
         WithStmts {
             val: f(self.val),
             stmts: self.stmts,
         }
     }
     pub fn result_map<U, E, F>(self, f: F) -> Result<WithStmts<U>, E>
-        where F: FnOnce(T) -> Result<U, E> {
-
+    where
+        F: FnOnce(T) -> Result<U, E>,
+    {
         Ok(WithStmts {
             val: f(self.val)?,
             stmts: self.stmts,
@@ -61,7 +64,10 @@ impl WithStmts<P<Expr>> {
     pub fn with_stmts_opt<T>(opt: Option<WithStmts<T>>) -> WithStmts<Option<T>> {
         match opt {
             None => WithStmts::new(None),
-            Some(x) => WithStmts { stmts: x.stmts, val: Some(x.val) },
+            Some(x) => WithStmts {
+                stmts: x.stmts,
+                val: Some(x.val),
+            },
         }
     }
 }

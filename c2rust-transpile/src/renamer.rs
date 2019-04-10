@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
@@ -20,7 +20,9 @@ impl<T: Clone + Eq + Hash> Scope<T> {
         }
     }
 
-    pub fn insert(&mut self, key: T, val: String) { self.name_map.insert(key, val); }
+    pub fn insert(&mut self, key: T, val: String) {
+        self.name_map.insert(key, val);
+    }
 
     pub fn contains_key(&self, key: &T) -> bool {
         self.name_map.contains_key(key)
@@ -41,7 +43,6 @@ pub struct Renamer<T> {
 }
 
 impl<T: Clone + Eq + Hash> Renamer<T> {
-
     /// Creates a new renaming environment with a single, empty scope. The given set of
     /// reserved names will exclude those names from being chosen as the mangled names from
     /// the insert method.
@@ -91,7 +92,7 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
             if self.is_target_used(&target) {
                 target = format!("{}_{}", basename, i);
             } else {
-                break
+                break;
             }
         }
 
@@ -123,7 +124,7 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
         };
 
         if contains_key {
-            return None
+            return None;
         }
 
         let target = self.pick_name_in_scope(basename, scope);
@@ -157,7 +158,6 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
             Some(name) => self.current_scope_mut().insert(new_key, name),
             None => panic!("Failed to overlap name"),
         }
-
     }
 
     /// Lookup the given key in all of the scopes returning Some of the matched mangled name
@@ -165,7 +165,7 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     pub fn get(&self, key: &T) -> Option<String> {
         for scope in self.scopes.iter().rev() {
             if let Some(target) = scope.name_map.get(key) {
-                return Some(target.to_string())
+                return Some(target.to_string());
             }
         }
         None
@@ -186,7 +186,7 @@ mod tests {
     fn simple() {
         let mut renamer = Renamer::new(&["reserved"]);
 
-        let one1 = renamer.insert(1,"one").unwrap();
+        let one1 = renamer.insert(1, "one").unwrap();
         let one2 = renamer.get(&1).unwrap();
         assert_eq!(one1, one2);
 
@@ -206,7 +206,7 @@ mod tests {
         let one2 = renamer.get(&10).unwrap();
         assert_eq!(one1, one2);
 
-        let one3 = renamer.insert(20,"one").unwrap();
+        let one3 = renamer.insert(20, "one").unwrap();
         let one4 = renamer.get(&20).unwrap();
         assert_eq!(one3, one4);
         assert_ne!(one3, one2);
@@ -222,7 +222,7 @@ mod tests {
         let mut renamer = Renamer::new(&[]);
         assert_eq!(renamer.get(&1), None);
         renamer.add_scope();
-        renamer.insert(1,"example");
+        renamer.insert(1, "example");
         renamer.drop_scope();
         assert_eq!(renamer.get(&1), None);
     }

@@ -2,44 +2,45 @@
 extern crate clap;
 extern crate c2rust_transpile;
 
+use clap::{App, Values};
+use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use clap::{App, Values};
-use regex::Regex;
 
-use c2rust_transpile::{TranspilerConfig, ReplaceMode, Diagnostic};
-
+use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
 
 fn main() {
     let yaml = load_yaml!("../transpile.yaml");
-    let matches = App::from_yaml(yaml)
-        .get_matches();
+    let matches = App::from_yaml(yaml).get_matches();
 
     // Build a TranspilerConfig from the command line
-    let cc_json_path = Path::new(matches.value_of("COMPILE_COMMANDS").unwrap()).canonicalize().unwrap();
+    let cc_json_path = Path::new(matches.value_of("COMPILE_COMMANDS").unwrap())
+        .canonicalize()
+        .unwrap();
     let extra_args: Vec<&str> = match matches.values_of("extra-clang-args") {
         Some(args) => args.collect(),
         None => Vec::new(),
     };
 
-    let enabled_warnings: HashSet<Diagnostic> = matches.values_of("warn")
+    let enabled_warnings: HashSet<Diagnostic> = matches
+        .values_of("warn")
         .unwrap_or_else(|| Values::default())
         .map(|s| Diagnostic::from_str(s).unwrap())
         .collect();
 
     let mut tcfg = TranspilerConfig {
-        dump_untyped_context:   matches.is_present("dump-untyped-clang-ast"),
-        dump_typed_context:     matches.is_present("dump-typed-clang-ast"),
-        pretty_typed_context:   matches.is_present("pretty-typed-clang-ast"),
-        dump_function_cfgs:     matches.is_present("dump-function-cfgs"),
-        json_function_cfgs:     matches.is_present("json-function-cfgs"),
-        dump_cfg_liveness:      matches.is_present("dump-cfgs-liveness"),
-        dump_structures:        matches.is_present("dump-structures"),
+        dump_untyped_context: matches.is_present("dump-untyped-clang-ast"),
+        dump_typed_context: matches.is_present("dump-typed-clang-ast"),
+        pretty_typed_context: matches.is_present("pretty-typed-clang-ast"),
+        dump_function_cfgs: matches.is_present("dump-function-cfgs"),
+        json_function_cfgs: matches.is_present("json-function-cfgs"),
+        dump_cfg_liveness: matches.is_present("dump-cfgs-liveness"),
+        dump_structures: matches.is_present("dump-structures"),
 
-        incremental_relooper:   !matches.is_present("no-incremental-relooper"),
-        fail_on_error:          matches.is_present("fail-on-error"),
-        fail_on_multiple:       matches.is_present("fail-on-multiple"),
+        incremental_relooper: !matches.is_present("no-incremental-relooper"),
+        fail_on_error: matches.is_present("fail-on-error"),
+        fail_on_multiple: matches.is_present("fail-on-multiple"),
         filter: {
             if matches.is_present("filter") {
                 let filter = matches.value_of("filter").unwrap();
@@ -48,27 +49,28 @@ fn main() {
                 None
             }
         },
-        debug_relooper_labels:  matches.is_present("debug-labels"),
-        cross_checks:           matches.is_present("cross-checks"),
-        cross_check_backend:    matches.value_of("cross-check-backend")
+        debug_relooper_labels: matches.is_present("debug-labels"),
+        cross_checks: matches.is_present("cross-checks"),
+        cross_check_backend: matches
+            .value_of("cross-check-backend")
             .map(String::from)
             .unwrap(),
-        cross_check_configs:    matches.values_of("cross-check-config")
+        cross_check_configs: matches
+            .values_of("cross-check-config")
             .map(|vals| vals.map(String::from).collect::<Vec<_>>())
             .unwrap_or_default(),
-        prefix_function_names:  matches.value_of("prefix-function-names")
-            .map(String::from),
-        translate_asm:          matches.is_present("translate-asm"),
-        translate_valist:       matches.is_present("translate-valist"),
-        use_c_loop_info:        !matches.is_present("ignore-c-loop-info"),
-        use_c_multiple_info:    !matches.is_present("ignore-c-multiple-info"),
-        simplify_structures:    !matches.is_present("no-simplify-structures"),
-        overwrite_existing:     matches.is_present("overwrite-existing"),
-        reduce_type_annotations:matches.is_present("reduce-type-annotations"),
+        prefix_function_names: matches.value_of("prefix-function-names").map(String::from),
+        translate_asm: matches.is_present("translate-asm"),
+        translate_valist: matches.is_present("translate-valist"),
+        use_c_loop_info: !matches.is_present("ignore-c-loop-info"),
+        use_c_multiple_info: !matches.is_present("ignore-c-multiple-info"),
+        simplify_structures: !matches.is_present("no-simplify-structures"),
+        overwrite_existing: matches.is_present("overwrite-existing"),
+        reduce_type_annotations: matches.is_present("reduce-type-annotations"),
         reorganize_definitions: matches.is_present("reorganize-definitions"),
-        emit_modules:           matches.is_present("emit-modules"),
-        emit_build_files:       matches.is_present("emit-build-files"),
-        output_dir:             matches.value_of("output-dir").map(PathBuf::from),
+        emit_modules: matches.is_present("emit-modules"),
+        emit_build_files: matches.is_present("emit-build-files"),
+        output_dir: matches.value_of("output-dir").map(PathBuf::from),
         main: {
             if matches.is_present("main") {
                 Some(String::from(matches.value_of("main").unwrap()))
@@ -86,12 +88,16 @@ fn main() {
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: matches.is_present("emit-no-std"),
         verbose: matches.is_present("verbose"),
-        enabled_warnings
+        enabled_warnings,
     };
     // main implies emit-build-files
-    if tcfg.main != None{ tcfg.emit_build_files = true };
+    if tcfg.main != None {
+        tcfg.emit_build_files = true
+    };
     // emit-build-files implies emit-modules
-    if tcfg.emit_build_files { tcfg.emit_modules = true };
+    if tcfg.emit_build_files {
+        tcfg.emit_modules = true
+    };
 
     c2rust_transpile::transpile(tcfg, &cc_json_path, &extra_args);
 }

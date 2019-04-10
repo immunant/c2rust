@@ -136,11 +136,13 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
     }
 }
 
-pub fn matching_children(st: &CommandState,
-                         cx: &RefactorCtxt,
-                         krate: &Crate,
-                         sel: HashSet<NodeId>,
-                         filt: &Filter) -> HashSet<NodeId> {
+pub fn matching_children(
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    krate: &Crate,
+    sel: HashSet<NodeId>,
+    filt: &Filter,
+) -> HashSet<NodeId> {
     let in_old = sel.contains(&CRATE_NODE_ID);
     let mut v = ChildMatchVisitor {
         st: st,
@@ -153,7 +155,6 @@ pub fn matching_children(st: &CommandState,
     visit::walk_crate(&mut v, krate);
     v.new
 }
-
 
 struct DescMatchVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
@@ -284,11 +285,13 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
     }
 }
 
-pub fn matching_descendants(st: &CommandState,
-                            cx: &RefactorCtxt,
-                            krate: &Crate,
-                            sel: HashSet<NodeId>,
-                            filt: &Filter) -> HashSet<NodeId> {
+pub fn matching_descendants(
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    krate: &Crate,
+    sel: HashSet<NodeId>,
+    filt: &Filter,
+) -> HashSet<NodeId> {
     let in_old = sel.contains(&CRATE_NODE_ID);
     let mut v = DescMatchVisitor {
         st: st,
@@ -301,7 +304,6 @@ pub fn matching_descendants(st: &CommandState,
     visit::walk_crate(&mut v, krate);
     v.new
 }
-
 
 struct FilterVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
@@ -412,11 +414,13 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
     }
 }
 
-pub fn filter(st: &CommandState,
-              cx: &RefactorCtxt,
-              krate: &Crate,
-              sel: HashSet<NodeId>,
-              filt: &Filter) -> HashSet<NodeId> {
+pub fn filter(
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    krate: &Crate,
+    sel: HashSet<NodeId>,
+    filt: &Filter,
+) -> HashSet<NodeId> {
     let mut v = FilterVisitor {
         st: st,
         cx: cx,

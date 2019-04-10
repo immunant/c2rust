@@ -9,7 +9,6 @@ use rustc::ty;
 use syntax::ast::*;
 use syntax::visit::{self, Visitor};
 
-
 /// Provider of a higher-level type representation.
 ///
 /// Methods can return `None` under any circumstances to indicate that the provider can't find a
@@ -19,11 +18,21 @@ pub trait TypeSource {
     type Type: Type;
     type Signature: Signature<Self::Type>;
 
-    fn expr_type(&mut self, e: &Expr) -> Option<Self::Type> { None }
-    fn pat_type(&mut self, p: &Pat) -> Option<Self::Type> { None }
-    fn def_type(&mut self, did: DefId) -> Option<Self::Type> { None }
-    fn fn_sig(&mut self, did: DefId) -> Option<Self::Signature> { None }
-    fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> { self.fn_sig(did) }
+    fn expr_type(&mut self, e: &Expr) -> Option<Self::Type> {
+        None
+    }
+    fn pat_type(&mut self, p: &Pat) -> Option<Self::Type> {
+        None
+    }
+    fn def_type(&mut self, did: DefId) -> Option<Self::Type> {
+        None
+    }
+    fn fn_sig(&mut self, did: DefId) -> Option<Self::Signature> {
+        None
+    }
+    fn closure_sig(&mut self, did: DefId) -> Option<Self::Signature> {
+        self.fn_sig(did)
+    }
 }
 
 pub trait Signature<T>: Debug {
@@ -38,7 +47,6 @@ pub trait Type: Copy + Debug {
     fn arg(&self, idx: usize) -> Self;
 }
 
-
 pub struct TypeMapVisitor<'a, 'tcx: 'a, S, F> {
     hir_map: &'a hir::map::Map<'tcx>,
     source: S,
@@ -46,8 +54,10 @@ pub struct TypeMapVisitor<'a, 'tcx: 'a, S, F> {
 }
 
 impl<'a, 'tcx, S, F> TypeMapVisitor<'a, 'tcx, S, F>
-        where S: TypeSource,
-              F: FnMut(&mut S, &Ty, S::Type) {
+where
+    S: TypeSource,
+    F: FnMut(&mut S, &Ty, S::Type),
+{
     /// Record a matching `S::Type` and `ast::Ty`.  If the two representations have matching
     /// shapes, this method recurses into their corresponding subtrees and records those as well.
     /// (The structures may not match if the `ast::Ty` refers to a type alias which has been
@@ -58,54 +68,52 @@ impl<'a, 'tcx, S, F> TypeMapVisitor<'a, 'tcx, S, F>
         (self.callback)(&mut self.source, ast_ty, ty);
 
         match (&ast_ty.node, ty.sty()) {
-            (&TyKind::Slice(ref elem), &Slice(..)) => 
-                self.record_ty(ty.arg(0), elem),
-            (&TyKind::Array(ref elem, _), &Array(..)) => 
-                self.record_ty(ty.arg(0), elem),
-            (&TyKind::Ptr(ref mty), &RawPtr(..)) =>
-                self.record_ty(ty.arg(0), &mty.ty),
-            (&TyKind::Rptr(_, ref mty), &Ref(..)) =>
-                self.record_ty(ty.arg(0), &mty.ty),
+            (&TyKind::Slice(ref elem), &Slice(..)) => self.record_ty(ty.arg(0), elem),
+            (&TyKind::Array(ref elem, _), &Array(..)) => self.record_ty(ty.arg(0), elem),
+            (&TyKind::Ptr(ref mty), &RawPtr(..)) => self.record_ty(ty.arg(0), &mty.ty),
+            (&TyKind::Rptr(_, ref mty), &Ref(..)) => self.record_ty(ty.arg(0), &mty.ty),
             (&TyKind::BareFn(ref fn_ty), &FnPtr(..)) => {
                 assert!(ty.num_args() == fn_ty.decl.inputs.len() + 1);
                 for (i, arg) in fn_ty.decl.inputs.iter().enumerate() {
                     self.record_ty(ty.arg(i), &arg.ty);
                 }
                 self.record_function_ret_ty(ty.arg(fn_ty.decl.inputs.len()), &fn_ty.decl.output);
-            },
-            (&TyKind::Never, &Never) => {},
+            }
+            (&TyKind::Never, &Never) => {}
             (&TyKind::Tup(ref elems), &Tuple(..)) => {
                 for (i, ast_ty) in elems.iter().enumerate() {
                     self.record_ty(ty.arg(i), ast_ty);
                 }
-            },
+            }
             (&TyKind::Path(ref qself, ref path), _) => {
                 // TyKind::Path could resolve to absolutely anything, since resolution includes
                 // expanding type aliases.  So this case gets special handling.
                 self.record_path_ty(ty, qself.as_ref(), path);
-            },
-            (&TyKind::TraitObject(..), &Dynamic(..)) => {}, // TODO
+            }
+            (&TyKind::TraitObject(..), &Dynamic(..)) => {} // TODO
             // `Paren` should never appear, but just in case...
             (&TyKind::Paren(ref ast_ty), _) => self.record_ty(ty, ast_ty),
             // No case for TyTypeof - it can't be written in source programs currently
 
             // These cases have no internal structure to recurse on.
-            (&TyKind::Infer, _) => {},
-            (&TyKind::ImplicitSelf, _) => {},
-            (&TyKind::Mac(_), _) => {},
+            (&TyKind::Infer, _) => {}
+            (&TyKind::ImplicitSelf, _) => {}
+            (&TyKind::Mac(_), _) => {}
 
             (_, _) => {
-                panic!("unsupported AST/resolved type combination:\
-                        \n  ast: {:?}\
-                        \n  resolved: {:?}",
-                       ast_ty, ty);
-            },
+                panic!(
+                    "unsupported AST/resolved type combination:\
+                     \n  ast: {:?}\
+                     \n  resolved: {:?}",
+                    ast_ty, ty
+                );
+            }
         }
     }
 
     fn record_function_ret_ty(&mut self, ty: S::Type, output: &FunctionRetTy) {
         match *output {
-            FunctionRetTy::Default(_) => {},
+            FunctionRetTy::Default(_) => {}
             FunctionRetTy::Ty(ref ast_ty) => self.record_ty(ty, ast_ty),
         }
     }
@@ -124,32 +132,33 @@ impl<'a, 'tcx, S, F> TypeMapVisitor<'a, 'tcx, S, F>
 }
 
 impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
-        where S: TypeSource,
-              F: FnMut(&mut S, &Ty, S::Type) {
-
+where
+    S: TypeSource,
+    F: FnMut(&mut S, &Ty, S::Type),
+{
     // There are several places we can encounter `Ty` nodes, and each one has a different way of
     // obtaining the corresponding `LTy`.
-    
+
     fn visit_expr(&mut self, e: &'ast Expr) {
         match e.node {
             ExprKind::Cast(_, ref ast_ty) => {
                 if let Some(ty) = self.source.expr_type(e) {
                     self.record_ty(ty, ast_ty);
                 }
-            },
+            }
 
             ExprKind::Type(_, ref ast_ty) => {
                 if let Some(ty) = self.source.expr_type(e) {
                     self.record_ty(ty, ast_ty);
                 }
-            },
+            }
 
             ExprKind::Closure(_, _, _, ref decl, _, _) => {
                 let def_id = self.hir_map.local_def_id(e.id);
                 if let Some(sig) = self.source.closure_sig(def_id) {
                     self.record_fn_decl(sig, decl);
                 }
-            },
+            }
 
             ExprKind::Path(ref _qself, ref _path) => {
                 // TODO: Handle `ast::Ty`s appearing inside path segments' `parameters` field.
@@ -160,14 +169,14 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                 // those where some of the types are omitted - `T::<Foo>::f`, `T::f::<Bar>`, and
                 // `T::f` may all have substs `[Foo, Bar]` (based on inference results), and it's
                 // not obvious how many of the `substs` correspond to each position in the path.
-            },
+            }
 
             ExprKind::Struct(ref _path, _, _) => {
                 // TODO: Another case like `ExprKind::Path` - the path in the `Struct` can have
                 // type parameters given explicitly.
-            },
+            }
 
-            _ => {},
+            _ => {}
         }
 
         visit::walk_expr(self, e);
@@ -194,35 +203,34 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
-            },
+            }
 
             ItemKind::Const(ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
-            },
+            }
 
             ItemKind::Fn(ref decl, _, _, _) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
                     self.record_fn_decl(sig, decl);
                 }
-            },
+            }
 
             ItemKind::Ty(ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
-            },
+            }
 
             // Enum/Struct/Union are handled by `visit_struct_field`.
-
             ItemKind::Impl(_, _, _, _, _, ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
-            },
+            }
 
-            _ => {},
+            _ => {}
         }
 
         visit::walk_item(self, i);
@@ -244,21 +252,21 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
-            },
+            }
 
             ImplItemKind::Method(ref method_sig, _) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
                     self.record_fn_decl(sig, &method_sig.decl);
                 }
-            },
+            }
 
             ImplItemKind::Type(ref ast_ty) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
-            },
+            }
 
-            _ => {},
+            _ => {}
         }
 
         visit::walk_impl_item(self, i);
@@ -271,13 +279,13 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
-            },
+            }
 
             TraitItemKind::Method(ref method_sig, _) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
                     self.record_fn_decl(sig, &method_sig.decl);
                 }
-            },
+            }
 
             TraitItemKind::Type(_, ref opt_ast_ty) => {
                 if let Some(ref ast_ty) = *opt_ast_ty {
@@ -285,9 +293,9 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                         self.record_ty(ty, ast_ty);
                     }
                 }
-            },
+            }
 
-            _ => {},
+            _ => {}
         }
 
         visit::walk_trait_item(self, i);
@@ -300,15 +308,15 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
                 if let Some(sig) = self.source.fn_sig(def_id) {
                     self.record_fn_decl(sig, &decl);
                 }
-            },
+            }
 
             ForeignItemKind::Static(ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
-            },
-            ForeignItemKind::Ty => { },
-            ForeignItemKind::Macro (..) => { },
+            }
+            ForeignItemKind::Ty => {}
+            ForeignItemKind::Macro(..) => {}
         }
 
         visit::walk_foreign_item(self, i);
@@ -318,12 +326,15 @@ impl<'ast, 'a, 'tcx, S, F> Visitor<'ast> for TypeMapVisitor<'a, 'tcx, S, F>
 /// Try to match up `ast::Ty` nodes in the source with higher-level type representations provided
 /// by `source`.  The callback will be passed matching pairs of AST-level and higher-level type
 /// representations.
-pub fn map_types<'a, 'tcx, S, F>(hir_map: &'a hir::map::Map<'tcx>,
-                                 source: S,
-                                 krate: &Crate,
-                                 callback: F)
-        where S: TypeSource,
-              F: FnMut(&mut S, &Ty, S::Type) {
+pub fn map_types<'a, 'tcx, S, F>(
+    hir_map: &'a hir::map::Map<'tcx>,
+    source: S,
+    krate: &Crate,
+    callback: F,
+) where
+    S: TypeSource,
+    F: FnMut(&mut S, &Ty, S::Type),
+{
     let mut v = TypeMapVisitor {
         hir_map: hir_map,
         source: source,

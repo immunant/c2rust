@@ -20,10 +20,10 @@ use std::u32;
 
 use arena::SyncDroplessArena;
 use rustc::hir;
-use rustc::hir::Node;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
+use rustc::hir::Node;
 use rustc::ty::TyCtxt;
-use rustc_data_structures::indexed_vec::{IndexVec, Idx};
+use rustc_data_structures::indexed_vec::{Idx, IndexVec};
 use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -31,31 +31,29 @@ use crate::command::CommandState;
 use crate::type_map;
 use crate::RefactorCtxt;
 
-
+mod annot;
 pub mod constraint;
 mod context;
-mod annot;
-mod intra;
-mod inter;
-mod mono;
 mod inst;
+mod inter;
+mod intra;
+mod mono;
 /*
 mod mono_filter;
 */
 mod debug;
 
+use self::annot::{handle_attrs, handle_marks};
 use self::constraint::*;
 use self::context::Ctxt;
-use self::annot::{handle_marks, handle_attrs};
-use self::intra::IntraCtxt;
-use self::inter::InterCtxt;
-use self::mono::compute_all_mono_sigs;
 use self::inst::find_instantiations;
+use self::inter::InterCtxt;
+use self::intra::IntraCtxt;
+use self::mono::compute_all_mono_sigs;
 /*
 use self::mono_filter::filter_suspicious_monos;
 */
 use self::debug::*;
-
 
 /// A variable index.
 ///
@@ -117,8 +115,9 @@ pub enum ConcretePerm {
     Move,
 }
 
-
-impl<'lty, 'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'lty, 'tcx, L>> for FnSig<'lty, 'tcx, L> {
+impl<'lty, 'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'lty, 'tcx, L>>
+    for FnSig<'lty, 'tcx, L>
+{
     fn num_inputs(&self) -> usize {
         self.inputs.len()
     }
@@ -131,7 +130,6 @@ impl<'lty, 'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'lty, 'tcx, L>> fo
         self.output
     }
 }
-
 
 /// Check if a definition is a `fn` item of some sort.  Note that this does not return true on
 /// closures.
@@ -164,9 +162,11 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
 
 /// Run the intraprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
-fn analyze_intra<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
-                                 hir_map: &hir::map::Map<'tcx>,
-                                 tcx: TyCtxt<'a, 'tcx, 'tcx>) {
+fn analyze_intra<'a, 'tcx, 'lty>(
+    cx: &mut Ctxt<'lty, 'a, 'tcx>,
+    hir_map: &hir::map::Map<'tcx>,
+    tcx: TyCtxt<'a, 'tcx, 'tcx>,
+) {
     for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
         // We currently don't process `static` bodies, even though they do have MIR.
         if !is_fn(hir_map, def_id) {
@@ -217,7 +217,6 @@ pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
     // Convert results to a more usable format.
     cx.into()
 }
-
 
 /// A type where pointers are labeled with variables.
 pub type VTy<'lty, 'tcx> = LabeledTy<'lty, 'tcx, Option<Var>>;
@@ -335,7 +334,6 @@ impl<'lty, 'tcx> AnalysisResult<'lty, 'tcx> {
     }
 }
 
-
 impl<'lty, 'a, 'tcx> From<Ctxt<'lty, 'a, 'tcx>> for AnalysisResult<'lty, 'tcx> {
     /// Extract the useful information from the `Ctxt`, and collect it into an `AnalysisResult`.
     fn from(cx: Ctxt<'lty, 'a, 'tcx>) -> AnalysisResult<'lty, 'tcx> {
@@ -378,37 +376,45 @@ impl<'lty, 'a, 'tcx> From<Ctxt<'lty, 'a, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 }
             };
 
-            let variant_ids =
-                if func.variant_ids.len() == 1 { None }
-            else { Some(func.variant_ids.clone()) };
+            let variant_ids = if func.variant_ids.len() == 1 {
+                None
+            } else {
+                Some(func.variant_ids.clone())
+            };
 
-            funcs.insert(def_id, FunctionResult {
-                sig: sig,
-                num_sig_vars: func.num_sig_vars,
-                cset: func.sig_cset.clone(),
-                variants: variant_ids,
-                num_monos: func.num_monos,
-            });
-
+            funcs.insert(
+                def_id,
+                FunctionResult {
+                    sig: sig,
+                    num_sig_vars: func.num_sig_vars,
+                    cset: func.sig_cset.clone(),
+                    variants: variant_ids,
+                    num_monos: func.num_monos,
+                },
+            );
 
             // func variants
 
             for (idx, &var_id) in func.variant_ids.iter().enumerate() {
                 let variant = cx.get_variant_summ(var_id);
-                let func_refs = variant.insts.iter().map(|inst| {
-                    FuncRef {
+                let func_refs = variant
+                    .insts
+                    .iter()
+                    .map(|inst| FuncRef {
                         def_id: inst.callee,
                         span: inst.span,
-                    }
-                }).collect();
+                    })
+                    .collect();
 
-                variants.insert(var_id, VariantResult {
-                    func_id: def_id,
-                    index: idx,
-                    func_refs: func_refs,
-                });
+                variants.insert(
+                    var_id,
+                    VariantResult {
+                        func_id: def_id,
+                        index: idx,
+                        func_refs: func_refs,
+                    },
+                );
             }
-
 
             // func monos
 
@@ -430,13 +436,15 @@ impl<'lty, 'a, 'tcx> From<Ctxt<'lty, 'a, 'tcx>> for AnalysisResult<'lty, 'tcx> {
 
                 // Guess a suffix for each mono depending on its output types.  Automatic suffixes look
                 // like "", "mut", "take", "2", "mut3", "take4", etc.
-                for idx in 0 .. func.num_monos {
+                for idx in 0..func.num_monos {
                     let mono = cx.get_mono_summ(def_id, idx);
 
-                    let max_perm = is_output.iter_enumerated()
+                    let max_perm = is_output
+                        .iter_enumerated()
                         .filter(|&(_, &out)| out)
                         .map(|(v, _)| mono.assign[v])
-                        .max().unwrap_or(ConcretePerm::Read);
+                        .max()
+                        .unwrap_or(ConcretePerm::Read);
 
                     let idx = max_perm as usize;
                     suffix_count[idx] += 1;
@@ -449,30 +457,40 @@ impl<'lty, 'a, 'tcx> From<Ctxt<'lty, 'a, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 }
             }
 
-            for idx in 0 .. func.num_monos {
+            for idx in 0..func.num_monos {
                 let mono = cx.get_mono_summ(def_id, idx);
 
-                let suffix = 
-                    if func.monos_provided { mono.suffix.clone() }
-                else { suffixes[idx].clone() };
+                let suffix = if func.monos_provided {
+                    mono.suffix.clone()
+                } else {
+                    suffixes[idx].clone()
+                };
 
-                monos.insert((def_id, idx), MonoResult {
-                    suffix: suffix,
-                    assign: mono.assign.clone(),
-                    callee_mono_idxs: mono.callee_mono_idxs.clone(),
-                });
+                monos.insert(
+                    (def_id, idx),
+                    MonoResult {
+                        suffix: suffix,
+                        assign: mono.assign.clone(),
+                        callee_mono_idxs: mono.callee_mono_idxs.clone(),
+                    },
+                );
             }
         }
 
         let Ctxt { arena, .. } = cx;
-        
-        AnalysisResult { statics, funcs, variants, monos, arena }
+
+        AnalysisResult {
+            statics,
+            funcs,
+            variants,
+            monos,
+            arena,
+        }
     }
 }
 
 /// Print the analysis results to stderr, for debugging.
-pub fn dump_results(dcx: &RefactorCtxt,
-                    results: &AnalysisResult) {
+pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
     eprintln!("\n === summary ===");
 
     let arena = SyncDroplessArena::default();
@@ -513,8 +531,12 @@ pub fn dump_results(dcx: &RefactorCtxt,
 
                 for (j, func_ref) in vr.func_refs.iter().enumerate() {
                     let callee_fr = &results.funcs[&func_ref.def_id];
-                    eprintln!("    call #{}: {:?} :: {:?}",
-                              j, path_str(func_ref.def_id), callee_fr.sig);
+                    eprintln!(
+                        "    call #{}: {:?} :: {:?}",
+                        j,
+                        path_str(func_ref.def_id),
+                        callee_fr.sig
+                    );
                     eprintln!("      (at {:?})", func_ref.span);
                 }
             }
@@ -524,26 +546,45 @@ pub fn dump_results(dcx: &RefactorCtxt,
 
             for (j, func_ref) in vr.func_refs.iter().enumerate() {
                 let callee_fr = &results.funcs[&func_ref.def_id];
-                eprintln!("    call #{}: {:?} :: {:?}",
-                          j, path_str(func_ref.def_id), callee_fr.sig);
+                eprintln!(
+                    "    call #{}: {:?} :: {:?}",
+                    j,
+                    path_str(func_ref.def_id),
+                    callee_fr.sig
+                );
                 eprintln!("      (at {:?})", func_ref.span);
             }
         }
 
-        for i in 0 .. fr.num_monos {
+        for i in 0..fr.num_monos {
             let mr = &results.monos[&(id, i)];
 
             let var_id = fr.variants.as_ref().map_or(id, |vars| vars[i]);
             let vr = &results.variants[&var_id];
 
-            eprintln!("  mono #{} ({:?}): {}", i, mr.suffix, format_sig(fr.sig, &mr.assign));
-            for (j, (func_ref, &mono_idx)) in
-                    vr.func_refs.iter().zip(mr.callee_mono_idxs.iter()).enumerate() {
+            eprintln!(
+                "  mono #{} ({:?}): {}",
+                i,
+                mr.suffix,
+                format_sig(fr.sig, &mr.assign)
+            );
+            for (j, (func_ref, &mono_idx)) in vr
+                .func_refs
+                .iter()
+                .zip(mr.callee_mono_idxs.iter())
+                .enumerate()
+            {
                 let callee_fr = &results.funcs[&func_ref.def_id];
-                eprintln!("    call #{}: {:?} #{} :: {}",
-                          j, path_str(func_ref.def_id), mono_idx,
-                          format_sig(callee_fr.sig,
-                                     &results.monos[&(func_ref.def_id, mono_idx)].assign));
+                eprintln!(
+                    "    call #{}: {:?} #{} :: {}",
+                    j,
+                    path_str(func_ref.def_id),
+                    mono_idx,
+                    format_sig(
+                        callee_fr.sig,
+                        &results.monos[&(func_ref.def_id, mono_idx)].assign
+                    )
+                );
                 eprintln!("      (at {:?})", func_ref.span);
             }
         }

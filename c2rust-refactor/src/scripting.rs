@@ -178,12 +178,14 @@ impl UserData for RefactorState {
                 let res: LuaResult<ast::Crate> = lua_ctx.scope(|scope| {
                     let krate = transform.intern(st.krate().clone());
                     let transform_data = scope.create_nonstatic_userdata(transform.clone())?;
-                    let krate: LuaAstNode = callback.call::<_, LuaAstNode>((transform_data, krate))?;
+                    let krate: LuaAstNode =
+                        callback.call::<_, LuaAstNode>((transform_data, krate))?;
                     Ok(ast::Crate::try_from(transform.remove_ast(krate)).unwrap())
                 });
                 let new_krate = res.unwrap_or_else(|e| panic!("Could not run transform: {:#?}", e));
                 *st.krate_mut() = new_krate;
-            }).map_err(|e| LuaError::external(format!("Failed to run compiler: {:#?}", e)))?;
+            })
+            .map_err(|e| LuaError::external(format!("Failed to run compiler: {:#?}", e)))?;
             this.save_crate();
             Ok(())
         });
@@ -524,7 +526,8 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                     let pat = mcx.parse_stmts(&pat);
                     mut_visit_match_with(mcx, pat, krate, |pat, _mcx| {
                         let i = f.call::<_, LuaAstNode>(this.intern(pat.clone())).unwrap();
-                        *pat = this.nodes
+                        *pat = this
+                            .nodes
                             .borrow_mut()
                             .remove(i)
                             .unwrap()
@@ -548,7 +551,8 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                     let pat = mcx.parse_expr(&pat);
                     mut_visit_match_with(mcx, pat, krate, |pat, _mcx| {
                         let i = f.call::<_, LuaAstNode>(this.intern(pat.clone())).unwrap();
-                        *pat = this.nodes
+                        *pat = this
+                            .nodes
                             .borrow_mut()
                             .remove(i)
                             .unwrap()

@@ -3,15 +3,17 @@ use rustc::hir::def_id::DefId;
 use rustc::hir::map as hir_map;
 use rustc::hir::{self, Node};
 use rustc::session::Session;
-use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc::ty::subst::InternalSubsts;
+use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_metadata::cstore::CStore;
-use syntax::ast::{self, Expr, ExprKind, FnDecl, FunctionRetTy, Item, NodeId, Path, QSelf, DUMMY_NODE_ID};
+use syntax::ast::{
+    self, Expr, ExprKind, FnDecl, FunctionRetTy, Item, NodeId, Path, QSelf, DUMMY_NODE_ID,
+};
 use syntax::ptr::P;
 
-use c2rust_ast_builder::mk;
 use crate::ast_manip::AstEquiv;
 use crate::reflect;
+use c2rust_ast_builder::mk;
 
 /// Driver context.  Contains all available analysis results as of the current compiler phase.
 ///
@@ -32,10 +34,14 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         map: Option<&'a hir_map::Map<'tcx>>,
         tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
     ) -> Self {
-        Self {sess, cstore, map, tcx}
+        Self {
+            sess,
+            cstore,
+            map,
+            tcx,
+        }
     }
 }
-
 
 // Core RefactorCtxt accessors
 impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
@@ -43,7 +49,9 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         self.sess
     }
 
-    pub fn cstore(&self) -> &'a CStore { self.cstore }
+    pub fn cstore(&self) -> &'a CStore {
+        self.cstore
+    }
 
     pub fn hir_map(&self) -> &'a hir_map::Map<'tcx> {
         self.map
@@ -96,7 +104,11 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         }
         let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
-        if let Some(adj) = tables.adjustments().get(hir_id).and_then(|adjs| adjs.last()) {
+        if let Some(adj) = tables
+            .adjustments()
+            .get(hir_id)
+            .and_then(|adjs| adjs.last())
+        {
             Some(adj.target)
         } else {
             tables.node_type_opt(hir_id)
@@ -128,44 +140,43 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 
     pub fn def_to_hir_id(&self, def: &hir::def::Def) -> Option<hir::HirId> {
         match def {
-            Def::Mod(did) |
-            Def::Struct(did) |
-            Def::Union(did) |
-            Def::Enum(did) |
-            Def::Variant(did) |
-            Def::Trait(did) |
-            Def::Existential(did) |
-            Def::TyAlias(did) |
-            Def::ForeignTy(did) |
-            Def::AssociatedTy(did) |
-            Def::AssociatedExistential(did) |
-            Def::TyParam(did) |
-            Def::Fn(did) |
-            Def::Const(did) |
-            Def::ConstParam(did) |
-            Def::Static(did, _) |
-            Def::Ctor(did, ..) |
-            Def::SelfCtor(did) |
-            Def::Method(did) |
-            Def::AssociatedConst(did) |
-            Def::Macro(did, _) |
-            Def::TraitAlias(did) =>
+            Def::Mod(did)
+            | Def::Struct(did)
+            | Def::Union(did)
+            | Def::Enum(did)
+            | Def::Variant(did)
+            | Def::Trait(did)
+            | Def::Existential(did)
+            | Def::TyAlias(did)
+            | Def::ForeignTy(did)
+            | Def::AssociatedTy(did)
+            | Def::AssociatedExistential(did)
+            | Def::TyParam(did)
+            | Def::Fn(did)
+            | Def::Const(did)
+            | Def::ConstParam(did)
+            | Def::Static(did, _)
+            | Def::Ctor(did, ..)
+            | Def::SelfCtor(did)
+            | Def::Method(did)
+            | Def::AssociatedConst(did)
+            | Def::Macro(did, _)
+            | Def::TraitAlias(did) => {
                 if did.is_local() {
                     Some(self.hir_map().local_def_id_to_hir_id(did.to_local()))
                 } else {
                     None
-                },
+                }
+            }
 
             // Local variables stopped having DefIds at some point and switched to NodeId
-            Def::Local(node) |
-            Def::Upvar(node, _, _) |
-            Def::Label(node) => Some(self.hir_map().node_to_hir_id(*node)),
+            Def::Local(node) | Def::Upvar(node, _, _) | Def::Label(node) => {
+                Some(self.hir_map().node_to_hir_id(*node))
+            }
 
-            Def::PrimTy(_) |
-            Def::SelfTy(_, _) |
-            Def::ToolMod |
-            Def::NonMacroAttr(_) |
-            Def::Err => None
+            Def::PrimTy(_) | Def::SelfTy(_, _) | Def::ToolMod | Def::NonMacroAttr(_) | Def::Err => {
+                None
+            }
         }
     }
 
@@ -239,7 +250,6 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         self.opt_callee(e).expect("callee: expr is not a call")
     }
 
-
     pub fn opt_callee_info(&self, e: &Expr) -> Option<CalleeInfo<'tcx>> {
         if e.id == DUMMY_NODE_ID {
             return None;
@@ -273,15 +283,17 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
                 // We detect this case by the presence of a type-dependent def on the Call.
                 if let Some(func_def) = tables.type_dependent_defs().get(call_hir_id) {
                     if !matches!([func_def] Def::Fn(..), Def::Method(..)) {
-                        warn!("overloaded call dispatches to non-fnlike def {:?}", func_def);
+                        warn!(
+                            "overloaded call dispatches to non-fnlike def {:?}",
+                            func_def
+                        );
                         return None;
                     }
                     let func_def_id = func_def.def_id();
                     def_id = Some(func_def_id);
                     poly_sig = tcx.fn_sig(func_def_id);
                     substs = tables.node_substs_opt(call_hir_id);
-                    // TODO: adjust for rust-call ABI
-
+                // TODO: adjust for rust-call ABI
                 } else {
                     let func_hir = expect!([hir_map.find(func.id)] Some(hir::Node::Expr(e)) => e);
 
@@ -291,11 +303,12 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
                     //
                     // We use the adjusted type here in case an `&fn()` got auto-derefed in order
                     // to make the call.
-                    if let Some(&TyKind::FnPtr(sig)) = tables.expr_ty_adjusted_opt(func_hir)
-                            .map(|ty| &ty.sty) {
+                    if let Some(&TyKind::FnPtr(sig)) =
+                        tables.expr_ty_adjusted_opt(func_hir).map(|ty| &ty.sty)
+                    {
                         poly_sig = sig;
-                        // No substs.  fn ptrs can't be generic over anything but late-bound
-                        // regions, and late-bound regions don't show up in the substs.
+                    // No substs.  fn ptrs can't be generic over anything but late-bound
+                    // regions, and late-bound regions don't show up in the substs.
 
                     // (3) Type-dependent function (`S::f()`).  Unlike the next case, these don't
                     // get fully resolved until typeck, so the results are recorded differently.
@@ -314,14 +327,13 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
                         def_id = Some(func_def_id);
                         poly_sig = tcx.fn_sig(func_def_id);
                         substs = tables.node_substs_opt(func_hir_id);
-
                     } else {
                         // Failed to resolve.  Probably a really bad type error somewhere.
                         warn!("failed to resolve call expr {:?}", e);
                         return None;
                     }
                 }
-            },
+            }
 
             ExprKind::MethodCall(..) => {
                 // These cases are much simpler - just get the method definition from
@@ -339,7 +351,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
                 } else {
                     return None;
                 }
-            },
+            }
 
             _ => return None,
         }
@@ -351,7 +363,12 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
             tcx.normalize_erasing_regions(ParamEnv::empty(), unsubst_fn_sig)
         };
 
-        Some(CalleeInfo { fn_sig, poly_sig, def_id, substs })
+        Some(CalleeInfo {
+            fn_sig,
+            poly_sig,
+            def_id,
+            substs,
+        })
     }
 
     pub fn opt_callee_fn_sig(&self, e: &Expr) -> Option<FnSig<'tcx>> {
@@ -429,7 +446,8 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 
             (Use(_), Use(_)) => panic!("We should have already handled the use statement case"),
 
-            (Struct(variant1, _), Struct(variant2, _)) | (Union(variant1, _), Union(variant2, _)) => {
+            (Struct(variant1, _), Struct(variant2, _))
+            | (Union(variant1, _), Union(variant2, _)) => {
                 let mut fields = variant1.fields().iter().zip(variant2.fields().iter());
                 fields.all(|(field1, field2)| self.structural_eq_tys(&field1.ty, &field2.ty))
             }

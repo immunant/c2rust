@@ -23,10 +23,10 @@ pub use self::get_node_id::{GetNodeId, MaybeGetNodeId};
 pub use self::get_span::GetSpan;
 pub use self::list_node_ids::ListNodeIds;
 pub use self::output_exprs::fold_output_exprs;
+pub use self::remove_paren::remove_paren;
 pub use self::seq_edit::{fold_blocks, fold_modules};
 pub use self::visit::Visit;
-pub use self::visit_node::{VisitNode, visit_nodes, visit_nodes_post};
-pub use self::remove_paren::remove_paren;
+pub use self::visit_node::{visit_nodes, visit_nodes_post, VisitNode};
 
 // Modules with more complex APIs are left as `pub`.
 pub mod ast_map;

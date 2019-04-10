@@ -1,8 +1,8 @@
 #![feature(rustc_private)]
 #![feature(label_break_value)]
 extern crate dtoa;
-extern crate rustc_target;
 extern crate rustc_data_structures;
+extern crate rustc_target;
 extern crate serde_cbor;
 extern crate syntax;
 extern crate syntax_pos;
@@ -33,17 +33,17 @@ mod diagnostics;
 pub mod build_files;
 pub mod c_ast;
 pub mod cfg;
+mod compile_cmds;
 pub mod convert_type;
 pub mod renamer;
 pub mod rust_ast;
 pub mod translator;
 pub mod with_stmts;
-mod compile_cmds;
 
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::prelude::*;
 use std::io;
+use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -55,8 +55,8 @@ use c_ast::Printer;
 use c_ast::*;
 pub use diagnostics::Diagnostic;
 
-use build_files::{get_build_dir, emit_build_files};
-use compile_cmds::{get_compile_commands};
+use build_files::{emit_build_files, get_build_dir};
+use compile_cmds::get_compile_commands;
 use std::prelude::v1::Vec;
 pub use translator::ReplaceMode;
 
@@ -109,28 +109,21 @@ pub struct TranspilerConfig {
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
     diagnostics::init(tcfg.enabled_warnings.clone());
 
-    let cmds = get_compile_commands(cc_db, &tcfg.filter)
-        .expect(&format!("Could not parse compile commands from {}",
-                cc_db.to_string_lossy()
+    let cmds = get_compile_commands(cc_db, &tcfg.filter).expect(&format!(
+        "Could not parse compile commands from {}",
+        cc_db.to_string_lossy()
     ));
-
 
     // we may need to specify path to system include dir on macOS
     let clang_args: Vec<String> = get_isystem_args();
-    let mut clang_args: Vec<&str> = clang_args
-        .iter()
-        .map(AsRef::as_ref)
-        .collect();
+    let mut clang_args: Vec<&str> = clang_args.iter().map(AsRef::as_ref).collect();
     clang_args.extend_from_slice(extra_clang_args);
 
     let modules = cmds
         .iter()
-        .filter_map(|cmd|
-            transpile_single(
-                &tcfg,
-                cmd.abs_file().as_path(),
-                cc_db,
-                extra_clang_args))
+        .filter_map(|cmd| {
+            transpile_single(&tcfg, cmd.abs_file().as_path(), cc_db, extra_clang_args)
+        })
         .collect::<Vec<PathBuf>>();
 
     if tcfg.emit_build_files {
@@ -139,10 +132,9 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         // We only run the reorganization refactoring if we emitted a fresh crate file
         if let Some(output_file) = crate_file {
             if tcfg.reorganize_definitions {
-                reorganize_definitions(&build_dir, &output_file)
-                    .unwrap_or_else(|e| {
-                        warn!("Failed to reorganize definitions. {}", e.as_fail());
-                    })
+                reorganize_definitions(&build_dir, &output_file).unwrap_or_else(|e| {
+                    warn!("Failed to reorganize definitions. {}", e.as_fail());
+                })
             }
         }
     }
@@ -156,7 +148,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 /// It is possible to install a package which puts the headers in
 /// `/usr/include` but the user doesn't have to since we can find
 /// the system headers we need by running `xcrun --show-sdk-path`.
-fn get_isystem_args() -> Vec<String>  {
+fn get_isystem_args() -> Vec<String> {
     let mut args = vec![];
     if cfg!(target_os = "macos") {
         let usr_incl = Path::new("/usr/include");
@@ -199,7 +191,13 @@ fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) -> Result<(), Erro
         .unwrap()
         .to_str()
         .unwrap();
-    let args = ["--rewrite-mode", "inplace", "reorganize_definitions", "--", crate_path];
+    let args = [
+        "--rewrite-mode",
+        "inplace",
+        "reorganize_definitions",
+        "--",
+        crate_path,
+    ];
     let status = process::Command::new(cmd_path.into_os_string())
         .args(&args)
         .current_dir(build_dir)
@@ -234,7 +232,6 @@ fn transpile_single(
     cc_db: &Path,
     extra_clang_args: &[&str],
 ) -> Option<PathBuf> {
-
     let output_path = get_output_path(tcfg, input_path);
     if output_path.exists() && !tcfg.overwrite_existing {
         println!("Skipping existing file {}", output_path.display());
@@ -296,10 +293,7 @@ fn transpile_single(
     Some(output_path)
 }
 
-fn get_output_path(
-    tcfg: &TranspilerConfig,
-    input_path: &Path,
-) -> PathBuf {
+fn get_output_path(tcfg: &TranspilerConfig, input_path: &Path) -> PathBuf {
     let mut path_buf = PathBuf::from(input_path);
 
     // When an output file name is not explictly specified, we should convert files
