@@ -1,12 +1,12 @@
 # C2Rust-Bitfields Crate
 
-C2Rust-Bitfields enables you to write structs containing bitfields. It has three primary goals:
+This crate is used to generate structs with bitfields in [c2rust](https://www.github.com/immunant/c2rust) translations. It has three primary goals:
 
 * Byte compatibility with equivalent C bitfield structs
 * The ability to take references/pointers to non bitfield fields
 * Provide methods to read from and write to bitfields
 
-We currently provides a single custom derive, `BitfieldStruct`, as well as a dependent field attribute `bitfield`.
+We currently provide a single custom derive, `BitfieldStruct`, as well as a dependent field attribute `bitfield`.
 
 ## Requirements
 

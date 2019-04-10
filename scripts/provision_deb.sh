@@ -43,7 +43,8 @@ apt-get install -qq clang-6.0 libclang-6.0-dev
 source /etc/os-release
 # Debian jessie ships with a version of cmake that is too old
 if [ "$VERSION" == "8 (jessie)" ]; then
-    echo "deb http://ftp.debian.org/debian jessie-backports main" >> /etc/apt/sources.list
+    echo "deb http://archive.debian.org/debian jessie-backports main" >> /etc/apt/sources.list
+	echo "Acquire::Check-Valid-Until "false";" >> /etc/apt/apt.conf
     apt-get update -qq
     apt-get -t jessie-backports install -y --no-install-recommends cmake
 fi

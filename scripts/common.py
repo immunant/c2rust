@@ -99,6 +99,9 @@ class Config:
     # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
     # CUSTOM_RUST_RUSTC_VERSION = "rustc 1.32.0-nightly (21f268495 2018-12-02)"
 
+    """
+    Reflect changes to all configuration variables that depend on LLVM_VER
+    """
     def _init_llvm_ver_deps(self):
         self.LLVM_ARCHIVE_URLS = [s.format(ver=self.LLVM_VER)
                                   for s in Config.LLVM_ARCHIVE_URLS]
@@ -109,6 +112,20 @@ class Config:
                                   for s in self.LLVM_ARCHIVE_FILES]
         self.LLVM_ARCHIVE_FILES = [os.path.join(Config.BUILD_DIR, s)
                                    for s in self.LLVM_ARCHIVE_FILES]
+        self.LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=self.LLVM_VER)
+        self.LLVM_PUBKEY = os.path.join(self.ROOT_DIR, self.LLVM_PUBKEY)
+        self.LLVM_SRC = os.path.join(self.BUILD_DIR, 'llvm-{ver}/src'.format(ver=self.LLVM_VER))
+        self.LLVM_CFG_DIR = os.path.join(self.LLVM_SRC, 'cmake/modules')
+        self.LLVM_BLD = os.path.join(
+            self.BUILD_DIR,
+            'llvm-{ver}/build'.format(ver=self.LLVM_VER))
+        self.LLVM_INSTALL = os.path.join(
+            self.BUILD_DIR,
+            'llvm-{ver}/install'.format(ver=self.LLVM_VER))
+        self.LLVM_BIN = os.path.join(self.LLVM_INSTALL, 'bin')
+        self.CLANG_XCHECK_PLUGIN_BLD = os.path.join(
+            self.BUILD_DIR,
+            'clang-xcheck-plugin')
 
     def __init__(self):
         self._init_llvm_ver_deps()
