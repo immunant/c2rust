@@ -8,9 +8,9 @@
 #ifndef ExportResult_hpp
 #define ExportResult_hpp
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <algorithm>
 
 struct ExportResult {
     std::size_t entries;
@@ -19,14 +19,14 @@ struct ExportResult {
     std::size_t *sizes;
 
     ExportResult();
-    ExportResult(ExportResult const&) = delete;
-    ExportResult& operator=(ExportResult const&) = delete;
+    ExportResult(ExportResult const &) = delete;
+    ExportResult &operator=(ExportResult const &) = delete;
 
     ~ExportResult();
 
     void resize(std::size_t n);
 
-private:
+  private:
     void deallocate();
 };
 
