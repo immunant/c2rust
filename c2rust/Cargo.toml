@@ -10,7 +10,7 @@ edition = "2018"
 
 
 [dependencies]
-clap = {version = "~2.32.0", features = ["yaml"]}
+clap = {version = "2.33", features = ["yaml"]}
 log = "0.4.0"
 env_logger = "0.6.0"
 regex = "1"
