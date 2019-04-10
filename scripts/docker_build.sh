@@ -15,6 +15,14 @@ REPO_NAME=immunant/c2rust
 DATE_TAG=$(date +'%Y%m%d')
 SCRIPT_DIR="$(dirname "$0")"
 
+declare -A IMAGES
+IMAGES["ubuntu:bionic"]="provision_deb.sh"
+IMAGES["ubuntu:xenial"]="provision_deb.sh"
+IMAGES["debian:stretch"]="provision_deb.sh"
+IMAGES["debian:jessie"]="provision_deb.sh"
+IMAGES["archlinux/base"]="provision_arch.sh"
+IMAGES["fedora:29"]="provision_yum.sh"
+
 build_image() {
     BASE_IMAGE=${1}
     IMAGE_TAG=$(echo ${BASE_IMAGE} | tr -s :/ - ) # replace colons and slashes with hyphens
@@ -29,6 +37,7 @@ build_image() {
     RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain"
     RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')
 
+    docker pull "$BASE_IMAGE"
     docker build -f $SCRIPT_DIR/../docker/Dockerfile \
            --build-arg BASE_IMAGE=$BASE_IMAGE \
            --build-arg PROVISION_SCRIPT=$PROVISION_SCRIPT \
@@ -40,42 +49,29 @@ build_image() {
            $SCRIPT_DIR
 }
 
-case "$1" in
-    ubuntu-bionic)
-        build_image ubuntu:bionic provision_deb.sh
-        ;;
+if [ "$1" == "" ]; then
+        options=$(echo "${!IMAGES[@]}" | tr -s '[:blank:]' '|')
 
-    ubuntu-xenial)
-        build_image ubuntu:xenial provision_deb.sh
-        ;;
-
-    fedora-29)
-        build_image fedora:29 provision_yum.sh
-        ;;
-
-    debian-stretch)
-        build_image debian:stretch provision_deb.sh
-        ;;
-
-    debian-jessie)
-        build_image debian:jessie provision_deb.sh
-        ;;
-
-    archlinux-base)
-        build_image archlinux/base provision_arch.sh
-        ;;
-
-    all)
-        build_image ubuntu:bionic provision_deb.sh
-        build_image ubuntu:xenial provision_deb.sh
-        build_image fedora:29 provision_yum.sh
-        build_image debian:jessie provision_deb.sh
-        build_image debian:stretch provision_deb.sh
-        build_image archlinux/base provision_arch.sh
-        ;;
-
-    *)
-        echo $"Usage: $0 {ubuntu-bionic|ubuntu-xenial|fedora-29|debian-stretch|debian-jessie|archlinux-base|all}"
+        echo $"Usage: $0 {${options}|build-all|push-all}"
         exit 1
+fi        
 
-esac
+if [ "${IMAGES[$1]}" != "" ]; then
+        build_image "$1" ${IMAGES["$1"]}
+else
+    case "$1" in
+        build-all)
+            for image in "${!IMAGES[@]}"; do
+                build_image "${image}" ${IMAGES["${image}"]}
+            done
+            ;;
+
+        push-all)
+            for image in "${!IMAGES[@]}"; do
+                IMAGE_TAG=$(echo ${image} | tr -s :/ - ) # replace colons and slashes with hyphens
+                docker push "$REPO_NAME:$IMAGE_TAG-$DATE_TAG"
+                docker push "$REPO_NAME:$IMAGE_TAG-latest"
+            done
+            ;;
+    esac
+fi

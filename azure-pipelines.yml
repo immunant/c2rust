@@ -22,7 +22,7 @@ jobs:
   strategy:
     matrix:
       arch:
-        containerImage: immunant/c2rust:base-archlinux-latest
+        containerImage: immunant/c2rust:archlinux-base-latest
       debian8:
         containerImage: immunant/c2rust:debian-jessie-latest
       debian9:
