@@ -42,7 +42,7 @@ impl<'c> Translation<'c> {
                 if ctx.is_unused() {
                     let out_val = mem::replace(
                         &mut out.val,
-                        self.panic("Binary expression is not supposed to be used"),
+                        self.panic_or_err("Binary expression is not supposed to be used"),
                     );
                     out.stmts.push(mk().semi_stmt(out_val));
                 }
@@ -59,7 +59,7 @@ impl<'c> Translation<'c> {
                 if ctx.is_unused() {
                     let out_val = mem::replace(
                         &mut out.val,
-                        self.panic("Binary expression is not supposed to be used"),
+                        self.panic_or_err("Binary expression is not supposed to be used"),
                     );
                     out.stmts.push(mk().semi_stmt(out_val));
                 }
@@ -124,7 +124,7 @@ impl<'c> Translation<'c> {
 
                     Ok(WithStmts {
                         stmts,
-                        val: self.panic("Binary expression is not supposed to be used"),
+                        val: self.panic_or_err("Binary expression is not supposed to be used"),
                     })
                 } else {
                     let WithStmts {
@@ -319,7 +319,7 @@ impl<'c> Translation<'c> {
             } = self.name_reference_write(ctx, lhs)?;
             (
                 write,
-                self.panic("Volatile value is not supposed to be read"),
+                self.panic_or_err("Volatile value is not supposed to be read"),
                 lhs_stmts,
             )
         };

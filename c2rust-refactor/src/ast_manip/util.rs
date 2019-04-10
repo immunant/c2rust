@@ -5,7 +5,7 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::symbol::{Symbol, keywords};
-use syntax::tokenstream::{TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenStream};
 
 use super::AstEquiv;
 
@@ -79,7 +79,7 @@ impl PatternSymbol for Ty {
 
 impl PatternSymbol for Mac {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        if self.node.tts != ThinTokenStream::from(TokenStream::empty()) {
+        if self.node.tts != TokenStream::empty() {
             return None;
         }
         self.node.path.pattern_symbol()
@@ -203,7 +203,7 @@ pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
 /// Is a path relative to the current module?
 pub fn is_relative_path(path: &Path) -> bool {
     !path.segments.is_empty()
-        && (path.segments[0].ident.name == keywords::SelfValue.name()
+        && (path.segments[0].ident.name == keywords::SelfLower.name()
             || path.segments[0].ident.name == keywords::Super.name())
 }
 
@@ -229,7 +229,7 @@ pub fn namespace(def: &Def) -> Option<Namespace> {
         | SelfTy(..)
         | ToolMod => Some(Namespace::TypeNS),
 
-        Fn(..) | Const(..) | Static(..) | StructCtor(..) | VariantCtor(..) | SelfCtor(..)
+        Fn(..) | Const(..) | Static(..) | SelfCtor(..)
         | Method(..) | AssociatedConst(..) | Local(..) | Upvar(..) | Label(..) => {
             Some(Namespace::ValueNS)
         }

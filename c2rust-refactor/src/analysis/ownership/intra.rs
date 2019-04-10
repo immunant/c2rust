@@ -2,7 +2,6 @@
 
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
-use rustc::mir::tcx::PlaceTy;
 use rustc::ty::{Ty, TyKind};
 use rustc_data_structures::indexed_vec::IndexVec;
 use rustc_target::abi::VariantIdx;
@@ -15,7 +14,7 @@ use super::context::{Ctxt, Instantiation};
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Label<'tcx> {
+enum Label<'lty> {
     /// Most `TyKind` get no constructor.
     None,
 
@@ -24,7 +23,7 @@ enum Label<'tcx> {
     /// Note this can be an arbitrary permission expression, not just a `PermVar`.  Taking the
     /// address of an lvalue gives a pointer whose permission is the lvalue's path permission,
     /// which can be arbitrary.
-    Ptr(Perm<'tcx>),
+    Ptr(Perm<'lty>),
 
     /// `FnDef` ought to be labeled with something like an extra set of `Substs`, but for
     /// permissions instead of type/lifetimes.  However, every one of those `Substs` would simply
@@ -34,8 +33,8 @@ enum Label<'tcx> {
     FnDef(usize),
 }
 
-impl<'tcx> Label<'tcx> {
-    fn perm(&self) -> Perm<'tcx> {
+impl<'lty> Label<'lty> {
+    fn perm(&self) -> Perm<'lty> {
         match *self {
             Label::Ptr(p) => p,
             _ => panic!("expected Label::Ptr"),
@@ -44,15 +43,15 @@ impl<'tcx> Label<'tcx> {
 }
 
 /// Type aliases for `intra`-specific labeled types.
-type ITy<'tcx> = LabeledTy<'tcx, Label<'tcx>>;
-type IFnSig<'tcx> = FnSig<'tcx, Label<'tcx>>;
+type ITy<'lty, 'tcx> = LabeledTy<'lty, 'tcx, Label<'lty>>;
+type IFnSig<'lty, 'tcx> = FnSig<'lty, 'tcx, Label<'lty>>;
 
 
 /// Variant-local analysis context.  We run one of these for each function variant to produce the
 /// initial (incomplete) summary.
-pub struct IntraCtxt<'c, 'a: 'c, 'tcx: 'a> {
-    cx: &'c mut Ctxt<'a, 'tcx>,
-    ilcx: LabeledTyCtxt<'tcx, Label<'tcx>>,
+pub struct IntraCtxt<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
+    cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
+    ilcx: LabeledTyCtxt<'lty, Label<'tcx>>,
 
     /// ID of the variant being processed.
     def_id: DefId,
@@ -60,8 +59,8 @@ pub struct IntraCtxt<'c, 'a: 'c, 'tcx: 'a> {
     bbid: BasicBlock,
     stmt_idx: usize,
 
-    cset: ConstraintSet<'tcx>,
-    local_tys: IndexVec<Local, ITy<'tcx>>,
+    cset: ConstraintSet<'lty>,
+    local_tys: IndexVec<Local, ITy<'lty, 'tcx>>,
     next_local_var: u32,
 
     /// List of function instantiation sites.
@@ -81,10 +80,10 @@ pub struct IntraCtxt<'c, 'a: 'c, 'tcx: 'a> {
     next_inst_var: u32,
 }
 
-impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
-    pub fn new(cx: &'c mut Ctxt<'a, 'tcx>,
+impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
+    pub fn new(cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
                def_id: DefId,
-               mir: &'a Mir<'tcx>) -> IntraCtxt<'c, 'a, 'tcx> {
+               mir: &'a Mir<'tcx>) -> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         let ilcx = LabeledTyCtxt::new(cx.arena);
         IntraCtxt {
             cx: cx,
@@ -130,7 +129,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         self.cset = self.cx.variant_summ(self.def_id).1.inst_cset.clone();
     }
 
-    fn relabel_ty(&mut self, lty: LTy<'tcx>) -> ITy<'tcx> {
+    fn relabel_ty(&mut self, lty: LTy<'lty, 'tcx>) -> ITy<'lty, 'tcx> {
         self.ilcx.relabel(lty, &mut |&l| {
             match l {
                 Some(pv) => Label::Ptr(Perm::var(pv)),
@@ -139,7 +138,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         })
     }
 
-    fn relabel_sig(&mut self, sig: LFnSig<'tcx>) -> IFnSig<'tcx> {
+    fn relabel_sig(&mut self, sig: LFnSig<'lty, 'tcx>) -> IFnSig<'lty, 'tcx> {
         let mut f = |&l: &Option<_>| {
             match l {
                 Some(pv) => Label::Ptr(Perm::var(pv)),
@@ -180,7 +179,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         var.insts = self.insts;
     }
 
-    fn local_ty(&mut self, ty: Ty<'tcx>) -> ITy<'tcx> {
+    fn local_ty(&mut self, ty: Ty<'tcx>) -> ITy<'lty, 'tcx> {
         let Self { ref mut cx, ref mut ilcx, ref mut next_local_var,
                 ref mut next_inst_var, ref mut insts, .. } = *self;
         ilcx.label(ty, &mut |ty| {
@@ -212,38 +211,41 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         })
     }
 
-    fn local_var_ty(&mut self, l: Local) -> ITy<'tcx> {
+    fn local_var_ty(&mut self, l: Local) -> ITy<'lty, 'tcx> {
         self.local_tys[l]
     }
 
-    fn static_ty(&mut self, def_id: DefId) -> ITy<'tcx> {
+    fn static_ty(&mut self, def_id: DefId) -> ITy<'lty, 'tcx> {
         let lty = self.cx.static_ty(def_id);
         self.relabel_ty(lty)
     }
 
 
     /// Compute the type of an `Lvalue` and the maximum permissions for accessing it.
-    fn place_lty(&mut self, lv: &Place<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
+    fn place_lty(&mut self, lv: &Place<'tcx>) -> (ITy<'lty, 'tcx>, Perm<'lty>) {
         let (ty, perm, variant) = self.place_lty_downcast(lv);
         assert!(variant.is_none(), "expected non-Downcast result");
         (ty, perm)
     }
 
-    fn place_lty_downcast(&mut self,
-                           lv: &Place<'tcx>) -> (ITy<'tcx>, Perm<'tcx>, Option<VariantIdx>) {
-        match *lv {
-            Place::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
+    fn place_lty_downcast(
+        &mut self,
+        lv: &Place<'tcx>,
+    ) -> (ITy<'lty, 'tcx>, Perm<'lty>, Option<VariantIdx>) {
+        match lv {
+            Place::Base(PlaceBase::Local(l)) => (self.local_var_ty(*l), Perm::move_(), None),
 
-            Place::Static(ref s) => (self.static_ty(s.def_id), Perm::move_(), None),
+            Place::Base(PlaceBase::Static(ref s)) => match s.kind {
+                StaticKind::Static(def_id) => (self.static_ty(def_id), Perm::move_(), None),
+                StaticKind::Promoted(ref _p) => {
+                    // TODO: test this
+                    let pty = lv.ty(self.mir, self.cx.tcx);
+                    let ty = pty.ty;
+                    (self.local_ty(ty), Perm::read(), None)
+                }
+            }
 
-            Place::Promoted(ref _p) => {
-                // TODO: test this
-                let pty = lv.ty(self.mir, self.cx.tcx);
-                let ty = expect!([pty] PlaceTy::Ty { ty } => ty);
-                (self.local_ty(ty), Perm::read(), None)
-            },
-
-            Place::Projection(ref p) => {
+            Place::Projection(box p) => {
                 let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&p.base);
 
                 // Sanity check
@@ -275,7 +277,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         }
     }
 
-    fn field_lty(&mut self, base_ty: ITy<'tcx>, v: VariantIdx, f: Field) -> ITy<'tcx> {
+    fn field_lty(&mut self, base_ty: ITy<'lty, 'tcx>, v: VariantIdx, f: Field) -> ITy<'lty, 'tcx> {
         match base_ty.ty.sty {
             TyKind::Adt(adt, _substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
@@ -287,7 +289,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         }
     }
 
-    fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
+    fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (ITy<'lty, 'tcx>, Perm<'lty>) {
         let ty = rv.ty(self.mir, self.cx.tcx);
 
         match *rv {
@@ -375,7 +377,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         }
     }
 
-    fn operand_lty(&mut self, op: &Operand<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
+    fn operand_lty(&mut self, op: &Operand<'tcx>) -> (ITy<'lty, 'tcx>, Perm<'lty>) {
         match *op {
             Operand::Copy(ref lv) => self.place_lty(lv),
             Operand::Move(ref lv) => self.place_lty(lv),
@@ -396,7 +398,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
     /// topmost pointer type.  The resulting permission must be no higher than the permission of
     /// the RHS pointer, and also must be no higher than the permission of any pointer dereferenced
     /// on the path to the RHS.
-    fn propagate(&mut self, lhs: ITy<'tcx>, rhs: ITy<'tcx>, path_perm: Perm<'tcx>) {
+    fn propagate(&mut self, lhs: ITy<'lty, 'tcx>, rhs: ITy<'lty, 'tcx>, path_perm: Perm<'lty>) {
         if let (Label::Ptr(l_perm), Label::Ptr(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
 
@@ -418,7 +420,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         }
     }
 
-    fn propagate_eq(&mut self, lhs: ITy<'tcx>, rhs: ITy<'tcx>) {
+    fn propagate_eq(&mut self, lhs: ITy<'lty, 'tcx>, rhs: ITy<'lty, 'tcx>) {
         if let (Label::Ptr(l_perm), Label::Ptr(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
             self.propagate_perm(r_perm, l_perm);
@@ -433,7 +435,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         }
     }
 
-    fn propagate_perm(&mut self, p1: Perm<'tcx>, p2: Perm<'tcx>) {
+    fn propagate_perm(&mut self, p1: Perm<'lty>, p2: Perm<'lty>) {
         eprintln!("ADD: {:?} <= {:?}", p1, p2);
         self.cset.add(p1, p2);
     }
@@ -464,7 +466,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
     }
 
 
-    fn ty_fn_sig(&mut self, ty: ITy<'tcx>) -> IFnSig<'tcx> {
+    fn ty_fn_sig(&mut self, ty: ITy<'lty, 'tcx>) -> IFnSig<'lty, 'tcx> {
         match ty.ty.sty {
             TyKind::FnDef(did, _substs) => {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
@@ -528,7 +530,6 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 // with them without analysing the actual asm code.
                 StatementKind::InlineAsm { .. } |
                 StatementKind::Retag { .. } |
-                StatementKind::EscapeToRaw(_) |
                 StatementKind::AscribeUserType(..) |
                 StatementKind::Nop => {},
             }

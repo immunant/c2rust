@@ -6,15 +6,14 @@ use rustc::hir::map::definitions::DefPathData;
 use rustc::hir::map::Map as HirMap;
 use rustc::hir::Node;
 use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
-use rustc::mir::interpret::ConstValue;
+use rustc::ty::{self, DefIdTree, TyCtxt, GenericParamDefKind};
 use rustc::ty::subst::Subst;
-use rustc::ty::{self, GenericParamDefKind, TyCtxt};
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::DUMMY_SP;
 use syntax::symbol::keywords;
 
-use crate::ast_manip::fold_nodes;
+use crate::ast_manip::MutVisitNodes;
 use crate::command::{DriverCommand, Registry};
 use crate::driver::Phase;
 
@@ -51,10 +50,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         Str => mk().ident_ty("str"),
         Array(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),
-            match len.val {
-                ConstValue::Unevaluated(did, _substs) => anon_const_to_expr(&tcx.hir, did),
-                _ => mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize")),
-            },
+            mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize")),
         ),
         Slice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
         RawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
@@ -87,7 +83,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
     }
 }
 
-fn anon_const_to_expr(hir_map: &HirMap, def_id: DefId) -> P<Expr> {
+pub fn anon_const_to_expr(hir_map: &HirMap, def_id: DefId) -> P<Expr> {
     let node = hir_map.get_if_local(def_id).unwrap();
     let ac = expect!([node] Node::AnonConst(ac) => ac);
     let body_id = ac.body;
@@ -105,7 +101,7 @@ fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
         Unary(op, ref a) => {
             mk().unary_expr(op.as_str(), hir_expr_to_expr(a))
         },
-        Lit(ref l) => mk().lit_expr((**l).clone()),
+        Lit(ref l) => mk().lit_expr(l.clone()),
         ref k => panic!("unsupported variant in hir_expr_to_expr: {:?}", k),
     }
 }
@@ -132,7 +128,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         match dk.disambiguated_data.data {
             DefPathData::CrateRoot => {
                 if id.krate == LOCAL_CRATE {
-                    segments.push(mk().path_segment(keywords::CrateRoot.ident()));
+                    segments.push(mk().path_segment(keywords::PathRoot.ident()));
                     break;
                 } else {
                     if let Some(ExternCrate { src: ExternCrateSource::Extern(def_id), .. }) = *tcx.extern_crate(id) {
@@ -145,7 +141,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                         // in the previous case), but the resulting error should be obvious to the
                         // user.
                         segments.push(mk().path_segment(tcx.crate_name(id.krate)));
-                        segments.push(mk().path_segment(keywords::CrateRoot.ident()));
+                        segments.push(mk().path_segment(keywords::PathRoot.ident()));
                         break;
                     }
                 }
@@ -212,7 +208,8 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 }
             },
 
-            DefPathData::TypeParam(name) => {
+            DefPathData::TypeParam(name) |
+            DefPathData::ConstParam(name) => {
                 if name != "" {
                     segments.push(mk().path_segment(name));
                     break;
@@ -225,9 +222,10 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             DefPathData::AssocExistentialInImpl(_) |
             DefPathData::ClosureExpr |
             DefPathData::LifetimeParam(_) |
-            DefPathData::StructCtor |
+            DefPathData::Ctor |
             DefPathData::AnonConst |
-            DefPathData::ImplTrait => {},
+            DefPathData::ImplTrait |
+            DefPathData::TraitAlias(_) => {},
         }
 
         // Special logic for certain node kinds
@@ -238,6 +236,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 let num_params = gen.params.iter().filter(|x| match x.kind {
                     GenericParamDefKind::Lifetime{..} => false,
                     GenericParamDefKind::Type{..} => true,
+                    GenericParamDefKind::Const => false,
                 }).count();
                 if let Some(substs) = opt_substs {
                     if substs.len() > 0 {
@@ -253,10 +252,10 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 }
             },
 
-            DefPathData::StructCtor => {
+            DefPathData::Ctor => {
                 // The parent of the struct ctor in `visible_parent_map` is the parent of the
                 // struct.  But we want to visit the struct first, so we can add its name.
-                if let Some(parent_id) = tcx.parent_def_id(id) {
+                if let Some(parent_id) = tcx.parent(id) {
                     id = parent_id;
                     continue;
                 } else {
@@ -270,7 +269,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         let visible_parent_map = tcx.visible_parent_map(LOCAL_CRATE);
         if let Some(&parent_id) = visible_parent_map.get(&id) {
             id = parent_id;
-        } else if let Some(parent_id) = tcx.parent_def_id(id) {
+        } else if let Some(parent_id) = tcx.parent(id) {
             id = parent_id;
         } else {
             break;
@@ -298,7 +297,7 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         Node::Binding(_) |
         Node::Local(_) |
         Node::MacroDef(_) |
-        Node::StructCtor(_) |
+        Node::Ctor(_) |
         Node::GenericParam(_) => true,
 
         Node::AnonConst(_) |
@@ -329,16 +328,16 @@ fn register_test_reflect(reg: &mut Registry) {
             st.map_krate(|krate| {
                 use rustc::ty::TyKind;
 
-                let krate = fold_nodes(krate, |e: P<Expr>| {
+                MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
                     let ty = cx.node_type(e.id);
 
-                    let e = if let TyKind::FnDef(def_id, ref substs) = ty.sty {
+                    let new_expr = if let TyKind::FnDef(def_id, ref substs) = ty.sty {
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) = reflect_def_path_inner(
                             cx.ty_ctxt(), def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
                     } else if let Some(def_id) = cx.try_resolve_expr(&e) {
-                        let parent = cx.hir_map().get_parent(e.id);
+                        let parent = cx.hir_map().get_parent_item(cx.hir_map().node_to_hir_id(e.id));
                         let parent_body = cx.hir_map().body_owned_by(parent);
                         let tables = cx.ty_ctxt().body_tables(parent_body);
                         let hir_id = cx.hir_map().node_to_hir_id(e.id);
@@ -348,13 +347,11 @@ fn register_test_reflect(reg: &mut Registry) {
                             cx.ty_ctxt(), def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
                     } else {
-                        e
+                        e.clone()
                     };
 
-                    mk().type_expr(e, reflect_tcx_ty(cx.ty_ctxt(), ty))
+                    *e = mk().type_expr(new_expr, reflect_tcx_ty(cx.ty_ctxt(), ty));
                 });
-
-                krate
             });
         }))
     });

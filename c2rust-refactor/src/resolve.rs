@@ -11,7 +11,7 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>
     use rustc::hir::ItemKind::*;
 
     for &iid in &m.item_ids {
-        let node = tcx.hir.get(iid.id);
+        let node = tcx.hir().get_by_hir_id(iid.id);
         let item = expect!([node] Node::Item(i) => i);
 
         match item.node {
@@ -20,14 +20,14 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>
             },
 
             ExternCrate(..) => {
-                let item_did = tcx.hir.local_def_id(item.id);
+                let item_did = tcx.hir().local_def_id_from_hir_id(item.hir_id);
                 let krate = tcx.extern_mod_stmt_cnum(item_did)
                     .expect("no cnum available for `extern crate`");
                 let krate_did = DefId { krate, index: CRATE_DEF_INDEX };
                 // This is a little bogus (the thing at `krate_did` isn't really a module), but it
                 // works well enough.
                 let krate_def = Def::Mod(krate_did);
-                children.push((item.name, krate_def));
+                children.push((item.ident.name, krate_def));
             },
 
             // We could do something clever for `Use`, but it would be a little tricky in the
@@ -35,8 +35,8 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>
             // default logic, which omits the `use` (there is no `Def::Use` variant).
 
             _ => {
-                if let Some(def) = tcx.hir.describe_def(item.id) {
-                    children.push((item.name, def));
+                if let Some(def) = tcx.hir().describe_def_by_hir_id(item.hir_id) {
+                    children.push((item.ident.name, def));
                 }
             },
         }
@@ -45,8 +45,8 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>
 
 fn push_hir_foreign_mod_children(tcx: TyCtxt, fm: &ForeignMod, children: &mut Vec<(Symbol, Def)>) {
     for fi in &fm.items {
-        if let Some(def) = tcx.hir.describe_def(fi.id) {
-            children.push((fi.name, def));
+        if let Some(def) = tcx.hir().describe_def_by_hir_id(fi.hir_id) {
+            children.push((fi.ident.name, def));
         }
     }
 }
@@ -59,13 +59,13 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Def)> {
         if did.index == CRATE_DEF_INDEX {
             // Crate root needs some special handling.  Looking it up in the HIR map by DefId
             // fails, but we can grab its root `Mod` directly.
-            let m = &tcx.hir.krate().module;
+            let m = &tcx.hir().krate().module;
             let mut children = Vec::with_capacity(m.item_ids.len());
             push_hir_mod_children(tcx, m, &mut children);
             return children;
         }
 
-        let node = tcx.hir.get_if_local(did)
+        let node = tcx.hir().get_if_local(did)
             .expect("definition not present in HIR map");
         let item = expect!([node] Node::Item(i) => i);
 

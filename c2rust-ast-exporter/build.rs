@@ -290,7 +290,7 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
             .or(invoke_command(llvm_config.as_ref(), &["--system-libs", "--link-static"]))
             .unwrap_or(String::new())
             .split_whitespace()
-            .map(|lib| String::from(lib.trim_left_matches("-l")))
+            .map(|lib| String::from(lib.trim_start_matches("-l")))
             .collect();
 
         let llvm_dylib = invoke_command(llvm_config.as_ref(), &["--libs", "--link-shared"]);
@@ -314,7 +314,7 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
                     } // Windows is not supported
                 };
                 let mut dylib_file = String::from("lib");
-                dylib_file.push_str(llvm_dylib.trim_left_matches("-l"));
+                dylib_file.push_str(llvm_dylib.trim_start_matches("-l"));
                 dylib_file.push_str(dylib_suffix);
                 let sysroot = invoke_command(
                     env::var("RUSTC").ok().as_ref(),
@@ -353,7 +353,7 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
         ])
             .unwrap_or(String::new())
             .split_whitespace()
-            .map(|lib| String::from(lib.trim_left_matches("-l")))
+            .map(|lib| String::from(lib.trim_start_matches("-l")))
             .collect();
 
         Self {

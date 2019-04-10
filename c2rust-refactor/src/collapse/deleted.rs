@@ -5,14 +5,13 @@ use std::collections::{HashMap, HashSet};
 use std::mem;
 use smallvec::SmallVec;
 use syntax::ast::*;
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
-use crate::ast_manip::{Fold, GetNodeId, ListNodeIds, Visit};
+use crate::ast_manip::{MutVisit, GetNodeId, ListNodeIds, Visit};
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
 use crate::node_map::NodeMap;
-use crate::util::Lone;
 
 use super::mac_table::{MacTable, MacNodeRef, AsMacNodeRef};
 
@@ -144,15 +143,14 @@ pub fn collect_deleted_nodes<'ast>(krate: &'ast Crate,
 
 struct RestoreDeletedNodes<'a, 'ast> {
     node_map: &'a mut NodeMap,
-    counter: &'a mut NodeIdCounter,
+    counter: &'a NodeIdCounter,
     /// Map of deleted nodes inside each parent, keyed on collapsed parent `NodeId`.
     deleted: HashMap<NodeId, Vec<DeletedNode<'ast>>>
 }
 
 impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
     fn restore_seq<T>(&mut self, parent: NodeId, nodes: &mut Vec<T>)
-            where T: GetNodeId + ListNodeIds + Fold + AsMacNodeRef,
-                  <T as Fold>::Result: Lone<T> {
+            where T: GetNodeId + ListNodeIds + MutVisit + AsMacNodeRef {
         let deleted = match_or!([self.deleted.get(&parent)]
                                 Some(x) => x; return);
         // Set of nodes that are currently present in the parent.  We use this to find the last
@@ -174,12 +172,12 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
 
         let result = Vec::with_capacity(nodes.len() + deleted.len());
         let old_nodes = mem::replace(nodes, result);
-        let counter = &mut *self.counter;
+        let counter = self.counter;
         let node_map = &mut *self.node_map;
         let mut push_ins_after = |nodes: &mut Vec<_>, id| {
             for dn in ins_after.remove(&id).into_iter().flat_map(|x| x) {
-                let n = T::clone_from_mac_node_ref(dn.node);
-                let n = number_nodes_with(n, counter).lone();
+                let mut n = T::clone_from_mac_node_ref(dn.node);
+                number_nodes_with(&mut n, counter);
 
                 for (id, &origin) in n.list_node_ids().into_iter().zip(&dn.saved_origins) {
                     node_map.restore_origin(id, origin);
@@ -199,13 +197,13 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
     }
 }
 
-impl<'a, 'ast> Folder for RestoreDeletedNodes<'a, 'ast> {
-    fn fold_crate(&mut self, mut x: Crate) -> Crate {
+impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
+    fn visit_crate(&mut self, x: &mut Crate) {
         self.restore_seq(CRATE_NODE_ID, &mut x.module.items);
-        fold::noop_fold_crate(x, self)
+        mut_visit::noop_visit_crate(x, self)
     }
 
-    fn fold_item(&mut self, x: P<Item>) -> SmallVec<[P<Item>; 1]> {
+    fn flat_map_item(&mut self, x: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let x = x.map(|mut x| {
             match x.node {
                 ItemKind::Mod(ref mut m) =>
@@ -220,11 +218,11 @@ impl<'a, 'ast> Folder for RestoreDeletedNodes<'a, 'ast> {
             }
             x
         });
-        fold::noop_fold_item(x, self)
+        mut_visit::noop_flat_map_item(x, self)
     }
 
-    fn fold_mac(&mut self, mac: Mac) -> Mac {
-        fold::noop_fold_mac(mac, self)
+    fn visit_mac(&mut self, mac: &mut Mac) {
+        mut_visit::noop_visit_mac(mac, self)
     }
 }
 
@@ -244,14 +242,14 @@ fn index_deleted_nodes<'ast>(vec: Vec<DeletedNode<'ast>>)
 ///
 /// The `DeletedNode`s in `deleted` should use expanded IDs, as returned from
 /// `collect_deleted_nodes`.
-pub fn restore_deleted_nodes(krate: Crate,
+pub fn restore_deleted_nodes(krate: &mut Crate,
                              node_map: &mut NodeMap,
-                             counter: &mut NodeIdCounter,
-                             deleted: Vec<DeletedNode>) -> Crate {
+                             counter: &NodeIdCounter,
+                             deleted: Vec<DeletedNode>) {
     // Transfer `deleted` to `collapsed` IDs, which is what `krate` is currently using.
     let deleted = transfer_deleted_nodes(node_map, deleted);
     let deleted = index_deleted_nodes(deleted);
 
     let mut f = RestoreDeletedNodes { node_map, counter, deleted };
-    krate.fold(&mut f)
+    krate.visit(&mut f)
 }

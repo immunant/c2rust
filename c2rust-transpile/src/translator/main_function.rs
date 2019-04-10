@@ -141,7 +141,7 @@ impl<'c> Translation<'c> {
                             Some(mk().mac_expr(mk().mac(
                                 vec!["format"],
                                 vec![
-                                    Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit("{}={}")))),
+                                    Token::Interpolated(Lrc::new(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit("{}={}"))))),
                                     Token::Comma,
                                     Token::from_ast_ident(mk().ident("var_name")),
                                     Token::Comma,

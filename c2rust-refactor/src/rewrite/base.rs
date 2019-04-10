@@ -18,8 +18,9 @@ use syntax::ThinVec;
 use syntax::ast::*;
 use syntax::source_map::{Span, SyntaxContext};
 use syntax::parse::token::{Token, DelimToken, Nonterminal};
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, DelimSpan, TokenStream};
 
+use std::fmt::Debug;
 use std::rc::Rc;
 use syntax::ptr::P;
 use diff;
@@ -189,7 +190,7 @@ pub fn rewrite_seq<T, R>(old: &[R],
                          new: &[R],
                          outer_span: Span,
                          mut rcx: RewriteCtxtRef) -> bool
-        where T: SeqItem + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite,
+        where T: SeqItem + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite + Debug,
               R: AstDeref<Target=T> {
     if old.len() == 0 && new.len() != 0 && !is_rewritable(outer_span) {
         // We can't handle this case because it provides us with no span information about the
@@ -286,7 +287,7 @@ pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
                                    outer_span: Span,
                                    has_trailing_comma: bool,
                                    mut rcx: RewriteCtxtRef) -> bool
-        where T: SeqItem + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite,
+        where T: SeqItem + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite + Debug,
               R: AstDeref<Target=T> {
     fn ast<T: AstDeref>(x: &T) -> &<T as AstDeref>::Target {
         x.ast_deref()

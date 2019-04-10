@@ -7,11 +7,10 @@ use std::ops::Index;
 
 use c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CQualTypeId, CTypeId, MemberKind, UnOp};
 use c2rust_ast_builder::mk;
-use syntax::ast::{AttrStyle, BinOpKind, Expr, ExprKind, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StmtKind, StrStyle, StructField, Ty, TyKind, self};
-use syntax::ext::quote::rt::Span;
+use syntax::ast::{AttrStyle, BinOpKind, Expr, ExprKind, MetaItemKind, NestedMetaItem, Lit, LitIntType, LitKind, StmtKind, StrStyle, StructField, Ty, TyKind, self};
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
-use syntax_pos::DUMMY_SP;
+use syntax_pos::{Span, DUMMY_SP};
 use translator::{ExprContext, Translation, ConvertedDecl, simple_metaitem};
 use with_stmts::WithStmts;
 use super::TranslationError;
@@ -56,7 +55,7 @@ fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
         }),
     );
 
-    mk().nested_meta_item(NestedMetaItemKind::MetaItem(meta_item))
+    mk().nested_meta_item(NestedMetaItem::MetaItem(meta_item))
 }
 
 impl<'a> Translation<'a> {
@@ -431,8 +430,10 @@ impl<'a> Translation<'a> {
     ) -> Result<P<Expr>, TranslationError> {
         let field_info: Vec<FieldInfo> = field_ids.iter()
             .map(|field_id| match self.ast_context.index(*field_id).kind {
-                CDeclKind::Field { ref name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth, .. } =>
-                    (name.clone(), typ, bitfield_width, platform_bit_offset, platform_type_bitwidth),
+                CDeclKind::Field { typ, bitfield_width, platform_bit_offset, platform_type_bitwidth, .. } => {
+                    let name = self.type_converter.borrow().resolve_field_name(None, *field_id).unwrap();
+                    (name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth)
+                },
                 _ => unreachable!("Found non-field in record field list"),
             }).collect();
         let reorganized_fields = self.get_field_types(field_info, platform_byte_size)?;
@@ -468,7 +469,6 @@ impl<'a> Translation<'a> {
                 },
                 FieldType::Regular { ctype, name, .. } => {
                     let field_init = self.implicit_default_expr(ctype, is_static)?;
-
                     fields.push(mk().field(name, field_init));
                 },
             }

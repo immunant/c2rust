@@ -635,6 +635,13 @@ class TranslateASTVisitor final
           return true;
       }
 
+      bool VisitIndirectGotoStmt(IndirectGotoStmt *IGS) {
+          std:: string msg = "the GNU C labels-as-values extension is not supported. Aborting.";
+
+          printError(msg, IGS);
+          abort();
+      }
+
       bool VisitLabelStmt(LabelStmt *LS) {
 
           std::vector<void*> childIds = { LS->getSubStmt() };
@@ -644,7 +651,6 @@ class TranslateASTVisitor final
                              });
           return true;
       }
-
 
       bool VisitNullStmt(NullStmt *NS) {
           std::vector<void*> childIds;
@@ -724,8 +730,7 @@ class TranslateASTVisitor final
               Expr::EvalResult eval_result;
 #endif // CLANG_VERSION_MAJOR
               if (!expr->EvaluateAsInt(eval_result, *Context)) {
-                  std:: string msg = "Aborting due to the expression in `CaseStmt`\
-                                      not being an integer.";
+                  std:: string msg = "Expression in case statement is not an integer. Aborting.";
                   printError(msg, CS);
                   abort();
               }
@@ -1218,10 +1223,10 @@ class TranslateASTVisitor final
           if (!FD->isCanonicalDecl())
               return true;
 
-          if (FD->hasBody() && FD->isVariadic()) {
-            //   auto fname = FD->getNameString();
-              printWarning("variadic functions are not fully supported.", FD);
-          }
+          // if (FD->hasBody() && FD->isVariadic()) {
+          //   //   auto fname = FD->getNameString();
+          //     printWarning("variadic functions are not fully supported.", FD);
+          // }
 
           // Use the parameters from the function declaration
           // the defines the body, if one exists.
@@ -1517,7 +1522,7 @@ class TranslateASTVisitor final
           if (warnOnFlexibleArrayDecl(D)) {
               printWarning("this may be an unsupported flexible array member with size of 1, "
                            "omit the size if this field is intended to be a flexible array member. "
-                           "Note that you must be sure to fix any struct size calculations after "
+                           "Note that you must fix any struct size calculations after "
                            "doing so or else it will likely be off (by one). "
                            "See section 6.7.2.1 of the C99 standard.", D);
           }

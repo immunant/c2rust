@@ -5,7 +5,7 @@ use syntax::source_map::{DUMMY_SP, Spanned, Span, dummy_spanned};
 use syntax::parse::token::{self, Token, DelimToken};
 use syntax::attr::{mk_attr_inner};
 use syntax::ptr::P;
-use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder, ThinTokenStream};
+use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder};
 use syntax::symbol::keywords;
 use std::rc::Rc;
 use rustc_target::spec::abi::{self, Abi};
@@ -183,14 +183,14 @@ impl<S: Make<PathSegment>> Make<Path> for Vec<S> {
 }
 
 
-impl Make<ThinTokenStream> for TokenStream {
-    fn make(self, _mk: &Builder) -> ThinTokenStream {
-        self.into()
-    }
-}
+//impl Make<TokenStream> for TokenStream {
+//    fn make(self, _mk: &Builder) -> TokenStream {
+//        self.into()
+//    }
+//}
 
-impl Make<ThinTokenStream> for Vec<TokenTree> {
-    fn make(self, _mk: &Builder) -> ThinTokenStream {
+impl Make<TokenStream> for Vec<TokenTree> {
+    fn make(self, _mk: &Builder) -> TokenStream {
         self.into_iter().collect::<TokenStream>().into()
     }
 }
@@ -207,7 +207,7 @@ impl Make<GenericArgs> for AngleBracketedArgs {
     }
 }
 
-impl Make<GenericArgs> for ParenthesisedArgs {
+impl Make<GenericArgs> for ParenthesizedArgs {
     fn make(self, _mk: &Builder) -> GenericArgs {
         Parenthesized(self)
     }
@@ -225,15 +225,15 @@ impl Make<GenericArg> for Lifetime {
     }
 }
 
-impl Make<NestedMetaItemKind> for MetaItem {
-    fn make(self, _mk: &Builder) -> NestedMetaItemKind {
-        NestedMetaItemKind::MetaItem(self)
+impl Make<NestedMetaItem> for MetaItem {
+    fn make(self, _mk: &Builder) -> NestedMetaItem {
+        NestedMetaItem::MetaItem(self)
     }
 }
 
-impl Make<NestedMetaItemKind> for Lit {
-    fn make(self, _mk: &Builder) -> NestedMetaItemKind {
-        NestedMetaItemKind::Literal(self)
+impl Make<NestedMetaItem> for Lit {
+    fn make(self, _mk: &Builder) -> NestedMetaItem {
+        NestedMetaItem::Literal(self)
     }
 }
 
@@ -448,11 +448,11 @@ impl Builder {
         }
     }
 
-    pub fn parenthesized_args<Ts>(self, tys: Ts) -> ParenthesisedArgs
+    pub fn parenthesized_args<Ts>(self, tys: Ts) -> ParenthesizedArgs
         where Ts: Make<Vec<P<Ty>>> {
 
         let tys = tys.make(&self);
-        ParenthesisedArgs {
+        ParenthesizedArgs {
             span: self.span,
             inputs: tys,
             output: None,
@@ -495,8 +495,8 @@ impl Builder {
     pub fn abs_path<Pa>(self, path: Pa) -> Path
         where Pa: Make<Path> {
         let mut p = path.make(&self);
-        if !p.segments.get(0).map_or(false, |s| s.ident.name == keywords::CrateRoot.name()) {
-            p.segments.insert(0, keywords::CrateRoot.ident().make(&self));
+        if !p.segments.get(0).map_or(false, |s| s.ident.name == keywords::PathRoot.name()) {
+            p.segments.insert(0, keywords::PathRoot.ident().make(&self));
         }
         p
     }
@@ -1284,7 +1284,7 @@ impl Builder {
         let block = block.make(&self);
         let header = FnHeader {
             unsafety: self.unsafety,
-            asyncness: IsAsync::NotAsync,
+            asyncness: dummy_spanned(IsAsync::NotAsync),
             constness: dummy_spanned(self.constness),
             abi: self.abi,
         };
@@ -1295,12 +1295,12 @@ impl Builder {
                                 block))
     }
 
-    pub fn fn_decl(self, inputs: Vec<Arg>, output: FunctionRetTy, variadic: bool) -> P<FnDecl>
+    pub fn fn_decl(self, inputs: Vec<Arg>, output: FunctionRetTy, c_variadic: bool) -> P<FnDecl>
     {
         P(FnDecl {
             inputs,
             output,
-            variadic,
+            c_variadic,
         })
     }
 
@@ -1308,7 +1308,7 @@ impl Builder {
         where I: Make<Ident> {
         let name = name.make(&self);
         Self::item(name, self.attrs, self.vis, self.span, self.id,
-                   ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
+                   ItemKind::Struct(VariantData::Struct(fields, false),
                                     self.generics))
     }
 
@@ -1316,7 +1316,7 @@ impl Builder {
         where I: Make<Ident> {
         let name = name.make(&self);
         Self::item(name, self.attrs, self.vis, self.span, self.id,
-                   ItemKind::Union(VariantData::Struct(fields, DUMMY_NODE_ID),
+                   ItemKind::Union(VariantData::Struct(fields, false),
                                     self.generics))
     }
 
@@ -1367,6 +1367,7 @@ impl Builder {
             node: Variant_ {
                 ident: name,
                 attrs: self.attrs,
+                id: DUMMY_NODE_ID,
                 data: dat,
                 disr_expr: None,
             },
@@ -1382,6 +1383,7 @@ impl Builder {
             node: Variant_ {
                 ident: name,
                 attrs: self.attrs,
+                id: DUMMY_NODE_ID,
                 data: VariantData::Unit(self.id),
                 disr_expr: disc,
             },
@@ -1577,7 +1579,6 @@ impl Builder {
                 Unsafety::Normal => BlockCheckMode::Default,
             },
             span: self.span,
-            recovered: false,
         })
     }
 
@@ -1637,7 +1638,7 @@ impl Builder {
     }
 
     pub fn attribute<Pa, Ts>(self, style: AttrStyle, path: Pa, tokens: Ts) -> Attribute
-        where Pa: Make<Path>, Ts: Make<ThinTokenStream>
+        where Pa: Make<Path>, Ts: Make<TokenStream>
     {
         let path = path.make(&self);
         let tokens = tokens.make(&self).into();
@@ -1665,17 +1666,16 @@ impl Builder {
         let path = path.make(&self);
         let kind = kind.make(&self);
         MetaItem {
-            ident: path,
+            path: path,
             node: kind,
             span: DUMMY_SP,
         }
     }
 
     pub fn nested_meta_item<K>(self, kind: K) -> NestedMetaItem
-        where K: Make<NestedMetaItemKind>
-     {
-        let kind = kind.make(&self);
-        dummy_spanned(kind)
+        where K: Make<NestedMetaItem>
+    {
+        kind.make(&self)
     }
 
     // Convert the current internal list of outer attributes
@@ -1691,7 +1691,7 @@ impl Builder {
     }
 
     pub fn mac<Pa, Ts>(self, path: Pa, tts: Ts, delim: MacDelimiter) -> Mac
-        where Pa: Make<Path>, Ts: Make<ThinTokenStream> {
+        where Pa: Make<Path>, Ts: Make<TokenStream> {
         let path = path.make(&self);
         let tts = tts.make(&self);
         Spanned {

@@ -17,6 +17,7 @@ use syntax::ptr::*;
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{with_globals, ast};
 use syntax_pos::{DUMMY_SP, Span};
+use rustc_data_structures::sync::Lrc;
 
 use rust_ast::comment_store::CommentStore;
 use rust_ast::item_store::ItemStore;
@@ -200,7 +201,6 @@ pub struct ExprContext {
     used: bool,
     is_static: bool,
     decay_ref: DecayRef,
-    va_decl: Option<CDeclId>,
     is_bitfield_write: bool,
     needs_address: bool,
 }
@@ -214,7 +214,6 @@ impl ExprContext {
     pub fn not_static(self) -> Self { ExprContext { is_static: false, .. self } }
     pub fn static_(self) -> Self { ExprContext { is_static: true, .. self } }
     pub fn set_static(self, is_static: bool) -> Self { ExprContext { is_static, .. self } }
-    pub fn is_va_decl(&self, decl_id: CDeclId) -> bool { Some(decl_id) == self.va_decl }
     pub fn is_bitfield_write(&self) -> bool { self.is_bitfield_write }
     pub fn set_bitfield_write(self, is_bitfield_write: bool) -> Self {
         ExprContext { is_bitfield_write, .. self }
@@ -222,6 +221,36 @@ impl ExprContext {
     pub fn needs_address(&self) -> bool { self.needs_address }
     pub fn set_needs_address(self, needs_address: bool) -> Self {
         ExprContext { needs_address, .. self }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FunContext {
+    /// The name of the function we're currently translating
+    name: Option<String>,
+    /// The va_list decl that we promote to a Rust function arg
+    promoted_va_decl: Option<CDeclId>,
+    /// The va_list decls that we did not promote because they were `va_copy`ed.
+    copied_va_decls: Option<IndexSet<CDeclId>>
+}
+
+impl FunContext {
+    pub fn new() -> Self {
+        FunContext {
+            name: None,
+            promoted_va_decl: None,
+            copied_va_decls: None
+        }
+    }
+
+    pub fn enter_new(&mut self, fn_name: &str) {
+        self.name = Some(fn_name.to_string());
+        self.promoted_va_decl = None;
+        self.copied_va_decls = None;
+    }
+
+    pub fn get_name<'a>(&'a self) -> &'a str {
+        return self.name.as_ref().unwrap()
     }
 }
 
@@ -241,6 +270,7 @@ pub struct Translation<'c> {
     type_converter: RefCell<TypeConverter>,
     renamer: RefCell<Renamer<CDeclId>>,
     zero_inits: RefCell<IndexMap<CDeclId, Result<P<Expr>, TranslationError>>>,
+    function_context: RefCell<FunContext>,
 
     // Comment support
     pub comment_context: RefCell<CommentContext>, // Incoming comments
@@ -259,7 +289,7 @@ pub struct Translation<'c> {
 fn simple_metaitem(name: &str) -> NestedMetaItem {
     let meta_item = mk().meta_item(vec![name], MetaItemKind::Word);
 
-    mk().nested_meta_item(NestedMetaItemKind::MetaItem(meta_item))
+    mk().nested_meta_item(NestedMetaItem::MetaItem(meta_item))
 }
 
 fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
@@ -446,7 +476,6 @@ pub fn translate(ast_context: TypedAstContext, tcfg: &TranspilerConfig, main_fil
         used: true,
         is_static: false,
         decay_ref: DecayRef::Default,
-        va_decl: None,
         is_bitfield_write: false,
         needs_address: false,
     };
@@ -750,7 +779,7 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
     if t.tcfg.emit_modules {
         s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
     } else {
-        let mut features = vec!["libc"];
+        let mut features = vec![];
         features.extend(t.features.borrow().iter());
         features.extend(t.type_converter.borrow().features_used());
         let mut pragmas: Vec<(&str, Vec<&str>)> =
@@ -898,6 +927,7 @@ impl<'c> Translation<'c> {
                 "drop", "Some", "None", "Ok", "Err",
             ])),
             zero_inits: RefCell::new(IndexMap::new()),
+            function_context: RefCell::new(FunContext::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             sectioned_static_initializers: RefCell::new(Vec::new()),
@@ -915,13 +945,23 @@ impl<'c> Translation<'c> {
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice
     // if it does.
+    pub fn panic_or_err(&self, msg: &str) -> P<Expr> {
+        self.panic_or_err_helper(msg, self.tcfg.panic_on_translator_failure)
+    }
+
     pub fn panic(&self, msg: &str) -> P<Expr> {
-        let macro_name = if self.tcfg.panic_on_translator_failure { "panic" } else { "compile_error" };
+        self.panic_or_err_helper(msg, true)
+    }
+
+    fn panic_or_err_helper(&self, msg: &str, panic: bool) -> P<Expr> {
+        let macro_name = if panic { "panic" } else { "compile_error" };
         let macro_msg = vec![
-            Token::interpolated(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit(msg)))),
+            Token::Interpolated(Lrc::new(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit(msg))))),
         ].into_iter().collect::<TokenStream>();
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
     }
+
+
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
         if self.tcfg.cross_checks {
@@ -1155,8 +1195,8 @@ impl<'c> Translation<'c> {
                         vec!["align"],
                         MetaItemKind::List(
                             vec![mk().nested_meta_item(
-                                NestedMetaItemKind::Literal(lit))]));
-                    reprs.push(mk().nested_meta_item(NestedMetaItemKind::MetaItem(inner)));
+                                NestedMetaItem::Literal(lit))]));
+                    reprs.push(mk().nested_meta_item(NestedMetaItem::MetaItem(inner)));
                 };
 
                 let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
@@ -1379,9 +1419,31 @@ impl<'c> Translation<'c> {
         }
     }
 
+    /// Returns true iff type is a (pointer to)* the `va_list` structure type.
+    /// Note: the logic is based on `TypeConverter::convert_pointer`.
+    pub fn is_inner_type_valist(
+        ctxt: &TypedAstContext,
+        qtype: CQualTypeId
+    ) -> bool {
+        match ctxt.resolve_type(qtype.ctype).kind {
+            CTypeKind::Struct(struct_id) => {
+                if let CDeclKind::Struct { name: Some(ref struct_name), .. } = ctxt[struct_id].kind {
+                    if struct_name == "__va_list_tag" {
+                        return true;
+                    }
+                }
+                false
+            },
+            CTypeKind::Pointer(pointer_id) => {
+                Self::is_inner_type_valist(ctxt, pointer_id)
+            },
+            _ => false,
+        }
+    }
+
     fn convert_function(
         &self,
-        mut ctx: ExprContext,
+        ctx: ExprContext,
         span: Span,
         is_global: bool,
         is_inline: bool,
@@ -1396,16 +1458,16 @@ impl<'c> Translation<'c> {
         attrs: &IndexSet<c_ast::Attribute>,
     ) -> Result<ConvertedDecl, TranslationError> {
 
-        if is_variadic {
+        self.function_context.borrow_mut().enter_new(name);
+
+        let is_valist: bool = arguments
+            .iter()
+            .any(|&(_, _, typ)| Self::is_inner_type_valist(&self.ast_context, typ));
+        if is_variadic || is_valist {
             if let Some(body_id) = body {
-                match self.well_formed_variadic(body_id) {
-                    None =>
-                        return Err(format_err!(
-                            "Failed to translate {}; unsupported variadic function.", name).into()),
-                    Some(va_id) => {
-                        self.register_va_arg(va_id);
-                        ctx.va_decl = Some(va_id);
-                    }
+                if !self.is_well_formed_variadic(body_id) {
+                    return Err(format_err!(
+                            "Failed to translate {}; unsupported variadic function.", name).into());
                 }
             }
         }
@@ -1413,6 +1475,7 @@ impl<'c> Translation<'c> {
         self.with_scope(|| {
             let mut args: Vec<Arg> = vec![];
 
+            // handle regular (non-variadic) arguments
             for &(decl_id, ref var, typ) in arguments {
 
 
@@ -1434,6 +1497,24 @@ impl<'c> Translation<'c> {
                 args.push(mk().arg(ty, pat))
             }
 
+            // handle variadic arguments
+            if is_variadic {
+                let ty = mk().ident_ty("...");
+                if let Some(va_decl_id) = self.get_promoted_va_decl() {
+                    // `register_va_arg` succeeded
+                    let var = self.renamer.borrow_mut()
+                            .get(&va_decl_id)
+                            .expect(&format!("Failed to get name for variadic argument"));
+
+                    // FIXME: detect mutability requirements
+                    let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(var);
+                    args.push(mk().arg(ty, pat))
+                } else  {
+                    args.push(mk().arg(ty, mk().wild_pat()))
+                }
+            }
+
+            // handle return type
             let ret = match return_type {
                 Some(return_type) => self.convert_type(return_type.ctype)?,
                 None => mk().never_ty(),
@@ -1728,9 +1809,11 @@ impl<'c> Translation<'c> {
     }
 
     pub fn convert_decl_stmt_info(&self, ctx: ExprContext, decl_id: CDeclId) -> Result<cfg::DeclStmtInfo, TranslationError> {
-        if ctx.is_va_decl(decl_id) {
+        if self.is_promoted_va_decl(decl_id) {
+            // `va_list` decl was promoted to arg
+            self.use_feature("c_variadic");
             return Ok(cfg::DeclStmtInfo::empty())
-        }
+        } 
 
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable { ref ident, has_static_duration: true, is_externally_visible: false, is_defn: true, initializer, typ, .. } => {
@@ -1765,6 +1848,28 @@ impl<'c> Translation<'c> {
             CDeclKind::Variable { has_static_duration: false, has_thread_duration: false, is_externally_visible: false, is_defn, ref ident, initializer, typ, .. } => {
                 assert!(is_defn, "Only local variable definitions should be extracted");
 
+                let rust_name = self.renamer.borrow_mut()
+                    .insert(decl_id, &ident)
+                    .expect(&format!("Failed to insert variable '{}'", ident));
+
+                if self.is_copied_va_decl(decl_id) {
+                    // translate `va_list` declarations not promoted to an arg
+                    // to `VaList` and do not emit an initializer.
+                    let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());                    
+                    let ty = {
+                        let std_or_core = if self.tcfg.emit_no_std { "core"  } else { "std" };
+                        let path = vec!["", std_or_core, "ffi", "VaList"];
+                        mk().path_ty(path)
+                    };
+                    let local_mut = mk().local::<_, _, P<Expr>>(pat_mut, Some(ty), None);
+
+                    return Ok(cfg::DeclStmtInfo::new(
+                        vec![], // decl
+                        vec![], // assign
+                        vec![mk().local_stmt(P(local_mut))], // decl_and_assign
+                    ));
+                }
+
                 let has_self_reference =
                     if let Some(expr_id) = initializer {
                         self.has_decl_reference(decl_id, expr_id)
@@ -1773,10 +1878,7 @@ impl<'c> Translation<'c> {
                     };
 
                 let mut stmts = self.compute_variable_array_sizes(ctx, typ.ctype)?;
-
-                let rust_name = self.renamer.borrow_mut()
-                    .insert(decl_id, &ident)
-                    .expect(&format!("Failed to insert variable '{}'", ident));
+                
                 let (ty, mutbl, init) = self.convert_variable(ctx, initializer, typ)?;
                 let mut init = init?;
 
@@ -2318,11 +2420,11 @@ impl<'c> Translation<'c> {
 
                     // offset_of!(Struct, field[expr as usize]) as ty
                     let mut macro_body = vec![
-                        TokenTree::Token(DUMMY_SP, Token::interpolated(ty_ident)),
+                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(ty_ident))),
                         TokenTree::Token(DUMMY_SP, Token::Comma),
-                        TokenTree::Token(DUMMY_SP, Token::interpolated(field_ident)),
+                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(field_ident))),
                         TokenTree::Token(DUMMY_SP, Token::OpenDelim(DelimToken::Bracket)),
-                        TokenTree::Token(DUMMY_SP, Token::interpolated(index_expr)),
+                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(index_expr))),
                         TokenTree::Token(DUMMY_SP, Token::CloseDelim(DelimToken::Bracket)),
                     ];
                     let path = mk().path("offset_of");
@@ -2359,7 +2461,7 @@ impl<'c> Translation<'c> {
 
                     Ok(cond.and_then(|c| WithStmts {
                         stmts: vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(els)))],
-                        val: self.panic("Conditional expression is not supposed to be used"),
+                        val: self.panic_or_err("Conditional expression is not supposed to be used"),
                     }))
                 } else {
                     let then: P<Block> = lhs.to_block();
@@ -2380,7 +2482,7 @@ impl<'c> Translation<'c> {
                                            None as Option<P<Expr>>)));
                     Ok(WithStmts {
                         stmts: lhs.stmts,
-                        val: self.panic("Binary conditional expression is not supposed to be used"),
+                        val: self.panic_or_err("Binary conditional expression is not supposed to be used"),
                     })
                 } else {
                     self.name_reference_write_read(ctx, lhs)?.result_map(|(_, lhs_val)| {
@@ -2597,7 +2699,7 @@ impl<'c> Translation<'c> {
             // Recall that if `used` is false, the `stmts` field of the output must contain
             // all side-effects (and a function call can always have side-effects)
             stmts.push(mk().semi_stmt(expr));
-            WithStmts { stmts, val: self.panic(panic_msg) }
+            WithStmts { stmts, val: self.panic_or_err(panic_msg) }
         } else {
             WithStmts { stmts, val: expr }
         }
@@ -2641,12 +2743,17 @@ impl<'c> Translation<'c> {
 
                 if let Some(stmt) = stmts.pop() {
                     match as_semi_break_stmt(&stmt, &lbl) {
-                        Some(val) => return Ok(WithStmts::new(mk().block_expr({
-                            match val {
-                                None => mk().block(stmts),
-                                Some(val) => WithStmts { stmts, val }.to_block()
-                            }
-                        }))),
+                        Some(val) => {
+                            let block = mk().block_expr({
+                                match val {
+                                    None => mk().block(stmts),
+                                    Some(val) => WithStmts { stmts, val }.to_block()
+                                }
+                            });
+                            // enclose block in parentheses to work around
+                            // https://github.com/rust-lang/rust/issues/54482
+                            return Ok(WithStmts::new(mk().paren_expr(block)))
+                        },
                         _ => {
                             self.use_feature("label_break_value");
                             stmts.push(stmt)
@@ -2661,7 +2768,7 @@ impl<'c> Translation<'c> {
             }
             _ => {
                 if ctx.is_unused()  {
-                    let val = self.panic("Empty statement expression is not supposed to be used");
+                    let val = self.panic_or_err("Empty statement expression is not supposed to be used");
                     Ok(WithStmts { stmts: vec![], val })
                 } else {
                     Err(TranslationError::generic("Bad statement expression"))

@@ -3,7 +3,7 @@
     trace_macros,
     specialization,
     box_patterns,
-    try_from,
+    generator_trait,
 )]
 extern crate arena;
 extern crate ena;
@@ -20,6 +20,8 @@ extern crate rustc;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
+extern crate rustc_incremental;
+extern crate rustc_interface;
 extern crate rustc_metadata;
 extern crate rustc_privacy;
 extern crate rustc_resolve;
@@ -77,9 +79,7 @@ use std::str::{self, FromStr};
 use std::sync::Arc;
 use cargo::util::paths;
 use syntax::ast::NodeId;
-use rustc::ty;
-use rustc_driver::CompilationFailure;
-use rustc_data_structures::sync::Lock;
+use rustc_interface::interface;
 
 use c2rust_ast_builder::IntoSymbol;
 
@@ -203,7 +203,7 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
 }
 
 fn get_rustc_cargo_args() -> Vec<String> {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
     use cargo::Config;
     use cargo::core::{Workspace, PackageId, Target, maybe_allow_nightly_features};
     use cargo::core::compiler::{CompileMode, Executor, DefaultExecutor, Context, Unit};
@@ -307,7 +307,17 @@ fn get_rustc_cargo_args() -> Vec<String> {
     args
 }
 
-fn main_impl(opts: Options) {
+pub fn lib_main(opts: Options) -> interface::Result<()> {
+    env_logger::init();
+
+    // Make sure we compile with the toolchain version that the refactoring tool
+    // is built against.
+    env::set_var("RUSTUP_TOOLCHAIN", env!("RUSTUP_TOOLCHAIN"));
+
+    rustc_driver::report_ices_to_stderr_if_any(move || main_impl(opts)).and_then(|x| x)
+}
+
+fn main_impl(opts: Options) -> interface::Result<()> {
     let mut marks = HashSet::new();
     for m in &opts.marks {
         let label = m.label.as_ref().map_or("target", |s| s).into_symbol();
@@ -316,8 +326,14 @@ fn main_impl(opts: Options) {
 
     let rustc_args = get_rustc_arg_strings(opts.rustc_args.clone());
 
+    // TODO: interface::run_compiler() here and create a RefactorState with the
+    // callback. RefactorState should know how to reset the compiler when needed
+    // and can handle querying the compiler.
+
     if opts.cursors.len() > 0 {
-        driver::run_compiler(&rustc_args, None, driver::Phase::Phase2, |krate, cx| {
+        let config = driver::create_config(&rustc_args);
+        driver::run_compiler(config, None, |compiler| {
+            let expanded_crate = compiler.expansion().unwrap().take().0;
             for c in &opts.cursors {
                 let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any),
                                                         |s| pick_node::NodeKind::from_str(&s));
@@ -330,7 +346,7 @@ fn main_impl(opts: Options) {
                 };
 
                 let id = match pick_node::pick_node_at_loc(
-                        &krate, &cx, kind, &c.file, c.line, c.col) {
+                    &expanded_crate, compiler.session(), kind, &c.file, c.line, c.col) {
                     Some(info) => info.id,
                     None => {
                         info!("Failed to find {:?} at {}:{}:{}",
@@ -361,59 +377,35 @@ fn main_impl(opts: Options) {
 
     plugin::load_plugins(&opts.plugin_dirs, &opts.plugins, &mut cmd_reg);
 
+    let config = driver::create_config(&rustc_args);
+
     if opts.commands.len() == 1 && opts.commands[0].name == "interact" {
-        interact::interact_command(&opts.commands[0].args,
-                                   rustc_args,
-                                   cmd_reg);
+        interact::interact_command(&opts.commands[0].args, config, cmd_reg);
     } else if opts.commands.len() == 1 && opts.commands[0].name == "script" {
         assert_eq!(opts.commands[0].args.len(), 1);
-        scripting::run_lua_file(
-            Path::new(&opts.commands[0].args[0]),
-            rustc_args,
-            cmd_reg,
-            opts.rewrite_modes,
-        ).expect("Error loading user script");
+        scripting::run_lua_file(Path::new(&opts.commands[0].args[0]), config, cmd_reg, opts.rewrite_modes)
+            .expect("Error loading user script");
     } else {
-        let mut state = command::RefactorState::from_rustc_args(
-            &rustc_args,
-            cmd_reg,
-            Arc::new(file_io::RealFileIO::new(opts.rewrite_modes)),
-            marks,
-        );
+        let file_io = Arc::new(file_io::RealFileIO::new(opts.rewrite_modes.clone()));
+        driver::run_refactoring(config, cmd_reg, file_io, marks, |mut state| {
+            for cmd in opts.commands.clone() {
+                if &cmd.name == "interact" {
+                    panic!("`interact` must be the only command");
+                } else {
+                    match state.run(&cmd.name, &cmd.args) {
+                        Ok(_)=> {},
+                        Err(e) => {
+                            eprintln!("{:?}", e);
+                            std::process::exit(1);
+                        }
 
-        state.load_crate();
-
-        for cmd in opts.commands.clone() {
-            if &cmd.name == "interact" {
-                panic!("`interact` must be the only command");
-            } else {
-                match state.run(&cmd.name, &cmd.args) {
-                    Ok(_)=> {},
-                    Err(e) => {
-                        eprintln!("{:?}", e);
-                        std::process::exit(1);
                     }
-
                 }
             }
-        }
 
-        state.save_crate();
+            state.save_crate();
+        });
     }
-}
 
-pub fn lib_main(opts: Options) -> Result<(), CompilationFailure> {
-    env_logger::init();
-
-    // Make sure we compile with the toolchain version that the refactoring tool
-    // is built against.
-    env::set_var("RUSTUP_TOOLCHAIN", env!("RUSTUP_TOOLCHAIN"));
-
-    ty::tls::GCX_PTR.set(&Lock::new(0), || {
-        rustc_driver::monitor(move || {
-            syntax::with_globals(move || {
-                main_impl(opts);
-            });
-        })
-    })
+    Ok(())
 }

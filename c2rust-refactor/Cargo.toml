@@ -27,6 +27,7 @@ log = "0.4"
 rlua = "0.16"
 slotmap = {version = "0.3", features = ["unstable"]}
 derive_more = "0.14"
+c2rust-macros = { version = "0.9.0", path = "../c2rust-macros" }
 
 [lib]
 name = "c2rust_refactor"

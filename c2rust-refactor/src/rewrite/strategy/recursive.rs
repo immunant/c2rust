@@ -1,6 +1,6 @@
 use syntax::ast::*;
 use syntax::parse::token::Nonterminal;
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan};
+use syntax::tokenstream::{TokenTree, DelimSpan};
 use syntax::util::parser;
 
 use crate::ast_manip::{GetNodeId, GetSpan};

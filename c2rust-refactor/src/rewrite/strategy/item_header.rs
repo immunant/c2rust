@@ -16,7 +16,7 @@ use syntax::parse::PResult;
 use syntax::parse::parser::Parser;
 use syntax::parse::token::{Token, DelimToken};
 use syntax::symbol::keywords;
-use syntax::tokenstream::{TokenStream, ThinTokenStream, TokenTree};
+use syntax::tokenstream::{TokenStream, TokenTree};
 
 use crate::ast_manip::AstEquiv;
 use crate::driver;
@@ -158,13 +158,17 @@ fn find_item_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, ItemHeaderSpans
 }
 
 fn find_fn_header_arg_list(ts: TokenStream,
-                           generics_span: Span) -> Option<(ThinTokenStream, Span)> {
+                           generics_span: Span) -> Option<(TokenStream, Span)> {
     // Take the body of the first paren-delimited subtree that's strictly after `generics_span`.
     ts.trees().filter_map(|tt| {
         match tt {
-            TokenTree::Delimited(sp, ref d)
-                    if d.delim == DelimToken::Paren && sp.open.lo() >= generics_span.hi() =>
-                Some((d.tts.clone(), sp.open.between(sp.close))),
+            TokenTree::Delimited(sp, delim, tts) => {
+                if delim == DelimToken::Paren && sp.open.lo() >= generics_span.hi() {
+                    Some((tts, sp.open.between(sp.close)))
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }).next()
@@ -275,8 +279,8 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         (&ItemKind::Fn(ref decl1, ref header1, ref generics1, ref block1),
          &ItemKind::Fn(ref decl2, ref header2, ref generics2, ref block2)) => {
 
-            let FnDecl { inputs: inputs1, output: output1, variadic: variadic1 } = decl1 as &_;
-            let FnDecl { inputs: inputs2, output: output2, variadic: variadic2 } = decl2 as &_;
+            let FnDecl { inputs: inputs1, output: output1, c_variadic: variadic1 } = decl1 as &_;
+            let FnDecl { inputs: inputs2, output: output2, c_variadic: variadic2 } = decl2 as &_;
 
             let (old_args_tokens, old_args_span) =
                 find_fn_header_arg_list(tokens1.as_ref().unwrap().clone(), generics1.span)

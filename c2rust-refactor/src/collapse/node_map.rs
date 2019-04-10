@@ -1,5 +1,6 @@
 //! `NodeMap` support for macro expansion/collapsing.
 use std::collections::HashMap;
+use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
 use syntax::source_map::Span;
 use syntax::parse::token::{Token, Nonterminal};
@@ -59,25 +60,24 @@ fn nt_span(nt: &Nonterminal) -> Option<Span> {
     })
 }
 
-fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Nonterminal>) {
+fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Lrc<Nonterminal>>) {
     for tt in ts.into_trees() {
         match tt {
-            TokenTree::Token(_, Token::Interpolated(nt_tts)) => {
-                let nt = &nt_tts.0;
-                if let Some(span) = nt_span(nt) {
+            TokenTree::Token(_, Token::Interpolated(nt)) => {
+                if let Some(span) = nt_span(&nt) {
                     span_map.insert(span, nt.clone());
                 }
             },
             TokenTree::Token(..) => {},
-            TokenTree::Delimited(_, d) => {
-                collect_nonterminals(d.tts.into(), span_map);
+            TokenTree::Delimited(_, _, tts) => {
+                collect_nonterminals(tts.into(), span_map);
             },
         }
     }
 }
 
 struct NtUseVisitor<'a> {
-    nts: &'a HashMap<Span, Nonterminal>,
+    nts: &'a HashMap<Span, Lrc<Nonterminal>>,
     matched_ids: Vec<(NodeId, NodeId)>,
 }
 
@@ -86,7 +86,7 @@ macro_rules! define_nt_use_visitor {
         impl<'a, 'ast> Visitor<'ast> for NtUseVisitor<'a> {
             $( fn $visit_thing(&mut self, x: &'ast $Thing) {
                 if let Some(nt) = self.nts.get(&x.span) {
-                    match nt {
+                    match **nt {
                         Nonterminal::$NtThing(ref y) => {
                             if AstEquiv::ast_equiv(x, y) {
                                 self.matched_ids.extend(

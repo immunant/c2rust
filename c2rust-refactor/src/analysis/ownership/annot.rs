@@ -22,8 +22,8 @@ use super::constraint::{ConstraintSet, Perm};
 use super::context::Ctxt;
 
 
-struct LTySource<'c, 'a: 'c, 'tcx: 'a> {
-    cx: &'c mut Ctxt<'a, 'tcx>,
+struct LTySource<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
+    cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
 
     // XXX - bit of a hack.  We keep the def id of the last call to `fn_sig`, and refer to that
     // inside the map_types callback to figure out the right scope for any SigVars in the type.
@@ -32,9 +32,9 @@ struct LTySource<'c, 'a: 'c, 'tcx: 'a> {
     last_sig_did: Option<DefId>,
 }
 
-impl<'c, 'a, 'tcx> TypeSource for LTySource<'c, 'a, 'tcx> {
-    type Type = LTy<'tcx>;
-    type Signature = LFnSig<'tcx>;
+impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> TypeSource for LTySource<'c, 'lty, 'a, 'tcx> {
+    type Type = LTy<'lty, 'tcx>;
+    type Signature = LFnSig<'lty, 'tcx>;
 
     fn expr_type(&mut self, _e: &ast::Expr) -> Option<Self::Type> {
         self.last_sig_did = None;
@@ -63,9 +63,9 @@ impl<'c, 'a, 'tcx> TypeSource for LTySource<'c, 'a, 'tcx> {
     }
 }
 
-pub fn handle_marks<'a, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
-                              st: &CommandState,
-                              dcx: &RefactorCtxt<'a, 'tcx>) {
+pub fn handle_marks<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
+                                    st: &CommandState,
+                                    dcx: &RefactorCtxt<'a, 'tcx>) {
     let mut fixed_vars = Vec::new();
     {
         let source = LTySource {
@@ -159,9 +159,9 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 }
 
-pub fn handle_attrs<'a, 'hir, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
-                                    st: &CommandState,
-                                    dcx: &RefactorCtxt<'a, 'tcx>) {
+pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
+                                          st: &CommandState,
+                                          dcx: &RefactorCtxt<'a, 'tcx>) {
 
     let krate = st.krate();
     let mut v = AttrVisitor {
@@ -199,9 +199,9 @@ pub fn handle_attrs<'a, 'hir, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
 
         for attr in attrs {
             let meta = match_or!([attr.meta()] Some(x) => x; continue);
-            match &meta.name().as_str() as &str {
+            match &meta.path.to_string() as &str {
                 "ownership_constraints" => {
-                    let cset = parse_ownership_constraints(&meta, dcx.ty_arena())
+                    let cset = parse_ownership_constraints(&meta, cx.arena)
                         .unwrap_or_else(|e| panic!("bad #[ownership_constraints] for {:?}: {}",
                                                    def_id, e));
 
@@ -268,15 +268,15 @@ fn meta_item_word(meta: &ast::MetaItem) -> Result<(), &'static str> {
 }
 
 fn nested_meta_item(nmeta: &ast::NestedMetaItem) -> Result<&ast::MetaItem, &'static str> {
-    match nmeta.node {
-        ast::NestedMetaItemKind::MetaItem(ref m) => Ok(m),
-        _ => Err("expected NestedMetaItemKind::MetaItem"),
+    match nmeta {
+        ast::NestedMetaItem::MetaItem(ref m) => Ok(m),
+        _ => Err("expected NestedMetaItem::MetaItem"),
     }
 }
 
 fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
-    match nmeta.node {
-        ast::NestedMetaItemKind::Literal(ref lit) => {
+    match nmeta {
+        ast::NestedMetaItem::Literal(ref lit) => {
             match lit.node {
                 ast::LitKind::Str(s, _) => Ok(s),
                 _ => Err("expected str"),
@@ -286,9 +286,9 @@ fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
     }
 }
 
-fn parse_ownership_constraints<'tcx>(meta: &ast::MetaItem,
-                                     arena: &'tcx SyncDroplessArena)
-                                     -> Result<ConstraintSet<'tcx>, &'static str> {
+fn parse_ownership_constraints<'lty, 'tcx>(meta: &ast::MetaItem,
+                                     arena: &'lty SyncDroplessArena)
+                                     -> Result<ConstraintSet<'lty>, &'static str> {
     let args = meta_item_list(meta)?;
 
     let mut cset = ConstraintSet::new();
@@ -311,9 +311,9 @@ fn parse_ownership_constraints<'tcx>(meta: &ast::MetaItem,
     Ok(cset)
 }
 
-fn parse_perm<'tcx>(meta: &ast::MetaItem,
-                    arena: &'tcx SyncDroplessArena)
-                    -> Result<Perm<'tcx>, &'static str> {
+fn parse_perm<'lty, 'tcx>(meta: &ast::MetaItem,
+                    arena: &'lty SyncDroplessArena)
+                    -> Result<Perm<'lty>, &'static str> {
     if meta.check_name("min") {
         let args = meta_item_list(meta)?;
         if args.len() == 0 {
@@ -332,7 +332,7 @@ fn parse_perm<'tcx>(meta: &ast::MetaItem,
     } else {
         meta_item_word(meta)?;
 
-        let name = meta.name().as_str();
+        let name = meta.path.to_string();
         match &name as &str {
             "READ" => return Ok(Perm::read()),
             "WRITE" => return Ok(Perm::write()),
@@ -351,7 +351,7 @@ fn parse_perm<'tcx>(meta: &ast::MetaItem,
 fn parse_concrete(meta: &ast::MetaItem) -> Result<ConcretePerm, &'static str> {
     meta_item_word(meta)?;
 
-    let name = meta.name().as_str();
+    let name = meta.path.to_string();
     match &name as &str {
         "READ" => Ok(ConcretePerm::Read),
         "WRITE" => Ok(ConcretePerm::Write),

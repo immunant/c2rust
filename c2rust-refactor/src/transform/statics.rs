@@ -1,14 +1,15 @@
 use std::collections::{HashMap, HashSet};
+use std::mem;
 use rustc::hir::def_id::DefId;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use crate::ast_manip::{fold_nodes, fold_modules};
-use crate::ast_manip::fn_edit::fold_fns;
+use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules};
+use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::command::{CommandState, Registry};
 use crate::driver::{parse_expr};
-use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, fold_match_with};
+use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, mut_visit_match_with};
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
 use c2rust_ast_builder::{mk, IntoSymbol};
@@ -65,11 +66,11 @@ pub struct CollectToStruct {
 }
 
 impl Transform for CollectToStruct {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // Map from Symbol (the name) to the DefId of the old `static`.
         let mut old_statics = HashMap::new();
 
-        let krate = fold_modules(krate, |curs| {
+        fold_modules(krate, |curs| {
             let mut matches = Vec::new();
             let mut insert_point = None;
 
@@ -116,22 +117,20 @@ impl Transform for CollectToStruct {
         init_mcx.bindings.add(
             "__s", Ident::with_empty_ctxt((&self.instance_name as &str).into_symbol()));
 
-        let krate = fold_match_with(init_mcx, ident_pat, krate, |orig, mcx| {
+        mut_visit_match_with(init_mcx, ident_pat, krate, |orig, mcx| {
             let static_id = match old_statics.get(&mcx.bindings.get::<_, Ident>("__x").unwrap().name) {
                 Some(&x) => x,
-                None => return orig,
+                None => return,
             };
 
             if cx.resolve_expr(&orig) != static_id {
-                return orig;
+                return;
             }
 
             // This really is a reference to one of the collected statics.  Replace it with a
             // reference to the generated struct.
-            ident_repl.clone().subst(st, cx, &mcx.bindings)
+            *orig = ident_repl.clone().subst(st, cx, &mcx.bindings)
         });
-
-        krate
     }
 }
 
@@ -212,7 +211,7 @@ fn build_struct_instance(struct_name: &str,
 pub struct Localize;
 
 impl Transform for Localize {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Collect all marked statics.
 
         struct StaticInfo {
@@ -223,7 +222,7 @@ impl Transform for Localize {
         }
         let mut statics = HashMap::new();
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -251,24 +250,21 @@ impl Transform for Localize {
 
         // Collect all outgoing references from marked functions.
         let mut fn_refs = HashMap::new();
-        let krate = fold_fns(krate, |mut fl| {
+        mut_visit_fns(krate, |fl| {
             if !st.marked(fl.id, "user") {
-                return fl;
+                return;
             }
 
             let fn_def_id = cx.node_def_id(fl.id);
 
             let mut refs = HashSet::new();
-            let block = fold_resolved_paths(fl.block, cx, |qself, path, def| {
+            fold_resolved_paths(&mut fl.block, cx, |qself, path, def| {
                 if let Some(def_id) = def.opt_def_id() {
                     refs.insert(def_id);
                 }
                 (qself, path)
             });
             fn_refs.insert(fn_def_id, refs);
-
-            fl.block = block;
-            fl
         });
 
         // Sort the references, collecting those that point to other marked functions and those
@@ -317,42 +313,31 @@ impl Transform for Localize {
         // the statics they reference.  Replace uses of statics in the bodies of marked functions
         // with the corresponding parameter. 
 
-        let krate = fold_fns(krate, |mut fl| {
+        mut_visit_fns(krate, |fl| {
             let fn_def_id = cx.node_def_id(fl.id);
             if let Some(static_ids) = fn_statics.get(&fn_def_id) {
 
                 // Add new argument to function signature.
-                fl.decl = fl.decl.map(|mut decl| {
-                    for &static_id in static_ids {
-                        let info = &statics[&static_id];
-                        decl.inputs.push(mk().arg(
-                                mk().set_mutbl(info.mutbl).ref_ty(&info.ty),
-                                mk().ident_pat(info.arg_name)));
-                    }
-                    decl
-                });
+                for &static_id in static_ids {
+                    let info = &statics[&static_id];
+                    fl.decl.inputs.push(mk().arg(
+                        mk().set_mutbl(info.mutbl).ref_ty(&info.ty),
+                        mk().ident_pat(info.arg_name)));
+                }
 
                 // Update uses of statics.
-                fl.block = fold_nodes(fl.block, |e: P<Expr>| {
+                MutVisitNodes::visit(&mut fl.block, |e: &mut P<Expr>| {
                     if let Some(def_id) = cx.try_resolve_expr(&e) {
                         if let Some(info) = statics.get(&def_id) {
-                            return mk().unary_expr("*", mk().ident_expr(info.arg_name));
+                            *e = mk().unary_expr("*", mk().ident_expr(info.arg_name));
+                            return;
                         }
                     }
-                    e
                 });
 
                 // Update calls to other marked functions.
-                fl.block = fold_nodes(fl.block, |e: P<Expr>| {
-                    match e.node {
-                        ExprKind::Call(_, _) => {},
-                        _ => return e,
-                    }
-
-                    e.map(|e| {
-                        unpack!([e.node] ExprKind::Call(func, args));
-                        let mut args = args;
-
+                MutVisitNodes::visit(&mut fl.block, |e: &mut P<Expr>| {
+                    if let ExprKind::Call(func, args) = &mut e.node {
                         if let Some(func_id) = cx.try_resolve_expr(&func) {
                             if let Some(func_static_ids) = fn_statics.get(&func_id) {
                                 for &static_id in func_static_ids {
@@ -360,26 +345,13 @@ impl Transform for Localize {
                                 }
                             }
                         }
-
-                        Expr {
-                            node: ExprKind::Call(func, args),
-                            .. e
-                        }
-                    })
+                    }
                 });
 
             } else {
                 // Update calls only.
-                fl.block = fold_nodes(fl.block, |e: P<Expr>| {
-                    match e.node {
-                        ExprKind::Call(_, _) => {},
-                        _ => return e,
-                    }
-
-                    e.map(|e| {
-                        unpack!([e.node] ExprKind::Call(func, args));
-                        let mut args = args;
-
+                MutVisitNodes::visit(&mut fl.block, |e: &mut P<Expr>| {
+                    if let ExprKind::Call(func, args) = &mut e.node {
                         if let Some(func_id) = cx.try_resolve_expr(&func) {
                             if let Some(func_static_ids) = fn_statics.get(&func_id) {
                                 for &static_id in func_static_ids {
@@ -389,20 +361,10 @@ impl Transform for Localize {
                                 }
                             }
                         }
-
-                        Expr {
-                            node: ExprKind::Call(func, args),
-                            .. e
-                        }
-                    })
+                    }
                 });
             }
-
-            fl
         });
-
-        krate
-
     }
 }
 
@@ -446,7 +408,7 @@ impl Transform for Localize {
 struct StaticToLocal;
 
 impl Transform for StaticToLocal {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Collect all marked statics.
 
         struct StaticInfo {
@@ -457,7 +419,7 @@ impl Transform for StaticToLocal {
         }
         let mut statics = HashMap::new();
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if !st.marked(i.id, "target") {
                 return smallvec![i];
             }
@@ -482,11 +444,11 @@ impl Transform for StaticToLocal {
 
         // (2) Add a new local to every function that uses a marked static.
 
-        let krate = fold_fns(krate, |mut fl| {
+        mut_visit_fns(krate, |fl| {
             // Figure out which statics (if any) this function uses.
             let mut ref_ids = HashSet::new();
             let mut refs = Vec::new();
-            fl.block = fold_resolved_paths(fl.block, cx, |qself, path, def| {
+            fold_resolved_paths(&mut fl.block, cx, |qself, path, def| {
                 if let Some(def_id) = def.opt_def_id() {
                     if ref_ids.insert(def_id) {
                         if let Some(info) = statics.get(&def_id) {
@@ -498,30 +460,25 @@ impl Transform for StaticToLocal {
             });
 
             if refs.len() == 0 {
-                return fl;
+                return;
             }
 
             refs.sort_by_key(|info| info.name.name);
 
-            fl.block = fl.block.map(|b| b.map(|mut b| {
-                let mut new_stmts = Vec::with_capacity(refs.len() + b.stmts.len());
+            if let Some(block) = &mut fl.block {
+                let new_stmts = Vec::with_capacity(refs.len() + block.stmts.len());
+                let old_stmts = mem::replace(&mut block.stmts, new_stmts);
 
                 for &info in &refs {
                     let pat = mk().set_mutbl(info.mutbl).ident_pat(info.name);
                     let local = mk().local(pat, Some(info.ty.clone()), Some(info.expr.clone()));
                     let stmt = mk().local_stmt(P(local));
-                    new_stmts.push(stmt);
+                    block.stmts.push(stmt);
                 }
 
-                new_stmts.extend(b.stmts.into_iter());
-                b.stmts = new_stmts;
-                b
-            }));
-
-            fl
+                block.stmts.extend(old_stmts.into_iter());
+            }
         });
-
-        krate
     }
 }
 

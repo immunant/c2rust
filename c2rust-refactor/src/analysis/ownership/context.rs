@@ -39,15 +39,15 @@ use super::constraint::Perm;
 // analysis.  These structures generally start out minimally initialized, and are populated as
 // parts of the analysis runs.
 
-pub struct FuncSumm<'tcx> {
-    pub sig: LFnSig<'tcx>,
+pub struct FuncSumm<'lty, 'tcx> {
+    pub sig: LFnSig<'lty, 'tcx>,
     pub num_sig_vars: u32,
 
     /// Constraints over signature variables only.
     ///
     /// Populated by `inter`.  May be initialized early by `annot` if an `#[ownership_constraints]`
     /// attr is present on one of the variants - in this case, `cset_provided` will be set.
-    pub sig_cset: ConstraintSet<'tcx>,
+    pub sig_cset: ConstraintSet<'lty>,
 
     /// Was the constraint set provided externally?  (If so, we don't process this function during
     /// `inter`.)
@@ -59,14 +59,14 @@ pub struct FuncSumm<'tcx> {
     pub num_monos: usize,
 }
 
-pub struct VariantSumm<'tcx> {
+pub struct VariantSumm<'lty> {
     pub func_id: DefId,
     pub variant_idx: usize,
 
     /// Constraints over static, instantiation (callee), and signature variables.
     ///
     /// Populated by `intra`.
-    pub inst_cset: ConstraintSet<'tcx>,
+    pub inst_cset: ConstraintSet<'lty>,
 
     /// List of instantiations, or references to functions.
     ///
@@ -97,29 +97,28 @@ pub struct Instantiation {
 }
 
 
-pub struct Ctxt<'a, 'tcx: 'a> {
+pub struct Ctxt<'lty, 'a: 'lty, 'tcx: 'a> {
     pub tcx: TyCtxt<'a, 'tcx, 'tcx>,
-    pub lcx: LabeledTyCtxt<'tcx, Option<PermVar>>,
-    pub arena: &'tcx SyncDroplessArena,
+    pub lcx: LabeledTyCtxt<'lty, Option<PermVar>>,
+    pub arena: &'lty SyncDroplessArena,
 
     /// Types of non-`fn` definitions.  This includes `static`s and also `struct` fields.
-    pub static_summ: HashMap<DefId, LTy<'tcx>>,
+    pub static_summ: HashMap<DefId, LTy<'lty, 'tcx>>,
 
     /// Assignment of permission values to static vars.  This is only here because this is a
     /// convenient way to communicate it from `annot` to `inter`.
     pub static_assign: IndexVec<Var, ConcretePerm>,
 
-    funcs: HashMap<DefId, FuncSumm<'tcx>>,
-    variants: HashMap<DefId, VariantSumm<'tcx>>,
+    funcs: HashMap<DefId, FuncSumm<'lty, 'tcx>>,
+    variants: HashMap<DefId, VariantSumm<'lty>>,
     monos: HashMap<(DefId, usize), MonoSumm>,
 }
 
-impl<'a, 'tcx> Ctxt<'a, 'tcx> {
-    pub fn new(tcx: TyCtxt<'a, 'tcx, 'tcx>,
-               arena: &'tcx SyncDroplessArena) -> Ctxt<'a, 'tcx> {
+impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'a, 'tcx> {
+    pub fn new(tcx: TyCtxt<'a, 'tcx, 'tcx>, arena: &'lty SyncDroplessArena) -> Ctxt<'lty, 'a, 'tcx> {
         Ctxt {
             tcx: tcx,
-            lcx: LabeledTyCtxt::new(arena),
+            lcx: LabeledTyCtxt::new(&arena),
             arena: arena,
 
             static_summ: HashMap::new(),
@@ -131,7 +130,7 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
         }
     }
 
-    pub fn static_ty(&mut self, did: DefId) -> LTy<'tcx> {
+    pub fn static_ty(&mut self, did: DefId) -> LTy<'lty, 'tcx> {
         let assign = &mut self.static_assign;
         match self.static_summ.entry(did) {
             Entry::Vacant(e) => {
@@ -151,11 +150,11 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
         }
     }
 
-    fn func_summ_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
-                          variants: &mut HashMap<DefId, VariantSumm<'tcx>>,
+    fn func_summ_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'lty, 'tcx>>,
+                          variants: &mut HashMap<DefId, VariantSumm<'lty>>,
                           tcx: TyCtxt<'a, 'tcx, 'tcx>,
-                          lcx: &mut LabeledTyCtxt<'tcx, Option<PermVar>>,
-                          did: DefId) -> &'b mut FuncSumm<'tcx> {
+                          lcx: &mut LabeledTyCtxt<'lty, Option<PermVar>>,
+                          did: DefId) -> &'b mut FuncSumm<'lty, 'tcx> {
         match funcs.entry(did) {
             Entry::Vacant(e) => {
                 assert!(!variants.contains_key(&did),
@@ -212,7 +211,7 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
         }
     }
 
-    pub fn func_summ(&mut self, did: DefId) -> &mut FuncSumm<'tcx> {
+    pub fn func_summ(&mut self, did: DefId) -> &mut FuncSumm<'lty, 'tcx> {
         Self::func_summ_impl(&mut self.funcs,
                              &mut self.variants,
                              self.tcx,
@@ -220,17 +219,17 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
                              did)
     }
 
-    pub fn get_func_summ(&self, did: DefId) -> &FuncSumm<'tcx> {
+    pub fn get_func_summ(&self, did: DefId) -> &FuncSumm<'lty, 'tcx> {
         self.funcs.get(&did).unwrap()
     }
 
-    pub fn func_ids<'b>(&'b self) -> FuncIds<'b, 'tcx> {
+    pub fn func_ids<'b>(&'b self) -> FuncIds<'b, 'lty, 'tcx> {
         FuncIds {
             inner: self.funcs.keys(),
         }
     }
 
-    pub fn variant_ids<'b>(&'b self) -> VariantIds<'b, 'tcx> {
+    pub fn variant_ids<'b>(&'b self) -> VariantIds<'b, 'lty> {
         VariantIds {
             inner: self.variants.keys(),
         }
@@ -242,14 +241,14 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
         }
     }
 
-    fn add_variant_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
-                            variants: &'b mut HashMap<DefId, VariantSumm<'tcx>>,
+    fn add_variant_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'lty, 'tcx>>,
+                            variants: &'b mut HashMap<DefId, VariantSumm<'lty>>,
                             tcx: TyCtxt<'a, 'tcx, 'tcx>,
-                            lcx: &mut LabeledTyCtxt<'tcx, Option<PermVar>>,
+                            lcx: &'b mut LabeledTyCtxt<'lty, Option<PermVar>>,
                             func_did: DefId,
                             variant_did: DefId)
-                            -> (&'b mut FuncSumm<'tcx>,
-                                &'b mut VariantSumm<'tcx>) {
+                            -> (&'b mut FuncSumm<'lty, 'tcx>,
+                                &'b mut VariantSumm<'lty>) {
         let func = Self::func_summ_impl(funcs,
                                         variants,
                                         tcx,
@@ -275,8 +274,8 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
     }
 
     pub fn add_variant(&mut self, func_did: DefId, variant_id: DefId)
-                       -> (&mut FuncSumm<'tcx>,
-                           &mut VariantSumm<'tcx>) {
+                       -> (&mut FuncSumm<'lty, 'tcx>,
+                           &mut VariantSumm<'lty>) {
         Self::add_variant_impl(&mut self.funcs,
                                &mut self.variants,
                                self.tcx,
@@ -286,8 +285,8 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
     }
 
     pub fn add_mono(&mut self, variant_did: DefId)
-                    -> (&mut FuncSumm<'tcx>,
-                        &mut VariantSumm<'tcx>,
+                    -> (&mut FuncSumm<'lty, 'tcx>,
+                        &mut VariantSumm<'lty>,
                         &mut MonoSumm) {
         let (func, variant) = Self::variant_summ_impl(&mut self.funcs,
                                                       &mut self.variants,
@@ -307,13 +306,13 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
         (func, variant, mono)
     }
 
-    fn variant_summ_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'tcx>>,
-                             variants: &'b mut HashMap<DefId, VariantSumm<'tcx>>,
+    fn variant_summ_impl<'b>(funcs: &'b mut HashMap<DefId, FuncSumm<'lty, 'tcx>>,
+                             variants: &'b mut HashMap<DefId, VariantSumm<'lty>>,
                              tcx: TyCtxt<'a, 'tcx, 'tcx>,
-                             lcx: &mut LabeledTyCtxt<'tcx, Option<PermVar>>,
+                             lcx: &'b mut LabeledTyCtxt<'lty, Option<PermVar>>,
                              variant_did: DefId)
-                            -> (&'b mut FuncSumm<'tcx>,
-                                &'b mut VariantSumm<'tcx>) {
+                            -> (&'b mut FuncSumm<'lty, 'tcx>,
+                                &'b mut VariantSumm<'lty>) {
         if variants.contains_key(&variant_did) {
             let variant = variants.get_mut(&variant_did).unwrap();
             let func = funcs.get_mut(&variant.func_id).unwrap();
@@ -326,7 +325,7 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
     /// Get the variant and function summaries for a `fn`.  The summaries will be created if they
     /// don't already exist.
     pub fn variant_summ(&mut self, variant_did: DefId)
-                        -> (&mut FuncSumm<'tcx>, &mut VariantSumm<'tcx>) {
+                        -> (&mut FuncSumm<'lty, 'tcx>, &mut VariantSumm<'lty>) {
         Self::variant_summ_impl(&mut self.funcs,
                                 &mut self.variants,
                                 self.tcx,
@@ -334,25 +333,25 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
                                 variant_did)
     }
 
-    pub fn get_variant_summ(&self, did: DefId) -> &VariantSumm<'tcx> {
+    pub fn get_variant_summ(&self, did: DefId) -> &VariantSumm<'lty> {
         &self.variants[&did]
     }
 
-    pub fn variant_func_sig(&mut self, variant_did: DefId) -> LFnSig<'tcx> {
+    pub fn variant_func_sig(&mut self, variant_did: DefId) -> LFnSig<'lty, 'tcx> {
         self.variant_summ(variant_did).0.sig
     }
 
     pub fn first_variant_summ(&mut self, func_did: DefId)
-                              -> (&mut FuncSumm<'tcx>,
-                                  &mut VariantSumm<'tcx>) {
+                              -> (&mut FuncSumm<'lty, 'tcx>,
+                                  &mut VariantSumm<'lty>) {
         let func = self.funcs.get_mut(&func_did).unwrap();
         let variant = self.variants.get_mut(&func.variant_ids[0]).unwrap();
         (func, variant)
     }
 
     pub fn mono_summ(&mut self, func_did: DefId, mono_idx: usize)
-                     -> (&mut FuncSumm<'tcx>,
-                         &mut VariantSumm<'tcx>,
+                     -> (&mut FuncSumm<'lty, 'tcx>,
+                         &mut VariantSumm<'lty>,
                          &mut MonoSumm) {
         let func = self.funcs.get_mut(&func_did).unwrap();
 
@@ -372,7 +371,7 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
     }
 
     /// Get the variant summary for the variant that owns the given mono.
-    pub fn get_mono_variant_summ(&self, func_did: DefId, mono_idx: usize) -> &VariantSumm<'tcx> {
+    pub fn get_mono_variant_summ(&self, func_did: DefId, mono_idx: usize) -> &VariantSumm<'lty> {
         let func = self.get_func_summ(func_did);
 
         if func.variant_ids.len() == 1 {
@@ -383,17 +382,17 @@ impl<'a, 'tcx> Ctxt<'a, 'tcx> {
     }
 
 
-    pub fn min_perm(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) -> Perm<'tcx> {
+    pub fn min_perm(&mut self, a: Perm<'lty>, b: Perm<'lty>) -> Perm<'lty> {
         Perm::min(a, b, self.arena)
     }
 }
 
-fn preload_constraints<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
+fn preload_constraints<'lty, 'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
                                  def_id: DefId,
-                                 sig: LFnSig<'tcx>) -> Option<ConstraintSet<'tcx>> {
+                                 sig: LFnSig<'lty, 'tcx>) -> Option<ConstraintSet<'lty>> {
     let mut cset = ConstraintSet::new();
 
-    let path = tcx.absolute_item_path_str(def_id);
+    let path = tcx.def_path_str(def_id);
     match &path as &str {
         "core::ptr::<impl *const T>::offset" |
         "core::ptr::<impl *mut T>::offset" => {
@@ -413,11 +412,11 @@ fn preload_constraints<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
     Some(cset)
 }
 
-pub struct FuncIds<'a, 'tcx: 'a> {
-    inner: hash_map::Keys<'a, DefId, FuncSumm<'tcx>>,
+pub struct FuncIds<'a, 'lty, 'tcx> {
+    inner: hash_map::Keys<'a, DefId, FuncSumm<'lty, 'tcx>>,
 }
 
-impl<'a, 'tcx> Iterator for FuncIds<'a, 'tcx> {
+impl<'a, 'lty, 'tcx> Iterator for FuncIds<'a, 'lty, 'tcx> {
     type Item = DefId;
 
     fn next(&mut self) -> Option<DefId> {
@@ -426,11 +425,11 @@ impl<'a, 'tcx> Iterator for FuncIds<'a, 'tcx> {
 }
 
 
-pub struct VariantIds<'a, 'tcx: 'a> {
-    inner: hash_map::Keys<'a, DefId, VariantSumm<'tcx>>,
+pub struct VariantIds<'a, 'lty> {
+    inner: hash_map::Keys<'a, DefId, VariantSumm<'lty>>,
 }
 
-impl<'a, 'tcx> Iterator for VariantIds<'a, 'tcx> {
+impl<'a, 'lty> Iterator for VariantIds<'a, 'lty> {
     type Item = DefId;
 
     fn next(&mut self) -> Option<DefId> {

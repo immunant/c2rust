@@ -1,11 +1,10 @@
-use arena::SyncDroplessArena;
 use rustc::hir::def::Def;
 use rustc::hir::def_id::DefId;
 use rustc::hir::map as hir_map;
 use rustc::hir::{self, Node};
 use rustc::session::Session;
-use rustc::ty::subst::Substs;
 use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
+use rustc::ty::subst::InternalSubsts;
 use rustc_metadata::cstore::CStore;
 use syntax::ast::{self, Expr, ExprKind, FnDecl, FunctionRetTy, Item, NodeId, Path, QSelf, DUMMY_NODE_ID};
 use syntax::ptr::P;
@@ -20,15 +19,10 @@ use crate::reflect;
 #[derive(Clone)]
 pub struct RefactorCtxt<'a, 'tcx: 'a> {
     sess: &'a Session,
+    cstore: &'a CStore,
+
     map: Option<&'a hir_map::Map<'tcx>>,
     tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
-
-    /// This is a reference to the same `DroplessArena` used in `tcx`.  Analyses working with types
-    /// use this to allocate extra values with the same lifetime `'tcx` as the types themselves.
-    /// This way `Ty` wrappers don't need two lifetime parameters everywhere.
-    tcx_arena: Option<&'tcx SyncDroplessArena>,
-
-    cstore: &'a CStore,
 }
 
 impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
@@ -37,9 +31,8 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         cstore: &'a CStore,
         map: Option<&'a hir_map::Map<'tcx>>,
         tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
-        tcx_arena: Option<&'tcx SyncDroplessArena>,
     ) -> Self {
-        Self {sess, cstore, map, tcx, tcx_arena}
+        Self {sess, cstore, map, tcx}
     }
 }
 
@@ -62,11 +55,6 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
 
-    pub fn ty_arena(&self) -> &'tcx SyncDroplessArena {
-        self.tcx_arena
-            .expect("ty ctxt is not available in this context (requires phase 3)")
-    }
-
     pub fn has_ty_ctxt(&self) -> bool {
         self.tcx.is_some()
     }
@@ -79,7 +67,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         let parent = self.hir_map().get_parent_did(id);
         let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
-        tables.node_id_to_type(hir_id)
+        tables.node_type(hir_id)
     }
 
     pub fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
@@ -90,7 +78,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         }
         let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
-        tables.node_id_to_type_opt(hir_id)
+        tables.node_type_opt(hir_id)
     }
 
     /// Get the `ty::Ty` computed for a node, taking into account any
@@ -111,7 +99,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         if let Some(adj) = tables.adjustments().get(hir_id).and_then(|adjs| adjs.last()) {
             Some(adj.target)
         } else {
-            tables.node_id_to_type_opt(hir_id)
+            tables.node_type_opt(hir_id)
         }
     }
 
@@ -133,13 +121,12 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
     pub fn node_def_id(&self, id: NodeId) -> DefId {
         match self.hir_map().find(id) {
             Some(Node::Binding(_)) => self.node_def_id(self.hir_map().get_parent_node(id)),
-            Some(Node::Item(item)) => self.hir_map().local_def_id(item.id),
+            Some(Node::Item(item)) => self.hir_map().local_def_id_from_hir_id(item.hir_id),
             _ => self.hir_map().local_def_id(id),
         }
     }
 
     pub fn def_to_hir_id(&self, def: &hir::def::Def) -> Option<hir::HirId> {
-        use rustc::hir::def::Def;
         match def {
             Def::Mod(did) |
             Def::Struct(did) |
@@ -155,9 +142,9 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
             Def::TyParam(did) |
             Def::Fn(did) |
             Def::Const(did) |
+            Def::ConstParam(did) |
             Def::Static(did, _) |
-            Def::StructCtor(did, _) |
-            Def::VariantCtor(did, _) |
+            Def::Ctor(did, ..) |
             Def::SelfCtor(did) |
             Def::Method(did) |
             Def::AssociatedConst(did) |
@@ -549,5 +536,5 @@ pub struct CalleeInfo<'tcx> {
     pub def_id: Option<DefId>,
 
     /// The type and region arguments that were substituted in at the call site.
-    pub substs: Option<&'tcx Substs<'tcx>>,
+    pub substs: Option<&'tcx InternalSubsts<'tcx>>,
 }

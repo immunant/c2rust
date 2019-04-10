@@ -15,35 +15,34 @@ use crate::RefactorCtxt;
 pub struct WrappingToNormal;
 
 impl Transform for WrappingToNormal {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &RefactorCtxt) -> Crate {
-        let krate = replace_expr(st, cx, krate,
-                                 "$x:Expr.wrapping_add($y:Expr)",
-                                 "$x + $y");
-        let krate = replace_expr(st, cx, krate,
-                                 "$x:Expr.wrapping_sub($y:Expr)",
-                                 "$x - $y");
-        let krate = replace_expr(st, cx, krate,
-                                 "$x:Expr.wrapping_mul($y:Expr)",
-                                 "$x * $y");
-        let krate = replace_expr(st, cx, krate,
-                                 "$x:Expr.wrapping_div($y:Expr)",
-                                 "$x / $y");
-        let krate = replace_expr(st, cx, krate,
-                                 "$x:Expr.wrapping_rem($y:Expr)",
-                                 "$x % $y");
-        let krate = replace_expr(st, cx, krate,
-                                 "$x:Expr.wrapping_neg()",
-                                 "-$x");
-        let krate = replace_expr(st, cx, krate,
-                                 "$x:Expr.wrapping_shl($y:Expr)",
-                                 "$x << $y");
-        let krate = replace_expr(st, cx, krate,
-                                 "$x:Expr.wrapping_shr($y:Expr)",
-                                 "$x >> $y");
-        let krate = replace_expr(st, cx, krate,
-                                 "$x:Expr.wrapping_abs()",
-                                 "$x:Expr.abs()");
-        krate
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
+        replace_expr(st, cx, krate,
+                     "$x:Expr.wrapping_add($y:Expr)",
+                     "$x + $y");
+        replace_expr(st, cx, krate,
+                     "$x:Expr.wrapping_sub($y:Expr)",
+                     "$x - $y");
+        replace_expr(st, cx, krate,
+                     "$x:Expr.wrapping_mul($y:Expr)",
+                     "$x * $y");
+        replace_expr(st, cx, krate,
+                     "$x:Expr.wrapping_div($y:Expr)",
+                     "$x / $y");
+        replace_expr(st, cx, krate,
+                     "$x:Expr.wrapping_rem($y:Expr)",
+                     "$x % $y");
+        replace_expr(st, cx, krate,
+                     "$x:Expr.wrapping_neg()",
+                     "-$x");
+        replace_expr(st, cx, krate,
+                     "$x:Expr.wrapping_shl($y:Expr)",
+                     "$x << $y");
+        replace_expr(st, cx, krate,
+                     "$x:Expr.wrapping_shr($y:Expr)",
+                     "$x >> $y");
+        replace_expr(st, cx, krate,
+                     "$x:Expr.wrapping_abs()",
+                     "$x:Expr.abs()");
     }
 }
 
