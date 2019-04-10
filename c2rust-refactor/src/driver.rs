@@ -305,6 +305,7 @@ pub fn run_refactoring<F, R>(
     })
 }
 
+#[allow(dead_code)]
 pub struct Compiler {
     pub sess: Lrc<Session>,
     pub codegen_backend: Lrc<Box<dyn CodegenBackend>>,
@@ -318,6 +319,7 @@ pub struct Compiler {
     crate_name: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Default)]
 struct Queries {
     dep_graph_future: Query<Option<DepGraphFuture>>,
@@ -335,6 +337,7 @@ struct Queries {
     link: Query<()>,
 }
 
+#[allow(dead_code)]
 struct Query<T> {
     result: RefCell<Option<Result<T, ErrorReported>>>,
 }
@@ -347,6 +350,7 @@ impl<T> Default for Query<T> {
     }
 }
 
+#[allow(dead_code)]
 struct PluginInfo {
     syntax_exts: Vec<NamedSyntaxExtension>,
     attributes: Vec<(String, AttributeType)>,

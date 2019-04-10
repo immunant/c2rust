@@ -39,7 +39,6 @@ use crate::node_map::NodeMap;
 use deleted::DeletedNode;
 
 pub struct CollapseInfo<'ast> {
-    unexpanded: &'ast Crate,
     mac_table: MacTable<'ast>,
     cfg_attr_info: HashMap<NodeId, Vec<Attribute>>,
     deleted_info: Vec<DeletedNode<'ast>>,
@@ -67,7 +66,6 @@ impl<'ast> CollapseInfo<'ast> {
         node_map.commit();
 
         CollapseInfo {
-            unexpanded,
             mac_table,
             cfg_attr_info,
             deleted_info,

@@ -392,7 +392,7 @@ fn preload_constraints<'lty, 'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
                                  sig: LFnSig<'lty, 'tcx>) -> Option<ConstraintSet<'lty>> {
     let mut cset = ConstraintSet::new();
 
-    let path = tcx.absolute_item_path_str(def_id);
+    let path = tcx.def_path_str(def_id);
     match &path as &str {
         "core::ptr::<impl *const T>::offset" |
         "core::ptr::<impl *mut T>::offset" => {

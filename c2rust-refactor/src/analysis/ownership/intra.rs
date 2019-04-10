@@ -2,7 +2,6 @@
 
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
-use rustc::mir::tcx::PlaceTy;
 use rustc::ty::{Ty, TyKind};
 use rustc_data_structures::indexed_vec::IndexVec;
 use rustc_target::abi::VariantIdx;
@@ -236,14 +235,15 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         match lv {
             Place::Base(PlaceBase::Local(l)) => (self.local_var_ty(*l), Perm::move_(), None),
 
-            Place::Base(PlaceBase::Static(ref s)) => (self.static_ty(s.def_id), Perm::move_(), None),
-
-            Place::Base(PlaceBase::Promoted(ref _p)) => {
-                // TODO: test this
-                let pty = lv.ty(self.mir, self.cx.tcx);
-                let ty = expect!([pty] PlaceTy::Ty { ty } => ty);
-                (self.local_ty(ty), Perm::read(), None)
-            },
+            Place::Base(PlaceBase::Static(ref s)) => match s.kind {
+                StaticKind::Static(def_id) => (self.static_ty(def_id), Perm::move_(), None),
+                StaticKind::Promoted(ref _p) => {
+                    // TODO: test this
+                    let pty = lv.ty(self.mir, self.cx.tcx);
+                    let ty = pty.ty;
+                    (self.local_ty(ty), Perm::read(), None)
+                }
+            }
 
             Place::Projection(box p) => {
                 let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&p.base);

@@ -88,7 +88,7 @@ struct TraitRef { path, ref_id }
 
 struct EnumDef { variants }
 #[extend_span]
-struct Variant_ { ident, #[match=ignore] attrs, data, disr_expr }
+struct Variant_ { ident, #[match=ignore] attrs, id, data, disr_expr }
 enum VariantData {
     Struct(fields, id),
     Tuple(fields, id),
@@ -455,13 +455,13 @@ struct DelimSpan { open, close }
 flag DelimToken;
 flag Token;
 
-struct MetaItem { ident, node, span }
+struct MetaItem { path, node, span }
 enum MetaItemKind {
     Word,
     List(l),
     NameValue(lit),
 }
-enum NestedMetaItemKind {
+enum NestedMetaItem {
     MetaItem(mi),
     Literal(lit),
 }

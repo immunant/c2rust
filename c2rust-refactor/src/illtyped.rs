@@ -103,6 +103,8 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> FoldIlltyped<'a, 'tcx, F> {
 
     /// Attempt to ensure that `expr` has the type `expected_ty`, inserting
     /// casts if needed. Return true if retyping was needed.
+    // TODO: Use this when checking casts
+    #[allow(dead_code)]
     fn ensure_cast(
         &mut self,
         sub_e: &mut P<Expr>,
@@ -212,7 +214,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 // (yes, the subexpression) in the `cast_kinds` table - if there's nothing
                 // there, it's not a valid cast.
 
-                // Updating to nightly-2019-03-13 note: cast_kinds is gone now,
+                // Updating to nightly-2019-04-08 note: cast_kinds is gone now,
                 // and cast checking only marks coercion casts. We don't need to
                 // implement the logic for coercions, but it looks like we need
                 // to implement logic for real cast typechecking.

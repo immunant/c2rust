@@ -225,15 +225,15 @@ impl Make<GenericArg> for Lifetime {
     }
 }
 
-impl Make<NestedMetaItemKind> for MetaItem {
-    fn make(self, _mk: &Builder) -> NestedMetaItemKind {
-        NestedMetaItemKind::MetaItem(self)
+impl Make<NestedMetaItem> for MetaItem {
+    fn make(self, _mk: &Builder) -> NestedMetaItem {
+        NestedMetaItem::MetaItem(self)
     }
 }
 
-impl Make<NestedMetaItemKind> for Lit {
-    fn make(self, _mk: &Builder) -> NestedMetaItemKind {
-        NestedMetaItemKind::Literal(self)
+impl Make<NestedMetaItem> for Lit {
+    fn make(self, _mk: &Builder) -> NestedMetaItem {
+        NestedMetaItem::Literal(self)
     }
 }
 
@@ -1308,7 +1308,7 @@ impl Builder {
         where I: Make<Ident> {
         let name = name.make(&self);
         Self::item(name, self.attrs, self.vis, self.span, self.id,
-                   ItemKind::Struct(VariantData::Struct(fields, DUMMY_NODE_ID),
+                   ItemKind::Struct(VariantData::Struct(fields, false),
                                     self.generics))
     }
 
@@ -1316,7 +1316,7 @@ impl Builder {
         where I: Make<Ident> {
         let name = name.make(&self);
         Self::item(name, self.attrs, self.vis, self.span, self.id,
-                   ItemKind::Union(VariantData::Struct(fields, DUMMY_NODE_ID),
+                   ItemKind::Union(VariantData::Struct(fields, false),
                                     self.generics))
     }
 
@@ -1367,6 +1367,7 @@ impl Builder {
             node: Variant_ {
                 ident: name,
                 attrs: self.attrs,
+                id: DUMMY_NODE_ID,
                 data: dat,
                 disr_expr: None,
             },
@@ -1382,6 +1383,7 @@ impl Builder {
             node: Variant_ {
                 ident: name,
                 attrs: self.attrs,
+                id: DUMMY_NODE_ID,
                 data: VariantData::Unit(self.id),
                 disr_expr: disc,
             },
@@ -1664,17 +1666,16 @@ impl Builder {
         let path = path.make(&self);
         let kind = kind.make(&self);
         MetaItem {
-            ident: path,
+            path: path,
             node: kind,
             span: DUMMY_SP,
         }
     }
 
     pub fn nested_meta_item<K>(self, kind: K) -> NestedMetaItem
-        where K: Make<NestedMetaItemKind>
-     {
-        let kind = kind.make(&self);
-        dummy_spanned(kind)
+        where K: Make<NestedMetaItem>
+    {
+        kind.make(&self)
     }
 
     // Convert the current internal list of outer attributes

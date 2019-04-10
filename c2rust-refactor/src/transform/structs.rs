@@ -154,7 +154,9 @@ impl Transform for Rename {
 
             // Make sure this is actually a struct declaration, and not, say, the target
             // declaration's containing module.
-            match_or!([struct_item_id(&i)] Some(x) => x; return smallvec![i]);
+            if !is_struct(&i) {
+                return smallvec![i];
+            }
             target_def_id = Some(cx.node_def_id(i.id));
 
             smallvec![i.map(|i| {
@@ -187,10 +189,13 @@ impl Transform for Rename {
     }
 }
 
-fn struct_item_id(i: &Item) -> Option<NodeId> {
-    let vd = match_or!([i.node] ItemKind::Struct(ref vd, _) => vd; return None);
-    let id = match_or!([*vd] VariantData::Struct(_, id) => id; return None);
-    Some(id)
+fn is_struct(i: &Item) -> bool {
+    if let ItemKind::Struct(ref vd, _) = i.node {
+        if let VariantData::Struct(..) = *vd {
+            return true;
+        }
+    }
+    false
 }
 
 

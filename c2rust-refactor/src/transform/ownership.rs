@@ -106,7 +106,7 @@ fn do_annotate(st: &CommandState,
 
         fn clean_attrs(&self, attrs: &mut Vec<Attribute>) {
             attrs.retain(|a| {
-                match &a.name().as_str() as &str {
+                match &a.path.to_string() as &str {
                     "ownership_mono" |
                     "ownership_constraints" |
                     "ownership_static" => false,

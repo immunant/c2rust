@@ -127,7 +127,6 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
     }
 
     pub fn def_to_hir_id(&self, def: &hir::def::Def) -> Option<hir::HirId> {
-        use rustc::hir::def::Def;
         match def {
             Def::Mod(did) |
             Def::Struct(did) |
@@ -145,8 +144,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
             Def::Const(did) |
             Def::ConstParam(did) |
             Def::Static(did, _) |
-            Def::StructCtor(did, _) |
-            Def::VariantCtor(did, _) |
+            Def::Ctor(did, ..) |
             Def::SelfCtor(did) |
             Def::Method(did) |
             Def::AssociatedConst(did) |

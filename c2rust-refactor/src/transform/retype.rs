@@ -1235,10 +1235,12 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             (ExprKind::Call(ref callee, ref arguments), _) => {
                 let callee_did = self.cx.try_resolve_expr(callee);
                 if let Some(callee_did) = callee_did {
-                    let callee_str = self.cx.ty_ctxt().absolute_item_path_str(callee_did);
+                    let callee_str = self.cx.ty_ctxt().def_path_str(callee_did);
                     // intrinsics are in an anonymous namespace, so the full
                     // path is actually core::intrinsics::<anon>::transmute
-                    if callee_str == "core::intrinsics::::transmute" {
+                    if callee_str == "std::intrinsics::transmute" ||
+                        callee_str == "core::intrinsics::transmute"
+                    {
                         let mut e = arguments[0].clone();
                         if self.try_retype(&mut e, expected) {
                             *expr = e;

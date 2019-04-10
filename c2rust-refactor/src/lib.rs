@@ -203,7 +203,7 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
 }
 
 fn get_rustc_cargo_args() -> Vec<String> {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
     use cargo::Config;
     use cargo::core::{Workspace, PackageId, Target, maybe_allow_nightly_features};
     use cargo::core::compiler::{CompileMode, Executor, DefaultExecutor, Context, Unit};

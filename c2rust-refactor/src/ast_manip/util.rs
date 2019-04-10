@@ -229,7 +229,7 @@ pub fn namespace(def: &Def) -> Option<Namespace> {
         | SelfTy(..)
         | ToolMod => Some(Namespace::TypeNS),
 
-        Fn(..) | Const(..) | Static(..) | StructCtor(..) | VariantCtor(..) | SelfCtor(..)
+        Fn(..) | Const(..) | Static(..) | SelfCtor(..)
         | Method(..) | AssociatedConst(..) | Local(..) | Upvar(..) | Label(..) => {
             Some(Namespace::ValueNS)
         }

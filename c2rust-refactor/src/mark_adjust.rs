@@ -33,8 +33,7 @@ impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
                         }
 
                         // For struct and node constructors, also check the parent item
-                        if matches!([path.def] Def::StructCtor(..)) ||
-                           matches!([path.def] Def::VariantCtor(..)) {
+                        if matches!([path.def] Def::Ctor(..)) {
                             let parent_id = self.cx.hir_map().get_parent(id);
                             if self.st.marked(parent_id, self.label) {
                                 self.st.add_mark(use_id, self.label);

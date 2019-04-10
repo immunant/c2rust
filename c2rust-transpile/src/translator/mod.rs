@@ -289,7 +289,7 @@ pub struct Translation<'c> {
 fn simple_metaitem(name: &str) -> NestedMetaItem {
     let meta_item = mk().meta_item(vec![name], MetaItemKind::Word);
 
-    mk().nested_meta_item(NestedMetaItemKind::MetaItem(meta_item))
+    mk().nested_meta_item(NestedMetaItem::MetaItem(meta_item))
 }
 
 fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
@@ -1195,8 +1195,8 @@ impl<'c> Translation<'c> {
                         vec!["align"],
                         MetaItemKind::List(
                             vec![mk().nested_meta_item(
-                                NestedMetaItemKind::Literal(lit))]));
-                    reprs.push(mk().nested_meta_item(NestedMetaItemKind::MetaItem(inner)));
+                                NestedMetaItem::Literal(lit))]));
+                    reprs.push(mk().nested_meta_item(NestedMetaItem::MetaItem(inner)));
                 };
 
                 let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));

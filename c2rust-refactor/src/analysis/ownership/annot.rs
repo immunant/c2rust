@@ -199,7 +199,7 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'a, 'tcx>,
 
         for attr in attrs {
             let meta = match_or!([attr.meta()] Some(x) => x; continue);
-            match &meta.name().as_str() as &str {
+            match &meta.path.to_string() as &str {
                 "ownership_constraints" => {
                     let cset = parse_ownership_constraints(&meta, cx.arena)
                         .unwrap_or_else(|e| panic!("bad #[ownership_constraints] for {:?}: {}",
@@ -268,15 +268,15 @@ fn meta_item_word(meta: &ast::MetaItem) -> Result<(), &'static str> {
 }
 
 fn nested_meta_item(nmeta: &ast::NestedMetaItem) -> Result<&ast::MetaItem, &'static str> {
-    match nmeta.node {
-        ast::NestedMetaItemKind::MetaItem(ref m) => Ok(m),
-        _ => Err("expected NestedMetaItemKind::MetaItem"),
+    match nmeta {
+        ast::NestedMetaItem::MetaItem(ref m) => Ok(m),
+        _ => Err("expected NestedMetaItem::MetaItem"),
     }
 }
 
 fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
-    match nmeta.node {
-        ast::NestedMetaItemKind::Literal(ref lit) => {
+    match nmeta {
+        ast::NestedMetaItem::Literal(ref lit) => {
             match lit.node {
                 ast::LitKind::Str(s, _) => Ok(s),
                 _ => Err("expected str"),
@@ -332,7 +332,7 @@ fn parse_perm<'lty, 'tcx>(meta: &ast::MetaItem,
     } else {
         meta_item_word(meta)?;
 
-        let name = meta.name().as_str();
+        let name = meta.path.to_string();
         match &name as &str {
             "READ" => return Ok(Perm::read()),
             "WRITE" => return Ok(Perm::write()),
@@ -351,7 +351,7 @@ fn parse_perm<'lty, 'tcx>(meta: &ast::MetaItem,
 fn parse_concrete(meta: &ast::MetaItem) -> Result<ConcretePerm, &'static str> {
     meta_item_word(meta)?;
 
-    let name = meta.name().as_str();
+    let name = meta.path.to_string();
     match &name as &str {
         "READ" => Ok(ConcretePerm::Read),
         "WRITE" => Ok(ConcretePerm::Write),

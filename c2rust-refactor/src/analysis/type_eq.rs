@@ -790,7 +790,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'a, 'hir> {
                         // "unsafe" tag on the function pointer.
                         self.ltt.unify(rty, prev_ty);
                     },
-                    Adjust::ClosureFnPointer => {}, // unsupported
+                    Adjust::ClosureFnPointer(_) => {}, // unsupported
                     Adjust::MutToConstPointer => {
                         // Only the mutability tag changes
                         self.ltt.unify(rty, prev_ty);

@@ -7,7 +7,7 @@ use std::ops::Index;
 
 use c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CQualTypeId, CTypeId, MemberKind, UnOp};
 use c2rust_ast_builder::mk;
-use syntax::ast::{AttrStyle, BinOpKind, Expr, ExprKind, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StmtKind, StrStyle, StructField, Ty, TyKind, self};
+use syntax::ast::{AttrStyle, BinOpKind, Expr, ExprKind, MetaItemKind, NestedMetaItem, Lit, LitIntType, LitKind, StmtKind, StrStyle, StructField, Ty, TyKind, self};
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
 use syntax_pos::{Span, DUMMY_SP};
@@ -55,7 +55,7 @@ fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
         }),
     );
 
-    mk().nested_meta_item(NestedMetaItemKind::MetaItem(meta_item))
+    mk().nested_meta_item(NestedMetaItem::MetaItem(meta_item))
 }
 
 impl<'a> Translation<'a> {

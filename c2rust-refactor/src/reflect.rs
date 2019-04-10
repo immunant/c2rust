@@ -6,7 +6,7 @@ use rustc::hir::map::definitions::DefPathData;
 use rustc::hir::map::Map as HirMap;
 use rustc::hir::Node;
 use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
-use rustc::ty::{self, LazyConst, TyCtxt, GenericParamDefKind};
+use rustc::ty::{self, DefIdTree, TyCtxt, GenericParamDefKind};
 use rustc::ty::subst::Subst;
 use syntax::ast::*;
 use syntax::ptr::P;
@@ -50,10 +50,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         Str => mk().ident_ty("str"),
         Array(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),
-            match len {
-                LazyConst::Unevaluated(did, _substs) => anon_const_to_expr(tcx.hir(), *did),
-                _ => mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize")),
-            },
+            mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize")),
         ),
         Slice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
         RawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(reflect_tcx_ty(tcx, mty.ty)),
@@ -86,7 +83,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
     }
 }
 
-fn anon_const_to_expr(hir_map: &HirMap, def_id: DefId) -> P<Expr> {
+pub fn anon_const_to_expr(hir_map: &HirMap, def_id: DefId) -> P<Expr> {
     let node = hir_map.get_if_local(def_id).unwrap();
     let ac = expect!([node] Node::AnonConst(ac) => ac);
     let body_id = ac.body;
@@ -225,7 +222,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
             DefPathData::AssocExistentialInImpl(_) |
             DefPathData::ClosureExpr |
             DefPathData::LifetimeParam(_) |
-            DefPathData::StructCtor |
+            DefPathData::Ctor |
             DefPathData::AnonConst |
             DefPathData::ImplTrait |
             DefPathData::TraitAlias(_) => {},
@@ -255,10 +252,10 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
                 }
             },
 
-            DefPathData::StructCtor => {
+            DefPathData::Ctor => {
                 // The parent of the struct ctor in `visible_parent_map` is the parent of the
                 // struct.  But we want to visit the struct first, so we can add its name.
-                if let Some(parent_id) = tcx.parent_def_id(id) {
+                if let Some(parent_id) = tcx.parent(id) {
                     id = parent_id;
                     continue;
                 } else {
@@ -272,7 +269,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>,
         let visible_parent_map = tcx.visible_parent_map(LOCAL_CRATE);
         if let Some(&parent_id) = visible_parent_map.get(&id) {
             id = parent_id;
-        } else if let Some(parent_id) = tcx.parent_def_id(id) {
+        } else if let Some(parent_id) = tcx.parent(id) {
             id = parent_id;
         } else {
             break;
@@ -300,7 +297,7 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         Node::Binding(_) |
         Node::Local(_) |
         Node::MacroDef(_) |
-        Node::StructCtor(_) |
+        Node::Ctor(_) |
         Node::GenericParam(_) => true,
 
         Node::AnonConst(_) |
