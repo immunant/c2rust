@@ -16,6 +16,7 @@ trigger:
 
 jobs:
 - job: Linux
+  timeoutInMinutes: 120
   pool:
     vmImage: 'Ubuntu-16.04'
   strategy:
@@ -94,6 +95,7 @@ jobs:
     displayName: 'Test translator against developer build (LLVM 8)'
 
 - job: Darwin
+  timeoutInMinutes: 120
   pool:
     vmImage: 'macos-10.13'
   steps:
@@ -128,7 +130,7 @@ jobs:
 
   - script: |
       source $HOME/.cargo/env
-      python3 ./scripts/build_translator.py --debug --with-llvm-version=7.0.0
+      python3 ./scripts/build_translator.py --debug --with-llvm-version=7.0.1
     displayName: 'Developer build against local LLVM 7'
 
   - script: |
@@ -144,7 +146,7 @@ jobs:
   - script: |
       source $HOME/.cargo/env
       python3 ./scripts/build_translator.py --debug --with-llvm-version=8.0.0
-    displayName: 'Developer build against local LLVM 7'
+    displayName: 'Developer build against local LLVM 8'
 
   - script: |
       source $HOME/.cargo/env
