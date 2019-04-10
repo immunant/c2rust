@@ -5,6 +5,11 @@ sudo: required
 git:
   submodules: false
 
+branches:
+  only:
+    - master
+    - feature/ci-dev
+
 matrix:
   fast_finish: true
   include:

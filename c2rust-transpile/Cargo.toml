@@ -13,7 +13,7 @@ description = "C2Rust transpiler implementation"
 
 [dependencies]
 serde_cbor = "0.9"
-clap = {version = "~2.32.0", features = ["yaml"]}
+clap = {version = "2.33", features = ["yaml"]}
 dtoa = "0.4.2"
 serde = "1.0"
 serde_json = "1.0"
@@ -26,8 +26,8 @@ handlebars = "1.1.0"
 itertools = "0.8"
 pathdiff = "0.1.0"
 regex = "1"
-strum = "0.13"
-strum_macros = "0.13"
+strum = "0.15"
+strum_macros = "0.15"
 log = "0.4"
 fern = { version = "0.5", features = ["colored"] }
 failure = "0.1.5"

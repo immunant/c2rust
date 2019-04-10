@@ -265,30 +265,30 @@ fn get_rustc_cargo_args() -> Vec<String> {
         fn exec(
             &self,
             cmd: ProcessBuilder,
-            id: &PackageId,
+            id: PackageId,
             target: &Target,
             mode: CompileMode,
         ) -> CargoResult<()> {
-            self.maybe_record_cmd(&cmd, id, target);
+            self.maybe_record_cmd(&cmd, &id, target);
             self.default.exec(cmd, id, target, mode)
         }
 
         fn exec_json(
             &self,
             cmd: ProcessBuilder,
-            id: &PackageId,
+            id: PackageId,
             target: &Target,
             mode: CompileMode,
             handle_stdout: &mut FnMut(&str) -> CargoResult<()>,
             handle_stderr: &mut FnMut(&str) -> CargoResult<()>,
         ) -> CargoResult<()> {
-            self.maybe_record_cmd(&cmd, id, target);
+            self.maybe_record_cmd(&cmd, &id, target);
             self.default
                 .exec_json(cmd, id, target, mode, handle_stdout, handle_stderr)
         }
 
         fn force_rebuild(&self, unit: &Unit) -> bool {
-            if unit.pkg.package_id() == &self.target_pkg {
+            if unit.pkg.package_id() == self.target_pkg {
                 return true;
             }
             self.default.force_rebuild(unit)

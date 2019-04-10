@@ -1055,7 +1055,7 @@ impl<'c> Translation<'c> {
                 "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
                 "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
                 "yield", // Prevent use for other reasons
-                "main", // prelude names
+                "main",  // prelude names
                 "drop", "Some", "None", "Ok", "Err",
             ])),
             zero_inits: RefCell::new(IndexMap::new()),
