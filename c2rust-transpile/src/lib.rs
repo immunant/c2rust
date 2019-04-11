@@ -240,6 +240,9 @@ fn transpile_single(
 
     let file = input_path.file_name().unwrap().to_str().unwrap();
     println!("Transpiling {}", file);
+    if !input_path.exists() {
+        warn!("Input C file {} does not exist, skipping!", input_path.display());
+    }
 
     if tcfg.verbose {
         println!("Additional Clang arguments: {}", extra_clang_args.join(" "));
