@@ -758,7 +758,9 @@ impl<W: Write> Printer<W> {
                     &CTypeKind::Float => self.writer.write_all(b"float"),
                     &CTypeKind::Double => self.writer.write_all(b"double"),
                     &CTypeKind::LongDouble => self.writer.write_all(b"long double"),
-                    _ => unimplemented!("Printer::print_type"),
+                    &CTypeKind::Int128 => self.writer.write_all(b"__int128"),
+                    &CTypeKind::UInt128 => self.writer.write_all(b"unsigned __int128"),
+                    _ => unimplemented!("Printer::print_type({:?})", ty),
                 }?;
 
                 if let Some(i) = ident {
