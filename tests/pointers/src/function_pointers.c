@@ -1,8 +1,11 @@
 typedef int char_to_int(char);
 typedef int (*char_to_int_fp)(char);
+typedef int (*va_char_to_int_fp)(char, ...);
 
 int intval(const char c) { return c; }
 int negintval(const char c) { return -c; }
+
+int varargs_intval(const char c, ...) { return c; }
 
 void entry3(const unsigned sz, int buffer[const])
 {
@@ -49,4 +52,8 @@ void entry3(const unsigned sz, int buffer[const])
         j = 0 == p4;
         j = p4 != 0;
         j = 0 != p4;
+
+        va_char_to_int_fp p8 = varargs_intval;
+        buffer[i++] = p8('A');
+        buffer[i++] = (*p8)('B');
 }

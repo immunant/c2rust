@@ -1,3 +1,5 @@
+//! feature_c_variadic
+
 extern crate libc;
 
 use pointer_init::rust_entry;
@@ -20,7 +22,7 @@ extern "C" {
 
 const BUFFER_SIZE: usize = 5;
 const BUFFER_SIZE2: usize = 31;
-const BUFFER_SIZE3: usize = 8;
+const BUFFER_SIZE3: usize = 10;
 
 pub fn test_init() {
     let mut buffer = [0; BUFFER_SIZE];
@@ -58,7 +60,7 @@ pub fn test_arith() {
 pub fn test_fn_ptrs() {
     let mut buffer = [0; BUFFER_SIZE3];
     let mut rust_buffer = [0; BUFFER_SIZE3];
-    let expected_buffer = [97, 97, 97, -98, 1, 0, 0, 1];
+    let expected_buffer = [97, 97, 97, -98, 1, 0, 0, 1, 65, 66];
 
     unsafe {
         entry3(BUFFER_SIZE3 as u32, buffer.as_mut_ptr());
