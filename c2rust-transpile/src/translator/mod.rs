@@ -913,6 +913,7 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
                 "dead_code",
                 "mutable_transmutes",
                 "unused_mut",
+                "unused_assignments",
             ],
         )];
         if t.tcfg.cross_checks {
