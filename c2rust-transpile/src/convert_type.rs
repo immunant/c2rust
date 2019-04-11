@@ -194,14 +194,19 @@ impl TypeConverter {
         params: &Vec<CQualTypeId>,
         is_variadic: bool,
     ) -> Result<P<Ty>, TranslationError> {
-        let inputs = params
+        let mut inputs = params
             .iter()
             .map(|x| mk().arg(self.convert(ctxt, x.ctype).unwrap(), mk().wild_pat()))
-            .collect();
+            .collect::<Vec<_>>();
 
         let output = match ret {
             None => mk().never_ty(),
             Some(ret) => self.convert(ctxt, ret.ctype)?,
+        };
+
+        if is_variadic {
+            // For variadic functions, we need to add `_: ...` as an explicit argument
+            inputs.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
         };
 
         let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output), is_variadic);
