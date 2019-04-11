@@ -1860,7 +1860,6 @@ impl<'c> Translation<'c> {
 
             // handle variadic arguments
             if is_variadic {
-                let ty = mk().ident_ty("...");
                 if let Some(va_decl_id) = self.get_promoted_va_decl() {
                     // `register_va_arg` succeeded
                     let var = self
@@ -1871,9 +1870,9 @@ impl<'c> Translation<'c> {
 
                     // FIXME: detect mutability requirements
                     let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(var);
-                    args.push(mk().arg(ty, pat))
+                    args.push(mk().arg(mk().cvar_args_ty(), pat))
                 } else {
-                    args.push(mk().arg(ty, mk().wild_pat()))
+                    args.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
                 }
             }
 

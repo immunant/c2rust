@@ -1355,6 +1355,14 @@ impl Builder {
         })
     }
 
+    pub fn cvar_args_ty(self) -> P<Ty> {
+        P(Ty {
+            id: self.id,
+            node: TyKind::CVarArgs,
+            span: self.span,
+        })
+    }
+
     // Stmts
 
     pub fn local_stmt<L>(self, local: L) -> Stmt
