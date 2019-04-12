@@ -55,7 +55,11 @@ pub struct TranslationError {
 pub enum TranslationErrorKind {
     Generic,
 
+    // Not enough simd intrinsics are available in LLVM < 7
     OldLLVMSimd,
+
+    // We are waiting for va_copy support to land in rustc
+    VaCopyNotImplemented,
 }
 
 impl Display for TranslationErrorKind {
@@ -70,6 +74,10 @@ impl Display for TranslationErrorKind {
                         return write!(f, "SIMD intrinsics require LLVM 7 or newer. Please build C2Rust against a newer LLVM version.");
                     }
                 }
+            }
+
+            VaCopyNotImplemented => {
+                return write!(f, "Rust does not yet support a C-compatible va_copy which is required to translate this function. See https://github.com/rust-lang/rust/pull/59625");
             }
         }
         Ok(())

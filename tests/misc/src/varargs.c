@@ -51,13 +51,13 @@ void my_printf(const char *fmt, ...) {
   va_end(ap);
 }
 
-/* void simple_vacopy(const char *fmt, ...) { */
-/*   va_list ap, aq; */
+void simple_vacopy(const char *fmt, ...) {
+  va_list ap, aq;
 
-/*   va_start(ap, fmt); */
-/*   va_copy(aq, ap); */
-/*   vprintf(fmt, ap); */
-/*   vprintf(fmt, aq); */
-/*   va_end(aq); */
-/*   va_end(ap); */
-/* } */
+  va_start(ap, fmt);
+  va_copy(aq, ap);
+  vprintf(fmt, ap);
+  vprintf(fmt, aq);
+  va_end(aq);
+  va_end(ap);
+}
