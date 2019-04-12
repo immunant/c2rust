@@ -3355,7 +3355,7 @@ impl<'c> Translation<'c> {
         }
 
         if kind == CastKind::IntegralToPointer && ctx.is_static {
-            self.features.borrow_mut().insert("const_transmute");
+            self.use_feature("const_transmute");
         }
 
         let val = if is_explicit {

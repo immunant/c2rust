@@ -77,7 +77,7 @@ impl<'c> Translation<'c> {
             "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
                 // __m64 is still behind a feature gate
                 if name == "__m64" {
-                    self.features.borrow_mut().insert("stdsimd");
+                    self.use_feature("stdsimd");
                 }
 
                 let mut item_store = self.item_store.borrow_mut();
@@ -151,7 +151,7 @@ impl<'c> Translation<'c> {
 
             // The majority of x86/64 SIMD is stable, however there are still some
             // bits that are behind a feature gate.
-            self.features.borrow_mut().insert("stdsimd");
+            self.use_feature("stdsimd");
 
             let mut item_store = self.item_store.borrow_mut();
             let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
@@ -276,7 +276,7 @@ impl<'c> Translation<'c> {
             (Char, 32) | (Int, 8) | (LongLong, 4) => ("_mm256_setzero_si256", 32),
             (Char, 8) | (Int, 2) | (LongLong, 1) => {
                 // __m64 is still unstable as of rust 1.29
-                self.features.borrow_mut().insert("stdsimd");
+                self.use_feature("stdsimd");
 
                 ("_mm_setzero_si64", 8)
             }
@@ -288,7 +288,7 @@ impl<'c> Translation<'c> {
         };
 
         if is_static {
-            self.features.borrow_mut().insert("const_transmute");
+            self.use_feature("const_transmute");
 
             let zero_expr = mk().lit_expr(mk().int_lit(0, "u8"));
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
@@ -333,7 +333,7 @@ impl<'c> Translation<'c> {
                 self.tcfg.emit_no_std,
             );
 
-            self.features.borrow_mut().insert("const_transmute");
+            self.use_feature("const_transmute");
 
             transmute
         } else {
