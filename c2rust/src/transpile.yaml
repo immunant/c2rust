@@ -28,10 +28,6 @@ args:
       long: translate-asm
       help: Translate inline assembly without translating the assembly fragment
       takes_value: false
-  - translate-valist:
-      long: translate-valist
-      help: Translate uses of va_list, requires custom rustc
-      takes_value: false
 
   - no-incremental-relooper:
       long: no-incremental-relooper

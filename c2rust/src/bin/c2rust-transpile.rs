@@ -64,7 +64,12 @@ fn main() {
             .unwrap_or_default(),
         prefix_function_names: matches.value_of("prefix-function-names").map(String::from),
         translate_asm: matches.is_present("translate-asm"),
-        translate_valist: matches.is_present("translate-valist"),
+
+        // We used to guard varargs with a command-line option before nightly
+        // support landed. We may still want to disable this option to target
+        // stable rust output.
+        translate_valist: true,
+
         use_c_loop_info: !matches.is_present("ignore-c-loop-info"),
         use_c_multiple_info: !matches.is_present("ignore-c-multiple-info"),
         simplify_structures: !matches.is_present("no-simplify-structures"),
