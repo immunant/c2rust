@@ -55,5 +55,5 @@ void entry3(const unsigned sz, int buffer[const])
 
         va_char_to_int_fp p8 = varargs_intval;
         buffer[i++] = p8('A');
-        buffer[i++] = (*p8)('B');
+        buffer[i++] = (*p8)('B', 'C');
 }
