@@ -530,7 +530,7 @@ pub fn translate(
     };
 
     if t.tcfg.reorganize_definitions {
-        t.features.borrow_mut().insert("custom_attribute");
+        t.use_feature("custom_attribute");
     }
 
     if tcfg.emit_no_std {
@@ -921,7 +921,10 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
             pragmas.push(("cross_check", vec!["yes"]));
         }
 
-        pragmas.push(("feature", features));
+        if !features.is_empty() {
+            pragmas.push(("feature", features));
+        }
+
         for (key, mut values) in pragmas {
             values.sort();
             let value_attr_vec = values
