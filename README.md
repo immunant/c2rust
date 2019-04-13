@@ -1,4 +1,4 @@
-# C2Rust &emsp; [![Travis Build Status]][travis] [![Azure Build Status]][azure] [![Latest Version]][crates.io] ![Rustc Version]
+# C2Rust &emsp; [![Travis Build Status]][travis] [![Azure Build Status]][azure] [![Latest Version]][crates.io] ![Rustc nightly-2019-04-08][Rustc Version]
 
 [Travis Build Status]: https://api.travis-ci.org/immunant/c2rust.svg?branch=master
 [travis]: https://travis-ci.org/immunant/c2rust
