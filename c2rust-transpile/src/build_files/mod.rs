@@ -11,6 +11,7 @@ use self::pathdiff::diff_paths;
 use serde_json::json;
 
 use super::TranspilerConfig;
+use PragmaSet;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -60,6 +61,7 @@ pub fn emit_build_files(
     tcfg: &TranspilerConfig,
     build_dir: &Path,
     modules: Vec<PathBuf>,
+    pragmas: PragmaSet,
 ) -> Option<PathBuf> {
     let mut reg = Handlebars::new();
 
@@ -75,7 +77,7 @@ pub fn emit_build_files(
         emit_rust_toolchain(tcfg, &build_dir);
     }
     emit_build_rs(tcfg, &reg, &build_dir);
-    emit_lib_rs(tcfg, &reg, &build_dir, modules)
+    emit_lib_rs(tcfg, &reg, &build_dir, modules, pragmas)
 }
 
 #[derive(Serialize)]
@@ -116,6 +118,7 @@ fn emit_lib_rs(
     reg: &Handlebars,
     build_dir: &Path,
     modules: Vec<PathBuf>,
+    pragmas: PragmaSet,
 ) -> Option<PathBuf> {
     let plugin_args = tcfg
         .cross_check_configs
@@ -146,7 +149,8 @@ fn emit_lib_rs(
         "cross_check_backend": rs_xcheck_backend,
         "main_module": get_module_name(&tcfg.main),
         "plugin_args": plugin_args,
-        "modules": modules
+        "modules": modules,
+        "pragmas": pragmas
     });
 
     let output_path = build_dir.join(file_name);

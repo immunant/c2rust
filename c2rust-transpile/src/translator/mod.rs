@@ -45,6 +45,8 @@ mod operators;
 mod simd;
 mod variadic;
 
+use crate::PragmaVec;
+
 #[derive(Debug, Clone)]
 pub struct TranslationError {
     loc: Option<SrcLoc>,
@@ -527,7 +529,7 @@ pub fn translate(
     ast_context: TypedAstContext,
     tcfg: &TranspilerConfig,
     main_file: PathBuf,
-) -> String {
+) -> (String, PragmaVec) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
         used: true,
@@ -796,8 +798,9 @@ pub fn translate(
             items.push(initializer_static);
         }
 
+        let pragmas = t.get_pragmas();
         // pass all converted items to the Rust pretty printer
-        to_string(|s| {
+        let translation = to_string(|s| {
             print_header(s, &t)?;
 
             // Re-order comments
@@ -856,7 +859,8 @@ pub fn translate(
             }
 
             Ok(())
-        })
+        });
+        (translation, pragmas)
     })
 }
 
@@ -909,30 +913,7 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
     if t.tcfg.emit_modules {
         s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
     } else {
-        let mut features = vec![];
-        features.extend(t.features.borrow().iter());
-        features.extend(t.type_converter.borrow().features_used());
-        let mut pragmas: Vec<(&str, Vec<&str>)> = vec![(
-            "allow",
-            vec![
-                "non_upper_case_globals",
-                "non_camel_case_types",
-                "non_snake_case",
-                "dead_code",
-                "mutable_transmutes",
-                "unused_mut",
-                "unused_assignments",
-            ],
-        )];
-        if t.tcfg.cross_checks {
-            features.append(&mut vec!["plugin", "custom_attribute"]);
-            pragmas.push(("cross_check", vec!["yes"]));
-        }
-
-        if !features.is_empty() {
-            pragmas.push(("feature", features));
-        }
-
+        let pragmas = t.get_pragmas();
         for (key, mut values) in pragmas {
             values.sort();
             let value_attr_vec = values
@@ -1085,6 +1066,33 @@ impl<'c> Translation<'c> {
     /// Called when translation makes use of a language feature that will require a feature-gate.
     pub fn use_feature(&self, feature: &'static str) {
         self.features.borrow_mut().insert(feature);
+    }
+
+    pub fn get_pragmas(&self) -> PragmaVec {
+        let mut features = vec![];
+        features.extend(self.features.borrow().iter());
+        features.extend(self.type_converter.borrow().features_used());
+        let mut pragmas: PragmaVec = vec![(
+            "allow",
+            vec![
+                "non_upper_case_globals",
+                "non_camel_case_types",
+                "non_snake_case",
+                "dead_code",
+                "mutable_transmutes",
+                "unused_mut",
+                "unused_assignments",
+            ],
+        )];
+        if self.tcfg.cross_checks {
+            features.append(&mut vec!["plugin", "custom_attribute"]);
+            pragmas.push(("cross_check", vec!["yes"]));
+        }
+
+        if !features.is_empty() {
+            pragmas.push(("feature", features));
+        }
+        pragmas
     }
 
     // This node should _never_ show up in the final generated code. This is an easy way to notice

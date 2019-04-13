@@ -60,6 +60,10 @@ use compile_cmds::get_compile_commands;
 use std::prelude::v1::Vec;
 pub use translator::ReplaceMode;
 
+type PragmaVec = Vec<(&'static str, Vec<&'static str>)>;
+type PragmaSet = indexmap::IndexSet<(&'static str, &'static str)>;
+type TranspileResult = (PathBuf, Option<PragmaVec>);
+
 /// Configuration settings for the translation process
 #[derive(Debug)]
 pub struct TranspilerConfig {
@@ -119,16 +123,38 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let mut clang_args: Vec<&str> = clang_args.iter().map(AsRef::as_ref).collect();
     clang_args.extend_from_slice(extra_clang_args);
 
-    let modules = cmds
+    let results = cmds
         .iter()
-        .filter_map(|cmd| {
+        .map(|cmd| {
             transpile_single(&tcfg, cmd.abs_file().as_path(), cc_db, extra_clang_args)
         })
-        .collect::<Vec<PathBuf>>();
+        .collect::<Vec<TranspileResult>>();
+    let mut modules = vec![];
+    let mut modules_skipped = false;
+    let mut pragmas = PragmaSet::new();
+    for res in results {
+        let (module, pragma_vec) = res;
+        modules.push(module);
+        if let Some(pv) = pragma_vec {
+            for (key, vals) in pv {
+                for val in vals {
+                    pragmas.insert((key, val));
+                }
+            }
+        } else {
+            modules_skipped = true;
+        }
+    }
+    pragmas.sort();
 
     if tcfg.emit_build_files {
+        if modules_skipped {
+            // If we skipped a file, we may not have collected all required pragmas
+            warn!("Can't emit build files after incremental transpiler run; skipped.");
+            return;
+        }
         let build_dir = get_build_dir(&tcfg, cc_db);
-        let crate_file = emit_build_files(&tcfg, &build_dir, modules);
+        let crate_file = emit_build_files(&tcfg, &build_dir, modules, pragmas);
         // We only run the reorganization refactoring if we emitted a fresh crate file
         if let Some(output_file) = crate_file {
             if tcfg.reorganize_definitions {
@@ -231,11 +257,11 @@ fn transpile_single(
     input_path: &Path,
     cc_db: &Path,
     extra_clang_args: &[&str],
-) -> Option<PathBuf> {
+) -> TranspileResult {
     let output_path = get_output_path(tcfg, input_path);
     if output_path.exists() && !tcfg.overwrite_existing {
         println!("Skipping existing file {}", output_path.display());
-        return Some(output_path);
+        return (output_path, None);
     }
 
     let file = input_path.file_name().unwrap().to_str().unwrap();
@@ -281,7 +307,7 @@ fn transpile_single(
 
     // Perform the translation
     let main_file = input_path.with_extension("");
-    let translated_string = translator::translate(typed_context, &tcfg, main_file);
+    let (translated_string, pragmas) = translator::translate(typed_context, &tcfg, main_file);
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,
@@ -293,7 +319,7 @@ fn transpile_single(
         Err(e) => panic!("Unable to write translation to file: {}", e),
     };
 
-    Some(output_path)
+    (output_path, Some(pragmas))
 }
 
 fn get_output_path(tcfg: &TranspilerConfig, input_path: &Path) -> PathBuf {
