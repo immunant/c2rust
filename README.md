@@ -8,7 +8,7 @@
 [crates.io]: https://crates.io/crates/c2rust
 [Docs]: https://docs.rs/c2rust/badge.svg
 [docs.rs]: https://docs.rs/c2rust
-[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2019--04--08-lightgrey.svg
+[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2019--04--08-lightgrey.svg "Rustc nightly-2019-04-08"
 
     cargo +nightly-2019-04-08 install c2rust
 
