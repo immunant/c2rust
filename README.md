@@ -10,8 +10,6 @@
 [docs.rs]: https://docs.rs/c2rust
 [Rustc Version]: https://img.shields.io/badge/rustc-nightly--2019--04--08-lightgrey.svg
 
-# Quickstart
-
     cargo +nightly-2019-04-08 install c2rust
 
 # What is C2Rust?
