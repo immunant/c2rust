@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "parse-syntax", feature(rustc_private, try_from))]
+#![cfg_attr(feature = "parse-syntax", feature(rustc_private))]
 #![feature(box_patterns)]
 
 #[macro_use]

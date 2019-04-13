@@ -13,17 +13,10 @@ pub fn get_item_args(mi: &ast::MetaItem) -> ArgList<'static> {
             items
                 .iter()
                 .map(|item| {
-                    match item.node {
-                        ast::NestedMetaItemKind::MetaItem(ref mi) => {
-                            let kw = unsafe {
-                                let kw_str = mi.name().interned().as_str();
-                                // FIXME: this looks unsafe, but mi.name().as_str()
-                                // returns an InternedString whose sole member is
-                                // a &'static str (which we're forcing the conversion to)
-                                // Ideally, InternedString's as_ref() or deref() would
-                                // correctly return a &'static str reference
-                                ::std::mem::transmute::<&str, &'static str>(kw_str.as_ref())
-                            };
+                    match item {
+                        ast::NestedMetaItem::MetaItem(ref mi) => {
+                            assert!(mi.path.segments.len() == 1);
+                            let kw = mi.path.segments[0].ident.as_str().get();
                             match mi.node {
                                 ast::MetaItemKind::Word => (kw, ArgValue::Nothing),
 
@@ -106,7 +99,7 @@ pub fn parse_xcheck_arg(arg: &ArgValue<'static>, or_default: bool) -> Option<XCh
 }
 
 pub fn parse_attr_config(item_xcfg: &mut ItemConfig, mi: &ast::MetaItem) {
-    assert_eq!(mi.name(), "cross_check");
+    assert_eq!(mi.path, "cross_check");
     match *item_xcfg {
         ItemConfig::Defaults(ref mut d) => parse_defaults_attr_config(d, mi),
         ItemConfig::Function(ref mut f) => parse_function_attr_config(f, mi),
