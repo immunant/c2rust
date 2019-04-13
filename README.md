@@ -1,6 +1,10 @@
 [![Travis (master)](https://travis-ci.org/immunant/c2rust.svg?branch=master)](https://travis-ci.org/immunant/c2rust)
 [![Azure Devops (master)](https://dev.azure.com/immunant/c2rust/_apis/build/status/immunant.c2rust?branchName=master)](https://dev.azure.com/immunant/c2rust/_build/latest?definitionId=1&branchName=master)
 
+# Quickstart
+
+    cargo +nightly-2019-04-08 install c2rust
+
 # What is C2Rust?
 
 C2Rust helps you migrate C99-compliant code to Rust. It provides:
@@ -41,21 +45,19 @@ C2Rust requires LLVM 6 or 7 and its corresponding libraries and clang compiler. 
 
 Finally, a rust installation with [Rustup](https://rustup.rs/) is required on all platforms. You will also need to install `rustfmt`:
 
-        rustup component add rustfmt-preview
+    rustup component add rustfmt
 
 
-## Building C2Rust
+## Installing from crates.io
 
-    cargo build --release
-
-This builds the `c2rust` tool in the `target/release/` directory.
+    cargo +nightly-2019-04-08 install c2rust
 
 On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
 
     LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo build
 
 
-If you have trouble with cargo build, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
+If you have trouble with building and installing, or want to build from the latest master, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
 
 # Translating C to Rust
 
