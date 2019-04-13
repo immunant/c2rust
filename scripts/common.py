@@ -64,6 +64,7 @@ class Config:
     XCHECK_DERIVE_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'derive-macros')
     XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'backends', 'dynamic-dlsym')
     XCHECK_CONFIG_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'config')
+    MACROS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-macros')
 
     CBOR_PREFIX = os.path.join(BUILD_DIR, "tinycbor")
 
