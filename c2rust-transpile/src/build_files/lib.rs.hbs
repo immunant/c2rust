@@ -7,10 +7,7 @@
 {{/if}}
 
 {{#if cross_checks~}}
-#![feature(plugin, custom_attribute)]
 #![plugin(c2rust_xcheck_plugin({{plugin_args}}))]
-#![cross_check(yes)]
-
 #[macro_use] extern crate c2rust_xcheck_derive;
 #[macro_use] extern crate c2rust_xcheck_runtime;
 extern crate c2rust_xcheck_backend_{{cross_check_backend}};
