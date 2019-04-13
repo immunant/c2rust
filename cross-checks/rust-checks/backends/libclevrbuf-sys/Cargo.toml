@@ -8,6 +8,7 @@ homepage = "https://c2rust.com/"
 repository = "https://github.com/immunant/c2rust"
 links = "clevrbuf"
 build = "build.rs"
+publish = false
 
 [lib]
 name = "libclevrbuf_sys"
