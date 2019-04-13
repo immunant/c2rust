@@ -139,10 +139,6 @@ If you have [bear](https://github.com/rizsotto/Bear) installed, it can be used s
 
 # FAQ
 
-> Are there release binaries? Can I install C2Rust with Cargo?
-
-We plan to release a cargo package that you can `cargo install` soon(tm).
-
 > I translated code on platform X but it didn't work correctly on platform Y
 
 We run the C preprocessor before translation to Rust. This specializes the code to the host platform. For this reason, we do not support cross compiling translated code at the moment. 
