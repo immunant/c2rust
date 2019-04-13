@@ -9,7 +9,7 @@ repository = "https://github.com/immunant/c2rust"
 edition = "2018"
 categories = ["development-tools", "development-tools::ffi", "command-line-utilities"]
 keywords = ["transpiler", "migration", "translation", "c"]
-readme = "../README.md"
+readme = "README.md"
 
 [badges]
 travis-ci = { repository = "immunant/c2rust" }
