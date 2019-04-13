@@ -23,12 +23,14 @@
 //!   let updated_cmmt_store = trav.into_comment_store();
 //! ```
 
+use itertools::Itertools;
 use rust_ast::traverse;
 use std::collections::BTreeMap;
 use syntax::ast::*;
 use syntax::parse::lexer::comments;
 use syntax_pos::hygiene::SyntaxContext;
 use syntax_pos::{BytePos, Span, DUMMY_SP};
+
 
 pub struct CommentStore {
     /// The `Span` keys do _not_ correspond to the comment position. Instead, they refer to the
@@ -82,18 +84,26 @@ impl CommentStore {
     /// Add a comment at the current position, then return the `Span` that should be given to
     /// something we want associated with this comment.
     pub fn add_comment_lines(&mut self, lines: Vec<String>) -> Span {
+        fn translate_comment(comment: String) -> String {
+            comment
+                .lines()
+                .map(|line: &str| {
+                    let mut line = line.to_owned();
+                    if line.starts_with("//!")
+                        || line.starts_with("///")
+                        || line.starts_with("/**")
+                        || line.starts_with("/*!")
+                    {
+                        line.insert(2, ' ');
+                    };
+                    line
+                })
+                .join("\n")
+        }
+
         let lines: Vec<String> = lines
             .into_iter()
-            .map(|mut comment| {
-                if comment.starts_with("//!")
-                    || comment.starts_with("///")
-                    || comment.starts_with("/**")
-                    || comment.starts_with("/*!")
-                {
-                    comment.insert(2, ' ');
-                }
-                comment
-            })
+            .map(translate_comment)
             .collect();
 
         if lines.is_empty() {
