@@ -8,7 +8,7 @@
 [crates.io]: https://crates.io/crates/c2rust
 [Docs]: https://docs.rs/c2rust/badge.svg
 [docs.rs]: https://docs.rs/c2rust
-[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2019--04--08-lightgrey.svg "Rustc nightly-2019-04-08"
+[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2019--04--12-lightgrey.svg "Rustc nightly-2019-04-12"
 
 # What is C2Rust?
 
@@ -55,7 +55,7 @@ Finally, a rust installation with [Rustup](https://rustup.rs/) is required on al
 
 ## Installing from crates.io
 
-    cargo +nightly-2019-04-08 install c2rust
+    cargo +nightly-2019-04-12 install c2rust
 
 On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
 
