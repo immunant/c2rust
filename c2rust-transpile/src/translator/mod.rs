@@ -3574,11 +3574,9 @@ impl<'c> Translation<'c> {
                             let mut call = val
                                 .map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>));
 
-                            // Static arrays can now use as_ptr with the const_slice_as_ptr feature
-                            // enabled. Can also cast that const ptr to a mutable pointer as we do here:
+                            // Static arrays can now use as_ptr. Can also cast that const ptr to a
+                            // mutable pointer as we do here:
                             if ctx.is_static {
-                                self.use_feature("const_slice_as_ptr");
-
                                 if !is_const {
                                     let WithStmts { val, stmts } = call;
                                     let inferred_type = mk().infer_ty();
