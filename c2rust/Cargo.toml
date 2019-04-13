@@ -18,6 +18,10 @@ shlex = "0.1.1"
 c2rust-transpile = { version = "0.9.0", path = "../c2rust-transpile" }
 c2rust-refactor = { version = "0.9.0", path = "../c2rust-refactor" }
 
+[build-dependencies]
+rustc_version = "0.2"
+chrono = "0.4"
+
 [features]
 # Force static linking of LLVM
 llvm-static = ["c2rust-transpile/llvm-static"]
