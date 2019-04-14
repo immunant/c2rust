@@ -167,31 +167,29 @@ impl<'c> Translation<'c> {
             "__builtin_va_copy" => {
                 // We are waiting on raw va_copy support to land in rustc:
                 // https://github.com/rust-lang/rust/pull/59625
-                Err(TranslationError::new(
-                    &expr.loc,
-                    Context::new(TranslationErrorKind::VaCopyNotImplemented)
-                ))
-                // if ctx.is_unused() && args.len() == 2 {
-                //     if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
-                //         let dst = self.convert_expr(ctx.used(), args[0])?;
-                //         let src = self.convert_expr(ctx.used(), args[1])?;
+                // The code we emit below will only work with a toolchain
+                // built from this fork: https://github.com/immunant/rust
+                if ctx.is_unused() && args.len() == 2 {
+                    if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
+                        let dst = self.convert_expr(ctx.used(), args[0])?;
+                        let src = self.convert_expr(ctx.used(), args[1])?;
 
-                //         let path = {
-                //             let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
-                //             let path = vec!["", std_or_core, "intrinsics", "va_copy"];
-                //             mk().path_expr(path)
-                //         };
-                //         let mut_ref_src = mk().mutbl().addr_of_expr(src.val);
-                //         let call_expr = mk().call_expr(path, vec![mut_ref_src] as Vec<P<Expr>>);
-                //         let assign_expr = mk().assign_expr(dst.val, call_expr);
-                //         let stmt = mk().semi_stmt(assign_expr);
+                        let path = {
+                            let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
+                            let path = vec!["", std_or_core, "intrinsics", "va_copy"];
+                            mk().path_expr(path)
+                        };
+                        let mut_ref_src = mk().mutbl().addr_of_expr(src.val);
+                        let call_expr = mk().call_expr(path, vec![mut_ref_src] as Vec<P<Expr>>);
+                        let assign_expr = mk().assign_expr(dst.val, call_expr);
+                        let stmt = mk().semi_stmt(assign_expr);
 
-                //         let mut res = WithStmts::new(self.panic_or_err("va_copy stub"));
-                //         res.stmts.push(stmt);
-                //         return Ok(res);
-                //     }
-                // }
-                // Err(TranslationError::generic("Unsupported va_copy"))
+                        let mut res = WithStmts::new(self.panic_or_err("va_copy stub"));
+                        res.stmts.push(stmt);
+                        return Ok(res);
+                    }
+                }
+                Err(TranslationError::generic("Unsupported va_copy"))
             }
             "__builtin_va_end" => {
                 if ctx.is_unused() && args.len() == 1 {
