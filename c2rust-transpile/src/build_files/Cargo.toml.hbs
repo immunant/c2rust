@@ -16,8 +16,9 @@ crate-type = ["staticlib"]
 {{~/if}}
 
 [dependencies]
+{{#if c2rust_bitfields~}}c2rust-bitfields = "0.1"{{~/if}}
+{{#if f128~}}f128 = "0.2"{{~/if}}
 libc = "0.2"
-c2rust-bitfields = "0.1"
 
 {{#if cross_checks~}}
 [dependencies.c2rust-xcheck-plugin]

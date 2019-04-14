@@ -46,6 +46,7 @@ mod simd;
 mod variadic;
 
 use crate::PragmaVec;
+use crate::CrateSet;
 
 #[derive(Debug, Clone)]
 pub struct TranslationError {
@@ -529,7 +530,7 @@ pub fn translate(
     ast_context: TypedAstContext,
     tcfg: &TranspilerConfig,
     main_file: PathBuf,
-) -> (String, PragmaVec) {
+) -> (String, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
         used: true,
@@ -799,6 +800,7 @@ pub fn translate(
         }
 
         let pragmas = t.get_pragmas();
+        let crates = t.extern_crates.borrow().clone();
         // pass all converted items to the Rust pretty printer
         let translation = to_string(|s| {
             print_header(s, &t)?;
@@ -860,7 +862,7 @@ pub fn translate(
 
             Ok(())
         });
-        (translation, pragmas)
+        (translation, pragmas, crates)
     })
 }
 

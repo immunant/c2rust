@@ -12,6 +12,7 @@ use serde_json::json;
 
 use super::TranspilerConfig;
 use PragmaSet;
+use CrateSet;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -62,6 +63,7 @@ pub fn emit_build_files(
     build_dir: &Path,
     modules: Vec<PathBuf>,
     pragmas: PragmaSet,
+    crates: CrateSet,
 ) -> Option<PathBuf> {
     let mut reg = Handlebars::new();
 
@@ -72,12 +74,12 @@ pub fn emit_build_files(
     reg.register_template_string("build.rs", include_str!("build.rs.hbs"))
         .unwrap();
 
-    emit_cargo_toml(tcfg, &reg, &build_dir);
+    emit_cargo_toml(tcfg, &reg, &build_dir, &crates);
     if tcfg.translate_valist {
         emit_rust_toolchain(tcfg, &build_dir);
     }
     emit_build_rs(tcfg, &reg, &build_dir);
-    emit_lib_rs(tcfg, &reg, &build_dir, modules, pragmas)
+    emit_lib_rs(tcfg, &reg, &build_dir, modules, pragmas, &crates)
 }
 
 #[derive(Serialize)]
@@ -119,6 +121,7 @@ fn emit_lib_rs(
     build_dir: &Path,
     modules: Vec<PathBuf>,
     pragmas: PragmaSet,
+    crates: &CrateSet,
 ) -> Option<PathBuf> {
     let plugin_args = tcfg
         .cross_check_configs
@@ -150,7 +153,8 @@ fn emit_lib_rs(
         "main_module": get_module_name(&tcfg.main),
         "plugin_args": plugin_args,
         "modules": modules,
-        "pragmas": pragmas
+        "pragmas": pragmas,
+        "crates": crates,
     });
 
     let output_path = build_dir.join(file_name);
@@ -168,7 +172,12 @@ fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
 }
 
-fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) {
+fn emit_cargo_toml(
+    tcfg: &TranspilerConfig,
+    reg: &Handlebars,
+    build_dir: &Path,
+    crates: &CrateSet
+) {
     // rust_checks_path is gone because we don't want to refer to the source
     // path but instead want the cross-check libs to be installed via cargo.
     let json = json!({
@@ -179,6 +188,8 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) 
         "main_module": get_module_name(&tcfg.main),
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": tcfg.cross_check_backend,
+        "c2rust_bitfields": crates.contains("c2rust_bitfields"),
+        "f128": crates.contains("f128"),
     });
     let file_name = "Cargo.toml";
     let output_path = build_dir.join(file_name);

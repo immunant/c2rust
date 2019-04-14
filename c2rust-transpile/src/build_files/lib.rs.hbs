@@ -15,8 +15,9 @@ extern crate c2rust_xcheck_backend_{{cross_check_backend}};
 #[global_allocator]
 static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
 {{~/if}}
-extern crate libc;
-extern crate c2rust_bitfields;
+{{#each crates~}}
+extern crate {{this}};
+{{/each}}
 
 {{#each modules~}}
 #[path = "{{this.path}}"]
