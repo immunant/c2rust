@@ -680,7 +680,7 @@ impl Command for TypeFixRules {
             });
 
             let mut inserted = 0;
-            fold_illtyped(cx, &mut *st.krate_mut(), TypeFixRulesFolder {
+            fold_illtyped(cx, krate, TypeFixRulesFolder {
                 st, cx,
                 rules: &rules,
                 num_inserted_casts: &mut inserted,
