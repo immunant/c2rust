@@ -10,7 +10,7 @@
 [docs.rs]: https://docs.rs/c2rust
 [Rustc Version]: https://img.shields.io/badge/rustc-nightly--2019--04--12-lightgrey.svg "Rustc nightly-2019-04-12"
 
-# What is C2Rust?
+## What is C2Rust?
 
 C2Rust helps you migrate C99-compliant code to Rust. It provides:
 - a C to Rust translator
@@ -27,11 +27,15 @@ Here's the big picture:
 
 To learn more, check out our [RustConf'18](https://www.youtube.com/watch?v=WEsR0Vv7jhg) talk on YouTube and try the C2Rust translator online at [www.c2rust.com](https://www.c2rust.com).
 
-# Installation
+## Documentation
 
-## Prerequisites
+To learn more about using and developing C2Rust, check out the [manual](https://c2rust.com/manual/). The manual is still a work-in-progress, so if you can't find something please let us know.
 
-C2Rust requires LLVM 6 or 7 and its corresponding libraries and clang compiler. Python 3.4 or later, CMake 3.4.3 or later, and openssl (1.0) are also required. These prerequisites may be installed with the following commands, depending on your platform:
+## Installation
+
+### Prerequisites
+
+C2Rust requires LLVM 6, 7, or 8 with its corresponding clang compiler and libraries. Python 3.4 or later, CMake 3.4.3 or later, and openssl (1.0) are also required. These prerequisites may be installed with the following commands, depending on your platform:
 
 - **Ubuntu 16.04, 18.04 & 18.10:**
 
@@ -53,7 +57,7 @@ Finally, a rust installation with [Rustup](https://rustup.rs/) is required on al
     rustup component add rustfmt
 
 
-## Installing from crates.io
+### Installing from crates.io
 
     cargo +nightly-2019-04-12 install c2rust
 
@@ -64,7 +68,7 @@ On OS X with Homebrew LLVM, you need to point the build system at the LLVM insta
 
 If you have trouble with building and installing, or want to build from the latest master, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
 
-# Translating C to Rust
+## Translating C to Rust
 
 To translate C files specified in `compile_commands.json` (see below), run the `c2rust` tool with the `transpile` subcommand:
 
@@ -97,7 +101,7 @@ There are several [known limitations](docs/known-limitations.md) in this
 translator. The translator will emit a warning and attempt to skip function
 definitions that cannot be translated.
 
-## Generating `compile_commands.json` files
+### Generating `compile_commands.json` files
 
 The `compile_commands.json` file can be automatically created using
 either `cmake`, `intercept-build`, or `bear`.
@@ -105,7 +109,7 @@ either `cmake`, `intercept-build`, or `bear`.
 It may be a good idea to remove optimizations(`-OX`) from the compile commands
 file, as there are optimization builtins which we do not support translating.
 
-### ... with `cmake`
+#### ... with `cmake`
 
 When creating the initial build directory with cmake specify
 `-DCMAKE_EXPORT_COMPILE_COMMANDS=1`. This only works on projects
@@ -113,7 +117,7 @@ configured to be built by `cmake`. This works on Linux and MacOS.
 
     cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ...
 
-### ... with `intercept-build`
+#### ... with `intercept-build`
 
 intercept-build (part of the [scan-build
 tool](https://github.com/rizsotto/scan-build)) is recommended for non-cmake
@@ -130,14 +134,14 @@ You can also use intercept-build to generate a compilation database for compilin
 
     intercept-build sh -c "cc program.c"
 
-### ... with `bear` (linux only)
+#### ... with `bear` (linux only)
 
 If you have [bear](https://github.com/rizsotto/Bear) installed, it can be used similarly to intercept-build:
 
     bear <build command>
 
 
-# FAQ
+## FAQ
 
 > I translated code on platform X but it didn't work correctly on platform Y
 
@@ -148,12 +152,12 @@ We run the C preprocessor before translation to Rust. This specializes the code 
 The translator and refactoring tool support both macOS and Linux. Other features, such as cross checking the functionality between C and Rust code, are currently limited to Linux hosts. 
 
 
-# Contact
+## Contact
 To report issues with the translation, please use our Issue Tracker.
 
 The development team can be reached by email at c2rust@immunant.com.
 
-# Acknowledgements and Licensing
+## Acknowledgements and Licensing
 
 This material is available under the BSD-3 style license as found in the
 [LICENSE](LICENSE) file.
