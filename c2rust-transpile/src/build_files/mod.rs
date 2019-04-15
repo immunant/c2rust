@@ -167,7 +167,7 @@ fn emit_lib_rs(
 /// on a nightly toolchain until the `c_variadics` feature is stable.
 fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     let output_path = build_dir.join("rust-toolchain");
-    let output = include_str!("../../../rust-toolchain").to_string();
+    let output = include_str!("../../rust-toolchain").to_string();
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
 }
 
