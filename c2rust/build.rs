@@ -32,7 +32,7 @@ fn main() {
 // This can be simplified into Cargo.toml if
 // https://github.com/rust-lang/rfcs/pull/2495 ever lands.
 fn check_nightly_version() {
-    let expected_nightly_date = include_str!("../rust-toolchain")
+    let expected_nightly_date = include_str!("rust-toolchain")
         .trim()
         .splitn(2, '-')
         .nth(1)
