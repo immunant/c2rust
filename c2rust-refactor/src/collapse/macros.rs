@@ -85,12 +85,17 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 let old = info
                     .expanded
                     .as_expr()
-                    .expect("replaced a node with one of a different type?");
+                    .unwrap_or_else(|| panic!(
+                        "replaced {:?} with {:?} which is a different type?",
+                        e,
+                        info.expanded,
+                    ));
                 self.collect_token_rewrites(info.id, old, &e as &Expr);
                 let new_e = mk().id(e.id).span(root_callsite_span(e.span)).mac_expr(mac);
                 trace!("collapse: {:?} -> {:?}", e, new_e);
                 self.record_matched_ids(e.id, new_e.id);
                 *e = new_e;
+                return;
             } else {
                 warn!("bad macro kind for expr: {:?}", info.invoc);
             }
@@ -104,12 +109,17 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 let old = info
                     .expanded
                     .as_pat()
-                    .expect("replaced a node with one of a different type?");
+                    .unwrap_or_else(|| panic!(
+                        "replaced {:?} with {:?} which is a different type?",
+                        p,
+                        info.expanded,
+                    ));
                 self.collect_token_rewrites(info.id, old, &p as &Pat);
                 let new_p = mk().id(p.id).span(root_callsite_span(p.span)).mac_pat(mac);
                 trace!("collapse: {:?} -> {:?}", p, new_p);
                 self.record_matched_ids(p.id, new_p.id);
                 *p = new_p;
+                return;
             } else {
                 warn!("bad macro kind for pat: {:?}", info.invoc);
             }
@@ -123,12 +133,17 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 let old = info
                     .expanded
                     .as_ty()
-                    .expect("replaced a node with one of a different type?");
+                    .unwrap_or_else(|| panic!(
+                        "replaced {:?} with {:?} which is a different type?",
+                        t,
+                        info.expanded,
+                    ));
                 self.collect_token_rewrites(info.id, old, &t as &Ty);
                 let new_t = mk().id(t.id).span(root_callsite_span(t.span)).mac_ty(mac);
                 trace!("collapse: {:?} -> {:?}", t, new_t);
                 self.record_matched_ids(t.id, new_t.id);
                 *t = new_t;
+                return;
             } else {
                 warn!("bad macro kind for ty: {:?}", info.invoc);
             }
@@ -142,7 +157,11 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 let old = info
                     .expanded
                     .as_stmt()
-                    .expect("replaced a node with one of a different type?");
+                    .unwrap_or_else(|| panic!(
+                        "replaced {:?} with {:?} which is a different type?",
+                        s,
+                        info.expanded,
+                    ));
                 self.collect_token_rewrites(info.id, old, &s as &Stmt);
 
                 if !self.seen_invocs.contains(&info.id) {
@@ -169,7 +188,11 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                     let old = info
                         .expanded
                         .as_item()
-                        .expect("replaced a node with one of a different type?");
+                        .unwrap_or_else(|| panic!(
+                            "replaced {:?} with {:?} which is a different type?",
+                            i,
+                            info.expanded,
+                        ));
                     self.collect_token_rewrites(info.id, old, &i as &Item);
 
                     if !self.seen_invocs.contains(&info.id) {
@@ -204,7 +227,11 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 let old = info
                     .expanded
                     .as_impl_item()
-                    .expect("replaced a node with one of a different type?");
+                    .unwrap_or_else(|| panic!(
+                        "replaced {:?} with {:?} which is a different type?",
+                        ii,
+                        info.expanded,
+                    ));
                 self.collect_token_rewrites(info.id, old, &ii as &ImplItem);
 
                 if !self.seen_invocs.contains(&info.id) {
@@ -233,7 +260,11 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 let old = info
                     .expanded
                     .as_trait_item()
-                    .expect("replaced a node with one of a different type?");
+                    .unwrap_or_else(|| panic!(
+                        "replaced {:?} with {:?} which is a different type?",
+                        ti,
+                        info.expanded,
+                    ));
                 self.collect_token_rewrites(info.id, old, &ti as &TraitItem);
 
                 if !self.seen_invocs.contains(&info.id) {
@@ -262,7 +293,11 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 let old = info
                     .expanded
                     .as_foreign_item()
-                    .expect("replaced a node with one of a different type?");
+                    .unwrap_or_else(|| panic!(
+                        "replaced {:?} with {:?} which is a different type?",
+                        fi,
+                        info.expanded,
+                    ));
                 self.collect_token_rewrites(info.id, old, &fi as &ForeignItem);
 
                 if !self.seen_invocs.contains(&info.id) {

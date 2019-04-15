@@ -45,6 +45,9 @@ mod operators;
 mod simd;
 mod variadic;
 
+use crate::PragmaVec;
+use crate::CrateSet;
+
 #[derive(Debug, Clone)]
 pub struct TranslationError {
     loc: Option<SrcLoc>,
@@ -527,7 +530,7 @@ pub fn translate(
     ast_context: TypedAstContext,
     tcfg: &TranspilerConfig,
     main_file: PathBuf,
-) -> String {
+) -> (String, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
         used: true,
@@ -796,8 +799,10 @@ pub fn translate(
             items.push(initializer_static);
         }
 
+        let pragmas = t.get_pragmas();
+        let crates = t.extern_crates.borrow().clone();
         // pass all converted items to the Rust pretty printer
-        to_string(|s| {
+        let translation = to_string(|s| {
             print_header(s, &t)?;
 
             // Re-order comments
@@ -856,7 +861,8 @@ pub fn translate(
             }
 
             Ok(())
-        })
+        });
+        (translation, pragmas, crates)
     })
 }
 
@@ -909,30 +915,7 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
     if t.tcfg.emit_modules {
         s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
     } else {
-        let mut features = vec![];
-        features.extend(t.features.borrow().iter());
-        features.extend(t.type_converter.borrow().features_used());
-        let mut pragmas: Vec<(&str, Vec<&str>)> = vec![(
-            "allow",
-            vec![
-                "non_upper_case_globals",
-                "non_camel_case_types",
-                "non_snake_case",
-                "dead_code",
-                "mutable_transmutes",
-                "unused_mut",
-                "unused_assignments",
-            ],
-        )];
-        if t.tcfg.cross_checks {
-            features.append(&mut vec!["plugin", "custom_attribute"]);
-            pragmas.push(("cross_check", vec!["yes"]));
-        }
-
-        if !features.is_empty() {
-            pragmas.push(("feature", features));
-        }
-
+        let pragmas = t.get_pragmas();
         for (key, mut values) in pragmas {
             values.sort();
             let value_attr_vec = values
@@ -1087,6 +1070,33 @@ impl<'c> Translation<'c> {
         self.features.borrow_mut().insert(feature);
     }
 
+    pub fn get_pragmas(&self) -> PragmaVec {
+        let mut features = vec![];
+        features.extend(self.features.borrow().iter());
+        features.extend(self.type_converter.borrow().features_used());
+        let mut pragmas: PragmaVec = vec![(
+            "allow",
+            vec![
+                "non_upper_case_globals",
+                "non_camel_case_types",
+                "non_snake_case",
+                "dead_code",
+                "mutable_transmutes",
+                "unused_mut",
+                "unused_assignments",
+            ],
+        )];
+        if self.tcfg.cross_checks {
+            features.append(&mut vec!["plugin", "custom_attribute"]);
+            pragmas.push(("cross_check", vec!["yes"]));
+        }
+
+        if !features.is_empty() {
+            pragmas.push(("feature", features));
+        }
+        pragmas
+    }
+
     // This node should _never_ show up in the final generated code. This is an easy way to notice
     // if it does.
     pub fn panic_or_err(&self, msg: &str) -> P<Expr> {
@@ -1161,7 +1171,7 @@ impl<'c> Translation<'c> {
     /// translation is able to be compiled as a valid rust static initializer
     fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use c_ast::BinOp::{Add, Divide, Modulus, Multiply, Subtract};
-        use c_ast::CastKind::PointerToIntegral;
+        use c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
         use c_ast::UnOp::{AddressOf, Negate};
 
         let expr_id = match expr_id {
@@ -1243,6 +1253,14 @@ impl<'c> Translation<'c> {
                         _ => {}
                     }
                 }
+                CExprKind::ImplicitCast(qtype, _, IntegralToPointer, _, _) |
+                CExprKind::ExplicitCast(qtype, _, IntegralToPointer, _, _) => {
+                    if let CTypeKind::Pointer(qtype) = self.ast_context[qtype.ctype].kind {
+                        if let CTypeKind::Function(..) = self.ast_context.resolve_type(qtype.ctype).kind {
+                            return true;
+                        }
+                    }
+                },
                 _ => {}
             }
         }
@@ -3566,11 +3584,9 @@ impl<'c> Translation<'c> {
                             let mut call = val
                                 .map(|x| mk().method_call_expr(x, method, vec![] as Vec<P<Expr>>));
 
-                            // Static arrays can now use as_ptr with the const_slice_as_ptr feature
-                            // enabled. Can also cast that const ptr to a mutable pointer as we do here:
+                            // Static arrays can now use as_ptr. Can also cast that const ptr to a
+                            // mutable pointer as we do here:
                             if ctx.is_static {
-                                self.use_feature("const_slice_as_ptr");
-
                                 if !is_const {
                                     let WithStmts { val, stmts } = call;
                                     let inferred_type = mk().infer_ty();

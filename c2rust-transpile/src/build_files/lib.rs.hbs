@@ -1,29 +1,13 @@
-#![feature(extern_types)]
-#![feature(asm)]
-#![feature(ptr_wrapping_offset_from)]
-#![feature(label_break_value)]
-#![feature(const_raw_ptr_to_usize_cast)]
-
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-#![allow(dead_code)]
-#![allow(mutable_transmutes)]
-#![allow(unused_mut)]
-#![allow(unused_assignments)]
+{{#each pragmas~}}
+    #![{{this.0}}({{this.1}})]
+{{/each}}
 
 {{#if reorganize_definitions~}}
     #![feature(custom_attribute)]
 {{/if}}
-{{#if translate_valist~}}
-    #![feature(c_variadic)]
-{{/if}}
 
 {{#if cross_checks~}}
-#![feature(plugin, custom_attribute)]
 #![plugin(c2rust_xcheck_plugin({{plugin_args}}))]
-#![cross_check(yes)]
-
 #[macro_use] extern crate c2rust_xcheck_derive;
 #[macro_use] extern crate c2rust_xcheck_runtime;
 extern crate c2rust_xcheck_backend_{{cross_check_backend}};
@@ -31,7 +15,9 @@ extern crate c2rust_xcheck_backend_{{cross_check_backend}};
 #[global_allocator]
 static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
 {{~/if}}
-extern crate libc;
+{{#each crates~}}
+extern crate {{this}};
+{{/each}}
 
 {{#each modules~}}
 #[path = "{{this.path}}"]

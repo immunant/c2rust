@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Stuart Pernsteiner <spernsteiner@galois.com>"]
 
 [dependencies]
+libc = "0.2"
 
 [lib]
 name = "c2rust_runtime"
