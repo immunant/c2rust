@@ -1171,7 +1171,7 @@ impl<'c> Translation<'c> {
     /// translation is able to be compiled as a valid rust static initializer
     fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use c_ast::BinOp::{Add, Divide, Modulus, Multiply, Subtract};
-        use c_ast::CastKind::PointerToIntegral;
+        use c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
         use c_ast::UnOp::{AddressOf, Negate};
 
         let expr_id = match expr_id {
@@ -1253,6 +1253,14 @@ impl<'c> Translation<'c> {
                         _ => {}
                     }
                 }
+                CExprKind::ImplicitCast(qtype, _, IntegralToPointer, _, _) |
+                CExprKind::ExplicitCast(qtype, _, IntegralToPointer, _, _) => {
+                    if let CTypeKind::Pointer(qtype) = self.ast_context[qtype.ctype].kind {
+                        if let CTypeKind::Function(..) = self.ast_context.resolve_type(qtype.ctype).kind {
+                            return true;
+                        }
+                    }
+                },
                 _ => {}
             }
         }
