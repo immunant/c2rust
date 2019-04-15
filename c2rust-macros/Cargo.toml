@@ -3,6 +3,7 @@ name = "c2rust-macros"
 version = "0.10.0"
 authors = ["Stephen Crane <sjc@immunant.com>", "The C2Rust Project Developers <c2rust@immunant.com>"]
 edition = "2018"
+description = "Procedural macro support crate for C2Rust"
 
 [lib]
 proc-macro = true
