@@ -5,6 +5,8 @@ use std::process::Command;
 
 fn process_ast(mode: &str, dest: &Path) {
     let mut p = Command::new("python3")
+        .arg("-B") // Don't write bytecode files (and thus pollute the source
+                   // directory)
         .arg("gen/process_ast.py")
         .arg(mode)
         .arg(dest)
