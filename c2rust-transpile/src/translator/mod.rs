@@ -1049,7 +1049,7 @@ impl<'c> Translation<'c> {
                 // Keywords reserved for future use
                 "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
                 "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
-                "async",
+                "async", "try",
                 "yield", // Prevent use for other reasons
                 "main",  // prelude names
                 "drop", "Some", "None", "Ok", "Err",

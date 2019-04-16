@@ -16,7 +16,7 @@ pub struct TypeConverter {
     emit_no_std: bool,
 }
 
-static RESERVED_NAMES: [&str; 101] = [
+static RESERVED_NAMES: [&str; 103] = [
     // Keywords currently in use
     "as",
     "break",
@@ -72,6 +72,8 @@ static RESERVED_NAMES: [&str; 101] = [
     "unsized",
     "virtual",
     "yield",
+    "async",
+    "try",
     // Types exported in prelude
     "Copy",
     "Send",
