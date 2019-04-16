@@ -172,7 +172,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "c2rust"
 version = "0.10.0"
 dependencies = [
- "c2rust-refactor 0.10.0",
+ "c2rust-refactor 0.10.1",
  "c2rust-transpile 0.10.0",
  "chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -236,7 +236,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-refactor"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "c2rust-ast-builder 0.10.0",
  "c2rust-macros 0.10.0",
