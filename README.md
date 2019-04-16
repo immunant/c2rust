@@ -54,7 +54,7 @@ Finally, a rust installation with [Rustup](https://rustup.rs/) is required on al
 
 On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
 
-    LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo build
+    LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo +nightly-2019-04-12 install c2rust
 
 
 If you have trouble with building and installing, or want to build from the latest master, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
