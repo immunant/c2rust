@@ -320,7 +320,9 @@ pub fn lib_main(opts: Options) -> interface::Result<()> {
 
     // Make sure we compile with the toolchain version that the refactoring tool
     // is built against.
-    env::set_var("RUSTUP_TOOLCHAIN", env!("RUSTUP_TOOLCHAIN"));
+    if let Some(toolchain_ver) = option_env!("RUSTUP_TOOLCHAIN") {
+        env::set_var("RUSTUP_TOOLCHAIN", toolchain_ver);
+    }
 
     rustc_driver::report_ices_to_stderr_if_any(move || main_impl(opts)).and_then(|x| x)
 }

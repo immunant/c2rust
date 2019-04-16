@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-refactor"
-version = "0.10.0"
+version = "0.10.1"
 authors = [
   "The C2Rust Project Developers <c2rust@immunant.com>",
   "Stuart Pernsteiner <spernsteiner@galois.com>",
