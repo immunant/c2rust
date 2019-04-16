@@ -170,7 +170,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "c2rust"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "c2rust-refactor 0.10.1",
  "c2rust-transpile 0.10.0",
