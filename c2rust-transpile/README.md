@@ -1,3 +1,8 @@
+[![Docs]][docs.rs]
+
+[Docs]: https://docs.rs/c2rust-transpile/badge.svg
+[docs.rs]: https://docs.rs/c2rust-transpile
+
 # C2Rust Transpiler
 
 ## Basic Usage

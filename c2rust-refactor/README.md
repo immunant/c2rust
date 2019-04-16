@@ -1,3 +1,8 @@
+[![Docs]][docs.rs]
+
+[Docs]: https://docs.rs/c2rust-refactor/badge.svg
+[docs.rs]: https://docs.rs/c2rust-refactor
+
 # C2Rust Refactoring Tool
 
 This is a refactoring tool for Rust programs, aimed at removing unsafety from
