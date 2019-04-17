@@ -33,7 +33,11 @@ impl CompileCmd {
     pub fn abs_file(&self) -> PathBuf {
         match self.file.is_absolute() {
             true => self.file.clone(),
-            false => self.directory.join(&self.file),
+            false => {
+                let path = self.directory.join(&self.file);
+                let e = format!("could not canonicalize {}", path.display());
+                path.canonicalize().expect(&e)
+            },
         }
     }
 }
@@ -61,14 +65,12 @@ fn filter_duplicate_cmds(v: Vec<CompileCmd>) -> Vec<CompileCmd> {
     let mut cmds = vec![];
 
     for cmd in v {
-        if seen.contains(&cmd.file) {
-            eprintln!(
-                "warning: skipping duplicate compilation cmd for {}",
-                cmd.file.to_str().unwrap()
-            );
+        let absf = cmd.abs_file();
+        if seen.contains(&absf) {
+            warn!("Skipping duplicate compilation cmd for {}", absf.display());
             continue;
         }
-        seen.insert(cmd.file.clone());
+        seen.insert(absf);
         cmds.push(cmd)
     }
 
