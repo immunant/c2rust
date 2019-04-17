@@ -169,7 +169,7 @@ impl<'c> Translation<'c> {
                 // https://github.com/rust-lang/rust/pull/59625
                 Err(TranslationError::new(
                     &expr.loc,
-                    Context::new(TranslationErrorKind::VaCopyNotImplemented)
+                    Context::new(TranslationErrorKind::VaCopyNotImplemented),
                 ))
                 // if ctx.is_unused() && args.len() == 2 {
                 //     if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {

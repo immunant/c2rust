@@ -19,21 +19,21 @@ use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
 use syntax_pos::{Span, DUMMY_SP};
 
+use crate::rust_ast::comment_store::CommentStore;
+use crate::rust_ast::item_store::ItemStore;
+use crate::rust_ast::traverse::Traversal;
 use c2rust_ast_builder::{mk, Builder};
-use rust_ast::comment_store::CommentStore;
-use rust_ast::item_store::ItemStore;
-use rust_ast::traverse::Traversal;
 
+use crate::c_ast;
+use crate::c_ast::iterators::{DFExpr, SomeId};
+use crate::c_ast::*;
+use crate::cfg;
+use crate::convert_type::TypeConverter;
+use crate::renamer::Renamer;
+use crate::with_stmts::WithStmts;
+use crate::TranspilerConfig;
 use c2rust_ast_exporter::clang_ast::LRValue;
 use c2rust_ast_exporter::get_clang_major_version;
-use c_ast;
-use c_ast::iterators::{DFExpr, SomeId};
-use c_ast::*;
-use cfg;
-use convert_type::TypeConverter;
-use renamer::Renamer;
-use with_stmts::WithStmts;
-use TranspilerConfig;
 
 mod assembly;
 mod bitfields;
@@ -45,8 +45,8 @@ mod operators;
 mod simd;
 mod variadic;
 
-use crate::PragmaVec;
 use crate::CrateSet;
+use crate::PragmaVec;
 
 #[derive(Debug, Clone)]
 pub struct TranslationError {
@@ -1049,8 +1049,7 @@ impl<'c> Translation<'c> {
                 // Keywords reserved for future use
                 "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
                 "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
-                "async", "try",
-                "yield", // Prevent use for other reasons
+                "async", "try", "yield", // Prevent use for other reasons
                 "main",  // prelude names
                 "drop", "Some", "None", "Ok", "Err",
             ])),
@@ -1171,9 +1170,9 @@ impl<'c> Translation<'c> {
     /// The purpose of this function is to decide on whether or not a static initializer's
     /// translation is able to be compiled as a valid rust static initializer
     fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
-        use c_ast::BinOp::{Add, Divide, Modulus, Multiply, Subtract};
-        use c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
-        use c_ast::UnOp::{AddressOf, Negate};
+        use crate::c_ast::BinOp::{Add, Divide, Modulus, Multiply, Subtract};
+        use crate::c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
+        use crate::c_ast::UnOp::{AddressOf, Negate};
 
         let expr_id = match expr_id {
             Some(expr_id) => expr_id,
@@ -1254,14 +1253,16 @@ impl<'c> Translation<'c> {
                         _ => {}
                     }
                 }
-                CExprKind::ImplicitCast(qtype, _, IntegralToPointer, _, _) |
-                CExprKind::ExplicitCast(qtype, _, IntegralToPointer, _, _) => {
+                CExprKind::ImplicitCast(qtype, _, IntegralToPointer, _, _)
+                | CExprKind::ExplicitCast(qtype, _, IntegralToPointer, _, _) => {
                     if let CTypeKind::Pointer(qtype) = self.ast_context[qtype.ctype].kind {
-                        if let CTypeKind::Function(..) = self.ast_context.resolve_type(qtype.ctype).kind {
+                        if let CTypeKind::Function(..) =
+                            self.ast_context.resolve_type(qtype.ctype).kind
+                        {
                             return true;
                         }
                     }
-                },
+                }
                 _ => {}
             }
         }

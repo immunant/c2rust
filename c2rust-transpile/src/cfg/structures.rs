@@ -2,7 +2,7 @@
 
 use super::*;
 
-use rust_ast::comment_store;
+use crate::rust_ast::comment_store;
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
@@ -380,7 +380,7 @@ impl StructureState {
         queued_comments: &mut Vec<String>,
         output: &mut Vec<Stmt>,
     ) {
-        use cfg::structures::StructuredAST::*;
+        use crate::cfg::structures::StructuredAST::*;
 
         match ast {
             Empty => {}

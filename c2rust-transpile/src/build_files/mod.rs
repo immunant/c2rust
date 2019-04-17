@@ -11,8 +11,8 @@ use self::pathdiff::diff_paths;
 use serde_json::json;
 
 use super::TranspilerConfig;
-use PragmaSet;
-use CrateSet;
+use crate::CrateSet;
+use crate::PragmaSet;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -171,12 +171,7 @@ fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
 }
 
-fn emit_cargo_toml(
-    tcfg: &TranspilerConfig,
-    reg: &Handlebars,
-    build_dir: &Path,
-    crates: &CrateSet
-) {
+fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path, crates: &CrateSet) {
     // rust_checks_path is gone because we don't want to refer to the source
     // path but instead want the cross-check libs to be installed via cargo.
     let json = json!({

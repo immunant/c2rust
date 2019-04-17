@@ -1,12 +1,12 @@
+use crate::c_ast::CDeclId;
+use crate::c_ast::*;
+use crate::renamer::*;
+use crate::translator::TranslationError;
 use c2rust_ast_builder::mk;
-use c_ast::CDeclId;
-use c_ast::*;
-use renamer::*;
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
 use syntax::ast::*;
 use syntax::ptr::P;
-use translator::TranslationError;
 
 pub struct TypeConverter {
     pub translate_valist: bool,

@@ -23,14 +23,13 @@
 //!   let updated_cmmt_store = trav.into_comment_store();
 //! ```
 
+use crate::rust_ast::traverse;
 use itertools::Itertools;
-use rust_ast::traverse;
 use std::collections::BTreeMap;
 use syntax::ast::*;
 use syntax::parse::lexer::comments;
 use syntax_pos::hygiene::SyntaxContext;
 use syntax_pos::{BytePos, Span, DUMMY_SP};
-
 
 pub struct CommentStore {
     /// The `Span` keys do _not_ correspond to the comment position. Instead, they refer to the
@@ -101,10 +100,7 @@ impl CommentStore {
                 .join("\n")
         }
 
-        let lines: Vec<String> = lines
-            .into_iter()
-            .map(translate_comment)
-            .collect();
+        let lines: Vec<String> = lines.into_iter().map(translate_comment).collect();
 
         if lines.is_empty() {
             DUMMY_SP

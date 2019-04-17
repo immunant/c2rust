@@ -6,10 +6,12 @@ use std::collections::HashSet;
 use std::ops::Index;
 
 use super::TranslationError;
-use c2rust_ast_builder::mk;
-use c_ast::{
+use crate::c_ast::{
     BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CQualTypeId, CTypeId, MemberKind, UnOp,
 };
+use crate::translator::{simple_metaitem, ConvertedDecl, ExprContext, Translation};
+use crate::with_stmts::WithStmts;
+use c2rust_ast_builder::mk;
 use syntax::ast::{
     self, AttrStyle, BinOpKind, Expr, ExprKind, Lit, LitIntType, LitKind, MetaItemKind,
     NestedMetaItem, StmtKind, StrStyle, StructField, Ty, TyKind,
@@ -17,8 +19,6 @@ use syntax::ast::{
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
 use syntax_pos::{Span, DUMMY_SP};
-use translator::{simple_metaitem, ConvertedDecl, ExprContext, Translation};
-use with_stmts::WithStmts;
 
 use itertools::EitherOrBoth::{Both, Right};
 use itertools::Itertools;

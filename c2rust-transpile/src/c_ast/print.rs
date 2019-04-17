@@ -1,4 +1,4 @@
-use c_ast::*;
+use crate::c_ast::*;
 use std::io::{Result, Write};
 
 pub struct Printer<W: Write> {
