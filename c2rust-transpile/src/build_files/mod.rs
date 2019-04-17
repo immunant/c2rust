@@ -100,7 +100,12 @@ fn get_root_rs_file_name(tcfg: &TranspilerConfig) -> &str {
 /// Make sure module name does not contain illegal characters.
 fn get_module_name(main: &Option<String>) -> Option<String> {
     if let Some(ref name) = main {
-        return Some(name.replace(".", "_"));
+        return Some(name.chars().map(|c|
+            match c {
+                '.' | '-' => '_',
+                _ => c
+            }
+        ).collect());
     }
     None
 }
