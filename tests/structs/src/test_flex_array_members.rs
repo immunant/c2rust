@@ -9,12 +9,12 @@ extern "C" {
     fn exercise_flex_arrays(_: c_uint, _: *mut c_int);
 }
 
-const BUFFER_SIZE: usize = 8;
+const BUFFER_SIZE: usize = 12;
 
 pub fn test_flex_array_members() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
-    let expected_buffer = [0, 0, 0, 10, 0, 0, 0, 15];
+    let expected_buffer = [0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 15];
 
     unsafe {
         exercise_flex_arrays(BUFFER_SIZE as u32, buffer.as_mut_ptr());

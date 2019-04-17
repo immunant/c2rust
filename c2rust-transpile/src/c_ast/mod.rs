@@ -135,6 +135,7 @@ impl TypedAstContext {
         let field_ty = self.resolve_type(typ);
         match field_ty.kind {
             CTypeKind::IncompleteArray(_) |
+            CTypeKind::ConstantArray(_, 0) |
             CTypeKind::ConstantArray(_, 1) => true,
 
             _ => false,

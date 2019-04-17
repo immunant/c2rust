@@ -1720,10 +1720,12 @@ class TranslateASTVisitor final
 
         if (auto CA = dyn_cast_or_null<ConstantArrayType>(
                 D->getType().getTypePtr())) {
-            // If the array has a size of 1, and struct field count is
-            // greater than 1, and if the (struct field count - 1) is equal to
-            // the index, it is most likely a flexible array.
-            return (CA->getSize() == 1 && FieldCount > 1 &&
+            // If the array has a size of 1, struct field count is greater
+            // than 1, and the (struct field count - 1) is equal to the index,
+            // the field may be a flexible array member.
+            auto arrayLen = CA->getSize();
+            return (arrayLen == 1 &&
+                    FieldCount > 1 &&
                     FieldCount - 1 == D->getFieldIndex());
         }
         return false;
