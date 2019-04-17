@@ -430,7 +430,6 @@ class TranslateASTVisitor final
     CborEncoder *encoder;
     std::unordered_map<string, uint64_t> filenames;
     std::set<std::pair<void *, ASTEntryTag>> exportedTags;
-    std::unordered_set<Decl *> warnedFlexibleArrayDecls;
 
     // Returns true when a new entry is added to exportedTags
     bool markForExport(void *ptr, ASTEntryTag tag) {
@@ -1555,20 +1554,6 @@ class TranslateASTVisitor final
         if (!D->isCanonicalDecl())
             return true;
 
-        // Check to see if the FieldDecl might be a flexible array member,
-        // if it is print a warning message.
-        if (warnOnFlexibleArrayDecl(D)) {
-            printWarning(
-                "this may be an unsupported flexible array member with size of "
-                "1, "
-                "omit the size if this field is intended to be a flexible "
-                "array member. "
-                "Note that you must fix any struct size calculations after "
-                "doing so or else it will likely be off (by one). "
-                "See section 6.7.2.1 of the C99 standard.",
-                D);
-        }
-
         std::vector<void *> childIds;
         auto t = D->getType();
         auto record = D->getParent();
@@ -1709,28 +1694,6 @@ class TranslateASTVisitor final
     }
 
   private:
-    bool warnOnFlexibleArrayDecl(FieldDecl *D) {
-        const ASTRecordLayout &Layout =
-            Context->getASTRecordLayout(D->getParent());
-        unsigned FieldCount = Layout.getFieldCount();
-
-        if (auto CA = dyn_cast_or_null<ConstantArrayType>(
-                D->getType().getTypePtr())) {
-            // If the array has a size of 1, and struct field count is
-            // greater than 1, and if the (struct field count - 1) is equal to
-            // the index, it is most likely a flexible array.
-            if (CA->getSize() == 1 && FieldCount > 1 &&
-                FieldCount - 1 == D->getFieldIndex() &&
-                !warnedFlexibleArrayDecls.count(D)) {
-                // Insert the Decl into the set, if it has not been warned about
-                // yet.
-                warnedFlexibleArrayDecls.insert(D);
-                return true;
-            }
-        }
-        return false;
-    }
-
     // Inspired by a lambda function within `clang/lib/Sema/SemaType.cpp`
     bool isVaList(Decl *D, QualType T) {
         if (auto *RD = dyn_cast<RecordDecl>(D))
