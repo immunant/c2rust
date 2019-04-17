@@ -319,6 +319,7 @@ pub struct Translation<'c> {
     renamer: RefCell<Renamer<CDeclId>>,
     zero_inits: RefCell<IndexMap<CDeclId, Result<P<Expr>, TranslationError>>>,
     function_context: RefCell<FunContext>,
+    potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
 
     // Comment support
     pub comment_context: RefCell<CommentContext>, // Incoming comments
@@ -1055,6 +1056,7 @@ impl<'c> Translation<'c> {
             ])),
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FunContext::new()),
+            potential_flexible_array_members: RefCell::new(IndexSet::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             sectioned_static_initializers: RefCell::new(Vec::new()),
@@ -1385,6 +1387,16 @@ impl<'c> Translation<'c> {
                     .resolve_decl_name(decl_id)
                     .unwrap();
                 let mut has_bitfields = false;
+
+                // Check if the last field might be a flexible array member
+                if let Some(last_id) = fields.last() {
+                    let field_decl = &self.ast_context[*last_id];
+                    if let CDeclKind::Field { typ, .. } = field_decl.kind {
+                        if self.ast_context.maybe_flexible_array(typ.ctype) {
+                            self.potential_flexible_array_members.borrow_mut().insert(*last_id);
+                        }
+                    }
+                }
 
                 // Gather up all the field names and field types
                 let mut field_entries = vec![];
@@ -3071,15 +3083,19 @@ impl<'c> Translation<'c> {
                 } else {
                     match lhs_node {
                         &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _, _) => {
-                            let arr_type = self.ast_context[arr]
-                                .kind
-                                .get_type()
-                                .ok_or_else(|| format_err!("bad arr type"))?;
-                            match self.ast_context.resolve_type(arr_type).kind {
-                                // These get translated to 0-element arrays, this avoids the bounds check
-                                // that using an array subscript in Rust would cause
-                                CTypeKind::IncompleteArray(_) => None,
-                                _ => Some(arr),
+                            match self.ast_context[arr].kind {
+                                CExprKind::Member(_, _, field_decl, _, _)
+                                    if self.potential_flexible_array_members.borrow().contains(&field_decl) => None,
+                                ref kind => {
+                                    let arr_type = kind.get_type()
+                                        .ok_or_else(|| format_err!("bad arr type"))?;
+                                    match self.ast_context.resolve_type(arr_type).kind {
+                                        // These get translated to 0-element arrays, this avoids the bounds check
+                                        // that using an array subscript in Rust would cause
+                                        CTypeKind::IncompleteArray(_) => None,
+                                        _ => Some(arr),
+                                    }
+                                }
                             }
                         }
                         _ => None,

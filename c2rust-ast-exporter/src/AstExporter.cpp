@@ -1557,7 +1557,11 @@ class TranslateASTVisitor final
 
         // Check to see if the FieldDecl might be a flexible array member,
         // if it is print a warning message.
-        if (warnOnFlexibleArrayDecl(D)) {
+        if (maybeFlexibleArrayDecl(D) && !warnedFlexibleArrayDecls.count(D)) {
+            // Insert the Decl into the set, if it has not been warned about
+            // yet.
+            warnedFlexibleArrayDecls.insert(D);
+
             printWarning(
                 "this may be an unsupported flexible array member with size of "
                 "1, "
@@ -1709,7 +1713,7 @@ class TranslateASTVisitor final
     }
 
   private:
-    bool warnOnFlexibleArrayDecl(FieldDecl *D) {
+    bool maybeFlexibleArrayDecl(FieldDecl *D) {
         const ASTRecordLayout &Layout =
             Context->getASTRecordLayout(D->getParent());
         unsigned FieldCount = Layout.getFieldCount();
@@ -1719,14 +1723,8 @@ class TranslateASTVisitor final
             // If the array has a size of 1, and struct field count is
             // greater than 1, and if the (struct field count - 1) is equal to
             // the index, it is most likely a flexible array.
-            if (CA->getSize() == 1 && FieldCount > 1 &&
-                FieldCount - 1 == D->getFieldIndex() &&
-                !warnedFlexibleArrayDecls.count(D)) {
-                // Insert the Decl into the set, if it has not been warned about
-                // yet.
-                warnedFlexibleArrayDecls.insert(D);
-                return true;
-            }
+            return (CA->getSize() == 1 && FieldCount > 1 &&
+                    FieldCount - 1 == D->getFieldIndex());
         }
         return false;
     }

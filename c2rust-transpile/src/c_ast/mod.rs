@@ -130,6 +130,17 @@ impl TypedAstContext {
         }
     }
 
+    /// Can the given field decl be a flexible array member?
+    pub fn maybe_flexible_array(&self, typ: CTypeId) -> bool {
+        let field_ty = self.resolve_type(typ);
+        match field_ty.kind {
+            CTypeKind::IncompleteArray(_) |
+            CTypeKind::ConstantArray(_, 1) => true,
+
+            _ => false,
+        }
+    }
+
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         match self.index(typ).kind {
             CTypeKind::Attributed(ty, _) => self.resolve_type_id(ty.ctype),
