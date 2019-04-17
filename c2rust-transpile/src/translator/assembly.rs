@@ -23,7 +23,7 @@ impl<'c> Translation<'c> {
     ) -> Result<Vec<Stmt>, TranslationError> {
         if !self.tcfg.translate_asm {
             return Err(TranslationError::generic(
-                "Inline assembly not enabled, to enable use --translate-asm",
+                "Inline assembly tranlationg not enabled.",
             ));
         }
 

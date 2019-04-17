@@ -149,7 +149,7 @@ impl<'c> Translation<'c> {
             Ok(res)
         } else {
             Err(format_err!(
-                "Variable argument lists are not supported (requires --translate-valist)"
+                "Variable argument list translation is not enabled."
             ))?
         }
     }
