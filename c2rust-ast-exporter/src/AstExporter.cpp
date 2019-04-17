@@ -53,6 +53,19 @@ void cbor_encode_string(CborEncoder *encoder, const std::string &str) {
     cbor_encode_text_string(encoder, ptr, len);
 }
 
+// Encode an array of strings assuming that it is valid UTF-8 encoded text
+void cbor_encode_string_array(CborEncoder *encoder,
+                              const ArrayRef<std::string> strs) {
+    CborEncoder array;
+    cbor_encoder_create_array(encoder, &array, strs.size());
+
+    for (auto &s : strs) {
+        cbor_encode_string(&array, s);
+    }
+
+    cbor_encoder_close_container(encoder, &array);
+}
+
 std::string make_realpath(std::string const &path) {
     if (auto abs_path = realpath(path.c_str(), nullptr)) {
         auto result = std::string(abs_path);
@@ -759,26 +772,30 @@ class TranslateASTVisitor final
              std::back_inserter(childIds));
 
         encode_entry(E, TagAsmStmt, childIds, [E, this](CborEncoder *local) {
-            auto writeList = [E, local](unsigned (AsmStmt::*NumFunc)() const,
-                                        llvm::StringRef (AsmStmt::*StrFunc)(
-                                            unsigned) const) {
-                auto num = (E->*NumFunc)();
-
-                CborEncoder array;
-                cbor_encoder_create_array(local, &array, num);
-
-                for (decltype(num) i = 0; i < num; ++i) {
-                    cbor_encode_string(&array, (E->*StrFunc)(i).str());
-                }
-
-                cbor_encoder_close_container(local, &array);
-            };
-
             cbor_encode_boolean(local, E->isVolatile());
             cbor_encode_string(local, E->generateAsmString(*Context));
-            writeList(&AsmStmt::getNumInputs, &AsmStmt::getInputConstraint);
-            writeList(&AsmStmt::getNumOutputs, &AsmStmt::getOutputConstraint);
-            writeList(&AsmStmt::getNumClobbers, &AsmStmt::getClobber);
+
+            std::vector<std::string> outputs, inputs, clobbers;
+            for (unsigned i = 0, num = E->getNumOutputs(); i < num; ++i) {
+                auto constraint = E->getOutputConstraint(i).str();
+                auto s = constraint.c_str();
+                std::string convertedConstraint;
+                convertedConstraint += *s++; // Copy over the initial = or ?
+                convertedConstraint += this->Context->getTargetInfo().convertConstraint(s);
+                outputs.push_back(convertedConstraint);
+            }
+            for (unsigned i = 0, num = E->getNumInputs(); i < num; ++i) {
+                auto constraint = E->getInputConstraint(i);
+                auto s = constraint.str().c_str();
+                inputs.emplace_back(this->Context->getTargetInfo().convertConstraint(s));
+            }
+            for (unsigned i = 0, num = E->getNumClobbers(); i < num; ++i) {
+                auto constraint = E->getClobber(i);
+                clobbers.emplace_back(constraint);
+            }
+            cbor_encode_string_array(local, ArrayRef<std::string>(inputs));
+            cbor_encode_string_array(local, ArrayRef<std::string>(outputs));
+            cbor_encode_string_array(local, ArrayRef<std::string>(clobbers));
         });
         return true;
     }
