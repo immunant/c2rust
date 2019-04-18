@@ -533,13 +533,18 @@ impl<'a> Translation<'a> {
         &self,
         ctx: ExprContext,
         op: BinOp,
-        field_name: &str,
         lhs: CExprId,
         rhs_expr: P<Expr>,
+        field_id: CDeclId,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
         let lhs_expr = named_reference.val.0;
+        let field_name = self
+            .type_converter
+            .borrow()
+            .resolve_field_name(None, field_id)
+            .ok_or("Could not find bitfield name")?;
         let setter_name = format!("set_{}", field_name);
         let lhs_expr_read =
             mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<P<Expr>>::new());

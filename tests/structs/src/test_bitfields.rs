@@ -6,6 +6,7 @@ use bitfields::{
     rust_ops_padded_bitfield, rust_ops_padded_bitfield_init, mixed_bitfields, rust_init_bitfield_array,
     rust_static_date, from_csmith, rust_init_from_csmith, rust_get_bf_ptr, rust_modify_bf_ptr,
     two_eight_bits, rust_two_eight_bits_init, rust_multiple_assignments, rust_ma_results,
+    rust_use_renamed_field,
 };
 
 extern "C" {
