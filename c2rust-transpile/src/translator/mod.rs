@@ -591,7 +591,7 @@ pub fn translate(
                     t.generate_submodule_imports(decl_id, decl_file_path);
                 }
 
-                match t.convert_decl(ctx, true, decl_id) {
+                match t.convert_decl(ctx, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => {
                         t.insert_item(item, decl_file_path, main_file_path)
                     }
@@ -629,7 +629,7 @@ pub fn translate(
                     t.generate_submodule_imports(*top_id, decl_file_path);
                 }
 
-                match t.convert_decl(ctx, true, *top_id) {
+                match t.convert_decl(ctx, *top_id) {
                     Ok(ConvertedDecl::Item(mut item)) => t.item_store.borrow_mut().items.push(item),
                     Ok(ConvertedDecl::ForeignItem(item)) => {
                         t.insert_foreign_item(item, decl_file_path, main_file_path)
@@ -1222,7 +1222,6 @@ impl<'c> Translation<'c> {
     fn convert_decl(
         &self,
         ctx: ExprContext,
-        toplevel: bool,
         decl_id: CDeclId,
     ) -> Result<ConvertedDecl, TranslationError> {
         let mut s = {
@@ -1239,7 +1238,7 @@ impl<'c> Translation<'c> {
             .get(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
-        let src_loc = &decl.loc;
+        let _src_loc = &decl.loc;
 
         match decl.kind {
             CDeclKind::Struct { fields: None, .. }
@@ -1455,10 +1454,10 @@ impl<'c> Translation<'c> {
                 ))
             }
 
-            CDeclKind::Function { .. } if !toplevel => Err(format_translation_err!(
-                src_loc,
-                "Function declarations must be top-level",
-            )),
+            // We can allow non top level function declarations (i.e. extern
+            // declarations) without any problem. Clang doesn't support nested
+            // functions, so we will never see nested function definitions.
+
             CDeclKind::Function {
                 is_global,
                 is_inline,
@@ -2298,7 +2297,7 @@ impl<'c> Translation<'c> {
                 if skip {
                     Ok(cfg::DeclStmtInfo::new(vec![], vec![], vec![]))
                 } else {
-                    let item = match self.convert_decl(ctx, false, decl_id)? {
+                    let item = match self.convert_decl(ctx, decl_id)? {
                         ConvertedDecl::Item(item) => item,
                         ConvertedDecl::ForeignItem(item) => mk().abi("C").foreign_items(vec![item]),
                         ConvertedDecl::NoItem => return Ok(cfg::DeclStmtInfo::empty()),
