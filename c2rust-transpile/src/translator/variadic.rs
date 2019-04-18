@@ -134,12 +134,51 @@ impl<'c> Translation<'c> {
             // https://github.com/rust-lang/rust/pull/49878/files
 
             let val = self.convert_expr(ctx.used(), val_id)?;
-            let ty = self.convert_type(ty.ctype)?;
+            let (mut fn_ptr_ty, mut orig_ty) = (None, None);
+            {
+                // is the va_arg a function pointer?
+                let resolved_ctype = self.ast_context.resolve_type(ty.ctype);
+                if let CTypeKind::Pointer(p) = resolved_ctype.kind {
+                    let resolved_ctype = self.ast_context.resolve_type(p.ctype);
+                    if let CTypeKind::Function(ret, ref params, is_variadic, is_noreturn, _) = resolved_ctype.kind {
+                        // construct appropriate function pointer type
+                        let opt_ret = if is_noreturn { None } else { Some(ret) };
+                        
+                        let fn_ty = self.type_converter
+                            .borrow_mut()
+                            .convert_function(&self.ast_context, opt_ret, params, is_variadic)?;
+
+                        let m = if p.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
+                        fn_ptr_ty = Some(mk().set_mutbl(m).ptr_ty(fn_ty));
+                    }
+                }
+            }
+
+            let ty = if fn_ptr_ty.is_some() {
+                orig_ty = Some(self.convert_type(ty.ctype)?);
+                fn_ptr_ty.unwrap()
+            } else { 
+                self.convert_type(ty.ctype)? 
+            };
 
             let mut res = val.map(|va| {
                 let path = mk()
                     .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![ty]));
-                mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
+                let call = mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>);
+                
+                if orig_ty.is_some() { 
+                    // transmute result of call to `arg` when expecting a function pointer
+                    let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
+                    let path = vec![
+                        mk().path_segment(""),
+                        mk().path_segment(std_or_core),
+                        mk().path_segment("mem"),
+                        mk().path_segment("transmute"),
+                    ];
+                    mk().call_expr(mk().path_expr(path), vec![call] as Vec<P<Expr>>) 
+                } else { 
+                    call 
+                }
             });
             if ctx.is_unused() {
                 res.stmts.push(mk().expr_stmt(res.val));

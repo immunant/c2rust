@@ -189,7 +189,7 @@ impl TypeConverter {
 
     /// Helper function handling conversion of function types in `convert`.
     /// Optional return type excludes a ty when a function doesn't return.
-    fn convert_function(
+    pub fn convert_function(
         &mut self,
         ctxt: &TypedAstContext,
         ret: Option<CQualTypeId>,
