@@ -22,6 +22,7 @@ typedef struct {
     int *first;
     int **last;
 } stat3;
+typedef void (*void_fn_ptr)(void);
 
 // These should initialize fine:
 int dont_section_a = 0;
@@ -47,6 +48,7 @@ stat2 s2 = {&bar.bar};
 static stat3 selfref = { NULL, &selfref.first };
 void (*int_to_fn_ptr)(void) = -1;
 void (*int_to_fn_ptr2)(int, ...) = -1;
+void_fn_ptr int_to_fn_ptr3 = -1;
 
 size_t fn_scoped_static_init(void) {
     static size_t sectioned_scoped_init = &section_me;
