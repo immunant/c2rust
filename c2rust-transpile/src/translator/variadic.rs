@@ -199,17 +199,12 @@ impl<'c> Translation<'c> {
                 }
             })
         };
-        let end_called = |k: &CDeclId| {
-            candidates[k]
-                .iter()
-                .any(|e| if let VaPart::End(_) = e { true } else { false })
-        };
 
-        // va_lists initialized by `va_copy` and finalized by `va_end`
+        // va_lists initialized by `va_copy`
         let copied = candidates
             .keys()
             .filter_map(|k| {
-                if copy_called(k) && end_called(k) {
+                if copy_called(k) {
                     Some(*k)
                 } else {
                     None
@@ -217,11 +212,11 @@ impl<'c> Translation<'c> {
             })
             .collect::<IndexSet<CDeclId>>();
 
-        // va_lists initialized by `va_start` and finalized by `va_end`
+        // va_lists initialized by `va_start`
         let promotable = candidates
             .keys()
             .filter_map(|k| {
-                if start_called(k) && end_called(k) {
+                if start_called(k) {
                     Some(*k)
                 } else {
                     None
