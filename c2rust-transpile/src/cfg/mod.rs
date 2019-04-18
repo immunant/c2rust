@@ -15,8 +15,8 @@
 //!   - convert the `Vec<Structure<Stmt>>` back into a `Vec<Stmt>`
 //!
 
-use c_ast::iterators::{DFExpr, SomeId};
-use c_ast::CLabelId;
+use crate::c_ast::iterators::{DFExpr, SomeId};
+use crate::c_ast::CLabelId;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeSet;
 use std::fs::File;
@@ -39,10 +39,10 @@ use serde::ser::{
 };
 use serde_json;
 
+use crate::c_ast::*;
+use crate::translator::*;
+use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
-use c_ast::*;
-use translator::*;
-use with_stmts::WithStmts;
 
 mod inc_cleanup;
 pub mod loops;
@@ -50,9 +50,9 @@ pub mod multiples;
 pub mod relooper;
 pub mod structures;
 
-use cfg::inc_cleanup::IncCleanup;
-use cfg::loops::*;
-use cfg::multiples::*;
+use crate::cfg::inc_cleanup::IncCleanup;
+use crate::cfg::loops::*;
+use crate::cfg::multiples::*;
 
 /// These labels identify basic blocks in a regular CFG.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]

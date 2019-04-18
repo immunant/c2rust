@@ -1,4 +1,4 @@
-use c_ast::*;
+use crate::c_ast::*;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum SomeId {
@@ -37,7 +37,7 @@ macro_rules! intos {
 }
 
 fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
-    use c_ast::CExprKind::*;
+    use crate::c_ast::CExprKind::*;
     match *kind {
         BadExpr => vec![],
         DesignatedInitExpr(..) => vec![], // the relevant information will be found in the semantic initializer
@@ -69,7 +69,7 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
 }
 
 fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
-    use c_ast::CExprKind::*;
+    use crate::c_ast::CExprKind::*;
     match *kind {
         BadExpr => vec![],
         DesignatedInitExpr(..) => vec![], // the relevant information will be found in the semantic initializer
@@ -110,7 +110,7 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
 }
 
 fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
-    use c_ast::CDeclKind::*;
+    use crate::c_ast::CDeclKind::*;
     match *kind {
         Function {
             typ,
@@ -152,7 +152,7 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
 }
 
 fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
-    use c_ast::CStmtKind::*;
+    use crate::c_ast::CStmtKind::*;
     match *kind {
         Expr(e) => intos![e],
         Label(s) => intos![s],
@@ -229,7 +229,7 @@ fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
 }
 
 fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
-    use c_ast::CTypeKind::*;
+    use crate::c_ast::CTypeKind::*;
     match *kind {
         Elaborated(_) => vec![], // These are references to previous definitions
         TypeOfExpr(e) => intos![e],

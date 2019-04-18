@@ -12,6 +12,7 @@ impl<'c> Translation<'c> {
         args: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let expr = &self.ast_context[fexp];
+        let src_loc = &expr.loc;
         let decl_id = match expr.kind {
             CExprKind::DeclRef(_, decl_id, _) => decl_id,
             _ => {
@@ -169,7 +170,7 @@ impl<'c> Translation<'c> {
                 // https://github.com/rust-lang/rust/pull/59625
                 Err(TranslationError::new(
                     &expr.loc,
-                    Context::new(TranslationErrorKind::VaCopyNotImplemented)
+                    Context::new(TranslationErrorKind::VaCopyNotImplemented),
                 ))
                 // if ctx.is_unused() && args.len() == 2 {
                 //     if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
@@ -547,7 +548,17 @@ impl<'c> Translation<'c> {
                 }))
             }
 
-            _ => Err(format_err!("Unimplemented builtin: {}", builtin_name).into()),
+            "__builtin_unreachable" => {
+                let mut res = WithStmts::new(self.panic_or_err("unreachable stub"));
+                res.stmts.push(mk().semi_stmt(mk().mac_expr(mk().mac(
+                    vec!["unreachable"],
+                    vec![],
+                    MacDelimiter::Parenthesis,
+                ))));
+                Ok(res)
+            }
+
+            _ => Err(format_translation_err!(src_loc, "Unimplemented builtin {}", builtin_name)),
         }
     }
 

@@ -1,5 +1,3 @@
-use std::fmt::{self, Debug, Display};
-
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -127,6 +125,18 @@ impl TypedAstContext {
             }
         } else {
             false
+        }
+    }
+
+    /// Can the given field decl be a flexible array member?
+    pub fn maybe_flexible_array(&self, typ: CTypeId) -> bool {
+        let field_ty = self.resolve_type(typ);
+        match field_ty.kind {
+            CTypeKind::IncompleteArray(_) |
+            CTypeKind::ConstantArray(_, 0) |
+            CTypeKind::ConstantArray(_, 1) => true,
+
+            _ => false,
         }
     }
 
@@ -503,16 +513,6 @@ pub struct SrcLoc {
     pub line: u64,
     pub column: u64,
     pub file_path: Option<PathBuf>,
-}
-
-impl Display for SrcLoc {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(ref file_path) = self.file_path {
-            write!(f, "{}:{}:{}", file_path.display(), self.line, self.column)
-        } else {
-            Debug::fmt(self, f)
-        }
-    }
 }
 
 /// Represents some AST node possibly with source location information bundled with it

@@ -1,8 +1,15 @@
+use colored::Colorize;
+use failure::{err_msg, Backtrace, Context, Error, Fail};
 use fern::colors::ColoredLevelConfig;
 use log::Level;
 use std::collections::HashSet;
+use std::fmt::{self, Debug, Display};
 use std::io;
 use std::str::FromStr;
+use std::sync::Arc;
+
+use crate::c_ast::SrcLoc;
+use c2rust_ast_exporter::get_clang_major_version;
 
 const DEFAULT_WARNINGS: &[Diagnostic] = &[];
 
@@ -52,4 +59,148 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>) {
         .chain(io::stderr())
         .apply()
         .expect("Could not set up diagnostics");
+}
+
+
+#[derive(Debug, Clone)]
+pub struct TranslationError {
+    loc: Option<SrcLoc>,
+    inner: Arc<Context<TranslationErrorKind>>,
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum TranslationErrorKind {
+    Generic,
+
+    // Not enough simd intrinsics are available in LLVM < 7
+    OldLLVMSimd,
+
+    // We are waiting for va_copy support to land in rustc
+    VaCopyNotImplemented,
+}
+
+/// Constructs a `TranslationError` using the standard string interpolation syntax.
+#[macro_export]
+macro_rules! format_translation_err {
+    ($loc:expr, $($arg:tt)*) => {
+        TranslationError::new(
+            &$loc,
+            failure::err_msg(format!($($arg)*))
+                .context(TranslationErrorKind::Generic),
+        )
+    }
+}
+
+impl Display for SrcLoc {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(ref file_path) = self.file_path {
+            write!(f, "{}:{}:{}", file_path.display(), self.line, self.column)
+        } else {
+            Debug::fmt(self, f)
+        }
+    }
+}
+
+impl Display for TranslationErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::TranslationErrorKind::*;
+        match self {
+            Generic => {}
+
+            OldLLVMSimd => {
+                if let Some(version) = get_clang_major_version() {
+                    if version < 7 {
+                        return write!(f, "SIMD intrinsics require LLVM 7 or newer. Please build C2Rust against a newer LLVM version.");
+                    }
+                }
+            }
+
+            VaCopyNotImplemented => {
+                return write!(f, "Rust does not yet support a C-compatible va_copy which is required to translate this function. See https://github.com/rust-lang/rust/pull/59625");
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Fail for TranslationError {
+    fn cause(&self) -> Option<&Fail> {
+        self.inner.cause()
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        self.inner.backtrace()
+    }
+}
+
+impl Display for TranslationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(cause) = self.inner.cause() {
+            writeln!(f, "{}", cause)?;
+        }
+        match self.inner.get_context() {
+            TranslationErrorKind::Generic => {}
+            ref kind => writeln!(f, "{}", kind)?,
+        }
+        if let Some(ref loc) = self.loc {
+            writeln!(f, "{} {}", "-->".blue(), loc)?;
+        }
+        Ok(())
+    }
+}
+
+impl TranslationError {
+    pub fn kind(&self) -> TranslationErrorKind {
+        self.inner.get_context().clone()
+    }
+
+    pub fn new(loc: &Option<SrcLoc>, inner: Context<TranslationErrorKind>) -> Self {
+        TranslationError {
+            loc: loc.clone(),
+            inner: Arc::new(inner),
+        }
+    }
+
+    pub fn generic(msg: &'static str) -> Self {
+        TranslationError {
+            loc: None,
+            inner: Arc::new(err_msg(msg).context(TranslationErrorKind::Generic)),
+        }
+    }
+}
+
+impl From<&'static str> for TranslationError {
+    fn from(msg: &'static str) -> TranslationError {
+        TranslationError {
+            loc: None,
+            inner: Arc::new(err_msg(msg).context(TranslationErrorKind::Generic)),
+        }
+    }
+}
+
+impl From<Error> for TranslationError {
+    fn from(e: Error) -> TranslationError {
+        TranslationError {
+            loc: None,
+            inner: Arc::new(e.context(TranslationErrorKind::Generic)),
+        }
+    }
+}
+
+impl From<TranslationErrorKind> for TranslationError {
+    fn from(kind: TranslationErrorKind) -> TranslationError {
+        TranslationError {
+            loc: None,
+            inner: Arc::new(Context::new(kind)),
+        }
+    }
+}
+
+impl From<Context<TranslationErrorKind>> for TranslationError {
+    fn from(ctx: Context<TranslationErrorKind>) -> TranslationError {
+        TranslationError {
+            loc: None,
+            inner: Arc::new(ctx),
+        }
+    }
 }

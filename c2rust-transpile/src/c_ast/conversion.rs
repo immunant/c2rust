@@ -1,5 +1,5 @@
+use crate::c_ast::*;
 use c2rust_ast_exporter::clang_ast::*;
-use c_ast::*;
 use serde_cbor::Value;
 use std::collections::HashMap;
 use std::vec::Vec;

@@ -1,5 +1,7 @@
 #![feature(rustc_private)]
 #![feature(label_break_value)]
+
+extern crate colored;
 extern crate dtoa;
 extern crate rustc_data_structures;
 extern crate rustc_target;
@@ -50,15 +52,15 @@ use std::process;
 use failure::Error;
 use regex::Regex;
 
+use crate::c_ast::Printer;
+use crate::c_ast::*;
+pub use crate::diagnostics::Diagnostic;
 use c2rust_ast_exporter as ast_exporter;
-use c_ast::Printer;
-use c_ast::*;
-pub use diagnostics::Diagnostic;
 
-use build_files::{emit_build_files, get_build_dir};
-use compile_cmds::get_compile_commands;
+use crate::build_files::{emit_build_files, get_build_dir};
+use crate::compile_cmds::get_compile_commands;
+pub use crate::translator::ReplaceMode;
 use std::prelude::v1::Vec;
-pub use translator::ReplaceMode;
 
 type PragmaVec = Vec<(&'static str, Vec<&'static str>)>;
 type PragmaSet = indexmap::IndexSet<(&'static str, &'static str)>;
@@ -126,9 +128,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 
     let results = cmds
         .iter()
-        .map(|cmd| {
-            transpile_single(&tcfg, cmd.abs_file().as_path(), cc_db, extra_clang_args)
-        })
+        .map(|cmd| transpile_single(&tcfg, cmd.abs_file().as_path(), cc_db, extra_clang_args))
         .collect::<Vec<TranspileResult>>();
     let mut modules = vec![];
     let mut modules_skipped = false;
@@ -275,7 +275,10 @@ fn transpile_single(
     let file = input_path.file_name().unwrap().to_str().unwrap();
     println!("Transpiling {}", file);
     if !input_path.exists() {
-        warn!("Input C file {} does not exist, skipping!", input_path.display());
+        warn!(
+            "Input C file {} does not exist, skipping!",
+            input_path.display()
+        );
     }
 
     if tcfg.verbose {
@@ -315,7 +318,8 @@ fn transpile_single(
 
     // Perform the translation
     let main_file = input_path.with_extension("");
-    let (translated_string, pragmas, crates) = translator::translate(typed_context, &tcfg, main_file);
+    let (translated_string, pragmas, crates) =
+        translator::translate(typed_context, &tcfg, main_file);
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,

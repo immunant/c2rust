@@ -24,10 +24,6 @@ args:
       long: pretty-typed-clang-ast
       help: Pretty-prints out the parsed typed Clang AST
       takes_value: false
-  - translate-asm:
-      long: translate-asm
-      help: Translate inline assembly without translating the assembly fragment
-      takes_value: false
 
   - no-incremental-relooper:
       long: no-incremental-relooper

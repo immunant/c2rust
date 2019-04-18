@@ -63,7 +63,11 @@ fn main() {
             .map(|vals| vals.map(String::from).collect::<Vec<_>>())
             .unwrap_or_default(),
         prefix_function_names: matches.value_of("prefix-function-names").map(String::from),
-        translate_asm: matches.is_present("translate-asm"),
+
+        // We used to guard asm translation with a command-line
+        // option. Defaulting to enabled now, can add an option to disable if
+        // needed.
+        translate_asm: true,
 
         // We used to guard varargs with a command-line option before nightly
         // support landed. We may still want to disable this option to target

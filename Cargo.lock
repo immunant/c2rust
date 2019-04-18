@@ -262,6 +262,7 @@ dependencies = [
  "c2rust-ast-builder 0.10.0",
  "c2rust-ast-exporter 0.10.0",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "colored 1.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "dtoa 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "fern 0.5.8 (registry+https://github.com/rust-lang/crates.io-index)",

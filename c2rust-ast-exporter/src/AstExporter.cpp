@@ -53,6 +53,19 @@ void cbor_encode_string(CborEncoder *encoder, const std::string &str) {
     cbor_encode_text_string(encoder, ptr, len);
 }
 
+// Encode an array of strings assuming that it is valid UTF-8 encoded text
+void cbor_encode_string_array(CborEncoder *encoder,
+                              const ArrayRef<std::string> strs) {
+    CborEncoder array;
+    cbor_encoder_create_array(encoder, &array, strs.size());
+
+    for (auto &s : strs) {
+        cbor_encode_string(&array, s);
+    }
+
+    cbor_encoder_close_container(encoder, &array);
+}
+
 std::string make_realpath(std::string const &path) {
     if (auto abs_path = realpath(path.c_str(), nullptr)) {
         auto result = std::string(abs_path);
@@ -417,7 +430,6 @@ class TranslateASTVisitor final
     CborEncoder *encoder;
     std::unordered_map<string, uint64_t> filenames;
     std::set<std::pair<void *, ASTEntryTag>> exportedTags;
-    std::unordered_set<Decl *> warnedFlexibleArrayDecls;
 
     // Returns true when a new entry is added to exportedTags
     bool markForExport(void *ptr, ASTEntryTag tag) {
@@ -759,26 +771,30 @@ class TranslateASTVisitor final
              std::back_inserter(childIds));
 
         encode_entry(E, TagAsmStmt, childIds, [E, this](CborEncoder *local) {
-            auto writeList = [E, local](unsigned (AsmStmt::*NumFunc)() const,
-                                        llvm::StringRef (AsmStmt::*StrFunc)(
-                                            unsigned) const) {
-                auto num = (E->*NumFunc)();
-
-                CborEncoder array;
-                cbor_encoder_create_array(local, &array, num);
-
-                for (decltype(num) i = 0; i < num; ++i) {
-                    cbor_encode_string(&array, (E->*StrFunc)(i).str());
-                }
-
-                cbor_encoder_close_container(local, &array);
-            };
-
             cbor_encode_boolean(local, E->isVolatile());
             cbor_encode_string(local, E->generateAsmString(*Context));
-            writeList(&AsmStmt::getNumInputs, &AsmStmt::getInputConstraint);
-            writeList(&AsmStmt::getNumOutputs, &AsmStmt::getOutputConstraint);
-            writeList(&AsmStmt::getNumClobbers, &AsmStmt::getClobber);
+
+            std::vector<std::string> outputs, inputs, clobbers;
+            for (unsigned i = 0, num = E->getNumOutputs(); i < num; ++i) {
+                auto constraint = E->getOutputConstraint(i).str();
+                auto s = constraint.c_str();
+                std::string convertedConstraint;
+                convertedConstraint += *s++; // Copy over the initial = or ?
+                convertedConstraint += this->Context->getTargetInfo().convertConstraint(s);
+                outputs.push_back(convertedConstraint);
+            }
+            for (unsigned i = 0, num = E->getNumInputs(); i < num; ++i) {
+                auto constraint = E->getInputConstraint(i);
+                auto s = constraint.str().c_str();
+                inputs.emplace_back(this->Context->getTargetInfo().convertConstraint(s));
+            }
+            for (unsigned i = 0, num = E->getNumClobbers(); i < num; ++i) {
+                auto constraint = E->getClobber(i);
+                clobbers.emplace_back(constraint);
+            }
+            cbor_encode_string_array(local, ArrayRef<std::string>(inputs));
+            cbor_encode_string_array(local, ArrayRef<std::string>(outputs));
+            cbor_encode_string_array(local, ArrayRef<std::string>(clobbers));
         });
         return true;
     }
@@ -1538,20 +1554,6 @@ class TranslateASTVisitor final
         if (!D->isCanonicalDecl())
             return true;
 
-        // Check to see if the FieldDecl might be a flexible array member,
-        // if it is print a warning message.
-        if (warnOnFlexibleArrayDecl(D)) {
-            printWarning(
-                "this may be an unsupported flexible array member with size of "
-                "1, "
-                "omit the size if this field is intended to be a flexible "
-                "array member. "
-                "Note that you must fix any struct size calculations after "
-                "doing so or else it will likely be off (by one). "
-                "See section 6.7.2.1 of the C99 standard.",
-                D);
-        }
-
         std::vector<void *> childIds;
         auto t = D->getType();
         auto record = D->getParent();
@@ -1692,28 +1694,6 @@ class TranslateASTVisitor final
     }
 
   private:
-    bool warnOnFlexibleArrayDecl(FieldDecl *D) {
-        const ASTRecordLayout &Layout =
-            Context->getASTRecordLayout(D->getParent());
-        unsigned FieldCount = Layout.getFieldCount();
-
-        if (auto CA = dyn_cast_or_null<ConstantArrayType>(
-                D->getType().getTypePtr())) {
-            // If the array has a size of 1, and struct field count is
-            // greater than 1, and if the (struct field count - 1) is equal to
-            // the index, it is most likely a flexible array.
-            if (CA->getSize() == 1 && FieldCount > 1 &&
-                FieldCount - 1 == D->getFieldIndex() &&
-                !warnedFlexibleArrayDecls.count(D)) {
-                // Insert the Decl into the set, if it has not been warned about
-                // yet.
-                warnedFlexibleArrayDecls.insert(D);
-                return true;
-            }
-        }
-        return false;
-    }
-
     // Inspired by a lambda function within `clang/lib/Sema/SemaType.cpp`
     bool isVaList(Decl *D, QualType T) {
         if (auto *RD = dyn_cast<RecordDecl>(D))
