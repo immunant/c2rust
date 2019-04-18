@@ -179,15 +179,20 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         for entry in entries {
             // Widen the loop until it contains the `entry`, or it can no longer be widened.
             loop {
-                let (ref in_loop, mut parent_id) = self.loops[&loop_id];
-                if in_loop.contains(&entry) {
-                    break;
+                match self.loops.get(&loop_id) {
+                    Some((ref in_loop, mut parent_id)) => {
+                        if in_loop.contains(&entry) {
+                            break;
+                        }
+                        loop_id = if let Some(i) = parent_id {
+                            i
+                        } else {
+                            return None;
+                        };
+                    }
+
+                    None => return None,
                 }
-                loop_id = if let Some(i) = parent_id {
-                    i
-                } else {
-                    return None;
-                };
             }
         }
 

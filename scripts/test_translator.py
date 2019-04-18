@@ -67,7 +67,7 @@ class CFile:
             flags = set()
 
         self.path = path
-        self.enable_incremental_relooper = "incremental_relooper" in flags
+        self.disable_incremental_relooper = "disable_incremental_relooper" in flags
         self.disallow_current_block = "disallow_current_block" in flags
 
     def translate(self, cc_db, extra_args: List[str] = []) -> RustFile:
@@ -88,7 +88,7 @@ class CFile:
             "--overwrite-existing",
         ]
 
-        if not self.enable_incremental_relooper:
+        if self.disable_incremental_relooper:
             args.append("--no-incremental-relooper")
         if self.disallow_current_block:
             args.append("--fail-on-multiple")
