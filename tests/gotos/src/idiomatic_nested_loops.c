@@ -1,5 +1,3 @@
-//! enable_relooper
-
 // This shoud translate to a straightforward `break` with a loop label 
 int break_multiple(int x) {
 
