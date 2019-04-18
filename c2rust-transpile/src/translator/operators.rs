@@ -249,17 +249,16 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
 
-        let bitfield_name = match initial_lhs {
+        let bitfield_id = match initial_lhs {
             CExprKind::Member(_, _, decl_id, _, _) => {
                 let kind = &self.ast_context[*decl_id].kind;
 
                 if let CDeclKind::Field {
                     bitfield_width: Some(_),
-                    name,
                     ..
                 } = kind
                 {
-                    Some(name)
+                    Some(decl_id)
                 } else {
                     None
                 }
@@ -267,14 +266,14 @@ impl<'c> Translation<'c> {
             _ => None,
         };
 
-        if let Some(name) = bitfield_name {
+        if let Some(field_id) = bitfield_id {
             let rhs_expr = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
                 rhs_translation.to_expr()
             } else {
                 mk().cast_expr(rhs_translation.to_expr(), ty)
             };
 
-            return self.convert_bitfield_assignment_op_with_rhs(ctx, op, name, lhs, rhs_expr);
+            return self.convert_bitfield_assignment_op_with_rhs(ctx, op, lhs, rhs_expr, *field_id);
         }
 
         let is_volatile = initial_lhs_type_id.qualifiers.is_volatile;

@@ -1140,7 +1140,7 @@ impl<'c> Translation<'c> {
                 }
                 CExprKind::ImplicitCast(qtype, _, IntegralToPointer, _, _)
                 | CExprKind::ExplicitCast(qtype, _, IntegralToPointer, _, _) => {
-                    if let CTypeKind::Pointer(qtype) = self.ast_context[qtype.ctype].kind {
+                    if let CTypeKind::Pointer(qtype) = self.ast_context.resolve_type(qtype.ctype).kind {
                         if let CTypeKind::Function(..) =
                             self.ast_context.resolve_type(qtype.ctype).kind
                         {
