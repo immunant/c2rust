@@ -1,5 +1,7 @@
 #![feature(rustc_private)]
 #![feature(label_break_value)]
+
+extern crate colored;
 extern crate dtoa;
 extern crate rustc_data_structures;
 extern crate rustc_target;

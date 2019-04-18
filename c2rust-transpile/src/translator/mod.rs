@@ -1,13 +1,11 @@
 use std::cell::RefCell;
-use std::fmt::{self, Debug, Display};
 use std::ops::Index;
 use std::path::{self, PathBuf};
-use std::sync::Arc;
 use std::{char, io, mem};
 
 use dtoa;
 
-use failure::{err_msg, Backtrace, Context, Error, Fail};
+use failure::{err_msg, Context, Fail};
 use indexmap::{IndexMap, IndexSet};
 
 use rustc_data_structures::sync::Lrc;
@@ -33,7 +31,6 @@ use crate::renamer::Renamer;
 use crate::with_stmts::WithStmts;
 use crate::TranspilerConfig;
 use c2rust_ast_exporter::clang_ast::LRValue;
-use c2rust_ast_exporter::get_clang_major_version;
 
 mod assembly;
 mod bitfields;
@@ -45,122 +42,9 @@ mod operators;
 mod simd;
 mod variadic;
 
+pub use crate::diagnostics::{TranslationError, TranslationErrorKind};
 use crate::CrateSet;
 use crate::PragmaVec;
-
-#[derive(Debug, Clone)]
-pub struct TranslationError {
-    loc: Option<SrcLoc>,
-    inner: Arc<Context<TranslationErrorKind>>,
-}
-
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum TranslationErrorKind {
-    Generic,
-
-    // Not enough simd intrinsics are available in LLVM < 7
-    OldLLVMSimd,
-
-    // We are waiting for va_copy support to land in rustc
-    VaCopyNotImplemented,
-}
-
-impl Display for TranslationErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::TranslationErrorKind::*;
-        match self {
-            Generic => {}
-
-            OldLLVMSimd => {
-                if let Some(version) = get_clang_major_version() {
-                    if version < 7 {
-                        return write!(f, "SIMD intrinsics require LLVM 7 or newer. Please build C2Rust against a newer LLVM version.");
-                    }
-                }
-            }
-
-            VaCopyNotImplemented => {
-                return write!(f, "Rust does not yet support a C-compatible va_copy which is required to translate this function. See https://github.com/rust-lang/rust/pull/59625");
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Fail for TranslationError {
-    fn cause(&self) -> Option<&Fail> {
-        self.inner.cause()
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        self.inner.backtrace()
-    }
-}
-
-impl Display for TranslationError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(ref loc) = self.loc {
-            write!(f, "{}\n    ", loc)?;
-        }
-        Debug::fmt(&*self.inner, f)
-    }
-}
-
-impl TranslationError {
-    pub fn kind(&self) -> TranslationErrorKind {
-        self.inner.get_context().clone()
-    }
-
-    pub fn new(loc: &Option<SrcLoc>, inner: Context<TranslationErrorKind>) -> Self {
-        TranslationError {
-            loc: loc.clone(),
-            inner: Arc::new(inner),
-        }
-    }
-
-    pub fn generic(msg: &'static str) -> Self {
-        TranslationError {
-            loc: None,
-            inner: Arc::new(err_msg(msg).context(TranslationErrorKind::Generic)),
-        }
-    }
-}
-
-impl From<&'static str> for TranslationError {
-    fn from(msg: &'static str) -> TranslationError {
-        TranslationError {
-            loc: None,
-            inner: Arc::new(err_msg(msg).context(TranslationErrorKind::Generic)),
-        }
-    }
-}
-
-impl From<Error> for TranslationError {
-    fn from(e: Error) -> TranslationError {
-        TranslationError {
-            loc: None,
-            inner: Arc::new(e.context(TranslationErrorKind::Generic)),
-        }
-    }
-}
-
-impl From<TranslationErrorKind> for TranslationError {
-    fn from(kind: TranslationErrorKind) -> TranslationError {
-        TranslationError {
-            loc: None,
-            inner: Arc::new(Context::new(kind)),
-        }
-    }
-}
-
-impl From<Context<TranslationErrorKind>> for TranslationError {
-    fn from(ctx: Context<TranslationErrorKind>) -> TranslationError {
-        TranslationError {
-            loc: None,
-            inner: Arc::new(ctx),
-        }
-    }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum DecayRef {
@@ -520,10 +404,9 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: &path::Path)
 }
 
 pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
+    error!("{}", msg);
     if tcfg.fail_on_error {
-        panic!("{}", msg)
-    } else {
-        eprintln!("{}", msg)
+        panic!();
     }
 }
 
@@ -719,7 +602,7 @@ pub fn translate(
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
                         let msg =
-                            format!("Skipping declaration due to error: {}, kind: {:?}", e, k);
+                            format!("Skipping declaration {:?} due to error: {}", k, e);
                         translate_failure(&t.tcfg, &msg)
                     }
                 }
@@ -755,7 +638,7 @@ pub fn translate(
                     Err(e) => {
                         let ref decl = t.ast_context.c_decls.get(top_id);
                         let msg = match decl {
-                            Some(decl) if !tcfg.verbose => {
+                            Some(decl) => {
                                 let decl_identifier = decl.kind.get_name().map_or_else(
                                     || {
                                         decl.loc
@@ -765,13 +648,13 @@ pub fn translate(
                                     |name| name.clone(),
                                 );
                                 format!(
-                                    "Failed to translate declaration {} due to error:\n\n{}",
+                                    "Failed to translate {}: {}",
                                     decl_identifier, e
                                 )
                             }
                             _ => format!(
-                                "Failed to translate declaration due to error: {}, decl: {:?}",
-                                e, decl
+                                "Failed to translate declaration: {}",
+                                e,
                             ),
                         };
                         translate_failure(&t.tcfg, &msg)
@@ -785,7 +668,7 @@ pub fn translate(
             match t.convert_main(main_id) {
                 Ok(item) => t.item_store.borrow_mut().items.push(item),
                 Err(e) => {
-                    let msg = format!("Failed translating main declaration due to error: {}", e);
+                    let msg = format!("Failed to translate main: {}", e);
                     translate_failure(&t.tcfg, &msg)
                 }
             }
@@ -1350,13 +1233,15 @@ impl<'c> Translation<'c> {
             self.comment_store.borrow_mut().add_comment_lines(decl_cmt)
         };
 
-        match self
+        let decl = self
             .ast_context
             .c_decls
             .get(&decl_id)
-            .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?
-            .kind
-        {
+            .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
+
+        let src_loc = &decl.loc;
+
+        match decl.kind {
             CDeclKind::Struct { fields: None, .. }
             | CDeclKind::Union { fields: None, .. }
             | CDeclKind::Enum {
@@ -1570,7 +1455,8 @@ impl<'c> Translation<'c> {
                 ))
             }
 
-            CDeclKind::Function { .. } if !toplevel => Err(TranslationError::generic(
+            CDeclKind::Function { .. } if !toplevel => Err(format_translation_err!(
+                src_loc,
                 "Function declarations must be top-level",
             )),
             CDeclKind::Function {
@@ -1860,11 +1746,7 @@ impl<'c> Translation<'c> {
         if is_variadic || is_valist {
             if let Some(body_id) = body {
                 if !self.is_well_formed_variadic(body_id) {
-                    return Err(format_err!(
-                        "Failed to translate {}; unsupported variadic function.",
-                        name
-                    )
-                    .into());
+                    return Err(format_err!("Variadic function definition is not well-formed.").into());
                 }
             }
         }

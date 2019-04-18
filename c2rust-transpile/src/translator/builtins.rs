@@ -12,6 +12,7 @@ impl<'c> Translation<'c> {
         args: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let expr = &self.ast_context[fexp];
+        let src_loc = &expr.loc;
         let decl_id = match expr.kind {
             CExprKind::DeclRef(_, decl_id, _) => decl_id,
             _ => {
@@ -547,7 +548,7 @@ impl<'c> Translation<'c> {
                 }))
             }
 
-            _ => Err(format_err!("Unimplemented builtin: {}", builtin_name).into()),
+            _ => Err(format_translation_err!(src_loc, "Unimplemented builtin {}", builtin_name)),
         }
     }
 
