@@ -117,8 +117,11 @@ impl<'c> Translation<'c> {
             // void __builtin_prefetch (const void *addr, ...);
             "__builtin_prefetch" => self.convert_expr(ctx.unused(), args[0]),
 
-            "__builtin_memcpy" => self.convert_memcpy(ctx, args),
-            "__builtin_memset" => self.convert_memset(ctx, args),
+            "__builtin_memcpy"
+            | "__builtin_memchr"
+            | "__builtin_memcmp"
+            | "__builtin_memmove"
+            | "__builtin_memset" => self.convert_mem_fns(builtin_name, ctx, args),
 
             "__builtin_add_overflow"
             | "__builtin_sadd_overflow"
@@ -604,57 +607,31 @@ impl<'c> Translation<'c> {
         })
     }
 
-    /// Convert a builtin_memcpy use by calling into libc's memcpy directly.
-    fn convert_memcpy(
+    /// Converts a __buitlin_mem* use by calling into libc's mem* directly.
+    fn convert_mem_fns(
         &self,
+        builtin_name: &str,
         ctx: ExprContext,
         args: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let memcpy = mk().path_expr(vec!["", "libc", "memcpy"]);
-        let dst = self.convert_expr(ctx.used(), args[0])?;
-        let mut src = self.convert_expr(ctx.used(), args[1])?;
-        let mut len = self.convert_expr(ctx.used(), args[2])?;
-        let size_t = mk().path_ty(vec!["libc", "size_t"]);
-        let len1 = mk().cast_expr(len.val, size_t);
-        let memcpy_expr = mk().call_expr(memcpy, vec![dst.val, src.val, len1]);
-
-        let mut stmts = dst.stmts;
-        stmts.append(&mut src.stmts);
-        stmts.append(&mut len.stmts);
-
-        let val = if ctx.is_used() {
-            memcpy_expr
-        } else {
-            stmts.push(mk().semi_stmt(memcpy_expr));
-            self.panic_or_err("__builtin_memcpy not used")
-        };
-
-        Ok(WithStmts { stmts, val })
-    }
-
-    /// Convert a builtin_memset use by calling into libc's memset directly.
-    fn convert_memset(
-        &self,
-        ctx: ExprContext,
-        args: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let memset = mk().path_expr(vec!["", "libc", "memset"]);
+        let name = &builtin_name[10..];
+        let mem = mk().path_expr(vec!["libc", name]);
         let dst = self.convert_expr(ctx.used(), args[0])?;
         let mut c = self.convert_expr(ctx.used(), args[1])?;
         let mut len = self.convert_expr(ctx.used(), args[2])?;
         let size_t = mk().path_ty(vec!["libc", "size_t"]);
         let len1 = mk().cast_expr(len.val, size_t);
-        let memset_expr = mk().call_expr(memset, vec![dst.val, c.val, len1]);
+        let mem_expr = mk().call_expr(mem, vec![dst.val, c.val, len1]);
 
         let mut stmts = dst.stmts;
         stmts.append(&mut c.stmts);
         stmts.append(&mut len.stmts);
 
         let val = if ctx.is_used() {
-            memset_expr
+            mem_expr
         } else {
-            stmts.push(mk().semi_stmt(memset_expr));
-            self.panic_or_err("__builtin_memset not used")
+            stmts.push(mk().semi_stmt(mem_expr));
+            self.panic_or_err(&format!("__builtin_{} not used", name))
         };
 
         Ok(WithStmts { stmts, val })
