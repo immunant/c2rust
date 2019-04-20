@@ -11,6 +11,10 @@ def configure():
     print("configuring")
 
 
+def dependencies():
+    # TODO: check dependencies
+    pass
+
 def main():
     for (name, mod) in sys.modules.items():
         if TEST_FUNCTION in dir(mod):

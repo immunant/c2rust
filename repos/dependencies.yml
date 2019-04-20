@@ -1,0 +1,9 @@
+# system wide dependencies
+ubuntu:
+  apt:
+    - build-essential
+    - mdm # for nproc
+
+in_path:
+  - make
+  - c2rust    

@@ -1,0 +1,5 @@
+ubuntu:
+  apt:
+    packages:
+      - libreadline-dev
+      - rcs # used in makefile
