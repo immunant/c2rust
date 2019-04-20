@@ -2,8 +2,7 @@
 
 # requirements
 
-- python 3.7+
-- libreadline-dev
+- python 3.7 or later.
 
 # adding new repos
 
