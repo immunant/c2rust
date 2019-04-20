@@ -5,11 +5,6 @@ import subprocess
 from . import dependencies
 from typing import List  # , Set, Dict, Tuple, Optional
 
-# import repos.lua
-# import repos.zstd
-
-# TEST_FUNCTION: str = "c2rust_test"
-
 
 class Config(object):
     # Terminal escape codes
@@ -93,7 +88,7 @@ class Test(object):
                     self.run_script(stage, script)
 
 
-def find_tests(conf: Config) -> List[Test]:
+def find_test_dirs(conf: Config) -> List[str]:
     script_dir = os.path.dirname(os.path.realpath(__file__))
     subdirs = sorted(next(os.walk(script_dir))[1])
 
@@ -101,15 +96,13 @@ def find_tests(conf: Config) -> List[Test]:
     subdirs = filter(lambda d: not(d.startswith("_") or d.startswith(".")),
                      subdirs)
 
-    return [Test(conf, os.path.join(script_dir, s)) for s in subdirs]
+    return [os.path.join(script_dir, s) for s in subdirs]
 
 
 def run_tests(conf):
-    # for (name, mod) in sys.modules.items():
-    #     if TEST_FUNCTION in dir(mod):
-    #         test_fn = getattr(mod, TEST_FUNCTION)
-    #         test_fn()
     dependencies.check(conf)
 
-    for t in find_tests(conf):
+    tests = (Test(conf, tdir) for tdir in find_test_dirs(conf))
+
+    for t in tests:
         t()
