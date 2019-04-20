@@ -1,7 +1,6 @@
-
-from .. import configure
+import repos as r
 
 
 def c2rust_test():
     print("testing lua")
-    configure()
+    r.configure()
