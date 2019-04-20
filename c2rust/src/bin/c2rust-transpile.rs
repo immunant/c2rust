@@ -74,6 +74,8 @@ fn main() {
         // stable rust output.
         translate_valist: true,
 
+        translate_const_macros: matches.is_present("translate-const-macros"),
+
         use_c_loop_info: !matches.is_present("ignore-c-loop-info"),
         use_c_multiple_info: !matches.is_present("ignore-c-multiple-info"),
         simplify_structures: !matches.is_present("no-simplify-structures"),

@@ -98,6 +98,7 @@ pub struct ExprContext {
     decay_ref: DecayRef,
     is_bitfield_write: bool,
     needs_address: bool,
+    expanding_macro: Option<CDeclId>,
 }
 
 impl ExprContext {
@@ -152,6 +153,20 @@ impl ExprContext {
     pub fn set_needs_address(self, needs_address: bool) -> Self {
         ExprContext {
             needs_address,
+            ..self
+        }
+    }
+
+    /// Are we expanding the given macro in the current context?
+    pub fn expanding_macro(&self, mac: &CDeclId) -> bool {
+        match self.expanding_macro {
+            Some(expanding) => expanding == *mac,
+            None => false,
+        }
+    }
+    pub fn set_expanding_macro(self, mac: CDeclId) -> Self {
+        ExprContext {
+            expanding_macro: Some(mac),
             ..self
         }
     }
@@ -422,6 +437,7 @@ pub fn translate(
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
+        expanding_macro: None,
     };
 
     if t.tcfg.reorganize_definitions {
@@ -542,6 +558,9 @@ pub fn translate(
                 {
                     Name::VarName(ident)
                 }
+                CDeclKind::MacroObject { ref name, .. } => {
+                    Name::VarName(name)
+                }
                 _ => Name::NoName,
             };
             match decl_name {
@@ -575,6 +594,7 @@ pub fn translate(
                 {
                     !t.ast_context.prenamed_decls.contains_key(&decl_id)
                 }
+                CDeclKind::MacroObject { .. } => tcfg.translate_const_macros,
                 _ => false,
             };
             if needs_export {
@@ -1697,6 +1717,30 @@ impl<'c> Translation<'c> {
                 "This should be handled in 'convert_decl_stmt'",
             )),
             //ref k => Err(format_err!("Translation not implemented for {:?}", k).into()),
+
+            CDeclKind::MacroObject { replacement, typ, .. } => {
+                let name = self
+                    .renamer
+                    .borrow_mut()
+                    .get(&decl_id)
+                    .expect("Macro object not named");
+                let ty = self.convert_type(typ.ctype)?;
+                let val = {
+                    let val = self.convert_expr(
+                        ctx.static_().set_expanding_macro(decl_id),
+                        replacement,
+                    )?;
+                    assert!(
+                        val.stmts.is_empty(),
+                        "Expected no side-effects in static initializer"
+                    );
+                    val.val
+                };
+
+                Ok(ConvertedDecl::Item(
+                    mk().span(s).pub_().const_item(name, ty, val),
+                ))
+            }
         }
     }
 
@@ -2711,6 +2755,36 @@ impl<'c> Translation<'c> {
         expr_id: CExprId,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let src_loc = &self.ast_context[expr_id].loc;
+
+        if let Some(macro_id) = self.ast_context.macro_expansions.get(&expr_id) {
+            if self.tcfg.translate_const_macros && !ctx.expanding_macro(macro_id) {
+                let mac = &self
+                    .ast_context
+                    .c_decls
+                    .get(macro_id)
+                    .ok_or_else(|| format_err!("Missing macro definition {:?}", macro_id))?
+                    .kind;
+
+                match &mac {
+                    CDeclKind::MacroObject{name, ..} => {
+                        let rustname = self
+                            .renamer
+                            .borrow_mut()
+                            .get(macro_id)
+                            .ok_or_else(|| format_err!("name not declared: '{}'", name))?;
+
+                        let val = mk().path_expr(vec![rustname]);
+
+                        // TODO: May need to handle volatile reads here, see
+                        // DeclRef below
+
+                        return Ok(WithStmts::new(val));
+                    }
+                    _ => panic!("Unexpected decl type, expected a macro"),
+                }
+            }
+        }
+
         match self.ast_context[expr_id].kind {
             CExprKind::DesignatedInitExpr(..) => {
                 Err(TranslationError::generic("Unexpected designated init expr"))

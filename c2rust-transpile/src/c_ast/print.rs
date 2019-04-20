@@ -674,6 +674,13 @@ impl<W: Write> Printer<W> {
                 Ok(())
             }
 
+            Some(&CDeclKind::MacroObject { ref name, ref replacement, .. }) => {
+                self.writer.write_fmt(format_args!("#define {} ", name))?;
+                self.print_expr(*replacement, context)?;
+
+                Ok(())
+            }
+
             None => panic!("Could not find declaration with ID {:?}", decl_id),
             // _ => unimplemented!("Printer::print_decl"),
         }

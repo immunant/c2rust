@@ -78,6 +78,7 @@ pub struct TranspilerConfig {
     pub json_function_cfgs: bool,
     pub dump_cfg_liveness: bool,
     pub dump_structures: bool,
+    pub verbose: bool,
     // Options that control translation
     pub incremental_relooper: bool,
     pub fail_on_multiple: bool,
@@ -102,7 +103,7 @@ pub struct TranspilerConfig {
     pub enabled_warnings: HashSet<Diagnostic>,
     pub emit_no_std: bool,
     pub output_dir: Option<PathBuf>,
-    pub verbose: bool,
+    pub translate_const_macros: bool,
 
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`

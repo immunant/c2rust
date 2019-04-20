@@ -8,24 +8,26 @@ use std::vec::Vec;
 pub type NodeType = u16;
 
 mod node_types {
-    pub const FUNC_TYPE: super::NodeType = 0b000000000001;
-    pub const OTHER_TYPE: super::NodeType = 0b000000000010;
+    pub const FUNC_TYPE: super::NodeType   = 0b0000000000000001;
+    pub const OTHER_TYPE: super::NodeType  = 0b0000000000000010;
     pub const TYPE: super::NodeType = FUNC_TYPE | OTHER_TYPE;
 
-    pub const EXPR: super::NodeType = 0b000000000100;
+    pub const EXPR: super::NodeType        = 0b0000000000000100;
 
-    pub const FIELD_DECL: super::NodeType = 0b000000001000;
-    pub const VAR_DECL: super::NodeType = 0b000000010000;
-    pub const RECORD_DECL: super::NodeType = 0b000000100000;
-    pub const TYPDEF_DECL: super::NodeType = 0b000001000000;
-    pub const ENUM_DECL: super::NodeType = 0b000010000000;
-    pub const ENUM_CON: super::NodeType = 0b000100000000;
-    pub const OTHER_DECL: super::NodeType = 0b001000000000;
+    pub const FIELD_DECL: super::NodeType  = 0b0000000000001000;
+    pub const VAR_DECL: super::NodeType    = 0b0000000000010000;
+    pub const RECORD_DECL: super::NodeType = 0b0000000000100000;
+    pub const TYPDEF_DECL: super::NodeType = 0b0000000001000000;
+    pub const ENUM_DECL: super::NodeType   = 0b0000000010000000;
+    pub const ENUM_CON: super::NodeType    = 0b0000000100000000;
+    pub const MACRO_DECL: super::NodeType  = 0b0000001000000000;
+    pub const OTHER_DECL: super::NodeType  = 0b0000010000000000;
     pub const DECL: super::NodeType =
-        FIELD_DECL | VAR_DECL | RECORD_DECL | TYPDEF_DECL | ENUM_DECL | ENUM_CON | OTHER_DECL;
+        FIELD_DECL | VAR_DECL | RECORD_DECL | TYPDEF_DECL | ENUM_DECL | ENUM_CON | MACRO_DECL
+        | OTHER_DECL;
 
-    pub const LABEL_STMT: super::NodeType = 0b010000000000;
-    pub const OTHER_STMT: super::NodeType = 0b100000000000;
+    pub const LABEL_STMT: super::NodeType  = 0b0000100000000000;
+    pub const OTHER_STMT: super::NodeType  = 0b0001000000000000;
     pub const STMT: super::NodeType = LABEL_STMT | OTHER_STMT;
 }
 
@@ -713,6 +715,11 @@ impl ConversionContext {
                 Some(x) => x,
                 None => return,
             };
+
+            if let Some(mac_id) = node.macro_expansion {
+                let mac = CDeclId(self.visit_node_type(mac_id, MACRO_DECL));
+                self.typed_context.macro_expansions.insert(CExprId(new_id), mac);
+            }
 
             match node.tag {
                 // Statements
@@ -1822,6 +1829,31 @@ impl ConversionContext {
                     };
                     self.add_decl(new_id, located(node, field));
                     self.processed_nodes.insert(new_id, FIELD_DECL);
+                }
+
+                ASTEntryTag::TagMacroObjectDef if expected_ty & MACRO_DECL != 0 => {
+                    let name = node.extras[0]
+                        .as_string()
+                        .expect("Macros must have a name")
+                        .to_owned();
+                    let typ_id = node
+                        .type_id
+                        .expect("Expected to find type for macro object");
+                    let typ = self.visit_qualified_type(typ_id);
+                    let replacement_id = node.children[0].expect("Macro replacement list not found");
+                    let replacement = self.visit_expr(replacement_id);
+                    let mac_object = CDeclKind::MacroObject {
+                        name,
+                        typ,
+                        replacement,
+                    };
+                    self.add_decl(new_id, located(node, mac_object));
+                    self.processed_nodes.insert(new_id, MACRO_DECL);
+
+                    // Macros aren't technically top-level decls, so clang
+                    // doesn't put them in top_nodes, but we do need to process
+                    // them early.
+                    self.typed_context.c_decls_top.push(CDeclId(new_id));
                 }
 
                 t => panic!("Could not translate node {:?} as type {}", t, expected_ty),

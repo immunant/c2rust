@@ -32,6 +32,7 @@ pub struct AstNode {
     pub file_path: Option<PathBuf>,
     pub type_id: Option<u64>,
     pub rvalue: LRValue,
+    pub macro_expansion: Option<u64>,
     pub extras: Vec<Value>,
 }
 
@@ -147,7 +148,8 @@ pub fn process(items: Value) -> error::Result<AstContext> {
                 } else {
                     LRValue::LValue
                 },
-                extras: entry[8..].to_vec(),
+                macro_expansion: expect_opt_u64(&entry[8]).unwrap(),
+                extras: entry[9..].to_vec(),
             };
 
             asts.insert(entry_id, node);

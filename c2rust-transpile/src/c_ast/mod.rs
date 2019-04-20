@@ -49,6 +49,7 @@ pub struct TypedAstContext {
     pub c_main: Option<CDeclId>,
     pub c_files: HashMap<u64, String>,
     pub parents: HashMap<CDeclId, CDeclId>, // record fields and enum constants
+    pub macro_expansions: HashMap<CExprId, CDeclId>, // map expressions to the macro they were expanded from
 
     pub comments: Vec<Located<String>>,
 
@@ -76,6 +77,7 @@ impl TypedAstContext {
             c_main: None,
             c_files: HashMap::new(),
             parents: HashMap::new(),
+            macro_expansions: HashMap::new(),
 
             comments: vec![],
             prenamed_decls: IndexMap::new(),
@@ -264,6 +266,9 @@ impl TypedAstContext {
                 _ => {}
             }
         }
+
+        // Add all referenced macros to the set of used decls
+        used.extend(self.macro_expansions.values());
 
         while let Some(enclosing_decl_id) = to_walk.pop() {
             for some_id in DFNodes::new(self, SomeId::Decl(enclosing_decl_id)) {
@@ -599,6 +604,12 @@ pub enum CDeclKind {
         platform_bit_offset: u64,
         platform_type_bitwidth: u64,
     },
+
+    MacroObject {
+        name: String,
+        typ: CQualTypeId,
+        replacement: CExprId,
+    },
 }
 
 impl CDeclKind {
@@ -618,6 +629,7 @@ impl CDeclKind {
                 name: Some(ref i), ..
             } => Some(i),
             &CDeclKind::Field { name: ref i, .. } => Some(i),
+            &CDeclKind::MacroObject { ref name, .. } => Some(name),
             _ => None,
         }
     }
