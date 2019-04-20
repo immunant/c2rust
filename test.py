@@ -2,7 +2,6 @@
 
 import sys
 
-import utils
 import repos.lua
 import repos.zstd
 
