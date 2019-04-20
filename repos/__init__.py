@@ -48,17 +48,39 @@ class Test(object):
             for (stage, scripts) in Test.STAGES.items():
                 for script in scripts:
                     if script in self.scripts:
-                        print("{}:{}({})...".format(name, stage, script))
+                        line = "{name}:{stage}({script})".format(
+                                name=self.name,
+                                stage=stage,
+                                script=script)
+                        print(line, end="", flush=True)
                         conf_path = os.path.join(self.dir, script)
-                        subprocess.check_call([conf_path])
+                        subprocess.check_call(
+                            args=[conf_path],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+                        print("{fill} {color}OK{nocolor}".format(
+                            fill=(50-len(line)) * ".",
+                            color=Colors.OKGREEN,
+                            nocolor=Colors.NO_COLOR)
+                        )
                         break
+        except KeyboardInterrupt:
+            print(": {color}INTERRUPT{nocolor}".format(
+                color=Colors.WARNING,
+                nocolor=Colors.NO_COLOR)
+            )
+        except:
+            print(": {color}FAIL{nocolor}".format(
+                color=Colors.FAIL,
+                nocolor=Colors.NO_COLOR)
+            )
         finally:
             os.chdir(prev_dir)
 
 
 def find_tests():
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    subdirs = next(os.walk(script_dir))[1]
+    subdirs = sorted(next(os.walk(script_dir))[1])
 
     # filter out __pycache__ and anything else starting with `_`
     subdirs = filter(lambda d: not(d.startswith("_") or d.startswith(".")),
@@ -68,6 +90,9 @@ def find_tests():
 
 
 def main():
+    # TODO: support command line args
+    # --support verbose mode showing output
+
     # for (name, mod) in sys.modules.items():
     #     if TEST_FUNCTION in dir(mod):
     #         test_fn = getattr(mod, TEST_FUNCTION)
