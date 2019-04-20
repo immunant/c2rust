@@ -6,6 +6,7 @@ import repos.zstd
 
 TEST_FUNCTION: str = "c2rust_test"
 
+
 def configure():
     print("configuring")
 
