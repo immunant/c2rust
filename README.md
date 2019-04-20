@@ -9,3 +9,8 @@
 # adding new repos
 
     path/to/repo/$PROJ$ git submodule add --depth 10 -b $BRANCH $PROJ_URL
+
+# TODOs
+- [ ] check dependencies on ubuntu
+- [ ] check dependencies on macOS
+- [ ] add provision.py driven by **/dependencies.yml
