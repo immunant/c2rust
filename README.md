@@ -1,8 +1,10 @@
 # c2rust testsuite
 
-# requirements
+# prerequisites
 
 - python 3.7 or later.
+- `intercept-build` in path. installing:
+    - `pip3 install -r requirements.txt`
 
 # adding new repos
 
