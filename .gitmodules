@@ -1,0 +1,4 @@
+[submodule "repos/lua"]
+	path = repos/lua
+	url = git@github.com:immunant/lua.git
+	branch = c2rust
