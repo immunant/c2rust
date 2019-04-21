@@ -1,4 +1,6 @@
+import os
 import yaml
+import subprocess
 
 import repos.hostenv as hostenv
 from repos.util import *
@@ -12,8 +14,21 @@ def get_yaml(reqs: str) -> dict:
             die(str(exc))
 
 
-def check_apt_package(yaml: dict):
-    print(f"apt-packages: {yaml}")
+def check_apt_package(yaml: List[str]):
+    assert isinstance(yaml, list), "expected list of apt packages"
+    for p in yaml:
+        args = ["dpkg", "-l", p]
+
+        try:
+            output: bytes = subprocess.check_output(args)
+        except subprocess.CalledProcessError:
+            die(f"package not installed: {p}")
+
+        output: str = output.decode()
+        last: str = output.splitlines()[-1]
+        expected = f"ii  {p}"
+        if not last.startswith(expected):
+            die(f"package not (properly) installed: {p}")
 
 
 def check_apt(yaml: dict):
@@ -25,7 +40,16 @@ def check_apt(yaml: dict):
 
 
 def check_programs_in_path(yaml: dict):
-    print(f"programs-in-path: {yaml}")
+    assert isinstance(yaml, list), "expected list of apt packages"
+
+    for p in yaml:
+        args = ["which", p]
+        try:
+            output: bytes = subprocess.check_output(args)
+            output: str = output.decode().rstrip()
+            # info(f"{p} -> {output}")
+        except subprocess.CalledProcessError:
+            die(f"not in path: {p}")
 
 
 def check_programs(yaml: dict):
@@ -34,14 +58,14 @@ def check_programs(yaml: dict):
         check_programs_in_path(progs)
 
     if yaml:
-        print(f"unhandled requirements: {yaml}")
+        warn(f"unhandled requirements: {yaml}")
 
 
 def check_host(host: str, yaml: dict):
     reqs = yaml.get(host)
     if not reqs:
         return
-    print(f"{host} -> {reqs}")
+    # print(f"{host} -> {reqs}")
 
     for (key, val) in reqs.items():
         if key == "apt":
@@ -53,8 +77,8 @@ def check_host(host: str, yaml: dict):
 
 
 def check(conf, reqs: str):
-    if conf.verbose:
-        print(f"checking dependencies in {reqs}")
+    relpath = os.path.relpath(reqs, os.getcwd())
+    info(f"checking requirements({relpath})")
 
     yaml = get_yaml(reqs)
 
@@ -64,6 +88,4 @@ def check(conf, reqs: str):
         check_host("ubuntu", yaml)
 
     else:
-        eprint("requirements checking id not implemented for non-ubuntu hosts")
-        exit(1)
-
+        warn("requirements checking id not implemented for non-ubuntu hosts")

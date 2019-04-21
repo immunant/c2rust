@@ -9,6 +9,7 @@ from repos.requirements import *
 
 REQUIREMENTS_YML: str = "requirements.yml"
 
+
 class Config(object):
     # Terminal escape codes
     verbose = False
@@ -34,15 +35,18 @@ class Test(object):
         self.conf = conf
 
     def run_script(self, stage, script):
+        prev_dir = os.getcwd()
+        script_path = os.path.join(self.dir, script)
         if not self.conf.verbose:
-            line = "{name}:{stage}({script})".format(
+            relpath = os.path.relpath(script_path, prev_dir)
+            line = "{blue}{name}{nc}: {stage}({script})".format(
+                blue=Colors.OKBLUE,
                 name=self.name,
+                nc=Colors.NO_COLOR,
                 stage=stage,
-                script=script)
+                script=relpath)
             print(line, end="", flush=True)
 
-        script_path = os.path.join(self.dir, script)
-        prev_dir = os.getcwd()
         try:
             os.chdir(self.dir)
             if self.conf.verbose:
@@ -54,7 +58,7 @@ class Test(object):
                     stderr=subprocess.DEVNULL)
 
                 print("{fill} {color}OK{nocolor}".format(
-                    fill=(50 - len(line)) * ".",
+                    fill=(75 - len(line)) * ".",
                     color=Colors.OKGREEN,
                     nocolor=Colors.NO_COLOR)
                 )
@@ -113,7 +117,7 @@ def find_requirements(conf: Config) -> List[str]:
 def run_tests(conf):
     for r in find_requirements(conf):
         requirements.check(conf, r)
-    quit(1)
+
     tests = (Test(conf, tdir) for tdir in find_test_dirs(conf))
 
     for t in tests:

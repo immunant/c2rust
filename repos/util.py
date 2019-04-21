@@ -1,5 +1,8 @@
 import sys
 import errno
+import subprocess
+
+from typing import List
 
 
 class Colors(object):
@@ -12,9 +15,16 @@ class Colors(object):
 
 
 def die(emsg: str, status: int=errno.EINVAL):
-    print(emsg, file=sys.stderr)
+    (red, nc) = (Colors.FAIL, Colors.NO_COLOR)
+    print(f"{red}error:{nc} {emsg}", file=sys.stderr)
     exit(status)
 
 
 def warn(warn: str):
-    print(f"warning: {warn}", file=sys.stderr)
+    (yellow, nc) = (Colors.WARNING, Colors.NO_COLOR)
+    print(f"{yellow}warning:{nc} {warn}", file=sys.stderr)
+
+
+def info(imsg: str):
+    (blue, nc) = (Colors.OKBLUE, Colors.NO_COLOR)
+    print(f"{blue}info:{nc} {imsg}", file=sys.stdout)    
