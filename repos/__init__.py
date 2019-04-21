@@ -2,8 +2,10 @@
 import os
 import sys
 import subprocess
-from . import requirements
 from typing import List  # , Set, Dict, Tuple, Optional
+
+from repos.util import *
+from repos.requirements import *
 
 REQUIREMENTS_YML: str = "requirements.yml"
 
@@ -13,15 +15,6 @@ class Config(object):
 
     def update(self, args):
         self.verbose = args.verbose
-
-
-class Colors(object):
-    # Terminal escape codes
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    NO_COLOR = '\033[0m'
 
 
 class Test(object):
@@ -118,7 +111,6 @@ def find_requirements(conf: Config) -> List[str]:
 
 
 def run_tests(conf):
-    
     for r in find_requirements(conf):
         requirements.check(conf, r)
     quit(1)

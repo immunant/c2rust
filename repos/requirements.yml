@@ -1,9 +1,12 @@
-# system wide dependencies
-ubuntu:
+# system-wide requirements
+ubuntu: # for ubuntu hosts
   apt:
-    - build-essential
-    - mdm # for nproc
+    packages:
+      - build-essential
+      - mdm # for nproc
 
-in_path:
-  - make
-  - c2rust    
+generic: # for any host
+  programs:
+    in_path:
+      - make
+      - c2rust

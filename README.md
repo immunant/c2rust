@@ -2,7 +2,7 @@
 
 # prerequisites
 
-- python 3.6 or later.
+- python 3.7 or later.
 - `intercept-build` in path. installing:
     - `pip3 install -r requirements.txt`
 
