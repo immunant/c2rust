@@ -93,6 +93,12 @@ impl<'c> Translation<'c> {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![] as Vec<P<Expr>>)))
             }
+            "__builtin_flt_rounds" => {
+                // LLVM simply lowers this to the constant one which means
+                // that floats are rounded to the nearest number.
+                // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
+                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(1, "i32"))))
+            }
             "__builtin_expect" => self.convert_expr(ctx.used(), args[0]),
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
