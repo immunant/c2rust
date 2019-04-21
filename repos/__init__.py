@@ -2,9 +2,10 @@
 import os
 import sys
 import subprocess
-from . import dependencies
+from . import requirements
 from typing import List  # , Set, Dict, Tuple, Optional
 
+REQUIREMENTS_YML: str = "requirements.yml"
 
 class Config(object):
     # Terminal escape codes
@@ -88,8 +89,12 @@ class Test(object):
                     self.run_script(stage, script)
 
 
+def get_script_dir():
+    return os.path.dirname(os.path.realpath(__file__))
+
+
 def find_test_dirs(conf: Config) -> List[str]:
-    script_dir = os.path.dirname(os.path.realpath(__file__))
+    script_dir = get_script_dir()
     subdirs = sorted(next(os.walk(script_dir))[1])
 
     # filter out __pycache__ and anything else starting with `_`
@@ -99,9 +104,24 @@ def find_test_dirs(conf: Config) -> List[str]:
     return [os.path.join(script_dir, s) for s in subdirs]
 
 
-def run_tests(conf):
-    dependencies.check(conf)
+def find_requirements(conf: Config) -> List[str]:
+    script_dir = get_script_dir()
+    subdirs = sorted(next(os.walk(script_dir))[1])
 
+    reqs = os.path.join(script_dir, REQUIREMENTS_YML)
+    reqs = [reqs] if os.path.exists(reqs) else []
+
+    subreqs = map(lambda dir: os.path.join(script_dir, dir, REQUIREMENTS_YML),
+                  subdirs)
+    reqs += filter(lambda f: os.path.exists(f), subreqs)
+    return reqs
+
+
+def run_tests(conf):
+    
+    for r in find_requirements(conf):
+        requirements.check(conf, r)
+    quit(1)
     tests = (Test(conf, tdir) for tdir in find_test_dirs(conf))
 
     for t in tests:

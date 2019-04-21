@@ -2,7 +2,7 @@
 
 # prerequisites
 
-- python 3.7 or later.
+- python 3.6 or later.
 - `intercept-build` in path. installing:
     - `pip3 install -r requirements.txt`
 
@@ -11,6 +11,6 @@
     path/to/repo/$PROJ$ git submodule add --depth 10 -b $BRANCH $PROJ_URL
 
 # TODOs
-- [ ] check dependencies on ubuntu
-- [ ] check dependencies on macOS
-- [ ] add provision.py driven by **/dependencies.yml
+- [ ] check requirements on ubuntu
+- [ ] check requirements on macOS
+- [ ] add provision.py driven by `**/dependencies.yml`
