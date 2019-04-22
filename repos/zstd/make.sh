@@ -1,6 +1,5 @@
-#!/bin/sh
-
-set -e
+#!/bin/bash
+set -e; set -o pipefail
 
 # TARGET=zstd
 TARGET=fullbench

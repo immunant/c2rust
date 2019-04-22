@@ -11,6 +11,7 @@
     path/to/repo/$PROJ$ git submodule add --depth 10 -b $BRANCH $PROJ_URL
 
 # TODOs
-- [ ] check requirements on ubuntu
+- [x] check requirements on ubuntu
 - [ ] check requirements on macOS
+- [ ] warn if `compile_commands.json` is empty
 - [ ] add provision.py driven by `**/dependencies.yml`

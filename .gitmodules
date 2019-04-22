@@ -9,3 +9,5 @@
 [submodule "repos/ruby/repo"]
 	path = repos/ruby/repo
 	url = https://github.com/ruby/ruby
+	branch = ruby_2_6
+
