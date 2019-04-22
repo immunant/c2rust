@@ -79,6 +79,8 @@ pub struct TranspilerConfig {
     pub dump_cfg_liveness: bool,
     pub dump_structures: bool,
     pub verbose: bool,
+    pub debug_ast_exporter: bool,
+
     // Options that control translation
     pub incremental_relooper: bool,
     pub fail_on_multiple: bool,
@@ -287,7 +289,12 @@ fn transpile_single(
     }
 
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match ast_exporter::get_untyped_ast(input_path, cc_db, extra_clang_args) {
+    let untyped_context = match ast_exporter::get_untyped_ast(
+        input_path,
+        cc_db,
+        extra_clang_args,
+        tcfg.debug_ast_exporter,
+    ) {
         Err(e) => {
             eprintln!("Error: {:}", e);
             process::exit(1);

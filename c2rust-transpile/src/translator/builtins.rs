@@ -93,6 +93,12 @@ impl<'c> Translation<'c> {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![] as Vec<P<Expr>>)))
             }
+            "__builtin_flt_rounds" => {
+                // LLVM simply lowers this to the constant one which means
+                // that floats are rounded to the nearest number.
+                // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
+                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(1, "i32"))))
+            }
             "__builtin_expect" => self.convert_expr(ctx.used(), args[0]),
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
@@ -117,7 +123,11 @@ impl<'c> Translation<'c> {
             // void __builtin_prefetch (const void *addr, ...);
             "__builtin_prefetch" => self.convert_expr(ctx.unused(), args[0]),
 
-            "__builtin_memcpy" => self.convert_memcpy(ctx, args),
+            "__builtin_memcpy"
+            | "__builtin_memchr"
+            | "__builtin_memcmp"
+            | "__builtin_memmove"
+            | "__builtin_memset" => self.convert_mem_fns(builtin_name, ctx, args),
 
             "__builtin_add_overflow"
             | "__builtin_sadd_overflow"
@@ -603,29 +613,31 @@ impl<'c> Translation<'c> {
         })
     }
 
-    /// Convert a builtin_memcpy use by calling into libc's memcpy directly.
-    fn convert_memcpy(
+    /// Converts a __buitlin_mem* use by calling into libc's mem* directly.
+    fn convert_mem_fns(
         &self,
+        builtin_name: &str,
         ctx: ExprContext,
         args: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let memcpy = mk().path_expr(vec!["", "libc", "memcpy"]);
+        let name = &builtin_name[10..];
+        let mem = mk().path_expr(vec!["libc", name]);
         let dst = self.convert_expr(ctx.used(), args[0])?;
-        let mut src = self.convert_expr(ctx.used(), args[1])?;
+        let mut c = self.convert_expr(ctx.used(), args[1])?;
         let mut len = self.convert_expr(ctx.used(), args[2])?;
         let size_t = mk().path_ty(vec!["libc", "size_t"]);
         let len1 = mk().cast_expr(len.val, size_t);
-        let memcpy_expr = mk().call_expr(memcpy, vec![dst.val, src.val, len1]);
+        let mem_expr = mk().call_expr(mem, vec![dst.val, c.val, len1]);
 
         let mut stmts = dst.stmts;
-        stmts.append(&mut src.stmts);
+        stmts.append(&mut c.stmts);
         stmts.append(&mut len.stmts);
 
         let val = if ctx.is_used() {
-            memcpy_expr
+            mem_expr
         } else {
-            stmts.push(mk().semi_stmt(memcpy_expr));
-            self.panic_or_err("__builtin_memcpy not used")
+            stmts.push(mk().semi_stmt(mem_expr));
+            self.panic_or_err(&format!("__builtin_{} not used", name))
         };
 
         Ok(WithStmts { stmts, val })
