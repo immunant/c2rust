@@ -13,11 +13,11 @@ REQUIREMENTS_YML: str = "requirements.yml"
 class Config(object):
     # Terminal escape codes
     verbose = False
-    only = None
+    project = None
 
     def update(self, args):
         self.verbose = args.verbose
-        self.only = args.only
+        self.project = args.project
 
 
 class Test(object):
@@ -31,11 +31,11 @@ class Test(object):
         "check": ["check.sh", "test.sh"]
     }
 
-    def __init__(self, conf: Config, dir: str):
-        f = next(os.walk(dir))[2]
-        self.scripts = set(filter(lambda f: f.endswith(".sh"), f))
-        self.dir = dir
-        self.name = os.path.basename(dir)
+    def __init__(self, conf: Config, directory: str):
+        ff = next(os.walk(directory))[2]
+        self.scripts = set(filter(lambda f: f.endswith(".sh"), ff))
+        self.dir = directory
+        self.name = os.path.basename(directory)
         self.conf = conf
 
     def run_script(self, stage, script, xfail=False) -> bool:
@@ -124,7 +124,7 @@ def get_script_dir():
     return os.path.dirname(os.path.realpath(__file__))
 
 
-def find_test_dirs(conf: Config) -> List[str]:
+def find_test_dirs(_conf: Config) -> List[str]:
     script_dir = get_script_dir()
     subdirs = sorted(next(os.walk(script_dir))[1])
 
@@ -135,17 +135,17 @@ def find_test_dirs(conf: Config) -> List[str]:
     return [os.path.join(script_dir, s) for s in subdirs]
 
 
-def find_requirements(conf: Config) -> List[str]:
+def find_requirements(conf: Config):
     script_dir = get_script_dir()
     subdirs = sorted(next(os.walk(script_dir))[1])
 
-    if conf.only:
-        subdirs = filter(lambda s: s == conf.only, subdirs)
+    if conf.project:
+        subdirs = filter(lambda s: s == conf.project, subdirs)
 
     reqs = os.path.join(script_dir, REQUIREMENTS_YML)
     reqs = [reqs] if os.path.exists(reqs) else []
 
-    subreqs = map(lambda dir: os.path.join(script_dir, dir, REQUIREMENTS_YML),
+    subreqs = map(lambda d: os.path.join(script_dir, d, REQUIREMENTS_YML),
                   subdirs)
     reqs += filter(lambda f: os.path.exists(f), subreqs)
     return reqs
@@ -154,18 +154,18 @@ def find_requirements(conf: Config) -> List[str]:
 def run_tests(conf):
     tests = (Test(conf, tdir) for tdir in find_test_dirs(conf))
 
-    if conf.only:
-        only_test = list(filter(lambda t: t.name == conf.only, tests))
-        if not only_test:
+    if conf.project:  # only test named project
+        project = list(filter(lambda t: t.name == conf.project, tests))
+        if not project:
             nl = ", ".join(map(lambda p: os.path.basename(p), find_test_dirs(conf)))
             y, nc = Colors.WARNING, Colors.NO_COLOR
-            msg = f"no such test: {y}{conf.only}{nc}. valid test names: {nl}."
+            msg = f"no such project: {y}{conf.project}{nc}. project names: {nl}."
             die(msg)
         else:
-            tests = only_test
+            tests = project
 
     for r in find_requirements(conf):
         requirements.check(conf, r)
 
-    for t in tests:
-        t()
+    for tt in tests:
+        tt()

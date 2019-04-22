@@ -9,9 +9,9 @@ def get_args():
     parser.add_argument('--verbose', dest='verbose', action='store_true',
                         default=False,
                         help='Enable verbose output')
-    parser.add_argument('--only', dest='only', action='store',
+    parser.add_argument('--project', dest='project', action='store',
                         type=str, default=None,
-                        help='Run named test only')
+                        help='Only test specified project')
 
     return parser.parse_args()
 

@@ -11,9 +11,9 @@
 
 ## testing
 
-    $ ./test.py            # test everything
-    $ ./test.py --verbose  # show test output
-    $ ./test.py --only lua # run specific test
+    $ ./test.py                 # test everything
+    $ ./test.py --verbose       # show test output
+    $ ./test.py --project lua   # run specific project
     
 
 ## adding new tests as git submodules
@@ -41,8 +41,8 @@ Each script is expected to `tee` its output to a file named `$SCRIPT.log`. For e
 
 # TODOs
 - [x] check requirements on ubuntu
+- [x] rename flag `--only` to `--project`
 - [ ] check requirements on macOS
 - [ ] warn if `compile_commands.json` is empty
-- [ ] add provision.py driven by `**/requirements.yml`
-- [ ] rename flag `--only` to `--project`
-- [ ] `requirements.yml` -> `conf.yml` 
+- [ ] `requirements.yml` -> `conf.yml`; make requirements a key.
+- [ ] add provision.py driven by `**/conf.yml`
