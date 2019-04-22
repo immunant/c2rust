@@ -3,9 +3,11 @@
 ## prerequisites
 
 - `c2rust` binary in path
-- python 3.7 or later.
+- python 3.6 or later.
 - `intercept-build` in path. installing:
     - `pip3 install -r requirements.txt`
+- any other packages and binaries required by the tests themselves
+    - captured in `**/requirements.yml`
 
 ## testing
 

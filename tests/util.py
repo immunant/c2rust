@@ -1,3 +1,4 @@
+import os
 import sys
 import errno
 import subprocess
@@ -20,11 +21,15 @@ def die(emsg: str, status: int=errno.EINVAL):
     exit(status)
 
 
-def warn(warn: str):
+def warn(wmsg: str):
     (yellow, nc) = (Colors.WARNING, Colors.NO_COLOR)
-    print(f"{yellow}warning:{nc} {warn}", file=sys.stderr)
+    print(f"{yellow}warning:{nc} {wmsg}", file=sys.stderr)
 
 
 def info(imsg: str):
     (blue, nc) = (Colors.OKBLUE, Colors.NO_COLOR)
-    print(f"{blue}info:{nc} {imsg}", file=sys.stdout)    
+    print(f"{blue}info:{nc} {imsg}", file=sys.stdout)
+
+
+def is_dir_empty(dirp: str):
+    return len(os.listdir(dirp)) == 0

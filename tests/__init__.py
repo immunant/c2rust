@@ -100,6 +100,15 @@ class Test(object):
         return os.path.isfile(f"{script_path_noext}.xfail")
 
     def __call__(self):
+        # make sure the `repo` directory exists and is not empty
+        repo_dir = os.path.join(self.dir, "repo")
+        if not os.path.isdir(repo_dir):
+            die(f"missing directory: {repo_dir}")
+        elif is_dir_empty(repo_dir):
+            msg = f"submodule not checked out: {repo_dir}\n"
+            msg += "(try running `git submodule update --init`)"
+            die(msg)
+
         for (stage, scripts) in Test.STAGES.items():
             for script in scripts:
                 if script in self.scripts:
