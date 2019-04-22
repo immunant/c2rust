@@ -24,6 +24,15 @@ args:
       long: pretty-typed-clang-ast
       help: Pretty-prints out the parsed typed Clang AST
       takes_value: false
+  - debug-ast-exporter:
+      long: debug-ast-exporter
+      help: Debug Clang AST exporter plugin
+      takes_value: false
+  - verbose:
+      long: verbose
+      short: v
+      help: Verbose mode
+      takes_value: false
 
   - no-incremental-relooper:
       long: no-incremental-relooper
@@ -148,9 +157,4 @@ args:
   - emit-no-std:
       long: emit-no-std
       help: Emit code using core rather than std
-      takes_value: false
-  - verbose:
-      long: verbose
-      short: v
-      help: Verbose mode
       takes_value: false

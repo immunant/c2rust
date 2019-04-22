@@ -2033,7 +2033,12 @@ Outputs process(int argc, const char *argv[], int *result) {
 
 // AST exporter library interface.
 extern "C" {
-ExportResult *ast_exporter(int argc, const char *argv[]) {
+ExportResult *ast_exporter(int argc, const char *argv[], int debug) {
+    if (debug) {
+        llvm::DebugFlag = true;
+        llvm::setCurrentDebugType(DEBUG_TYPE);
+    }
+
     int result;
     auto outputs = process(argc, argv, &result);
     return make_export_result(outputs);
