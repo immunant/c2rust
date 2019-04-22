@@ -15,3 +15,6 @@
 	path = tests/python2/repo
 	url = git@github.com:python/cpython.git
 	branch = 2.7
+[submodule "json-c"]
+	path = tests/json-c/repo
+	url = git@github.com:json-c/json-c.git

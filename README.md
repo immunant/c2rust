@@ -20,13 +20,17 @@
 
     $ cd path/to/tests/$PROJ
     $ git submodule add --depth 10  $PROJ_URL repo
+    
+To track a specific branch ($SUBMOD_NAME can be found in `.gitmodules`):    
+    
     $ git config -f .gitmodules submodule.$SUBMOD_NAME.branch $BRANCH_NAME
-    $ git submodule update --remote
+    $ git submodule update --remote repo
     
 ## scripting test steps
 
 Each test stage can be controlled with a script (in `tests/$PROJ`) named as follows:
 
+- autogen stage -> `autogen.sh`
 - configure stage -> `configure.sh`
 - make stage ->  `make.sh` | `cmake.sh`
 - transpile stage ->  `transpile.sh` | `cmake.sh`
@@ -39,4 +43,6 @@ Each script is expected to `tee` its output to a file named `$SCRIPT.log`. For e
 - [x] check requirements on ubuntu
 - [ ] check requirements on macOS
 - [ ] warn if `compile_commands.json` is empty
-- [ ] add provision.py driven by `**/dependencies.yml`
+- [ ] add provision.py driven by `**/requirements.yml`
+- [ ] rename flag `--only` to `--project`
+- [ ] `requirements.yml` -> `conf.yml` 

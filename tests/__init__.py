@@ -23,6 +23,7 @@ class Config(object):
 class Test(object):
 
     STAGES: dict = {
+        "autogen": ["autogen.sh"],
         "configure": ["configure.sh"],
         "make": ["make.sh", "cmake.sh"],
         "transpile": ["transpile.sh"],
@@ -53,6 +54,7 @@ class Test(object):
                 script=relpath)
             print(line, end="", flush=True)
 
+        # noinspection PyBroadException
         try:
             os.chdir(self.dir)
             if self.conf.verbose:
@@ -76,7 +78,7 @@ class Test(object):
                     nocolor=Colors.NO_COLOR)
                 )
                 exit(1)
-        except:
+        except:  # noqa
             if not self.conf.verbose:
                 outcome = "XFAIL" if xfail else "FAIL"
                 print("{fill} {color}{outcome}{nocolor}".format(
