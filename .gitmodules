@@ -2,7 +2,10 @@
 	path = repos/lua/repo
 	url = git@github.com:immunant/lua.git
 	branch = c2rust
-[submodule "repos/zstd/zstd"]
+[submodule "repos/zstd"]
 	path = repos/zstd/repo
 	url = https://github.com/immunant/zstd
 	branch = dev
+[submodule "repos/ruby/repo"]
+	path = repos/ruby/repo
+	url = https://github.com/ruby/ruby

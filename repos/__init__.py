@@ -13,9 +13,11 @@ REQUIREMENTS_YML: str = "requirements.yml"
 class Config(object):
     # Terminal escape codes
     verbose = False
+    only = None
 
     def update(self, args):
         self.verbose = args.verbose
+        self.only = args.only
 
 
 class Test(object):
@@ -34,7 +36,10 @@ class Test(object):
         self.name = os.path.basename(dir)
         self.conf = conf
 
-    def run_script(self, stage, script):
+    def run_script(self, stage, script, xfail=False) -> bool:
+        """
+        Returns true iff subsequent tests should run
+        """
         prev_dir = os.getcwd()
         script_path = os.path.join(self.dir, script)
         if not self.conf.verbose:
@@ -62,6 +67,7 @@ class Test(object):
                     color=Colors.OKGREEN,
                     nocolor=Colors.NO_COLOR)
                 )
+                return True
         except KeyboardInterrupt as ki:
             if not self.conf.verbose:
                 print(": {color}INTERRUPT{nocolor}".format(
@@ -71,19 +77,31 @@ class Test(object):
                 exit(1)
         except:
             if not self.conf.verbose:
-                print(": {color}FAIL{nocolor}".format(
-                    color=Colors.FAIL,
+                outcome = "XFAIL" if xfail else "FAIL"
+                print(": {color}{outcome}{nocolor}".format(
+                    color=Colors.WARNING if xfail else Colors.FAIL,
+                    outcome=outcome,
                     nocolor=Colors.NO_COLOR)
                 )
+            if not xfail:
                 exit(1)
+            else:
+                return False
         finally:
             os.chdir(prev_dir)
+
+    def is_xfail(self, script):
+        xfail_path = os.path.join(self.dir, f"{script}.xfail")
+        return os.path.isfile(xfail_path)
 
     def __call__(self):
         for (stage, scripts) in Test.STAGES.items():
             for script in scripts:
                 if script in self.scripts:
-                    self.run_script(stage, script)
+                    xfail = self.is_xfail(script)
+                    cont = self.run_script(stage, script, xfail)
+                    if not cont:
+                        return  # XFAIL
 
 
 def get_script_dir():
@@ -105,6 +123,9 @@ def find_requirements(conf: Config) -> List[str]:
     script_dir = get_script_dir()
     subdirs = sorted(next(os.walk(script_dir))[1])
 
+    if conf.only:
+        subdirs = filter(lambda s: s == conf.only, subdirs)
+
     reqs = os.path.join(script_dir, REQUIREMENTS_YML)
     reqs = [reqs] if os.path.exists(reqs) else []
 
@@ -115,10 +136,20 @@ def find_requirements(conf: Config) -> List[str]:
 
 
 def run_tests(conf):
+    tests = (Test(conf, tdir) for tdir in find_test_dirs(conf))
+
+    if conf.only:
+        only_test = list(filter(lambda t: t.name == conf.only, tests))
+        if not only_test:
+            nl = ", ".join(map(lambda p: os.path.basename(p), find_test_dirs(conf)))
+            y, nc = Colors.WARNING, Colors.NO_COLOR
+            msg = f"no such test: {y}{conf.only}{nc}. valid test names: {nl}."
+            die(msg)
+        else:
+            tests = only_test
+
     for r in find_requirements(conf):
         requirements.check(conf, r)
-
-    tests = (Test(conf, tdir) for tdir in find_test_dirs(conf))
 
     for t in tests:
         t()
