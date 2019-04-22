@@ -13,6 +13,10 @@ def get_args():
                         type=str, default=None,
                         help='Only test specified project')
 
+    parser.add_argument('--stage', dest='stage', action='store',
+                        type=str, default=None,
+                        help='Only test specified stage')
+
     return parser.parse_args()
 
 

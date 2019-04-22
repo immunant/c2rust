@@ -11,13 +11,14 @@ REQUIREMENTS_YML: str = "requirements.yml"
 
 
 class Config(object):
-    # Terminal escape codes
     verbose = False
     project = None
+    stage = None
 
     def update(self, args):
         self.verbose = args.verbose
         self.project = args.project
+        self.stage = args.stage
 
 
 class Test(object):
@@ -101,7 +102,7 @@ class Test(object):
         script_path_noext = os.path.splitext(script_path)[0]
         return os.path.isfile(f"{script_path_noext}.xfail")
 
-    def __call__(self):
+    def __call__(self, conf: Config):
         # make sure the `repo` directory exists and is not empty
         repo_dir = os.path.join(self.dir, "repo")
         if not os.path.isdir(repo_dir):
@@ -111,13 +112,32 @@ class Test(object):
             msg += "(try running `git submodule update --init`)"
             die(msg)
 
-        for (stage, scripts) in Test.STAGES.items():
-            for script in scripts:
+        if conf.stage and conf.stage not in Test.STAGES:
+            # run named stage
+            stages = ", ".join(Test.STAGES.keys())
+            y, nc = Colors.WARNING, Colors.NO_COLOR
+            die(f"invalid stage: {y}{conf.stage}{nc}. valid stages: {stages}")
+        elif conf.stage:  # conf.stage is a valid stage
+            for script in Test.STAGES[conf.stage]:
                 if script in self.scripts:
                     xfail = self.is_xfail(script)
-                    cont = self.run_script(stage, script, xfail)
-                    if not cont:
-                        return  # XFAIL
+                    self.run_script(conf.stage, script, xfail)
+                    break
+            else:  # didn't break
+                y, nc = Colors.WARNING, Colors.NO_COLOR
+                die(f"no script for project/stage: {self.name}/{y}{conf.stage}{nc}")
+
+
+        else:
+            # run all stages
+            for (stage, scripts) in Test.STAGES.items():
+                for script in scripts:
+                    if script in self.scripts:
+                        xfail = self.is_xfail(script)
+                        cont = self.run_script(stage, script, xfail)
+                        if not cont:
+                            return  # XFAIL
+                        break  # found script for stage; skip alternatives
 
 
 def get_script_dir():
@@ -168,4 +188,4 @@ def run_tests(conf):
         requirements.check(conf, r)
 
     for tt in tests:
-        tt()
+        tt(conf)
