@@ -2132,10 +2132,12 @@ Outputs process(int argc, const char *argv[], int *result) {
 // AST exporter library interface.
 extern "C" {
 ExportResult *ast_exporter(int argc, const char *argv[], int debug) {
+#ifndef NDEBUG
     if (debug) {
         llvm::DebugFlag = true;
         llvm::setCurrentDebugType(DEBUG_TYPE);
     }
+#endif // NDEBUG
 
     int result;
     auto outputs = process(argc, argv, &result);
