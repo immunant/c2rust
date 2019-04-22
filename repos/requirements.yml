@@ -8,5 +8,8 @@ ubuntu: # for ubuntu hosts
 generic: # for any host
   programs:
     in_path:
-      - make
       - c2rust
+      - make
+      - cmake
+      - cargo
+      - intercept-build
