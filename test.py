@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import repos
+import tests
 import argparse
 
 
@@ -15,7 +15,8 @@ def get_args():
 
     return parser.parse_args()
 
+
 if __name__ == "__main__":
-    conf = repos.Config()
+    conf = tests.Config()
     conf.update(get_args())
-    repos.run_tests(conf)
+    tests.run_tests(conf)

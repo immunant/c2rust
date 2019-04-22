@@ -1,17 +1,17 @@
 [submodule "lua"]
-	path = repos/lua/repo
+	path = tests/lua/repo
 	url = git@github.com:immunant/lua.git
 	branch = c2rust
 [submodule "zstd"]
-	path = repos/zstd/repo
+	path = tests/zstd/repo
 	url = https://github.com/immunant/zstd
 	branch = dev
 [submodule "ruby"]
-	path = repos/ruby/repo
+	path = tests/ruby/repo
 	url = https://github.com/ruby/ruby
 	branch = ruby_2_6
 
 [submodule "python2"]
-	path = repos/python2/repo
+	path = tests/python2/repo
 	url = git@github.com:python/cpython.git
 	branch = 2.7

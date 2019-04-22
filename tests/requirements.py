@@ -2,8 +2,8 @@ import os
 import yaml
 import subprocess
 
-import repos.hostenv as hostenv
-from repos.util import *
+import tests.hostenv as hostenv
+from tests.util import *
 
 
 def get_yaml(reqs: str) -> dict:

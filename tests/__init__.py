@@ -4,8 +4,8 @@ import sys
 import subprocess
 from typing import List  # , Set, Dict, Tuple, Optional
 
-from repos.util import *
-from repos.requirements import *
+from tests.util import *
+from tests.requirements import *
 
 REQUIREMENTS_YML: str = "requirements.yml"
 

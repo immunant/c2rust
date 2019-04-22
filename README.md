@@ -14,16 +14,16 @@
     $ ./test.py --only lua # run specific test
     
 
-## adding new repos as git submodules
+## adding new tests as git submodules
 
-    $ cd path/to/repos/$PROJ
+    $ cd path/to/tests/$PROJ
     $ git submodule add --depth 10  $PROJ_URL repo
     $ git config -f .gitmodules submodule.$SUBMOD_NAME.branch $BRANCH_NAME
     $ git submodule update --remote
     
 ## scripting test steps
 
-Each test stage can be controlled with a script (in `repos/$PROJ`) named as follows:
+Each test stage can be controlled with a script (in `tests/$PROJ`) named as follows:
 
 - configure stage -> `configure.sh`
 - make stage ->  `make.sh` | `cmake.sh`
