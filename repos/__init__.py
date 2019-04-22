@@ -26,6 +26,7 @@ class Test(object):
         "configure": ["configure.sh"],
         "make": ["make.sh", "cmake.sh"],
         "transpile": ["transpile.sh"],
+        "cargo": ["cargo.sh"],
         "check": ["check.sh", "test.sh"]
     }
 

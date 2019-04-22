@@ -8,7 +8,10 @@
 
 # adding new repos
 
-    path/to/repo/$PROJ$ git submodule add --depth 10 -b $BRANCH $PROJ_URL
+    $ cd path/to/repos/$PROJ
+    $ git submodule add --depth 10  $PROJ_URL repo
+    $ git config -f .gitmodules submodule.$SUBMOD_NAME.branch stable
+    $ git submodule update --remote
 
 # TODOs
 - [x] check requirements on ubuntu

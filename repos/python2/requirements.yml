@@ -1,0 +1,8 @@
+ubuntu:
+  apt:
+    packages:
+      # - python-setuptools 
+      - tcl-dev 
+      - liblzma-dev 
+      - libgdbm-dev
+      - tk-dev # apt-get -y --no-install-recommends install tk-dev
