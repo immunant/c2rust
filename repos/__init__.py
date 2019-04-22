@@ -78,8 +78,9 @@ class Test(object):
         except:
             if not self.conf.verbose:
                 outcome = "XFAIL" if xfail else "FAIL"
-                print(": {color}{outcome}{nocolor}".format(
-                    color=Colors.WARNING if xfail else Colors.FAIL,
+                print("{fill} {color}{outcome}{nocolor}".format(
+                    fill=(75 - len(line)) * ".",
+                    color=Colors.OKBLUE if xfail else Colors.FAIL,
                     outcome=outcome,
                     nocolor=Colors.NO_COLOR)
                 )
@@ -90,9 +91,12 @@ class Test(object):
         finally:
             os.chdir(prev_dir)
 
-    def is_xfail(self, script):
-        xfail_path = os.path.join(self.dir, f"{script}.xfail")
-        return os.path.isfile(xfail_path)
+    def is_xfail(self, script) -> bool:
+        script_path = os.path.join(self.dir, script)
+        if os.path.isfile(f"{script_path}.xfail"):
+            return True
+        script_path_noext = os.path.splitext(script_path)[0]
+        return os.path.isfile(f"{script_path_noext}.xfail")
 
     def __call__(self):
         for (stage, scripts) in Test.STAGES.items():
