@@ -564,9 +564,9 @@ class TranslateASTVisitor final
                     IdentifierInfo, BeforeSearchedLocation);
                 MacroInfo *MacroInf = MacroDef.getMacroInfo();
                 if (MacroInf) {
-                    dbgs() << IdentifierInfo->getName() << "\n";
-                    MacroInf->dump();
-                    dbgs() << "\n";
+                    LLVM_DEBUG(dbgs() << IdentifierInfo->getName() << "\n");
+                    LLVM_DEBUG(MacroInf->dump());
+                    LLVM_DEBUG(dbgs() << "\n");
                     name = IdentifierInfo->getName();
                     return MacroInf;
                 }
@@ -576,6 +576,8 @@ class TranslateASTVisitor final
     }
 
     bool VisitMacro(StringRef name, MacroInfo *mac, Expr *E) {
+        // TODO: handle macro expansions that differ in types but not in contents
+
         auto insertRes = macroExpressions.emplace(mac, E);
         if (insertRes.second && insertRes.first->second != E) {
             // This macro already has been inserted with a different literal
@@ -871,12 +873,17 @@ class TranslateASTVisitor final
     //
 
     bool VisitExpr(Expr *E) {
+        curMacroExpansion = nullptr;
+
+        // We only translate constant macro objects to Rust consts, so this
+        // expression must be constant.
+        if (!E->isConstantInitializer(*Context, false))
+            return true;
+
         auto &Mgr = Context->getSourceManager();
         auto loc = E->getExprLoc();
-        dbgs() << "Checking expr for macro expansion: ";
-        E->dump();
-
-        curMacroExpansion = nullptr;
+        LLVM_DEBUG(dbgs() << "Checking expr for macro expansion: ");
+        LLVM_DEBUG(E->dump());
 
         // The macro stack unwound by getImmediateMacroCallerLoc and friends
         // starts with literal replacement and works it's way to the macro call
