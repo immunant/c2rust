@@ -10,7 +10,7 @@
 
     $ cd path/to/repos/$PROJ
     $ git submodule add --depth 10  $PROJ_URL repo
-    $ git config -f .gitmodules submodule.$SUBMOD_NAME.branch stable
+    $ git config -f .gitmodules submodule.$SUBMOD_NAME.branch $BRANCH_NAME
     $ git submodule update --remote
 
 # TODOs
