@@ -892,8 +892,7 @@ class TranslateASTVisitor final
             auto macroLoc = Mgr.getImmediateMacroCallerLoc(loc);
             StringRef name;
             MacroInfo *mac = getMacroInfo(macroLoc, name);
-            assert(mac && "Could not find MacroInfo but loc is expanded from a macro");
-            if (mac->isObjectLike() && VisitMacro(name, mac, E)) {
+            if (mac && mac->isObjectLike() && VisitMacro(name, mac, E)) {
                 curMacroExpansion = mac;
             }
         }
