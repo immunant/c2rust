@@ -113,11 +113,12 @@ class Test(object):
             die(msg)
 
         if conf.stage and conf.stage not in Test.STAGES:
-            # run named stage
+            # invalid stage requested
             stages = ", ".join(Test.STAGES.keys())
             y, nc = Colors.WARNING, Colors.NO_COLOR
             die(f"invalid stage: {y}{conf.stage}{nc}. valid stages: {stages}")
         elif conf.stage:  # conf.stage is a valid stage
+            # run single stage
             for script in Test.STAGES[conf.stage]:
                 if script in self.scripts:
                     xfail = self.is_xfail(script)
@@ -126,8 +127,6 @@ class Test(object):
             else:  # didn't break
                 y, nc = Colors.WARNING, Colors.NO_COLOR
                 die(f"no script for project/stage: {self.name}/{y}{conf.stage}{nc}")
-
-
         else:
             # run all stages
             for (stage, scripts) in Test.STAGES.items():
