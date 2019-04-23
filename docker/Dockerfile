@@ -5,7 +5,6 @@ LABEL maintainer="c2rust@immunant.com"
 ARG USER=docker
 ARG UID=1000
 ARG GID=1000
-ARG PROVISION_SCRIPT=provision_deb.sh
 ENV HOME=/home/$USER
 ENV DEBIAN_FRONTEND=noninteractive
 

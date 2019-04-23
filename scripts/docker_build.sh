@@ -16,22 +16,16 @@ DATE_TAG=$(date +'%Y%m%d')
 SCRIPT_DIR="$(dirname "$0")"
 
 declare -A IMAGES
-IMAGES["ubuntu:bionic"]="provision_deb.sh"
-IMAGES["ubuntu:xenial"]="provision_deb.sh"
-IMAGES["debian:stretch"]="provision_deb.sh"
-IMAGES["debian:jessie"]="provision_deb.sh"
-IMAGES["archlinux/base"]="provision_arch.sh"
-IMAGES["fedora:29"]="provision_yum.sh"
+IMAGES["ubuntu:bionic"]="1" # any non-empty string will do
+IMAGES["ubuntu:xenial"]="1"
+IMAGES["debian:stretch"]="1"
+IMAGES["debian:jessie"]="1"
+IMAGES["archlinux/base"]="1"
+IMAGES["fedora:29"]="1"
 
 build_image() {
     BASE_IMAGE=${1}
     IMAGE_TAG=$(echo ${BASE_IMAGE} | tr -s :/ - ) # replace colons and slashes with hyphens
-    PROVISION_SCRIPT=${2}
-
-    # make sure provisioning script exists
-    if [ ! -f "$PROVISION_SCRIPT" ]; then
-	    echo >&2 "Provisioning script not found: $PROVISION_SCRIPT"; exit 1; 
-    fi
 
     # pull the rust version out of ../rust-toolchain to keep things synched
     RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain"
@@ -40,7 +34,6 @@ build_image() {
     docker pull "$BASE_IMAGE"
     docker build -f $SCRIPT_DIR/../docker/Dockerfile \
            --build-arg BASE_IMAGE=$BASE_IMAGE \
-           --build-arg PROVISION_SCRIPT=$PROVISION_SCRIPT \
            --build-arg UID=$(id -u $(logname)) \
            --build-arg GID=$(id -g $(logname)) \
            --build-arg RUST_VER=$RUST_VER \
@@ -57,7 +50,7 @@ if [ "$1" == "" ]; then
 fi        
 
 if [ "${IMAGES[$1]}" != "" ]; then
-        build_image "$1" ${IMAGES["$1"]}
+        build_image "$1"
 else
     case "$1" in
         build-all)
