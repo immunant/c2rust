@@ -1,17 +1,10 @@
 import os
-import yaml
 import subprocess
+
+from typing import List
 
 import tests.hostenv as hostenv
 from tests.util import *
-
-
-def get_yaml(reqs: str) -> dict:
-    with open(reqs, 'r') as stream:
-        try:
-            return yaml.safe_load(stream)
-        except yaml.YAMLError as exc:
-            die(str(exc))
 
 
 def check_apt_package(yaml: List[str]):
@@ -76,16 +69,29 @@ def check_host(host: str, yaml: dict):
             die(f"unknown key {key} (fragment: {reqs})")
 
 
-def check(conf, reqs: str):
-    relpath = os.path.relpath(reqs, os.getcwd())
+def check_file(file: str):
+    relpath = os.path.relpath(file, os.getcwd())
     info(f"checking requirements({relpath})")
 
-    yaml = get_yaml(reqs)
+    yaml = get_yaml(file)
 
-    check_host("generic", yaml)
+    reqs = yaml.get("requirements")
+    if not reqs:
+        return
+
+    check_host("generic", reqs)
 
     if hostenv.is_ubuntu():
-        check_host("ubuntu", yaml)
+        check_host("ubuntu", reqs)
 
     else:
         warn("requirements checking id not implemented for non-ubuntu hosts")
+
+
+def check(conf):
+    conf_dirs = [get_script_dir()] + conf.project_dirs
+    conf_files = map(lambda d: os.path.join(d, CONF_YML), conf_dirs)
+    conf_files = filter(lambda f: os.path.isfile(f), conf_files)
+
+    for cf in conf_files:
+        check_file(cf)

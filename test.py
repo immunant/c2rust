@@ -21,6 +21,5 @@ def get_args():
 
 
 if __name__ == "__main__":
-    conf = tests.Config()
-    conf.update(get_args())
+    conf = tests.Config(get_args())
     tests.run_tests(conf)

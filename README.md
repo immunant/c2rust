@@ -43,9 +43,9 @@ Each script is expected to `tee` its output to a file named `$SCRIPT.log`. For e
 - [x] check requirements on ubuntu
 - [x] rename flag `--only` to `--project`
 - [ ] check requirements on macOS
-- [ ] warn if `compile_commands.json` is empty
-- [ ] `requirements.yml` -> `conf.yml` 
-  - make requirements a key.
+- [x] `requirements.yml` -> `conf.yml` 
+  - [x] make requirements a key.
   - allow cargo build and transpile steps w/o scripts
+- [ ] warn if `compile_commands.json` is empty
 - [ ] add provision.py driven by `**/conf.yml`
 - [ ] add option to run `c2rust transpile` under `rust-gdb`

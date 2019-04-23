@@ -7,19 +7,6 @@ from typing import List  # , Set, Dict, Tuple, Optional
 from tests.util import *
 from tests.requirements import *
 
-REQUIREMENTS_YML: str = "requirements.yml"
-
-
-class Config(object):
-    verbose = False
-    project = None
-    stage = None
-
-    def update(self, args):
-        self.verbose = args.verbose
-        self.project = args.project
-        self.stage = args.stage
-
 
 class Test(object):
 
@@ -32,20 +19,19 @@ class Test(object):
         "check": ["check.sh", "test.sh"]
     }
 
-    def __init__(self, conf: Config, directory: str):
+    def __init__(self, directory: str):
         ff = next(os.walk(directory))[2]
         self.scripts = set(filter(lambda f: f.endswith(".sh"), ff))
         self.dir = directory
         self.name = os.path.basename(directory)
-        self.conf = conf
 
-    def run_script(self, stage, script, xfail=False) -> bool:
+    def run_script(self, stage, script, verbose=False, xfail=False) -> bool:
         """
         Returns true iff subsequent tests should run
         """
         prev_dir = os.getcwd()
         script_path = os.path.join(self.dir, script)
-        if not self.conf.verbose:
+        if not verbose:
             relpath = os.path.relpath(script_path, prev_dir)
             line = "{blue}{name}{nc}: {stage}({script})".format(
                 blue=Colors.OKBLUE,
@@ -58,7 +44,7 @@ class Test(object):
         # noinspection PyBroadException
         try:
             os.chdir(self.dir)
-            if self.conf.verbose:
+            if verbose:
                 subprocess.check_call(args=[script_path])
             else:
                 subprocess.check_call(
@@ -71,16 +57,16 @@ class Test(object):
                     color=Colors.OKGREEN,
                     nocolor=Colors.NO_COLOR)
                 )
-                return True
+            return True
         except KeyboardInterrupt as ki:
-            if not self.conf.verbose:
+            if not verbose:
                 print(": {color}INTERRUPT{nocolor}".format(
                     color=Colors.WARNING,
                     nocolor=Colors.NO_COLOR)
                 )
                 exit(1)
-        except:  # noqa
-            if not self.conf.verbose:
+        except Exception as e:  # noqa
+            if not verbose:
                 outcome = "XFAIL" if xfail else "FAIL"
                 print("{fill} {color}{outcome}{nocolor}".format(
                     fill=(75 - len(line)) * ".",
@@ -122,7 +108,7 @@ class Test(object):
             for script in Test.STAGES[conf.stage]:
                 if script in self.scripts:
                     xfail = self.is_xfail(script)
-                    self.run_script(conf.stage, script, xfail)
+                    self.run_script(conf.stage, script, conf.verbose, xfail)
                     break
             else:  # didn't break
                 y, nc = Colors.WARNING, Colors.NO_COLOR
@@ -133,58 +119,16 @@ class Test(object):
                 for script in scripts:
                     if script in self.scripts:
                         xfail = self.is_xfail(script)
-                        cont = self.run_script(stage, script, xfail)
+                        cont = self.run_script(stage, script, conf.verbose, xfail)
                         if not cont:
                             return  # XFAIL
                         break  # found script for stage; skip alternatives
 
 
-def get_script_dir():
-    return os.path.dirname(os.path.realpath(__file__))
-
-
-def find_test_dirs(_conf: Config) -> List[str]:
-    script_dir = get_script_dir()
-    subdirs = sorted(next(os.walk(script_dir))[1])
-
-    # filter out __pycache__ and anything else starting with `_`
-    subdirs = filter(lambda d: not(d.startswith("_") or d.startswith(".")),
-                     subdirs)
-
-    return [os.path.join(script_dir, s) for s in subdirs]
-
-
-def find_requirements(conf: Config):
-    script_dir = get_script_dir()
-    subdirs = sorted(next(os.walk(script_dir))[1])
-
-    if conf.project:
-        subdirs = filter(lambda s: s == conf.project, subdirs)
-
-    reqs = os.path.join(script_dir, REQUIREMENTS_YML)
-    reqs = [reqs] if os.path.exists(reqs) else []
-
-    subreqs = map(lambda d: os.path.join(script_dir, d, REQUIREMENTS_YML),
-                  subdirs)
-    reqs += filter(lambda f: os.path.exists(f), subreqs)
-    return reqs
-
-
 def run_tests(conf):
-    tests = (Test(conf, tdir) for tdir in find_test_dirs(conf))
+    requirements.check(conf)
 
-    if conf.project:  # only test named project
-        project = list(filter(lambda t: t.name == conf.project, tests))
-        if not project:
-            nl = ", ".join(map(lambda p: os.path.basename(p), find_test_dirs(conf)))
-            y, nc = Colors.WARNING, Colors.NO_COLOR
-            msg = f"no such project: {y}{conf.project}{nc}. project names: {nl}."
-            die(msg)
-        else:
-            tests = project
-
-    for r in find_requirements(conf):
-        requirements.check(conf, r)
+    tests = [Test(td) for td in conf.project_dirs]
 
     for tt in tests:
         tt(conf)

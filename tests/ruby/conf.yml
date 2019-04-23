@@ -1,0 +1,8 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+        - autoconf
+        - bison
+        - ruby
+        - libgdbm-dev
