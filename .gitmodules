@@ -12,7 +12,6 @@
 	path = tests/ruby/repo
 	url = https://github.com/ruby/ruby
 	branch = ruby_2_6
-    shallow = true
 [submodule "python2"]
 	path = tests/python2/repo
 	url = https://github.com/python/cpython.git
