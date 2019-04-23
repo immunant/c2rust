@@ -2,19 +2,23 @@
 	path = tests/lua/repo
 	url = https://github.com/immunant/lua.git
 	branch = c2rust
+	shallow = true
 [submodule "zstd"]
 	path = tests/zstd/repo
 	url = https://github.com/immunant/zstd
 	branch = dev
+	shallow = true
 [submodule "ruby"]
 	path = tests/ruby/repo
 	url = https://github.com/ruby/ruby
 	branch = ruby_2_6
-
+    shallow = true
 [submodule "python2"]
 	path = tests/python2/repo
 	url = https://github.com/python/cpython.git
 	branch = 2.7
+	shallow = true
 [submodule "json-c"]
 	path = tests/json-c/repo
 	url = https://github.com/json-c/json-c.git
+    shallow = true
