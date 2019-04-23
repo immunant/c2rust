@@ -21,6 +21,12 @@ impl<'c> Translation<'c> {
         opt_lhs_type_id: Option<CQualTypeId>,
         opt_res_type_id: Option<CQualTypeId>,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+        // If we're not making an assignment, a binop will require parens
+        // applied to ternary conditionals
+        if !op.is_assignment() {
+            ctx.ternary_needs_parens = true;
+        }
+
         match op {
             c_ast::BinOp::Comma => {
                 // The value of the LHS of a comma expression is always discarded

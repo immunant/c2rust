@@ -908,6 +908,24 @@ impl BinOp {
             _ => None,
         }
     }
+
+    /// Determines whether or not this is an assignment op
+    pub fn is_assignment(&self) -> bool {
+        match *self {
+            BinOp::AssignAdd
+            | BinOp::AssignSubtract
+            | BinOp::AssignMultiply
+            | BinOp::AssignDivide
+            | BinOp::AssignModulus
+            | BinOp::AssignBitXor
+            | BinOp::AssignShiftLeft
+            | BinOp::AssignShiftRight
+            | BinOp::AssignBitOr
+            | BinOp::AssignBitAnd
+            | BinOp::Assign => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Debug, Copy, Clone)]

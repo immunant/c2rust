@@ -1,7 +1,7 @@
 extern crate libc;
 
 use conditional::rust_entry;
-use conditionals::rust_entry2;
+use conditionals::{rust_entry2, rust_ternaries};
 use binary_conditional::rust_entry3;
 use unused_conditionals::{rust_unused_conditional1, rust_unused_conditional2, rust_unused_conditional3};
 use self::libc::{c_int, c_uint};
@@ -16,7 +16,7 @@ extern "C" {
 
     #[no_mangle]
     fn entry3(_: c_uint, _: *mut c_int);
-    
+
     #[no_mangle]
     fn unused_conditional1() -> c_int;
     #[no_mangle]

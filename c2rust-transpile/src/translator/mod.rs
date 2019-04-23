@@ -98,6 +98,7 @@ pub struct ExprContext {
     decay_ref: DecayRef,
     is_bitfield_write: bool,
     needs_address: bool,
+    ternary_needs_parens: bool,
 }
 
 impl ExprContext {
@@ -422,6 +423,7 @@ pub fn translate(
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
+        ternary_needs_parens: false,
     };
 
     if t.tcfg.reorganize_definitions {
@@ -2883,7 +2885,15 @@ impl<'c> Translation<'c> {
                     let then: P<Block> = lhs.to_block();
                     let els: P<Expr> = rhs.to_expr();
 
-                    Ok(cond.map(|c| mk().ifte_expr(c, then, Some(els))))
+                    Ok(cond.map(|c| {
+                        let ifte_expr = mk().ifte_expr(c, then, Some(els));
+
+                        if ctx.ternary_needs_parens {
+                            mk().paren_expr(ifte_expr)
+                        } else {
+                            ifte_expr
+                        }
+                    }))
                 }
             }
 
