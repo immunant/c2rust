@@ -164,6 +164,26 @@ impl<'c> Translation<'c> {
             // the specified value of the -O option. "
             "__builtin_constant_p" => Ok(WithStmts::new(mk().lit_expr(mk().int_lit(0, "")))),
 
+            "__builtin_object_size" => {
+                // We can't convert this to Rust, but it should be safe to always return -1/0
+                // (depending on the value of `type`), so we emit the following:
+                // `if (type & 2) == 0 { -1 } else { 0 }`
+                let ptr_arg = self.convert_expr(ctx.unused(), args[0])?;
+                let type_arg = self.convert_expr(ctx.used(), args[1])?;
+                Ok(ptr_arg.and_then(|_| {
+                    type_arg.map(|type_arg| {
+                        let type_and_2 = mk().binary_expr(BinOpKind::BitAnd, type_arg,
+                                                          mk().lit_expr(mk().int_lit(2, "")));
+                        let if_cond = mk().binary_expr(BinOpKind::Eq, type_and_2,
+                                                       mk().lit_expr(mk().int_lit(0, "")));
+                        let minus_one = mk().unary_expr(UnOp::Neg, mk().lit_expr(mk().int_lit(1, "")));
+                        mk().ifte_expr(if_cond,
+                                       mk().block(vec![mk().expr_stmt(minus_one)]),
+                                       Some(mk().lit_expr(mk().int_lit(0, ""))))
+                    })
+                }))
+            }
+
             "__builtin_va_start" => {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some(va_id) = self.match_vastart(args[0]) {
