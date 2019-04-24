@@ -23,6 +23,10 @@ use crate::file_io::{OutputMode, RealFileIO};
 use crate::matcher::{self, mut_visit_match_with, Bindings, MatchCtxt, Pattern, Subst, TryMatch};
 use crate::RefactorCtxt;
 
+pub mod ast_visitor;
+
+use ast_visitor::AstVisitor;
+
 /// Refactoring module
 // @module Refactor
 
@@ -586,6 +590,25 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         // @return Struct representation of this AST node. Valid return types are @{Stmt}, and @{Expr}.
         methods.add_method("get_ast", |lua_ctx, this, node: LuaAstNode| {
             this.get_lua_ast(lua_ctx, node)
+        });
+
+        // FIXME: docs
+        methods.add_method_mut("visit", |lua_ctx, this, callback: LuaFunction| {
+            let visitor = AstVisitor::new(this.st);
+
+            let res: LuaResult<LuaAstNode> = lua_ctx.scope(|scope| {
+                let visitor = scope.create_nonstatic_userdata(visitor)?;
+
+                callback.call(visitor)?;
+
+                let krate = this.intern(this.st.krate().clone());
+
+                println!("Visitor installer called successfully");
+
+                Ok(krate)
+            });
+
+            Ok(res)
         });
     }
 }
