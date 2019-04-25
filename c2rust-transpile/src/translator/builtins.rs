@@ -33,39 +33,39 @@ impl<'c> Translation<'c> {
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
         match builtin_name {
-            "__builtin_huge_valf" => Ok(WithStmts::new(mk().path_expr(vec![
+            "__builtin_huge_valf" => Ok(WithStmts::new_val(mk().path_expr(vec![
                 "",
                 std_or_core,
                 "f32",
                 "INFINITY",
             ]))),
             "__builtin_huge_val" | "__builtin_huge_vall" => {
-                Ok(WithStmts::new(mk().path_expr(vec![
+                Ok(WithStmts::new_val(mk().path_expr(vec![
                     "",
                     std_or_core,
                     "f64",
                     "INFINITY",
                 ])))
             }
-            "__builtin_inff" => Ok(WithStmts::new(mk().path_expr(vec![
+            "__builtin_inff" => Ok(WithStmts::new_val(mk().path_expr(vec![
                 "",
                 std_or_core,
                 "f32",
                 "INFINITY",
             ]))),
-            "__builtin_inf" | "__builtin_infl" => Ok(WithStmts::new(mk().path_expr(vec![
+            "__builtin_inf" | "__builtin_infl" => Ok(WithStmts::new_val(mk().path_expr(vec![
                 "",
                 std_or_core,
                 "f64",
                 "INFINITY",
             ]))),
-            "__builtin_nanf" => Ok(WithStmts::new(mk().path_expr(vec![
+            "__builtin_nanf" => Ok(WithStmts::new_val(mk().path_expr(vec![
                 "",
                 std_or_core,
                 "f32",
                 "NAN",
             ]))),
-            "__builtin_nan" => Ok(WithStmts::new(mk().path_expr(vec![
+            "__builtin_nan" => Ok(WithStmts::new_val(mk().path_expr(vec![
                 "",
                 std_or_core,
                 "f64",
@@ -97,7 +97,7 @@ impl<'c> Translation<'c> {
                 // LLVM simply lowers this to the constant one which means
                 // that floats are rounded to the nearest number.
                 // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
-                Ok(WithStmts::new(mk().lit_expr(mk().int_lit(1, "i32"))))
+                Ok(WithStmts::new_val(mk().lit_expr(mk().int_lit(1, "i32"))))
             }
             "__builtin_expect" => self.convert_expr(ctx.used(), args[0]),
 
@@ -113,9 +113,9 @@ impl<'c> Translation<'c> {
                 let n_stmts = self.convert_expr(ctx.used(), args[1])?;
                 let write_bytes = mk().path_expr(vec!["", "std", "ptr", "write_bytes"]);
                 let zero = mk().lit_expr(mk().int_lit(0, "u8"));
-                Ok(ptr_stmts.and_then(|ptr| {
-                    n_stmts.map(|n| mk().call_expr(write_bytes, vec![ptr, zero, n]))
-                }))
+                ptr_stmts.and_then(|ptr| {
+                    Ok(n_stmts.map(|n| mk().call_expr(write_bytes, vec![ptr, zero, n])))
+                })
             }
 
             // If the target does not support data prefetch, the address expression is evaluated if
@@ -162,7 +162,7 @@ impl<'c> Translation<'c> {
             // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
             // value is *not* a constant, but merely that GCC cannot prove it is a constant with
             // the specified value of the -O option. "
-            "__builtin_constant_p" => Ok(WithStmts::new(mk().lit_expr(mk().int_lit(0, "")))),
+            "__builtin_constant_p" => Ok(WithStmts::new_val(mk().lit_expr(mk().int_lit(0, "")))),
 
             "__builtin_object_size" => {
                 // We can't convert this to Rust, but it should be safe to always return -1/0
@@ -170,8 +170,8 @@ impl<'c> Translation<'c> {
                 // `if (type & 2) == 0 { -1 } else { 0 }`
                 let ptr_arg = self.convert_expr(ctx.unused(), args[0])?;
                 let type_arg = self.convert_expr(ctx.used(), args[1])?;
-                Ok(ptr_arg.and_then(|_| {
-                    type_arg.map(|type_arg| {
+                ptr_arg.and_then(|_| {
+                    Ok(type_arg.map(|type_arg| {
                         let type_and_2 = mk().binary_expr(BinOpKind::BitAnd, type_arg,
                                                           mk().lit_expr(mk().int_lit(2, "")));
                         let if_cond = mk().binary_expr(BinOpKind::Eq, type_and_2,
@@ -180,8 +180,8 @@ impl<'c> Translation<'c> {
                         mk().ifte_expr(if_cond,
                                        mk().block(vec![mk().expr_stmt(minus_one)]),
                                        Some(mk().lit_expr(mk().int_lit(0, ""))))
-                    })
-                }))
+                    }))
+                })
             }
 
             "__builtin_va_start" => {
@@ -189,7 +189,7 @@ impl<'c> Translation<'c> {
                     if let Some(va_id) = self.match_vastart(args[0]) {
                         if self.is_promoted_va_decl(va_id) {
                             // `va_start` is automatically called for the promoted decl.
-                            return Ok(WithStmts::new(self.panic_or_err("va_start stub")));
+                            return Ok(WithStmts::new_val(self.panic_or_err("va_start stub")));
                         }
                     }
                 }
@@ -229,7 +229,7 @@ impl<'c> Translation<'c> {
                     if let Some(va_id) = self.match_vaend(args[0]) {
                         if self.is_promoted_va_decl(va_id) {
                             // no need to call end on `va_end` on `va_list` promoted to arg
-                            return Ok(WithStmts::new(self.panic_or_err("va_end stub")));
+                            return Ok(WithStmts::new_val(self.panic_or_err("va_end stub")));
                         } else if self.is_copied_va_decl(va_id) {
                             // call to `va_end` on non-promoted `va_list`
 
@@ -241,14 +241,17 @@ impl<'c> Translation<'c> {
                                 let path = vec!["", std_or_core, "intrinsics", "va_end"];
                                 mk().path_expr(path)
                             };
-                            let ref_val = mk().mutbl().addr_of_expr(val.val);
-                            let call_expr = mk().call_expr(path, vec![ref_val] as Vec<P<Expr>>);
+                            return val.and_then(|val| {
+                                let ref_val = mk().mutbl().addr_of_expr(val);
+                                let call_expr = mk().call_expr(path, vec![ref_val] as Vec<P<Expr>>);
 
-                            let stmt = mk().semi_stmt(call_expr);
+                                let stmt = mk().semi_stmt(call_expr);
 
-                            let mut res = WithStmts::new(self.panic_or_err("va_end stub"));
-                            res.stmts.push(stmt);
-                            return Ok(res);
+                                Ok(WithStmts::new(
+                                    vec![stmt],
+                                    self.panic_or_err("va_end stub"),
+                                ))
+                            });
 
                             // return Ok(WithStmts::new(self.panic("va_end stub")))
                         }
@@ -259,22 +262,21 @@ impl<'c> Translation<'c> {
 
             "__builtin_alloca" => {
                 let count = self.convert_expr(ctx.used(), args[0])?;
-                let mut stmts = count.stmts;
-
-                let alloca_name = self.renamer.borrow_mut().fresh();
-                let zero_elem = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
-                stmts.push(mk().local_stmt(P(mk().local(
-                    mk().mutbl().ident_pat(&alloca_name),
-                    None as Option<P<Ty>>,
-                    Some(vec_expr(zero_elem, cast_int(count.val, "usize"))),
-                ))));
-                Ok(WithStmts {
-                    stmts,
-                    val: mk().method_call_expr(
-                        mk().ident_expr(&alloca_name),
-                        "as_mut_ptr",
-                        vec![] as Vec<P<Expr>>,
-                    ),
+                count.and_then(|count| {
+                    let alloca_name = self.renamer.borrow_mut().fresh();
+                    let zero_elem = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
+                    Ok(WithStmts::new(
+                        vec![mk().local_stmt(P(mk().local(
+                            mk().mutbl().ident_pat(&alloca_name),
+                            None as Option<P<Ty>>,
+                            Some(vec_expr(zero_elem, cast_int(count, "usize"))),
+                        )))],
+                        mk().method_call_expr(
+                            mk().ident_expr(&alloca_name),
+                            "as_mut_ptr",
+                            vec![] as Vec<P<Expr>>,
+                        ),
+                    ))
                 })
             }
 
@@ -358,7 +360,7 @@ impl<'c> Translation<'c> {
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 let arg2 = self.convert_expr(ctx.used(), args[2])?;
-                Ok(arg0.and_then(|arg0| {
+                arg0.and_then(|arg0| {
                     arg1.and_then(|arg1| {
                         arg2.and_then(|arg2| {
                             let call = mk().call_expr(atomic_cxchg, vec![arg0, arg1, arg2]);
@@ -370,13 +372,12 @@ impl<'c> Translation<'c> {
                             let call_expr = mk().field_expr(call, field_idx);
                             self.convert_side_effects_expr(
                                 ctx,
-                                vec![],
-                                call_expr,
+                                WithStmts::new_val(call_expr),
                                 "Builtin is not supposed to be used",
                             )
                         })
                     })
-                }))
+                })
             }
 
             "__sync_fetch_and_add_1"
@@ -462,20 +463,19 @@ impl<'c> Translation<'c> {
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 if builtin_name.starts_with("__sync_fetch") {
                     // __sync_fetch_and_XXX
-                    Ok(arg0.and_then(|arg0| {
+                    arg0.and_then(|arg0| {
                         arg1.and_then(|arg1| {
                             let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
                             self.convert_side_effects_expr(
                                 ctx,
-                                vec![],
-                                call_expr,
+                                WithStmts::new_val(call_expr),
                                 "Builtin is not supposed to be used",
                             )
                         })
-                    }))
+                    })
                 } else {
                     // __sync_XXX_and_fetch
-                    Ok(arg0.and_then(|arg0| {
+                    arg0.and_then(|arg0| {
                         arg1.and_then(|arg1| {
                             // Since the value of `arg1` is used twice, we need to copy
                             // it into a local temporary so we don't duplicate any side-effects
@@ -507,12 +507,14 @@ impl<'c> Translation<'c> {
                             };
                             self.convert_side_effects_expr(
                                 ctx,
-                                vec![arg0_let, arg1_let],
-                                val,
+                                WithStmts::new(
+                                    vec![arg0_let, arg1_let],
+                                    val,
+                                ),
                                 "Builtin is not supposed to be used",
                             )
                         })
-                    }))
+                    })
                 }
             }
 
@@ -522,12 +524,11 @@ impl<'c> Translation<'c> {
                 let atomic_func =
                     mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_fence"]);
                 let call_expr = mk().call_expr(atomic_func, vec![] as Vec<P<Expr>>);
-                Ok(self.convert_side_effects_expr(
+                self.convert_side_effects_expr(
                     ctx,
-                    vec![],
-                    call_expr,
+                    WithStmts::new_val(call_expr),
                     "Builtin is not supposed to be used",
-                ))
+                )
             }
 
             "__sync_lock_test_and_set_1"
@@ -542,17 +543,16 @@ impl<'c> Translation<'c> {
                     mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_xchg_acq"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
-                Ok(arg0.and_then(|arg0| {
+                arg0.and_then(|arg0| {
                     arg1.and_then(|arg1| {
                         let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
                         self.convert_side_effects_expr(
                             ctx,
-                            vec![],
-                            call_expr,
+                            WithStmts::new_val(call_expr),
                             "Builtin is not supposed to be used",
                         )
                     })
-                }))
+                })
             }
 
             "__sync_lock_release_1"
@@ -566,26 +566,26 @@ impl<'c> Translation<'c> {
                 let atomic_func =
                     mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_store_rel"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
-                Ok(arg0.and_then(|arg0| {
+                arg0.and_then(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
                     let call_expr = mk().call_expr(atomic_func, vec![arg0, zero]);
                     self.convert_side_effects_expr(
                         ctx,
-                        vec![],
-                        call_expr,
+                        WithStmts::new_val(call_expr),
                         "Builtin is not supposed to be used",
                     )
-                }))
+                })
             }
 
             "__builtin_unreachable" => {
-                let mut res = WithStmts::new(self.panic_or_err("unreachable stub"));
-                res.stmts.push(mk().semi_stmt(mk().mac_expr(mk().mac(
-                    vec!["unreachable"],
-                    vec![],
-                    MacDelimiter::Parenthesis,
-                ))));
-                Ok(res)
+                Ok(WithStmts::new(
+                    vec![mk().semi_stmt(mk().mac_expr(mk().mac(
+                        vec!["unreachable"],
+                        vec![],
+                        MacDelimiter::Parenthesis,
+                    )))],
+                    self.panic_or_err("unreachable stub"),
+                ))
             }
 
             _ => Err(format_translation_err!(src_loc, "Unimplemented builtin {}", builtin_name)),
@@ -600,36 +600,36 @@ impl<'c> Translation<'c> {
         method_name: &str,
         args: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let a = self.convert_expr(ctx.used(), args[0])?;
-        let mut b = self.convert_expr(ctx.used(), args[1])?;
-        let mut c = self.convert_expr(ctx.used(), args[2])?;
+        let args = self.convert_exprs(ctx.used(), args)?;
+        args.and_then(|args| {
+            let mut args = args.into_iter();
+            let a = args.next().ok_or("Missing first argument to convert_overflow_arith")?;
+            let b = args.next().ok_or("Missing second argument to convert_overflow_arith")?;
+            let c = args.next().ok_or("Missing third argument to convert_overflow_arith")?;
+            let overflowing = mk().method_call_expr(a, method_name, vec![b]);
+            let sum_name = self.renamer.borrow_mut().fresh();
+            let over_name = self.renamer.borrow_mut().fresh();
+            let overflow_let = mk().local_stmt(P(mk().local(
+                mk().tuple_pat(vec![
+                    mk().ident_pat(&sum_name),
+                    mk().ident_pat(over_name.clone()),
+                ]),
+                None as Option<P<Ty>>,
+                Some(overflowing),
+            )));
 
-        let overflowing = mk().method_call_expr(a.val, method_name, vec![b.val]);
-        let sum_name = self.renamer.borrow_mut().fresh();
-        let over_name = self.renamer.borrow_mut().fresh();
-        let overflow_let = mk().local_stmt(P(mk().local(
-            mk().tuple_pat(vec![
-                mk().ident_pat(&sum_name),
-                mk().ident_pat(over_name.clone()),
-            ]),
-            None as Option<P<Ty>>,
-            Some(overflowing),
-        )));
+            let out_assign = mk().assign_expr(
+                mk().unary_expr(ast::UnOp::Deref, c),
+                mk().ident_expr(&sum_name),
+            );
 
-        let out_assign = mk().assign_expr(
-            mk().unary_expr(ast::UnOp::Deref, c.val),
-            mk().ident_expr(&sum_name),
-        );
-
-        let mut stmts = a.stmts;
-        stmts.append(&mut b.stmts);
-        stmts.append(&mut c.stmts);
-        stmts.push(overflow_let);
-        stmts.push(mk().expr_stmt(out_assign));
-
-        Ok(WithStmts {
-            stmts,
-            val: mk().ident_expr(over_name),
+            Ok(WithStmts::new(
+                vec![
+                    overflow_let,
+                    mk().expr_stmt(out_assign),
+                ],
+                mk().ident_expr(over_name),
+            ))
         })
     }
 
@@ -642,24 +642,24 @@ impl<'c> Translation<'c> {
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let name = &builtin_name[10..];
         let mem = mk().path_expr(vec!["libc", name]);
-        let dst = self.convert_expr(ctx.used(), args[0])?;
-        let mut c = self.convert_expr(ctx.used(), args[1])?;
-        let mut len = self.convert_expr(ctx.used(), args[2])?;
-        let size_t = mk().path_ty(vec!["libc", "size_t"]);
-        let len1 = mk().cast_expr(len.val, size_t);
-        let mem_expr = mk().call_expr(mem, vec![dst.val, c.val, len1]);
+        let args = self.convert_exprs(ctx.used(), args)?;
+        args.and_then(|args| {
+            let mut args = args.into_iter();
+            let dst = args.next().ok_or("Missing dst argument to convert_mem_fns")?;
+            let c = args.next().ok_or("Missing c argument to convert_mem_fns")?;
+            let len = args.next().ok_or("Missing len argument to convert_mem_fns")?;
+            let size_t = mk().path_ty(vec!["libc", "size_t"]);
+            let len1 = mk().cast_expr(len, size_t);
+            let mem_expr = mk().call_expr(mem, vec![dst, c, len1]);
 
-        let mut stmts = dst.stmts;
-        stmts.append(&mut c.stmts);
-        stmts.append(&mut len.stmts);
-
-        let val = if ctx.is_used() {
-            mem_expr
-        } else {
-            stmts.push(mk().semi_stmt(mem_expr));
-            self.panic_or_err(&format!("__builtin_{} not used", name))
-        };
-
-        Ok(WithStmts { stmts, val })
+            if ctx.is_used() {
+                Ok(WithStmts::new_val(mem_expr))
+            } else {
+                Ok(WithStmts::new(
+                    vec![mk().semi_stmt(mem_expr)],
+                    self.panic_or_err(&format!("__builtin_{} not used", name))
+                ))
+            }
+        })
     }
 }

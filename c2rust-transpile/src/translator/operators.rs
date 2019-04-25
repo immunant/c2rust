@@ -10,6 +10,34 @@ fn wrapping_neg_expr(arg: P<Expr>) -> P<Expr> {
     mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
 }
 
+impl From<c_ast::BinOp> for BinOpKind {
+    fn from(op: c_ast::BinOp) -> Self {
+        match op {
+            c_ast::BinOp::Multiply => BinOpKind::Mul,
+            c_ast::BinOp::Divide => BinOpKind::Div,
+            c_ast::BinOp::Modulus => BinOpKind::Rem,
+            c_ast::BinOp::Add => BinOpKind::Add,
+            c_ast::BinOp::Subtract => BinOpKind::Sub,
+            c_ast::BinOp::ShiftLeft => BinOpKind::Shl,
+            c_ast::BinOp::ShiftRight => BinOpKind::Shr,
+            c_ast::BinOp::Less => BinOpKind::Lt,
+            c_ast::BinOp::Greater => BinOpKind::Gt,
+            c_ast::BinOp::LessEqual => BinOpKind::Le,
+            c_ast::BinOp::GreaterEqual => BinOpKind::Ge,
+            c_ast::BinOp::EqualEqual => BinOpKind::Eq,
+            c_ast::BinOp::NotEqual => BinOpKind::Ne,
+            c_ast::BinOp::BitAnd => BinOpKind::BitAnd,
+            c_ast::BinOp::BitXor => BinOpKind::BitXor,
+            c_ast::BinOp::BitOr => BinOpKind::BitOr,
+            c_ast::BinOp::And => BinOpKind::And,
+            c_ast::BinOp::Or => BinOpKind::Or,
+
+            _ => panic!("C BinOp {:?} is not a valid Rust BinOpKind"),
+        }
+    }
+}
+
+
 impl<'c> Translation<'c> {
     pub fn convert_binary_expr(
         &self,
@@ -27,50 +55,30 @@ impl<'c> Translation<'c> {
             ctx.ternary_needs_parens = true;
         }
 
+        let lhs_loc = &self.ast_context[lhs].loc;
+        let rhs_loc = &self.ast_context[rhs].loc;
         match op {
             c_ast::BinOp::Comma => {
                 // The value of the LHS of a comma expression is always discarded
-                let lhs = self.convert_expr(ctx.unused(), lhs)?;
-                let rhs = self.convert_expr(ctx, rhs)?;
-
-                Ok(WithStmts {
-                    stmts: lhs.stmts.into_iter().chain(rhs.stmts).collect(),
-                    val: rhs.val,
-                })
+                self.convert_expr(ctx.unused(), lhs)?
+                    .and_then(|_| self.convert_expr(ctx, rhs))
             }
 
-            c_ast::BinOp::And => {
+            c_ast::BinOp::And | c_ast::BinOp::Or => {
                 let lhs = self.convert_condition(ctx, true, lhs)?;
                 let rhs = self.convert_condition(ctx, true, rhs)?;
-                let mut out =
-                    lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::And, x, rhs.to_expr())));
-
-                if ctx.is_unused() {
-                    let out_val = mem::replace(
-                        &mut out.val,
-                        self.panic_or_err("Binary expression is not supposed to be used"),
-                    );
-                    out.stmts.push(mk().semi_stmt(out_val));
-                }
-
-                Ok(out)
-            }
-
-            c_ast::BinOp::Or => {
-                let lhs = self.convert_condition(ctx, true, lhs)?;
-                let rhs = self.convert_condition(ctx, true, rhs)?;
-                let mut out =
-                    lhs.map(|x| bool_to_int(mk().binary_expr(BinOpKind::Or, x, rhs.to_expr())));
-
-                if ctx.is_unused() {
-                    let out_val = mem::replace(
-                        &mut out.val,
-                        self.panic_or_err("Binary expression is not supposed to be used"),
-                    );
-                    out.stmts.push(mk().semi_stmt(out_val));
-                }
-
-                Ok(out)
+                lhs
+                    .map(|x| bool_to_int(mk().binary_expr(BinOpKind::from(op), x, rhs.to_expr())))
+                    .and_then(|out| {
+                        if ctx.is_unused() {
+                            Ok(WithStmts::new(
+                                vec![mk().semi_stmt(out)],
+                                self.panic_or_err("Binary expression is not supposed to be used"),
+                            ))
+                        } else {
+                            Ok(WithStmts::new_val(out))
+                        }
+                    })
             }
 
             // No sequence-point cases
@@ -110,49 +118,40 @@ impl<'c> Translation<'c> {
                     .index(lhs)
                     .kind
                     .get_qual_type()
-                    .ok_or_else(|| format_err!("bad lhs type"))?;
+                    .ok_or_else(|| {
+                        format_translation_err!(lhs_loc, "bad lhs type for assignment")
+                    })?;
                 let rhs_type = self
                     .ast_context
                     .index(rhs)
                     .kind
                     .get_qual_type()
-                    .ok_or_else(|| format_err!("bad rhs type"))?;
-
-                let mut stmts = vec![];
+                    .ok_or_else(|| {
+                        format_translation_err!(rhs_loc, "bad rhs type for assignment")
+                    })?;
 
                 if ctx.is_unused() {
-                    stmts.extend(self.convert_expr(ctx, lhs)?.stmts);
-                    stmts.extend(self.convert_expr(ctx, rhs)?.stmts);
-
-                    Ok(WithStmts {
-                        stmts,
-                        val: self.panic_or_err("Binary expression is not supposed to be used"),
-                    })
+                    Ok(self.convert_expr(ctx, lhs)?
+                       .and_then(|_| self.convert_expr(ctx, rhs))?
+                       .map(|_| self.panic_or_err("Binary expression is not supposed to be used")))
                 } else {
-                    let WithStmts {
-                        val: lhs_val,
-                        stmts: lhs_stmts,
-                    } = self.convert_expr(ctx, lhs)?;
-                    let WithStmts {
-                        val: rhs_val,
-                        stmts: rhs_stmts,
-                    } = self.convert_expr(ctx, rhs)?;
-
-                    stmts.extend(lhs_stmts);
-                    stmts.extend(rhs_stmts);
-                    let expr_ids = Some((lhs, rhs));
-                    let val = self.convert_binary_operator(
-                        op,
-                        ty,
-                        type_id.ctype,
-                        lhs_type,
-                        rhs_type,
-                        lhs_val,
-                        rhs_val,
-                        expr_ids,
-                    );
-
-                    Ok(WithStmts { stmts, val })
+                    self.convert_expr(ctx, lhs)?
+                        .and_then(|lhs_val| {
+                            Ok(self.convert_expr(ctx, rhs)?
+                               .map(|rhs_val| {
+                                   let expr_ids = Some((lhs, rhs));
+                                   self.convert_binary_operator(
+                                       op,
+                                       ty,
+                                       type_id.ctype,
+                                       lhs_type,
+                                       rhs_type,
+                                       lhs_val,
+                                       rhs_val,
+                                       expr_ids,
+                                   )
+                               }))
+                        })
                 }
             }
         }
@@ -305,245 +304,232 @@ impl<'c> Translation<'c> {
             _ => false,
         };
 
-        let (write, read, lhs_stmts) = if initial_lhs_type_id.ctype != compute_lhs_type_id.ctype
+        let lhs_translation = if initial_lhs_type_id.ctype != compute_lhs_type_id.ctype
             || ctx.is_used()
             || pointer_lhs.is_some()
             || is_volatile_compound_assign
             || is_unsigned_arith
         {
-            let WithStmts {
-                val: (write, read),
-                stmts: lhs_stmts,
-            } = self.name_reference_write_read(ctx, lhs)?;
-            (write, read, lhs_stmts)
+            self.name_reference_write_read(ctx, lhs)?
         } else {
-            let WithStmts {
-                val: write,
-                stmts: lhs_stmts,
-            } = self.name_reference_write(ctx, lhs)?;
-            (
-                write,
-                self.panic_or_err("Volatile value is not supposed to be read"),
-                lhs_stmts,
-            )
+            self.name_reference_write(ctx, lhs)?
+                .map(|write| (
+                    write,
+                    self.panic_or_err("Volatile value is not supposed to be read"),
+                ))
         };
 
-        let WithStmts {
-            val: rhs,
-            stmts: rhs_stmts,
-        } = rhs_translation;
+        lhs_translation.and_then(|(write, read)| {
+            rhs_translation.and_then(|rhs| {
+                // Assignment expression itself
+                let assign_stmt = match op {
+                    // Regular (possibly volatile) assignment
+                    c_ast::BinOp::Assign if !is_volatile => mk().assign_expr(&write, rhs),
+                    c_ast::BinOp::Assign => self.volatile_write(&write, initial_lhs_type_id, rhs)?,
 
-        // Side effects to accumulate
-        let mut stmts = vec![];
-        stmts.extend(lhs_stmts);
-        stmts.extend(rhs_stmts);
+                    // Anything volatile needs to be desugared into explicit reads and writes
+                    op if is_volatile || is_unsigned_arith => {
+                        let op = op
+                            .underlying_assignment()
+                            .expect("Cannot convert non-assignment operator");
 
-        // Assignment expression itself
-        let assign_stmt = match op {
-            // Regular (possibly volatile) assignment
-            c_ast::BinOp::Assign if !is_volatile => mk().assign_expr(&write, rhs),
-            c_ast::BinOp::Assign => self.volatile_write(&write, initial_lhs_type_id, rhs)?,
+                        let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
+                            self.convert_binary_operator(
+                                op,
+                                ty,
+                                qtype.ctype,
+                                initial_lhs_type_id,
+                                rhs_type_id,
+                                read.clone(),
+                                rhs,
+                                None,
+                            )
+                        } else {
+                            let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
+                            let write_type = self.convert_type(qtype.ctype)?;
+                            let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
+                            let ty = self.convert_type(result_type_id.ctype)?;
+                            let val = self.convert_binary_operator(
+                                op,
+                                ty,
+                                result_type_id.ctype,
+                                compute_lhs_type_id,
+                                rhs_type_id,
+                                lhs,
+                                rhs,
+                                None,
+                            );
 
-            // Anything volatile needs to be desugared into explicit reads and writes
-            op if is_volatile || is_unsigned_arith => {
-                let op = op
-                    .underlying_assignment()
-                    .expect("Cannot convert non-assignment operator");
+                            let is_enum_result = self.ast_context
+                                [self.ast_context.resolve_type_id(qtype.ctype)]
+                                .kind
+                                .is_enum();
+                            let result_type = self.convert_type(qtype.ctype)?;
+                            let val = if is_enum_result {
+                                transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std)
+                            } else {
+                                mk().cast_expr(val, result_type)
+                            };
+                            mk().cast_expr(val, write_type)
+                        };
 
-                let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
-                    self.convert_binary_operator(
-                        op,
-                        ty,
-                        qtype.ctype,
-                        initial_lhs_type_id,
-                        rhs_type_id,
-                        read.clone(),
-                        rhs,
-                        None,
-                    )
-                } else {
-                    let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
-                    let write_type = self.convert_type(qtype.ctype)?;
-                    let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
-                    let ty = self.convert_type(result_type_id.ctype)?;
-                    let val = self.convert_binary_operator(
-                        op,
-                        ty,
-                        result_type_id.ctype,
-                        compute_lhs_type_id,
-                        rhs_type_id,
-                        lhs,
-                        rhs,
-                        None,
-                    );
-
-                    let is_enum_result = self.ast_context
-                        [self.ast_context.resolve_type_id(qtype.ctype)]
-                    .kind
-                    .is_enum();
-                    let result_type = self.convert_type(qtype.ctype)?;
-                    let val = if is_enum_result {
-                        transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std)
-                    } else {
-                        mk().cast_expr(val, result_type)
-                    };
-                    mk().cast_expr(val, write_type)
-                };
-
-                if is_volatile {
-                    self.volatile_write(&write, initial_lhs_type_id, val)?
-                } else {
-                    mk().assign_expr(write, val)
-                }
-            }
-
-            // Everything else
-            c_ast::BinOp::AssignAdd if pointer_lhs.is_some() => {
-                let ptr = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
-                    Some(sz) => {
-                        let offset = mk().binary_expr(
-                            BinOpKind::Mul,
-                            cast_int(rhs, "isize"),
-                            cast_int(sz, "isize"),
-                        );
-                        pointer_offset_isize(write.clone(), offset)
+                        if is_volatile {
+                            self.volatile_write(&write, initial_lhs_type_id, val)?
+                        } else {
+                            mk().assign_expr(write, val)
+                        }
                     }
-                    None => pointer_offset(write.clone(), rhs),
+
+                    // Everything else
+                    c_ast::BinOp::AssignAdd if pointer_lhs.is_some() => {
+                        let ptr = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
+                            Some(sz) => {
+                                let offset = mk().binary_expr(
+                                    BinOpKind::Mul,
+                                    cast_int(rhs, "isize"),
+                                    cast_int(sz, "isize"),
+                                );
+                                pointer_offset_isize(write.clone(), offset)
+                            }
+                            None => pointer_offset(write.clone(), rhs),
+                        };
+                        mk().assign_expr(&write, ptr)
+                    }
+                    c_ast::BinOp::AssignSubtract if pointer_lhs.is_some() => {
+                        let ptr = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
+                            Some(sz) => pointer_neg_offset_isize(
+                                write.clone(),
+                                mk().binary_expr(
+                                    BinOpKind::Mul,
+                                    cast_int(rhs, "isize"),
+                                    cast_int(sz, "isize"),
+                                ),
+                            ),
+                            None => pointer_neg_offset(write.clone(), rhs),
+                        };
+                        mk().assign_expr(&write, ptr)
+                    }
+
+                    c_ast::BinOp::AssignAdd => self.covert_assignment_operator_aux(
+                        BinOpKind::Add,
+                        c_ast::BinOp::Add,
+                        read.clone(),
+                        write,
+                        rhs,
+                        compute_type,
+                        result_type,
+                        qtype,
+                        rhs_type_id,
+                    )?,
+                    c_ast::BinOp::AssignSubtract => self.covert_assignment_operator_aux(
+                        BinOpKind::Sub,
+                        c_ast::BinOp::Subtract,
+                        read.clone(),
+                        write,
+                        rhs,
+                        compute_type,
+                        result_type,
+                        qtype,
+                        rhs_type_id,
+                    )?,
+                    c_ast::BinOp::AssignMultiply => self.covert_assignment_operator_aux(
+                        BinOpKind::Mul,
+                        c_ast::BinOp::Multiply,
+                        read.clone(),
+                        write,
+                        rhs,
+                        compute_type,
+                        result_type,
+                        qtype,
+                        rhs_type_id,
+                    )?,
+                    c_ast::BinOp::AssignDivide => self.covert_assignment_operator_aux(
+                        BinOpKind::Div,
+                        c_ast::BinOp::Divide,
+                        read.clone(),
+                        write,
+                        rhs,
+                        compute_type,
+                        result_type,
+                        qtype,
+                        rhs_type_id,
+                    )?,
+                    c_ast::BinOp::AssignModulus => self.covert_assignment_operator_aux(
+                        BinOpKind::Rem,
+                        c_ast::BinOp::Modulus,
+                        read.clone(),
+                        write,
+                        rhs,
+                        compute_type,
+                        result_type,
+                        qtype,
+                        rhs_type_id,
+                    )?,
+                    c_ast::BinOp::AssignBitXor => self.covert_assignment_operator_aux(
+                        BinOpKind::BitXor,
+                        c_ast::BinOp::BitXor,
+                        read.clone(),
+                        write,
+                        rhs,
+                        compute_type,
+                        result_type,
+                        qtype,
+                        rhs_type_id,
+                    )?,
+                    c_ast::BinOp::AssignShiftLeft => self.covert_assignment_operator_aux(
+                        BinOpKind::Shl,
+                        c_ast::BinOp::ShiftLeft,
+                        read.clone(),
+                        write,
+                        rhs,
+                        compute_type,
+                        result_type,
+                        qtype,
+                        rhs_type_id,
+                    )?,
+                    c_ast::BinOp::AssignShiftRight => self.covert_assignment_operator_aux(
+                        BinOpKind::Shr,
+                        c_ast::BinOp::ShiftRight,
+                        read.clone(),
+                        write,
+                        rhs,
+                        compute_type,
+                        result_type,
+                        qtype,
+                        rhs_type_id,
+                    )?,
+                    c_ast::BinOp::AssignBitOr => self.covert_assignment_operator_aux(
+                        BinOpKind::BitOr,
+                        c_ast::BinOp::BitOr,
+                        read.clone(),
+                        write,
+                        rhs,
+                        compute_type,
+                        result_type,
+                        qtype,
+                        rhs_type_id,
+                    )?,
+                    c_ast::BinOp::AssignBitAnd => self.covert_assignment_operator_aux(
+                        BinOpKind::BitAnd,
+                        c_ast::BinOp::BitAnd,
+                        read.clone(),
+                        write,
+                        rhs,
+                        compute_type,
+                        result_type,
+                        qtype,
+                        rhs_type_id,
+                    )?,
+
+                    _ => panic!("Cannot convert non-assignment operator"),
                 };
-                mk().assign_expr(&write, ptr)
-            }
-            c_ast::BinOp::AssignSubtract if pointer_lhs.is_some() => {
-                let ptr = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
-                    Some(sz) => pointer_neg_offset_isize(
-                        write.clone(),
-                        mk().binary_expr(
-                            BinOpKind::Mul,
-                            cast_int(rhs, "isize"),
-                            cast_int(sz, "isize"),
-                        ),
-                    ),
-                    None => pointer_neg_offset(write.clone(), rhs),
-                };
-                mk().assign_expr(&write, ptr)
-            }
 
-            c_ast::BinOp::AssignAdd => self.covert_assignment_operator_aux(
-                BinOpKind::Add,
-                c_ast::BinOp::Add,
-                read.clone(),
-                write,
-                rhs,
-                compute_type,
-                result_type,
-                qtype,
-                rhs_type_id,
-            )?,
-            c_ast::BinOp::AssignSubtract => self.covert_assignment_operator_aux(
-                BinOpKind::Sub,
-                c_ast::BinOp::Subtract,
-                read.clone(),
-                write,
-                rhs,
-                compute_type,
-                result_type,
-                qtype,
-                rhs_type_id,
-            )?,
-            c_ast::BinOp::AssignMultiply => self.covert_assignment_operator_aux(
-                BinOpKind::Mul,
-                c_ast::BinOp::Multiply,
-                read.clone(),
-                write,
-                rhs,
-                compute_type,
-                result_type,
-                qtype,
-                rhs_type_id,
-            )?,
-            c_ast::BinOp::AssignDivide => self.covert_assignment_operator_aux(
-                BinOpKind::Div,
-                c_ast::BinOp::Divide,
-                read.clone(),
-                write,
-                rhs,
-                compute_type,
-                result_type,
-                qtype,
-                rhs_type_id,
-            )?,
-            c_ast::BinOp::AssignModulus => self.covert_assignment_operator_aux(
-                BinOpKind::Rem,
-                c_ast::BinOp::Modulus,
-                read.clone(),
-                write,
-                rhs,
-                compute_type,
-                result_type,
-                qtype,
-                rhs_type_id,
-            )?,
-            c_ast::BinOp::AssignBitXor => self.covert_assignment_operator_aux(
-                BinOpKind::BitXor,
-                c_ast::BinOp::BitXor,
-                read.clone(),
-                write,
-                rhs,
-                compute_type,
-                result_type,
-                qtype,
-                rhs_type_id,
-            )?,
-            c_ast::BinOp::AssignShiftLeft => self.covert_assignment_operator_aux(
-                BinOpKind::Shl,
-                c_ast::BinOp::ShiftLeft,
-                read.clone(),
-                write,
-                rhs,
-                compute_type,
-                result_type,
-                qtype,
-                rhs_type_id,
-            )?,
-            c_ast::BinOp::AssignShiftRight => self.covert_assignment_operator_aux(
-                BinOpKind::Shr,
-                c_ast::BinOp::ShiftRight,
-                read.clone(),
-                write,
-                rhs,
-                compute_type,
-                result_type,
-                qtype,
-                rhs_type_id,
-            )?,
-            c_ast::BinOp::AssignBitOr => self.covert_assignment_operator_aux(
-                BinOpKind::BitOr,
-                c_ast::BinOp::BitOr,
-                read.clone(),
-                write,
-                rhs,
-                compute_type,
-                result_type,
-                qtype,
-                rhs_type_id,
-            )?,
-            c_ast::BinOp::AssignBitAnd => self.covert_assignment_operator_aux(
-                BinOpKind::BitAnd,
-                c_ast::BinOp::BitAnd,
-                read.clone(),
-                write,
-                rhs,
-                compute_type,
-                result_type,
-                qtype,
-                rhs_type_id,
-            )?,
-
-            _ => panic!("Cannot convert non-assignment operator"),
-        };
-
-        stmts.push(mk().expr_stmt(assign_stmt));
-
-        Ok(WithStmts { stmts, val: read })
+                Ok(WithStmts::new(
+                    vec![mk().expr_stmt(assign_stmt)],
+                    read,
+                ))
+            })
+        })
     }
 
     /// Translate a non-assignment binary operator. It is expected that the `lhs` and `rhs`
@@ -765,7 +751,7 @@ impl<'c> Translation<'c> {
             arg_type,
             arg,
             ty,
-            WithStmts::new(one),
+            WithStmts::new_val(one),
             Some(arg_type),
             Some(arg_type),
         )
@@ -790,75 +776,70 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad post inc type"))?;
 
-        let WithStmts {
-            val: (write, read),
-            stmts: mut lhs_stmts,
-        } = self.name_reference_write_read(ctx, arg)?;
+        self.name_reference_write_read(ctx, arg)?
+            .and_then(|(write, read)| {
+                let val_name = self.renamer.borrow_mut().fresh();
+                let save_old_val = mk().local_stmt(P(mk().local(
+                    mk().ident_pat(&val_name),
+                    None as Option<P<Ty>>,
+                    Some(read.clone()),
+                )));
 
-        let val_name = self.renamer.borrow_mut().fresh();
-        let save_old_val = mk().local_stmt(P(mk().local(
-            mk().ident_pat(&val_name),
-            None as Option<P<Ty>>,
-            Some(read.clone()),
-        )));
+                let mut one = match self.ast_context[ty.ctype].kind {
+                    // TODO: If rust gets f16 support:
+                    // CTypeKind::Half |
+                    CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
+                    CTypeKind::LongDouble => {
+                        self.extern_crates.borrow_mut().insert("f128");
 
-        let mut one = match self.ast_context[ty.ctype].kind {
-            // TODO: If rust gets f16 support:
-            // CTypeKind::Half |
-            CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
-            CTypeKind::LongDouble => {
-                self.extern_crates.borrow_mut().insert("f128");
+                        let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
+                        let args = vec![mk().ident_expr("1.")];
 
-                let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
-                let args = vec![mk().ident_expr("1.")];
-
-                mk().call_expr(fn_path, args)
-            }
-            _ => mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)),
-        };
-
-        // *p + 1
-        let val =
-            if let &CTypeKind::Pointer(pointee) = &self.ast_context.resolve_type(ty.ctype).kind {
-                if let Some(n) = self.compute_size_of_expr(pointee.ctype) {
-                    one = n
-                }
-
-                let n = if up {
-                    one
-                } else {
-                    mk().unary_expr(ast::UnOp::Neg, one)
+                        mk().call_expr(fn_path, args)
+                    }
+                    _ => mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)),
                 };
-                mk().method_call_expr(read.clone(), "offset", vec![n])
-            } else {
-                if self
-                    .ast_context
-                    .resolve_type(ty.ctype)
-                    .kind
-                    .is_unsigned_integral_type()
-                {
-                    let m = if up { "wrapping_add" } else { "wrapping_sub" };
-                    mk().method_call_expr(read.clone(), m, vec![one])
+
+                // *p + 1
+                let val =
+                    if let &CTypeKind::Pointer(pointee) = &self.ast_context.resolve_type(ty.ctype).kind {
+                        if let Some(n) = self.compute_size_of_expr(pointee.ctype) {
+                            one = n
+                        }
+
+                        let n = if up {
+                            one
+                        } else {
+                            mk().unary_expr(ast::UnOp::Neg, one)
+                        };
+                        mk().method_call_expr(read.clone(), "offset", vec![n])
+                    } else {
+                        if self
+                            .ast_context
+                            .resolve_type(ty.ctype)
+                            .kind
+                            .is_unsigned_integral_type()
+                        {
+                            let m = if up { "wrapping_add" } else { "wrapping_sub" };
+                            mk().method_call_expr(read.clone(), m, vec![one])
+                        } else {
+                            let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
+                            mk().binary_expr(k, read.clone(), one)
+                        }
+                    };
+
+                // *p = *p + rhs
+                let assign_stmt = if ty.qualifiers.is_volatile {
+                    self.volatile_write(&write, ty, val)?
                 } else {
-                    let k = if up { BinOpKind::Add } else { BinOpKind::Sub };
-                    mk().binary_expr(k, read.clone(), one)
-                }
-            };
+                    mk().assign_expr(&write, val)
+                };
 
-        // *p = *p + rhs
-        let assign_stmt = if ty.qualifiers.is_volatile {
-            self.volatile_write(&write, ty, val)?
-        } else {
-            mk().assign_expr(&write, val)
-        };
-
-        lhs_stmts.push(save_old_val);
-        lhs_stmts.push(mk().expr_stmt(assign_stmt));
-
-        Ok(WithStmts {
-            stmts: lhs_stmts,
-            val: mk().ident_expr(val_name),
-        })
+                Ok(WithStmts::new(
+                    vec![save_old_val, mk().expr_stmt(assign_stmt)],
+                    mk().ident_expr(val_name),
+                ))
+            })
     }
 
     pub fn convert_unary_operator(
