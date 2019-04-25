@@ -3300,9 +3300,13 @@ impl<'c> Translation<'c> {
         opt_field_id: Option<CFieldId>,
         is_explicit: bool,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        // A reference must be decayed if a bitcast is required
-        if kind == CastKind::BitCast || kind == CastKind::PointerToIntegral {
-            ctx.decay_ref = DecayRef::Yes;
+        // A reference must be decayed if a bitcast is required. Const casts in
+        // LLVM 8 are now NoOp casts, so we need to include it as well.
+        match kind {
+            CastKind::BitCast
+                | CastKind::PointerToIntegral
+                | CastKind::NoOp => ctx.decay_ref = DecayRef::Yes,
+            _ => {}
         }
 
         if kind == CastKind::IntegralToPointer && ctx.is_static {
