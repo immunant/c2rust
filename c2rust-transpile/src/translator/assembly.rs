@@ -57,10 +57,10 @@ impl<'c> Translation<'c> {
                 }
 
                 let mut result = self.convert_expr(ctx.used(), expression)?;
-                stmts.append(&mut result.stmts);
+                stmts.append(result.stmts_mut());
 
                 push_expr(&mut tokens, mk().lit_expr(mk().str_lit(constraints)));
-                push_expr(&mut tokens, mk().paren_expr(result.val));
+                push_expr(&mut tokens, mk().paren_expr(result.into_value()));
             }
         }
 

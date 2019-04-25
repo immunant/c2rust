@@ -624,7 +624,9 @@ impl Cfg<Label, StmtOrDecl> {
                         wip.body.push(StmtOrDecl::Stmt(mk().semi_stmt(ret_expr)));
                     }
                     ImplicitReturnType::StmtExpr(ctx, expr_id, brk_label) => {
-                        let WithStmts { mut stmts, val } = translator.convert_expr(ctx, expr_id)?;
+                        let (stmts, val) = translator
+                            .convert_expr(ctx, expr_id)?
+                            .discard_unsafe();
 
                         wip.body
                             .extend(stmts.into_iter().map(|s| StmtOrDecl::Stmt(s)));
@@ -1425,10 +1427,7 @@ impl CfgBuilder {
                         None => None,
                     };
 
-                    let WithStmts {
-                        stmts,
-                        val: ret_val,
-                    } = WithStmts::with_stmts_opt(val);
+                    let (stmts, ret_val) = WithStmts::with_stmts_opt(val).discard_unsafe();
                     wip.extend(stmts);
                     wip.push_stmt(mk().expr_stmt(mk().return_expr(ret_val)));
 
@@ -1451,10 +1450,9 @@ impl CfgBuilder {
                     };
 
                     // Condition
-                    let WithStmts { stmts, val } =
-                        translator.convert_condition(ctx, true, scrutinee)?;
-                    let cond_val = translator.ast_context[scrutinee].kind.get_bool();
+                    let (stmts, val) = translator.convert_condition(ctx, true, scrutinee)?.discard_unsafe();
                     wip.extend(stmts);
+                    let cond_val = translator.ast_context[scrutinee].kind.get_bool();
                     self.add_wip_block(
                         wip,
                         match cond_val {
@@ -1506,8 +1504,7 @@ impl CfgBuilder {
                     self.open_loop();
 
                     // Condition
-                    let WithStmts { stmts, val } =
-                        translator.convert_condition(ctx, true, condition)?;
+                    let (stmts, val) = translator.convert_condition(ctx, true, condition)?.discard_unsafe();
                     let cond_val = translator.ast_context[condition].kind.get_bool();
                     let mut cond_wip = self.new_wip_block(cond_entry);
                     cond_wip.extend(stmts);
@@ -1573,8 +1570,7 @@ impl CfgBuilder {
                     self.continue_labels.pop();
 
                     // Condition
-                    let WithStmts { stmts, val } =
-                        translator.convert_condition(ctx, true, condition)?;
+                    let (stmts, val) = translator.convert_condition(ctx, true, condition)?.discard_unsafe();
                     let cond_val = translator.ast_context[condition].kind.get_bool();
                     let mut cond_wip = self.new_wip_block(cond_entry);
                     cond_wip.extend(stmts);
@@ -1623,8 +1619,9 @@ impl CfgBuilder {
 
                         // Condition
                         if let Some(cond) = condition {
-                            let WithStmts { stmts, val } =
-                                translator.convert_condition(ctx, true, cond)?;
+                            let (stmts, val) = translator
+                                .convert_condition(ctx, true, cond)?
+                                .discard_unsafe();
                             let cond_val = translator.ast_context[cond].kind.get_bool();
                             let mut cond_wip = slf.new_wip_block(cond_entry);
                             cond_wip.extend(stmts);
@@ -1663,7 +1660,7 @@ impl CfgBuilder {
                         match increment {
                             None => slf.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
                             Some(incr) => {
-                                let incr_stmts = translator.convert_expr(ctx.unused(), incr)?.stmts;
+                                let incr_stmts = translator.convert_expr(ctx.unused(), incr)?.into_stmts();
                                 let mut incr_wip = slf.new_wip_block(incr_entry);
                                 incr_wip.extend(incr_stmts);
                                 slf.add_wip_block(incr_wip, Jump(cond_entry));
@@ -1734,7 +1731,7 @@ impl CfgBuilder {
                         }
                     }
 
-                    wip.extend(translator.convert_expr(ctx.unused(), expr)?.stmts);
+                    wip.extend(translator.convert_expr(ctx.unused(), expr)?.into_stmts());
 
                     // If we can tell the expression is going to diverge, there is no falling through to
                     // the next block.
@@ -1831,8 +1828,9 @@ impl CfgBuilder {
                     let body_label = self.fresh_label();
 
                     // Convert the condition
-                    let WithStmts { stmts, val } =
-                        translator.convert_expr(ctx.used(), scrutinee)?;
+                    let (stmts, val) = translator
+                        .convert_expr(ctx.used(), scrutinee)?
+                        .discard_unsafe();
                     wip.extend(stmts);
 
                     let wip_label = wip.label;

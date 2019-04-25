@@ -1168,7 +1168,7 @@ class TranslateASTVisitor final
 #else  // Incompatible const qualifier pointer casts are now NoOp casts if they
        // are in the same namespace. See Sema::CheckAssignmentConstraints
        // (SemaExpr.cpp:7951)
-                                 if (ICE->getCastKind() == CastKind::CK_NoOp) {
+                if (ICE->getCastKind() == CastKind::CK_NoOp) {
 #endif // CLANG_VERSION_MAJOR
                     auto source_type = ICE->getSubExpr()->getType();
                     auto target_type = ICE->getType();

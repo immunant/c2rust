@@ -136,17 +136,20 @@ impl<'c> Translation<'c> {
             let val = self.convert_expr(ctx.used(), val_id)?;
             let ty = self.convert_type(ty.ctype)?;
 
-            let mut res = val.map(|va| {
+            val.and_then(|val| {
                 let path = mk()
                     .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![ty]));
-                mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>)
-            });
-            if ctx.is_unused() {
-                res.stmts.push(mk().expr_stmt(res.val));
-                res.val = self.panic_or_err("convert_vaarg unused");
-            }
+                let val = mk().method_call_expr(val, path, vec![] as Vec<P<Expr>>);
 
-            Ok(res)
+                if ctx.is_unused() {
+                    Ok(WithStmts::new(
+                        vec![mk().expr_stmt(val)],
+                        self.panic_or_err("convert_vaarg unused"),
+                    ))
+                } else {
+                    Ok(WithStmts::new_val(val))
+                }
+            })
         } else {
             Err(format_err!(
                 "Variable argument list translation is not enabled."

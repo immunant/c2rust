@@ -401,15 +401,17 @@ impl<'a> Translation<'a> {
                     ));
                 }
                 Both(field_id, (field_name, _, bitfield_width, _, _)) => {
-                    let expr = self.convert_expr(ctx.used(), *field_id)?;
+                    let expr = self.convert_expr(ctx.used(), *field_id)?
+                        .to_pure_expr()
+                        .ok_or_else(|| format_err!("Expected no statements in field expression"))?;
 
                     if bitfield_width.is_some() {
-                        bitfield_inits.push((field_name, expr.val));
+                        bitfield_inits.push((field_name, expr));
 
                         continue;
                     }
 
-                    fields.push(mk().field(field_name, expr.val));
+                    fields.push(mk().field(field_name, expr));
                 }
                 _ => unreachable!(),
             }
@@ -435,10 +437,7 @@ impl<'a> Translation<'a> {
 
         let val = mk().block_expr(mk().block(stmts));
 
-        Ok(WithStmts {
-            stmts: Vec::new(),
-            val,
-        })
+        Ok(WithStmts::new_val(val))
     }
 
     /// This method handles zero-initializing bitfield structs including bitfields
@@ -539,77 +538,79 @@ impl<'a> Translation<'a> {
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
-        let lhs_expr = named_reference.val.0;
-        let field_name = self
-            .type_converter
-            .borrow()
-            .resolve_field_name(None, field_id)
-            .ok_or("Could not find bitfield name")?;
-        let setter_name = format!("set_{}", field_name);
-        let lhs_expr_read =
-            mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<P<Expr>>::new());
-        // Allow the value of this assignment to be used as the RHS of other assignments
-        let val = lhs_expr_read.clone();
-        let param_expr = match op {
-            BinOp::AssignAdd => mk().binary_expr(BinOpKind::Add, lhs_expr_read, rhs_expr),
-            BinOp::AssignSubtract => mk().binary_expr(BinOpKind::Sub, lhs_expr_read, rhs_expr),
-            BinOp::AssignMultiply => mk().binary_expr(BinOpKind::Mul, lhs_expr_read, rhs_expr),
-            BinOp::AssignDivide => mk().binary_expr(BinOpKind::Div, lhs_expr_read, rhs_expr),
-            BinOp::AssignModulus => mk().binary_expr(BinOpKind::Rem, lhs_expr_read, rhs_expr),
-            BinOp::AssignBitXor => mk().binary_expr(BinOpKind::BitXor, lhs_expr_read, rhs_expr),
-            BinOp::AssignShiftLeft => mk().binary_expr(BinOpKind::Shl, lhs_expr_read, rhs_expr),
-            BinOp::AssignShiftRight => mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr),
-            BinOp::AssignBitOr => mk().binary_expr(BinOpKind::BitOr, lhs_expr_read, rhs_expr),
-            BinOp::AssignBitAnd => mk().binary_expr(BinOpKind::BitAnd, lhs_expr_read, rhs_expr),
-            BinOp::Assign => rhs_expr,
-            _ => panic!("Cannot convert non-assignment operator"),
-        };
+        named_reference.and_then(|named_reference| {
+            let lhs_expr = named_reference.0;
+            let field_name = self
+                .type_converter
+                .borrow()
+                .resolve_field_name(None, field_id)
+                .ok_or("Could not find bitfield name")?;
+            let setter_name = format!("set_{}", field_name);
+            let lhs_expr_read =
+                mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<P<Expr>>::new());
+            // Allow the value of this assignment to be used as the RHS of other assignments
+            let val = lhs_expr_read.clone();
+            let param_expr = match op {
+                BinOp::AssignAdd => mk().binary_expr(BinOpKind::Add, lhs_expr_read, rhs_expr),
+                BinOp::AssignSubtract => mk().binary_expr(BinOpKind::Sub, lhs_expr_read, rhs_expr),
+                BinOp::AssignMultiply => mk().binary_expr(BinOpKind::Mul, lhs_expr_read, rhs_expr),
+                BinOp::AssignDivide => mk().binary_expr(BinOpKind::Div, lhs_expr_read, rhs_expr),
+                BinOp::AssignModulus => mk().binary_expr(BinOpKind::Rem, lhs_expr_read, rhs_expr),
+                BinOp::AssignBitXor => mk().binary_expr(BinOpKind::BitXor, lhs_expr_read, rhs_expr),
+                BinOp::AssignShiftLeft => mk().binary_expr(BinOpKind::Shl, lhs_expr_read, rhs_expr),
+                BinOp::AssignShiftRight => mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr),
+                BinOp::AssignBitOr => mk().binary_expr(BinOpKind::BitOr, lhs_expr_read, rhs_expr),
+                BinOp::AssignBitAnd => mk().binary_expr(BinOpKind::BitAnd, lhs_expr_read, rhs_expr),
+                BinOp::Assign => rhs_expr,
+                _ => panic!("Cannot convert non-assignment operator"),
+            };
 
-        let mut stmts = named_reference.stmts;
+            let mut stmts = vec![];
 
-        // If there's just one statement we should be able to be able to fit it into one line without issue
-        // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
-        // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
-        match param_expr.node {
-            ExprKind::Block(ref block, _) => {
-                let last = block.stmts.len() - 1;
+            // If there's just one statement we should be able to be able to fit it into one line without issue
+            // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
+            // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
+            match param_expr.node {
+                ExprKind::Block(ref block, _) => {
+                    let last = block.stmts.len() - 1;
 
-                for (i, stmt) in block.stmts.iter().enumerate() {
-                    if i == last {
-                        break;
+                    for (i, stmt) in block.stmts.iter().enumerate() {
+                        if i == last {
+                            break;
+                        }
+
+                        stmts.push(stmt.clone());
                     }
 
-                    stmts.push(stmt.clone());
+                    let last_expr = match block.stmts[last].node {
+                        StmtKind::Expr(ref expr) => expr.clone(),
+                        _ => return Err(TranslationError::generic("Expected Expr StmtKind")),
+                    };
+                    let method_call = mk().method_call_expr(lhs_expr, setter_name, vec![last_expr]);
+
+                    stmts.push(mk().expr_stmt(method_call));
                 }
+                _ if contains_block(&param_expr.node) => {
+                    let name = self.renamer.borrow_mut().pick_name("rhs");
+                    let name_ident = mk().mutbl().ident_pat(name.clone());
+                    let temporary_stmt =
+                        mk().local(name_ident, None as Option<P<Ty>>, Some(param_expr.clone()));
+                    let assignment_expr =
+                        mk().method_call_expr(lhs_expr, setter_name, vec![mk().ident_expr(name)]);
 
-                let last_expr = match block.stmts[last].node {
-                    StmtKind::Expr(ref expr) => expr.clone(),
-                    _ => return Err(TranslationError::generic("Expected Expr StmtKind")),
-                };
-                let method_call = mk().method_call_expr(lhs_expr, setter_name, vec![last_expr]);
+                    stmts.push(mk().local_stmt(P(temporary_stmt)));
+                    stmts.push(mk().expr_stmt(assignment_expr));
+                }
+                _ => {
+                    let assignment_expr =
+                        mk().method_call_expr(lhs_expr, setter_name, vec![param_expr.clone()]);
 
-                stmts.push(mk().expr_stmt(method_call));
-            }
-            _ if contains_block(&param_expr.node) => {
-                let name = self.renamer.borrow_mut().pick_name("rhs");
-                let name_ident = mk().mutbl().ident_pat(name.clone());
-                let temporary_stmt =
-                    mk().local(name_ident, None as Option<P<Ty>>, Some(param_expr.clone()));
-                let assignment_expr =
-                    mk().method_call_expr(lhs_expr, setter_name, vec![mk().ident_expr(name)]);
+                    stmts.push(mk().expr_stmt(assignment_expr));
+                }
+            };
 
-                stmts.push(mk().local_stmt(P(temporary_stmt)));
-                stmts.push(mk().expr_stmt(assignment_expr));
-            }
-            _ => {
-                let assignment_expr =
-                    mk().method_call_expr(lhs_expr, setter_name, vec![param_expr.clone()]);
-
-                stmts.push(mk().expr_stmt(assignment_expr));
-            }
-        };
-
-        return Ok(WithStmts { stmts, val });
+            return Ok(WithStmts::new(stmts, val));
+        })
     }
 
     /// This method will convert a bitfield member one of four ways:
