@@ -1,7 +1,4 @@
-import os
-import subprocess
-
-from typing import List
+from typing import Set, Iterable
 
 import tests.hostenv as hostenv
 from tests.util import *
@@ -88,10 +85,37 @@ def check_file(file: str):
         warn("requirements checking id not implemented for non-ubuntu hosts")
 
 
-def check(conf):
+def get_conf_files(conf) -> Iterable[str]:
     conf_dirs = [get_script_dir()] + conf.project_dirs
     conf_files = map(lambda d: os.path.join(d, CONF_YML), conf_dirs)
-    conf_files = filter(lambda f: os.path.isfile(f), conf_files)
+    return filter(lambda f: os.path.isfile(f), conf_files)
 
-    for cf in conf_files:
+
+def check(conf):
+    for cf in get_conf_files(conf):
         check_file(cf)
+
+
+def collect(conf, host: str) -> Set[str]:
+    def collect_packages_for_host(yaml: dict):
+        apt = yaml.get("apt")
+        if apt:
+            packages = apt.get("packages")
+            if packages:
+                return packages
+        return []
+
+    def collect_from_file(file: str, host: str):
+        yaml = get_yaml(file)
+        reqs = yaml.get("requirements")
+        if reqs:
+            host_reqs = reqs.get(host)
+            if host_reqs:
+                return collect_packages_for_host(host_reqs)
+        else:
+            return []
+
+    res = []
+    for cf in get_conf_files(conf):
+        res += collect_from_file(cf, host)
+    return set(res)

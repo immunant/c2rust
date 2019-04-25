@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
-import tests
 import argparse
+
+import tests
+import tests.requirements as requirements
+
 
 
 def get_args():
@@ -12,14 +15,23 @@ def get_args():
     parser.add_argument('--project', dest='project', action='store',
                         type=str, default=None,
                         help='Only test specified project')
-
     parser.add_argument('--stage', dest='stage', action='store',
                         type=str, default=None,
                         help='Only test specified stage')
-
+    parser.add_argument('--print-requirements', metavar='PLATFORM',
+                        dest='requirements', choices=['ubuntu'],
+                        action='store', type=str, default=None,
+                        help='Print requirements for platform and exit')
     return parser.parse_args()
 
 
 if __name__ == "__main__":
-    conf = tests.Config(get_args())
-    tests.run_tests(conf)
+    args = get_args()
+    conf = tests.Config(args)
+    if args.requirements:
+        packages = sorted(requirements.collect(conf, args.requirements))
+        packages = " \\\n".join(packages)
+        print(packages)
+    else:
+        conf = tests.Config(args)
+        tests.run_tests(conf)
