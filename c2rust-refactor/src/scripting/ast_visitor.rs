@@ -1,5 +1,6 @@
 use rlua::prelude::{LuaFunction, LuaResult};
 use rlua::{UserData, UserDataMethods};
+use syntax::ast::{Arg, PatKind};
 use syntax::source_map::symbol::Symbol;
 
 use crate::ast_manip::fn_edit::{FnKind, FnLike, mut_visit_fns};
@@ -68,20 +69,72 @@ impl UserData for &mut FnLike {
         // @treturn bool true if a foreign function
         methods.add_method_mut("is_foreign", |_, this, _: ()| Ok(this.kind == FnKind::Foreign));
 
-        /// Gets the ident of this function-like
-        // @function get_ident
+        /// Gets the name of this function-like type
+        // @function get_name
         // @treturn string
-        methods.add_method_mut("get_ident", |_, this, _: ()| Ok(this.ident.to_string()));
+        methods.add_method_mut("get_name", |_, this, _: ()| Ok(this.ident.to_string()));
 
-        /// Sets the ident of this function-like
-        // @function set_ident
-        // @tparam string ident New ident to use
-        methods.add_method_mut("set_ident", |_, this, ident: String| {
+        /// Sets the name of this function-like type
+        // @function set_name
+        // @tparam string name New name to use
+        methods.add_method_mut("set_name", |_, this, ident: String| {
             this.ident.name = Symbol::intern(&ident);
 
             Ok(())
         });
 
+        /// Gets the arguments of this function
+        // @function get_args
+        // @treturn array List of arguments
+        methods.add_method_mut("get_args", |lua_ctx, this, _: ()| {
+            let lua_table = lua_ctx.create_table()?;
 
+            lua_ctx.scope(|scope| {
+                let arg_iter = this.decl.inputs.iter_mut().map(|a| ArgWrapper(a));
+
+                // TODO: Node id rather than i
+                for (i, arg) in arg_iter.enumerate() {
+                    let arg = scope.create_nonstatic_userdata(arg)?;
+
+                    lua_table.set(i, arg)?;
+                }
+
+                // let x = this.decl.inputs.iter_mut().map(|a| ArgWrapper(a)).next().unwrap();
+                // let x = scope.create_nonstatic_userdata(x)?;
+                // Ok(x)
+                Ok(())
+            })?;
+
+            Ok(lua_table)
+        });
+    }
+}
+
+struct ArgWrapper<'a>(&'a mut Arg);
+
+#[allow(unused_doc_comments)]
+impl UserData for ArgWrapper<'_> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        /// Gets the name of this function-like type
+        // @function get_name
+        // @treturn string
+        methods.add_method_mut("get_name", |_, this, _: ()| {
+            match this.0.pat.node {
+                PatKind::Ident(_, ident, _) => Ok(ident.to_string()),
+                ref e => unreachable!("Found {:?}", e),
+            }
+        });
+
+        /// Sets the name of this function-like type
+        // @function set_name
+        // @tparam string name New name to use
+        methods.add_method_mut("set_name", |_, this, new_ident: String| {
+            match this.0.pat.node {
+                PatKind::Ident(_, mut ident, _) => ident.name = Symbol::intern(&new_ident),
+                ref e => unreachable!("Found {:?}", e),
+            }
+
+            Ok(())
+        });
     }
 }

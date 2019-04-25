@@ -9,7 +9,16 @@ refactor:transform(
                             return
                         end
 
-                        print("Running function visitor! - found function", fn_like:get_ident())
+                        print("FnLike name: " .. fn_like:get_name())
+                        args = fn_like:get_args()
+
+                        print(args[0]:get_name())
+
+                        -- for arg = 1, #args do
+                        --     print("Renaming arg", arg:get_name())
+
+                        --     arg:set_name("silly_name")
+                        -- end
                     end
                 )
                 return crate
