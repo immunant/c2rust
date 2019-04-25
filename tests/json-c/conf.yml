@@ -1,0 +1,5 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+        - libtool # used by autoconf
