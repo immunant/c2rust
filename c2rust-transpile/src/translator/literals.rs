@@ -161,7 +161,7 @@ impl<'c> Translation<'c> {
                     let pointer =
                         transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
                     let array = mk().unary_expr(ast::UnOp::Deref, pointer);
-                    Ok(WithStmts::new_val(array))
+                    Ok(WithStmts::new_unsafe_val(array))
                 }
             }
         }
@@ -367,31 +367,25 @@ impl<'c> Translation<'c> {
             );
         }
 
-        let mut stmts: Vec<Stmt> = vec![];
-        let mut fields: Vec<Field> = vec![];
+        self
+            .convert_exprs(ctx.used(), ids)?
+            .result_map(|field_exprs| {
+                // Add specified record fields
+                let mut fields: Vec<ast::Field> = field_exprs.iter().zip(&field_decls).map(|(expr, decl)| {
+                    let (ref field_name, _, _, _, _) = decl;
+                    mk().field(field_name, expr)
+                }).collect();
 
-        // Add specified record fields
-        for i in 0usize..ids.len() {
-            let v = ids[i];
-            let &(ref field_name, _, _, _, _) = &field_decls[i];
+                // Pad out remaining omitted record fields
+                for decl in &field_decls[ids.len()..] {
+                    let &(ref field_name, ty, _, _, _) = decl;
+                    fields.push(mk().field(
+                        field_name,
+                        self.implicit_default_expr(ty.ctype, ctx.is_static)?,
+                    ));
+                }
 
-            let mut x = self.convert_expr(ctx.used(), v)?;
-            stmts.append(x.stmts_mut());
-            fields.push(mk().field(field_name, x.into_value()));
-        }
-
-        // Pad out remaining omitted record fields
-        for i in ids.len()..fields.len() {
-            let &(ref field_name, ty, _, _, _) = &field_decls[i];
-            fields.push(mk().field(
-                field_name,
-                self.implicit_default_expr(ty.ctype, ctx.is_static)?,
-            ));
-        }
-
-        Ok(WithStmts::new(
-            stmts,
-            mk().struct_expr(vec![mk().path_segment(struct_name)], fields),
-        ))
+                Ok(mk().struct_expr(vec![mk().path_segment(struct_name)], fields))
+            })
     }
 }
