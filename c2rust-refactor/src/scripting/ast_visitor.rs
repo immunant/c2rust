@@ -1,10 +1,12 @@
-use rlua::prelude::{LuaFunction, LuaResult};
+use rlua::prelude::{LuaContext, LuaResult, LuaTable};
 use rlua::{UserData, UserDataMethods};
-use syntax::ast::{Arg, PatKind};
+use syntax::ast::{Arg, FnDecl, PatKind};
 use syntax::source_map::symbol::Symbol;
+use syntax::ptr::P;
 
 use crate::ast_manip::fn_edit::{FnKind, FnLike, mut_visit_fns};
 use crate::command::CommandState;
+use crate::scripting::{IntoLuaAst, TransformCtxt, utils::iter_to_lua_array};
 
 pub struct AstVisitor<'a> {
     st: &'a CommandState,
@@ -18,123 +20,57 @@ impl<'cs> AstVisitor<'cs> {
     }
 }
 
-#[allow(unused_doc_comments)]
-impl UserData for AstVisitor<'_> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        /// Visits all function like items
-        // @function visit_fn_like
-        // @tparam function() callback Function called for each function like item.
-        methods.add_method_mut("visit_fn_like", |lua_ctx, this, callback: LuaFunction| {
-            let mut found_err = Ok(());
+impl<'lua> IntoLuaAst<'lua> for FnLike {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
 
-            mut_visit_fns(&mut *this.st.krate_mut(), |fn_like| {
-                if found_err.is_err() {
-                    return;
-                }
+        ast.set("type", "FnLike")?;
+        ast.set("kind", match self.kind {
+            FnKind::Normal => "Normal",
+            FnKind::ImplMethod => "ImplMethod",
+            FnKind::TraitMethod => "TraitMethod",
+            FnKind::Foreign => "Foreign",
+        })?;
+        ast.set("id", self.id.as_u32())?;
+        ast.set("ident", self.ident.as_str().get())?;
+        ast.set("decl", self.decl.clone().into_lua_ast(ctx, lua_ctx)?)?;
 
-                let res: LuaResult<()> = lua_ctx.scope(|scope| {
-                    let fn_like = scope.create_nonstatic_userdata(fn_like)?;
-
-                    callback.call(fn_like)
-                });
-
-                found_err = res;
-            });
-
-            found_err
-        });
+        Ok(ast)
     }
 }
 
-#[allow(unused_doc_comments)]
-impl UserData for &mut FnLike {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        /// Determines whether or not this function-like type is a normal function
-        // @function is_normal
-        // @treturn bool true if a normal function
-        methods.add_method_mut("is_normal", |_, this, _: ()| Ok(this.kind == FnKind::Normal));
+impl<'lua> IntoLuaAst<'lua> for P<FnDecl> {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
 
-        /// Determines whether or not this function-like type is an impl method
-        // @function is_impl_method
-        // @treturn bool true if an impl method
-        methods.add_method_mut("is_impl_method", |_, this, _: ()| Ok(this.kind == FnKind::ImplMethod));
+        ast.set("type", "FnDecl")?;
+        ast.set("c_variadic", self.c_variadic)?;
+        // ast.set("return_type", self.output)?;
 
-        /// Determines whether or not this function-like type is a trait method
-        // @function is_trait_method
-        // @treturn bool true if a trait method
-        methods.add_method_mut("is_trait_method", |_, this, _: ()| Ok(this.kind == FnKind::TraitMethod));
+        let args: LuaResult<Vec<_>> = self.inputs
+            .iter()
+            .map(|arg| arg.clone().into_lua_ast(ctx, lua_ctx))
+            .collect();
 
-        /// Determines whether or not this function-like type is a foreign function
-        // @function is_foreign
-        // @treturn bool true if a foreign function
-        methods.add_method_mut("is_foreign", |_, this, _: ()| Ok(this.kind == FnKind::Foreign));
+        ast.set("args", iter_to_lua_array(args?.into_iter(), lua_ctx)?)?;
 
-        /// Gets the name of this function-like type
-        // @function get_name
-        // @treturn string
-        methods.add_method_mut("get_name", |_, this, _: ()| Ok(this.ident.to_string()));
+        // TODO: self, self kind
 
-        /// Sets the name of this function-like type
-        // @function set_name
-        // @tparam string name New name to use
-        methods.add_method_mut("set_name", |_, this, ident: String| {
-            this.ident.name = Symbol::intern(&ident);
-
-            Ok(())
-        });
-
-        /// Gets the arguments of this function
-        // @function get_args
-        // @treturn array List of arguments
-        methods.add_method_mut("get_args", |lua_ctx, this, _: ()| {
-            let lua_table = lua_ctx.create_table()?;
-
-            lua_ctx.scope(|scope| {
-                let arg_iter = this.decl.inputs.iter_mut().map(|a| ArgWrapper(a));
-
-                // TODO: Node id rather than i
-                for (i, arg) in arg_iter.enumerate() {
-                    let arg = scope.create_nonstatic_userdata(arg)?;
-
-                    lua_table.set(i, arg)?;
-                }
-
-                // let x = this.decl.inputs.iter_mut().map(|a| ArgWrapper(a)).next().unwrap();
-                // let x = scope.create_nonstatic_userdata(x)?;
-                // Ok(x)
-                Ok(())
-            })?;
-
-            Ok(lua_table)
-        });
+        Ok(ast)
     }
 }
 
-struct ArgWrapper<'a>(&'a mut Arg);
+impl<'lua> IntoLuaAst<'lua> for Arg {
+    fn into_lua_ast(self, _ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
 
-#[allow(unused_doc_comments)]
-impl UserData for ArgWrapper<'_> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        /// Gets the name of this function-like type
-        // @function get_name
-        // @treturn string
-        methods.add_method_mut("get_name", |_, this, _: ()| {
-            match this.0.pat.node {
-                PatKind::Ident(_, ident, _) => Ok(ident.to_string()),
-                ref e => unreachable!("Found {:?}", e),
-            }
-        });
+        ast.set("type", "Arg")?;
 
-        /// Sets the name of this function-like type
-        // @function set_name
-        // @tparam string name New name to use
-        methods.add_method_mut("set_name", |_, this, new_ident: String| {
-            match this.0.pat.node {
-                PatKind::Ident(_, mut ident, _) => ident.name = Symbol::intern(&new_ident),
-                ref e => unreachable!("Found {:?}", e),
-            }
+        match self.pat.node {
+            PatKind::Ident(_, ident, _) => ast.set("ident", ident.as_str().get())?,
+            ref e => unreachable!("Found {:?}", e),
+        }
 
-            Ok(())
-        });
+        Ok(ast)
     }
 }

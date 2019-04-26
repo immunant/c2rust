@@ -1,27 +1,22 @@
 refactor:transform(
     function(transform_ctx, crate)
-        return transform_ctx:visit(
-            function(visitor)
-                visitor:visit_fn_like(
-                    function(fn_like)
-                        -- Skip foreign functions - we only want functions with bodies
-                        if fn_like:is_foreign() then
-                            return
-                        end
+        return transform_ctx:visit_fn_like(
+            function(fn_like)
+                -- Skip foreign functions - we only want functions with bodies
+                if fn_like.kind == "Foreign" then
+                    return
+                end
 
-                        print("FnLike name: " .. fn_like:get_name())
-                        args = fn_like:get_args()
+                print("FnLike name: " .. fn_like.ident)
 
-                        print(args[0]:get_name())
+                args = fn_like.decl.args
+                -- fn_like:set_name("asd")
 
-                        -- for arg = 1, #args do
-                        --     print("Renaming arg", arg:get_name())
+                for _, arg in ipairs(args) do
+                    print("Renaming arg", arg.ident)
 
-                        --     arg:set_name("silly_name")
-                        -- end
-                    end
-                )
-                return crate
+                    arg.ident = "silly_name"
+                end
             end
         )
     end

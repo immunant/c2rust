@@ -14,9 +14,10 @@ use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaTable};
 use rlua::{Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
 use slotmap::{new_key_type, SlotMap};
-use syntax::ast;
+use syntax::ast::{self, FnDecl};
 use syntax::ptr::P;
 
+use crate::ast_manip::fn_edit::{FnLike, mut_visit_fns};
 use crate::command::{self, CommandState, RefactorState};
 use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
@@ -24,6 +25,7 @@ use crate::matcher::{self, mut_visit_match_with, Bindings, MatchCtxt, Pattern, S
 use crate::RefactorCtxt;
 
 pub mod ast_visitor;
+pub mod utils;
 
 use ast_visitor::AstVisitor;
 
@@ -61,7 +63,7 @@ pub fn run_lua_file(
 }
 
 trait IntoLuaAst<'lua> {
-    fn into_lua_ast(self, ctx: &TransformCtxt, ast: &mut LuaTable<'lua>) -> LuaResult<()>;
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>>;
 }
 
 /// AST Stmt
@@ -80,7 +82,8 @@ trait IntoLuaAst<'lua> {
 // `StmtKind::Semi` and `StmtKind::Expr` only:
 // @tfield LuaAstNode expr Expression in this statement
 impl<'lua> IntoLuaAst<'lua> for ast::Stmt {
-    fn into_lua_ast(self, ctx: &TransformCtxt, ast: &mut LuaTable<'lua>) -> LuaResult<()> {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
         ast.set("type", "Stmt")?;
         match self.node {
             ast::StmtKind::Local(l) => {
@@ -111,7 +114,7 @@ impl<'lua> IntoLuaAst<'lua> for ast::Stmt {
             }
         }
 
-        Ok(())
+        Ok(ast)
     }
 }
 
@@ -123,7 +126,8 @@ impl<'lua> IntoLuaAst<'lua> for ast::Stmt {
 // `ExprKind::Lit` only:
 // @field value Literal value of this expression
 impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
-    fn into_lua_ast(self, _ctx: &TransformCtxt, ast: &mut LuaTable<'lua>) -> LuaResult<()> {
+    fn into_lua_ast(self, _ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
         ast.set("type", "Expr")?;
         self.and_then(|expr| {
             match expr.node {
@@ -148,7 +152,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 }
             }
 
-            Ok(())
+            Ok(ast)
         })
     }
 }
@@ -205,6 +209,8 @@ enum RustAstNode {
     Stmts(Vec<ast::Stmt>),
     Stmt(ast::Stmt),
     Item(P<ast::Item>),
+    FnLike(FnLike),
+    FnDecl(P<FnDecl>),
 }
 
 impl TryMatch for RustAstNode {
@@ -217,6 +223,7 @@ impl TryMatch for RustAstNode {
             RustAstNode::Stmts(x) => mcx.try_match(x, target.try_into().unwrap()),
             RustAstNode::Stmt(x) => mcx.try_match(x, target.try_into().unwrap()),
             RustAstNode::Item(x) => mcx.try_match(x, target.try_into().unwrap()),
+            _ => unimplemented!(),
         }
     }
 }
@@ -293,6 +300,27 @@ impl<'a> TryFrom<&'a RustAstNode> for &'a P<ast::Item> {
     }
 }
 
+impl<'a> TryFrom<&'a RustAstNode> for &'a FnLike {
+    type Error = &'static str;
+    fn try_from(value: &'a RustAstNode) -> Result<Self, Self::Error> {
+        match value {
+            RustAstNode::FnLike(ref x) => Ok(x),
+            _ => Err("Only &RustAstNode::FnLike can be converted to &FnLike"),
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a RustAstNode> for &'a P<FnDecl> {
+    type Error = &'static str;
+    fn try_from(value: &'a RustAstNode) -> Result<Self, Self::Error> {
+        match value {
+            RustAstNode::FnDecl(ref x) => Ok(x),
+            _ => Err("Only &RustAstNode::FnDecl can be converted to &P<FnDecl>"),
+        }
+    }
+}
+
+
 impl Subst for RustAstNode {
     fn subst(self, st: &CommandState, cx: &RefactorCtxt, bindings: &Bindings) -> Self {
         match self {
@@ -303,6 +331,7 @@ impl Subst for RustAstNode {
             RustAstNode::Stmts(x) => RustAstNode::Stmts(x.subst(st, cx, bindings)),
             RustAstNode::Stmt(x) => RustAstNode::Stmt(x.subst(st, cx, bindings)),
             RustAstNode::Item(x) => RustAstNode::Item(x.subst(st, cx, bindings)),
+            _ => unimplemented!(),
         }
     }
 }
@@ -499,17 +528,15 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
         lua_ctx: LuaContext<'lua>,
         node: LuaAstNode,
     ) -> LuaResult<LuaTable<'lua>> {
-        let mut ast = lua_ctx.create_table()?;
         match self.clone_ast(node) {
-            RustAstNode::Stmt(s) => s.into_lua_ast(self, &mut ast)?,
-            RustAstNode::Expr(e) => e.into_lua_ast(self, &mut ast)?,
-            _ => {
-                return Err(LuaError::external(
-                    "get_ast not implemented for this type of RustAstNode",
-                ));
-            }
+            RustAstNode::Stmt(s) => s.into_lua_ast(self, lua_ctx),
+            RustAstNode::Expr(e) => e.into_lua_ast(self, lua_ctx),
+            RustAstNode::FnLike(fl) => fl.into_lua_ast(self, lua_ctx),
+            RustAstNode::FnDecl(fd) => fd.into_lua_ast(self, lua_ctx),
+            _ => Err(LuaError::external(
+                "get_ast not implemented for this type of RustAstNode",
+            )),
         }
-        Ok(ast)
     }
 }
 
@@ -593,22 +620,48 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         });
 
         // FIXME: docs
-        methods.add_method_mut("visit", |lua_ctx, this, callback: LuaFunction| {
-            let visitor = AstVisitor::new(this.st);
+        // methods.add_method_mut("visit", |lua_ctx, this, callback: LuaFunction| {
+        //     let visitor = AstVisitor::new(this.st);
 
-            let res: LuaResult<LuaAstNode> = lua_ctx.scope(|scope| {
-                let visitor = scope.create_nonstatic_userdata(visitor)?;
+        //     let res: LuaResult<LuaAstNode> = lua_ctx.scope(|scope| {
+        //         let visitor = scope.create_nonstatic_userdata(visitor)?;
 
-                callback.call(visitor)?;
+        //         callback.call(visitor)?;
 
-                let krate = this.intern(this.st.krate().clone());
+        //         let krate = this.intern(this.st.krate().clone());
 
-                println!("Visitor installer called successfully");
+        //         println!("Visitor installer called successfully");
 
-                Ok(krate)
+        //         Ok(krate)
+        //     });
+
+        //     Ok(res)
+        // });
+
+        /// Visits all function like items
+        // @function visit_fn_like
+        // @tparam function() callback Function called for each function like item.
+        methods.add_method_mut("visit_fn_like", |lua_ctx, this, callback: LuaFunction| {
+            let mut found_err = Ok(());
+
+            mut_visit_fns(&mut *this.st.krate_mut(), |fn_like| {
+                if found_err.is_err() {
+                    return;
+                }
+
+                let res: LuaResult<()> = lua_ctx.scope(|scope| { // TODO: Remove scope
+                    let interned_fn_like = this.intern(fn_like.clone());
+                    let fn_like_ast = this.get_lua_ast(lua_ctx, interned_fn_like);
+
+                    callback.call(fn_like_ast)
+                });
+
+                found_err = res;
             });
 
-            Ok(res)
+            let krate = this.intern(this.st.krate().clone());
+
+            found_err.map(|_| krate)
         });
     }
 }
