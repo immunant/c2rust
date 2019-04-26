@@ -6,3 +6,6 @@ requirements:
         - bison
         - ruby
         - libgdbm-dev
+
+transpile:
+  main: ruby

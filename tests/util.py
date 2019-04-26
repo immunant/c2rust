@@ -4,7 +4,7 @@ import yaml
 import errno
 import subprocess
 
-from typing import List
+from typing import List, Iterable
 
 CONF_YML: str = "conf.yml"
 
@@ -15,6 +15,7 @@ class Config(object):
         self.project = args.project  # project filter
         self.stage = args.stage      # stage filter
         self.project_dirs = find_project_dirs(self)
+        self.project_conf = {cf: get_yaml(cf) for cf in get_conf_files(self)}
 
 
 class Colors(object):
@@ -48,6 +49,12 @@ def is_dir_empty(dirp: str):
 
 def get_script_dir():
     return os.path.dirname(os.path.realpath(__file__))
+
+
+def get_conf_files(conf) -> Iterable[str]:
+    conf_dirs = [get_script_dir()] + conf.project_dirs
+    conf_files = map(lambda d: os.path.join(d, CONF_YML), conf_dirs)
+    return filter(lambda f: os.path.isfile(f), conf_files)
 
 
 def find_project_dirs(conf: Config) -> List[str]:

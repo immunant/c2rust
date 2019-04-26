@@ -4,7 +4,7 @@ import argparse
 
 import tests
 import tests.requirements as requirements
-
+import tests.templates as templates
 
 
 def get_args():
@@ -25,13 +25,18 @@ def get_args():
     return parser.parse_args()
 
 
+def print_requirements(args):
+    packages = sorted(requirements.collect(conf, args.requirements))
+    packages = " \\\n".join(packages)
+    print(packages)
+
+
 if __name__ == "__main__":
     args = get_args()
     conf = tests.Config(args)
     if args.requirements:
-        packages = sorted(requirements.collect(conf, args.requirements))
-        packages = " \\\n".join(packages)
-        print(packages)
+        print_requirements(args)
     else:
         conf = tests.Config(args)
+        templates.autogen(conf)
         tests.run_tests(conf)

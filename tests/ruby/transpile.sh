@@ -1,14 +1,11 @@
 #!/bin/bash
 set -e; set -o pipefail
 
-EXTRA_COMPILER_FLAGS=${EXTRA_COMPILER_FLAGS:-}
-EXTRA_TRANSPILER_FLAGS=${EXTRA_TRANSPILER_FLAGS:-}
-
 RUST_BACKTRACE=1 c2rust transpile \
-    --output-dir repo --overwrite-existing --main ruby \
-    ${EXTRA_TRANSPILER_FLAGS} \
+    --output-dir repo --main ruby \
+    ${EXTRA_TFLAGS:---overwrite-existing} \
     compile_commands.json \
-    -- -w ${EXTRA_COMPILER_FLAGS} \
+    -- ${EXTRA_CFLAGS:--w} \
      2>&1 | tee `basename "$0"`.log
 
 SCRIPT_DIR="$(cd "$(dirname "$0" )" && pwd)"

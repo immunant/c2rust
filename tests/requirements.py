@@ -1,4 +1,4 @@
-from typing import Set, Iterable
+from typing import Set
 
 import tests.hostenv as hostenv
 from tests.util import *
@@ -66,11 +66,9 @@ def check_host(host: str, yaml: dict):
             die(f"unknown key {key} (fragment: {reqs})")
 
 
-def check_file(file: str):
+def check_file(file: str, yaml):
     relpath = os.path.relpath(file, os.getcwd())
     info(f"checking requirements({relpath})")
-
-    yaml = get_yaml(file)
 
     reqs = yaml.get("requirements")
     if not reqs:
@@ -85,15 +83,9 @@ def check_file(file: str):
         warn("requirements checking id not implemented for non-ubuntu hosts")
 
 
-def get_conf_files(conf) -> Iterable[str]:
-    conf_dirs = [get_script_dir()] + conf.project_dirs
-    conf_files = map(lambda d: os.path.join(d, CONF_YML), conf_dirs)
-    return filter(lambda f: os.path.isfile(f), conf_files)
-
-
 def check(conf):
-    for cf in get_conf_files(conf):
-        check_file(cf)
+    for (cf, yaml) in conf.project_conf.items():
+        check_file(cf, yaml)
 
 
 def collect(conf, host: str) -> Set[str]:

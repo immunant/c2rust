@@ -14,8 +14,8 @@ class Test(object):
         "autogen": ["autogen.sh"],
         "configure": ["configure.sh"],
         "make": ["make.sh", "cmake.sh"],
-        "transpile": ["transpile.sh"],
-        "cargo": ["cargo.sh"],
+        "transpile": ["transpile.gen.sh", "transpile.sh"],
+        "cargo": ["cargo.gen.sh", "cargo.sh"],
         "check": ["check.sh", "test.sh"]
     }
 
