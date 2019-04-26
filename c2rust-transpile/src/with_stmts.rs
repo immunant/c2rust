@@ -118,11 +118,23 @@ impl WithStmts<P<Expr>> {
     /// Package a series of statements and an expression into one block
     pub fn to_block(mut self) -> P<Block> {
         self.stmts.push(mk().expr_stmt(self.val));
-        if self.is_unsafe {
-            mk().unsafe_().block(self.stmts)
-        } else {
-            mk().block(self.stmts)
-        }
+        mk().block(self.stmts)
+    }
+
+    pub fn to_unsafe_pure_expr(self) -> Option<P<Expr>> {
+        let is_unsafe = self.is_unsafe;
+        self.to_pure_expr()
+            .map(|expr| {
+                if is_unsafe {
+                    mk().block_expr(
+                        mk().unsafe_().block(
+                            vec![mk().expr_stmt(expr)]
+                        )
+                    )
+                } else {
+                    expr
+                }
+            })
     }
 
     pub fn to_pure_expr(self) -> Option<P<Expr>> {
