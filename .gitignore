@@ -1,6 +1,6 @@
 .idea/
 compile_commands.json
-
+**/*.gen.sh
 
 # Created by .ignore support plugin (hsz.mobi)
 ### JetBrains template
