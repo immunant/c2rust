@@ -9,14 +9,17 @@ refactor:transform(
 
                 print("FnLike name: " .. fn_like.ident)
 
+                fn_like.ident = "silly_fn"
+
                 args = fn_like.decl.args
-                -- fn_like:set_name("asd")
 
                 for _, arg in ipairs(args) do
                     print("Renaming arg", arg.ident)
 
                     arg.ident = "silly_name"
                 end
+
+                return fn_like
             end
         )
     end

@@ -14,10 +14,10 @@ use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaTable};
 use rlua::{Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
 use slotmap::{new_key_type, SlotMap};
-use syntax::ast::{self, FnDecl};
+use syntax::ast;
 use syntax::ptr::P;
 
-use crate::ast_manip::fn_edit::{FnLike, mut_visit_fns};
+use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::command::{self, CommandState, RefactorState};
 use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
@@ -27,7 +27,7 @@ use crate::RefactorCtxt;
 pub mod ast_visitor;
 pub mod utils;
 
-use ast_visitor::AstVisitor;
+use ast_visitor::MergeLuaAst;
 
 /// Refactoring module
 // @module Refactor
@@ -209,8 +209,6 @@ enum RustAstNode {
     Stmts(Vec<ast::Stmt>),
     Stmt(ast::Stmt),
     Item(P<ast::Item>),
-    FnLike(FnLike),
-    FnDecl(P<FnDecl>),
 }
 
 impl TryMatch for RustAstNode {
@@ -223,7 +221,6 @@ impl TryMatch for RustAstNode {
             RustAstNode::Stmts(x) => mcx.try_match(x, target.try_into().unwrap()),
             RustAstNode::Stmt(x) => mcx.try_match(x, target.try_into().unwrap()),
             RustAstNode::Item(x) => mcx.try_match(x, target.try_into().unwrap()),
-            _ => unimplemented!(),
         }
     }
 }
@@ -300,27 +297,6 @@ impl<'a> TryFrom<&'a RustAstNode> for &'a P<ast::Item> {
     }
 }
 
-impl<'a> TryFrom<&'a RustAstNode> for &'a FnLike {
-    type Error = &'static str;
-    fn try_from(value: &'a RustAstNode) -> Result<Self, Self::Error> {
-        match value {
-            RustAstNode::FnLike(ref x) => Ok(x),
-            _ => Err("Only &RustAstNode::FnLike can be converted to &FnLike"),
-        }
-    }
-}
-
-impl<'a> TryFrom<&'a RustAstNode> for &'a P<FnDecl> {
-    type Error = &'static str;
-    fn try_from(value: &'a RustAstNode) -> Result<Self, Self::Error> {
-        match value {
-            RustAstNode::FnDecl(ref x) => Ok(x),
-            _ => Err("Only &RustAstNode::FnDecl can be converted to &P<FnDecl>"),
-        }
-    }
-}
-
-
 impl Subst for RustAstNode {
     fn subst(self, st: &CommandState, cx: &RefactorCtxt, bindings: &Bindings) -> Self {
         match self {
@@ -331,7 +307,6 @@ impl Subst for RustAstNode {
             RustAstNode::Stmts(x) => RustAstNode::Stmts(x.subst(st, cx, bindings)),
             RustAstNode::Stmt(x) => RustAstNode::Stmt(x.subst(st, cx, bindings)),
             RustAstNode::Item(x) => RustAstNode::Item(x.subst(st, cx, bindings)),
-            _ => unimplemented!(),
         }
     }
 }
@@ -531,8 +506,6 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
         match self.clone_ast(node) {
             RustAstNode::Stmt(s) => s.into_lua_ast(self, lua_ctx),
             RustAstNode::Expr(e) => e.into_lua_ast(self, lua_ctx),
-            RustAstNode::FnLike(fl) => fl.into_lua_ast(self, lua_ctx),
-            RustAstNode::FnDecl(fd) => fd.into_lua_ast(self, lua_ctx),
             _ => Err(LuaError::external(
                 "get_ast not implemented for this type of RustAstNode",
             )),
@@ -649,14 +622,34 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                     return;
                 }
 
-                let res: LuaResult<()> = lua_ctx.scope(|scope| { // TODO: Remove scope
-                    let interned_fn_like = this.intern(fn_like.clone());
-                    let fn_like_ast = this.get_lua_ast(lua_ctx, interned_fn_like);
+                // REVIEW: Maybe this can be cleaned up by doing this in
+                // a result returning function?
+                let lua_fn_like = match fn_like.clone().into_lua_ast(this, lua_ctx) {
+                    Ok(lfl) => lfl,
+                    Err(e) => {
+                        found_err = Err(e);
 
-                    callback.call(fn_like_ast)
-                });
+                        return
+                    },
+                };
 
-                found_err = res;
+                let ret_lua_fn_like: LuaTable = match callback.call(lua_fn_like) {
+                    Ok(lfl) => lfl,
+                    Err(e) => {
+                        found_err = Err(e);
+
+                        return
+                    },
+                };
+
+                match fn_like.merge_lua_ast(ret_lua_fn_like) {
+                    Ok(()) => (),
+                    Err(e) => {
+                        found_err = Err(e);
+
+                        return
+                    }
+                };
             });
 
             let krate = this.intern(this.st.krate().clone());
