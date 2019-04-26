@@ -64,7 +64,7 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>) {
 
 #[derive(Debug, Clone)]
 pub struct TranslationError {
-    loc: Option<SrcLoc>,
+    loc: Vec<SrcLoc>,
     inner: Arc<Context<TranslationErrorKind>>,
 }
 
@@ -135,14 +135,14 @@ impl Fail for TranslationError {
 
 impl Display for TranslationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(cause) = self.inner.cause() {
+        if let Some(cause) = self.cause() {
             writeln!(f, "{}", cause)?;
         }
         match self.inner.get_context() {
             TranslationErrorKind::Generic => {}
             ref kind => writeln!(f, "{}", kind)?,
         }
-        if let Some(ref loc) = self.loc {
+        for loc in &self.loc {
             writeln!(f, "{} {}", "-->".blue(), loc)?;
         }
         Ok(())
@@ -155,24 +155,35 @@ impl TranslationError {
     }
 
     pub fn new(loc: &Option<SrcLoc>, inner: Context<TranslationErrorKind>) -> Self {
+        let mut loc_stack = vec![];
+        if let Some(loc) = loc {
+            loc_stack.push(loc.clone());
+        }
         TranslationError {
-            loc: loc.clone(),
+            loc: loc_stack,
             inner: Arc::new(inner),
         }
     }
 
     pub fn generic(msg: &'static str) -> Self {
         TranslationError {
-            loc: None,
+            loc: vec![],
             inner: Arc::new(err_msg(msg).context(TranslationErrorKind::Generic)),
         }
+    }
+
+    pub fn add_loc(mut self, loc: &Option<SrcLoc>) -> Self {
+        if let Some(loc) = loc {
+            self.loc.push(loc.clone());
+        }
+        self
     }
 }
 
 impl From<&'static str> for TranslationError {
     fn from(msg: &'static str) -> TranslationError {
         TranslationError {
-            loc: None,
+            loc: vec![],
             inner: Arc::new(err_msg(msg).context(TranslationErrorKind::Generic)),
         }
     }
@@ -181,7 +192,7 @@ impl From<&'static str> for TranslationError {
 impl From<Error> for TranslationError {
     fn from(e: Error) -> TranslationError {
         TranslationError {
-            loc: None,
+            loc: vec![],
             inner: Arc::new(e.context(TranslationErrorKind::Generic)),
         }
     }
@@ -190,7 +201,7 @@ impl From<Error> for TranslationError {
 impl From<TranslationErrorKind> for TranslationError {
     fn from(kind: TranslationErrorKind) -> TranslationError {
         TranslationError {
-            loc: None,
+            loc: vec![],
             inner: Arc::new(Context::new(kind)),
         }
     }
@@ -199,7 +210,7 @@ impl From<TranslationErrorKind> for TranslationError {
 impl From<Context<TranslationErrorKind>> for TranslationError {
     fn from(ctx: Context<TranslationErrorKind>) -> TranslationError {
         TranslationError {
-            loc: None,
+            loc: vec![],
             inner: Arc::new(ctx),
         }
     }
