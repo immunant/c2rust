@@ -168,14 +168,14 @@ impl<'c> Translation<'c> {
         compute_res_ty: Option<CQualTypeId>,
         lhs_ty: CQualTypeId,
         rhs_ty: CQualTypeId,
-    ) -> Result<P<Expr>, TranslationError> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let compute_lhs_ty = compute_lhs_ty.unwrap();
         let compute_res_ty = compute_res_ty.unwrap();
 
         if self.ast_context.resolve_type_id(compute_lhs_ty.ctype)
             == self.ast_context.resolve_type_id(lhs_ty.ctype)
         {
-            Ok(mk().assign_op_expr(bin_op_kind, write, rhs))
+            Ok(WithStmts::new_val(mk().assign_op_expr(bin_op_kind, write, rhs)))
         } else {
             let lhs_type = self.convert_type(compute_lhs_ty.ctype)?;
             let lhs = mk().cast_expr(read, lhs_type.clone());
@@ -196,11 +196,11 @@ impl<'c> Translation<'c> {
                 .is_enum();
             let result_type = self.convert_type(lhs_ty.ctype)?;
             let val = if is_enum_result {
-                transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std)
+                WithStmts::new_unsafe_val(transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std))
             } else {
-                mk().cast_expr(val, result_type)
+                WithStmts::new_val(mk().cast_expr(val, result_type))
             };
-            Ok(mk().assign_expr(write.clone(), val))
+            Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
         }
     }
 
@@ -324,11 +324,16 @@ impl<'c> Translation<'c> {
                 // Assignment expression itself
                 let assign_stmt = match op {
                     // Regular (possibly volatile) assignment
-                    c_ast::BinOp::Assign if !is_volatile => mk().assign_expr(&write, rhs),
-                    c_ast::BinOp::Assign => self.volatile_write(&write, initial_lhs_type_id, rhs)?,
+                    c_ast::BinOp::Assign if !is_volatile => {
+                        WithStmts::new_val(mk().assign_expr(&write, rhs))
+                    }
+                    c_ast::BinOp::Assign => {
+                        WithStmts::new_val(self.volatile_write(&write, initial_lhs_type_id, rhs)?)
+                    }
 
                     // Anything volatile needs to be desugared into explicit reads and writes
                     op if is_volatile || is_unsigned_arith => {
+                        let mut is_unsafe = false;
                         let op = op
                             .underlying_assignment()
                             .expect("Cannot convert non-assignment operator");
@@ -366,6 +371,7 @@ impl<'c> Translation<'c> {
                                 .is_enum();
                             let result_type = self.convert_type(qtype.ctype)?;
                             let val = if is_enum_result {
+                                is_unsafe = true;
                                 transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std)
                             } else {
                                 mk().cast_expr(val, result_type)
@@ -373,10 +379,15 @@ impl<'c> Translation<'c> {
                             mk().cast_expr(val, write_type)
                         };
 
-                        if is_volatile {
+                        let write = if is_volatile {
                             self.volatile_write(&write, initial_lhs_type_id, val)?
                         } else {
                             mk().assign_expr(write, val)
+                        };
+                        if is_unsafe {
+                            WithStmts::new_unsafe_val(write)
+                        } else {
+                            WithStmts::new_val(write)
                         }
                     }
 
@@ -393,7 +404,7 @@ impl<'c> Translation<'c> {
                             }
                             None => pointer_offset(write.clone(), rhs),
                         };
-                        mk().assign_expr(&write, ptr)
+                        WithStmts::new_val(mk().assign_expr(&write, ptr))
                     }
                     c_ast::BinOp::AssignSubtract if pointer_lhs.is_some() => {
                         let ptr = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
@@ -407,7 +418,7 @@ impl<'c> Translation<'c> {
                             ),
                             None => pointer_neg_offset(write.clone(), rhs),
                         };
-                        mk().assign_expr(&write, ptr)
+                        WithStmts::new_val(mk().assign_expr(&write, ptr))
                     }
 
                     c_ast::BinOp::AssignAdd => self.covert_assignment_operator_aux(
@@ -524,10 +535,12 @@ impl<'c> Translation<'c> {
                     _ => panic!("Cannot convert non-assignment operator"),
                 };
 
-                Ok(WithStmts::new(
-                    vec![mk().expr_stmt(assign_stmt)],
-                    read,
-                ))
+                assign_stmt.and_then(|assign_stmt| {
+                    Ok(WithStmts::new(
+                        vec![mk().expr_stmt(assign_stmt)],
+                        read,
+                    ))
+                })
             })
         })
     }
