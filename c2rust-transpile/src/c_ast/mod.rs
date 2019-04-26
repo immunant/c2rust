@@ -226,7 +226,7 @@ impl TypedAstContext {
     pub fn prune_unused_decls(&mut self) {
         use self::iterators::{DFNodes, SomeId};
         // Starting from a set of root declarations, walk each one to find declarations it
-        // dependens on.  Then walk each of those, recursively.
+        // depends on. Then walk each of those, recursively.
 
         // Declarations we still need to walk.  Everything in here is also in `used`.
         let mut to_walk: Vec<CDeclId> = Vec::new();
@@ -289,6 +289,7 @@ impl TypedAstContext {
                         }
                     }
 
+                    // FIXME: this lookup can fail. See https://github.com/immunant/c2rust/issues/83
                     SomeId::Expr(expr_id) => match self.c_exprs[&expr_id].kind {
                         CExprKind::DeclRef(_, decl_id, _) => {
                             if used.insert(decl_id) {
