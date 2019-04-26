@@ -22,3 +22,9 @@ struct fn_ptrs {
 };
 
 struct fn_ptrs const fns = {NULL, NULL};
+
+
+// Make sure we can't refer to globals in a const macro
+#define GLOBAL_REF &fns
+
+struct fn_ptrs* p = GLOBAL_REF;

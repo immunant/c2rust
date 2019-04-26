@@ -95,6 +95,7 @@ pub enum ReplaceMode {
 pub struct ExprContext {
     used: bool,
     is_static: bool,
+    is_const: bool,
     decay_ref: DecayRef,
     is_bitfield_write: bool,
     needs_address: bool,
@@ -138,6 +139,9 @@ impl ExprContext {
     }
     pub fn set_static(self, is_static: bool) -> Self {
         ExprContext { is_static, ..self }
+    }
+    pub fn set_const(self, is_const: bool) -> Self {
+        ExprContext { is_const, ..self }
     }
     pub fn is_bitfield_write(&self) -> bool {
         self.is_bitfield_write
@@ -436,6 +440,7 @@ pub fn translate(
     let ctx = ExprContext {
         used: true,
         is_static: false,
+        is_const: false,
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
@@ -1734,30 +1739,23 @@ impl<'c> Translation<'c> {
 
                 trace!("Expanding macro {:?}: {:?}", decl_id, self.ast_context[decl_id]);
 
-                let (replacement, qual_ty) = self.canonical_macro_replacement(
-                    ctx.static_().set_expanding_macro(decl_id),
+                let maybe_replacement = self.canonical_macro_replacement(
+                    ctx.set_const(true).set_expanding_macro(decl_id),
                     &replacements,
-                )?;
+                );
 
-                self.macro_types.borrow_mut().insert(decl_id, qual_ty);
-                let ty = self.convert_type(qual_ty.ctype)?;
-                // let val = {
-                //     let val = self.convert_expr(
-                //         ,
-                //         replacement,
-                //     )?;
-                //     assert!(
-                //         val.stmts.is_empty(),
-                //         "Expected no side-effects in static initializer"
-                //     );
-                //     val.val
-                // };
+                if let Some((replacement, qual_ty)) = maybe_replacement {
+                    self.macro_types.borrow_mut().insert(decl_id, qual_ty);
+                    let ty = self.convert_type(qual_ty.ctype)?;
 
-                Ok(ConvertedDecl::Item(mk().span(s).pub_().const_item(
-                    name,
-                    ty,
-                    replacement,
-                )))
+                    Ok(ConvertedDecl::Item(mk().span(s).pub_().const_item(
+                        name,
+                        ty,
+                        replacement,
+                    )))
+                } else {
+                    Ok(ConvertedDecl::NoItem)
+                }
             }
         }
     }
@@ -1766,8 +1764,8 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         replacements: &[CExprId],
-    ) -> Result<(P<Expr>, CQualTypeId), TranslationError> {
-        let (val, ty) = replacements
+    ) -> Option<(P<Expr>, CQualTypeId)> {
+        replacements
             .iter()
             .find_map(|id| {
                 let kind = &self.ast_context[*id].kind;
@@ -1782,12 +1780,9 @@ impl<'c> Translation<'c> {
                 let val = val.to_expr();
                 Some((val, ty))
             })
-            .ok_or_else(|| format_err!("Could not find a valid macro replacement expression"))?;
 
         // TODO: Validate that all replacements are equivalent and pick the most
         // common type to minimize casts.
-
-        Ok((val, ty))
     }
 
     /// Returns true iff type is a (pointer to)* the `va_list` structure type.
@@ -2817,66 +2812,8 @@ impl<'c> Translation<'c> {
         trace!("Converting expr {:?}: {:?}", expr_id, self.ast_context[expr_id]);
 
         if self.tcfg.translate_const_macros {
-            if let Some(macs) = self.ast_context.macro_expansions.get(&expr_id) {
-                // Find the first macro after the macro we're currently
-                // expanding, if any.
-                if let Some(macro_id) = macs
-                    .splitn(2, |macro_id| ctx.expanding_macro(macro_id))
-                    .last()
-                    .unwrap()
-                    .first()
-                {
-                    trace!("  found macro expansion: {:?}", macro_id);
-                    // Ensure that we've expanded this macro
-                    self.convert_decl(ctx, *macro_id)?;
-                    let macro_ty = self.macro_types.borrow()[macro_id];
-                    let rustname = self
-                        .renamer
-                        .borrow_mut()
-                        .get(macro_id)
-                        .ok_or_else(|| format_err!("Macro name not declared"))?;
-
-                    let mut val = mk().path_expr(vec![rustname]);
-                    let mut is_unsafe = false;
-
-                    if let Some(expr_ty) = expr_kind.get_qual_type() {
-                        if macro_ty != expr_ty {
-                            let target_ty = self.convert_type(expr_ty.ctype)?;
-                            if self.ast_context.is_function_pointer(expr_ty.ctype)
-                                || self.ast_context.is_function_pointer(macro_ty.ctype)
-                            {
-                                self.use_feature("const_transmute");
-                                if self.ast_context[macro_ty.ctype].kind.is_integral_type() {
-                                    let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
-                                    let intptr = mk().cast_expr(val, intptr_t.clone());
-                                    val = transmute_expr(intptr_t, target_ty, intptr,
-                                                         self.tcfg.emit_no_std);
-                                    is_unsafe = true;
-                                } else {
-                                    let source_ty = self.convert_type(macro_ty.ctype)?;
-                                    val = transmute_expr(
-                                        source_ty,
-                                        target_ty,
-                                        val,
-                                        self.tcfg.emit_no_std,
-                                    );
-                                    is_unsafe = true;
-                                }
-                            } else {
-                                val = mk().cast_expr(val, target_ty);
-                            }
-                        }
-                    }
-
-                    // TODO: May need to handle volatile reads here, see
-                    // DeclRef below
-
-                    if is_unsafe {
-                        return Ok(WithStmts::new_unsafe_val(val));
-                    } else {
-                        return Ok(WithStmts::new_val(val));
-                    }
-                }
+            if let Some(converted) = self.convert_macro_expansion(ctx, expr_id)? {
+                return Ok(converted);
             }
         }
 
@@ -2926,6 +2863,14 @@ impl<'c> Translation<'c> {
                     .get(&decl_id)
                     .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
                     .kind;
+                if ctx.is_const {
+                    if let CDeclKind::Variable { has_static_duration: true, .. } = decl {
+                        return Err(format_translation_err!(
+                            src_loc,
+                            "Cannot refer to static duration variable in a const expression",
+                        ));
+                    }
+                }
                 let varname = decl.get_name().expect("expected variable name").to_owned();
                 let rustname = self
                     .renamer
@@ -3039,6 +2984,12 @@ impl<'c> Translation<'c> {
             }
 
             CExprKind::Conditional(_, cond, lhs, rhs) => {
+                if ctx.is_const {
+                    return Err(format_translation_err!(
+                        src_loc,
+                        "Constants cannot contain ternary expressions in Rust",
+                    ));
+                }
                 let cond = self.convert_condition(ctx, true, cond)?;
 
                 let lhs = self.convert_expr(ctx, lhs)?;
@@ -3340,6 +3291,77 @@ impl<'c> Translation<'c> {
 
             CExprKind::VAArg(ty, val_id) => self.convert_vaarg(ctx, ty, val_id),
         }
+    }
+
+    fn convert_macro_expansion(&self, ctx: ExprContext, expr_id: CExprId)
+                               -> Result<Option<WithStmts<P<Expr>>>, TranslationError> {
+        if let Some(macs) = self.ast_context.macro_expansions.get(&expr_id) {
+            // Find the first macro after the macro we're currently
+            // expanding, if any.
+            if let Some(macro_id) = macs
+                .splitn(2, |macro_id| ctx.expanding_macro(macro_id))
+                .last()
+                .unwrap()
+                .first()
+            {
+                trace!("  found macro expansion: {:?}", macro_id);
+                // Ensure that we've converted this macro and that it has a
+                // valid definition
+                if let ConvertedDecl::NoItem = self.convert_decl(ctx, *macro_id)? {
+                    return Ok(None);
+                }
+                let macro_ty = self.macro_types.borrow()[macro_id];
+                let rustname = self
+                    .renamer
+                    .borrow_mut()
+                    .get(macro_id)
+                    .ok_or_else(|| format_err!("Macro name not declared"))?;
+
+                let mut val = mk().path_expr(vec![rustname]);
+                let mut is_unsafe = false;
+
+                let expr_kind = &self.ast_context[expr_id].kind;
+                if let Some(expr_ty) = expr_kind.get_qual_type() {
+                    if macro_ty != expr_ty {
+                        let target_ty = self.convert_type(expr_ty.ctype)?;
+                        if self.ast_context.is_function_pointer(expr_ty.ctype)
+                            || self.ast_context.is_function_pointer(macro_ty.ctype)
+                        {
+                            self.use_feature("const_transmute");
+                            if self.ast_context[macro_ty.ctype].kind.is_integral_type() {
+                                let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
+                                let intptr = mk().cast_expr(val, intptr_t.clone());
+                                val = transmute_expr(intptr_t, target_ty, intptr,
+                                                     self.tcfg.emit_no_std);
+                                is_unsafe = true;
+                            } else {
+                                let source_ty = self.convert_type(macro_ty.ctype)?;
+                                val = transmute_expr(
+                                    source_ty,
+                                    target_ty,
+                                    val,
+                                    self.tcfg.emit_no_std,
+                                );
+                                is_unsafe = true;
+                            }
+                        } else {
+                            val = mk().cast_expr(val, target_ty);
+                        }
+                    }
+                }
+
+                // TODO: May need to handle volatile reads here, see
+                // DeclRef below
+
+                if is_unsafe {
+                    return Ok(Some(WithStmts::new_unsafe_val(val)));
+                } else {
+                    return Ok(Some(WithStmts::new_val(val)));
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     fn fn_expr_is_variadic(&self, expr_id: CExprId) -> bool {
