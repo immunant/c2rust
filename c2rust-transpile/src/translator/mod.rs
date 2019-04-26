@@ -220,6 +220,7 @@ pub struct Translation<'c> {
     zero_inits: RefCell<IndexMap<CDeclId, Result<P<Expr>, TranslationError>>>,
     function_context: RefCell<FunContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
+    macro_types: RefCell<IndexMap<CDeclId, CQualTypeId>>,
 
     // Comment support
     pub comment_context: RefCell<CommentContext>, // Incoming comments
@@ -560,9 +561,7 @@ pub fn translate(
                 {
                     Name::VarName(ident)
                 }
-                CDeclKind::MacroObject { ref name, .. } => {
-                    Name::VarName(name)
-                }
+                CDeclKind::MacroObject { ref name, .. } => Name::VarName(name),
                 _ => Name::NoName,
             };
             match decl_name {
@@ -583,23 +582,8 @@ pub fn translate(
             }
         }
 
-        // Export all types
-        for (&decl_id, decl) in &t.ast_context.c_decls {
-            let needs_export = match decl.kind {
-                CDeclKind::Struct { .. } => true,
-                CDeclKind::Enum { .. } => true,
-                CDeclKind::EnumConstant { .. } => true,
-                CDeclKind::Union { .. } => true,
-                CDeclKind::Typedef { .. } =>
-                // Only check the key as opposed to `contains` because the key should be the
-                // typedef id
-                {
-                    !t.ast_context.prenamed_decls.contains_key(&decl_id)
-                }
-                CDeclKind::MacroObject { .. } => tcfg.translate_const_macros,
-                _ => false,
-            };
-            if needs_export {
+        {
+            let convert_type = |decl_id: CDeclId, decl: &CDecl| {
                 let decl_file_path = decl
                     .loc
                     .as_ref()
@@ -623,9 +607,38 @@ pub fn translate(
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
                         let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
-                        let msg =
-                            format!("Skipping declaration {:?} due to error: {}", k, e);
+                        let msg = format!("Skipping declaration {:?} due to error: {}", k, e);
                         translate_failure(&t.tcfg, &msg)
+                    }
+                }
+            };
+
+            // Export all types
+            for (&decl_id, decl) in &t.ast_context.c_decls {
+                let needs_export = match decl.kind {
+                    CDeclKind::Struct { .. } => true,
+                    CDeclKind::Enum { .. } => true,
+                    CDeclKind::EnumConstant { .. } => true,
+                    CDeclKind::Union { .. } => true,
+                    CDeclKind::Typedef { .. } =>
+                    // Only check the key as opposed to `contains` because the key should be the
+                    // typedef id
+                    {
+                        !t.ast_context.prenamed_decls.contains_key(&decl_id)
+                    }
+                    _ => false,
+                };
+                if needs_export {
+                    convert_type(decl_id, decl);
+                }
+            }
+
+            // Export macros after the rest of the decls so we can reference all
+            // types
+            if tcfg.translate_const_macros {
+                for (&decl_id, decl) in &t.ast_context.c_decls {
+                    if let CDeclKind::MacroObject { .. } = decl.kind {
+                        convert_type(decl_id, decl);
                     }
                 }
             }
@@ -669,15 +682,9 @@ pub fn translate(
                                     },
                                     |name| name.clone(),
                                 );
-                                format!(
-                                    "Failed to translate {}: {}",
-                                    decl_identifier, e
-                                )
+                                format!("Failed to translate {}: {}", decl_identifier, e)
                             }
-                            _ => format!(
-                                "Failed to translate declaration: {}",
-                                e,
-                            ),
+                            _ => format!("Failed to translate declaration: {}", e,),
                         };
                         translate_failure(&t.tcfg, &msg)
                     }
@@ -962,6 +969,7 @@ impl<'c> Translation<'c> {
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FunContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
+            macro_types: RefCell::new(IndexMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             sectioned_static_initializers: RefCell::new(Vec::new()),
@@ -1162,7 +1170,9 @@ impl<'c> Translation<'c> {
                 }
                 CExprKind::ImplicitCast(qtype, _, IntegralToPointer, _, _)
                 | CExprKind::ExplicitCast(qtype, _, IntegralToPointer, _, _) => {
-                    if let CTypeKind::Pointer(qtype) = self.ast_context.resolve_type(qtype.ctype).kind {
+                    if let CTypeKind::Pointer(qtype) =
+                        self.ast_context.resolve_type(qtype.ctype).kind
+                    {
                         if let CTypeKind::Function(..) =
                             self.ast_context.resolve_type(qtype.ctype).kind
                         {
@@ -1299,7 +1309,9 @@ impl<'c> Translation<'c> {
                     let field_decl = &self.ast_context[*last_id];
                     if let CDeclKind::Field { typ, .. } = field_decl.kind {
                         if self.ast_context.maybe_flexible_array(typ.ctype) {
-                            self.potential_flexible_array_members.borrow_mut().insert(*last_id);
+                            self.potential_flexible_array_members
+                                .borrow_mut()
+                                .insert(*last_id);
                         }
                     }
                 }
@@ -1650,7 +1662,7 @@ impl<'c> Translation<'c> {
                     let (ty, _, init) =
                         self.convert_variable(ctx.not_static(), initializer, typ)?;
 
-                    let mut init = mk().block_expr(init?.to_block());
+                    let mut init = init?.to_expr();
 
                     let comment = String::from("// Initialized in run_static_initializers");
                     // REVIEW: We might want to add the comment to the original span comments
@@ -1665,17 +1677,15 @@ impl<'c> Translation<'c> {
                 } else {
                     let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
                     let mut init = init?;
+                    // TODO: Replace this by relying entirely on
+                    // WithStmts.is_unsafe() of the translated variable
                     if self.static_initializer_is_unsafe(initializer, typ) {
                         init.set_unsafe()
                     }
-                    let init = if init.is_unsafe() {
-                        mk().block_expr(init.to_block())
-                    } else {
-                        init.to_pure_expr()
-                            .ok_or_else(|| {
-                                format_err!("Expected no side-effects in static initializer")
-                            })?
-                    };
+                    let init = init.to_unsafe_pure_expr()
+                        .ok_or_else(|| {
+                            format_err!("Expected no side-effects in static initializer")
+                        })?;
 
                     (ty, init)
                 };
@@ -1713,27 +1723,71 @@ impl<'c> Translation<'c> {
                 "This should be handled in 'convert_decl_stmt'",
             )),
             //ref k => Err(format_err!("Translation not implemented for {:?}", k).into()),
-
-            CDeclKind::MacroObject { replacement, typ, .. } => {
+            CDeclKind::MacroObject {
+                ref replacements, ..
+            } => {
                 let name = self
                     .renamer
                     .borrow_mut()
                     .get(&decl_id)
                     .expect("Macro object not named");
-                let ty = self.convert_type(typ.ctype)?;
-                let val = self
-                    .convert_expr(
-                        ctx.static_().set_expanding_macro(decl_id),
-                        replacement,
-                    )?
-                    .to_pure_expr()
-                    .expect("Expected no side-effects in static initializer");
 
-                Ok(ConvertedDecl::Item(
-                    mk().span(s).pub_().const_item(name, ty, val),
-                ))
+                trace!("Expanding macro {:?}: {:?}", decl_id, self.ast_context[decl_id]);
+
+                let (replacement, qual_ty) = self.canonical_macro_replacement(
+                    ctx.static_().set_expanding_macro(decl_id),
+                    &replacements,
+                )?;
+
+                self.macro_types.borrow_mut().insert(decl_id, qual_ty);
+                let ty = self.convert_type(qual_ty.ctype)?;
+                // let val = {
+                //     let val = self.convert_expr(
+                //         ,
+                //         replacement,
+                //     )?;
+                //     assert!(
+                //         val.stmts.is_empty(),
+                //         "Expected no side-effects in static initializer"
+                //     );
+                //     val.val
+                // };
+
+                Ok(ConvertedDecl::Item(mk().span(s).pub_().const_item(
+                    name,
+                    ty,
+                    replacement,
+                )))
             }
         }
+    }
+
+    fn canonical_macro_replacement(
+        &self,
+        ctx: ExprContext,
+        replacements: &[CExprId],
+    ) -> Result<(P<Expr>, CQualTypeId), TranslationError> {
+        let (val, ty) = replacements
+            .iter()
+            .find_map(|id| {
+                let kind = &self.ast_context[*id].kind;
+                if let CExprKind::BadExpr = kind {
+                    return None;
+                }
+                let ty = kind.get_qual_type().unwrap();
+                let val = match self.convert_expr(ctx, *id) {
+                    Ok(val) => val,
+                    Err(_) => return None,
+                };
+                let val = val.to_expr();
+                Some((val, ty))
+            })
+            .ok_or_else(|| format_err!("Could not find a valid macro replacement expression"))?;
+
+        // TODO: Validate that all replacements are equivalent and pick the most
+        // common type to minimize casts.
+
+        Ok((val, ty))
     }
 
     /// Returns true iff type is a (pointer to)* the `va_list` structure type.
@@ -2755,38 +2809,78 @@ impl<'c> Translation<'c> {
         mut ctx: ExprContext,
         expr_id: CExprId,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let src_loc = &self.ast_context[expr_id].loc;
+        let Located {
+            loc: src_loc,
+            kind: expr_kind,
+        } = &self.ast_context[expr_id];
 
-        if let Some(macro_id) = self.ast_context.macro_expansions.get(&expr_id) {
-            if self.tcfg.translate_const_macros && !ctx.expanding_macro(macro_id) {
-                let mac = &self
-                    .ast_context
-                    .c_decls
-                    .get(macro_id)
-                    .ok_or_else(|| format_err!("Missing macro definition {:?}", macro_id))?
-                    .kind;
+        trace!("Converting expr {:?}: {:?}", expr_id, self.ast_context[expr_id]);
 
-                match &mac {
-                    CDeclKind::MacroObject{name, ..} => {
-                        let rustname = self
-                            .renamer
-                            .borrow_mut()
-                            .get(macro_id)
-                            .ok_or_else(|| format_err!("name not declared: '{}'", name))?;
+        if self.tcfg.translate_const_macros {
+            if let Some(macs) = self.ast_context.macro_expansions.get(&expr_id) {
+                // Find the first macro after the macro we're currently
+                // expanding, if any.
+                if let Some(macro_id) = macs
+                    .splitn(2, |macro_id| ctx.expanding_macro(macro_id))
+                    .last()
+                    .unwrap()
+                    .first()
+                {
+                    trace!("  found macro expansion: {:?}", macro_id);
+                    // Ensure that we've expanded this macro
+                    self.convert_decl(ctx, *macro_id)?;
+                    let macro_ty = self.macro_types.borrow()[macro_id];
+                    let rustname = self
+                        .renamer
+                        .borrow_mut()
+                        .get(macro_id)
+                        .ok_or_else(|| format_err!("Macro name not declared"))?;
 
-                        let val = mk().path_expr(vec![rustname]);
+                    let mut val = mk().path_expr(vec![rustname]);
+                    let mut is_unsafe = false;
 
-                        // TODO: May need to handle volatile reads here, see
-                        // DeclRef below
+                    if let Some(expr_ty) = expr_kind.get_qual_type() {
+                        if macro_ty != expr_ty {
+                            let target_ty = self.convert_type(expr_ty.ctype)?;
+                            if self.ast_context.is_function_pointer(expr_ty.ctype)
+                                || self.ast_context.is_function_pointer(macro_ty.ctype)
+                            {
+                                self.use_feature("const_transmute");
+                                if self.ast_context[macro_ty.ctype].kind.is_integral_type() {
+                                    let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
+                                    let intptr = mk().cast_expr(val, intptr_t.clone());
+                                    val = transmute_expr(intptr_t, target_ty, intptr,
+                                                         self.tcfg.emit_no_std);
+                                    is_unsafe = true;
+                                } else {
+                                    let source_ty = self.convert_type(macro_ty.ctype)?;
+                                    val = transmute_expr(
+                                        source_ty,
+                                        target_ty,
+                                        val,
+                                        self.tcfg.emit_no_std,
+                                    );
+                                    is_unsafe = true;
+                                }
+                            } else {
+                                val = mk().cast_expr(val, target_ty);
+                            }
+                        }
+                    }
 
+                    // TODO: May need to handle volatile reads here, see
+                    // DeclRef below
+
+                    if is_unsafe {
+                        return Ok(WithStmts::new_unsafe_val(val));
+                    } else {
                         return Ok(WithStmts::new_val(val));
                     }
-                    _ => panic!("Unexpected decl type, expected a macro"),
                 }
             }
         }
 
-        match self.ast_context[expr_id].kind {
+        match *expr_kind {
             CExprKind::DesignatedInitExpr(..) => {
                 Err(TranslationError::generic("Unexpected designated init expr"))
             }
@@ -3226,6 +3320,8 @@ impl<'c> Translation<'c> {
                 }
             }
 
+            CExprKind::Paren(_, val) => self.convert_expr(ctx, val),
+
             CExprKind::CompoundLiteral(_, val) => self.convert_expr(ctx, val),
 
             CExprKind::InitList(ty, ref ids, opt_union_field_id, _) => {
@@ -3503,13 +3599,13 @@ impl<'c> Translation<'c> {
                 } else {
                     // Other numeric casts translate to Rust `as` casts,
                     // unless the cast is to a function pointer then use `transmute`.
-                    Ok(val.map(|x| {
+                    val.and_then(|x| {
                         if self.ast_context.is_function_pointer(source_ty_ctype_id) {
-                            transmute_expr(source_ty, target_ty, x, self.tcfg.emit_no_std)
+                            Ok(WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, x, self.tcfg.emit_no_std)))
                         } else {
-                            mk().cast_expr(x, target_ty)
+                            Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
                         }
-                    }))
+                    })
                 }
             }
 
