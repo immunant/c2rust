@@ -201,6 +201,11 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b"?")
             }
             Some(&CExprKind::ImplicitValueInit { .. }) => self.writer.write_all(b"{}"),
+            Some(&CExprKind::Paren(_, val)) => {
+                self.writer.write_all(b"(")?;
+                self.print_expr(val, context)?;
+                self.writer.write_all(b")")
+            }
             Some(&CExprKind::CompoundLiteral(ty, val)) => {
                 self.writer.write_all(b"(")?;
                 self.print_qtype(ty, None, context)?;
@@ -674,9 +679,15 @@ impl<W: Write> Printer<W> {
                 Ok(())
             }
 
-            Some(&CDeclKind::MacroObject { ref name, ref replacement, .. }) => {
+            Some(&CDeclKind::MacroObject {
+                ref name,
+                ref replacements,
+                ..
+            }) => {
                 self.writer.write_fmt(format_args!("#define {} ", name))?;
-                self.print_expr(*replacement, context)?;
+                for replacement in replacements {
+                    self.print_expr(*replacement, context)?;
+                }
 
                 Ok(())
             }

@@ -49,7 +49,9 @@ pub struct TypedAstContext {
     pub c_main: Option<CDeclId>,
     pub c_files: HashMap<u64, String>,
     pub parents: HashMap<CDeclId, CDeclId>, // record fields and enum constants
-    pub macro_expansions: HashMap<CExprId, CDeclId>, // map expressions to the macro they were expanded from
+
+    // map expressions to the stack of macros they were expanded from
+    pub macro_expansions: HashMap<CExprId, Vec<CDeclId>>,
 
     pub comments: Vec<Located<String>>,
 
@@ -190,6 +192,7 @@ impl TypedAstContext {
             CExprKind::ImplicitCast(_, e, _, _, _) |
             CExprKind::ExplicitCast(_, e, _, _, _) |
             CExprKind::Member(_, e, _, _, _) |
+            CExprKind::Paren(_, e) |
             CExprKind::CompoundLiteral(_, e) |
             CExprKind::Unary(_, _, e, _) => self.is_expr_pure(e),
 
@@ -268,7 +271,7 @@ impl TypedAstContext {
         }
 
         // Add all referenced macros to the set of used decls
-        used.extend(self.macro_expansions.values());
+        // used.extend(self.macro_expansions.values().flatten());
 
         while let Some(enclosing_decl_id) = to_walk.pop() {
             for some_id in DFNodes::new(self, SomeId::Decl(enclosing_decl_id)) {
@@ -294,15 +297,22 @@ impl TypedAstContext {
                         }
                     }
 
-                    SomeId::Expr(expr_id) => match self.c_exprs[&expr_id].kind {
-                        CExprKind::DeclRef(_, decl_id, _) => {
-                            if used.insert(decl_id) {
-                                to_walk.push(decl_id);
+                    SomeId::Expr(expr_id) => {
+                        if let Some(expr) = self.c_exprs.get(&expr_id) {
+                            if let Some(macs) = self.macro_expansions.get(&expr_id) {
+                                for mac_id in macs {
+                                    if used.insert(*mac_id) {
+                                        to_walk.push(*mac_id);
+                                    }
+                                }
+                            }
+                            if let CExprKind::DeclRef(_, decl_id, _) = &expr.kind {
+                                if used.insert(*decl_id) {
+                                    to_walk.push(*decl_id);
+                                }
                             }
                         }
-
-                        _ => {}
-                    },
+                    }
 
                     SomeId::Decl(decl_id) => {
                         if used.insert(decl_id) {
@@ -607,8 +617,7 @@ pub enum CDeclKind {
 
     MacroObject {
         name: String,
-        typ: CQualTypeId,
-        replacement: CExprId,
+        replacements: Vec<CExprId>,
     },
 }
 
@@ -708,6 +717,10 @@ pub enum CExprKind {
     // Designated initializer
     ImplicitValueInit(CQualTypeId),
 
+    // Parenthesized expression (ignored, but needed so we have a corresponding
+    // node)
+    Paren(CQualTypeId, CExprId),
+
     // Compound literal
     CompoundLiteral(CQualTypeId, CExprId),
 
@@ -767,6 +780,7 @@ impl CExprKind {
             | CExprKind::BinaryConditional(ty, _, _)
             | CExprKind::InitList(ty, _, _, _)
             | CExprKind::ImplicitValueInit(ty)
+            | CExprKind::Paren(ty, _)
             | CExprKind::CompoundLiteral(ty, _)
             | CExprKind::Predefined(ty, _)
             | CExprKind::Statements(ty, _)

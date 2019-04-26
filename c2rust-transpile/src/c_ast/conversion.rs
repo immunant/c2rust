@@ -716,9 +716,11 @@ impl ConversionContext {
                 None => return,
             };
 
-            if let Some(mac_id) = node.macro_expansion {
-                let mac = CDeclId(self.visit_node_type(mac_id, MACRO_DECL));
-                self.typed_context.macro_expansions.insert(CExprId(new_id), mac);
+            for mac_id in &node.macro_expansions {
+                let mac = CDeclId(self.visit_node_type(*mac_id, MACRO_DECL));
+                self.typed_context.macro_expansions.entry(CExprId(new_id))
+                    .or_default()
+                    .push(mac);
             }
 
             match node.tag {
@@ -969,9 +971,12 @@ impl ConversionContext {
                 // Expressions
                 ASTEntryTag::TagParenExpr if expected_ty & (EXPR | STMT) != 0 => {
                     let wrapped = node.children[0].expect("Expected wrapped paren expression");
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
 
-                    self.id_mapper.merge_old(node_id, wrapped);
-                    self.visit_node_type(wrapped, expected_ty);
+                    let expr = CExprKind::Paren(ty, self.visit_expr(wrapped));
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, expr);
                 }
 
                 ASTEntryTag::TagOffsetOfExpr if expected_ty & (EXPR | STMT) != 0 => {
@@ -1836,17 +1841,17 @@ impl ConversionContext {
                         .as_string()
                         .expect("Macros must have a name")
                         .to_owned();
-                    let typ_id = node
-                        .type_id
-                        .expect("Expected to find type for macro object");
-                    let typ = self.visit_qualified_type(typ_id);
-                    let replacement_id = node.children[0].expect("Macro replacement list not found");
-                    let replacement = self.visit_expr(replacement_id);
-                    let mac_object = CDeclKind::MacroObject {
-                        name,
-                        typ,
-                        replacement,
-                    };
+
+                    let replacements = node
+                        .children
+                        .iter()
+                        .map(|id| {
+                            let expr_id = id.expect("Macro replacement expr not found");
+                            self.visit_expr(expr_id)
+                        })
+                        .collect();
+
+                    let mac_object = CDeclKind::MacroObject { name, replacements };
                     self.add_decl(new_id, located(node, mac_object));
                     self.processed_nodes.insert(new_id, MACRO_DECL);
 

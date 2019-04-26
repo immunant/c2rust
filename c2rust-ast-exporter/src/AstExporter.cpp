@@ -425,14 +425,25 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
 class TranslateASTVisitor final
     : public RecursiveASTVisitor<TranslateASTVisitor> {
 
+    struct MacroExpansionInfo {
+        StringRef Name;
+
+        /// Expressions that we have seen this macro expand to
+        SmallPtrSet<Expr*, 10> Expressions;
+    };
+
     ASTContext *Context;
     TypeEncoder typeEncoder;
     CborEncoder *encoder;
     Preprocessor &PP;
     std::unordered_map<string, uint64_t> filenames;
     std::set<std::pair<void *, ASTEntryTag>> exportedTags;
-    std::unordered_map<MacroInfo*, Expr*> macroExpressions;
-    MacroInfo *curMacroExpansion;
+    std::unordered_map<MacroInfo*, MacroExpansionInfo> macros;
+
+    // This stores a raw encoding of the macro call site SourceLocation, since
+    // SourceLocation isn't hashable.
+    std::unordered_set<unsigned> macroCallSites;
+    SmallVector<MacroInfo*, 1> curMacroExpansionStack;
 
     // Returns true when a new entry is added to exportedTags
     bool markForExport(void *ptr, ASTEntryTag tag) {
@@ -447,8 +458,9 @@ class TranslateASTVisitor final
     // Template required because Decl and Stmt don't share a common base class
     void encode_entry_raw(void *ast, ASTEntryTag tag, SourceLocation loc,
                           const QualType ty, bool rvalue, bool isVaList,
+                          bool encodeMacroExpansions,
                           const std::vector<void *> &childIds,
-                          MacroInfo *mac, std::function<void(CborEncoder *)> extra) {
+                          std::function<void(CborEncoder *)> extra) {
         if (!markForExport(ast, tag))
             return;
 
@@ -483,13 +495,19 @@ class TranslateASTVisitor final
         // 7 - Is Rvalue (only for expressions)
         cbor_encode_boolean(&local, rvalue);
 
-        if (mac == nullptr) {
-            cbor_encode_null(&local);
-        } else {
-            cbor_encode_uint(&local, uintptr_t(mac));
+        // 8 - Macro expansion stack, starting with initial macro call and ending
+        // with the innermost replacement.
+        cbor_encoder_create_array(&local, &childEnc,
+                                  encodeMacroExpansions ? curMacroExpansionStack.size() : 0);
+        if (encodeMacroExpansions) {
+            for (auto I = curMacroExpansionStack.rbegin(), E = curMacroExpansionStack.rend();
+                 I != E; ++I) {
+                cbor_encode_uint(&childEnc, uintptr_t(*I));
+            }
         }
+        cbor_encoder_close_container(&local, &childEnc);
 
-        // 8.. - Extra entries
+        // 9.. - Extra entries
         extra(&local);
 
         cbor_encoder_close_container(encoder, &local);
@@ -508,13 +526,14 @@ class TranslateASTVisitor final
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto ty = ast->getType();
         auto isVaList = false;
+        auto encodeMacroExpansions = true;
 #if CLANG_VERSION_MAJOR < 8
         SourceLocation loc = ast->getLocStart();
 #else
         SourceLocation loc = ast->getBeginLoc();
 #endif // CLANG_VERSION_MAJOR
-        encode_entry_raw(ast, tag, loc, ty, ast->isRValue(), isVaList, childIds,
-                         curMacroExpansion, extra);
+        encode_entry_raw(ast, tag, loc, ty, ast->isRValue(), isVaList, encodeMacroExpansions,
+                         childIds, extra);
         typeEncoder.VisitQualType(ty);
     }
 
@@ -524,12 +543,14 @@ class TranslateASTVisitor final
         QualType s = QualType(static_cast<clang::Type *>(nullptr), 0);
         auto rvalue = false;
         auto isVaList = false;
+        auto encodeMacroExpansions = false;
 #if CLANG_VERSION_MAJOR < 8
         SourceLocation loc = ast->getLocStart();
 #else
         SourceLocation loc = ast->getBeginLoc();
 #endif // CLANG_VERSION_MAJOR
-        encode_entry_raw(ast, tag, loc, s, rvalue, isVaList, childIds, nullptr, extra);
+        encode_entry_raw(ast, tag, loc, s, rvalue, isVaList, encodeMacroExpansions,
+                         childIds, extra);
     }
 
     void encode_entry(
@@ -537,8 +558,9 @@ class TranslateASTVisitor final
         const QualType T,
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto rvalue = false;
+        auto encodeMacroExpansions = false;
         encode_entry_raw(ast, tag, ast->getLocation(), T, rvalue,
-                         isVaList(ast, T), childIds, nullptr, extra);
+                         isVaList(ast, T), encodeMacroExpansions, childIds, extra);
     }
 
     MacroInfo* getMacroInfo(SourceLocation loc, StringRef &name) const {
@@ -575,28 +597,20 @@ class TranslateASTVisitor final
         return nullptr;
     }
 
-    bool VisitMacro(StringRef name, MacroInfo *mac, Expr *E) {
-        // TODO: handle macro expansions that differ in types but not in contents
-
-        auto insertRes = macroExpressions.emplace(mac, E);
-        if (insertRes.second && insertRes.first->second != E) {
-            // This macro already has been inserted with a different literal
-            // expression
+    bool VisitMacro(StringRef name, SourceLocation loc, MacroInfo *mac, Expr *E) {
+        // If this isn't the first time we've seen this macro call site, we
+        // shouldn't associate this expression with the macro as it is a subexpr
+        // of a previously seen expression.
+        if (!macroCallSites.insert(loc.getRawEncoding()).second)
             return false;
-        }
+        auto &info = macros[mac];
+        if (info.Name.empty())
+            info.Name = name;
+        else if (info.Name != name)
+            return false;
 
-        ASTEntryTag tag;
-        if (mac->isFunctionLike())
-            tag = TagMacroFunctionDef;
-        else
-            tag = TagMacroObjectDef;
-
-        std::vector<void *> childIds = {E};
-        encode_entry_raw(mac, tag, mac->getDefinitionLoc(), E->getType(),
-                         false, false, childIds, nullptr, [name](CborEncoder *local) {
-                             cbor_encode_string(local, name.str());
-                         });
-
+        info.Expressions.insert(E);
+        typeEncoder.VisitQualType(E->getType());
         return true;
     }
 
@@ -620,6 +634,28 @@ class TranslateASTVisitor final
         }
 
         return ordered_filenames;
+    }
+
+    void encodeMacros() {
+        for (auto &I : macros) {
+            auto &Mac = I.first;
+            auto &Info = I.second;
+            auto Name = Info.Name;
+            ASTEntryTag tag;
+            if (Mac->isFunctionLike())
+                tag = TagMacroFunctionDef;
+            else
+                tag = TagMacroObjectDef;
+
+            std::vector<void *> childIds(Info.Expressions.begin(),
+                                         Info.Expressions.end());
+
+            encode_entry_raw(Mac, tag, Mac->getDefinitionLoc(), QualType(), false,
+                             false, false, childIds, [Name](CborEncoder *local) {
+                                 cbor_encode_string(local, Name.str());
+                             });
+
+        }
     }
 
     void encodeSourcePos(CborEncoder *enc, SourceLocation loc,
@@ -873,7 +909,7 @@ class TranslateASTVisitor final
     //
 
     bool VisitExpr(Expr *E) {
-        curMacroExpansion = nullptr;
+        curMacroExpansionStack.clear();
 
         // We only translate constant macro objects to Rust consts, so this
         // expression must be constant.
@@ -881,19 +917,27 @@ class TranslateASTVisitor final
             return true;
 
         auto &Mgr = Context->getSourceManager();
-        auto loc = E->getExprLoc();
+        auto range = E->getSourceRange();
         LLVM_DEBUG(dbgs() << "Checking expr for macro expansion: ");
         LLVM_DEBUG(E->dump());
 
+        // Check that we are expanding the entire macro call. If not we're a
+        // subexpression and should not be associated with a macro call.
+        auto macroCallBegin = Mgr.getImmediateMacroCallerLoc(range.getBegin());
+        auto macroCallEnd = Mgr.getImmediateMacroCallerLoc(range.getEnd());
+        if (macroCallBegin != macroCallEnd)
+            return true;
+
+        auto loc = range.getBegin();
         // The macro stack unwound by getImmediateMacroCallerLoc and friends
         // starts with literal replacement and works it's way to the macro call
         // that was replaced.
-        if (loc.isMacroID()) {
-            auto macroLoc = Mgr.getImmediateMacroCallerLoc(loc);
+        while (loc.isMacroID()) {
+            loc = Mgr.getImmediateMacroCallerLoc(loc);
             StringRef name;
-            MacroInfo *mac = getMacroInfo(macroLoc, name);
-            if (mac && mac->isObjectLike() && VisitMacro(name, mac, E)) {
-                curMacroExpansion = mac;
+            MacroInfo *mac = getMacroInfo(loc, name);
+            if (mac && mac->isObjectLike() && VisitMacro(name, loc, mac, E)) {
+                curMacroExpansionStack.push_back(mac);
             }
         }
         return true;
@@ -1940,6 +1984,7 @@ class TranslateConsumer : public clang::ASTConsumer {
             TranslateASTVisitor visitor(&Context, &array, &sugared, PP);
             auto translation_unit = Context.getTranslationUnitDecl();
             visitor.TraverseDecl(translation_unit);
+            visitor.encodeMacros();
             cbor_encoder_close_container(&outer, &array);
 
             // 2. Track all of the top-level declarations
