@@ -162,10 +162,14 @@ impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>>
     fn from_iter<I: IntoIterator<Item = WithStmts<T>>>(value: I) -> Self {
         let mut stmts = vec![];
         let mut res = vec![];
+        let mut is_unsafe = false;
         for mut val in value.into_iter() {
+            is_unsafe |= val.is_unsafe();
             stmts.append(val.stmts_mut());
             res.push(val.into_value());
         }
-        WithStmts::new(stmts, res)
+        let mut translation = WithStmts::new(stmts, res);
+        translation.merge_unsafe(is_unsafe);
+        translation
     }
 }
