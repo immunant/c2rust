@@ -23,20 +23,31 @@ fi
 """
 
 
+def render_script(template: str, out_path: str, params: dict):
+    out = Template(TRANSPILE_SH).render(**params)
+
+    with open(out_path, 'w') as fh:
+        fh.writelines(out)
+    os.chmod(out_path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
+
+
+def autogen_transpile(conf_file, yaml: dict):
+    transpile = yaml.get("transpile")
+    if transpile:
+        params = dict()
+        main = transpile.get("main")
+        if main:
+            params["main"] = f"--main {main}"
+        else:
+            params["main"] = "--emit-build-files"
+
+        out_path = os.path.join(
+            os.path.dirname(conf_file),
+            "transpile.gen.sh"
+        )
+        render_script(TRANSPILE_SH, out_path, params)
+
+
 def autogen(conf: Config):
     for (cf, yaml) in conf.project_conf.items():
-        transpile = yaml.get("transpile")
-        if transpile:
-            main = transpile.get("main")
-            if main:
-                m = f"--main {main}"
-            else:
-                m = "--emit-build-files"
-            out = Template(TRANSPILE_SH).render(main=m)
-            out_path = os.path.join(
-                os.path.dirname(cf),
-                "transpile.gen.sh"
-            )
-            with open(out_path, 'w') as fh:
-                fh.writelines(out)
-            os.chmod(out_path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
+        autogen_transpile(cf, yaml)

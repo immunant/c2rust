@@ -9,3 +9,4 @@ requirements:
 
 transpile:
   main: ruby
+  cflags: "-O0"

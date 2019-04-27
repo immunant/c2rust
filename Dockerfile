@@ -7,7 +7,8 @@ USER root
 COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
 
-RUN apt-get install -qq \
+RUN apt-get update -qq && \
+    apt-get install -qq \
     autoconf \
     bison \
     build-essential \

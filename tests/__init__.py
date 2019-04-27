@@ -58,14 +58,14 @@ class Test(object):
                     nocolor=Colors.NO_COLOR)
                 )
             return True
-        except KeyboardInterrupt as ki:
+        except KeyboardInterrupt:
             if not verbose:
                 print(": {color}INTERRUPT{nocolor}".format(
                     color=Colors.WARNING,
                     nocolor=Colors.NO_COLOR)
                 )
                 exit(1)
-        except Exception as e:  # noqa
+        except Exception:  # noqa
             if not verbose:
                 outcome = "XFAIL" if xfail else "FAIL"
                 print("{fill} {color}{outcome}{nocolor}".format(
@@ -85,8 +85,11 @@ class Test(object):
         script_path = os.path.join(self.dir, script)
         if os.path.isfile(f"{script_path}.xfail"):
             return True
-        script_path_noext = os.path.splitext(script_path)[0]
-        return os.path.isfile(f"{script_path_noext}.xfail")
+        script_path_noext = script_path.replace(".sh", ".xfail")
+        if os.path.isfile(script_path_noext):
+            return True
+        gen_script_path_noext = script_path.replace(".gen.sh", ".xfail")
+        return os.path.isfile(gen_script_path_noext)
 
     def __call__(self, conf: Config):
         # make sure the `repo` directory exists and is not empty
