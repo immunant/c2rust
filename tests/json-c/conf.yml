@@ -3,3 +3,5 @@ requirements:
     apt:
       packages:
         - libtool # used by autoconf
+
+cargo: true
