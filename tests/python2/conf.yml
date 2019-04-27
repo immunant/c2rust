@@ -7,3 +7,9 @@ requirements:
         - liblzma-dev
         - libgdbm-dev
         - tk-dev # apt-get -y --no-install-recommends install tk-dev
+
+
+transpile:
+    main: python
+    
+cargo: true    
