@@ -5,6 +5,7 @@ import argparse
 import tests
 import tests.requirements as requirements
 import tests.templates as templates
+import tests.util as util
 
 
 def get_args():
@@ -36,7 +37,8 @@ if __name__ == "__main__":
     conf = tests.Config(args)
     if args.requirements:
         print_requirements(args)
+    elif not conf.project_dirs and args.project:
+        util.die(f"no such project: {args.project}")
     else:
-        conf = tests.Config(args)
         templates.autogen(conf)
         tests.run_tests(conf)
