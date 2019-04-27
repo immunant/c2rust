@@ -1,0 +1,10 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+      - zlib1g-dev
+
+transpile:
+  main: fullbench # zstdcli
+  cflags: -Qunused-arguments
+
