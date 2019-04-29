@@ -598,6 +598,9 @@ class TranslateASTVisitor final
     }
 
     bool VisitMacro(StringRef name, SourceLocation loc, MacroInfo *mac, Expr *E) {
+        // TODO: handle builtin macros
+        if (mac->isBuiltinMacro())
+            return false;
         // If this isn't the first time we've seen this macro call site, we
         // shouldn't associate this expression with the macro as it is a subexpr
         // of a previously seen expression.
@@ -917,26 +920,43 @@ class TranslateASTVisitor final
             return true;
 
         auto &Mgr = Context->getSourceManager();
-        auto range = E->getSourceRange();
+        auto Range = E->getSourceRange();
         LLVM_DEBUG(dbgs() << "Checking expr for macro expansion: ");
         LLVM_DEBUG(E->dump());
+        LLVM_DEBUG(Range.getBegin().dump(Mgr));
+        LLVM_DEBUG(Range.getEnd().dump(Mgr));
 
-        // Check that we are expanding the entire macro call. If not we're a
-        // subexpression and should not be associated with a macro call.
-        auto macroCallBegin = Mgr.getImmediateMacroCallerLoc(range.getBegin());
-        auto macroCallEnd = Mgr.getImmediateMacroCallerLoc(range.getEnd());
-        if (macroCallBegin != macroCallEnd)
+        auto Begin = Range.getBegin();
+        auto End = Range.getEnd();
+
+        // Check that we are only expanding a single macro call.
+        if (!Begin.isMacroID() || !End.isMacroID() ||
+            Mgr.getImmediateMacroCallerLoc(Begin) != Mgr.getImmediateMacroCallerLoc(End))
             return true;
 
-        auto loc = range.getBegin();
         // The macro stack unwound by getImmediateMacroCallerLoc and friends
         // starts with literal replacement and works it's way to the macro call
         // that was replaced.
-        while (loc.isMacroID()) {
-            loc = Mgr.getImmediateMacroCallerLoc(loc);
+        while (Begin.isMacroID()) {
+            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin).getAsRange();
             StringRef name;
-            MacroInfo *mac = getMacroInfo(loc, name);
-            if (mac && mac->isObjectLike() && VisitMacro(name, loc, mac, E)) {
+            MacroInfo *mac = getMacroInfo(ExpansionRange.getBegin(), name);
+
+            if (!mac || mac->getNumTokens() == 0)
+                return true;
+            auto ReplacementBegin = mac->getReplacementToken(0).getLocation();
+            auto ReplacementEnd = mac->getDefinitionEndLoc();
+            // Verify that this expansion covers the entire macro replacement
+            // definition, i.e. E is not a subexpression of the macro
+            // replacement.
+            if (Mgr.getSpellingLoc(Begin) != ReplacementBegin ||
+                Mgr.getSpellingLoc(End) != ReplacementEnd)
+                return true;
+
+            Begin = ExpansionRange.getBegin();
+            End = ExpansionRange.getEnd();
+
+            if (mac->isObjectLike() && VisitMacro(name, Begin, mac, E)) {
                 curMacroExpansionStack.push_back(mac);
             }
         }
