@@ -1,5 +1,5 @@
 use rlua::prelude::{LuaContext, LuaResult, LuaTable};
-use syntax::ast::{Arg, FnDecl, NodeId, PatKind};
+use syntax::ast::{Arg, BindingMode, Block, FunctionRetTy, FnDecl, Mutability::*, NodeId, PatKind};
 use syntax::source_map::symbol::Symbol;
 use syntax::ptr::P;
 
@@ -19,7 +19,13 @@ impl<'lua> IntoLuaAst<'lua> for FnLike {
         })?;
         ast.set("id", self.id.as_u32())?;
         ast.set("ident", self.ident.as_str().get())?;
-        ast.set("decl", self.decl.clone().into_lua_ast(ctx, lua_ctx)?)?;
+        ast.set("decl", self.decl.into_lua_ast(ctx, lua_ctx)?)?;
+
+        let block = self.block
+            .map(|b| b.into_lua_ast(ctx, lua_ctx))
+            .transpose()?;
+
+        ast.set("block", block)?;
 
         Ok(ast)
     }
@@ -31,7 +37,11 @@ impl<'lua> IntoLuaAst<'lua> for P<FnDecl> {
 
         ast.set("type", "FnDecl")?;
         ast.set("c_variadic", self.c_variadic)?;
-        // ast.set("return_type", self.output)?;
+
+        ast.set("return_type", match &self.output {
+            FunctionRetTy::Default(_) => None,
+            FunctionRetTy::Ty(ty) => Some(ctx.intern(ty.clone())),
+        })?;
 
         let args: LuaResult<Vec<_>> = self.inputs
             .drain(..)
@@ -55,9 +65,35 @@ impl<'lua> IntoLuaAst<'lua> for Arg {
         ast.set("id", self.id.as_u32())?;
 
         match self.pat.node {
-            PatKind::Ident(_, ident, _) => ast.set("ident", ident.as_str().get())?,
+            PatKind::Ident(binding, ident, _) => {
+                ast.set("binding", match binding {
+                    BindingMode::ByRef(Immutable) => "ByRefImmutable",
+                    BindingMode::ByRef(Mutable) => "ByRefMutable",
+                    BindingMode::ByValue(Immutable) => "ByValueImmutable",
+                    BindingMode::ByValue(Mutable) => "ByValueMutable",
+                })?;
+
+                ast.set("ident", ident.as_str().get())?;
+
+            },
             ref e => unreachable!("Found {:?}", e),
         }
+
+        Ok(ast)
+    }
+}
+
+impl<'lua> IntoLuaAst<'lua> for P<Block> {
+    fn into_lua_ast(mut self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
+
+        let stmts = self.stmts
+            .drain(..)
+            .into_iter()
+            .map(|stmt| stmt.into_lua_ast(ctx, lua_ctx))
+            .collect::<LuaResult<Vec<_>>>();
+
+        ast.set("stmts", iter_to_lua_array(stmts?.into_iter(), lua_ctx)?)?;
 
         Ok(ast)
     }
@@ -69,12 +105,12 @@ pub(crate) trait MergeLuaAst {
 
 impl MergeLuaAst for FnLike {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
-        match table.get::<_, String>("kind")?.as_str() {
-            "Normal" => self.kind = FnKind::Normal,
-            "ImplMethod" => self.kind = FnKind::ImplMethod,
-            "TraitMethod" => self.kind = FnKind::TraitMethod,
-            "Foreign" => self.kind = FnKind::Foreign,
-            _ => (),
+        self.kind = match table.get::<_, String>("kind")?.as_str() {
+            "Normal" => FnKind::Normal,
+            "ImplMethod" => FnKind::ImplMethod,
+            "TraitMethod" => FnKind::TraitMethod,
+            "Foreign" => FnKind::Foreign,
+            _ => self.kind,
         };
         self.id = NodeId::from_u32(table.get("id")?);
         self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
@@ -104,8 +140,16 @@ impl MergeLuaAst for P<FnDecl> {
 impl MergeLuaAst for Arg {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         match self.pat.node {
-            PatKind::Ident(_, ref mut ident, _) =>
-                ident.name = Symbol::intern(&table.get::<_, String>("ident")?),
+            PatKind::Ident(ref mut binding, ref mut ident, _) => {
+                *binding = match table.get::<_, String>("binding")?.as_str() {
+                    "ByRefImmutable" => BindingMode::ByRef(Immutable),
+                    "ByRefMutable" => BindingMode::ByRef(Mutable),
+                    "ByValueImmutable" => BindingMode::ByValue(Immutable),
+                    "ByValueMutable" => BindingMode::ByValue(Mutable),
+                    _ => *binding,
+                };
+                ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
+            },
             ref e => unimplemented!("Found {:?}", e),
         }
 
