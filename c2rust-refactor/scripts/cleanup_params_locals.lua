@@ -1,6 +1,6 @@
 refactor:transform(
     function(transform_ctx, crate)
-        return transform_ctx:visit_fn_like(
+        return transform_ctx:visit_fn_like(crate,
             function(fn_like)
                 -- Skip foreign functions - we only want functions with bodies
                 if fn_like.kind == "Foreign" then

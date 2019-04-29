@@ -595,10 +595,11 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         /// Visits all function like items
         // @function visit_fn_like
         // @tparam function() callback Function called for each function like item.
-        methods.add_method_mut("visit_fn_like", |lua_ctx, this, callback: LuaFunction| {
+        methods.add_method_mut("visit_fn_like", |lua_ctx, this, (krate, callback): (LuaAstNode, LuaFunction)| {
+            let mut krate = ast::Crate::try_from(this.remove_ast(krate)).expect("Did not find crate input");
             let mut found_err = Ok(());
 
-            mut_visit_fns(&mut *this.st.krate_mut(), |fn_like| {
+            mut_visit_fns(&mut krate, |fn_like| {
                 if found_err.is_err() {
                     return;
                 }
@@ -633,9 +634,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                 };
             });
 
-            let krate = this.intern(this.st.krate().clone());
-
-            found_err.map(|_| krate)
+            found_err.map(|_| this.intern(krate))
         });
     }
 }
