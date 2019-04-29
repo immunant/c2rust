@@ -4,3 +4,6 @@ requirements:
       packages:
         - libreadline-dev
         - rcs # used in makefile
+
+transpile:
+  main: lua
