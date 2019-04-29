@@ -137,10 +137,11 @@ impl<'c> Translation<'c> {
                 } else {
                     self.convert_expr(ctx, lhs)?
                         .and_then(|lhs_val| {
-                            Ok(self.convert_expr(ctx, rhs)?
-                               .map(|rhs_val| {
+                            self.convert_expr(ctx, rhs)?
+                               .result_map(|rhs_val| {
                                    let expr_ids = Some((lhs, rhs));
                                    self.convert_binary_operator(
+                                       ctx,
                                        op,
                                        ty,
                                        type_id.ctype,
@@ -150,7 +151,7 @@ impl<'c> Translation<'c> {
                                        rhs_val,
                                        expr_ids,
                                    )
-                               }))
+                               })
                         })
                 }
             }
@@ -159,6 +160,7 @@ impl<'c> Translation<'c> {
 
     fn covert_assignment_operator_aux(
         &self,
+        ctx: ExprContext,
         bin_op_kind: BinOpKind,
         bin_op: c_ast::BinOp,
         read: P<Expr>,
@@ -181,6 +183,7 @@ impl<'c> Translation<'c> {
             let lhs = mk().cast_expr(read, lhs_type.clone());
             let ty = self.convert_type(compute_res_ty.ctype)?;
             let val = self.convert_binary_operator(
+                ctx,
                 bin_op,
                 ty,
                 compute_res_ty.ctype,
@@ -189,7 +192,7 @@ impl<'c> Translation<'c> {
                 lhs,
                 rhs,
                 None,
-            );
+            )?;
 
             let is_enum_result = self.ast_context[self.ast_context.resolve_type_id(lhs_ty.ctype)]
                 .kind
@@ -340,6 +343,7 @@ impl<'c> Translation<'c> {
 
                         let val = if compute_lhs_type_id.ctype == initial_lhs_type_id.ctype {
                             self.convert_binary_operator(
+                                ctx,
                                 op,
                                 ty,
                                 qtype.ctype,
@@ -348,13 +352,14 @@ impl<'c> Translation<'c> {
                                 read.clone(),
                                 rhs,
                                 None,
-                            )
+                            )?
                         } else {
                             let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
                             let write_type = self.convert_type(qtype.ctype)?;
                             let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
                             let ty = self.convert_type(result_type_id.ctype)?;
                             let val = self.convert_binary_operator(
+                                ctx,
                                 op,
                                 ty,
                                 result_type_id.ctype,
@@ -363,7 +368,7 @@ impl<'c> Translation<'c> {
                                 lhs,
                                 rhs,
                                 None,
-                            );
+                            )?;
 
                             let is_enum_result = self.ast_context
                                 [self.ast_context.resolve_type_id(qtype.ctype)]
@@ -422,6 +427,7 @@ impl<'c> Translation<'c> {
                     }
 
                     c_ast::BinOp::AssignAdd => self.covert_assignment_operator_aux(
+                        ctx,
                         BinOpKind::Add,
                         c_ast::BinOp::Add,
                         read.clone(),
@@ -433,6 +439,7 @@ impl<'c> Translation<'c> {
                         rhs_type_id,
                     )?,
                     c_ast::BinOp::AssignSubtract => self.covert_assignment_operator_aux(
+                        ctx,
                         BinOpKind::Sub,
                         c_ast::BinOp::Subtract,
                         read.clone(),
@@ -444,6 +451,7 @@ impl<'c> Translation<'c> {
                         rhs_type_id,
                     )?,
                     c_ast::BinOp::AssignMultiply => self.covert_assignment_operator_aux(
+                        ctx,
                         BinOpKind::Mul,
                         c_ast::BinOp::Multiply,
                         read.clone(),
@@ -455,6 +463,7 @@ impl<'c> Translation<'c> {
                         rhs_type_id,
                     )?,
                     c_ast::BinOp::AssignDivide => self.covert_assignment_operator_aux(
+                        ctx,
                         BinOpKind::Div,
                         c_ast::BinOp::Divide,
                         read.clone(),
@@ -466,6 +475,7 @@ impl<'c> Translation<'c> {
                         rhs_type_id,
                     )?,
                     c_ast::BinOp::AssignModulus => self.covert_assignment_operator_aux(
+                        ctx,
                         BinOpKind::Rem,
                         c_ast::BinOp::Modulus,
                         read.clone(),
@@ -477,6 +487,7 @@ impl<'c> Translation<'c> {
                         rhs_type_id,
                     )?,
                     c_ast::BinOp::AssignBitXor => self.covert_assignment_operator_aux(
+                        ctx,
                         BinOpKind::BitXor,
                         c_ast::BinOp::BitXor,
                         read.clone(),
@@ -488,6 +499,7 @@ impl<'c> Translation<'c> {
                         rhs_type_id,
                     )?,
                     c_ast::BinOp::AssignShiftLeft => self.covert_assignment_operator_aux(
+                        ctx,
                         BinOpKind::Shl,
                         c_ast::BinOp::ShiftLeft,
                         read.clone(),
@@ -499,6 +511,7 @@ impl<'c> Translation<'c> {
                         rhs_type_id,
                     )?,
                     c_ast::BinOp::AssignShiftRight => self.covert_assignment_operator_aux(
+                        ctx,
                         BinOpKind::Shr,
                         c_ast::BinOp::ShiftRight,
                         read.clone(),
@@ -510,6 +523,7 @@ impl<'c> Translation<'c> {
                         rhs_type_id,
                     )?,
                     c_ast::BinOp::AssignBitOr => self.covert_assignment_operator_aux(
+                        ctx,
                         BinOpKind::BitOr,
                         c_ast::BinOp::BitOr,
                         read.clone(),
@@ -521,6 +535,7 @@ impl<'c> Translation<'c> {
                         rhs_type_id,
                     )?,
                     c_ast::BinOp::AssignBitAnd => self.covert_assignment_operator_aux(
+                        ctx,
                         BinOpKind::BitAnd,
                         c_ast::BinOp::BitAnd,
                         read.clone(),
@@ -549,6 +564,7 @@ impl<'c> Translation<'c> {
     /// arguments be usable as rvalues.
     fn convert_binary_operator(
         &self,
+        ctx: ExprContext,
         op: c_ast::BinOp,
         ty: P<Ty>,
         ctype: CTypeId,
@@ -557,7 +573,7 @@ impl<'c> Translation<'c> {
         lhs: P<Expr>,
         rhs: P<Expr>,
         lhs_rhs_ids: Option<(CExprId, CExprId)>,
-    ) -> P<Expr> {
+    ) -> Result<P<Expr>, TranslationError> {
         let is_unsigned_integral_type = self
             .ast_context
             .index(ctype)
@@ -565,28 +581,43 @@ impl<'c> Translation<'c> {
             .is_unsigned_integral_type();
 
         match op {
-            c_ast::BinOp::Add => self.convert_addition(lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::Subtract => self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs),
+            c_ast::BinOp::Add => self.convert_addition(ctx, lhs_type, rhs_type, lhs, rhs),
+            c_ast::BinOp::Subtract => self.convert_subtraction(ctx, ty, lhs_type, rhs_type, lhs, rhs),
 
             c_ast::BinOp::Multiply if is_unsigned_integral_type => {
-                mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs])
+                if ctx.is_const {
+                    return Err(TranslationError::generic(
+                        "Cannot use wrapping multiply in a const expression",
+                    ));
+                }
+                Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_mul"), vec![rhs]))
             }
-            c_ast::BinOp::Multiply => mk().binary_expr(BinOpKind::Mul, lhs, rhs),
+            c_ast::BinOp::Multiply => Ok(mk().binary_expr(BinOpKind::Mul, lhs, rhs)),
 
             c_ast::BinOp::Divide if is_unsigned_integral_type => {
-                mk().method_call_expr(lhs, mk().path_segment("wrapping_div"), vec![rhs])
+                if ctx.is_const {
+                    return Err(TranslationError::generic(
+                        "Cannot use wrapping division in a const expression",
+                    ));
+                }
+                Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_div"), vec![rhs]))
             }
-            c_ast::BinOp::Divide => mk().binary_expr(BinOpKind::Div, lhs, rhs),
+            c_ast::BinOp::Divide => Ok(mk().binary_expr(BinOpKind::Div, lhs, rhs)),
 
             c_ast::BinOp::Modulus if is_unsigned_integral_type => {
-                mk().method_call_expr(lhs, mk().path_segment("wrapping_rem"), vec![rhs])
+                if ctx.is_const {
+                    return Err(TranslationError::generic(
+                        "Cannot use wrapping remainder in a const expression",
+                    ));
+                }
+                Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_rem"), vec![rhs]))
             }
-            c_ast::BinOp::Modulus => mk().binary_expr(BinOpKind::Rem, lhs, rhs),
+            c_ast::BinOp::Modulus => Ok(mk().binary_expr(BinOpKind::Rem, lhs, rhs)),
 
-            c_ast::BinOp::BitXor => mk().binary_expr(BinOpKind::BitXor, lhs, rhs),
+            c_ast::BinOp::BitXor => Ok(mk().binary_expr(BinOpKind::BitXor, lhs, rhs)),
 
-            c_ast::BinOp::ShiftRight => mk().binary_expr(BinOpKind::Shr, lhs, rhs),
-            c_ast::BinOp::ShiftLeft => mk().binary_expr(BinOpKind::Shl, lhs, rhs),
+            c_ast::BinOp::ShiftRight => Ok(mk().binary_expr(BinOpKind::Shr, lhs, rhs)),
+            c_ast::BinOp::ShiftLeft => Ok(mk().binary_expr(BinOpKind::Shl, lhs, rhs)),
 
             c_ast::BinOp::EqualEqual => {
                 // Using is_none method for null comparison means we don't have to
@@ -608,7 +639,7 @@ impl<'c> Translation<'c> {
                     mk().binary_expr(BinOpKind::Eq, lhs, rhs)
                 };
 
-                bool_to_int(expr)
+                Ok(bool_to_int(expr))
             }
             c_ast::BinOp::NotEqual => {
                 // Using is_some method for null comparison means we don't have to
@@ -630,15 +661,15 @@ impl<'c> Translation<'c> {
                     mk().binary_expr(BinOpKind::Ne, lhs, rhs)
                 };
 
-                bool_to_int(expr)
+                Ok(bool_to_int(expr))
             }
-            c_ast::BinOp::Less => bool_to_int(mk().binary_expr(BinOpKind::Lt, lhs, rhs)),
-            c_ast::BinOp::Greater => bool_to_int(mk().binary_expr(BinOpKind::Gt, lhs, rhs)),
-            c_ast::BinOp::GreaterEqual => bool_to_int(mk().binary_expr(BinOpKind::Ge, lhs, rhs)),
-            c_ast::BinOp::LessEqual => bool_to_int(mk().binary_expr(BinOpKind::Le, lhs, rhs)),
+            c_ast::BinOp::Less => Ok(bool_to_int(mk().binary_expr(BinOpKind::Lt, lhs, rhs))),
+            c_ast::BinOp::Greater => Ok(bool_to_int(mk().binary_expr(BinOpKind::Gt, lhs, rhs))),
+            c_ast::BinOp::GreaterEqual => Ok(bool_to_int(mk().binary_expr(BinOpKind::Ge, lhs, rhs))),
+            c_ast::BinOp::LessEqual => Ok(bool_to_int(mk().binary_expr(BinOpKind::Le, lhs, rhs))),
 
-            c_ast::BinOp::BitAnd => mk().binary_expr(BinOpKind::BitAnd, lhs, rhs),
-            c_ast::BinOp::BitOr => mk().binary_expr(BinOpKind::BitOr, lhs, rhs),
+            c_ast::BinOp::BitAnd => Ok(mk().binary_expr(BinOpKind::BitAnd, lhs, rhs)),
+            c_ast::BinOp::BitOr => Ok(mk().binary_expr(BinOpKind::BitOr, lhs, rhs)),
 
             op => unimplemented!("Translation of binary operator {:?}", op),
         }
@@ -646,11 +677,12 @@ impl<'c> Translation<'c> {
 
     fn convert_addition(
         &self,
+        ctx: ExprContext,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
         lhs: P<Expr>,
         rhs: P<Expr>,
-    ) -> P<Expr> {
+    ) -> Result<P<Expr>, TranslationError> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
@@ -662,9 +694,9 @@ impl<'c> Translation<'c> {
                         cast_int(rhs, "isize"),
                         cast_int(sz, "isize"),
                     );
-                    pointer_offset_isize(lhs, rhs)
+                    Ok(pointer_offset_isize(lhs, rhs))
                 }
-                None => pointer_offset(lhs, rhs),
+                None => Ok(pointer_offset(lhs, rhs)),
             }
         } else if let &CTypeKind::Pointer(pointee) = rhs_type {
             match self.compute_size_of_expr(pointee.ctype) {
@@ -674,29 +706,40 @@ impl<'c> Translation<'c> {
                         cast_int(lhs, "isize"),
                         cast_int(sz, "isize"),
                     );
-                    pointer_offset_isize(rhs, lhs)
+                    Ok(pointer_offset_isize(rhs, lhs))
                 }
-                None => pointer_offset(rhs, lhs),
+                None => Ok(pointer_offset(rhs, lhs)),
             }
         } else if lhs_type.is_unsigned_integral_type() {
-            mk().method_call_expr(lhs, mk().path_segment("wrapping_add"), vec![rhs])
+            if ctx.is_const {
+                return Err(TranslationError::generic(
+                    "Cannot use wrapping add in a const expression",
+                ));
+            }
+            Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_add"), vec![rhs]))
         } else {
-            mk().binary_expr(BinOpKind::Add, lhs, rhs)
+            Ok(mk().binary_expr(BinOpKind::Add, lhs, rhs))
         }
     }
 
     fn convert_subtraction(
         &self,
+        ctx: ExprContext,
         ty: P<Ty>,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
         lhs: P<Expr>,
         rhs: P<Expr>,
-    ) -> P<Expr> {
+    ) -> Result<P<Expr>, TranslationError> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = rhs_type {
+            if ctx.is_const {
+                return Err(TranslationError::generic(
+                    "Cannot use wrapping offset from in a const expression",
+                ));
+            }
             // The wrapping_offset_from method is locked behind a feature gate
             // and replaces the now deprecated offset_to (opposite argument order)
             // wrapping_offset_from panics when the pointee is a ZST
@@ -708,23 +751,28 @@ impl<'c> Translation<'c> {
                 offset = mk().binary_expr(BinOpKind::Div, offset, cast_int(sz, "isize"))
             }
 
-            mk().cast_expr(offset, ty)
+            Ok(mk().cast_expr(offset, ty))
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
             match self.compute_size_of_expr(pointee.ctype) {
-                None => pointer_neg_offset(lhs, rhs),
-                Some(sz) => pointer_neg_offset_isize(
+                None => Ok(pointer_neg_offset(lhs, rhs)),
+                Some(sz) => Ok(pointer_neg_offset_isize(
                     lhs,
                     mk().binary_expr(
                         BinOpKind::Mul,
                         cast_int(rhs, "isize"),
                         cast_int(sz, "isize"),
                     ),
-                ),
+                )),
             }
         } else if lhs_type.is_unsigned_integral_type() {
-            mk().method_call_expr(lhs, mk().path_segment("wrapping_sub"), vec![rhs])
+            if ctx.is_const {
+                return Err(TranslationError::generic(
+                    "Cannot use wrapping subtract in a const expression",
+                ));
+            }
+            Ok(mk().method_call_expr(lhs, mk().path_segment("wrapping_sub"), vec![rhs]))
         } else {
-            mk().binary_expr(BinOpKind::Sub, lhs, rhs)
+            Ok(mk().binary_expr(BinOpKind::Sub, lhs, rhs))
         }
     }
 
@@ -833,6 +881,11 @@ impl<'c> Translation<'c> {
                             .kind
                             .is_unsigned_integral_type()
                         {
+                            if ctx.is_const {
+                                return Err(TranslationError::generic(
+                                    "Cannot use wrapping add or sub in a const expression",
+                                ));
+                            }
                             let m = if up { "wrapping_add" } else { "wrapping_sub" };
                             mk().method_call_expr(read.clone(), m, vec![one])
                         } else {
@@ -976,6 +1029,11 @@ impl<'c> Translation<'c> {
                 let val = self.convert_expr(ctx.used(), arg)?;
 
                 if resolved_ctype.kind.is_unsigned_integral_type() {
+                    if ctx.is_const {
+                        return Err(TranslationError::generic(
+                            "Cannot use wrapping negate in a const expression",
+                        ));
+                    }
                     Ok(val.map(wrapping_neg_expr))
                 } else {
                     Ok(val.map(neg_expr))

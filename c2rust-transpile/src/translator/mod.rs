@@ -221,7 +221,7 @@ pub struct Translation<'c> {
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
     renamer: RefCell<Renamer<CDeclId>>,
-    zero_inits: RefCell<IndexMap<CDeclId, Result<P<Expr>, TranslationError>>>,
+    zero_inits: RefCell<IndexMap<CDeclId, WithStmts<P<Expr>>>>,
     function_context: RefCell<FunContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
     macro_types: RefCell<IndexMap<CDeclId, CQualTypeId>>,
@@ -1198,7 +1198,7 @@ impl<'c> Translation<'c> {
         typ: CQualTypeId,
         init: &mut P<Expr>,
     ) -> Result<(), TranslationError> {
-        let mut default_init = self.implicit_default_expr(typ.ctype, true)?;
+        let mut default_init = self.implicit_default_expr(typ.ctype, true)?.to_expr();
 
         std::mem::swap(init, &mut default_init);
 
@@ -1777,8 +1777,8 @@ impl<'c> Translation<'c> {
                     Ok(val) => val,
                     Err(_) => return None,
                 };
-                let val = val.to_expr();
-                Some((val, ty))
+                val.to_unsafe_pure_expr()
+                    .map(|val| (val, ty))
             })
 
         // TODO: Validate that all replacements are equivalent and pick the most
@@ -2230,7 +2230,7 @@ impl<'c> Translation<'c> {
                             )
                         })?;
                     let (ty, _, init) = self.convert_variable(ctx.static_(), initializer, typ)?;
-                    let default_init = self.implicit_default_expr(typ.ctype, true)?;
+                    let default_init = self.implicit_default_expr(typ.ctype, true)?.to_expr();
                     let comment = String::from("// Initialized in run_static_initializers");
                     let span = self
                         .comment_store
@@ -2307,11 +2307,15 @@ impl<'c> Translation<'c> {
                 stmts.append(init.stmts_mut());
                 let init = init.into_value();
 
+                let zeroed = self.implicit_default_expr(typ.ctype, false)?;
+                let zeroed = if ctx.is_const {
+                    zeroed.to_unsafe_pure_expr()
+                } else {
+                    zeroed.to_pure_expr()
+                }.expect("Expected decl initializer to not have any statements");
+                let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
+                let local_mut = mk().local(pat_mut, Some(ty.clone()), Some(zeroed));
                 if has_self_reference {
-                    let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
-                    let zeroed = self.implicit_default_expr(typ.ctype, false)?;
-                    let local_mut = mk().local(pat_mut, Some(ty), Some(zeroed));
-
                     let assign = mk().assign_expr(mk().ident_expr(rust_name), init);
 
                     let mut assign_stmts = stmts.clone();
@@ -2327,10 +2331,6 @@ impl<'c> Translation<'c> {
                         decl_and_assign,
                     ))
                 } else {
-                    let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
-                    let zeroed = self.implicit_default_expr(typ.ctype, false)?;
-                    let local_mut = mk().local(pat_mut, Some(ty.clone()), Some(zeroed));
-
                     let pat = mk().set_mutbl(mutbl).ident_pat(rust_name.clone());
 
                     let type_annotation = if self.tcfg.reduce_type_annotations
@@ -2501,9 +2501,7 @@ impl<'c> Translation<'c> {
     > {
         let init = match initializer {
             Some(x) => self.convert_expr(ctx.used(), x),
-            None => self
-                .implicit_default_expr(typ.ctype, ctx.is_static)
-                .map(WithStmts::new_val),
+            None => self.implicit_default_expr(typ.ctype, ctx.is_static),
         };
 
         // Variable declarations for variable-length arrays use the type of a pointer to the
@@ -3279,9 +3277,9 @@ impl<'c> Translation<'c> {
                 self.convert_init_list(ctx, ty, ids, opt_union_field_id)
             }
 
-            CExprKind::ImplicitValueInit(ty) => Ok(WithStmts::new_val(
-                self.implicit_default_expr(ty.ctype, ctx.is_static)?,
-            )),
+            CExprKind::ImplicitValueInit(ty) => {
+                self.implicit_default_expr(ty.ctype, ctx.is_static)
+            }
 
             CExprKind::Predefined(_, val_id) => self.convert_expr(ctx, val_id),
 
@@ -3826,27 +3824,29 @@ impl<'c> Translation<'c> {
         &self,
         ty_id: CTypeId,
         is_static: bool,
-    ) -> Result<P<Expr>, TranslationError> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let resolved_ty_id = self.ast_context.resolve_type_id(ty_id);
         let resolved_ty = &self.ast_context.index(resolved_ty_id).kind;
 
         if resolved_ty.is_bool() {
-            Ok(mk().lit_expr(mk().bool_lit(false)))
+            Ok(WithStmts::new_val(mk().lit_expr(mk().bool_lit(false))))
         } else if resolved_ty.is_integral_type() {
-            Ok(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)))
+            Ok(WithStmts::new_val(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))))
         } else if resolved_ty.is_floating_type() {
             match self.ast_context[ty_id].kind {
-                CTypeKind::LongDouble => Ok(mk().path_expr(vec!["f128", "f128", "ZERO"])),
-                _ => Ok(mk().lit_expr(mk().float_unsuffixed_lit("0."))),
+                CTypeKind::LongDouble => Ok(WithStmts::new_val(mk().path_expr(vec!["f128", "f128", "ZERO"]))),
+                _ => Ok(WithStmts::new_val(mk().lit_expr(mk().float_unsuffixed_lit("0.")))),
             }
         } else if let &CTypeKind::Pointer(_) = resolved_ty {
             self.null_ptr(resolved_ty_id, is_static)
+                .map(WithStmts::new_val)
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
             let sz = mk().lit_expr(mk().int_lit(sz as u128, LitIntType::Unsuffixed));
-            Ok(mk().repeat_expr(self.implicit_default_expr(elt, is_static)?, sz))
+            Ok(self.implicit_default_expr(elt, is_static)?
+                .map(|elt| mk().repeat_expr(elt, sz)))
         } else if let &CTypeKind::IncompleteArray(_) = resolved_ty {
             // Incomplete arrays are translated to zero length arrays
-            Ok(mk().array_expr(vec![] as Vec<P<Expr>>))
+            Ok(WithStmts::new_val(mk().array_expr(vec![] as Vec<P<Expr>>)))
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
             self.zero_initializer(decl_id, ty_id, is_static)
         } else if let &CTypeKind::VariableArray(elt, _) = resolved_ty {
@@ -3856,8 +3856,8 @@ impl<'c> Translation<'c> {
             // Find base element type of potentially nested arrays
             let inner = self.variable_array_base_type(elt);
             let count = self.compute_size_of_expr(ty_id).unwrap();
-            let val = self.implicit_default_expr(inner, is_static)?;
-            Ok(vec_expr(val, count))
+            Ok(self.implicit_default_expr(inner, is_static)?
+               .map(|val| vec_expr(val, count)))
         } else if let &CTypeKind::Vector(CQualTypeId { ctype, .. }, len) = resolved_ty {
             self.implicit_vector_default(ctype, len, is_static)
         } else {
@@ -3871,10 +3871,10 @@ impl<'c> Translation<'c> {
         decl_id: CDeclId,
         type_id: CTypeId,
         is_static: bool,
-    ) -> Result<P<Expr>, TranslationError> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         // Look up the decl in the cache and return what we find (if we find anything)
         if let Some(init) = self.zero_inits.borrow().get(&decl_id) {
-            return init.clone();
+            return Ok(init.clone());
         }
 
         // Otherwise, construct the initializer
@@ -3909,9 +3909,9 @@ impl<'c> Translation<'c> {
                     .any(|x| x);
 
                 if has_bitfields {
-                    self.bitfield_zero_initializer(name, fields, platform_byte_size, is_static)
+                    self.bitfield_zero_initializer(name, fields, platform_byte_size, is_static)?
                 } else {
-                    let fields: Result<Vec<Field>, TranslationError> = fields
+                    let fields: WithStmts<Vec<Field>> = fields
                         .into_iter()
                         .map(|field_id| {
                             let name = self
@@ -3922,18 +3922,17 @@ impl<'c> Translation<'c> {
 
                             match self.ast_context.index(*field_id).kind {
                                 CDeclKind::Field { typ, .. } => {
-                                    let field_init =
-                                        self.implicit_default_expr(typ.ctype, is_static)?;
-                                    Ok(mk().field(name, field_init))
+                                    Ok(self.implicit_default_expr(typ.ctype, is_static)?
+                                       .map(|field_init| mk().field(name, field_init)))
                                 }
                                 _ => Err(TranslationError::generic(
                                     "Found non-field in record field list",
                                 )),
                             }
                         })
-                        .collect();
+                        .collect::<Result<_, TranslationError>>()?;
 
-                    Ok(mk().struct_expr(vec![name], fields?))
+                    fields.map(|fields| mk().struct_expr(vec![name], fields))
                 }
             }
 
@@ -3960,32 +3959,40 @@ impl<'c> Translation<'c> {
 
                 let field = match self.ast_context.index(field_id).kind {
                     CDeclKind::Field { typ, .. } => {
-                        let field_init = self.implicit_default_expr(typ.ctype, is_static)?;
-                        let name = self
-                            .type_converter
-                            .borrow()
-                            .resolve_field_name(Some(decl_id), field_id)
-                            .unwrap();
+                        self.implicit_default_expr(typ.ctype, is_static)?
+                            .map(|field_init| {
+                                let name = self
+                                    .type_converter
+                                    .borrow()
+                                    .resolve_field_name(Some(decl_id), field_id)
+                                    .unwrap();
 
-                        Ok(mk().field(name, field_init))
+                                mk().field(name, field_init)
+                            })
                     }
-                    _ => Err(format_err!("Found non-field in record field list")),
-                }?;
+                    _ => return Err(TranslationError::generic(
+                        "Found non-field in record field list"
+                    )),
+                };
 
-                Ok(mk().struct_expr(vec![name], vec![field]))
+                field.map(|field| mk().struct_expr(vec![name], vec![field]))
             }
 
             // Transmute the number `0` into the enum type
-            CDeclKind::Enum { .. } => Ok(self.enum_for_i64(type_id, 0)),
+            CDeclKind::Enum { .. } => WithStmts::new_val(self.enum_for_i64(type_id, 0)),
 
-            _ => Err(TranslationError::generic(
+            _ => return Err(TranslationError::generic(
                 "Declaration is not associated with a type",
             )),
         };
 
-        // Insert the initializer into the cache, then return it
-        self.zero_inits.borrow_mut().insert(decl_id, init.clone());
-        init
+        if init.is_pure() {
+            // Insert the initializer into the cache, then return it
+            self.zero_inits.borrow_mut().insert(decl_id, init.clone());
+            Ok(init)
+        } else {
+            Err(TranslationError::generic("Expected no statements in zero initializer"))
+        }
     }
 
     /// Convert a boolean expression to a boolean for use in && or || or if

@@ -250,7 +250,7 @@ impl<'c> Translation<'c> {
         ctype: CTypeId,
         len: usize,
         is_static: bool,
-    ) -> Result<P<Expr>, TranslationError> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
         let (fn_name, bytes) = match (&self.ast_context[ctype].kind, len) {
@@ -280,17 +280,17 @@ impl<'c> Translation<'c> {
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
 
-            Ok(transmute_expr(
+            Ok(WithStmts::new_unsafe_val(transmute_expr(
                 mk().infer_ty(),
                 mk().infer_ty(),
                 expr,
                 self.tcfg.emit_no_std,
-            ))
+            )))
         } else {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");
 
-            Ok(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>))
+            Ok(WithStmts::new_val(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>)))
         }
     }
 

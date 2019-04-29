@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 use syntax::ast::{Block, Expr, Stmt};
 use syntax::ptr::P;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WithStmts<T> {
     stmts: Vec<Stmt>,
     val: T,
@@ -102,6 +102,10 @@ impl<T> WithStmts<T> {
     pub fn prepend_stmts(&mut self, mut stmts: Vec<Stmt>) {
         stmts.append(&mut self.stmts);
         self.stmts = stmts;
+    }
+
+    pub fn is_pure(&self) -> bool {
+        self.stmts.is_empty()
     }
 }
 
