@@ -987,9 +987,17 @@ class TranslateASTVisitor final
         // starts with literal replacement and works it's way to the macro call
         // that was replaced.
         while (Begin.isMacroID()) {
+#if CLANG_VERSION_MAJOR < 7
+            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
+            auto ExpansionBegin = ExpansionRange.first;
+            auto ExpansionEnd = ExpansionEnd.second;
+#else // CLANG_VERSION_MAJOR >= 7
             auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin).getAsRange();
+            auto ExpansionBegin = ExpansionRange.getBegin();
+            auto ExpansionEnd = ExpansionRange.getEnd();
+#endif
             StringRef name;
-            MacroInfo *mac = getMacroInfo(ExpansionRange.getBegin(), name);
+            MacroInfo *mac = getMacroInfo(ExpansionBegin, name);
 
             if (!mac || mac->getNumTokens() == 0)
                 return true;
@@ -1002,8 +1010,8 @@ class TranslateASTVisitor final
                 Mgr.getSpellingLoc(End) != ReplacementEnd)
                 return true;
 
-            Begin = ExpansionRange.getBegin();
-            End = ExpansionRange.getEnd();
+            Begin = ExpansionBegin;
+            End = ExpansionEnd;
 
             if (mac->isObjectLike() && VisitMacro(name, Begin, mac, E)) {
                 curMacroExpansionStack.push_back(mac);
