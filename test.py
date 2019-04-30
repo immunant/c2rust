@@ -17,7 +17,7 @@ def get_args():
                         type=str, default=None,
                         help='Only test specified project')
     parser.add_argument('--stage', dest='stage', action='store',
-                        type=str, default=None,
+                        type=str, default=None, choices=tests.Test.STAGES,
                         help='Only test specified stage')
     parser.add_argument('--print-requirements', metavar='PLATFORM',
                         dest='requirements', choices=['ubuntu'],
