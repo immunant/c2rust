@@ -32,6 +32,11 @@ pub struct AstNode {
     pub file_path: Option<PathBuf>,
     pub type_id: Option<u64>,
     pub rvalue: LRValue,
+
+    // Stack of macros this node was expanded from, beginning with the initial
+    // macro call and ending with the leaf. This needs to be a stack for nested
+    // macro definitions.
+    pub macro_expansions: Vec<u64>,
     pub extras: Vec<Value>,
 }
 
@@ -134,6 +139,13 @@ pub fn process(items: Value) -> error::Result<AstContext> {
                 path => Some(Path::new(path).to_path_buf()),
             };
 
+            let macro_expansions = entry[8]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_u64().unwrap())
+                .collect::<Vec<u64>>();
+
             let node = AstNode {
                 tag: import_ast_tag(tag),
                 children,
@@ -147,7 +159,8 @@ pub fn process(items: Value) -> error::Result<AstContext> {
                 } else {
                     LRValue::LValue
                 },
-                extras: entry[8..].to_vec(),
+                macro_expansions,
+                extras: entry[9..].to_vec(),
             };
 
             asts.insert(entry_id, node);

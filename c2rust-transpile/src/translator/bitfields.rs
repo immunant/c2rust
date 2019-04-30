@@ -345,7 +345,6 @@ impl<'a> Translation<'a> {
         let reorganized_fields = self.get_field_types(field_info.clone(), platform_byte_size)?;
         let local_pat = mk().mutbl().ident_pat("init");
         let mut padding_count = 0;
-        let mut stmts = Vec::new();
 
         // Add in zero inits for both padding as well as bitfield groups
         for field_type in reorganized_fields {
@@ -359,7 +358,7 @@ impl<'a> Translation<'a> {
                     );
                     let field = mk().field(field_name, array_expr);
 
-                    fields.push(field);
+                    fields.push(WithStmts::new_val(field));
                 }
                 FieldType::Padding { bytes } => {
                     let field_name = if padding_count == 0 {
@@ -375,7 +374,7 @@ impl<'a> Translation<'a> {
 
                     padding_count += 1;
 
-                    fields.push(field);
+                    fields.push(WithStmts::new_val(field));
                 }
                 _ => {}
             }
@@ -395,15 +394,23 @@ impl<'a> Translation<'a> {
                         continue;
                     }
 
-                    fields.push(mk().field(
-                        field_name,
-                        self.implicit_default_expr(ty.ctype, ctx.is_static)?,
-                    ));
+                    let init = self.implicit_default_expr(ty.ctype, ctx.is_static)?;
+                    if !init.is_pure() {
+                        return Err(TranslationError::generic(
+                            "Expected no statements in field expression"
+                        ));
+                    }
+                    let field = init.map(|init| mk().field(field_name, init));
+                    fields.push(field);
                 }
                 Both(field_id, (field_name, _, bitfield_width, _, _)) => {
-                    let expr = self.convert_expr(ctx.used(), *field_id)?
-                        .to_pure_expr()
-                        .ok_or_else(|| format_err!("Expected no statements in field expression"))?;
+                    let expr = self.convert_expr(ctx.used(), *field_id)?;
+
+                    if !expr.is_pure() {
+                        return Err(TranslationError::generic(
+                            "Expected no statements in field expression"
+                        ));
+                    }
 
                     if bitfield_width.is_some() {
                         bitfield_inits.push((field_name, expr));
@@ -411,33 +418,49 @@ impl<'a> Translation<'a> {
                         continue;
                     }
 
-                    fields.push(mk().field(field_name, expr));
+                    fields.push(expr.map(|expr| mk().field(field_name, expr)));
                 }
                 _ => unreachable!(),
             }
         }
 
-        let struct_expr = mk().struct_expr(name.as_str(), fields);
-        let local_variable = P(mk().local(local_pat, None as Option<P<Ty>>, Some(struct_expr)));
+        fields.into_iter()
+            .collect::<WithStmts<Vec<ast::Field>>>()
+            .and_then(|fields| {
+                let struct_expr = mk().struct_expr(name.as_str(), fields);
+                let local_variable = P(mk().local(
+                    local_pat,
+                    None as Option<P<Ty>>,
+                    Some(struct_expr))
+                );
 
-        stmts.push(mk().local_stmt(local_variable));
+                let mut is_unsafe = false;
+                let mut stmts = vec![mk().local_stmt(local_variable)];
 
-        // Now we must use the bitfield methods to initialize bitfields
-        for (field_name, val) in bitfield_inits {
-            let field_name_setter = format!("set_{}", field_name);
-            let struct_ident = mk().ident_expr("init");
-            let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
+                // Now we must use the bitfield methods to initialize bitfields
+                for (field_name, val) in bitfield_inits {
+                    let field_name_setter = format!("set_{}", field_name);
+                    let struct_ident = mk().ident_expr("init");
+                    is_unsafe |= val.is_unsafe();
+                    let val = val.to_pure_expr()
+                        .expect("Expected no statements in bitfield initializer");
+                    let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
 
-            stmts.push(mk().expr_stmt(expr));
-        }
+                    stmts.push(mk().expr_stmt(expr));
+                }
 
-        let struct_ident = mk().ident_expr("init");
+                let struct_ident = mk().ident_expr("init");
 
-        stmts.push(mk().expr_stmt(struct_ident));
+                stmts.push(mk().expr_stmt(struct_ident));
 
-        let val = mk().block_expr(mk().block(stmts));
+                let val = mk().block_expr(mk().block(stmts)); 
 
-        Ok(WithStmts::new_val(val))
+                if is_unsafe {
+                    Ok(WithStmts::new_unsafe_val(val))
+                } else {
+                    Ok(WithStmts::new_val(val))
+                }
+           })
     }
 
     /// This method handles zero-initializing bitfield structs including bitfields
@@ -448,7 +471,7 @@ impl<'a> Translation<'a> {
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
-    ) -> Result<P<Expr>, TranslationError> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let field_info: Vec<FieldInfo> = field_ids
             .iter()
             .map(|field_id| match self.ast_context.index(*field_id).kind {
@@ -490,7 +513,7 @@ impl<'a> Translation<'a> {
                     );
                     let field = mk().field(field_name, array_expr);
 
-                    fields.push(field);
+                    fields.push(WithStmts::new_val(field));
                 }
                 FieldType::Padding { bytes } => {
                     let field_name = if padding_count == 0 {
@@ -506,16 +529,23 @@ impl<'a> Translation<'a> {
 
                     padding_count += 1;
 
-                    fields.push(field);
+                    fields.push(WithStmts::new_val(field));
                 }
                 FieldType::Regular { ctype, name, .. } => {
                     let field_init = self.implicit_default_expr(ctype, is_static)?;
-                    fields.push(mk().field(name, field_init));
+                    if !field_init.is_pure() {
+                        return Err(TranslationError::generic(
+                            "Expected no statements in field expression"
+                        ));
+                    }
+                    fields.push(field_init.map(|init| mk().field(name, init)))
                 }
             }
         }
 
-        Ok(mk().struct_expr(name.as_str(), fields))
+        Ok(fields.into_iter()
+            .collect::<WithStmts<Vec<ast::Field>>>()
+            .map(|fields| mk().struct_expr(name.as_str(), fields)))
     }
 
     /// This method handles conversion of assignment operators on bitfields.

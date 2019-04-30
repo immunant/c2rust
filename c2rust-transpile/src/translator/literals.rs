@@ -3,6 +3,7 @@
 //! These include integer, floating, array, struct, union, enum literals.
 
 use super::*;
+use std::iter;
 
 impl<'c> Translation<'c> {
     /// Generate an integer literal corresponding to the given type, value, and base.
@@ -161,7 +162,7 @@ impl<'c> Translation<'c> {
                     let pointer =
                         transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
                     let array = mk().unary_expr(ast::UnOp::Deref, pointer);
-                    Ok(WithStmts::new_val(array))
+                    Ok(WithStmts::new_unsafe_val(array))
                 }
             }
         }
@@ -198,7 +199,7 @@ impl<'c> Translation<'c> {
                     let v = ids.first().unwrap();
                     self.convert_expr(ctx.used(), *v)
                 } else {
-                    ids
+                    Ok(ids
                         .iter()
                         .map(|id| {
                             self.convert_expr(ctx.used(), *id)?
@@ -221,14 +222,16 @@ impl<'c> Translation<'c> {
                                     }
                                 })
                         })
-                        .collect::<Result<WithStmts<Vec<P<Expr>>>, TranslationError>>()?
-                        .result_map(|mut vals| {
+                        .chain(
                             // Pad out the array literal with default values to the desired size
-                            for _i in ids.len()..n {
-                                vals.push(self.implicit_default_expr(ty, ctx.is_static)?)
-                            }
-                            Ok(mk().array_expr(vals))
-                        })
+                            iter::repeat(
+                                self.implicit_default_expr(ty, ctx.is_static)
+                            ).take(n - ids.len())
+                        )
+                        .collect::<Result<WithStmts<Vec<P<Expr>>>, TranslationError>>()?
+                        .map(|vals| {
+                            mk().array_expr(vals)
+                        }))
                 }
             }
             CTypeKind::Struct(struct_id) => {
@@ -269,9 +272,7 @@ impl<'c> Translation<'c> {
                 match self.ast_context.index(union_field_id).kind {
                     CDeclKind::Field { typ: field_ty, .. } => {
                         let val = if ids.is_empty() {
-                            WithStmts::new_val(
-                                self.implicit_default_expr(field_ty.ctype, ctx.is_static)?,
-                            )
+                            self.implicit_default_expr(field_ty.ctype, ctx.is_static)?
                         } else {
                             self.convert_expr(ctx.used(), ids[0])?
                         };
@@ -367,31 +368,23 @@ impl<'c> Translation<'c> {
             );
         }
 
-        let mut stmts: Vec<Stmt> = vec![];
-        let mut fields: Vec<Field> = vec![];
+        Ok(field_decls.iter()
+           .zip(ids.iter().map(Some).chain(iter::repeat(None)))
 
-        // Add specified record fields
-        for i in 0usize..ids.len() {
-            let v = ids[i];
-            let &(ref field_name, _, _, _, _) = &field_decls[i];
-
-            let mut x = self.convert_expr(ctx.used(), v)?;
-            stmts.append(x.stmts_mut());
-            fields.push(mk().field(field_name, x.into_value()));
-        }
-
-        // Pad out remaining omitted record fields
-        for i in ids.len()..fields.len() {
-            let &(ref field_name, ty, _, _, _) = &field_decls[i];
-            fields.push(mk().field(
-                field_name,
-                self.implicit_default_expr(ty.ctype, ctx.is_static)?,
-            ));
-        }
-
-        Ok(WithStmts::new(
-            stmts,
-            mk().struct_expr(vec![mk().path_segment(struct_name)], fields),
-        ))
+           // We're now iterating over pairs of (field_decl, Option<id>). The id
+           // is Some until we run out of specified initializers, when we switch
+           // to implicit default initializers.
+           .map(|(decl, maybe_id)| {
+               let &(ref field_name, ty, _, _, _) = decl;
+               let field_init = match maybe_id {
+                   Some(id) => self.convert_expr(ctx.used(), *id)?,
+                   None => self.implicit_default_expr(ty.ctype, ctx.is_static)?,
+               };
+               Ok(field_init.map(|expr| mk().field(field_name, expr)))
+           })
+           .collect::<Result<WithStmts<Vec<ast::Field>>, TranslationError>>()?
+           .map(|fields| {
+               mk().struct_expr(vec![mk().path_segment(struct_name)], fields)
+           }))
     }
 }

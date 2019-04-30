@@ -69,6 +69,7 @@ class CFile:
         self.path = path
         self.disable_incremental_relooper = "disable_incremental_relooper" in flags
         self.disallow_current_block = "disallow_current_block" in flags
+        self.translate_const_macros = "translate_const_macros" in flags
 
     def translate(self, cc_db, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
@@ -92,6 +93,8 @@ class CFile:
             args.append("--no-incremental-relooper")
         if self.disallow_current_block:
             args.append("--fail-on-multiple")
+        if self.translate_const_macros:
+            args.append("--translate-const-macros")
 
         args.append("--")
         args.extend(extra_args)

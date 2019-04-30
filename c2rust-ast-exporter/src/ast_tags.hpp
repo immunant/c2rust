@@ -21,6 +21,9 @@ enum ASTEntryTag {
     TagTypedefDecl,
     TagUnionDecl,
 
+    TagMacroObjectDef,
+    TagMacroFunctionDef,
+
     TagCompoundStmt = 100,
     TagReturnStmt,
     TagIfStmt,

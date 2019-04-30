@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 use syntax::ast::{Block, Expr, Stmt};
 use syntax::ptr::P;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WithStmts<T> {
     stmts: Vec<Stmt>,
     val: T,
@@ -103,6 +103,10 @@ impl<T> WithStmts<T> {
         stmts.append(&mut self.stmts);
         self.stmts = stmts;
     }
+
+    pub fn is_pure(&self) -> bool {
+        self.stmts.is_empty()
+    }
 }
 
 impl WithStmts<P<Expr>> {
@@ -118,11 +122,23 @@ impl WithStmts<P<Expr>> {
     /// Package a series of statements and an expression into one block
     pub fn to_block(mut self) -> P<Block> {
         self.stmts.push(mk().expr_stmt(self.val));
-        if self.is_unsafe {
-            mk().unsafe_().block(self.stmts)
-        } else {
-            mk().block(self.stmts)
-        }
+        mk().block(self.stmts)
+    }
+
+    pub fn to_unsafe_pure_expr(self) -> Option<P<Expr>> {
+        let is_unsafe = self.is_unsafe;
+        self.to_pure_expr()
+            .map(|expr| {
+                if is_unsafe {
+                    mk().block_expr(
+                        mk().unsafe_().block(
+                            vec![mk().expr_stmt(expr)]
+                        )
+                    )
+                } else {
+                    expr
+                }
+            })
     }
 
     pub fn to_pure_expr(self) -> Option<P<Expr>> {
@@ -150,10 +166,14 @@ impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>>
     fn from_iter<I: IntoIterator<Item = WithStmts<T>>>(value: I) -> Self {
         let mut stmts = vec![];
         let mut res = vec![];
+        let mut is_unsafe = false;
         for mut val in value.into_iter() {
+            is_unsafe |= val.is_unsafe();
             stmts.append(val.stmts_mut());
             res.push(val.into_value());
         }
-        WithStmts::new(stmts, res)
+        let mut translation = WithStmts::new(stmts, res);
+        translation.merge_unsafe(is_unsafe);
+        translation
     }
 }

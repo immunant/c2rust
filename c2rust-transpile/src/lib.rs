@@ -105,6 +105,7 @@ pub struct TranspilerConfig {
     pub enabled_warnings: HashSet<Diagnostic>,
     pub emit_no_std: bool,
     pub output_dir: Option<PathBuf>,
+    pub translate_const_macros: bool,
 
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`

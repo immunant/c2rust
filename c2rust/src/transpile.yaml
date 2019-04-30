@@ -34,6 +34,10 @@ args:
       help: Verbose mode
       takes_value: false
 
+  - translate-const-macros:
+      long: translate-const-macros
+      help: Enable translation of some C macros into consts
+      takes_value: false
   - no-incremental-relooper:
       long: no-incremental-relooper
       help: Disable relooping function bodies incrementally
