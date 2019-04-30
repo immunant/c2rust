@@ -990,7 +990,7 @@ class TranslateASTVisitor final
 #if CLANG_VERSION_MAJOR < 7
             auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
             auto ExpansionBegin = ExpansionRange.first;
-            auto ExpansionEnd = ExpansionEnd.second;
+            auto ExpansionEnd = ExpansionRange.second;
 #else // CLANG_VERSION_MAJOR >= 7
             auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin).getAsRange();
             auto ExpansionBegin = ExpansionRange.getBegin();
