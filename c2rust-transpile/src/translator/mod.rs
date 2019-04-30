@@ -3359,7 +3359,7 @@ impl<'c> Translation<'c> {
     }
 
     fn fn_expr_is_variadic(&self, expr_id: CExprId) -> bool {
-        let fn_expr = &self.ast_context.c_exprs[&expr_id];
+        let fn_expr = &self.ast_context[expr_id];
         let fn_ty = &self.ast_context.c_types[&fn_expr.kind.get_type().unwrap()];
         if let CTypeKind::Pointer(qual_ty) = fn_ty.kind {
             match self.ast_context.c_types[&qual_ty.ctype].kind {
