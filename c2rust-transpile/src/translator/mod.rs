@@ -2969,12 +2969,37 @@ impl<'c> Translation<'c> {
 
             CExprKind::Literal(ty, ref kind) => self.convert_literal(ctx.is_static, ty, kind),
 
-            CExprKind::ImplicitCast(ty, expr, kind, opt_field_id, _) => {
-                self.convert_cast(ctx, ty, expr, kind, opt_field_id, false)
-            }
+            CExprKind::ImplicitCast(ty, expr, kind, opt_field_id, _)
+            | CExprKind::ExplicitCast(ty, expr, kind, opt_field_id, _) => {
+                let is_explicit = if let CExprKind::ExplicitCast(..) = *expr_kind { true } else { false };
+                // A reference must be decayed if a bitcast is required. Const casts in
+                // LLVM 8 are now NoOp casts, so we need to include it as well.
+                match kind {
+                    CastKind::BitCast
+                        | CastKind::PointerToIntegral
+                        | CastKind::NoOp => ctx.decay_ref = DecayRef::Yes,
+                    _ => {}
+                }
 
-            CExprKind::ExplicitCast(ty, expr, kind, opt_field_id, _) => {
-                self.convert_cast(ctx, ty, expr, kind, opt_field_id, true)
+                let source_ty = self.ast_context[expr]
+                    .kind
+                    .get_qual_type()
+                    .ok_or_else(|| format_err!("bad source type"))?;
+
+                let val = if is_explicit {
+                    let mut stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
+                    let mut val = self.convert_expr(ctx, expr)?;
+                    val.prepend_stmts(stmts);
+                    val
+                } else {
+                    self.convert_expr(ctx, expr)?
+                };
+                // Shuffle Vector "function" builtins will add a cast to the output of the
+                // builtin call which is unnecessary for translation purposes
+                if self.casting_simd_builtin_call(expr, is_explicit, kind) {
+                    return Ok(val);
+                }
+                self.convert_cast(ctx, source_ty, ty, val, Some(expr), Some(kind), opt_field_id)
             }
 
             CExprKind::Unary(type_id, op, arg, lrvalue) => {
@@ -3315,47 +3340,18 @@ impl<'c> Translation<'c> {
                     .get(macro_id)
                     .ok_or_else(|| format_err!("Macro name not declared"))?;
 
-                let mut val = mk().path_expr(vec![rustname]);
-                let mut is_unsafe = false;
+                let val = WithStmts::new_val(mk().path_expr(vec![rustname]));
 
                 let expr_kind = &self.ast_context[expr_id].kind;
                 if let Some(expr_ty) = expr_kind.get_qual_type() {
-                    if macro_ty != expr_ty {
-                        let target_ty = self.convert_type(expr_ty.ctype)?;
-                        if self.ast_context.is_function_pointer(expr_ty.ctype)
-                            || self.ast_context.is_function_pointer(macro_ty.ctype)
-                        {
-                            self.use_feature("const_transmute");
-                            if self.ast_context[macro_ty.ctype].kind.is_integral_type() {
-                                let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
-                                let intptr = mk().cast_expr(val, intptr_t.clone());
-                                val = transmute_expr(intptr_t, target_ty, intptr,
-                                                     self.tcfg.emit_no_std);
-                                is_unsafe = true;
-                            } else {
-                                let source_ty = self.convert_type(macro_ty.ctype)?;
-                                val = transmute_expr(
-                                    source_ty,
-                                    target_ty,
-                                    val,
-                                    self.tcfg.emit_no_std,
-                                );
-                                is_unsafe = true;
-                            }
-                        } else {
-                            val = mk().cast_expr(val, target_ty);
-                        }
-                    }
+                    return self.convert_cast(ctx, macro_ty, expr_ty, val, None, None, None)
+                        .map(Some);
+                } else {
+                    return Ok(Some(val));
                 }
 
                 // TODO: May need to handle volatile reads here, see
                 // DeclRef below
-
-                if is_unsafe {
-                    return Ok(Some(WithStmts::new_unsafe_val(val)));
-                } else {
-                    return Ok(Some(WithStmts::new_val(val)));
-                }
             }
         }
 
@@ -3480,53 +3476,84 @@ impl<'c> Translation<'c> {
 
     fn convert_cast(
         &self,
-        mut ctx: ExprContext,
+        ctx: ExprContext,
+        source_ty: CQualTypeId,
         ty: CQualTypeId,
-        expr: CExprId,
-        kind: CastKind,
+        val: WithStmts<P<Expr>>,
+        expr: Option<CExprId>,
+        kind: Option<CastKind>,
         opt_field_id: Option<CFieldId>,
-        is_explicit: bool,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        // A reference must be decayed if a bitcast is required. Const casts in
-        // LLVM 8 are now NoOp casts, so we need to include it as well.
-        match kind {
-            CastKind::BitCast
-                | CastKind::PointerToIntegral
-                | CastKind::NoOp => ctx.decay_ref = DecayRef::Yes,
-            _ => {}
-        }
+        let kind = kind.unwrap_or_else(|| {
+            let source_ty = &self.ast_context.resolve_type(source_ty.ctype).kind;
+            let target_ty = &self.ast_context.resolve_type(ty.ctype).kind;
 
-        if kind == CastKind::IntegralToPointer && ctx.is_static {
-            self.use_feature("const_transmute");
-        }
+            match (source_ty, target_ty) {
+                (CTypeKind::VariableArray(..), CTypeKind::Pointer(..))
+                | (CTypeKind::ConstantArray(..), CTypeKind::Pointer(..))
+                | (CTypeKind::IncompleteArray(..), CTypeKind::Pointer(..))
+                    => CastKind::ArrayToPointerDecay,
 
-        let val = if is_explicit {
-            let mut stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
-            let mut val = self.convert_expr(ctx, expr)?;
-            val.prepend_stmts(stmts);
-            val
-        } else {
-            self.convert_expr(ctx, expr)?
-        };
+                (CTypeKind::Function(..), CTypeKind::Pointer(..))
+                    => CastKind::FunctionToPointerDecay,
 
-        // Shuffle Vector "function" builtins will add a cast to the output of the
-        // builtin call which is unnecessary for translation purposes
-        if self.casting_simd_builtin_call(expr, is_explicit, kind) {
-            return Ok(val);
-        }
+                (_, CTypeKind::Pointer(..)) if source_ty.is_integral_type()
+                    => CastKind::IntegralToPointer,
+
+                (CTypeKind::Pointer(..), CTypeKind::Bool)
+                    => CastKind::PointerToBoolean,
+
+                (CTypeKind::Pointer(..), _) if target_ty.is_integral_type()
+                    => CastKind::PointerToIntegral,
+
+                (_, CTypeKind::Bool) if source_ty.is_integral_type()
+                    => CastKind::IntegralToBoolean,
+
+                (CTypeKind::Bool, _) if target_ty.is_signed_integral_type()
+                    => CastKind::BooleanToSignedIntegral,
+
+                (_, _) if source_ty.is_integral_type() && target_ty.is_integral_type()
+                    => CastKind::IntegralCast,
+
+                (_, _) if source_ty.is_integral_type() && target_ty.is_floating_type()
+                    => CastKind::IntegralToFloating,
+
+                (_, CTypeKind::Bool) if source_ty.is_floating_type()
+                    => CastKind::FloatingToBoolean,
+
+                (_, _) if source_ty.is_floating_type() && target_ty.is_integral_type()
+                    => CastKind::FloatingToIntegral,
+
+                (_, _) if source_ty.is_floating_type() && target_ty.is_floating_type()
+                    => CastKind::FloatingCast,
+
+                (CTypeKind::Pointer(..), CTypeKind::Pointer(..))
+                    => CastKind::BitCast,
+
+                // Ignoring Complex casts for now
+
+                _ => {
+                    warn!(
+                        "Unknown CastKind for {:?} to {:?} cast. Defaulting to BitCast",
+                        source_ty,
+                        target_ty,
+                    );
+
+                    CastKind::BitCast
+                }
+            }
+        });
 
         match kind {
             CastKind::BitCast | CastKind::NoOp => {
                 val.and_then(|x| {
-                    let source_ty_id = self.ast_context[expr]
-                        .kind
-                        .get_type()
-                        .ok_or_else(|| format_err!("bad source type"))?;
-
                     if self.ast_context.is_function_pointer(ty.ctype)
-                        || self.ast_context.is_function_pointer(source_ty_id)
+                        || self.ast_context.is_function_pointer(source_ty.ctype)
                     {
-                        let source_ty = self.convert_type(source_ty_id)?;
+                        if ctx.is_static {
+                            self.use_feature("const_transmute");
+                        }
+                        let source_ty = self.convert_type(source_ty.ctype)?;
                         let target_ty = self.convert_type(ty.ctype)?;
                         Ok(WithStmts::new_unsafe_val(transmute_expr(
                             source_ty,
@@ -3543,6 +3570,9 @@ impl<'c> Translation<'c> {
             }
 
             CastKind::IntegralToPointer if self.ast_context.is_function_pointer(ty.ctype) => {
+                if ctx.is_static {
+                    self.use_feature("const_transmute");
+                }
                 let target_ty = self.convert_type(ty.ctype)?;
                 val.and_then(|x| {
                     let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
@@ -3562,10 +3592,7 @@ impl<'c> Translation<'c> {
                 let target_ty = self.convert_type(ty.ctype)?;
                 let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
 
-                let source_ty_ctype_id = self.ast_context[expr]
-                    .kind
-                    .get_type()
-                    .ok_or_else(|| format_err!("bad source expression"))?;
+                let source_ty_ctype_id = source_ty.ctype;
 
                 let source_ty = self.convert_type(source_ty_ctype_id)?;
                 if let CTypeKind::LongDouble = target_ty_ctype {
@@ -3615,12 +3642,16 @@ impl<'c> Translation<'c> {
                     }))
                 } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
                     // Casts targeting `enum` types...
+                    let expr = expr.ok_or_else(|| format_err!("Casts to enums require a C ExprId"))?;
                     Ok(self.enum_cast(ty.ctype, enum_decl_id, expr, val, source_ty, target_ty))
                 } else {
                     // Other numeric casts translate to Rust `as` casts,
                     // unless the cast is to a function pointer then use `transmute`.
                     val.and_then(|x| {
                         if self.ast_context.is_function_pointer(source_ty_ctype_id) {
+                            if ctx.is_static {
+                                self.use_feature("const_transmute");
+                            }
                             Ok(WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, x, self.tcfg.emit_no_std)))
                         } else {
                             Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
@@ -3663,8 +3694,9 @@ impl<'c> Translation<'c> {
 
                 let is_const = pointee.qualifiers.is_const;
 
-                match self.ast_context.index(expr).kind {
-                    CExprKind::Literal(_, CLiteral::String(ref bytes, 1)) if is_const => {
+                let expr_kind = expr.map(|e| &self.ast_context.index(e).kind);
+                match expr_kind {
+                    Some(&CExprKind::Literal(_, CLiteral::String(ref bytes, 1))) if is_const => {
                         let target_ty = self.convert_type(ty.ctype)?;
 
                         let mut bytes = bytes.to_owned();
@@ -3677,12 +3709,8 @@ impl<'c> Translation<'c> {
                     }
                     _ => {
                         // Variable length arrays are already represented as pointers.
-                        let source_ty = self.ast_context[expr]
-                            .kind
-                            .get_type()
-                            .ok_or_else(|| format_err!("bad variable array source type"))?;
                         if let CTypeKind::VariableArray(..) =
-                            self.ast_context.resolve_type(source_ty).kind
+                            self.ast_context.resolve_type(source_ty.ctype).kind
                         {
                             Ok(val)
                         } else {
@@ -3740,7 +3768,13 @@ impl<'c> Translation<'c> {
 
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
-            | CastKind::PointerToBoolean => self.convert_condition(ctx, true, expr),
+            | CastKind::PointerToBoolean => {
+                if let Some(expr) = expr {
+                    self.convert_condition(ctx, true, expr)
+                } else {
+                    Ok(val.map(|e| self.match_bool(true, source_ty.ctype, e)))
+                }
+            }
 
             // I don't know how to actually cause clang to generate this
             CastKind::BooleanToSignedIntegral => Err(TranslationError::generic(
