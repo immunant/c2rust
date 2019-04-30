@@ -147,21 +147,32 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                         }
                     }
                 },
-                ExprKind::Box(_) => {
+                ExprKind::Box(boxed) => {
                     ast.set("kind", "Box")?;
-
+                    ast.set("boxed", boxed.into_lua_ast(ctx, lua_ctx)?)?;
                 },
                 ExprKind::ObsoleteInPlace(_, _) => {
                     ast.set("kind", "ObsoleteInPlace")?;
 
                 },
-                ExprKind::Array(_) => {
+                ExprKind::Array(values) => {
+                    let vals: LuaResult<Vec<_>> = values
+                        .into_iter()
+                        .map(|v| v.into_lua_ast(ctx, lua_ctx))
+                        .collect();
+
                     ast.set("kind", "Array")?;
-
+                    ast.set("values", iter_to_lua_array(vals?.into_iter(), lua_ctx)?)?;
                 },
-                ExprKind::Call(_, _) => {
-                    ast.set("kind", "Call")?;
+                ExprKind::Call(path, args) => {
+                   let args: LuaResult<Vec<_>> = args
+                        .into_iter()
+                        .map(|v| v.into_lua_ast(ctx, lua_ctx))
+                        .collect();
 
+                    ast.set("kind", "Call")?;
+                    ast.set("path", path.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("args", iter_to_lua_array(args?.into_iter(), lua_ctx)?)?;
                 },
                 ExprKind::MethodCall(_, _) => {
                     ast.set("kind", "MethodCall")?;
@@ -171,86 +182,139 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                     ast.set("kind", "Tup")?;
 
                 },
-                ExprKind::Binary(_, _, _) => {
+                ExprKind::Binary(op, lhs, rhs) => {
                     ast.set("kind", "Binary")?;
-
+                    ast.set("op", op.node.to_string())?;
+                    ast.set("lhs", lhs.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("rhs", rhs.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::Unary(_, _) => {
+                ExprKind::Unary(op, expr) => {
                     ast.set("kind", "Unary")?;
-
+                    ast.set("op", syntax::ast::UnOp::to_string(op))?;
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
                 ExprKind::Cast(_, _) => {
                     ast.set("kind", "Cast")?;
 
                 },
-                ExprKind::Type(_, _) => {
+                ExprKind::Type(expr, _ty) => {
                     ast.set("kind", "Type")?;
-
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::If(_, _, _) => {
+                ExprKind::If(cond, then, opt_else) => {
                     ast.set("kind", "If")?;
+                    ast.set("cond", cond.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("then", then.into_lua_ast(ctx, lua_ctx)?)?;
 
+                    if let Some(els) = opt_else {
+                        ast.set("else", els.into_lua_ast(ctx, lua_ctx)?)?;
+                    }
                 },
-                ExprKind::IfLet(_, _, _, _) => {
+                ExprKind::IfLet(_, expr, then, opt_else) => {
                     ast.set("kind", "IfLet")?;
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("then", then.into_lua_ast(ctx, lua_ctx)?)?;
 
+                    if let Some(els) = opt_else {
+                        ast.set("else", els.into_lua_ast(ctx, lua_ctx)?)?;
+                    }
                 },
-                ExprKind::While(_, _, _) => {
+                ExprKind::While(cond, _, _) => {
                     ast.set("kind", "While")?;
-
+                    ast.set("cond", cond.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::WhileLet(_, _, _, _) => {
+                ExprKind::WhileLet(_pats, expr, block, opt_label) => {
                     ast.set("kind", "WhileLet")?;
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
 
+                    if let Some(label) = opt_label {
+                        ast.set("label", label.ident.name.as_str().get())?;
+                    }
                 },
-                ExprKind::ForLoop(..) => {
+                ExprKind::ForLoop(_pat, expr, block, opt_label) => {
                     ast.set("kind", "ForLoop")?;
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
 
+                    if let Some(label) = opt_label {
+                        ast.set("label", label.ident.name.as_str().get())?;
+                    }
                 },
-                ExprKind::Loop(..) => {
+                ExprKind::Loop(block, opt_label) => {
                     ast.set("kind", "Loop")?;
+                    ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
 
+                    if let Some(label) = opt_label {
+                        ast.set("label", label.ident.name.as_str().get())?;
+                    }
                 },
-                ExprKind::Match(..) => {
+                ExprKind::Match(expr, _arms) => {
                     ast.set("kind", "Match")?;
-
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::Closure(..) => {
+                ExprKind::Closure(capture_by, _is_async, movability, fn_decl, expr, _span) => {
                     ast.set("kind", "Closure")?;
-
+                    ast.set("fn_decl", fn_decl.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("capture_by", match capture_by {
+                        ast::CaptureBy::Ref => "Ref",
+                        ast::CaptureBy::Value => "Value",
+                    })?;
+                    ast.set("movability", match movability {
+                        ast::Movability::Movable => "Movable",
+                        ast::Movability::Static => "Static",
+                    })?;
                 },
-                ExprKind::Block(..) => {
+                ExprKind::Block(block, opt_label) => {
                     ast.set("kind", "Block")?;
+                    ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
 
+                    if let Some(label) = opt_label {
+                        ast.set("label", label.ident.name.as_str().get())?;
+                    }
                 },
                 ExprKind::Async(..) => {
                     ast.set("kind", "Async")?;
-
                 },
-                ExprKind::TryBlock(..) => {
+                ExprKind::TryBlock(block) => {
                     ast.set("kind", "TryBlock")?;
-
+                    ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::Assign(..) => {
+                ExprKind::Assign(lhs, rhs) => {
                     ast.set("kind", "Assign")?;
-
+                    ast.set("lhs", lhs.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("rhs", rhs.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::AssignOp(_op, lhs, rhs) => {
+                ExprKind::AssignOp(op, lhs, rhs) => {
                     ast.set("kind", "AssignOp")?;
+                    ast.set("op", op.node.to_string())?;
                     ast.set("lhs", lhs.into_lua_ast(ctx, lua_ctx)?)?;
                     ast.set("rhs", rhs.into_lua_ast(ctx, lua_ctx)?)?;
                 },
                 ExprKind::Field(..) => {
                     ast.set("kind", "Field")?;
-
                 },
-                ExprKind::Index(..) => {
+                ExprKind::Index(indexed, index) => {
                     ast.set("kind", "Index")?;
-
+                    ast.set("indexed", indexed.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("index", index.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::Range(..) => {
+                ExprKind::Range(opt_lhs, opt_rhs, limits) => {
                     ast.set("kind", "Range")?;
 
+                    if let Some(lhs) = opt_lhs {
+                        ast.set("lhs", lhs.into_lua_ast(ctx, lua_ctx)?)?;
+                    }
+
+                    if let Some(rhs) = opt_rhs {
+                        ast.set("rhs", rhs.into_lua_ast(ctx, lua_ctx)?)?;
+                    }
+
+                    ast.set("limits", match limits {
+                        ast::RangeLimits::HalfOpen => "HalfOpen",
+                        ast::RangeLimits::Closed => "Closed",
+                    })?;
                 },
                 ExprKind::Path(_, path) => {
                     let segments = path
@@ -261,21 +325,38 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                     ast.set("kind", "Path")?;
                     ast.set("segments", iter_to_lua_array(segments, lua_ctx)?)?;
                 },
-                ExprKind::AddrOf(..) => {
+                ExprKind::AddrOf(mutability, expr) => {
                     ast.set("kind", "AddrOf")?;
-
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("mutability", match mutability {
+                        ast::Mutability::Immutable => "Immutable",
+                        ast::Mutability::Mutable => "Mutable",
+                    })?;
                 },
-                ExprKind::Break(..) => {
+                ExprKind::Break(opt_label, opt_expr) => {
                     ast.set("kind", "Break")?;
 
+                    if let Some(expr) = opt_expr {
+                        ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+                    }
+
+                    if let Some(label) = opt_label {
+                        ast.set("label", label.ident.name.as_str().get())?;
+                    }
                 },
-                ExprKind::Continue(..) => {
+                ExprKind::Continue(opt_label) => {
                     ast.set("kind", "Continue")?;
 
+                    if let Some(label) = opt_label {
+                        ast.set("label", label.ident.name.as_str().get())?;
+                    }
                 },
-                ExprKind::Ret(..) => {
+                ExprKind::Ret(opt_val) => {
                     ast.set("kind", "Ret")?;
 
+                    if let Some(val) = opt_val {
+                        ast.set("value", val.into_lua_ast(ctx, lua_ctx)?)?;
+                    }
                 },
                 ExprKind::InlineAsm(..) => {
                     ast.set("kind", "InlineAsm")?;
@@ -289,25 +370,27 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                     ast.set("kind", "Struct")?;
 
                 },
-                ExprKind::Repeat(..) => {
+                ExprKind::Repeat(expr, _anon_const) => {
                     ast.set("kind", "Repeat")?;
-
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::Paren(..) => {
+                ExprKind::Paren(expr) => {
                     ast.set("kind", "Paren")?;
-
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::Try(..) => {
+                ExprKind::Try(expr) => {
                     ast.set("kind", "Try")?;
-
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::Yield(..) => {
+                ExprKind::Yield(opt_val) => {
                     ast.set("kind", "Yield")?;
 
+                    if let Some(val) = opt_val {
+                        ast.set("value", val.into_lua_ast(ctx, lua_ctx)?)?;
+                    }
                 },
                 ExprKind::Err => {
                     ast.set("kind", "Err")?;
-
                 },
             }
 
