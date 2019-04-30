@@ -21,6 +21,7 @@
 #include "clang/AST/TypeVisitor.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/Version.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/Tooling.h"
@@ -617,6 +618,26 @@ class TranslateASTVisitor final
         return true;
     }
 
+    static bool isScalarAsmType(QualType ty) {
+        ty = ty.getCanonicalType();
+        switch (ty->getTypeClass()) {
+        case clang::Type::Builtin:
+        case clang::Type::Pointer:
+        case clang::Type::Vector:
+        case clang::Type::ExtVector:
+        case clang::Type::FunctionProto:
+        case clang::Type::FunctionNoProto:
+        case clang::Type::Enum:
+            return true;
+
+        case clang::Type::Atomic:
+            return isScalarAsmType(cast<AtomicType>(ty)->getValueType());
+
+        default:
+            return false;
+        }
+    }
+
   public:
     explicit TranslateASTVisitor(ASTContext *Context, CborEncoder *encoder,
                                  std::unordered_map<void *, QualType> *sugared,
@@ -883,18 +904,46 @@ class TranslateASTVisitor final
             cbor_encode_string(local, E->generateAsmString(*Context));
 
             std::vector<std::string> outputs, inputs, clobbers;
+            std::vector<TargetInfo::ConstraintInfo> output_infos;
             for (unsigned i = 0, num = E->getNumOutputs(); i < num; ++i) {
                 auto constraint = E->getOutputConstraint(i).str();
-                auto s = constraint.c_str();
                 std::string convertedConstraint;
-                convertedConstraint += *s++; // Copy over the initial = or ?
+                TargetInfo::ConstraintInfo info(constraint, E->getOutputName(i));
+                this->Context->getTargetInfo().validateOutputConstraint(info);
+                convertedConstraint += info.isReadWrite() ? '+' : '=';
+                if (info.earlyClobber()) {
+                    convertedConstraint += '&';
+                }
+                if (info.allowsMemory() ||
+                    !isScalarAsmType(E->getOutputExpr(i)->getType())) {
+                    // This is a memory-only operand, so we need to make sure
+                    // we pass it in by-address and not by-value (the value
+                    // of the operand is actually the memory address to write
+                    // into); clang does this conversion, but rustc doesn't
+                    convertedConstraint += '*';
+                }
+                // FIXME: we need the equivalent of clang's `SimplifyConstraint`
+                auto s = constraint.c_str();
+                while (*s == '=' || *s == '+' || *s == '&')
+                    s++;
                 convertedConstraint += this->Context->getTargetInfo().convertConstraint(s);
                 outputs.push_back(convertedConstraint);
+                output_infos.push_back(std::move(info));
             }
             for (unsigned i = 0, num = E->getNumInputs(); i < num; ++i) {
                 auto constraint = E->getInputConstraint(i);
+                std::string convertedConstraint;
+                TargetInfo::ConstraintInfo info(constraint, E->getInputName(i));
+                this->Context->getTargetInfo().validateInputConstraint(output_infos, info);
+                if ((info.allowsMemory() && !info.allowsRegister()) ||
+                    !isScalarAsmType(E->getInputExpr(i)->getType())) {
+                    // See above
+                    convertedConstraint += '*';
+                }
+                // FIXME: we need the equivalent of clang's `SimplifyConstraint`
                 auto s = constraint.str().c_str();
-                inputs.emplace_back(this->Context->getTargetInfo().convertConstraint(s));
+                convertedConstraint += this->Context->getTargetInfo().convertConstraint(s);
+                inputs.emplace_back(convertedConstraint);
             }
             for (unsigned i = 0, num = E->getNumClobbers(); i < num; ++i) {
                 auto constraint = E->getClobber(i);
