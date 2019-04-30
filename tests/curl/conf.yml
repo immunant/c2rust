@@ -1,0 +1,4 @@
+transpile:
+  main: tool_main
+
+cargo: true

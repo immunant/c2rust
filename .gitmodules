@@ -21,3 +21,7 @@
 	path = tests/json-c/repo
 	url = https://github.com/json-c/json-c.git
     shallow = true
+[submodule "tests/curl/repo"]
+	path = tests/curl/repo
+	url = https://github.com/curl/curl.git
+	branch = curl-7_64_1
