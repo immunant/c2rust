@@ -231,7 +231,7 @@ impl TypedAstContext {
     pub fn prune_unused_decls(&mut self) {
         use self::iterators::{DFNodes, SomeId};
         // Starting from a set of root declarations, walk each one to find declarations it
-        // dependens on.  Then walk each of those, recursively.
+        // depends on. Then walk each of those, recursively.
 
         // Declarations we still need to walk.  Everything in here is also in `used`.
         let mut to_walk: Vec<CDeclId> = Vec::new();
@@ -298,18 +298,17 @@ impl TypedAstContext {
                     }
 
                     SomeId::Expr(expr_id) => {
-                        if let Some(expr) = self.c_exprs.get(&expr_id) {
-                            if let Some(macs) = self.macro_expansions.get(&expr_id) {
-                                for mac_id in macs {
-                                    if used.insert(*mac_id) {
-                                        to_walk.push(*mac_id);
-                                    }
+                        let expr = self.index(expr_id);
+                        if let Some(macs) = self.macro_expansions.get(&expr_id) {
+                            for mac_id in macs {
+                                if used.insert(*mac_id) {
+                                    to_walk.push(*mac_id);
                                 }
                             }
-                            if let CExprKind::DeclRef(_, decl_id, _) = &expr.kind {
-                                if used.insert(*decl_id) {
-                                    to_walk.push(*decl_id);
-                                }
+                        }
+                        if let CExprKind::DeclRef(_, decl_id, _) = &expr.kind {
+                            if used.insert(*decl_id) {
+                                to_walk.push(*decl_id);
                             }
                         }
                     }
@@ -494,7 +493,14 @@ impl Index<CExprId> for TypedAstContext {
         };
         match self.c_exprs.get(&index) {
             None => &BADEXPR, // panic!("Could not find {:?} in TypedAstContext", index),
-            Some(ty) => ty,
+            Some(e) => {
+                // Transparently index through Paren expressions
+                if let CExprKind::Paren(_, subexpr) = e.kind {
+                    self.index(subexpr)
+                } else {
+                    e
+                }
+            }
         }
     }
 }
