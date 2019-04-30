@@ -5,7 +5,6 @@ requirements:
     apt:
       packages:
         - build-essential
-        - mdm # for nproc
 
 generic: # for any host
   programs:
