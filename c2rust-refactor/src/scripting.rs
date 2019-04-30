@@ -14,7 +14,7 @@ use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaTable};
 use rlua::{Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
 use slotmap::{new_key_type, SlotMap};
-use syntax::ast;
+use syntax::ast::{self, ExprKind};
 use syntax::ptr::P;
 
 use crate::ast_manip::fn_edit::mut_visit_fns;
@@ -23,6 +23,7 @@ use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
 use crate::matcher::{self, mut_visit_match_with, Bindings, MatchCtxt, Pattern, Subst, TryMatch};
 use crate::RefactorCtxt;
+use crate::scripting::utils::iter_to_lua_array;
 
 pub mod ast_visitor;
 pub mod utils;
@@ -103,11 +104,11 @@ impl<'lua> IntoLuaAst<'lua> for ast::Stmt {
             }
             ast::StmtKind::Semi(e) => {
                 ast.set("kind", "Semi")?;
-                ast.set("expr", ctx.intern(e))?;
+                ast.set("expr", e.into_lua_ast(ctx, lua_ctx)?)?;
             }
             ast::StmtKind::Expr(e) => {
                 ast.set("kind", "Expr")?;
-                ast.set("expr", ctx.intern(e))?;
+                ast.set("expr", e.into_lua_ast(ctx, lua_ctx)?)?;
             }
             ast::StmtKind::Mac(_) => {
                 return Err(LuaError::external("StmtKind::Mac is not yet implemented"));
@@ -126,12 +127,14 @@ impl<'lua> IntoLuaAst<'lua> for ast::Stmt {
 // `ExprKind::Lit` only:
 // @field value Literal value of this expression
 impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
-    fn into_lua_ast(self, _ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
         let ast = lua_ctx.create_table()?;
         ast.set("type", "Expr")?;
+        ast.set("id", self.id.as_u32())?;
+
         self.and_then(|expr| {
             match expr.node {
-                ast::ExprKind::Lit(l) => {
+                ExprKind::Lit(l) => {
                     ast.set("kind", "Lit")?;
                     match l.node {
                         ast::LitKind::Str(s, _) => ast.set("value", s.to_string())?,
@@ -143,13 +146,169 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                             )));
                         }
                     }
-                }
-                _ => {
-                    return Err(LuaError::external(format!(
-                        "{:?} is not yet implemented",
-                        expr.node
-                    )));
-                }
+                },
+                ExprKind::Box(_) => {
+                    ast.set("kind", "Box")?;
+
+                },
+                ExprKind::ObsoleteInPlace(_, _) => {
+                    ast.set("kind", "ObsoleteInPlace")?;
+
+                },
+                ExprKind::Array(_) => {
+                    ast.set("kind", "Array")?;
+
+                },
+                ExprKind::Call(_, _) => {
+                    ast.set("kind", "Call")?;
+
+                },
+                ExprKind::MethodCall(_, _) => {
+                    ast.set("kind", "MethodCall")?;
+
+                },
+                ExprKind::Tup(_) => {
+                    ast.set("kind", "Tup")?;
+
+                },
+                ExprKind::Binary(_, _, _) => {
+                    ast.set("kind", "Binary")?;
+
+                },
+                ExprKind::Unary(_, _) => {
+                    ast.set("kind", "Unary")?;
+
+                },
+                ExprKind::Cast(_, _) => {
+                    ast.set("kind", "Cast")?;
+
+                },
+                ExprKind::Type(_, _) => {
+                    ast.set("kind", "Type")?;
+
+                },
+                ExprKind::If(_, _, _) => {
+                    ast.set("kind", "If")?;
+
+                },
+                ExprKind::IfLet(_, _, _, _) => {
+                    ast.set("kind", "IfLet")?;
+
+                },
+                ExprKind::While(_, _, _) => {
+                    ast.set("kind", "While")?;
+
+                },
+                ExprKind::WhileLet(_, _, _, _) => {
+                    ast.set("kind", "WhileLet")?;
+
+                },
+                ExprKind::ForLoop(..) => {
+                    ast.set("kind", "ForLoop")?;
+
+                },
+                ExprKind::Loop(..) => {
+                    ast.set("kind", "Loop")?;
+
+                },
+                ExprKind::Match(..) => {
+                    ast.set("kind", "Match")?;
+
+                },
+                ExprKind::Closure(..) => {
+                    ast.set("kind", "Closure")?;
+
+                },
+                ExprKind::Block(..) => {
+                    ast.set("kind", "Block")?;
+
+                },
+                ExprKind::Async(..) => {
+                    ast.set("kind", "Async")?;
+
+                },
+                ExprKind::TryBlock(..) => {
+                    ast.set("kind", "TryBlock")?;
+
+                },
+                ExprKind::Assign(..) => {
+                    ast.set("kind", "Assign")?;
+
+                },
+                ExprKind::AssignOp(_op, lhs, rhs) => {
+                    ast.set("kind", "AssignOp")?;
+                    ast.set("lhs", lhs.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("rhs", rhs.into_lua_ast(ctx, lua_ctx)?)?;
+                },
+                ExprKind::Field(..) => {
+                    ast.set("kind", "Field")?;
+
+                },
+                ExprKind::Index(..) => {
+                    ast.set("kind", "Index")?;
+
+                },
+                ExprKind::Range(..) => {
+                    ast.set("kind", "Range")?;
+
+                },
+                ExprKind::Path(_, path) => {
+                    let segments = path
+                        .segments
+                        .into_iter()
+                        .map(|s| s.ident.to_string());
+
+                    ast.set("kind", "Path")?;
+                    ast.set("segments", iter_to_lua_array(segments, lua_ctx)?)?;
+                },
+                ExprKind::AddrOf(..) => {
+                    ast.set("kind", "AddrOf")?;
+
+                },
+                ExprKind::Break(..) => {
+                    ast.set("kind", "Break")?;
+
+                },
+                ExprKind::Continue(..) => {
+                    ast.set("kind", "Continue")?;
+
+                },
+                ExprKind::Ret(..) => {
+                    ast.set("kind", "Ret")?;
+
+                },
+                ExprKind::InlineAsm(..) => {
+                    ast.set("kind", "InlineAsm")?;
+
+                },
+                ExprKind::Mac(..) => {
+                    ast.set("kind", "Mac")?;
+
+                },
+                ExprKind::Struct(..) => {
+                    ast.set("kind", "Struct")?;
+
+                },
+                ExprKind::Repeat(..) => {
+                    ast.set("kind", "Repeat")?;
+
+                },
+                ExprKind::Paren(..) => {
+                    ast.set("kind", "Paren")?;
+
+                },
+                ExprKind::Try(..) => {
+                    ast.set("kind", "Try")?;
+
+                },
+                ExprKind::Yield(..) => {
+                    ast.set("kind", "Yield")?;
+
+                },
+                ExprKind::Err => {
+                    ast.set("kind", "Err")?;
+
+                },
             }
 
             Ok(ast)

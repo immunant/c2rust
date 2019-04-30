@@ -37,7 +37,6 @@ impl<'lua> IntoLuaAst<'lua> for P<FnDecl> {
 
         ast.set("type", "FnDecl")?;
         ast.set("c_variadic", self.c_variadic)?;
-
         ast.set("return_type", match &self.output {
             FunctionRetTy::Default(_) => None,
             FunctionRetTy::Ty(ty) => Some(ctx.intern(ty.clone())),
@@ -74,7 +73,6 @@ impl<'lua> IntoLuaAst<'lua> for Arg {
                 })?;
 
                 ast.set("ident", ident.as_str().get())?;
-
             },
             ref e => unreachable!("Found {:?}", e),
         }
