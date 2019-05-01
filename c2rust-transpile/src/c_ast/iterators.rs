@@ -55,7 +55,8 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
             res
         }
         ArraySubscript(_, l, r, _) => intos![l, r],
-        Conditional(_, c, t, e) => intos![c, t, e],
+        Conditional(_, c, t, e)
+        | Choose(_, c, t, e, _) => intos![c, t, e],
         BinaryConditional(_, c, t) => intos![c, t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
         ImplicitCast(_, e, _, _, _)
@@ -96,7 +97,8 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
             res
         }
         ArraySubscript(_, l, r, _) => intos![l, r],
-        Conditional(_, c, t, e) => intos![c, t, e],
+        Conditional(_, c, t, e)
+        | Choose(_, c, t, e, _) => intos![c, t, e],
         BinaryConditional(_, c, t) => intos![c, t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
         Member(_, e, _, _, _) | Predefined(_, e) => intos![e],

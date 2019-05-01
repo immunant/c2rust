@@ -201,7 +201,8 @@ impl TypedAstContext {
 
             CExprKind::ArraySubscript(_, lhs, rhs, _) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
-            CExprKind::BinaryConditional(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+            CExprKind::BinaryConditional(_, c, rhs) => self.is_expr_pure(c) && self.is_expr_pure(rhs),
+            CExprKind::Choose(_, c, lhs, rhs, _) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
         }
     }
 
@@ -746,6 +747,9 @@ pub enum CExprKind {
     // From syntactic form of initializer list expressions
     DesignatedInitExpr(CQualTypeId, Vec<Designator>, CExprId),
 
+    // GNU choose expr. Condition, true expr, false expr, was condition true?
+    Choose(CQualTypeId, CExprId, CExprId, CExprId, bool),
+
     BadExpr,
 }
 
@@ -794,6 +798,7 @@ impl CExprKind {
             | CExprKind::ShuffleVector(ty, _)
             | CExprKind::ConvertVector(ty, _)
             | CExprKind::DesignatedInitExpr(ty, _, _) => Some(ty),
+            | CExprKind::Choose(ty, _, _, _, _) => Some(ty),
         }
     }
 

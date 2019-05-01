@@ -216,6 +216,16 @@ impl<W: Write> Printer<W> {
 
             Some(&CExprKind::VAArg(_, val)) => self.print_expr(val, context),
 
+            Some(&CExprKind::Choose(_, cond, lhs, rhs, _)) => {
+                self.writer.write_all(b"__builtin_choose_expr(")?;
+                self.print_expr(cond, context)?;
+                self.writer.write_all(b", ")?;
+                self.print_expr(lhs, context)?;
+                self.writer.write_all(b", ")?;
+                self.print_expr(rhs, context)?;
+                self.writer.write_all(b")")
+            }
+
             None => panic!("Could not find expression with ID {:?}", expr_id),
             // _ => unimplemented!("Printer::print_expr"),
         }

@@ -1538,6 +1538,38 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
                 }
 
+                ASTEntryTag::TagChooseExpr => {
+                    let condition =
+                        node.children[0].expect("ChooseExpr condition not found");
+                    let condition = self.visit_expr(condition);
+
+                    let true_expr =
+                        node.children[1].expect("ChooseExpr true expression not found");
+                    let true_expr = self.visit_expr(true_expr);
+
+                    let false_expr =
+                        node.children[1].expect("ChooseExpr false expression not found");
+                    let false_expr = self.visit_expr(false_expr);
+
+                    let ty = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty);
+
+                    let condition_is_true = node
+                        .extras[0]
+                        .as_boolean()
+                        .expect("Expected evaluated condition");
+
+                    let e = CExprKind::Choose(
+                        ty,
+                        condition,
+                        true_expr,
+                        false_expr,
+                        condition_is_true,
+                    );
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
+                }
+
                 // Declarations
                 ASTEntryTag::TagFunctionDecl if expected_ty & OTHER_DECL != 0 => {
                     let name = node.extras[0]

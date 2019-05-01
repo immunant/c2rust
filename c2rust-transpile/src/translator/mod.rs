@@ -3313,6 +3313,30 @@ impl<'c> Translation<'c> {
             }
 
             CExprKind::VAArg(ty, val_id) => self.convert_vaarg(ctx, ty, val_id),
+
+            CExprKind::Choose(_, _cond, lhs, rhs, is_cond_true) => {
+                let chosen_expr = if is_cond_true {
+                    self.convert_expr(ctx, lhs)?
+                } else {
+                    self.convert_expr(ctx, rhs)?
+                };
+
+                // TODO: Support compile-time choice between lhs and rhs based on cond.
+
+                // From Clang Expr.h
+                // ChooseExpr - GNU builtin-in function __builtin_choose_expr.
+                // This AST node is similar to the conditional operator (?:) in C, with
+                // the following exceptions:
+                // - the test expression must be a integer constant expression.
+                // - the expression returned acts like the chosen subexpression in every
+                //   visible way: the type is the same as that of the chosen subexpression,
+                //   and all predicates (whether it's an l-value, whether it's an integer
+                //   constant expression, etc.) return the same result as for the chosen
+                //   sub-expression.
+
+                Ok(chosen_expr)
+            }
+
         }
     }
 

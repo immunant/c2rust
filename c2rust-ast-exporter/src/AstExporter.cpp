@@ -1484,6 +1484,16 @@ class TranslateASTVisitor final
         abort();
     }
 
+    bool VisitChooseExpr(ChooseExpr *E) {
+        auto children = E->children();
+        std::vector<void *> childIds(std::begin(children), std::end(children));
+        encode_entry(E, TagChooseExpr, childIds,
+                     [E](CborEncoder *array) {
+                         cbor_encode_boolean(array, E->isConditionTrue());
+                     });
+        return true;
+    }
+
     bool VisitGNUNullExpr(GNUNullExpr *E) {
         printWarning("Encountered unsupported GNU extension: null expression", E);
         return true;
