@@ -2,12 +2,10 @@ local function starts_with(str, start)
     return str:sub(1, #start) == start
 end
 
-Variable = {used = true, id = nil, locl = true, mutability = ""}
+Variable = {used = true, id = nil, locl = true, mutability = "", ident = ""}
 
-function Variable:new(used, id, locl, mutability, ident)
-    setmetatable({}, self)
-
-    self.__index = Variable
+function Variable.new(used, id, locl, mutability, ident)
+    self = {}
     self.used = used
     self.id = id
     self.locl = locl
@@ -15,16 +13,20 @@ function Variable:new(used, id, locl, mutability, ident)
     self.ident = ident
     self.shadowed = false
 
+    setmetatable(self, Variable)
+    Variable.__index = Variable
+
     return self
 end
 
 Visitor = {}
 
-function Visitor:new(params)
-    setmetatable({}, self)
-
-    self.__index = Visitor
+function Visitor.new(params)
+    self = {}
     self.variables = params
+
+    setmetatable(self, Visitor)
+    Visitor.__index = Visitor
 
     return self
 end
@@ -98,7 +100,7 @@ function Visitor:visit_stmt(stmt)
                 end
             end
 
-            self.variables[id] = Variable:new(used, id, locl, mutability, ident)
+            self.variables[id] = Variable.new(used, id, locl, mutability, ident)
         else
             print("Skipping unsupported local type")
         end
@@ -146,17 +148,16 @@ refactor:transform(
                 for _, arg in ipairs(args) do
                     -- TODO: Pattern might not be an ident
                     used = false
-                    print("Arg id: " .. arg.id)
                     id = arg.id
                     locl = false
                     mutability = arg.pat.binding
-                    ident = arg.ident
+                    ident = arg.pat.ident
 
-                    params[id] = Variable:new(used, id, locl, mutability, ident)
+                    params[id] = Variable.new(used, id, locl, mutability, ident)
                 end
 
                 print("Running visitor")
-                visitor = Visitor:new(params)
+                visitor = Visitor.new(params)
                 visitor:run(fn_like.block)
                 print("Visitor ran")
 
