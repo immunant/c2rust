@@ -78,6 +78,9 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
         ShuffleVector(_, ref kids) | ConvertVector(_, ref kids) => {
             kids.iter().map(|&x| x.into()).collect()
         }
+        // We need to iterate the struct type if this offsetof is variable,
+        // since it may not get instantiated
+        OffsetOf(_, OffsetOfKind::Variable(qty, _, _)) => intos![qty.ctype],
         OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
         DeclRef(..) => vec![], // don't follow references back!
         Unary(_ty, _op, subexpr, _) => intos![subexpr],
