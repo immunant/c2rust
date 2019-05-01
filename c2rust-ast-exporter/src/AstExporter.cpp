@@ -1027,6 +1027,11 @@ class TranslateASTVisitor final
         return true;
     }
 
+    bool VisitGenericSelectionExpr(GenericSelectionExpr *E) {
+        printWarning("Encountered unsupported generic selection expression", E);
+        return true;
+    }
+
     bool VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E) {
         std::vector<void *> childIds{
             E->isArgumentType() ? nullptr : E->getArgumentExpr()};
@@ -1170,6 +1175,11 @@ class TranslateASTVisitor final
         return true;
     }
 
+    bool VisitExtVectorElementExpr(ExtVectorElementExpr *E) {
+        printWarning("Encountered unsupported vector element expression", E);
+        return true;
+    }
+
     /*
      Describes a C initializer list
      Children: expressions
@@ -1266,6 +1276,11 @@ class TranslateASTVisitor final
         return true;
     }
 
+    bool VisitDesignatedInitUpdateExpr(DesignatedInitUpdateExpr *E) {
+        printWarning("Encountered unsupported designated init update expression", E);
+        return true;
+    }
+
     bool VisitPredefinedExpr(PredefinedExpr *E) {
         std::vector<void *> childIds{E->getFunctionName()};
         encode_entry(E, TagPredefinedExpr, childIds);
@@ -1275,6 +1290,11 @@ class TranslateASTVisitor final
     bool VisitImplicitValueInitExpr(ImplicitValueInitExpr *E) {
         std::vector<void *> childIds;
         encode_entry(E, TagImplicitValueInitExpr, childIds);
+        return true;
+    }
+
+    bool VisitParenListExpr(ParenListExpr *E) {
+        printWarning("Encountered unsupported paren list expression", E);
         return true;
     }
 
@@ -1453,6 +1473,22 @@ class TranslateASTVisitor final
         return true;
     }
 #endif // CLANG_VERSION_MAJOR
+
+    bool VisitAtomicExpr(AtomicExpr *E) {
+        printWarning("Encountered unsupported atomic expression", E);
+        return true;
+    }
+
+    bool VisitAddrLabelExpr(AddrLabelExpr *E) {
+        printError("Cannot translate GNU address of label expression", E);
+        abort();
+    }
+
+    bool VisitGNUNullExpr(GNUNullExpr *E) {
+        printWarning("Encountered unsupported GNU extension: null expression", E);
+        return true;
+    }
+
 
     //
     // Declarations
@@ -1850,6 +1886,16 @@ class TranslateASTVisitor final
         return true;
     }
 
+    bool VisitFixedPointLiteral(FixedPointLiteral *L) {
+        printWarning("Encountered unsupported fixed point literal", L);
+        return true;
+    }
+
+    bool VisitImaginaryLiteral(ImaginaryLiteral *L) {
+        printWarning("Encountered unsupported imaginary literal", L);
+        return true;
+    }
+
     bool VisitCharacterLiteral(CharacterLiteral *L) {
         std::vector<void *> childIds;
         encode_entry(L, TagCharacterLiteral, childIds, [L](CborEncoder *array) {
@@ -1956,6 +2002,14 @@ class TranslateASTVisitor final
         DiagBuilder.AddString(Message);
         DiagBuilder.AddSourceRange(
             CharSourceRange::getCharRange(D->getSourceRange()));
+    }
+
+    void printWarning(std::string Message, Expr *E) {
+        auto DiagBuilder =
+            getDiagBuilder(E->getExprLoc(), DiagnosticsEngine::Warning);
+        DiagBuilder.AddString(Message);
+        DiagBuilder.AddSourceRange(
+            CharSourceRange::getCharRange(E->getSourceRange()));
     }
 
     void printError(std::string Message, Stmt *S) {
