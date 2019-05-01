@@ -13,6 +13,7 @@ use serde_json::json;
 use super::TranspilerConfig;
 use crate::CrateSet;
 use crate::PragmaSet;
+use crate::convert_type::RESERVED_NAMES;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -97,10 +98,19 @@ fn get_root_rs_file_name(tcfg: &TranspilerConfig) -> &str {
     }
 }
 
-/// Make sure module name does not contain illegal characters.
+/// Make sure that module name:
+/// - does not contain illegal characters,
+/// - does not clash with reserved keywords.
 fn get_module_name(main: &Option<String>) -> Option<String> {
     if let Some(ref name) = main {
-        return Some(name.replace(".", "_"));
+        // module names cannot contain periods
+        let mut module = name.replace(".", "_");
+
+        // make sure the module name does not clash with keywords
+        if RESERVED_NAMES.contains(&name.as_str()) {
+            module = format!("r#{}", module);
+        }
+        return Some(module);
     }
     None
 }
@@ -113,8 +123,8 @@ fn emit_build_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) ->
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)
 }
 
-/// Emit `lib.rs` for a library or `main.rs` for a binary. Returns the path
-/// to `lib.rs` or `main.rs` (or `None` if the output file existed already).
+/// Emit lib.rs (main.rs) for a library (binary). Returns `Some(path)`
+/// to the generated file or `None` if the output file exists.
 fn emit_lib_rs(
     tcfg: &TranspilerConfig,
     reg: &Handlebars,
@@ -134,11 +144,10 @@ fn emit_lib_rs(
         .iter()
         .map(|m| {
             let relpath = diff_paths(m, build_dir).unwrap();
-            let name = m.file_stem().unwrap().to_str().unwrap().replace(".", "_");
-            Module {
-                path: relpath.to_str().unwrap().to_string(),
-                name: name.to_string(),
-            }
+            let path = relpath.to_str().unwrap().to_string();
+            let fname = &m.file_stem().unwrap().to_str().map(String::from);
+            let name = get_module_name(fname).unwrap();
+            Module { path, name }
         })
         .collect::<Vec<_>>();
 
@@ -150,7 +159,7 @@ fn emit_lib_rs(
         "translate_valist": tcfg.translate_valist,
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": rs_xcheck_backend,
-        "main_module": tcfg.main.is_some(),
+        "main_module": get_module_name(&tcfg.main),
         "plugin_args": plugin_args,
         "modules": modules,
         "pragmas": pragmas,
@@ -179,7 +188,7 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path, 
             |x| x.file_name().map(|x| x.to_string_lossy())
         ).unwrap_or("c2rust".into()),
         "root_rs_file": get_root_rs_file_name(tcfg),
-        "main_module": get_module_name(&tcfg.main),
+        "main_module": tcfg.main.is_some(),
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": tcfg.cross_check_backend,
         "c2rust_bitfields": crates.contains("c2rust_bitfields"),

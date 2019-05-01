@@ -16,7 +16,7 @@ pub struct TypeConverter {
     emit_no_std: bool,
 }
 
-static RESERVED_NAMES: [&str; 103] = [
+pub const RESERVED_NAMES: [&str; 103] = [
     // Keywords currently in use
     "as",
     "break",
