@@ -95,7 +95,7 @@ impl<'lua> IntoLuaAst<'lua> for ast::Stmt {
                     ast.set("ty", ctx.intern(ty))?;
                 }
                 if let Some(init) = init {
-                    ast.set("init", ctx.intern(init))?;
+                    ast.set("init", init.into_lua_ast(ctx, lua_ctx)?)?;
                 }
             }
             ast::StmtKind::Item(i) => {

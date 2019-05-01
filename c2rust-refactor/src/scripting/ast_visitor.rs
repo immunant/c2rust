@@ -1,5 +1,5 @@
 use rlua::prelude::{LuaContext, LuaResult, LuaTable};
-use syntax::ast::{Arg, BindingMode, Block, FunctionRetTy, FnDecl, Mutability::*, NodeId, PatKind};
+use syntax::ast::{Arg, BindingMode, Block, FunctionRetTy, FnDecl, Mutability::*, NodeId, PatKind, Stmt};
 use syntax::source_map::symbol::Symbol;
 use syntax::ptr::P;
 
@@ -91,6 +91,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Block> {
             .map(|stmt| stmt.into_lua_ast(ctx, lua_ctx))
             .collect::<LuaResult<Vec<_>>>();
 
+        ast.set("type", "Block")?;
         ast.set("stmts", iter_to_lua_array(stmts?.into_iter(), lua_ctx)?)?;
 
         Ok(ast)
@@ -114,8 +115,35 @@ impl MergeLuaAst for FnLike {
         self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
         self.decl.merge_lua_ast(table.get("decl")?)?;
 
-        // TODO: Block
+        // REVIEW: How do we deal with spans if there is no existing block
+        // to modify?
+        if let Some(ref mut block) = self.block {
+            block.merge_lua_ast(table.get("block")?)?;
+        }
+
         // TODO: Attrs
+
+        Ok(())
+    }
+}
+
+impl MergeLuaAst for P<Block> {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
+        let lua_stmts: LuaTable = table.get("stmts")?;
+
+        // TODO: This may need to be improved if we want to delete or add
+        // stmts as it currently expects stmts to be 1-1
+        self.stmts.iter_mut().enumerate().map(|(i, stmt)| {
+            let stmt_table: LuaTable = lua_stmts.get(i + 1)?;
+
+            stmt.merge_lua_ast(stmt_table)
+        }).collect()
+    }
+}
+
+impl MergeLuaAst for Stmt {
+    fn merge_lua_ast<'lua>(&mut self, _table: LuaTable<'lua>) -> LuaResult<()> {
+        // TODO: Merge stmts
 
         Ok(())
     }

@@ -2,45 +2,92 @@ local function starts_with(str, start)
     return str:sub(1, #start) == start
 end
 
--- Visitor = {root = nil}
+Visitor = {}
 
--- function Visitor:new(root)
---     setmetatable({}, self)
+function Visitor:new()
+    setmetatable({}, self)
 
---     self.__index = Visitor
---     self.root = root
+    self.__index = Visitor
+    self.root = root
+    self.used_args = {}
+    self.used_locals = {}
+    self.mut_args = {}
 
---     return self
--- end
+    return self
+end
 
--- function Visitor:visit_expr(expr)
---     if expr.kind == "Path" then
---         print("Found path!")
---     else
---         print("Found not path!")
---     end
+function Visitor:run(ast)
+    if not ast then return end
 
---     return 1
--- end
+    print(ast.type)
+    if ast.type == "Block" then
+        self:visit_block(ast)
 
--- function visit_expr(expr, callback)
---     callback(expr)
---     if expr.kind == "Box" then
---         visit_expr(expr.boxed, callback)
---     elseif expr.kind == "Array" then
---         for _, value in ipairs(expr.values) do
---             visit_expr(value, callback)
---         end
---     elseif expr.kind == "AssignOp" then
---         print(expr.lhs.segments[1] .. " & " .. expr.rhs.segments[1])
---         visit_expr(expr.lhs, callback)
---         visit_expr(expr.rhs, callback)
---     elseif expr.kind == "Path" then
+        for _, stmt in ipairs(ast.stmts) do
+            self:run(stmt)
+        end
+    elseif ast.type == "Expr" then
+        self:visit_expr(ast)
 
---     else
---         error("Found unsupported expr type " .. expr.kind)
---     end
--- end
+        if ast.kind == "Box" then
+            self:run(ast.boxed)
+        elseif ast.kind == "Array" then
+            for _, value in ipairs(ast.values) do
+                self:run(value)
+            end
+        elseif ast.kind == "AssignOp"
+            or ast.kind == "Binary"
+            or ast.kind == "Assign" then
+            self:run(ast.lhs)
+            self:run(ast.rhs)
+        elseif ast.kind == "Path" or ast.kind == "Lit" then
+
+        else
+            error("Found unsupported expr type " .. ast.kind)
+        end
+    elseif ast.type == "Stmt" then
+        self:visit_stmt(ast)
+
+        if ast.kind == "Local" then
+            print("Found Local")
+            self:run(ast.init)
+        elseif ast.kind == "Item" then
+            print("Found Item")
+        elseif ast.kind == "Semi" or ast.kind == "Expr" then
+            print("Found Semi or Expr of kind: " .. ast.kind)
+
+            self:run(ast.expr)
+        else
+            error("Unsupported stmt kind: " .. ast.kind)
+        end
+    else
+        error("Found unsupported ast type " .. ast.type)
+    end
+end
+
+function Visitor:visit_block(block)
+    print("Visiting Block: Noop")
+end
+
+function Visitor:visit_stmt(block)
+    print("Visiting Stmt: Noop")
+end
+
+function Visitor:visit_expr(expr)
+    print("Visiting Expr")
+    if expr.kind == "Path" and #expr.segments == 1 then
+        -- if arg.ident == expr.segments[1] then
+        self.used_args[expr.segments[1]] = true
+        -- end
+    elseif(expr.kind == "Assign"
+        or expr.kind == "AssignOp")
+        and expr.lhs.kind == "Path" then
+        if #expr.lhs.segments == 1 then -- and arg.ident == expr.lhs.segments[1]
+            -- print("ARG: " .. arg.ident)
+            self.mut_args[expr.lhs.segments[1]] = true
+        end
+    end
+end
 
 refactor:transform(
     function(transform_ctx, crate)
@@ -56,39 +103,32 @@ refactor:transform(
                 args = fn_like.decl.args
 
                 used_args = {}
+                used_locals = {}
+                mut_args = {}
 
-                for _, stmt in ipairs(fn_like.block.stmts) do
-                    if stmt.kind == "Local" then
-                        print("Found Local")
-                    elseif stmt.kind == "Item" then
-                        print("Found Item")
-                    elseif stmt.kind == "Semi" or stmt.kind == "Expr" then
-                        print("Found Semi or Expr of kind: " .. stmt.kind)
+                print("Running visitor")
+                visitor = Visitor:new()
+                visitor:run(fn_like.block)
+                print("Visitor ran")
 
-                        visit_expr(stmt.expr,
-                            function(expr)
-                                if expr.kind == "Path" and #expr.segments == 1 then
-                                    for i, arg in ipairs(args) do
-                                        if arg.ident == expr.segments[1] then
-                                            used_args[arg.ident] = true
-                                        end
-                                    end
-                                end
-                            end
-                        )
+                used_args = visitor.used_args
+                used_locals = visitor.used_locals
+                mut_args = visitor.mut_args
 
-                    else
-                        print("Unsupported stmt kind: " .. stmt.kind)
-                    end
-                end
+                -- TODO: Shadowed variables may cause usage to be misrepresented
 
+                -- Iterate over args
                 for i, arg in ipairs(args) do
                     if not used_args[arg.ident] then
+                        -- If the argument doesn't already have an underscore
+                        -- prefix, we should add one as it is idomatic rust
                         if not starts_with(arg.ident, '_') then
-                            print("Renaming arg " .. arg.ident)
                             arg.ident = '_' .. arg.ident
                         end
 
+                        -- Remove any binding since the param is deemed unused
+                        arg.binding = "ByValueImmutable"
+                    elseif not mut_args[arg.ident] then
                         arg.binding = "ByValueImmutable"
                     end
                 end
