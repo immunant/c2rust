@@ -164,30 +164,27 @@ impl<'c> Translation<'c> {
             let have_fn_ptr = fn_ptr_ty.is_some();
             let ty = fn_ptr_ty.unwrap_or_else(||self.convert_type(ty.ctype).unwrap());
 
-            let mut res = val.map(|va| {
+            val.and_then(|val| {
                 let path = mk()
                     .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![ty]));
-                let call = mk().method_call_expr(va, path, vec![] as Vec<P<Expr>>);
-                
-                if have_fn_ptr {
+                let val = mk().method_call_expr(val, path, vec![] as Vec<P<Expr>>);
+
+                let val = if have_fn_ptr {
                     // transmute result of call to `arg` when expecting a function pointer
-                    let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
-                    let path = vec![
-                        mk().path_segment(""),
-                        mk().path_segment(std_or_core),
-                        mk().path_segment("mem"),
-                        mk().path_segment("transmute"),
-                    ];
-                    mk().call_expr(mk().path_expr(path), vec![call] as Vec<P<Expr>>) 
-                } else { call }
-            });
+                    transmute_expr(mk().infer_ty(), mk().infer_ty(), val, self.tcfg.emit_no_std)
+                } else {
+                    val
+                };
 
-            if ctx.is_unused() {
-                res.stmts.push(mk().expr_stmt(res.val));
-                res.val = self.panic_or_err("convert_vaarg unused");
-            }
-
-            Ok(res)
+                if ctx.is_unused() {
+                    Ok(WithStmts::new(
+                        vec![mk().expr_stmt(val)],
+                        self.panic_or_err("convert_vaarg unused"),
+                    ))
+                } else {
+                    Ok(WithStmts::new_val(val))
+                }
+            })
         } else {
             Err(format_err!(
                 "Variable argument list translation is not enabled."

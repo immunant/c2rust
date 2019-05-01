@@ -21,6 +21,7 @@
 #include "clang/AST/TypeVisitor.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/Version.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/Tooling.h"
@@ -425,11 +426,25 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
 class TranslateASTVisitor final
     : public RecursiveASTVisitor<TranslateASTVisitor> {
 
+    struct MacroExpansionInfo {
+        StringRef Name;
+
+        /// Expressions that we have seen this macro expand to
+        SmallPtrSet<Expr*, 10> Expressions;
+    };
+
     ASTContext *Context;
     TypeEncoder typeEncoder;
     CborEncoder *encoder;
+    Preprocessor &PP;
     std::unordered_map<string, uint64_t> filenames;
     std::set<std::pair<void *, ASTEntryTag>> exportedTags;
+    std::unordered_map<MacroInfo*, MacroExpansionInfo> macros;
+
+    // This stores a raw encoding of the macro call site SourceLocation, since
+    // SourceLocation isn't hashable.
+    std::unordered_set<unsigned> macroCallSites;
+    SmallVector<MacroInfo*, 1> curMacroExpansionStack;
 
     // Returns true when a new entry is added to exportedTags
     bool markForExport(void *ptr, ASTEntryTag tag) {
@@ -444,6 +459,7 @@ class TranslateASTVisitor final
     // Template required because Decl and Stmt don't share a common base class
     void encode_entry_raw(void *ast, ASTEntryTag tag, SourceLocation loc,
                           const QualType ty, bool rvalue, bool isVaList,
+                          bool encodeMacroExpansions,
                           const std::vector<void *> &childIds,
                           std::function<void(CborEncoder *)> extra) {
         if (!markForExport(ast, tag))
@@ -480,7 +496,19 @@ class TranslateASTVisitor final
         // 7 - Is Rvalue (only for expressions)
         cbor_encode_boolean(&local, rvalue);
 
-        // 8.. - Extra entries
+        // 8 - Macro expansion stack, starting with initial macro call and ending
+        // with the innermost replacement.
+        cbor_encoder_create_array(&local, &childEnc,
+                                  encodeMacroExpansions ? curMacroExpansionStack.size() : 0);
+        if (encodeMacroExpansions) {
+            for (auto I = curMacroExpansionStack.rbegin(), E = curMacroExpansionStack.rend();
+                 I != E; ++I) {
+                cbor_encode_uint(&childEnc, uintptr_t(*I));
+            }
+        }
+        cbor_encoder_close_container(&local, &childEnc);
+
+        // 9.. - Extra entries
         extra(&local);
 
         cbor_encoder_close_container(encoder, &local);
@@ -499,13 +527,14 @@ class TranslateASTVisitor final
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto ty = ast->getType();
         auto isVaList = false;
+        auto encodeMacroExpansions = true;
 #if CLANG_VERSION_MAJOR < 8
         SourceLocation loc = ast->getLocStart();
 #else
         SourceLocation loc = ast->getBeginLoc();
 #endif // CLANG_VERSION_MAJOR
-        encode_entry_raw(ast, tag, loc, ty, ast->isRValue(), isVaList, childIds,
-                         extra);
+        encode_entry_raw(ast, tag, loc, ty, ast->isRValue(), isVaList, encodeMacroExpansions,
+                         childIds, extra);
         typeEncoder.VisitQualType(ty);
     }
 
@@ -515,12 +544,14 @@ class TranslateASTVisitor final
         QualType s = QualType(static_cast<clang::Type *>(nullptr), 0);
         auto rvalue = false;
         auto isVaList = false;
+        auto encodeMacroExpansions = false;
 #if CLANG_VERSION_MAJOR < 8
         SourceLocation loc = ast->getLocStart();
 #else
         SourceLocation loc = ast->getBeginLoc();
 #endif // CLANG_VERSION_MAJOR
-        encode_entry_raw(ast, tag, loc, s, rvalue, isVaList, childIds, extra);
+        encode_entry_raw(ast, tag, loc, s, rvalue, isVaList, encodeMacroExpansions,
+                         childIds, extra);
     }
 
     void encode_entry(
@@ -528,15 +559,91 @@ class TranslateASTVisitor final
         const QualType T,
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto rvalue = false;
+        auto encodeMacroExpansions = false;
         encode_entry_raw(ast, tag, ast->getLocation(), T, rvalue,
-                         isVaList(ast, T), childIds, extra);
+                         isVaList(ast, T), encodeMacroExpansions, childIds, extra);
+    }
+
+    MacroInfo* getMacroInfo(SourceLocation loc, StringRef &name) const {
+        auto &Mgr = Context->getSourceManager();
+        Token Result;
+        if (!Lexer::getRawToken(Mgr.getSpellingLoc(loc), Result,
+                                Mgr, Context->getLangOpts(), false)) {
+            if (Result.is(tok::raw_identifier)) {
+                PP.LookUpIdentifierInfo(Result);
+            }
+            IdentifierInfo *IdentifierInfo = Result.getIdentifierInfo();
+            if (IdentifierInfo && IdentifierInfo->hadMacroDefinition()) {
+                std::pair<FileID, unsigned int> DecLoc =
+                    Mgr.getDecomposedExpansionLoc(loc);
+                // Get the definition just before the searched location
+                // so that a macro referenced in a '#undef MACRO' can
+                // still be found.
+                SourceLocation BeforeSearchedLocation =
+                    Mgr.getMacroArgExpandedLocation(
+                        Mgr.getLocForStartOfFile(DecLoc.first)
+                            .getLocWithOffset(DecLoc.second - 1));
+                MacroDefinition MacroDef = PP.getMacroDefinitionAtLoc(
+                    IdentifierInfo, BeforeSearchedLocation);
+                MacroInfo *MacroInf = MacroDef.getMacroInfo();
+                if (MacroInf) {
+                    LLVM_DEBUG(dbgs() << IdentifierInfo->getName() << "\n");
+                    LLVM_DEBUG(MacroInf->dump());
+                    LLVM_DEBUG(dbgs() << "\n");
+                    name = IdentifierInfo->getName();
+                    return MacroInf;
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    bool VisitMacro(StringRef name, SourceLocation loc, MacroInfo *mac, Expr *E) {
+        // TODO: handle builtin macros
+        if (mac->isBuiltinMacro())
+            return false;
+        // If this isn't the first time we've seen this macro call site, we
+        // shouldn't associate this expression with the macro as it is a subexpr
+        // of a previously seen expression.
+        if (!macroCallSites.insert(loc.getRawEncoding()).second)
+            return false;
+        auto &info = macros[mac];
+        if (info.Name.empty())
+            info.Name = name;
+        else if (info.Name != name)
+            return false;
+
+        info.Expressions.insert(E);
+        typeEncoder.VisitQualType(E->getType());
+        return true;
+    }
+
+    static bool isScalarAsmType(QualType ty) {
+        ty = ty.getCanonicalType();
+        switch (ty->getTypeClass()) {
+        case clang::Type::Builtin:
+        case clang::Type::Pointer:
+        case clang::Type::Vector:
+        case clang::Type::ExtVector:
+        case clang::Type::FunctionProto:
+        case clang::Type::FunctionNoProto:
+        case clang::Type::Enum:
+            return true;
+
+        case clang::Type::Atomic:
+            return isScalarAsmType(cast<AtomicType>(ty)->getValueType());
+
+        default:
+            return false;
+        }
     }
 
   public:
     explicit TranslateASTVisitor(ASTContext *Context, CborEncoder *encoder,
-                                 std::unordered_map<void *, QualType> *sugared)
+                                 std::unordered_map<void *, QualType> *sugared,
+                                 Preprocessor &PP)
         : Context(Context), typeEncoder(Context, encoder, sugared, this),
-          encoder(encoder) {}
+          encoder(encoder), PP(PP) {}
 
     // Override the default behavior of the RecursiveASTVisitor
     bool shouldVisitImplicitCode() const { return true; }
@@ -551,6 +658,28 @@ class TranslateASTVisitor final
         }
 
         return ordered_filenames;
+    }
+
+    void encodeMacros() {
+        for (auto &I : macros) {
+            auto &Mac = I.first;
+            auto &Info = I.second;
+            auto Name = Info.Name;
+            ASTEntryTag tag;
+            if (Mac->isFunctionLike())
+                tag = TagMacroFunctionDef;
+            else
+                tag = TagMacroObjectDef;
+
+            std::vector<void *> childIds(Info.Expressions.begin(),
+                                         Info.Expressions.end());
+
+            encode_entry_raw(Mac, tag, Mac->getDefinitionLoc(), QualType(), false,
+                             false, false, childIds, [Name](CborEncoder *local) {
+                                 cbor_encode_string(local, Name.str());
+                             });
+
+        }
     }
 
     void encodeSourcePos(CborEncoder *enc, SourceLocation loc,
@@ -775,18 +904,46 @@ class TranslateASTVisitor final
             cbor_encode_string(local, E->generateAsmString(*Context));
 
             std::vector<std::string> outputs, inputs, clobbers;
+            std::vector<TargetInfo::ConstraintInfo> output_infos;
             for (unsigned i = 0, num = E->getNumOutputs(); i < num; ++i) {
                 auto constraint = E->getOutputConstraint(i).str();
-                auto s = constraint.c_str();
                 std::string convertedConstraint;
-                convertedConstraint += *s++; // Copy over the initial = or ?
+                TargetInfo::ConstraintInfo info(constraint, E->getOutputName(i));
+                this->Context->getTargetInfo().validateOutputConstraint(info);
+                convertedConstraint += info.isReadWrite() ? '+' : '=';
+                if (info.earlyClobber()) {
+                    convertedConstraint += '&';
+                }
+                if (info.allowsMemory() ||
+                    !isScalarAsmType(E->getOutputExpr(i)->getType())) {
+                    // This is a memory-only operand, so we need to make sure
+                    // we pass it in by-address and not by-value (the value
+                    // of the operand is actually the memory address to write
+                    // into); clang does this conversion, but rustc doesn't
+                    convertedConstraint += '*';
+                }
+                // FIXME: we need the equivalent of clang's `SimplifyConstraint`
+                auto s = constraint.c_str();
+                while (*s == '=' || *s == '+' || *s == '&')
+                    s++;
                 convertedConstraint += this->Context->getTargetInfo().convertConstraint(s);
                 outputs.push_back(convertedConstraint);
+                output_infos.push_back(std::move(info));
             }
             for (unsigned i = 0, num = E->getNumInputs(); i < num; ++i) {
                 auto constraint = E->getInputConstraint(i);
+                std::string convertedConstraint;
+                TargetInfo::ConstraintInfo info(constraint, E->getInputName(i));
+                this->Context->getTargetInfo().validateInputConstraint(output_infos, info);
+                if ((info.allowsMemory() && !info.allowsRegister()) ||
+                    !isScalarAsmType(E->getInputExpr(i)->getType())) {
+                    // See above
+                    convertedConstraint += '*';
+                }
+                // FIXME: we need the equivalent of clang's `SimplifyConstraint`
                 auto s = constraint.str().c_str();
-                inputs.emplace_back(this->Context->getTargetInfo().convertConstraint(s));
+                convertedConstraint += this->Context->getTargetInfo().convertConstraint(s);
+                inputs.emplace_back(convertedConstraint);
             }
             for (unsigned i = 0, num = E->getNumClobbers(); i < num; ++i) {
                 auto constraint = E->getClobber(i);
@@ -803,9 +960,75 @@ class TranslateASTVisitor final
     // Expressions
     //
 
+    bool VisitExpr(Expr *E) {
+        curMacroExpansionStack.clear();
+
+        // We only translate constant macro objects to Rust consts, so this
+        // expression must be constant.
+        if (!E->isConstantInitializer(*Context, false))
+            return true;
+
+        auto &Mgr = Context->getSourceManager();
+        auto Range = E->getSourceRange();
+        LLVM_DEBUG(dbgs() << "Checking expr for macro expansion: ");
+        LLVM_DEBUG(E->dump());
+        LLVM_DEBUG(Range.getBegin().dump(Mgr));
+        LLVM_DEBUG(Range.getEnd().dump(Mgr));
+
+        auto Begin = Range.getBegin();
+        auto End = Range.getEnd();
+
+        // Check that we are only expanding a single macro call.
+        if (!Begin.isMacroID() || !End.isMacroID() ||
+            Mgr.getImmediateMacroCallerLoc(Begin) != Mgr.getImmediateMacroCallerLoc(End))
+            return true;
+
+        // The macro stack unwound by getImmediateMacroCallerLoc and friends
+        // starts with literal replacement and works it's way to the macro call
+        // that was replaced.
+        while (Begin.isMacroID()) {
+#if CLANG_VERSION_MAJOR < 7
+            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
+            auto ExpansionBegin = ExpansionRange.first;
+            auto ExpansionEnd = ExpansionRange.second;
+#else // CLANG_VERSION_MAJOR >= 7
+            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin).getAsRange();
+            auto ExpansionBegin = ExpansionRange.getBegin();
+            auto ExpansionEnd = ExpansionRange.getEnd();
+#endif
+            StringRef name;
+            MacroInfo *mac = getMacroInfo(ExpansionBegin, name);
+
+            if (!mac || mac->getNumTokens() == 0)
+                return true;
+            auto ReplacementBegin = mac->getReplacementToken(0).getLocation();
+            auto ReplacementEnd = mac->getDefinitionEndLoc();
+            // Verify that this expansion covers the entire macro replacement
+            // definition, i.e. E is not a subexpression of the macro
+            // replacement.
+            if (Mgr.getSpellingLoc(Begin) != ReplacementBegin ||
+                Mgr.getSpellingLoc(End) != ReplacementEnd)
+                return true;
+
+            Begin = ExpansionBegin;
+            End = ExpansionEnd;
+
+            if (mac->isObjectLike() && VisitMacro(name, Begin, mac, E)) {
+                curMacroExpansionStack.push_back(mac);
+            }
+        }
+        return true;
+    }
+
+
     bool VisitVAArgExpr(VAArgExpr *E) {
         std::vector<void *> childIds{E->getSubExpr()};
         encode_entry(E, TagVAArgExpr, childIds);
+        return true;
+    }
+
+    bool VisitGenericSelectionExpr(GenericSelectionExpr *E) {
+        printWarning("Encountered unsupported generic selection expression", E);
         return true;
     }
 
@@ -952,6 +1175,11 @@ class TranslateASTVisitor final
         return true;
     }
 
+    bool VisitExtVectorElementExpr(ExtVectorElementExpr *E) {
+        printWarning("Encountered unsupported vector element expression", E);
+        return true;
+    }
+
     /*
      Describes a C initializer list
      Children: expressions
@@ -1048,6 +1276,11 @@ class TranslateASTVisitor final
         return true;
     }
 
+    bool VisitDesignatedInitUpdateExpr(DesignatedInitUpdateExpr *E) {
+        printWarning("Encountered unsupported designated init update expression", E);
+        return true;
+    }
+
     bool VisitPredefinedExpr(PredefinedExpr *E) {
         std::vector<void *> childIds{E->getFunctionName()};
         encode_entry(E, TagPredefinedExpr, childIds);
@@ -1057,6 +1290,11 @@ class TranslateASTVisitor final
     bool VisitImplicitValueInitExpr(ImplicitValueInitExpr *E) {
         std::vector<void *> childIds;
         encode_entry(E, TagImplicitValueInitExpr, childIds);
+        return true;
+    }
+
+    bool VisitParenListExpr(ParenListExpr *E) {
+        printWarning("Encountered unsupported paren list expression", E);
         return true;
     }
 
@@ -1071,7 +1309,7 @@ class TranslateASTVisitor final
 #else  // Incompatible const qualifier pointer casts are now NoOp casts if they
        // are in the same namespace. See Sema::CheckAssignmentConstraints
        // (SemaExpr.cpp:7951)
-                                 if (ICE->getCastKind() == CastKind::CK_NoOp) {
+                if (ICE->getCastKind() == CastKind::CK_NoOp) {
 #endif // CLANG_VERSION_MAJOR
                     auto source_type = ICE->getSubExpr()->getType();
                     auto target_type = ICE->getType();
@@ -1236,6 +1474,32 @@ class TranslateASTVisitor final
     }
 #endif // CLANG_VERSION_MAJOR
 
+    bool VisitAtomicExpr(AtomicExpr *E) {
+        printWarning("Encountered unsupported atomic expression", E);
+        return true;
+    }
+
+    bool VisitAddrLabelExpr(AddrLabelExpr *E) {
+        printError("Cannot translate GNU address of label expression", E);
+        abort();
+    }
+
+    bool VisitChooseExpr(ChooseExpr *E) {
+        auto children = E->children();
+        std::vector<void *> childIds(std::begin(children), std::end(children));
+        encode_entry(E, TagChooseExpr, childIds,
+                     [E](CborEncoder *array) {
+                         cbor_encode_boolean(array, E->isConditionTrue());
+                     });
+        return true;
+    }
+
+    bool VisitGNUNullExpr(GNUNullExpr *E) {
+        printWarning("Encountered unsupported GNU extension: null expression", E);
+        return true;
+    }
+
+
     //
     // Declarations
     //
@@ -1339,8 +1603,7 @@ class TranslateASTVisitor final
         // functions that should be the same at link time, Clang groups them.
         // That is unhelpful for us though, since we need to convert them into
         // two seperate `extern` blocks.
-        if (!VD->isCanonicalDecl() &&
-            !(VD->isExternC() && VD->isLocalVarDecl()))
+        if (!VD->isCanonicalDecl() && !VD->isExternC())
             return true;
 
         auto is_defn = false;
@@ -1633,6 +1896,16 @@ class TranslateASTVisitor final
         return true;
     }
 
+    bool VisitFixedPointLiteral(FixedPointLiteral *L) {
+        printWarning("Encountered unsupported fixed point literal", L);
+        return true;
+    }
+
+    bool VisitImaginaryLiteral(ImaginaryLiteral *L) {
+        printWarning("Encountered unsupported imaginary literal", L);
+        return true;
+    }
+
     bool VisitCharacterLiteral(CharacterLiteral *L) {
         std::vector<void *> childIds;
         encode_entry(L, TagCharacterLiteral, childIds, [L](CborEncoder *array) {
@@ -1741,6 +2014,14 @@ class TranslateASTVisitor final
             CharSourceRange::getCharRange(D->getSourceRange()));
     }
 
+    void printWarning(std::string Message, Expr *E) {
+        auto DiagBuilder =
+            getDiagBuilder(E->getExprLoc(), DiagnosticsEngine::Warning);
+        DiagBuilder.AddString(Message);
+        DiagBuilder.AddSourceRange(
+            CharSourceRange::getCharRange(E->getSourceRange()));
+    }
+
     void printError(std::string Message, Stmt *S) {
 #if CLANG_VERSION_MAJOR < 8
         SourceLocation loc = S->getLocStart();
@@ -1813,10 +2094,11 @@ void TypeEncoder::VisitVariableArrayType(const VariableArrayType *T) {
 class TranslateConsumer : public clang::ASTConsumer {
     Outputs *outputs;
     const std::string outfile;
+    Preprocessor &PP;
 
   public:
-    explicit TranslateConsumer(Outputs *outputs, llvm::StringRef InFile)
-        : outputs(outputs), outfile(InFile.str()) {}
+    explicit TranslateConsumer(Outputs *outputs, llvm::StringRef InFile, Preprocessor &PP)
+        : outputs(outputs), outfile(InFile.str()), PP(PP) {}
 
     virtual void HandleTranslationUnit(clang::ASTContext &Context) {
 
@@ -1828,8 +2110,8 @@ class TranslateConsumer : public clang::ASTConsumer {
         // `desugared` type instead.
         std::unordered_map<void *, QualType> sugared;
 
-        auto process = [&encoder, &Context, &sugared](uint8_t *buffer,
-                                                      size_t len) {
+        auto process = [&encoder, &Context, &sugared, this](uint8_t *buffer,
+                                                            size_t len) {
             cbor_encoder_init(&encoder, buffer, len, 0);
 
             CborEncoder outer;
@@ -1839,17 +2121,36 @@ class TranslateConsumer : public clang::ASTConsumer {
 
             // 1. Encode all of the reachable AST nodes and types
             cbor_encoder_create_array(&outer, &array, CborIndefiniteLength);
-            TranslateASTVisitor visitor(&Context, &array, &sugared);
+            TranslateASTVisitor visitor(&Context, &array, &sugared, PP);
             auto translation_unit = Context.getTranslationUnitDecl();
             visitor.TraverseDecl(translation_unit);
+            visitor.encodeMacros();
             cbor_encoder_close_container(&outer, &array);
 
             // 2. Track all of the top-level declarations
             cbor_encoder_create_array(&outer, &array, CborIndefiniteLength);
             for (auto d : translation_unit->decls()) {
-                if (d->isCanonicalDecl())
-                    cbor_encode_uint(&array,
-                                     reinterpret_cast<std::uintptr_t>(d));
+                bool emit_decl = false;
+                if (d->isCanonicalDecl()) {
+                    emit_decl = true;
+                } else if(isa<VarDecl>(d)) {
+                    // treat extern variables defined elsewhere as top-level definitions
+                    auto var_decl = cast<VarDecl>(d);
+                    bool has_defn = false;
+                    if (var_decl->isExternC()) {
+                        for (auto x : var_decl->redecls()) {
+                            if (!x->hasExternalStorage() || x->getInit()) {
+                                has_defn = true;
+                                break;
+                            }
+                        }
+
+                        emit_decl = !has_defn;
+                    }
+                }
+
+                if (emit_decl)
+                    cbor_encode_uint(&array, reinterpret_cast<std::uintptr_t>(d));
             }
             cbor_encoder_close_container(&outer, &array);
 
@@ -1914,7 +2215,7 @@ class TranslateAction : public clang::ASTFrontendAction {
     CreateASTConsumer(clang::CompilerInstance &Compiler,
                       llvm::StringRef InFile) {
         return std::unique_ptr<clang::ASTConsumer>(
-            new TranslateConsumer(outputs, InFile));
+            new TranslateConsumer(outputs, InFile, Compiler.getPreprocessor()));
     }
 };
 
@@ -2033,7 +2334,14 @@ Outputs process(int argc, const char *argv[], int *result) {
 
 // AST exporter library interface.
 extern "C" {
-ExportResult *ast_exporter(int argc, const char *argv[]) {
+ExportResult *ast_exporter(int argc, const char *argv[], int debug) {
+#ifndef NDEBUG
+    if (debug) {
+        llvm::DebugFlag = true;
+        llvm::setCurrentDebugType(DEBUG_TYPE);
+    }
+#endif // NDEBUG
+
     int result;
     auto outputs = process(argc, argv, &result);
     return make_export_result(outputs);

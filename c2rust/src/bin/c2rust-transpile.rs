@@ -40,6 +40,8 @@ fn main() {
         json_function_cfgs: matches.is_present("json-function-cfgs"),
         dump_cfg_liveness: matches.is_present("dump-cfgs-liveness"),
         dump_structures: matches.is_present("dump-structures"),
+        debug_ast_exporter: matches.is_present("debug-ast-exporter"),
+        verbose: matches.is_present("verbose"),
 
         incremental_relooper: !matches.is_present("no-incremental-relooper"),
         fail_on_error: matches.is_present("fail-on-error"),
@@ -74,6 +76,8 @@ fn main() {
         // stable rust output.
         translate_valist: true,
 
+        translate_const_macros: matches.is_present("translate-const-macros"),
+
         use_c_loop_info: !matches.is_present("ignore-c-loop-info"),
         use_c_multiple_info: !matches.is_present("ignore-c-multiple-info"),
         simplify_structures: !matches.is_present("no-simplify-structures"),
@@ -99,7 +103,6 @@ fn main() {
         },
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: matches.is_present("emit-no-std"),
-        verbose: matches.is_present("verbose"),
         enabled_warnings,
     };
     // main implies emit-build-files

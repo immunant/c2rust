@@ -184,7 +184,7 @@ impl<'c> Translation<'c> {
     /// This function will strip either an implicitly casted int or explicitly casted
     /// vector as both casts are unnecessary (and problematic) for our purposes
     fn clean_int_or_vector_param(&self, expr_id: CExprId) -> CExprId {
-        match self.ast_context.c_exprs[&expr_id].kind {
+        match self.ast_context[expr_id].kind {
             // For some reason there seems to be an incorrect implicit cast here to char
             // it's possible the builtin takes a char even though the function takes an int
             ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
@@ -212,49 +212,35 @@ impl<'c> Translation<'c> {
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         self.import_simd_function(fn_name)?;
 
+        let mut processed_args = vec![];
         let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
-        let first_param = self.convert_expr(ctx.used(), first_expr_id)?;
-        let second_expr_id = self.clean_int_or_vector_param(args[1]);
-        let second_param = self.convert_expr(ctx.used(), second_expr_id)?;
-        let mut call_params = vec![first_param.val, second_param.val];
+        processed_args.push(first_expr_id);
+        processed_args.extend(args[1..].iter().map(|arg| self.clean_int_or_vector_param(*arg)));
 
-        if let Some(&third_expr_id) = args.get(2) {
-            // Sometimes the third param is a vector, so it's necessary to strip the explicit cast
-            // to an internal type
-            let third_expr_id = self.clean_int_or_vector_param(third_expr_id);
-            let third_param = self.convert_expr(ctx.used(), third_expr_id)?;
-
-            // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
-            // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of the vector mask fields)
-            // is a bug, and so we need to add a cast for it to work properly
-            if fn_name == "_mm_shuffle_ps" {
-                call_params.push(mk().cast_expr(third_param.val, mk().ident_ty("u32")));
-            } else {
-                call_params.push(third_param.val);
+        let param_translation = self.convert_exprs(ctx.used(), &processed_args)?;
+        param_translation.and_then(|mut call_params| {
+            if let Some(third_param) = call_params.get_mut(2) {
+                // According to
+                // https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
+                // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of
+                // the vector mask fields) is a bug, and so we need to add a cast
+                // for it to work properly
+                if fn_name == "_mm_shuffle_ps" {
+                    *third_param = mk().cast_expr(third_param.clone(), mk().ident_ty("u32"));
+                }
             }
-        }
 
-        // Fourth+ params seem to always be integers so far
-        for param_expr_id in args.iter().skip(3) {
-            let param_expr_id = self.clean_int_or_vector_param(*param_expr_id);
-            let param = self.convert_expr(ctx.used(), param_expr_id)?;
+            let call = mk().call_expr(mk().ident_expr(fn_name), call_params);
 
-            call_params.push(param.val);
-        }
-
-        let call = mk().call_expr(mk().ident_expr(fn_name), call_params);
-
-        if ctx.is_used() {
-            Ok(WithStmts {
-                stmts: Vec::new(),
-                val: call,
-            })
-        } else {
-            Ok(WithStmts {
-                stmts: vec![mk().expr_stmt(call)],
-                val: self.panic_or_err("No value for unused shuffle vector return"),
-            })
-        }
+            if ctx.is_used() {
+                Ok(WithStmts::new_val(call))
+            } else {
+                Ok(WithStmts::new(
+                    vec![mk().expr_stmt(call)],
+                    self.panic_or_err("No value for unused shuffle vector return"),
+                ))
+            }
+        })
     }
 
     /// Generate a zero value to be used for initialization of a given vector type. The type
@@ -264,7 +250,7 @@ impl<'c> Translation<'c> {
         ctype: CTypeId,
         len: usize,
         is_static: bool,
-    ) -> Result<P<Expr>, TranslationError> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
         let (fn_name, bytes) = match (&self.ast_context[ctype].kind, len) {
@@ -294,17 +280,17 @@ impl<'c> Translation<'c> {
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
 
-            Ok(transmute_expr(
+            Ok(WithStmts::new_unsafe_val(transmute_expr(
                 mk().infer_ty(),
                 mk().infer_ty(),
                 expr,
                 self.tcfg.emit_no_std,
-            ))
+            )))
         } else {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");
 
-            Ok(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>))
+            Ok(WithStmts::new_val(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>)))
         }
     }
 
@@ -316,68 +302,62 @@ impl<'c> Translation<'c> {
         ctype: CTypeId,
         len: usize,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let mut params: Vec<P<Expr>> = vec![];
+        let param_translation = self.convert_exprs(ctx, ids)?;
+        param_translation.and_then(|mut params| {
+            // When used in a static, we cannot call the standard functions since they
+            // are not const and so we are forced to transmute
+            let call = if ctx.is_static {
+                let tuple = mk().tuple_expr(params);
+                let transmute = transmute_expr(
+                    mk().infer_ty(),
+                    mk().infer_ty(),
+                    tuple,
+                    self.tcfg.emit_no_std,
+                );
 
-        for param_id in ids {
-            params.push(self.convert_expr(ctx, *param_id)?.val);
-        }
+                self.use_feature("const_transmute");
 
-        // When used in a static, we cannot call the standard functions since they
-        // are not const and so we are forced to transmute
-        let call = if ctx.is_static {
-            let tuple = mk().tuple_expr(params);
-            let transmute = transmute_expr(
-                mk().infer_ty(),
-                mk().infer_ty(),
-                tuple,
-                self.tcfg.emit_no_std,
-            );
+                transmute
+            } else {
+                let fn_call_name = match (&self.ast_context.c_types[&ctype].kind, len) {
+                    (Float, 4) => "_mm_setr_ps",
+                    (Float, 8) => "_mm256_setr_ps",
+                    (Double, 2) => "_mm_setr_pd",
+                    (Double, 4) => "_mm256_setr_pd",
+                    (LongLong, 2) => "_mm_set_epi64x",
+                    (LongLong, 4) => "_mm256_setr_epi64x",
+                    (Char, 8) => "_mm_setr_pi8",
+                    (Char, 16) => "_mm_setr_epi8",
+                    (Char, 32) => "_mm256_setr_epi8",
+                    (Int, 2) => "_mm_setr_pi32",
+                    (Int, 4) => "_mm_setr_epi32",
+                    (Int, 8) => "_mm256_setr_epi32",
+                    (Short, 4) => "_mm_setr_pi16",
+                    (Short, 8) => "_mm_setr_epi16",
+                    (Short, 16) => "_mm256_setr_epi16",
+                    ref e => Err(format_err!("Unknown vector init list: {:?}", e))?,
+                };
 
-            self.use_feature("const_transmute");
+                self.import_simd_function(fn_call_name)?;
 
-            transmute
-        } else {
-            let fn_call_name = match (&self.ast_context.c_types[&ctype].kind, len) {
-                (Float, 4) => "_mm_setr_ps",
-                (Float, 8) => "_mm256_setr_ps",
-                (Double, 2) => "_mm_setr_pd",
-                (Double, 4) => "_mm256_setr_pd",
-                (LongLong, 2) => "_mm_set_epi64x",
-                (LongLong, 4) => "_mm256_setr_epi64x",
-                (Char, 8) => "_mm_setr_pi8",
-                (Char, 16) => "_mm_setr_epi8",
-                (Char, 32) => "_mm256_setr_epi8",
-                (Int, 2) => "_mm_setr_pi32",
-                (Int, 4) => "_mm_setr_epi32",
-                (Int, 8) => "_mm256_setr_epi32",
-                (Short, 4) => "_mm_setr_pi16",
-                (Short, 8) => "_mm_setr_epi16",
-                (Short, 16) => "_mm256_setr_epi16",
-                ref e => Err(format_err!("Unknown vector init list: {:?}", e))?,
+                // rust is missing support for _mm_setr_epi64x, so we have to use
+                // the reverse arguments for _mm_set_epi64x
+                if fn_call_name == "_mm_set_epi64x" {
+                    params.reverse();
+                }
+
+                mk().call_expr(mk().ident_expr(fn_call_name), params)
             };
 
-            self.import_simd_function(fn_call_name)?;
-
-            // rust is missing support for _mm_setr_epi64x, so we have to use
-            // the reverse arguments for _mm_set_epi64x
-            if fn_call_name == "_mm_set_epi64x" {
-                params.reverse();
+            if ctx.is_used() {
+                Ok(WithStmts::new_val(call))
+            } else {
+                Ok(WithStmts::new(
+                    vec![mk().expr_stmt(call)],
+                    self.panic_or_err("No value for unused shuffle vector return"),
+                ))
             }
-
-            mk().call_expr(mk().ident_expr(fn_call_name), params)
-        };
-
-        if ctx.is_used() {
-            Ok(WithStmts {
-                stmts: Vec::new(),
-                val: call,
-            })
-        } else {
-            Ok(WithStmts {
-                stmts: vec![mk().expr_stmt(call)],
-                val: self.panic_or_err("No value for unused shuffle vector return"),
-            })
-        }
+        })
     }
 
     /// Convert a shuffle operation into the equivalent Rust SIMD library calls.
@@ -414,86 +394,91 @@ impl<'c> Translation<'c> {
         }
 
         let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..])?;
-        let first_param = self.convert_expr(ctx.used(), first_expr_id)?;
-        let second_param = self.convert_expr(ctx.used(), second_expr_id)?;
-        let third_param = self.convert_expr(ctx.used(), mask_expr_id)?;
-        let mut params = vec![first_param.val];
+        let param_translation = self.convert_exprs(ctx.used(), &[
+            first_expr_id,
+            second_expr_id,
+            mask_expr_id,
+        ])?;
+        param_translation.and_then(|params| {
+            let mut params = params.into_iter();
+            let first = params.next().ok_or("Missing first param in convert_shuffle_vector")?;
+            let second = params.next().ok_or("Missing second param in convert_shuffle_vector")?;
+            let third = params.next().ok_or("Missing third param in convert_shuffle_vector")?;
+            let mut new_params = vec![first];
 
-        // Some don't take a second param, but the expr is still there for some reason
-        match (child_expr_ids.len(), &first_vec, first_vec_len) {
-            // _mm256_shuffle_epi32
-            (10, Int, 8) |
-            // _mm_shuffle_epi32
-            (6, Int, 4) |
-            // _mm_shufflehi_epi16, _mm_shufflelo_epi16
-            (10, Short, 8) |
-            // _mm256_shufflehi_epi16, _mm256_shufflelo_epi16
-            (18, Short, 16) => {},
-            // _mm_slli_si128
-            (18, Char, 16) => {
-                params.pop();
-                params.push(second_param.val);
-            },
-            _ => params.push(second_param.val),
-        }
-
-        let shuffle_fn_name = match (&first_vec, first_vec_len) {
-            (Float, 4) => "_mm_shuffle_ps",
-            (Float, 8) => "_mm256_shuffle_ps",
-            (Double, 2) => "_mm_shuffle_pd",
-            (Double, 4) => "_mm256_shuffle_pd",
-            (Int, 4) => "_mm_shuffle_epi32",
-            (Int, 8) => "_mm256_shuffle_epi32",
-            (Char, 16) => "_mm_slli_si128",
-            (Short, 8) => {
-                // _mm_shufflehi_epi16 mask params start with const int,
-                // _mm_shufflelo_epi16 does not
-                let expr_id = &child_expr_ids[2];
-                if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context.c_exprs[expr_id].kind
-                {
-                    "_mm_shufflehi_epi16"
-                } else {
-                    "_mm_shufflelo_epi16"
-                }
+            // Some don't take a second param, but the expr is still there for some reason
+            match (child_expr_ids.len(), &first_vec, first_vec_len) {
+                // _mm256_shuffle_epi32
+                (10, Int, 8) |
+                // _mm_shuffle_epi32
+                (6, Int, 4) |
+                // _mm_shufflehi_epi16, _mm_shufflelo_epi16
+                (10, Short, 8) |
+                // _mm256_shufflehi_epi16, _mm256_shufflelo_epi16
+                (18, Short, 16) => {},
+                // _mm_slli_si128
+                (18, Char, 16) => {
+                    new_params.pop();
+                    new_params.push(second);
+                },
+                _ => new_params.push(second),
             }
-            (Short, 16) => {
-                // _mm256_shufflehi_epi16 mask params start with const int,
-                // _mm256_shufflelo_epi16 does not
-                let expr_id = &child_expr_ids[2];
-                if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context.c_exprs[expr_id].kind
-                {
-                    "_mm256_shufflehi_epi16"
-                } else {
-                    "_mm256_shufflelo_epi16"
+
+            let shuffle_fn_name = match (&first_vec, first_vec_len) {
+                (Float, 4) => "_mm_shuffle_ps",
+                (Float, 8) => "_mm256_shuffle_ps",
+                (Double, 2) => "_mm_shuffle_pd",
+                (Double, 4) => "_mm256_shuffle_pd",
+                (Int, 4) => "_mm_shuffle_epi32",
+                (Int, 8) => "_mm256_shuffle_epi32",
+                (Char, 16) => "_mm_slli_si128",
+                (Short, 8) => {
+                    // _mm_shufflehi_epi16 mask params start with const int,
+                    // _mm_shufflelo_epi16 does not
+                    let expr_id = &child_expr_ids[2];
+                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind
+                    {
+                        "_mm_shufflehi_epi16"
+                    } else {
+                        "_mm_shufflelo_epi16"
+                    }
                 }
+                (Short, 16) => {
+                    // _mm256_shufflehi_epi16 mask params start with const int,
+                    // _mm256_shufflelo_epi16 does not
+                    let expr_id = &child_expr_ids[2];
+                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind
+                    {
+                        "_mm256_shufflehi_epi16"
+                    } else {
+                        "_mm256_shufflelo_epi16"
+                    }
+                }
+                e => Err(format_err!("Unknown shuffle vector signature: {:?}", e))?,
+            };
+
+            // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
+            // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of the vector mask fields)
+            // is a bug, and so we need to add a cast for it to work properly
+            if shuffle_fn_name == "_mm_shuffle_ps" {
+                new_params.push(mk().cast_expr(third, mk().ident_ty("u32")));
+            } else {
+                new_params.push(third);
             }
-            e => Err(format_err!("Unknown shuffle vector signature: {:?}", e))?,
-        };
 
-        // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
-        // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of the vector mask fields)
-        // is a bug, and so we need to add a cast for it to work properly
-        if shuffle_fn_name == "_mm_shuffle_ps" {
-            params.push(mk().cast_expr(third_param.val, mk().ident_ty("u32")));
-        } else {
-            params.push(third_param.val);
-        }
+            self.import_simd_function(shuffle_fn_name)?;
 
-        self.import_simd_function(shuffle_fn_name)?;
+            let call = mk().call_expr(mk().ident_expr(shuffle_fn_name), new_params);
 
-        let call = mk().call_expr(mk().ident_expr(shuffle_fn_name), params);
-
-        if ctx.is_used() {
-            Ok(WithStmts {
-                stmts: Vec::new(),
-                val: call,
-            })
-        } else {
-            Ok(WithStmts {
-                stmts: vec![mk().expr_stmt(call)],
-                val: self.panic_or_err("No value for unused shuffle vector return"),
-            })
-        }
+            if ctx.is_used() {
+                Ok(WithStmts::new_val(call))
+            } else {
+                Ok(WithStmts::new(
+                    vec![mk().expr_stmt(call)],
+                    self.panic_or_err("No value for unused shuffle vector return"),
+                ))
+            }
+        })
     }
 
     /// Vectors tend to have casts to and from internal types. This is problematic for shuffle vectors
@@ -501,9 +486,9 @@ impl<'c> Translation<'c> {
     /// is likely redundant (external type), the other is not (internal type). We remove both of the
     /// casts for simplicity and readability
     fn strip_vector_explicit_cast(&self, expr_id: CExprId) -> (&CTypeKind, CExprId, usize) {
-        match self.ast_context.c_exprs[&expr_id].kind {
+        match self.ast_context[expr_id].kind {
             ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
-                let expr_id = match &self.ast_context.c_exprs[&expr_id].kind {
+                let expr_id = match &self.ast_context[expr_id].kind {
                     ExplicitCast(_, expr_id, _, _, _) => *expr_id,
                     // The expr_id wont be used in this case (the function only has one
                     // vector param, not two, despite the following type match), so it's
@@ -537,14 +522,14 @@ impl<'c> Translation<'c> {
     /// excluding the first two (which are always vector exprs). These exprs contain mathematical
     /// offsets applied to a mask expr (or are otherwise a numeric constant) which we'd like to extract.
     fn get_shuffle_vector_mask(&self, expr_ids: &[CExprId]) -> Result<CExprId, TranslationError> {
-        match self.ast_context.c_exprs[&expr_ids[0]].kind {
+        match self.ast_context[expr_ids[0]].kind {
             // Need to unmask which looks like this most of the time: X + (((mask) >> Y) & Z):
             Binary(_, Add, _, rhs_expr_id, None, None) => {
                 self.get_shuffle_vector_mask(&[rhs_expr_id])
             }
             // Sometimes there is a mask like this: ((mask) >> X) & Y:
             Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
-                match self.ast_context.c_exprs[&lhs_expr_id].kind {
+                match self.ast_context[lhs_expr_id].kind {
                     Binary(_, ShiftRight, lhs_expr_id, _, None, None) => Ok(lhs_expr_id),
                     ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
                 }
@@ -553,11 +538,11 @@ impl<'c> Translation<'c> {
             Literal(_, Integer(0, IntBase::Dec)) => self.get_shuffle_vector_mask(&[expr_ids[4]]),
             // format: ((char)(mask) & A) ?  B : C - (char)(mask)
             Conditional(_, lhs_expr_id, _, _) => {
-                match self.ast_context.c_exprs[&lhs_expr_id].kind {
+                match self.ast_context[lhs_expr_id].kind {
                     Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
-                        match self.ast_context.c_exprs[&lhs_expr_id].kind {
+                        match self.ast_context[lhs_expr_id].kind {
                             ImplicitCast(_, expr_id, IntegralCast, _, _) => {
-                                match self.ast_context.c_exprs[&expr_id].kind {
+                                match self.ast_context[expr_id].kind {
                                     ExplicitCast(_, expr_id, IntegralCast, _, _) => Ok(expr_id),
                                     ref e => {
                                         Err(format_err!("Found unknown mask format: {:?}", e))?
@@ -584,13 +569,13 @@ impl<'c> Translation<'c> {
     ) -> bool {
         use self::CastKind::BuiltinFnToFnPtr;
 
-        match self.ast_context.c_exprs[&expr_id].kind {
+        match self.ast_context[expr_id].kind {
             CExprKind::ShuffleVector(..) => is_explicit && kind == CastKind::BitCast,
             CExprKind::Call(_, fn_id, _) => {
                 let fn_expr = &self.ast_context[fn_id].kind;
 
                 if let CExprKind::ImplicitCast(_, expr_id, BuiltinFnToFnPtr, _, _) = fn_expr {
-                    let expr = &self.ast_context.c_exprs[expr_id].kind;
+                    let expr = &self.ast_context[*expr_id].kind;
 
                     if let CExprKind::DeclRef(_, decl_id, _) = expr {
                         let decl = &self.ast_context[*decl_id].kind;

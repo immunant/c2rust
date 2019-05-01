@@ -55,12 +55,14 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
             res
         }
         ArraySubscript(_, l, r, _) => intos![l, r],
-        Conditional(_, c, t, e) => intos![c, t, e],
+        Conditional(_, c, t, e)
+        | Choose(_, c, t, e, _) => intos![c, t, e],
         BinaryConditional(_, c, t) => intos![c, t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
         ImplicitCast(_, e, _, _, _)
         | ExplicitCast(_, e, _, _, _)
         | Member(_, e, _, _, _)
+        | Paren(_, e)
         | CompoundLiteral(_, e)
         | Predefined(_, e)
         | VAArg(_, e) => intos![e],
@@ -95,14 +97,19 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
             res
         }
         ArraySubscript(_, l, r, _) => intos![l, r],
-        Conditional(_, c, t, e) => intos![c, t, e],
+        Conditional(_, c, t, e)
+        | Choose(_, c, t, e, _) => intos![c, t, e],
         BinaryConditional(_, c, t) => intos![c, t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
-        ImplicitCast(_, e, _, _, _) | Member(_, e, _, _, _) | Predefined(_, e) => intos![e],
+        Member(_, e, _, _, _) | Predefined(_, e) => intos![e],
         // Normally we don't step into the result type annotation field, because it's not really
         // part of the expression.  But for `ExplicitCast`, the result type is actually the cast's
         // target type as written by the user.  The other expr kinds here work similarly.
-        ExplicitCast(qty, e, _, _, _) | CompoundLiteral(qty, e) | VAArg(qty, e) => {
+        ExplicitCast(qty, e, _, _, _)
+        | ImplicitCast(qty, e, _, _, _)
+        | Paren(qty, e)
+        | CompoundLiteral(qty, e)
+        | VAArg(qty, e) => {
             intos![qty.ctype, e]
         }
         Statements(_, s) => vec![s.into()],
@@ -148,6 +155,9 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         Struct { ref fields, .. } => fields.iter().flat_map(|x| x).map(|&x| x.into()).collect(),
         Union { ref fields, .. } => fields.iter().flat_map(|x| x).map(|&x| x.into()).collect(),
         Field { typ, .. } => intos![typ.ctype],
+        MacroObject {
+            ref replacements, ..
+        } => replacements.iter().map(|&x| x.into()).collect(),
     }
 }
 

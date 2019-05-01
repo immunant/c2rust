@@ -18,6 +18,11 @@
 //!    For itemlikes, a lone ident can't be used as a pattern because it's not a valid itemlike.
 //!    Use a zero-argument macro invocation `__x!()` instead.
 //!
+//!  * `$x:NODE` captures an AST node of type `NODE`, which is one of the binding types from
+//!    `bindings.rs` (case-sensitive), e.g., `Expr`. For example, `$x:Expr` matched all expression
+//!    ASTs. The capture can also have the form `$x:?NODE`, which matches an optional AST of type
+//!    `Option<Node>`, e.g., `$l:?Ident` matches against `Option<Ident>` for optional loop labels.
+//!
 //!  * `marked!(x [, label])`: Matches `x` only if the node is marked with the given label.  The
 //!    label defaults to "target" if omitted.
 //!

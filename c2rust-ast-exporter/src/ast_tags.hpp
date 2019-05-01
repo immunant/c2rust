@@ -21,6 +21,9 @@ enum ASTEntryTag {
     TagTypedefDecl,
     TagUnionDecl,
 
+    TagMacroObjectDef,
+    TagMacroFunctionDef,
+
     TagCompoundStmt = 100,
     TagReturnStmt,
     TagIfStmt,
@@ -62,15 +65,19 @@ enum ASTEntryTag {
 
     TagCompoundLiteralExpr,
     TagPredefinedExpr,
-    TagStmtExpr,
     TagVAArgExpr,
     TagShuffleVectorExpr,
 
     TagConvertVectorExpr,
     TagDesignatedInitExpr,
 
+    // Wrapper expressions
     TagFullExpr, // unused
     TagConstantExpr,
+
+    // GNU extensions
+    TagStmtExpr,
+    TagChooseExpr,
 
     TagIntegerLiteral = 300,
     TagStringLiteral,

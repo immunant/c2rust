@@ -27,8 +27,9 @@ pub fn get_untyped_ast(
     file_path: &Path,
     cc_db: &Path,
     extra_args: &[&str],
+    debug: bool,
 ) -> Result<clang_ast::AstContext, Error> {
-    let cbors = get_ast_cbors(file_path, cc_db, extra_args);
+    let cbors = get_ast_cbors(file_path, cc_db, extra_args, debug);
     let buffer = cbors.values().next().ok_or(Error::new(
         ErrorKind::InvalidData,
         "Could not parse input file",
@@ -47,7 +48,12 @@ pub fn get_untyped_ast(
     }
 }
 
-fn get_ast_cbors(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> HashMap<String, Vec<u8>> {
+fn get_ast_cbors(
+    file_path: &Path,
+    cc_db: &Path,
+    extra_args: &[&str],
+    debug: bool,
+) -> HashMap<String, Vec<u8>> {
     let mut res = 0;
 
     let mut args_owned = vec![CString::new("ast_exporter").unwrap()];
@@ -63,7 +69,12 @@ fn get_ast_cbors(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> HashMap
 
     let hashmap;
     unsafe {
-        let ptr = ast_exporter(args_ptrs.len() as libc::c_int, args_ptrs.as_ptr(), &mut res);
+        let ptr = ast_exporter(
+            args_ptrs.len() as libc::c_int,
+            args_ptrs.as_ptr(),
+            debug.into(),
+            &mut res,
+        );
         hashmap = marshal_result(ptr);
         drop_export_result(ptr);
     }
@@ -78,6 +89,7 @@ extern "C" {
     fn ast_exporter(
         argc: libc::c_int,
         argv: *const *const libc::c_char,
+        debug: libc::c_int,
         res: *mut libc::c_int,
     ) -> *mut ExportResult;
 

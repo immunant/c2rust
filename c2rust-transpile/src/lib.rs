@@ -78,6 +78,9 @@ pub struct TranspilerConfig {
     pub json_function_cfgs: bool,
     pub dump_cfg_liveness: bool,
     pub dump_structures: bool,
+    pub verbose: bool,
+    pub debug_ast_exporter: bool,
+
     // Options that control translation
     pub incremental_relooper: bool,
     pub fail_on_multiple: bool,
@@ -102,7 +105,7 @@ pub struct TranspilerConfig {
     pub enabled_warnings: HashSet<Diagnostic>,
     pub emit_no_std: bool,
     pub output_dir: Option<PathBuf>,
-    pub verbose: bool,
+    pub translate_const_macros: bool,
 
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
@@ -286,7 +289,12 @@ fn transpile_single(
     }
 
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match ast_exporter::get_untyped_ast(input_path, cc_db, extra_clang_args) {
+    let untyped_context = match ast_exporter::get_untyped_ast(
+        input_path,
+        cc_db,
+        extra_clang_args,
+        tcfg.debug_ast_exporter,
+    ) {
         Err(e) => {
             eprintln!("Error: {:}", e);
             process::exit(1);

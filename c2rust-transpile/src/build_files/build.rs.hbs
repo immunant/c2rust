@@ -1,6 +1,6 @@
-#[cfg(target_os = "linux")]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn main() {
-    // add linux dependencies here below
+    // add unix dependencies below
     // println!("cargo:rustc-flags=-l readline");
 }
 

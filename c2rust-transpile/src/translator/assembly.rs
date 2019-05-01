@@ -41,7 +41,7 @@ impl<'c> Translation<'c> {
         push_expr(&mut tokens, mk().lit_expr(mk().str_lit(asm)));
 
         // Outputs and Inputs
-        for list in vec![outputs, inputs] {
+        for &(list, is_output) in &[(outputs, true), (inputs, false)] {
             first = true;
             tokens.push(Token::Colon); // Always emitted, even if list is empty
 
@@ -57,10 +57,23 @@ impl<'c> Translation<'c> {
                 }
 
                 let mut result = self.convert_expr(ctx.used(), expression)?;
-                stmts.append(&mut result.stmts);
+                stmts.append(result.stmts_mut());
+
+                let mut result = result.into_value();
+                if constraints.contains('*') {
+                    // If the constraint string contains `*`, then
+                    // c2rust-ast-exporter added it (there's no gcc equivalent);
+                    // in this case, we need to do what clang does and pass in
+                    // the operand by-address instead of by-value
+                    if is_output {
+                        result = mk().mutbl().addr_of_expr(result);
+                    } else {
+                        result = mk().addr_of_expr(result);
+                    }
+                }
 
                 push_expr(&mut tokens, mk().lit_expr(mk().str_lit(constraints)));
-                push_expr(&mut tokens, mk().paren_expr(result.val));
+                push_expr(&mut tokens, mk().paren_expr(result));
             }
         }
 

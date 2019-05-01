@@ -50,6 +50,9 @@ pub struct TypedAstContext {
     pub c_files: HashMap<u64, String>,
     pub parents: HashMap<CDeclId, CDeclId>, // record fields and enum constants
 
+    // map expressions to the stack of macros they were expanded from
+    pub macro_expansions: HashMap<CExprId, Vec<CDeclId>>,
+
     pub comments: Vec<Located<String>>,
 
     // The key is the typedef decl being squashed away,
@@ -76,6 +79,7 @@ impl TypedAstContext {
             c_main: None,
             c_files: HashMap::new(),
             parents: HashMap::new(),
+            macro_expansions: HashMap::new(),
 
             comments: vec![],
             prenamed_decls: IndexMap::new(),
@@ -188,6 +192,7 @@ impl TypedAstContext {
             CExprKind::ImplicitCast(_, e, _, _, _) |
             CExprKind::ExplicitCast(_, e, _, _, _) |
             CExprKind::Member(_, e, _, _, _) |
+            CExprKind::Paren(_, e) |
             CExprKind::CompoundLiteral(_, e) |
             CExprKind::Unary(_, _, e, _) => self.is_expr_pure(e),
 
@@ -196,7 +201,8 @@ impl TypedAstContext {
 
             CExprKind::ArraySubscript(_, lhs, rhs, _) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
             CExprKind::Conditional(_, c, lhs, rhs) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
-            CExprKind::BinaryConditional(_, lhs, rhs) => self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
+            CExprKind::BinaryConditional(_, c, rhs) => self.is_expr_pure(c) && self.is_expr_pure(rhs),
+            CExprKind::Choose(_, c, lhs, rhs, _) => self.is_expr_pure(c) && self.is_expr_pure(lhs) && self.is_expr_pure(rhs),
         }
     }
 
@@ -226,7 +232,7 @@ impl TypedAstContext {
     pub fn prune_unused_decls(&mut self) {
         use self::iterators::{DFNodes, SomeId};
         // Starting from a set of root declarations, walk each one to find declarations it
-        // dependens on.  Then walk each of those, recursively.
+        // depends on. Then walk each of those, recursively.
 
         // Declarations we still need to walk.  Everything in here is also in `used`.
         let mut to_walk: Vec<CDeclId> = Vec::new();
@@ -265,6 +271,9 @@ impl TypedAstContext {
             }
         }
 
+        // Add all referenced macros to the set of used decls
+        // used.extend(self.macro_expansions.values().flatten());
+
         while let Some(enclosing_decl_id) = to_walk.pop() {
             for some_id in DFNodes::new(self, SomeId::Decl(enclosing_decl_id)) {
                 match some_id {
@@ -289,15 +298,21 @@ impl TypedAstContext {
                         }
                     }
 
-                    SomeId::Expr(expr_id) => match self.c_exprs[&expr_id].kind {
-                        CExprKind::DeclRef(_, decl_id, _) => {
-                            if used.insert(decl_id) {
-                                to_walk.push(decl_id);
+                    SomeId::Expr(expr_id) => {
+                        let expr = self.index(expr_id);
+                        if let Some(macs) = self.macro_expansions.get(&expr_id) {
+                            for mac_id in macs {
+                                if used.insert(*mac_id) {
+                                    to_walk.push(*mac_id);
+                                }
                             }
                         }
-
-                        _ => {}
-                    },
+                        if let CExprKind::DeclRef(_, decl_id, _) = &expr.kind {
+                            if used.insert(*decl_id) {
+                                to_walk.push(*decl_id);
+                            }
+                        }
+                    }
 
                     SomeId::Decl(decl_id) => {
                         if used.insert(decl_id) {
@@ -479,7 +494,14 @@ impl Index<CExprId> for TypedAstContext {
         };
         match self.c_exprs.get(&index) {
             None => &BADEXPR, // panic!("Could not find {:?} in TypedAstContext", index),
-            Some(ty) => ty,
+            Some(e) => {
+                // Transparently index through Paren expressions
+                if let CExprKind::Paren(_, subexpr) = e.kind {
+                    self.index(subexpr)
+                } else {
+                    e
+                }
+            }
         }
     }
 }
@@ -599,6 +621,11 @@ pub enum CDeclKind {
         platform_bit_offset: u64,
         platform_type_bitwidth: u64,
     },
+
+    MacroObject {
+        name: String,
+        replacements: Vec<CExprId>,
+    },
 }
 
 impl CDeclKind {
@@ -618,6 +645,7 @@ impl CDeclKind {
                 name: Some(ref i), ..
             } => Some(i),
             &CDeclKind::Field { name: ref i, .. } => Some(i),
+            &CDeclKind::MacroObject { ref name, .. } => Some(name),
             _ => None,
         }
     }
@@ -696,6 +724,10 @@ pub enum CExprKind {
     // Designated initializer
     ImplicitValueInit(CQualTypeId),
 
+    // Parenthesized expression (ignored, but needed so we have a corresponding
+    // node)
+    Paren(CQualTypeId, CExprId),
+
     // Compound literal
     CompoundLiteral(CQualTypeId, CExprId),
 
@@ -714,6 +746,9 @@ pub enum CExprKind {
 
     // From syntactic form of initializer list expressions
     DesignatedInitExpr(CQualTypeId, Vec<Designator>, CExprId),
+
+    // GNU choose expr. Condition, true expr, false expr, was condition true?
+    Choose(CQualTypeId, CExprId, CExprId, CExprId, bool),
 
     BadExpr,
 }
@@ -755,6 +790,7 @@ impl CExprKind {
             | CExprKind::BinaryConditional(ty, _, _)
             | CExprKind::InitList(ty, _, _, _)
             | CExprKind::ImplicitValueInit(ty)
+            | CExprKind::Paren(ty, _)
             | CExprKind::CompoundLiteral(ty, _)
             | CExprKind::Predefined(ty, _)
             | CExprKind::Statements(ty, _)
@@ -762,6 +798,7 @@ impl CExprKind {
             | CExprKind::ShuffleVector(ty, _)
             | CExprKind::ConvertVector(ty, _)
             | CExprKind::DesignatedInitExpr(ty, _, _) => Some(ty),
+            | CExprKind::Choose(ty, _, _, _, _) => Some(ty),
         }
     }
 
@@ -906,6 +943,24 @@ impl BinOp {
             BinOp::AssignBitOr => Some(BinOp::BitOr),
             BinOp::AssignBitAnd => Some(BinOp::BitAnd),
             _ => None,
+        }
+    }
+
+    /// Determines whether or not this is an assignment op
+    pub fn is_assignment(&self) -> bool {
+        match *self {
+            BinOp::AssignAdd
+            | BinOp::AssignSubtract
+            | BinOp::AssignMultiply
+            | BinOp::AssignDivide
+            | BinOp::AssignModulus
+            | BinOp::AssignBitXor
+            | BinOp::AssignShiftLeft
+            | BinOp::AssignShiftRight
+            | BinOp::AssignBitOr
+            | BinOp::AssignBitAnd
+            | BinOp::Assign => true,
+            _ => false,
         }
     }
 }
