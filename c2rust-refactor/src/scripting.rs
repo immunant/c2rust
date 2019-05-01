@@ -90,10 +90,13 @@ impl<'lua> IntoLuaAst<'lua> for ast::Stmt {
             ast::StmtKind::Local(l) => {
                 ast.set("kind", "Local")?;
                 let ast::Local { pat, ty, init, .. } = l.into_inner();
-                ast.set("pat", ctx.intern(pat))?;
+
+                ast.set("pat", pat.into_lua_ast(ctx, lua_ctx)?)?;
+
                 if let Some(ty) = ty {
                     ast.set("ty", ctx.intern(ty))?;
                 }
+
                 if let Some(init) = init {
                     ast.set("init", init.into_lua_ast(ctx, lua_ctx)?)?;
                 }

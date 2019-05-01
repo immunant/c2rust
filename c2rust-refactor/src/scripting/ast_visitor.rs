@@ -1,5 +1,5 @@
-use rlua::prelude::{LuaContext, LuaResult, LuaTable};
-use syntax::ast::{Arg, BindingMode, Block, FunctionRetTy, FnDecl, Mutability::*, NodeId, PatKind, Stmt};
+use rlua::prelude::{LuaContext, LuaError, LuaResult, LuaTable};
+use syntax::ast::{Arg, BindingMode, Block, FunctionRetTy, FnDecl, Mutability::*, NodeId, Pat, PatKind, Stmt};
 use syntax::source_map::symbol::Symbol;
 use syntax::ptr::P;
 
@@ -32,69 +32,90 @@ impl<'lua> IntoLuaAst<'lua> for FnLike {
 }
 
 impl<'lua> IntoLuaAst<'lua> for P<FnDecl> {
-    fn into_lua_ast(mut self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "FnDecl")?;
         ast.set("c_variadic", self.c_variadic)?;
-        ast.set("return_type", match &self.output {
-            FunctionRetTy::Default(_) => None,
-            FunctionRetTy::Ty(ty) => Some(ctx.intern(ty.clone())),
-        })?;
 
-        let args: LuaResult<Vec<_>> = self.inputs
-            .drain(..)
-            .into_iter()
-            .map(|arg| arg.into_lua_ast(ctx, lua_ctx))
-            .collect();
+        self.and_then(|fn_decl| {
+            ast.set("return_type", match fn_decl.output {
+                FunctionRetTy::Default(_) => None,
+                FunctionRetTy::Ty(ty) => Some(ctx.intern(ty)),
+            })?;
 
-        ast.set("args", iter_to_lua_array(args?.into_iter(), lua_ctx)?)?;
+            let args: LuaResult<Vec<_>> = fn_decl.inputs
+                .into_iter()
+                .map(|arg| arg.into_lua_ast(ctx, lua_ctx))
+                .collect();
 
-        // TODO: self, self kind
+            ast.set("args", iter_to_lua_array(args?.into_iter(), lua_ctx)?)?;
 
-        Ok(ast)
+            // TODO: self, self kind
+
+            Ok(ast)
+        })
     }
 }
 
 impl<'lua> IntoLuaAst<'lua> for Arg {
-    fn into_lua_ast(self, _ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "Arg")?;
         ast.set("id", self.id.as_u32())?;
-
-        match self.pat.node {
-            PatKind::Ident(binding, ident, _) => {
-                ast.set("binding", match binding {
-                    BindingMode::ByRef(Immutable) => "ByRefImmutable",
-                    BindingMode::ByRef(Mutable) => "ByRefMutable",
-                    BindingMode::ByValue(Immutable) => "ByValueImmutable",
-                    BindingMode::ByValue(Mutable) => "ByValueMutable",
-                })?;
-
-                ast.set("ident", ident.as_str().get())?;
-            },
-            ref e => unreachable!("Found {:?}", e),
-        }
+        ast.set("pat", self.pat.into_lua_ast(ctx, lua_ctx)?)?;
 
         Ok(ast)
     }
 }
 
 impl<'lua> IntoLuaAst<'lua> for P<Block> {
-    fn into_lua_ast(mut self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
         let ast = lua_ctx.create_table()?;
 
-        let stmts = self.stmts
-            .drain(..)
-            .into_iter()
-            .map(|stmt| stmt.into_lua_ast(ctx, lua_ctx))
-            .collect::<LuaResult<Vec<_>>>();
-
         ast.set("type", "Block")?;
-        ast.set("stmts", iter_to_lua_array(stmts?.into_iter(), lua_ctx)?)?;
 
-        Ok(ast)
+        self.and_then(|block| {
+            let stmts = block.stmts
+                .into_iter()
+                .map(|stmt| stmt.into_lua_ast(ctx, lua_ctx))
+                .collect::<LuaResult<Vec<_>>>();
+
+            ast.set("stmts", iter_to_lua_array(stmts?.into_iter(), lua_ctx)?)?;
+
+            Ok(ast)
+        })
+    }
+}
+
+impl<'lua> IntoLuaAst<'lua> for P<Pat> {
+    fn into_lua_ast(self, _ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
+
+        ast.set("type", "Pat")?;
+        ast.set("id", self.id.as_u32())?;
+
+        self.and_then(|pat| {
+            match pat.node {
+                PatKind::Wild => {
+                    ast.set("kind", "Wild")?;
+                },
+                PatKind::Ident(binding, ident, _sub_pattern) => {
+                    ast.set("kind", "Ident")?;
+                    ast.set("binding", match binding {
+                        BindingMode::ByRef(Immutable) => "ByRefImmutable",
+                        BindingMode::ByRef(Mutable) => "ByRefMutable",
+                        BindingMode::ByValue(Immutable) => "ByValueImmutable",
+                        BindingMode::ByValue(Mutable) => "ByValueMutable",
+                    })?;
+                    ast.set("ident", ident.as_str().get())?;
+                },
+                _ => return Err(LuaError::external(format!("unimplemented pattern type: {:?}", pat.node))),
+            }
+
+            Ok(ast)
+        })
     }
 }
 
@@ -165,7 +186,17 @@ impl MergeLuaAst for P<FnDecl> {
 
 impl MergeLuaAst for Arg {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
-        match self.pat.node {
+        self.id = NodeId::from_u32(table.get("id")?);
+        self.pat.merge_lua_ast(table.get("pat")?)?;
+
+        Ok(())
+    }
+}
+
+impl MergeLuaAst for P<Pat> {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
+        // REVIEW: How do allow the type to be changed?
+        match self.node {
             PatKind::Ident(ref mut binding, ref mut ident, _) => {
                 *binding = match table.get::<_, String>("binding")?.as_str() {
                     "ByRefImmutable" => BindingMode::ByRef(Immutable),
@@ -178,8 +209,6 @@ impl MergeLuaAst for Arg {
             },
             ref e => unimplemented!("Found {:?}", e),
         }
-
-        self.id = NodeId::from_u32(table.get("id")?);
 
         Ok(())
     }

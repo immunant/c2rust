@@ -19,7 +19,7 @@ end
 function Visitor:run(ast)
     if not ast then return end
 
-    print(ast.type)
+    -- print(ast.type)
     if ast.type == "Block" then
         self:visit_block(ast)
 
@@ -69,8 +69,10 @@ function Visitor:visit_block(block)
     print("Visiting Block: Noop")
 end
 
-function Visitor:visit_stmt(block)
-    print("Visiting Stmt: Noop")
+function Visitor:visit_stmt(stmt)
+    if stmt.kind == "Local" then
+        print("Found local in visitor")
+    end
 end
 
 function Visitor:visit_expr(expr)
@@ -100,8 +102,6 @@ refactor:transform(
 
                 print("FnLike name: " .. fn_like.ident)
 
-                args = fn_like.decl.args
-
                 used_args = {}
                 used_locals = {}
                 mut_args = {}
@@ -117,19 +117,30 @@ refactor:transform(
 
                 -- TODO: Shadowed variables may cause usage to be misrepresented
 
+                args = fn_like.decl.args
+                stmts = fn_like.block.stmts
+
                 -- Iterate over args
-                for i, arg in ipairs(args) do
-                    if not used_args[arg.ident] then
+                for _, arg in ipairs(args) do
+                    -- TODO: Pattern might not be an ident
+                    if not used_args[arg.pat.ident] then
                         -- If the argument doesn't already have an underscore
                         -- prefix, we should add one as it is idomatic rust
-                        if not starts_with(arg.ident, '_') then
-                            arg.ident = '_' .. arg.ident
+                        if not starts_with(arg.pat.ident, '_') then
+                            arg.pat.ident = '_' .. arg.pat.ident
                         end
 
                         -- Remove any binding since the param is deemed unused
-                        arg.binding = "ByValueImmutable"
-                    elseif not mut_args[arg.ident] then
-                        arg.binding = "ByValueImmutable"
+                        arg.pat.binding = "ByValueImmutable"
+                    elseif not mut_args[arg.pat.ident] then
+                        arg.pat.binding = "ByValueImmutable"
+                    end
+                end
+
+                -- Iterate over locals
+                for _, stmt in ipairs(stmts) do
+                    if stmt.kind == "Local" then
+
                     end
                 end
 
