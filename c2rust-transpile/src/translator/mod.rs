@@ -356,7 +356,7 @@ pub fn signed_int_expr(value: i64) -> P<Expr> {
 
 // This should only be used for tests
 fn prefix_names(translation: &mut Translation, prefix: &str) {
-    for (&decl_id, ref mut decl) in &mut translation.ast_context.c_decls {
+    for (&decl_id, ref mut decl) in translation.ast_context.iter_mut_decls() {
         match decl.kind {
             CDeclKind::Function {
                 ref mut name,
@@ -485,7 +485,8 @@ pub fn translate(
     with_globals(|| {
         // Identify typedefs that name unnamed types and collapse the two declarations
         // into a single name and declaration, eliminating the typedef altogether.
-        for (&decl_id, decl) in &t.ast_context.c_decls {
+        let mut prenamed_decls: IndexMap<CDeclId, CDeclId> = IndexMap::new();
+        for (&decl_id, decl) in t.ast_context.iter_decls() {
             if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
                 if let Some(subdecl_id) = t
                     .ast_context
@@ -518,14 +519,12 @@ pub fn translate(
                     };
 
                     if is_unnamed
-                        && !t
-                            .ast_context
-                            .prenamed_decls
+                        && !prenamed_decls
                             .values()
                             .find(|decl_id| *decl_id == &subdecl_id)
                             .is_some()
                     {
-                        t.ast_context.prenamed_decls.insert(decl_id, subdecl_id);
+                        prenamed_decls.insert(decl_id, subdecl_id);
 
                         t.type_converter
                             .borrow_mut()
@@ -538,6 +537,8 @@ pub fn translate(
             }
         }
 
+        t.ast_context.prenamed_decls = prenamed_decls;
+
         // Helper function that returns true if there is either a matching typedef or its
         // corresponding struct/union/enum
         fn contains(prenamed_decls: &IndexMap<CDeclId, CDeclId>, decl_id: &CDeclId) -> bool {
@@ -546,7 +547,7 @@ pub fn translate(
         }
 
         // Populate renamer with top-level names
-        for (&decl_id, decl) in &t.ast_context.c_decls {
+        for (&decl_id, decl) in t.ast_context.iter_decls() {
             let decl_name = match decl.kind {
                 _ if contains(&t.ast_context.prenamed_decls, &decl_id) => Name::NoName,
                 CDeclKind::Struct { ref name, .. } => {
@@ -611,7 +612,7 @@ pub fn translate(
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
-                        let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
+                        let ref k = t.ast_context.get_decl(&decl_id).map(|x| &x.kind);
                         let msg = format!("Skipping declaration {:?} due to error: {}", k, e);
                         translate_failure(&t.tcfg, &msg)
                     }
@@ -619,7 +620,7 @@ pub fn translate(
             };
 
             // Export all types
-            for (&decl_id, decl) in &t.ast_context.c_decls {
+            for (&decl_id, decl) in t.ast_context.iter_decls() {
                 let needs_export = match decl.kind {
                     CDeclKind::Struct { .. } => true,
                     CDeclKind::Enum { .. } => true,
@@ -641,7 +642,7 @@ pub fn translate(
             // Export macros after the rest of the decls so we can reference all
             // types
             if tcfg.translate_const_macros {
-                for (&decl_id, decl) in &t.ast_context.c_decls {
+                for (&decl_id, decl) in t.ast_context.iter_decls() {
                     if let CDeclKind::MacroObject { .. } = decl.kind {
                         convert_type(decl_id, decl);
                     }
@@ -651,13 +652,13 @@ pub fn translate(
 
         // Export top-level value declarations
         for top_id in &t.ast_context.c_decls_top {
-            let needs_export = match t.ast_context.c_decls[top_id].kind {
+            let needs_export = match t.ast_context[*top_id].kind {
                 CDeclKind::Function { is_implicit, .. } => !is_implicit,
                 CDeclKind::Variable { .. } => true,
                 _ => false,
             };
             if needs_export {
-                let decl_opt = t.ast_context.c_decls.get(top_id);
+                let decl_opt = t.ast_context.get_decl(top_id);
                 let decl = decl_opt.as_ref().unwrap();
                 let decl_file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
                     Some(Some(s)) => Some(s),
@@ -676,7 +677,7 @@ pub fn translate(
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
-                        let ref decl = t.ast_context.c_decls.get(top_id);
+                        let ref decl = t.ast_context.get_decl(top_id);
                         let msg = match decl {
                             Some(decl) => {
                                 let decl_identifier = decl.kind.get_name().map_or_else(
@@ -1271,8 +1272,7 @@ impl<'c> Translation<'c> {
 
         let decl = self
             .ast_context
-            .c_decls
-            .get(&decl_id)
+            .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
         let _src_loc = &decl.loc;
@@ -2857,8 +2857,7 @@ impl<'c> Translation<'c> {
             CExprKind::DeclRef(qual_ty, decl_id, lrvalue) => {
                 let decl = &self
                     .ast_context
-                    .c_decls
-                    .get(&decl_id)
+                    .get_decl(&decl_id)
                     .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
                     .kind;
                 if ctx.is_const {
@@ -2915,7 +2914,7 @@ impl<'c> Translation<'c> {
 
                     // Struct Type
                     let decl_id = {
-                        let kind = match self.ast_context.c_types[&qty.ctype].kind {
+                        let kind = match self.ast_context[qty.ctype].kind {
                             CTypeKind::Elaborated(ty_id) => &self.ast_context[ty_id].kind,
                             ref kind => kind,
                         };
@@ -3384,9 +3383,9 @@ impl<'c> Translation<'c> {
 
     fn fn_expr_is_variadic(&self, expr_id: CExprId) -> bool {
         let fn_expr = &self.ast_context[expr_id];
-        let fn_ty = &self.ast_context.c_types[&fn_expr.kind.get_type().unwrap()];
+        let fn_ty = &self.ast_context[fn_expr.kind.get_type().unwrap()];
         if let CTypeKind::Pointer(qual_ty) = fn_ty.kind {
-            match self.ast_context.c_types[&qual_ty.ctype].kind {
+            match self.ast_context[qual_ty.ctype].kind {
                 CTypeKind::Function(_, _, is_variadic, _, _) => is_variadic,
                 _ => false,
             }
@@ -4203,7 +4202,7 @@ impl<'c> Translation<'c> {
                 if self.ast_context.prenamed_decls.contains_key(&decl_id) {
                     decl_id = *self.ast_context.prenamed_decls.get(&decl_id).unwrap();
                 }
-                let decl = &self.ast_context.c_decls[&decl_id];
+                let decl = &self.ast_context[decl_id];
                 let decl_loc = &decl.loc.as_ref().unwrap();
 
                 // If the definition lives in the same header, there is no need to import it
@@ -4275,7 +4274,7 @@ impl<'c> Translation<'c> {
 
     fn generate_submodule_imports(&self, decl_id: CDeclId, decl_file_path: Option<&PathBuf>) {
         let decl_file_path = decl_file_path.expect("There should be a decl file path");
-        let decl = self.ast_context.c_decls.get(&decl_id).unwrap();
+        let decl = self.ast_context.get_decl(&decl_id).unwrap();
         let mut sumbodule_items = self.mod_blocks.borrow_mut();
         let item_store = sumbodule_items
             .entry(decl_file_path.to_path_buf())
@@ -4286,7 +4285,7 @@ impl<'c> Translation<'c> {
                 let field_ids = fields.as_ref().map(|vec| vec.as_slice()).unwrap_or(&[]);
 
                 for field_id in field_ids.iter() {
-                    match self.ast_context.c_decls[field_id].kind {
+                    match self.ast_context[*field_id].kind {
                         CDeclKind::Field { typ, .. } => {
                             self.match_type_kind(typ.ctype, item_store, decl_file_path)
                         }
