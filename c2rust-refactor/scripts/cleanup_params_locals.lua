@@ -2,14 +2,14 @@ local function starts_with(str, start)
     return str:sub(1, #start) == start
 end
 
-Variable = {used = true, id = nil, locl = true, mutability = "", ident = ""}
+Variable = {}
 
-function Variable.new(used, id, locl, mutability, ident)
+function Variable.new(used, id, locl, binding, ident)
     self = {}
     self.used = used
     self.id = id
     self.locl = locl
-    self.mutability = mutability
+    self.binding = binding
     self.ident = ident
     self.shadowed = false
 
@@ -92,6 +92,7 @@ function Visitor:visit_stmt(stmt)
             locl = true
             id = stmt.pat.id
             ident = stmt.pat.ident
+            binding = "ByValueImmutable"
 
             -- Find a shadowed variable
             for _, variable in ipairs(self.variables) do
@@ -100,7 +101,7 @@ function Visitor:visit_stmt(stmt)
                 end
             end
 
-            self.variables[id] = Variable.new(used, id, locl, mutability, ident)
+            self.variables[id] = Variable.new(used, id, locl, binding, ident)
         else
             print("Skipping unsupported local type")
         end
@@ -121,9 +122,8 @@ function Visitor:visit_expr(expr)
             print("Looping:")
 
             for _, variable in pairs(self.variables) do
-                print(variable.ident .. "(" .. variable.id .. ") vs " .. expr.lhs.segments[1] .. " (" .. expr.lhs.id .. ")")
                 if variable.ident == expr.lhs.segments[1] then
-                    variable.mutability = "ByValueMutable"
+                    variable.binding = "ByValueMutable"
                 end
             end
         end
@@ -150,10 +150,10 @@ refactor:transform(
                     used = false
                     id = arg.id
                     locl = false
-                    mutability = arg.pat.binding
+                    binding = "ByValueImmutable"
                     ident = arg.pat.ident
 
-                    params[id] = Variable.new(used, id, locl, mutability, ident)
+                    params[id] = Variable.new(used, id, locl, binding, ident)
                 end
 
                 print("Running visitor")
@@ -169,7 +169,7 @@ refactor:transform(
 
                     -- TODO: Pattern might not be an ident
                     if not variable.used then
-                        arg.pat.mutability = "ByValueImmutable"
+                        arg.pat.binding = "ByValueImmutable"
 
                         -- If the argument doesn't already have an underscore
                         -- prefix, we should add one as it is idomatic rust
@@ -177,7 +177,7 @@ refactor:transform(
                             arg.pat.ident = '_' .. arg.pat.ident
                         end
                     else
-                        arg.pat.mutability = variable.mutability
+                        arg.pat.binding = variable.binding
                     end
 
                     -- if not used_args[arg.pat.ident] then
