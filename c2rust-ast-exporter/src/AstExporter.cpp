@@ -1896,10 +1896,12 @@ class TranslateASTVisitor final
         return true;
     }
 
+#if CLANG_VERSION_MAJOR >= 7
     bool VisitFixedPointLiteral(FixedPointLiteral *L) {
         printWarning("Encountered unsupported fixed point literal", L);
         return true;
     }
+#endif // CLANG_VERSION_MAJOR
 
     bool VisitImaginaryLiteral(ImaginaryLiteral *L) {
         printWarning("Encountered unsupported imaginary literal", L);
