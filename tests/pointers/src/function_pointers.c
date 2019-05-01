@@ -1,6 +1,7 @@
 typedef int char_to_int(char);
 typedef int (*char_to_int_fp)(char);
 typedef int (*va_char_to_int_fp)(char, ...);
+typedef int (*char_int_to_int_fp)(char, int);
 
 int intval(const char c) { return c; }
 int negintval(const char c) { return -c; }
@@ -56,4 +57,10 @@ void entry3(const unsigned sz, int buffer[const])
         va_char_to_int_fp p8 = varargs_intval;
         buffer[i++] = p8('A');
         buffer[i++] = (*p8)('B', 'C');
+
+        // Test valid casts between function pointers
+        // with additional parameters
+        char_int_to_int_fp p9 = &intval, p10 = p7;
+        buffer[i++] = p9('D', 42);
+        buffer[i++] = p10('E', 1337);
 }
