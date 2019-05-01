@@ -2,16 +2,29 @@ local function starts_with(str, start)
     return str:sub(1, #start) == start
 end
 
+Variable = {used = true, id = nil, locl = true, mutability = ""}
+
+function Variable:new(used, id, locl, mutability, ident)
+    setmetatable({}, self)
+
+    self.__index = Variable
+    self.used = used
+    self.id = id
+    self.locl = locl
+    self.mutability = mutability
+    self.ident = ident
+    self.shadowed = false
+
+    return self
+end
+
 Visitor = {}
 
-function Visitor:new()
+function Visitor:new(params)
     setmetatable({}, self)
 
     self.__index = Visitor
-    self.root = root
-    self.used_args = {}
-    self.used_locals = {}
-    self.mut_args = {}
+    self.variables = params
 
     return self
 end
@@ -72,21 +85,45 @@ end
 function Visitor:visit_stmt(stmt)
     if stmt.kind == "Local" then
         print("Found local in visitor")
+        if stmt.pat.kind == "Ident" then
+            used = false
+            locl = true
+            id = stmt.pat.id
+            ident = stmt.pat.ident
+
+            -- Find a shadowed variable
+            for _, variable in ipairs(self.variables) do
+                if variable.ident == ident then
+                    variable.shadowed = true
+                end
+            end
+
+            self.variables[id] = Variable:new(used, id, locl, mutability, ident)
+        else
+            print("Skipping unsupported local type")
+        end
     end
 end
 
 function Visitor:visit_expr(expr)
-    print("Visiting Expr")
+    print("Visiting Expr: " .. expr.kind)
     if expr.kind == "Path" and #expr.segments == 1 then
-        -- if arg.ident == expr.segments[1] then
-        self.used_args[expr.segments[1]] = true
-        -- end
-    elseif(expr.kind == "Assign"
-        or expr.kind == "AssignOp")
+        for _, variable in pairs(self.variables) do
+            if variable.ident == expr.segments[1] then
+                variable.used = true
+            end
+        end
+    elseif(expr.kind == "Assign" or expr.kind == "AssignOp")
         and expr.lhs.kind == "Path" then
-        if #expr.lhs.segments == 1 then -- and arg.ident == expr.lhs.segments[1]
-            -- print("ARG: " .. arg.ident)
-            self.mut_args[expr.lhs.segments[1]] = true
+        if #expr.lhs.segments == 1 then
+            print("Looping:")
+
+            for _, variable in pairs(self.variables) do
+                print(variable.ident .. "(" .. variable.id .. ") vs " .. expr.lhs.segments[1] .. " (" .. expr.lhs.id .. ")")
+                if variable.ident == expr.lhs.segments[1] then
+                    variable.mutability = "ByValueMutable"
+                end
+            end
         end
     end
 end
@@ -102,39 +139,58 @@ refactor:transform(
 
                 print("FnLike name: " .. fn_like.ident)
 
-                used_args = {}
-                used_locals = {}
-                mut_args = {}
-
-                print("Running visitor")
-                visitor = Visitor:new()
-                visitor:run(fn_like.block)
-                print("Visitor ran")
-
-                used_args = visitor.used_args
-                used_locals = visitor.used_locals
-                mut_args = visitor.mut_args
-
-                -- TODO: Shadowed variables may cause usage to be misrepresented
-
+                params = {}
                 args = fn_like.decl.args
                 stmts = fn_like.block.stmts
 
-                -- Iterate over args
                 for _, arg in ipairs(args) do
                     -- TODO: Pattern might not be an ident
-                    if not used_args[arg.pat.ident] then
+                    used = false
+                    print("Arg id: " .. arg.id)
+                    id = arg.id
+                    locl = false
+                    mutability = arg.pat.binding
+                    ident = arg.ident
+
+                    params[id] = Variable:new(used, id, locl, mutability, ident)
+                end
+
+                print("Running visitor")
+                visitor = Visitor:new(params)
+                visitor:run(fn_like.block)
+                print("Visitor ran")
+
+                -- TODO: Shadowed variables may cause usage to be misrepresented
+
+                -- Iterate over args
+                for _, arg in ipairs(args) do
+                    variable = visitor.variables[arg.id]
+
+                    -- TODO: Pattern might not be an ident
+                    if not variable.used then
+                        arg.pat.mutability = "ByValueImmutable"
+
                         -- If the argument doesn't already have an underscore
                         -- prefix, we should add one as it is idomatic rust
                         if not starts_with(arg.pat.ident, '_') then
                             arg.pat.ident = '_' .. arg.pat.ident
                         end
-
-                        -- Remove any binding since the param is deemed unused
-                        arg.pat.binding = "ByValueImmutable"
-                    elseif not mut_args[arg.pat.ident] then
-                        arg.pat.binding = "ByValueImmutable"
+                    else
+                        arg.pat.mutability = variable.mutability
                     end
+
+                    -- if not used_args[arg.pat.ident] then
+                    --     -- If the argument doesn't already have an underscore
+                    --     -- prefix, we should add one as it is idomatic rust
+                    --     if not starts_with(arg.pat.ident, '_') then
+                    --         arg.pat.ident = '_' .. arg.pat.ident
+                    --     end
+
+                    --     -- Remove any binding since the param is deemed unused
+                    --     arg.pat.binding = "ByValueImmutable"
+                    -- elseif not mut_args[arg.pat.ident] then
+                    --     arg.pat.binding = "ByValueImmutable"
+                    -- end
                 end
 
                 -- Iterate over locals
