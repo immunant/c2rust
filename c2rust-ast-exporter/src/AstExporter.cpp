@@ -1557,8 +1557,7 @@ class TranslateASTVisitor final
         // functions that should be the same at link time, Clang groups them.
         // That is unhelpful for us though, since we need to convert them into
         // two seperate `extern` blocks.
-        if (!VD->isCanonicalDecl() &&
-            !(VD->isExternC() && VD->isLocalVarDecl()))
+        if (!VD->isCanonicalDecl() && !VD->isExternC())
             return true;
 
         auto is_defn = false;
@@ -2067,9 +2066,27 @@ class TranslateConsumer : public clang::ASTConsumer {
             // 2. Track all of the top-level declarations
             cbor_encoder_create_array(&outer, &array, CborIndefiniteLength);
             for (auto d : translation_unit->decls()) {
-                if (d->isCanonicalDecl())
-                    cbor_encode_uint(&array,
-                                     reinterpret_cast<std::uintptr_t>(d));
+                bool emit_decl = false;
+                if (d->isCanonicalDecl()) {
+                    emit_decl = true;
+                } else if(isa<VarDecl>(d)) {
+                    // treat extern variables defined elsewhere as top-level definitions
+                    auto var_decl = cast<VarDecl>(d);
+                    bool has_defn = false;
+                    if (var_decl->isExternC()) {
+                        for (auto x : var_decl->redecls()) {
+                            if (!x->hasExternalStorage() || x->getInit()) {
+                                has_defn = true;
+                                break;
+                            }
+                        }
+
+                        emit_decl = !has_defn;
+                    }
+                }
+
+                if (emit_decl)
+                    cbor_encode_uint(&array, reinterpret_cast<std::uintptr_t>(d));
             }
             cbor_encoder_close_container(&outer, &array);
 
