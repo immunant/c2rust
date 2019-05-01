@@ -896,6 +896,10 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
             ))?;
         }
     }
+
+    // `type FnPtr = *const ();`
+    s.print_item(&mk().type_item("FnPtr", mk().ptr_ty(mk().tuple_ty(vec![] as Vec<P<Ty>>))))?;
+
     Ok(())
 }
 
@@ -970,6 +974,8 @@ impl<'c> Translation<'c> {
                 "async", "try", "yield", // Prevent use for other reasons
                 "main",  // prelude names
                 "drop", "Some", "None", "Ok", "Err",
+                // C2Rust-specific names
+                "FnPtr",
             ])),
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FunContext::new()),
@@ -1091,7 +1097,6 @@ impl<'c> Translation<'c> {
     /// translation is able to be compiled as a valid rust static initializer
     fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
         use crate::c_ast::BinOp::{Add, Divide, Modulus, Multiply, Subtract};
-        use crate::c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
         use crate::c_ast::UnOp::{AddressOf, Negate};
 
         let expr_id = match expr_id {
@@ -1124,7 +1129,7 @@ impl<'c> Translation<'c> {
                         return true;
                     }
                 }
-                CExprKind::ImplicitCast(_, _, PointerToIntegral, _, _) => return true,
+                CExprKind::ImplicitCast(_, _, CastKind::PointerToIntegral, _, _) => return true,
                 CExprKind::Binary(typ, op, _, _, _, _) => {
                     let problematic_op = match op {
                         Add | Subtract | Multiply | Divide | Modulus => true,
@@ -1171,18 +1176,6 @@ impl<'c> Translation<'c> {
                             }
                         }
                         _ => {}
-                    }
-                }
-                CExprKind::ImplicitCast(qtype, _, IntegralToPointer, _, _)
-                | CExprKind::ExplicitCast(qtype, _, IntegralToPointer, _, _) => {
-                    if let CTypeKind::Pointer(qtype) =
-                        self.ast_context.resolve_type(qtype.ctype).kind
-                    {
-                        if let CTypeKind::Function(..) =
-                            self.ast_context.resolve_type(qtype.ctype).kind
-                        {
-                            return true;
-                        }
                     }
                 }
                 _ => {}
@@ -2096,24 +2089,12 @@ impl<'c> Translation<'c> {
         let null_pointer_case =
             |negated: bool, ptr: CExprId| -> Result<WithStmts<P<Expr>>, TranslationError> {
                 let val = self.convert_expr(ctx.used().decay_ref(), ptr)?;
-                let ptr_type = self.ast_context[ptr]
-                    .kind
-                    .get_type()
-                    .ok_or_else(|| format_err!("bad pointer type for condition"))?;
                 Ok(val.map(|e| {
-                    if self.ast_context.is_function_pointer(ptr_type) {
-                        if negated {
-                            mk().method_call_expr(e, "is_some", vec![] as Vec<P<Expr>>)
-                        } else {
-                            mk().method_call_expr(e, "is_none", vec![] as Vec<P<Expr>>)
-                        }
+                    let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>);
+                    if negated {
+                        mk().unary_expr(ast::UnOp::Not, is_null)
                     } else {
-                        let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<P<Expr>>);
-                        if negated {
-                            mk().unary_expr(ast::UnOp::Not, is_null)
-                        } else {
-                            is_null
-                        }
+                        is_null
                     }
                 }))
             };
@@ -2410,55 +2391,31 @@ impl<'c> Translation<'c> {
         }
 
         match self.ast_context.resolve_type(ctypeid).kind {
-            CTypeKind::Pointer(CQualTypeId { ctype, .. }) => {
-                match self.ast_context.resolve_type(ctype).kind {
-                    CTypeKind::Function(..) => {
-                        // Fn pointers need to be type annotated if null
-                        if initializer.is_none() {
-                            return true;
-                        }
-
-                        // None assignments don't prove enough type information unless there are follow-up assignments
-                        if let Some(CExprKind::ImplicitCast(_, _, CastKind::NullToPointer, _, _)) =
-                            initializer_kind
-                        {
-                            return true;
-                        }
-
-                        // We could set this to false and skip non null fn ptr annotations. This will work
-                        // 99% of the time, however there is a strange case where fn ptr comparisons
-                        // complain PartialEq is not implemented for the type inferred function type,
-                        // but the identical type that is explicitly defined doesn't seem to have that issue
-                        // Probably a rustc bug. See https://github.com/rust-lang/rust/issues/53861
-                        true
-                    }
-                    _ => {
-                        // Non function null ptrs provide enough information to skip
-                        // type annotations; ie `= 0 as *const MyStruct;`
-                        if initializer.is_none() {
-                            return false;
-                        }
-
-                        if let Some(CExprKind::ImplicitCast(_, _, cast_kind, _, _)) =
-                            initializer_kind
-                        {
-                            match cast_kind {
-                                CastKind::NullToPointer => return false,
-                                CastKind::ConstCast => return true,
-                                _ => {}
-                            };
-                        }
-
-                        // ref decayed ptrs generally need a type annotation
-                        if let Some(CExprKind::Unary(_, c_ast::UnOp::AddressOf, _, _)) =
-                            initializer_kind
-                        {
-                            return true;
-                        }
-
-                        false
-                    }
+            CTypeKind::Pointer(CQualTypeId { .. }) => {
+                // Null ptrs provide enough information to skip
+                // type annotations; ie `= 0 as *const MyStruct;`
+                if initializer.is_none() {
+                    return false;
                 }
+
+                if let Some(CExprKind::ImplicitCast(_, _, cast_kind, _, _)) =
+                    initializer_kind
+                {
+                    match cast_kind {
+                        CastKind::NullToPointer => return false,
+                        CastKind::ConstCast => return true,
+                        _ => {}
+                    };
+                }
+
+                // ref decayed ptrs generally need a type annotation
+                if let Some(CExprKind::Unary(_, c_ast::UnOp::AddressOf, _, _)) =
+                    initializer_kind
+                {
+                    return true;
+                }
+
+                false
             }
             // For some reason we don't seem to apply type suffixes when 0-initializing
             // so type annotation is need for 0-init ints and floats at the moment, but
@@ -2536,10 +2493,6 @@ impl<'c> Translation<'c> {
     /// Construct an expression for a NULL at any type, including forward declarations,
     /// function pointers, and normal pointers.
     fn null_ptr(&self, type_id: CTypeId, is_static: bool) -> Result<P<Expr>, TranslationError> {
-        if self.ast_context.is_function_pointer(type_id) {
-            return Ok(mk().path_expr(vec!["None"]));
-        }
-
         let pointee = match self.ast_context.resolve_type(type_id).kind {
             CTypeKind::Pointer(pointee) => pointee,
             _ => return Err(TranslationError::generic("null_ptr requires a pointer")),
@@ -2892,11 +2845,18 @@ impl<'c> Translation<'c> {
                     val = mk().cast_expr(val, ty);
                 }
 
-                if let CTypeKind::VariableArray(..) =
-                    self.ast_context.resolve_type(qual_ty.ctype).kind
-                {
-                    val = mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<P<Expr>>);
-                }
+                let val = match self.ast_context.resolve_type(qual_ty.ctype).kind {
+                    CTypeKind::VariableArray(..) => {
+                        mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<P<Expr>>)
+                    }
+                    CTypeKind::Function(..) => {
+                        // We're taking the address of a function, but we need
+                        // to cast it to the actual type we use for function pointers
+                        let fnptr_ty = mk().path_ty(vec!["FnPtr"]);
+                        mk().cast_expr(val, fnptr_ty)
+                    }
+                    _ => val
+                };
 
                 Ok(WithStmts::new_val(val))
             }
@@ -3547,39 +3507,8 @@ impl<'c> Translation<'c> {
         match kind {
             CastKind::BitCast | CastKind::NoOp => {
                 val.and_then(|x| {
-                    if self.ast_context.is_function_pointer(ty.ctype)
-                        || self.ast_context.is_function_pointer(source_ty.ctype)
-                    {
-                        if ctx.is_static {
-                            self.use_feature("const_transmute");
-                        }
-                        let source_ty = self.convert_type(source_ty.ctype)?;
-                        let target_ty = self.convert_type(ty.ctype)?;
-                        Ok(WithStmts::new_unsafe_val(transmute_expr(
-                            source_ty,
-                            target_ty,
-                            x,
-                            self.tcfg.emit_no_std,
-                        )))
-                    } else {
-                        // Normal case
-                        let target_ty = self.convert_type(ty.ctype)?;
-                        Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
-                    }
-                })
-            }
-
-            CastKind::IntegralToPointer if self.ast_context.is_function_pointer(ty.ctype) => {
-                if ctx.is_static {
-                    self.use_feature("const_transmute");
-                }
-                let target_ty = self.convert_type(ty.ctype)?;
-                val.and_then(|x| {
-                    let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
-                    let intptr = mk().cast_expr(x, intptr_t.clone());
-                    Ok(WithStmts::new_unsafe_val(
-                        transmute_expr(intptr_t, target_ty, intptr, self.tcfg.emit_no_std)
-                    ))
+                    let target_ty = self.convert_type(ty.ctype)?;
+                    Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
                 })
             }
 
@@ -3648,27 +3577,14 @@ impl<'c> Translation<'c> {
                     // Other numeric casts translate to Rust `as` casts,
                     // unless the cast is to a function pointer then use `transmute`.
                     val.and_then(|x| {
-                        if self.ast_context.is_function_pointer(source_ty_ctype_id) {
-                            if ctx.is_static {
-                                self.use_feature("const_transmute");
-                            }
-                            Ok(WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, x, self.tcfg.emit_no_std)))
-                        } else {
-                            Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
-                        }
+                        Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
                     })
                 }
             }
 
             CastKind::LValueToRValue | CastKind::ToVoid | CastKind::ConstCast => Ok(val),
 
-            CastKind::FunctionToPointerDecay => {
-                Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
-            }
-
-            CastKind::BuiltinFnToFnPtr => {
-                Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
-            }
+            CastKind::FunctionToPointerDecay | CastKind::BuiltinFnToFnPtr => Ok(val),
 
             CastKind::ArrayToPointerDecay => {
                 let pointee = match self.ast_context.resolve_type(ty.ctype).kind {
@@ -4033,13 +3949,7 @@ impl<'c> Translation<'c> {
     fn match_bool(&self, target: bool, ty_id: CTypeId, val: P<Expr>) -> P<Expr> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
 
-        if self.ast_context.is_function_pointer(ty_id) {
-            if target {
-                mk().method_call_expr(val, "is_some", vec![] as Vec<P<Expr>>)
-            } else {
-                mk().method_call_expr(val, "is_none", vec![] as Vec<P<Expr>>)
-            }
-        } else if ty.is_pointer() {
+        if ty.is_pointer() {
             let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<P<Expr>>);
             if target {
                 res = mk().unary_expr(ast::UnOp::Not, res)

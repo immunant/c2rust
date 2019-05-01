@@ -187,34 +187,6 @@ impl TypeConverter {
         }
     }
 
-    /// Helper function handling conversion of function types in `convert`.
-    /// Optional return type excludes a ty when a function doesn't return.
-    fn convert_function(
-        &mut self,
-        ctxt: &TypedAstContext,
-        ret: Option<CQualTypeId>,
-        params: &Vec<CQualTypeId>,
-        is_variadic: bool,
-    ) -> Result<P<Ty>, TranslationError> {
-        let mut inputs = params
-            .iter()
-            .map(|x| mk().arg(self.convert(ctxt, x.ctype).unwrap(), mk().wild_pat()))
-            .collect::<Vec<_>>();
-
-        let output = match ret {
-            None => mk().never_ty(),
-            Some(ret) => self.convert(ctxt, ret.ctype)?,
-        };
-
-        if is_variadic {
-            // For variadic functions, we need to add `_: ...` as an explicit argument
-            inputs.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
-        };
-
-        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output), is_variadic);
-        return Ok(mk().unsafe_().abi("C").barefn_ty(fn_ty));
-    }
-
     pub fn convert_pointer(
         &mut self,
         ctxt: &TypedAstContext,
@@ -249,18 +221,8 @@ impl TypeConverter {
 
             // Function pointers are translated to Option applied to the function type
             // in order to support NULL function pointers natively
-            CTypeKind::Function(ret, ref params, is_var, is_noreturn, has_proto) => {
-                if !has_proto {
-                    return Err(TranslationError::generic(
-                        "Unable to convert function pointer type without prototype",
-                    ));
-                }
-
-                let opt_ret = if is_noreturn { None } else { Some(ret) };
-                let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
-                let param = mk().angle_bracketed_args(vec![fn_ty]);
-                let optn_ty = mk().path_ty(vec![mk().path_segment_with_args("Option", param)]);
-                return Ok(optn_ty);
+            CTypeKind::Function(..) => {
+                return Ok(mk().path_ty(mk().path(vec!["FnPtr"])));
             }
 
             CTypeKind::Struct(struct_id) => {
@@ -393,11 +355,7 @@ impl TypeConverter {
 
             CTypeKind::Attributed(ty, _) => self.convert(ctxt, ty.ctype),
 
-            CTypeKind::Function(ret, ref params, is_var, is_noreturn, true) => {
-                let opt_ret = if is_noreturn { None } else { Some(ret) };
-                let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
-                Ok(fn_ty)
-            }
+            CTypeKind::Function(..) => Ok(mk().path_ty(mk().path(vec!["FnPtr"]))),
 
             CTypeKind::TypeOf(ty) => self.convert(ctxt, ty),
 

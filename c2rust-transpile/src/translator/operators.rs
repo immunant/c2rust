@@ -139,7 +139,6 @@ impl<'c> Translation<'c> {
                         .and_then(|lhs_val| {
                             self.convert_expr(ctx, rhs)?
                                .result_map(|rhs_val| {
-                                   let expr_ids = Some((lhs, rhs));
                                    self.convert_binary_operator(
                                        ctx,
                                        op,
@@ -149,7 +148,6 @@ impl<'c> Translation<'c> {
                                        rhs_type,
                                        lhs_val,
                                        rhs_val,
-                                       expr_ids,
                                    )
                                })
                         })
@@ -191,7 +189,6 @@ impl<'c> Translation<'c> {
                 rhs_ty,
                 lhs,
                 rhs,
-                None,
             )?;
 
             let is_enum_result = self.ast_context[self.ast_context.resolve_type_id(lhs_ty.ctype)]
@@ -351,7 +348,6 @@ impl<'c> Translation<'c> {
                                 rhs_type_id,
                                 read.clone(),
                                 rhs,
-                                None,
                             )?
                         } else {
                             let lhs_type = self.convert_type(compute_type.unwrap().ctype)?;
@@ -367,7 +363,6 @@ impl<'c> Translation<'c> {
                                 rhs_type_id,
                                 lhs,
                                 rhs,
-                                None,
                             )?;
 
                             let is_enum_result = self.ast_context
@@ -572,7 +567,6 @@ impl<'c> Translation<'c> {
         rhs_type: CQualTypeId,
         lhs: P<Expr>,
         rhs: P<Expr>,
-        lhs_rhs_ids: Option<(CExprId, CExprId)>,
     ) -> Result<P<Expr>, TranslationError> {
         let is_unsigned_integral_type = self
             .ast_context
@@ -619,50 +613,8 @@ impl<'c> Translation<'c> {
             c_ast::BinOp::ShiftRight => Ok(mk().binary_expr(BinOpKind::Shr, lhs, rhs)),
             c_ast::BinOp::ShiftLeft => Ok(mk().binary_expr(BinOpKind::Shl, lhs, rhs)),
 
-            c_ast::BinOp::EqualEqual => {
-                // Using is_none method for null comparison means we don't have to
-                // rely on the PartialEq trait as much and is also more idiomatic
-                let expr = if let Some((lhs_expr_id, rhs_expr_id)) = lhs_rhs_ids {
-                    let fn_eq_null = self.ast_context.is_function_pointer(lhs_type.ctype)
-                        && self.ast_context.is_null_expr(rhs_expr_id);
-                    let null_eq_fn = self.ast_context.is_function_pointer(rhs_type.ctype)
-                        && self.ast_context.is_null_expr(lhs_expr_id);
-
-                    if fn_eq_null {
-                        mk().method_call_expr(lhs, "is_none", vec![] as Vec<P<Expr>>)
-                    } else if null_eq_fn {
-                        mk().method_call_expr(rhs, "is_none", vec![] as Vec<P<Expr>>)
-                    } else {
-                        mk().binary_expr(BinOpKind::Eq, lhs, rhs)
-                    }
-                } else {
-                    mk().binary_expr(BinOpKind::Eq, lhs, rhs)
-                };
-
-                Ok(bool_to_int(expr))
-            }
-            c_ast::BinOp::NotEqual => {
-                // Using is_some method for null comparison means we don't have to
-                // rely on the PartialEq trait as much and is also more idiomatic
-                let expr = if let Some((lhs_expr_id, rhs_expr_id)) = lhs_rhs_ids {
-                    let fn_eq_null = self.ast_context.is_function_pointer(lhs_type.ctype)
-                        && self.ast_context.is_null_expr(rhs_expr_id);
-                    let null_eq_fn = self.ast_context.is_function_pointer(rhs_type.ctype)
-                        && self.ast_context.is_null_expr(lhs_expr_id);
-
-                    if fn_eq_null {
-                        mk().method_call_expr(lhs, "is_some", vec![] as Vec<P<Expr>>)
-                    } else if null_eq_fn {
-                        mk().method_call_expr(rhs, "is_some", vec![] as Vec<P<Expr>>)
-                    } else {
-                        mk().binary_expr(BinOpKind::Ne, lhs, rhs)
-                    }
-                } else {
-                    mk().binary_expr(BinOpKind::Ne, lhs, rhs)
-                };
-
-                Ok(bool_to_int(expr))
-            }
+            c_ast::BinOp::EqualEqual => Ok(bool_to_int(mk().binary_expr(BinOpKind::Eq, lhs, rhs))),
+            c_ast::BinOp::NotEqual => Ok(bool_to_int(mk().binary_expr(BinOpKind::Ne, lhs, rhs))),
             c_ast::BinOp::Less => Ok(bool_to_int(mk().binary_expr(BinOpKind::Lt, lhs, rhs))),
             c_ast::BinOp::Greater => Ok(bool_to_int(mk().binary_expr(BinOpKind::Gt, lhs, rhs))),
             c_ast::BinOp::GreaterEqual => Ok(bool_to_int(mk().binary_expr(BinOpKind::Ge, lhs, rhs))),
@@ -943,7 +895,7 @@ impl<'c> Translation<'c> {
                 let arg = self.convert_expr(ctx.used().set_needs_address(true), arg)?;
 
                 if self.ast_context.is_function_pointer(ctype) {
-                    Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
+                    Ok(arg)
                 } else {
                     let pointee = match resolved_ctype.kind {
                         CTypeKind::Pointer(pointee) => pointee,
