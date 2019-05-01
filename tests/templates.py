@@ -55,20 +55,20 @@ def autogen_cargo(conf_file, yaml: dict):
 def autogen_transpile(conf_file, yaml: dict):
     transpile = yaml.get("transpile")
     if transpile:
-        params = {}
-        main = transpile.get("main")
-        if main:
-            params["main"] = f"--main {main}"
-        else:
-            params["main"] = "--emit-build-files"
+        params = {"main": "--emit-build-files", "cflags": ""}
 
-        cflags = transpile.get("cflags")
-        if cflags:
-            if isinstance(cflags, list):
-                cflags = " ".join(cflags)
-            params["cflags"] = cflags
-        else:
-            params["cflags"] = ""
+        if isinstance(transpile, dict):
+            main = transpile.get("main")
+            if main:
+                params["main"] = f"--main {main}"
+
+            cflags = transpile.get("cflags")
+            if cflags:
+                if isinstance(cflags, list):
+                    cflags = " ".join(cflags)
+                params["cflags"] = cflags
+        else:  # else we should have `transpile: true`
+            assert isinstance(transpile, bool) and transpile
 
         out_path = os.path.join(
             os.path.dirname(conf_file),

@@ -4,4 +4,7 @@ requirements:
       packages:
         - libtool # used by autoconf
 
+
+transpile: true
+
 cargo: true
