@@ -1045,35 +1045,6 @@ impl<'c> Translation<'c> {
         }
     }
 
-    /// Determines whether we need to use the `const_transmute` feature.
-    /// Modeled after `static_initializer_is_unsafe`.
-    fn static_initializer_needs_const_transmute(&self, expr_id: Option<CExprId>) -> bool {
-        if let Some(expr_id) = expr_id {
-            // Have initializer
-            let iter = DFExpr::new(&self.ast_context, expr_id.into());
-
-            // Look for function pointer casts
-            for i in iter {
-                let expr_id = match i {
-                    SomeId::Expr(expr_id) => expr_id,
-                    _ => unreachable!("Found static initializer type other than expr"),
-                };
-
-                match self.ast_context[expr_id].kind {
-                    CExprKind::ImplicitCast(_, _, CastKind::FunctionToPointerDecay, _, _)
-                    | CExprKind::ExplicitCast(_, _, CastKind::FunctionToPointerDecay, _, _) => {
-                        return true; // Found cast that needs transmute
-                    }
-                    _ => {}
-                }
-            }
-
-            false // No function pointer cast found
-        } else {
-            false // No initializer
-        }
-    }
-
     fn static_initializer_is_unsafe(&self, expr_id: Option<CExprId>, qty: CQualTypeId) -> bool {
         // SIMD types are always unsafe in statics
         match self.ast_context.resolve_type(qty.ctype).kind {
