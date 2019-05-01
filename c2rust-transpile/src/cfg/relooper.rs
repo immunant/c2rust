@@ -288,7 +288,7 @@ impl RelooperState {
 
         // This information is necessary for both the `Loop` and `Multiple` cases
         let (predecessor_map, strict_reachable_from) = {
-            let mut successor_map: IndexMap<Label, IndexSet<Label>> = blocks
+            let successor_map: IndexMap<Label, IndexSet<Label>> = blocks
                 .iter()
                 .map(|(lbl, bb)| (*lbl, bb.successors()))
                 .collect();

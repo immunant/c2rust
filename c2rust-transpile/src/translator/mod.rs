@@ -670,7 +670,7 @@ pub fn translate(
                 }
 
                 match t.convert_decl(ctx, *top_id) {
-                    Ok(ConvertedDecl::Item(mut item)) => t.item_store.borrow_mut().items.push(item),
+                    Ok(ConvertedDecl::Item(item)) => t.item_store.borrow_mut().items.push(item),
                     Ok(ConvertedDecl::ForeignItem(item)) => {
                         t.insert_foreign_item(item, decl_file_path, main_file_path)
                     }
@@ -2728,7 +2728,7 @@ impl<'c> Translation<'c> {
         if let CTypeKind::VariableArray(elts, len) = self.ast_context.resolve_type(type_id).kind {
             let len = len.expect("Sizeof a VLA type with count expression omitted");
 
-            let mut elts = self.compute_size_of_type(ctx, elts)?;
+            let elts = self.compute_size_of_type(ctx, elts)?;
             return elts.and_then(|lhs| {
                 let len = self.convert_expr(ctx.used().not_static(), len)?;
                 Ok(len.map(|len| {
@@ -2948,7 +2948,7 @@ impl<'c> Translation<'c> {
                     let index_expr = Nonterminal::NtExpr(expr);
 
                     // offset_of!(Struct, field[expr as usize]) as ty
-                    let mut macro_body = vec![
+                    let macro_body = vec![
                         TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(ty_ident))),
                         TokenTree::Token(DUMMY_SP, Token::Comma),
                         TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(field_ident))),
@@ -2987,7 +2987,7 @@ impl<'c> Translation<'c> {
                     .ok_or_else(|| format_err!("bad source type"))?;
 
                 let val = if is_explicit {
-                    let mut stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
+                    let stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
                     let mut val = self.convert_expr(ctx, expr)?;
                     val.prepend_stmts(stmts);
                     val
