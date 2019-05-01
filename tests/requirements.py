@@ -35,8 +35,9 @@ def check_programs_in_path(yaml: dict):
     for p in yaml:
         args = ["which", p]
         try:
-            output: bytes = subprocess.check_output(args)
-            output: str = output.decode().rstrip()
+            subprocess.check_call(args)
+            # output: bytes = subprocess.check_output(args)
+            # output: str = output.decode().rstrip()
             # info(f"{p} -> {output}")
         except subprocess.CalledProcessError:
             die(f"not in path: {p}")
