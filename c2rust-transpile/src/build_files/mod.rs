@@ -150,7 +150,7 @@ fn emit_lib_rs(
         "translate_valist": tcfg.translate_valist,
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": rs_xcheck_backend,
-        "main_module": get_module_name(&tcfg.main),
+        "main_module": tcfg.main.is_some(),
         "plugin_args": plugin_args,
         "modules": modules,
         "pragmas": pragmas,

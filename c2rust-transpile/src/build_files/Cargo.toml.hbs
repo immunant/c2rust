@@ -10,7 +10,7 @@ edition = "2018"
 {{#if main_module~}}
 [[bin]]
 path = "{{root_rs_file}}"
-name = "{{main_module}}"
+name = "{{crate_name}}"
 {{else~}}
 [lib]
 path = "{{root_rs_file}}"
