@@ -88,8 +88,8 @@ class Test(object):
         script_path_noext = script_path.replace(".sh", ".xfail")
         if os.path.isfile(script_path_noext):
             return True
-        gen_script_path_noext = script_path.replace(".gen.sh", ".xfail")
-        return os.path.isfile(gen_script_path_noext)
+        gen_script_path_noext = script_path.replace(".gen.sh", "")
+        return os.path.isfile(f"{gen_script_path_noext}.xfail")
 
     def __call__(self, conf: Config):
         # make sure the `repo` directory exists and is not empty
@@ -97,8 +97,9 @@ class Test(object):
         if not os.path.isdir(repo_dir):
             die(f"missing directory: {repo_dir}")
         elif is_dir_empty(repo_dir):
+            repo_dir = os.path.relpath(repo_dir, os.path.curdir)
             msg = f"submodule not checked out: {repo_dir}\n"
-            msg += "(try running `git submodule update --init`)"
+            msg += f"(try running `git submodule update --init {repo_dir}`)"
             die(msg)
 
         if conf.stage and conf.stage not in Test.STAGES:
