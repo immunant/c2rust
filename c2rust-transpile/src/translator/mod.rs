@@ -3213,10 +3213,10 @@ impl<'c> Translation<'c> {
             }
 
             CExprKind::Call(call_expr_ty, func, ref args) => {
-                let fn_ty = self.ast_context.get_pointee_type(
+                let fn_ty = self.ast_context.get_pointee_qual_type(
                     self.ast_context[func].kind.get_type()
                         .ok_or_else(|| format_err!("Invalid callee expression {:?}", func))?
-                ).map(|ty| &ty.kind);
+                ).map(|ty| &self.ast_context.resolve_type(ty.ctype).kind);
                 let is_variadic = match fn_ty {
                     Some(CTypeKind::Function(_, _, is_variadic, _, _)) => *is_variadic,
                     _ => false,

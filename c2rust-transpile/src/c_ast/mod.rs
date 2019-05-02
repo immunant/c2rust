@@ -156,10 +156,10 @@ impl TypedAstContext {
         }
     }
 
-    pub fn get_pointee_type(&self, typ: CTypeId) -> Option<&CType> {
+    pub fn get_pointee_qual_type(&self, typ: CTypeId) -> Option<CQualTypeId> {
         let resolved_ctype = self.resolve_type(typ);
         if let CTypeKind::Pointer(p) = resolved_ctype.kind {
-            Some(self.resolve_type(p.ctype))
+            Some(p)
         } else {
             None
         }

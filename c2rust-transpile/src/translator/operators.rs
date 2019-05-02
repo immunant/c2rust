@@ -945,16 +945,12 @@ impl<'c> Translation<'c> {
                 if self.ast_context.is_function_pointer(ctype) {
                     Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
                 } else {
-                    let pointee = match resolved_ctype.kind {
-                        CTypeKind::Pointer(pointee) => pointee,
-                        _ => {
-                            return Err(TranslationError::generic(
-                                "Address-of should return a pointer",
-                            ))
-                        }
-                    };
+                    let pointee_ty = self.ast_context.get_pointee_qual_type(ctype)
+                        .ok_or_else(|| TranslationError::generic(
+                            "Address-of should return a pointer",
+                        ))?;
 
-                    let mutbl = if pointee.qualifiers.is_const {
+                    let mutbl = if pointee_ty.qualifiers.is_const {
                         Mutability::Immutable
                     } else {
                         Mutability::Mutable
@@ -969,7 +965,7 @@ impl<'c> Translation<'c> {
                             // through & to *const to *mut
                             addr_of_arg = mk().addr_of_expr(a);
                             if mutbl == Mutability::Mutable {
-                                let mut qtype = pointee;
+                                let mut qtype = pointee_ty;
                                 qtype.qualifiers.is_const = true;
                                 let ty_ = self
                                     .type_converter
