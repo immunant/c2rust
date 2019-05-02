@@ -134,12 +134,47 @@ impl<'c> Translation<'c> {
             // https://github.com/rust-lang/rust/pull/49878/files
 
             let val = self.convert_expr(ctx.used(), val_id)?;
-            let ty = self.convert_type(ty.ctype)?;
+
+            // The current implementation of the C-variadics feature doesn't allow us to
+            // return `Option<fn(...) -> _>` from `VaList::arg`, so we detect function pointers
+            // and construct the corresponding unsafe type `* mut fn(...) -> _`.
+            let fn_ptr_ty : Option<P<Ty>> = {
+                let resolved_ctype = self.ast_context.resolve_type(ty.ctype);
+                if let CTypeKind::Pointer(p) = resolved_ctype.kind {
+                    // ty is a pointer type
+                    let resolved_ctype = self.ast_context.resolve_type(p.ctype);
+                    if let CTypeKind::Function(
+                                        ret,
+                                        ref params,
+                                        is_variadic,
+                                        is_noreturn, _) = resolved_ctype.kind {
+                        // ty is a function pointer type -> build Rust unsafe function pointer type
+                        let opt_ret = if is_noreturn { None } else { Some(ret) };
+                        
+                        let fn_ty = self.type_converter
+                            .borrow_mut()
+                            .convert_function(&self.ast_context, opt_ret, params, is_variadic)?;
+
+                        let m = if p.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
+                        Some(mk().set_mutbl(m).ptr_ty(fn_ty))
+                    } else { None }
+                } else { None }
+            };
+
+            let have_fn_ptr = fn_ptr_ty.is_some();
+            let ty = fn_ptr_ty.unwrap_or_else(||self.convert_type(ty.ctype).unwrap());
 
             val.and_then(|val| {
                 let path = mk()
                     .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![ty]));
                 let val = mk().method_call_expr(val, path, vec![] as Vec<P<Expr>>);
+
+                let val = if have_fn_ptr {
+                    // transmute result of call to `arg` when expecting a function pointer
+                    transmute_expr(mk().infer_ty(), mk().infer_ty(), val, self.tcfg.emit_no_std)
+                } else {
+                    val
+                };
 
                 if ctx.is_unused() {
                     Ok(WithStmts::new(

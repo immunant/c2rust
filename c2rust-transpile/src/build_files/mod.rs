@@ -103,8 +103,13 @@ fn get_root_rs_file_name(tcfg: &TranspilerConfig) -> &str {
 /// - does not clash with reserved keywords.
 fn get_module_name(main: &Option<String>) -> Option<String> {
     if let Some(ref name) = main {
-        // module names cannot contain periods
-        let mut module = name.replace(".", "_");
+        // module names cannot contain periods or dashes
+        let mut module = name.chars().map(|c|
+            match c {
+                '.' | '-' => '_',
+                _ => c
+            }
+        ).collect();
 
         // make sure the module name does not clash with keywords
         if RESERVED_NAMES.contains(&name.as_str()) {
