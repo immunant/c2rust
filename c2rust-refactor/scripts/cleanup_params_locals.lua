@@ -145,6 +145,21 @@ function Visitor:find_variable(ident, mutator)
     end
 end
 
+function update_pattern(pattern, variable)
+    -- TODO: Pattern might not be an ident
+    if not variable.used then
+        pattern.binding = "ByValueImmutable"
+
+        -- If the argument doesn't already have an underscore
+        -- prefix, we should add one as it is idomatic rust
+        if not starts_with(pattern.ident, '_') then
+            pattern.ident = '_' .. pattern.ident
+        end
+    else
+        pattern.binding = variable.binding
+    end
+end
+
 refactor:transform(
     function(transform_ctx, crate)
         return transform_ctx:visit_fn_like(crate,
@@ -182,18 +197,7 @@ refactor:transform(
                 for _, arg in ipairs(args) do
                     variable = visitor.variables[arg.id]
 
-                    -- TODO: Pattern might not be an ident
-                    if not variable.used then
-                        arg.pat.binding = "ByValueImmutable"
-
-                        -- If the argument doesn't already have an underscore
-                        -- prefix, we should add one as it is idomatic rust
-                        if not starts_with(arg.pat.ident, '_') then
-                            arg.pat.ident = '_' .. arg.pat.ident
-                        end
-                    else
-                        arg.pat.binding = variable.binding
-                    end
+                    update_pattern(arg.pat, variable)
                 end
 
                 -- Iterate over locals
@@ -201,19 +205,7 @@ refactor:transform(
                     if stmt.kind == "Local" then
                         variable = visitor.variables[stmt.pat.id]
 
-                        -- TODO: Pattern might not be an ident
-                        if not variable.used then
-                            stmt.pat.binding = "ByValueImmutable"
-
-                            -- If the argument doesn't already have an underscore
-                            -- prefix, we should add one as it is idomatic rust
-                            if not starts_with(stmt.pat.ident, '_') then
-                                stmt.pat.ident = '_' .. stmt.pat.ident
-                            end
-                        else
-                            stmt.pat.binding = variable.binding
-                        end
-
+                        update_pattern(stmt.pat, variable)
                     end
                 end
 

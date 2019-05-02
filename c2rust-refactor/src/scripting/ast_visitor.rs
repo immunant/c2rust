@@ -172,7 +172,7 @@ impl MergeLuaAst for &mut Stmt {
 
         match self.node {
             StmtKind::Local(ref mut l) => l.merge_lua_ast(table)?,
-            _ => println!("MergeLuaAst::merge_lua_ast unimplemented for non Local StmtKind"),
+            _ => warn!("MergeLuaAst::merge_lua_ast unimplemented for non Local StmtKind"),
         };
 
         Ok(())
