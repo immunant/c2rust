@@ -669,7 +669,7 @@ impl<'a> Translation<'a> {
                 {
                     self.convert_expr(ctx, subexpr_id)?
                 } else {
-                    let mut val = self.convert_expr(ctx, expr_id)?;
+                    let val = self.convert_expr(ctx, expr_id)?;
 
                     val.map(|v| mk().unary_expr(ast::UnOp::Deref, v))
                 }

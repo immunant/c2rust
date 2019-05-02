@@ -174,7 +174,7 @@ impl Structure<StmtOrDecl> {
                 body,
                 terminator,
             } => {
-                let mut body = body
+                let body = body
                     .into_iter()
                     .flat_map(|s: StmtOrDecl| -> Vec<StmtOrComment> {
                         s.place_decls(lift_me, store)
@@ -2169,7 +2169,7 @@ impl Cfg<Label, StmtOrDecl> {
                     vec![(String::from("true"), tru), (String::from("false"), fal)]
                 }
                 Switch { ref cases, .. } => {
-                    let mut cases: Vec<(String, Label)> = cases
+                    let cases: Vec<(String, Label)> = cases
                         .iter()
                         .map(|&(ref pats, tgt)| -> (String, Label) {
                             let pats: Vec<String> = pats

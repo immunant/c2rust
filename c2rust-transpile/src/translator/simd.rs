@@ -319,7 +319,7 @@ impl<'c> Translation<'c> {
 
                 transmute
             } else {
-                let fn_call_name = match (&self.ast_context.c_types[&ctype].kind, len) {
+                let fn_call_name = match (&self.ast_context[ctype].kind, len) {
                     (Float, 4) => "_mm_setr_ps",
                     (Float, 8) => "_mm256_setr_ps",
                     (Double, 2) => "_mm_setr_pd",
@@ -499,7 +499,7 @@ impl<'c> Translation<'c> {
 
                 match &self.ast_context.resolve_type(ctype).kind {
                     CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
-                        (&self.ast_context.c_types[ctype].kind, expr_id, *len)
+                        (&self.ast_context[*ctype].kind, expr_id, *len)
                     }
                     _ => unreachable!("Found type other than vector"),
                 }
@@ -509,7 +509,7 @@ impl<'c> Translation<'c> {
             ImplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
                 match &self.ast_context.resolve_type(ctype).kind {
                     CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
-                        (&self.ast_context.c_types[ctype].kind, expr_id, *len)
+                        (&self.ast_context[*ctype].kind, expr_id, *len)
                     }
                     _ => unreachable!("Found type other than vector"),
                 }

@@ -242,8 +242,7 @@ impl<'c> Translation<'c> {
             }
             CTypeKind::Pointer(_) => {
                 let id = ids.first().unwrap();
-                let mut x = self.convert_expr(ctx.used(), *id);
-                Ok(x.unwrap())
+                self.convert_expr(ctx.used(), *id)
             }
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)

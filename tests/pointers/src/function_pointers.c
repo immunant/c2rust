@@ -3,6 +3,8 @@ typedef int (*char_to_int_fp)(char);
 typedef int (*va_char_to_int_fp)(char, ...);
 typedef int (*char_int_to_int_fp)(char, int);
 
+typedef int knr();
+
 int intval(const char c) { return c; }
 int negintval(const char c) { return -c; }
 
@@ -63,4 +65,11 @@ void entry3(const unsigned sz, int buffer[const])
         char_int_to_int_fp p9 = &intval, p10 = p7;
         buffer[i++] = p9('D', 42);
         buffer[i++] = p10('E', 1337);
+
+        // Test K&R style function pointers
+        knr *p11 = 1;
+        knr *p12 = intval;
+        knr *p13 = &intval;
+        buffer[i++] = p12('a');
+        buffer[i++] = p13('a');
 }

@@ -37,13 +37,13 @@ mod print;
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug, Clone)]
 pub struct TypedAstContext {
-    pub c_types: HashMap<CTypeId, CType>,
-    pub c_exprs: HashMap<CExprId, CExpr>,
-    pub c_stmts: HashMap<CStmtId, CStmt>,
+    c_types: HashMap<CTypeId, CType>,
+    c_exprs: HashMap<CExprId, CExpr>,
+    c_stmts: HashMap<CStmtId, CStmt>,
 
     // Decls require a stable iteration order as this map will be
     // iterated over export all defined types during translation.
-    pub c_decls: IndexMap<CDeclId, CDecl>,
+    c_decls: IndexMap<CDeclId, CDecl>,
 
     pub c_decls_top: Vec<CDeclId>,
     pub c_main: Option<CDeclId>,
@@ -84,6 +84,18 @@ impl TypedAstContext {
             comments: vec![],
             prenamed_decls: IndexMap::new(),
         }
+    }
+
+    pub fn iter_decls(&self) -> indexmap::map::Iter<CDeclId, CDecl> {
+        self.c_decls.iter()
+    }
+
+    pub fn iter_mut_decls(&mut self) -> indexmap::map::IterMut<CDeclId, CDecl> {
+        self.c_decls.iter_mut()
+    }
+
+    pub fn get_decl(&self, key: &CDeclId) -> Option<&CDecl> {
+        self.c_decls.get(key)
     }
 
     pub fn is_null_expr(&self, expr_id: CExprId) -> bool {
@@ -141,6 +153,15 @@ impl TypedAstContext {
             CTypeKind::ConstantArray(_, 1) => true,
 
             _ => false,
+        }
+    }
+
+    pub fn get_pointee_type(&self, typ: CTypeId) -> Option<&CType> {
+        let resolved_ctype = self.resolve_type(typ);
+        if let CTypeKind::Pointer(p) = resolved_ctype.kind {
+            Some(self.resolve_type(p.ctype))
+        } else {
+            None
         }
     }
 

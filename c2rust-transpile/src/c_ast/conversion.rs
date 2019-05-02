@@ -1739,7 +1739,7 @@ impl ConversionContext {
                         .expect("Expected to find type on variable declaration");
                     let typ = self.visit_qualified_type(typ_id);
 
-                    let mut attrs = parse_attributes(attributes);
+                    let attrs = parse_attributes(attributes);
 
                     let variable_decl = CDeclKind::Variable {
                         has_static_duration,

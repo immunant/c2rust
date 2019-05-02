@@ -356,7 +356,7 @@ pub fn signed_int_expr(value: i64) -> P<Expr> {
 
 // This should only be used for tests
 fn prefix_names(translation: &mut Translation, prefix: &str) {
-    for (&decl_id, ref mut decl) in &mut translation.ast_context.c_decls {
+    for (&decl_id, ref mut decl) in translation.ast_context.iter_mut_decls() {
         match decl.kind {
             CDeclKind::Function {
                 ref mut name,
@@ -485,7 +485,8 @@ pub fn translate(
     with_globals(|| {
         // Identify typedefs that name unnamed types and collapse the two declarations
         // into a single name and declaration, eliminating the typedef altogether.
-        for (&decl_id, decl) in &t.ast_context.c_decls {
+        let mut prenamed_decls: IndexMap<CDeclId, CDeclId> = IndexMap::new();
+        for (&decl_id, decl) in t.ast_context.iter_decls() {
             if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
                 if let Some(subdecl_id) = t
                     .ast_context
@@ -518,14 +519,12 @@ pub fn translate(
                     };
 
                     if is_unnamed
-                        && !t
-                            .ast_context
-                            .prenamed_decls
+                        && !prenamed_decls
                             .values()
                             .find(|decl_id| *decl_id == &subdecl_id)
                             .is_some()
                     {
-                        t.ast_context.prenamed_decls.insert(decl_id, subdecl_id);
+                        prenamed_decls.insert(decl_id, subdecl_id);
 
                         t.type_converter
                             .borrow_mut()
@@ -538,6 +537,8 @@ pub fn translate(
             }
         }
 
+        t.ast_context.prenamed_decls = prenamed_decls;
+
         // Helper function that returns true if there is either a matching typedef or its
         // corresponding struct/union/enum
         fn contains(prenamed_decls: &IndexMap<CDeclId, CDeclId>, decl_id: &CDeclId) -> bool {
@@ -546,7 +547,7 @@ pub fn translate(
         }
 
         // Populate renamer with top-level names
-        for (&decl_id, decl) in &t.ast_context.c_decls {
+        for (&decl_id, decl) in t.ast_context.iter_decls() {
             let decl_name = match decl.kind {
                 _ if contains(&t.ast_context.prenamed_decls, &decl_id) => Name::NoName,
                 CDeclKind::Struct { ref name, .. } => {
@@ -611,7 +612,7 @@ pub fn translate(
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
-                        let ref k = t.ast_context.c_decls.get(&decl_id).map(|x| &x.kind);
+                        let ref k = t.ast_context.get_decl(&decl_id).map(|x| &x.kind);
                         let msg = format!("Skipping declaration {:?} due to error: {}", k, e);
                         translate_failure(&t.tcfg, &msg)
                     }
@@ -619,7 +620,7 @@ pub fn translate(
             };
 
             // Export all types
-            for (&decl_id, decl) in &t.ast_context.c_decls {
+            for (&decl_id, decl) in t.ast_context.iter_decls() {
                 let needs_export = match decl.kind {
                     CDeclKind::Struct { .. } => true,
                     CDeclKind::Enum { .. } => true,
@@ -641,7 +642,7 @@ pub fn translate(
             // Export macros after the rest of the decls so we can reference all
             // types
             if tcfg.translate_const_macros {
-                for (&decl_id, decl) in &t.ast_context.c_decls {
+                for (&decl_id, decl) in t.ast_context.iter_decls() {
                     if let CDeclKind::MacroObject { .. } = decl.kind {
                         convert_type(decl_id, decl);
                     }
@@ -651,13 +652,13 @@ pub fn translate(
 
         // Export top-level value declarations
         for top_id in &t.ast_context.c_decls_top {
-            let needs_export = match t.ast_context.c_decls[top_id].kind {
+            let needs_export = match t.ast_context[*top_id].kind {
                 CDeclKind::Function { is_implicit, .. } => !is_implicit,
                 CDeclKind::Variable { .. } => true,
                 _ => false,
             };
             if needs_export {
-                let decl_opt = t.ast_context.c_decls.get(top_id);
+                let decl_opt = t.ast_context.get_decl(top_id);
                 let decl = decl_opt.as_ref().unwrap();
                 let decl_file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
                     Some(Some(s)) => Some(s),
@@ -670,13 +671,13 @@ pub fn translate(
                 }
 
                 match t.convert_decl(ctx, *top_id) {
-                    Ok(ConvertedDecl::Item(mut item)) => t.item_store.borrow_mut().items.push(item),
+                    Ok(ConvertedDecl::Item(item)) => t.item_store.borrow_mut().items.push(item),
                     Ok(ConvertedDecl::ForeignItem(item)) => {
                         t.insert_foreign_item(item, decl_file_path, main_file_path)
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
-                        let ref decl = t.ast_context.c_decls.get(top_id);
+                        let ref decl = t.ast_context.get_decl(top_id);
                         let msg = match decl {
                             Some(decl) => {
                                 let decl_identifier = decl.kind.get_name().map_or_else(
@@ -1273,8 +1274,7 @@ impl<'c> Translation<'c> {
 
         let decl = self
             .ast_context
-            .c_decls
-            .get(&decl_id)
+            .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
         let _src_loc = &decl.loc;
@@ -2730,7 +2730,7 @@ impl<'c> Translation<'c> {
         if let CTypeKind::VariableArray(elts, len) = self.ast_context.resolve_type(type_id).kind {
             let len = len.expect("Sizeof a VLA type with count expression omitted");
 
-            let mut elts = self.compute_size_of_type(ctx, elts)?;
+            let elts = self.compute_size_of_type(ctx, elts)?;
             return elts.and_then(|lhs| {
                 let len = self.convert_expr(ctx.used().not_static(), len)?;
                 Ok(len.map(|len| {
@@ -2859,8 +2859,7 @@ impl<'c> Translation<'c> {
             CExprKind::DeclRef(qual_ty, decl_id, lrvalue) => {
                 let decl = &self
                     .ast_context
-                    .c_decls
-                    .get(&decl_id)
+                    .get_decl(&decl_id)
                     .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
                     .kind;
                 if ctx.is_const {
@@ -2917,7 +2916,7 @@ impl<'c> Translation<'c> {
 
                     // Struct Type
                     let decl_id = {
-                        let kind = match self.ast_context.c_types[&qty.ctype].kind {
+                        let kind = match self.ast_context[qty.ctype].kind {
                             CTypeKind::Elaborated(ty_id) => &self.ast_context[ty_id].kind,
                             ref kind => kind,
                         };
@@ -2950,7 +2949,7 @@ impl<'c> Translation<'c> {
                     let index_expr = Nonterminal::NtExpr(expr);
 
                     // offset_of!(Struct, field[expr as usize]) as ty
-                    let mut macro_body = vec![
+                    let macro_body = vec![
                         TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(ty_ident))),
                         TokenTree::Token(DUMMY_SP, Token::Comma),
                         TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(field_ident))),
@@ -2989,7 +2988,7 @@ impl<'c> Translation<'c> {
                     .ok_or_else(|| format_err!("bad source type"))?;
 
                 let val = if is_explicit {
-                    let mut stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
+                    let stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
                     let mut val = self.convert_expr(ctx, expr)?;
                     val.prepend_stmts(stmts);
                     val
@@ -3215,19 +3214,72 @@ impl<'c> Translation<'c> {
                 })
             }
 
-            CExprKind::Call(_, func, ref args) => {
-                let is_variadic = self.fn_expr_is_variadic(func);
-                let func = match self.ast_context.index(func).kind {
+            CExprKind::Call(call_expr_ty, func, ref args) => {
+                let fn_ty = self.ast_context.get_pointee_type(
+                    self.ast_context[func].kind.get_type()
+                        .ok_or_else(|| format_err!("Invalid callee expression {:?}", func))?
+                ).map(|ty| &ty.kind);
+                let is_variadic = match fn_ty {
+                    Some(CTypeKind::Function(_, _, is_variadic, _, _)) => *is_variadic,
+                    _ => false,
+                };
+                let func = match self.ast_context[func].kind {
+                    // Direct function call
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _) => {
                         self.convert_expr(ctx.used(), fexp)?
                     }
+
+                    // Builtin function call
                     CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => {
                         return self.convert_builtin(ctx, fexp, args)
                     }
 
-                    _ => self
-                        .convert_expr(ctx.used(), func)?
-                        .map(unwrap_function_pointer),
+                    // Function pointer call
+                    _ => {
+                        let callee = self.convert_expr(ctx.used(), func)?;
+                        let make_fn_ty = |ret_ty: P<Ty>| {
+                            let ret_ty = match ret_ty.node {
+                                TyKind::Tup(ref v) if v.is_empty() => FunctionRetTy::Default(DUMMY_SP),
+                                _ => FunctionRetTy::Ty(ret_ty),
+                            };
+                            mk().barefn_ty(
+                                mk().fn_decl(
+                                    vec![
+                                        mk().arg(
+                                            mk().infer_ty(),
+                                            mk().wild_pat(),
+                                        );
+                                        args.len()
+                                    ],
+                                    ret_ty,
+                                    is_variadic,
+                                )
+                            )
+                        };
+                        match fn_ty {
+                            Some(CTypeKind::Function(ret_ty, _, _, _, false)) => {
+                                // K&R function pointer without arguments
+                                let ret_ty = self.convert_type(ret_ty.ctype)?;
+                                let target_ty = make_fn_ty(ret_ty);
+                                callee.map(|fn_ptr| {
+                                    let fn_ptr = unwrap_function_pointer(fn_ptr);
+                                    transmute_expr(mk().infer_ty(), target_ty, fn_ptr, self.tcfg.emit_no_std)
+                                })
+                            }
+                            None => {
+                                // We have to infer the return type from our expression type
+                                let ret_ty = self.convert_type(call_expr_ty.ctype)?;
+                                let target_ty = make_fn_ty(ret_ty);
+                                callee.map(|fn_ptr| {
+                                    transmute_expr(mk().infer_ty(), target_ty, fn_ptr, self.tcfg.emit_no_std)
+                                })
+                            }
+                            Some(_) => {
+                                // Normal function pointer
+                                callee.map(unwrap_function_pointer)
+                            }
+                        }
+                    }
                 };
 
                 let call = func.and_then(|func| {
@@ -3382,19 +3434,6 @@ impl<'c> Translation<'c> {
         }
 
         Ok(None)
-    }
-
-    fn fn_expr_is_variadic(&self, expr_id: CExprId) -> bool {
-        let fn_expr = &self.ast_context[expr_id];
-        let fn_ty = &self.ast_context.c_types[&fn_expr.kind.get_type().unwrap()];
-        if let CTypeKind::Pointer(qual_ty) = fn_ty.kind {
-            match self.ast_context.c_types[&qual_ty.ctype].kind {
-                CTypeKind::Function(_, _, is_variadic, _, _) => is_variadic,
-                _ => false,
-            }
-        } else {
-            false
-        }
     }
 
     fn convert_side_effects_expr(
@@ -4205,7 +4244,7 @@ impl<'c> Translation<'c> {
                 if self.ast_context.prenamed_decls.contains_key(&decl_id) {
                     decl_id = *self.ast_context.prenamed_decls.get(&decl_id).unwrap();
                 }
-                let decl = &self.ast_context.c_decls[&decl_id];
+                let decl = &self.ast_context[decl_id];
                 let decl_loc = &decl.loc.as_ref().unwrap();
 
                 // If the definition lives in the same header, there is no need to import it
@@ -4277,7 +4316,7 @@ impl<'c> Translation<'c> {
 
     fn generate_submodule_imports(&self, decl_id: CDeclId, decl_file_path: Option<&PathBuf>) {
         let decl_file_path = decl_file_path.expect("There should be a decl file path");
-        let decl = self.ast_context.c_decls.get(&decl_id).unwrap();
+        let decl = self.ast_context.get_decl(&decl_id).unwrap();
         let mut sumbodule_items = self.mod_blocks.borrow_mut();
         let item_store = sumbodule_items
             .entry(decl_file_path.to_path_buf())
@@ -4288,7 +4327,7 @@ impl<'c> Translation<'c> {
                 let field_ids = fields.as_ref().map(|vec| vec.as_slice()).unwrap_or(&[]);
 
                 for field_id in field_ids.iter() {
-                    match self.ast_context.c_decls[field_id].kind {
+                    match self.ast_context[*field_id].kind {
                         CDeclKind::Field { typ, .. } => {
                             self.match_type_kind(typ.ctype, item_store, decl_file_path)
                         }

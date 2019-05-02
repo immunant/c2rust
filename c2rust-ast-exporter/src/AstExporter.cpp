@@ -1102,12 +1102,12 @@ class TranslateASTVisitor final
     bool VisitOffsetOfExpr(OffsetOfExpr *E) {
         std::vector<void *> childIds;
 
-        encode_entry(
-            E, TagOffsetOfExpr, childIds, [E, this](CborEncoder *extras) {
-                APSInt value;
-                bool is_constant =
-                    E->isIntegerConstantExpr(value, *this->Context);
+        APSInt value;
+        bool is_constant =
+            E->isIntegerConstantExpr(value, *this->Context);
 
+        encode_entry(
+            E, TagOffsetOfExpr, childIds, [this, E, value, is_constant](CborEncoder *extras) {
                 if (is_constant) {
                     cbor_encode_uint(extras, value.getZExtValue());
                 } else {
@@ -1137,6 +1137,14 @@ class TranslateASTVisitor final
                     cbor_encode_uint(extras, uintptr_t(expr0));
                 }
             });
+
+        // If this is the only use of the struct type, we need to ensure that it
+        // gets visited.
+        if (!is_constant) {
+            auto ty = E->getTypeSourceInfo()->getType();
+            typeEncoder.VisitQualType(ty);
+        }
+
         return true;
     }
 
