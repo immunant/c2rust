@@ -3212,19 +3212,72 @@ impl<'c> Translation<'c> {
                 })
             }
 
-            CExprKind::Call(_, func, ref args) => {
-                let is_variadic = self.fn_expr_is_variadic(func);
-                let func = match self.ast_context.index(func).kind {
+            CExprKind::Call(call_expr_ty, func, ref args) => {
+                let fn_ty = self.ast_context.get_pointee_type(
+                    self.ast_context[func].kind.get_type()
+                        .ok_or_else(|| format_err!("Invalid callee expression {:?}", func))?
+                ).map(|ty| &ty.kind);
+                let is_variadic = match fn_ty {
+                    Some(CTypeKind::Function(_, _, is_variadic, _, _)) => *is_variadic,
+                    _ => false,
+                };
+                let func = match self.ast_context[func].kind {
+                    // Direct function call
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _) => {
                         self.convert_expr(ctx.used(), fexp)?
                     }
+
+                    // Builtin function call
                     CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => {
                         return self.convert_builtin(ctx, fexp, args)
                     }
 
-                    _ => self
-                        .convert_expr(ctx.used(), func)?
-                        .map(unwrap_function_pointer),
+                    // Function pointer call
+                    _ => {
+                        let callee = self.convert_expr(ctx.used(), func)?;
+                        let make_fn_ty = |ret_ty: P<Ty>| {
+                            let ret_ty = match ret_ty.node {
+                                TyKind::Tup(ref v) if v.is_empty() => FunctionRetTy::Default(DUMMY_SP),
+                                _ => FunctionRetTy::Ty(ret_ty),
+                            };
+                            mk().barefn_ty(
+                                mk().fn_decl(
+                                    vec![
+                                        mk().arg(
+                                            mk().infer_ty(),
+                                            mk().wild_pat(),
+                                        );
+                                        args.len()
+                                    ],
+                                    ret_ty,
+                                    is_variadic,
+                                )
+                            )
+                        };
+                        match fn_ty {
+                            Some(CTypeKind::Function(ret_ty, _, _, _, false)) => {
+                                // K&R function pointer without arguments
+                                let ret_ty = self.convert_type(ret_ty.ctype)?;
+                                let target_ty = make_fn_ty(ret_ty);
+                                callee.map(|fn_ptr| {
+                                    let fn_ptr = unwrap_function_pointer(fn_ptr);
+                                    transmute_expr(mk().infer_ty(), target_ty, fn_ptr, self.tcfg.emit_no_std)
+                                })
+                            }
+                            None => {
+                                // We have to infer the return type from our expression type
+                                let ret_ty = self.convert_type(call_expr_ty.ctype)?;
+                                let target_ty = make_fn_ty(ret_ty);
+                                callee.map(|fn_ptr| {
+                                    transmute_expr(mk().infer_ty(), target_ty, fn_ptr, self.tcfg.emit_no_std)
+                                })
+                            }
+                            Some(_) => {
+                                // Normal function pointer
+                                callee.map(unwrap_function_pointer)
+                            }
+                        }
+                    }
                 };
 
                 let call = func.and_then(|func| {
@@ -3379,19 +3432,6 @@ impl<'c> Translation<'c> {
         }
 
         Ok(None)
-    }
-
-    fn fn_expr_is_variadic(&self, expr_id: CExprId) -> bool {
-        let fn_expr = &self.ast_context[expr_id];
-        let fn_ty = &self.ast_context[fn_expr.kind.get_type().unwrap()];
-        if let CTypeKind::Pointer(qual_ty) = fn_ty.kind {
-            match self.ast_context[qual_ty.ctype].kind {
-                CTypeKind::Function(_, _, is_variadic, _, _) => is_variadic,
-                _ => false,
-            }
-        } else {
-            false
-        }
     }
 
     fn convert_side_effects_expr(

@@ -156,6 +156,15 @@ impl TypedAstContext {
         }
     }
 
+    pub fn get_pointee_type(&self, typ: CTypeId) -> Option<&CType> {
+        let resolved_ctype = self.resolve_type(typ);
+        if let CTypeKind::Pointer(p) = resolved_ctype.kind {
+            Some(self.resolve_type(p.ctype))
+        } else {
+            None
+        }
+    }
+
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         match self.index(typ).kind {
             CTypeKind::Attributed(ty, _) => self.resolve_type_id(ty.ctype),

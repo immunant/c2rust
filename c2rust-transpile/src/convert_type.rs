@@ -249,13 +249,7 @@ impl TypeConverter {
 
             // Function pointers are translated to Option applied to the function type
             // in order to support NULL function pointers natively
-            CTypeKind::Function(ret, ref params, is_var, is_noreturn, has_proto) => {
-                if !has_proto {
-                    return Err(TranslationError::generic(
-                        "Unable to convert function pointer type without prototype",
-                    ));
-                }
-
+            CTypeKind::Function(ret, ref params, is_var, is_noreturn, _has_proto) => {
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
                 let param = mk().angle_bracketed_args(vec![fn_ty]);
@@ -396,6 +390,12 @@ impl TypeConverter {
             CTypeKind::Function(ret, ref params, is_var, is_noreturn, true) => {
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
+                Ok(fn_ty)
+            }
+
+            CTypeKind::Function(ret, _, is_var, is_noreturn, false) => {
+                let opt_ret = if is_noreturn { None } else { Some(ret) };
+                let fn_ty = self.convert_function(ctxt, opt_ret, &vec![], is_var)?;
                 Ok(fn_ty)
             }
 
