@@ -95,11 +95,11 @@ function Visitor:visit_stmt(stmt)
             binding = "ByValueImmutable"
 
             -- Find a shadowed variable
-            for _, variable in ipairs(self.variables) do
-                if variable.ident == ident then
-                    variable.shadowed = true
+            self:find_variable(ident,
+                function(var)
+                    var.shadowed = true
                 end
-            end
+            )
 
             self.variables[id] = Variable.new(used, id, locl, binding, ident)
         else
@@ -111,21 +111,30 @@ end
 function Visitor:visit_expr(expr)
     print("Visiting Expr: " .. expr.kind)
     if expr.kind == "Path" and #expr.segments == 1 then
-        for _, variable in pairs(self.variables) do
-            if variable.ident == expr.segments[1] then
-                variable.used = true
+        self:find_variable(expr.segments[1],
+            function(var)
+                var.used = true
             end
-        end
+        )
+
     elseif(expr.kind == "Assign" or expr.kind == "AssignOp")
         and expr.lhs.kind == "Path" then
         if #expr.lhs.segments == 1 then
             print("Looping:")
 
-            for _, variable in pairs(self.variables) do
-                if variable.ident == expr.lhs.segments[1] then
-                    variable.binding = "ByValueMutable"
+            self:find_variable(expr.lhs.segments[1],
+                function(var)
+                    var.binding = "ByValueMutable"
                 end
-            end
+            )
+        end
+    end
+end
+
+function Visitor:find_variable(ident, mutator)
+    for _, variable in pairs(self.variables) do
+        if variable.ident == ident then
+            mutator(variable)
         end
     end
 end
@@ -179,24 +188,25 @@ refactor:transform(
                     else
                         arg.pat.binding = variable.binding
                     end
-
-                    -- if not used_args[arg.pat.ident] then
-                    --     -- If the argument doesn't already have an underscore
-                    --     -- prefix, we should add one as it is idomatic rust
-                    --     if not starts_with(arg.pat.ident, '_') then
-                    --         arg.pat.ident = '_' .. arg.pat.ident
-                    --     end
-
-                    --     -- Remove any binding since the param is deemed unused
-                    --     arg.pat.binding = "ByValueImmutable"
-                    -- elseif not mut_args[arg.pat.ident] then
-                    --     arg.pat.binding = "ByValueImmutable"
-                    -- end
                 end
 
                 -- Iterate over locals
                 for _, stmt in ipairs(stmts) do
                     if stmt.kind == "Local" then
+                        variable = visitor.variables[stmt.pat.id]
+
+                        -- TODO: Pattern might not be an ident
+                        if not variable.used then
+                            stmt.pat.binding = "ByValueImmutable"
+
+                            -- If the argument doesn't already have an underscore
+                            -- prefix, we should add one as it is idomatic rust
+                            if not starts_with(stmt.pat.ident, '_') then
+                                stmt.pat.ident = '_' .. stmt.pat.ident
+                            end
+                        else
+                            stmt.pat.binding = variable.binding
+                        end
 
                     end
                 end
