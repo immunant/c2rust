@@ -1,4 +1,7 @@
 transpile:
+  autogen: true
   main: tool_main
 
-cargo: true
+cargo:
+  autogen: true
+  xfail: true
