@@ -41,23 +41,26 @@ def render_script(template: str, out_path: str, params: dict):
 
 
 def autogen_cargo(conf_file, yaml: dict):
-    transpile = yaml.get("cargo")
-    if transpile:
-        params = {}
+    cargo = yaml.get("cargo")
+    if cargo and isinstance(cargo, dict):
+        ag = cargo.get("autogen")
+        if ag and isinstance(ag, bool):
+            params = {}
 
-        out_path = os.path.join(
-            os.path.dirname(conf_file),
-            "cargo.gen.sh"
-        )
-        render_script(CARGO_SH, out_path, params)
+            out_path = os.path.join(
+                os.path.dirname(conf_file),
+                "cargo.gen.sh"
+            )
+            render_script(CARGO_SH, out_path, params)
 
 
 def autogen_transpile(conf_file, yaml: dict):
     transpile = yaml.get("transpile")
-    if transpile:
-        params = {"main": "--emit-build-files", "cflags": ""}
+    if transpile and isinstance(transpile, dict):
+        ag = transpile.get("autogen")
+        if ag and isinstance(ag, bool):
+            params = {"main": "--emit-build-files", "cflags": ""}
 
-        if isinstance(transpile, dict):
             main = transpile.get("main")
             if main:
                 params["main"] = f"--main {main}"
@@ -67,14 +70,13 @@ def autogen_transpile(conf_file, yaml: dict):
                 if isinstance(cflags, list):
                     cflags = " ".join(cflags)
                 params["cflags"] = cflags
-        else:  # else we should have `transpile: true`
-            assert isinstance(transpile, bool) and transpile
 
-        out_path = os.path.join(
-            os.path.dirname(conf_file),
-            "transpile.gen.sh"
-        )
-        render_script(TRANSPILE_SH, out_path, params)
+
+            out_path = os.path.join(
+                os.path.dirname(conf_file),
+                "transpile.gen.sh"
+            )
+            render_script(TRANSPILE_SH, out_path, params)
 
 
 def autogen(conf: Config):

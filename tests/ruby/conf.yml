@@ -8,7 +8,10 @@ requirements:
         - libgdbm-dev
 
 transpile:
+  autogen: true
   main: ruby
-  cflags: "-O0"
+#  cflags: "-O0"
+  xfail: true
 
-cargo: true
+cargo:
+  autogen: true

@@ -17,6 +17,22 @@ class Config(object):
         self.project_dirs = find_project_dirs(self)
         self.project_conf = {cf: get_yaml(cf) for cf in get_conf_files(self)}
 
+    def try_get_conf_for(self, conf_file, *keys: List[str]):
+        def lookup(yaml, keys: List[str]):
+            if not keys:
+                return None
+            head, *tail = keys
+            val = yaml.get(head)
+            if val and tail:  # recurse
+                return lookup(val, tail)
+            else:  # val is None or we reached the last key
+                return val
+
+        conf = self.project_conf.get(conf_file)
+        if not conf:
+            return None
+        return lookup(conf, keys)
+
 
 class Colors(object):
     # Terminal escape codes
@@ -68,7 +84,7 @@ def find_project_dirs(conf: Config) -> List[str]:
     if conf.project:  # only test named project
         project = filter(lambda d: d == conf.project, subdirs)
         if not project:
-            nl = ", ".join(map(lambda p: os.path.basename(p), test_dirs))
+            nl = ", ".join(map(lambda p: os.path.basename(p), subdirs))
             y, nc = Colors.WARNING, Colors.NO_COLOR
             msg = f"no such project: {y}{conf.project}{nc}. projects: {nl}."
             die(msg)

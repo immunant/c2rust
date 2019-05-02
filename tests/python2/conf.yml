@@ -10,6 +10,9 @@ requirements:
 
 
 transpile:
-    main: python
+  autogen: true
+  main: python
     
-cargo: true    
+cargo:
+  autogen: true
+  xfail: true

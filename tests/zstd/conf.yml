@@ -5,6 +5,7 @@ requirements:
       - zlib1g-dev
 
 transpile:
+  autogen: true
   main: fullbench # zstdcli
   cflags: -Qunused-arguments
 

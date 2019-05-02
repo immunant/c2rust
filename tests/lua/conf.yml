@@ -6,4 +6,5 @@ requirements:
         - rcs # used in makefile
 
 transpile:
+  autogen: true
   main: lua

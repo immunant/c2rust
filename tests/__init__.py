@@ -23,6 +23,7 @@ class Test(object):
         ff = next(os.walk(directory))[2]
         self.scripts = set(filter(lambda f: f.endswith(".sh"), ff))
         self.dir = directory
+        self.conf_file = os.path.join(directory, CONF_YML)
         self.name = os.path.basename(directory)
 
     def run_script(self, stage, script, verbose=False, xfail=False) -> bool:
@@ -52,11 +53,10 @@ class Test(object):
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL)
 
-                print("{fill} {color}OK{nocolor}".format(
-                    fill=(75 - len(line)) * ".",
-                    color=Colors.OKGREEN,
-                    nocolor=Colors.NO_COLOR)
-                )
+                fill = (75 - len(line)) * "."
+                color = Colors.WARNING if xfail else Colors.OKGREEN
+                msg = "OK_XFAIL" if xfail else "OK"
+                print(f"{fill} {color}{msg}{Colors.NO_COLOR}")
             return True
         except KeyboardInterrupt:
             if not verbose:
@@ -81,16 +81,6 @@ class Test(object):
         finally:
             os.chdir(prev_dir)
 
-    def is_xfail(self, script) -> bool:
-        script_path = os.path.join(self.dir, script)
-        if os.path.isfile(f"{script_path}.xfail"):
-            return True
-        script_path_noext = script_path.replace(".sh", ".xfail")
-        if os.path.isfile(script_path_noext):
-            return True
-        gen_script_path_noext = script_path.replace(".gen.sh", "")
-        return os.path.isfile(f"{gen_script_path_noext}.xfail")
-
     def ensure_submodule_checkout(self):
         # make sure the `repo` directory exists and is not empty
         repo_dir = os.path.join(self.dir, "repo")
@@ -101,6 +91,27 @@ class Test(object):
             msg = f"submodule not checked out: {repo_dir}\n"
             msg += f"(try running `git submodule update --init {repo_dir}`)"
             die(msg)
+
+    def is_stage_xfail(self, stage, script, conf: Config) -> bool:
+        def has_xfail_file() -> bool:
+            script_path = os.path.join(self.dir, script)
+            if os.path.isfile(f"{script_path}.xfail"):
+                return True
+            script_path_noext = script_path.replace(".sh", ".xfail")
+            if os.path.isfile(script_path_noext):
+                return True
+            gen_script_path_noext = script_path.replace(".gen.sh", "")
+            return os.path.isfile(f"{gen_script_path_noext}.xfail")
+
+        if has_xfail_file():
+            return True
+
+        xfail = conf.try_get_conf_for(self.conf_file, stage, "xfail")
+        if not xfail:
+            return False
+        if not isinstance(xfail, bool):
+            die(f"expected boolean xfail value; found {xfail}")
+        return xfail
 
     def __call__(self, conf: Config):
         self.ensure_submodule_checkout()
@@ -114,7 +125,7 @@ class Test(object):
             # run single stage
             for script in Test.STAGES[conf.stage]:
                 if script in self.scripts:
-                    xfail = self.is_xfail(script)
+                    xfail = self.is_stage_xfail(conf.stage, script, conf)
                     self.run_script(conf.stage, script, conf.verbose, xfail)
                     break
             else:  # didn't break
@@ -124,7 +135,7 @@ class Test(object):
             for (stage, scripts) in Test.STAGES.items():
                 for script in scripts:
                     if script in self.scripts:
-                        xfail = self.is_xfail(script)
+                        xfail = self.is_stage_xfail(stage, script, conf)
                         cont = self.run_script(stage, script, conf.verbose, xfail)
                         if not cont:
                             return  # XFAIL
