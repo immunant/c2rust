@@ -1,3 +1,5 @@
+#include <stdarg.h>
+
 typedef int char_to_int(char);
 typedef int (*char_to_int_fp)(char);
 typedef int (*va_char_to_int_fp)(char, ...);
@@ -9,6 +11,13 @@ int intval(const char c) { return c; }
 int negintval(const char c) { return -c; }
 
 int varargs_intval(const char c, ...) { return c; }
+
+int varargs_fp(const int c, ...) {
+  va_list arg;
+  va_start(arg, c);
+  char_to_int *fp = va_arg(arg, char_to_int*);
+  return fp((char)c);
+}
 
 void entry3(const unsigned sz, int buffer[const])
 {
@@ -72,4 +81,8 @@ void entry3(const unsigned sz, int buffer[const])
         knr *p13 = &intval;
         buffer[i++] = p12('a');
         buffer[i++] = p13('a');
+
+        buffer[i++] = p2 == intval;
+        buffer[i++] = varargs_fp('a', intval);
+        buffer[i++] = varargs_fp('b', p2);
 }
