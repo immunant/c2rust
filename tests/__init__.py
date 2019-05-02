@@ -91,7 +91,7 @@ class Test(object):
         gen_script_path_noext = script_path.replace(".gen.sh", "")
         return os.path.isfile(f"{gen_script_path_noext}.xfail")
 
-    def __call__(self, conf: Config):
+    def ensure_submodule_checkout(self):
         # make sure the `repo` directory exists and is not empty
         repo_dir = os.path.join(self.dir, "repo")
         if not os.path.isdir(repo_dir):
@@ -101,6 +101,9 @@ class Test(object):
             msg = f"submodule not checked out: {repo_dir}\n"
             msg += f"(try running `git submodule update --init {repo_dir}`)"
             die(msg)
+
+    def __call__(self, conf: Config):
+        self.ensure_submodule_checkout()
 
         if conf.stage and conf.stage not in Test.STAGES:
             # invalid stage requested
@@ -117,8 +120,7 @@ class Test(object):
             else:  # didn't break
                 y, nc = Colors.WARNING, Colors.NO_COLOR
                 die(f"no script for project/stage: {self.name}/{y}{conf.stage}{nc}")
-        else:
-            # run all stages
+        else:  # run all stages
             for (stage, scripts) in Test.STAGES.items():
                 for script in scripts:
                     if script in self.scripts:
