@@ -4,6 +4,14 @@ end
 
 Variable = {}
 
+DEBUG = false
+
+function debug(str)
+    if DEBUG then
+        print(str)
+    end
+end
+
 function Variable.new(used, id, locl, binding, ident)
     self = {}
     self.used = used
@@ -64,12 +72,12 @@ function Visitor:run(ast)
         self:visit_stmt(ast)
 
         if ast.kind == "Local" then
-            print("Found Local")
+            debug("Found Local")
             self:run(ast.init)
         elseif ast.kind == "Item" then
-            print("Found Item")
+            debug("Found Item")
         elseif ast.kind == "Semi" or ast.kind == "Expr" then
-            print("Found Semi or Expr of kind: " .. ast.kind)
+            debug("Found Semi or Expr of kind: " .. ast.kind)
 
             self:run(ast.expr)
         else
@@ -81,12 +89,12 @@ function Visitor:run(ast)
 end
 
 function Visitor:visit_block(block)
-    print("Visiting Block: Noop")
+    debug("Visiting Block: Noop")
 end
 
 function Visitor:visit_stmt(stmt)
     if stmt.kind == "Local" then
-        print("Found local in visitor")
+        debug("Found local in visitor")
         if stmt.pat.kind == "Ident" then
             used = false
             locl = true
@@ -103,13 +111,13 @@ function Visitor:visit_stmt(stmt)
 
             self.variables[id] = Variable.new(used, id, locl, binding, ident)
         else
-            print("Skipping unsupported local type")
+            debug("Skipping unsupported local type")
         end
     end
 end
 
 function Visitor:visit_expr(expr)
-    print("Visiting Expr: " .. expr.kind)
+    debug("Visiting Expr: " .. expr.kind)
     if expr.kind == "Path" and #expr.segments == 1 then
         self:find_variable(expr.segments[1],
             function(var)
@@ -120,8 +128,6 @@ function Visitor:visit_expr(expr)
     elseif(expr.kind == "Assign" or expr.kind == "AssignOp")
         and expr.lhs.kind == "Path" then
         if #expr.lhs.segments == 1 then
-            print("Looping:")
-
             self:find_variable(expr.lhs.segments[1],
                 function(var)
                     var.binding = "ByValueMutable"
@@ -148,7 +154,7 @@ refactor:transform(
                     return fn_like
                 end
 
-                print("FnLike name: " .. fn_like.ident)
+                debug("FnLike name: " .. fn_like.ident)
 
                 params = {}
                 args = fn_like.decl.args
@@ -165,10 +171,10 @@ refactor:transform(
                     params[id] = Variable.new(used, id, locl, binding, ident)
                 end
 
-                print("Running visitor")
+                debug("Running visitor")
                 visitor = Visitor.new(params)
                 visitor:run(fn_like.block)
-                print("Visitor ran")
+                debug("Visitor ran")
 
                 -- TODO: Shadowed variables may cause usage to be misrepresented
 

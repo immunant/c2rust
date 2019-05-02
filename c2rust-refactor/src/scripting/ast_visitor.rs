@@ -1,5 +1,8 @@
 use rlua::prelude::{LuaContext, LuaError, LuaResult, LuaTable};
-use syntax::ast::{Arg, BindingMode, Block, FunctionRetTy, FnDecl, Mutability::*, NodeId, Pat, PatKind, Stmt};
+use syntax::ast::{
+    Arg, BindingMode, Block, FunctionRetTy, FnDecl, Local, Mutability::*,
+    NodeId, Pat, PatKind, Stmt, StmtKind,
+};
 use syntax::source_map::symbol::Symbol;
 use syntax::ptr::P;
 
@@ -120,11 +123,11 @@ impl<'lua> IntoLuaAst<'lua> for P<Pat> {
 }
 
 pub(crate) trait MergeLuaAst {
-    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()>;
+    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()>;
 }
 
-impl MergeLuaAst for FnLike {
-    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for &mut FnLike {
+    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
         self.kind = match table.get::<_, String>("kind")?.as_str() {
             "Normal" => FnKind::Normal,
             "ImplMethod" => FnKind::ImplMethod,
@@ -148,8 +151,8 @@ impl MergeLuaAst for FnLike {
     }
 }
 
-impl MergeLuaAst for P<Block> {
-    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for &mut P<Block> {
+    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
         let lua_stmts: LuaTable = table.get("stmts")?;
 
         // TODO: This may need to be improved if we want to delete or add
@@ -162,16 +165,22 @@ impl MergeLuaAst for P<Block> {
     }
 }
 
-impl MergeLuaAst for Stmt {
-    fn merge_lua_ast<'lua>(&mut self, _table: LuaTable<'lua>) -> LuaResult<()> {
-        // TODO: Merge stmts
+impl MergeLuaAst for &mut Stmt {
+    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+        // REVIEW: How do we deal with modifying to a different type of stmt than
+        // the existing one?
+
+        match self.node {
+            StmtKind::Local(ref mut l) => l.merge_lua_ast(table)?,
+            _ => println!("MergeLuaAst::merge_lua_ast unimplemented for non Local StmtKind"),
+        };
 
         Ok(())
     }
 }
 
-impl MergeLuaAst for P<FnDecl> {
-    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for &mut P<FnDecl> {
+    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
         let lua_args: LuaTable = table.get("args")?;
 
         // TODO: This may need to be improved if we want to delete or add
@@ -184,8 +193,8 @@ impl MergeLuaAst for P<FnDecl> {
     }
 }
 
-impl MergeLuaAst for Arg {
-    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for &mut Arg {
+    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
         self.id = NodeId::from_u32(table.get("id")?);
         self.pat.merge_lua_ast(table.get("pat")?)?;
 
@@ -193,8 +202,8 @@ impl MergeLuaAst for Arg {
     }
 }
 
-impl MergeLuaAst for P<Pat> {
-    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for &mut P<Pat> {
+    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
         // REVIEW: How do allow the type to be changed?
         match self.node {
             PatKind::Ident(ref mut binding, ref mut ident, _) => {
@@ -209,6 +218,15 @@ impl MergeLuaAst for P<Pat> {
             },
             ref e => unimplemented!("Found {:?}", e),
         }
+
+        Ok(())
+    }
+}
+
+impl MergeLuaAst for &mut Local {
+    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+        // TODO: init expr, ty
+        self.pat.merge_lua_ast(table.get("pat")?)?;
 
         Ok(())
     }
