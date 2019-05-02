@@ -98,7 +98,13 @@ pub struct ExprContext {
     is_const: bool,
     decay_ref: DecayRef,
     is_bitfield_write: bool,
+
+    // We will be refering to the expression by address. In this context we
+    // can't index arrays because they may legally go out of bounds. We also
+    // need to explicitly cast function references to fn() so we get their
+    // address in function pointer literals.
     needs_address: bool,
+
     ternary_needs_parens: bool,
     expanding_macro: Option<CDeclId>,
 }
@@ -2893,6 +2899,15 @@ impl<'c> Translation<'c> {
                     val = mk().cast_expr(val, ty);
                 }
 
+                // If we are referring to a function and need its address, we
+                // need to cast it to fn() to ensure that it has a real address.
+                if ctx.needs_address() {
+                    if let &CDeclKind::Function { .. } = decl {
+                        let ty = self.convert_type(qual_ty.ctype)?;
+                        val = mk().cast_expr(val, ty);
+                    }
+                }
+
                 if let CTypeKind::VariableArray(..) =
                     self.ast_context.resolve_type(qual_ty.ctype).kind
                 {
@@ -2979,6 +2994,9 @@ impl<'c> Translation<'c> {
                     CastKind::BitCast
                         | CastKind::PointerToIntegral
                         | CastKind::NoOp => ctx.decay_ref = DecayRef::Yes,
+                    CastKind::FunctionToPointerDecay | CastKind::BuiltinFnToFnPtr => {
+                        ctx.needs_address = true;
+                    }
                     _ => {}
                 }
 
@@ -3727,11 +3745,7 @@ impl<'c> Translation<'c> {
 
             CastKind::LValueToRValue | CastKind::ToVoid | CastKind::ConstCast => Ok(val),
 
-            CastKind::FunctionToPointerDecay => {
-                Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
-            }
-
-            CastKind::BuiltinFnToFnPtr => {
+            CastKind::FunctionToPointerDecay | CastKind::BuiltinFnToFnPtr => {
                 Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
             }
 
