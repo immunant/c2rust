@@ -56,6 +56,10 @@ impl<'a> Make<Visibility> for &'a str {
             "priv" | "" | "inherit" => VisibilityKind::Inherited,
             "crate" => VisibilityKind::Crate(CrateSugar::JustCrate),
             "pub(crate)" => VisibilityKind::Crate(CrateSugar::PubCrate),
+            "pub(super)" => VisibilityKind::Restricted {
+                path: P(mk().path("super")),
+                id: DUMMY_NODE_ID,
+            },
             _ => panic!("unrecognized string for Visibility: {:?}", self),
         };
         dummy_spanned(kind)

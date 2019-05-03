@@ -50,6 +50,11 @@ impl<'c> Translation<'c> {
                 CDeclKind::EnumConstant { value: v, .. } => {
                     if v == ConstIntExpr::I(value) || v == ConstIntExpr::U(value as u64) {
                         let name = self.renamer.borrow().get(&variant_id).unwrap();
+
+                        // Import the enum variant if needed
+                        if let Some(cur_file) = self.cur_file.borrow().as_ref() {
+                            self.add_import(cur_file, variant_id, &name);
+                        }
                         return mk().path_expr(vec![name]);
                     }
                 }

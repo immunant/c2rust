@@ -564,6 +564,19 @@ class TranslateASTVisitor final
                          isVaList(ast, T), encodeMacroExpansions, childIds, extra);
     }
 
+    /// Explicitly override the source location of this decl for cases where the
+    /// definition location is not the same as the canonical declaration
+    /// location.
+    void encode_entry(
+        Decl *ast, ASTEntryTag tag, SourceLocation loc,
+        const std::vector<void *> &childIds, const QualType T,
+        std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
+        auto rvalue = false;
+        auto encodeMacroExpansions = false;
+        encode_entry_raw(ast, tag, loc, T, rvalue,
+                         isVaList(ast, T), encodeMacroExpansions, childIds, extra);
+    }
+
     MacroInfo* getMacroInfo(SourceLocation loc, StringRef &name) const {
         auto &Mgr = Context->getSourceManager();
         Token Result;
@@ -1541,7 +1554,7 @@ class TranslateASTVisitor final
 
         auto functionType = FD->getType();
         encode_entry(
-            FD, TagFunctionDecl, childIds, functionType,
+            FD, TagFunctionDecl, paramsFD->getLocation(), childIds, functionType,
             [this, FD](CborEncoder *array) {
                 auto name = FD->getNameAsString();
                 cbor_encode_string(array, name);
@@ -1631,7 +1644,7 @@ class TranslateASTVisitor final
         auto T = def->getType();
 
         encode_entry(
-            VD, TagVarDecl, childIds, T,
+            VD, TagVarDecl, def->getLocation(), childIds, T,
             [VD, is_defn, def](CborEncoder *array) {
                 auto name = VD->getNameAsString();
                 cbor_encode_string(array, name);

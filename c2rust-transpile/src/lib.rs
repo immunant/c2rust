@@ -325,9 +325,8 @@ fn transpile_single(
     }
 
     // Perform the translation
-    let main_file = input_path.with_extension("");
     let (translated_string, pragmas, crates) =
-        translator::translate(typed_context, &tcfg, main_file);
+        translator::translate(typed_context, &tcfg, input_path.to_path_buf());
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,

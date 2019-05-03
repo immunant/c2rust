@@ -2,10 +2,6 @@
     #![{{this.0}}({{this.1}})]
 {{/each}}
 
-{{#if reorganize_definitions~}}
-    #![feature(custom_attribute)]
-{{/if}}
-
 {{#if cross_checks~}}
 #![plugin(c2rust_xcheck_plugin({{plugin_args}}))]
 #[macro_use] extern crate c2rust_xcheck_derive;
