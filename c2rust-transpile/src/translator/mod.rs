@@ -609,7 +609,9 @@ pub fn translate(
                     .flatten()
                     .next();
 
-                *t.cur_file.borrow_mut() = decl_file_path.cloned();
+                if t.tcfg.reorganize_definitions {
+                    *t.cur_file.borrow_mut() = decl_file_path.cloned();
+                }
                 match t.convert_decl(ctx, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => {
                         t.insert_item(item, decl_file_path);
@@ -677,7 +679,7 @@ pub fn translate(
                     _ => None,
                 };
 
-                if decl_file_path != Some(&t.main_file) {
+                if t.tcfg.reorganize_definitions && decl_file_path != Some(&t.main_file) {
                     *t.cur_file.borrow_mut() = decl_file_path.cloned();
                 }
                 match t.convert_decl(ctx, *top_id) {
