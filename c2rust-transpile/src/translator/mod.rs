@@ -1757,7 +1757,7 @@ impl<'c> Translation<'c> {
             CDeclKind::Variable { .. } => Err(TranslationError::generic(
                 "This should be handled in 'convert_decl_stmt'",
             )),
-            //ref k => Err(format_err!("Translation not implemented for {:?}", k).into()),
+
             CDeclKind::MacroObject {
                 ref replacements, ..
             } => {
@@ -2187,22 +2187,6 @@ impl<'c> Translation<'c> {
                 let val = self.convert_expr(ctx.used().decay_ref(), cond_id)?;
                 Ok(val.map(|e| self.match_bool(target, ty_id, e)))
             }
-        }
-    }
-
-    fn convert_decl_stmt(
-        &self,
-        ctx: ExprContext,
-        decl_id: CDeclId,
-    ) -> Result<Vec<Stmt>, TranslationError> {
-        match self.convert_decl_stmt_info(ctx, decl_id)? {
-            cfg::DeclStmtInfo {
-                decl_and_assign: Some(d),
-                ..
-            } => Ok(d),
-            _ => Err(TranslationError::generic(
-                "convert_decl_stmt: couldn't get declaration and initialization info",
-            )),
         }
     }
 
