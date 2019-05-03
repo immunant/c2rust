@@ -58,9 +58,9 @@ function Visitor:run(ast)
             for _, value in ipairs(ast.values) do
                 self:run(value)
             end
-        elseif ast.kind == "AssignOp"
-            or ast.kind == "Binary"
-            or ast.kind == "Assign" then
+        elseif ast.kind == "AssignOp" or
+               ast.kind == "Binary" or
+               ast.kind == "Assign" then
             self:run(ast.lhs)
             self:run(ast.rhs)
         elseif ast.kind == "Path" or ast.kind == "Lit" then
@@ -125,8 +125,8 @@ function Visitor:visit_expr(expr)
             end
         )
 
-    elseif(expr.kind == "Assign" or expr.kind == "AssignOp")
-        and expr.lhs.kind == "Path" then
+    elseif (expr.kind == "Assign" or expr.kind == "AssignOp") and
+            expr.lhs.kind == "Path" then
         if #expr.lhs.segments == 1 then
             self:find_variable(expr.lhs.segments[1],
                 function(var)
