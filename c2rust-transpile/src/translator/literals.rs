@@ -90,7 +90,8 @@ impl<'c> Translation<'c> {
             CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base))),
 
             CLiteral::Character(val) => {
-                let expr = match char::from_u32(val as u32) {
+                let val = val as u32;
+                let expr = match char::from_u32(val) {
                     Some(c) => {
                         let lit = mk().char_lit(c);
                         let expr = mk().lit_expr(lit);
@@ -99,8 +100,15 @@ impl<'c> Translation<'c> {
                     }
                     None => {
                         // Fallback for characters outside of the valid Unicode range
-                        let lit = mk().int_lit(val as u128, LitIntType::Signed(IntTy::I32));
-                        mk().lit_expr(lit)
+                        if (val as i32) < 0 {
+                            mk().unary_expr("-", mk().lit_expr(
+                                mk().int_lit(-(val as i32) as u128, LitIntType::Signed(IntTy::I32))
+                            ))
+                        } else {
+                            mk().lit_expr(
+                                mk().int_lit(val as u128, LitIntType::Signed(IntTy::I32))
+                            )
+                        }
                     }
                 };
                 Ok(WithStmts::new_val(expr))
