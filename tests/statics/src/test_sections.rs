@@ -1,3 +1,4 @@
+//! feature_const_raw_ptr_to_usize_cast
 extern crate libc;
 
 #[cfg(not(target_os = "macos"))]

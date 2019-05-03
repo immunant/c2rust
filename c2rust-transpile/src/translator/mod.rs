@@ -1102,11 +1102,12 @@ impl<'c> Translation<'c> {
 
             match self.ast_context[expr_id].kind {
                 CExprKind::DeclRef(_, _, LRValue::LValue) => return true,
-                CExprKind::ImplicitCast(_, _, CastKind::IntegralToPointer, _, _)
-                | CExprKind::ExplicitCast(_, _, CastKind::IntegralToPointer, _, _)
-                | CExprKind::ImplicitCast(_, _, CastKind::FunctionToPointerDecay, _, _)
-                | CExprKind::ExplicitCast(_, _, CastKind::FunctionToPointerDecay, _, _) => {
-                    return true;
+                | CExprKind::ImplicitCast(_, _, cast_kind, _, _)
+                | CExprKind::ExplicitCast(_, _, cast_kind, _, _) => match cast_kind {
+                    CastKind::IntegralToPointer
+                    | CastKind::FunctionToPointerDecay
+                    | CastKind::PointerToIntegral => return true,
+                    _ => {},
                 }
                 _ => {}
             }

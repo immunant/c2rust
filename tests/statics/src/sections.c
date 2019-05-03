@@ -1,4 +1,6 @@
 #include <stdlib.h>
+#include <stdint.h>
+#include <stddef.h>
 
 typedef struct Foo {
     unsigned a;
@@ -33,6 +35,7 @@ Foo dont_section_foo;
 unsigned dont_section_me = 1 + 1;
 Bar bar;
 void *int_to_pointer = -1;
+uintptr_t null_to_ptr_ty = (uintptr_t) NULL;
 
 // These should be initialized via sections:
 unsigned section_me = -1U;
