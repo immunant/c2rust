@@ -1,3 +1,4 @@
+import subprocess
 from typing import Set
 
 import tests.hostenv as hostenv
@@ -35,7 +36,7 @@ def check_programs_in_path(yaml: dict):
     for p in yaml:
         args = ["which", p]
         try:
-            subprocess.check_call(args)
+            subprocess.check_output(args)
             # output: bytes = subprocess.check_output(args)
             # output: str = output.decode().rstrip()
             # info(f"{p} -> {output}")

@@ -6,11 +6,11 @@ requirements:
       packages:
         - build-essential
 
-generic: # for any host
-  programs:
-    in_path:
-      - c2rust
-      - make
-      - cmake
-      - cargo
-      - intercept-build
+  generic: # for any host
+    programs:
+      in_path:
+        - c2rust
+        - make
+        - cmake
+        - cargo
+        - intercept-build

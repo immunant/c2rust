@@ -2,7 +2,6 @@ import os
 import sys
 import yaml
 import errno
-import subprocess
 
 from typing import List, Iterable
 

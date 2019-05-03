@@ -14,6 +14,8 @@
     $ ./test.py                 # test everything
     $ ./test.py --verbose       # show test output
     $ ./test.py --project lua   # run specific project
+    $ ./test.py --project lua --stage transpile   
+                                # run specific stage of project
     
 
 ## adding new tests as git submodules
