@@ -233,7 +233,7 @@ class TestDirectory:
         file_config = None
         file_flags = set()
 
-        with open(path, 'r') as file:
+        with open(path, 'r', encoding="utf-8") as file:
             file_config = re.match(r"//! (.*)\n", file.read())
 
         if file_config:
@@ -246,7 +246,7 @@ class TestDirectory:
         return CFile(path, file_flags)
 
     def _read_rust_test_file(self, path: str) -> TestFile:
-        with open(path, 'r') as file:
+        with open(path, 'r', encoding="utf-8") as file:
             file_buffer = file.read()
 
         file_config = re.match(r"//! (.*)\n", file_buffer)
