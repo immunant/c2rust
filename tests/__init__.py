@@ -89,7 +89,7 @@ class Test(object):
         elif is_dir_empty(repo_dir):
             repo_dir = os.path.relpath(repo_dir, os.path.curdir)
             msg = f"submodule not checked out: {repo_dir}\n"
-            msg += f"(try running `git submodule update --init {repo_dir}`)"
+            msg += f"(try running `git submodule update --depth 50 --init {repo_dir}`)"
             die(msg)
 
     def is_stage_xfail(self, stage, script, conf: Config) -> bool:
