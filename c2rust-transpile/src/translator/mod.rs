@@ -3411,7 +3411,35 @@ impl<'c> Translation<'c> {
                     // We want to decay refs only when function is variadic
                     ctx.decay_ref = DecayRef::from(is_variadic);
 
-                    let args = self.convert_exprs(ctx.used(), args)?;
+                    let mut args = self.convert_exprs(ctx.used(), args)?;
+
+                    // the C variadics feature requires us to call `as_va_list` on a `VaListImpl`
+                    // when calling a function expecting to receive an object that is binary
+                    // compatible with C's `va_list`.
+                    if let Some(CTypeKind::Function(_, params, _, _, _)) = fn_ty {
+                        // look for parameters of type `va_list`
+                        let positions: Vec<usize> = params
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(pos, param)| {
+                                if self.ast_context.is_va_list(param.ctype)
+                                { Some(pos) } else { None }
+                            })
+                            .collect();
+
+                        // ... call `as_va_list` for such parameters
+                        if !positions.is_empty() {
+                            args = args.map(|mut val| {
+                                for pos in positions {
+                                    val[pos] = mk().method_call_expr(
+                                        val[pos].clone(),
+                                        "as_va_list",
+                                        Vec::<P<Expr>>::new());
+                                }
+                                val
+                            });
+                        }
+                    }
 
                     let res: Result<_, TranslationError> = Ok(
                         args.map(|args| mk().call_expr(func, args))

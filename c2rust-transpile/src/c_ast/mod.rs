@@ -256,6 +256,25 @@ impl TypedAstContext {
         }
     }
 
+    /// Predicate for (pointers to) structs that are binary compatible with C's `va_list`.
+    pub fn is_va_list(&self, typ: CTypeId) -> bool {
+        let resolved_ctype = self.resolve_type(typ);
+        match resolved_ctype.kind {
+            CTypeKind::Struct(record_id) => {
+                let r#struct = &self[record_id];
+                if let CDeclKind::Struct { name: Some(ref nam), .. } = r#struct.kind {
+                    return nam == "__va_list_tag"
+                } else {
+                    false
+                }
+            },
+            CTypeKind::Pointer(p) => {
+                self.is_va_list(p.ctype)
+            },
+            _ => false
+        }
+    }
+
     /// Predicate for function pointers
     pub fn is_function_pointer(&self, typ: CTypeId) -> bool {
         let resolved_ctype = self.resolve_type(typ);
