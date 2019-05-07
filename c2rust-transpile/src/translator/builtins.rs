@@ -224,65 +224,27 @@ impl<'c> Translation<'c> {
                 Err(TranslationError::generic("Unsupported va_start"))
             }
             "__builtin_va_copy" => {
-                // We are waiting on raw va_copy support to land in rustc:
-                // https://github.com/rust-lang/rust/pull/59625
-                Err(TranslationError::new(
-                    self.ast_context.display_loc(&expr.loc),
-                    Context::new(TranslationErrorKind::VaCopyNotImplemented),
-                ))
-                // if ctx.is_unused() && args.len() == 2 {
-                //     if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
-                //         let dst = self.convert_expr(ctx.used(), args[0])?;
-                //         let src = self.convert_expr(ctx.used(), args[1])?;
+                 if ctx.is_unused() && args.len() == 2 {
+                     if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
+                         let dst = self.convert_expr(ctx.used(), args[0])?;
+                         let src = self.convert_expr(ctx.used(), args[1])?;
 
-                //         let path = {
-                //             let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
-                //             let path = vec!["", std_or_core, "intrinsics", "va_copy"];
-                //             mk().path_expr(path)
-                //         };
-                //         let mut_ref_src = mk().mutbl().addr_of_expr(src.val);
-                //         let call_expr = mk().call_expr(path, vec![mut_ref_src] as Vec<P<Expr>>);
-                //         let assign_expr = mk().assign_expr(dst.val, call_expr);
-                //         let stmt = mk().semi_stmt(assign_expr);
+                         let call_expr = mk().method_call_expr(src.to_expr(), "Clone", vec![] as Vec<P<Expr>>);
+                         let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
+                         let stmt = mk().semi_stmt(assign_expr);
 
-                //         let mut res = WithStmts::new(self.panic_or_err("va_copy stub"));
-                //         res.stmts.push(stmt);
-                //         return Ok(res);
-                //     }
-                // }
-                // Err(TranslationError::generic("Unsupported va_copy"))
+                         return Ok(WithStmts::new(
+                             vec![stmt],
+                             self.panic_or_err("va_copy stub")));
+                     }
+                 }
+                 Err(TranslationError::generic("Unsupported va_copy"))
             }
             "__builtin_va_end" => {
                 if ctx.is_unused() && args.len() == 1 {
-                    if let Some(va_id) = self.match_vaend(args[0]) {
-                        if self.is_promoted_va_decl(va_id) {
-                            // no need to call end on `va_end` on `va_list` promoted to arg
-                            return Ok(WithStmts::new_val(self.panic_or_err("va_end stub")));
-                        } else if self.is_copied_va_decl(va_id) {
-                            // call to `va_end` on non-promoted `va_list`
-
-                            let val = self.convert_expr(ctx.used(), args[0])?;
-
-                            let path = {
-                                let std_or_core =
-                                    if self.tcfg.emit_no_std { "core" } else { "std" };
-                                let path = vec!["", std_or_core, "intrinsics", "va_end"];
-                                mk().path_expr(path)
-                            };
-                            return val.and_then(|val| {
-                                let ref_val = mk().mutbl().addr_of_expr(val);
-                                let call_expr = mk().call_expr(path, vec![ref_val] as Vec<P<Expr>>);
-
-                                let stmt = mk().semi_stmt(call_expr);
-
-                                Ok(WithStmts::new(
-                                    vec![stmt],
-                                    self.panic_or_err("va_end stub"),
-                                ))
-                            });
-
-                            // return Ok(WithStmts::new(self.panic("va_end stub")))
-                        }
+                    if let Some(_va_id) = self.match_vaend(args[0]) {
+                        // nothing to do since `VaListImpl`s get `Drop`'ed.
+                        return Ok(WithStmts::new_val(self.panic("va_end stub")))
                     }
                 }
                 Err(TranslationError::generic("Unsupported va_end"))
