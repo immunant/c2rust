@@ -230,7 +230,7 @@ pub struct Translation<'c> {
     zero_inits: RefCell<IndexMap<CDeclId, WithStmts<P<Expr>>>>,
     function_context: RefCell<FunContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
-    macro_types: RefCell<IndexMap<CDeclId, CQualTypeId>>,
+    macro_types: RefCell<IndexMap<CDeclId, CTypeId>>,
 
     // Comment support
     pub comment_context: RefCell<CommentContext>, // Incoming comments
@@ -1774,17 +1774,21 @@ impl<'c> Translation<'c> {
                     &replacements,
                 );
 
-                if let Some((replacement, qual_ty)) = maybe_replacement {
-                    self.macro_types.borrow_mut().insert(decl_id, qual_ty);
-                    let ty = self.convert_type(qual_ty.ctype)?;
+                match maybe_replacement {
+                    Ok((replacement, ty)) => {
+                        self.macro_types.borrow_mut().insert(decl_id, ty);
+                        let ty = self.convert_type(ty)?;
 
-                    Ok(ConvertedDecl::Item(mk().span(s).pub_().const_item(
-                        name,
-                        ty,
-                        replacement,
-                    )))
-                } else {
-                    Ok(ConvertedDecl::NoItem)
+                        Ok(ConvertedDecl::Item(mk().span(s).pub_().const_item(
+                            name,
+                            ty,
+                            replacement,
+                        )))
+                    }
+                    Err(e) => {
+                        info!("Could not expand macro {}: {}", name, e);
+                        Ok(ConvertedDecl::NoItem)
+                    }
                 }
             }
         }
@@ -1794,22 +1798,44 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         replacements: &[CExprId],
-    ) -> Option<(P<Expr>, CQualTypeId)> {
-        replacements
+    ) -> Result<(P<Expr>, CTypeId), TranslationError> {
+        let (val, ty) = replacements
             .iter()
-            .find_map(|id| {
-                let kind = &self.ast_context[*id].kind;
-                if let CExprKind::BadExpr = kind {
-                    return None;
+            .try_fold::<Option<(WithStmts<P<Expr>>, CTypeId)>, _, _>(
+                None,
+                |canonical, id| {
+                    let ty = self.ast_context[*id].kind.get_type()
+                        .ok_or_else(|| format_err!("Invalid expression type"))?;
+                    let (expr_id, ty) = self.ast_context.resolve_expr_type_id(*id)
+                        .unwrap_or((*id, ty));
+                    let expr = self.convert_expr(ctx, expr_id)?;
+
+                    // Join ty and cur_ty to the smaller of the two types. If the
+                    // types are not cast-compatible, abort the fold.
+                    let ty_kind = self.ast_context.resolve_type(ty).kind.clone();
+                    if let Some((canon_val, canon_ty)) = canonical {
+                        let canon_ty_kind = self
+                            .ast_context
+                            .resolve_type(canon_ty)
+                            .kind
+                            .clone();
+                        if let Some(smaller_ty) = CTypeKind::smaller_compatible_type(canon_ty_kind.clone(), ty_kind.clone()) {
+                            if smaller_ty == canon_ty_kind {
+                                Ok(Some((canon_val, canon_ty)))
+                            } else {
+                                Ok(Some((expr, ty)))
+                            }
+                        } else {
+                            Err(format_err!("Not all macro expansions are compatible types"))
+                        }
+                    } else {
+                        Ok(Some((expr, ty)))
+                    }
                 }
-                let ty = kind.get_qual_type().unwrap();
-                let val = match self.convert_expr(ctx, *id) {
-                    Ok(val) => val,
-                    Err(_) => return None,
-                };
-                val.to_unsafe_pure_expr()
-                    .map(|val| (val, ty))
-            })
+            )?.ok_or_else(|| format_err!("Could not find a valid type for macro"))?;
+
+        val.to_unsafe_pure_expr().map(|val| (val, ty))
+            .ok_or_else(|| TranslationError::generic("Macro expansion is not a pure expression"))
 
         // TODO: Validate that all replacements are equivalent and pick the most
         // common type to minimize casts.
@@ -3467,7 +3493,7 @@ impl<'c> Translation<'c> {
 
                 let expr_kind = &self.ast_context[expr_id].kind;
                 if let Some(expr_ty) = expr_kind.get_qual_type() {
-                    return self.convert_cast(ctx, macro_ty, expr_ty, val, None, None, None)
+                    return self.convert_cast(ctx, CQualTypeId::new(macro_ty), expr_ty, val, None, None, None)
                         .map(Some);
                 } else {
                     return Ok(Some(val));
@@ -4450,7 +4476,7 @@ impl<'c> Translation<'c> {
 
             CDeclKind::MacroObject { .. } => {
                 if let Some(macro_ty) = self.macro_types.borrow().get(&decl_id) {
-                    self.import_type(macro_ty.ctype, decl_file_path)
+                    self.import_type(*macro_ty, decl_file_path)
                 }
             }
 

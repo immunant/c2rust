@@ -165,6 +165,35 @@ impl TypedAstContext {
         }
     }
 
+    /// Resolve true expression type, iterating through any casts and variable
+    /// references.
+    pub fn resolve_expr_type_id(&self, expr_id: CExprId) -> Option<(CExprId, CTypeId)> {
+        let expr = &self.index(expr_id).kind;
+        let mut ty = expr.get_type();
+        match expr {
+            CExprKind::ImplicitCast(_, subexpr, _, _, _) |
+            CExprKind::ExplicitCast(_, subexpr, _, _, _) |
+            CExprKind::Paren(_, subexpr) => {
+                return self.resolve_expr_type_id(*subexpr);
+            }
+            CExprKind::DeclRef(_, decl_id, _) => {
+                let decl = self.index(*decl_id);
+                match decl.kind {
+                    CDeclKind::Function { typ, .. } => {
+                        ty = Some(self.resolve_type_id(typ));
+                    }
+                    CDeclKind::Variable { typ, .. } |
+                    CDeclKind::Typedef { typ, .. } => {
+                        ty = Some(self.resolve_type_id(typ.ctype));
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        ty.map(|ty| (expr_id, ty))
+    }
+
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         match self.index(typ).kind {
             CTypeKind::Attributed(ty, _) => self.resolve_type_id(ty.ctype),
@@ -1134,6 +1163,15 @@ pub struct CQualTypeId {
     pub ctype: CTypeId,
 }
 
+impl CQualTypeId {
+    pub fn new(ctype: CTypeId) -> Self {
+        Self {
+            qualifiers: Qualifiers::default(),
+            ctype,
+        }
+    }
+}
+
 // TODO: these may be interesting, but I'm not sure if they fit here:
 //
 //  * UnaryTransformType <http://clang.llvm.org/doxygen/classclang_1_1UnaryTransformType.html>
@@ -1345,6 +1383,87 @@ impl CTypeKind {
         match *self {
             CTypeKind::Vector { .. } => true,
             _ => false,
+        }
+    }
+
+    /// Choose the smaller, simpler of the two types if they are cast-compatible.
+    pub fn smaller_compatible_type(ty1: CTypeKind, ty2: CTypeKind) -> Option<CTypeKind> {
+        match (&ty1, &ty2) {
+            (ty, ty2) if ty == ty2 => Some(ty1),
+            (CTypeKind::Void, _) => Some(ty2),
+            (CTypeKind::Bool, ty) if ty.is_integral_type() => Some(CTypeKind::Bool),
+            (ty, CTypeKind::Bool) if ty.is_integral_type() => Some(CTypeKind::Bool),
+
+            (CTypeKind::Char, ty) if ty.is_integral_type() => Some(CTypeKind::Char),
+            (ty, CTypeKind::Char) if ty.is_integral_type() => Some(CTypeKind::Char),
+            (CTypeKind::SChar, ty) if ty.is_integral_type() => Some(CTypeKind::SChar),
+            (ty, CTypeKind::SChar) if ty.is_integral_type() => Some(CTypeKind::SChar),
+            (CTypeKind::UChar, ty) if ty.is_integral_type() => Some(CTypeKind::UChar),
+            (ty, CTypeKind::UChar) if ty.is_integral_type() => Some(CTypeKind::UChar),
+
+            (CTypeKind::Short, ty) if ty.is_integral_type() => Some(CTypeKind::Short),
+            (ty, CTypeKind::Short) if ty.is_integral_type() => Some(CTypeKind::Short),
+            (CTypeKind::UShort, ty) if ty.is_integral_type() => Some(CTypeKind::UShort),
+            (ty, CTypeKind::UShort) if ty.is_integral_type() => Some(CTypeKind::UShort),
+
+            (CTypeKind::Int, ty) if ty.is_integral_type() => Some(CTypeKind::Int),
+            (ty, CTypeKind::Int) if ty.is_integral_type() => Some(CTypeKind::Int),
+            (CTypeKind::UInt, ty) if ty.is_integral_type() => Some(CTypeKind::UInt),
+            (ty, CTypeKind::UInt) if ty.is_integral_type() => Some(CTypeKind::UInt),
+
+            (CTypeKind::Float, ty) if ty.is_floating_type() || ty.is_integral_type() => {
+                Some(CTypeKind::Float)
+            }
+            (ty, CTypeKind::Float) if ty.is_floating_type() || ty.is_integral_type() => {
+                Some(CTypeKind::Float)
+            }
+
+            (CTypeKind::Long, ty) if ty.is_integral_type() => Some(CTypeKind::Long),
+            (ty, CTypeKind::Long) if ty.is_integral_type() => Some(CTypeKind::Long),
+            (CTypeKind::ULong, ty) if ty.is_integral_type() => Some(CTypeKind::ULong),
+            (ty, CTypeKind::ULong) if ty.is_integral_type() => Some(CTypeKind::ULong),
+
+            (CTypeKind::Double, ty) if ty.is_floating_type() || ty.is_integral_type() => {
+                Some(CTypeKind::Double)
+            }
+            (ty, CTypeKind::Double) if ty.is_floating_type() || ty.is_integral_type() => {
+                Some(CTypeKind::Double)
+            }
+
+            (CTypeKind::LongLong, ty) if ty.is_integral_type() => Some(CTypeKind::LongLong),
+            (ty, CTypeKind::LongLong) if ty.is_integral_type() => Some(CTypeKind::LongLong),
+            (CTypeKind::ULongLong, ty) if ty.is_integral_type() => Some(CTypeKind::ULongLong),
+            (ty, CTypeKind::ULongLong) if ty.is_integral_type() => Some(CTypeKind::ULongLong),
+
+            (CTypeKind::LongDouble, ty) if ty.is_floating_type() || ty.is_integral_type() => {
+                Some(CTypeKind::LongDouble)
+            }
+            (ty, CTypeKind::LongDouble) if ty.is_floating_type() || ty.is_integral_type() => {
+                Some(CTypeKind::LongDouble)
+            }
+
+            (CTypeKind::Int128, ty) if ty.is_integral_type() => Some(CTypeKind::Int128),
+            (ty, CTypeKind::Int128) if ty.is_integral_type() => Some(CTypeKind::Int128),
+            (CTypeKind::UInt128, ty) if ty.is_integral_type() => Some(CTypeKind::UInt128),
+            (ty, CTypeKind::UInt128) if ty.is_integral_type() => Some(CTypeKind::UInt128),
+
+            // Integer to pointer conversion. We want to keep the integer and
+            // cast to a pointer at use.
+            (CTypeKind::Pointer(_), ty) if ty.is_integral_type() => Some(ty2),
+            (ty, CTypeKind::Pointer(_)) if ty.is_integral_type() => Some(ty1),
+
+            // Array to pointer decay. We want to use the array and push the
+            // decay to the use of the value.
+            (CTypeKind::Pointer(ptr_ty), CTypeKind::ConstantArray(arr_ty, _)) |
+            (CTypeKind::Pointer(ptr_ty), CTypeKind::IncompleteArray(arr_ty)) |
+            (CTypeKind::Pointer(ptr_ty), CTypeKind::VariableArray(arr_ty, _))
+                if ptr_ty.ctype == *arr_ty => Some(ty2),
+            (CTypeKind::ConstantArray(arr_ty, _), CTypeKind::Pointer(ptr_ty)) |
+            (CTypeKind::IncompleteArray(arr_ty), CTypeKind::Pointer(ptr_ty)) |
+            (CTypeKind::VariableArray(arr_ty, _), CTypeKind::Pointer(ptr_ty))
+                if ptr_ty.ctype == *arr_ty => Some(ty1),
+
+            _ => None,
         }
     }
 }
