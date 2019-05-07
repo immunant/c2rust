@@ -23,12 +23,12 @@ use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
 use crate::matcher::{self, mut_visit_match_with, Bindings, MatchCtxt, Pattern, Subst, TryMatch};
 use crate::RefactorCtxt;
-use crate::scripting::utils::iter_to_lua_array;
 
 pub mod ast_visitor;
 pub mod utils;
 
-use ast_visitor::MergeLuaAst;
+use ast_visitor::{LuaAstVisitor, MergeLuaAst};
+use utils::iter_to_lua_array;
 
 /// Refactoring module
 // @module Refactor
@@ -715,7 +715,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
 }
 
 #[derive(Clone)]
-struct TransformCtxt<'a, 'tcx: 'a> {
+pub(crate) struct TransformCtxt<'a, 'tcx: 'a> {
     st: &'a CommandState,
     cx: &'a RefactorCtxt<'a, 'tcx>,
     nodes: Rc<RefCell<SlotMap<LuaAstNode, RustAstNode>>>,
@@ -841,6 +841,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
 
         /// Visits all function like items
         // @function visit_fn_like
+        // @tparam LuaAstNode krate Crate in its entirety
         // @tparam function() callback Function called for each function like item.
         methods.add_method_mut("visit_fn_like", |lua_ctx, this, (krate, callback): (LuaAstNode, LuaFunction)| {
             let mut krate = ast::Crate::try_from(this.remove_ast(krate)).expect("Did not find crate input");
@@ -882,6 +883,19 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             });
 
             found_err.map(|_| this.intern(krate))
+        });
+
+        /// Visits an entire crate via a lua object's methods
+        // @function run_visitor
+        // @tparam function() callback Function called for each function like item.
+        methods.add_method_mut("run_visitor", |lua_ctx, this, (visitor_obj, krate): (LuaTable, LuaAstNode)| {
+            let mut krate = ast::Crate::try_from(this.remove_ast(krate)).expect("Did not find crate input");
+
+            let visitor = LuaAstVisitor::new(visitor_obj, this, lua_ctx);
+
+            visitor.visit_crate(&mut krate)?;
+
+            Ok(this.intern(krate))
         });
     }
 }
