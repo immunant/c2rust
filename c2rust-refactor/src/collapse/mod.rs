@@ -14,8 +14,7 @@
 //! Though most of the code and comments talk about "macros", we really mean everything that gets
 //! processed during macro expansion, which includes regular macros, proc macros (`format!`, etc.),
 //! certain attributes (`#[derive]`, `#[cfg]`), and `std`/prelude injection.
-use c2rust_ast_builder::IntoSymbol;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::source_map::Span;
@@ -112,16 +111,13 @@ fn injected_items(krate: &Crate) -> (&'static [&'static str], bool) {
 /// Reverse the effect of `std`/prelude injection, by deleting the injected items.
 pub fn collapse_injected(krate: &mut Crate) {
     let (crate_names, mut expect_prelude) = injected_items(krate);
-    let mut crate_names = crate_names
-        .iter()
-        .map(|x| x.into_symbol())
-        .collect::<HashSet<_>>();
+    let mut crate_names = crate_names.to_vec();
 
     krate.module.items.retain(|i| {
         match i.node {
             ItemKind::ExternCrate(_) => {
                 // Remove the first `extern crate` matching each entry in `crate_names`.
-                if crate_names.remove(&i.ident.name) {
+                if crate_names.remove_item(&i.ident.as_str().get()).is_some() {
                     false
                 } else {
                     true

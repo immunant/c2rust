@@ -3,7 +3,8 @@
     trace_macros,
     specialization,
     box_patterns,
-    generator_trait
+    generator_trait,
+    vec_remove_item,
 )]
 extern crate arena;
 extern crate cargo;
