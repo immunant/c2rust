@@ -1,5 +1,5 @@
 import subprocess
-from typing import Set
+from typing import Dict, Set
 
 import tests.hostenv as hostenv
 from tests.util import *
@@ -22,7 +22,7 @@ def check_apt_package(yaml: List[str]):
             die(f"package not (properly) installed: {p}")
 
 
-def check_apt(yaml: dict):
+def check_apt(yaml: Dict):
     packages = yaml.pop("packages")
     if packages:
         check_apt_package(packages)
@@ -30,7 +30,7 @@ def check_apt(yaml: dict):
         warn(f"unhandled requirements: {yaml}")
 
 
-def check_programs_in_path(yaml: dict):
+def check_programs_in_path(yaml: Dict):
     assert isinstance(yaml, list), "expected list of apt packages"
 
     for p in yaml:
@@ -44,7 +44,7 @@ def check_programs_in_path(yaml: dict):
             die(f"not in path: {p}")
 
 
-def check_programs(yaml: dict):
+def check_programs(yaml: Dict):
     progs = yaml.pop("in_path")
     if progs:
         check_programs_in_path(progs)
@@ -53,7 +53,7 @@ def check_programs(yaml: dict):
         warn(f"unhandled requirements: {yaml}")
 
 
-def check_host(host: str, yaml: dict):
+def check_host(host: str, yaml: Dict):
     reqs = yaml.get(host)
     if not reqs:
         return
