@@ -2,6 +2,7 @@ use indexmap::IndexMap;
 use std::collections::HashMap;
 
 use crate::transform::Transform;
+use rustc::hir::Node;
 use rustc::hir::def::{Namespace, PerNS};
 use rustc::hir::def_id::DefId;
 use rustc_target::spec::abi::Abi;
@@ -461,7 +462,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         // not replace it.
                         let path = self.cx.resolve_use(&new);
                         if let Some(did) = path.def.opt_def_id() {
-                            if self.cx.node_def_id(existing_foreign.id) == did {
+                            if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
                                 existing_foreign.vis.node =
                                     join_visibility(&existing_foreign.vis.node, &new.vis.node);
                                 return true;
@@ -508,8 +509,16 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         existing_item.vis.node =
                             join_visibility(&existing_item.vis.node, &new.vis.node);
                     } else if let ItemKind::Use(_) = existing_item.node {
-                        // A use takes precedence over a foreign declaration. We
-                        // should be importing the Rust definition here.
+                        // A use takes precedence over a foreign declaration
+                        // unless the use refers to the foreign declaration are
+                        // attempting to insert.
+                        let path = self.cx.resolve_use(&existing_item);
+                        if let Some(did) = path.def.opt_def_id() {
+                            if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
+                                *existing_decl = IdentDecl::ForeignItem(new, abi);
+                                return;
+                            }
+                        }
                         existing_item.vis.node =
                             join_visibility(&existing_item.vis.node, &new.vis.node);
                     } else {
@@ -602,7 +611,6 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
         // If we have a definition for this type name we can assume it is
         // equivalent.
         (ForeignItemKind::Ty, ItemKind::Ty(..))
-        | (ForeignItemKind::Ty, ItemKind::Use(..))
         | (ForeignItemKind::Ty, ItemKind::Enum(..))
         | (ForeignItemKind::Ty, ItemKind::Struct(..))
         | (ForeignItemKind::Ty, ItemKind::Union(..)) => true,
