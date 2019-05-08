@@ -157,7 +157,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::ObsoleteInPlace(_, _) => {
                     ast.set("kind", "ObsoleteInPlace")?;
-
+                    // TODO: Flesh out further
                 },
                 ExprKind::Array(values) => {
                     let vals: LuaResult<Vec<_>> = values
@@ -180,11 +180,11 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::MethodCall(_, _) => {
                     ast.set("kind", "MethodCall")?;
-                    // TODO
+                    // TODO: Flesh out further
                 },
                 ExprKind::Tup(_) => {
                     ast.set("kind", "Tup")?;
-                    // TODO
+                    // TODO: Flesh out further
                 },
                 ExprKind::Binary(op, lhs, rhs) => {
                     ast.set("kind", "Binary")?;
@@ -199,7 +199,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::Cast(_, _) => {
                     ast.set("kind", "Cast")?;
-                    // TODO
+                    // TODO: Flesh out further
                 },
                 ExprKind::Type(expr, _ty) => {
                     ast.set("kind", "Type")?;
@@ -223,12 +223,12 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                         ast.set("else", els.into_lua_ast(ctx, lua_ctx)?)?;
                     }
 
-                    // TODO
+                    // TODO: Flesh out further
                 },
                 ExprKind::While(cond, _, _) => {
                     ast.set("kind", "While")?;
                     ast.set("cond", cond.into_lua_ast(ctx, lua_ctx)?)?;
-                    // TODO
+                    // TODO: Flesh out further
                 },
                 ExprKind::WhileLet(_pats, expr, block, opt_label) => {
                     ast.set("kind", "WhileLet")?;
@@ -283,7 +283,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::Async(..) => {
                     ast.set("kind", "Async")?;
-                    // TODO
+                    // TODO: Flesh out further
                 },
                 ExprKind::TryBlock(block) => {
                     ast.set("kind", "TryBlock")?;
@@ -302,7 +302,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::Field(..) => {
                     ast.set("kind", "Field")?;
-                    // TODO
+                    // TODO: Flesh out further
                 },
                 ExprKind::Index(indexed, index) => {
                     ast.set("kind", "Index")?;
@@ -333,6 +333,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
 
                     ast.set("kind", "Path")?;
                     ast.set("segments", iter_to_lua_array(segments, lua_ctx)?)?;
+                    // TODO: Flesh out further
                 },
                 ExprKind::AddrOf(mutability, expr) => {
                     ast.set("kind", "AddrOf")?;
@@ -369,15 +370,15 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::InlineAsm(..) => {
                     ast.set("kind", "InlineAsm")?;
-                    // TODO
+                    // TODO: Flesh out further
                 },
                 ExprKind::Mac(..) => {
                     ast.set("kind", "Mac")?;
-                    // TODO
+                    // TODO: Flesh out further
                 },
                 ExprKind::Struct(..) => {
                     ast.set("kind", "Struct")?;
-                    // TODO
+                    // TODO: Flesh out further
                 },
                 ExprKind::Repeat(expr, _anon_const) => {
                     ast.set("kind", "Repeat")?;
