@@ -26,5 +26,5 @@ fn main() {
     (&mut s).by_mut_ref(1);
     println!("by_ref_with_lt: {}", (&s).by_ref_with_lt());
     println!("by_val: {}", s.by_val());
-    println!("static_method: {}", ::S::static_method(100, -100));
+    println!("static_method: {}", crate::S::static_method(100, -100));
 }

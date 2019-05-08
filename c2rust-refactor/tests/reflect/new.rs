@@ -9,24 +9,24 @@ impl S<(i32, S<Option<i32>>)> {
 fn g() {}
 
 fn main() {
-    let s = (::S::<(i32, ::S<::std::option::Option<i32>>)>: _)(
+    let s = (crate::S::<(i32, crate::S<::std::option::Option<i32>>)>: _)(
         (
             0: i32,
-            (::S::<::std::option::Option<i32>>: _)(
+            (crate::S::<::std::option::Option<i32>>: _)(
                 ::std::prelude::v1::None: ::std::option::Option<i32>,
-            ): ::S<::std::option::Option<i32>>,
-        ): (i32, ::S<::std::option::Option<i32>>),
-    ): ::S<(i32, ::S<::std::option::Option<i32>>)>;
-    let x = (s: ::S<(i32, ::S<::std::option::Option<i32>>)>).f(): ();
-    let f = ::S::<(i32, ::S<::std::option::Option<i32>>)>::f: _;
-    let s = (::S::<(i32, ::S<::std::option::Option<i32>>)>: _)(
+            ): crate::S<::std::option::Option<i32>>,
+        ): (i32, crate::S<::std::option::Option<i32>>),
+    ): crate::S<(i32, crate::S<::std::option::Option<i32>>)>;
+    let x = (s: crate::S<(i32, crate::S<::std::option::Option<i32>>)>).f(): ();
+    let f = crate::S::<(i32, crate::S<::std::option::Option<i32>>)>::f: _;
+    let s = (crate::S::<(i32, crate::S<::std::option::Option<i32>>)>: _)(
         (
             1: i32,
-            (::S::<::std::option::Option<i32>>: _)(
+            (crate::S::<::std::option::Option<i32>>: _)(
                 (::std::prelude::v1::Some: _)(2: i32): ::std::option::Option<i32>,
-            ): ::S<::std::option::Option<i32>>,
-        ): (i32, ::S<::std::option::Option<i32>>),
-    ): ::S<(i32, ::S<::std::option::Option<i32>>)>;
+            ): crate::S<::std::option::Option<i32>>,
+        ): (i32, crate::S<::std::option::Option<i32>>),
+    ): crate::S<(i32, crate::S<::std::option::Option<i32>>)>;
 
     let mut v = (::std::vec::Vec::<i32>::new: _)(): ::std::vec::Vec<i32>;
     (v: ::std::vec::Vec<i32>).push(123: i32): ();

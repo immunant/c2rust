@@ -512,9 +512,9 @@ impl Builder {
         if !p
             .segments
             .get(0)
-            .map_or(false, |s| s.ident.name == keywords::PathRoot.name())
+            .map_or(false, |s| s.ident.name == keywords::Crate.name())
         {
-            p.segments.insert(0, keywords::PathRoot.ident().make(&self));
+            p.segments.insert(0, keywords::Crate.ident().make(&self));
         }
         p
     }

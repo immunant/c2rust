@@ -761,7 +761,7 @@ impl Transform for Abstract {
             type_args.iter().map(|name| mk().ident_ty(name)).collect());
         let seg = mk().path_segment_with_args(func.ident, aba);
         let call_expr = mk().call_expr(
-            mk().path_expr(mk().abs_path(vec![seg])),
+            mk().path_expr(vec![seg]),
             value_args.iter().map(|name| mk().ident_expr(name)).collect());
 
         // Search and replace

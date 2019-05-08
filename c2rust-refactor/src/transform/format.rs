@@ -292,7 +292,7 @@ impl CastType {
                 // CStr::from_ptr(e as *const libc::c_char).to_str().unwrap()
                 let e = mk().cast_expr(e, mk().ptr_ty(mk().path_ty(vec!["libc", "c_char"])));
                 let cs = mk().call_expr(
-                    mk().path_expr(mk().abs_path(vec!["std", "ffi", "CStr", "from_ptr"])),
+                    mk().path_expr(vec!["std", "ffi", "CStr", "from_ptr"]),
                     vec![e]);
                 let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
                 let call = mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new());

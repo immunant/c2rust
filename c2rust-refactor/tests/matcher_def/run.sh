@@ -6,5 +6,5 @@ if [ `uname` = 'Darwin' ]; then
 fi
 
 $refactor \
-    rewrite_expr 'def!(::f)()' '::f2()' \
+    rewrite_expr 'def!(crate::f)()' 'crate::f2()' \
     -- old.rs $rustflags

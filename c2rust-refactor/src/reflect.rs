@@ -133,23 +133,12 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
                     segments.push(mk().path_segment(keywords::Crate.ident()));
                     break;
                 } else {
-                    if let Some(ExternCrate {
-                        src: ExternCrateSource::Extern(def_id),
-                        ..
-                    }) = *tcx.extern_crate(id)
-                    {
-                        // The name of the crate is the path to its `extern crate` item.
-                        id = def_id;
-                        continue;
-                    } else {
-                        // Write `::crate_name` as the name of the crate.  This is incorrect, since
-                        // there's no actual `extern crate crate_name` at top level (else we'd be
-                        // in the previous case), but the resulting error should be obvious to the
-                        // user.
-                        segments.push(mk().path_segment(tcx.crate_name(id.krate)));
-                        segments.push(mk().path_segment(keywords::PathRoot.ident()));
-                        break;
-                    }
+                    // Write `::crate_name` as the name of the crate. This is
+                    // now correct in Rust 2018, regardless of whether we have
+                    // an `extern crate`.
+                    segments.push(mk().path_segment(tcx.crate_name(id.krate)));
+                    segments.push(mk().path_segment(keywords::PathRoot.ident()));
+                    break;
                 }
             }
 

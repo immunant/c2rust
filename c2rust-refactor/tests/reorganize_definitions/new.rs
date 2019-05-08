@@ -15,7 +15,7 @@ extern crate libc;
 type outside = i32;
 
 pub mod bar {
-    use outside;
+    use crate::outside;
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct bar_t {

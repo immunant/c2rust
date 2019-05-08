@@ -22,7 +22,7 @@ export RUST_BACKTRACE=1
 # export refactor='../../target/debug/c2rust-refactor -P ../.. -p plugin_stub -r alongside'
 export refactor_bin='../../../target/debug/c2rust-refactor'
 export refactor="$refactor_bin  -r alongside"
-export rustflags=""
+export rustflags="--edition 2018"
 
 ( cd $1; ./run.sh; )
 if ! [ -f $1/no-rustfmt ]; then
