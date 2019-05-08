@@ -167,9 +167,9 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         let build_dir = get_build_dir(&tcfg, cc_db);
         let crate_file = emit_build_files(&tcfg, &build_dir, modules, pragmas, crates);
         // We only run the reorganization refactoring if we emitted a fresh crate file
-        if let Some(output_file) = crate_file {
+        if crate_file.is_some() {
             if tcfg.reorganize_definitions {
-                reorganize_definitions(&build_dir, &output_file).unwrap_or_else(|e| {
+                reorganize_definitions(&build_dir).unwrap_or_else(|e| {
                     warn!("Failed to reorganize definitions. {}", e.as_fail());
                 })
             }
@@ -206,7 +206,7 @@ fn get_isystem_args() -> Vec<String> {
     args
 }
 
-fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) -> Result<(), Error> {
+fn invoke_refactor(build_dir: &PathBuf) -> Result<(), Error> {
     // Make sure the crate builds cleanly
     let status = process::Command::new("cargo")
         .args(&["check"])
@@ -223,17 +223,11 @@ fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) -> Result<(), Erro
     cmd_path.pop(); // remove current executable
     cmd_path.push(format!("c2rust-refactor"));
     assert!(cmd_path.exists(), format!("{:?} is missing", cmd_path));
-    let crate_path = crate_path
-        .strip_prefix(build_dir)
-        .unwrap()
-        .to_str()
-        .unwrap();
     let args = [
+        "--cargo",
         "--rewrite-mode",
         "inplace",
         "reorganize_definitions",
-        "--",
-        crate_path,
     ];
     let status = process::Command::new(cmd_path.into_os_string())
         .args(&args)
@@ -249,8 +243,8 @@ fn invoke_refactor(build_dir: &PathBuf, crate_path: &PathBuf) -> Result<(), Erro
     }
 }
 
-fn reorganize_definitions(build_dir: &PathBuf, crate_path: &PathBuf) -> Result<(), Error> {
-    invoke_refactor(build_dir, crate_path)?;
+fn reorganize_definitions(build_dir: &PathBuf) -> Result<(), Error> {
+    invoke_refactor(build_dir)?;
     // fix the formatting of the output of `c2rust-refactor`
     let status = process::Command::new("cargo")
         .args(&["fmt"])
