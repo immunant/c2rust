@@ -130,7 +130,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
         match dk.disambiguated_data.data {
             DefPathData::CrateRoot => {
                 if id.krate == LOCAL_CRATE {
-                    segments.push(mk().path_segment(keywords::PathRoot.ident()));
+                    segments.push(mk().path_segment(keywords::Crate.ident()));
                     break;
                 } else {
                     if let Some(ExternCrate {
