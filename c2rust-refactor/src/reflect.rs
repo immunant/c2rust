@@ -5,7 +5,6 @@ use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::map::definitions::DefPathData;
 use rustc::hir::map::Map as HirMap;
 use rustc::hir::Node;
-use rustc::middle::cstore::{ExternCrate, ExternCrateSource};
 use rustc::ty::subst::Subst;
 use rustc::ty::{self, DefIdTree, GenericParamDefKind, TyCtxt};
 use syntax::ast::*;
