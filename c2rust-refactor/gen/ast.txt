@@ -406,7 +406,7 @@ struct AnonConst {
 
 #[match=custom] struct Ident { name, span }
 #[match=eq] flag Name;
-#[match=eq] flag SyntaxContext;
+#[equiv_mode=ignore] #[match=eq] flag SyntaxContext;
 
 #[equiv_mode=ignore] #[rewrite_ignore]
 flag Span;
