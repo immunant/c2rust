@@ -1,7 +1,8 @@
 use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaTable};
 use syntax::ast::{
-    Arg, BindingMode, Block, Crate, FunctionRetTy, FnDecl, Item, ItemKind, Local,
-    Mod, Mutability::*, NodeId, Pat, PatKind, Stmt, StmtKind,
+    Arg, BindingMode, Block, Crate, Expr, ExprKind, FunctionRetTy, FnDecl, ImplItem,
+    ImplItemKind, Item, ItemKind, Local, Mod, Mutability::*, NodeId, Pat, PatKind,
+    Stmt, StmtKind,
 };
 use syntax::source_map::symbol::Symbol;
 use syntax::ptr::P;
@@ -65,6 +66,32 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
         Ok(true)
     }
 
+    pub fn visit_impl(&self, imp: LuaTable<'lua>) -> LuaResult<bool> {
+        let visit_imp: Option<LuaFunction> = self.visitor_obj.get("visit_imp")?;
+
+        if let Some(visit_method) = visit_imp {
+            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), imp.clone()))?;
+
+            if !proceed {
+                return Ok(true);
+            }
+        }
+
+        let items: LuaTable = imp.get("items")?;
+
+        for item in items.sequence_values::<LuaTable>() {
+            let item = item?;
+            let kind: String = item.get("kind")?;
+
+            match kind.as_str() {
+                "ImplMethod" => { self.visit_fn_like(item)?; },
+                ref e => unimplemented!("visit_impl: Impl kind: {:?}", e),
+            }
+        }
+
+        Ok(true)
+    }
+
     pub fn visit_item(&self, item: LuaTable<'lua>) -> LuaResult<bool> {
         let visit_item: Option<LuaFunction> = self.visitor_obj.get("visit_item")?;
 
@@ -77,11 +104,8 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
         }
 
         match item.get::<_, String>("kind")?.as_str() {
-            "Fn" => {
-                let block: LuaTable = item.get("block")?;
-
-                self.visit_block(block)?;
-            },
+            "Fn" => { self.visit_fn_like(item)?; },
+            "Impl" => { self.visit_impl(item)?; },
             ref e => {
                 warn!("visit_item: Found unsupported item kind: {:?}", e);
             },
@@ -99,6 +123,37 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
             if !proceed {
                 return Ok(true);
             }
+        }
+
+        match expr.get::<_, String>("kind")?.as_str() {
+            "Box" => {
+                let boxed: LuaTable = expr.get("expr")?;
+
+                self.visit_expr(boxed)?;
+            },
+            "AssignOp"
+            | "Binary"
+            | "Assign" => {
+                let lhs: LuaTable = expr.get("lhs")?;
+                let rhs: LuaTable = expr.get("rhs")?;
+
+                self.visit_expr(lhs)?;
+                self.visit_expr(rhs)?;
+            },
+            "Array" => {
+                let values: LuaTable = expr.get("values")?;
+
+                for val in values.sequence_values::<LuaTable>() {
+                    self.visit_expr(val?)?;
+                }
+            },
+            "Path" => {
+                // TODO
+            },
+            "Lit" => {
+                // TODO: self.visit_literal(lit)?;
+            },
+            ref e => warn!("visit_expr: Found unsupported expr {}", e),
         }
 
         Ok(true)
@@ -122,7 +177,35 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
 
                 self.visit_expr(expr)?;
             },
+            "Local" => {
+                self.visit_local(stmt)?;
+            },
+            "Item" => {
+                let item: LuaTable = stmt.get("item")?;
+
+                self.visit_item(item)?;
+            },
             ref e => warn!("visit_stmt: Unsupported Stmt kind: {}", e),
+        }
+
+        Ok(true)
+    }
+
+    pub fn visit_local(&self, local: LuaTable<'lua>) -> LuaResult<bool> {
+       let visit_local: Option<LuaFunction> = self.visitor_obj.get("visit_local")?;
+
+        if let Some(visit_method) = visit_local {
+            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), local.clone()))?;
+
+            if !proceed {
+                return Ok(true);
+            }
+        }
+
+        let opt_init: Option<LuaTable> = local.get("init")?;
+
+        if let Some(init) = opt_init {
+            self.visit_expr(init)?;
         }
 
         Ok(true)
@@ -144,6 +227,24 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
         for stmt in stmts.sequence_values::<LuaTable>() {
             self.visit_stmt(stmt?)?;
         }
+
+        Ok(true)
+    }
+
+    pub fn visit_fn_like(&self, fn_like: LuaTable<'lua>) -> LuaResult<bool> {
+       let visit_fn_like: Option<LuaFunction> = self.visitor_obj.get("visit_fn_like")?;
+
+        if let Some(visit_method) = visit_fn_like {
+            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), fn_like.clone()))?;
+
+            if !proceed {
+                return Ok(true);
+            }
+        }
+
+        let block: LuaTable = fn_like.get("block")?;
+
+        self.visit_block(block)?;
 
         Ok(true)
     }
@@ -333,15 +434,44 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
                 ItemKind::Struct(_variant_data, _generics) => {
                     ast.set("kind", "Struct")?;
                 },
-                ItemKind::Impl(..) => {
+                ItemKind::Impl(.., items) => {
+                    let items = items
+                        .into_iter()
+                        .map(|item| item.into_lua_ast(ctx, lua_ctx))
+                        .collect::<LuaResult<Vec<_>>>();
+
                     ast.set("kind", "Impl")?;
-                }
+                    ast.set("items", iter_to_lua_array(items?.into_iter(), lua_ctx)?)?;
+
+                    // TODO
+                },
                 ref e => warn!("Item IntoLuaAst kind: {:?}", e),
             }
 
             Ok(ast)
         })
 
+    }
+}
+
+impl<'lua> IntoLuaAst<'lua> for ImplItem {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
+
+        ast.set("type", "ImplItem")?;
+
+        match self.node {
+            ImplItemKind::Method(sig, block) => {
+                ast.set("kind", "ImplMethod")?;
+                ast.set("ident", self.ident.to_string())?;
+                ast.set("decl", sig.decl.into_lua_ast(ctx, lua_ctx)?)?;
+                ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
+                // TODO: generics, attrs, ..
+            },
+            ref e => unimplemented!("IntoLuaAst for {:?}", e),
+        }
+
+        Ok(ast)
     }
 }
 
@@ -395,7 +525,10 @@ impl MergeLuaAst for &mut Stmt {
 
         match self.node {
             StmtKind::Local(ref mut l) => l.merge_lua_ast(table)?,
-            _ => warn!("MergeLuaAst::merge_lua_ast unimplemented for non Local StmtKind"),
+            StmtKind::Item(ref mut i) => i.merge_lua_ast(table.get("item")?)?,
+            StmtKind::Expr(ref mut e) |
+            StmtKind::Semi(ref mut e) => e.merge_lua_ast(table.get("expr")?)?,
+            _ => warn!("MergeLuaAst unimplemented for Macro StmtKind"),
         };
 
         Ok(())
@@ -448,8 +581,25 @@ impl MergeLuaAst for &mut P<Pat> {
 
 impl MergeLuaAst for &mut Local {
     fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
-        // TODO: init expr, ty
-        self.pat.merge_lua_ast(table.get("pat")?)?;
+        // TODO: ty
+        let pat: LuaTable = table.get("pat")?;
+        let opt_init: Option<LuaTable> = table.get("init")?;
+
+        self.pat.merge_lua_ast(pat)?;
+
+        match &mut self.init {
+            Some(existing_init) => {
+                match opt_init {
+                    Some(init) => existing_init.merge_lua_ast(init)?,
+                    None => self.init = None,
+                }
+            },
+            None => {
+                if let Some(_) = opt_init {
+                    unimplemented!("MergeLuaAst unimplemented local init update");
+                }
+            },
+        }
 
         Ok(())
     }
@@ -484,9 +634,83 @@ impl MergeLuaAst for &mut P<Item> {
         self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
 
         // REVIEW: How do allow the type to be changed?
-        match self.node {
-            ref e => warn!("MergeLuaAst Item ItemKind: {:?}", e),
+        match &mut self.node {
+            ItemKind::Fn(fn_decl, _, _, block) => {
+                let lua_fn_decl: LuaTable = table.get("decl")?;
+                let lua_block: LuaTable = table.get("block")?;
+
+                block.merge_lua_ast(lua_block)?;
+                fn_decl.merge_lua_ast(lua_fn_decl)?;
+            },
+            ItemKind::Impl(.., items) => {
+                let lua_items: LuaTable = table.get("items")?;
+
+                // TODO: This may need to be improved if we want to delete or add
+                // values as it currently expects values to be 1-1
+                let res: LuaResult<Vec<()>> = items.iter_mut().enumerate().map(|(i, item)| {
+                    let item_table: LuaTable = lua_items.get(i + 1)?;
+
+                    item.merge_lua_ast(item_table)
+                }).collect();
+
+                res?;
+            },
+            ref e => warn!("MergeLuaAst unimplemented: {:?}", e),
         }
+
+        Ok(())
+    }
+}
+
+impl MergeLuaAst for &mut P<Expr> {
+    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+        match self.node {
+            ExprKind::Binary(_, ref mut lhs, ref mut rhs)
+            | ExprKind::Assign(ref mut lhs, ref mut rhs)
+            | ExprKind::AssignOp(_, ref mut lhs, ref mut rhs) => {
+                let lua_lhs: LuaTable = table.get("lhs")?;
+                let lua_rhs: LuaTable = table.get("rhs")?;
+
+                lhs.merge_lua_ast(lua_lhs)?;
+                rhs.merge_lua_ast(lua_rhs)?;
+            },
+            ExprKind::Array(ref mut exprs) => {
+                let lua_exprs: LuaTable = table.get("values")?;
+
+                // TODO: This may need to be improved if we want to delete or add
+                // values as it currently expects values to be 1-1
+                let res: LuaResult<Vec<()>> = exprs.iter_mut().enumerate().map(|(i, expr)| {
+                    let expr_table: LuaTable = lua_exprs.get(i + 1)?;
+
+                    expr.merge_lua_ast(expr_table)
+                }).collect();
+
+                res?;
+            },
+            ref e => warn!("MergeLuaAst unimplemented: {:?}", e),
+        }
+
+        Ok(())
+    }
+}
+
+impl MergeLuaAst for &mut ImplItem {
+    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+        self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
+
+        match &mut self.node {
+            ImplItemKind::Method(sig, block) => {
+                let lua_decl: LuaTable = table.get("decl")?;
+                let lua_block: LuaTable = table.get("block")?;
+
+                sig.decl.merge_lua_ast(lua_decl)?;
+                block.merge_lua_ast(lua_block)?;
+
+                // TODO: generics, attrs, ..
+            },
+            ref e => unimplemented!("MergeLuaAst for {:?}", e),
+        }
+
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-local function starts_with(str, start)
+function starts_with(str, start)
     return str:sub(1, #start) == start
 end
 
@@ -29,67 +29,16 @@ end
 
 Visitor = {}
 
-function Visitor.new(params)
+function Visitor.new()
     self = {}
-    self.variables = params
+    self.args = {}
+    self.locals = {}
+    self.variables = {}
 
     setmetatable(self, Visitor)
     Visitor.__index = Visitor
 
     return self
-end
-
-function Visitor:run(ast)
-    if not ast then return end
-
-    -- print(ast.type)
-    if ast.type == "Block" then
-        self:visit_block(ast)
-
-        for _, stmt in ipairs(ast.stmts) do
-            self:run(stmt)
-        end
-    elseif ast.type == "Expr" then
-        self:visit_expr(ast)
-
-        if ast.kind == "Box" then
-            self:run(ast.boxed)
-        elseif ast.kind == "Array" then
-            for _, value in ipairs(ast.values) do
-                self:run(value)
-            end
-        elseif ast.kind == "AssignOp" or
-               ast.kind == "Binary" or
-               ast.kind == "Assign" then
-            self:run(ast.lhs)
-            self:run(ast.rhs)
-        elseif ast.kind == "Path" or ast.kind == "Lit" then
-
-        else
-            error("Found unsupported expr type " .. ast.kind)
-        end
-    elseif ast.type == "Stmt" then
-        self:visit_stmt(ast)
-
-        if ast.kind == "Local" then
-            debug("Found Local")
-            self:run(ast.init)
-        elseif ast.kind == "Item" then
-            debug("Found Item")
-        elseif ast.kind == "Semi" or ast.kind == "Expr" then
-            debug("Found Semi or Expr of kind: " .. ast.kind)
-
-            self:run(ast.expr)
-        else
-            error("Unsupported stmt kind: " .. ast.kind)
-        end
-    else
-        error("Found unsupported ast type " .. ast.type)
-    end
-end
-
-function Visitor:visit_block(block)
-    debug("Visiting Block: Noop")
 end
 
 function Visitor:visit_stmt(stmt)
@@ -110,10 +59,14 @@ function Visitor:visit_stmt(stmt)
             )
 
             self.variables[id] = Variable.new(used, id, locl, binding, ident)
+
+            table.insert(self.locals, stmt)
         else
             debug("Skipping unsupported local type")
         end
     end
+
+    return true
 end
 
 function Visitor:visit_expr(expr)
@@ -135,6 +88,8 @@ function Visitor:visit_expr(expr)
             )
         end
     end
+
+    return true
 end
 
 function Visitor:find_variable(ident, mutator)
@@ -145,8 +100,38 @@ function Visitor:find_variable(ident, mutator)
     end
 end
 
+function Visitor:visit_fn_like(fn_like)
+    -- Skip foreign functions - we only want functions with bodies
+    if fn_like.kind == "Foreign" then
+        return
+    end
+
+    debug("FnLike name: " .. fn_like.ident)
+
+    args = fn_like.decl.args
+    stmts = fn_like.block.stmts
+
+    for _, arg in ipairs(args) do
+        -- TODO: Pattern might not be an ident
+        used = false
+        id = arg.id
+        locl = false
+        binding = "ByValueImmutable"
+        ident = arg.pat.ident
+
+        self.variables[id] = Variable.new(used, id, locl, binding, ident)
+
+        table.insert(self.args, arg)
+
+        debug("Arg: " .. ident .. " of id " .. id .. " binding " .. binding)
+    end
+
+    return true
+end
+
 function update_pattern(pattern, variable)
     -- TODO: Pattern might not be an ident
+    debug("variable " .. pattern.ident .. " used: " .. tostring(variable.used))
     if not variable.used then
         pattern.binding = "ByValueImmutable"
 
@@ -160,58 +145,25 @@ function update_pattern(pattern, variable)
     end
 end
 
+function Visitor:finish()
+    -- Iterate over args
+    for _, arg in ipairs(self.args) do
+        variable = self.variables[arg.id]
+
+        update_pattern(arg.pat, variable)
+    end
+
+    -- Iterate over locals
+    for _, stmt in ipairs(self.locals) do
+        variable = self.variables[stmt.pat.id]
+
+        update_pattern(stmt.pat, variable)
+    end
+end
+
 refactor:transform(
     function(transform_ctx, crate)
-        return transform_ctx:visit_fn_like(crate,
-            function(fn_like)
-                -- Skip foreign functions - we only want functions with bodies
-                if fn_like.kind == "Foreign" then
-                    return fn_like
-                end
-
-                debug("FnLike name: " .. fn_like.ident)
-
-                params = {}
-                args = fn_like.decl.args
-                stmts = fn_like.block.stmts
-
-                for _, arg in ipairs(args) do
-                    -- TODO: Pattern might not be an ident
-                    used = false
-                    id = arg.id
-                    locl = false
-                    binding = "ByValueImmutable"
-                    ident = arg.pat.ident
-
-                    params[id] = Variable.new(used, id, locl, binding, ident)
-                end
-
-                debug("Running visitor")
-                visitor = Visitor.new(params)
-                visitor:run(fn_like.block)
-                debug("Visitor ran")
-
-                -- TODO: Shadowed variables may cause usage to be misrepresented
-
-                -- Iterate over args
-                for _, arg in ipairs(args) do
-                    variable = visitor.variables[arg.id]
-
-                    update_pattern(arg.pat, variable)
-                end
-
-                -- Iterate over locals
-                for _, stmt in ipairs(stmts) do
-                    if stmt.kind == "Local" then
-                        variable = visitor.variables[stmt.pat.id]
-
-                        update_pattern(stmt.pat, variable)
-                    end
-                end
-
-                return fn_like
-            end
-        )
+        return transform_ctx:run_visitor(Visitor.new(), crate)
     end
 )
 

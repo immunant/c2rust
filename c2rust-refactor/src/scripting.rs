@@ -17,7 +17,6 @@ use slotmap::{new_key_type, SlotMap};
 use syntax::ast::{self, ExprKind};
 use syntax::ptr::P;
 
-use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::command::{self, CommandState, RefactorState};
 use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
@@ -27,7 +26,7 @@ use crate::RefactorCtxt;
 pub mod ast_visitor;
 pub mod utils;
 
-use ast_visitor::{LuaAstVisitor, MergeLuaAst};
+use ast_visitor::LuaAstVisitor;
 use utils::iter_to_lua_array;
 
 /// Refactoring module
@@ -103,7 +102,7 @@ impl<'lua> IntoLuaAst<'lua> for ast::Stmt {
             }
             ast::StmtKind::Item(i) => {
                 ast.set("kind", "Item")?;
-                ast.set("item", ctx.intern(i))?;
+                ast.set("item", i.into_lua_ast(ctx, lua_ctx)?)?;
             }
             ast::StmtKind::Semi(e) => {
                 ast.set("kind", "Semi")?;
@@ -181,11 +180,11 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::MethodCall(_, _) => {
                     ast.set("kind", "MethodCall")?;
-
+                    // TODO
                 },
                 ExprKind::Tup(_) => {
                     ast.set("kind", "Tup")?;
-
+                    // TODO
                 },
                 ExprKind::Binary(op, lhs, rhs) => {
                     ast.set("kind", "Binary")?;
@@ -200,7 +199,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::Cast(_, _) => {
                     ast.set("kind", "Cast")?;
-
+                    // TODO
                 },
                 ExprKind::Type(expr, _ty) => {
                     ast.set("kind", "Type")?;
@@ -223,10 +222,13 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                     if let Some(els) = opt_else {
                         ast.set("else", els.into_lua_ast(ctx, lua_ctx)?)?;
                     }
+
+                    // TODO
                 },
                 ExprKind::While(cond, _, _) => {
                     ast.set("kind", "While")?;
                     ast.set("cond", cond.into_lua_ast(ctx, lua_ctx)?)?;
+                    // TODO
                 },
                 ExprKind::WhileLet(_pats, expr, block, opt_label) => {
                     ast.set("kind", "WhileLet")?;
@@ -281,6 +283,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::Async(..) => {
                     ast.set("kind", "Async")?;
+                    // TODO
                 },
                 ExprKind::TryBlock(block) => {
                     ast.set("kind", "TryBlock")?;
@@ -299,6 +302,7 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::Field(..) => {
                     ast.set("kind", "Field")?;
+                    // TODO
                 },
                 ExprKind::Index(indexed, index) => {
                     ast.set("kind", "Index")?;
@@ -365,15 +369,15 @@ impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
                 },
                 ExprKind::InlineAsm(..) => {
                     ast.set("kind", "InlineAsm")?;
-
+                    // TODO
                 },
                 ExprKind::Mac(..) => {
                     ast.set("kind", "Mac")?;
-
+                    // TODO
                 },
                 ExprKind::Struct(..) => {
                     ast.set("kind", "Struct")?;
-
+                    // TODO
                 },
                 ExprKind::Repeat(expr, _anon_const) => {
                     ast.set("kind", "Repeat")?;
@@ -837,52 +841,6 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         // @return Struct representation of this AST node. Valid return types are @{Stmt}, and @{Expr}.
         methods.add_method("get_ast", |lua_ctx, this, node: LuaAstNode| {
             this.get_lua_ast(lua_ctx, node)
-        });
-
-        /// Visits all function like items
-        // @function visit_fn_like
-        // @tparam LuaAstNode krate Crate in its entirety
-        // @tparam function() callback Function called for each function like item.
-        methods.add_method_mut("visit_fn_like", |lua_ctx, this, (krate, callback): (LuaAstNode, LuaFunction)| {
-            let mut krate = ast::Crate::try_from(this.remove_ast(krate)).expect("Did not find crate input");
-            let mut found_err = Ok(());
-
-            mut_visit_fns(&mut krate, |fn_like| {
-                if found_err.is_err() {
-                    return;
-                }
-
-                // REVIEW: Maybe this can be cleaned up by doing this in
-                // a result returning function?
-                let lua_fn_like = match fn_like.clone().into_lua_ast(this, lua_ctx) {
-                    Ok(lfl) => lfl,
-                    Err(e) => {
-                        found_err = Err(e);
-
-                        return
-                    },
-                };
-
-                let ret_lua_fn_like: LuaTable = match callback.call(lua_fn_like) {
-                    Ok(lfl) => lfl,
-                    Err(e) => {
-                        found_err = Err(e);
-
-                        return
-                    },
-                };
-
-                match fn_like.merge_lua_ast(ret_lua_fn_like) {
-                    Ok(()) => (),
-                    Err(e) => {
-                        found_err = Err(e);
-
-                        return
-                    },
-                };
-            });
-
-            found_err.map(|_| this.intern(krate))
         });
 
         /// Visits an entire crate via a lua object's methods
