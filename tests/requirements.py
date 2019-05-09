@@ -1,12 +1,12 @@
 import subprocess
-from typing import Dict, Set
+from typing import Dict, List, Set
 
 import tests.hostenv as hostenv
 from tests.util import *
 
 
 def check_apt_package(yaml: List[str]):
-    assert isinstance(yaml, list), "expected list of apt packages"
+    assert isinstance(yaml, List), "expected list of apt packages"
     for p in yaml:
         args = ["dpkg", "-l", p]
 
@@ -31,7 +31,7 @@ def check_apt(yaml: Dict):
 
 
 def check_programs_in_path(yaml: Dict):
-    assert isinstance(yaml, list), "expected list of apt packages"
+    assert isinstance(yaml, List), "expected list of apt packages"
 
     for p in yaml:
         args = ["which", p]
@@ -91,7 +91,7 @@ def check(conf):
 
 
 def collect(conf, host: str) -> Set[str]:
-    def collect_packages_for_host(yaml: dict):
+    def collect_packages_for_host(yaml: Dict):
         apt = yaml.get("apt")
         if apt:
             packages = apt.get("packages")
