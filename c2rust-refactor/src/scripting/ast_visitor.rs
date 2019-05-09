@@ -10,6 +10,20 @@ use syntax::ptr::P;
 use crate::ast_manip::fn_edit::{FnKind, FnLike};
 use crate::scripting::{IntoLuaAst, TransformCtxt, utils::iter_to_lua_array};
 
+macro_rules! call_lua_visitor_method {
+    ($obj: expr , $method: ident ($($params: expr),*)) => {
+        let opt_visit_method: Option<LuaFunction> = $obj.get(stringify!($method))?;
+
+        if let Some(visit_method) = opt_visit_method {
+            let proceed = visit_method.call::<_, bool>(($obj.clone(), $($params.clone()),*))?;
+
+            if !proceed {
+                return Ok(true);
+            }
+        }
+    };
+}
+
 pub(crate) struct LuaAstVisitor<'a, 'lua, 'tctx: 'a> {
     ctx: &'a TransformCtxt<'a, 'tctx>,
     lua_ctx: LuaContext<'lua>,
@@ -26,17 +40,9 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
     }
 
     pub fn visit_crate(&self, krate: &mut Crate) -> LuaResult<bool> {
-        let visit_crate: Option<LuaFunction> = self.visitor_obj.get("visit_crate")?;
-
         let lua_krate = krate.clone().into_lua_ast(self.ctx, self.lua_ctx)?;
 
-        if let Some(visit_method) = visit_crate {
-            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), lua_krate.clone()))?;
-
-            if !proceed {
-                return Ok(true);
-            }
-        }
+        call_lua_visitor_method!(self.visitor_obj,visit_crate(lua_krate));
 
         self.visit_module(lua_krate.get("module")?)?;
         self.finish()?;
@@ -47,15 +53,7 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
     }
 
     pub fn visit_module(&self, module: LuaTable<'lua>) -> LuaResult<bool> {
-        let visit_module: Option<LuaFunction> = self.visitor_obj.get("visit_module")?;
-
-        if let Some(visit_method) = visit_module {
-            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), module.clone()))?;
-
-            if !proceed {
-                return Ok(true);
-            }
-        }
+        call_lua_visitor_method!(self.visitor_obj,visit_module(module));
 
         let items: LuaTable = module.get("items")?;
 
@@ -67,15 +65,7 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
     }
 
     pub fn visit_impl(&self, imp: LuaTable<'lua>) -> LuaResult<bool> {
-        let visit_imp: Option<LuaFunction> = self.visitor_obj.get("visit_imp")?;
-
-        if let Some(visit_method) = visit_imp {
-            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), imp.clone()))?;
-
-            if !proceed {
-                return Ok(true);
-            }
-        }
+        call_lua_visitor_method!(self.visitor_obj,visit_impl(imp));
 
         let items: LuaTable = imp.get("items")?;
 
@@ -93,15 +83,7 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
     }
 
     pub fn visit_item(&self, item: LuaTable<'lua>) -> LuaResult<bool> {
-        let visit_item: Option<LuaFunction> = self.visitor_obj.get("visit_item")?;
-
-        if let Some(visit_method) = visit_item {
-            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), item.clone()))?;
-
-            if !proceed {
-                return Ok(true);
-            }
-        }
+        call_lua_visitor_method!(self.visitor_obj,visit_item(item));
 
         match item.get::<_, String>("kind")?.as_str() {
             "Fn" => { self.visit_fn_like(item)?; },
@@ -115,15 +97,7 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
     }
 
     pub fn visit_expr(&self, expr: LuaTable<'lua>) -> LuaResult<bool> {
-        let visit_expr: Option<LuaFunction> = self.visitor_obj.get("visit_expr")?;
-
-        if let Some(visit_method) = visit_expr {
-            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), expr.clone()))?;
-
-            if !proceed {
-                return Ok(true);
-            }
-        }
+        call_lua_visitor_method!(self.visitor_obj,visit_expr(expr));
 
         match expr.get::<_, String>("kind")?.as_str() {
             "Box" => {
@@ -160,15 +134,7 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
     }
 
     pub fn visit_stmt(&self, stmt: LuaTable<'lua>) -> LuaResult<bool> {
-       let visit_stmt: Option<LuaFunction> = self.visitor_obj.get("visit_stmt")?;
-
-        if let Some(visit_method) = visit_stmt {
-            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), stmt.clone()))?;
-
-            if !proceed {
-                return Ok(true);
-            }
-        }
+        call_lua_visitor_method!(self.visitor_obj,visit_stmt(stmt));
 
         match stmt.get::<_, String>("kind")?.as_str() {
             "Expr"
@@ -192,15 +158,7 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
     }
 
     pub fn visit_local(&self, local: LuaTable<'lua>) -> LuaResult<bool> {
-       let visit_local: Option<LuaFunction> = self.visitor_obj.get("visit_local")?;
-
-        if let Some(visit_method) = visit_local {
-            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), local.clone()))?;
-
-            if !proceed {
-                return Ok(true);
-            }
-        }
+        call_lua_visitor_method!(self.visitor_obj,visit_local(local));
 
         let opt_init: Option<LuaTable> = local.get("init")?;
 
@@ -212,15 +170,7 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
     }
 
     pub fn visit_block(&self, block: LuaTable<'lua>) -> LuaResult<bool> {
-       let visit_block: Option<LuaFunction> = self.visitor_obj.get("visit_block")?;
-
-        if let Some(visit_method) = visit_block {
-            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), block.clone()))?;
-
-            if !proceed {
-                return Ok(true);
-            }
-        }
+        call_lua_visitor_method!(self.visitor_obj,visit_block(block));
 
         let stmts: LuaTable = block.get("stmts")?;
 
@@ -232,15 +182,7 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
     }
 
     pub fn visit_fn_like(&self, fn_like: LuaTable<'lua>) -> LuaResult<bool> {
-       let visit_fn_like: Option<LuaFunction> = self.visitor_obj.get("visit_fn_like")?;
-
-        if let Some(visit_method) = visit_fn_like {
-            let proceed = visit_method.call::<_, bool>((self.visitor_obj.clone(), fn_like.clone()))?;
-
-            if !proceed {
-                return Ok(true);
-            }
-        }
+        call_lua_visitor_method!(self.visitor_obj,visit_fn_like(fn_like));
 
         let block: LuaTable = fn_like.get("block")?;
 
@@ -433,6 +375,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
                 },
                 ItemKind::Struct(_variant_data, _generics) => {
                     ast.set("kind", "Struct")?;
+                    // TODO: Variant data, generics
                 },
                 ItemKind::Impl(.., items) => {
                     let items = items
@@ -443,7 +386,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
                     ast.set("kind", "Impl")?;
                     ast.set("items", iter_to_lua_array(items?.into_iter(), lua_ctx)?)?;
 
-                    // TODO
+                    // TODO: other fields
                 },
                 ref e => warn!("Item IntoLuaAst kind: {:?}", e),
             }
@@ -560,7 +503,7 @@ impl MergeLuaAst for &mut Arg {
 
 impl MergeLuaAst for &mut P<Pat> {
     fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
-        // REVIEW: How do allow the type to be changed?
+        // REVIEW: How to allow the type to be changed?
         match self.node {
             PatKind::Ident(ref mut binding, ref mut ident, _) => {
                 *binding = match table.get::<_, String>("binding")?.as_str() {
@@ -633,7 +576,7 @@ impl MergeLuaAst for &mut P<Item> {
     fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
         self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
 
-        // REVIEW: How do allow the type to be changed?
+        // REVIEW: How to allow the type to be changed?
         match &mut self.node {
             ItemKind::Fn(fn_decl, _, _, block) => {
                 let lua_fn_decl: LuaTable = table.get("decl")?;
@@ -710,7 +653,6 @@ impl MergeLuaAst for &mut ImplItem {
             },
             ref e => unimplemented!("MergeLuaAst for {:?}", e),
         }
-
 
         Ok(())
     }
