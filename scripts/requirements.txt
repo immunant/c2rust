@@ -1,5 +1,5 @@
 cbor
-colorlog 
+colorlog
 mako
 pip
 plumbum >= 1.6.3
@@ -8,3 +8,4 @@ pygments
 typing
 scan-build
 pyyaml
+distro

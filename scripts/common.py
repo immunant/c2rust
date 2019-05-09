@@ -4,6 +4,7 @@ import re
 import sys
 import json
 import errno
+import distro
 import psutil
 import signal
 import logging
@@ -271,35 +272,29 @@ def on_arch() -> bool:
     """
     return true on arch distros.
     """
-    distro, *_ = platform.linux_distribution()
+    return distro.name() == "Arch Linux"
 
-    return distro == "arch"
 
 
 def on_ubuntu() -> bool:
     """
     return true on recent ubuntu linux distro.
     """
-    match = re.match(r'^.+Ubuntu-\d\d\.\d\d-\w+', platform.platform())
-    return match is not None
+    return distro.name() == "Ubuntu"
 
 
 def on_debian() -> bool:
     """
-    return true on debian distro (and derivatives?).
+    return true on debian distro (and derivatives).
     """
-    distro, *_ = platform.linux_distribution()
-
-    return distro == "debian"
+    return distro.name().startswith("Debian") or distro.like() == "debian"
 
 
 def on_fedora() -> bool:
     """
-    return true on debian distro (and derivatives?).
+    return true on debian distro (and derivatives).
     """
-    distro, *_ = platform.linux_distribution()
-
-    return distro == "Fedora"
+    return distro.name() == "Fedora" or "fedora" in distro.like()
 
 
 def regex(raw: str):
