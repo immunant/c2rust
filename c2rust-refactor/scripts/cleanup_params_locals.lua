@@ -163,7 +163,7 @@ end
 
 refactor:transform(
     function(transform_ctx, crate)
-        return transform_ctx:run_visitor(Visitor.new(), crate)
+        return transform_ctx:visit_crate(Visitor.new(), crate)
     end
 )
 
