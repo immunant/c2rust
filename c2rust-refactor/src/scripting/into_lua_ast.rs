@@ -7,7 +7,7 @@ use syntax::ast::{
 use syntax::ptr::P;
 
 use crate::ast_manip::fn_edit::{FnKind, FnLike};
-use crate::scripting::{TransformCtxt, utils::iter_to_lua_array};
+use crate::scripting::TransformCtxt;
 
 pub(crate) trait IntoLuaAst<'lua> {
     fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>>;
@@ -113,7 +113,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         .collect();
 
                     ast.set("kind", "Array")?;
-                    ast.set("values", iter_to_lua_array(vals?.into_iter(), lua_ctx)?)?;
+                    ast.set("values", lua_ctx.create_sequence_from(vals?.into_iter())?)?;
                 },
                 ExprKind::Call(path, args) => {
                    let args: LuaResult<Vec<_>> = args
@@ -123,7 +123,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
 
                     ast.set("kind", "Call")?;
                     ast.set("path", path.into_lua_ast(ctx, lua_ctx)?)?;
-                    ast.set("args", iter_to_lua_array(args?.into_iter(), lua_ctx)?)?;
+                    ast.set("args", lua_ctx.create_sequence_from(args?.into_iter())?)?;
                 },
                 ExprKind::MethodCall(_, _) => {
                     ast.set("kind", "MethodCall")?;
@@ -279,7 +279,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         .map(|s| s.ident.to_string());
 
                     ast.set("kind", "Path")?;
-                    ast.set("segments", iter_to_lua_array(segments, lua_ctx)?)?;
+                    ast.set("segments", lua_ctx.create_sequence_from(segments)?)?;
                     // TODO: Flesh out further
                 },
                 ExprKind::AddrOf(mutability, expr) => {
@@ -399,7 +399,7 @@ impl<'lua> IntoLuaAst<'lua> for P<FnDecl> {
                 .map(|arg| arg.into_lua_ast(ctx, lua_ctx))
                 .collect();
 
-            ast.set("args", iter_to_lua_array(args?.into_iter(), lua_ctx)?)?;
+            ast.set("args", lua_ctx.create_sequence_from(args?.into_iter())?)?;
 
             // TODO: self, self kind
 
@@ -432,7 +432,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Block> {
                 .map(|stmt| stmt.into_lua_ast(ctx, lua_ctx))
                 .collect::<LuaResult<Vec<_>>>();
 
-            ast.set("stmts", iter_to_lua_array(stmts?.into_iter(), lua_ctx)?)?;
+            ast.set("stmts", lua_ctx.create_sequence_from(stmts?.into_iter())?)?;
 
             Ok(ast)
         })
@@ -490,7 +490,7 @@ impl<'lua> IntoLuaAst<'lua> for Mod {
 
         ast.set("type", "Mod")?;
         ast.set("inline", self.inline)?;
-        ast.set("items", iter_to_lua_array(items?.into_iter(), lua_ctx)?)?;
+        ast.set("items", lua_ctx.create_sequence_from(items?.into_iter())?)?;
 
         Ok(ast)
     }
@@ -538,7 +538,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
                         .collect::<LuaResult<Vec<_>>>();
 
                     ast.set("kind", "Impl")?;
-                    ast.set("items", iter_to_lua_array(items?.into_iter(), lua_ctx)?)?;
+                    ast.set("items", lua_ctx.create_sequence_from(items?.into_iter())?)?;
 
                     // TODO: other fields
                 },
