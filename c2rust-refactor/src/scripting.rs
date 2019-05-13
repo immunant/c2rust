@@ -25,6 +25,7 @@ use crate::RefactorCtxt;
 
 pub mod ast_visitor;
 pub mod into_lua_ast;
+pub mod merge_lua_ast;
 pub mod utils;
 
 use ast_visitor::LuaAstVisitor;
