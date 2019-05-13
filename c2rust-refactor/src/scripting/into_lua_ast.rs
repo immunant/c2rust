@@ -440,7 +440,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Block> {
 }
 
 impl<'lua> IntoLuaAst<'lua> for P<Pat> {
-    fn into_lua_ast(self, _ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "Pat")?;
@@ -460,6 +460,16 @@ impl<'lua> IntoLuaAst<'lua> for P<Pat> {
                         BindingMode::ByValue(Mutable) => "ByValueMutable",
                     })?;
                     ast.set("ident", ident.as_str().get())?;
+                },
+                PatKind::Tuple(patterns, fragment_pos) => {
+                    let pats = patterns
+                        .into_iter()
+                        .map(|stmt| stmt.into_lua_ast(ctx, lua_ctx))
+                        .collect::<LuaResult<Vec<_>>>();
+
+                    ast.set("kind", "Tuple")?;
+                    ast.set("pats", lua_ctx.create_sequence_from(pats?.into_iter())?)?;
+                    ast.set("fragment_pos", fragment_pos)?;
                 },
                 _ => return Err(LuaError::external(format!("unimplemented pattern type: {:?}", pat.node))),
             }
