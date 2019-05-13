@@ -10,11 +10,11 @@ use syntax::ptr::P;
 use crate::ast_manip::fn_edit::{FnKind, FnLike};
 
 pub(crate) trait MergeLuaAst {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()>;
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()>;
 }
 
-impl MergeLuaAst for &mut FnLike {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for FnLike {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         self.kind = match table.get::<_, String>("kind")?.as_str() {
             "Normal" => FnKind::Normal,
             "ImplMethod" => FnKind::ImplMethod,
@@ -38,8 +38,8 @@ impl MergeLuaAst for &mut FnLike {
     }
 }
 
-impl MergeLuaAst for &mut P<Block> {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for P<Block> {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let lua_stmts: LuaTable = table.get("stmts")?;
 
         // TODO: This may need to be improved if we want to delete or add
@@ -52,8 +52,8 @@ impl MergeLuaAst for &mut P<Block> {
     }
 }
 
-impl MergeLuaAst for &mut Stmt {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for Stmt {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         // REVIEW: How do we deal with modifying to a different type of stmt than
         // the existing one?
 
@@ -69,8 +69,8 @@ impl MergeLuaAst for &mut Stmt {
     }
 }
 
-impl MergeLuaAst for &mut P<FnDecl> {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for P<FnDecl> {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let lua_args: LuaTable = table.get("args")?;
 
         // TODO: This may need to be improved if we want to delete or add
@@ -83,8 +83,8 @@ impl MergeLuaAst for &mut P<FnDecl> {
     }
 }
 
-impl MergeLuaAst for &mut Arg {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for Arg {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         self.id = NodeId::from_u32(table.get("id")?);
         self.pat.merge_lua_ast(table.get("pat")?)?;
 
@@ -92,8 +92,8 @@ impl MergeLuaAst for &mut Arg {
     }
 }
 
-impl MergeLuaAst for &mut P<Pat> {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for P<Pat> {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         // REVIEW: How to allow the type to be changed?
         match self.node {
             PatKind::Ident(ref mut binding, ref mut ident, _) => {
@@ -113,8 +113,8 @@ impl MergeLuaAst for &mut P<Pat> {
     }
 }
 
-impl MergeLuaAst for &mut Local {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for Local {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         // TODO: ty
         let pat: LuaTable = table.get("pat")?;
         let opt_init: Option<LuaTable> = table.get("init")?;
@@ -139,16 +139,16 @@ impl MergeLuaAst for &mut Local {
     }
 }
 
-impl MergeLuaAst for &mut Crate {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for Crate {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         self.module.merge_lua_ast(table.get("module")?)?;
 
         Ok(())
     }
 }
 
-impl MergeLuaAst for &mut Mod {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for Mod {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let lua_items: LuaTable = table.get("items")?;
 
         self.inline = table.get("inline")?;
@@ -163,8 +163,8 @@ impl MergeLuaAst for &mut Mod {
     }
 }
 
-impl MergeLuaAst for &mut P<Item> {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for P<Item> {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
 
         // REVIEW: How to allow the type to be changed?
@@ -196,8 +196,8 @@ impl MergeLuaAst for &mut P<Item> {
     }
 }
 
-impl MergeLuaAst for &mut P<Expr> {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for P<Expr> {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         match self.node {
             ExprKind::Binary(_, ref mut lhs, ref mut rhs)
             | ExprKind::Assign(ref mut lhs, ref mut rhs)
@@ -228,8 +228,8 @@ impl MergeLuaAst for &mut P<Expr> {
     }
 }
 
-impl MergeLuaAst for &mut ImplItem {
-    fn merge_lua_ast<'lua>(self, table: LuaTable<'lua>) -> LuaResult<()> {
+impl MergeLuaAst for ImplItem {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
 
         match &mut self.node {
