@@ -431,16 +431,12 @@ pub fn is_rewritable(sp: Span) -> bool {
 
 pub fn describe(sess: &Session, span: Span) -> String {
     let cm = sess.source_map();
-    let lo = cm.lookup_byte_offset(span.lo());
-    let hi = cm.lookup_byte_offset(span.hi());
-    let src = &lo.sf.src.as_ref().unwrap()[lo.pos.0 as usize..hi.pos.0 as usize];
+    let loc = cm.span_to_string(span);
+    let src = cm.span_to_snippet(span);
 
-    if Rc::ptr_eq(&lo.sf, &hi.sf) {
-        format!("{}: {} .. {} = {}", lo.sf.name, lo.pos.0, hi.pos.0, src)
+    if let Ok(src) = src {
+        format!("{}: {}", loc, src)
     } else {
-        format!(
-            "{}: {} .. {}: {} = {}",
-            lo.sf.name, lo.pos.0, hi.sf.name, hi.pos.0, src
-        )
+        loc
     }
 }
