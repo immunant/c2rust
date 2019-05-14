@@ -213,6 +213,7 @@ impl RefactorState {
                 self.cs
                     .krate
                     .replace(self.compiler.expansion()?.peek().0.clone());
+                remove_paren(self.cs.krate.get_mut());
             }
         }
 
