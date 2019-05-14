@@ -5,6 +5,8 @@ requirements:
         - libtool # used by autoconf
 
 
-transpile: true
+transpile:
+  autogen: true
 
-cargo: true
+cargo:
+  autogen: true
