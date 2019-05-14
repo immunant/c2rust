@@ -16,6 +16,7 @@ use syntax::ast::{Crate, NodeId, CRATE_NODE_ID};
 use syntax::ast::{Expr, Item, Pat, Stmt, Ty};
 use syntax::ext::base::NamedSyntaxExtension;
 use syntax::feature_gate::AttributeType;
+use syntax::parse::lexer::comments::{gather_comments_and_literals, Comment, Literal};
 use syntax::ptr::P;
 use syntax::source_map::SourceMap;
 use syntax::symbol::Symbol;
@@ -26,6 +27,7 @@ use crate::ast_manip::number_nodes::{
     number_nodes, number_nodes_with, reset_node_ids, NodeIdCounter,
 };
 use crate::ast_manip::{remove_paren, ListNodeIds, MutVisit, Visit};
+use crate::ast_manip::{collect_comments, CommentMap};
 use crate::collapse::CollapseInfo;
 use crate::driver::{self, Phase};
 use crate::file_io::FileIO;
@@ -79,6 +81,11 @@ pub struct RefactorState {
     /// real unexpanded AST, as it was loaded from disk, with full user-provided source text.
     orig_krate: Crate,
 
+    /// Original comments from the parsed crate
+    comment_map: CommentMap,
+    /// Original literals from the parsed crate
+    literals: Vec<Literal>,
+
     /// Mapping from `krate` IDs to `disk_krate` IDs
     node_map: NodeMap,
 
@@ -93,6 +100,26 @@ fn parse_crate(compiler: &interface::Compiler) -> Crate {
     krate
 }
 
+fn parse_extras(compiler: &interface::Compiler) -> (Vec<Comment>, Vec<Literal>) {
+    let mut comments = vec![];
+    let mut literals = vec![];
+    for file in compiler.source_map().files().iter() {
+        if let Some(src) = &file.src {
+            let mut reader = src.as_bytes();
+
+            let (mut c, mut l) = gather_comments_and_literals(
+                &compiler.session().parse_sess,
+                file.name.clone(),
+                &mut reader,
+            );
+            comments.append(&mut c);
+            literals.append(&mut l);
+        }
+    }
+
+    (comments, literals)
+}
+
 impl RefactorState {
     pub fn new(
         config: interface::Config,
@@ -102,6 +129,8 @@ impl RefactorState {
     ) -> RefactorState {
         let compiler = driver::make_compiler(&config, file_io.clone());
         let krate = parse_crate(&compiler);
+        let (comments, literals) = parse_extras(&compiler);
+        let comment_map = collect_comments(&krate, &comments);
         let orig_krate = krate.clone();
         let (node_map, cs) = Self::init(krate, Some(marks));
         RefactorState {
@@ -111,6 +140,8 @@ impl RefactorState {
             file_io,
 
             orig_krate,
+            comment_map,
+            literals,
 
             node_map,
 
@@ -150,7 +181,11 @@ impl RefactorState {
     pub fn load_crate(&mut self) {
         self.compiler = driver::make_compiler(&self.config, self.file_io.clone());
         let krate = parse_crate(&self.compiler);
+        let (comments, literals) = parse_extras(&self.compiler);
+        let comment_map = collect_comments(&krate, &comments);
         self.orig_krate = krate.clone();
+        self.comment_map = comment_map;
+        self.literals = literals;
         let (node_map, cs) = Self::init(krate, None);
         self.node_map = node_map;
         self.cs = cs;
@@ -176,7 +211,7 @@ impl RefactorState {
             .unwrap();
 
         let parsed_nodes = self.cs.parsed_nodes.borrow();
-        let rw = rewrite::rewrite(self.session(), old, new, node_id_map, |map| {
+        let rw = rewrite::rewrite(self.session(), old, new, &self.comment_map, node_id_map, |map| {
             map_ast_into(&*parsed_nodes, map);
         });
         // Note that `rewrite_files_with` does not read any files from disk - it uses the

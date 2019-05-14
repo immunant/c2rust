@@ -15,10 +15,15 @@ extern crate libc;
 type outside = i32;
 
 pub mod bar {
+
+    // Test relative paths
     use crate::outside;
+    // Comment on bar_t
+
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct bar_t {
+        //test1
         pub alloc: *mut libc::c_char,
         pub data: *mut libc::c_char,
         pub i: outside,
@@ -29,6 +34,8 @@ pub mod bar {
 
 pub mod foo {
     use libc;
+
+    // Comment on foo_t
 
     #[repr(C)]
     #[derive(Copy, Clone)]

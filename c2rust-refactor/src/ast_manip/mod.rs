@@ -27,9 +27,11 @@ pub use self::remove_paren::remove_paren;
 pub use self::seq_edit::{fold_blocks, fold_modules};
 pub use self::visit::Visit;
 pub use self::visit_node::{visit_nodes, visit_nodes_post, VisitNode};
+pub use self::comments::{collect_comments, Comment, CommentMap, CommentStyle};
 
 // Modules with more complex APIs are left as `pub`.
 pub mod ast_map;
+pub mod comments;
 pub mod fn_edit;
 pub mod lr_expr;
 pub mod number_nodes;

@@ -63,7 +63,7 @@ use syntax::source_map::{Span, DUMMY_SP};
 use syntax::util::parser;
 
 use crate::ast_manip::ast_map::{map_ast, AstMap};
-use crate::ast_manip::{GetSpan, Visit};
+use crate::ast_manip::{GetSpan, Visit, Comment, CommentMap};
 use crate::driver;
 
 mod cleanup;
@@ -81,10 +81,11 @@ pub enum TextAdjust {
     Parenthesize,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct TextRewrite {
     pub old_span: Span,
     pub new_span: Span,
+    pub comments: Vec<Comment>,
     /// Additional rewrites to apply after replacing the `old_span` text with the `new_span` text.
     pub rewrites: Vec<TextRewrite>,
     /// Locations of nodes within the new text.  The `Span` is a subspan of `new_span`, while the
@@ -103,6 +104,7 @@ impl TextRewrite {
             old_span,
             new_span,
             adjust,
+            comments: Vec::new(),
             rewrites: Vec::new(),
             nodes: Vec::new(),
         }
@@ -162,6 +164,7 @@ pub enum ExprPrec {
 pub struct RewriteCtxt<'s> {
     sess: &'s Session,
     old_nodes: AstMap<'s>,
+    comment_map: &'s CommentMap,
     text_span_cache: HashMap<String, Span>,
 
     /// The span of the new AST the last time we entered "fresh" mode.  This lets us avoid infinite
@@ -186,11 +189,13 @@ impl<'s> RewriteCtxt<'s> {
     fn new(
         sess: &'s Session,
         old_nodes: AstMap<'s>,
+        comment_map: &'s CommentMap,
         node_id_map: HashMap<NodeId, NodeId>,
     ) -> RewriteCtxt<'s> {
         RewriteCtxt {
             sess,
             old_nodes,
+            comment_map,
             text_span_cache: HashMap::new(),
 
             fresh_start: DUMMY_SP,
@@ -205,6 +210,10 @@ impl<'s> RewriteCtxt<'s> {
 
     pub fn old_nodes(&self) -> &AstMap<'s> {
         &self.old_nodes
+    }
+
+    pub fn comments(&self) -> &'s CommentMap {
+        &self.comment_map
     }
 
     pub fn fresh_start(&self) -> Span {
@@ -300,6 +309,7 @@ pub fn rewrite<'s, T>(
     sess: &Session,
     old: &'s T,
     new: &T,
+    comment_map: &CommentMap,
     node_id_map: HashMap<NodeId, NodeId>,
     map_extra_ast: impl FnOnce(&mut AstMap<'s>),
 ) -> TextRewrite
@@ -310,7 +320,7 @@ where
     map_extra_ast(&mut map);
 
     let mut rw = TextRewrite::new(DUMMY_SP, old.get_span());
-    let mut rcx = RewriteCtxt::new(sess, map, node_id_map);
+    let mut rcx = RewriteCtxt::new(sess, map, comment_map, node_id_map);
     let ok = Rewrite::rewrite(old, new, rcx.enter(&mut rw));
     assert!(ok, "rewriting did not complete");
     rw

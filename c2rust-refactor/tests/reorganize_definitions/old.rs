@@ -23,9 +23,11 @@ pub mod bar {
         // Test relative paths
         use super::super::outside;
 
+        // Comment on bar_t
         #[derive(Copy, Clone)]
         #[repr(C)]
         pub struct bar_t {
+            //test1
             pub alloc: *mut libc::c_char,
             pub data: *mut libc::c_char,
             pub i: outside,
@@ -42,9 +44,11 @@ pub mod foo {
         // Test relative paths
         use super::super::outside;
 
+        // Comment on bar_t
         #[derive(Copy, Clone)]
         #[repr(C)]
         pub struct bar_t {
+            //test2
             pub alloc: *mut libc::c_char,
             pub data: *mut libc::c_char,
             pub i: outside,
@@ -52,6 +56,7 @@ pub mod foo {
         use super::libc;
     }
 
+    // Comment on foo_t
     #[derive(Copy, Clone)]
     #[repr(C)]
     pub struct foo_t {

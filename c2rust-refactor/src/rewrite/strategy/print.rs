@@ -572,6 +572,7 @@ where
         old.splice_span(),
         new.get_adjustment(&rcx),
     );
+    rcx.comments().get(&old_id).map(|comments| rw.comments.extend_from_slice(comments));
     let mark = rcx.mark();
     let ok = Rewrite::rewrite(old, new, rcx.enter(&mut rw));
     if !ok {
