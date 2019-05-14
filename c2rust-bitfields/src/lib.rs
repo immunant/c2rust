@@ -283,11 +283,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
 
                                 impl Into<bool> for Wrapper<$typ> {
                                     fn into(self) -> bool {
-                                        if self.0 != 0 {
-                                            true
-                                        } else {
-                                            false
-                                        }
+                                        self.0 != 0
                                     }
                                 }
                             )+
