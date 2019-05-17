@@ -1,7 +1,7 @@
 use rlua::prelude::{LuaContext, LuaError, LuaResult, LuaTable};
 use syntax::ast::{
     Arg, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, FunctionRetTy, FnDecl,
-    ImplItem, ImplItemKind, Item, ItemKind, LitKind, Local, Mod, Movability,
+    FloatTy, ImplItem, ImplItemKind, Item, ItemKind, LitKind, Local, Mod, Movability,
     Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind,
 };
 use syntax::ptr::P;
@@ -90,6 +90,38 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     match l.node {
                         LitKind::Str(s, _) => ast.set("value", s.to_string())?,
                         LitKind::Int(i, _) => ast.set("value", i)?,
+                        LitKind::Bool(b) => ast.set("value", b)?,
+                        LitKind::FloatUnsuffixed(symbol) => {
+                            let string = symbol.as_str().get();
+                            let float = string
+                                .parse::<f64>()
+                                .map_err(|e| LuaError::external(e))?;
+
+                            ast.set("value", float)?;
+                        },
+                        LitKind::Float(symbol, suffix) => {
+                            let string = symbol.as_str().get();
+
+                            match suffix {
+                                FloatTy::F32 => {
+                                    let float = string
+                                        .parse::<f32>()
+                                        .map_err(|e| LuaError::external(e))?;
+
+
+                                    ast.set("value", float)?;
+                                    ast.set("suffix", "f32")?;
+                                },
+                                FloatTy::F64 => {
+                                    let float = string
+                                        .parse::<f64>()
+                                        .map_err(|e| LuaError::external(e))?;
+
+                                    ast.set("value", float)?;
+                                    ast.set("suffix", "f64")?;
+                                },
+                            };
+                        },
                         _ => {
                             return Err(LuaError::external(format!(
                                 "{:?} is not yet implemented",
@@ -552,7 +584,66 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
 
                     // TODO: other fields
                 },
-                ref e => warn!("Item IntoLuaAst kind: {:?}", e),
+                ItemKind::Union(..) => {
+                    ast.set("kind", "Union")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::Trait(..) => {
+                    ast.set("kind", "Trait")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::Mac(..) => {
+                    ast.set("kind", "Mac")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::MacroDef(..) => {
+                    ast.set("kind", "MacroDef")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::Ty(..) => {
+                    ast.set("kind", "Ty")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::ForeignMod(..) => {
+                    ast.set("kind", "ForeignMod")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::TraitAlias(..) => {
+                    ast.set("kind", "TraitAlias")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::GlobalAsm(..) => {
+                    ast.set("kind", "GlobalAsm")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::Existential(..) => {
+                    ast.set("kind", "Existential")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::Enum(..) => {
+                    ast.set("kind", "Enum")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::Static(..) => {
+                    ast.set("kind", "Static")?;
+
+                    // TODO: More fields
+                },
+                ItemKind::Const(..) => {
+                    ast.set("kind", "Const")?;
+
+                    // TODO: More fields
+                },
             }
 
             Ok(ast)
@@ -566,11 +657,11 @@ impl<'lua> IntoLuaAst<'lua> for ImplItem {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "ImplItem")?;
+        ast.set("ident", self.ident.to_string())?;
 
         match self.node {
             ImplItemKind::Method(sig, block) => {
                 ast.set("kind", "ImplMethod")?;
-                ast.set("ident", self.ident.to_string())?;
                 ast.set("decl", sig.decl.into_lua_ast(ctx, lua_ctx)?)?;
                 ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
                 // TODO: generics, attrs, ..

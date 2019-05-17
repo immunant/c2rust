@@ -81,9 +81,8 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
         match item.get::<_, String>("kind")?.as_str() {
             "Fn" => { self.visit_fn_like(item)?; },
             "Impl" => { self.visit_impl(item)?; },
-            ref e => {
-                warn!("visit_item: Found unsupported item kind: {:?}", e);
-            },
+            ref e =>
+                warn!("visit_item: Found unsupported item kind: {:?}", e),
         }
 
         Ok(())
