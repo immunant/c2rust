@@ -1,0 +1,12 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+        - libgcrypt20
+        - libpcre3-dev
+        - zlib1g-dev
+cargo:
+  autogen: true
+transpile:
+  autogen: true
+  main: nginx

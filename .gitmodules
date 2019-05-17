@@ -24,3 +24,6 @@
 [submodule "tests/curl/repo"]
 	path = tests/curl/repo
 	url = https://github.com/curl/curl.git
+[submodule "tests/nginx/repo"]
+	path = tests/nginx/repo
+	url = git@github.com:nginx/nginx.git
