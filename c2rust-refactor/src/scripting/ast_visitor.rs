@@ -137,6 +137,63 @@ impl<'lua> LuaAstVisitor<'lua> {
                     self.visit_expr(param?)?;
                 }
             },
+            "Index" => {
+                let indexed = expr.get("indexed")?;
+                let index = expr.get("index")?;
+
+                self.visit_expr(indexed)?;
+                self.visit_expr(index)?;
+            },
+            "AddrOf" => {
+                let expr = expr.get("expr")?;
+
+                self.visit_expr(expr)?;
+            },
+            "Try" => {
+                let expr = expr.get("expr")?;
+
+                self.visit_expr(expr)?;
+            },
+            "Match" => {
+                let match_expr = expr.get("expr")?;
+                let arms: LuaTable = expr.get("arms")?;
+
+                for arm in arms.sequence_values::<LuaTable>() {
+                    let arm = arm?;
+                    let body = arm.get("body")?;
+                    let opt_guard = arm.get("guard")?;
+
+                    self.visit_expr(body)?;
+
+                    if let Some(guard) = opt_guard {
+                        self.visit_expr(guard)?;
+                    }
+                }
+
+                self.visit_expr(match_expr)?;
+            },
+            "Cast" => {
+                let expr = expr.get("expr")?;
+
+                self.visit_expr(expr)?;
+            },
+            "If" => {
+                let cond = expr.get("cond")?;
+                let then = expr.get("then")?;
+                let opt_else = expr.get("else")?;
+
+                self.visit_expr(cond)?;
+                self.visit_block(then)?;
+
+                if let Some(els) = opt_else {
+                    self.visit_expr(els)?;
+                }
+            },
+            "Block" => {
+                let block = expr.get("block")?;
+
+                self.visit_block(block)?
+            },
             ref e => warn!("visit_expr: Found unsupported expr {}", e),
         }
 

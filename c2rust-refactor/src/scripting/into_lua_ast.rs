@@ -1,7 +1,7 @@
 use rlua::prelude::{LuaContext, LuaError, LuaResult, LuaTable};
 use syntax::ast::{
-    Arg, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, FunctionRetTy, FnDecl,
-    FloatTy, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitKind, Local, Mod,
+    Arg, Arm, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, FunctionRetTy, FnDecl,
+    FloatTy, Guard, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitKind, Local, Mod,
     Movability, Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind,
 };
 use syntax::ptr::P;
@@ -91,6 +91,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         LitKind::Str(s, _) => ast.set("value", s.to_string())?,
                         LitKind::Int(i, _) => ast.set("value", i)?,
                         LitKind::Bool(b) => ast.set("value", b)?,
+                        LitKind::ByteStr(_bytes) => {}, // TODO
                         LitKind::FloatUnsuffixed(symbol) => {
                             let string = symbol.as_str().get();
                             let float = string
@@ -183,8 +184,9 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("op", syntax::ast::UnOp::to_string(op))?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::Cast(_, _) => {
+                ExprKind::Cast(expr, _ty) => {
                     ast.set("kind", "Cast")?;
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                     // TODO: Flesh out further
                 },
                 ExprKind::Type(expr, _ty) => {
@@ -242,9 +244,15 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         ast.set("label", label.ident.name.as_str().get())?;
                     }
                 },
-                ExprKind::Match(expr, _arms) => {
+                ExprKind::Match(expr, arms) => {
+                    let arms: LuaResult<Vec<_>> = arms
+                        .into_iter()
+                        .map(|v| v.into_lua_ast(ctx, lua_ctx))
+                        .collect();
+
                     ast.set("kind", "Match")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("arms", lua_ctx.create_sequence_from(arms?)?)?;
                 },
                 ExprKind::Closure(capture_by, _is_async, movability, fn_decl, expr, _span) => {
                     ast.set("kind", "Closure")?;
@@ -710,6 +718,25 @@ impl<'lua> IntoLuaAst<'lua> for InlineAsmOutput {
         ast.set("expr", expr)?;
         ast.set("is_indirect", self.is_indirect)?;
         ast.set("is_rw", self.is_rw)?;
+
+        Ok(ast)
+    }
+}
+
+impl<'lua> IntoLuaAst<'lua> for Arm {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
+        let body = self.body.into_lua_ast(ctx, lua_ctx)?;
+
+        ast.set("body", body)?;
+
+        if let Some(guard) = self.guard {
+            ast.set("guard", match guard {
+                Guard::If(expr) => expr.into_lua_ast(ctx, lua_ctx)?,
+            })?;
+        }
+
+        // TODO: More fields
 
         Ok(ast)
     }

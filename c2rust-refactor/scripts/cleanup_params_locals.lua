@@ -77,39 +77,44 @@ function is_simple_expr_path(expr)
     return true
 end
 
+function set_by_value_mutable(var)
+    var.binding = "ByValueMutable"
+end
+
+function set_used(var)
+    var.used = true
+end
+
 function Visitor:visit_expr(expr)
     debug("Visiting Expr: " .. expr.kind)
     if is_simple_expr_path(expr) then
-        self:find_variable(expr.segments[1],
-            function(var)
-                var.used = true
+        self:find_variable(expr.segments[1], set_used)
+    elseif expr.kind == "Assign" or expr.kind == "AssignOp" then
+        ident = nil
+
+        -- Here we might find a path, ie `a += 1` or an index path, ie `a[1] += 1`
+        if is_simple_expr_path(expr.lhs) then
+            ident = expr.lhs.segments[1]
+        elseif expr.lhs.kind == "Index" then
+            if is_simple_expr_path(expr.lhs.indexed) then
+                ident = expr.lhs.indexed.segments[1]
             end
-        )
-    elseif (expr.kind == "Assign" or expr.kind == "AssignOp") and
-            is_simple_expr_path(expr.lhs) then
-        self:find_variable(expr.lhs.segments[1],
-            function(var)
-                var.binding = "ByValueMutable"
-            end
-        )
+        end
+
+        -- Find the variable and mark it as mutable
+        if ident then
+            self:find_variable(ident, set_by_value_mutable)
+        end
     elseif expr.kind == "InlineAsm" then
         for _, input in ipairs(expr.inputs) do
             if is_simple_expr_path(input.expr) then
-                self:find_variable(input.expr.segments[1],
-                    function(var)
-                        var.used = true
-                    end
-                )
+                self:find_variable(input.expr.segments[1], set_used)
             end
         end
 
         for _, output in ipairs(expr.outputs) do
             if is_simple_expr_path(output.expr) then
-                self:find_variable(output.expr.segments[1],
-                    function(var)
-                        var.binding = "ByValueMutable"
-                    end
-                )
+                self:find_variable(output.expr.segments[1], set_by_value_mutable)
             end
         end
     end
