@@ -525,6 +525,8 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let mut found_err = Ok(());
             let visitor = LuaAstVisitor::new(visitor_obj);
 
+            // Here we actually call the visitor visit methods recursively, as
+            // well as the lua finish method once complete.
             let wrapper = |fn_like: &mut FnLike| -> LuaResult<()> {
                 let lua_fn_like = fn_like.clone().into_lua_ast(this, lua_ctx)?;
 

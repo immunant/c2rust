@@ -69,27 +69,42 @@ function Visitor:visit_stmt(stmt)
     return true
 end
 
+function is_simple_expr_path(expr)
+    if expr.kind ~= "Path" or #expr.segments ~= 1 then
+        return false
+    end
+
+    return true
+end
+
 function Visitor:visit_expr(expr)
     debug("Visiting Expr: " .. expr.kind)
-    if expr.kind == "Path" and #expr.segments == 1 then
+    if is_simple_expr_path(expr) then
         self:find_variable(expr.segments[1],
             function(var)
                 var.used = true
             end
         )
-
     elseif (expr.kind == "Assign" or expr.kind == "AssignOp") and
-            expr.lhs.kind == "Path" then
-        if #expr.lhs.segments == 1 then
-            self:find_variable(expr.lhs.segments[1],
-                function(var)
-                    var.binding = "ByValueMutable"
-                end
-            )
-        end
+            is_simple_expr_path(expr.lhs) then
+        self:find_variable(expr.lhs.segments[1],
+            function(var)
+                var.binding = "ByValueMutable"
+            end
+        )
     elseif expr.kind == "InlineAsm" then
+        for _, input in ipairs(expr.inputs) do
+            if is_simple_expr_path(input.expr) then
+                self:find_variable(input.expr.segments[1],
+                    function(var)
+                        var.used = true
+                    end
+                )
+            end
+        end
+
         for _, output in ipairs(expr.outputs) do
-            if output.expr.kind == "Path" and #output.expr.segments == 1 then
+            if is_simple_expr_path(output.expr) then
                 self:find_variable(output.expr.segments[1],
                     function(var)
                         var.binding = "ByValueMutable"
