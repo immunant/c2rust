@@ -1,7 +1,4 @@
-use rlua::prelude::{LuaContext, LuaFunction, LuaResult, LuaTable};
-use syntax::ast::Crate;
-
-use crate::scripting::{TransformCtxt, into_lua_ast::IntoLuaAst, merge_lua_ast::MergeLuaAst};
+use rlua::prelude::{LuaFunction, LuaResult, LuaTable};
 
 macro_rules! call_lua_visitor_method {
     ($obj: expr , $method: ident ($($params: expr),*)) => {
@@ -17,30 +14,21 @@ macro_rules! call_lua_visitor_method {
     };
 }
 
-pub(crate) struct LuaAstVisitor<'a, 'lua, 'tctx: 'a> {
-    ctx: &'a TransformCtxt<'a, 'tctx>,
-    lua_ctx: LuaContext<'lua>,
+pub(crate) struct LuaAstVisitor<'lua> {
     visitor: LuaTable<'lua>
 }
 
-impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
-    pub fn new(visitor: LuaTable<'lua>, ctx: &'a TransformCtxt<'a, 'tctx>, lua_ctx: LuaContext<'lua>) -> Self {
+impl<'lua> LuaAstVisitor<'lua> {
+    pub fn new(visitor: LuaTable<'lua>) -> Self {
         LuaAstVisitor {
-            ctx,
-            lua_ctx,
             visitor,
         }
     }
 
-    pub fn visit_crate(&self, krate: &mut Crate) -> LuaResult<()> {
-        let lua_krate = krate.clone().into_lua_ast(self.ctx, self.lua_ctx)?;
+    pub fn visit_crate(&self, lua_crate: LuaTable<'lua>) -> LuaResult<()> {
+        call_lua_visitor_method!(self.visitor,visit_crate(lua_crate));
 
-        call_lua_visitor_method!(self.visitor,visit_crate(lua_krate));
-
-        self.visit_mod(lua_krate.get("module")?)?;
-        self.finish()?;
-
-        krate.merge_lua_ast(lua_krate)?;
+        self.visit_mod(lua_crate.get("module")?)?;
 
         Ok(())
     }
@@ -118,6 +106,36 @@ impl<'a, 'lua, 'tctx> LuaAstVisitor<'a, 'lua, 'tctx> {
             },
             "Lit" => {
                 // TODO: self.visit_literal(lit)?;
+            },
+            "InlineAsm" => {
+                let inputs: LuaTable = expr.get("inputs")?;
+                let outputs: LuaTable = expr.get("outputs")?;
+
+                for input in inputs.sequence_values::<LuaTable>() {
+                    let input = input?;
+                    let expr = input.get("expr")?;
+
+                    self.visit_expr(expr)?;
+                }
+
+                for output in outputs.sequence_values::<LuaTable>() {
+                    let output = output?;
+                    let expr = output.get("expr")?;
+
+                    self.visit_expr(expr)?;
+                }
+            },
+            "Unary" => {
+                let expr: LuaTable = expr.get("expr")?;
+
+                self.visit_expr(expr)?;
+            },
+            "MethodCall" => {
+                let params: LuaTable = expr.get("params")?;
+
+                for param in params.sequence_values::<LuaTable>() {
+                    self.visit_expr(param?)?;
+                }
             },
             ref e => warn!("visit_expr: Found unsupported expr {}", e),
         }

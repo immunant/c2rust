@@ -17,6 +17,7 @@ use slotmap::{new_key_type, SlotMap};
 use syntax::ast;
 use syntax::ptr::P;
 
+use crate::ast_manip::fn_edit::{mut_visit_fns, FnLike};
 use crate::command::{self, CommandState, RefactorState};
 use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
@@ -29,6 +30,7 @@ pub mod merge_lua_ast;
 
 use ast_visitor::LuaAstVisitor;
 use into_lua_ast::IntoLuaAst;
+use merge_lua_ast::MergeLuaAst;
 
 /// Refactoring module
 // @module Refactor
@@ -503,12 +505,50 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         // @tparam function() callback Function called for each function like item.
         methods.add_method_mut("visit_crate", |lua_ctx, this, (visitor_obj, krate): (LuaTable, LuaAstNode)| {
             let mut krate = ast::Crate::try_from(this.remove_ast(krate)).expect("Did not find crate input");
+            let lua_crate = krate.clone().into_lua_ast(this, lua_ctx)?;
 
-            let visitor = LuaAstVisitor::new(visitor_obj, this, lua_ctx);
+            let visitor = LuaAstVisitor::new(visitor_obj);
 
-            visitor.visit_crate(&mut krate)?;
+            visitor.visit_crate(lua_crate.clone())?;
+            visitor.finish()?;
+
+            krate.merge_lua_ast(lua_crate)?;
 
             Ok(this.intern(krate))
+        });
+
+        /// Visits a every fn like via a lua object's methods
+        // @function visit_crate
+        // @tparam function() callback Function called for each function like item.
+        methods.add_method_mut("visit_fn_like", |lua_ctx, this, (visitor_obj, krate): (LuaTable, LuaAstNode)| {
+            let mut krate = ast::Crate::try_from(this.remove_ast(krate)).expect("Did not find crate input");
+            let mut found_err = Ok(());
+            let visitor = LuaAstVisitor::new(visitor_obj);
+
+            let wrapper = |fn_like: &mut FnLike| -> LuaResult<()> {
+                let lua_fn_like = fn_like.clone().into_lua_ast(this, lua_ctx)?;
+
+                visitor.visit_fn_like(lua_fn_like.clone())?;
+                visitor.finish()?;
+
+                fn_like.merge_lua_ast(lua_fn_like)
+            };
+
+            mut_visit_fns(&mut krate, |mut fn_like| {
+                if found_err.is_err() {
+                    return;
+                }
+
+                match wrapper(&mut fn_like) {
+                    Ok(()) => (),
+                    Err(e) => {
+                        found_err = Err(e);
+                        return
+                    },
+                };
+            });
+
+            found_err.map(|_| this.intern(krate))
         });
     }
 }

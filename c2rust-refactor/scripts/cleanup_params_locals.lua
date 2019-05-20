@@ -87,6 +87,16 @@ function Visitor:visit_expr(expr)
                 end
             )
         end
+    elseif expr.kind == "InlineAsm" then
+        for _, output in ipairs(expr.outputs) do
+            if output.expr.kind == "Path" and #output.expr.segments == 1 then
+                self:find_variable(output.expr.segments[1],
+                    function(var)
+                        var.binding = "ByValueMutable"
+                    end
+                )
+            end
+        end
     end
 
     return true
@@ -163,7 +173,7 @@ end
 
 refactor:transform(
     function(transform_ctx, crate)
-        return transform_ctx:visit_crate(Visitor.new(), crate)
+        return transform_ctx:visit_fn_like(Visitor.new(), crate)
     end
 )
 

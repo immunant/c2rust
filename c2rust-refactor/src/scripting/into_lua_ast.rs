@@ -1,8 +1,8 @@
 use rlua::prelude::{LuaContext, LuaError, LuaResult, LuaTable};
 use syntax::ast::{
     Arg, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, FunctionRetTy, FnDecl,
-    FloatTy, ImplItem, ImplItemKind, Item, ItemKind, LitKind, Local, Mod, Movability,
-    Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind,
+    FloatTy, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitKind, Local, Mod,
+    Movability, Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind,
 };
 use syntax::ptr::P;
 
@@ -157,8 +157,15 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("path", path.into_lua_ast(ctx, lua_ctx)?)?;
                     ast.set("args", lua_ctx.create_sequence_from(args?.into_iter())?)?;
                 },
-                ExprKind::MethodCall(_, _) => {
+                ExprKind::MethodCall(_, params) => {
+                   let params: LuaResult<Vec<_>> = params
+                        .into_iter()
+                        .map(|v| v.into_lua_ast(ctx, lua_ctx))
+                        .collect();
+
                     ast.set("kind", "MethodCall")?;
+                    ast.set("params", lua_ctx.create_sequence_from(params?.into_iter())?)?;
+
                     // TODO: Flesh out further
                 },
                 ExprKind::Tup(_) => {
@@ -347,8 +354,28 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         ast.set("value", val.into_lua_ast(ctx, lua_ctx)?)?;
                     }
                 },
-                ExprKind::InlineAsm(..) => {
+                ExprKind::InlineAsm(inline_asm) => {
+                    let inline_asm = inline_asm.into_inner();
+                    let inputs: LuaResult<Vec<_>> = inline_asm.inputs
+                        .into_iter()
+                        .map(|(sym, expr)| {
+                            let input = lua_ctx.create_table()?;
+                            let sym = sym.as_str().to_string();
+
+                            input.set("symbol", sym)?;
+                            input.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+
+                            Ok(input)
+                        })
+                        .collect();
+                    let outputs: LuaResult<Vec<_>> = inline_asm.outputs
+                        .into_iter()
+                        .map(|inline_asm_output| inline_asm_output.into_lua_ast(ctx, lua_ctx))
+                        .collect();
+
                     ast.set("kind", "InlineAsm")?;
+                    ast.set("inputs", lua_ctx.create_sequence_from(inputs?.into_iter())?)?;
+                    ast.set("outputs", lua_ctx.create_sequence_from(outputs?.into_iter())?)?;
                     // TODO: Flesh out further
                 },
                 ExprKind::Mac(..) => {
@@ -668,6 +695,21 @@ impl<'lua> IntoLuaAst<'lua> for ImplItem {
             },
             ref e => unimplemented!("IntoLuaAst for {:?}", e),
         }
+
+        Ok(ast)
+    }
+}
+
+impl<'lua> IntoLuaAst<'lua> for InlineAsmOutput {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
+        let constraint = self.constraint.as_str().to_string();
+        let expr = self.expr.into_lua_ast(ctx, lua_ctx)?;
+
+        ast.set("constraint", constraint)?;
+        ast.set("expr", expr)?;
+        ast.set("is_indirect", self.is_indirect)?;
+        ast.set("is_rw", self.is_rw)?;
 
         Ok(ast)
     }
