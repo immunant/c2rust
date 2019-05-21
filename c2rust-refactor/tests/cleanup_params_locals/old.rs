@@ -18,12 +18,15 @@ fn used_in_local(mut p1: i32, mut p2: i32) {
     arr3[1];
 }
 
-unsafe fn ptrs(mut p1: *mut u32, mut p2: u32) {
+unsafe fn ptrs(mut p1: *mut u32, mut p2: u32, mut p3: *mut u32, mut p4: *mut Foo, mut p5: Option<fn() -> bool>) {
     *p1.offset(0) += 1;
     asm!("cpuid" : "={ax}" (p2));
+    (*p3) += 1;
+    (*p4).0 = 1;
+    while !(p5.unwrap()()) {}
 }
 
-struct Foo;
+struct Foo(u32);
 
 impl Foo {
     fn foo(mut p1: i32, mut p2: i32, mut p3: i32) -> i32 {

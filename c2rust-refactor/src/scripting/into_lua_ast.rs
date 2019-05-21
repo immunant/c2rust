@@ -92,6 +92,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         LitKind::Int(i, _) => ast.set("value", i)?,
                         LitKind::Bool(b) => ast.set("value", b)?,
                         LitKind::ByteStr(_bytes) => {}, // TODO
+                        LitKind::Char(ch) => ast.set("value", ch.to_string())?,
                         LitKind::FloatUnsuffixed(symbol) => {
                             let string = symbol.as_str().get();
                             let float = string
@@ -158,20 +159,26 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("path", path.into_lua_ast(ctx, lua_ctx)?)?;
                     ast.set("args", lua_ctx.create_sequence_from(args?.into_iter())?)?;
                 },
-                ExprKind::MethodCall(_, params) => {
-                   let params: LuaResult<Vec<_>> = params
+                ExprKind::MethodCall(segment, args) => {
+                   let args: LuaResult<Vec<_>> = args
                         .into_iter()
                         .map(|v| v.into_lua_ast(ctx, lua_ctx))
                         .collect();
 
                     ast.set("kind", "MethodCall")?;
-                    ast.set("params", lua_ctx.create_sequence_from(params?.into_iter())?)?;
+                    ast.set("args", lua_ctx.create_sequence_from(args?.into_iter())?)?;
+                    ast.set("name", segment.ident.to_string())?;
 
                     // TODO: Flesh out further
                 },
-                ExprKind::Tup(_) => {
+                ExprKind::Tup(exprs) => {
+                   let exprs: LuaResult<Vec<_>> = exprs
+                        .into_iter()
+                        .map(|v| v.into_lua_ast(ctx, lua_ctx))
+                        .collect();
+
                     ast.set("kind", "Tup")?;
-                    // TODO: Flesh out further
+                    ast.set("exprs", lua_ctx.create_sequence_from(exprs?.into_iter())?)?;
                 },
                 ExprKind::Binary(op, lhs, rhs) => {
                     ast.set("kind", "Binary")?;
@@ -213,9 +220,10 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
 
                     // TODO: Flesh out further
                 },
-                ExprKind::While(cond, _, _) => {
+                ExprKind::While(cond, block, _) => {
                     ast.set("kind", "While")?;
                     ast.set("cond", cond.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
                     // TODO: Flesh out further
                 },
                 ExprKind::WhileLet(_pats, expr, block, opt_label) => {
@@ -294,9 +302,10 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("lhs", lhs.into_lua_ast(ctx, lua_ctx)?)?;
                     ast.set("rhs", rhs.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::Field(..) => {
+                ExprKind::Field(expr, name) => {
                     ast.set("kind", "Field")?;
-                    // TODO: Flesh out further
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("name", name.to_string())?;
                 },
                 ExprKind::Index(indexed, index) => {
                     ast.set("kind", "Index")?;

@@ -130,11 +130,21 @@ impl<'lua> LuaAstVisitor<'lua> {
 
                 self.visit_expr(expr)?;
             },
-            "MethodCall" => {
-                let params: LuaTable = expr.get("params")?;
+            "Call" => {
+                let path = expr.get("path")?;
+                let args: LuaTable = expr.get("args")?;
 
-                for param in params.sequence_values::<LuaTable>() {
-                    self.visit_expr(param?)?;
+                self.visit_expr(path)?;
+
+                for arg in args.sequence_values::<LuaTable>() {
+                    self.visit_expr(arg?)?;
+                }
+            },
+            "MethodCall" => {
+                let args: LuaTable = expr.get("args")?;
+
+                for arg in args.sequence_values::<LuaTable>() {
+                    self.visit_expr(arg?)?;
                 }
             },
             "Index" => {
@@ -193,6 +203,42 @@ impl<'lua> LuaAstVisitor<'lua> {
                 let block = expr.get("block")?;
 
                 self.visit_block(block)?
+            },
+            "Tup" => {
+                let exprs: LuaTable = expr.get("exprs")?;
+
+                for expr in exprs.sequence_values::<LuaTable>() {
+                    self.visit_expr(expr?)?;
+                }
+            },
+            "Paren" => {
+                let expr = expr.get("expr")?;
+
+                self.visit_expr(expr)?
+            },
+            "Field" => {
+                let expr = expr.get("expr")?;
+
+                self.visit_expr(expr)?
+            },
+            "Loop" => {
+                let block = expr.get("block")?;
+
+                self.visit_block(block)?
+            },
+            "While" => {
+                let block = expr.get("block")?;
+                let cond = expr.get("cond")?;
+
+                self.visit_expr(cond)?;
+                self.visit_block(block)?
+            },
+            "Ret" => {
+                let opt_val = expr.get("value")?;
+
+                if let Some(value) = opt_val {
+                    self.visit_expr(value)?;
+                }
             },
             ref e => warn!("visit_expr: Found unsupported expr {}", e),
         }
