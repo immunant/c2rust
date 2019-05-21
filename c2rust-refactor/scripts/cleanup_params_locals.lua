@@ -117,6 +117,12 @@ function Visitor:visit_expr(expr)
                 self:find_variable(output.expr.segments[1], set_by_value_mutable)
             end
         end
+    elseif expr.kind == "MethodCall" then
+        -- This may need to be more complex. What if self isn't an ident but say an
+        -- index? ie `x[1].as_mut_ptr()` x still needs to be mutable?
+        if is_simple_expr_path(expr.args[1]) and expr.caller_is == "ref_mut" then
+            self:find_variable(expr.args[1].segments[1], set_by_value_mutable)
+        end
     end
 
     return true

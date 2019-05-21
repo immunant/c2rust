@@ -89,7 +89,7 @@ impl UserData for RefactorState {
         // @tparam function(TransformCtxt,LuaAstNode) callback Transformation function called with a fresh @{TransformCtxt} and the crate to be transformed.
         methods.add_method_mut("transform", |lua_ctx, this, callback: LuaFunction| {
             this.load_crate();
-            this.transform_crate(Phase::Phase2, |st, cx| {
+            this.transform_crate(Phase::Phase3, |st, cx| {
                 let transform = TransformCtxt::new(st, cx);
                 let res: LuaResult<ast::Crate> = lua_ctx.scope(|scope| {
                     let krate = transform.intern(st.krate().clone());

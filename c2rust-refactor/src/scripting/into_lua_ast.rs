@@ -83,6 +83,8 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
         ast.set("type", "Expr")?;
         ast.set("id", self.id.as_u32())?;
 
+        let callee_info = ctx.cx.opt_callee_info(&self);
+
         self.and_then(|expr| {
             match expr.node {
                 ExprKind::Lit(l) => {
@@ -160,16 +162,31 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("args", lua_ctx.create_sequence_from(args?.into_iter())?)?;
                 },
                 ExprKind::MethodCall(segment, args) => {
-                   let args: LuaResult<Vec<_>> = args
+                    let args: LuaResult<Vec<_>> = args
                         .into_iter()
                         .map(|v| v.into_lua_ast(ctx, lua_ctx))
                         .collect();
+                    let callee_info = callee_info
+                        .ok_or(LuaError::external("Could not get MethodCall callee_info"))?;
 
                     ast.set("kind", "MethodCall")?;
                     ast.set("args", lua_ctx.create_sequence_from(args?.into_iter())?)?;
                     ast.set("name", segment.ident.to_string())?;
 
-                    // TODO: Flesh out further
+                    let self_ty = callee_info.fn_sig
+                        .inputs()
+                        .first()
+                        .expect("Self param on method");
+
+                    ast.set("caller_is", match self_ty.sty {
+                        rustc::ty::TyKind::Ref(_, _, mutability) => {
+                            match mutability {
+                                rustc::hir::Mutability::MutMutable => "ref_mut",
+                                rustc::hir::Mutability::MutImmutable => "ref",
+                            }
+                        },
+                        _ => "owned",
+                    })?;
                 },
                 ExprKind::Tup(exprs) => {
                    let exprs: LuaResult<Vec<_>> = exprs

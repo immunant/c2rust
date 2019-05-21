@@ -13,9 +13,11 @@ fn used_in_local(mut p1: i32, mut p2: i32) {
     let mut arr = [p2 + 1];
     let mut arr2 = [1, 2];
     let mut arr3 = [1, 2];
+    let mut arr4 = [1, 2];
 
     arr2[0] = 2;
     arr3[1];
+    arr4.as_mut_ptr();
 }
 
 unsafe fn ptrs(mut p1: *mut u32, mut p2: u32, mut p3: *mut u32, mut p4: *mut Foo, mut p5: Option<fn() -> bool>) {
