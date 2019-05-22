@@ -52,6 +52,22 @@ pub fn run_lua_file(
     driver::run_refactoring(config, registry, io, HashSet::new(), |state| {
         let lua = Lua::new();
         lua.context(|lua_ctx| {
+            // Add the script's current directory to the lua path so that local
+            // files can be imported
+            let package: LuaTable = lua_ctx.globals().get("package")?;
+            let mut path: String = package.get("path")?;
+
+            let parent_path = script_path.parent().unwrap_or(&Path::new("./"));
+
+            path.push_str(";");
+            path.push_str(parent_path.to_str().expect("Did not find UTF-8 path"));
+            path.push_str("/?.lua");
+
+            package.set("path", path)?;
+
+            lua_ctx.globals().set("package", package)?;
+
+            // Load the script into the created scope
             lua_ctx.scope(|scope| {
                 let refactor = scope.create_nonstatic_userdata(state)?;
                 lua_ctx.globals().set("refactor", refactor)?;

@@ -1,16 +1,6 @@
-function starts_with(str, start)
-    return str:sub(1, #start) == start
-end
+require "utils"
 
 Variable = {}
-
-DEBUG = false
-
-function debug(str)
-    if DEBUG then
-        print(str)
-    end
-end
 
 function Variable.new(used, id, locl, binding, ident)
     self = {}
