@@ -81,15 +81,15 @@ impl<'lua> LuaAstVisitor<'lua> {
 
         match expr.get::<_, String>("kind")?.as_str() {
             "Box" => {
-                let boxed: LuaTable = expr.get("expr")?;
+                let boxed = expr.get("expr")?;
 
                 self.visit_expr(boxed)?;
             },
             "AssignOp"
             | "Binary"
             | "Assign" => {
-                let lhs: LuaTable = expr.get("lhs")?;
-                let rhs: LuaTable = expr.get("rhs")?;
+                let lhs = expr.get("lhs")?;
+                let rhs = expr.get("rhs")?;
 
                 self.visit_expr(lhs)?;
                 self.visit_expr(rhs)?;
@@ -126,7 +126,7 @@ impl<'lua> LuaAstVisitor<'lua> {
                 }
             },
             "Unary" => {
-                let expr: LuaTable = expr.get("expr")?;
+                let expr = expr.get("expr")?;
 
                 self.visit_expr(expr)?;
             },
@@ -252,7 +252,7 @@ impl<'lua> LuaAstVisitor<'lua> {
         match stmt.get::<_, String>("kind")?.as_str() {
             "Expr"
             | "Semi" => {
-                let expr: LuaTable = stmt.get("expr")?;
+                let expr = stmt.get("expr")?;
 
                 self.visit_expr(expr)?;
             },
@@ -260,7 +260,7 @@ impl<'lua> LuaAstVisitor<'lua> {
                 self.visit_local(stmt)?;
             },
             "Item" => {
-                let item: LuaTable = stmt.get("item")?;
+                let item = stmt.get("item")?;
 
                 self.visit_item(item)?;
             },
@@ -273,7 +273,7 @@ impl<'lua> LuaAstVisitor<'lua> {
     pub fn visit_local(&self, local: LuaTable<'lua>) -> LuaResult<()> {
         call_lua_visitor_method!(self.visitor,visit_local(local));
 
-        let opt_init: Option<LuaTable> = local.get("init")?;
+        let opt_init = local.get("init")?;
 
         if let Some(init) = opt_init {
             self.visit_expr(init)?;
@@ -297,9 +297,11 @@ impl<'lua> LuaAstVisitor<'lua> {
     pub fn visit_fn_like(&self, fn_like: LuaTable<'lua>) -> LuaResult<()> {
         call_lua_visitor_method!(self.visitor,visit_fn_like(fn_like));
 
-        let block: LuaTable = fn_like.get("block")?;
+        let opt_block = fn_like.get("block")?;
 
-        self.visit_block(block)?;
+        if let Some(block) = opt_block {
+            self.visit_block(block)?;
+        }
 
         Ok(())
     }
