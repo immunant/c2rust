@@ -236,9 +236,9 @@ fn get_rustc_cargo_args() -> Vec<String> {
     }
 
     impl LoggingExecutor {
-        fn maybe_record_cmd(&self, cmd: &ProcessBuilder, id: &PackageId, target: &Target) {
+        fn maybe_record_cmd(&self, cmd: &ProcessBuilder, id: &PackageId, target: &Target) -> bool {
             if id != &self.target_pkg {
-                return;
+                return false;
             }
 
             let mut g = self.pkg_args.lock().unwrap();
@@ -246,7 +246,7 @@ fn get_rustc_cargo_args() -> Vec<String> {
                 // `lib` builds take priority.  Otherwise, take the first available bin.
                 &TargetKind::Lib(_) => {}
                 &TargetKind::Bin if g.is_none() => {}
-                _ => return,
+                _ => return false,
             }
 
             let args = cmd
@@ -255,6 +255,8 @@ fn get_rustc_cargo_args() -> Vec<String> {
                 .map(|os| os.to_str().unwrap().to_owned())
                 .collect();
             *g = Some(args);
+
+            true
         }
     }
 
@@ -270,8 +272,11 @@ fn get_rustc_cargo_args() -> Vec<String> {
             target: &Target,
             mode: CompileMode,
         ) -> CargoResult<()> {
-            self.maybe_record_cmd(&cmd, &id, target);
-            self.default.exec(cmd, id, target, mode)
+            if self.maybe_record_cmd(&cmd, &id, target) {
+                Ok(())
+            } else {
+                self.default.exec(cmd, id, target, mode)
+            }
         }
 
         fn exec_json(
@@ -283,9 +288,12 @@ fn get_rustc_cargo_args() -> Vec<String> {
             handle_stdout: &mut FnMut(&str) -> CargoResult<()>,
             handle_stderr: &mut FnMut(&str) -> CargoResult<()>,
         ) -> CargoResult<()> {
-            self.maybe_record_cmd(&cmd, &id, target);
-            self.default
-                .exec_json(cmd, id, target, mode, handle_stdout, handle_stderr)
+            if self.maybe_record_cmd(&cmd, &id, target) {
+                Ok(())
+            } else {
+                self.default
+                    .exec_json(cmd, id, target, mode, handle_stdout, handle_stderr)
+            }
         }
 
         fn force_rebuild(&self, unit: &Unit) -> bool {
@@ -303,7 +311,7 @@ fn get_rustc_cargo_args() -> Vec<String> {
     });
     let exec_dyn: Arc<Executor> = exec.clone();
 
-    ops::compile_with_exec(&ws, &compile_opts, &exec_dyn).unwrap();
+    let _ = ops::compile_with_exec(&ws, &compile_opts, &exec_dyn);
 
     let g = exec.pkg_args.lock().unwrap();
     let opt_args = g.as_ref().unwrap();
