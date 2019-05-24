@@ -132,6 +132,11 @@ function Visitor:visit_fn_like(fn_like)
         return
     end
 
+    -- Most trait methods don't have default impls, though they can
+    if fn_like.kind == "TraitMethod" and not fn_like.block then
+        return
+    end
+
     debug("FnLike name: " .. fn_like.ident)
 
     args = fn_like.decl.args

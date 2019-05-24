@@ -36,3 +36,11 @@ impl Foo {
         p1
     }
 }
+
+trait Trait {
+    fn func();
+}
+
+impl Trait for Foo {
+    fn func() {}
+}
