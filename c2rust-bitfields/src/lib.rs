@@ -219,6 +219,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
 
     // TODO: Method visibility determined by struct field visibility?
     let q = quote! {
+        #[automatically_derived]
         impl #struct_ident {
             #(
                 /// This method allows you to write to a bitfield with a value
