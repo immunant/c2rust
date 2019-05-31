@@ -1,13 +1,31 @@
-use rlua::prelude::{LuaResult, LuaTable};
+use rlua::prelude::{LuaResult, LuaTable, LuaValue};
 use syntax::ast::{
-    Arg, BindingMode, Block, Crate, Expr, ExprKind, FnDecl, ImplItem, ImplItemKind,
-    Item, ItemKind, Local, Mod, Mutability::*, NodeId, Pat, PatKind,
-    Stmt, StmtKind,
+    Arg, BindingMode, Block, Crate, Expr, ExprKind, FloatTy, FnDecl, ImplItem, ImplItemKind,
+    Item, ItemKind, LitKind, Local, Mod, Mutability::*, NodeId, Pat, PatKind, Path, PathSegment,
+    Stmt, StmtKind, UintTy, IntTy, LitIntType, Ident, DUMMY_NODE_ID, BinOpKind, UnOp,
 };
 use syntax::source_map::symbol::Symbol;
+use syntax::source_map::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
+use syntax::ThinVec;
 
 use crate::ast_manip::fn_edit::{FnKind, FnLike};
+
+fn dummy_spanned<T>(node: T) -> Spanned<T> {
+    Spanned {
+        node,
+        span: DUMMY_SP,
+    }
+}
+
+fn dummy_expr() -> P<Expr> {
+    P(Expr {
+        id: DUMMY_NODE_ID,
+        node: ExprKind::Err,
+        span: DUMMY_SP,
+        attrs: ThinVec::new(),
+    })
+}
 
 pub(crate) trait MergeLuaAst {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()>;
@@ -198,31 +216,173 @@ impl MergeLuaAst for P<Item> {
 
 impl MergeLuaAst for P<Expr> {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
-        match self.node {
-            ExprKind::Binary(_, ref mut lhs, ref mut rhs)
-            | ExprKind::Assign(ref mut lhs, ref mut rhs)
-            | ExprKind::AssignOp(_, ref mut lhs, ref mut rhs) => {
-                let lua_lhs: LuaTable = table.get("lhs")?;
-                let lua_rhs: LuaTable = table.get("rhs")?;
+        let kind = table.get::<_, String>("kind")?;
+
+        self.node = match kind.as_str() {
+            "Path" => {
+                let lua_segments: LuaTable = table.get("segments")?;
+                let mut segments = Vec::new();
+
+                for segment in lua_segments.sequence_values::<String>() {
+                    segments.push(PathSegment::from_ident(Ident::from_str(&segment?)));
+                }
+
+                let path = Path {
+                    span: DUMMY_SP,
+                    segments,
+                };
+
+                ExprKind::Path(None, path)
+            },
+            "Lit" => {
+                let val: LuaValue = table.get("value")?;
+                let suffix: Option<String> = table.get("suffix")?;
+                let lit = match val {
+                    LuaValue::Boolean(val) => dummy_spanned(LitKind::Bool(val)),
+                    LuaValue::Integer(i) => {
+                        let suffix = match suffix.as_ref().map(AsRef::as_ref) {
+                            None => LitIntType::Unsuffixed,
+                            Some("u8") => LitIntType::Unsigned(UintTy::U8),
+                            Some("u16") => LitIntType::Unsigned(UintTy::U16),
+                            Some("u32") => LitIntType::Unsigned(UintTy::U32),
+                            Some("u64") => LitIntType::Unsigned(UintTy::U64),
+                            Some("u128") => LitIntType::Unsigned(UintTy::U128),
+                            Some("usize") => LitIntType::Unsigned(UintTy::Usize),
+                            Some("i8") => LitIntType::Signed(IntTy::I8),
+                            Some("i16") => LitIntType::Signed(IntTy::I16),
+                            Some("i32") => LitIntType::Signed(IntTy::I32),
+                            Some("i64") => LitIntType::Signed(IntTy::I64),
+                            Some("i128") => LitIntType::Signed(IntTy::I128),
+                            Some("isize") => LitIntType::Signed(IntTy::Isize),
+                            _ => unreachable!("Unknown int suffix"),
+                        };
+
+                        dummy_spanned(LitKind::Int(i as u128, suffix))
+                    },
+                    LuaValue::Number(num) => {
+                        let sym = Symbol::intern(&num.to_string());
+
+                        dummy_spanned(match suffix.as_ref().map(AsRef::as_ref) {
+                            None => LitKind::FloatUnsuffixed(sym),
+                            Some("f32") => LitKind::Float(sym, FloatTy::F32),
+                            Some("f64") => LitKind::Float(sym, FloatTy::F64),
+                            _ => unreachable!("Unknown float suffix"),
+                        })
+                    },
+                    _ => unimplemented!("MergeLuaAst unimplemented lit: {:?}", val),
+                };
+
+                ExprKind::Lit(lit)
+            },
+            "Binary" | "AssignOp" | "Assign" => {
+                let lua_lhs = table.get("lhs")?;
+                let lua_rhs = table.get("rhs")?;
+                let op: Option<String> = table.get("op")?;
+                let op = op.map(|s| match s.as_str() {
+                    "+" => BinOpKind::Add,
+                    "-" => BinOpKind::Sub,
+                    "*" => BinOpKind::Mul,
+                    "/" => BinOpKind::Div,
+                    "%" => BinOpKind::Rem,
+                    "&&" => BinOpKind::And,
+                    "||" => BinOpKind::Or,
+                    "^" => BinOpKind::BitXor,
+                    "&" => BinOpKind::BitAnd,
+                    "|" => BinOpKind::BitOr,
+                    "<<" => BinOpKind::Shl,
+                    ">>" => BinOpKind::Shr,
+                    "==" => BinOpKind::Eq,
+                    "<" => BinOpKind::Lt,
+                    "<=" => BinOpKind::Le,
+                    "!=" => BinOpKind::Ne,
+                    ">=" => BinOpKind::Ge,
+                    ">" => BinOpKind::Gt,
+                    e => unreachable!("Unknown BinOpKind: {}", e),
+                });
+
+                let mut lhs = dummy_expr();
+                let mut rhs = dummy_expr();
 
                 lhs.merge_lua_ast(lua_lhs)?;
                 rhs.merge_lua_ast(lua_rhs)?;
+
+                match kind.as_str() {
+                    "Binary" => ExprKind::Binary(dummy_spanned(op.unwrap()), lhs, rhs),
+                    "AssignOp" => ExprKind::AssignOp(dummy_spanned(op.unwrap()), lhs, rhs),
+                    "Assign" => ExprKind::Assign(lhs, rhs),
+                    _ => unreachable!(),
+                }
             },
-            ExprKind::Array(ref mut exprs) => {
+            "Array" => {
                 let lua_exprs: LuaTable = table.get("values")?;
+                let mut exprs = Vec::new();
 
-                // TODO: This may need to be improved if we want to delete or add
-                // values as it currently expects values to be 1-1
-                let res: LuaResult<Vec<()>> = exprs.iter_mut().enumerate().map(|(i, expr)| {
-                    let expr_table: LuaTable = lua_exprs.get(i + 1)?;
+                for lua_expr in lua_exprs.sequence_values::<LuaTable>() {
+                    let mut expr = dummy_expr();
 
-                    expr.merge_lua_ast(expr_table)
-                }).collect();
+                    expr.merge_lua_ast(lua_expr?)?;
 
-                res?;
+                    exprs.push(expr);
+                }
+
+                ExprKind::Array(exprs)
             },
-            ref e => warn!("MergeLuaAst unimplemented: {:?}", e),
-        }
+            "Index" => {
+                let lua_indexed: LuaTable = table.get("indexed")?;
+                let lua_index: LuaTable = table.get("index")?;
+                let mut indexed = dummy_expr();
+                let mut index = dummy_expr();
+
+                indexed.merge_lua_ast(lua_indexed)?;
+                index.merge_lua_ast(lua_index)?;
+
+                ExprKind::Index(indexed, index)
+            },
+            "Unary" => {
+                let op: String = table.get("op")?;
+                let lua_expr: LuaTable = table.get("expr")?;
+                let op = match op.as_str() {
+                    "*" => UnOp::Deref,
+                    "!" => UnOp::Not,
+                    "-" => UnOp::Neg,
+                    e => unreachable!("Unknown UnOp: {}", e),
+                };
+                let mut expr = dummy_expr();
+
+                expr.merge_lua_ast(lua_expr)?;
+
+                ExprKind::Unary(op, expr)
+            },
+            "MethodCall" => {
+                let lua_args: LuaTable = table.get("args")?;
+                let mut args = Vec::new();
+
+                for lua_arg in lua_args.sequence_values::<LuaTable>() {
+                    let mut arg = dummy_expr();
+
+                    arg.merge_lua_ast(lua_arg?)?;
+                    args.push(arg);
+                }
+
+                let name: String = table.get("name")?;
+                let segment = PathSegment::from_ident(Ident::from_str(&name));
+
+                ExprKind::MethodCall(segment, args)
+            },
+            "Field" => {
+                let lua_expr: LuaTable = table.get("expr")?;
+                let mut expr = dummy_expr();
+                let name: String = table.get("name")?;
+
+                expr.merge_lua_ast(lua_expr)?;
+
+                ExprKind::Field(expr, Ident::from_str(&name))
+            },
+            ref e => {
+                warn!("MergeLuaAst unimplemented: {:?}", e);
+                return Ok(());
+            },
+        };
 
         Ok(())
     }

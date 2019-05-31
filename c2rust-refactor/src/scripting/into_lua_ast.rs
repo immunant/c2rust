@@ -2,7 +2,7 @@ use rlua::prelude::{LuaContext, LuaError, LuaResult, LuaTable};
 use syntax::ast::{
     Arg, Arm, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, FunctionRetTy, FnDecl,
     FloatTy, Guard, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitKind, Local, Mod,
-    Movability, Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind,
+    Movability, Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind, LitIntType,
 };
 use syntax::ptr::P;
 
@@ -91,7 +91,19 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("kind", "Lit")?;
                     match l.node {
                         LitKind::Str(s, _) => ast.set("value", s.to_string())?,
-                        LitKind::Int(i, _) => ast.set("value", i)?,
+                        LitKind::Int(i, suffix) => {
+                            ast.set("value", i)?;
+
+                            match suffix {
+                                LitIntType::Signed(int_ty) => {
+                                    ast.set("suffix", int_ty.ty_to_string())?;
+                                },
+                                LitIntType::Unsigned(uint_ty) => {
+                                    ast.set("suffix", uint_ty.ty_to_string())?;
+                                },
+                                LitIntType::Unsuffixed => (),
+                            }
+                        },
                         LitKind::Bool(b) => ast.set("value", b)?,
                         LitKind::ByteStr(_bytes) => {}, // TODO
                         LitKind::Char(ch) => ast.set("value", ch.to_string())?,
@@ -111,7 +123,6 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                                     let float = string
                                         .parse::<f32>()
                                         .map_err(|e| LuaError::external(e))?;
-
 
                                     ast.set("value", float)?;
                                     ast.set("suffix", "f32")?;
