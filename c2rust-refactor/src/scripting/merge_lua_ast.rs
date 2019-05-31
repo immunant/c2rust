@@ -378,6 +378,20 @@ impl MergeLuaAst for P<Expr> {
 
                 ExprKind::Field(expr, Ident::from_str(&name))
             },
+            "Ret" => {
+                let opt_lua_expr: Option<LuaTable> = table.get("value")?;
+
+                match opt_lua_expr {
+                    Some(lua_expr) => {
+                        let mut expr = dummy_expr();
+
+                        expr.merge_lua_ast(lua_expr)?;
+
+                        ExprKind::Ret(Some(expr))
+                    },
+                    None => ExprKind::Ret(None),
+                }
+            },
             ref e => {
                 warn!("MergeLuaAst unimplemented: {:?}", e);
                 return Ok(());
