@@ -6,6 +6,7 @@ use rustc::session::{self, DiagnosticOutput, Session};
 use rustc_data_structures::sync::Lrc;
 use rustc_interface::interface;
 use rustc_interface::util;
+use rustc_lint;
 use rustc_metadata::cstore::CStore;
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -340,6 +341,11 @@ impl RefactorState {
         );
         let new_codegen_backend = util::get_codegen_backend(&new_sess);
         let new_cstore = CStore::new(new_codegen_backend.metadata_loader());
+
+        rustc_lint::register_builtins(&mut new_sess.lint_store.borrow_mut(), Some(&new_sess));
+        if new_sess.unstable_options() {
+            rustc_lint::register_internals(&mut new_sess.lint_store.borrow_mut(), Some(&new_sess));
+        }
 
         new_sess.parse_sess.config = old_session.parse_sess.config.clone();
 

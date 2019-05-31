@@ -26,6 +26,7 @@ extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_incremental;
 extern crate rustc_interface;
+extern crate rustc_lint;
 extern crate rustc_metadata;
 extern crate rustc_privacy;
 extern crate rustc_resolve;
