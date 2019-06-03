@@ -37,7 +37,7 @@ $'label:?Ident: while $cond:Expr {
                   print(incr)
                   if (incr.kind == "Semi" or
                       incr.kind == "Expr") then
-                     incr = incr.expr
+                     incr = incr.expr_old
                   else
                      return orig
                   end

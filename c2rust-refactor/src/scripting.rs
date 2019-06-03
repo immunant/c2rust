@@ -17,11 +17,20 @@ use slotmap::{new_key_type, SlotMap};
 use syntax::ast;
 use syntax::ptr::P;
 
+use crate::ast_manip::fn_edit::{mut_visit_fns, FnLike};
 use crate::command::{self, CommandState, RefactorState};
 use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
 use crate::matcher::{self, mut_visit_match_with, Bindings, MatchCtxt, Pattern, Subst, TryMatch};
 use crate::RefactorCtxt;
+
+pub mod ast_visitor;
+pub mod into_lua_ast;
+pub mod merge_lua_ast;
+
+use ast_visitor::LuaAstVisitor;
+use into_lua_ast::IntoLuaAst;
+use merge_lua_ast::MergeLuaAst;
 
 /// Refactoring module
 // @module Refactor
@@ -43,6 +52,22 @@ pub fn run_lua_file(
     driver::run_refactoring(config, registry, io, HashSet::new(), |state| {
         let lua = Lua::new();
         lua.context(|lua_ctx| {
+            // Add the script's current directory to the lua path so that local
+            // files can be imported
+            let package: LuaTable = lua_ctx.globals().get("package")?;
+            let mut path: String = package.get("path")?;
+
+            let parent_path = script_path.parent().unwrap_or(&Path::new("./"));
+
+            path.push_str(";");
+            path.push_str(parent_path.to_str().expect("Did not find UTF-8 path"));
+            path.push_str("/?.lua");
+
+            package.set("path", path)?;
+
+            lua_ctx.globals().set("package", package)?;
+
+            // Load the script into the created scope
             lua_ctx.scope(|scope| {
                 let refactor = scope.create_nonstatic_userdata(state)?;
                 lua_ctx.globals().set("refactor", refactor)?;
@@ -54,99 +79,6 @@ pub fn run_lua_file(
     .unwrap_or_else(|e| panic!("User script failed: {:#?}", e));
 
     Ok(())
-}
-
-trait IntoLuaAst<'lua> {
-    fn into_lua_ast(self, ctx: &TransformCtxt, ast: &mut LuaTable<'lua>) -> LuaResult<()>;
-}
-
-/// AST Stmt
-// @table Stmt
-// @field type "Stmt"
-// @tfield string kind `StmtKind` of this statement
-//
-// `StmtKind::Local` only:
-// @tfield[opt] LuaAstNode ty Type of local
-// @tfield[opt] LuaAstNode init Initializer of local
-// @tfield LuaAstNode pat Name of local
-//
-// `StmtKind::Item` only:
-// @tfield LuaAstNode item Item node
-//
-// `StmtKind::Semi` and `StmtKind::Expr` only:
-// @tfield LuaAstNode expr Expression in this statement
-impl<'lua> IntoLuaAst<'lua> for ast::Stmt {
-    fn into_lua_ast(self, ctx: &TransformCtxt, ast: &mut LuaTable<'lua>) -> LuaResult<()> {
-        ast.set("type", "Stmt")?;
-        match self.node {
-            ast::StmtKind::Local(l) => {
-                ast.set("kind", "Local")?;
-                let ast::Local { pat, ty, init, .. } = l.into_inner();
-                ast.set("pat", ctx.intern(pat))?;
-                if let Some(ty) = ty {
-                    ast.set("ty", ctx.intern(ty))?;
-                }
-                if let Some(init) = init {
-                    ast.set("init", ctx.intern(init))?;
-                }
-            }
-            ast::StmtKind::Item(i) => {
-                ast.set("kind", "Item")?;
-                ast.set("item", ctx.intern(i))?;
-            }
-            ast::StmtKind::Semi(e) => {
-                ast.set("kind", "Semi")?;
-                ast.set("expr", ctx.intern(e))?;
-            }
-            ast::StmtKind::Expr(e) => {
-                ast.set("kind", "Expr")?;
-                ast.set("expr", ctx.intern(e))?;
-            }
-            ast::StmtKind::Mac(_) => {
-                return Err(LuaError::external("StmtKind::Mac is not yet implemented"));
-            }
-        }
-
-        Ok(())
-    }
-}
-
-/// AST Expr
-// @table Expr
-// @field type "Expr"
-// @tfield string kind `ExprKind` of this expression
-//
-// `ExprKind::Lit` only:
-// @field value Literal value of this expression
-impl<'lua> IntoLuaAst<'lua> for P<ast::Expr> {
-    fn into_lua_ast(self, _ctx: &TransformCtxt, ast: &mut LuaTable<'lua>) -> LuaResult<()> {
-        ast.set("type", "Expr")?;
-        self.and_then(|expr| {
-            match expr.node {
-                ast::ExprKind::Lit(l) => {
-                    ast.set("kind", "Lit")?;
-                    match l.node {
-                        ast::LitKind::Str(s, _) => ast.set("value", s.to_string())?,
-                        ast::LitKind::Int(i, _) => ast.set("value", i)?,
-                        _ => {
-                            return Err(LuaError::external(format!(
-                                "{:?} is not yet implemented",
-                                l.node
-                            )));
-                        }
-                    }
-                }
-                _ => {
-                    return Err(LuaError::external(format!(
-                        "{:?} is not yet implemented",
-                        expr.node
-                    )));
-                }
-            }
-
-            Ok(())
-        })
-    }
 }
 
 /// Refactoring context
@@ -173,7 +105,7 @@ impl UserData for RefactorState {
         // @tparam function(TransformCtxt,LuaAstNode) callback Transformation function called with a fresh @{TransformCtxt} and the crate to be transformed.
         methods.add_method_mut("transform", |lua_ctx, this, callback: LuaFunction| {
             this.load_crate();
-            this.transform_crate(Phase::Phase2, |st, cx| {
+            this.transform_crate(Phase::Phase3, |st, cx| {
                 let transform = TransformCtxt::new(st, cx);
                 let res: LuaResult<ast::Crate> = lua_ctx.scope(|scope| {
                     let krate = transform.intern(st.krate().clone());
@@ -460,7 +392,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
 }
 
 #[derive(Clone)]
-struct TransformCtxt<'a, 'tcx: 'a> {
+pub(crate) struct TransformCtxt<'a, 'tcx: 'a> {
     st: &'a CommandState,
     cx: &'a RefactorCtxt<'a, 'tcx>,
     nodes: Rc<RefCell<SlotMap<LuaAstNode, RustAstNode>>>,
@@ -495,17 +427,13 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
         lua_ctx: LuaContext<'lua>,
         node: LuaAstNode,
     ) -> LuaResult<LuaTable<'lua>> {
-        let mut ast = lua_ctx.create_table()?;
         match self.clone_ast(node) {
-            RustAstNode::Stmt(s) => s.into_lua_ast(self, &mut ast)?,
-            RustAstNode::Expr(e) => e.into_lua_ast(self, &mut ast)?,
-            _ => {
-                return Err(LuaError::external(
-                    "get_ast not implemented for this type of RustAstNode",
-                ));
-            }
+            RustAstNode::Stmt(s) => s.into_lua_ast(self, lua_ctx),
+            RustAstNode::Expr(e) => e.into_lua_ast(self, lua_ctx),
+            _ => Err(LuaError::external(
+                "get_ast not implemented for this type of RustAstNode",
+            )),
         }
-        Ok(ast)
     }
 }
 
@@ -586,6 +514,59 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         // @return Struct representation of this AST node. Valid return types are @{Stmt}, and @{Expr}.
         methods.add_method("get_ast", |lua_ctx, this, node: LuaAstNode| {
             this.get_lua_ast(lua_ctx, node)
+        });
+
+        /// Visits an entire crate via a lua object's methods
+        // @function visit_crate
+        // @tparam function() callback Function called for each function like item.
+        methods.add_method_mut("visit_crate", |lua_ctx, this, (visitor_obj, krate): (LuaTable, LuaAstNode)| {
+            let mut krate = ast::Crate::try_from(this.remove_ast(krate)).expect("Did not find crate input");
+            let lua_crate = krate.clone().into_lua_ast(this, lua_ctx)?;
+
+            let visitor = LuaAstVisitor::new(visitor_obj);
+
+            visitor.visit_crate(lua_crate.clone())?;
+            visitor.finish()?;
+
+            krate.merge_lua_ast(lua_crate)?;
+
+            Ok(this.intern(krate))
+        });
+
+        /// Visits a every fn like via a lua object's methods
+        // @function visit_crate
+        // @tparam function() callback Function called for each function like item.
+        methods.add_method_mut("visit_fn_like", |lua_ctx, this, (visitor_obj, krate): (LuaTable, LuaAstNode)| {
+            let mut krate = ast::Crate::try_from(this.remove_ast(krate)).expect("Did not find crate input");
+            let mut found_err = Ok(());
+            let visitor = LuaAstVisitor::new(visitor_obj);
+
+            // Here we actually call the visitor visit methods recursively, as
+            // well as the lua finish method once complete.
+            let wrapper = |fn_like: &mut FnLike| -> LuaResult<()> {
+                let lua_fn_like = fn_like.clone().into_lua_ast(this, lua_ctx)?;
+
+                visitor.visit_fn_like(lua_fn_like.clone())?;
+                visitor.finish()?;
+
+                fn_like.merge_lua_ast(lua_fn_like)
+            };
+
+            mut_visit_fns(&mut krate, |mut fn_like| {
+                if found_err.is_err() {
+                    return;
+                }
+
+                match wrapper(&mut fn_like) {
+                    Ok(()) => (),
+                    Err(e) => {
+                        found_err = Err(e);
+                        return
+                    },
+                };
+            });
+
+            found_err.map(|_| this.intern(krate))
         });
     }
 }
