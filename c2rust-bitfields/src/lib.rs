@@ -174,14 +174,16 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
         fields.iter().flat_map(filter_and_parse_fields).collect();
     let bitfields = bitfields?;
     let field_types: Vec<_> = bitfields.iter().map(parse_bitfield_ty_path).collect();
-    let field_types2 = field_types.clone();
-    let field_type_setters = field_types.clone();
+    let field_types_return = &field_types;
+    let field_types_typedef = &field_types;
+    let field_types_setter_arg = &field_types;
     let method_names: Vec<_> = bitfields
         .iter()
         .map(|field| Ident::new(&field.name, Span::call_site().into()))
         .collect();
     let field_names: Vec<_> = bitfields.iter().map(|field| &field.field_name).collect();
-    let field_names2 = field_names.clone();
+    let field_names_setters = &field_names;
+    let field_names_getters = &field_names;
     let method_name_setters: Vec<_> = method_names
         .iter()
         .map(|field_ident| {
@@ -214,7 +216,8 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
         })
         .collect();
     let field_bit_info = field_bit_info?;
-    let field_bit_info2 = field_bit_info.clone();
+    let field_bit_info_setters = &field_bit_info;
+    let field_bit_info_getters = &field_bit_info;
     let calc_total_bit_size_fn = generate_calc_total_bit_size_fn(field_bit_info.len());
 
     // TODO: Method visibility determined by struct field visibility?
@@ -223,7 +226,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
         impl #struct_ident {
             #(
                 /// This method allows you to write to a bitfield with a value
-                pub fn #method_name_setters(&mut self, int: #field_type_setters) {
+                pub fn #method_name_setters(&mut self, int: #field_types_setter_arg) {
                     fn zero_bit(byte: &mut u8, n_bit: u64) {
                         let bit = 1 << n_bit;
 
@@ -236,8 +239,8 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                         *byte |= bit as u8;
                     }
 
-                    let mut field = &mut self.#field_names;
-                    let (lhs_bit, rhs_bit) = #field_bit_info;
+                    let mut field = &mut self.#field_names_setters;
+                    let (lhs_bit, rhs_bit) = #field_bit_info_setters;
 
                     for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
                         let byte_index = bit_index / 8;
@@ -254,8 +257,8 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                 }
 
                 /// This method allows you to read from a bitfield to a value
-                pub fn #method_names(&self) -> #field_types {
-                    type IntType = #field_types2;
+                pub fn #method_names(&self) -> #field_types_return {
+                    type IntType = #field_types_typedef;
 
                     trait BoolOrInt {
                         fn is_signed() -> bool;
@@ -301,8 +304,8 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
 
                     let is_signed = <IntType as BoolOrInt>::is_signed();
 
-                    let field = self.#field_names2;
-                    let (lhs_bit, rhs_bit) = #field_bit_info2;
+                    let field = self.#field_names_getters;
+                    let (lhs_bit, rhs_bit) = #field_bit_info_getters;
                     let mut val = 0;
 
                     for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
