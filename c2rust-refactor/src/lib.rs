@@ -211,7 +211,7 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
 fn get_rustc_cargo_args() -> Vec<String> {
     use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
     use cargo::core::manifest::TargetKind;
-    use cargo::core::{maybe_allow_nightly_features, PackageId, Target, Workspace};
+    use cargo::core::{maybe_allow_nightly_features, PackageId, Target, Workspace, Verbosity};
     use cargo::ops;
     use cargo::ops::CompileOptions;
     use cargo::util::important_paths::find_root_manifest_for_wd;
@@ -224,6 +224,7 @@ fn get_rustc_cargo_args() -> Vec<String> {
     maybe_allow_nightly_features();
 
     let config = Config::default().unwrap();
+    config.shell().set_verbosity(Verbosity::Quiet);
     let mode = CompileMode::Check { test: false };
     let compile_opts = CompileOptions::new(&config, mode).unwrap();
 
