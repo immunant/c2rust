@@ -226,71 +226,22 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
             #(
                 /// This method allows you to write to a bitfield with a value
                 pub fn #method_name_setters(&mut self, int: #field_types_setter_arg) {
-                    fn zero_bit(byte: &mut u8, n_bit: u64) {
-                        let bit = 1 << n_bit;
+                    use c2rust_bitfields::FieldType;
 
-                        *byte &= !bit as u8;
-                    }
-
-                    fn one_bit(byte: &mut u8, n_bit: u64) {
-                        let bit = 1 << n_bit;
-
-                        *byte |= bit as u8;
-                    }
-
-                    let mut field = &mut self.#field_names_setters;
+                    let field = &mut self.#field_names_setters;
                     let (lhs_bit, rhs_bit) = #field_bit_info_setters;
-
-                    for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
-                        let byte_index = bit_index / 8;
-                        let mut byte = &mut field[byte_index];
-                        let bit = 1 << i;
-                        let read_bit = (int as usize) & bit;
-
-                        if read_bit == 0 {
-                            zero_bit(byte, (bit_index % 8) as u64);
-                        } else {
-                            one_bit(byte, (bit_index % 8) as u64);
-                        }
-                    }
+                    int.set_field(field, (lhs_bit, rhs_bit));
                 }
 
                 /// This method allows you to read from a bitfield to a value
                 pub fn #method_names(&self) -> #field_types_return {
-                    use c2rust_bitfields::BoolOrInt;
+                    use c2rust_bitfields::FieldType;
 
                     type IntType = #field_types_typedef;
 
-                    let is_signed = <IntType as BoolOrInt>::is_signed();
-
-                    let field = self.#field_names_getters;
+                    let field = &self.#field_names_getters;
                     let (lhs_bit, rhs_bit) = #field_bit_info_getters;
-                    let mut val = 0;
-
-                    for (i, bit_index) in (lhs_bit..=rhs_bit).enumerate() {
-                        let byte_index = bit_index / 8;
-                        let byte = field[byte_index];
-                        let bit = 1 << (bit_index % 8);
-                        let read_bit = byte & bit;
-
-                        if read_bit != 0 {
-                            let write_bit = 1 << i;
-
-                            val |= write_bit;
-                        }
-                    }
-
-                    // If the int type is signed, attempt to sign extend unconditionally
-                    if is_signed {
-                        let total_bit_size = <IntType as BoolOrInt>::calculate_total_bit_size();
-                        let bit_width = rhs_bit - lhs_bit + 1;
-                        let unused_bits = total_bit_size - bit_width;
-
-                        val <<= unused_bits;
-                        val >>= unused_bits;
-                    }
-
-                    val.wrapped_into()
+                    <IntType as FieldType>::get_field(field, (lhs_bit, rhs_bit))
                 }
             )*
         }
