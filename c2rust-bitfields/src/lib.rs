@@ -8,14 +8,14 @@ mod private {
 
 use private::Wrapper;
 
-pub trait BoolOrInt {
+pub trait BoolOrInt: Sized {
     fn is_signed() -> bool;
 
-    fn wrap(self) -> Wrapper<Self> where Self: Sized {
-        Wrapper(self)
+    fn wrapped_into<T>(self) -> T where Wrapper<Self>: Into<T> {
+        Wrapper(self).into()
     }
 
-    fn calculate_total_bit_size() -> usize where Self: Sized {
+    fn calculate_total_bit_size() -> usize {
         #[cfg(not(feature = "no_std"))]
         let ret = ::std::mem::size_of::<Self>() * 8;
         #[cfg(feature = "no_std")]

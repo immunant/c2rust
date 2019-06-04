@@ -290,7 +290,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                         val >>= unused_bits;
                     }
 
-                    val.wrap().into()
+                    val.wrapped_into()
                 }
             )*
         }
