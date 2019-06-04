@@ -13,14 +13,10 @@ description = "C-compatible struct bitfield implementation used in the C2Rust pr
 readme = "README.md"
 
 [dependencies]
-syn = { version = "0.15", features = ["full"] }
-quote = "0.6"
+c2rust-bitfields-derive = { version = "0.1", path = "../c2rust-bitfields-derive" }
 
 [dev-dependencies]
 libc = "0.2"
 
 [features]
 no_std = []
-
-[lib]
-proc-macro = true
