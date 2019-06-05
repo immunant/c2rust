@@ -168,7 +168,7 @@ impl RefactorState {
         let parsed_nodes = ParsedNodes::default();
         let node_id_counter = NodeIdCounter::new(0x8000_0000);
 
-        let cs = CommandState::new(krate, marks, parsed_nodes, node_id_counter);
+        let cs = CommandState::new(krate, Phase::Phase1, marks, parsed_nodes, node_id_counter);
 
         (node_map, cs)
     }
@@ -264,6 +264,8 @@ impl RefactorState {
             }
         }
 
+        self.cs.phase = phase;
+
         span_fix::fix_format(self.cs.krate.get_mut());
         let expanded = self.cs.krate().clone();
         let collapse_info =
@@ -332,13 +334,20 @@ impl RefactorState {
         Ok(r)
     }
 
+    #[cfg_attr(feature = "profile", flame)]
     fn rebuild_session(&mut self) {
-        // Ensure we've dropped the resolver since it keeps a copy of the session Rc
-        if let Ok(expansion) = self.compiler.expansion() {
-            if let Ok(resolver) = Lrc::try_unwrap(expansion.take().1) {
-                resolver.map(|x| x.into_inner().complete());
-            } else {
-                panic!("Could not drop resolver");
+        // Ensure we've dropped the resolver if we're in phase 2 or 3 since the
+        // resolver keeps a copy of the session Rc
+        match self.cs.phase {
+            Phase::Phase1 => {}
+            Phase::Phase2 | Phase::Phase3 => {
+                if let Ok(expansion) = self.compiler.expansion() {
+                    if let Ok(resolver) = Lrc::try_unwrap(expansion.take().1) {
+                        resolver.map(|x| x.into_inner().complete());
+                    } else {
+                        panic!("Could not drop resolver");
+                    }
+                }
             }
         }
 
@@ -446,6 +455,9 @@ pub struct CommandState {
     /// or expanded and then subsequently macro-collapsed.
     krate: RefCell<Crate>,
 
+    /// The current compiler phase of the crate.
+    phase: Phase,
+
     /// Current marks.  The `NodeId`s here refer to nodes in `krate`.
     marks: RefCell<HashSet<(NodeId, Symbol)>>,
 
@@ -461,12 +473,14 @@ pub struct CommandState {
 impl CommandState {
     fn new(
         krate: Crate,
+        phase: Phase,
         marks: HashSet<(NodeId, Symbol)>,
         parsed_nodes: ParsedNodes,
         node_id_counter: NodeIdCounter,
     ) -> CommandState {
         CommandState {
             krate: RefCell::new(krate),
+            phase,
             marks: RefCell::new(marks),
             parsed_nodes: RefCell::new(parsed_nodes),
             new_parsed_node_ids: RefCell::new(Vec::new()),
