@@ -1,8 +1,10 @@
 use rlua::prelude::{LuaResult, LuaTable, LuaValue};
+use rustc_target::spec::abi::Abi;
 use syntax::ast::{
     Arg, BindingMode, Block, Crate, Expr, ExprKind, FloatTy, FnDecl, ImplItem, ImplItemKind,
     Item, ItemKind, LitKind, Local, Mod, Mutability::*, NodeId, Pat, PatKind, Path, PathSegment,
-    Stmt, StmtKind, UintTy, IntTy, LitIntType, Ident, DUMMY_NODE_ID, BinOpKind, UnOp,
+    Stmt, StmtKind, UintTy, IntTy, LitIntType, Ident, DUMMY_NODE_ID, BinOpKind, UnOp, BlockCheckMode,
+    Label, StrStyle, TyKind, Ty, MutTy, Unsafety, FunctionRetTy, BareFnTy, UnsafeSource::*,
 };
 use syntax::source_map::symbol::Symbol;
 use syntax::source_map::{DUMMY_SP, Spanned};
@@ -20,10 +22,35 @@ fn dummy_spanned<T>(node: T) -> Spanned<T> {
 
 fn dummy_expr() -> P<Expr> {
     P(Expr {
+        attrs: ThinVec::new(),
         id: DUMMY_NODE_ID,
         node: ExprKind::Err,
         span: DUMMY_SP,
-        attrs: ThinVec::new(),
+    })
+}
+
+fn dummy_block() -> P<Block> {
+    P(Block {
+        id: DUMMY_NODE_ID,
+        rules: BlockCheckMode::Default,
+        span: DUMMY_SP,
+        stmts: Vec::new(),
+    })
+}
+
+fn dummy_ty() -> P<Ty> {
+    P(Ty {
+        id: DUMMY_NODE_ID,
+        node: TyKind::Err,
+        span: DUMMY_SP,
+    })
+}
+
+fn dummy_fn_decl() -> P<FnDecl> {
+    P(FnDecl {
+        inputs: Vec::new(),
+        output: FunctionRetTy::Default(DUMMY_SP),
+        c_variadic: false,
     })
 }
 
@@ -59,6 +86,13 @@ impl MergeLuaAst for FnLike {
 impl MergeLuaAst for P<Block> {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let lua_stmts: LuaTable = table.get("stmts")?;
+
+        self.rules = match table.get::<_, String>("rules")?.as_str() {
+            "Default" => BlockCheckMode::Default,
+            "CompilerGeneratedUnsafe" => BlockCheckMode::Unsafe(CompilerGenerated),
+            "UserProvidedUnsafe" => BlockCheckMode::Unsafe(UserProvided),
+            e => unimplemented!("Found unknown block rule: {}", e),
+        };
 
         // TODO: This may need to be improved if we want to delete or add
         // stmts as it currently expects stmts to be 1-1
@@ -124,7 +158,7 @@ impl MergeLuaAst for P<Pat> {
                 };
                 ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
             },
-            ref e => warn!("Found {:?}", e),
+            ref e => warn!("MergeLuaAst unimplemented pat: {:?}", e),
         }
 
         Ok(())
@@ -232,6 +266,7 @@ impl MergeLuaAst for P<Expr> {
                     segments,
                 };
 
+                // TODO: QSelf support
                 ExprKind::Path(None, path)
             },
             "Lit" => {
@@ -268,6 +303,18 @@ impl MergeLuaAst for P<Expr> {
                             Some("f64") => LitKind::Float(sym, FloatTy::F64),
                             _ => unreachable!("Unknown float suffix"),
                         })
+                    },
+                    LuaValue::String(lua_string) => {
+                        let symbol = Symbol::intern(lua_string.to_str()?);
+                        // TODO: Raw strings?
+                        let style = StrStyle::Cooked;
+
+                        dummy_spanned(LitKind::Str(symbol, style))
+                    },
+                    LuaValue::Nil => {
+                        let symbol = Symbol::intern("Nil");
+
+                        dummy_spanned(LitKind::Err(symbol))
                     },
                     _ => unimplemented!("MergeLuaAst unimplemented lit: {:?}", val),
                 };
@@ -353,6 +400,23 @@ impl MergeLuaAst for P<Expr> {
 
                 ExprKind::Unary(op, expr)
             },
+            "Call" => {
+                let mut path = dummy_expr();
+                let lua_path = table.get("path")?;
+                let lua_args: LuaTable = table.get("args")?;
+                let mut args = Vec::new();
+
+                path.merge_lua_ast(lua_path)?;
+
+                for lua_arg in lua_args.sequence_values::<LuaTable>() {
+                    let mut arg = dummy_expr();
+
+                    arg.merge_lua_ast(lua_arg?)?;
+                    args.push(arg);
+                }
+
+                ExprKind::Call(path, args)
+            },
             "MethodCall" => {
                 let lua_args: LuaTable = table.get("args")?;
                 let mut args = Vec::new();
@@ -392,8 +456,87 @@ impl MergeLuaAst for P<Expr> {
                     None => ExprKind::Ret(None),
                 }
             },
+            "Tup" => {
+                let lua_exprs: LuaTable = table.get("exprs")?;
+                let mut exprs = Vec::new();
+
+                for lua_expr in lua_exprs.sequence_values::<LuaTable>() {
+                    let mut expr = dummy_expr();
+
+                    expr.merge_lua_ast(lua_expr?)?;
+                    exprs.push(expr);
+                }
+
+                ExprKind::Tup(exprs)
+            },
+            "AddrOf" => {
+                let lua_expr = table.get("expr")?;
+                let mut expr = dummy_expr();
+
+                expr.merge_lua_ast(lua_expr)?;
+
+                let mutability = match table.get::<_, String>("mutability")?.as_str() {
+                    "Immutable" => Immutable,
+                    "Mutable" => Mutable,
+                    e => panic!("Found unknown addrof mutability: {}", e),
+                };
+
+                ExprKind::AddrOf(mutability, expr)
+            },
+            "Block" => {
+                let lua_block = table.get("block")?;
+                let mut block = dummy_block();
+                let opt_label_str: Option<String> = table.get("label")?;
+                let opt_label = opt_label_str.map(|s| Label { ident: Ident::from_str(&s) });
+
+                block.merge_lua_ast(lua_block)?;
+
+                ExprKind::Block(block, opt_label)
+            },
+            "While" => {
+                let lua_cond = table.get("cond")?;
+                let lua_block = table.get("block")?;
+                let mut cond = dummy_expr();
+                let mut block = dummy_block();
+                let opt_label_str: Option<String> = table.get("label")?;
+                let opt_label = opt_label_str.map(|s| Label { ident: Ident::from_str(&s) });
+
+                block.merge_lua_ast(lua_block)?;
+                cond.merge_lua_ast(lua_cond)?;
+
+                ExprKind::While(cond, block, opt_label)
+            },
+            "If" => {
+                let lua_cond = table.get("cond")?;
+                let lua_then = table.get("then")?;
+                let opt_lua_else: Option<_> = table.get("else")?;
+                let mut cond = dummy_expr();
+                let mut then = dummy_block();
+
+                cond.merge_lua_ast(lua_cond)?;
+                then.merge_lua_ast(lua_then)?;
+
+                let opt_else = opt_lua_else.map(|lua_else| {
+                    let mut expr = dummy_expr();
+
+                    expr.merge_lua_ast(lua_else).map(|_| expr)
+                }).transpose()?;
+
+                ExprKind::If(cond, then, opt_else)
+            },
+            "Cast" => {
+                let lua_expr = table.get("expr")?;
+                let mut expr = dummy_expr();
+                let lua_ty = table.get("ty")?;
+                let mut ty = dummy_ty();
+
+                expr.merge_lua_ast(lua_expr)?;
+                ty.merge_lua_ast(lua_ty)?;
+
+                ExprKind::Cast(expr, ty)
+            },
             ref e => {
-                warn!("MergeLuaAst unimplemented: {:?}", e);
+                warn!("MergeLuaAst unimplemented expr: {:?}", e);
                 return Ok(());
             },
         };
@@ -418,6 +561,75 @@ impl MergeLuaAst for ImplItem {
             },
             ref e => unimplemented!("MergeLuaAst for {:?}", e),
         }
+
+        Ok(())
+    }
+}
+
+impl MergeLuaAst for P<Ty> {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
+        let kind = table.get::<_, String>("kind")?;
+
+        self.node = match kind.as_str() {
+            "Path" => {
+                let lua_segments: LuaTable = table.get("path")?;
+                let mut segments = Vec::new();
+
+                for segment in lua_segments.sequence_values::<String>() {
+                    segments.push(PathSegment::from_ident(Ident::from_str(&segment?)));
+                }
+
+                let path = Path {
+                    span: DUMMY_SP,
+                    segments,
+                };
+
+                // TODO: QSelf support
+                TyKind::Path(None, path)
+            },
+            "Ptr" => {
+                let mutbl = match table.get::<_, String>("mutbl")?.as_str() {
+                    "Immutable" => Immutable,
+                    "Mutable" => Mutable,
+                    e => panic!("Found unknown ptr mutability: {}", e),
+                };
+                let lua_ty = table.get("ty")?;
+                let mut ty = dummy_ty();
+
+                ty.merge_lua_ast(lua_ty)?;
+
+                let mut_ty = MutTy {ty, mutbl};
+
+                TyKind::Ptr(mut_ty)
+            },
+            "BareFn" => {
+                let lua_decl = table.get("decl")?;
+                let mut decl = dummy_fn_decl();
+                let unsafety = match table.get::<_, String>("unsafety")?.as_str() {
+                    "Unsafe" => Unsafety::Unsafe,
+                    "Normal" => Unsafety::Normal,
+                    e => panic!("Found unknown unsafety: {}", e),
+                };
+                let abi = match table.get::<_, String>("abi")?.as_str() {
+                    "Cdecl" => Abi::Cdecl,
+                    "C" => Abi::C,
+                    "Rust" => Abi::Rust,
+                    e => unimplemented!("Abi: {}", e),
+                };
+
+                decl.merge_lua_ast(lua_decl)?;
+
+                let bare_fn = BareFnTy {
+                    unsafety,
+                    abi,
+                    generic_params: Vec::new(), // TODO
+                    decl,
+                };
+
+                TyKind::BareFn(P(bare_fn))
+            },
+            ref e => unimplemented!("MergeLuaAst unimplemented ty kind: {:?}", e),
+        };
 
         Ok(())
     }

@@ -15,6 +15,8 @@ fn used_in_local(mut p1: i32, mut p2: i32) {
     let mut arr3 = [1, 2];
     let mut arr4 = [1, 2];
 
+    unsafe {}
+
     arr2[0] = 2;
     arr3[1];
     arr4.as_mut_ptr();

@@ -2,7 +2,8 @@ use rlua::prelude::{LuaContext, LuaError, LuaResult, LuaTable};
 use syntax::ast::{
     Arg, Arm, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, FunctionRetTy, FnDecl,
     FloatTy, Guard, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitKind, Local, Mod,
-    Movability, Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind, LitIntType,
+    Movability, Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind, LitIntType, Ty, TyKind,
+    Unsafety, BareFnTy, UnsafeSource, BlockCheckMode,
 };
 use syntax::ptr::P;
 
@@ -219,10 +220,10 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("op", syntax::ast::UnOp::to_string(op))?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ExprKind::Cast(expr, _ty) => {
+                ExprKind::Cast(expr, ty) => {
                     ast.set("kind", "Cast")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
-                    // TODO: Flesh out further
+                    ast.set("ty", ty.into_lua_ast(ctx, lua_ctx)?)?;
                 },
                 ExprKind::Type(expr, _ty) => {
                     ast.set("kind", "Type")?;
@@ -248,11 +249,14 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
 
                     // TODO: Flesh out further
                 },
-                ExprKind::While(cond, block, _) => {
+                ExprKind::While(cond, block, opt_label) => {
                     ast.set("kind", "While")?;
                     ast.set("cond", cond.into_lua_ast(ctx, lua_ctx)?)?;
                     ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
-                    // TODO: Flesh out further
+
+                    if let Some(label) = opt_label {
+                        ast.set("label", label.ident.name.as_str().get())?;
+                    }
                 },
                 ExprKind::WhileLet(_pats, expr, block, opt_label) => {
                     ast.set("kind", "WhileLet")?;
@@ -537,6 +541,11 @@ impl<'lua> IntoLuaAst<'lua> for P<Block> {
                 .collect::<LuaResult<Vec<_>>>();
 
             ast.set("stmts", lua_ctx.create_sequence_from(stmts?.into_iter())?)?;
+            ast.set("rules", match block.rules {
+                BlockCheckMode::Default => "Default",
+                BlockCheckMode::Unsafe(UnsafeSource::CompilerGenerated) => "CompilerGeneratedUnsafe",
+                BlockCheckMode::Unsafe(UnsafeSource::UserProvided) => "UserProvidedUnsafe",
+            })?;
 
             Ok(ast)
         })
@@ -751,6 +760,7 @@ impl<'lua> IntoLuaAst<'lua> for InlineAsmOutput {
         let constraint = self.constraint.as_str().to_string();
         let expr = self.expr.into_lua_ast(ctx, lua_ctx)?;
 
+        ast.set("type", "InlineAsmOutput")?;
         ast.set("constraint", constraint)?;
         ast.set("expr", expr)?;
         ast.set("is_indirect", self.is_indirect)?;
@@ -765,6 +775,7 @@ impl<'lua> IntoLuaAst<'lua> for Arm {
         let ast = lua_ctx.create_table()?;
         let body = self.body.into_lua_ast(ctx, lua_ctx)?;
 
+        ast.set("type", "Arm")?;
         ast.set("body", body)?;
 
         if let Some(guard) = self.guard {
@@ -776,5 +787,54 @@ impl<'lua> IntoLuaAst<'lua> for Arm {
         // TODO: More fields
 
         Ok(ast)
+    }
+}
+
+impl<'lua> IntoLuaAst<'lua> for P<Ty> {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
+
+        ast.set("type", "Ty")?;
+
+        self.and_then(|ty| {
+            ast.set("id", ty.id.as_u32())?;
+
+            match ty.node {
+                TyKind::Path(_opt_qself, path) => {
+                    let segments = path
+                        .segments
+                        .into_iter()
+                        .map(|s| s.ident.to_string());
+
+                    ast.set("kind", "Path")?;
+                    ast.set("path", lua_ctx.create_sequence_from(segments)?)?;
+                    // TODO: Option<QSelf>
+                },
+                TyKind::Ptr(mut_ty) => {
+                    ast.set("kind", "Ptr")?;
+                    ast.set("ty", mut_ty.ty.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("mutbl", match mut_ty.mutbl {
+                        Immutable => "Immutable",
+                        Mutable => "Mutable",
+                    })?;
+                },
+                TyKind::BareFn(bare_fn) => {
+                    let BareFnTy {unsafety, abi, decl, ..} = bare_fn.into_inner();
+
+                    ast.set("kind", "BareFn")?;
+                    ast.set("unsafety", match unsafety {
+                        Unsafety::Unsafe => "Unsafe",
+                        Unsafety::Normal => "Noraml",
+                    })?;
+                    ast.set("abi", abi.name())?;
+                    ast.set("decl", decl.into_lua_ast(ctx, lua_ctx)?)?;
+
+                    // TODO: GenericParams
+                },
+                e => unimplemented!("IntoLuaAst unimplemented ty kind: {:?}", e),
+            }
+
+            Ok(ast)
+        })
     }
 }
