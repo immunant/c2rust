@@ -6,6 +6,8 @@
     generator_trait,
     vec_remove_item,
 )]
+#![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
+
 extern crate arena;
 extern crate cargo;
 extern crate clap;
@@ -37,6 +39,12 @@ extern crate c2rust_ast_builder;
 extern crate syntax;
 extern crate syntax_ext;
 extern crate syntax_pos;
+
+#[cfg(feature = "profile")]
+extern crate flame;
+#[cfg(feature = "profile")]
+#[macro_use]
+extern crate flamer;
 
 #[macro_use]
 mod macros;
@@ -155,6 +163,7 @@ pub struct Options {
 
 /// Try to find the rustup installation that provides the rustc at the given path.  The input path
 /// should be normalized already.
+#[cfg_attr(feature = "profile", flame)]
 fn get_rustup_path(rustc: &Path) -> Option<PathBuf> {
     use std::ffi::OsStr;
     use std::fs;
@@ -177,6 +186,7 @@ fn get_rustup_path(rustc: &Path) -> Option<PathBuf> {
     None
 }
 
+#[cfg_attr(feature = "profile", flame)]
 fn get_rustc_executable(path: &Path) -> String {
     use std::process::{Command, Stdio};
 
@@ -197,6 +207,7 @@ fn get_rustc_executable(path: &Path) -> String {
     resolved.to_str().unwrap().to_owned()
 }
 
+#[cfg_attr(feature = "profile", flame)]
 fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
     match src {
         RustcArgSource::CmdLine(mut args) => {
@@ -208,6 +219,7 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<String> {
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 fn get_rustc_cargo_args() -> Vec<String> {
     use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
     use cargo::core::manifest::TargetKind;
@@ -326,8 +338,10 @@ fn get_rustc_cargo_args() -> Vec<String> {
     args
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn lib_main(opts: Options) -> interface::Result<()> {
     env_logger::init();
+    info!("Begin refactoring");
 
     // Make sure we compile with the toolchain version that the refactoring tool
     // is built against.
@@ -440,5 +454,15 @@ fn main_impl(opts: Options) -> interface::Result<()> {
         });
     }
 
+    dump_profile();
+
     Ok(())
 }
+
+#[cfg(feature = "profile")]
+fn dump_profile() {
+    flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();
+}
+
+#[cfg(not(feature = "profile"))]
+fn dump_profile() {}

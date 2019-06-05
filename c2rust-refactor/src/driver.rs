@@ -265,6 +265,7 @@ pub fn create_config(args: &[String]) -> interface::Config {
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn run_compiler<F, R>(
     mut config: interface::Config,
     file_loader: Option<Box<dyn FileLoader + Send + Sync>>,
@@ -287,6 +288,7 @@ where
     })
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn run_refactoring<F, R>(
     mut config: interface::Config,
     cmd_reg: Registry,
@@ -524,6 +526,7 @@ pub fn emit_and_panic(mut db: DiagnosticBuilder, what: &str) -> ! {
 }
 
 // Helper functions for parsing source code in an existing `Session`.
+#[cfg_attr(feature = "profile", flame)]
 pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
     let mut p = make_parser(sess, src);
     match p.parse_expr() {
@@ -535,6 +538,7 @@ pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     let mut p = make_parser(sess, src);
     match p.parse_pat(None) {
@@ -546,6 +550,7 @@ pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
     let mut p = make_parser(sess, src);
     match p.parse_ty() {
@@ -557,6 +562,7 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
     // workaround that may cause suboptimal error messages.
@@ -575,6 +581,7 @@ pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
     let mut p = make_parser(sess, src);
     let mut items = Vec::new();
@@ -591,6 +598,7 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
     items
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
     // TODO: rustc no longer exposes `parse_impl_item_`. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
@@ -604,6 +612,7 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
     // TODO: rustc no longer exposes a method for parsing ForeignItems. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
@@ -617,6 +626,7 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
     let mut p = make_parser(sess, src);
 
@@ -648,6 +658,7 @@ fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
     })
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn parse_arg(sess: &Session, src: &str) -> Arg {
     let mut p = make_parser(sess, src);
     match parse_arg_inner(&mut p) {
@@ -659,6 +670,7 @@ pub fn parse_arg(sess: &Session, src: &str) -> Arg {
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn run_parser<F, R>(sess: &Session, src: &str, f: F) -> R
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
@@ -670,6 +682,7 @@ where
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> R
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
@@ -681,6 +694,7 @@ where
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn try_run_parser<F, R>(sess: &Session, src: &str, f: F) -> Option<R>
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
@@ -695,6 +709,7 @@ where
     }
 }
 
+#[cfg_attr(feature = "profile", flame)]
 pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Option<R>
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,

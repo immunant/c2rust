@@ -28,7 +28,13 @@ rlua = "0.16"
 slotmap = {version = "0.3", features = ["unstable"]}
 derive_more = "0.14"
 c2rust-macros = { version = "0.10.0", path = "../c2rust-macros" }
+flame = { version = "0.2.2", optional = true }
+flamer = { version = "0.3", optional = true }
 
 [lib]
 name = "c2rust_refactor"
 path = "src/lib.rs"
+
+[features]
+default = []
+profile = ["flame", "flamer"]

@@ -94,6 +94,7 @@ pub struct RefactorState {
     cs: CommandState,
 }
 
+#[cfg_attr(feature = "profile", flame)]
 fn parse_crate(compiler: &interface::Compiler) -> Crate {
     let mut krate = compiler.parse().unwrap().take();
     remove_paren(&mut krate);
@@ -101,6 +102,7 @@ fn parse_crate(compiler: &interface::Compiler) -> Crate {
     krate
 }
 
+#[cfg_attr(feature = "profile", flame)]
 fn parse_extras(compiler: &interface::Compiler) -> (Vec<Comment>, Vec<Literal>) {
     let mut comments = vec![];
     let mut literals = vec![];
@@ -122,6 +124,7 @@ fn parse_extras(compiler: &interface::Compiler) -> (Vec<Comment>, Vec<Literal>) 
 }
 
 impl RefactorState {
+    #[cfg_attr(feature = "profile", flame)]
     pub fn new(
         config: interface::Config,
         cmd_reg: Registry,
@@ -151,6 +154,7 @@ impl RefactorState {
     }
 
     /// Initialization shared between new() and load_crate()
+    #[cfg_attr(feature = "profile", flame)]
     fn init(krate: Crate, marks: Option<HashSet<(NodeId, Symbol)>>) -> (NodeMap, CommandState) {
         // (Re)initialize `node_map` and `marks`.
         let mut node_map = NodeMap::new();
@@ -179,6 +183,7 @@ impl RefactorState {
 
     /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
     /// rewriting with the previous `orig_crate` any more.
+    #[cfg_attr(feature = "profile", flame)]
     pub fn load_crate(&mut self) {
         self.compiler = driver::make_compiler(&self.config, self.file_io.clone());
         let krate = parse_crate(&self.compiler);
@@ -197,6 +202,7 @@ impl RefactorState {
     /// Note that we allow multiple calls to `save_crate` with no intervening `load_crate`.  The
     /// later `save_crate`s will simply keep using the original source text (even if it no longer
     /// matches the text on disk) as the basis for rewriting.
+    #[cfg_attr(feature = "profile", flame)]
     pub fn save_crate(&mut self) {
         let old = &self.orig_krate;
         let new = &self.cs.krate();
@@ -220,6 +226,7 @@ impl RefactorState {
         files::rewrite_files_with(self.source_map(), &rw, &*self.file_io).unwrap();
     }
 
+    #[cfg_attr(feature = "profile", flame)]
     pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> interface::Result<R>
     where
         F: FnOnce(&CommandState, &RefactorCtxt) -> R,
@@ -238,17 +245,21 @@ impl RefactorState {
         span_fix::fix_attr_spans(self.cs.krate.get_mut());
 
         // Replace current parse query results
+        profile_start!("Replace compiler crate");
         let parse = self.compiler.parse()?;
         let _ = parse.take();
         parse.give(self.cs.krate().clone());
+        profile_end!("Replace compiler crate");
 
         match phase {
             Phase::Phase1 => {}
 
             Phase::Phase2 | Phase::Phase3 => {
+                profile_start!("Expand crate");
                 self.cs
                     .krate
                     .replace(self.compiler.expansion()?.peek().0.clone());
+                profile_end!("Expand crate");
                 remove_paren(self.cs.krate.get_mut());
             }
         }
@@ -268,6 +279,7 @@ impl RefactorState {
             }
 
             Phase::Phase2 => {
+                profile_start!("Lower to HIR");
                 let hir = self.compiler.lower_to_hir()?.take();
                 let (ref hir_forest, ref expansion) = hir;
                 let hir_forest = hir_forest.borrow();
@@ -278,6 +290,7 @@ impl RefactorState {
                     &hir_forest,
                     &defs,
                 );
+                profile_end!("Lower to HIR");
 
                 let cx = RefactorCtxt::new_phase_2(
                     self.compiler.session(),
@@ -289,6 +302,7 @@ impl RefactorState {
             }
 
             Phase::Phase3 => {
+                profile_start!("Compiler Phase 3");
                 let r = self.compiler.global_ctxt()?.take().enter(|tcx| {
                     let _result = tcx.analysis(LOCAL_CRATE);
                     let cx = RefactorCtxt::new_phase_3(
@@ -297,6 +311,7 @@ impl RefactorState {
                         tcx.hir(),
                         tcx,
                     );
+                    profile_end!("Compiler Phase 3");
 
                     f(&self.cs, &cx)
                 });
@@ -354,6 +369,7 @@ impl RefactorState {
         *Lrc::get_mut(&mut compiler.cstore).unwrap() = new_cstore;
     }
 
+    #[cfg_attr(feature = "profile", flame)]
     pub fn run_typeck_loop<F>(&mut self, mut func: F) -> Result<(), &'static str>
     where
         F: FnMut(&mut Crate, &CommandState, &RefactorCtxt) -> TypeckLoopResult,
@@ -383,15 +399,18 @@ impl RefactorState {
     }
 
     /// Invoke a registered command with the given command name and arguments.
-    pub fn run<S: AsRef<str>>(&mut self, cmd: &str, args: &[S]) -> Result<(), String> {
+    #[cfg_attr(feature = "profile", flame)]
+    pub fn run<S: AsRef<str>>(&mut self, cmd_name: &str, args: &[S]) -> Result<(), String> {
         let args = args
             .iter()
             .map(|s| s.as_ref().to_owned())
             .collect::<Vec<_>>();
-        info!("running command: {} {:?}", cmd, args);
+        info!("running command: {} {:?}", cmd_name, args);
 
-        let mut cmd = self.cmd_reg.get_command(cmd, &args)?;
+        let mut cmd = self.cmd_reg.get_command(cmd_name, &args)?;
+        profile_start!(format!("Command {}", cmd_name));
         cmd.run(self);
+        profile_end!(format!("Command {}", cmd_name));
         Ok(())
     }
 
