@@ -4,7 +4,8 @@ use syntax::ast::{
     Arg, BindingMode, Block, Crate, Expr, ExprKind, FloatTy, FnDecl, ImplItem, ImplItemKind,
     Item, ItemKind, LitKind, Local, Mod, Mutability::*, NodeId, Pat, PatKind, Path, PathSegment,
     Stmt, StmtKind, UintTy, IntTy, LitIntType, Ident, DUMMY_NODE_ID, BinOpKind, UnOp, BlockCheckMode,
-    Label, StrStyle, TyKind, Ty, MutTy, Unsafety, FunctionRetTy, BareFnTy, UnsafeSource::*,
+    Label, StrStyle, TyKind, Ty, MutTy, Unsafety, FunctionRetTy, BareFnTy, UnsafeSource::*, Field,
+    AnonConst,
 };
 use syntax::source_map::symbol::Symbol;
 use syntax::source_map::{DUMMY_SP, Spanned};
@@ -51,6 +52,19 @@ fn dummy_fn_decl() -> P<FnDecl> {
         inputs: Vec::new(),
         output: FunctionRetTy::Default(DUMMY_SP),
         c_variadic: false,
+    })
+}
+
+fn path_from_lua_array(lua_array: LuaTable<'_>) -> LuaResult<Path> {
+    let mut segments = Vec::new();
+
+    for segment in lua_array.sequence_values::<String>() {
+        segments.push(PathSegment::from_ident(Ident::from_str(&segment?)));
+    }
+
+    Ok(Path {
+        span: DUMMY_SP,
+        segments,
     })
 }
 
@@ -535,6 +549,55 @@ impl MergeLuaAst for P<Expr> {
 
                 ExprKind::Cast(expr, ty)
             },
+            "Struct" => {
+                let lua_path = table.get("path")?;
+                let lua_fields: LuaTable = table.get("fields")?;
+                let opt_lua_expr: Option<_> = table.get("expr")?;
+                let opt_expr = opt_lua_expr.map(|lua_expr| {
+                    let mut expr = dummy_expr();
+
+                    expr.merge_lua_ast(lua_expr).map(|_| expr)
+                }).transpose()?;
+                let path = path_from_lua_array(lua_path)?;
+                let mut fields = Vec::new();
+
+                for field in lua_fields.sequence_values::<LuaTable>() {
+                    let field = field?;
+                    let string: String = field.get("ident")?;
+                    let ident = Ident::from_str(&string);
+                    let lua_expr = field.get("expr")?;
+                    let mut expr = dummy_expr();
+                    let is_shorthand = field.get("is_shorthand")?;
+
+                    expr.merge_lua_ast(lua_expr)?;
+
+                    fields.push(Field {
+                        ident,
+                        expr,
+                        span: DUMMY_SP,
+                        is_shorthand,
+                        attrs: ThinVec::new(), // TODO
+                    })
+                }
+
+                ExprKind::Struct(path, fields, opt_expr)
+            },
+            "Repeat" => {
+                let lua_expr = table.get("expr")?;
+                let lua_ac_expr = table.get("anon_const")?;
+                let mut expr = dummy_expr();
+                let mut ac_expr = dummy_expr();
+
+                expr.merge_lua_ast(lua_expr)?;
+                ac_expr.merge_lua_ast(lua_ac_expr)?;
+
+                let anon_const = AnonConst {
+                    id: DUMMY_NODE_ID,
+                    value: ac_expr,
+                };
+
+                ExprKind::Repeat(expr, anon_const)
+            },
             ref e => {
                 warn!("MergeLuaAst unimplemented expr: {:?}", e);
                 return Ok(());
@@ -573,16 +636,7 @@ impl MergeLuaAst for P<Ty> {
         self.node = match kind.as_str() {
             "Path" => {
                 let lua_segments: LuaTable = table.get("path")?;
-                let mut segments = Vec::new();
-
-                for segment in lua_segments.sequence_values::<String>() {
-                    segments.push(PathSegment::from_ident(Ident::from_str(&segment?)));
-                }
-
-                let path = Path {
-                    span: DUMMY_SP,
-                    segments,
-                };
+                let path = path_from_lua_array(lua_segments)?;
 
                 // TODO: QSelf support
                 TyKind::Path(None, path)
@@ -627,6 +681,22 @@ impl MergeLuaAst for P<Ty> {
                 };
 
                 TyKind::BareFn(P(bare_fn))
+            },
+            "Array" => {
+                let lua_ty = table.get("ty")?;
+                let lua_ac_expr = table.get("anon_const")?;
+                let mut ac_expr = dummy_expr();
+                let mut ty = dummy_ty();
+
+                ac_expr.merge_lua_ast(lua_ac_expr)?;
+                ty.merge_lua_ast(lua_ty)?;
+
+                let anon_const = AnonConst {
+                    id: DUMMY_NODE_ID,
+                    value: ac_expr,
+                };
+
+                TyKind::Array(ty, anon_const)
             },
             ref e => unimplemented!("MergeLuaAst unimplemented ty kind: {:?}", e),
         };

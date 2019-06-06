@@ -3,12 +3,21 @@ use syntax::ast::{
     Arg, Arm, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, FunctionRetTy, FnDecl,
     FloatTy, Guard, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitKind, Local, Mod,
     Movability, Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind, LitIntType, Ty, TyKind,
-    Unsafety, BareFnTy, UnsafeSource, BlockCheckMode,
+    Unsafety, BareFnTy, UnsafeSource, BlockCheckMode, Path, Field,
 };
 use syntax::ptr::P;
 
 use crate::ast_manip::fn_edit::{FnKind, FnLike};
 use crate::scripting::TransformCtxt;
+
+fn path_into_lua_array<'lua>(path: Path, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+    let segments = path
+        .segments
+        .into_iter()
+        .map(|s| s.ident.to_string());
+
+    lua_ctx.create_sequence_from(segments)
+}
 
 pub(crate) trait IntoLuaAst<'lua> {
     fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>>;
@@ -361,13 +370,8 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     })?;
                 },
                 ExprKind::Path(_, path) => {
-                    let segments = path
-                        .segments
-                        .into_iter()
-                        .map(|s| s.ident.to_string());
-
                     ast.set("kind", "Path")?;
-                    ast.set("segments", lua_ctx.create_sequence_from(segments)?)?;
+                    ast.set("segments", path_into_lua_array(path, lua_ctx)?)?;
                     // TODO: Flesh out further
                 },
                 ExprKind::AddrOf(mutability, expr) => {
@@ -431,13 +435,24 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("kind", "Mac")?;
                     // TODO: Flesh out further
                 },
-                ExprKind::Struct(..) => {
+                ExprKind::Struct(path, fields, opt_expr) => {
+                    let fields: LuaResult<Vec<_>> = fields
+                        .into_iter()
+                        .map(|f| f.into_lua_ast(ctx, lua_ctx))
+                        .collect();
+
                     ast.set("kind", "Struct")?;
-                    // TODO: Flesh out further
+                    ast.set("path", path_into_lua_array(path, lua_ctx)?)?;
+                    ast.set("fields", fields?)?;
+
+                    if let Some(expr) = opt_expr {
+                        ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+                    }
                 },
-                ExprKind::Repeat(expr, _anon_const) => {
+                ExprKind::Repeat(expr, anon_const) => {
                     ast.set("kind", "Repeat")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("anon_const", anon_const.value.into_lua_ast(ctx, lua_ctx)?)?;
                 },
                 ExprKind::Paren(expr) => {
                     ast.set("kind", "Paren")?;
@@ -454,9 +469,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         ast.set("value", val.into_lua_ast(ctx, lua_ctx)?)?;
                     }
                 },
-                ExprKind::Err => {
-                    ast.set("kind", "Err")?;
-                },
+                ExprKind::Err => ast.set("kind", "Err")?,
             }
 
             Ok(ast)
@@ -801,13 +814,8 @@ impl<'lua> IntoLuaAst<'lua> for P<Ty> {
 
             match ty.node {
                 TyKind::Path(_opt_qself, path) => {
-                    let segments = path
-                        .segments
-                        .into_iter()
-                        .map(|s| s.ident.to_string());
-
                     ast.set("kind", "Path")?;
-                    ast.set("path", lua_ctx.create_sequence_from(segments)?)?;
+                    ast.set("path", path_into_lua_array(path, lua_ctx)?)?;
                     // TODO: Option<QSelf>
                 },
                 TyKind::Ptr(mut_ty) => {
@@ -831,10 +839,29 @@ impl<'lua> IntoLuaAst<'lua> for P<Ty> {
 
                     // TODO: GenericParams
                 },
+                TyKind::Array(ty, anon_const) => {
+                    ast.set("kind", "Array")?;
+                    ast.set("ty", ty.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("anon_const", anon_const.value.into_lua_ast(ctx, lua_ctx)?)?;
+                },
                 e => unimplemented!("IntoLuaAst unimplemented ty kind: {:?}", e),
             }
 
             Ok(ast)
         })
+    }
+}
+
+impl<'lua> IntoLuaAst<'lua> for Field {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
+
+        ast.set("type", "Field")?;
+        ast.set("ident", self.ident.as_str().get())?;
+        ast.set("expr", self.expr.into_lua_ast(ctx, lua_ctx)?)?;
+        ast.set("is_shorthand", self.is_shorthand)?;
+        // TODO: Attrs
+
+        Ok(ast)
     }
 }
