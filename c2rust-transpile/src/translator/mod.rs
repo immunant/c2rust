@@ -1726,7 +1726,7 @@ impl<'c> Translation<'c> {
                 let static_def = if is_externally_visible {
                     mk_linkage(false, new_name, ident).pub_().abi("C")
                 } else if self.cur_file.borrow().is_some() {
-                    mk().vis("pub(super)")
+                    mk().pub_()
                 } else {
                     mk()
                 };
@@ -2004,7 +2004,7 @@ impl<'c> Translation<'c> {
 
                     mk_linkage(false, new_name, name).abi("C").pub_()
                 } else if self.cur_file.borrow().is_some() {
-                    mk().vis("pub(super)").abi("C")
+                    mk().abi("C").pub_()
                 } else {
                     mk().abi("C")
                 };
