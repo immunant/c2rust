@@ -12,6 +12,8 @@ use syntax::source_map::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
 use syntax::ThinVec;
 
+use std::rc::Rc;
+
 use crate::ast_manip::fn_edit::{FnKind, FnLike};
 
 fn dummy_spanned<T>(node: T) -> Spanned<T> {
@@ -309,7 +311,15 @@ impl MergeLuaAst for P<Expr> {
                         dummy_spanned(LitKind::Int(i as u128, suffix))
                     },
                     LuaValue::Number(num) => {
-                        let sym = Symbol::intern(&num.to_string());
+                        let string = num.to_string();
+
+                        // Work around a rewriter bug where unsuffixed float without
+                        // the trailing . becomes an int:
+                        // if !string.contains('.') {
+                        //     string.push('.');
+                        // }
+
+                        let sym = Symbol::intern(&string);
 
                         dummy_spanned(match suffix.as_ref().map(AsRef::as_ref) {
                             None => LitKind::FloatUnsuffixed(sym),
@@ -319,14 +329,26 @@ impl MergeLuaAst for P<Expr> {
                         })
                     },
                     LuaValue::String(lua_string) => {
-                        let symbol = Symbol::intern(lua_string.to_str()?);
-                        // TODO: Raw strings?
-                        let style = StrStyle::Cooked;
+                        let is_bytes: bool = table.get("is_bytes")?;
 
-                        dummy_spanned(LitKind::Str(symbol, style))
+                        if is_bytes {
+                            let bytes: Vec<u8> = lua_string
+                                .as_bytes()
+                                .iter()
+                                .map(|b| *b)
+                                .collect();
+
+                            dummy_spanned(LitKind::ByteStr(Rc::new(bytes)))
+                        } else {
+                            // TODO: Raw strings?
+                            let symbol = Symbol::intern(lua_string.to_str()?);
+                            let style = StrStyle::Cooked;
+
+                            dummy_spanned(LitKind::Str(symbol, style))
+                        }
                     },
                     LuaValue::Nil => {
-                        let symbol = Symbol::intern("Nil");
+                        let symbol = Symbol::intern("NIL");
 
                         dummy_spanned(LitKind::Err(symbol))
                     },
