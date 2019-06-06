@@ -473,6 +473,10 @@ pub fn translate(
     // we simplify the translator output by omitting those.
     t.ast_context.prune_unused_decls();
 
+    // Sort the top-level declarations by file and source location so that we
+    // preserve the ordering of all declarations in each file.
+    t.ast_context.sort_top_decls();
+
     enum Name<'a> {
         VarName(&'a str),
         TypeName(&'a str),
@@ -652,16 +656,6 @@ pub fn translate(
                     convert_type(decl_id, decl);
                 }
             }
-
-            // Export macros after the rest of the decls so we can reference all
-            // types
-            if tcfg.translate_const_macros {
-                for (&decl_id, decl) in t.ast_context.iter_decls() {
-                    if let CDeclKind::MacroObject { .. } = decl.kind {
-                        convert_type(decl_id, decl);
-                    }
-                }
-            }
         }
 
         // Export top-level value declarations
@@ -669,6 +663,7 @@ pub fn translate(
             let needs_export = match t.ast_context[*top_id].kind {
                 CDeclKind::Function { is_implicit, .. } => !is_implicit,
                 CDeclKind::Variable { .. } => true,
+                CDeclKind::MacroObject { .. } => tcfg.translate_const_macros,
                 _ => false,
             };
             if needs_export {

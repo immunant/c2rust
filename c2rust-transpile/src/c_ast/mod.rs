@@ -403,6 +403,27 @@ impl TypedAstContext {
         // Prune top declarations that are not considered live
         self.c_decls_top.retain(|x| used.contains(x));
     }
+
+    pub fn sort_top_decls(&mut self) {
+        // Group and sort declarations by file and by position
+        let mut decls: HashMap<u64, Vec<(SrcLoc, CDeclId)>> = HashMap::new();
+        for decl_id in &self.c_decls_top {
+            let decl = self.index(*decl_id);
+            if let Some(ref loc) = decl.loc {
+                decls
+                    .entry(loc.fileid)
+                    .or_insert(vec![])
+                    .push((loc.clone(), *decl_id));
+            }
+        }
+        decls.iter_mut().for_each(|(_, v)| v.sort());
+
+        self.c_decls_top = decls
+            .into_iter()
+            .map(|(_, v)| v.into_iter().map(|(_, id)| id))
+            .flatten()
+            .collect();
+    }
 }
 
 impl CommentContext {
