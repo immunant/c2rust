@@ -21,6 +21,10 @@ RUST_BACKTRACE=1 c2rust transpile \
 if [[ -f "$SCRIPT_DIR/build.rs" ]]; then
     cp "$SCRIPT_DIR/build.rs" "$SCRIPT_DIR/repo"
 fi
+
+if [[ -n "$C2RUST_DIR" ]]; then
+    sed --in-place --regexp-extended "s|c2rust-bitfields = \"([0-9.]+)\"|c2rust-bitfields = { version = \"\1\", path = \"$C2RUST_DIR/c2rust-bitfields\" }|" "$SCRIPT_DIR/repo/Cargo.toml"
+fi
 """
 
 CARGO_SH: str = r"""#!/usr/bin/env bash
