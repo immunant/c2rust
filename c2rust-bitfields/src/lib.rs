@@ -3,16 +3,12 @@ extern crate c2rust_bitfields_derive;
 pub use c2rust_bitfields_derive::BitfieldStruct;
 
 pub trait FieldType: Sized {
-    fn is_signed() -> bool;
+    const IS_SIGNED: bool;
 
-    fn calculate_total_bit_size() -> usize {
-        #[cfg(not(feature = "no_std"))]
-        let ret = ::std::mem::size_of::<Self>() * 8;
-        #[cfg(feature = "no_std")]
-        let ret = ::core::mem::size_of::<Self>() * 8;
-
-        ret
-    }
+    #[cfg(not(feature = "no_std"))]
+    const TOTAL_BIT_SIZE: usize = ::std::mem::size_of::<Self>() * 8;
+    #[cfg(feature = "no_std")]
+    const TOTAL_BIT_SIZE: usize = ::core::mem::size_of::<Self>() * 8;
 
     fn get_bit(&self, bit: usize) -> bool;
 
@@ -50,9 +46,8 @@ macro_rules! impl_int {
     ($($typ: ident),+) => {
         $(
             impl FieldType for $typ {
-                fn is_signed() -> bool {
-                    $typ::min_value() != 0
-                }
+                const IS_SIGNED: bool = $typ::min_value() != 0;
+
                 fn get_bit(&self, bit: usize) -> bool {
                     ((*self >> bit) & 1) == 1
                 }
@@ -74,12 +69,10 @@ macro_rules! impl_int {
                         }
                     }
 
-                    let bit_width = rhs_bit - lhs_bit + 1;
-
                     // If the int type is signed, attempt to sign extend unconditionally
-                    if Self::is_signed() {
-                        let total_bit_size = Self::calculate_total_bit_size();
-                        let unused_bits = total_bit_size - bit_width;
+                    if Self::IS_SIGNED {
+                        let bit_width = rhs_bit - lhs_bit + 1;
+                        let unused_bits = Self::TOTAL_BIT_SIZE - bit_width;
 
                         val <<= unused_bits;
                         val >>= unused_bits;
@@ -98,9 +91,7 @@ macro_rules! impl_int {
 impl_int!{u8, u16, u32, u64, u128, i8, i16, i32, i64, i128}
 
 impl FieldType for bool {
-    fn is_signed() -> bool {
-        false
-    }
+    const IS_SIGNED: bool = false;
 
     fn get_bit(&self, _bit: usize) -> bool {
         *self
