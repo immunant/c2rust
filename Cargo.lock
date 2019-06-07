@@ -203,7 +203,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-bitfields"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "c2rust-bitfields-derive 0.1.0",
  "libc 0.2.51 (registry+https://github.com/rust-lang/crates.io-index)",
