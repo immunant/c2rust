@@ -4050,10 +4050,15 @@ impl<'c> Translation<'c> {
                 platform_byte_size,
                 ..
             } => {
+                let name_decl_id = match self.ast_context.index(type_id).kind {
+                    CTypeKind::Typedef(decl_id) => decl_id,
+                    _ => decl_id,
+                };
+
                 let name = self
                     .type_converter
                     .borrow()
-                    .resolve_decl_name(decl_id)
+                    .resolve_decl_name(name_decl_id)
                     .unwrap();
 
                 let fields = match *fields {
