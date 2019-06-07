@@ -54,11 +54,15 @@ Each script is expected to `tee` its output to a file named `$SCRIPT.log`. For e
 
 # Controlling test steps via environment variables
 
-Use the following variables to control test steps:
+Use the following optional variables to control test steps:
 
 - `EXTRA_CFLAGS` passes extra flags to the compiler when transpiling
 - `EXTRA_TFLAGS` passes extra flags to the transpiler itself
-- `TOOLCHAIN` controls which toolchain `cargo build`s the transpiled code
+- `TOOLCHAIN` controls which toolchain `cargo build`s the transpiled code (must
+  start with a + character)
+- `C2RUST_DIR` is the path to a local checkout of the c2rust sources. Runtime
+  support crates from this checkout will be used instead of pulling them from
+  crates.io.
 
 # TODOs
 - [ ] check requirements on macOS
