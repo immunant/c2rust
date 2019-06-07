@@ -78,16 +78,16 @@ end
 function Visitor:visit_expr(expr)
     debug("Visiting Expr: " .. expr.kind)
     if is_simple_expr_path(expr) then
-        self:find_variable(expr.segments[1], set_used)
+        self:find_variable(expr.segments[1].ident, set_used)
     elseif expr.kind == "Assign" or expr.kind == "AssignOp" then
         ident = nil
 
         -- Here we might find a path, ie `a += 1` or an index path, ie `a[1] += 1`
         if is_simple_expr_path(expr.lhs) then
-            ident = expr.lhs.segments[1]
+            ident = expr.lhs.segments[1].ident
         elseif expr.lhs.kind == "Index" then
             if is_simple_expr_path(expr.lhs.indexed) then
-                ident = expr.lhs.indexed.segments[1]
+                ident = expr.lhs.indexed.segments[1].ident
             end
         end
 
@@ -98,20 +98,20 @@ function Visitor:visit_expr(expr)
     elseif expr.kind == "InlineAsm" then
         for _, input in ipairs(expr.inputs) do
             if is_simple_expr_path(input.expr) then
-                self:find_variable(input.expr.segments[1], set_used)
+                self:find_variable(input.expr.segments[1].ident, set_used)
             end
         end
 
         for _, output in ipairs(expr.outputs) do
             if is_simple_expr_path(output.expr) then
-                self:find_variable(output.expr.segments[1], set_by_value_mutable)
+                self:find_variable(output.expr.segments[1].ident, set_by_value_mutable)
             end
         end
     elseif expr.kind == "MethodCall" then
         -- This may need to be more complex. What if self isn't an ident but say an
         -- index? ie `x[1].as_mut_ptr()` x still needs to be mutable?
         if is_simple_expr_path(expr.args[1]) and expr.caller_is == "ref_mut" then
-            self:find_variable(expr.args[1].segments[1], set_by_value_mutable)
+            self:find_variable(expr.args[1].segments[1].ident, set_by_value_mutable)
         end
     end
 
