@@ -161,6 +161,7 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         MacroObject {
             ref replacements, ..
         } => replacements.iter().map(|&x| x.into()).collect(),
+        NonCanonicalDecl { canonical_decl } => intos![canonical_decl],
     }
 }
 

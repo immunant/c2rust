@@ -2,6 +2,9 @@
 
 /* another header comment */
 
+/* a comment on a declaration */
+int a_function();
+
 int header_fn2(int x) {
   return x;
 }

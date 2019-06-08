@@ -21,6 +21,8 @@ enum ASTEntryTag {
     TagTypedefDecl,
     TagUnionDecl,
 
+    TagNonCanonicalDecl,
+
     TagMacroObjectDef,
     TagMacroFunctionDef,
 

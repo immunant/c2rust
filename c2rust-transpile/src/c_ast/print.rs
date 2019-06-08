@@ -702,6 +702,16 @@ impl<W: Write> Printer<W> {
                 Ok(())
             }
 
+            Some(&CDeclKind::NonCanonicalDecl {
+                ref canonical_decl,
+            }) => {
+                if let Some(name) = context[*canonical_decl].kind.get_name() {
+                    self.writer.write_fmt(format_args!("// non-canonical decl for {}", name))
+                } else {
+                    self.writer.write_fmt(format_args!("// non-canonical decl for <unknown>"))
+                }
+            }
+
             None => panic!("Could not find declaration with ID {:?}", decl_id),
             // _ => unimplemented!("Printer::print_decl"),
         }

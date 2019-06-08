@@ -522,6 +522,14 @@ impl CommentContext {
         let decl_comments = decl_comments_map
             .into_iter()
             .map(|(decl_id, map)| (decl_id, map.into_iter().map(|(_, v)| v).collect()))
+            .map(|(decl_id, comments)| {
+                let decl_id = if let CDeclKind::NonCanonicalDecl { canonical_decl } = ast_context[decl_id].kind {
+                    canonical_decl
+                } else {
+                    decl_id
+                };
+                (decl_id, comments)
+            })
             .collect();
         let stmt_comments = stmt_comments_map
             .into_iter()
@@ -697,6 +705,10 @@ pub enum CDeclKind {
         name: String,
         replacements: Vec<CExprId>,
     },
+
+    NonCanonicalDecl {
+        canonical_decl: CDeclId,
+    }
 }
 
 impl CDeclKind {

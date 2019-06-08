@@ -1528,9 +1528,15 @@ class TranslateASTVisitor final
     // Some function declarations are also function definitions.
     // This method handles both types of declarations.
     bool VisitFunctionDecl(FunctionDecl *FD) {
-        // Skip non-canonical decls
-        if (!FD->isCanonicalDecl())
+        if (!FD->isCanonicalDecl()) {
+            // Emit non-canonical decl so we have a placeholder to attach comments to
+            std::vector<void *> childIds = {FD->getCanonicalDecl()};
+            auto loc = FD->getLocation();
+            if (FD->doesThisDeclarationHaveABody())
+                loc = FD->getCanonicalDecl()->getLocation();
+            encode_entry(FD, TagNonCanonicalDecl, loc, childIds, FD->getType());
             return true;
+        }
 
         // if (FD->hasBody() && FD->isVariadic()) {
         //   //   auto fname = FD->getNameString();
@@ -1624,8 +1630,12 @@ class TranslateASTVisitor final
         // functions that should be the same at link time, Clang groups them.
         // That is unhelpful for us though, since we need to convert them into
         // two seperate `extern` blocks.
-        if (!VD->isCanonicalDecl() && !VD->isExternC())
+        if (!VD->isCanonicalDecl() && !VD->isExternC()) {
+            // Emit non-canonical decl so we have a placeholder to attach comments to
+            std::vector<void *> childIds = {VD->getCanonicalDecl()};
+            encode_entry(VD, TagNonCanonicalDecl, VD->getLocation(), childIds, VD->getType());
             return true;
+        }
 
         auto is_defn = false;
         auto def = VD;
@@ -1707,8 +1717,10 @@ class TranslateASTVisitor final
      - name as string
      */
     bool VisitRecordDecl(RecordDecl *D) {
-        // Skip non-canonical decls
         if (!D->isCanonicalDecl()) {
+            // Emit non-canonical decl so we have a placeholder to attach comments to
+            std::vector<void *> childIds = {D->getCanonicalDecl()};
+            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, QualType());
             return true;
         }
 
@@ -1812,9 +1824,12 @@ class TranslateASTVisitor final
     }
 
     bool VisitEnumConstantDecl(EnumConstantDecl *D) {
-        // Skip non-canonical decls
-        if (!D->isCanonicalDecl())
+        if (!D->isCanonicalDecl()) {
+            // Emit non-canonical decl so we have a placeholder to attach comments to
+            std::vector<void *> childIds = {D->getCanonicalDecl()};
+            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, QualType());
             return true;
+        }
 
         std::vector<void *> childIds; // = { D->getInitExpr() };
 
@@ -1834,9 +1849,12 @@ class TranslateASTVisitor final
     }
 
     bool VisitFieldDecl(FieldDecl *D) {
-        // Skip non-canonical decls
-        if (!D->isCanonicalDecl())
+        if (!D->isCanonicalDecl()) {
+            // Emit non-canonical decl so we have a placeholder to attach comments to
+            std::vector<void *> childIds = {D->getCanonicalDecl()};
+            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, D->getType());
             return true;
+        }
 
         std::vector<void *> childIds;
         auto t = D->getType();
@@ -1875,9 +1893,12 @@ class TranslateASTVisitor final
     }
 
     bool VisitTypedefNameDecl(TypedefNameDecl *D) {
-        // Skip non-canonical decls
-        if (!D->isCanonicalDecl())
+        if (!D->isCanonicalDecl()) {
+            // Emit non-canonical decl so we have a placeholder to attach comments to
+            std::vector<void *> childIds = {D->getCanonicalDecl()};
+            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, D->getUnderlyingType());
             return true;
+        }
 
         std::vector<void *> childIds;
         auto typeForDecl = D->getUnderlyingType();
@@ -2153,7 +2174,7 @@ class TranslateConsumer : public clang::ASTConsumer {
             // 2. Track all of the top-level declarations
             cbor_encoder_create_array(&outer, &array, CborIndefiniteLength);
             for (auto d : translation_unit->decls()) {
-                bool emit_decl = false;
+                bool emit_decl = true;
                 if (d->isCanonicalDecl()) {
                     emit_decl = true;
                 } else if(isa<VarDecl>(d)) {

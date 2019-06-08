@@ -1893,6 +1893,16 @@ impl ConversionContext {
                     self.typed_context.c_decls_top.push(CDeclId(new_id));
                 }
 
+                ASTEntryTag::TagNonCanonicalDecl if expected_ty & DECL != 0 => {
+                    let canonical_decl = node.children[0]
+                        .expect("NonCanonicalDecl must point to a canonical decl");
+                    let canonical_decl = self.visit_decl(canonical_decl);
+                    let record = CDeclKind::NonCanonicalDecl { canonical_decl };
+
+                    self.add_decl(new_id, located(node, record));
+                    self.processed_nodes.insert(new_id, OTHER_DECL);
+                }
+
                 t => panic!("Could not translate node {:?} as type {}", t, expected_ty),
             }
         }
