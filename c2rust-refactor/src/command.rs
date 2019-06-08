@@ -110,13 +110,22 @@ fn parse_extras(compiler: &interface::Compiler) -> (Vec<Comment>, Vec<Literal>) 
         if let Some(src) = &file.src {
             let mut reader = src.as_bytes();
 
-            let (mut c, mut l) = gather_comments_and_literals(
+            let (mut new_comments, mut new_literals) = gather_comments_and_literals(
                 &compiler.session().parse_sess,
                 file.name.clone(),
                 &mut reader,
             );
-            comments.append(&mut c);
-            literals.append(&mut l);
+
+            // gather_comments_and_literals starts positions at 0 each time, so
+            // we need to adjust by the file offset
+            for c in &mut new_comments {
+                c.pos = c.pos + file.start_pos;
+            }
+            for l in &mut new_literals {
+                l.pos = l.pos + file.start_pos;
+            }
+            comments.append(&mut new_comments);
+            literals.append(&mut new_literals);
         }
     }
 

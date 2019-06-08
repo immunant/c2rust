@@ -104,8 +104,8 @@ fn rewrite_range(
 
         for comment in &rw.comments {
             if comment.style == CommentStyle::Isolated {
+                callback("\n");
                 comment.lines.iter().for_each(|s| {
-                    callback("\n");
                     callback(s.as_str());
                     callback("\n");
                 });

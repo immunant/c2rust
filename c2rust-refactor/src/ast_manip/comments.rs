@@ -86,22 +86,26 @@ impl<'a> CommentCollector<'a> {
     }
 
     fn check_comment(&mut self, id: NodeId, span: Span) {
-        if let Some(comment) = self.next_comment() {
+        while let Some(comment) = self.next_comment() {
             match comment.style {
                 CommentStyle::Isolated => {
                     if comment.pos < span.lo() {
                         let comment = self.consume_comment();
                         self.comment_map.insert(id, comment);
+                        continue;
                     }
                 }
                 CommentStyle::Trailing => {
                     if comment.pos >= span.hi() {
                         let comment = self.consume_comment();
                         self.comment_map.insert(id, comment);
+                        continue;
                     }
                 }
                 _ => {}
             }
+
+            break;
         }
     }
 }
