@@ -27,7 +27,8 @@ use smallvec::SmallVec;
 
 use syntax::ast;
 use syntax::ext::base::{Annotatable, ExtCtxt, MultiItemModifier, SyntaxExtension};
-use syntax::fold::{self, Folder};
+use syntax::ext::build::AstBuilder;
+use syntax::mut_visit::{self, ExpectOne, MutVisitor};
 use syntax::parse::{token, parse_stream_from_source_str};
 use syntax::print::pprust;
 use syntax::ptr::P;
@@ -38,6 +39,8 @@ use syntax::tokenstream::{TokenTree, TokenStream, TokenStreamBuilder};
 mod default_config;
 
 trait AstExtBuilder {
+    fn expr_u64(&self, sp: Span, u: u64) -> P<ast::Expr>;
+
     fn expr_mac(&self, sp: Span, path: ast::Path, delim: ast::MacDelimiter,
                 tts: TokenStream) -> P<ast::Expr>;
     fn item_mac(&self, sp: Span, path: ast::Path, delim: ast::MacDelimiter,
@@ -49,31 +52,38 @@ trait AstExtBuilder {
     fn expr_mac_fn(&self, sp: Span, path: ast::Path, args: Vec<token::Nonterminal>) -> P<ast::Expr>;
     fn item_mac_fn(&self, sp: Span, path: ast::Path, args: Vec<token::Nonterminal>) -> P<ast::Item>;
     fn stmt_mac_fn(&self, sp: Span, path: ast::Path, args: Vec<token::Nonterminal>) -> ast::Stmt;
+
+    fn args_to_tts(&self, sp: Span, args: Vec<token::Nonterminal>) -> TokenStream;
 }
 
 impl<'a> AstExtBuilder for ExtCtxt<'a> {
-    fn expr_mac(&self, sp: Span, path: ast::Path, delim: ast::MacDelimiter,
-                tts: TokenStream) -> P<ast::Expr> {
-        let node = ast::Mac_ { path, delim, tts };
-        self.expr(sp, ast::ExprKind::Mac(Spanned { node, sp }))
+    fn expr_u64(&self, sp: Span, u: u64) -> P<ast::Expr> {
+        self.expr_lit(sp, ast::LitKind::Int(u as u128,
+                                            ast::LitIntType::Unsigned(ast::UintTy::U64)))
     }
 
-    fn item_mac(&self, sp: Span, path: ast::Path, delim: ast::MacDelimiter,
+    fn expr_mac(&self, span: Span, path: ast::Path, delim: ast::MacDelimiter,
+                tts: TokenStream) -> P<ast::Expr> {
+        let node = ast::Mac_ { path, delim, tts };
+        self.expr(span, ast::ExprKind::Mac(Spanned { node, span }))
+    }
+
+    fn item_mac(&self, span: Span, path: ast::Path, delim: ast::MacDelimiter,
                 tts: TokenStream) -> P<ast::Item> {
         let name = keywords::Invalid.ident();
         let node = ast::Mac_ { path, delim, tts };
         let attrs = vec![];
-        self.item(sp, name, ast::ExprKind::Mac(Spanned { node, sp }), attrs)
+        self.item(span, name, attrs, ast::ItemKind::Mac(Spanned { node, span }))
     }
 
-    fn stmt_mac(&self, sp: Span, path: ast::Path, delim: ast::MacDelimiter,
+    fn stmt_mac(&self, span: Span, path: ast::Path, delim: ast::MacDelimiter,
                 tts: TokenStream, style: ast::MacStmtStyle,
                 attrs: Vec<ast::Attribute>) -> ast::Stmt {
         let node = ast::Mac_ { path, delim, tts };
-        let node = ast::StmtKind::Mac(P((Spanned { node, sp }, style, attrs.into())));
+        let node = ast::StmtKind::Mac(P((Spanned { node, span }, style, attrs.into())));
         ast::Stmt {
             id: ast::DUMMY_NODE_ID,
-            span: sp,
+            span,
             node
         }
     }
@@ -93,9 +103,7 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
         self.stmt_mac(sp, path, ast::MacDelimiter::Parenthesis,
                       arg_tts, ast::MacStmtStyle::Semicolon, vec![])
     }
-}
 
-impl<'a> ExtCtxt<'a> {
     fn args_to_tts(&self, sp: Span, args: Vec<token::Nonterminal>) -> TokenStream {
         let mut tsb = TokenStreamBuilder::new();
         let mut add_comma = false;
@@ -105,10 +113,10 @@ impl<'a> ExtCtxt<'a> {
             } else {
                 add_comma = true;
             }
-            let arg_str = pprust::nonterminal_to_string(arg);
+            let arg_str = pprust::nonterminal_to_string(&arg);
             let arg_file_name = FileName::macro_expansion_source_code(&arg_str);
             let arg_tokens = parse_stream_from_source_str(arg_file_name, arg_str,
-                                                          self.sess, Some(sp));
+                                                          self.parse_sess, Some(sp));
             tsb.push(arg_tokens.into());
         }
         tsb.build()
@@ -152,10 +160,11 @@ impl CrossCheckBuilder for xcfg::XCheckType {
         self.build_xcheck(cx, exp, tag_str, invalid_ident, |tag, pre_hash_stmts| {
             assert!(pre_hash_stmts.is_empty());
             let name = &*ident.name.as_str();
-            let id = cx.expr_u32(DUMMY_SP, djb2_hash(name));
+            let id = djb2_hash(name);
             exp.insert_djb2_name(id, String::from(name));
-            let expr = cx.expr_some(DUMMY_SP, cx.expr_tuple(vec![tag, id]));
-            cx.stmt_semi(DUMMY_SP, expr)
+
+            let id_expr = cx.expr_u32(DUMMY_SP, id);
+            cx.expr_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag, id_expr]))
         })
     }
 
@@ -179,14 +188,15 @@ impl CrossCheckBuilder for xcfg::XCheckType {
                     cx.ident_of("xcheck"),
                     cx.ident_of(tag_str)
             ]);
-        let tag_expr = cx.expr_path(DUMMY_SP, tag_path);
+        let tag_expr = cx.expr_path(tag_path);
         let xcheck = match *self {
             xcfg::XCheckType::Default => f(tag_expr, vec![]),
             xcfg::XCheckType::AsType(ref ty_str) => {
                 let var_ident = cx.ident_of("__c2rust_cast_val").gensym();
                 // let __c2rust_cast_val = *$val_ref_ident as $ty;
                 let val_cast_let = {
-                    let ref_deref = cx.expr_deref(DUMMY_SP, val_ref_ident.clone());
+                    let ref_expr = cx.expr_ident(DUMMY_SP, val_ref_ident.clone());
+                    let ref_deref = cx.expr_deref(DUMMY_SP, ref_expr);
                     let ty = {
                         // Parse `ty_str` -> `Ty` structure
                         let ty_tts = cx.parse_tts(ty_str.clone());
@@ -194,12 +204,12 @@ impl CrossCheckBuilder for xcfg::XCheckType {
                         ty_parser.parse_ty()?
                     };
                     let val_cast = cx.expr_cast(DUMMY_SP, ref_deref, ty);
-                    cx.stmt_let(false, var_ident.clone(), val_cast)
+                    cx.stmt_let(DUMMY_SP, false, var_ident.clone(), val_cast)
                 };
                 // let $val_ref_ident = &__c2rust_cast_val;
                 let val_update = {
                     let var_ref = cx.expr_addr_of(DUMMY_SP, cx.expr_ident(DUMMY_SP, var_ident));
-                    cx.stmt_let(false, val_ref_ident, var_ref)
+                    cx.stmt_let(DUMMY_SP, false, val_ref_ident, var_ref)
                 };
 
                 f(tag_expr, vec![val_cast_let, val_update])
@@ -208,17 +218,19 @@ impl CrossCheckBuilder for xcfg::XCheckType {
             xcfg::XCheckType::None | xcfg::XCheckType::Disabled => cx.expr_none(DUMMY_SP),
             xcfg::XCheckType::Fixed(id) => {
                 let id = cx.expr_u64(DUMMY_SP, id);
-                cx.expr_some(DUMMY_SP, cx.expr_tuple(vec![tag_expr, id]))
+                cx.expr_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, id]))
             }
             xcfg::XCheckType::Djb2(ref s) => {
-                let id = cx.expr_u32(DUMMY_SP, djb2_hash(s));
+                let id = djb2_hash(s);
                 exp.insert_djb2_name(id, s.clone());
-                cx.expr_some(DUMMY_SP, cx.expr_tuple(vec![tag_expr, id]))
+
+                let id_expr = cx.expr_u32(DUMMY_SP, id);
+                cx.expr_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, id_expr]))
             }
             xcfg::XCheckType::Custom(ref s) => {
                 // TODO: allow the custom expr to return an Option???
                 let custom_expr = cx.parse_expr(s.clone());
-                cx.expr_some(DUMMY_SP, cx.expr_tuple(vec![tag_expr, custom_expr]))
+                cx.expr_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, custom_expr]))
             }
         };
         let xcheck_path =
@@ -316,7 +328,7 @@ enum AttrValue {
     Str(String),
 }
 
-type AttrMap = HashMap<String, AttrValue>;
+type AttrMap = HashMap<&'static str, AttrValue>;
 
 struct CrossChecker<'a, 'cx: 'a, 'exp> {
     expander: &'exp CrossCheckExpander,
@@ -416,8 +428,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                             self.cx.path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_emit_xcheck"));
                         let mac_args = vec![
                             token::NtExpr(tag),
-                            token::NtIdent(ident),
-                            token::NtIdent(val_ref_ident),
+                            token::NtIdent(ident.clone(), false),
+                            token::NtIdent(val_ref_ident, false),
                             token::NtTT(ahasher),
                             token::NtTT(shasher)
                         ];
@@ -434,27 +446,27 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     fn build_hash_attr_args(&self) -> AttrMap {
         let mut res = AttrMap::new();
         if let Some(ref ahasher) = self.config().inherited.ahasher.as_ref() {
-            res.insert("ahasher", AttrValue::Str(ahasher));
+            res.insert("ahasher", AttrValue::Str(ahasher.to_string()));
         }
         if let Some(ref shasher) = self.config().inherited.shasher.as_ref() {
-            res.insert("shasher", AttrValue::Str(shasher));
+            res.insert("shasher", AttrValue::Str(shasher.to_string()));
         }
         let struct_config = self.config().struct_config();
         if let Some(ref field_hasher) = struct_config.field_hasher.as_ref() {
-            res.insert("field_hasher", AttrValue::Str(field_hasher));
+            res.insert("field_hasher", AttrValue::Str(field_hasher.to_string()));
         }
         if let Some(ref custom_hash) = struct_config.custom_hash.as_ref() {
-            res.insert("custom_hash", AttrValue::Str(custom_hash));
+            res.insert("custom_hash", AttrValue::Str(custom_hash.to_string()));
         }
         match struct_config.custom_hash_format.as_ref() {
             Some(xcfg::CustomHashFormat::Function) => {
-                res.insert("custom_hash_format", AttrValue::Str("function"))
+                res.insert("custom_hash_format", AttrValue::Str("function".to_string()));
             }
             Some(xcfg::CustomHashFormat::Expression) => {
-                res.insert("custom_hash_format", AttrValue::Str("expression"))
+                res.insert("custom_hash_format", AttrValue::Str("expression".to_string()));
             }
             Some(xcfg::CustomHashFormat::Extern) => {
-                res.insert("custom_hash_format", AttrValue::Str("extern"))
+                res.insert("custom_hash_format", AttrValue::Str("extern".to_string()));
             }
             None => {}
         }
@@ -481,7 +493,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     fn build_extra_xchecks(&self, extra_xchecks: &[xcfg::ExtraXCheck]) -> Vec<ast::Stmt> {
         extra_xchecks
             .iter()
-            .flat_map(|ex| {
+            .map(|ex| {
                 // TODO: allow the custom functions to return Option or an iterator???
                 let expr = self.cx.parse_expr(ex.custom.clone());
                 let tag_str = match ex.tag {
@@ -495,7 +507,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 let mac_path =
                     self.cx.path_ident(DUMMY_SP, self.cx.ident_of("cross_check_raw"));
                 self.cx.stmt_mac_fn(DUMMY_SP, mac_path,
-                                    vec![token::NtIdent(tag_ident),
+                                    vec![token::NtIdent(tag_ident, false),
                                          token::NtExpr(expr)])
             })
             .collect::<Vec<ast::Stmt>>()
@@ -578,8 +590,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                         self.cx.path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_emit_xcheck"));
                     let mac_args = vec![
                         token::NtExpr(tag),
-                        token::NtIdent(result_ident),
-                        token::NtIdent(val_ref_ident),
+                        token::NtIdent(result_ident, false),
+                        token::NtIdent(val_ref_ident, false),
                         token::NtTT(ahasher),
                         token::NtTT(shasher)
                     ];
@@ -595,7 +607,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
 
             // Return the result
             let result_expr = self.cx.expr_ident(DUMMY_SP, result_ident);
-            let result_stmt = self.cx.stmt_expr(DUMMY_SP, result_expr);
+            let result_stmt = self.cx.stmt_expr(result_expr);
             new_stmts.push(result_stmt);
 
             // We're done, return the new block
@@ -613,34 +625,34 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         let custom_hash_format = &self.config().struct_config().custom_hash_format;
         let mac_path =
             self.cx.path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_impl_union_hash"));
-        let mac_args = vec![token::NtIdent(union_ident)];
+        let mac_args = vec![token::NtIdent(union_ident, false)];
         let hash_body = if let Some(ref custom_hash) = *custom_hash_opt {
             // User provided a custom hash function, pass it to the macro
             match custom_hash_format {
                 None | Some(xcfg::CustomHashFormat::Function) => {
                     let (ahasher, shasher) = self.get_hasher_pair();
                     let hash_fn_ident = self.cx.ident_of(custom_hash);
-                    mac_args.push(token::NtIdent(self.cx.ident_of("Function")));
-                    mac_args.push(token::NtIdent(hash_fn_ident));
+                    mac_args.push(token::NtIdent(self.cx.ident_of("Function"), false));
+                    mac_args.push(token::NtIdent(hash_fn_ident, false));
                     mac_args.push(token::NtTT(ahasher));
                     mac_args.push(token::NtTT(shasher));
                 }
                 Some(xcfg::CustomHashFormat::Expression) => {
                     let expr = self.cx.parse_expr(custom_hash.clone());
-                    mac_args.push(token::NtIdent(self.cx.ident_of("Expression")));
+                    mac_args.push(token::NtIdent(self.cx.ident_of("Expression"), false));
                     mac_args.push(token::NtExpr(expr));
                 }
                 Some(xcfg::CustomHashFormat::Extern) => {
                     let hash_fn_ident = self.cx.ident_of(custom_hash);
-                    mac_args.push(token::NtIdent(self.cx.ident_of("Extern")));
-                    mac_args.push(token::NtIdent(hash_fn_ident));
+                    mac_args.push(token::NtIdent(self.cx.ident_of("Extern"), false));
+                    mac_args.push(token::NtIdent(hash_fn_ident, false));
                 }
             }
         } else {
             // TODO: emit warning
-            mac_args.push(token::NtIdent(self.cx.ident_of("Default")));
+            mac_args.push(token::NtIdent(self.cx.ident_of("Default"), false));
         };
-        self.item_mac_fn(DUMMY_SP, mac_path, mac_args);
+        self.cx.item_mac_fn(DUMMY_SP, mac_path, mac_args)
     }
 
     #[cfg(feature = "c-hash-functions")]
@@ -671,8 +683,8 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         let mac_path =
             self.cx.path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_export_extern_hash"));
         let mac_args = vec![
-            token::NtIdent(ty_ident),
-            token::NtIdent(hash_fn_ident),
+            token::NtIdent(ty_ident, false),
+            token::NtIdent(hash_fn_ident, false),
             token::NtMeta(hash_fn_sec_meta),
             token::NtTT(ahasher),
             token::NtTT(shasher)
@@ -680,67 +692,55 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         Some(self.cx.item_mac_fn(DUMMY_SP, mac_path, mac_args))
     }
 
-    fn internal_fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
-        let folded_item = fold::noop_fold_item_simple(item, self);
-        match folded_item.node {
+    fn internal_visit_item(&mut self, item: &mut P<ast::Item>) {
+        match item.node {
             ast::ItemKind::Fn(fn_decl, header, generics, block) => {
                 let checked_block =
-                    self.build_function_xchecks(folded_item.ident, &*fn_decl, block);
-                let checked_fn = ast::ItemKind::Fn(fn_decl, header, generics, checked_block);
-                // Build and return the replacement function item
-                ast::Item {
-                    node: checked_fn,
-                    ..folded_item
-                }
+                    self.build_function_xchecks(item.ident, &*fn_decl, block);
+                item.node = ast::ItemKind::Fn(fn_decl, header, generics, checked_block);
             }
             ast::ItemKind::Union(_, _) => {
-                let union_hash_impl = self.build_union_hash(folded_item.ident);
+                let union_hash_impl = self.build_union_hash(item.ident);
                 self.pending_items.push(union_hash_impl);
                 #[cfg(feature = "c-hash-functions")]
                 {
-                    let c_hash_func = self.build_type_c_hash_function(folded_item.ident, "struct");
+                    let c_hash_func = self.build_type_c_hash_function(item.ident, "struct");
                     self.pending_items.extend(c_hash_func.into_iter());
                 }
-                folded_item
             }
             ast::ItemKind::Enum(_, _) | ast::ItemKind::Struct(_, _) => {
                 // Prepend #[derive(CrossCheckHash)] automatically
                 // to every structure definition
-                let mut item_attrs = folded_item.attrs;
                 if self.config().inherited.enabled {
                     let xcheck_hash_derive_attr = {
                         let xch_sym = self.cx.name_of("CrossCheckHash");
-                        let xch = self.cx.meta_list_item_word(folded_item.span, xch_sym);
-                        let attr = self.cx.meta_list(folded_item.span, Symbol::intern("derive"), vec![xch]);
-                        self.cx.attribute(folded_item.span, attr)
+                        let xch = self.cx.meta_list_item_word(item.span, xch_sym);
+                        let attr = self.cx.meta_list(item.span, Symbol::intern("derive"), vec![xch]);
+                        self.cx.attribute(item.span, attr)
                     };
-                    item_attrs.push(xcheck_hash_derive_attr);
+                    item.attrs.push(xcheck_hash_derive_attr);
 
                     let attr_args = self.build_hash_attr_args();
                     if !attr_args.is_empty() {
-                        let xcheck_hash_attr = self.convert_hash_attr_map(folded_item.span, attr_args);
-                        item_attrs.push(xcheck_hash_attr);
+                        let attr_args = self.convert_hash_attr_map(item.span, attr_args);
+                        let xcheck_hash_attr = self.cx.attribute(item.span, attr_args);
+                        item.attrs.push(xcheck_hash_attr);
                     }
                     #[cfg(feature = "c-hash-functions")]
                     {
                         let c_hash_func =
-                            self.build_type_c_hash_function(folded_item.ident, "struct");
+                            self.build_type_c_hash_function(item.ident, "struct");
                         self.pending_items.extend(c_hash_func.into_iter());
                     }
-                }
-                ast::Item {
-                    attrs: item_attrs,
-                    ..folded_item
                 }
             }
             ast::ItemKind::Mac(_) => {
                 if !cfg!(feature = "expand_macros") {
                     self.expander
-                        .insert_macro_scope(folded_item.span, self.config().clone());
+                        .insert_macro_scope(item.span, self.config().clone());
                 }
-                folded_item
             }
-            _ => folded_item,
+            _ => {}
         }
     }
 
@@ -756,13 +756,30 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     }
 }
 
-impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
-    fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
-        if self.skip_first_scope {
+impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
+    // Mutate functions that handle macro expansion
+    fn flat_map_item(&mut self, item: P<ast::Item>) -> SmallVec<[P<ast::Item>; 1]> {
+        if cfg!(feature = "expand-macros") {
+            //if let ast::ItemKind::Mac(_) = item.node {
+            //    return self
+            //        .cx
+            //        .expander()
+            //        .fold_item(item)
+            //        .into_iter()
+            //        .flat_map(|item| self.fold_item(item).into_iter())
+            //        .collect();
+            //}
+            unimplemented!("expand-macros not implemented");
+        }
+        let mut res = if self.skip_first_scope {
             // If skip_first_scope is true, skip building a new scope
             // (see the comment for skip_first_scope in CrossChecker above)
             self.skip_first_scope = false;
-            self.internal_fold_item_simple(item)
+            let folded_items = mut_visit::noop_flat_map_item(item, self);
+            for ref mut item in folded_items {
+                self.internal_visit_item(item);
+            }
+            folded_items
         } else {
             let new_scopes = self.scope_stack.push_ast_item(
                 &item,
@@ -770,13 +787,19 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                 &self.expander.external_config,
                 self.cx,
             );
-            let new_item = self.internal_fold_item_simple(item);
+            let folded_items = mut_visit::noop_flat_map_item(item, self);
+            for ref mut item in folded_items {
+                self.internal_visit_item(item);
+            }
             self.scope_stack.pop_multi(new_scopes);
-            new_item
-        }
+            folded_items
+        };
+        // Add the pending items
+        res.extend(self.pending_items.drain(..));
+        res
     }
 
-    fn fold_impl_item(&mut self, item: ast::ImplItem) -> SmallVec<[ast::ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, item: ast::ImplItem) -> SmallVec<[ast::ImplItem; 1]> {
         match item.node {
             ast::ImplItemKind::Method(sig, body) => {
                 // FIXME: this is a bit hacky: we forcibly build a fake
@@ -791,48 +814,52 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                     tokens: item.tokens,
                     node: ast::ItemKind::Fn(sig.decl, sig.header, item.generics, body),
                 };
-                let folded_fake_item = self.fold_item_simple(fake_item);
-                let (folded_sig, folded_generics, folded_body) = match folded_fake_item.node {
-                    ast::ItemKind::Fn(decl, header, generics, body) => {
-                        let sig = ast::MethodSig { header, decl };
-                        // TODO: call noop_fold_method_sig on sig???
-                        (sig, generics, body)
+                let folded_fake_items = self.flat_map_item(P(fake_item));
+                folded_fake_items.into_iter().map(|ffi| {
+                    let (folded_sig, folded_generics, folded_body) = match ffi.node {
+                        ast::ItemKind::Fn(decl, header, generics, body) => {
+                            let sig = ast::MethodSig { header, decl };
+                            // TODO: call noop_fold_method_sig on sig???
+                            (sig, generics, body)
+                        }
+                        n => panic!("unexpected folded item node: {:?}", n),
+                    };
+                    ast::ImplItem {
+                        ident: ffi.ident,
+                        attrs: ffi.attrs,
+                        id: ffi.id,
+                        vis: ffi.vis,
+                        span: ffi.span,
+                        tokens: ffi.tokens,
+                        defaultness: item.defaultness,
+                        generics: folded_generics,
+                        node: ast::ImplItemKind::Method(folded_sig, folded_body)
                     }
-                    n => panic!("unexpected folded item node: {:?}", n),
-                };
-                smallvec![ast::ImplItem {
-                    ident: folded_fake_item.ident,
-                    attrs: folded_fake_item.attrs,
-                    id: folded_fake_item.id,
-                    vis: folded_fake_item.vis,
-                    span: folded_fake_item.span,
-                    tokens: folded_fake_item.tokens,
-                    defaultness: item.defaultness,
-                    generics: folded_generics,
-                    node: ast::ImplItemKind::Method(folded_sig, folded_body)
-                }]
+                })
+                .collect()
             }
-            _ => fold::noop_fold_impl_item(item, self),
+            _ => mut_visit::noop_flat_map_impl_item(item, self),
         }
     }
 
-    fn fold_stmt(&mut self, s: ast::Stmt) -> SmallVec<[ast::Stmt; 1]> {
+    fn flat_map_stmt(&mut self, s: ast::Stmt) -> SmallVec<[ast::Stmt; 1]> {
         if cfg!(feature = "expand-macros") {
-            if let ast::StmtKind::Mac(_) = s.node {
-                return self
-                    .cx
-                    .expander()
-                    .fold_stmt(s)
-                    .into_iter()
-                    .flat_map(|stmt| self.fold_stmt(stmt).into_iter())
-                    .collect();
-            }
+            //if let ast::StmtKind::Mac(_) = s.node {
+            //    return self
+            //        .cx
+            //        .expander()
+            //        .fold_stmt(s)
+            //        .into_iter()
+            //        .flat_map(|stmt| self.fold_stmt(stmt).into_iter())
+            //        .collect();
+            //}
+            unimplemented!("expand-macros not implemented");
         } else {
             self.expander
                 .insert_macro_scope(s.span, self.config().clone());
         }
 
-        let folded_stmt = fold::noop_fold_stmt(s, self);
+        let folded_stmt = mut_visit::noop_flat_map_stmt(s, self);
         folded_stmt
             .into_iter()
             .flat_map(|s| {
@@ -845,7 +872,7 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                             // (in other words, check local.init.is_some())
                             match local.pat.node {
                                 ast::PatKind::Ident(_, ident, _) => {
-                                    let ident_expr = self.cx.expr_ident(ident.sp, ident);
+                                    let ident_expr = self.cx.expr_ident(ident.span, ident);
                                     let mac_path =
                                         self.cx.path_ident(DUMMY_SP, self.cx.ident_of("cross_check_value"));
                                     let xcheck =
@@ -867,21 +894,19 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
             .collect()
     }
 
-    fn fold_variant_data(&mut self, vdata: ast::VariantData) -> ast::VariantData {
+    fn visit_variant_data(&mut self, vdata: &mut ast::VariantData) {
         self.field_idx_stack.push(0);
-        let res = fold::noop_fold_variant_data(vdata, self);
+        mut_visit::noop_visit_variant_data(vdata, self);
         self.field_idx_stack.pop();
-        res
     }
 
-    fn fold_struct_field(&mut self, sf: ast::StructField) -> ast::StructField {
-        let folded_sf = fold::noop_fold_struct_field(sf, self);
+    fn visit_struct_field(&mut self, sf: &mut ast::StructField) {
+        mut_visit::noop_visit_struct_field(sf, self);
 
         // Get the name of the field; the compiler should give us the name
         // if the field is in a Struct. If it's in a Tuple, we use
         // the field index, which we need to compute ourselves from field_idx_stack.
-        let sf_name = folded_sf
-            .ident
+        let sf_name = sf.ident
             .map(|ident| xcfg::FieldIndex::Str(ident.name.to_string()))
             .unwrap_or_else(|| {
                 // We use field_idx_stack to keep track of the index/name
@@ -892,7 +917,7 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                 res
             });
 
-        let sf_attr_xcheck = self.parse_field_attr(&folded_sf.attrs);
+        let sf_attr_xcheck = self.parse_field_attr(&sf.attrs);
         let sf_xcfg_xcheck = self.config().struct_config().fields.get(&sf_name);
         let sf_xcheck = sf_xcfg_xcheck.or_else(|| sf_attr_xcheck.as_ref());
         let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
@@ -902,13 +927,15 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                 xcfg::XCheckType::AsType(ref ty) => {
                     let attrs = AttrMap::new();
                     attrs.insert("as_type", AttrValue::Str(ty.clone()));
-                    Some(self.convert_hash_attr_map(folded_sf.span, attrs))
+                    let attr_args = self.convert_hash_attr_map(sf.span, attrs);
+                    Some(self.cx.attribute(sf.span, attr_args))
                 }
 
                 xcfg::XCheckType::None | xcfg::XCheckType::Disabled => {
                     let attrs = AttrMap::new();
                     attrs.insert("none", AttrValue::Nothing);
-                    Some(self.convert_hash_attr_map(folded_sf.span, attrs))
+                    let attr_args = self.convert_hash_attr_map(sf.span, attrs);
+                    Some(self.cx.attribute(sf.span, attr_args))
                 }
 
                 xcfg::XCheckType::Djb2(_) => unimplemented!(),
@@ -919,69 +946,43 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                     let attrs = AttrMap::new();
                     let sid = format!("{}", id);
                     attrs.insert("fixed_hash", AttrValue::Str(sid));
-                    Some(self.convert_hash_attr_map(folded_sf.span, attrs))
+                    let attr_args = self.convert_hash_attr_map(sf.span, attrs);
+                    Some(self.cx.attribute(sf.span, attr_args))
                 }
 
                 xcfg::XCheckType::Custom(ref s) => {
                     let attrs = AttrMap::new();
                     attrs.insert("custom_hash", AttrValue::Str(s.clone()));
-                    Some(self.convert_hash_attr_map(folded_sf.span, attrs))
+                    let attr_args = self.convert_hash_attr_map(sf.span, attrs);
+                    Some(self.cx.attribute(sf.span, attr_args))
                 }
             }
         });
 
         // Remove #[cross_check] from attributes, then append #[cross_check_hash]
-        let sf_attrs = folded_sf
-            .attrs
-            .into_iter()
-            .filter(|attr| !attr.check_name("cross_check"))
-            .chain(hash_attr.into_iter())
-            .collect();
-        ast::StructField {
-            attrs: sf_attrs,
-            ..folded_sf
-        }
+        sf.attrs.retain(|attr| !attr.check_name("cross_check"));
+        sf.attrs.extend(hash_attr.into_iter());
     }
 
-    // Fold functions that handle macro expansion
-    fn fold_item(&mut self, item: P<ast::Item>) -> SmallVec<[P<ast::Item>; 1]> {
+    fn visit_expr(&mut self, expr: &mut P<ast::Expr>) {
         if cfg!(feature = "expand-macros") {
-            if let ast::ItemKind::Mac(_) = item.node {
-                return self
-                    .cx
-                    .expander()
-                    .fold_item(item)
-                    .into_iter()
-                    .flat_map(|item| self.fold_item(item).into_iter())
-                    .collect();
-            }
-        }
-        let mut res = fold::noop_fold_item(item, self);
-        // Add the pending items
-        res.extend(self.pending_items.drain(..));
-        res
-    }
-
-    fn fold_expr(&mut self, expr: P<ast::Expr>) -> P<ast::Expr> {
-        if cfg!(feature = "expand-macros") {
-            if let ast::ExprKind::Mac(_) = expr.node {
-                return self
-                    .cx
-                    .expander()
-                    .fold_expr(expr)
-                    .map(|e| fold::noop_fold_expr(e, self));
-            }
+            //if let ast::ExprKind::Mac(_) = expr.node {
+            //    return self
+            //        .cx
+            //        .expander()
+            //        .fold_expr(expr)
+            //        .map(|e| fold::noop_fold_expr(e, self));
+            //}
+            unimplemented!("expand-macros not implemented");
         } else {
             self.expander
                 .insert_macro_scope(expr.span, self.config().clone());
         }
-        expr.map(|e| fold::noop_fold_expr(e, self))
+        mut_visit::noop_visit_expr(expr, self);
     }
 
-    // TODO: fold_block???
-
-    fn fold_foreign_item(&mut self, ni: ast::ForeignItem) -> SmallVec<[ast::ForeignItem; 1]> {
-        let folded_items = fold::noop_fold_foreign_item(ni, self);
+    fn flat_map_foreign_item(&mut self, ni: ast::ForeignItem) -> SmallVec<[ast::ForeignItem; 1]> {
+        let folded_items = mut_visit::noop_flat_map_foreign_item(ni, self);
         folded_items
             .into_iter()
             .map(|folded_ni| {
@@ -999,8 +1000,8 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                     let mac_path =
                         self.cx.path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_import_extern_hash"));
                     let mac_args = vec![
-                        token::NtIdent(ty_name),
-                        token::NtIdent(hash_fn_ident),
+                        token::NtIdent(ty_name, false),
+                        token::NtIdent(hash_fn_ident, false),
                     ];
                     let hash_impl_item = self.cx.item_mac_fn(DUMMY_SP, mac_path, mac_args);
                     self.pending_items.push(hash_impl_item);
@@ -1008,10 +1009,6 @@ impl<'a, 'cx, 'exp> Folder for CrossChecker<'a, 'cx, 'exp> {
                 folded_ni
             })
             .collect()
-    }
-
-    fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
-        mac
     }
 }
 
@@ -1146,7 +1143,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         // Build the scope config for this item
                         scope_stack.push_ast_item(&i, Some(mi), &self.external_config, cx);
                         CrossChecker::new(self, cx, scope_stack, true)
-                            .fold_item(i)
+                            .flat_map_item(i)
                             .expect_one("too many items returned")
                     }
                     (_, Some(scope)) => {
@@ -1156,7 +1153,7 @@ impl MultiItemModifier for CrossCheckExpander {
                         scope_stack.push_ast_item(&i, Some(mi), &self.external_config, cx);
                         // TODO: if build_item_scope returns None, keep scope_config
                         CrossChecker::new(self, cx, scope_stack, true)
-                            .fold_item(i)
+                            .flat_map_item(i)
                             .expect_one("too many items returned")
                     }
                     (_, None) => i,
