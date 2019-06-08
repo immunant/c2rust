@@ -106,6 +106,7 @@ pub struct TranspilerConfig {
     pub emit_no_std: bool,
     pub output_dir: Option<PathBuf>,
     pub translate_const_macros: bool,
+    pub disable_refactoring: bool,
 
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
@@ -167,7 +168,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         let build_dir = get_build_dir(&tcfg, cc_db);
         let crate_file = emit_build_files(&tcfg, &build_dir, modules, pragmas, crates);
         // We only run the reorganization refactoring if we emitted a fresh crate file
-        if crate_file.is_some() {
+        if crate_file.is_some() && !tcfg.disable_refactoring {
             if tcfg.reorganize_definitions {
                 reorganize_definitions(&build_dir).unwrap_or_else(|e| {
                     warn!("Failed to reorganize definitions. {}", e.as_fail());

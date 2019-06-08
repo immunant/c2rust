@@ -162,3 +162,7 @@ args:
       long: emit-no-std
       help: Emit code using core rather than std
       takes_value: false
+  - disable-refactoring:
+      long: disable-refactoring
+      help: Disable running refactoring tool after translation
+      takes_value: false
