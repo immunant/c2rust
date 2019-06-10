@@ -4,7 +4,7 @@ use syntax::ast::{
     FloatTy, Guard, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitKind, Local, Mod,
     Movability, Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind, LitIntType, Ty, TyKind,
     Unsafety, BareFnTy, UnsafeSource, BlockCheckMode, Path, Field, PathSegment, GenericArgs,
-    GenericArg,
+    GenericArg, AsmDialect, Constness, UseTree, UseTreeKind,
 };
 use syntax::ptr::P;
 
@@ -104,6 +104,9 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                                     ast.set("suffix", int_ty.ty_to_string())?;
                                 },
                                 LitIntType::Unsigned(uint_ty) => {
+                                    // if i == 18446744073709551615 {
+                                    //     warn!("{} {}", i, uint_ty);
+                                    // }
                                     ast.set("suffix", uint_ty.ty_to_string())?;
                                 },
                                 LitIntType::Unsuffixed => (),
@@ -124,6 +127,8 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                             ast.set("value", float)?;
                         },
                         LitKind::Float(symbol, suffix) => {
+                            // error!("{} {}", symbol, suffix);
+
                             let string = symbol.as_str().get();
 
                             match suffix {
@@ -190,7 +195,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
 
                     ast.set("kind", "MethodCall")?;
                     ast.set("args", lua_ctx.create_sequence_from(args?.into_iter())?)?;
-                    ast.set("name", segment.ident.to_string())?;
+                    ast.set("name", segment.ident.name.as_str().get())?;
 
                     let self_ty = callee_info.fn_sig
                         .inputs()
@@ -423,11 +428,23 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         .into_iter()
                         .map(|inline_asm_output| inline_asm_output.into_lua_ast(ctx, lua_ctx))
                         .collect();
+                    let clobbers: Vec<_> = inline_asm.clobbers
+                        .into_iter()
+                        .map(|sym| sym.as_str().get())
+                        .collect();
 
                     ast.set("kind", "InlineAsm")?;
+                    ast.set("asm", inline_asm.asm.as_str().get())?;
                     ast.set("inputs", lua_ctx.create_sequence_from(inputs?.into_iter())?)?;
                     ast.set("outputs", lua_ctx.create_sequence_from(outputs?.into_iter())?)?;
-                    // TODO: Flesh out further
+                    ast.set("clobbers", lua_ctx.create_sequence_from(clobbers.into_iter())?)?;
+                    ast.set("volatile", inline_asm.volatile)?;
+                    ast.set("alignstack", inline_asm.alignstack)?;
+                    ast.set("dialect", match inline_asm.dialect {
+                        AsmDialect::Att => "Att",
+                        AsmDialect::Intel => "Intel",
+                    })?;
+                    // TODO: SyntaxContext?
                 },
                 ExprKind::Mac(..) => {
                     ast.set("kind", "Mac")?;
@@ -641,7 +658,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
             ast.set("id", item.id.as_u32())?;
             ast.set("ident", item.ident.name.as_str().get())?;
 
-            match dbg!(item.node) {
+            match item.node {
                 ItemKind::ExternCrate(opt_name) => {
                     ast.set("kind", "ExternCrate")?;
 
@@ -653,20 +670,29 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
                     ast.set("kind", "Mod")?;
                     ast.set("mod", module.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ItemKind::Use(_use_tree) => {
+                ItemKind::Use(use_tree) => {
                     ast.set("kind", "Use")?;
-                    // ast.set("use_tree", use_tree.into_lua_ast(ctx, lua_ctx))?;
+                    ast.set("tree", use_tree.into_inner().into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ItemKind::Fn(decl, _header, _generics, block) => {
+                ItemKind::Fn(decl, header, _generics, block) => {
                     ast.set("kind", "Fn")?;
                     ast.set("decl", decl.into_lua_ast(ctx, lua_ctx)?)?;
                     ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("unsafety", match header.unsafety {
+                        Unsafety::Unsafe => "Unsafe",
+                        Unsafety::Normal => "Normal",
+                    })?;
+                    ast.set("is_const", match header.constness.node {
+                        Constness::Const => true,
+                        Constness::NotConst => false,
+                    })?;
+                    ast.set("abi", header.abi.name())?;
                 },
                 ItemKind::Struct(_variant_data, _generics) => {
                     ast.set("kind", "Struct")?;
                     // TODO: Variant data, generics
                 },
-                ItemKind::Impl(.., items) => {
+                ItemKind::Impl(.., ty, items) => {
                     let items = items
                         .into_iter()
                         .map(|item| item.into_lua_ast(ctx, lua_ctx))
@@ -674,6 +700,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
 
                     ast.set("kind", "Impl")?;
                     ast.set("items", lua_ctx.create_sequence_from(items?.into_iter())?)?;
+                    ast.set("ty", ty.into_lua_ast(ctx, lua_ctx)?)?;
 
                     // TODO: other fields
                 },
@@ -697,8 +724,9 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
 
                     // TODO: More fields
                 },
-                ItemKind::Ty(..) => {
+                ItemKind::Ty(ty, _generics) => {
                     ast.set("kind", "Ty")?;
+                    ast.set("ty", ty.into_lua_ast(ctx, lua_ctx)?)?;
 
                     // TODO: More fields
                 },
@@ -726,10 +754,14 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
                     ast.set("kind", "Enum")?;
                     // TODO: More fields
                 },
-                ItemKind::Static(..) => {
+                ItemKind::Static(ty, mutability, expr) => {
                     ast.set("kind", "Static")?;
-
-                    // TODO: More fields
+                    ast.set("ty", ty.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("mutability", match mutability {
+                        Immutable => "Immutable",
+                        Mutable => "Mutable",
+                    })?;
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
                 ItemKind::Const(..) => {
                     ast.set("kind", "Const")?;
@@ -754,7 +786,7 @@ impl<'lua> IntoLuaAst<'lua> for ImplItem {
         match self.node {
             ImplItemKind::Method(sig, block) => {
                 ast.set("kind", "ImplMethod")?;
-                ast.set("decl", dbg!(sig.decl).into_lua_ast(ctx, lua_ctx)?)?;
+                ast.set("decl", sig.decl.into_lua_ast(ctx, lua_ctx)?)?;
                 ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
                 // TODO: generics, attrs, ..
             },
@@ -768,7 +800,7 @@ impl<'lua> IntoLuaAst<'lua> for ImplItem {
 impl<'lua> IntoLuaAst<'lua> for InlineAsmOutput {
     fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
         let ast = lua_ctx.create_table()?;
-        let constraint = self.constraint.as_str().to_string();
+        let constraint = self.constraint.as_str().get();
         let expr = self.expr.into_lua_ast(ctx, lua_ctx)?;
 
         ast.set("type", "InlineAsmOutput")?;
@@ -971,6 +1003,37 @@ impl<'lua> IntoLuaAst<'lua> for GenericArg {
                 ast.set("ty", ty.into_lua_ast(ctx, lua_ctx)?)?;
             },
             e => warn!("IntoLuaAst unimplemented GenericArg: {:?}", e),
+        }
+
+        Ok(ast)
+    }
+}
+
+impl<'lua> IntoLuaAst<'lua> for UseTree {
+    fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
+        let ast = lua_ctx.create_table()?;
+
+        ast.set("type", "UseTree")?;
+        ast.set("prefix", self.prefix.into_lua_ast(ctx, lua_ctx)?)?;
+
+        match self.kind {
+            UseTreeKind::Simple(opt_ident, ..) => {
+                ast.set("kind", "Simple")?;
+
+                if let Some(ident) = opt_ident {
+                    ast.set("ident", ident.name.as_str().get())?;
+                }
+            },
+            UseTreeKind::Nested(use_trees) => {
+                let trees = use_trees
+                    .into_iter()
+                    .map(|(tree, _)| tree.into_lua_ast(ctx, lua_ctx))
+                    .collect::<LuaResult<Vec<_>>>();
+
+                ast.set("kind", "Nested")?;
+                ast.set("trees", lua_ctx.create_sequence_from(trees?.into_iter())?)?;
+            },
+            UseTreeKind::Glob => ast.set("kind", "Glob")?,
         }
 
         Ok(ast)

@@ -5,8 +5,11 @@ use syntax::ast::{
     Item, ItemKind, LitKind, Local, Mod, Mutability::*, NodeId, Pat, PatKind, Path, PathSegment,
     Stmt, StmtKind, UintTy, IntTy, LitIntType, Ident, DUMMY_NODE_ID, BinOpKind, UnOp, BlockCheckMode,
     Label, StrStyle, TyKind, Ty, MutTy, Unsafety, FunctionRetTy, BareFnTy, UnsafeSource::*, Field,
-    AnonConst, Lifetime, AngleBracketedArgs, GenericArgs, GenericArg,
+    AnonConst, Lifetime, AngleBracketedArgs, GenericArgs, GenericArg, VisibilityKind, InlineAsm,
+    AsmDialect, InlineAsmOutput, Constness, FnHeader, Generics, IsAsync, ImplPolarity, Defaultness,
+    UseTree, UseTreeKind, Arm, Guard,
 };
+use syntax::ext::hygiene::SyntaxContext;
 use syntax::source_map::symbol::Symbol;
 use syntax::source_map::{DUMMY_SP, Spanned};
 use syntax::ptr::P;
@@ -87,6 +90,68 @@ fn dummy_generic_arg() -> GenericArg {
     })
 }
 
+fn dummy_stmt() -> Stmt {
+    Stmt {
+        id: DUMMY_NODE_ID,
+        node: StmtKind::Expr(dummy_expr()),
+        span: DUMMY_SP,
+    }
+}
+
+fn dummy_local() -> P<Local> {
+    P(Local {
+        attrs: ThinVec::new(),
+        id: DUMMY_NODE_ID,
+        init: None,
+        pat: dummy_pat(),
+        span: DUMMY_SP,
+        ty: None,
+    })
+}
+
+fn dummy_item() -> P<Item> {
+    P(Item {
+        attrs: Vec::new(),
+        id: DUMMY_NODE_ID,
+        ident: Ident::from_str("placeholder"),
+        node: ItemKind::ExternCrate(None),
+        span: DUMMY_SP,
+        tokens: None,
+        vis: dummy_spanned(VisibilityKind::Public),
+    })
+}
+
+fn dummy_impl_item() -> ImplItem {
+    ImplItem {
+        attrs: Vec::new(),
+        defaultness: Defaultness::Default,
+        generics: Generics::default(),
+        id: DUMMY_NODE_ID,
+        ident: Ident::from_str("placeholder"),
+        node: ImplItemKind::Existential(Vec::new()),
+        span: DUMMY_SP,
+        tokens: None,
+        vis: dummy_spanned(VisibilityKind::Public),
+    }
+}
+
+fn dummy_use_tree() -> UseTree {
+    UseTree {
+        prefix: Path::from_ident(Ident::from_str("placeholder")),
+        kind: UseTreeKind::Glob,
+        span: DUMMY_SP,
+    }
+}
+
+fn dummy_arm() -> Arm {
+    Arm {
+        attrs: Vec::new(),
+        pats: Vec::new(),
+        guard: None,
+        body: dummy_expr(),
+    }
+}
+
 pub(crate) trait MergeLuaAst {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()>;
 }
@@ -127,27 +192,63 @@ impl MergeLuaAst for P<Block> {
             e => unimplemented!("Found unknown block rule: {}", e),
         };
 
-        // TODO: This may need to be improved if we want to delete or add
-        // stmts as it currently expects stmts to be 1-1
-        self.stmts.iter_mut().enumerate().map(|(i, stmt)| {
-            let stmt_table: LuaTable = lua_stmts.get(i + 1)?;
+        let mut stmts = Vec::new();
 
-            stmt.merge_lua_ast(stmt_table)
-        }).collect()
+        for lua_stmt in lua_stmts.sequence_values::<LuaTable>() {
+            let mut stmt = dummy_stmt();
+
+            stmt.merge_lua_ast(lua_stmt?)?;
+            stmts.push(stmt);
+        }
+
+        self.stmts = stmts;
+
+        Ok(())
     }
 }
 
 impl MergeLuaAst for Stmt {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
-        // REVIEW: How do we deal with modifying to a different type of stmt than
-        // the existing one?
+        let kind: LuaString = table.get("kind")?;
+        let kind = kind.to_str()?;
 
-        match self.node {
-            StmtKind::Local(ref mut l) => l.merge_lua_ast(table)?,
-            StmtKind::Item(ref mut i) => i.merge_lua_ast(table.get("item")?)?,
-            StmtKind::Expr(ref mut e) |
-            StmtKind::Semi(ref mut e) => e.merge_lua_ast(table.get("expr")?)?,
-            _ => warn!("MergeLuaAst unimplemented for Macro StmtKind"),
+        self.node = match kind {
+            "Local" => {
+                let mut local = dummy_local();
+
+                local.merge_lua_ast(table)?;
+
+                StmtKind::Local(local)
+            },
+            "Item" => {
+                let mut item = dummy_item();
+                let lua_item = table.get("item")?;
+
+                item.merge_lua_ast(lua_item)?;
+
+                StmtKind::Item(item)
+            },
+            "Expr" => {
+                let lua_expr = table.get("expr")?;
+                let mut expr = dummy_expr();
+
+                expr.merge_lua_ast(lua_expr)?;
+
+                StmtKind::Expr(expr)
+            },
+            "Semi" => {
+                let lua_expr = table.get("expr")?;
+                let mut expr = dummy_expr();
+
+                expr.merge_lua_ast(lua_expr)?;
+
+                if let ExprKind::Err = expr.node {
+                    panic!("Hit err");
+                }
+
+                StmtKind::Semi(expr)
+            },
+            e => unimplemented!("MergeLuaAst unimplemented for StmtKind::{}", e),
         };
 
         Ok(())
@@ -257,8 +358,12 @@ impl MergeLuaAst for Local {
                 }
             },
             None => {
-                if let Some(_) = opt_init {
-                    unimplemented!("MergeLuaAst unimplemented local init update");
+                if let Some(init) = opt_init {
+                    let mut expr = dummy_expr();
+
+                    expr.merge_lua_ast(init)?;
+
+                    self.init = Some(expr);
                 }
             },
         }
@@ -293,32 +398,102 @@ impl MergeLuaAst for Mod {
 
 impl MergeLuaAst for P<Item> {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
-        self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
+        let kind = table.get::<_, LuaString>("kind")?;
+        let kind = kind.to_str()?;
 
-        // REVIEW: How to allow the type to be changed?
-        match &mut self.node {
-            ItemKind::Fn(fn_decl, _, _, block) => {
-                let lua_fn_decl: LuaTable = table.get("decl")?;
-                let lua_block: LuaTable = table.get("block")?;
+        self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
+        self.node = match kind {
+            "Fn" => {
+                let lua_fn_decl = table.get("decl")?;
+                let lua_block = table.get("block")?;
+                let mut block = dummy_block();
+                let mut decl = dummy_fn_decl();
+                let unsafety = match table.get::<_, LuaString>("unsafety")?.to_str()? {
+                    "Unsafe" => Unsafety::Unsafe,
+                    "Normal" => Unsafety::Normal,
+                    e => unimplemented!("Unknown unsafety: {}", e),
+                };
+                let constness = match table.get::<_, bool>("is_const")? {
+                    true => dummy_spanned(Constness::Const),
+                    false => dummy_spanned(Constness::NotConst),
+                };
+                let abi = match table.get::<_, LuaString>("abi")?.to_str()? {
+                    "Cdecl" => Abi::Cdecl,
+                    "C" => Abi::C,
+                    "Rust" => Abi::Rust,
+                    e => unimplemented!("Abi: {}", e),
+                };
+                let fn_header = FnHeader {
+                    abi,
+                    asyncness: dummy_spanned(IsAsync::NotAsync), // TODO
+                    constness,
+                    unsafety,
+                };
+                let generics = Generics::default(); // TODO
 
                 block.merge_lua_ast(lua_block)?;
-                fn_decl.merge_lua_ast(lua_fn_decl)?;
+                decl.merge_lua_ast(lua_fn_decl)?;
+
+                ItemKind::Fn(decl, fn_header, generics, block)
             },
-            ItemKind::Impl(.., items) => {
+            "Impl" => {
                 let lua_items: LuaTable = table.get("items")?;
+                let lua_ty = table.get("ty")?;
+                let mut items = Vec::new();
+                let unsafety = Unsafety::Normal; // TODO
+                let polarity = ImplPolarity::Positive; // TODO
+                let defaultness = Defaultness::Default; // TODO
+                let generics = Generics::default(); // TODO
+                let trait_ref = None; // TODO
+                let mut ty = dummy_ty();
 
-                // TODO: This may need to be improved if we want to delete or add
-                // values as it currently expects values to be 1-1
-                let res: LuaResult<Vec<()>> = items.iter_mut().enumerate().map(|(i, item)| {
-                    let item_table: LuaTable = lua_items.get(i + 1)?;
+                ty.merge_lua_ast(lua_ty)?;
 
-                    item.merge_lua_ast(item_table)
-                }).collect();
+                for lua_item in lua_items.sequence_values::<LuaTable>() {
+                    let lua_item = lua_item?;
+                    let mut item = dummy_impl_item();
 
-                res?;
+                    item.merge_lua_ast(lua_item)?;
+                    items.push(item);
+                }
+
+                ItemKind::Impl(unsafety, polarity, defaultness, generics, trait_ref, ty, items)
             },
-            ref e => warn!("MergeLuaAst unimplemented: {:?}", e),
-        }
+            "Use" => {
+                let lua_use_tree = table.get("tree")?;
+                let mut use_tree = dummy_use_tree();
+
+                use_tree.merge_lua_ast(lua_use_tree)?;
+
+                ItemKind::Use(P(use_tree))
+            },
+            "Ty" => {
+                let lua_ty = table.get("ty")?;
+                let mut ty = dummy_ty();
+
+                ty.merge_lua_ast(lua_ty)?;
+
+                // TODO: Generics
+                ItemKind::Ty(ty, Generics::default())
+            },
+            "Static" => {
+                let lua_ty = table.get("ty")?;
+                let lua_expr = table.get("expr")?;
+                let mutability = match table.get::<_, LuaString>("mutability")?.to_str()? {
+                    "Immutable" => Immutable,
+                    "Mutable" => Mutable,
+                    e => panic!("Found unknown addrof mutability: {}", e),
+                };
+                let mut ty = dummy_ty();
+                let mut expr = dummy_expr();
+
+                ty.merge_lua_ast(lua_ty)?;
+                expr.merge_lua_ast(lua_expr)?;
+
+                ItemKind::Static(ty, mutability, expr)
+            }
+            ref e => unimplemented!("MergeLuaAst unimplemented item kind: {:?}", e),
+        };
 
         Ok(())
     }
@@ -377,7 +552,7 @@ impl MergeLuaAst for P<Expr> {
                             None => LitKind::FloatUnsuffixed(sym),
                             Some("f32") => LitKind::Float(sym, FloatTy::F32),
                             Some("f64") => LitKind::Float(sym, FloatTy::F64),
-                            _ => unreachable!("Unknown float suffix"),
+                            Some(e) => unreachable!("Unknown float suffix: {} {}", num, e),
                         })
                     },
                     LuaValue::String(lua_string) => {
@@ -674,6 +849,120 @@ impl MergeLuaAst for P<Expr> {
 
                 ExprKind::Repeat(expr, anon_const)
             },
+            "InlineAsm" => {
+                let asm: LuaString = table.get("asm")?;
+                let asm = Symbol::intern(asm.to_str()?);
+                let dialect: LuaString = table.get("dialect")?;
+                let dialect = match dialect.to_str()? {
+                    "Att" => AsmDialect::Att,
+                    "Intel" => AsmDialect::Intel,
+                    e => unimplemented!("Unknown ASM dialect: {}", e),
+                };
+                let lua_inputs: LuaTable = table.get("inputs")?;
+                let lua_outputs: LuaTable = table.get("outputs")?;
+                let lua_clobbers: LuaTable = table.get("clobbers")?;
+                let mut outputs = Vec::new();
+                let mut inputs = Vec::new();
+                let mut clobbers = Vec::new();
+
+                for lua_output in lua_outputs.sequence_values::<LuaTable>() {
+                    let lua_output = lua_output?;
+                    let lua_expr = lua_output.get("expr")?;
+                    let lua_constraint: LuaString = lua_output.get("constraint")?;
+                    let mut expr = dummy_expr();
+
+                    expr.merge_lua_ast(lua_expr)?;
+
+                    let output = InlineAsmOutput {
+                        constraint: Symbol::intern(lua_constraint.to_str()?),
+                        expr,
+                        is_indirect: lua_output.get("is_indirect")?,
+                        is_rw: lua_output.get("is_rw")?,
+                    };
+                    outputs.push(output);
+                }
+
+                for lua_input in lua_inputs.sequence_values::<LuaTable>() {
+                    let lua_input = lua_input?;
+                    let lua_symbol: LuaString = lua_input.get("symbol")?;
+                    let symbol = Symbol::intern(lua_symbol.to_str()?);
+                    let lua_expr = lua_input.get("expr")?;
+                    let mut expr = dummy_expr();
+
+                    expr.merge_lua_ast(lua_expr)?;
+                    inputs.push((symbol, expr))
+                }
+
+                for lua_clobber in lua_clobbers.sequence_values::<LuaString>() {
+                    let lua_clobber = lua_clobber?;
+                    let symbol = Symbol::intern(lua_clobber.to_str()?);
+
+                    clobbers.push(symbol);
+                }
+
+                ExprKind::InlineAsm(P(InlineAsm {
+                    asm,
+                    asm_str_style: StrStyle::Cooked,
+                    outputs,
+                    inputs,
+                    clobbers,
+                    volatile: table.get("volatile")?,
+                    alignstack: table.get("alignstack")?,
+                    dialect,
+                    ctxt: SyntaxContext::empty(),
+                }))
+            },
+            "Loop" => {
+                let lua_block = table.get("block")?;
+                let lua_label: Option<LuaString> = table.get("label")?;
+                let opt_label = lua_label.map(|string| Ok(Label {
+                    ident: Ident::from_str(string.to_str()?)
+                })).transpose()?;
+                let mut block = dummy_block();
+
+                block.merge_lua_ast(lua_block)?;
+
+                ExprKind::Loop(block, opt_label)
+            },
+            "Break" => {
+                let lua_expr: Option<LuaTable> = table.get("expr")?;
+                let lua_label: Option<LuaString> = table.get("label")?;
+                let opt_label = lua_label.map(|string| Ok(Label {
+                    ident: Ident::from_str(string.to_str()?)
+                })).transpose()?;
+                let opt_expr = lua_expr.map(|lua_expr| {
+                    let mut expr = dummy_expr();
+
+                    expr.merge_lua_ast(lua_expr).map(|_| expr)
+                }).transpose()?;
+
+                ExprKind::Break(opt_label, opt_expr)
+            },
+            "Continue" => {
+                let lua_label: Option<LuaString> = table.get("label")?;
+                let opt_label = lua_label.map(|string| Ok(Label {
+                    ident: Ident::from_str(string.to_str()?)
+                })).transpose()?;
+
+                ExprKind::Continue(opt_label)
+            },
+            "Match" => {
+                let lua_expr = table.get("expr")?;
+                let lua_arms: LuaTable = table.get("arms")?;
+                let mut expr = dummy_expr();
+                let mut arms = Vec::new();
+
+                for lua_arm in lua_arms.sequence_values::<LuaTable>() {
+                    let mut arm = dummy_arm();
+
+                    arm.merge_lua_ast(lua_arm?)?;
+                    arms.push(arm);
+                }
+
+                expr.merge_lua_ast(lua_expr)?;
+
+                ExprKind::Match(expr, arms)
+            },
             ref e => {
                 warn!("MergeLuaAst unimplemented expr: {:?}", e);
                 return Ok(());
@@ -688,6 +977,7 @@ impl MergeLuaAst for ImplItem {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
 
+        // TODO: Allow for inplace kind mutations
         match &mut self.node {
             ImplItemKind::Method(sig, block) => {
                 let lua_decl: LuaTable = table.get("decl")?;
@@ -754,7 +1044,7 @@ impl MergeLuaAst for P<Ty> {
                     "Normal" => Unsafety::Normal,
                     e => panic!("Found unknown unsafety: {}", e),
                 };
-                let abi = match table.get::<_, String>("abi")?.as_str() {
+                let abi = match table.get::<_, LuaString>("abi")?.to_str()? {
                     "Cdecl" => Abi::Cdecl,
                     "C" => Abi::C,
                     "Rust" => Abi::Rust,
@@ -894,7 +1184,6 @@ impl MergeLuaAst for GenericArgs {
     }
 }
 
-
 impl MergeLuaAst for GenericArg {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let kind: LuaString = table.get("kind")?;
@@ -911,6 +1200,70 @@ impl MergeLuaAst for GenericArg {
             },
             e => unimplemented!("Unknown GenericArg kind: {}", e),
         };
+
+        Ok(())
+    }
+}
+
+impl MergeLuaAst for UseTree {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
+        let kind: LuaString = table.get("kind")?;
+        let kind = kind.to_str()?;
+        let lua_prefix_segments = table.get::<_, LuaTable>("prefix")?;
+
+        self.prefix.merge_lua_ast(lua_prefix_segments)?;
+        self.kind = match kind {
+            "Simple" => {
+                let lua_ident: Option<LuaString> = table.get("ident")?;
+                let opt_ident = lua_ident.map(|lua_string|
+                    Ok(Ident::from_str(lua_string.to_str()?))
+                ).transpose()?;
+
+                UseTreeKind::Simple(opt_ident, DUMMY_NODE_ID, DUMMY_NODE_ID)
+            },
+            "Nested" => {
+                let lua_trees: LuaTable = table.get("trees")?;
+                let mut trees = Vec::new();
+
+                for lua_tree in lua_trees.sequence_values::<LuaTable>() {
+                    let lua_tree = lua_tree?;
+                    let mut tree = dummy_use_tree();
+
+                    tree.merge_lua_ast(lua_tree)?;
+                    trees.push((tree, DUMMY_NODE_ID));
+                }
+
+                UseTreeKind::Nested(trees)
+            },
+            "Glob" => UseTreeKind::Glob,
+            e => unimplemented!("Unknown UseTree kind: {}", e),
+        };
+
+        Ok(())
+    }
+}
+
+impl MergeLuaAst for Arm {
+    fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
+        let lua_body = table.get("body")?;
+        let lua_guard: Option<LuaTable> = table.get("guard")?;
+
+        self.body.merge_lua_ast(lua_body)?;
+
+        match (&mut self.guard, lua_guard) {
+            (Some(Guard::If(expr)), Some(ref lua_guard)) => expr.merge_lua_ast(lua_guard.clone())?,
+            (Some(_), None) => self.guard = None,
+            (None, Some(lua_guard)) => {
+                let mut expr = dummy_expr();
+
+                expr.merge_lua_ast(lua_guard)?;
+
+                self.guard = Some(Guard::If(expr));
+            },
+            _ => (),
+        }
+
+        // TODO: Attrs, pats
 
         Ok(())
     }
