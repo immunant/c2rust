@@ -519,18 +519,22 @@ impl CommentContext {
         }
 
         // Flatten out the nested comment maps
-        let decl_comments = decl_comments_map
+        let mut decl_comments = HashMap::new();
+        decl_comments_map
             .into_iter()
             .map(|(decl_id, map)| (decl_id, map.into_iter().map(|(_, v)| v).collect()))
-            .map(|(decl_id, comments)| {
+            .for_each(|(decl_id, mut comments)| {
                 let decl_id = if let CDeclKind::NonCanonicalDecl { canonical_decl } = ast_context[decl_id].kind {
                     canonical_decl
                 } else {
                     decl_id
                 };
-                (decl_id, comments)
-            })
-            .collect();
+
+                decl_comments
+                    .entry(decl_id)
+                    .or_insert(vec![])
+                    .append(&mut comments);
+            });
         let stmt_comments = stmt_comments_map
             .into_iter()
             .map(|(decl_id, map)| (decl_id, map.into_iter().map(|(_, v)| v).collect()))
