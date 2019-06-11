@@ -152,6 +152,12 @@ fn dummy_arm() -> Arm {
     }
 }
 
+fn get_node_id_or_default(table: &LuaTable<'_>, field_name: &str) -> LuaResult<NodeId> {
+    let opt_id: Option<u32> = table.get(field_name)?;
+
+    Ok(opt_id.map(|id| NodeId::from_u32(id)).unwrap_or(DUMMY_NODE_ID))
+}
+
 pub(crate) trait MergeLuaAst {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()>;
 }
@@ -165,7 +171,7 @@ impl MergeLuaAst for FnLike {
             "Foreign" => FnKind::Foreign,
             _ => self.kind,
         };
-        self.id = NodeId::from_u32(table.get("id")?);
+        self.id = get_node_id_or_default(&table, "id")?;
         self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
         self.decl.merge_lua_ast(table.get("decl")?)?;
 
@@ -241,10 +247,6 @@ impl MergeLuaAst for Stmt {
 
                 expr.merge_lua_ast(lua_expr)?;
 
-                if let ExprKind::Err = expr.node {
-                    panic!("Hit err");
-                }
-
                 StmtKind::Semi(expr)
             },
             e => unimplemented!("MergeLuaAst unimplemented for StmtKind::{}", e),
@@ -273,13 +275,14 @@ impl MergeLuaAst for P<FnDecl> {
         let mut args = Vec::new();
 
         for lua_arg in lua_args.sequence_values::<LuaTable>() {
+            let lua_arg = lua_arg?;
             let mut arg = Arg {
                 ty: dummy_ty(),
                 pat: dummy_pat(),
-                id: DUMMY_NODE_ID,
+                id: get_node_id_or_default(&lua_arg, "id")?,
             };
 
-            arg.merge_lua_ast(lua_arg?)?;
+            arg.merge_lua_ast(lua_arg)?;
             args.push(arg);
         }
 
@@ -303,6 +306,7 @@ impl MergeLuaAst for P<Pat> {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let kind: LuaString = table.get("kind")?;
 
+        self.id = get_node_id_or_default(&table, "id")?;
         self.node = match kind.to_str()? {
             "Wild" => PatKind::Wild,
             "Ident" => {
@@ -408,6 +412,7 @@ impl MergeLuaAst for P<Item> {
         let kind = table.get::<_, LuaString>("kind")?;
         let kind = kind.to_str()?;
 
+        self.id = get_node_id_or_default(&table, "id")?;
         self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
         self.node = match kind {
             "Fn" => {
@@ -531,6 +536,7 @@ impl MergeLuaAst for P<Expr> {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let kind = table.get::<_, String>("kind")?;
 
+        self.id = get_node_id_or_default(&table, "id")?;
         self.node = match kind.as_str() {
             "Path" => {
                 let lua_segments: LuaTable = table.get("segments")?;
@@ -1000,6 +1006,14 @@ impl MergeLuaAst for P<Expr> {
 
                 ExprKind::ForLoop(pat, expr, block, opt_label)
             },
+            "Paren" => {
+                let lua_expr = table.get("expr")?;
+                let mut expr = dummy_expr();
+
+                expr.merge_lua_ast(lua_expr)?;
+
+                ExprKind::Paren(expr)
+            }
             ref e => {
                 warn!("MergeLuaAst unimplemented expr: {:?}", e);
                 return Ok(());
@@ -1037,6 +1051,7 @@ impl MergeLuaAst for P<Ty> {
         let kind: LuaString = table.get("kind")?;
         let kind = kind.to_str()?;
 
+        self.id = get_node_id_or_default(&table, "id")?;
         self.node = match kind {
             "Path" => {
                 let lua_segments: LuaTable = table.get("path")?;
@@ -1179,6 +1194,7 @@ impl MergeLuaAst for Path {
                 generics.merge_lua_ast(lua_generics).map(|_| P(generics))
             }).transpose()?;
 
+            path_segment.id = get_node_id_or_default(&lua_segment, "id")?;
             path_segment.args = opt_generics;
 
             segments.push(path_segment);

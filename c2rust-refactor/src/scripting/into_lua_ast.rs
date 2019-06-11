@@ -449,8 +449,9 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     })?;
                     // TODO: SyntaxContext?
                 },
-                ExprKind::Mac(..) => {
+                ExprKind::Mac(mac) => {
                     ast.set("kind", "Mac")?;
+                    ast.set("path", mac.node.path.into_lua_ast(ctx, lua_ctx)?)?;
                     // TODO: Flesh out further
                 },
                 ExprKind::Struct(path, fields, opt_expr) => {
@@ -719,8 +720,9 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
 
                     // TODO: More fields
                 },
-                ItemKind::Mac(..) => {
+                ItemKind::Mac(mac) => {
                     ast.set("kind", "Mac")?;
+                    ast.set("path", mac.node.path.into_lua_ast(ctx, lua_ctx)?)?;
 
                     // TODO: More fields
                 },
