@@ -16,6 +16,7 @@ const DEFAULT_WARNINGS: &[Diagnostic] = &[];
 #[derive(PartialEq, Eq, Hash, Debug, Display, EnumString, Clone)]
 #[strum(serialize_all = "kebab_case")]
 pub enum Diagnostic {
+    All,
     Comments,
 }
 
@@ -52,6 +53,9 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>) {
         })
         .level(log::LevelFilter::Warn)
         .filter(move |metadata| {
+            if enabled_warnings.contains(&Diagnostic::All) {
+                return true;
+            }
             Diagnostic::from_str(metadata.target())
                 .map(|d| enabled_warnings.contains(&d))
                 .unwrap_or(true)
