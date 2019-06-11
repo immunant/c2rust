@@ -2,7 +2,6 @@
 use diff;
 use std::collections::{HashMap, VecDeque};
 use std::io;
-use syntax::parse::lexer::comments::CommentStyle;
 use syntax::source_map::{SourceFile, SourceMap};
 use syntax_pos::{BytePos, FileName};
 
@@ -102,16 +101,6 @@ fn rewrite_range(
             emit_chunk(cm, cur, rw.old_span.lo(), |s| callback(s));
         }
 
-        for comment in &rw.comments {
-            if comment.style == CommentStyle::Isolated {
-                callback("\n");
-                comment.lines.iter().for_each(|s| {
-                    callback(s.as_str());
-                    callback("\n");
-                });
-            }
-        }
-
         match rw.adjust {
             TextAdjust::None => {}
             TextAdjust::Parenthesize => callback("("),
@@ -132,15 +121,6 @@ fn rewrite_range(
         match rw.adjust {
             TextAdjust::None => {}
             TextAdjust::Parenthesize => callback(")"),
-        }
-
-        for comment in &rw.comments {
-            if comment.style == CommentStyle::Trailing {
-                comment.lines.iter().for_each(|s| {
-                    callback(s.as_str());
-                    callback("\n");
-                });
-            }
         }
 
         cur = rw.old_span.hi();

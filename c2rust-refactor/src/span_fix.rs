@@ -14,7 +14,7 @@ use syntax::ptr::P;
 use syntax::source_map::{Span, DUMMY_SP};
 use syntax_pos::hygiene::SyntaxContext;
 
-use crate::ast_manip::util::extended_span;
+use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::MutVisit;
 
 /// MutVisitor for fixing expansions of `format!`.  `format!(..., foo)` generates an expression `&foo`,
@@ -97,7 +97,7 @@ struct FixAttrs;
 
 impl MutVisitor for FixAttrs {
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        let new_span = extended_span(i.span, &i.attrs);
+        let new_span = extend_span_attrs(i.span, &i.attrs);
         let i = if new_span != i.span {
             i.map(|i| Item {
                 span: new_span,
@@ -110,7 +110,7 @@ impl MutVisitor for FixAttrs {
     }
 
     fn flat_map_foreign_item(&mut self, fi: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
-        let new_span = extended_span(fi.span, &fi.attrs);
+        let new_span = extend_span_attrs(fi.span, &fi.attrs);
         let fi = if new_span != fi.span {
             ForeignItem {
                 span: new_span,

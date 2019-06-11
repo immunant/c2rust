@@ -63,7 +63,7 @@ use syntax::source_map::{Span, DUMMY_SP};
 use syntax::util::parser;
 
 use crate::ast_manip::ast_map::{map_ast, AstMap};
-use crate::ast_manip::{GetSpan, Visit, Comment, CommentMap};
+use crate::ast_manip::{GetSpan, Visit, CommentMap};
 use crate::driver;
 
 mod cleanup;
@@ -85,7 +85,6 @@ pub enum TextAdjust {
 pub struct TextRewrite {
     pub old_span: Span,
     pub new_span: Span,
-    pub comments: Vec<Comment>,
     /// Additional rewrites to apply after replacing the `old_span` text with the `new_span` text.
     pub rewrites: Vec<TextRewrite>,
     /// Locations of nodes within the new text.  The `Span` is a subspan of `new_span`, while the
@@ -104,7 +103,6 @@ impl TextRewrite {
             old_span,
             new_span,
             adjust,
-            comments: Vec::new(),
             rewrites: Vec::new(),
             nodes: Vec::new(),
         }

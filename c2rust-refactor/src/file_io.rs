@@ -214,7 +214,6 @@ impl FileIO for RealFileIO {
             new_span: Span::new(sf.start_pos, sf.end_pos, SyntaxContext::empty()),
             rewrites: rws.to_owned(),
             nodes: nodes.to_owned(),
-            comments: vec![],
             adjust: rewrite::TextAdjust::None,
         };
         state

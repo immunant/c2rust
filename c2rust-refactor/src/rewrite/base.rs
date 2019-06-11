@@ -219,9 +219,9 @@ where
                 // Delete the item from the left.
                 info!(
                     "DELETE {}",
-                    describe(rcx.session(), ast(&old[i]).splice_span())
+                    describe(rcx.session(), ast(&old[i]).splice_span(&rcx))
                 );
-                rcx.record(TextRewrite::new(ast(&old[i]).splice_span(), DUMMY_SP));
+                rcx.record(TextRewrite::new(ast(&old[i]).splice_span(&rcx), DUMMY_SP));
                 i += 1;
             }
             diff::Result::Right(_) => {
@@ -229,12 +229,12 @@ where
                 // Insert the item before the current item on the left, rewriting
                 // recursively.
                 let before = if i > 0 {
-                    ast(&old[i - 1]).splice_span()
+                    ast(&old[i - 1]).splice_span(&rcx)
                 } else {
                     outer_span.shrink_to_lo()
                 };
                 let after = if i < old.len() {
-                    ast(&old[i]).splice_span()
+                    ast(&old[i]).splice_span(&rcx)
                 } else {
                     outer_span.shrink_to_hi()
                 };
