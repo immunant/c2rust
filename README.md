@@ -53,7 +53,13 @@ Finally, a rust installation with [Rustup](https://rustup.rs/) is required on al
 On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
 
     LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo +nightly-2019-04-12 install c2rust
-    
+
+On Linux with Linuxbrew LLVM, you need to point the build system at the LLVM installation as follows:
+
+    LLVM_CONFIG_PATH=/home/linuxbrew/.linuxbrew/opt/llvm/bin/llvm-config cargo +nightly-2019-04-12 install c2rust    
+
+Note: adjust `LLVM_CONFIG_PATH` accordingly if Linuxbrew was installed to your home directory.
+
 On Gentoo, you need to point the build system to the location of `libclang.so` 
   and `llvm-config` as follows:
 
