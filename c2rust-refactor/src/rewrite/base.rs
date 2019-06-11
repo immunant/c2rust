@@ -27,8 +27,9 @@ use std::rc::Rc;
 use syntax::ptr::P;
 use syntax::source_map::{Spanned, DUMMY_SP};
 use syntax::util::parser::{AssocOp, Fixity};
+use syntax_pos::{BytePos, Pos};
 
-use crate::ast_manip::{AstDeref, GetSpan};
+use crate::ast_manip::{AstDeref, CommentStyle, GetSpan};
 
 use super::strategy;
 use super::strategy::print;
@@ -217,11 +218,17 @@ where
             diff::Result::Left(_) => {
                 // There's an item on the left corresponding to nothing on the right.
                 // Delete the item from the left.
+                let old_span = ast(&old[i]).splice_span();
+                let old_span = match old_ids[i] {
+                    SeqItemId::Node(id) => extend_span_comments(&id, old_span, rcx.borrow()),
+                    _ => old_span,
+                };
+
                 info!(
                     "DELETE {}",
-                    describe(rcx.session(), ast(&old[i]).splice_span(&rcx))
+                    describe(rcx.session(), old_span)
                 );
-                rcx.record(TextRewrite::new(ast(&old[i]).splice_span(&rcx), DUMMY_SP));
+                rcx.record(TextRewrite::new(old_span, DUMMY_SP));
                 i += 1;
             }
             diff::Result::Right(_) => {
@@ -229,12 +236,12 @@ where
                 // Insert the item before the current item on the left, rewriting
                 // recursively.
                 let before = if i > 0 {
-                    ast(&old[i - 1]).splice_span(&rcx)
+                    ast(&old[i - 1]).splice_span()
                 } else {
                     outer_span.shrink_to_lo()
                 };
                 let after = if i < old.len() {
-                    ast(&old[i]).splice_span(&rcx)
+                    ast(&old[i]).splice_span()
                 } else {
                     outer_span.shrink_to_hi()
                 };
@@ -318,8 +325,12 @@ where
             diff::Result::Left(_) => {
                 // There's an item on the left corresponding to nothing on the right.
                 // Delete the item from the left.
-                info!("DELETE {}", describe(rcx.session(), old_spans[i]));
-                rcx.record(TextRewrite::new(old_spans[i], DUMMY_SP));
+                let old_span = match old_ids[i] {
+                    SeqItemId::Node(id) => extend_span_comments(&id, old_spans[i], rcx.borrow()),
+                    _ => old_spans[i],
+                };
+                info!("DELETE {}", describe(rcx.session(), old_span));
+                rcx.record(TextRewrite::new(old_span, DUMMY_SP));
                 i += 1;
 
                 if i == old.len() && !has_trailing_comma {
@@ -439,4 +450,87 @@ pub fn describe(sess: &Session, span: Span) -> String {
     } else {
         loc
     }
+}
+
+/// Extend a node span to cover comments around it.
+pub fn extend_span_comments(id: &NodeId, mut span: Span, rcx: RewriteCtxtRef) -> Span {
+    let comments = match rcx.comments().get(id) {
+        Some(comments) if comments.is_empty() => return span,
+        Some(comments) => comments,
+        None => return span,
+    };
+
+    debug!("Extending span comments for {:?} for comments: {:?}", span, comments);
+
+    let mut before = vec![];
+    let mut after = vec![];
+    for comment in comments {
+        match comment.style {
+            CommentStyle::Isolated => {
+                before.push(comment);
+            }
+
+            CommentStyle::Trailing => {
+                after.push(comment);
+            }
+
+            _ => unimplemented!("Mixed and BlankLine comment styles are not implemented"),
+        }
+    }
+
+    before.sort_by_key(|c| c.pos);
+    after.sort_by_key(|c| c.pos);
+
+    before.reverse();
+
+    for comment in &before {
+        let comment_span = span.shrink_to_lo().with_lo(comment.pos);
+        let source = rcx.session().source_map().span_to_snippet(comment_span).unwrap();
+        let matches = source.lines().zip(&comment.lines).all(|(src_line, comment_line)| {
+            src_line.trim() == comment_line.trim()
+        });
+        if matches {
+            let mut comment_pos = comment.pos;
+
+            // Extend to previous newline because this is an isolated comment
+            let comment_begin = rcx.session().source_map().lookup_byte_offset(comment.pos);
+            let mut extend_comment_pos = |src: &str| {
+                if let Some(newline_index) = src[..comment_begin.pos.to_usize()].rfind('\n') {
+                    comment_pos = BytePos::from_usize(newline_index) + comment_begin.sf.start_pos;
+                }
+            };
+            if let Some(ref src) = comment_begin.sf.src {
+                extend_comment_pos(src);
+            } else if let Some(src) = comment_begin.sf.external_src.borrow().get_source() {
+                extend_comment_pos(src);
+            }
+
+            span = span.with_lo(comment_pos);
+        } else {
+            debug!("comment {:?} did not match source {:?}", comment, source);
+            break;
+        }
+    }
+
+    for comment in &after {
+        for comment_line in &comment.lines {
+            let line_end = if comment_line.starts_with("//") {
+                BytePos::from_usize(span.hi().to_usize() + comment_line.len() + 1)
+            } else {
+                BytePos::from_usize(span.hi().to_usize() + comment_line.len())
+            };
+            let line_span = span.shrink_to_hi().with_hi(line_end);
+            let src_line = rcx.session().source_map().span_to_snippet(line_span).unwrap();
+            if comment_line.trim() == src_line.trim() {
+                span = span.with_hi(line_end);
+            } else {
+                // We need to break out of processing any after comments because
+                // a line didn't match.
+                debug!("comment {:?} did not match line {:?}", comment_line, src_line);
+                return span;
+            }
+        }
+    }
+
+    span
 }

@@ -25,13 +25,14 @@ use syntax::util::parser;
 use syntax::ThinVec;
 
 use crate::ast_manip::ast_map::NodeTable;
-use crate::ast_manip::util::{extend_span_attrs, extend_span_comments};
+use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::{AstDeref, GetNodeId, GetSpan};
 use crate::driver;
 use crate::rewrite::base::{binop_left_prec, binop_right_prec};
-use crate::rewrite::base::{describe, is_rewritable};
+use crate::rewrite::base::{describe, extend_span_comments, is_rewritable};
 use crate::rewrite::{ExprPrec, Rewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, TextRewrite};
 use crate::util::Lone;
+
 
 // PrintParse
 
@@ -190,7 +191,7 @@ impl PrintParse for Attribute {
 pub trait Splice {
     /// Get a span that covers the entire text of the node.  This is used as the source or
     /// destination span when splicing text.
-    fn splice_span(&self, rcx: &RewriteCtxt) -> Span;
+    fn splice_span(&self) -> Span;
 
     /// Get the text adjustment (such as parenthesization) to apply to the printed text before
     /// splicing it in.  This relies on the `RewriteCtxt` accurately tracking the `ExprPrec`s of
@@ -201,13 +202,8 @@ pub trait Splice {
 }
 
 impl Splice for Expr {
-    fn splice_span(&self, rcx: &RewriteCtxt) -> Span {
-        let span = extend_span_attrs(self.span, &self.attrs);
-        if let Some(comments) = rcx.comments().get(&self.id) {
-            extend_span_comments(span, comments, rcx.session().source_map())
-        } else {
-            span
-        }
+    fn splice_span(&self) -> Span {
+        extend_span_attrs(self.span, &self.attrs)
     }
 
     fn get_adjustment(&self, rcx: &RewriteCtxt) -> TextAdjust {
@@ -237,63 +233,49 @@ impl Splice for Expr {
 }
 
 impl Splice for Pat {
-    fn splice_span(&self, _rcx: &RewriteCtxt) -> Span {
+    fn splice_span(&self) -> Span {
         self.span
     }
 }
 
 impl Splice for Ty {
-    fn splice_span(&self, _rcx: &RewriteCtxt) -> Span {
+    fn splice_span(&self) -> Span {
         self.span
     }
 }
 
 impl Splice for Stmt {
-    fn splice_span(&self, rcx: &RewriteCtxt) -> Span {
-        if let Some(comments) = rcx.comments().get(&self.id) {
-            extend_span_comments(self.span, comments, rcx.session().source_map())
-        } else {
-            self.span
-        }
+    fn splice_span(&self) -> Span {
+        self.span
     }
 }
 
 impl Splice for Item {
-    fn splice_span(&self, rcx: &RewriteCtxt) -> Span {
-        let span = extend_span_attrs(self.span, &self.attrs);
-        if let Some(comments) = rcx.comments().get(&self.id) {
-            extend_span_comments(span, comments, rcx.session().source_map())
-        } else {
-            span
-        }
+    fn splice_span(&self) -> Span {
+        extend_span_attrs(self.span, &self.attrs)
     }
 }
 
 impl Splice for ForeignItem {
-    fn splice_span(&self, rcx: &RewriteCtxt) -> Span {
-        let span = extend_span_attrs(self.span, &self.attrs);
-        if let Some(comments) = rcx.comments().get(&self.id) {
-            extend_span_comments(span, comments, rcx.session().source_map())
-        } else {
-            span
-        }
+    fn splice_span(&self) -> Span {
+        extend_span_attrs(self.span, &self.attrs)
     }
 }
 
 impl Splice for Block {
-    fn splice_span(&self, _rcx: &RewriteCtxt) -> Span {
+    fn splice_span(&self) -> Span {
         self.span
     }
 }
 
 impl Splice for Arg {
-    fn splice_span(&self, _rcx: &RewriteCtxt) -> Span {
+    fn splice_span(&self) -> Span {
         self.pat.span.to(self.ty.span)
     }
 }
 
 impl Splice for Attribute {
-    fn splice_span(&self, _rcx: &RewriteCtxt) -> Span {
+    fn splice_span(&self) -> Span {
         self.span
     }
 }
@@ -560,14 +542,17 @@ where
         }
     };
 
-    if !is_rewritable(old.splice_span(&rcx)) {
+    let old_span = old.splice_span();
+    let old_span = extend_span_comments(&old_id, old_span, rcx.borrow());
+
+    if !is_rewritable(old_span) {
         return false;
     }
 
     let sf = rcx
         .session()
         .source_map()
-        .lookup_byte_offset(old.splice_span(&rcx).lo())
+        .lookup_byte_offset(old_span.lo())
         .sf;
     if let FileName::Macros(..) = sf.name {
         return false;
@@ -578,17 +563,17 @@ where
     // of the enclosing `rewrite_at`, and we need to avoid infinitely recursing through
     // `rewrite_at` and `recover` on the same node.
     if let Some(restricted_span) = maybe_restricted_span {
-        if old.splice_span(&rcx) == restricted_span {
+        if old.splice_span() == restricted_span {
             return false;
         }
     }
 
-    info!("REVERT {}", describe(rcx.session(), reparsed.splice_span(&rcx)));
-    info!("    TO {}", describe(rcx.session(), old.splice_span(&rcx)));
+    info!("REVERT {}", describe(rcx.session(), reparsed.splice_span()));
+    info!("    TO {}", describe(rcx.session(), old_span));
 
     let mut rw = TextRewrite::adjusted(
-        reparsed.splice_span(&rcx),
-        old.splice_span(&rcx),
+        reparsed.splice_span(),
+        old_span,
         new.get_adjustment(&rcx),
     );
     let mark = rcx.mark();
@@ -606,7 +591,7 @@ pub fn rewrite<T>(old: &T, new: &T, rcx: RewriteCtxtRef) -> bool
 where
     T: PrintParse + RecoverChildren + Splice + Debug,
 {
-    if !is_rewritable(old.splice_span(&rcx)) {
+    if !is_rewritable(old.splice_span()) {
         // If we got here, it means rewriting failed somewhere inside macro-generated code, and
         // outside any chunks of AST that the macro copied out of its arguments (those chunks
         // would have non-dummy spans, and would be spliced in already).  We give up on this
@@ -617,7 +602,7 @@ where
         warn!("can't splice in fresh text for a non-rewritable node");
         return true;
     }
-    rewrite_at(old.splice_span(&rcx), new, rcx)
+    rewrite_at(old.splice_span(), new, rcx)
 }
 
 pub fn rewrite_at<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
@@ -632,17 +617,17 @@ where
         info!("REWRITE {}", describe(rcx.session(), old_span));
         info!(
             "   INTO {}",
-            describe(rcx.session(), reparsed.splice_span(&rcx))
+            describe(rcx.session(), reparsed.splice_span())
         );
     } else {
         info!("INSERT AT {}", describe(rcx.session(), old_span));
         info!(
             "     TEXT {}",
-            describe(rcx.session(), reparsed.splice_span(&rcx))
+            describe(rcx.session(), reparsed.splice_span())
         );
     }
 
-    let mut rw = TextRewrite::adjusted(old_span, reparsed.splice_span(&rcx), new.get_adjustment(&rcx));
+    let mut rw = TextRewrite::adjusted(old_span, reparsed.splice_span(), new.get_adjustment(&rcx));
     // Try recovery, starting in "restricted mode" to avoid infinite recursion.  The guarantee of
     // `recover_node_restricted` is that if it calls into `Rewrite::rewrite(old2, new2, ...)`, then
     // `old2.splice_span() != old_span`, so we won't end up back here in `rewrite_at` with

@@ -6,9 +6,8 @@ use syntax::ptr::P;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::symbol::{keywords, Symbol};
 use syntax::tokenstream::TokenStream;
-use syntax_pos::{BytePos, Pos};
 
-use super::{AstEquiv, Comment, CommentStyle};
+use super::AstEquiv;
 
 /// Extract the symbol from a pattern-like AST.
 pub trait PatternSymbol {
@@ -139,87 +138,6 @@ pub fn extend_span_attrs(mut s: Span, attrs: &[Attribute]) -> Span {
         }
     }
     s
-}
-
-/// Extend a node span to cover comments around it.
-pub fn extend_span_comments(mut span: Span, comments: &[Comment], sources: &SourceMap) -> Span {
-    if comments.is_empty() {
-        return span;
-    }
-
-    debug!("Extending span comments for {:?} for comments: {:?}", span, comments);
-
-    let mut before = vec![];
-    let mut after = vec![];
-    for comment in comments {
-        match comment.style {
-            CommentStyle::Isolated => {
-                before.push(comment);
-            }
-
-            CommentStyle::Trailing => {
-                after.push(comment);
-            }
-
-            _ => unimplemented!("Mixed and BlankLine comment styles are not implemented"),
-        }
-    }
-
-    before.sort_by_key(|c| c.pos);
-    after.sort_by_key(|c| c.pos);
-
-    before.reverse();
-
-    for comment in &before {
-        let comment_span = span.shrink_to_lo().with_lo(comment.pos);
-        let source = sources.span_to_snippet(comment_span).unwrap();
-        let matches = source.lines().zip(&comment.lines).all(|(src_line, comment_line)| {
-            src_line.trim() == comment_line.trim()
-        });
-        if matches {
-            let mut comment_pos = comment.pos;
-
-            // Extend to previous newline because this is an isolated comment
-            let comment_begin = sources.lookup_byte_offset(comment.pos);
-            let mut extend_comment_pos = |src: &str| {
-                if let Some(newline_index) = src[..comment_begin.pos.to_usize()].rfind('\n') {
-                    comment_pos = BytePos::from_usize(newline_index) + comment_begin.sf.start_pos;
-                }
-            };
-            if let Some(ref src) = comment_begin.sf.src {
-                extend_comment_pos(src);
-            } else if let Some(src) = comment_begin.sf.external_src.borrow().get_source() {
-                extend_comment_pos(src);
-            }
-
-            span = span.with_lo(comment_pos);
-        } else {
-            debug!("comment {:?} did not match source {:?}", comment, source);
-            break;
-        }
-    }
-
-    for comment in &after {
-        for comment_line in &comment.lines {
-            let line_end = if comment_line.starts_with("//") {
-                BytePos::from_usize(span.hi().to_usize() + comment_line.len() + 1)
-            } else {
-                BytePos::from_usize(span.hi().to_usize() + comment_line.len())
-            };
-            let line_span = span.shrink_to_hi().with_hi(line_end);
-            let src_line = sources.span_to_snippet(line_span).unwrap();
-            if comment_line.trim() == src_line.trim() {
-                span = span.with_hi(line_end);
-            } else {
-                // We need to break out of processing any after comments because
-                // a line didn't match.
-                debug!("comment {:?} did not match line {:?}", comment_line, src_line);
-                return span;
-            }
-        }
-    }
-
-    span
 }
 
 /// Get the name of a macro invocation.
