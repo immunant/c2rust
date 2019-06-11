@@ -1374,7 +1374,7 @@ impl<'c> Translation<'c> {
 
                             let typ = self.convert_type(typ.ctype)?;
 
-                            field_entries.push(mk().span(s).pub_().struct_field(name, typ));
+                            field_entries.push(mk().pub_().struct_field(name, typ));
                         }
                         _ => {
                             return Err(TranslationError::generic(
@@ -1442,7 +1442,7 @@ impl<'c> Translation<'c> {
                                 .borrow_mut()
                                 .declare_field_name(decl_id, x, name);
                             let typ = self.convert_type(typ.ctype)?;
-                            field_syns.push(mk().span(s).pub_().struct_field(name, typ))
+                            field_syns.push(mk().pub_().struct_field(name, typ))
                         }
                         _ => {
                             return Err(TranslationError::generic(
