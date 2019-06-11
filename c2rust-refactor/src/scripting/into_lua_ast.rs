@@ -98,15 +98,16 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         },
                         LitKind::Int(i, suffix) => {
                             ast.set("value", i)?;
+                            // (R)Lua will convert any value > i64::max_value()
+                            // to a float so we must stringly type that it's
+                            // expected to be an integer
+                            ast.set("num_kind", "Int")?;
 
                             match suffix {
                                 LitIntType::Signed(int_ty) => {
                                     ast.set("suffix", int_ty.ty_to_string())?;
                                 },
                                 LitIntType::Unsigned(uint_ty) => {
-                                    // if i == 18446744073709551615 {
-                                    //     warn!("{} {}", i, uint_ty);
-                                    // }
                                     ast.set("suffix", uint_ty.ty_to_string())?;
                                 },
                                 LitIntType::Unsuffixed => (),
@@ -125,9 +126,10 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                                 .map_err(|e| LuaError::external(e))?;
 
                             ast.set("value", float)?;
+                            ast.set("num_kind", "Float")?;
                         },
                         LitKind::Float(symbol, suffix) => {
-                            // error!("{} {}", symbol, suffix);
+                            ast.set("num_kind", "Float")?;
 
                             let string = symbol.as_str().get();
 
@@ -279,10 +281,11 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         ast.set("label", label.ident.name.as_str().get())?;
                     }
                 },
-                ExprKind::ForLoop(_pat, expr, block, opt_label) => {
+                ExprKind::ForLoop(pat, expr, block, opt_label) => {
                     ast.set("kind", "ForLoop")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                     ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("pat", pat.into_lua_ast(ctx, lua_ctx)?)?;
 
                     if let Some(label) = opt_label {
                         ast.set("label", label.ident.name.as_str().get())?;
@@ -416,7 +419,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         .into_iter()
                         .map(|(sym, expr)| {
                             let input = lua_ctx.create_table()?;
-                            let sym = sym.as_str().to_string();
+                            let sym = sym.as_str().get();
 
                             input.set("symbol", sym)?;
                             input.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
@@ -590,9 +593,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Pat> {
 
         self.and_then(|pat| {
             match pat.node {
-                PatKind::Wild => {
-                    ast.set("kind", "Wild")?;
-                },
+                PatKind::Wild => ast.set("kind", "Wild")?,
                 PatKind::Ident(binding, ident, _sub_pattern) => {
                     ast.set("kind", "Ident")?;
                     ast.set("binding", match binding {
@@ -612,6 +613,10 @@ impl<'lua> IntoLuaAst<'lua> for P<Pat> {
                     ast.set("kind", "Tuple")?;
                     ast.set("pats", lua_ctx.create_sequence_from(pats?.into_iter())?)?;
                     ast.set("fragment_pos", fragment_pos)?;
+                },
+                PatKind::Lit(expr) => {
+                    ast.set("kind", "Lit")?;
+                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
                 _ => return Err(LuaError::external(format!("unimplemented pattern type: {:?}", pat.node))),
             }
@@ -816,10 +821,14 @@ impl<'lua> IntoLuaAst<'lua> for InlineAsmOutput {
 impl<'lua> IntoLuaAst<'lua> for Arm {
     fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
         let ast = lua_ctx.create_table()?;
-        let body = self.body.into_lua_ast(ctx, lua_ctx)?;
+        let pats = self.pats
+            .into_iter()
+            .map(|pat| pat.into_lua_ast(ctx, lua_ctx))
+            .collect::<LuaResult<Vec<_>>>();
 
         ast.set("type", "Arm")?;
-        ast.set("body", body)?;
+        ast.set("body", self.body.into_lua_ast(ctx, lua_ctx)?)?;
+        ast.set("pats", lua_ctx.create_sequence_from(pats?.into_iter())?)?;
 
         if let Some(guard) = self.guard {
             ast.set("guard", match guard {

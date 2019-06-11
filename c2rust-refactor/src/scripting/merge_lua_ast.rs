@@ -210,9 +210,8 @@ impl MergeLuaAst for P<Block> {
 impl MergeLuaAst for Stmt {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let kind: LuaString = table.get("kind")?;
-        let kind = kind.to_str()?;
 
-        self.node = match kind {
+        self.node = match kind.to_str()? {
             "Local" => {
                 let mut local = dummy_local();
 
@@ -334,6 +333,14 @@ impl MergeLuaAst for P<Pat> {
                 }
 
                 PatKind::Tuple(patterns, fragment_pos)
+            },
+            "Lit" => {
+                let lua_expr = table.get("expr")?;
+                let mut expr = dummy_expr();
+
+                expr.merge_lua_ast(lua_expr)?;
+
+                PatKind::Lit(expr)
             },
             e => unimplemented!("MergeLuaAst unimplemented pat: {:?}", e),
         };
@@ -499,6 +506,27 @@ impl MergeLuaAst for P<Item> {
     }
 }
 
+fn lit_from_int(int: u128, suffix: Option<&str>) -> Spanned<LitKind> {
+    let suffix = match suffix {
+        None => LitIntType::Unsuffixed,
+        Some("u8") => LitIntType::Unsigned(UintTy::U8),
+        Some("u16") => LitIntType::Unsigned(UintTy::U16),
+        Some("u32") => LitIntType::Unsigned(UintTy::U32),
+        Some("u64") => LitIntType::Unsigned(UintTy::U64),
+        Some("u128") => LitIntType::Unsigned(UintTy::U128),
+        Some("usize") => LitIntType::Unsigned(UintTy::Usize),
+        Some("i8") => LitIntType::Signed(IntTy::I8),
+        Some("i16") => LitIntType::Signed(IntTy::I16),
+        Some("i32") => LitIntType::Signed(IntTy::I32),
+        Some("i64") => LitIntType::Signed(IntTy::I64),
+        Some("i128") => LitIntType::Signed(IntTy::I128),
+        Some("isize") => LitIntType::Signed(IntTy::Isize),
+        _ => unreachable!("Unknown int suffix"),
+    };
+
+    dummy_spanned(LitKind::Int(int, suffix))
+}
+
 impl MergeLuaAst for P<Expr> {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let kind = table.get::<_, String>("kind")?;
@@ -515,45 +543,36 @@ impl MergeLuaAst for P<Expr> {
             },
             "Lit" => {
                 let val: LuaValue = table.get("value")?;
-                let suffix: Option<String> = table.get("suffix")?;
+                let suffix: Option<LuaString> = table.get("suffix")?;
+                let suffix = suffix.as_ref().map(|s| s.to_str()).transpose()?;
                 let lit = match val {
                     LuaValue::Boolean(val) => dummy_spanned(LitKind::Bool(val)),
-                    LuaValue::Integer(i) => {
-                        let suffix = match suffix.as_ref().map(AsRef::as_ref) {
-                            None => LitIntType::Unsuffixed,
-                            Some("u8") => LitIntType::Unsigned(UintTy::U8),
-                            Some("u16") => LitIntType::Unsigned(UintTy::U16),
-                            Some("u32") => LitIntType::Unsigned(UintTy::U32),
-                            Some("u64") => LitIntType::Unsigned(UintTy::U64),
-                            Some("u128") => LitIntType::Unsigned(UintTy::U128),
-                            Some("usize") => LitIntType::Unsigned(UintTy::Usize),
-                            Some("i8") => LitIntType::Signed(IntTy::I8),
-                            Some("i16") => LitIntType::Signed(IntTy::I16),
-                            Some("i32") => LitIntType::Signed(IntTy::I32),
-                            Some("i64") => LitIntType::Signed(IntTy::I64),
-                            Some("i128") => LitIntType::Signed(IntTy::I128),
-                            Some("isize") => LitIntType::Signed(IntTy::Isize),
-                            _ => unreachable!("Unknown int suffix"),
-                        };
-
-                        dummy_spanned(LitKind::Int(i as u128, suffix))
-                    },
+                    LuaValue::Integer(i) => lit_from_int(i as u128, suffix),
                     LuaValue::Number(num) => {
-                        let mut string = num.to_string();
+                        let num_kind: LuaString = table.get("num_kind")?;
 
-                        // to_string won't add a trailing period if unsuffixed
-                        if !string.contains('.') {
-                            string.push('.');
+                        // (R)Lua will convert any value > i64::max_value()
+                        // to a float so we must stringly type that it's
+                        // expected to be an integer
+                        if num_kind.to_str()? == "Int" {
+                            lit_from_int(num as u128, suffix)
+                        } else {
+                            let mut string = num.to_string();
+
+                            // to_string won't add a trailing period if unsuffixed
+                            if !string.contains('.') {
+                                string.push('.');
+                            }
+
+                            let sym = Symbol::intern(&string);
+
+                            dummy_spanned(match suffix {
+                                None => LitKind::FloatUnsuffixed(sym),
+                                Some("f32") => LitKind::Float(sym, FloatTy::F32),
+                                Some("f64") => LitKind::Float(sym, FloatTy::F64),
+                                Some(e) => unreachable!("Unknown float suffix: {}{}", num, e),
+                            })
                         }
-
-                        let sym = Symbol::intern(&string);
-
-                        dummy_spanned(match suffix.as_ref().map(AsRef::as_ref) {
-                            None => LitKind::FloatUnsuffixed(sym),
-                            Some("f32") => LitKind::Float(sym, FloatTy::F32),
-                            Some("f64") => LitKind::Float(sym, FloatTy::F64),
-                            Some(e) => unreachable!("Unknown float suffix: {} {}", num, e),
-                        })
                     },
                     LuaValue::String(lua_string) => {
                         let is_bytes: bool = table.get("is_bytes")?;
@@ -963,6 +982,24 @@ impl MergeLuaAst for P<Expr> {
 
                 ExprKind::Match(expr, arms)
             },
+            "ForLoop" => {
+                let lua_expr = table.get("expr")?;
+                let lua_pat = table.get("pat")?;
+                let lua_block = table.get("block")?;
+                let lua_label: Option<LuaString> = table.get("label")?;
+                let opt_label = lua_label.map(|string| Ok(Label {
+                    ident: Ident::from_str(string.to_str()?)
+                })).transpose()?;
+                let mut expr = dummy_expr();
+                let mut pat = dummy_pat();
+                let mut block = dummy_block();
+
+                block.merge_lua_ast(lua_block)?;
+                expr.merge_lua_ast(lua_expr)?;
+                pat.merge_lua_ast(lua_pat)?;
+
+                ExprKind::ForLoop(pat, expr, block, opt_label)
+            },
             ref e => {
                 warn!("MergeLuaAst unimplemented expr: {:?}", e);
                 return Ok(());
@@ -1247,6 +1284,8 @@ impl MergeLuaAst for Arm {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let lua_body = table.get("body")?;
         let lua_guard: Option<LuaTable> = table.get("guard")?;
+        let lua_pats: LuaTable = table.get("pats")?;
+        let mut pats = Vec::new();
 
         self.body.merge_lua_ast(lua_body)?;
 
@@ -1263,7 +1302,16 @@ impl MergeLuaAst for Arm {
             _ => (),
         }
 
-        // TODO: Attrs, pats
+        for lua_pat in lua_pats.sequence_values::<LuaTable>() {
+            let mut pat = dummy_pat();
+
+            pat.merge_lua_ast(lua_pat?)?;
+            pats.push(pat);
+        }
+
+        self.pats = pats;
+
+        // TODO: Attrs
 
         Ok(())
     }
