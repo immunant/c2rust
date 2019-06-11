@@ -233,7 +233,7 @@ pub struct Translation<'c> {
     macro_types: RefCell<IndexMap<CDeclId, CTypeId>>,
 
     // Comment support
-    pub comment_context: RefCell<CommentContext>, // Incoming comments
+    pub comment_context: CommentContext, // Incoming comments
     pub comment_store: RefCell<CommentStore>,     // Outgoing comments
 
     // Mod block defintion reorganization
@@ -965,7 +965,7 @@ impl<'c> Translation<'c> {
         tcfg: &'c TranspilerConfig,
         main_file: PathBuf,
     ) -> Self {
-        let comment_context = RefCell::new(CommentContext::new(&mut ast_context));
+        let comment_context = CommentContext::new(&mut ast_context);
         let mut type_converter = TypeConverter::new(tcfg.emit_no_std);
 
         if tcfg.translate_valist {
@@ -1286,11 +1286,13 @@ impl<'c> Translation<'c> {
         decl_id: CDeclId,
     ) -> Result<ConvertedDecl, TranslationError> {
         let mut s = {
-            let decl_cmt = self
+            match self
                 .comment_context
-                .borrow_mut()
-                .remove_decl_comment(decl_id);
-            self.comment_store.borrow_mut().add_comment_lines(decl_cmt)
+                .get_decl_comment(decl_id)
+            {
+                Some(decl_cmt) => self.comment_store.borrow_mut().add_comment_lines(decl_cmt),
+                None => DUMMY_SP,
+            }
         };
 
         let decl = self
@@ -1697,7 +1699,7 @@ impl<'c> Translation<'c> {
                     s = self
                         .comment_store
                         .borrow_mut()
-                        .add_comment_lines(vec![comment]);
+                        .add_comment_lines(&[comment]);
 
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
 
@@ -2276,7 +2278,7 @@ impl<'c> Translation<'c> {
                     let span = self
                         .comment_store
                         .borrow_mut()
-                        .add_comment_lines(vec![comment]);
+                        .add_comment_lines(&[comment]);
                     let static_item =
                         mk().span(span)
                             .mutbl()

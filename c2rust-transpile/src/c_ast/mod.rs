@@ -543,13 +543,13 @@ impl CommentContext {
     }
 
     // Extract the comment for a given declaration
-    pub fn remove_decl_comment(&mut self, decl_id: CDeclId) -> Vec<String> {
-        self.decl_comments.remove(&decl_id).unwrap_or(vec![])
+    pub fn get_decl_comment(&self, decl_id: CDeclId) -> Option<&[String]> {
+        self.decl_comments.get(&decl_id).map(Vec::as_ref)
     }
 
     // Extract the comment for a given statement
-    pub fn remove_stmt_comment(&mut self, stmt_id: CStmtId) -> Vec<String> {
-        self.stmt_comments.remove(&stmt_id).unwrap_or(vec![])
+    pub fn get_stmt_comment(&self, stmt_id: CStmtId) -> Option<&[String]> {
+        self.stmt_comments.get(&stmt_id).map(Vec::as_ref)
     }
 }
 

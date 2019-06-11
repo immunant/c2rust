@@ -1386,12 +1386,10 @@ impl CfgBuilder {
         let mut wip = self.new_wip_block(entry);
 
         // Add statement comment into current block right before the current statement
-        for cmmt in translator
-            .comment_context
-            .borrow_mut()
-            .remove_stmt_comment(stmt_id)
-        {
-            wip.push_comment(cmmt);
+        if let Some(comments) = translator.comment_context.get_stmt_comment(stmt_id) {
+            for cmmt in comments {
+                wip.push_comment(cmmt.clone());
+            }
         }
 
         let out_wip: Result<Option<WipBlock>, TranslationError> =
@@ -1407,12 +1405,13 @@ impl CfgBuilder {
                             .insert(*decl, info);
 
                         // Add declaration comment into current block right before the declaration
-                        for cmmt in translator
+                        if let Some(comments) = translator
                             .comment_context
-                            .borrow_mut()
-                            .remove_decl_comment(*decl)
+                            .get_decl_comment(*decl)
                         {
-                            wip.push_comment(cmmt);
+                            for cmmt in comments {
+                                wip.push_comment(cmmt.clone());
+                            }
                         }
 
                         wip.push_decl(*decl);
