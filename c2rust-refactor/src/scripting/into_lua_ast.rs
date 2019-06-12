@@ -104,7 +104,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("kind", "Lit")?;
                     match l.node {
                         LitKind::Str(s, _) => {
-                            ast.set("value", s.to_string())?;
+                            ast.set("value", s.as_str().get())?;
                             ast.set("is_bytes", false)?;
                         },
                         LitKind::Int(i, suffix) => {
@@ -129,7 +129,12 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                             ast.set("value", lua_ctx.create_string(&*bytes)?)?;
                             ast.set("is_bytes", true)?;
                         },
-                        LitKind::Char(ch) => ast.set("value", ch.to_string())?,
+                        LitKind::Char(ch) => {
+                            let mut buf = [0; 4];
+                            let char_str = ch.encode_utf8(&mut buf);
+
+                            ast.set("value", &*char_str)?;
+                        },
                         LitKind::FloatUnsuffixed(symbol) => {
                             let string = symbol.as_str().get();
                             let float = string
@@ -363,7 +368,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                 ExprKind::Field(expr, name) => {
                     ast.set("kind", "Field")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
-                    ast.set("name", name.to_string())?;
+                    ast.set("name", name.as_str().get())?;
                 },
                 ExprKind::Index(indexed, index) => {
                     ast.set("kind", "Index")?;
@@ -804,7 +809,7 @@ impl<'lua> IntoLuaAst<'lua> for ImplItem {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "ImplItem")?;
-        ast.set("ident", self.ident.to_string())?;
+        ast.set("ident", self.ident.as_str().get())?;
         ast.set("span", LuaSpan(self.span.data()))?;
 
         match self.node {
