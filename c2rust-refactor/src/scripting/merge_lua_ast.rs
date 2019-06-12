@@ -184,7 +184,7 @@ impl MergeLuaAst for FnLike {
             _ => self.kind,
         };
         self.id = get_node_id_or_default(&table, "id")?;
-        self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
+        self.ident.name = Symbol::intern(table.get::<_, LuaString>("ident")?.to_str()?);
         self.decl.merge_lua_ast(table.get("decl")?)?;
         self.span = get_span_or_default(&table, "span")?;
 
@@ -205,7 +205,7 @@ impl MergeLuaAst for P<Block> {
         let lua_stmts: LuaTable = table.get("stmts")?;
 
         self.span = get_span_or_default(&table, "span")?;
-        self.rules = match table.get::<_, String>("rules")?.as_str() {
+        self.rules = match table.get::<_, LuaString>("rules")?.to_str()? {
             "Default" => BlockCheckMode::Default,
             "CompilerGeneratedUnsafe" => BlockCheckMode::Unsafe(CompilerGenerated),
             "UserProvidedUnsafe" => BlockCheckMode::Unsafe(UserProvided),
@@ -432,7 +432,7 @@ impl MergeLuaAst for P<Item> {
 
         self.span = get_span_or_default(&table, "span")?;
         self.id = get_node_id_or_default(&table, "id")?;
-        self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
+        self.ident.name = Symbol::intern(&table.get::<_, LuaString>("ident")?.to_str()?);
         self.node = match kind {
             "Fn" => {
                 let lua_fn_decl = table.get("decl")?;
@@ -633,8 +633,8 @@ impl MergeLuaAst for P<Expr> {
             "Binary" | "AssignOp" | "Assign" => {
                 let lua_lhs = table.get("lhs")?;
                 let lua_rhs = table.get("rhs")?;
-                let op: Option<String> = table.get("op")?;
-                let op = op.map(|s| match s.as_str() {
+                let op: Option<LuaString> = table.get("op")?;
+                let op = op.map(|s| Ok(match s.to_str()? {
                     "+" => BinOpKind::Add,
                     "-" => BinOpKind::Sub,
                     "*" => BinOpKind::Mul,
@@ -654,7 +654,7 @@ impl MergeLuaAst for P<Expr> {
                     ">=" => BinOpKind::Ge,
                     ">" => BinOpKind::Gt,
                     e => unreachable!("Unknown BinOpKind: {}", e),
-                });
+                })).transpose()?;
 
                 let mut lhs = dummy_expr();
                 let mut rhs = dummy_expr();
@@ -695,9 +695,9 @@ impl MergeLuaAst for P<Expr> {
                 ExprKind::Index(indexed, index)
             },
             "Unary" => {
-                let op: String = table.get("op")?;
+                let op: LuaString = table.get("op")?;
                 let lua_expr: LuaTable = table.get("expr")?;
-                let op = match op.as_str() {
+                let op = match op.to_str()? {
                     "*" => UnOp::Deref,
                     "!" => UnOp::Not,
                     "-" => UnOp::Neg,
@@ -737,19 +737,19 @@ impl MergeLuaAst for P<Expr> {
                     args.push(arg);
                 }
 
-                let name: String = table.get("name")?;
-                let segment = PathSegment::from_ident(Ident::from_str(&name));
+                let name: LuaString = table.get("name")?;
+                let segment = PathSegment::from_ident(Ident::from_str(name.to_str()?));
 
                 ExprKind::MethodCall(segment, args)
             },
             "Field" => {
                 let lua_expr: LuaTable = table.get("expr")?;
                 let mut expr = dummy_expr();
-                let name: String = table.get("name")?;
+                let name: LuaString = table.get("name")?;
 
                 expr.merge_lua_ast(lua_expr)?;
 
-                ExprKind::Field(expr, Ident::from_str(&name))
+                ExprKind::Field(expr, Ident::from_str(name.to_str()?))
             },
             "Ret" => {
                 let opt_lua_expr: Option<LuaTable> = table.get("value")?;
@@ -784,7 +784,7 @@ impl MergeLuaAst for P<Expr> {
 
                 expr.merge_lua_ast(lua_expr)?;
 
-                let mutability = match table.get::<_, String>("mutability")?.as_str() {
+                let mutability = match table.get::<_, LuaString>("mutability")?.to_str()? {
                     "Immutable" => Immutable,
                     "Mutable" => Mutable,
                     e => panic!("Found unknown addrof mutability: {}", e),
@@ -795,8 +795,10 @@ impl MergeLuaAst for P<Expr> {
             "Block" => {
                 let lua_block = table.get("block")?;
                 let mut block = dummy_block();
-                let opt_label_str: Option<String> = table.get("label")?;
-                let opt_label = opt_label_str.map(|s| Label { ident: Ident::from_str(&s) });
+                let opt_label_str: Option<LuaString> = table.get("label")?;
+                let opt_label = opt_label_str.map(|s| Ok(Label {
+                    ident: Ident::from_str(s.to_str()?)
+                })).transpose()?;
 
                 block.merge_lua_ast(lua_block)?;
 
@@ -807,8 +809,10 @@ impl MergeLuaAst for P<Expr> {
                 let lua_block = table.get("block")?;
                 let mut cond = dummy_expr();
                 let mut block = dummy_block();
-                let opt_label_str: Option<String> = table.get("label")?;
-                let opt_label = opt_label_str.map(|s| Label { ident: Ident::from_str(&s) });
+                let opt_label_str: Option<LuaString> = table.get("label")?;
+                let opt_label = opt_label_str.map(|s| Ok(Label {
+                    ident: Ident::from_str(s.to_str()?)
+                })).transpose()?;
 
                 block.merge_lua_ast(lua_block)?;
                 cond.merge_lua_ast(lua_cond)?;
@@ -860,8 +864,8 @@ impl MergeLuaAst for P<Expr> {
 
                 for field in lua_fields.sequence_values::<LuaTable>() {
                     let field = field?;
-                    let string: String = field.get("ident")?;
-                    let ident = Ident::from_str(&string);
+                    let string: LuaString = field.get("ident")?;
+                    let ident = Ident::from_str(string.to_str()?);
                     let lua_expr = field.get("expr")?;
                     let mut expr = dummy_expr();
                     let is_shorthand = field.get("is_shorthand")?;
@@ -1048,7 +1052,7 @@ impl MergeLuaAst for P<Expr> {
 
 impl MergeLuaAst for ImplItem {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
-        self.ident.name = Symbol::intern(&table.get::<_, String>("ident")?);
+        self.ident.name = Symbol::intern(&table.get::<_, LuaString>("ident")?.to_str()?);
         self.span = get_span_or_default(&table, "span")?;
         self.id = get_node_id_or_default(&table, "id")?;
 
@@ -1088,7 +1092,7 @@ impl MergeLuaAst for P<Ty> {
                 TyKind::Path(None, path)
             },
             "Ptr" | "Rptr" => {
-                let mutbl = match table.get::<_, String>("mutbl")?.as_str() {
+                let mutbl = match table.get::<_, LuaString>("mutbl")?.to_str()? {
                     "Immutable" => Immutable,
                     "Mutable" => Mutable,
                     e => panic!("Found unknown ptr mutability: {}", e),
@@ -1116,7 +1120,7 @@ impl MergeLuaAst for P<Ty> {
             "BareFn" => {
                 let lua_decl = table.get("decl")?;
                 let mut decl = dummy_fn_decl();
-                let unsafety = match table.get::<_, String>("unsafety")?.as_str() {
+                let unsafety = match table.get::<_, LuaString>("unsafety")?.to_str()? {
                     "Unsafe" => Unsafety::Unsafe,
                     "Normal" => Unsafety::Normal,
                     e => panic!("Found unknown unsafety: {}", e),
