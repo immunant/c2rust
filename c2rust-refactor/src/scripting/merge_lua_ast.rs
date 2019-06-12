@@ -9,7 +9,6 @@ use syntax::ast::{
     AsmDialect, InlineAsmOutput, Constness, FnHeader, Generics, IsAsync, ImplPolarity, Defaultness,
     UseTree, UseTreeKind, Arm, Guard,
 };
-use syntax::ext::hygiene::SyntaxContext;
 use syntax::source_map::symbol::Symbol;
 use syntax::source_map::{DUMMY_SP, Span, SpanData, Spanned};
 use syntax::ptr::P;
@@ -18,7 +17,7 @@ use syntax::ThinVec;
 use std::rc::Rc;
 
 use crate::ast_manip::fn_edit::{FnKind, FnLike};
-use crate::scripting::into_lua_ast::LuaSpan;
+use crate::scripting::into_lua_ast::{LuaSpan, LuaSyntaxContext};
 
 fn dummy_spanned<T>(node: T) -> Spanned<T> {
     Spanned {
@@ -889,12 +888,13 @@ impl MergeLuaAst for P<Expr> {
                 let lua_ac_expr = table.get("anon_const")?;
                 let mut expr = dummy_expr();
                 let mut ac_expr = dummy_expr();
+                let id = get_node_id_or_default(&table, "id")?;
 
                 expr.merge_lua_ast(lua_expr)?;
                 ac_expr.merge_lua_ast(lua_ac_expr)?;
 
                 let anon_const = AnonConst {
-                    id: DUMMY_NODE_ID,
+                    id,
                     value: ac_expr,
                 };
 
@@ -912,6 +912,7 @@ impl MergeLuaAst for P<Expr> {
                 let lua_inputs: LuaTable = table.get("inputs")?;
                 let lua_outputs: LuaTable = table.get("outputs")?;
                 let lua_clobbers: LuaTable = table.get("clobbers")?;
+                let lua_syn_ctxt: LuaSyntaxContext = table.get("ctxt")?;
                 let mut outputs = Vec::new();
                 let mut inputs = Vec::new();
                 let mut clobbers = Vec::new();
@@ -953,14 +954,14 @@ impl MergeLuaAst for P<Expr> {
 
                 ExprKind::InlineAsm(P(InlineAsm {
                     asm,
-                    asm_str_style: StrStyle::Cooked,
+                    asm_str_style: StrStyle::Cooked, // TODO: Raw strings
                     outputs,
                     inputs,
                     clobbers,
                     volatile: table.get("volatile")?,
                     alignstack: table.get("alignstack")?,
                     dialect,
-                    ctxt: SyntaxContext::empty(),
+                    ctxt: lua_syn_ctxt.0,
                 }))
             },
             "Loop" => {

@@ -7,6 +7,7 @@ use syntax::ast::{
     Unsafety, BareFnTy, UnsafeSource, BlockCheckMode, Path, Field, PathSegment, GenericArgs,
     GenericArg, AsmDialect, Constness, UseTree, UseTreeKind,
 };
+use syntax::ext::hygiene::SyntaxContext;
 use syntax::ptr::P;
 use syntax_pos::SpanData;
 
@@ -17,6 +18,11 @@ use crate::scripting::TransformCtxt;
 pub(crate) struct LuaSpan(pub(crate) SpanData);
 
 impl UserData for LuaSpan {}
+
+#[derive(Clone, Debug)]
+pub(crate) struct LuaSyntaxContext(pub(crate) SyntaxContext);
+
+impl UserData for LuaSyntaxContext {}
 
 pub(crate) trait IntoLuaAst<'lua> {
     fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>>;
@@ -463,7 +469,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         AsmDialect::Att => "Att",
                         AsmDialect::Intel => "Intel",
                     })?;
-                    // TODO: SyntaxContext?
+                    ast.set("ctxt", LuaSyntaxContext(inline_asm.ctxt))?;
                 },
                 ExprKind::Mac(mac) => {
                     ast.set("kind", "Mac")?;
@@ -488,6 +494,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("kind", "Repeat")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                     ast.set("anon_const", anon_const.value.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("id", anon_const.id.as_u32())?;
                 },
                 ExprKind::Paren(expr) => {
                     ast.set("kind", "Paren")?;

@@ -5,6 +5,16 @@ fn with_params(mut unused: i32, mut used: i32, mut unused2: i32, mut used_immut:
     used += used_immut + used2;
 }
 
+pub static mut foo: u32 = 1;
+
+fn foobar(mut a: i32, _b: u32) -> u32 {
+    if a < 2 {
+        1
+    } else {
+        3
+    }
+}
+
 fn used_in_local(mut p1: i32, mut p2: i32) {
     let mut unused = p1;
     p2 = p1;
@@ -14,6 +24,8 @@ fn used_in_local(mut p1: i32, mut p2: i32) {
     let mut arr2 = [1, 2];
     let mut arr3 = [1, 2];
     let mut arr4 = [1, 2];
+    let mut c = 5.;
+    let func = Some(foobar as fn(i32, u32) -> u32);
 
     unsafe {}
 

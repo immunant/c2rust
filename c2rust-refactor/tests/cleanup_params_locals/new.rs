@@ -5,6 +5,16 @@ fn with_params(_unused: i32, mut used: i32, _unused2: i32, used_immut: i32) {
     used += used_immut + used2;
 }
 
+pub static mut foo: u32 = 1;
+
+fn foobar(a: i32, _b: u32) -> u32 {
+    if a < 2 {
+        1
+    } else {
+        3
+    }
+}
+
 fn used_in_local(p1: i32, mut p2: i32) {
     let _unused = p1;
     p2 = p1;
@@ -14,6 +24,8 @@ fn used_in_local(p1: i32, mut p2: i32) {
     let mut arr2 = [1, 2];
     let arr3 = [1, 2];
     let mut arr4 = [1, 2];
+    let _c = 5.;
+    let _func = Some(foobar as fn(i32, u32) -> u32);
 
     unsafe {}
 
@@ -24,10 +36,10 @@ fn used_in_local(p1: i32, mut p2: i32) {
 
 unsafe fn ptrs(p1: *mut u32, mut p2: u32, p3: *mut u32, p4: *mut Foo, p5: Option<fn() -> bool>) {
     *p1.offset(0) += 1;
-    asm!("cpuid" : "={ax}" (p2));
     (*p3) += 1;
     (*p4).0 = 1;
     while !(p5.unwrap()()) {}
+    asm!("cpuid" : "={ax}" (p2))
 }
 
 struct Foo(u32);
