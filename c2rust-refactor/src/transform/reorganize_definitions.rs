@@ -211,10 +211,12 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             if mod_info.new {
                 if let Some(new_defines) = module_items.remove(&mod_info.id) {
                     let new_items = new_defines.into_items();
-                    let new_mod = mk()
+                    let mut new_mod = mk().mod_(new_items);
+                    new_mod.inline = false;
+                    let new_mod_item = mk()
                         .id(mod_info.id)
-                        .mod_item(mod_info.ident, mk().mod_(new_items));
-                    krate.module.items.push(new_mod);
+                        .mod_item(mod_info.ident, new_mod);
+                    krate.module.items.push(new_mod_item);
                 }
             }
         }

@@ -10,8 +10,10 @@
 //! logic in this module for "recovering" from needing to use this strategy by splicing old AST
 //! text back into the new AST's pretty printer output.
 use rustc::session::Session;
+use rustc_data_structures::sync::Lrc;
 use rustc_target::spec::abi::Abi;
 use std::fmt::Debug;
+use std::path;
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::attr;
@@ -19,7 +21,8 @@ use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::token::{DelimToken, Nonterminal, Token};
 use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax::source_map::{BytePos, FileName, Span, Spanned};
+use syntax::source_map::{BytePos, DUMMY_SP, FileName, SourceFile, Span, Spanned, dummy_spanned};
+use syntax::symbol::Symbol;
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::util::parser;
 use syntax::ThinVec;
@@ -103,20 +106,7 @@ impl PrintParse for Stmt {
 
 impl PrintParse for Item {
     fn to_string(&self) -> String {
-        match self.node {
-            ItemKind::Mod(ref m) if !m.inline => {
-                // Special case: non-inline `Mod` items print as `mod foo;`, which parses back as a
-                // module with no children.  We force all mods to be inline for printing.
-                let mut tmp = self.clone();
-                expect!([tmp.node] ItemKind::Mod(ref mut m) => m.inline = true);
-                warn!(
-                    "printing non-inline module {:?} as inline for rewriting purposes",
-                    self.ident
-                );
-                pprust::item_to_string(&tmp)
-            }
-            _ => pprust::item_to_string(self),
-        }
+        pprust::item_to_string(self)
     }
 
     type Parsed = P<Item>;
@@ -602,10 +592,26 @@ where
         warn!("can't splice in fresh text for a non-rewritable node");
         return true;
     }
-    rewrite_at(old.splice_span(), new, rcx)
+    new.rewrite_at(old.splice_span(), rcx)
 }
 
-pub fn rewrite_at<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
+fn describe_rewrite(old_span: Span, new_span: Span, rcx: &RewriteCtxt) {
+    if old_span.lo() != old_span.hi() {
+        info!("REWRITE {}", describe(rcx.session(), old_span));
+        info!(
+            "   INTO {}",
+            describe(rcx.session(), new_span)
+        );
+    } else {
+        info!("INSERT AT {}", describe(rcx.session(), old_span));
+        info!(
+            "     TEXT {}",
+            describe(rcx.session(), new_span)
+        );
+    }
+}
+
+fn rewrite_at_impl<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
 where
     T: PrintParse + RecoverChildren + Splice + Debug,
 {
@@ -613,27 +619,144 @@ where
     let reparsed = T::parse(rcx.session(), &printed);
     let reparsed = reparsed.ast_deref();
 
-    if old_span.lo() != old_span.hi() {
-        info!("REWRITE {}", describe(rcx.session(), old_span));
-        info!(
-            "   INTO {}",
-            describe(rcx.session(), reparsed.splice_span())
-        );
-    } else {
-        info!("INSERT AT {}", describe(rcx.session(), old_span));
-        info!(
-            "     TEXT {}",
-            describe(rcx.session(), reparsed.splice_span())
-        );
-    }
+    describe_rewrite(old_span, reparsed.splice_span(), &rcx);
 
     let mut rw = TextRewrite::adjusted(old_span, reparsed.splice_span(), new.get_adjustment(&rcx));
-    // Try recovery, starting in "restricted mode" to avoid infinite recursion.  The guarantee of
-    // `recover_node_restricted` is that if it calls into `Rewrite::rewrite(old2, new2, ...)`, then
-    // `old2.splice_span() != old_span`, so we won't end up back here in `rewrite_at` with
-    // identical arguments.
+    // Try recovery, starting in "restricted mode" to avoid infinite recursion.
+    // The guarantee of `recover_node_restricted` is that if it calls into
+    // `Rewrite::rewrite(old2, new2, ...)`, then `old2.splice_span() !=
+    // old_span`, so we won't end up back here in `rewrite_at` with identical
+    // arguments.
     RecoverChildren::recover_node_restricted(old_span, reparsed, new, rcx.enter(&mut rw));
 
     rcx.record(rw);
     true
+}
+
+pub trait RewriteAt {
+    fn rewrite_at(&self, old_span: Span, rcx: RewriteCtxtRef) -> bool;
+}
+
+impl<T> RewriteAt for T
+    where T: PrintParse + RecoverChildren + Splice + Debug
+{
+    default fn rewrite_at(&self, old_span: Span, rcx: RewriteCtxtRef) -> bool {
+        rewrite_at_impl(old_span, self, rcx)
+    }
+}
+
+fn create_file_for_module(
+    module_item: &Item,
+    old_span: Span,
+    sess: &Session,
+) -> (Lrc<SourceFile>, Option<Attribute>) {
+    let source_map = sess.source_map();
+    let old_sf = source_map.lookup_byte_offset(old_span.lo()).sf;
+    let mut path_attr = None;
+    let filename = match old_sf.name.clone() {
+        FileName::Real(mut path) => {
+            let mod_file_name = format!("{}.rs", module_item.ident.to_string());
+            if let Some(path_attr) = attr::first_attr_value_str_by_name(&module_item.attrs, "path") {
+                path.pop();
+                path.push(path_attr.to_string());
+            } else {
+                if sess.local_crate_source_file.as_ref().map_or(false, |f| *f == path) {
+                    path.pop();
+                    if path.file_name().map_or(true, |path| path != "src") {
+                        path.push("src");
+                        // Add a #[path = "..."] attribute
+                        let path_item = attr::mk_name_value_item_str(
+                            Ident::from_str("path"),
+                            dummy_spanned(
+                                Symbol::intern(&format!(
+                                    "src{}{}",
+                                    path::MAIN_SEPARATOR,
+                                    mod_file_name,
+                                )),
+                            ),
+                        );
+                        path_attr = Some(attr::mk_attr_outer(
+                            DUMMY_SP,
+                            attr::mk_attr_id(),
+                            path_item,
+                        ));
+                    }
+                } else {
+                    if path.file_name().unwrap() == "mod.rs" {
+                        path.pop();
+                    } else {
+                        let parent_name = path.file_stem().unwrap().to_os_string();
+                        path.pop();
+                        path.push(parent_name);
+                    }
+                }
+            }
+            path.push(mod_file_name);
+            path
+        }
+
+        _ => panic!("Could not construct file path for external module {:?}", module_item.ident),
+    };
+
+    let sf = source_map.new_source_file(FileName::Real(filename), String::new());
+    (sf, path_attr)
+}
+
+impl RewriteAt for Item {
+    fn rewrite_at(&self, old_span: Span, mut rcx: RewriteCtxtRef) -> bool {
+        if let ItemKind::Mod(module) = &self.node {
+            if !module.inline {
+                // We need to print the `mod name;` in the parent and the module
+                // contents in its own file.
+
+                let mut item = self.clone();
+
+                // Where should the module contents be printed?
+                let inner_span = if !is_rewritable(module.inner) {
+                    // Need to create a new file
+                    let (sf, path_attr) = create_file_for_module(self, old_span, rcx.session());
+                    if let Some(attr) = path_attr {
+                        item.attrs.push(attr);
+                    }
+                    Span::new(sf.start_pos, sf.end_pos, SyntaxContext::empty())
+                } else {
+                    module.inner
+                };
+
+                // Print the module (mod foo;) in the parent
+                let printed = item.to_string();
+                let reparsed = Self::parse(rcx.session(), &printed);
+                let reparsed = reparsed.ast_deref();
+
+                describe_rewrite(old_span, reparsed.splice_span(), &rcx);
+
+                let rw = TextRewrite::adjusted(
+                    old_span,
+                    reparsed.splice_span(),
+                    self.get_adjustment(&rcx),
+                );
+                rcx.record(rw);
+
+                // Print the module items in the external file
+                let printed = pprust::to_string(|s| s.print_mod(module, &self.attrs));
+                let reparsed = driver::parse_items(rcx.session(), &printed);
+                let reparsed_span = reparsed.first().unwrap().span.with_hi(
+                    reparsed.last().unwrap().span.hi()
+                );
+                describe_rewrite(inner_span, reparsed_span, &rcx);
+                let mut rw = TextRewrite::adjusted(
+                    inner_span,
+                    reparsed_span,
+                    self.get_adjustment(&rcx),
+                );
+                RecoverChildren::recover_children(&reparsed, &module.items, rcx.enter(&mut rw));
+                rcx.record(rw);
+
+                return true;
+            }
+        }
+
+        // Default to rewrite_at_impl for inline modules and other items
+        rewrite_at_impl(old_span, self, rcx)
+    }
 }

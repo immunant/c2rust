@@ -186,7 +186,7 @@ pub fn rewrite_seq_unsupported<T: Rewrite>(old: &[T], new: &[T], mut rcx: Rewrit
 /// The `calc_outer_span` function helps to compute a reasonable `outer_span`.
 pub fn rewrite_seq<T, R>(old: &[R], new: &[R], outer_span: Span, mut rcx: RewriteCtxtRef) -> bool
 where
-    T: SeqItem + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite + Debug,
+    T: SeqItem + print::RewriteAt + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite + Debug,
     R: AstDeref<Target = T>,
 {
     if old.len() == 0 && new.len() != 0 && !is_rewritable(outer_span) {
@@ -255,7 +255,7 @@ where
                     return true;
                 };
 
-                let ok = strategy::print::rewrite_at(old_span, ast(&new[j]), rcx.borrow());
+                let ok = ast(&new[j]).rewrite_at(old_span, rcx.borrow());
                 if !ok {
                     return false;
                 }
@@ -302,7 +302,7 @@ pub fn rewrite_seq_comma_sep<T, R>(
     mut rcx: RewriteCtxtRef,
 ) -> bool
 where
-    T: SeqItem + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite + Debug,
+    T: SeqItem + print::RewriteAt + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite + Debug,
     R: AstDeref<Target = T>,
 {
     fn ast<T: AstDeref>(x: &T) -> &<T as AstDeref>::Target {
@@ -364,7 +364,7 @@ where
                 if !comma_before {
                     rcx.record_text(old_span, ", ");
                 }
-                let ok = strategy::print::rewrite_at(old_span, ast(&new[j]), rcx.borrow());
+                let ok = ast(&new[j]).rewrite_at(old_span, rcx.borrow());
                 if !ok {
                     return false;
                 }
