@@ -18,8 +18,9 @@ use std::rc::Rc;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::ext::hygiene::SyntaxContext;
+use syntax::parse::lexer::comments::CommentStyle;
 use syntax::parse::token::{DelimToken, Nonterminal, Token};
-use syntax::print::pprust;
+use syntax::print::pprust::{self, PrintState};
 use syntax::ptr::P;
 use syntax::source_map::{BytePos, DUMMY_SP, FileName, SourceFile, Span, Spanned, dummy_spanned};
 use syntax::symbol::Symbol;
@@ -29,7 +30,7 @@ use syntax::ThinVec;
 
 use crate::ast_manip::ast_map::NodeTable;
 use crate::ast_manip::util::extend_span_attrs;
-use crate::ast_manip::{AstDeref, GetNodeId, GetSpan};
+use crate::ast_manip::{AstDeref, GetSpan, MaybeGetNodeId};
 use crate::driver;
 use crate::rewrite::base::{binop_left_prec, binop_right_prec};
 use crate::rewrite::base::{describe, extend_span_comments, is_rewritable};
@@ -521,7 +522,7 @@ fn recover<'s, T>(
     mut rcx: RewriteCtxtRef<'s, '_>,
 ) -> bool
 where
-    T: GetNodeId + Recover + Rewrite + Splice + 's,
+    T: MaybeGetNodeId + Recover + Rewrite + Splice + 's,
 {
     // Find a node with ID matching `new.id`, after accounting for renumbering of NodeIds.
     let old_id = rcx.new_to_old_id(new.get_node_id());
@@ -533,7 +534,7 @@ where
     };
 
     let old_span = old.splice_span();
-    let old_span = extend_span_comments(&old_id, old_span, rcx.borrow());
+    let old_span = extend_span_comments(&old_id, old_span, &rcx);
 
     if !is_rewritable(old_span) {
         return false;
@@ -579,7 +580,7 @@ where
 
 pub fn rewrite<T>(old: &T, new: &T, rcx: RewriteCtxtRef) -> bool
 where
-    T: PrintParse + RecoverChildren + Splice + Debug,
+    T: PrintParse + RecoverChildren + Splice + Debug + MaybeGetNodeId,
 {
     if !is_rewritable(old.splice_span()) {
         // If we got here, it means rewriting failed somewhere inside macro-generated code, and
@@ -611,11 +612,43 @@ fn describe_rewrite(old_span: Span, new_span: Span, rcx: &RewriteCtxt) {
     }
 }
 
+fn add_comments<T>(s: String, node: &T, rcx: &RewriteCtxt) -> String
+    where T: MaybeGetNodeId
+{
+    if <T as MaybeGetNodeId>::supported() {
+        if let Some(comments) = rcx.comments().get(&rcx.new_to_old_id(node.get_node_id())) {
+            let mut new_s = String::new();
+            for comment in comments {
+                if comment.style == CommentStyle::Isolated {
+                    new_s.push('\n');
+                    comment.lines.iter().for_each(|s| {
+                        new_s.push_str(s.as_str());
+                        new_s.push('\n');
+                    });
+                }
+            }
+            new_s.push_str(&s);
+            for comment in comments {
+                if comment.style == CommentStyle::Trailing {
+                    comment.lines.iter().for_each(|s| {
+                        new_s.push_str(s.as_str());
+                        new_s.push('\n');
+                    });
+                }
+            }
+
+            return new_s;
+        }
+    }
+
+    s
+}
+
 fn rewrite_at_impl<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
 where
-    T: PrintParse + RecoverChildren + Splice + Debug,
+    T: PrintParse + RecoverChildren + Splice + Debug + MaybeGetNodeId,
 {
-    let printed = new.to_string();
+    let printed = add_comments(new.to_string(), new, &rcx);
     let reparsed = T::parse(rcx.session(), &printed);
     let reparsed = reparsed.ast_deref();
 
@@ -638,7 +671,7 @@ pub trait RewriteAt {
 }
 
 impl<T> RewriteAt for T
-    where T: PrintParse + RecoverChildren + Splice + Debug
+    where T: PrintParse + RecoverChildren + Splice + Debug + MaybeGetNodeId
 {
     default fn rewrite_at(&self, old_span: Span, rcx: RewriteCtxtRef) -> bool {
         rewrite_at_impl(old_span, self, rcx)
@@ -724,7 +757,7 @@ impl RewriteAt for Item {
                 };
 
                 // Print the module (mod foo;) in the parent
-                let printed = item.to_string();
+                let printed = add_comments(item.to_string(), &item, &rcx);
                 let reparsed = Self::parse(rcx.session(), &printed);
                 let reparsed = reparsed.ast_deref();
 
@@ -738,11 +771,19 @@ impl RewriteAt for Item {
                 rcx.record(rw);
 
                 // Print the module items in the external file
-                let printed = pprust::to_string(|s| s.print_mod(module, &self.attrs));
+                let mut printed = pprust::to_string(|s| s.print_inner_attributes(&self.attrs));
+                for item in &module.items {
+                    printed.push_str(&add_comments(item.to_string(), item, &rcx));
+                }
                 let reparsed = driver::parse_items(rcx.session(), &printed);
-                let reparsed_span = reparsed.first().unwrap().span.with_hi(
-                    reparsed.last().unwrap().span.hi()
-                );
+
+                // Extend span to cover comments before and after items
+                let first_node = reparsed.first().unwrap();
+                let first_span = extend_span_comments(&first_node.get_node_id(), first_node.span, &rcx);
+                let last_node = reparsed.last().unwrap();
+                let last_span = extend_span_comments(&last_node.get_node_id(), last_node.span, &rcx);
+                let reparsed_span = first_span.with_hi(last_span.hi());
+
                 describe_rewrite(inner_span, reparsed_span, &rcx);
                 let mut rw = TextRewrite::adjusted(
                     inner_span,

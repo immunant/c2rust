@@ -33,7 +33,7 @@ use crate::ast_manip::{AstDeref, CommentStyle, GetSpan};
 
 use super::strategy;
 use super::strategy::print;
-use super::{ExprPrec, RewriteCtxtRef, SeqItemId, TextRewrite};
+use super::{ExprPrec, RewriteCtxt, RewriteCtxtRef, SeqItemId, TextRewrite};
 
 pub trait Rewrite {
     /// Given an old AST, a new AST, and text corresponding to the old AST, transform the text into
@@ -220,7 +220,7 @@ where
                 // Delete the item from the left.
                 let old_span = ast(&old[i]).splice_span();
                 let old_span = match old_ids[i] {
-                    SeqItemId::Node(id) => extend_span_comments(&id, old_span, rcx.borrow()),
+                    SeqItemId::Node(id) => extend_span_comments(&id, old_span, &rcx),
                     _ => old_span,
                 };
 
@@ -326,7 +326,7 @@ where
                 // There's an item on the left corresponding to nothing on the right.
                 // Delete the item from the left.
                 let old_span = match old_ids[i] {
-                    SeqItemId::Node(id) => extend_span_comments(&id, old_spans[i], rcx.borrow()),
+                    SeqItemId::Node(id) => extend_span_comments(&id, old_spans[i], &rcx),
                     _ => old_spans[i],
                 };
                 info!("DELETE {}", describe(rcx.session(), old_span));
@@ -453,7 +453,7 @@ pub fn describe(sess: &Session, span: Span) -> String {
 }
 
 /// Extend a node span to cover comments around it.
-pub fn extend_span_comments(id: &NodeId, mut span: Span, rcx: RewriteCtxtRef) -> Span {
+pub fn extend_span_comments(id: &NodeId, mut span: Span, rcx: &RewriteCtxt) -> Span {
     let comments = match rcx.comments().get(id) {
         Some(comments) if comments.is_empty() => return span,
         Some(comments) => comments,
