@@ -518,7 +518,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
 
         /// Visits an entire crate via a lua object's methods
         // @function visit_crate
-        // @tparam function() callback Function called for each function like item.
+        // @tparam function() callback Function called for each node.
         methods.add_method_mut("visit_crate", |lua_ctx, this, (visitor_obj, krate): (LuaTable, LuaAstNode)| {
             let mut krate = ast::Crate::try_from(this.remove_ast(krate)).expect("Did not find crate input");
             let lua_crate = krate.clone().into_lua_ast(this, lua_ctx)?;
@@ -534,7 +534,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         });
 
         /// Visits a every fn like via a lua object's methods
-        // @function visit_crate
+        // @function visit_fn_like
         // @tparam function() callback Function called for each function like item.
         methods.add_method_mut("visit_fn_like", |lua_ctx, this, (visitor_obj, krate): (LuaTable, LuaAstNode)| {
             let mut krate = ast::Crate::try_from(this.remove_ast(krate)).expect("Did not find crate input");
