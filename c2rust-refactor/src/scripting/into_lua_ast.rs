@@ -58,7 +58,7 @@ impl<'lua> IntoLuaAst<'lua> for Stmt {
                 ast.set("pat", pat.into_lua_ast(ctx, lua_ctx)?)?;
 
                 if let Some(ty) = ty {
-                    ast.set("ty", ctx.intern(ty))?;
+                    ast.set("ty", ty.into_lua_ast(ctx, lua_ctx)?)?;
                 }
 
                 if let Some(init) = init {

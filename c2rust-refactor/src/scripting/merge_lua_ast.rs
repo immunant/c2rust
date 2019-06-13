@@ -187,8 +187,6 @@ impl MergeLuaAst for FnLike {
         self.decl.merge_lua_ast(table.get("decl")?)?;
         self.span = get_span_or_default(&table, "span")?;
 
-        // REVIEW: How do we deal with spans if there is no existing block
-        // to modify?
         if let Some(ref mut block) = self.block {
             block.merge_lua_ast(table.get("block")?)?;
         }
@@ -370,7 +368,7 @@ impl MergeLuaAst for P<Pat> {
 
 impl MergeLuaAst for Local {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
-        // TODO: ty
+        let opt_lua_ty: Option<LuaTable> = table.get("ty")?;
         let pat: LuaTable = table.get("pat")?;
         let opt_init: Option<LuaTable> = table.get("init")?;
 
@@ -390,6 +388,24 @@ impl MergeLuaAst for Local {
                     expr.merge_lua_ast(init)?;
 
                     self.init = Some(expr);
+                }
+            },
+        }
+
+        match &mut self.ty {
+            Some(existing_ty) => {
+                match opt_lua_ty {
+                    Some(ty) => existing_ty.merge_lua_ast(ty)?,
+                    None => self.ty = None,
+                }
+            },
+            None => {
+                if let Some(ty) = opt_lua_ty {
+                    let mut expr = dummy_ty();
+
+                    expr.merge_lua_ast(ty)?;
+
+                    self.ty = Some(expr);
                 }
             },
         }
