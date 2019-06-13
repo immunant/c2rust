@@ -201,6 +201,7 @@ impl MergeLuaAst for P<Block> {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let lua_stmts: LuaTable = table.get("stmts")?;
 
+        self.id = get_node_id_or_default(&table, "id")?;
         self.span = get_span_or_default(&table, "span")?;
         self.rules = match table.get::<_, LuaString>("rules")?.to_str()? {
             "Default" => BlockCheckMode::Default,
@@ -228,6 +229,7 @@ impl MergeLuaAst for Stmt {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let kind: LuaString = table.get("kind")?;
 
+        self.id = get_node_id_or_default(&table, "id")?;
         self.span = get_span_or_default(&table, "span")?;
         self.node = match kind.to_str()? {
             "Local" => {
@@ -306,7 +308,7 @@ impl MergeLuaAst for P<FnDecl> {
 
 impl MergeLuaAst for Arg {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
-        self.id = NodeId::from_u32(table.get("id")?);
+        self.id = get_node_id_or_default(&table, "id")?;
         self.pat.merge_lua_ast(table.get("pat")?)?;
         self.ty.merge_lua_ast(table.get("ty")?)?;
 

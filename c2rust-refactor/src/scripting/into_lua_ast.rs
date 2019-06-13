@@ -48,6 +48,7 @@ impl<'lua> IntoLuaAst<'lua> for Stmt {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "Stmt")?;
+        ast.set("id", self.id.as_u32())?;
         ast.set("span", LuaSpan(self.span.data()))?;
 
         match self.node {
@@ -590,6 +591,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Block> {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "Block")?;
+        ast.set("id", self.id.as_u32())?;
         ast.set("span", LuaSpan(self.span.data()))?;
 
         self.and_then(|block| {
