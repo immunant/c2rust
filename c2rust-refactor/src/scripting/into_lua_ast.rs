@@ -112,7 +112,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     match l.node {
                         LitKind::Str(s, _) => {
                             ast.set("value", s.as_str().get())?;
-                            ast.set("is_bytes", false)?;
+                            ast.set("str_kind", "Str")?;
                         },
                         LitKind::Int(i, suffix) => {
                             ast.set("value", i)?;
@@ -134,13 +134,14 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         LitKind::Bool(b) => ast.set("value", b)?,
                         LitKind::ByteStr(bytes) => {
                             ast.set("value", lua_ctx.create_string(&*bytes)?)?;
-                            ast.set("is_bytes", true)?;
+                            ast.set("str_kind", "ByteStr")?;
                         },
                         LitKind::Char(ch) => {
                             let mut buf = [0; 4];
                             let char_str = ch.encode_utf8(&mut buf);
 
                             ast.set("value", &*char_str)?;
+                            ast.set("str_kind", "Char")?;
                         },
                         LitKind::FloatUnsuffixed(symbol) => {
                             let string = symbol.as_str().get();

@@ -1,4 +1,4 @@
-use rlua::prelude::{LuaResult, LuaString, LuaTable, LuaValue};
+use rlua::prelude::{LuaError, LuaResult, LuaString, LuaTable, LuaValue};
 use rustc_target::spec::abi::Abi;
 use syntax::ast::{
     Arg, BindingMode, Block, Crate, Expr, ExprKind, FloatTy, FnDecl, ImplItem, ImplItemKind,
@@ -619,7 +619,10 @@ impl MergeLuaAst for P<Expr> {
                         }
                     },
                     LuaValue::String(lua_string) => {
-                        let is_bytes: bool = table.get("is_bytes")?;
+                        let str_kind = table.get::<_, LuaString>("str_kind")?;
+                        let str_kind = str_kind.to_str()?;
+                        let is_bytes = str_kind == "ByteStr";
+                        let is_char = str_kind == "Char";
 
                         if is_bytes {
                             let bytes: Vec<u8> = lua_string
@@ -630,11 +633,22 @@ impl MergeLuaAst for P<Expr> {
 
                             dummy_spanned(LitKind::ByteStr(Rc::new(bytes)))
                         } else {
-                            // TODO: Raw strings?
-                            let symbol = Symbol::intern(lua_string.to_str()?);
-                            let style = StrStyle::Cooked;
+                            let string = lua_string.to_str()?;
 
-                            dummy_spanned(LitKind::Str(symbol, style))
+                            if is_char {
+                                let ch = string
+                                    .chars()
+                                    .next()
+                                    .ok_or(LuaError::external("Found empty string where char was expected."));
+
+                                dummy_spanned(LitKind::Char(ch?))
+                            } else {
+                                // TODO: Raw strings?
+                                let symbol = Symbol::intern(string);
+                                let style = StrStyle::Cooked;
+
+                                dummy_spanned(LitKind::Str(symbol, style))
+                            }
                         }
                     },
                     LuaValue::Nil => {
