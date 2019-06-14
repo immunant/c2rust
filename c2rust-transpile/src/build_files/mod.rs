@@ -198,6 +198,7 @@ fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path, 
         "cross_check_backend": tcfg.cross_check_backend,
         "c2rust_bitfields": crates.contains("c2rust_bitfields"),
         "f128": crates.contains("f128"),
+        "num_traits": crates.contains("num_traits"),
     });
     let file_name = "Cargo.toml";
     let output_path = build_dir.join(file_name);

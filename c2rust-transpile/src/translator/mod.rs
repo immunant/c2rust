@@ -3760,8 +3760,10 @@ impl<'c> Translation<'c> {
                         CTypeKind::UInt => "to_u32",
                         CTypeKind::Long => "to_i64",
                         CTypeKind::ULong => "to_u64",
-                        CTypeKind::LongLong => "to_i128",
-                        CTypeKind::ULongLong => "to_u128",
+                        CTypeKind::LongLong => "to_i64",
+                        CTypeKind::ULongLong => "to_u64",
+                        CTypeKind::Int128 => "to_i128",
+                        CTypeKind::UInt128 => "to_u128",
                         _ => {
                             return Err(format_err!(
                                 "Tried casting long double to unsupported type: {:?}",
