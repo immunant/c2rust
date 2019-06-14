@@ -311,6 +311,7 @@ impl MergeLuaAst for Arg {
         self.id = get_node_id_or_default(&table, "id")?;
         self.pat.merge_lua_ast(table.get("pat")?)?;
         self.ty.merge_lua_ast(table.get("ty")?)?;
+        // TODO: Attrs
 
         Ok(())
     }
@@ -768,8 +769,18 @@ impl MergeLuaAst for P<Expr> {
                     args.push(arg);
                 }
 
-                let name: LuaString = table.get("name")?;
-                let segment = PathSegment::from_ident(Ident::from_str(name.to_str()?));
+                let lua_segment: LuaTable = table.get("segment")?;
+                let name: LuaString = lua_segment.get("ident")?;
+                let mut segment = PathSegment::from_ident(Ident::from_str(name.to_str()?));
+                let lua_generics: Option<LuaTable> = lua_segment.get("generics")?;
+                let opt_generics = lua_generics.map(|lua_generics| {
+                    let mut generics = dummy_generic_args();
+
+                    generics.merge_lua_ast(lua_generics).map(|_| P(generics))
+                }).transpose()?;
+
+                segment.id = get_node_id_or_default(&lua_segment, "id")?;
+                segment.args = opt_generics;
 
                 ExprKind::MethodCall(segment, args)
             },

@@ -221,7 +221,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
 
                     ast.set("kind", "MethodCall")?;
                     ast.set("args", lua_ctx.create_sequence_from(args?.into_iter())?)?;
-                    ast.set("name", segment.ident.name.as_str().get())?;
+                    ast.set("segment", segment.into_lua_ast(ctx, lua_ctx)?)?;
 
                     let self_ty = callee_info.fn_sig
                         .inputs()
