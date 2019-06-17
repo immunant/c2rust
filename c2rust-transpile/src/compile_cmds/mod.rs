@@ -44,15 +44,19 @@ impl CompileCmd {
 
 ///GNU GCC treats all of the following extensions as C++
 const CPP_EXTS: [&str; 7] = ["C", "cc", "cpp", "CPP", "c++", "cp", "cxx"];
+const ASM_EXTS: [&str; 3] = ["S", "s", "asm"];
 
-fn filter_likely_cpp(cmds: Vec<CompileCmd>) -> Vec<CompileCmd> {
-    let mut cpp_exts: HashSet<&OsStr> = HashSet::new();
-    cpp_exts.extend(CPP_EXTS.iter().map(OsStr::new));
+/// The compile commmands database may contain C++ and assembly files
+/// that we are unable to process. Detect and filter out such entries.
+fn filter_likely_unsupported(cmds: Vec<CompileCmd>) -> Vec<CompileCmd> {
+    let mut unsupported_exts: HashSet<&OsStr> = HashSet::new();
+    unsupported_exts.extend(CPP_EXTS.iter().map(OsStr::new));
+    unsupported_exts.extend(ASM_EXTS.iter().map(OsStr::new));
 
     cmds.into_iter()
         .filter(|c| {
             let key = c.file.extension().unwrap();
-            !cpp_exts.contains(key)
+            !unsupported_exts.contains(key)
         })
         .collect::<Vec<CompileCmd>>()
 }
@@ -96,7 +100,7 @@ pub fn get_compile_commands(
         v
     };
 
-    let v = filter_likely_cpp(v);
+    let v = filter_likely_unsupported(v);
 
     let v = filter_duplicate_cmds(v);
 
