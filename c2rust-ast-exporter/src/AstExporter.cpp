@@ -1647,7 +1647,16 @@ class TranslateASTVisitor final
             }
         }
 
-        std::vector<void *> childIds{(void *)VD->getAnyInitializer()};
+        std::vector<void *> childIds{};
+
+        // A local var def should allow for the posability of no initializer
+        // and be marked as a definition
+        if (VD->isExternC() && VD->isLocalVarDecl()) {
+            is_defn = false;
+            childIds.push_back((void *)VD->getInit());
+        } else {
+            childIds.push_back((void *)VD->getAnyInitializer());
+        }
 
         // Use the type from the definition in case the extern was an incomplete
         // type
@@ -2174,27 +2183,19 @@ class TranslateConsumer : public clang::ASTConsumer {
             // 2. Track all of the top-level declarations
             cbor_encoder_create_array(&outer, &array, CborIndefiniteLength);
             for (auto d : translation_unit->decls()) {
-                bool emit_decl = true;
-                if (d->isCanonicalDecl()) {
-                    emit_decl = true;
-                } else if(isa<VarDecl>(d)) {
-                    // treat extern variables defined elsewhere as top-level definitions
-                    auto var_decl = cast<VarDecl>(d);
-                    bool has_defn = false;
-                    if (var_decl->isExternC()) {
-                        for (auto x : var_decl->redecls()) {
-                            if (!x->hasExternalStorage() || x->getInit()) {
-                                has_defn = true;
-                                break;
-                            }
-                        }
+                if(!d->isCanonicalDecl() && isa<VarDecl>(d)) {
+                    auto canonical_decl = d->getCanonicalDecl();
+                    auto var_decl = cast<VarDecl>(canonical_decl);
 
-                        emit_decl = !has_defn;
+                    // Non-Canonical Decls which don't have an extern local canonical decl
+                    // should be skipped
+                    std::cout << "Decl " << var_decl->getNameAsString() << " isExternC: " << var_decl->isExternC() << " isLocalVarDecl: " << var_decl->isLocalVarDecl() << std::endl;
+                    if (!(var_decl->isExternC() && var_decl->isLocalVarDecl())) {
+                        continue;
                     }
                 }
 
-                if (emit_decl)
-                    cbor_encode_uint(&array, reinterpret_cast<std::uintptr_t>(d));
+                cbor_encode_uint(&array, reinterpret_cast<std::uintptr_t>(d));
             }
             cbor_encoder_close_container(&outer, &array);
 

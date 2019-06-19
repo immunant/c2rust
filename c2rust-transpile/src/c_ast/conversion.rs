@@ -1732,7 +1732,12 @@ impl ConversionContext {
                     assert!(has_static_duration || has_thread_duration || !is_externally_visible,
                             format!("Variable cannot be extern without also being static or thread-local: {}", ident));
 
-                    let initializer = node.children[0].map(|id| self.visit_expr(id));
+                    let initializer = node.children
+                        .get(0)
+                        .into_iter()
+                        .flatten()
+                        .map(|id| self.visit_expr(*id))
+                        .next();
 
                     let typ_id = node
                         .type_id

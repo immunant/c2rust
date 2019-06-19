@@ -54,10 +54,13 @@ void (*int_to_fn_ptr2)(int, ...) = -1;
 void_fn_ptr int_to_fn_ptr3 = -1;
 
 size_t fn_scoped_static_init(void) {
+    extern size_t fn_scoped_extern;
     static size_t sectioned_scoped_init = &section_me;
     static unsigned not_sectioned = 1;
-    return sectioned_scoped_init;
+    return sectioned_scoped_init + fn_scoped_extern;
 }
+
+size_t fn_scoped_extern = 1;
 
 // For some reason (only when private/static) this static initializer
 // which gets sectioned, doesn't generate a Block expr like ever other
