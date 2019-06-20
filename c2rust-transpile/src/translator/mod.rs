@@ -2036,8 +2036,8 @@ impl<'c> Translation<'c> {
                     //   even if the `inline` keyword isn't present
                     // * gnu_inline instead applies gnu89 rules. extern inline will not emit an
                     //   externally visible function.
-                    self.use_feature("linkage");
                     if is_global && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
+                        self.use_feature("linkage");
                         // ensures that public inlined rust function can be used in other modules
                         mk_ = mk_.single_attr("linkage = \"external\"");
                     }

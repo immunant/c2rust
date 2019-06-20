@@ -351,7 +351,8 @@ class TestDirectory:
             "const_transmute",
             "nll",
             "custom_attribute",
-            "linkage"])
+            "linkage",
+        ])
 
         # .c -> .rs
         for c_file in self.c_files:
