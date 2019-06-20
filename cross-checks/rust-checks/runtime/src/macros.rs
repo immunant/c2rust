@@ -26,8 +26,8 @@ macro_rules! cross_check_value {
         cross_check_value!(
             $tag,
             $value,
-            cross_check_types::DefaultAggHasher,
-            cross_check_types::DefaultSimpleHasher
+            $crate::hash::jodyhash::JodyHasher,
+            $crate::hash::simple::SimpleHasher
         );
     };
     // This form allows the user to pick the hashers, where:
