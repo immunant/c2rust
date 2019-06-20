@@ -9,7 +9,7 @@ extern crate matches;
 extern crate serde;
 extern crate serde_yaml;
 
-#[macro_use]
+// Unused: #[macro_use]
 extern crate smallvec;
 
 extern crate c2rust_xcheck_config as xcfg;
