@@ -139,13 +139,22 @@ CallExpr *CrossCheckInserter::build_call(llvm::StringRef fn_name, QualType resul
     auto fn_type = fn_decl->getType();
     auto fn_ptr_type = ctx.getPointerType(fn_type);
     auto fn_ref = new (ctx)
-        DeclRefExpr(fn_decl, false, fn_type,
+        DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                    ctx,
+#endif
+                    fn_decl, false, fn_type,
                     VK_LValue, SourceLocation());
     auto fn_ice =
         ImplicitCastExpr::Create(ctx, fn_ptr_type,
                                  CK_FunctionToPointerDecay,
                                  fn_ref, nullptr, VK_RValue);
-    return new (ctx) CallExpr(ctx, fn_ice, args, result_ty,
+#if CLANG_VERSION_MAJOR >= 8
+    return CallExpr::Create(
+#else
+    return new (ctx) CallExpr(
+#endif
+                              ctx, fn_ice, args, result_ty,
                               VK_RValue, SourceLocation());
 }
 
@@ -322,7 +331,11 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
 
         // Forward the value of the parameter to the hash function
         auto param_ref_lv =
-            new (ctx) DeclRefExpr(param, false, param->getType(),
+            new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                  ctx,
+#endif
+                                  param, false, param->getType(),
                                   VK_LValue, SourceLocation());
         auto param_ref_rv = hash_fn.forward_argument(param_ref_lv, ctx);
         auto hash_depth = build_max_hash_depth(ctx);
@@ -332,7 +345,11 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
     };
     auto param_xcheck_custom_args_fn = [&ctx, &param_decls] (CustomArgVec args) {
         auto arg_build_fn = [&ctx] (DeclaratorDecl *decl) {
-            return new (ctx) DeclRefExpr(decl, false, decl->getType(),
+            return new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                         ctx,
+#endif
+                                         decl, false, decl->getType(),
                                          VK_LValue, SourceLocation());
         };
         return generic_custom_args(ctx, param_decls, args, arg_build_fn);
@@ -350,7 +367,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
         auto &ctx = d->getASTContext();
         auto &diags = ctx.getDiagnostics();
         llvm::StringRef file_name;
+#if CLANG_VERSION_MAJOR >= 7
+        auto ploc = ctx.getSourceManager().getPresumedLoc(d->getBeginLoc());
+#else
         auto ploc = ctx.getSourceManager().getPresumedLoc(d->getLocStart());
+#endif
         if (ploc.isValid()) {
             file_name = ploc.getFilename();
         } // FIXME: otherwise???
@@ -431,7 +452,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             }
             auto param_custom_args_fn = [&ctx, &param_decls] (CustomArgVec args) {
                 auto arg_build_fn = [&ctx] (DeclaratorDecl *decl) {
-                    return new (ctx) DeclRefExpr(decl, false, decl->getType(),
+                    return new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                                 ctx,
+#endif
+                                                 decl, false, decl->getType(),
                                                  VK_LValue, SourceLocation());
                 };
                 return generic_custom_args(ctx, param_decls, args, arg_build_fn);
@@ -471,7 +496,12 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             auto parent_dc = fd->getDeclContext();
             auto body_fn_decl =
                 FunctionDecl::Create(ctx, parent_dc,
-                                     fd->getLocStart(), dni,
+#if CLANG_VERSION_MAJOR >= 7
+                                     fd->getBeginLoc(),
+#else
+                                     fd->getLocStart(),
+#endif
+                                     dni,
                                      fd->getType(), fd->getTypeSourceInfo(),
                                      SC_Static, true, true,
                                      fd->isConstexpr());
@@ -495,7 +525,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             for (auto &param : body_fn_decl->parameters()) {
                 auto param_ty = param->getType();
                 auto param_ref_rv =
-                    new (ctx) DeclRefExpr(param, false, param_ty,
+                    new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                          ctx,
+#endif
+                                          param, false, param_ty,
                                           VK_RValue, SourceLocation());
                 args.push_back(param_ref_rv);
             }
@@ -524,7 +558,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                        SourceLocation());
                 new_body_stmts.push_back(result_decl_stmt);
                 // Build the DeclRefExpr for the ReturnStmt
-                result = new (ctx) DeclRefExpr(result_var, false, result_ty,
+                result = new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                               ctx,
+#endif
+                                               result_var, false, result_ty,
                                                VK_RValue, SourceLocation());
             }
 
@@ -549,7 +587,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                     std::string result_ty_name = func_name;
                     result_ty_name += "$result";
                     auto hash_fn = get_type_hash_function(result_ty, result_ty_name, ctx, true);
-                    auto result_lv = new (ctx) DeclRefExpr(result_var, false, result_ty,
+                    auto result_lv = new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                                           ctx,
+#endif
+                                                           result_var, false, result_ty,
                                                            VK_LValue, SourceLocation());
                     auto result_rv = hash_fn.forward_argument(result_lv, ctx);
                     auto hash_depth = build_max_hash_depth(ctx);
@@ -574,8 +616,12 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             }
 
             // Add the final return
-            auto return_stmt = new (ctx) ReturnStmt(SourceLocation(),
-                                                    result, nullptr);
+            auto return_stmt =
+#if CLANG_VERSION_MAJOR >= 8
+                ReturnStmt::Create(ctx, SourceLocation(), result, nullptr);
+#else
+                new (ctx) ReturnStmt(SourceLocation(), result, nullptr);
+#endif
             new_body_stmts.push_back(return_stmt);
 
             auto new_body =
