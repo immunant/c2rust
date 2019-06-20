@@ -1649,12 +1649,17 @@ class TranslateASTVisitor final
 
         std::vector<void *> childIds{};
 
-        // A local var def should allow for the posability of no initializer
-        // and be marked as a definition
+        // A local var def should allow for the possibility of no initializer
+        // and be marked as not a definition
         if (VD->isExternC() && VD->isLocalVarDecl()) {
             is_defn = false;
-            childIds.push_back((void *)VD->getInit());
-        } else {
+        }
+
+        auto is_externally_visible = VD->isExternallyVisible();
+
+        // Non static (externally visible) non definitions shouldn't receive an initializer,
+        // otherwise get one
+        if (!(is_externally_visible && !is_defn)) {
             childIds.push_back((void *)VD->getAnyInitializer());
         }
 
@@ -1664,7 +1669,7 @@ class TranslateASTVisitor final
 
         encode_entry(
             VD, TagVarDecl, def->getLocation(), childIds, T,
-            [VD, is_defn, def](CborEncoder *array) {
+            [VD, is_defn, def, is_externally_visible](CborEncoder *array) {
                 auto name = VD->getNameAsString();
                 cbor_encode_string(array, name);
 
@@ -1675,10 +1680,7 @@ class TranslateASTVisitor final
                 auto has_thread_duration =
                     VD->getStorageDuration() == SD_Thread;
                 cbor_encode_boolean(array, has_thread_duration);
-
-                auto is_externally_visible = VD->isExternallyVisible();
                 cbor_encode_boolean(array, is_externally_visible);
-
                 cbor_encode_boolean(array, is_defn);
 
                 // Encode attribute names and relevant info if supported
@@ -2189,7 +2191,6 @@ class TranslateConsumer : public clang::ASTConsumer {
 
                     // Non-Canonical Decls which don't have an extern local canonical decl
                     // should be skipped
-                    std::cout << "Decl " << var_decl->getNameAsString() << " isExternC: " << var_decl->isExternC() << " isLocalVarDecl: " << var_decl->isLocalVarDecl() << std::endl;
                     if (!(var_decl->isExternC() && var_decl->isLocalVarDecl())) {
                         continue;
                     }

@@ -25,7 +25,8 @@ pub fn test_sectioned_statics() {
         let ptr_deref = unsafe {
             *(rust_fn_scoped_static_init() as *const c_uint)
         };
-        assert_eq!(ptr_deref, c_uint::max_value());
+        assert_eq!(ptr_deref, c_uint::max_value() - 1);
+        assert_eq!(rust_section_me, c_uint::max_value() - 1);
 
         rust_use_sectioned_array();
     }
@@ -43,7 +44,7 @@ pub fn test_sectioned_used_static() {
         let pos = lines
             .iter()
             .position(|&x| x == "static mut rust_used_static4: libc::c_int = 1i32;")
-            .unwrap(); // Will fail if line was not found
+            .expect("Did not find expected static string in source");
         // The ordering of these attributes is not stable between LLVM versions
         assert!((lines[pos-1] == "#[used]" && lines[pos-2] == "#[link_section = \"barz\"]") ||
                 (lines[pos-2] == "#[used]" && lines[pos-1] == "#[link_section = \"barz\"]"));

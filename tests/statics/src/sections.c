@@ -57,7 +57,8 @@ size_t fn_scoped_static_init(void) {
     extern size_t fn_scoped_extern;
     static size_t sectioned_scoped_init = &section_me;
     static unsigned not_sectioned = 1;
-    return sectioned_scoped_init + fn_scoped_extern;
+    section_me -= fn_scoped_extern;
+    return sectioned_scoped_init;
 }
 
 size_t fn_scoped_extern = 1;
