@@ -2,7 +2,7 @@ set(LLVM_TARGET_DEFINITIONS Options.td)
 tablegen(LLVM Options.inc -gen-opt-parser-defs)
 add_public_tablegen_target(CrossCheckOptionsTableGen)
 
-add_llvm_loadable_module(CrossChecks
+add_llvm_library(CrossChecks MODULE
     crosschecks.cpp
     default_config.cpp
     types.cpp
