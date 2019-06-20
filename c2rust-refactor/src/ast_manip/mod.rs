@@ -18,7 +18,7 @@ mod visit_node;
 pub use self::ast_deref::AstDeref;
 pub use self::ast_equiv::AstEquiv;
 pub use self::ast_names::AstName;
-pub use self::fold::{FlatMapNodes, MutVisit, MutVisitNodes};
+pub use self::fold::{FlatMapNodes, MutVisit, MutVisitNodes, WalkAst};
 pub use self::get_node_id::{GetNodeId, MaybeGetNodeId};
 pub use self::get_span::GetSpan;
 pub use self::list_node_ids::ListNodeIds;
