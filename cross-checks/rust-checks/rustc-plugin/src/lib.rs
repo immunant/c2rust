@@ -184,7 +184,7 @@ fn parse_ty(file_name: &str, ty_str: &str, sess: &ParseSess) -> P<ast::Ty> {
     let file_name = hashed_file_name(file_name, ty_str);
     let mut p = new_parser_from_source_str(sess, file_name, ty_str.to_owned());
     p.parse_ty()
-        .expect(&format!("failed to parse type: {}", ty_str))
+        .expect(&format!("failed to parse type: '{}'", ty_str))
 }
 
 impl CrossCheckBuilder for xcfg::XCheckType {
@@ -266,7 +266,7 @@ impl CrossCheckBuilder for xcfg::XCheckType {
                 let mut p = new_parser_from_source_str(cx.parse_sess, file_name,
                                                        s.clone());
                 let custom_expr = p.parse_expr()
-                    .expect(&format!("failed to parse expr: {}", s));
+                    .expect(&format!("failed to parse expr: '{}'", s));
                 cx.expr_std_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, custom_expr]))
             }
         };
@@ -541,7 +541,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 let mut p = new_parser_from_source_str(self.cx.parse_sess, file_name,
                                                        ex.custom.clone());
                 let expr = p.parse_expr()
-                    .expect(&format!("failed to parse expr: {}", ex.custom));
+                    .expect(&format!("failed to parse expr: '{}'", ex.custom));
                 let tag_str = match ex.tag {
                     xcfg::XCheckTag::Unknown => "UNKNOWN_TAG",
                     xcfg::XCheckTag::FunctionEntry => "FUNCTION_ENTRY_TAG",
@@ -689,7 +689,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     let mut p = new_parser_from_source_str(self.cx.parse_sess, file_name,
                                                            custom_hash.clone());
                     let expr = p.parse_expr()
-                        .expect(&format!("failed to parse expr: {}", custom_hash));
+                        .expect(&format!("failed to parse expr: '{}'", custom_hash));
                     mac_args.push(token::NtIdent(self.cx.ident_of("Expression"), false));
                     mac_args.push(token::NtExpr(expr));
                 }
