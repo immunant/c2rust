@@ -134,10 +134,10 @@ macro_rules! __c2rust_import_extern_hash {
 
 #[macro_export]
 macro_rules! __c2rust_emit_xcheck {
-    ($tag:expr, $val_ident:ident, $val_ref_ident:ident, $ahasher:ty, $shasher:ty $(, $pre:stmt)*) => {
+    ($tag:expr, $val_ident:ident, $val_ref_ident:ident, $ahasher:ty, $shasher:ty $(, $pre:stmt)*) => {{
         let $val_ref_ident = &$val_ident;
         $($pre)*
         let __c2rust_hash = $crate::hash::CrossCheckHash::cross_check_hash::<$ahasher, $shasher>($val_ref_ident);
         __c2rust_hash.map(|hash| ($tag, hash))
-    }
+    }}
 }
