@@ -178,7 +178,7 @@ impl CrossCheckBuilder for xcfg::XCheckType {
             let id = djb2_hash(name);
             exp.insert_djb2_name(id, String::from(name));
 
-            let id_expr = cx.expr_u32(DUMMY_SP, id);
+            let id_expr = cx.expr_u64(DUMMY_SP, id as u64);
             cx.expr_std_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag, id_expr]))
         })
     }
@@ -234,7 +234,7 @@ impl CrossCheckBuilder for xcfg::XCheckType {
                 let id = djb2_hash(s);
                 exp.insert_djb2_name(id, s.clone());
 
-                let id_expr = cx.expr_u32(DUMMY_SP, id);
+                let id_expr = cx.expr_u64(DUMMY_SP, id as u64);
                 cx.expr_std_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, id_expr]))
             }
             xcfg::XCheckType::Custom(ref s) => {
