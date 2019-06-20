@@ -71,6 +71,15 @@ impl<'c> Translation<'c> {
                 "f64",
                 "NAN",
             ]))),
+            "__builtin_nanl" => {
+                self.extern_crates.borrow_mut().insert("f128");
+
+                Ok(WithStmts::new_val(mk().path_expr(vec![
+                    "f128",
+                    "f128",
+                    "NAN",
+                ])))
+            },
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
