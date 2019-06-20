@@ -13,8 +13,9 @@ publish = false
 xcheck-with-dlsym = []
 xcheck-with-weak = []
 djb2-ssse3 = ["simd"]
-libc-hash = []
+libc-hash = ["libc"]
 fixed-length-array-hash = []
 
 [dependencies]
 simd = { version = "0.2.0", optional = true }
+libc = { version = "0.2", optional = true }
