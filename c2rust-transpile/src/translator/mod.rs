@@ -2040,10 +2040,9 @@ impl<'c> Translation<'c> {
                     if is_global && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
                         // ensures that public inlined rust function can be used in other modules
                         mk_ = mk_.single_attr("linkage = \"external\"");
-                    } else {
-                        // ensures that non-public inlined rust functions do not clash btw. modules
-                        mk_ = mk_.single_attr("linkage = \"internal\"");
                     }
+                    // NOTE: it does not seem necessary to have an else branch here that
+                    // specifies internal linkage in all other cases due to name mangling by rustc.
                 }
 
                 Ok(ConvertedDecl::Item(

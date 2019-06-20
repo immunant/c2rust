@@ -25,8 +25,8 @@ pub fn test_fn_attrs() {
     // static void inline inline_static(void) {}
     assert!(src.contains("#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_static"));
     assert!(src.contains("#[inline(never)]\nunsafe extern \"C\" fn rust_noinline_static"));
-    assert!(src.contains("#[inline]\n#[linkage = \"internal\"]\nunsafe extern \"C\" fn rust_inline_static"));
-    assert!(src.contains("#[inline]\n#[linkage = \"internal\"]\nunsafe extern \"C\" fn rust_gnu_inline_static"));
+    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_inline_static"));
+    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_static"));
     assert!(src.contains("#[cold]\nunsafe extern \"C\" fn rust_cold_used_attrs"));
 
     // __attribute__((__always_inline__)) void always_inline_nonstatic(void) {}
@@ -34,8 +34,8 @@ pub fn test_fn_attrs() {
     // void inline inline_nonstatic(void) {}
     assert!(src.contains("#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_nonstatic"));
     assert!(src.contains("#[inline(never)]\npub unsafe extern \"C\" fn rust_noinline_nonstatic"));
-    assert!(src.contains("#[inline]\n#[linkage = \"internal\"]\nunsafe extern \"C\" fn rust_inline_nonstatic"));
-    assert!(src.contains("#[inline]\n#[linkage = \"internal\"]\nunsafe extern \"C\" fn rust_gnu_inline_nonstatic"));
+    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_inline_nonstatic"));
+    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_nonstatic"));
 
     // extern void inline inline_extern(void) {}
     // extern void inline __attribute__((always_inline)) always_inline_extern(void) {}
@@ -43,9 +43,9 @@ pub fn test_fn_attrs() {
     // extern void inline __attribute__((gnu_inline, always_inline)) always_inline_gnu_inline_extern(void) {}
     assert!(src.contains("#[inline]\n#[linkage = \"external\"]\npub unsafe extern \"C\" fn rust_inline_extern"));
     assert!(src.contains("#[inline(always)]\npub unsafe extern \"C\" fn rust_always_inline_extern"));
-    assert!(src.contains("#[inline]\n#[linkage = \"internal\"]\nunsafe extern \"C\" fn rust_gnu_inline_extern"));
+    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_extern"));
     assert!(src.contains("#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_gnu_inline_extern"));
-    assert!(src.contains("#[inline]\n#[linkage = \"internal\"]\nunsafe extern \"C\" fn rust_gnu_inline_non_canonical_definition_extern"));
+    assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_non_canonical_definition_extern"));
 
     if cfg!(not(target_os = "macos")) {
         // aliased_fn is aliased to the inline_extern function
