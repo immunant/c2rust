@@ -887,12 +887,18 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
                             // (in other words, check local.init.is_some())
                             match local.pat.node {
                                 ast::PatKind::Ident(_, ident, _) => {
+                                    let (ahasher, shasher) = self.get_hasher_pair();
                                     let ident_expr = self.cx.expr_ident(ident.span, ident);
                                     let mac_path =
                                         self.cx.path_ident(DUMMY_SP, self.cx.ident_of("cross_check_value"));
+                                    let mut mac_args = vec![
+                                        token::NtIdent(self.cx.ident_of("UNKNOWN_TAG"), false),
+                                        token::NtExpr(ident_expr),
+                                        token::NtTy(ahasher),
+                                        token::NtTy(shasher),
+                                    ];
                                     let xcheck =
-                                        self.cx.stmt_mac_fn(DUMMY_SP, mac_path,
-                                                            vec![token::NtExpr(ident_expr)]);
+                                        self.cx.stmt_mac_fn(DUMMY_SP, mac_path, mac_args);
                                     Some(xcheck)
                                 }
                                 // TODO: handle more pattern types
