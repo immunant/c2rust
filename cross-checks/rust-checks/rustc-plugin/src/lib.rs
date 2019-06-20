@@ -18,8 +18,9 @@ use rustc_plugin::Registry;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, hash_map};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::iter;
 use std::path::PathBuf;
 
@@ -167,8 +168,16 @@ trait CrossCheckBuilder {
         F: FnOnce(P<ast::Expr>, Vec<ast::Stmt>) -> P<ast::Expr>;
 }
 
+fn hashed_file_name(file_name: &str, arg: &str) -> FileName {
+    let mut hasher = hash_map::DefaultHasher::new();
+    arg.hash(&mut hasher);
+    let hash = hasher.finish();
+    let full_name = format!("{}-{}", file_name, hash);
+    FileName::Custom(full_name)
+}
+
 fn parse_ty(file_name: &str, ty_str: &str, sess: &ParseSess) -> P<ast::Ty> {
-    let file_name = FileName::Custom(file_name.to_owned());
+    let file_name = hashed_file_name(file_name, ty_str);
     let mut p = new_parser_from_source_str(sess, file_name, ty_str.to_owned());
     p.parse_ty()
         .expect(&format!("failed to parse type: {}", ty_str))
@@ -249,7 +258,7 @@ impl CrossCheckBuilder for xcfg::XCheckType {
                 cx.expr_std_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, id_expr]))
             }
             xcfg::XCheckType::Custom(ref s) => {
-                let file_name = FileName::Custom(String::from("c2rust-xcheck-custom"));
+                let file_name = hashed_file_name("c2rust-xcheck-custom", &s);
                 let mut p = new_parser_from_source_str(cx.parse_sess, file_name,
                                                        s.clone());
                 let custom_expr = p.parse_expr()
@@ -524,7 +533,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             .iter()
             .map(|ex| {
                 // TODO: allow the custom functions to return Option or an iterator???
-                let file_name = FileName::Custom(String::from("c2rust-xcheck-custom"));
+                let file_name = hashed_file_name("c2rust-xcheck-custom", &ex.custom);
                 let mut p = new_parser_from_source_str(self.cx.parse_sess, file_name,
                                                        ex.custom.clone());
                 let expr = p.parse_expr()
@@ -672,7 +681,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     mac_args.push(token::NtTy(shasher));
                 }
                 Some(xcfg::CustomHashFormat::Expression) => {
-                    let file_name = FileName::Custom(String::from("c2rust-xcheck-custom"));
+                    let file_name = hashed_file_name("c2rust-xcheck-custom", &custom_hash);
                     let mut p = new_parser_from_source_str(self.cx.parse_sess, file_name,
                                                            custom_hash.clone());
                     let expr = p.parse_expr()
