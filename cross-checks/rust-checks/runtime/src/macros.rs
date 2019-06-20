@@ -43,7 +43,7 @@ macro_rules! cross_check_value {
 
 #[macro_export]
 macro_rules! __c2rust_impl_union_hash {
-    ($hash_ty:ident, Function, $hash_fn:ident, $ahasher:tt, $shasher:tt) => {
+    ($hash_ty:ident, Function, $hash_fn:ident, $ahasher:ty, $shasher:ty) => {
         impl $crate::hash::CrossCheckHash for $hash_ty {
             #[inline]
             fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
@@ -102,7 +102,7 @@ macro_rules! __c2rust_impl_union_hash {
 
 #[macro_export]
 macro_rules! __c2rust_export_extern_hash {
-    ($hash_ty:ident, $hash_fn:ident, $sec_meta:meta, $ahasher:tt, $shasher:tt) => {
+    ($hash_ty:ident, $hash_fn:ident, $sec_meta:meta, $ahasher:ty, $shasher:ty) => {
         #[no_mangle]
         #[$sec_meta]
         pub unsafe extern "C" fn $hash_fn(x: *mut $hash_ty, depth: usize) -> u64 {
@@ -134,7 +134,7 @@ macro_rules! __c2rust_import_extern_hash {
 
 #[macro_export]
 macro_rules! __c2rust_emit_xcheck {
-    ($tag:expr, $val_ident:ident, $val_ref_ident:ident, $ahasher:tt, $shasher:tt $(, $pre:stmt)*) => {
+    ($tag:expr, $val_ident:ident, $val_ref_ident:ident, $ahasher:ty, $shasher:ty $(, $pre:stmt)*) => {
         let $val_ref_ident = &$val_ident;
         $($pre)*
         let __c2rust_hash = $crate::hash::CrossCheckHash::cross_check_hash::<$ahasher, $shasher>($val_ref_ident);
