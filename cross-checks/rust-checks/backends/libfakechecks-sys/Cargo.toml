@@ -11,5 +11,4 @@ build = "build.rs"
 publish = false
 
 [lib]
-name = "libfakechecks_sys"
 path = "lib.rs"
