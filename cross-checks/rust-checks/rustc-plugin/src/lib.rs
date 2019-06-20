@@ -1025,6 +1025,10 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
             })
             .collect()
     }
+
+    fn visit_mac(&mut self, mac: &mut ast::Mac) {
+        mut_visit::noop_visit_mac(mac, self);
+    }
 }
 
 #[derive(Default)]
