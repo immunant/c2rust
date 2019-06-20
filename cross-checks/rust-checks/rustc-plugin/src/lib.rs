@@ -42,6 +42,7 @@ trait AstExtBuilder {
     fn expr_u64(&self, sp: Span, u: u64) -> P<ast::Expr>;
 
     fn expr_std_some(&self, sp: Span, expr: P<ast::Expr>) -> P<ast::Expr>;
+    fn expr_std_none(&self, sp: Span) -> P<ast::Expr>;
 
     fn expr_mac(&self, sp: Span, path: ast::Path, delim: ast::MacDelimiter,
                 tts: TokenStream) -> P<ast::Expr>;
@@ -72,6 +73,16 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
             self.ident_of("Some"),
         ];
         self.expr_call_global(sp, idents, vec![expr])
+    }
+
+    fn expr_std_none(&self, sp: Span) -> P<ast::Expr> {
+        let idents = vec![
+            self.ident_of("std"),
+            self.ident_of("option"),
+            self.ident_of("Option"),
+            self.ident_of("None"),
+        ];
+        self.expr_path(self.path_global(sp, idents))
     }
 
     fn expr_mac(&self, span: Span, path: ast::Path, delim: ast::MacDelimiter,
@@ -225,7 +236,7 @@ impl CrossCheckBuilder for xcfg::XCheckType {
                 f(tag_expr, vec![val_cast_let, val_update])
             }
 
-            xcfg::XCheckType::None | xcfg::XCheckType::Disabled => cx.expr_none(DUMMY_SP),
+            xcfg::XCheckType::None | xcfg::XCheckType::Disabled => cx.expr_std_none(DUMMY_SP),
             xcfg::XCheckType::Fixed(id) => {
                 let id = cx.expr_u64(DUMMY_SP, id);
                 cx.expr_std_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, id]))
