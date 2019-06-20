@@ -1,4 +1,14 @@
-use rlua::prelude::{LuaFunction, LuaResult, LuaTable};
+use smallvec::SmallVec;
+use syntax::ast::*;
+use syntax::mut_visit::{self, *};
+use syntax::ptr::P;
+
+use rlua::{FromLuaMulti};
+use rlua::prelude::{LuaContext, LuaFunction, LuaResult, LuaTable, LuaUserData};
+
+use crate::ast_manip::{WalkAst};
+use super::TransformCtxt;
+use super::to_lua_ast_node::{LuaAstNode};
 
 macro_rules! call_lua_visitor_method {
     ($obj: expr , $method: ident ($($params: expr),*)) => {
@@ -310,5 +320,54 @@ impl<'lua> LuaAstVisitor<'lua> {
         call_lua_visitor_method!(self.visitor,finish());
 
         Ok(())
+    }
+}
+
+
+pub(crate) struct LuaAstVisitorNew<'lua, 'a, 'tcx> {
+    visitor: LuaTable<'lua>,
+    lua_ctx: LuaContext<'lua>,
+    _ctx: TransformCtxt<'a, 'tcx>,
+}
+
+impl<'lua, 'a, 'tcx> LuaAstVisitorNew<'lua, 'a, 'tcx> {
+    pub fn new(ctx: TransformCtxt<'a, 'tcx>, lua_ctx: LuaContext<'lua>, visitor: LuaTable<'lua>) -> Self {
+        LuaAstVisitorNew { _ctx: ctx, lua_ctx, visitor }
+    }
+
+    fn call_visit<T, R>(&mut self, method: LuaFunction<'lua>, param: T) -> R
+        where T: WalkAst,
+              LuaAstNode<T>: 'static + LuaUserData + Clone,
+              R: FromLuaMulti<'lua>,
+    {
+        self.lua_ctx.scope(|scope| {
+            let visitor = self.visitor.clone();
+            let param = scope.create_static_userdata(LuaAstNode::new(param)).unwrap();
+            let walk = scope.create_function_mut(|_lua_ctx, x: LuaAstNode<T>| {
+                x.walk(self);
+                Ok(())
+            });
+            method.call((visitor, (param, walk)))
+                .unwrap_or_else(|e| panic!("Lua visit function failed: {:?}", e))
+        })
+    }
+}
+
+impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
+    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_item")
+            .expect("Could not get lua visitor function");
+
+        if let Some(method) = visit_method {
+            let new_items: Vec<LuaAstNode<P<Item>>> = self.call_visit(method, i);
+            let res: SmallVec<[P<Item>; 1]> = new_items.into_iter().map(|i| i.into_inner()).collect();
+            res
+        } else {
+            mut_visit::noop_flat_map_item(i, self)
+        }
+    }
+
+    fn visit_mac(&mut self, mac: &mut Mac) {
+        mut_visit::noop_visit_mac(mac, self);
     }
 }

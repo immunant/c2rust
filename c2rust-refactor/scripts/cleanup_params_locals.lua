@@ -193,8 +193,8 @@ function Visitor:finish()
 end
 
 refactor:transform(
-    function(transform_ctx, crate)
-        return transform_ctx:visit_fn_like(Visitor.new(), crate)
+    function(transform_ctx)
+        return transform_ctx:visit_fn_like(Visitor.new())
     end
 )
 

@@ -72,12 +72,10 @@ impl<'lua> IntoLuaAst<'lua> for Stmt {
             }
             StmtKind::Semi(e) => {
                 ast.set("kind", "Semi")?;
-                ast.set("expr_old", ctx.intern(e.clone()))?;
                 ast.set("expr", e.into_lua_ast(ctx, lua_ctx)?)?;
             }
             StmtKind::Expr(e) => {
                 ast.set("kind", "Expr")?;
-                ast.set("expr_old", ctx.intern(e.clone()))?;
                 ast.set("expr", e.into_lua_ast(ctx, lua_ctx)?)?;
             }
             StmtKind::Mac(_) => {
