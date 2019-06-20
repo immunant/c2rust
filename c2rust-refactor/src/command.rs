@@ -23,7 +23,7 @@ use syntax::source_map::SourceMap;
 use syntax::symbol::Symbol;
 use syntax::visit::Visitor;
 
-use crate::ast_manip::ast_map::map_ast_into;
+use crate::ast_manip::map_ast_into;
 use crate::ast_manip::number_nodes::{
     number_nodes, number_nodes_with, reset_node_ids, NodeIdCounter,
 };

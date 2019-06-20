@@ -24,7 +24,7 @@ use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 
 use crate::ast_manip::util::PatternSymbol;
-use crate::ast_manip::MutVisit;
+use crate::ast_manip::{AstNode, MutVisit};
 use crate::command::CommandState;
 use crate::matcher::Bindings;
 use crate::RefactorCtxt;
@@ -151,6 +151,20 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
 
 pub trait Subst {
     fn subst(self, st: &CommandState, cx: &RefactorCtxt, bindings: &Bindings) -> Self;
+}
+
+impl Subst for AstNode {
+    fn subst(self, st: &CommandState, cx: &RefactorCtxt, bindings: &Bindings) -> Self {
+        match self {
+            AstNode::Crate(_) => panic!("Can't subst Crates"),
+            AstNode::Expr(x) => AstNode::Expr(x.subst(st, cx, bindings)),
+            AstNode::Pat(x) => AstNode::Pat(x.subst(st, cx, bindings)),
+            AstNode::Ty(x) => AstNode::Ty(x.subst(st, cx, bindings)),
+            AstNode::Stmts(x) => AstNode::Stmts(x.subst(st, cx, bindings)),
+            AstNode::Stmt(x) => AstNode::Stmt(x.subst(st, cx, bindings)),
+            AstNode::Item(x) => AstNode::Item(x.subst(st, cx, bindings)),
+        }
+    }
 }
 
 macro_rules! subst_impl {
