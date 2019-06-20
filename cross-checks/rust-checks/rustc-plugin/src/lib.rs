@@ -30,7 +30,7 @@ use syntax::ast;
 use syntax::ext::base::{Annotatable, ExtCtxt, MultiItemModifier, SyntaxExtension};
 use syntax::ext::build::AstBuilder;
 use syntax::mut_visit::{self, ExpectOne, MutVisitor};
-use syntax::parse::{token, new_parser_from_source_str, ParseSess};
+use syntax::parse::{token, parse_stream_from_source_str, new_parser_from_source_str, ParseSess};
 use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax::source_map::{FileLoader, FileName, RealFileLoader, Span, Spanned, DUMMY_SP};
@@ -137,7 +137,11 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
             } else {
                 add_comma = true;
             }
-            tsb.push(arg.to_tokenstream(self.parse_sess, sp));
+            let arg_str = pprust::nonterminal_to_string(&arg);
+            let arg_file_name = hashed_file_name("c2rust-xcheck-macro", &arg_str);
+            let arg_tokens = parse_stream_from_source_str(arg_file_name, arg_str,
+                                                          self.parse_sess, Some(sp));
+            tsb.push(arg_tokens);
         }
         tsb.build()
     }
