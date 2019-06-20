@@ -176,7 +176,7 @@ fn hashed_file_name(file_name: &str, arg: &str) -> FileName {
     let mut hasher = hash_map::DefaultHasher::new();
     arg.hash(&mut hasher);
     let hash = hasher.finish();
-    let full_name = format!("{}-{}", file_name, hash);
+    let full_name = format!("{}-h{:x}H", file_name, hash);
     FileName::Custom(full_name)
 }
 
