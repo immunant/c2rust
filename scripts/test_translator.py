@@ -42,7 +42,7 @@ cargo = get_cmd_or_die("cargo")
 
 # Intermediate files
 intermediate_files = [
-    'cc_db', 'cbor', 'c_obj', 'c_lib', 'rust_src',
+    'cc_db', 'c_obj', 'c_lib', 'rust_src',
 ]
 
 
@@ -204,7 +204,6 @@ class TestDirectory:
         self.keep = keep
         self.generated_files = {
             "rust_src": [],
-            "cbor": [],
             "c_obj": [],
             "c_lib": [],
             "cc_db": [],
