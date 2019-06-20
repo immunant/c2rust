@@ -519,8 +519,8 @@ impl CommandState {
         self.krate.borrow_mut()
     }
 
-    pub fn map_krate<F: FnOnce(&mut Crate)>(&self, func: F) {
-        func(&mut self.krate_mut());
+    pub fn map_krate<R, F: FnOnce(&mut Crate) -> R>(&self, func: F) -> R {
+        func(&mut self.krate_mut())
     }
 
     pub fn krate_changed(&self) -> bool {
