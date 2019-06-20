@@ -128,6 +128,11 @@ impl UserData for RefactorState {
     }
 }
 
+// Dispatch to a monomorphized method taking a LuaAstNode<T> as the first parameter.
+// The macro take the `object.method` to dispatch to, the AnyUserData node to
+// dispatch on, a tuple containing additional args, and a list of AST node types
+// that should be accepted in braces.
+// example: dispatch!(this.fold_with, node, (args...), {P<ast::Expr>, P<ast::Ty>, Vec<ast::Stmt>})
 macro_rules! dispatch {
     (
         $this: ident.$method: ident,
