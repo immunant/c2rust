@@ -125,7 +125,6 @@ impl UserData for LuaAstNode<Path> {
                 this.0.borrow_mut().segments = new_segments.into_iter().map(|new_seg| {
                     PathSegment::from_ident(Ident::from_str(&new_seg))
                 }).collect();
-                println!("Set segments");
                 Ok(())
             }
         });

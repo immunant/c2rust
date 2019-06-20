@@ -15,7 +15,7 @@ function Visitor.new(transform_ctx)
 end
 
 function Visitor:flat_map_item(item, walk)
-   if item:get_node() == "Mod" then
+   if item:get_kind() == "Mod" then
       table.insert(self.cur_path, item:get_ident())
       walk(item)
       table.remove(self.cur_path)
@@ -48,7 +48,6 @@ function Visitor:flat_map_item(item, walk)
             return qself, path
          end
       )
-      walk(item)
    end
 
    return {item}
