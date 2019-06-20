@@ -18,5 +18,5 @@ path = "../../derive-macros"
 [dependencies.c2rust-xcheck-runtime]
 path = "../../runtime"
 
-[dependencies.c2rust-xcheck-dlsym]
-path = "../../backends/xcheck-dlsym"
+[dependencies.c2rust-xcheck-backend-dynamic-dlsym]
+path = "../../backends/dynamic-dlsym"
