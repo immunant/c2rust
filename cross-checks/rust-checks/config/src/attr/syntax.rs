@@ -66,6 +66,7 @@ fn parse_xcheck_type(name: &'static str, arg: &ArgValue) -> XCheckType {
                 _ => panic!("invalid literal for cross_check id: {:?}", arg),
             }
         }
+        "as_type" => XCheckType::AsType(String::from(arg.as_str())),
         "custom" => XCheckType::Custom(String::from(arg.as_str())),
         _ => panic!("unknown cross-check type: {}", name),
     }
