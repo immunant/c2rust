@@ -124,3 +124,15 @@ fn test_args_override() {
     expect_xcheck(FUNCTION_EXIT_TAG, 0x7c93ee4f_u64);
     expect_no_xchecks();
 }
+
+#[test]
+fn test_args_as_type() {
+    #[cross_check(yes, args(_a(as_type = "u8")))]
+    fn abcd(_a: u32) {}
+
+    abcd(0x1234u32);
+    expect_xcheck(FUNCTION_ENTRY_TAG, 0x7c93ee4f_u64);
+    expect_xcheck(FUNCTION_ARG_TAG, 0x34_u64);
+    expect_xcheck(FUNCTION_EXIT_TAG, 0x7c93ee4f_u64);
+    expect_no_xchecks();
+}
