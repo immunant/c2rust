@@ -80,6 +80,23 @@ impl<'c> Translation<'c> {
                     "NAN",
                 ])))
             },
+            "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
+                let val = self.convert_expr(ctx.used(), args[0])?;
+
+                Ok(val.map(|x| {
+                    let add = BinOpKind::Add;
+                    let zero = mk().lit_expr(mk().int_lit(0, ""));
+                    let one = mk().lit_expr(mk().int_lit(1, ""));
+                    let cmp = BinOpKind::Eq;
+                    let zeros = mk().method_call_expr(x.clone(), "trailing_zeros", vec![] as Vec<P<Expr>>);
+                    let zeros_cast = mk().cast_expr(zeros, mk().path_ty(vec!["i32"]));
+                    let zeros_plus1 = mk().binary_expr(add, zeros_cast, one);
+                    let block = mk().block(vec![mk().expr_stmt(zero.clone())]);
+                    let cond = mk().binary_expr(cmp, x, zero);
+
+                    mk().ifte_expr(cond, block, Some(zeros_plus1))
+                }))
+            },
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
