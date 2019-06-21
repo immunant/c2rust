@@ -110,7 +110,7 @@ macro_rules! __c2rust_export_extern_hash {
             use $crate::hash::CrossCheckHash;
             (*x).cross_check_hash_depth::<$ahasher, $shasher>(depth)
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -119,17 +119,18 @@ macro_rules! __c2rust_import_extern_hash {
         impl $crate::hash::CrossCheckHash for $hash_ty {
             #[inline]
             fn cross_check_hash_depth<HA, HS>(&self, depth: usize) -> u64
-                where HA: $crate::hash::CrossCheckHasher,
-                      HS: $crate::hash::CrossCheckHasher
+            where
+                HA: $crate::hash::CrossCheckHasher,
+                HS: $crate::hash::CrossCheckHasher,
             {
-                extern {
+                extern "C" {
                     #[no_mangle]
                     fn $hash_fn(_: *const $hash_ty, _: usize) -> u64;
                 }
                 unsafe { $hash_fn(self as *const $hash_ty, depth) }
             }
         }
-    }
+    };
 }
 
 #[macro_export]

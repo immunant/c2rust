@@ -12,31 +12,27 @@ pub fn get_item_args(mi: &ast::MetaItem) -> ArgList<'static> {
         ArgList::from_map(
             items
                 .iter()
-                .map(|item| {
-                    match item {
-                        ast::NestedMetaItem::MetaItem(ref mi) => {
-                            assert!(mi.path.segments.len() == 1);
-                            let kw = mi.path.segments[0].ident.as_str().get();
-                            match mi.node {
-                                ast::MetaItemKind::Word => (kw, ArgValue::Nothing),
+                .map(|item| match item {
+                    ast::NestedMetaItem::MetaItem(ref mi) => {
+                        assert!(mi.path.segments.len() == 1);
+                        let kw = mi.path.segments[0].ident.as_str().get();
+                        match mi.node {
+                            ast::MetaItemKind::Word => (kw, ArgValue::Nothing),
 
-                                ast::MetaItemKind::NameValue(ref val) => match val.node {
-                                    ast::LitKind::Str(ref s, ast::StrStyle::Cooked) => {
-                                        (kw, ArgValue::Str(String::from(&*s.as_str())))
-                                    }
-
-                                    ast::LitKind::Int(i, _) => (kw, ArgValue::Int(i)),
-
-                                    _ => panic!("invalid tag value for by_value: {:?}", *val),
-                                },
-
-                                ast::MetaItemKind::List(_) => {
-                                    (kw, ArgValue::List(get_item_args(mi)))
+                            ast::MetaItemKind::NameValue(ref val) => match val.node {
+                                ast::LitKind::Str(ref s, ast::StrStyle::Cooked) => {
+                                    (kw, ArgValue::Str(String::from(&*s.as_str())))
                                 }
-                            }
+
+                                ast::LitKind::Int(i, _) => (kw, ArgValue::Int(i)),
+
+                                _ => panic!("invalid tag value for by_value: {:?}", *val),
+                            },
+
+                            ast::MetaItemKind::List(_) => (kw, ArgValue::List(get_item_args(mi))),
                         }
-                        _ => panic!("unknown item passed to by_value: {:?}", *item),
                     }
+                    _ => panic!("unknown item passed to by_value: {:?}", *item),
                 })
                 .collect(),
         )
