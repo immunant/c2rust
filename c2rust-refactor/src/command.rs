@@ -277,8 +277,12 @@ impl RefactorState {
 
         span_fix::fix_format(self.cs.krate.get_mut());
         let expanded = self.cs.krate().clone();
-        let collapse_info =
-            CollapseInfo::collect(&unexpanded, &expanded, &mut self.node_map, &self.cs);
+        let collapse_info = match phase {
+            Phase::Phase1 => None,
+            Phase::Phase2 | Phase::Phase3 => {
+                Some(CollapseInfo::collect(&unexpanded, &expanded, &mut self.node_map, &self.cs))
+            }
+        };
 
         // Run the transform
         let r = match phase {
@@ -338,7 +342,9 @@ impl RefactorState {
         self.node_map
             .init(self.cs.new_parsed_node_ids.get_mut().drain(..));
 
-        collapse_info.collapse(&mut self.node_map, &self.cs);
+        if let Some(collapse_info) = collapse_info {
+            collapse_info.collapse(&mut self.node_map, &self.cs);
+        }
 
         Ok(r)
     }
