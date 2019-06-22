@@ -12,6 +12,7 @@ use syntax::ast;
 use syntax::mut_visit::MutVisitor;
 use syntax::ptr::P;
 
+use c2rust_ast_builder::mk;
 use crate::ast_manip::MutVisit;
 use crate::ast_manip::fn_edit::{mut_visit_fns, FnLike};
 use crate::command::{self, CommandState, RefactorState};
@@ -115,9 +116,15 @@ impl UserData for RefactorState {
         /// Run a custom refactoring transformation
         // @function transform
         // @tparam function(TransformCtxt) callback Transformation function called with a fresh @{TransformCtxt}. This @{TransformCtxt} can operate on the crate to implement transformations.
-        methods.add_method_mut("transform", |lua_ctx, this, callback: LuaFunction| {
+        methods.add_method_mut("transform", |lua_ctx, this, (callback, phase): (LuaFunction, Option<u8>)| {
+            let phase = match phase {
+                Some(1) => Phase::Phase1,
+                Some(2) => Phase::Phase2,
+                Some(3) | None => Phase::Phase3,
+                _ => return Err(LuaError::external("Phase must be nil, 1, 2, or 3")),
+            };
             this.load_crate();
-            this.transform_crate(Phase::Phase3, |st, cx| {
+            this.transform_crate(phase, |st, cx| {
                 enter_transform(st, cx, |transform| {
                     let res: LuaResult<()> = lua_ctx.scope(|scope| {
                         let transform_data = scope.create_nonstatic_userdata(transform.clone())?;
@@ -164,8 +171,28 @@ macro_rules! dispatch {
             }
     };
 
+    (
+        $this: ident.$method: ident<$generic: ty>,
+        $node: ident,
+        $params: tt,
+        {$($tys: ty),+}
+        $(,)*
+    ) => {
+        $(
+            if let Ok($node) = $node.borrow::<LuaAstNode<$tys>>() {
+                dispatch!(@call $this.$method<$generic>(&*$node, $params))
+            } else
+        )*
+            {
+                panic!("Could not match node type from Lua")
+            }
+    };
+
     (@call $this:ident.$method:ident ($node: expr, ($($arg:expr),*))) => {
         $this.$method($node, $($arg),*)
+    };
+    (@call $this:ident.$method:ident<$generic: ty> ($node: expr, ($($arg:expr),*))) => {
+        $this.$method::<$generic, _>($node, $($arg),*)
     };
 }
 
@@ -498,6 +525,18 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         // @tparam function(NodeId, QSelf, Path, Def) callback Function called for each path. Can modify QSelf and/or Path to rewrite the path.
         methods.add_method("visit_paths", |lua_ctx, this, (node, callback): (AnyUserData<'lua>, LuaFunction<'lua>)| {
             dispatch!(this.fold_paths, node, (callback, lua_ctx), {P<ast::Item>})
+        });
+
+        /// Create a new use item
+        // @function create_use
+        // @tparam path Array of idents for use item
+        // @treturn LuaAstNode New use item node
+        methods.add_function("create_use", |lua_ctx, segments: Vec<String>| {
+            mk().use_item(segments, None as Option<ast::Ident>).to_lua(lua_ctx)
+        });
+
+        methods.add_method("get_use_def", |lua_ctx, this, id: u32| {
+            this.cx.resolve_use_id(ast::NodeId::from_u32(id)).def.to_lua(lua_ctx)
         });
     }
 }

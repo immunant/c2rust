@@ -10,7 +10,8 @@ use syntax_pos::Span;
 
 use rlua::{Context, Error, Function, Result, Scope, ToLua, UserData, UserDataMethods, Value};
 
-use crate::ast_manip::{AstName, AstNode, WalkAst};
+use crate::ast_manip::{util, visit_nodes, AstName, AstNode, WalkAst};
+use super::DisplayLuaError;
 
 pub(crate) trait ToLuaExt {
     fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>>;
@@ -85,10 +86,72 @@ impl<T> LuaAstNode<T>
     }
 }
 
+unsafe impl Send for LuaAstNode<P<Item>> {}
+#[allow(unused_doc_comments)]
 impl UserData for LuaAstNode<P<Item>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
             Ok(this.0.borrow().node.ast_name())
+        });
+
+        methods.add_method("get_id", |lua_ctx, this, ()| {
+            Ok(this.0.borrow().id.to_lua(lua_ctx))
+        });
+
+        methods.add_method("get_ident", |_lua_ctx, this, ()| {
+            Ok(this.0.borrow().ident.to_string())
+        });
+
+        methods.add_method("set_ident", |_lua_ctx, this, ident: String| {
+            this.0.borrow_mut().ident = Ident::from_str(&ident);
+            Ok(())
+        });
+
+        /// Visit statements
+        // @function visit_stmts
+        // @tparam function(LuaAstNode) callback Function to call when visiting each statement
+        methods.add_method("visit_stmts", |lua_ctx, this, callback: Function| {
+            visit_nodes(&**this.borrow(), |node: &Stmt| {
+                callback.call::<_, ()>(node.clone().to_lua(lua_ctx))
+                .unwrap_or_else(|e| panic!("Lua callback failed in visit_stmts: {}", DisplayLuaError(e)));
+            });
+            Ok(())
+        });
+
+        methods.add_method("visit_items", |lua_ctx, this, callback: Function| {
+            visit_nodes(&**this.borrow(), |node: &Item| {
+                callback.call::<_, ()>(P(node.clone()).to_lua(lua_ctx))
+                .unwrap_or_else(|e| panic!("Lua callback failed in visit_items: {}", DisplayLuaError(e)));
+            });
+            Ok(())
+        });
+
+        methods.add_method("visit_foreign_items", |lua_ctx, this, callback: Function| {
+            visit_nodes(&**this.borrow(), |node: &ForeignItem| {
+                callback.call::<_, ()>(P(node.clone()).to_lua(lua_ctx))
+                .unwrap_or_else(|e| panic!("Lua callback failed in visit_foreign_items: {}", DisplayLuaError(e)));
+            });
+            Ok(())
+        });
+
+        methods.add_method("get_node", |lua_ctx, this, ()| {
+            match this.0.borrow().node.clone() {
+                ItemKind::Use(e) => Ok(e.to_lua(lua_ctx)),
+                node => Err(Error::external(format!("Item node {:?} not implemented yet", node))),
+            }
+        });
+    }
+}
+
+unsafe impl Send for LuaAstNode<P<ForeignItem>> {}
+impl UserData for LuaAstNode<P<ForeignItem>> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_kind", |_lua_ctx, this, ()| {
+            Ok(this.0.borrow().node.ast_name())
+        });
+
+        methods.add_method("get_id", |lua_ctx, this, ()| {
+            Ok(this.0.borrow().id.to_lua(lua_ctx))
         });
 
         methods.add_method("get_ident", |_lua_ctx, this, ()| {
@@ -101,11 +164,11 @@ impl UserData for LuaAstNode<P<Item>> {
         });
     }
 }
-unsafe impl Send for LuaAstNode<P<Item>> {}
 
 impl UserData for LuaAstNode<QSelf> {}
 
 
+unsafe impl Send for LuaAstNode<Path> {}
 impl UserData for LuaAstNode<Path> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_span", |lua_ctx, this, ()| {
@@ -147,8 +210,14 @@ impl UserData for LuaAstNode<PathSegment> {
     }
 }
 
-
-impl UserData for LuaAstNode<Def> {}
+unsafe impl Send for LuaAstNode<Def> {}
+impl UserData for LuaAstNode<Def> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_namespace", |_lua_ctx, this, ()| {
+            Ok(util::namespace(&*this.0.borrow()).map(|namespace| namespace.descr()))
+        });
+    }
+}
 
 
 impl ToLuaExt for NodeId {
@@ -173,6 +242,7 @@ impl UserData for LuaAstNode<P<Expr>> {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
             Ok(this.0.borrow().node.ast_name())
         });
+
         methods.add_method("get_node", |lua_ctx, this, ()| {
             match this.0.borrow().node.clone() {
                 ExprKind::Lit(x) => Ok(x.to_lua(lua_ctx)),
@@ -230,6 +300,48 @@ impl UserData for LuaAstNode<Lit> {
                         node
                     )));
                 }
+            }
+        });
+    }
+}
+
+unsafe impl Send for LuaAstNode<Mod> {}
+impl UserData for LuaAstNode<Mod> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method_mut("insert_item", |_lua_ctx, this, (index, item): (usize, LuaAstNode<P<Item>>)| {
+            this.0.borrow_mut().items.insert(index, item.borrow().clone());
+            Ok(())
+        });
+    }
+}
+
+unsafe impl Send for LuaAstNode<P<UseTree>> {}
+impl UserData for LuaAstNode<P<UseTree>> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_kind", |_lua_ctx, this, ()| {
+            Ok(this.0.borrow().kind.ast_name())
+        });
+
+        methods.add_method("get_prefix", |lua_ctx, this, ()| {
+            this.0.borrow().prefix.clone().to_lua(lua_ctx)
+        });
+
+        methods.add_method("get_rename", |_lua_ctx, this, ()| {
+            match this.0.borrow().kind {
+                UseTreeKind::Simple(Some(rename), _, _) => Ok(Some(rename.to_string())),
+                _ => Ok(None),
+            }
+        });
+
+        methods.add_method("get_nested", |lua_ctx, this, ()| {
+            match &this.0.borrow().kind {
+                UseTreeKind::Nested(trees) => Ok(Some(
+                    trees.clone()
+                        .into_iter()
+                        .map(|(tree, id)| Ok(vec![P(tree).to_lua(lua_ctx)?, id.to_lua(lua_ctx)?]))
+                        .collect::<Result<Vec<_>>>()?
+                )),
+                _ => Ok(None),
             }
         });
     }
