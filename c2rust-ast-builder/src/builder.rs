@@ -4,10 +4,10 @@ use rustc_target::spec::abi::{self, Abi};
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::attr::mk_attr_inner;
-use syntax::parse::token::{self, DelimToken, Token};
+use syntax::parse::token::{self, DelimToken, TokenKind, Token};
 use syntax::ptr::P;
 use syntax::source_map::{dummy_spanned, Span, Spanned, DUMMY_SP};
-use syntax::symbol::keywords;
+use syntax::symbol::kw;
 use syntax::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
 use syntax::ThinVec;
 
@@ -200,7 +200,7 @@ impl Make<TokenStream> for Vec<TokenTree> {
 
 impl Make<TokenTree> for Token {
     fn make(self, _mk: &Builder) -> TokenTree {
-        TokenTree::Token(DUMMY_SP, self)
+        TokenTree::Token(self)
     }
 }
 
@@ -357,8 +357,11 @@ impl Builder {
             style: AttrStyle::Outer,
             path: key,
             tokens: vec![
-                Token::Eq,
-                Token::Literal(token::Lit::Str_(value.into_symbol()), None),
+                TokenTree::token(token::Eq, DUMMY_SP),
+                TokenTree::token(
+                    TokenKind::Literal(token::Lit::new(token::LitKind::Str, value.into_symbol(), None)),
+                    DUMMY_SP
+                )
             ]
             .into_iter()
             .collect(),
@@ -401,21 +404,21 @@ impl Builder {
 
         let tokens: TokenStream = {
             let mut builder = TokenStreamBuilder::new();
-            builder.push(Token::OpenDelim(DelimToken::Paren));
+            builder.push(TokenKind::OpenDelim(DelimToken::Paren));
 
             let mut is_first = true;
             for argument in arguments {
                 if is_first {
                     is_first = false;
                 } else {
-                    builder.push(Token::Comma);
+                    builder.push(TokenKind::Comma);
                 }
 
                 let argument: Ident = argument.make(&self);
-                builder.push(Token::from_ast_ident(argument));
+                builder.push(TokenKind::from_ast_ident(argument));
             }
 
-            builder.push(Token::CloseDelim(DelimToken::Paren));
+            builder.push(TokenKind::CloseDelim(DelimToken::Paren));
             builder.build()
         };
 
@@ -512,9 +515,9 @@ impl Builder {
         if !p
             .segments
             .get(0)
-            .map_or(false, |s| s.ident.name == keywords::Crate.name())
+            .map_or(false, |s| s.ident.name == kw::Crate.name())
         {
-            p.segments.insert(0, keywords::Crate.ident().make(&self));
+            p.segments.insert(0, kw::Crate.ident().make(&self));
         }
         p
     }
@@ -1605,7 +1608,7 @@ impl Builder {
         let mac = mac.make(&self);
         let kind = ItemKind::Mac(mac);
         Self::item(
-            keywords::Invalid.ident(),
+            kw::Invalid.ident(),
             self.attrs,
             self.vis,
             self.span,
@@ -1659,7 +1662,7 @@ impl Builder {
     {
         let ty = ty.make(&self);
         Self::item(
-            keywords::Invalid.ident(),
+            kw::Invalid.ident(),
             self.attrs,
             self.vis,
             self.span,
@@ -1709,7 +1712,7 @@ impl Builder {
             kind: UseTreeKind::Simple(rename, DUMMY_NODE_ID, DUMMY_NODE_ID),
         };
         Self::item(
-            keywords::Invalid.ident(),
+            kw::Invalid.ident(),
             self.attrs,
             self.vis,
             self.span,
@@ -1743,7 +1746,7 @@ impl Builder {
             kind: UseTreeKind::Nested(inner_trees),
         };
         Self::item(
-            keywords::Invalid.ident(),
+            kw::Invalid.ident(),
             self.attrs,
             self.vis,
             self.span,
@@ -1758,7 +1761,7 @@ impl Builder {
             items,
         };
         Self::item(
-            keywords::Invalid.ident(),
+            kw::Invalid.ident(),
             self.attrs,
             self.vis,
             self.span,
@@ -1800,7 +1803,7 @@ impl Builder {
         let mac = mac.make(&self);
         let kind = ImplItemKind::Macro(mac);
         Self::impl_item_(
-            keywords::Invalid.ident(),
+            kw::Invalid.ident(),
             self.attrs,
             self.vis,
             Defaultness::Final,
@@ -1840,7 +1843,7 @@ impl Builder {
         let mac = mac.make(&self);
         let kind = TraitItemKind::Macro(mac);
         Self::trait_item_(
-            keywords::Invalid.ident(),
+            kw::Invalid.ident(),
             self.attrs,
             self.generics,
             self.span,
@@ -1926,7 +1929,7 @@ impl Builder {
         let mac = mac.make(&self);
         let kind = ForeignItemKind::Macro(mac);
         Self::foreign_item(
-            keywords::Invalid.ident(),
+            kw::Invalid.ident(),
             self.attrs,
             self.vis,
             self.span,
