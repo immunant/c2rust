@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
@@ -75,9 +76,21 @@ pub fn run_lua_file(
             })
         })
     })
-    .unwrap_or_else(|e| panic!("User script failed: {:#?}", e));
+    .unwrap_or_else(|e| panic!("User script failed: {}", DisplayLuaError(e)));
 
     Ok(())
+}
+
+struct DisplayLuaError(LuaError);
+
+impl fmt::Display for DisplayLuaError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.0 {
+            LuaError::SyntaxError{message, ..} => write!(f, "Syntax error while parsing lua: {}", message),
+            LuaError::RuntimeError(e) => write!(f, "Runtime error during lua execution: {}", e),
+            e => e.fmt(f),
+        }
+    }
 }
 
 /// Refactoring context
@@ -349,7 +362,7 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
                             def,
                         ))
                     })
-                    .expect("Lua callback failed in visit_paths");
+                    .unwrap_or_else(|e| panic!("Lua callback failed in visit_paths: {}", DisplayLuaError(e)));
                 (qself.map(|x| x.into_inner()), path.into_inner())
             });
         });

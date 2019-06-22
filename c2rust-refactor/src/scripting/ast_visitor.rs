@@ -7,7 +7,7 @@ use rlua::{FromLuaMulti};
 use rlua::prelude::{LuaContext, LuaFunction, LuaResult, LuaTable, LuaUserData};
 
 use crate::ast_manip::{WalkAst};
-use super::TransformCtxt;
+use super::{DisplayLuaError, TransformCtxt};
 use super::to_lua_ast_node::{LuaAstNode};
 
 macro_rules! call_lua_visitor_method {
@@ -348,7 +348,7 @@ impl<'lua, 'a, 'tcx> LuaAstVisitorNew<'lua, 'a, 'tcx> {
                 Ok(())
             });
             method.call((visitor, (param, walk)))
-                .unwrap_or_else(|e| panic!("Lua visit function failed: {:?}", e))
+                .unwrap_or_else(|e| panic!("Lua visit function failed: {:}", DisplayLuaError(e)))
         })
     }
 }
