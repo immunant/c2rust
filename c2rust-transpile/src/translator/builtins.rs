@@ -229,7 +229,7 @@ impl<'c> Translation<'c> {
                          let dst = self.convert_expr(ctx.used(), args[0])?;
                          let src = self.convert_expr(ctx.used(), args[1])?;
 
-                         let call_expr = mk().method_call_expr(src.to_expr(), "Clone", vec![] as Vec<P<Expr>>);
+                         let call_expr = mk().method_call_expr(src.to_expr(), "clone", vec![] as Vec<P<Expr>>);
                          let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
                          let stmt = mk().semi_stmt(assign_expr);
 

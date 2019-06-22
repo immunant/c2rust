@@ -2381,7 +2381,7 @@ impl<'c> Translation<'c> {
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
                     let ty = {
                         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
-                        let path = vec!["", std_or_core, "ffi", "VaList"];
+                        let path = vec!["", std_or_core, "ffi", "VaListImpl"];
                         mk().path_ty(path)
                     };
                     let local_mut = mk().local::<_, _, P<Expr>>(pat_mut, Some(ty), None);
@@ -3422,7 +3422,7 @@ impl<'c> Translation<'c> {
                             .iter()
                             .enumerate()
                             .filter_map(|(pos, param)| {
-                                if self.ast_context.is_va_list(param.ctype)
+                                if self.ast_context.is_pointer_to_va_list(param.ctype)
                                 { Some(pos) } else { None }
                             })
                             .collect();

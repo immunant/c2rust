@@ -256,8 +256,8 @@ impl TypedAstContext {
         }
     }
 
-    /// Predicate for (pointers to) structs that are binary compatible with C's `va_list`.
-    pub fn is_va_list(&self, typ: CTypeId) -> bool {
+    /// Predicate for structs that are binary compatible with C's `va_list`.
+    fn is_va_list(&self, typ: CTypeId) -> bool {
         let resolved_ctype = self.resolve_type(typ);
         match resolved_ctype.kind {
             CTypeKind::Struct(record_id) => {
@@ -268,6 +268,14 @@ impl TypedAstContext {
                     false
                 }
             },
+            _ => false
+        }
+    }
+
+    /// Predicate for pointers to structs that are binary compatible with C's `va_list`.
+    pub fn is_pointer_to_va_list(&self, typ: CTypeId) -> bool {
+        let resolved_ctype = self.resolve_type(typ);
+        match resolved_ctype.kind {
             CTypeKind::Pointer(p) => {
                 self.is_va_list(p.ctype)
             },
