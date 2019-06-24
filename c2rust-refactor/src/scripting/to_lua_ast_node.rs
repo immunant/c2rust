@@ -41,16 +41,6 @@ impl<T> ToLuaScoped for T
     }
 }
 
-
-// impl<'lua, 'scope, T> ToLuaScoped<'lua, 'scope> for T
-//     where T: 'static,
-//           LuaAstNode<T>: UserData,
-// {
-//     fn to_lua_scoped(self, lua: Context<'lua>, scope: &Scope<'lua, 'scope>) -> Result<Value<'lua>> {
-//         scope.create_static_userdata(LuaAstNode::new(self)).and_then(|v| v.to_lua(lua))
-//     }
-// }
-
 /// Holds a rustc AST node that can be passed back and forth to Lua as a scoped,
 /// static userdata. Implement UserData for LuaAstNode<T> to support an AST node
 /// T.
