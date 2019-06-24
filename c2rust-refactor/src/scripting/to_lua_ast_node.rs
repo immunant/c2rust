@@ -9,6 +9,7 @@ use syntax::mut_visit::*;
 use syntax_pos::Span;
 
 use rlua::{Context, Error, Function, Result, Scope, ToLua, UserData, UserDataMethods, Value};
+use rlua::prelude::LuaString;
 
 use crate::ast_manip::{util, visit_nodes, AstName, AstNode, WalkAst};
 use super::DisplayLuaError;
@@ -95,15 +96,15 @@ impl UserData for LuaAstNode<P<Item>> {
         });
 
         methods.add_method("get_id", |lua_ctx, this, ()| {
-            Ok(this.0.borrow().id.to_lua(lua_ctx))
+            this.0.borrow().id.to_lua(lua_ctx)
         });
 
-        methods.add_method("get_ident", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().ident.to_string())
+        methods.add_method("get_ident", |lua_ctx, this, ()| {
+            this.0.borrow().ident.to_lua(lua_ctx)
         });
 
-        methods.add_method("set_ident", |_lua_ctx, this, ident: String| {
-            this.0.borrow_mut().ident = Ident::from_str(&ident);
+        methods.add_method("set_ident", |_lua_ctx, this, ident: LuaString| {
+            this.0.borrow_mut().ident = Ident::from_str(ident.to_str()?);
             Ok(())
         });
 
@@ -151,15 +152,15 @@ impl UserData for LuaAstNode<P<ForeignItem>> {
         });
 
         methods.add_method("get_id", |lua_ctx, this, ()| {
-            Ok(this.0.borrow().id.to_lua(lua_ctx))
+            this.0.borrow().id.to_lua(lua_ctx)
         });
 
-        methods.add_method("get_ident", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().ident.to_string())
+        methods.add_method("get_ident", |lua_ctx, this, ()| {
+            this.0.borrow().ident.to_lua(lua_ctx)
         });
 
-        methods.add_method("set_ident", |_lua_ctx, this, ident: String| {
-            this.0.borrow_mut().ident = Ident::from_str(&ident);
+        methods.add_method("set_ident", |_lua_ctx, this, ident: LuaString| {
+            this.0.borrow_mut().ident = Ident::from_str(ident.to_str()?);
             Ok(())
         });
     }
@@ -177,17 +178,22 @@ impl UserData for LuaAstNode<Path> {
         methods.add_method("has_generic_args", |_lua_ctx, this, ()| {
             Ok(this.0.borrow().segments.iter().any(|s| s.args.is_some()))
         });
-        methods.add_method("get_segments", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().segments.iter().map(|s| s.ident.to_string()).collect::<Vec<_>>())
+        methods.add_method("get_segments", |lua_ctx, this, ()| {
+            this.0
+                .borrow()
+                .segments
+                .iter()
+                .map(|s| s.ident.to_lua(lua_ctx))
+                .collect::<Result<Vec<_>>>()
         });
-        methods.add_method("set_segments", |_lua_ctx, this, new_segments: Vec<String>| {
+        methods.add_method("set_segments", |_lua_ctx, this, new_segments: Vec<LuaString>| {
             let has_generic_args = this.0.borrow().segments.iter().any(|s| s.args.is_some());
             if has_generic_args {
                 Err(Error::external("One or more path segments have generic args, cannot set segments as strings"))
             } else {
                 this.0.borrow_mut().segments = new_segments.into_iter().map(|new_seg| {
-                    PathSegment::from_ident(Ident::from_str(&new_seg))
-                }).collect();
+                    Ok(PathSegment::from_ident(Ident::from_str(new_seg.to_str()?)))
+                }).collect::<Result<Vec<_>>>()?;
                 Ok(())
             }
         });
@@ -204,8 +210,8 @@ impl UserData for LuaAstNode<Path> {
 
 impl UserData for LuaAstNode<PathSegment> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_ident", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().ident.to_string())
+        methods.add_method("get_ident", |lua_ctx, this, ()| {
+            this.0.borrow().ident.to_lua(lua_ctx)
         });
     }
 }
@@ -223,6 +229,12 @@ impl UserData for LuaAstNode<Def> {
 impl ToLuaExt for NodeId {
     fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
         self.as_u32().to_lua(lua)
+    }
+}
+
+impl ToLuaExt for Ident {
+    fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.as_str().get().to_lua(lua)
     }
 }
 
@@ -245,7 +257,7 @@ impl UserData for LuaAstNode<P<Expr>> {
 
         methods.add_method("get_node", |lua_ctx, this, ()| {
             match this.0.borrow().node.clone() {
-                ExprKind::Lit(x) => Ok(x.to_lua(lua_ctx)),
+                ExprKind::Lit(x) => x.to_lua(lua_ctx),
                 node => Err(Error::external(format!("Expr node {:?} not implemented yet", node))),
             }
         })
@@ -266,9 +278,9 @@ impl UserData for LuaAstNode<Stmt> {
         });
         methods.add_method("get_node", |lua_ctx, this, ()| {
             match this.0.borrow().node.clone() {
-                StmtKind::Expr(e) | StmtKind::Semi(e) => Ok(e.to_lua(lua_ctx)),
-                StmtKind::Local(l) => Ok(l.to_lua(lua_ctx)),
-                StmtKind::Item(i) => Ok(i.to_lua(lua_ctx)),
+                StmtKind::Expr(e) | StmtKind::Semi(e) => e.to_lua(lua_ctx),
+                StmtKind::Local(l) => l.to_lua(lua_ctx),
+                StmtKind::Item(i) => i.to_lua(lua_ctx),
                 StmtKind::Mac(_) => Err(Error::external(format!("Mac stmts aren't implemented yet"))),
             }
         });
@@ -290,10 +302,10 @@ impl UserData for LuaAstNode<Lit> {
         methods.add_method("get_value", |lua_ctx, this, ()| {
             match this.0.borrow().node {
                 LitKind::Str(s, _) => {
-                    Ok(s.to_string().to_lua(lua_ctx))
+                    s.to_string().to_lua(lua_ctx)
                 }
-                LitKind::Int(i, _suffix) => Ok(i.to_lua(lua_ctx)),
-                LitKind::Bool(b) => Ok(b.to_lua(lua_ctx)),
+                LitKind::Int(i, _suffix) => i.to_lua(lua_ctx),
+                LitKind::Bool(b) => b.to_lua(lua_ctx),
                 ref node => {
                     return Err(Error::external(format!(
                         "{:?} is not yet implemented",
