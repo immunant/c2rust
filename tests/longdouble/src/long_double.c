@@ -42,3 +42,6 @@ float cast2float(long double a) {
 unsigned int cast2uint(long double a) {
     return (float) a;
 }
+
+const long double ld1 = 1.0;
+const long double ld2 = ld1 + 2.0;

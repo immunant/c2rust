@@ -1113,7 +1113,7 @@ impl<'c> Translation<'c> {
 
     /// The purpose of this function is to decide on whether or not a static initializer's
     /// translation is able to be compiled as a valid rust static initializer
-    fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>) -> bool {
+    fn static_initializer_is_uncompilable(&self, expr_id: Option<CExprId>, qtype: CQualTypeId) -> bool {
         use crate::c_ast::BinOp::{Add, Divide, Modulus, Multiply, Subtract};
         use crate::c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
         use crate::c_ast::UnOp::{AddressOf, Negate};
@@ -1122,6 +1122,12 @@ impl<'c> Translation<'c> {
             Some(expr_id) => expr_id,
             None => return false,
         };
+
+        // The f128 crate doesn't currently provide a way to const initialize
+        // values, except for common mathematical constants
+        if let CTypeKind::LongDouble = self.ast_context[qtype.ctype].kind {
+            return true;
+        }
 
         let iter = DFExpr::new(&self.ast_context, expr_id.into());
 
@@ -1686,7 +1692,7 @@ impl<'c> Translation<'c> {
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
-                let (ty, init) = if self.static_initializer_is_uncompilable(initializer) {
+                let (ty, init) = if self.static_initializer_is_uncompilable(initializer, typ) {
                     // Note: We don't pass has_static_duration through here. Extracted initializers
                     // are run outside of the static initializer.
                     let (ty, _, init) =
@@ -2262,7 +2268,7 @@ impl<'c> Translation<'c> {
                 typ,
                 ..
             } => {
-                if self.static_initializer_is_uncompilable(initializer) {
+                if self.static_initializer_is_uncompilable(initializer, typ) {
                     let ident2 = self
                         .renamer
                         .borrow_mut()
