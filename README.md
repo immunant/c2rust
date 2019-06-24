@@ -33,7 +33,10 @@ C2Rust requires LLVM 6, 7, or 8 with its corresponding clang compiler and librar
 - **Arch Linux:**
 
         pacman -S base-devel llvm clang cmake openssl
+        
+- **NixOS / nix:**
 
+        nix-shell
 
 - **OS X:** XCode command-line tools and recent LLVM (we recommend the Homebrew version) are required.
 
