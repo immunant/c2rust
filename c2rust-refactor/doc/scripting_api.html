@@ -29,11 +29,12 @@
 
 <h2>Contents</h2>
 <ul>
-<li><a href="#Tables">Tables</a></li>
 <li><a href="#Fields">Fields</a></li>
 <li><a href="#Class_RefactorState">Class RefactorState </a></li>
 <li><a href="#Class_MatchCtxt">Class MatchCtxt </a></li>
 <li><a href="#Class_TransformCtxt">Class TransformCtxt </a></li>
+<li><a href="#scripting_into_lua_ast_Functions">scripting.into_lua_ast Functions</a></li>
+<li><a href="#Class_ItemAstNode">Class ItemAstNode </a></li>
 </ul>
 
 
@@ -53,17 +54,6 @@
 </p>
 
 
-<h2><a href="#Tables">Tables</a></h2>
-<table class="function_list">
-	<tr>
-	<td class="name" nowrap><a href="#Stmt">Stmt</a></td>
-	<td class="summary">AST Stmt</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#Expr">Expr</a></td>
-	<td class="summary">AST Expr</td>
-	</tr>
-</table>
 <h2><a href="#Fields">Fields</a></h2>
 <table class="function_list">
 	<tr>
@@ -90,18 +80,18 @@
 	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#MatchCtxt:parse_expr">MatchCtxt:parse_expr (pat)</a></td>
-	<td class="summary">Parse an expressiong and add it to this MatchCtxt</td>
+	<td class="summary">Parse an expression and add it to this MatchCtxt</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#MatchCtxt:fold_with">MatchCtxt:fold_with (needle, crate, callback)</a></td>
-	<td class="summary">Find matches of <code>pattern</code> within <code>crate</code> and rewrite using <code>callback</code></td>
+	<td class="name" nowrap><a href="#MatchCtxt:fold_with">MatchCtxt:fold_with (needle, callback)</a></td>
+	<td class="summary">Find matches of <code>pattern</code> and rewrite using <code>callback</code></td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#MatchCtxt:get_expr">MatchCtxt:get_expr (Expression)</a></td>
+	<td class="name" nowrap><a href="#MatchCtxt:get_expr">MatchCtxt:get_expr (pattern)</a></td>
 	<td class="summary">Get matched binding for an expression variable</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#MatchCtxt:get_stmt">MatchCtxt:get_stmt (Statement)</a></td>
+	<td class="name" nowrap><a href="#MatchCtxt:get_stmt">MatchCtxt:get_stmt (pattern)</a></td>
 	<td class="summary">Get matched binding for a statement variable</td>
 	</tr>
 	<tr>
@@ -124,12 +114,46 @@
 	<td class="summary">Replace matching expressions using given callback</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#TransformCtxt:match">TransformCtxt:match ()</a></td>
+	<td class="name" nowrap><a href="#TransformCtxt:match">TransformCtxt:match (callback)</a></td>
 	<td class="summary">Create a new, empty <a href="scripting_api.html#MatchCtxt">MatchCtxt</a></td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#TransformCtxt:get_ast">TransformCtxt:get_ast (node)</a></td>
-	<td class="summary">Retrieve a Lua version of an AST node</td>
+	<td class="name" nowrap><a href="#TransformCtxt:visit_crate">TransformCtxt:visit_crate (object)</a></td>
+	<td class="summary">Visits an entire crate via a lua object's methods</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TransformCtxt:visit_crate">TransformCtxt:visit_crate (object)</a></td>
+	<td class="summary">Visits an entire crate via a lua object's methods</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TransformCtxt:visit_fn_like">TransformCtxt:visit_fn_like (object)</a></td>
+	<td class="summary">Visits every fn like via a lua object's methods</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TransformCtxt:visit_paths">TransformCtxt:visit_paths (node, QSelf)</a></td>
+	<td class="summary">Rewrite all paths in a crate</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TransformCtxt:create_use">TransformCtxt:create_use (Array)</a></td>
+	<td class="summary">Create a new use item</td>
+	</tr>
+</table>
+<h2><a href="#scripting_into_lua_ast_Functions">scripting.into_lua_ast Functions</a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Stmt">Stmt</a></td>
+	<td class="summary">AST Stmt</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Expr">Expr</a></td>
+	<td class="summary">AST Expr</td>
+	</tr>
+</table>
+<h2><a href="#Class_ItemAstNode">Class ItemAstNode </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#ItemAstNode:visit_stmts">ItemAstNode:visit_stmts (callback)</a></td>
+	<td class="summary">Visit statements</td>
 	</tr>
 </table>
 
@@ -137,91 +161,6 @@
 <br/>
 
 
-    <h2 class="section-header "><a name="Tables"></a>Tables</h2>
-
-    <dl class="function">
-    <dt>
-    <a name = "Stmt"></a>
-    <strong>Stmt</strong>
-    </dt>
-    <dd>
-    AST Stmt
-
-
-    <h3>Fields:</h3>
-    <ul>
-        <li><span class="parameter">type</span>
-         "Stmt"
-        </li>
-        <li><span class="parameter">kind</span>
-            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
-         <code>StmtKind</code> of this statement</p>
-
-<p> <code>StmtKind::Local</code> only:
-        </li>
-        <li><span class="parameter">ty</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
-         Type of local
-         (<em>optional</em>)
-        </li>
-        <li><span class="parameter">init</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
-         Initializer of local
-         (<em>optional</em>)
-        </li>
-        <li><span class="parameter">pat</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
-         Name of local</p>
-
-<p> <code>StmtKind::Item</code> only:
-        </li>
-        <li><span class="parameter">item</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
-         Item node</p>
-
-<p> <code>StmtKind::Semi</code> and <code>StmtKind::Expr</code> only:
-        </li>
-        <li><span class="parameter">expr</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
-         Expression in this statement
-        </li>
-    </ul>
-
-
-
-
-
-</dd>
-    <dt>
-    <a name = "Expr"></a>
-    <strong>Expr</strong>
-    </dt>
-    <dd>
-    AST Expr
-
-
-    <h3>Fields:</h3>
-    <ul>
-        <li><span class="parameter">type</span>
-         "Expr"
-        </li>
-        <li><span class="parameter">kind</span>
-            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
-         <code>ExprKind</code> of this expression</p>
-
-<p> <code>ExprKind::Lit</code> only:
-        </li>
-        <li><span class="parameter">value</span>
-         Literal value of this expression
-        </li>
-    </ul>
-
-
-
-
-
-</dd>
-</dl>
     <h2 class="section-header "><a name="Fields"></a>Fields</h2>
 
     <dl class="function">
@@ -287,8 +226,8 @@
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">callback</span>
-            <span class="types"><span class="type">function(TransformCtxt,AstNode)</span></span>
-         Transformation function called with a fresh <a href="scripting_api.html#TransformCtxt">TransformCtxt</a> and the crate to be transformed.
+            <span class="types"><span class="type">function(TransformCtxt)</span></span>
+         Transformation function called with a fresh <a href="scripting_api.html#TransformCtxt">TransformCtxt</a>. This <a href="scripting_api.html#TransformCtxt">TransformCtxt</a> can operate on the crate to implement transformations.
         </li>
     </ul>
 
@@ -323,7 +262,7 @@
     <h3>Returns:</h3>
     <ol>
 
-           <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+           <span class="types"><span class="type">LuaAstNode</span></span>
         The parsed statements
     </ol>
 
@@ -336,7 +275,7 @@
     <strong>MatchCtxt:parse_expr (pat)</strong>
     </dt>
     <dd>
-    Parse an expressiong and add it to this MatchCtxt
+    Parse an expression and add it to this MatchCtxt
 
 
     <h3>Parameters:</h3>
@@ -350,7 +289,7 @@
     <h3>Returns:</h3>
     <ol>
 
-           <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+           <span class="types"><span class="type">LuaAstNode</span></span>
         The parsed expression
     </ol>
 
@@ -360,24 +299,20 @@
 </dd>
     <dt>
     <a name = "MatchCtxt:fold_with"></a>
-    <strong>MatchCtxt:fold_with (needle, crate, callback)</strong>
+    <strong>MatchCtxt:fold_with (needle, callback)</strong>
     </dt>
     <dd>
-    Find matches of <code>pattern</code> within <code>crate</code> and rewrite using <code>callback</code>
+    Find matches of <code>pattern</code> and rewrite using <code>callback</code>
 
 
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">needle</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+            <span class="types"><span class="type">LuaAstNode</span></span>
          Pattern to search for
         </li>
-        <li><span class="parameter">crate</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
-         Crate to fold over
-        </li>
         <li><span class="parameter">callback</span>
-            <span class="types"><span class="type">function(AstNode,MatchCtxt)</span></span>
+            <span class="types"><span class="type">function(LuaAstNode,MatchCtxt)</span></span>
          Function called for each match. Takes the matching node and a new <a href="scripting_api.html#MatchCtxt">MatchCtxt</a> for that match.
         </li>
     </ul>
@@ -389,7 +324,7 @@
 </dd>
     <dt>
     <a name = "MatchCtxt:get_expr"></a>
-    <strong>MatchCtxt:get_expr (Expression)</strong>
+    <strong>MatchCtxt:get_expr (pattern)</strong>
     </dt>
     <dd>
     Get matched binding for an expression variable
@@ -397,16 +332,16 @@
 
     <h3>Parameters:</h3>
     <ul>
-        <li><span class="parameter">Expression</span>
+        <li><span class="parameter">pattern</span>
             <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
-         variable pattern
+         Expression variable pattern
         </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-           <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+           <span class="types"><span class="type">LuaAstNode</span></span>
         Expression matched by this binding
     </ol>
 
@@ -416,7 +351,7 @@
 </dd>
     <dt>
     <a name = "MatchCtxt:get_stmt"></a>
-    <strong>MatchCtxt:get_stmt (Statement)</strong>
+    <strong>MatchCtxt:get_stmt (pattern)</strong>
     </dt>
     <dd>
     Get matched binding for a statement variable
@@ -424,16 +359,16 @@
 
     <h3>Parameters:</h3>
     <ul>
-        <li><span class="parameter">Statement</span>
+        <li><span class="parameter">pattern</span>
             <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
-         variable pattern
+         Statement variable pattern
         </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-           <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+           <span class="types"><span class="type">LuaAstNode</span></span>
         Statement matched by this binding
     </ol>
 
@@ -452,11 +387,11 @@
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">pat</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+            <span class="types"><span class="type">LuaAstNode</span></span>
          AST (potentially with variable bindings) to match with
         </li>
         <li><span class="parameter">target</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+            <span class="types"><span class="type">LuaAstNode</span></span>
          AST to match against
         </li>
     </ul>
@@ -483,7 +418,7 @@
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">replacement</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+            <span class="types"><span class="type">LuaAstNode</span></span>
          New AST node to replace the currently matched AST. May include variable bindings if these bindings were matched by the search pattern.
         </li>
     </ul>
@@ -491,7 +426,7 @@
     <h3>Returns:</h3>
     <ol>
 
-           <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
+           <span class="types"><span class="type">LuaAstNode</span></span>
         New AST node with variable bindings replaced by their matched values
     </ol>
 
@@ -521,7 +456,7 @@
          Statements pattern to search for, may include variable bindings
         </li>
         <li><span class="parameter">callback</span>
-            <span class="types"><span class="type">function(AstNode,MatchCtxt)</span></span>
+            <span class="types"><span class="type">function(LuaAstNode,MatchCtxt)</span></span>
          Function called for each match. Takes the matching node and a new <a href="scripting_api.html#MatchCtxt">MatchCtxt</a> for that match. See <a href="scripting_api.html#MatchCtxt:fold_with">MatchCtxt:fold_with</a>
         </li>
     </ul>
@@ -546,7 +481,7 @@
          Expression pattern to search for, may include variable bindings
         </li>
         <li><span class="parameter">callback</span>
-            <span class="types"><span class="type">function(AstNode,MatchCtxt)</span></span>
+            <span class="types"><span class="type">function(LuaAstNode,MatchCtxt)</span></span>
          Function called for each match. Takes the matching node and a new <a href="scripting_api.html#MatchCtxt">MatchCtxt</a> for that match. See <a href="scripting_api.html#MatchCtxt:fold_with">MatchCtxt:fold_with</a>
         </li>
     </ul>
@@ -558,45 +493,251 @@
 </dd>
     <dt>
     <a name = "TransformCtxt:match"></a>
-    <strong>TransformCtxt:match ()</strong>
+    <strong>TransformCtxt:match (callback)</strong>
     </dt>
     <dd>
     Create a new, empty <a href="scripting_api.html#MatchCtxt">MatchCtxt</a>
 
 
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">callback</span>
+            <span class="types"><span class="type">function(MatchCtxt)</span></span>
+         Function called with the new match context
+        </li>
+    </ul>
 
-    <h3>Returns:</h3>
-    <ol>
-
-           <span class="types"><a class="type" href="scripting_api.html#MatchCtxt">MatchCtxt</a></span>
-        New match context
-    </ol>
 
 
 
 
 </dd>
     <dt>
-    <a name = "TransformCtxt:get_ast"></a>
-    <strong>TransformCtxt:get_ast (node)</strong>
+    <a name = "TransformCtxt:visit_crate"></a>
+    <strong>TransformCtxt:visit_crate (object)</strong>
     </dt>
     <dd>
-    Retrieve a Lua version of an AST node
+    Visits an entire crate via a lua object's methods
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">object</span>
+            <span class="types"><span class="type">Visitor</span></span>
+         Visitor whose methods will be called during the traversal
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TransformCtxt:visit_crate"></a>
+    <strong>TransformCtxt:visit_crate (object)</strong>
+    </dt>
+    <dd>
+    Visits an entire crate via a lua object's methods
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">object</span>
+            <span class="types"><span class="type">Visitor</span></span>
+         Visitor whose methods will be called during the traversal
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TransformCtxt:visit_fn_like"></a>
+    <strong>TransformCtxt:visit_fn_like (object)</strong>
+    </dt>
+    <dd>
+    Visits every fn like via a lua object's methods
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">object</span>
+            <span class="types"><span class="type">Visitor</span></span>
+         Visitor whose methods will be called during the traversal
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TransformCtxt:visit_paths"></a>
+    <strong>TransformCtxt:visit_paths (node, QSelf)</strong>
+    </dt>
+    <dd>
+    Rewrite all paths in a crate
 
 
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">node</span>
-            <span class="types"><a class="type" href="scripting_api.html#AstNode">AstNode</a></span>
-         AST node handle
+            <span class="types"><span class="type">LuaAstNode</span></span>
+         AST node to visit. Valid node types: {P<Item>}.
+        </li>
+        <li><span class="parameter">QSelf</span>
+            <span class="types"><span class="type">function(NodeId,</span></span>
+        , Path, Def) callback Function called for each path. Can modify QSelf and/or Path to rewrite the path.
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TransformCtxt:create_use"></a>
+    <strong>TransformCtxt:create_use (Array)</strong>
+    </dt>
+    <dd>
+    Create a new use item
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">Array</span>
+            <span class="types"><span class="type">path</span></span>
+         of idents for use item
         </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-        Struct representation of this AST node. Valid return types are <a href="scripting_api.html#Stmt">Stmt</a>, and <a href="scripting_api.html#Expr">Expr</a>.
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        New use item node
     </ol>
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header "><a name="scripting_into_lua_ast_Functions"></a>scripting.into_lua_ast Functions</h2>
+
+    <dl class="function">
+    <dt>
+    <a name = "Stmt"></a>
+    <strong>Stmt</strong>
+    </dt>
+    <dd>
+    AST Stmt
+
+
+    <h3>Fields:</h3>
+    <ul>
+        <li><span class="parameter">type</span>
+         "Stmt"
+        </li>
+        <li><span class="parameter">kind</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         <code>StmtKind</code> of this statement</p>
+
+<p> <code>StmtKind::Local</code> only:
+        </li>
+        <li><span class="parameter">ty</span>
+            <span class="types"><span class="type">LuaAstNode</span></span>
+         Type of local
+         (<em>optional</em>)
+        </li>
+        <li><span class="parameter">init</span>
+            <span class="types"><span class="type">LuaAstNode</span></span>
+         Initializer of local
+         (<em>optional</em>)
+        </li>
+        <li><span class="parameter">pat</span>
+            <span class="types"><span class="type">LuaAstNode</span></span>
+         Name of local</p>
+
+<p> <code>StmtKind::Item</code> only:
+        </li>
+        <li><span class="parameter">item</span>
+            <span class="types"><span class="type">LuaAstNode</span></span>
+         Item node</p>
+
+<p> <code>StmtKind::Semi</code> and <code>StmtKind::Expr</code> only:
+        </li>
+        <li><span class="parameter">expr</span>
+            <span class="types"><span class="type">LuaAstNode</span></span>
+         Expression in this statement
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Expr"></a>
+    <strong>Expr</strong>
+    </dt>
+    <dd>
+    AST Expr
+
+
+    <h3>Fields:</h3>
+    <ul>
+        <li><span class="parameter">type</span>
+         "Expr"
+        </li>
+        <li><span class="parameter">kind</span>
+            <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+         <code>ExprKind</code> of this expression</p>
+
+<p> <code>ExprKind::Lit</code> only:
+        </li>
+        <li><span class="parameter">value</span>
+         Literal value of this expression
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_ItemAstNode"></a>Class ItemAstNode </h2>
+
+          <div class="section-description">
+          Item AST node handle</p>
+
+<p> This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "ItemAstNode:visit_stmts"></a>
+    <strong>ItemAstNode:visit_stmts (callback)</strong>
+    </dt>
+    <dd>
+    Visit statements
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">callback</span>
+            <span class="types"><span class="type">function(LuaAstNode)</span></span>
+         Function to call when visiting each statement
+        </li>
+    </ul>
+
 
 
 
@@ -609,7 +750,7 @@
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2019-02-21 10:38:12 </i>
+<i style="float:right;">Last updated 2019-06-24 11:50:01 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

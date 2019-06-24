@@ -28,6 +28,9 @@ pub(crate) trait IntoLuaAst<'lua> {
     fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>>;
 }
 
+/// Refactoring module
+// @submodule Refactor
+
 /// AST Stmt
 // @table Stmt
 // @field type "Stmt"

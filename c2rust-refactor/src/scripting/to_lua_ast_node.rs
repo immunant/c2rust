@@ -14,6 +14,10 @@ use rlua::prelude::LuaString;
 use crate::ast_manip::{util, visit_nodes, AstName, AstNode, WalkAst};
 use super::DisplayLuaError;
 
+/// Refactoring module
+// @module Refactor
+
+
 pub(crate) trait ToLuaExt {
     fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>>;
 }
@@ -77,6 +81,11 @@ impl<T> LuaAstNode<T>
     }
 }
 
+/// Item AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type ItemAstNode
 unsafe impl Send for LuaAstNode<P<Item>> {}
 #[allow(unused_doc_comments)]
 impl UserData for LuaAstNode<P<Item>> {
@@ -134,6 +143,11 @@ impl UserData for LuaAstNode<P<Item>> {
     }
 }
 
+/// ForeignItem AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type ForeignItemAstNode
 unsafe impl Send for LuaAstNode<P<ForeignItem>> {}
 impl UserData for LuaAstNode<P<ForeignItem>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
@@ -156,9 +170,17 @@ impl UserData for LuaAstNode<P<ForeignItem>> {
     }
 }
 
+/// QSelf AST node handle
+//
+// @type QSelfAstNode
 impl UserData for LuaAstNode<QSelf> {}
 
 
+/// Path AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type PathAstNode
 unsafe impl Send for LuaAstNode<Path> {}
 impl UserData for LuaAstNode<Path> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
@@ -206,6 +228,12 @@ impl UserData for LuaAstNode<PathSegment> {
     }
 }
 
+
+/// Def AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type DefAstNode
 unsafe impl Send for LuaAstNode<Def> {}
 impl UserData for LuaAstNode<Def> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
@@ -238,6 +266,12 @@ impl ToLuaExt for Span {
     }
 }
 
+
+/// Expr AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type ExprAstNode
 unsafe impl Send for LuaAstNode<P<Expr>> {}
 impl UserData for LuaAstNode<P<Expr>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
@@ -254,12 +288,24 @@ impl UserData for LuaAstNode<P<Expr>> {
     }
 }
 
+
+/// Ty AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type TyAstNode
 unsafe impl Send for LuaAstNode<P<Ty>> {}
 impl UserData for LuaAstNode<P<Ty>> {}
 
 unsafe impl Send for LuaAstNode<Vec<Stmt>> {}
 impl UserData for LuaAstNode<Vec<Stmt>> {}
 
+
+/// Stmt AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type StmtAstNode
 unsafe impl Send for LuaAstNode<Stmt> {}
 impl UserData for LuaAstNode<Stmt> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
@@ -277,15 +323,39 @@ impl UserData for LuaAstNode<Stmt> {
     }
 }
 
+
+/// Pat AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type PatAstNode
 unsafe impl Send for LuaAstNode<P<Pat>> {}
 impl UserData for LuaAstNode<P<Pat>> {}
 
+
+/// Crate AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type CrateAstNode
 unsafe impl Send for LuaAstNode<Crate> {}
 impl UserData for LuaAstNode<Crate> {}
 
+
+/// Local AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type LocalAstNode
 unsafe impl Send for LuaAstNode<P<Local>> {}
 impl UserData for LuaAstNode<P<Local>> {}
 
+
+/// Lit AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type LitAstNode
 unsafe impl Send for LuaAstNode<Lit> {}
 impl UserData for LuaAstNode<Lit> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
@@ -307,6 +377,12 @@ impl UserData for LuaAstNode<Lit> {
     }
 }
 
+
+/// Mod AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type ModAstNode
 unsafe impl Send for LuaAstNode<Mod> {}
 impl UserData for LuaAstNode<Mod> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
@@ -317,6 +393,12 @@ impl UserData for LuaAstNode<Mod> {
     }
 }
 
+
+/// UseTree AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type UseTreeAstNode
 unsafe impl Send for LuaAstNode<P<UseTree>> {}
 impl UserData for LuaAstNode<P<UseTree>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
