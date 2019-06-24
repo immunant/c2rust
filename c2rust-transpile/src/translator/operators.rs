@@ -199,6 +199,7 @@ impl<'c> Translation<'c> {
                 .is_enum();
             let result_type = self.convert_type(lhs_ty.ctype)?;
             let val = if is_enum_result {
+                if ctx.is_const { self.use_feature("const_transmute"); }
                 WithStmts::new_unsafe_val(transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std))
             } else {
                 WithStmts::new_val(mk().cast_expr(val, result_type))
@@ -377,6 +378,7 @@ impl<'c> Translation<'c> {
                             let result_type = self.convert_type(qtype.ctype)?;
                             let val = if is_enum_result {
                                 is_unsafe = true;
+                                if ctx.is_const { self.use_feature("const_transmute"); }
                                 transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std)
                             } else {
                                 mk().cast_expr(val, result_type)

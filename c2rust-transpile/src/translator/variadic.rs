@@ -171,6 +171,7 @@ impl<'c> Translation<'c> {
 
                 let val = if have_fn_ptr {
                     // transmute result of call to `arg` when expecting a function pointer
+                    if ctx.is_const { self.use_feature("const_transmute"); }
                     transmute_expr(mk().infer_ty(), mk().infer_ty(), val, self.tcfg.emit_no_std)
                 } else {
                     val
