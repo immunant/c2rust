@@ -220,7 +220,7 @@ def _get_rust_toolchain_path(dirtype: str) -> str:
     else:  # no rustup, can't request correct nightly
         sysroot = pb.local["rustc"]("--print", "sysroot")
 
-    return os.path.join(sysroot, dirtype)
+    return os.path.join(sysroot.rstrip(), dirtype)
 
 
 def on_x86() -> bool:
