@@ -71,6 +71,17 @@ On Gentoo, you need to point the build system to the location of `libclang.so`
 
 If you have trouble with building and installing, or want to build from the latest master, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
 
+### Installing from Git
+
+If you'd like to check our recently developed features or you urgently require a bugfixed version of c2rust
+you can install it directly from Git:
+
+    cargo +nightly-2019-04-12 install --git https://github.com/immunant/c2rust.git c2rust
+   
+Please note that the master branch is under constant development and you may expirience issues or crashes.
+
+You should also set `LLVM_CONFIG_PATH` accordingly if required as described above.
+
 ## Translating C to Rust
 
 To translate C files specified in `compile_commands.json` (see below), run the `c2rust` tool with the `transpile` subcommand:
