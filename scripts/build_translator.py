@@ -25,7 +25,6 @@ from common import (
     on_x86,
     on_mac,
     setup_logging,
-    have_rust_toolchain,
     ensure_clang_version,
     git_ignore_dir,
     on_linux,
@@ -227,7 +226,7 @@ def build_transpiler(args):
     msg += "LLVM_CONFIG_PATH={} \\\n".format(llvm_config)
     msg += "LLVM_SYSTEM_LIBS='{}' \\\n".format(llvm_system_libs)
     msg += "C2RUST_AST_EXPORTER_LIB_DIR={} \\\n".format(llvm_libdir)
-    msg += " cargo +{} ".format(c.CUSTOM_RUST_NAME)
+    msg += " cargo"
     msg += " ".join(build_flags)
     logging.debug(msg)
 
@@ -243,8 +242,7 @@ def build_transpiler(args):
                           LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs,
                           C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
-            # build with custom rust toolchain
-            invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)
+            invoke(cargo, *build_flags)
 
 
 def _parse_args():
@@ -326,10 +324,6 @@ def _main():
         die(err)
 
     args = _parse_args()
-
-    # prerequisites
-    if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
-        die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])

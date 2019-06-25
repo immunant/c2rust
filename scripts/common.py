@@ -190,24 +190,6 @@ class Config:
 config = Config()
 
 
-def have_rust_toolchain(name: str) -> bool:
-    """
-    Check whether name is output by `rustup show` on its own line.
-    """
-    rustup = get_cmd_or_die('rustup')
-    lines = rustup('show').split('\n')
-    return any([True for l in lines if l.startswith(name)])
-
-
-def get_host_triplet() -> str:
-    if on_linux():
-        return "x86_64-unknown-linux-gnu"
-    elif on_mac():
-        return "x86_64-apple-darwin"
-    else:
-        assert False, "not implemented"
-
-
 def update_or_init_submodule(submodule_path: str):
     git = get_cmd_or_die("git")
     invoke_quietly(git, "submodule", "update", "--init", submodule_path)
@@ -224,24 +206,21 @@ def get_rust_toolchain_binpath() -> str:
 
 def _get_rust_toolchain_path(dirtype: str) -> str:
     """
-    returns library path to custom rust libdir
-
+    Ask rustc for the correct path to its {lib,bin} directory. 
     """
-    if platform.architecture()[0] != '64bit':
-        die("must be on 64-bit host")
-
-    host_triplet = get_host_triplet()
 
     if 'RUSTUP_HOME' in pb.local.env:
         home = pb.local.env['RUSTUP_HOME']
     else:
         home = os.path.join(pb.local.env['HOME'], ".rustup")
-    libpath = "toolchains/{}-{}/{}/"
-    libpath = libpath.format(config.CUSTOM_RUST_NAME, host_triplet, dirtype)
-    libpath = os.path.join(home, libpath)
-    emsg = "custom rust compiler lib path missing: " + libpath
-    assert os.path.isdir(libpath), emsg
-    return libpath
+
+    if os.path.isdir(home):  # have rustup; request correct nightly
+        nightly = "+" + config.CUSTOM_RUST_NAME
+        sysroot = pb.local["rustc"](nightly, "--print", "sysroot")
+    else:  # no rustup, can't request correct nightly
+        sysroot = pb.local["rustc"]("--print", "sysroot")
+
+    return os.path.join(sysroot, dirtype)
 
 
 def on_x86() -> bool:
@@ -368,15 +347,6 @@ def get_cmd_or_die(cmd: str) -> Command:
         return pb.local[cmd]
     except pb.CommandNotFound:
         die("{} not in path".format(cmd), errno.ENOENT)
-
-
-def get_cmd_from_rustup(cmd: str) -> Command:
-    """
-    ask rustup for path to cmd for the right rust toolchain.
-    """
-    rustup = get_cmd_or_die("rustup")
-    toolpath = rustup('run', config.CUSTOM_RUST_NAME, 'which', cmd).strip()
-    return pb.local.get(toolpath)
 
 
 def ensure_dir(path):
