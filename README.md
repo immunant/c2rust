@@ -154,6 +154,10 @@ If you have [bear](https://github.com/rizsotto/Bear) installed, it can be used s
 
     bear <build command>
 
+## Contact
+To report issues with translation or refactoring, please use our [Issue Tracker](https://github.com/immunant/c2rust/issues).
+
+To reach the development team, join our [discord channel](https://discord.gg/ANSrTuu) or email us at [c2rust@immunant.com](mailto:c2rust@immunant.com).
 
 ## FAQ
 
@@ -164,12 +168,6 @@ We run the C preprocessor before translation to Rust. This specializes the code 
 > What platforms can C2Rust be run on?
 
 The translator and refactoring tool support both macOS and Linux. Other features, such as cross checking the functionality between C and Rust code, are currently limited to Linux hosts. 
-
-
-## Contact
-To report issues with the translation, please use our Issue Tracker.
-
-The development team can be reached by email at c2rust@immunant.com.
 
 ## Acknowledgements and Licensing
 
