@@ -632,7 +632,9 @@ pub fn translate(
                 }
                 t.cur_file.borrow_mut().take();
 
-                if t.tcfg.reorganize_definitions && decl_file_path != Some(&t.main_file) {
+                if t.tcfg.reorganize_definitions
+                    && decl_file_path.map_or(false, |path| path != &t.main_file)
+                {
                     t.generate_submodule_imports(decl_id, decl_file_path);
                 }
             };
@@ -674,7 +676,9 @@ pub fn translate(
                     _ => None,
                 };
 
-                if t.tcfg.reorganize_definitions && decl_file_path != Some(&t.main_file) {
+                if t.tcfg.reorganize_definitions
+                    && decl_file_path.map_or(false, |path| path != &t.main_file)
+                {
                     *t.cur_file.borrow_mut() = decl_file_path.cloned();
                 }
                 match t.convert_decl(ctx, *top_id) {
@@ -706,7 +710,9 @@ pub fn translate(
                 }
                 t.cur_file.borrow_mut().take();
 
-                if t.tcfg.reorganize_definitions && decl_file_path != Some(&t.main_file) {
+                if t.tcfg.reorganize_definitions
+                    && decl_file_path.map_or(false, |path| path != &t.main_file)
+                {
                     t.generate_submodule_imports(*top_id, decl_file_path);
                 }
             }
@@ -4270,7 +4276,7 @@ impl<'c> Translation<'c> {
         decl_file_path: Option<&PathBuf>,
     ) {
         if self.tcfg.reorganize_definitions
-            && decl_file_path.expect("There should be a decl file path.") != &self.main_file
+            && decl_file_path.map_or(false, |path| path != &self.main_file)
         {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks
@@ -4290,7 +4296,9 @@ impl<'c> Translation<'c> {
         item: ForeignItem,
         decl_file_path: Option<&PathBuf>,
     ) {
-        if self.tcfg.reorganize_definitions && decl_file_path.unwrap() != &self.main_file {
+        if self.tcfg.reorganize_definitions
+            && decl_file_path.map_or(false, |path| path != &self.main_file)
+        {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks
                 .entry(decl_file_path.unwrap().clone())
@@ -4309,13 +4317,9 @@ impl<'c> Translation<'c> {
         // If the definition lives in the same header, there is no need to import it
         // in fact, this would be a hard rust error.
         // We should never import into the main module here, as that happens in make_submodule
-        if decl_loc.file_path.as_ref().unwrap() == decl_file_path
+        if decl_loc.file_path.as_ref().map_or(false, |path| path == decl_file_path)
             || decl_file_path == &self.main_file {
             return;
-        }
-
-        if ident_name == "rtbTable" {
-            println!("hit case");
         }
 
         let mut module_path = vec!["super".into()];
