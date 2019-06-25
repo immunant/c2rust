@@ -2034,6 +2034,27 @@ impl<'c> Translation<'c> {
                 // If this function is just a regular inline
                 if is_inline && !attrs.contains(&c_ast::Attribute::AlwaysInline) {
                     mk_ = mk_.single_attr("inline");
+
+                    // * In C99, a function defined inline will never, and a function defined extern
+                    //   inline will always, emit an externally visible function.
+                    // * If a non-static function is declared inline, then it must be defined in the
+                    //   same translation unit. The inline definition that does not use extern is
+                    //   not externally visible and does not prevent other translation units from
+                    //   defining the same function. This makes the inline keyword an alternative to
+                    //   static for defining functions inside header files, which may be included in
+                    //   multiple translation units of the same program.
+                    // * always_inline implies inline -
+                    //   https://gcc.gnu.org/ml/gcc-help/2007-01/msg00051.html
+                    //   even if the `inline` keyword isn't present
+                    // * gnu_inline instead applies gnu89 rules. extern inline will not emit an
+                    //   externally visible function.
+                    if is_global && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
+                        self.use_feature("linkage");
+                        // ensures that public inlined rust function can be used in other modules
+                        mk_ = mk_.single_attr("linkage = \"external\"");
+                    }
+                    // NOTE: it does not seem necessary to have an else branch here that
+                    // specifies internal linkage in all other cases due to name mangling by rustc.
                 }
 
                 Ok(ConvertedDecl::Item(
