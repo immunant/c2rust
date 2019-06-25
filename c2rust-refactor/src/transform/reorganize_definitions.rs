@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::transform::Transform;
 use rustc::hir::Node;
@@ -50,6 +50,7 @@ struct ModuleInfo {
     ident: Ident,
     id: NodeId,
     new: bool,
+    has_main: bool,
 }
 
 impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
@@ -103,6 +104,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             .modules
             .values()
             .find(|dest_module_info| {
+                if dest_module_info.has_main { return false; }
                 // TODO: This is a simple naive heuristic,
                 // and should be improved upon.
                 parent_module
@@ -142,7 +144,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         // Move the item to the `module_items` mapping.
                         let items = module_items
                             .entry(dest_module_id)
-                            .or_insert_with(|| ModuleDefines::new(self.cx));
+                            .or_insert_with(|| ModuleDefines::new(self.cx, dest_module_id));
                         if !items.insert(item.clone()) {
                             // We couldn't move this item, bail out and retain the item.
                             return true;
@@ -207,11 +209,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }]
         });
 
+        let mut need_pub_defs = HashSet::<NodeId>::new();
         for mod_info in self.modules.values() {
             if mod_info.new {
                 if let Some(new_defines) = module_items.remove(&mod_info.id) {
+                    need_pub_defs.extend(&new_defines.imports);
                     let new_items = new_defines.into_items();
-                    let mut new_mod = mk().mod_(new_items);
+                    let mut new_mod = mk().pub_().mod_(new_items);
                     new_mod.inline = false;
                     let new_mod_item = mk()
                         .id(mod_info.id)
@@ -220,6 +224,16 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 }
             }
         }
+
+        FlatMapNodes::visit(krate, |mut item: P<Item>| {
+            if need_pub_defs.contains(&item.id) {
+                match item.vis.node.clone() {
+                    VisibilityKind::Public | VisibilityKind::Crate(_) => {}
+                    _ => item.vis.node = VisibilityKind::Crate(CrateSugar::PubCrate),
+                }
+            }
+            smallvec![item]
+        });
     }
 
     /// Update paths to moved items and remove redundant imports.
@@ -301,15 +315,25 @@ impl ModuleInfo {
             ident,
             id,
             new: true,
+            has_main: false,
         }
     }
 
     /// Create a ModuleInfo from a module `Item`
     fn from_item(item: &Item) -> Self {
+        let module = expect!([&item.node] ItemKind::Mod(m) => m);
+        let has_main = module.items.iter().any(|i| {
+            if let ItemKind::Fn(..) = i.node {
+                i.ident.as_str() == "main"
+            } else {
+                false
+            }
+        });
         Self {
             ident: item.ident,
             id: item.id,
             new: false,
+            has_main,
         }
     }
 }
@@ -319,19 +343,24 @@ enum IdentDecl {
     ForeignItem(ForeignItem, Abi),
 }
 
-/// Store and de-duplicate items in a singlea module
+/// Store and de-duplicate items in a single module
 struct ModuleDefines<'a, 'tcx: 'a> {
     cx: &'a RefactorCtxt<'a, 'tcx>,
+    module_id: NodeId,
     idents: PerNS<IndexMap<Ident, IdentDecl>>,
     impls: Vec<P<Item>>,
+    // Set of imported definition NodeIds that must be made pub(crate) at least
+    imports: HashSet<NodeId>,
 }
 
 impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
-    pub fn new(cx: &'a RefactorCtxt<'a, 'tcx>) -> Self {
+    pub fn new(cx: &'a RefactorCtxt<'a, 'tcx>, module_id: NodeId) -> Self {
         Self {
             cx,
+            module_id,
             idents: PerNS::default(),
             impls: Vec::new(),
+            imports: HashSet::new(),
         }
     }
 
@@ -351,6 +380,12 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     let ns = namespace(&path.def).expect("Could not identify def namespace");
                     if !self.insert_ident(ns, use_tree.ident(), u) {
                         return false;
+                    }
+                    if let Some(def_id) = self.cx.hir_map().as_local_node_id(path.def.def_id()) {
+                        let def_mod_id = self.cx.hir_map().get_module_parent_node(def_id);
+                        if def_mod_id != self.module_id {
+                            self.imports.insert(def_id);
+                        }
                     }
                 }
                 true
@@ -560,6 +595,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
             cx: _,
             idents,
             impls,
+            ..
         } = self;
 
         let items_iter = idents
