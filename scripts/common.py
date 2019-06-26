@@ -604,8 +604,18 @@ def download_archive(aurl: str, afile: str, asig: str = None):
     def _download_helper(url: str, ofile: str):
         if not os.path.isfile(ofile):
             logging.info("downloading %s", os.path.basename(ofile))
-            follow_redirs = "-L"
-            curl(url, follow_redirs, "--max-redirs", "20", "-o", ofile)
+            curl_args = [
+                url,
+                "-L",                       # follow redirects
+                "--max-redirs", "20",
+                "--connect-timeout", "5",   # timeout for reach attempt
+                "--max-time", "10",         # how long each retry will wait
+                "--retry", "5",
+                "--retry-delay", "0",       # exponential backoff
+                "--retry-max-time", "60",   # total time before we fail
+                "-o", ofile
+            ]
+            curl(*curl_args)
 
     _download_helper(aurl, afile)
 
