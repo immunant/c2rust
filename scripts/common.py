@@ -685,7 +685,6 @@ def download_archive(aurl: str, afile: str, asig: str = None):
                 "--retry-max-time", "60",   # total time before we fail
                 "-o", ofile
             ]
-            follow_redirs = "-L"
             curl(*curl_args)
 
     _download_helper(aurl, afile)
