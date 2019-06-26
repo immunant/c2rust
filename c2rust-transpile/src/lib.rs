@@ -228,6 +228,8 @@ fn invoke_refactor(build_dir: &PathBuf) -> Result<(), Error> {
         "--cargo",
         "--rewrite-mode",
         "inplace",
+        "rename_unnamed",
+        ";",
         "reorganize_definitions",
     ];
     let status = process::Command::new(cmd_path.into_os_string())

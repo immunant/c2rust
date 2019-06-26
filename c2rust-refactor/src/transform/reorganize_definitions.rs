@@ -145,10 +145,19 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         let items = module_items
                             .entry(dest_module_id)
                             .or_insert_with(|| ModuleDefines::new(self.cx, dest_module_id));
-                        if !items.insert(item.clone()) {
+                        let new_ident = match items.insert(item.clone()) {
+                            // We moved the item, potentially renaming (if unnamed)
+                            Ok(Some(ident)) => ident,
+
+                            // We moved the item without renaming
+                            Ok(None) => item.ident,
+
                             // We couldn't move this item, bail out and retain the item.
-                            return true;
-                        }
+                            Err(e) => {
+                                warn!("{}", e);
+                                return true;
+                            }
+                        };
 
                         // We are visiting a foreign module. Add path mappings
                         // for all of its items.
@@ -172,7 +181,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         let dest_path = mk().path(vec![
                             keywords::Crate.ident(),
                             dest_module_ident,
-                            item.ident,
+                            new_ident,
                         ]);
                         self.path_mapping
                             .insert(self.cx.node_def_id(item.id), (dest_path, dest_module_id));
@@ -200,10 +209,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
     /// Add items in `module_items` to their respective modules and create any
     /// new modules.
-    fn move_items(&self, krate: &mut Crate, mut module_items: HashMap<NodeId, ModuleDefines>) {
+    fn move_items(&mut self, krate: &mut Crate, mut module_items: HashMap<NodeId, ModuleDefines>) {
         FlatMapNodes::visit(krate, |item: P<Item>| {
             smallvec![if let Some(new_defines) = module_items.remove(&item.id) {
-                new_defines.move_into_module(item)
+                self.move_into_module(new_defines, item)
             } else {
                 item
             }]
@@ -235,6 +244,35 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             smallvec![item]
         });
     }
+
+    /// Merge with the definitions in the given module, returning a new module
+    /// containing the de-duplicated union of items.
+    fn move_into_module(&mut self, mut defines: ModuleDefines, mut mod_item: P<Item>) -> P<Item> {
+        let mod_id = mod_item.id;
+        let module = expect!([&mut mod_item.node] ItemKind::Mod(m) => m);
+        module.items = {
+            // Insert all existing items into the new module defines
+            for item in module.items.iter() {
+                match defines.insert(item.clone()) {
+                    Ok(Some(ident)) => {
+                        if ident != item.ident {
+                            let def_id = self.cx.node_def_id(item.id);
+                            let mut path = self.cx.def_path(def_id);
+                            path.segments.pop();
+                            path.segments.push(PathSegment::from_ident(ident));
+                            self.path_mapping.insert(def_id, (path, mod_id));
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => warn!("Could not move item into module: {}", e),
+                }
+            }
+            defines.into_items()
+        };
+
+        mod_item
+    }
+
 
     /// Update paths to moved items and remove redundant imports.
     fn update_paths(&self, krate: &mut Crate) {
@@ -348,6 +386,7 @@ struct ModuleDefines<'a, 'tcx: 'a> {
     cx: &'a RefactorCtxt<'a, 'tcx>,
     module_id: NodeId,
     idents: PerNS<IndexMap<Ident, IdentDecl>>,
+    unnamed_items: PerNS<Vec<IdentDecl>>,
     impls: Vec<P<Item>>,
     // Set of imported definition NodeIds that must be made pub(crate) at least
     imports: HashSet<NodeId>,
@@ -359,6 +398,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
             cx,
             module_id,
             idents: PerNS::default(),
+            unnamed_items: PerNS::default(),
             impls: Vec::new(),
             imports: HashSet::new(),
         }
@@ -366,7 +406,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
 
     /// Add an item into the module. If it has a name conflict with an existing
     /// item, choose the definition item over any declarations.
-    pub fn insert(&mut self, item: P<Item>) -> bool {
+    pub fn insert(&mut self, item: P<Item>) -> Result<Option<Ident>, String> {
         match &item.node {
             // We have to disambiguate anonymous items by contents,
             // since we don't have a proper Ident.
@@ -378,8 +418,8 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     let use_tree = expect!([&u.node] ItemKind::Use(u) => u);
                     let path = self.cx.resolve_use(&u);
                     let ns = namespace(&path.def).expect("Could not identify def namespace");
-                    if !self.insert_ident(ns, use_tree.ident(), u) {
-                        return false;
+                    if let Err(e) = self.insert_ident(ns, use_tree.ident(), u) {
+                        return Err(e);
                     }
                     if let Some(def_id) = self.cx.hir_map().as_local_node_id(path.def.def_id()) {
                         let def_mod_id = self.cx.hir_map().get_module_parent_node(def_id);
@@ -388,7 +428,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         }
                     }
                 }
-                true
+                Ok(None)
             }
 
             // Impls are just filtered on equivalence
@@ -396,7 +436,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                 if self.impls.iter().find(|u| item.ast_equiv(u)).is_none() {
                     self.impls.push(item.clone());
                 }
-                true
+                Ok(None)
             }
 
             // We collect all ForeignItems and later filter out any idents
@@ -405,7 +445,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                 f.items
                     .iter()
                     .for_each(|item| self.insert_foreign(item.clone(), f.abi));
-                true
+                Ok(None)
             }
 
             // We disambiguate named items by their names and check that
@@ -416,28 +456,16 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
             ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
                 assert!(item.ident != keywords::Invalid.ident());
                 self.insert_ident(Namespace::ValueNS, item.ident, item)
+                    .map(Some)
             }
 
             // Type namespace
             _ => {
                 assert!(item.ident != keywords::Invalid.ident());
                 self.insert_ident(Namespace::TypeNS, item.ident, item)
+                    .map(Some)
             }
         }
-    }
-
-    /// Merge with the defintions in the given module, returning a new module
-    /// containing the de-duplicated union of items.
-    pub fn move_into_module(mut self, mut mod_item: P<Item>) -> P<Item> {
-        let module = expect!([&mut mod_item.node] ItemKind::Mod(m) => m);
-        module.items = {
-            for item in module.items.iter() {
-                self.insert(item.clone());
-            }
-            self.into_items()
-        };
-
-        mod_item
     }
 
     /// Add a foreign item declaration into the module, making sure to not
@@ -453,8 +481,40 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
     }
 
     /// Insert an item with the given ident into a namespace. Helper for
-    /// `insert`.
-    fn insert_ident(&mut self, ns: Namespace, ident: Ident, mut new: P<Item>) -> bool {
+    /// `insert`. If inserted as ident, returns Ok(ident).
+    fn insert_ident(&mut self, ns: Namespace, ident: Ident, mut new: P<Item>) -> Result<Ident, String> {
+        if ident.as_str().contains("C2RustUnnamed") {
+            for existing_decl in self.unnamed_items[ns].iter_mut() {
+                match existing_decl {
+                    IdentDecl::Item(existing_item) => match &existing_item.node {
+                        ItemKind::Ty(..) | ItemKind::Struct(..) | ItemKind::Union(..)
+                        | ItemKind::Enum(..) => {
+                            if self.cx.structural_eq(&new, &existing_item) {
+                                return Ok(existing_item.ident);
+                            }
+                        }
+                        _ => {}
+                    },
+                    IdentDecl::ForeignItem(existing_foreign, _) => {
+                        if let ForeignItemKind::Ty = &existing_foreign.node {
+                            if foreign_equiv(&existing_foreign, &new) {
+                                // This item is equivalent to an existing foreign item,
+                                // modulo visibility.
+                                let existing_ident = existing_foreign.ident.clone();
+                                new.vis.node = join_visibility(&existing_foreign.vis.node, &new.vis.node);
+                                *existing_decl = IdentDecl::Item(new);
+                                return Ok(existing_ident);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If we get here we didn't match an existing unnamed item
+            self.unnamed_items[ns].push(IdentDecl::Item(new));
+            return Ok(ident);
+        }
+
         match self.idents[ns].get_mut(&ident) {
             Some(existing_decl) => match existing_decl {
                 IdentDecl::Item(existing_item) => match (&existing_item.node, &new.node) {
@@ -462,14 +522,14 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     (ItemKind::Use(..), _) => {
                         new.vis.node = join_visibility(&existing_item.vis.node, &new.vis.node);
                         *existing_decl = IdentDecl::Item(new);
-                        true
+                        Ok(ident)
                     }
 
                     // Make sure we use the widest visibility for this item
                     (_, ItemKind::Use(..)) => {
                         existing_item.vis.node =
                             join_visibility(&existing_item.vis.node, &new.vis.node);
-                        true
+                        Ok(ident)
                     }
 
                     // (ItemKind::Fn(..), ItemKind::Fn(..)) => {
@@ -480,15 +540,14 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     // equivalent.
                     _ => {
                         if self.cx.structural_eq(&new, &existing_item) {
-                            true
+                            Ok(ident)
                         } else {
-                            warn!(
+                            Err(format!(
                                 "Could not disambiguate item for ident: {:?}\n  {}\n  {}",
                                 existing_item.ident,
                                 item_to_string(&new),
                                 item_to_string(&existing_item)
-                            );
-                            false
+                            ))
                         }
                     }
                 },
@@ -502,7 +561,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                             if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
                                 existing_foreign.vis.node =
                                     join_visibility(&existing_foreign.vis.node, &new.vis.node);
-                                return true;
+                                return Ok(ident);
                             }
                         }
 
@@ -510,14 +569,14 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         // with a rust import.
                         new.vis.node = join_visibility(&existing_foreign.vis.node, &new.vis.node);
                         *existing_decl = IdentDecl::Item(new);
-                        return true;
+                        return Ok(ident);
                     }
                     if foreign_equiv(&existing_foreign, &new) {
                         // This item is equivalent to an existing foreign item,
                         // modulo visibility.
                         new.vis.node = join_visibility(&existing_foreign.vis.node, &new.vis.node);
                         *existing_decl = IdentDecl::Item(new);
-                        true
+                        return Ok(ident);
                     } else {
                         panic!(
                             "Couldn't find a matching item for ident: {:?}\n{:#?}\n{:#?}",
@@ -529,7 +588,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
 
             None => {
                 self.idents[ns].insert(ident, IdentDecl::Item(new));
-                true
+                Ok(ident)
             }
         }
     }
@@ -595,13 +654,15 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
             cx: _,
             idents,
             impls,
+            unnamed_items,
             ..
         } = self;
 
-        let items_iter = idents
+        let items_iter = unnamed_items
             .type_ns
             .into_iter()
-            .map(|(_, v)| v)
+            .chain(unnamed_items.value_ns.into_iter())
+            .chain(idents.type_ns.into_iter().map(|(_, v)| v))
             .chain(idents.value_ns.into_iter().map(|(_, v)| v));
 
         let mut items: Vec<P<Item>> = Vec::new();
