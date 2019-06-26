@@ -206,19 +206,19 @@ def get_rust_toolchain_binpath() -> str:
 
 def _get_rust_toolchain_path(dirtype: str) -> str:
     """
-    Ask rustc for the correct path to its {lib,bin} directory. 
+    Ask rustc for the correct path to its {lib,bin} directory.
     """
 
-    if 'RUSTUP_HOME' in pb.local.env:
-        home = pb.local.env['RUSTUP_HOME']
-    else:
-        home = os.path.join(pb.local.env['HOME'], ".rustup")
+    # If rustup is being used, it will respect the RUSTUP_TOOLCHAIN environment
+    # variable, according to:
+    # https://github.com/rust-lang/rustup.rs/blob/master/README.md#override-precedence
+    #
+    # If rustup is not being used, we can't control the toolchain; but rustc
+    # will ignore this environment variable, so setting it is harmless.
 
-    if os.path.isdir(home):  # have rustup; request correct nightly
-        nightly = "+" + config.CUSTOM_RUST_NAME
-        sysroot = pb.local["rustc"](nightly, "--print", "sysroot")
-    else:  # no rustup, can't request correct nightly
-        sysroot = pb.local["rustc"]("--print", "sysroot")
+    sysroot = pb.local["rustc"].with_env(
+        RUSTUP_TOOLCHAIN=config.CUSTOM_RUST_NAME,
+    )("--print", "sysroot")
 
     return os.path.join(sysroot.rstrip(), dirtype)
 
