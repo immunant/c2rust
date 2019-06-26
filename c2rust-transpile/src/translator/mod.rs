@@ -590,7 +590,7 @@ pub fn translate(
                 Name::AnonymousType => {
                     t.type_converter
                         .borrow_mut()
-                        .declare_decl_name(decl_id, "unnamed");
+                        .declare_decl_name(decl_id, "C2RustUnnamed");
                 }
                 Name::TypeName(name) => {
                     t.type_converter
