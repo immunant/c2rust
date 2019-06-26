@@ -4,7 +4,6 @@ import re
 import sys
 import json
 import errno
-import distro
 import psutil
 import signal
 import logging
@@ -238,42 +237,7 @@ def on_mac() -> bool:
 
 
 def on_linux() -> bool:
-    if on_mac():
-        return False
-    elif on_ubuntu() or on_arch() or on_debian() or on_fedora():
-        return True
-    else:
-        # neither on mac nor on a known distro
-        assert False, "not sure"
-
-
-def on_arch() -> bool:
-    """
-    return true on arch distros.
-    """
-    return distro.name() == "Arch Linux"
-
-
-
-def on_ubuntu() -> bool:
-    """
-    return true on recent ubuntu linux distro.
-    """
-    return distro.name() == "Ubuntu"
-
-
-def on_debian() -> bool:
-    """
-    return true on debian distro (and derivatives).
-    """
-    return distro.name().startswith("Debian") or distro.like() == "debian"
-
-
-def on_fedora() -> bool:
-    """
-    return true on debian distro (and derivatives).
-    """
-    return distro.name() == "Fedora" or "fedora" in distro.like()
+    return platform.system() == "Linux"
 
 
 def regex(raw: str):
