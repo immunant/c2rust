@@ -670,14 +670,6 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
         for (auto *field : record_def->fields()) {
             if (field->isUnnamedBitfield())
                 continue; // Unnamed bitfields only affect layout, not contents
-            if (field->isBitField()) {
-                auto &diags = ctx.getDiagnostics();
-                auto record_decl = field->getParent();
-                report_clang_error(diags, "default cross-checking is not supported for bitfields, "
-                                          "please use a custom cross-check for '%0'",
-                                          record_name);
-                return {};
-            }
 
             XCheck field_xcheck{xcfg_scope_struct_field(record_cfg, field->getName())};
             if (field_xcheck.type == config::XCHECK_TYPE_DISABLED)
