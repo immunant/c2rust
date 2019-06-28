@@ -293,12 +293,14 @@ impl<'a> Translation<'a> {
 
                     // Mark it with `#[bitfield(padding)]`
                     let field_padding_inner = mk().meta_item("padding", MetaItemKind::Word);
-                    let field_padding_inner = vec![
-                        mk().nested_meta_item(NestedMetaItem::MetaItem(field_padding_inner)),
-                    ];
-                    let field_padding_outer = mk().meta_item("bitfield", MetaItemKind::List(field_padding_inner));
-                    let field = mk().meta_item_attr(AttrStyle::Outer, field_padding_outer)
-                        .pub_().struct_field(field_name, ty);
+                    let field_padding_inner =
+                        vec![mk().nested_meta_item(NestedMetaItem::MetaItem(field_padding_inner))];
+                    let field_padding_outer =
+                        mk().meta_item("bitfield", MetaItemKind::List(field_padding_inner));
+                    let field = mk()
+                        .meta_item_attr(AttrStyle::Outer, field_padding_outer)
+                        .pub_()
+                        .struct_field(field_name, ty);
 
                     padding_count += 1;
 
