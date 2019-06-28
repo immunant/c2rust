@@ -28,7 +28,10 @@ struct BFFieldAttr {
     bits: (String, __rt::Span),
 }
 
-fn parse_bitfield_attr(attr: &Attribute, field_ident: &Ident) -> Result<Option<BFFieldAttr>, Error> {
+fn parse_bitfield_attr(
+    attr: &Attribute,
+    field_ident: &Ident,
+) -> Result<Option<BFFieldAttr>, Error> {
     let mut name = None;
     let mut ty = None;
     let mut bits = None;
@@ -58,7 +61,9 @@ fn parse_bitfield_attr(attr: &Attribute, field_ident: &Ident) -> Result<Option<B
                     }
                     // This one shouldn't ever occur here,
                     // but we're handling it just to be safe
-                    "padding" => { return Ok(None); }
+                    "padding" => {
+                        return Ok(None);
+                    }
                     _ => {}
                 }
             } else if let NestedMeta::Meta(Meta::Word(ref ident)) = nested_meta {
