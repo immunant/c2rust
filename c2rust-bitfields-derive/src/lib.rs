@@ -28,7 +28,7 @@ struct BFFieldAttr {
     bits: (String, __rt::Span),
 }
 
-fn parse_bitfield_attr(attr: &Attribute, field_ident: &Ident) -> Result<BFFieldAttr, Error> {
+fn parse_bitfield_attr(attr: &Attribute, field_ident: &Ident) -> Result<Option<BFFieldAttr>, Error> {
     let mut name = None;
     let mut ty = None;
     let mut bits = None;
@@ -56,7 +56,14 @@ fn parse_bitfield_attr(attr: &Attribute, field_ident: &Ident) -> Result<BFFieldA
                         bits = Some(rhs_string);
                         bits_span = Some(meta_name_value.ident.span());
                     }
+                    // This one shouldn't ever occur here,
+                    // but we're handling it just to be safe
+                    "padding" => { return Ok(None); }
                     _ => {}
+                }
+            } else if let NestedMeta::Meta(Meta::Word(ref ident)) = nested_meta {
+                if ident == "padding" {
+                    return Ok(None);
                 }
             }
         }
@@ -83,12 +90,12 @@ fn parse_bitfield_attr(attr: &Attribute, field_ident: &Ident) -> Result<BFFieldA
         return Err(Error::new(span, err_str));
     }
 
-    Ok(BFFieldAttr {
+    Ok(Some(BFFieldAttr {
         field_name: field_ident.clone(),
         name: name.unwrap(),
         ty: ty.unwrap(),
         bits: (bits.unwrap(), bits_span.unwrap()),
-    })
+    }))
 }
 
 fn filter_and_parse_fields(field: &Field) -> Vec<Result<BFFieldAttr, Error>> {
@@ -105,6 +112,7 @@ fn filter_and_parse_fields(field: &Field) -> Vec<Result<BFFieldAttr, Error>> {
     attrs
         .into_iter()
         .map(|attr| parse_bitfield_attr(attr, &field.ident.as_ref().unwrap()))
+        .flat_map(Result::transpose) // Remove the Ok(None) values
         .collect()
 }
 

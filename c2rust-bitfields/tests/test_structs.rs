@@ -197,6 +197,7 @@ struct OverlappingByteDate {
     #[bitfield(name = "m", ty = "libc::c_ushort", bits = "5..=8")]
     d_m: [u8; 2],
     y: u16,
+    #[bitfield(padding)]
     _pad: [u8; 4],
 }
 
@@ -265,6 +266,7 @@ struct UnnamedBitfield {
     z: f64,
     #[bitfield(name = "x", ty = "libc::c_ushort", bits = "0..=4")]
     x: [u8; 1],
+    #[bitfield(padding)]
     _pad: [u8; 1],
     #[bitfield(name = "y", ty = "libc::c_ushort", bits = "0..=8")]
     y: [u8; 2],
@@ -482,6 +484,7 @@ struct SingleBits {
     #[bitfield(name = "x", ty = "libc::c_ushort", bits = "0..=0")]
     #[bitfield(name = "y", ty = "libc::c_short", bits = "1..=1")]
     x_y: [u8; 1],
+    #[bitfield(padding)]
     _pad: [u8; 1],
 }
 
