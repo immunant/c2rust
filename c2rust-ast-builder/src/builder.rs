@@ -7,7 +7,6 @@ use syntax::attr::mk_attr_inner;
 use syntax::parse::token::{self, DelimToken, TokenKind, Token};
 use syntax::ptr::P;
 use syntax::source_map::{dummy_spanned, Span, Spanned, DUMMY_SP};
-use syntax::symbol::kw;
 use syntax::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
 use syntax::ThinVec;
 
@@ -404,21 +403,22 @@ impl Builder {
 
         let tokens: TokenStream = {
             let mut builder = TokenStreamBuilder::new();
-            builder.push(TokenKind::OpenDelim(DelimToken::Paren));
+            builder.push(TokenTree::token(TokenKind::OpenDelim(DelimToken::Paren), DUMMY_SP));
 
             let mut is_first = true;
             for argument in arguments {
                 if is_first {
                     is_first = false;
                 } else {
-                    builder.push(TokenKind::Comma);
+                    builder.push(TokenTree::token(TokenKind::Comma, DUMMY_SP));
                 }
 
                 let argument: Ident = argument.make(&self);
-                builder.push(TokenKind::from_ast_ident(argument));
+                let token_kind = TokenKind::Ident(argument.name, argument.is_raw_guess());
+                builder.push(TokenTree::token(token_kind, DUMMY_SP));
             }
 
-            builder.push(TokenKind::CloseDelim(DelimToken::Paren));
+            builder.push(TokenTree::token(TokenKind::CloseDelim(DelimToken::Paren), DUMMY_SP));
             builder.build()
         };
 
@@ -473,7 +473,7 @@ impl Builder {
         AngleBracketedArgs {
             span: self.span,
             args: args,
-            bindings: vec![],
+            constraints: vec![],
         }
     }
 
@@ -507,20 +507,20 @@ impl Builder {
         path.make(&self)
     }
 
-    pub fn abs_path<Pa>(self, path: Pa) -> Path
-    where
-        Pa: Make<Path>,
-    {
-        let mut p = path.make(&self);
-        if !p
-            .segments
-            .get(0)
-            .map_or(false, |s| s.ident.name == kw::Crate.name())
-        {
-            p.segments.insert(0, kw::Crate.ident().make(&self));
-        }
-        p
-    }
+//    pub fn abs_path<Pa>(self, path: Pa) -> Path
+//    where
+//        Pa: Make<Path>,
+//    {
+//        let mut p = path.make(&self);
+//        if !p
+//            .segments
+//            .get(0)
+//            .map_or(false, |s| s.ident.name == kw::Crate)
+//        {
+//            p.segments.insert(0, kw::Crate.ident().make(&self));
+//        }
+//        p
+//    }
 
     pub fn anon_const<E>(self, expr: E) -> AnonConst
     where
@@ -944,19 +944,20 @@ impl Builder {
         let body = body.make(&self);
         Arm {
             attrs: self.attrs,
-            pats: pats,
+            pats,
             guard,
             body,
+            span: DUMMY_SP,
         }
     }
 
     // Literals
 
     pub fn bytestr_lit(self, s: Vec<u8>) -> Lit {
-        Lit {
-            node: LitKind::ByteStr(Rc::new(s)),
-            span: self.span,
-        }
+        Lit::from_lit_kind(
+            LitKind::ByteStr(Rc::new(s)),
+            self.span
+        )
     }
 
     pub fn str_lit<S>(self, s: S) -> Lit
@@ -964,24 +965,24 @@ impl Builder {
         S: IntoSymbol,
     {
         let s = s.into_symbol();
-        Lit {
-            node: LitKind::Str(s, StrStyle::Cooked),
-            span: self.span,
-        }
+        Lit::from_lit_kind(
+            LitKind::Str(s, StrStyle::Cooked),
+            self.span
+        )
     }
 
     pub fn byte_lit(self, b: u8) -> Lit {
-        Lit {
-            node: LitKind::Byte(b),
-            span: self.span,
-        }
+        Lit::from_lit_kind(
+            LitKind::Byte(b),
+            self.span
+        )
     }
 
     pub fn char_lit(self, c: char) -> Lit {
-        Lit {
-            node: LitKind::Char(c),
-            span: self.span,
-        }
+        Lit::from_lit_kind(
+            LitKind::Char(c),
+            self.span
+        )
     }
 
     pub fn int_lit<T>(self, i: u128, ty: T) -> Lit
@@ -989,10 +990,10 @@ impl Builder {
         T: Make<LitIntType>,
     {
         let ty = ty.make(&self);
-        Lit {
-            node: LitKind::Int(i, ty),
-            span: self.span,
-        }
+        Lit::from_lit_kind(
+            LitKind::Int(i, ty),
+            self.span
+        )
     }
 
     pub fn float_lit<S, T>(self, s: S, ty: T) -> Lit
@@ -1002,10 +1003,10 @@ impl Builder {
     {
         let s = s.into_symbol();
         let ty = ty.make(&self);
-        Lit {
-            node: LitKind::Float(s, ty),
-            span: self.span,
-        }
+        Lit::from_lit_kind(
+            LitKind::Float(s, ty),
+            self.span
+        )
     }
 
     pub fn float_unsuffixed_lit<S>(self, s: S) -> Lit
@@ -1013,17 +1014,17 @@ impl Builder {
         S: IntoSymbol,
     {
         let s = s.into_symbol();
-        Lit {
-            node: LitKind::FloatUnsuffixed(s),
-            span: self.span,
-        }
+        Lit::from_lit_kind(
+            LitKind::FloatUnsuffixed(s),
+            self.span
+        )
     }
 
     pub fn bool_lit(self, b: bool) -> Lit {
-        Lit {
-            node: LitKind::Bool(b),
-            span: self.span,
-        }
+        Lit::from_lit_kind(
+            LitKind::Bool(b),
+            self.span
+        )
     }
 
     pub fn ifte_expr<C, T, E>(self, cond: C, then_case: T, else_case: Option<E>) -> P<Expr>
@@ -1608,7 +1609,7 @@ impl Builder {
         let mac = mac.make(&self);
         let kind = ItemKind::Mac(mac);
         Self::item(
-            kw::Invalid.ident(),
+            Ident::invalid(),
             self.attrs,
             self.vis,
             self.span,
@@ -1662,7 +1663,7 @@ impl Builder {
     {
         let ty = ty.make(&self);
         Self::item(
-            kw::Invalid.ident(),
+            Ident::invalid(),
             self.attrs,
             self.vis,
             self.span,
@@ -1712,7 +1713,7 @@ impl Builder {
             kind: UseTreeKind::Simple(rename, DUMMY_NODE_ID, DUMMY_NODE_ID),
         };
         Self::item(
-            kw::Invalid.ident(),
+            Ident::invalid(),
             self.attrs,
             self.vis,
             self.span,
@@ -1746,7 +1747,7 @@ impl Builder {
             kind: UseTreeKind::Nested(inner_trees),
         };
         Self::item(
-            kw::Invalid.ident(),
+            Ident::invalid(),
             self.attrs,
             self.vis,
             self.span,
@@ -1761,7 +1762,7 @@ impl Builder {
             items,
         };
         Self::item(
-            kw::Invalid.ident(),
+            Ident::invalid(),
             self.attrs,
             self.vis,
             self.span,
@@ -1803,7 +1804,7 @@ impl Builder {
         let mac = mac.make(&self);
         let kind = ImplItemKind::Macro(mac);
         Self::impl_item_(
-            kw::Invalid.ident(),
+            Ident::invalid(),
             self.attrs,
             self.vis,
             Defaultness::Final,
@@ -1843,7 +1844,7 @@ impl Builder {
         let mac = mac.make(&self);
         let kind = TraitItemKind::Macro(mac);
         Self::trait_item_(
-            kw::Invalid.ident(),
+            Ident::invalid(),
             self.attrs,
             self.generics,
             self.span,
@@ -1896,14 +1897,13 @@ impl Builder {
     {
         let name = name.make(&self);
         let ty = ty.make(&self);
-        let is_mut = self.mutbl == Mutability::Mutable;
         Self::foreign_item(
             name,
             self.attrs,
             self.vis,
             self.span,
             self.id,
-            ForeignItemKind::Static(ty, is_mut),
+            ForeignItemKind::Static(ty, self.mutbl),
         )
     }
 
@@ -1929,7 +1929,7 @@ impl Builder {
         let mac = mac.make(&self);
         let kind = ForeignItemKind::Macro(mac);
         Self::foreign_item(
-            kw::Invalid.ident(),
+            Ident::invalid(),
             self.attrs,
             self.vis,
             self.span,
@@ -2020,6 +2020,7 @@ impl Builder {
         let ty = ty.make(&self);
         let pat = pat.make(&self);
         Arg {
+            attrs: ThinVec::new(),
             ty: ty,
             pat: pat,
             id: self.id,
@@ -2032,7 +2033,8 @@ impl Builder {
     {
         let eself = dummy_spanned(kind.make(&self));
         let ident = "self".make(&self);
-        Arg::from_self(eself, ident)
+        let attrs = ThinVec::new();
+        Arg::from_self(attrs, eself, ident)
     }
 
     pub fn ty_param<I>(self, ident: I) -> GenericParam
