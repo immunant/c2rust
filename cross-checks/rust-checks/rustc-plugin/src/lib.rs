@@ -1109,14 +1109,14 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
                     // that's how derive-macros parses it
                     let mut attrs = AttrMap::new();
                     let sid = format!("{}", id);
-                    attrs.insert("fixed_hash", AttrValue::Str(sid));
+                    attrs.insert("fixed", AttrValue::Str(sid));
                     let attr_args = self.convert_hash_attr_map(sf.span, attrs);
                     Some(self.cx.attribute(sf.span, attr_args))
                 }
 
                 xcfg::XCheckType::Custom(ref s) => {
                     let mut attrs = AttrMap::new();
-                    attrs.insert("custom_hash", AttrValue::Str(s.clone()));
+                    attrs.insert("custom", AttrValue::Str(s.clone()));
                     let attr_args = self.convert_hash_attr_map(sf.span, attrs);
                     Some(self.cx.attribute(sf.span, attr_args))
                 }
