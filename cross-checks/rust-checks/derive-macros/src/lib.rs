@@ -42,9 +42,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
         } else {
             // Default implementation
             quote! {
-                #[allow(unused_imports)]
-                use c2rust_xcheck_runtime::hash::CrossCheckHash;
-                h.write_u64(#field.cross_check_hash_depth::<#ahasher, #shasher>(_depth - 1));
+                h.write_u64(::c2rust_xcheck_runtime::hash::CrossCheckHash::cross_check_hash_depth::<#ahasher, #shasher>(&#field, _depth - 1));
             }
         }
     };
