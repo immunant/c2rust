@@ -23,3 +23,4 @@ syn = { version = "0.11.11", features = ["full", "visit"], optional = true }
 quote = { version = "0.3.15", optional = true }
 failure = "0.1.5"
 failure_derive = "0.1.5"
+indexmap = "1.0"

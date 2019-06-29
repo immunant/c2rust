@@ -7,7 +7,9 @@ pub mod syn;
 #[cfg(feature = "parse-syntax")]
 pub mod syntax;
 
-use std::collections::HashMap;
+use indexmap::IndexMap;
+
+use std::iter::FromIterator;
 use std::ops::Deref;
 
 #[cfg(feature = "with-quote")]
@@ -52,19 +54,41 @@ impl<'a> ArgValue<'a> {
     }
 }
 
+type ArgListInnerMap<'a> = IndexMap<&'a str, ArgValue<'a>>;
+
 #[derive(Debug, Default)]
-pub struct ArgList<'a>(HashMap<&'a str, ArgValue<'a>>);
+pub struct ArgList<'a>(ArgListInnerMap<'a>);
 
 impl<'a> Deref for ArgList<'a> {
-    type Target = HashMap<&'a str, ArgValue<'a>>;
+    type Target = ArgListInnerMap<'a>;
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
+impl<'a> IntoIterator for ArgList<'a> {
+    type Item = <ArgListInnerMap<'a> as IntoIterator>::Item;
+    type IntoIter = <ArgListInnerMap<'a> as IntoIterator>::IntoIter;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> FromIterator<(&'a str, ArgValue<'a>)> for ArgList<'a> {
+    #[inline]
+    fn from_iter<T>(iter: T) -> ArgList<'a>
+        where T: IntoIterator<Item = (&'a str, ArgValue<'a>)>
+    {
+        ArgList(iter.into_iter().collect())
+    }
+}
+
 impl<'a> ArgList<'a> {
     #[allow(dead_code)]
-    fn from_map(m: HashMap<&'a str, ArgValue<'a>>) -> ArgList<'a> {
+    fn from_map(m: ArgListInnerMap<'a>) -> ArgList<'a> {
         ArgList(m)
     }
 
