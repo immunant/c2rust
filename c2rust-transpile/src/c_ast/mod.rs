@@ -120,8 +120,16 @@ impl TypedAstContext {
 
     pub fn get_source_path<'a, T>(&'a self, node: &Located<T>) -> Option<&'a Path> {
         node.loc.as_ref().and_then(|loc| {
-            self.files[loc.fileid as usize].path.as_ref().map(|p| p.as_path())
+            self.get_file_path(loc.fileid as FileId)
         })
+    }
+
+    pub fn get_file_path<'a>(&'a self, id: FileId) -> Option<&'a Path> {
+        self.files[id].path.as_ref().map(|p| p.as_path())
+    }
+
+    pub fn find_file_id(&self, path: &Path) -> Option<FileId> {
+        self.files.iter().position(|f| f.path.as_ref().map_or(false, |p| p == path))
     }
 
     pub fn iter_decls(&self) -> indexmap::map::Iter<CDeclId, CDecl> {
@@ -719,6 +727,14 @@ impl SourceMap {
 pub struct Located<T> {
     pub loc: Option<SrcLoc>,
     pub kind: T,
+}
+
+pub type FileId = usize;
+
+impl<T> Located<T> {
+    pub fn file_id(&self) -> Option<FileId> {
+        self.loc.as_ref().map(|loc| loc.fileid as FileId)
+    }
 }
 
 /// All of our AST types should have location information bundled with them

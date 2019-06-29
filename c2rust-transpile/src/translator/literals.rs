@@ -52,7 +52,7 @@ impl<'c> Translation<'c> {
                         let name = self.renamer.borrow().get(&variant_id).unwrap();
 
                         // Import the enum variant if needed
-                        if let Some(cur_file) = self.cur_file.borrow().as_ref() {
+                        if let Some(cur_file) = *self.cur_file.borrow() {
                             self.add_import(cur_file, variant_id, &name);
                         }
                         return mk().path_expr(vec![name]);

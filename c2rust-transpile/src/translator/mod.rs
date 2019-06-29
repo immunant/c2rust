@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::ops::Index;
-use std::path::{self, Path, PathBuf};
+use std::path::{self, PathBuf};
 use std::{char, io};
 
 use dtoa;
@@ -236,19 +236,19 @@ pub struct Translation<'c> {
     pub comment_context: CommentContext, // Incoming comments
     pub comment_store: RefCell<CommentStore>,     // Outgoing comments
 
-    // Mod block defintion reorganization
-    mod_blocks: RefCell<IndexMap<PathBuf, ItemStore>>,
+    // Items from a header, indexed by file id of the header
+    mod_blocks: RefCell<IndexMap<FileId, ItemStore>>,
 
     // Mod names to try to stop collisions from happening
     mod_names: RefCell<IndexMap<String, PathBuf>>,
 
-    // The file that the translator is operating on
-    main_file: PathBuf,
+    // The main file id that the translator is operating on
+    main_file: FileId,
 
-    // While expanding an item, store the current file path that item is
+    // While expanding an item, store the current file id that item is
     // expanded from. This is needed in order to note imports in mod_blocks when
     // encountering DeclRefs.
-    cur_file: RefCell<Option<PathBuf>>,
+    cur_file: RefCell<Option<FileId>>,
 }
 
 fn simple_metaitem(name: &str) -> NestedMetaItem {
@@ -605,17 +605,17 @@ pub fn translate(
 
         {
             let convert_type = |decl_id: CDeclId, decl: &CDecl| {
-                let decl_file_path = t.ast_context.get_source_path(decl);
+                let decl_file_id = decl.file_id();
 
                 if t.tcfg.reorganize_definitions {
-                    *t.cur_file.borrow_mut() = decl_file_path.map(|p| p.to_owned());
+                    *t.cur_file.borrow_mut() = decl_file_id;
                 }
                 match t.convert_decl(ctx, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => {
-                        t.insert_item(item, decl_file_path);
+                        t.insert_item(item, decl_file_id);
                     }
                     Ok(ConvertedDecl::ForeignItem(item)) => {
-                        t.insert_foreign_item(item, decl_file_path);
+                        t.insert_foreign_item(item, decl_file_id);
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
@@ -627,9 +627,9 @@ pub fn translate(
                 t.cur_file.borrow_mut().take();
 
                 if t.tcfg.reorganize_definitions
-                    && decl_file_path.map_or(false, |path| path != &t.main_file)
+                    && decl_file_id.map_or(false, |id| id != t.main_file)
                 {
-                    t.generate_submodule_imports(decl_id, decl_file_path);
+                    t.generate_submodule_imports(decl_id, decl_file_id);
                 }
             };
 
@@ -665,19 +665,19 @@ pub fn translate(
             if needs_export {
                 let decl_opt = t.ast_context.get_decl(top_id);
                 let decl = decl_opt.as_ref().unwrap();
-                let decl_file_path = t.ast_context.get_source_path(decl);
+                let decl_file_id = decl.file_id();
 
                 if t.tcfg.reorganize_definitions
-                    && decl_file_path.map_or(false, |path| path != &t.main_file)
+                    && decl_file_id.map_or(false, |id| id != t.main_file)
                 {
-                    *t.cur_file.borrow_mut() = decl_file_path.map(|p| p.to_owned());
+                    *t.cur_file.borrow_mut() = decl_file_id;
                 }
                 match t.convert_decl(ctx, *top_id) {
                     Ok(ConvertedDecl::Item(item)) => {
-                        t.insert_item(item, decl_file_path);
+                        t.insert_item(item, decl_file_id);
                     }
                     Ok(ConvertedDecl::ForeignItem(item)) => {
-                        t.insert_foreign_item(item, decl_file_path);
+                        t.insert_foreign_item(item, decl_file_id);
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
@@ -701,9 +701,9 @@ pub fn translate(
                 t.cur_file.borrow_mut().take();
 
                 if t.tcfg.reorganize_definitions
-                    && decl_file_path.map_or(false, |path| path != &t.main_file)
+                    && decl_file_id.map_or(false, |id| id != t.main_file)
                 {
-                    t.generate_submodule_imports(*top_id, decl_file_path);
+                    t.generate_submodule_imports(*top_id, decl_file_id);
                 }
             }
         }
@@ -739,10 +739,11 @@ pub fn translate(
             let mut mod_items: Vec<P<Item>> = Vec::new();
 
             // Header Reorganization: Submodule Item Stores
-            for (file_path, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
+            for (file_id, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
                 mod_items.push(make_submodule(
+                    &t.ast_context,
                     mod_item_store,
-                    file_path,
+                    *file_id,
                     &t.item_store,
                     &t.mod_names,
                 ));
@@ -796,12 +797,14 @@ pub fn translate(
 }
 
 fn make_submodule(
+    ast_context: &TypedAstContext,
     submodule_item_store: &mut ItemStore,
-    file_path: &path::Path,
+    file_id: FileId,
     global_item_store: &RefCell<ItemStore>,
     mod_names: &RefCell<IndexMap<String, PathBuf>>,
 ) -> P<Item> {
     let (mut items, foreign_items, uses) = submodule_item_store.drain();
+    let file_path = ast_context.get_file_path(file_id).unwrap();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
     let mod_name = clean_path(mod_names, file_path);
     let mut global_item_store = global_item_store.borrow_mut();
@@ -967,6 +970,8 @@ impl<'c> Translation<'c> {
         if tcfg.translate_valist {
             type_converter.translate_valist = true
         }
+
+        let main_file = ast_context.find_file_id(&main_file).unwrap();
 
         Translation {
             features: RefCell::new(IndexSet::new()),
@@ -2594,7 +2599,7 @@ impl<'c> Translation<'c> {
     }
 
     fn convert_type(&self, type_id: CTypeId) -> Result<P<Ty>, TranslationError> {
-        if let Some(cur_file) = self.cur_file.borrow().as_ref() {
+        if let Some(cur_file) = *self.cur_file.borrow() {
             self.import_type(type_id, cur_file);
         }
         self.type_converter
@@ -2948,7 +2953,7 @@ impl<'c> Translation<'c> {
                 // Import the referenced global decl into our submodule
                 if self.tcfg.reorganize_definitions {
                     if let Some(cur_file) = self.cur_file.borrow().as_ref() {
-                        self.add_import(cur_file, decl_id, &rustname);
+                        self.add_import(*cur_file, decl_id, &rustname);
                         // match decl {
                         //     CDeclKind::Variable { is_defn: false, .. } => {}
                         //     _ => self.add_import(cur_file, decl_id, &rustname),
@@ -3512,7 +3517,7 @@ impl<'c> Translation<'c> {
                     .ok_or_else(|| format_err!("Macro name not declared"))?;
 
                 if let Some(cur_file) = self.cur_file.borrow().as_ref() {
-                    self.add_import(cur_file, *macro_id, &rustname);
+                    self.add_import(*cur_file, *macro_id, &rustname);
                 }
 
                 let val = WithStmts::new_val(mk().path_expr(vec![rustname]));
@@ -4284,14 +4289,14 @@ impl<'c> Translation<'c> {
     fn insert_item(
         &self,
         item: P<Item>,
-        decl_file_path: Option<&Path>,
+        decl_file_id: Option<FileId>,
     ) {
         if self.tcfg.reorganize_definitions
-            && decl_file_path.map_or(false, |path| path != &self.main_file)
+            && decl_file_id.map_or(false, |id| id != self.main_file)
         {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks
-                .entry(decl_file_path.unwrap().to_owned())
+                .entry(decl_file_id.unwrap())
                 .or_insert(ItemStore::new());
 
             mod_block_items.items.push(item);
@@ -4305,14 +4310,14 @@ impl<'c> Translation<'c> {
     fn insert_foreign_item(
         &self,
         item: ForeignItem,
-        decl_file_path: Option<&Path>,
+        decl_file_id: Option<FileId>,
     ) {
         if self.tcfg.reorganize_definitions
-            && decl_file_path.map_or(false, |path| path != &self.main_file)
+            && decl_file_id.map_or(false, |id| id != self.main_file)
         {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks
-                .entry(decl_file_path.unwrap().to_owned())
+                .entry(decl_file_id.unwrap().to_owned())
                 .or_insert(ItemStore::new());
 
             mod_block_items.foreign_items.push(item);
@@ -4321,61 +4326,64 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn add_import(&self, decl_file_path: &path::Path, decl_id: CDeclId, ident_name: &str) {
+    fn add_import(&self, decl_file_id: FileId, decl_id: CDeclId, ident_name: &str) {
         let decl = &self.ast_context[decl_id];
-        let import_path = self.ast_context.get_source_path(decl);
+        let import_file_id = decl.file_id();
 
         // If the definition lives in the same header, there is no need to import it
         // in fact, this would be a hard rust error.
         // We should never import into the main module here, as that happens in make_submodule
-        if import_path.map_or(false, |path| path == decl_file_path)
-            || decl_file_path == &self.main_file {
+        if import_file_id.map_or(false, |path| path == decl_file_id)
+            || decl_file_id == self.main_file {
             return;
         }
 
         let mut module_path = vec!["super".into()];
 
         // If the decl does not live in the main module add the path to the sibling submodule
-        if let Some(ref decl_path) = import_path {
-            if decl_path != &self.main_file {
-                let file_name = clean_path(&self.mod_names, &decl_path);
+        if let Some(file_id) = import_file_id {
+            if file_id != self.main_file {
+                let file_name = clean_path(
+                    &self.mod_names,
+                    self.ast_context.get_file_path(file_id).unwrap()
+                );
 
                 module_path.push(file_name);
             }
         }
 
-        if decl_file_path == self.main_file.as_path() {
+        if decl_file_id == self.main_file {
             self.item_store.borrow_mut()
                 .uses.get_mut(module_path).insert(ident_name);
         } else {
             let mut submodule_items = self.mod_blocks.borrow_mut();
             submodule_items
-                .entry(decl_file_path.to_path_buf())
+                .entry(decl_file_id)
                 .or_insert(ItemStore::new())
                 .uses.get_mut(module_path).insert(ident_name);
         };
     }
 
-    fn add_lib_import(&self, decl_file_path: &path::Path, ident_name: &str, re_export: bool) {
+    fn add_lib_import(&self, decl_file_id: FileId, ident_name: &str, re_export: bool) {
         let attrs = if re_export {
             mk().pub_()
         } else {
             mk()
         };
 
-        if decl_file_path == self.main_file {
+        if decl_file_id == self.main_file {
             return;
         }
 
         let module_path = vec!["super".into()];
 
-        if decl_file_path == self.main_file.as_path() {
+        if decl_file_id == self.main_file {
             self.item_store.borrow_mut()
                 .uses.get_mut(module_path).insert_with_attr(ident_name, attrs);
         } else {
             let mut submodule_items = self.mod_blocks.borrow_mut();
             submodule_items
-                .entry(decl_file_path.to_path_buf())
+                .entry(decl_file_id)
                 .or_insert(ItemStore::new())
                 .uses.get_mut(module_path).insert_with_attr(ident_name, attrs);
         };
@@ -4384,17 +4392,17 @@ impl<'c> Translation<'c> {
     fn import_type(
         &self,
         ctype: CTypeId,
-        decl_file_path: &path::Path,
+        decl_file_id: FileId,
     ) {
         use self::CTypeKind::*;
 
         match self.ast_context[ctype].kind {
             Void | Char | SChar | UChar | Short | UShort | Int | UInt | Long | ULong | LongLong
             | ULongLong | Int128 | UInt128 | Half | Float | Double => {
-                self.add_lib_import(decl_file_path, "libc", false);
+                self.add_lib_import(decl_file_id, "libc", false);
             }
             LongDouble => {
-                self.add_lib_import(decl_file_path, "f128", false);
+                self.add_lib_import(decl_file_id, "f128", false);
             }
             // Bool uses the bool type, so no dependency on libc
             Bool => {}
@@ -4404,7 +4412,7 @@ impl<'c> Translation<'c> {
             | ConstantArray(ctype, _)
             | Elaborated(ctype)
             | Pointer(CQualTypeId { ctype, .. }) => {
-                self.import_type(ctype, decl_file_path)
+                self.import_type(ctype, decl_file_id)
             }
             Enum(decl_id) | Typedef(decl_id) | Union(decl_id) | Struct(decl_id) => {
                 let mut decl_id = decl_id.clone();
@@ -4418,7 +4426,7 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(decl_id)
                     .expect("Expected decl name");
-                self.add_import(decl_file_path, decl_id, ident_name);
+                self.add_import(decl_file_id, decl_id, ident_name);
             }
             Function(CQualTypeId { ctype, .. }, ref params, ..) => {
                 // Return Type
@@ -4426,12 +4434,12 @@ impl<'c> Translation<'c> {
 
                 // Rust doesn't use void for return type, so skip
                 if *type_kind != Void {
-                    self.import_type(ctype, decl_file_path);
+                    self.import_type(ctype, decl_file_id);
                 }
 
                 // Param Types
                 for param_id in params {
-                    self.import_type(param_id.ctype, decl_file_path);
+                    self.import_type(param_id.ctype, decl_file_id);
                 }
             }
             Vector(CQualTypeId { ctype, .. }, len) => {
@@ -4450,7 +4458,7 @@ impl<'c> Translation<'c> {
                     (kind, len) => unimplemented!("Unknown vector type: {:?} x {}", kind, len),
                 };
 
-                self.add_lib_import(decl_file_path, type_name, true);
+                self.add_lib_import(decl_file_id, type_name, true);
             }
             ref e => unimplemented!("{:?}", e),
         }
@@ -4459,9 +4467,9 @@ impl<'c> Translation<'c> {
     fn generate_submodule_imports(
         &self,
         decl_id: CDeclId,
-        decl_file_path: Option<&Path>,
+        decl_file_id: Option<FileId>,
     ) {
-        let decl_file_path = decl_file_path.expect("There should be a decl file path");
+        let decl_file_id = decl_file_id.expect("There should be a decl file path");
         let decl = self.ast_context.get_decl(&decl_id).unwrap();
 
         match decl.kind {
@@ -4471,7 +4479,7 @@ impl<'c> Translation<'c> {
                 for field_id in field_ids.iter() {
                     match self.ast_context[*field_id].kind {
                         CDeclKind::Field { typ, .. } => {
-                            self.import_type(typ.ctype, decl_file_path)
+                            self.import_type(typ.ctype, decl_file_id)
                         }
                         _ => unreachable!("Found something in a struct other than a field"),
                     }
@@ -4480,7 +4488,7 @@ impl<'c> Translation<'c> {
             CDeclKind::EnumConstant { .. } => {}
             // REVIEW: Enums can only be integer types? So libc is likely always required?
             CDeclKind::Enum { .. } => {
-                self.add_lib_import(decl_file_path, "libc", false);
+                self.add_lib_import(decl_file_id, "libc", false);
             }
 
             CDeclKind::Variable {
@@ -4496,17 +4504,17 @@ impl<'c> Translation<'c> {
                 ..
             }
             | CDeclKind::Typedef { typ, .. } => {
-                self.import_type(typ.ctype, decl_file_path)
+                self.import_type(typ.ctype, decl_file_id)
             }
             CDeclKind::Function {
                 is_global: true,
                 typ,
                 ..
-            } => self.import_type(typ, decl_file_path),
+            } => self.import_type(typ, decl_file_id),
 
             CDeclKind::MacroObject { .. } => {
                 if let Some(macro_ty) = self.macro_types.borrow().get(&decl_id) {
-                    self.import_type(*macro_ty, decl_file_path)
+                    self.import_type(*macro_ty, decl_file_id)
                 }
             }
 
