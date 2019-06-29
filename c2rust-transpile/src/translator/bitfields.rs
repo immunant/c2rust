@@ -58,11 +58,14 @@ fn contains_block(expr_kind: &ExprKind) -> bool {
 }
 
 fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
+    let node = LitKind::Str(Symbol::intern(rhs), StrStyle::Cooked);
+    let token = node.to_lit_token();
     let meta_item = mk().meta_item(
         vec![lhs],
         MetaItemKind::NameValue(Lit {
-            span: DUMMY_SP,
-            node: LitKind::Str(Symbol::intern(rhs), StrStyle::Cooked),
+            token,
+            node,
+            span: DUMMY_SP
         }),
     );
 

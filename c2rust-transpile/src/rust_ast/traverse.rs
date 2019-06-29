@@ -172,12 +172,10 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
         ExprKind::Try(arg) => ExprKind::Try(arg.traverse(walk)),
         ExprKind::Yield(arg) => ExprKind::Yield(arg.traverse(walk)),
         ExprKind::Lit(l) => ExprKind::Lit(l),
-        ExprKind::ObsoleteInPlace(lhs, rhs) => {
-            ExprKind::ObsoleteInPlace(lhs.traverse(walk), rhs.traverse(walk))
-        }
         ExprKind::Async(cap, nod, block) => ExprKind::Async(cap, nod, block.traverse(walk)),
         ExprKind::TryBlock(blk) => ExprKind::TryBlock(blk.traverse(walk)),
         ExprKind::Err => unimplemented!(),
+        ExprKind::Await(_, _) => unimplemented!(),
     };
     e
 }

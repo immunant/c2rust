@@ -10,12 +10,13 @@ use indexmap::{IndexMap, IndexSet};
 
 use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
+use syntax::parse::token::{self, DelimToken, Nonterminal};
 use syntax::print::pprust::*;
 use syntax::ptr::*;
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
 use syntax_pos::{Span, DUMMY_SP};
+use syntax_pos::edition::Edition;
 
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
@@ -497,7 +498,7 @@ pub fn translate(
     }
 
     // `with_globals` sets up a thread-local variable required by the syntax crate.
-    with_globals(|| {
+    with_globals(Edition::Edition2018, || {
         // Identify typedefs that name unnamed types and collapse the two declarations
         // into a single name and declaration, eliminating the typedef altogether.
         let mut prenamed_decls: IndexMap<CDeclId, CDeclId> = IndexMap::new();
@@ -1050,9 +1051,8 @@ impl<'c> Translation<'c> {
 
     fn panic_or_err_helper(&self, msg: &str, panic: bool) -> P<Expr> {
         let macro_name = if panic { "panic" } else { "compile_error" };
-        let macro_msg = vec![Token::Interpolated(Lrc::new(Nonterminal::NtExpr(
-            mk().lit_expr(mk().str_lit(msg)),
-        )))]
+        let macro_msg = vec![TokenTree::token(token::Interpolated(Lrc::new(Nonterminal::NtExpr(
+            mk().lit_expr(mk().str_lit(msg))))), DUMMY_SP)]
         .into_iter()
         .collect::<TokenStream>();
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
@@ -3015,12 +3015,12 @@ impl<'c> Translation<'c> {
 
                     // offset_of!(Struct, field[expr as usize]) as ty
                     let macro_body = vec![
-                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(ty_ident))),
-                        TokenTree::Token(DUMMY_SP, Token::Comma),
-                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(field_ident))),
-                        TokenTree::Token(DUMMY_SP, Token::OpenDelim(DelimToken::Bracket)),
-                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(index_expr))),
-                        TokenTree::Token(DUMMY_SP, Token::CloseDelim(DelimToken::Bracket)),
+                        TokenTree::token(token::Interpolated(Lrc::new(ty_ident)), DUMMY_SP),
+                        TokenTree::token(token::Comma, DUMMY_SP),
+                        TokenTree::token(token::Interpolated(Lrc::new(field_ident)), DUMMY_SP),
+                        TokenTree::token(token::OpenDelim(DelimToken::Bracket), DUMMY_SP),
+                        TokenTree::token(token::Interpolated(Lrc::new(index_expr)), DUMMY_SP),
+                        TokenTree::token(token::CloseDelim(DelimToken::Bracket), DUMMY_SP),
                     ];
                     let path = mk().path("offset_of");
                     let mac = mk().mac_expr(mk().mac(path, macro_body, MacDelimiter::Parenthesis));
