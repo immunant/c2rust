@@ -119,7 +119,7 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_qual_type()
                     .ok_or_else(|| {
-                        format_translation_err!(lhs_loc, "bad lhs type for assignment")
+                        format_translation_err!(self.ast_context.display_loc(lhs_loc), "bad lhs type for assignment")
                     })?;
                 let rhs_type = self
                     .ast_context
@@ -127,7 +127,7 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_qual_type()
                     .ok_or_else(|| {
-                        format_translation_err!(rhs_loc, "bad rhs type for assignment")
+                        format_translation_err!(self.ast_context.display_loc(rhs_loc), "bad rhs type for assignment")
                     })?;
 
                 if ctx.is_unused() {

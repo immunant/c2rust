@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::ops::Index;
-use std::path::{self, PathBuf};
+use std::path::{self, Path, PathBuf};
 use std::{char, io};
 
 use dtoa;
@@ -605,16 +605,10 @@ pub fn translate(
 
         {
             let convert_type = |decl_id: CDeclId, decl: &CDecl| {
-                let decl_file_path = decl
-                    .loc
-                    .as_ref()
-                    .map(|loc| &loc.file_path)
-                    .into_iter()
-                    .flatten()
-                    .next();
+                let decl_file_path = t.ast_context.get_source_path(decl);
 
                 if t.tcfg.reorganize_definitions {
-                    *t.cur_file.borrow_mut() = decl_file_path.cloned();
+                    *t.cur_file.borrow_mut() = decl_file_path.map(|p| p.to_owned());
                 }
                 match t.convert_decl(ctx, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => {
@@ -671,15 +665,12 @@ pub fn translate(
             if needs_export {
                 let decl_opt = t.ast_context.get_decl(top_id);
                 let decl = decl_opt.as_ref().unwrap();
-                let decl_file_path = match decl.loc.as_ref().map(|loc| &loc.file_path) {
-                    Some(Some(s)) => Some(s),
-                    _ => None,
-                };
+                let decl_file_path = t.ast_context.get_source_path(decl);
 
                 if t.tcfg.reorganize_definitions
                     && decl_file_path.map_or(false, |path| path != &t.main_file)
                 {
-                    *t.cur_file.borrow_mut() = decl_file_path.cloned();
+                    *t.cur_file.borrow_mut() = decl_file_path.map(|p| p.to_owned());
                 }
                 match t.convert_decl(ctx, *top_id) {
                     Ok(ConvertedDecl::Item(item)) => {
@@ -695,8 +686,7 @@ pub fn translate(
                             Some(decl) => {
                                 let decl_identifier = decl.kind.get_name().map_or_else(
                                     || {
-                                        decl.loc
-                                            .as_ref()
+                                        t.ast_context.display_loc(&decl.loc)
                                             .map_or("Unknown".to_string(), |l| format!("at {}", l))
                                     },
                                     |name| name.clone(),
@@ -2904,7 +2894,7 @@ impl<'c> Translation<'c> {
             CExprKind::ShuffleVector(_, ref child_expr_ids) => self
                 .convert_shuffle_vector(ctx, child_expr_ids)
                 .map_err(|e| {
-                    TranslationError::new(src_loc, e.context(TranslationErrorKind::OldLLVMSimd))
+                    TranslationError::new(self.ast_context.display_loc(src_loc), e.context(TranslationErrorKind::OldLLVMSimd))
                 }),
             CExprKind::ConvertVector(..) => {
                 Err(TranslationError::generic("convert vector not supported"))
@@ -2942,7 +2932,7 @@ impl<'c> Translation<'c> {
                 if ctx.is_const {
                     if let CDeclKind::Variable { has_static_duration: true, .. } = decl {
                         return Err(format_translation_err!(
-                            src_loc,
+                            self.ast_context.display_loc(src_loc),
                             "Cannot refer to static duration variable in a const expression",
                         ));
                     }
@@ -3111,7 +3101,7 @@ impl<'c> Translation<'c> {
             CExprKind::Conditional(_, cond, lhs, rhs) => {
                 if ctx.is_const {
                     return Err(format_translation_err!(
-                        src_loc,
+                        self.ast_context.display_loc(src_loc),
                         "Constants cannot contain ternary expressions in Rust",
                     ));
                 }
@@ -3183,7 +3173,7 @@ impl<'c> Translation<'c> {
 
             CExprKind::Binary(type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => self
                 .convert_binary_expr(ctx, type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id)
-                .map_err(|e| e.add_loc(src_loc)),
+                .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             CExprKind::ArraySubscript(_, ref lhs, ref rhs, _) => {
                 let lhs_node = &self.ast_context.index(*lhs).kind;
@@ -3212,7 +3202,7 @@ impl<'c> Translation<'c> {
                     .is_vector()
                 {
                     return Err(TranslationError::new(
-                        src_loc,
+                        self.ast_context.display_loc(src_loc),
                         err_msg("Attempting to index a vector type")
                             .context(TranslationErrorKind::OldLLVMSimd),
                     ));
@@ -4294,14 +4284,14 @@ impl<'c> Translation<'c> {
     fn insert_item(
         &self,
         item: P<Item>,
-        decl_file_path: Option<&PathBuf>,
+        decl_file_path: Option<&Path>,
     ) {
         if self.tcfg.reorganize_definitions
             && decl_file_path.map_or(false, |path| path != &self.main_file)
         {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks
-                .entry(decl_file_path.unwrap().clone())
+                .entry(decl_file_path.unwrap().to_owned())
                 .or_insert(ItemStore::new());
 
             mod_block_items.items.push(item);
@@ -4315,14 +4305,14 @@ impl<'c> Translation<'c> {
     fn insert_foreign_item(
         &self,
         item: ForeignItem,
-        decl_file_path: Option<&PathBuf>,
+        decl_file_path: Option<&Path>,
     ) {
         if self.tcfg.reorganize_definitions
             && decl_file_path.map_or(false, |path| path != &self.main_file)
         {
             let mut mod_blocks = self.mod_blocks.borrow_mut();
             let mod_block_items = mod_blocks
-                .entry(decl_file_path.unwrap().clone())
+                .entry(decl_file_path.unwrap().to_owned())
                 .or_insert(ItemStore::new());
 
             mod_block_items.foreign_items.push(item);
@@ -4333,12 +4323,12 @@ impl<'c> Translation<'c> {
 
     fn add_import(&self, decl_file_path: &path::Path, decl_id: CDeclId, ident_name: &str) {
         let decl = &self.ast_context[decl_id];
-        let decl_loc = &decl.loc.as_ref().unwrap();
+        let import_path = self.ast_context.get_source_path(decl);
 
         // If the definition lives in the same header, there is no need to import it
         // in fact, this would be a hard rust error.
         // We should never import into the main module here, as that happens in make_submodule
-        if decl_loc.file_path.as_ref().map_or(false, |path| path == decl_file_path)
+        if import_path.map_or(false, |path| path == decl_file_path)
             || decl_file_path == &self.main_file {
             return;
         }
@@ -4346,10 +4336,9 @@ impl<'c> Translation<'c> {
         let mut module_path = vec!["super".into()];
 
         // If the decl does not live in the main module add the path to the sibling submodule
-        if let Some(ref decl_path) = decl_loc.file_path {
+        if let Some(ref decl_path) = import_path {
             if decl_path != &self.main_file {
-                let file_path = decl_loc.file_path.as_ref().unwrap();
-                let file_name = clean_path(&self.mod_names, &file_path);
+                let file_name = clean_path(&self.mod_names, &decl_path);
 
                 module_path.push(file_name);
             }
@@ -4470,7 +4459,7 @@ impl<'c> Translation<'c> {
     fn generate_submodule_imports(
         &self,
         decl_id: CDeclId,
-        decl_file_path: Option<&PathBuf>,
+        decl_file_path: Option<&Path>,
     ) {
         let decl_file_path = decl_file_path.expect("There should be a decl file path");
         let decl = self.ast_context.get_decl(&decl_id).unwrap();

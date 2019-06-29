@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -437,7 +438,9 @@ class TranslateASTVisitor final
     TypeEncoder typeEncoder;
     CborEncoder *encoder;
     Preprocessor &PP;
-    std::unordered_map<string, uint64_t> filenames;
+    std::vector<std::pair<string, SourceLocation>> files;
+    // Mapping from SourceManager FileID to index in files
+    DenseMap<FileID, size_t> file_id_mapping;
     std::set<std::pair<void *, ASTEntryTag>> exportedTags;
     std::unordered_map<MacroInfo*, MacroExpansionInfo> macros;
 
@@ -656,25 +659,37 @@ class TranslateASTVisitor final
                                  std::unordered_map<void *, QualType> *sugared,
                                  Preprocessor &PP)
         : Context(Context), typeEncoder(Context, encoder, sugared, this),
-          encoder(encoder), PP(PP) {}
+          encoder(encoder), PP(PP),
+          files{{"", {}}} {}
 
     // Override the default behavior of the RecursiveASTVisitor
     bool shouldVisitImplicitCode() const { return true; }
 
     // Return the filenames as a vector. Indices correspond to file IDs.
-    std::vector<string> getFilenames() const {
-        // Store filenames in order
-        std::vector<string> ordered_filenames(filenames.size());
-
-        for (auto const &kv : filenames) {
-            ordered_filenames[kv.second] = kv.first;
-        }
-
-        return ordered_filenames;
+    const std::vector<std::pair<string, SourceLocation>> &getFiles() {
+        // Iterate file include locations until fix point
+        auto &manager = Context->getSourceManager();
+        size_t size;
+        do {
+            size = files.size();
+            for (auto const &file : files) {
+                getExporterFileId(manager.getFileID(file.second), false);
+            }
+        } while (size != files.size());
+        return files;
     }
 
     void encodeMacros() {
-        for (auto &I : macros) {
+        // Sort macros by source location
+        std::vector<std::pair<MacroInfo *, MacroExpansionInfo>> macro_vec(
+            macros.begin(), macros.end());
+        std::sort(macro_vec.begin(), macro_vec.end(),
+                  [](const std::pair<MacroInfo *, MacroExpansionInfo> &a,
+                     const std::pair<MacroInfo *, MacroExpansionInfo> &b) {
+                      return a.first->getDefinitionLoc() <
+                             b.first->getDefinitionLoc();
+                  });
+        for (auto &I : macro_vec) {
             auto &Mac = I.first;
             auto &Info = I.second;
             auto Name = Info.Name;
@@ -706,8 +721,23 @@ class TranslateASTVisitor final
 
         auto line = manager.getPresumedLineNumber(loc);
         auto col = manager.getPresumedColumnNumber(loc);
-        auto fileid = manager.getFileID(loc);
-        auto entry = manager.getFileEntryForID(fileid);
+        auto fileid = getExporterFileId(manager.getFileID(loc), isVaList);
+
+        cbor_encode_uint(enc, fileid);
+        cbor_encode_uint(enc, line);
+        cbor_encode_uint(enc, col);
+    }
+
+    uint64_t getExporterFileId(FileID id, bool isVaList) {
+        if (id.isInvalid())
+            return 0;
+
+        auto file = file_id_mapping.find(id);
+        if (file != file_id_mapping.end())
+            return file->second;
+
+        auto &manager = Context->getSourceManager();
+        auto entry = manager.getFileEntryForID(id);
 
         auto filename = string("?");
         if (entry)
@@ -716,12 +746,10 @@ class TranslateASTVisitor final
         if (filename == "?" && isVaList)
             filename = "vararg";
 
-        auto pair =
-            filenames.insert(std::make_pair(filename, filenames.size()));
-
-        cbor_encode_uint(enc, pair.first->second);
-        cbor_encode_uint(enc, line);
-        cbor_encode_uint(enc, col);
+        auto new_id = files.size();
+        files.push_back(std::make_pair(filename, manager.getIncludeLoc(id)));
+        file_id_mapping[id] = new_id;
+        return new_id;
     }
 
     //
@@ -817,8 +845,9 @@ class TranslateASTVisitor final
         LLVM_DEBUG(dbgs() << "Visit ");
         LLVM_DEBUG(DS->dumpColor());
 
-        // We copy only canonical decls and VarDecl's that are extern/local. For
-        // more on the latter, see the comment at the top of `VisitVarDecl`
+        // We copy only canonical decls and VarDecl's that are extern/local.
+        // For more on the latter, see the comment at the top of
+        // `VisitVarDecl`
         std::vector<void *> childIds;
         std::copy_if(DS->decl_begin(), DS->decl_end(),
                      std::back_inserter(childIds), [](Decl *decl) {
@@ -2201,18 +2230,29 @@ class TranslateConsumer : public clang::ASTConsumer {
             cbor_encoder_close_container(&outer, &array);
 
             // 3. Encode all of the visited file names
-            auto filenames = visitor.getFilenames();
-            cbor_encoder_create_array(&outer, &array, filenames.size());
-            for (auto const &name : filenames) {
-                cbor_encode_string(&array, name);
+            auto files = visitor.getFiles();
+            cbor_encoder_create_array(&outer, &array, files.size());
+            for (auto const &file : files) {
+                CborEncoder entry;
+                cbor_encoder_create_array(&array, &entry, 2);
+                cbor_encode_string(&entry, file.first);
+                if (file.second.isValid()) {
+                    CborEncoder locEntry;
+                    cbor_encoder_create_array(&entry, &locEntry, 3);
+                    visitor.encodeSourcePos(&locEntry, file.second);
+                    cbor_encoder_close_container(&entry, &locEntry);
+                } else {
+                    cbor_encode_null(&entry);
+                }
+                cbor_encoder_close_container(&array, &entry);
             }
             cbor_encoder_close_container(&outer, &array);
 
             // 4. Emit comments as array of arrays. Each comment is represented
             // as an array of source position followed by comment string.
             //
-            // Getting all comments will require processing the file with
-            // -fparse-all-comments !
+            // Getting all comments requires -fparse-all-comments (see
+            // augment_argv())!
             auto comments = Context.getRawCommentList().getComments();
             cbor_encoder_create_array(&outer, &array, comments.size());
             for (auto comment : comments) {
@@ -2222,7 +2262,7 @@ class TranslateConsumer : public clang::ASTConsumer {
                 SourceLocation loc = comment->getLocStart();
 #else
                 SourceLocation loc = comment->getBeginLoc();
-#endif                                                // CLANG_VERSION_MAJOR
+#endif // CLANG_VERSION_MAJOR
                 visitor.encodeSourcePos(&entry, loc); // emits 3 values
                 auto raw_text = comment->getRawText(Context.getSourceManager());
                 cbor_encode_byte_string(&entry, raw_text.bytes_begin(),

@@ -106,12 +106,7 @@ impl IdMapper {
 /// Transfer location information off of an `AstNode` and onto something that is `Located`
 fn located<T>(node: &AstNode, t: T) -> Located<T> {
     Located {
-        loc: Some(SrcLoc {
-            line: node.line,
-            column: node.column,
-            fileid: node.fileid,
-            file_path: node.file_path.clone(),
-        }),
+        loc: Some(node.loc.clone()),
         kind: t,
     }
 }
@@ -229,12 +224,15 @@ impl ConversionContext {
             }
         }
 
-        ConversionContext {
+        let mut ctx = ConversionContext {
             id_mapper: IdMapper::new(),
             processed_nodes: HashMap::new(),
             visit_as,
-            typed_context: TypedAstContext::new(),
-        }
+            typed_context: TypedAstContext::new(&untyped_context.files),
+        };
+
+        ctx.convert(untyped_context);
+        ctx
     }
 
     /// Records the fact that we will need to visit a Clang node and the type we want it to have.
@@ -340,16 +338,10 @@ impl ConversionContext {
     /// into the `ConversionContext` on creation.
     ///
     /// This populates the `typed_context` of the `ConversionContext` it is called on.
-    pub fn convert(&mut self, untyped_context: &AstContext) -> () {
+    fn convert(&mut self, untyped_context: &AstContext) -> () {
         for raw_comment in &untyped_context.comments {
             let comment = Located {
-                loc: Some(SrcLoc {
-                    line: raw_comment.line,
-                    column: raw_comment.column,
-                    fileid: raw_comment.fileid,
-                    // Can/Should we get file paths for comments?
-                    file_path: None,
-                }),
+                loc: Some(raw_comment.loc.clone()),
                 kind: raw_comment.string.clone(),
             };
             self.typed_context.comments.push(comment);

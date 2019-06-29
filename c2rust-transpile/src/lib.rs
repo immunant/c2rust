@@ -306,8 +306,7 @@ fn transpile_single(
 
     // Convert this into a typed AST
     let typed_context = {
-        let mut conv = ConversionContext::new(&untyped_context);
-        conv.convert(&untyped_context);
+        let conv = ConversionContext::new(&untyped_context);
         conv.typed_context
     };
 

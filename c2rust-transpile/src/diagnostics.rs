@@ -3,12 +3,12 @@ use failure::{err_msg, Backtrace, Context, Error, Fail};
 use fern::colors::ColoredLevelConfig;
 use log::Level;
 use std::collections::HashSet;
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Display};
 use std::io;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::c_ast::SrcLoc;
+use crate::c_ast::DisplaySrcLoc;
 use c2rust_ast_exporter::get_clang_major_version;
 
 const DEFAULT_WARNINGS: &[Diagnostic] = &[];
@@ -68,7 +68,7 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>) {
 
 #[derive(Debug, Clone)]
 pub struct TranslationError {
-    loc: Vec<SrcLoc>,
+    loc: Vec<DisplaySrcLoc>,
     inner: Arc<Context<TranslationErrorKind>>,
 }
 
@@ -88,20 +88,10 @@ pub enum TranslationErrorKind {
 macro_rules! format_translation_err {
     ($loc:expr, $($arg:tt)*) => {
         TranslationError::new(
-            &$loc,
+            $loc,
             failure::err_msg(format!($($arg)*))
                 .context(TranslationErrorKind::Generic),
         )
-    }
-}
-
-impl Display for SrcLoc {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(ref file_path) = self.file_path {
-            write!(f, "{}:{}:{}", file_path.display(), self.line, self.column)
-        } else {
-            Debug::fmt(self, f)
-        }
     }
 }
 
@@ -158,7 +148,7 @@ impl TranslationError {
         self.inner.get_context().clone()
     }
 
-    pub fn new(loc: &Option<SrcLoc>, inner: Context<TranslationErrorKind>) -> Self {
+    pub fn new(loc: Option<DisplaySrcLoc>, inner: Context<TranslationErrorKind>) -> Self {
         let mut loc_stack = vec![];
         if let Some(loc) = loc {
             loc_stack.push(loc.clone());
@@ -176,9 +166,9 @@ impl TranslationError {
         }
     }
 
-    pub fn add_loc(mut self, loc: &Option<SrcLoc>) -> Self {
+    pub fn add_loc(mut self, loc: Option<DisplaySrcLoc>) -> Self {
         if let Some(loc) = loc {
-            self.loc.push(loc.clone());
+            self.loc.push(loc);
         }
         self
     }
