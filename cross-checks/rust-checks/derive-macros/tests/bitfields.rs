@@ -30,15 +30,24 @@ fn test_bitfields() {
     let x_hash = XCH::cross_check_hash::<JodyHasher, SimpleHasher>(&x);
     assert_eq!(x_hash, Some(0x24e75f75c47e329a));
 
-    let x = Foo { a_b: [0xAA, 0x55, 0xAA], _pad: [0x55] };
+    let x = Foo {
+        a_b: [0xAA, 0x55, 0xAA],
+        _pad: [0x55],
+    };
     let x_hash = XCH::cross_check_hash::<JodyHasher, SimpleHasher>(&x);
     assert_eq!(x_hash, Some(0x24e75fad2461b12c));
 
-    let x = Foo { a_b: [0x55, 0xAA, 0x55], _pad: [0xAA] };
+    let x = Foo {
+        a_b: [0x55, 0xAA, 0x55],
+        _pad: [0xAA],
+    };
     let x_hash = XCH::cross_check_hash::<JodyHasher, SimpleHasher>(&x);
     assert_eq!(x_hash, Some(0xc3e72e2d630778ed));
 
-    let x = Foo { a_b: [0x78, 0x56, 0x34], _pad: [0x12] };
+    let x = Foo {
+        a_b: [0x78, 0x56, 0x34],
+        _pad: [0x12],
+    };
     let x_hash = XCH::cross_check_hash::<JodyHasher, SimpleHasher>(&x);
     assert_eq!(x_hash, Some(0xb6e8a1efb3617525));
 }

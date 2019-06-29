@@ -80,7 +80,8 @@ impl<'a> IntoIterator for ArgList<'a> {
 impl<'a> FromIterator<(&'a str, ArgValue<'a>)> for ArgList<'a> {
     #[inline]
     fn from_iter<T>(iter: T) -> ArgList<'a>
-        where T: IntoIterator<Item = (&'a str, ArgValue<'a>)>
+    where
+        T: IntoIterator<Item = (&'a str, ArgValue<'a>)>,
     {
         ArgList(iter.into_iter().collect())
     }

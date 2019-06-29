@@ -7,8 +7,10 @@ extern crate quote;
 
 extern crate c2rust_xcheck_config as xcfg;
 
-fn get_attr_args<'a>(attrs: &'a [syn::Attribute], attr_name: &'static str) -> impl Iterator<Item = xcfg::attr::ArgList<'a>>
-{
+fn get_attr_args<'a>(
+    attrs: &'a [syn::Attribute],
+    attr_name: &'static str,
+) -> impl Iterator<Item = xcfg::attr::ArgList<'a>> {
     attrs
         .iter()
         .filter(move |f| f.name() == attr_name)
@@ -53,8 +55,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
             .flat_map(IntoIterator::into_iter)
             .collect::<xcfg::attr::ArgList>();
 
-        let bitfields = get_attr_args(&bi.ast().attrs[..], "bitfield")
-            .collect::<Vec<_>>();
+        let bitfields = get_attr_args(&bi.ast().attrs[..], "bitfield").collect::<Vec<_>>();
         if bitfields.iter().any(|al| al.contains_key("padding")) {
             // This is a padding field, ignore it
             return quote::Tokens::new();
