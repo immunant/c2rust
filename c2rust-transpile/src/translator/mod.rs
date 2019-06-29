@@ -805,6 +805,7 @@ fn make_submodule(
 ) -> P<Item> {
     let (mut items, foreign_items, uses) = submodule_item_store.drain();
     let file_path = ast_context.get_file_path(file_id).unwrap();
+    let include_line_number = ast_context.get_file_include_line_number(file_id).unwrap();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
     let mod_name = clean_path(mod_names, file_path);
     let mut global_item_store = global_item_store.borrow_mut();
@@ -843,7 +844,7 @@ fn make_submodule(
     }
 
     mk().vis("pub")
-        .str_attr("header_src", file_path_str)
+        .str_attr("header_src", format!("{}:{}", include_line_number, file_path_str))
         .mod_item(mod_name, mk().mod_(items))
 }
 

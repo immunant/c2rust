@@ -128,6 +128,10 @@ impl TypedAstContext {
         self.files[id].path.as_ref().map(|p| p.as_path())
     }
 
+    pub fn get_file_include_line_number(&self, id: FileId) -> Option<u64> {
+        self.source_map.get_include_line(id)
+    }
+
     pub fn find_file_id(&self, path: &Path) -> Option<FileId> {
         self.files.iter().position(|f| f.path.as_ref().map_or(false, |p| p == path))
     }
@@ -718,6 +722,10 @@ impl SourceMap {
                 cmp_pos(a, b)
             }
         }
+    }
+
+    pub fn get_include_line(&self, file: FileId) -> Option<u64> {
+        self.file_map[file].first().map(|loc| loc.line)
     }
 }
 
