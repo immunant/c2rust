@@ -3,6 +3,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::mem;
 use std::ops::Bound::Included;
+use std::ops::Deref;
 use syntax::ast::{AttrId, NodeId, DUMMY_NODE_ID};
 use syntax::source_map::symbol::Symbol;
 
@@ -157,5 +158,13 @@ impl NodeMap {
         self.pending_edges
             .range((Included(&lo), Included(&hi)))
             .map(|&(_, new_id)| new_id)
+    }
+}
+
+impl Deref for NodeMap {
+    type Target = HashMap<NodeId, NodeId>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.id_map
     }
 }

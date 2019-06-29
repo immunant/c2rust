@@ -23,6 +23,7 @@ use syntax::ThinVec;
 use diff;
 use rustc::session::Session;
 use std::fmt::Debug;
+use std::iter::Sum;
 use std::rc::Rc;
 use syntax::ptr::P;
 use syntax::source_map::{Spanned, DUMMY_SP};
@@ -452,12 +453,21 @@ pub fn describe(sess: &Session, span: Span) -> String {
     }
 }
 
-/// Extend a node span to cover comments around it.
-pub fn extend_span_comments(id: &NodeId, mut span: Span, rcx: &RewriteCtxt) -> Span {
+/// Extend a node span to cover comments around it. Do not error if all comments
+/// could not be matched.
+pub fn extend_span_comments(id: &NodeId, span: Span, rcx: &RewriteCtxt) -> Span {
+    match extend_span_comments_strict(id, span, rcx) {
+        Ok(span) | Err(span) => span,
+    }
+}
+
+/// Extend a node span to cover comments around it.  Returns Ok(span) if all
+/// comments were covered, and Err(span) if only some could be covered.
+pub fn extend_span_comments_strict(id: &NodeId, mut span: Span, rcx: &RewriteCtxt) -> Result<Span, Span> {
     let comments = match rcx.comments().get(id) {
-        Some(comments) if comments.is_empty() => return span,
+        Some(comments) if comments.is_empty() => return Ok(span),
         Some(comments) => comments,
-        None => return span,
+        None => return Ok(span),
     };
 
     debug!("Extending span comments for {:?} for comments: {:?}", span, comments);
@@ -483,17 +493,19 @@ pub fn extend_span_comments(id: &NodeId, mut span: Span, rcx: &RewriteCtxt) -> S
 
     before.reverse();
 
+    let mut all_matched = true;
+
     for comment in &before {
-        let comment_span = span.shrink_to_lo().with_lo(comment.pos);
+        let comment_size = usize::sum(comment.lines.iter().map(|l| l.len()+1));
+        let mut comment_pos = BytePos::from_usize(span.lo().to_usize() - comment_size);
+        let comment_span = span.shrink_to_lo().with_lo(comment_pos);
         let source = rcx.session().source_map().span_to_snippet(comment_span).unwrap();
         let matches = source.lines().zip(&comment.lines).all(|(src_line, comment_line)| {
             src_line.trim() == comment_line.trim()
         });
         if matches {
-            let mut comment_pos = comment.pos;
-
             // Extend to previous newline because this is an isolated comment
-            let comment_begin = rcx.session().source_map().lookup_byte_offset(comment.pos);
+            let comment_begin = rcx.session().source_map().lookup_byte_offset(comment_pos);
             let mut extend_comment_pos = |src: &str| {
                 if let Some(newline_index) = src[..comment_begin.pos.to_usize()].rfind('\n') {
                     comment_pos = BytePos::from_usize(newline_index) + comment_begin.sf.start_pos;
@@ -508,6 +520,7 @@ pub fn extend_span_comments(id: &NodeId, mut span: Span, rcx: &RewriteCtxt) -> S
             span = span.with_lo(comment_pos);
         } else {
             debug!("comment {:?} did not match source {:?}", comment, source);
+            all_matched = false;
             break;
         }
     }
@@ -527,10 +540,14 @@ pub fn extend_span_comments(id: &NodeId, mut span: Span, rcx: &RewriteCtxt) -> S
                 // We need to break out of processing any after comments because
                 // a line didn't match.
                 debug!("comment {:?} did not match line {:?}", comment_line, src_line);
-                return span;
+                return Err(span);
             }
         }
     }
 
-    span
+    if all_matched {
+        Ok(span)
+    } else {
+        Err(span)
+    }
 }
