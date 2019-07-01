@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::iter::FromIterator;
 use std::ops::Index;
 use std::path::{self, PathBuf};
 use std::{char, io};
@@ -10,18 +11,18 @@ use indexmap::{IndexMap, IndexSet};
 
 use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
+use syntax::parse::token::{self, DelimToken, Nonterminal, Token};
 use syntax::print::pprust::*;
 use syntax::ptr::*;
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
 use syntax_pos::{Span, DUMMY_SP};
 
-use crate::source_map::{FileId, Located};
+use crate::source_map::{FileId, Located, SrcLoc};
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::traverse::Traversal;
-use c2rust_ast_builder::{mk, Builder};
+use c2rust_ast_builder::{mk, Builder, IntoSymbol};
 
 use crate::c_ast;
 use crate::c_ast::iterators::{DFExpr, SomeId};
@@ -729,6 +730,7 @@ pub fn translate(
 
         let pragmas = t.get_pragmas();
         let crates = t.extern_crates.borrow().clone();
+
         // pass all converted items to the Rust pretty printer
         let translation = to_string(|s| {
             print_header(s, &t)?;
@@ -850,7 +852,7 @@ fn make_submodule(
     }
 
     mk().vis("pub")
-        .str_attr("header_src", format!("{}:{}", include_line_number, file_path_str))
+        .str_attr("header_src", format!("{}:{}", file_path_str, include_line_number))
         .mod_item(mod_name, mk().mod_(items))
 }
 
@@ -928,6 +930,20 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
 /// Convert a boolean expression to a c_int
 fn bool_to_int(val: P<Expr>) -> P<Expr> {
     mk().cast_expr(val, mk().path_ty(vec!["libc", "c_int"]))
+}
+
+fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
+    if let Some(src_loc) = src_loc.as_ref() {
+        let loc_str = format!("{}:{}", src_loc.line, src_loc.column);
+        attrs.push(mk().attribute(
+            AttrStyle::Outer,
+            "src_loc",
+            TokenStream::from_iter(vec![
+                Token::Eq,
+                Token::Literal(token::Lit::Str_(loc_str.into_symbol()), None)
+            ]),
+        ));
+    }
 }
 
 /// This represents all of the ways a C expression can be used in a C program. Making this
@@ -4285,14 +4301,11 @@ impl<'c> Translation<'c> {
 
     /// If we're trying to organize item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
-    fn insert_item(
-        &self,
-        item: P<Item>,
-        decl: &CDecl,
-    ) {
+    fn insert_item(&self, mut item: P<Item>, decl: &CDecl) {
         let decl_file_id = decl.file_id();
 
         if self.tcfg.reorganize_definitions {
+            add_src_loc_attr(&mut item.attrs, &decl.loc);
             let mut item_stores = self.items.borrow_mut();
             let items = item_stores
                 .entry(decl_file_id.unwrap())
@@ -4306,16 +4319,11 @@ impl<'c> Translation<'c> {
 
     /// If we're trying to organize foreign item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
-    fn insert_foreign_item(
-        &self,
-        item: ForeignItem,
-        decl: &CDecl,
-    ) {
+    fn insert_foreign_item(&self, mut item: ForeignItem, decl: &CDecl) {
         let decl_file_id = decl.file_id();
 
-        if self.tcfg.reorganize_definitions
-            && decl_file_id.map_or(false, |id| id != self.main_file)
-        {
+        if self.tcfg.reorganize_definitions {
+            add_src_loc_attr(&mut item.attrs, &decl.loc);
             let mut items = self.items.borrow_mut();
             let mod_block_items = items
                 .entry(decl_file_id.unwrap().to_owned())
