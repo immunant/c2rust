@@ -233,7 +233,7 @@ impl<'a> Translation<'a> {
     ) -> Result<ConvertedDecl, TranslationError> {
         self.extern_crates.borrow_mut().insert("c2rust_bitfields");
 
-        let mut item_store = self.item_store.borrow_mut();
+        let item_store = &mut self.items.borrow_mut()[&self.main_file];
 
         item_store.add_use(vec!["c2rust_bitfields".into()], "BitfieldStruct");
 

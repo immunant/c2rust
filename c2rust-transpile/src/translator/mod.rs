@@ -221,7 +221,6 @@ pub struct Translation<'c> {
 
     // Accumulated outputs
     pub features: RefCell<IndexSet<&'static str>>,
-    pub item_store: RefCell<ItemStore>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
     extern_crates: RefCell<IndexSet<&'static str>>,
 
@@ -237,8 +236,8 @@ pub struct Translation<'c> {
     pub comment_context: CommentContext, // Incoming comments
     pub comment_store: RefCell<CommentStore>,     // Outgoing comments
 
-    // Items from a header, indexed by file id of the header
-    mod_blocks: RefCell<IndexMap<FileId, ItemStore>>,
+    // Items indexed by file id of the source
+    items: RefCell<IndexMap<FileId, ItemStore>>,
 
     // Mod names to try to stop collisions from happening
     mod_names: RefCell<IndexMap<String, PathBuf>>,
@@ -247,7 +246,7 @@ pub struct Translation<'c> {
     main_file: FileId,
 
     // While expanding an item, store the current file id that item is
-    // expanded from. This is needed in order to note imports in mod_blocks when
+    // expanded from. This is needed in order to note imports in items when
     // encountering DeclRefs.
     cur_file: RefCell<Option<FileId>>,
 }
@@ -711,7 +710,7 @@ pub fn translate(
         // Add the main entry point
         if let Some(main_id) = t.ast_context.c_main {
             match t.convert_main(main_id) {
-                Ok(item) => t.item_store.borrow_mut().add_item(item),
+                Ok(item) => t.items.borrow_mut()[&t.main_file].add_item(item),
                 Err(e) => {
                     let msg = format!("Failed to translate main: {}", e);
                     translate_failure(&t.tcfg, &msg)
@@ -722,7 +721,7 @@ pub fn translate(
         // Initialize global statics when necessary
         if !t.sectioned_static_initializers.borrow().is_empty() {
             let (initializer_fn, initializer_static) = t.generate_global_static_init();
-            let store = &mut t.item_store.borrow_mut();
+            let store = &mut t.items.borrow_mut()[&t.main_file];
 
             store.add_item(initializer_fn);
             store.add_item(initializer_static);
@@ -738,20 +737,28 @@ pub fn translate(
             let mut traverser = t.comment_store.into_inner().into_comment_traverser();
             let mut mod_items: Vec<P<Item>> = Vec::new();
 
+            // Keep track of new uses we need while building header submodules
+            let mut new_uses = ItemStore::new();
+
             // Header Reorganization: Submodule Item Stores
-            for (file_id, ref mut mod_item_store) in t.mod_blocks.borrow_mut().iter_mut() {
-                mod_items.push(make_submodule(
-                    &t.ast_context,
-                    mod_item_store,
-                    *file_id,
-                    &t.item_store,
-                    &t.mod_names,
-                ));
+            for (file_id, ref mut mod_item_store) in t.items.borrow_mut().iter_mut() {
+                if *file_id != t.main_file {
+                    mod_items.push(make_submodule(
+                        &t.ast_context,
+                        mod_item_store,
+                        *file_id,
+                        &mut new_uses,
+                        &t.mod_names,
+                    ));
+                }
             }
 
-            // Global Item Store
-            let (items, foreign_items, uses) = t.item_store.borrow_mut().drain();
+            // Main file item store
+            let (items, foreign_items, uses) = t.items.borrow_mut()[&t.main_file].drain();
 
+            // Add a comment mapping span to each node that should have a
+            // comment printed before it. The pretty printer picks up these
+            // spans and uses them to decide when to emit comments.
             mod_items = mod_items
                 .into_iter()
                 .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
@@ -781,6 +788,12 @@ pub fn translate(
                 s.print_item(&use_item)?;
             }
 
+            // Print new uses from submodules
+            let (_, _, new_uses) = new_uses.drain();
+            for use_item in new_uses.into_items() {
+                s.print_item(&use_item)?;
+            }
+
             if !foreign_items.is_empty() {
                 s.print_item(&mk().abi("C").foreign_items(foreign_items))?
             }
@@ -798,17 +811,16 @@ pub fn translate(
 
 fn make_submodule(
     ast_context: &TypedAstContext,
-    submodule_item_store: &mut ItemStore,
+    item_store: &mut ItemStore,
     file_id: FileId,
-    global_item_store: &RefCell<ItemStore>,
+    use_item_store: &mut ItemStore,
     mod_names: &RefCell<IndexMap<String, PathBuf>>,
 ) -> P<Item> {
-    let (mut items, foreign_items, uses) = submodule_item_store.drain();
+    let (mut items, foreign_items, uses) = item_store.drain();
     let file_path = ast_context.get_file_path(file_id).unwrap();
     let include_line_number = ast_context.get_file_include_line_number(file_id).unwrap();
     let file_path_str = file_path.to_str().expect("Found invalid unicode");
     let mod_name = clean_path(mod_names, file_path);
-    let mut global_item_store = global_item_store.borrow_mut();
 
     for item in items.iter() {
         let ident_name = item.ident.name.as_str();
@@ -819,14 +831,14 @@ fn make_submodule(
             _ => mk(),
         };
 
-        global_item_store.add_use_with_attr(use_path, &ident_name, vis);
+        use_item_store.add_use_with_attr(use_path, &ident_name, vis);
     }
 
     for foreign_item in foreign_items.iter() {
         let ident_name = foreign_item.ident.name.as_str();
         let use_path = vec!["self".into(), mod_name.clone()];
 
-        global_item_store.add_use(use_path, &ident_name);
+        use_item_store.add_use(use_path, &ident_name);
     }
 
     for item in uses.into_items() {
@@ -967,10 +979,10 @@ impl<'c> Translation<'c> {
         }
 
         let main_file = ast_context.find_file_id(&main_file).unwrap_or(0);
+        let items = indexmap!{main_file => ItemStore::new()};
 
         Translation {
             features: RefCell::new(IndexSet::new()),
-            item_store: RefCell::new(ItemStore::new()),
             type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
@@ -994,7 +1006,7 @@ impl<'c> Translation<'c> {
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             sectioned_static_initializers: RefCell::new(Vec::new()),
-            mod_blocks: RefCell::new(IndexMap::new()),
+            items: RefCell::new(items),
             mod_names: RefCell::new(IndexMap::new()),
             main_file,
             extern_crates: RefCell::new(IndexSet::new()),
@@ -2311,7 +2323,7 @@ impl<'c> Translation<'c> {
                     let mut init = init.to_expr();
 
                     self.add_static_initializer_to_section(&ident2, typ, &mut init)?;
-                    self.item_store.borrow_mut().add_item(static_item);
+                    self.items.borrow_mut()[&self.main_file].add_item(static_item);
 
                     return Ok(cfg::DeclStmtInfo::empty());
                 }
@@ -2996,7 +3008,7 @@ impl<'c> Translation<'c> {
                 }
                 OffsetOfKind::Variable(qty, field_id, expr_id) => {
                     self.extern_crates.borrow_mut().insert("memoffset");
-                    self.item_store.borrow_mut().add_use(vec!["memoffset".into()], "offset_of");
+                    self.items.borrow_mut()[&self.main_file].add_use(vec!["memoffset".into()], "offset_of");
 
                     // Struct Type
                     let decl_id = {
@@ -3764,7 +3776,7 @@ impl<'c> Translation<'c> {
                     Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
                 } else if let CTypeKind::LongDouble = self.ast_context[source_ty_ctype_id].kind {
                     self.extern_crates.borrow_mut().insert("num_traits");
-                    self.item_store.borrow_mut().add_use(vec!["num_traits".into()], "ToPrimitive");
+                    self.items.borrow_mut()[&self.main_file].add_use(vec!["num_traits".into()], "ToPrimitive");
 
                     let to_method_name = match target_ty_ctype {
                         CTypeKind::Float => "to_f32",
@@ -4280,17 +4292,15 @@ impl<'c> Translation<'c> {
     ) {
         let decl_file_id = decl.file_id();
 
-        if self.tcfg.reorganize_definitions
-            && decl_file_id.map_or(false, |id| id != self.main_file)
-        {
-            let mut mod_blocks = self.mod_blocks.borrow_mut();
-            let mod_block_items = mod_blocks
+        if self.tcfg.reorganize_definitions {
+            let mut item_stores = self.items.borrow_mut();
+            let items = item_stores
                 .entry(decl_file_id.unwrap())
                 .or_insert(ItemStore::new());
 
-            mod_block_items.add_item(item);
+            items.add_item(item);
         } else {
-            self.item_store.borrow_mut().add_item(item)
+            self.items.borrow_mut()[&self.main_file].add_item(item)
         }
     }
 
@@ -4306,14 +4316,14 @@ impl<'c> Translation<'c> {
         if self.tcfg.reorganize_definitions
             && decl_file_id.map_or(false, |id| id != self.main_file)
         {
-            let mut mod_blocks = self.mod_blocks.borrow_mut();
-            let mod_block_items = mod_blocks
+            let mut items = self.items.borrow_mut();
+            let mod_block_items = items
                 .entry(decl_file_id.unwrap().to_owned())
                 .or_insert(ItemStore::new());
 
             mod_block_items.add_foreign_item(item);
         } else {
-            self.item_store.borrow_mut().add_foreign_item(item)
+            self.items.borrow_mut()[&self.main_file].add_foreign_item(item)
         }
     }
 
@@ -4343,15 +4353,11 @@ impl<'c> Translation<'c> {
             }
         }
 
-        if decl_file_id == self.main_file {
-            self.item_store.borrow_mut().add_use(module_path, ident_name);
-        } else {
-            let mut submodule_items = self.mod_blocks.borrow_mut();
-            submodule_items
-                .entry(decl_file_id)
-                .or_insert(ItemStore::new())
-                .add_use(module_path, ident_name);
-        };
+        self.items
+            .borrow_mut()
+            .entry(decl_file_id)
+            .or_insert(ItemStore::new())
+            .add_use(module_path, ident_name);
     }
 
     fn add_lib_import(&self, decl_file_id: FileId, ident_name: &str, re_export: bool) {
@@ -4367,15 +4373,11 @@ impl<'c> Translation<'c> {
 
         let module_path = vec!["super".into()];
 
-        if decl_file_id == self.main_file {
-            self.item_store.borrow_mut().add_use_with_attr(module_path, ident_name, attrs);
-        } else {
-            let mut submodule_items = self.mod_blocks.borrow_mut();
-            submodule_items
-                .entry(decl_file_id)
-                .or_insert(ItemStore::new())
-                .add_use_with_attr(module_path, ident_name, attrs);
-        };
+        let mut module_items = self.items.borrow_mut();
+        module_items
+            .entry(decl_file_id)
+            .or_insert(ItemStore::new())
+            .add_use_with_attr(module_path, ident_name, attrs);
     }
 
     fn import_type(

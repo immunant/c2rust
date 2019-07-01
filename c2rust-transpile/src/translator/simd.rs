@@ -80,7 +80,7 @@ impl<'c> Translation<'c> {
                     self.use_feature("stdsimd");
                 }
 
-                let mut item_store = self.item_store.borrow_mut();
+                let item_store = &mut self.items.borrow_mut()[&self.main_file];
 
                 let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
                 let x86_64_attr = mk()
@@ -155,7 +155,7 @@ impl<'c> Translation<'c> {
             // bits that are behind a feature gate.
             self.use_feature("stdsimd");
 
-            let mut item_store = self.item_store.borrow_mut();
+            let item_store = &mut self.items.borrow_mut()[&self.main_file];
             let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
 
             // REVIEW: Also a linear lookup
