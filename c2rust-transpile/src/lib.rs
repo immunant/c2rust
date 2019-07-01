@@ -41,6 +41,7 @@ pub mod renamer;
 pub mod rust_ast;
 pub mod translator;
 pub mod with_stmts;
+mod source_map;
 
 use std::collections::HashSet;
 use std::fs::{self, File};

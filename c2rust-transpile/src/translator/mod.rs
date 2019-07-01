@@ -17,6 +17,7 @@ use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
 use syntax_pos::{Span, DUMMY_SP};
 
+use crate::source_map::{FileId, Located};
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::traverse::Traversal;
