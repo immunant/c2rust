@@ -235,10 +235,7 @@ impl<'a> Translation<'a> {
 
         let mut item_store = self.item_store.borrow_mut();
 
-        item_store
-            .uses
-            .get_mut(vec!["c2rust_bitfields".into()])
-            .insert("BitfieldStruct");
+        item_store.add_use(vec!["c2rust_bitfields".into()], "BitfieldStruct");
 
         let mut field_entries = Vec::with_capacity(field_info.len());
         // We need to clobber bitfields in consecutive bytes together (leaving

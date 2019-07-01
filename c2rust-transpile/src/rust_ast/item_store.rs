@@ -70,9 +70,9 @@ impl PathedMultiImports {
 
 #[derive(Debug)]
 pub struct ItemStore {
-    pub items: Vec<P<Item>>,
-    pub foreign_items: Vec<ForeignItem>,
-    pub uses: PathedMultiImports,
+    items: Vec<P<Item>>,
+    foreign_items: Vec<ForeignItem>,
+    uses: PathedMultiImports,
 }
 
 impl ItemStore {
@@ -82,6 +82,22 @@ impl ItemStore {
             foreign_items: Vec::new(),
             uses: PathedMultiImports::new(),
         }
+    }
+
+    pub fn add_item(&mut self, item: P<Item>) {
+        self.items.push(item);
+    }
+
+    pub fn add_foreign_item(&mut self, item: ForeignItem) {
+        self.foreign_items.push(item);
+    }
+
+    pub fn add_use(&mut self, path: Vec<String>, ident: &str) {
+        self.uses.get_mut(path).insert(ident)
+    }
+
+    pub fn add_use_with_attr(&mut self, path: Vec<String>, ident: &str, attrs: Builder) {
+        self.uses.get_mut(path).insert_with_attr(ident, attrs)
     }
 
     pub fn drain(&mut self) -> (Vec<P<Item>>, Vec<ForeignItem>, PathedMultiImports) {
