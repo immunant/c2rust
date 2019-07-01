@@ -966,7 +966,7 @@ impl<'c> Translation<'c> {
             type_converter.translate_valist = true
         }
 
-        let main_file = ast_context.find_file_id(&main_file).unwrap();
+        let main_file = ast_context.find_file_id(&main_file).unwrap_or(0);
 
         Translation {
             features: RefCell::new(IndexSet::new()),
