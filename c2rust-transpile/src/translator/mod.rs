@@ -606,16 +606,15 @@ pub fn translate(
         {
             let convert_type = |decl_id: CDeclId, decl: &CDecl| {
                 let decl_file_id = decl.file_id();
-
                 if t.tcfg.reorganize_definitions {
                     *t.cur_file.borrow_mut() = decl_file_id;
                 }
                 match t.convert_decl(ctx, decl_id) {
                     Ok(ConvertedDecl::Item(item)) => {
-                        t.insert_item(item, decl_file_id);
+                        t.insert_item(item, decl);
                     }
                     Ok(ConvertedDecl::ForeignItem(item)) => {
-                        t.insert_foreign_item(item, decl_file_id);
+                        t.insert_foreign_item(item, decl);
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
@@ -674,10 +673,10 @@ pub fn translate(
                 }
                 match t.convert_decl(ctx, *top_id) {
                     Ok(ConvertedDecl::Item(item)) => {
-                        t.insert_item(item, decl_file_id);
+                        t.insert_item(item, decl);
                     }
                     Ok(ConvertedDecl::ForeignItem(item)) => {
-                        t.insert_foreign_item(item, decl_file_id);
+                        t.insert_foreign_item(item, decl);
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
@@ -4276,8 +4275,10 @@ impl<'c> Translation<'c> {
     fn insert_item(
         &self,
         item: P<Item>,
-        decl_file_id: Option<FileId>,
+        decl: &CDecl,
     ) {
+        let decl_file_id = decl.file_id();
+
         if self.tcfg.reorganize_definitions
             && decl_file_id.map_or(false, |id| id != self.main_file)
         {
@@ -4297,8 +4298,10 @@ impl<'c> Translation<'c> {
     fn insert_foreign_item(
         &self,
         item: ForeignItem,
-        decl_file_id: Option<FileId>,
+        decl: &CDecl,
     ) {
+        let decl_file_id = decl.file_id();
+
         if self.tcfg.reorganize_definitions
             && decl_file_id.map_or(false, |id| id != self.main_file)
         {
