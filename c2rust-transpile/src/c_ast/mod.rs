@@ -8,7 +8,7 @@ use std::mem;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
 
-use crate::source_map::{FileId, Located, SourceMap, SrcFile, SrcLoc};
+pub use c2rust_ast_exporter::clang_ast::{SrcFile, SrcLoc};
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub struct CTypeId(pub u64);
@@ -53,9 +53,17 @@ pub struct TypedAstContext {
 
     pub c_decls_top: Vec<CDeclId>,
     pub c_main: Option<CDeclId>,
-    files: Vec<SrcFile>,
-    source_map: SourceMap,
     pub parents: HashMap<CDeclId, CDeclId>, // record fields and enum constants
+
+    // Mapping from FileId to SrcFile. Deduplicated by file path.
+    files: Vec<SrcFile>,
+    // Mapping from clang file id to translator FileId
+    file_map: Vec<FileId>,
+
+    // Vector of include paths, indexed by FileId. Each include path is the
+    // sequence of #include statement locations and the file being included at
+    // that location.
+    include_map: Vec<Vec<SrcLoc>>,
 
     // map expressions to the stack of macros they were expanded from
     pub macro_expansions: HashMap<CExprId, Vec<CDeclId>>,
@@ -90,8 +98,44 @@ impl Display for DisplaySrcLoc {
     }
 }
 
+pub type FileId = usize;
+
+/// Represents some AST node possibly with source location information bundled with it
+#[derive(Debug, Clone)]
+pub struct Located<T> {
+    pub loc: Option<SrcLoc>,
+    pub kind: T,
+}
+
 impl TypedAstContext {
-    pub fn new(files: &[SrcFile]) -> TypedAstContext {
+    pub fn new(clang_files: &[SrcFile]) -> TypedAstContext {
+        let mut files: Vec<SrcFile> = vec![];
+        let mut file_map: Vec<FileId> = vec![];
+        for file in clang_files.into_iter() {
+            if let Some(existing) = files.iter().position(|f| f.path == file.path) {
+                file_map.push(existing);
+            } else {
+                file_map.push(files.len());
+                files.push(file.clone());
+            }
+        }
+
+        let mut include_map = vec![];
+        for fileid in 0..files.len() {
+            let mut include_path = vec![];
+            let mut cur = &files[fileid];
+            while let Some(include_loc) = &cur.include_loc {
+                include_path.push(SrcLoc {
+                    fileid: fileid as u64,
+                    line: include_loc.line,
+                    column: include_loc.column,
+                });
+                cur = &files[file_map[include_loc.fileid as usize]];
+            }
+            include_path.reverse();
+            include_map.push(include_path);
+        }
+
         TypedAstContext {
             c_types: HashMap::new(),
             c_exprs: HashMap::new(),
@@ -100,8 +144,9 @@ impl TypedAstContext {
 
             c_decls_top: Vec::new(),
             c_main: None,
-            files: files.into(),
-            source_map: SourceMap::new(files),
+            files,
+            file_map,
+            include_map,
             parents: HashMap::new(),
             macro_expansions: HashMap::new(),
 
@@ -113,28 +158,67 @@ impl TypedAstContext {
     pub fn display_loc(&self, loc: &Option<SrcLoc>) -> Option<DisplaySrcLoc> {
         loc.as_ref().map(|loc| {
             DisplaySrcLoc {
-                file: self.files[loc.fileid as usize].path.clone(),
+                file: self.files[self.file_map[loc.fileid as usize]].path.clone(),
                 loc: loc.clone(),
             }
         })
     }
 
     pub fn get_source_path<'a, T>(&'a self, node: &Located<T>) -> Option<&'a Path> {
-        node.loc.as_ref().and_then(|loc| {
-            self.get_file_path(loc.fileid as FileId)
-        })
+        self.file_id(node).and_then(|fileid| self.get_file_path(fileid))
     }
 
     pub fn get_file_path<'a>(&'a self, id: FileId) -> Option<&'a Path> {
         self.files[id].path.as_ref().map(|p| p.as_path())
     }
 
-    pub fn get_file_include_line_number(&self, id: FileId) -> Option<u64> {
-        self.source_map.get_include_line(id)
+
+    pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
+        /// Compare `self` with `other`, without regard to file id
+        fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
+            if a.line == b.line && a.column == b.column {
+                Ordering::Equal
+            } else if a.line < b.line
+                || b.line > a.line
+                || a.column < b.column
+            {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        }
+        let path_a = self.include_map[self.file_map[a.fileid as usize]].clone();
+        let path_b = self.include_map[self.file_map[b.fileid as usize]].clone();
+        for (include_a, include_b) in path_a.iter().zip(path_b.iter()) {
+            if include_a.fileid != include_b.fileid {
+                return cmp_pos(&include_a, &include_b);
+            }
+        }
+        match path_a.len().cmp(&path_b.len()) {
+            Ordering::Less => {
+                // compare the place b was included in a'a file with a
+                let b = path_b.get(path_a.len()).unwrap();
+                cmp_pos(a, b)
+            }
+            Ordering::Equal => cmp_pos(a, b),
+            Ordering::Greater => {
+                // compare the place a was included in b's file with b
+                let a = path_a.get(path_b.len()).unwrap();
+                cmp_pos(a, b)
+            }
+        }
+    }
+
+    pub fn get_file_include_line_number(&self, file: FileId) -> Option<u64> {
+        self.include_map[file].first().map(|loc| loc.line)
     }
 
     pub fn find_file_id(&self, path: &Path) -> Option<FileId> {
         self.files.iter().position(|f| f.path.as_ref().map_or(false, |p| p == path))
+    }
+
+    pub fn file_id<T>(&self, located: &Located<T>) -> Option<FileId> {
+        located.loc.as_ref().map(|loc| self.file_map[loc.fileid as usize])
     }
 
     pub fn iter_decls(&self) -> indexmap::map::Iter<CDeclId, CDecl> {
@@ -465,7 +549,7 @@ impl TypedAstContext {
                 (None, None) => Ordering::Equal,
                 (None, _) => Ordering::Less,
                 (_, None) => Ordering::Greater,
-                (Some(a), Some(b)) => self.source_map.compare_src_locs(a, b),
+                (Some(a), Some(b)) => self.compare_src_locs(a, b),
             }
         });
         self.c_decls_top = decls_top;
@@ -577,7 +661,7 @@ impl CommentContext {
                 let mut comments = Vec::from_iter(map);
                 // Sort comments attached to this decl by source location
                 comments.sort_unstable_by(|a, b| {
-                    ast_context.source_map.compare_src_locs(&a.0, &b.0)
+                    ast_context.compare_src_locs(&a.0, &b.0)
                 });
 
                 (decl_id, comments.into_iter().map(|(_, v)| v).collect())

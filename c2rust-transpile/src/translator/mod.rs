@@ -18,7 +18,6 @@ use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
 use syntax_pos::{Span, DUMMY_SP};
 
-use crate::source_map::{FileId, Located, SrcLoc};
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::traverse::Traversal;
@@ -606,7 +605,7 @@ pub fn translate(
 
         {
             let convert_type = |decl_id: CDeclId, decl: &CDecl| {
-                let decl_file_id = decl.file_id();
+                let decl_file_id = t.ast_context.file_id(decl);
                 if t.tcfg.reorganize_definitions {
                     *t.cur_file.borrow_mut() = decl_file_id;
                 }
@@ -665,7 +664,7 @@ pub fn translate(
             if needs_export {
                 let decl_opt = t.ast_context.get_decl(top_id);
                 let decl = decl_opt.as_ref().unwrap();
-                let decl_file_id = decl.file_id();
+                let decl_file_id = t.ast_context.file_id(decl);
 
                 if t.tcfg.reorganize_definitions
                     && decl_file_id.map_or(false, |id| id != t.main_file)
@@ -932,6 +931,7 @@ fn bool_to_int(val: P<Expr>) -> P<Expr> {
     mk().cast_expr(val, mk().path_ty(vec!["libc", "c_int"]))
 }
 
+/// Add a src_loc = "line:col" attribute to an item/foreign_item
 fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
     if let Some(src_loc) = src_loc.as_ref() {
         let loc_str = format!("{}:{}", src_loc.line, src_loc.column);
@@ -4302,7 +4302,7 @@ impl<'c> Translation<'c> {
     /// If we're trying to organize item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
     fn insert_item(&self, mut item: P<Item>, decl: &CDecl) {
-        let decl_file_id = decl.file_id();
+        let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
             add_src_loc_attr(&mut item.attrs, &decl.loc);
@@ -4320,13 +4320,13 @@ impl<'c> Translation<'c> {
     /// If we're trying to organize foreign item definitions into submodules, add them to a module
     /// scoped "namespace" if we have a path available, otherwise add it to the global "namespace"
     fn insert_foreign_item(&self, mut item: ForeignItem, decl: &CDecl) {
-        let decl_file_id = decl.file_id();
+        let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
             add_src_loc_attr(&mut item.attrs, &decl.loc);
             let mut items = self.items.borrow_mut();
             let mod_block_items = items
-                .entry(decl_file_id.unwrap().to_owned())
+                .entry(decl_file_id.unwrap())
                 .or_insert(ItemStore::new());
 
             mod_block_items.add_foreign_item(item);
@@ -4337,7 +4337,7 @@ impl<'c> Translation<'c> {
 
     fn add_import(&self, decl_file_id: FileId, decl_id: CDeclId, ident_name: &str) {
         let decl = &self.ast_context[decl_id];
-        let import_file_id = decl.file_id();
+        let import_file_id = self.ast_context.file_id(decl);
 
         // If the definition lives in the same header, there is no need to import it
         // in fact, this would be a hard rust error.

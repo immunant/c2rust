@@ -4,7 +4,7 @@ use serde_cbor::Value;
 use std::collections::HashMap;
 use std::vec::Vec;
 
-use crate::source_map::Located;
+use super::Located;
 
 /// Possible node types
 pub type NodeType = u16;
