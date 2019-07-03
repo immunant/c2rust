@@ -13,12 +13,13 @@
 
 extern crate libc;
 
+#[src_loc = "15:0"]
 type outside = i32;
 
 pub mod bar {
     use libc;
 
-    #[header_src = "/home/user/some/workspace/foobar/bar.h"]
+    #[header_src = "/home/user/some/workspace/foobar/bar.h:5"]
     pub mod bar_h {
         // Test relative paths
         use super::super::outside;
@@ -26,6 +27,7 @@ pub mod bar {
         // Comment on bar_t
         #[derive(Copy, Clone)]
         #[repr(C)]
+        #[src_loc = "10:0"]
         pub struct bar_t {
             //test1
             pub alloc: *mut libc::c_char,
@@ -39,7 +41,7 @@ pub mod bar {
 pub mod foo {
     use libc;
 
-    #[header_src = "/home/user/some/workspace/foobar/bar.h"]
+    #[header_src = "/home/user/some/workspace/foobar/bar.h:5"]
     pub mod bar_h {
         // Test relative paths
         use super::super::outside;
@@ -47,6 +49,7 @@ pub mod foo {
         // Comment on bar_t
         #[derive(Copy, Clone)]
         #[repr(C)]
+        #[src_loc = "10:0"]
         pub struct bar_t {
             //test2
             pub alloc: *mut libc::c_char,
