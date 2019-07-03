@@ -484,7 +484,7 @@ impl From<&Attribute> for SrcLoc {
         let mut iter = value_str.split(':');
         let line: usize = iter.next().and_then(|x| x.parse().ok())
             .expect("Expected a line number in src_loc attribute");
-        let col: usize = iter.next().and_then(|line| line.parse().ok())
+        let col: usize = iter.next().and_then(|x| x.parse().ok())
             .expect("Expected an column number in src_loc attribute");
         Self {
             line,
