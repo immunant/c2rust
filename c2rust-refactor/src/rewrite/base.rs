@@ -219,7 +219,8 @@ where
             diff::Result::Left(_) => {
                 // There's an item on the left corresponding to nothing on the right.
                 // Delete the item from the left.
-                let old_span = ast(&old[i]).splice_span();
+                let old_span = rewind_span_over_whitespace(ast(&old[i]).splice_span(), &rcx);
+                // let old_span = ast(&old[i]).splice_span();
                 let old_span = match old_ids[i] {
                     SeqItemId::Node(id) => extend_span_comments(&id, old_span, &rcx),
                     _ => old_span,
@@ -453,6 +454,23 @@ pub fn describe(sess: &Session, span: Span) -> String {
     }
 }
 
+/// Extend a span backwards through whitespace to cover the previous newline.
+pub fn rewind_span_over_whitespace(span: Span, rcx: &RewriteCtxt) -> Span {
+    let start = rcx.session().source_map().lookup_byte_offset(span.lo());
+    let find_newline = |src: &str| {
+        src[..start.pos.to_usize()].rfind(|c| !char::is_whitespace(c))
+            .map(|newline_idx| BytePos::from_usize(newline_idx+1) + start.sf.start_pos)
+            .unwrap_or(start.sf.start_pos)
+    };
+    if let Some(ref src) = start.sf.src {
+        span.with_lo(find_newline(src))
+    } else if let Some(src) = start.sf.external_src.borrow().get_source() {
+        span.with_lo(find_newline(src))
+    } else {
+        span
+    }
+}
+
 /// Extend a node span to cover comments around it. Do not error if all comments
 /// could not be matched.
 pub fn extend_span_comments(id: &NodeId, span: Span, rcx: &RewriteCtxt) -> Span {
@@ -463,7 +481,9 @@ pub fn extend_span_comments(id: &NodeId, span: Span, rcx: &RewriteCtxt) -> Span 
 
 /// Extend a node span to cover comments around it.  Returns Ok(span) if all
 /// comments were covered, and Err(span) if only some could be covered.
-pub fn extend_span_comments_strict(id: &NodeId, mut span: Span, rcx: &RewriteCtxt) -> Result<Span, Span> {
+pub fn extend_span_comments_strict(id: &NodeId, span: Span, rcx: &RewriteCtxt) -> Result<Span, Span> {
+    let source_map = rcx.session().source_map();
+
     let comments = match rcx.comments().get(id) {
         Some(comments) if comments.is_empty() => return Ok(span),
         Some(comments) => comments,
@@ -495,29 +515,26 @@ pub fn extend_span_comments_strict(id: &NodeId, mut span: Span, rcx: &RewriteCtx
 
     let mut all_matched = true;
 
+    let mut span = rewind_span_over_whitespace(span, rcx);
     for comment in &before {
-        let comment_size = usize::sum(comment.lines.iter().map(|l| l.len()+1));
-        let mut comment_pos = BytePos::from_usize(span.lo().to_usize() - comment_size);
-        let comment_span = span.shrink_to_lo().with_lo(comment_pos);
-        let source = rcx.session().source_map().span_to_snippet(comment_span).unwrap();
+        let comment_size = usize::sum(comment.lines.iter().map(|l| l.len()));
+        let comment_start = BytePos::from_usize(span.lo().to_usize() - comment_size);
+        let comment_span = span.shrink_to_lo().with_lo(comment_start);
+        let source = match source_map.span_to_snippet(comment_span) {
+            Ok(snippet) => snippet,
+            Err(_) => {
+                all_matched = false;
+                break;
+            }
+        };
         let matches = source.lines().zip(&comment.lines).all(|(src_line, comment_line)| {
             src_line.trim() == comment_line.trim()
         });
         if matches {
             // Extend to previous newline because this is an isolated comment
-            let comment_begin = rcx.session().source_map().lookup_byte_offset(comment_pos);
-            let mut extend_comment_pos = |src: &str| {
-                if let Some(newline_index) = src[..comment_begin.pos.to_usize()].rfind('\n') {
-                    comment_pos = BytePos::from_usize(newline_index) + comment_begin.sf.start_pos;
-                }
-            };
-            if let Some(ref src) = comment_begin.sf.src {
-                extend_comment_pos(src);
-            } else if let Some(src) = comment_begin.sf.external_src.borrow().get_source() {
-                extend_comment_pos(src);
-            }
+            let comment_span = rewind_span_over_whitespace(comment_span, rcx);
 
-            span = span.with_lo(comment_pos);
+            span = span.with_lo(comment_span.lo());
         } else {
             debug!("comment {:?} did not match source {:?}", comment, source);
             all_matched = false;
