@@ -399,7 +399,7 @@ fn prefix_names(translation: &mut Translation, prefix: &str) {
 // on whether there is a collision or not prepend the prior directory name to the path name.
 // To check for collisions, a IndexMap with the path name(key) and the path(value) associated with
 // the name. If the path name is in use, but the paths differ there is a collision.
-fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: &path::Path) -> String {
+fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path::Path>) -> String {
     fn path_to_str(path: &path::Path) -> String {
         path.file_name()
             .unwrap()
@@ -409,7 +409,8 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: &path::Path)
             .replace('-', "_")
     }
 
-    let mut file_path: String = path_to_str(path);
+    let mut file_path: String = path.map_or("internal".to_string(), |path| path_to_str(path));
+    let path = path.unwrap_or(path::Path::new(""));
     let mut mod_names = mod_names.borrow_mut();
     if !mod_names.contains_key(&file_path.clone()) {
         mod_names.insert(file_path.clone(), path.to_path_buf());
@@ -419,8 +420,8 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: &path::Path)
         // Ex: types.h can be included from
         // /usr/include/bits and /usr/include/sys
         if mod_path != path {
-            let path_copy = path.to_path_buf();
-            let split_path: Vec<PathBuf> = path_copy
+            let split_path: Vec<PathBuf> = path
+                .to_path_buf()
                 .parent()
                 .unwrap()
                 .iter()
@@ -818,9 +819,8 @@ fn make_submodule(
     mod_names: &RefCell<IndexMap<String, PathBuf>>,
 ) -> P<Item> {
     let (mut items, foreign_items, uses) = item_store.drain();
-    let file_path = ast_context.get_file_path(file_id).unwrap();
-    let include_line_number = ast_context.get_file_include_line_number(file_id).unwrap();
-    let file_path_str = file_path.to_str().expect("Found invalid unicode");
+    let file_path = ast_context.get_file_path(file_id);
+    let include_line_number = ast_context.get_file_include_line_number(file_id).unwrap_or(0);
     let mod_name = clean_path(mod_names, file_path);
 
     for item in items.iter() {
@@ -850,6 +850,10 @@ fn make_submodule(
         items.push(mk().abi("C").foreign_items(foreign_items));
     }
 
+    let file_path_str = file_path.map_or(
+        mod_name.as_str(),
+        |path| path.to_str().expect("Found invalid unicode"),
+    );
     mk().vis("pub")
         .str_attr("header_src", format!("{}:{}", file_path_str, include_line_number))
         .mod_item(mod_name, mk().mod_(items))
@@ -4354,7 +4358,7 @@ impl<'c> Translation<'c> {
             if file_id != self.main_file {
                 let file_name = clean_path(
                     &self.mod_names,
-                    self.ast_context.get_file_path(file_id).unwrap()
+                    self.ast_context.get_file_path(file_id)
                 );
 
                 module_path.push(file_name);
