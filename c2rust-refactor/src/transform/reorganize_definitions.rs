@@ -814,11 +814,11 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
 
         // Sort by source line number. Headers are sorted by their include line
         // in this module. Items from foreign headers that are not included into
-        // this module are sorted before everything else. Items from the same
-        // header are sorted by their line number in that header. Items not in
-        // any header are sorted by their line number in the source file. Items
-        // without a src_loc (newly inserted items) are sorted before items with
-        // src_locs.
+        // this module are sorted before everything else, by their header name
+        // and line inside that header. Items from the same header are sorted by
+        // their line number in that header. Items not in any header are sorted
+        // by their line number in the source file. Items without a src_loc
+        // (newly inserted items) are sorted before items with src_locs.
         all_items.sort_by(|a, b| {
             match (&a.parent_header, &b.parent_header) {
                 (Some(header_a), Some(header_b)) => {
@@ -827,7 +827,11 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     } else {
                         let line_a = info.header_lines.get(&header_a.ident).unwrap_or(&0);
                         let line_b = info.header_lines.get(&header_b.ident).unwrap_or(&0);
-                        line_a.cmp(line_b)
+                        if line_a == line_b {
+                            header_a.ident.as_str().cmp(&header_b.ident.as_str())
+                        } else {
+                            line_a.cmp(line_b)
+                        }
                     }
                 }
                 (Some(header_a), None) => {
