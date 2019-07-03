@@ -22,7 +22,7 @@ env_logger = "0.6.0"
 regex = "1"
 shlex = "0.1.1"
 c2rust-transpile = { version = "0.10.0", path = "../c2rust-transpile" }
-#c2rust-refactor = { version = "0.10.1", path = "../c2rust-refactor" }
+c2rust-refactor = { version = "0.10.1", path = "../c2rust-refactor" }
 
 [build-dependencies]
 rustc_version = "0.2"
@@ -31,4 +31,4 @@ chrono = "0.4"
 [features]
 # Force static linking of LLVM
 llvm-static = ["c2rust-transpile/llvm-static"]
-#profile = ["c2rust-refactor/profile"]
+profile = ["c2rust-refactor/profile"]
