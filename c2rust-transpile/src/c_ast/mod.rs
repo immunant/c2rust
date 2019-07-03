@@ -176,16 +176,7 @@ impl TypedAstContext {
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
         /// Compare `self` with `other`, without regard to file id
         fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
-            if a.line == b.line && a.column == b.column {
-                Ordering::Equal
-            } else if a.line < b.line
-                || b.line > a.line
-                || a.column < b.column
-            {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
+            (a.line, a.column).cmp(&(b.line, b.column))
         }
         let path_a = self.include_map[self.file_map[a.fileid as usize]].clone();
         let path_b = self.include_map[self.file_map[b.fileid as usize]].clone();
