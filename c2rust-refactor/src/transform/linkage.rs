@@ -4,6 +4,7 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
+use syntax_pos::sym;
 
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
 use crate::ast_manip::fn_edit::{visit_fns, FnKind};
@@ -67,9 +68,9 @@ impl Transform for LinkFuncs {
         visit_fns(krate, |fl| {
             let def_id = cx.node_def_id(fl.id);
             if fl.kind != FnKind::Foreign {
-                if let Some(name) = attr::first_attr_value_str_by_name(&fl.attrs, "export_name") {
+                if let Some(name) = attr::first_attr_value_str_by_name(&fl.attrs, sym::export_name) {
                     symbol_to_def.insert(name, def_id);
-                } else if attr::contains_name(&fl.attrs, "no_mangle") {
+                } else if attr::contains_name(&fl.attrs, sym::no_mangle) {
                     symbol_to_def.insert(fl.ident.name, def_id);
                 }
             } else {

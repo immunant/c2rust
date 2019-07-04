@@ -10,19 +10,19 @@ use rustc::ty::{self, DefIdTree, GenericParamDefKind, TyCtxt};
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::DUMMY_SP;
-use syntax::symbol::keywords;
+use syntax::symbol::kw;
 
 use crate::ast_manip::MutVisitNodes;
 use crate::command::{DriverCommand, Registry};
 use crate::driver::Phase;
 
 /// Build an AST representing a `ty::Ty`.
-pub fn reflect_tcx_ty<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>, ty: ty::Ty<'tcx>) -> P<Ty> {
+pub fn reflect_tcx_ty<'a, 'gcx, 'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> P<Ty> {
     reflect_tcx_ty_inner(tcx, ty, false)
 }
 
 fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(
-    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+    tcx: TyCtxt<'tcx>,
     ty: ty::Ty<'tcx>,
     infer_args: bool,
 ) -> P<Ty> {
@@ -64,7 +64,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(
         Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
         GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
         Never => mk().never_ty(),
-        Tuple(tys) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
+        Tuple(tys) => mk().tuple_ty(tys.types().map(|ty| reflect_tcx_ty(tcx, &ty)).collect()),
         Projection(..) => mk().infer_ty(),             // TODO
         UnnormalizedProjection(..) => mk().infer_ty(), // TODO
         Opaque(..) => mk().infer_ty(),                 // TODO (impl Trait)
@@ -113,7 +113,7 @@ pub fn reflect_def_path(tcx: TyCtxt, id: DefId) -> (Option<QSelf>, Path) {
 
 /// Build a path referring to a specific def.
 fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
-    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+    tcx: TyCtxt<'tcx>,
     id: DefId,
     opt_substs: Option<&[ty::Ty<'tcx>]>,
 ) -> (Option<QSelf>, Path) {
@@ -129,14 +129,14 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
         match dk.disambiguated_data.data {
             DefPathData::CrateRoot => {
                 if id.krate == LOCAL_CRATE {
-                    segments.push(mk().path_segment(keywords::Crate.ident()));
+                    segments.push(mk().path_segment(kw::Crate));
                     break;
                 } else {
                     // Write `::crate_name` as the name of the crate. This is
                     // now correct in Rust 2018, regardless of whether we have
                     // an `extern crate`.
                     segments.push(mk().path_segment(tcx.crate_name(id.krate)));
-                    segments.push(mk().path_segment(keywords::PathRoot.ident()));
+                    segments.push(mk().path_segment(kw::PathRoot));
                     break;
                 }
             }
@@ -181,7 +181,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
 
             DefPathData::ValueNs(name) => {
                 if segments.len() == 0 {
-                    if name != "" {
+                    if name.as_str() != "" {
                         segments.push(mk().path_segment(name));
                     }
                 } else {
@@ -194,33 +194,18 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
             }
 
             DefPathData::TypeNs(name)
-            | DefPathData::Module(name)
-            | DefPathData::MacroDef(name)
-            | DefPathData::EnumVariant(name)
-            | DefPathData::Field(name)
             | DefPathData::GlobalMetaData(name) => {
-                if name != "" {
+                if name.as_str() != "" {
                     segments.push(mk().path_segment(name));
                 }
             }
 
-            DefPathData::TypeParam(name) | DefPathData::ConstParam(name) => {
-                if name != "" {
-                    segments.push(mk().path_segment(name));
-                    break;
-                }
-            }
-
-            DefPathData::Trait(_)
-            | DefPathData::AssocTypeInTrait(_)
-            | DefPathData::AssocTypeInImpl(_)
-            | DefPathData::AssocExistentialInImpl(_)
+            DefPathData::LifetimeNs(_)
+            | DefPathData::MacroNs(_)
             | DefPathData::ClosureExpr
-            | DefPathData::LifetimeParam(_)
             | DefPathData::Ctor
             | DefPathData::AnonConst
-            | DefPathData::ImplTrait
-            | DefPathData::TraitAlias(_) => {}
+            | DefPathData::ImplTrait => {}
         }
 
         // Special logic for certain node kinds
@@ -306,6 +291,7 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         | Node::Ty(_)
         | Node::TraitRef(_)
         | Node::Pat(_)
+        | Node::Arm(_)
         | Node::Block(_)
         | Node::Lifetime(_)
         | Node::Visibility(_)

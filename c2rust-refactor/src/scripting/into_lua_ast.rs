@@ -144,7 +144,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                             ast.set("str_kind", "Char")?;
                         },
                         LitKind::FloatUnsuffixed(symbol) => {
-                            let string = symbol.as_str().get();
+                            let string = symbol.as_str().to_string();
                             let float = string
                                 .parse::<f64>()
                                 .map_err(|e| LuaError::external(e))?;
@@ -155,7 +155,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         LitKind::Float(symbol, suffix) => {
                             ast.set("num_kind", "Float")?;
 
-                            let string = symbol.as_str().get();
+                            let string = symbol.as_str().to_string();
 
                             match suffix {
                                 FloatTy::F32 => {
@@ -187,10 +187,6 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                 ExprKind::Box(boxed) => {
                     ast.set("kind", "Box")?;
                     ast.set("boxed", boxed.into_lua_ast(ctx, lua_ctx)?)?;
-                },
-                ExprKind::ObsoleteInPlace(_, _) => {
-                    ast.set("kind", "ObsoleteInPlace")?;
-                    // TODO: Flesh out further
                 },
                 ExprKind::Array(values) => {
                     let vals: LuaResult<Vec<_>> = values
@@ -358,6 +354,10 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("kind", "Async")?;
                     // TODO: Flesh out further
                 },
+                ExprKind::Await(..) => {
+                    ast.set("kind", "Await")?;
+                    // TODO: Flesh out further
+                },
                 ExprKind::TryBlock(block) => {
                     ast.set("kind", "TryBlock")?;
                     ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
@@ -443,9 +443,9 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         .into_iter()
                         .map(|(sym, expr)| {
                             let input = lua_ctx.create_table()?;
-                            let sym = sym.as_str().get();
+                            let sym = sym.as_str();
 
-                            input.set("symbol", sym)?;
+                            input.set("symbol", sym.get())?;
                             input.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
 
                             Ok(input)
@@ -457,7 +457,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         .collect();
                     let clobbers: Vec<_> = inline_asm.clobbers
                         .into_iter()
-                        .map(|sym| sym.as_str().get())
+                        .map(|sym| sym.as_str().to_string())
                         .collect();
 
                     ast.set("kind", "InlineAsm")?;
@@ -839,7 +839,7 @@ impl<'lua> IntoLuaAst<'lua> for ImplItem {
 impl<'lua> IntoLuaAst<'lua> for InlineAsmOutput {
     fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
         let ast = lua_ctx.create_table()?;
-        let constraint = self.constraint.as_str().get();
+        let constraint = self.constraint.as_str().to_string();
         let expr = self.expr.into_lua_ast(ctx, lua_ctx)?;
 
         ast.set("type", "InlineAsmOutput")?;

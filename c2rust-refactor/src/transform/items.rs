@@ -67,7 +67,7 @@ impl Transform for RenameRegex {
         // (2) Rewrite paths referring to renamed defs
 
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
-            if let Some(hir_id) = cx.def_to_hir_id(def) {
+            if let Some(hir_id) = cx.res_to_hir_id(def) {
                 if let Some(new_ident) = new_idents.get(&hir_id) {
                     path.segments.last_mut().unwrap().ident = new_ident.clone();
                 }
@@ -134,7 +134,7 @@ impl Transform for RenameUnnamed {
 
         // 1. Rename Anonymous types to the unique Ident
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            if attr::contains_name(&i.attrs, "header_src") && !renamer.is_source {
+            if attr::contains_name(&i.attrs, Symbol::intern("header_src")) && !renamer.is_source {
                 renamer.is_source = true;
             }
 
@@ -162,7 +162,7 @@ impl Transform for RenameUnnamed {
 
         // 2. Update types to match the new renamed Anonymous Types
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
-            if let Some(hir_id) = cx.def_to_hir_id(def) {
+            if let Some(hir_id) = cx.res_to_hir_id(def) {
                 if let Some(new_ident) = renamer.new_idents.get(&hir_id) {
                     path.segments.last_mut().unwrap().ident = new_ident.clone();
                 }
@@ -482,7 +482,7 @@ impl Transform for SetMutability {
                 if self.st.marked(i.id, "target") {
                     match i.node {
                         ForeignItemKind::Static(_, ref mut is_mutbl) =>
-                            *is_mutbl = self.mutbl == Mutability::Mutable,
+                            *is_mutbl = self.mutbl,
                         _ => {},
                     }
                 }

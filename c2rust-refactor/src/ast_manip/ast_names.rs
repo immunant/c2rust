@@ -1,5 +1,6 @@
 use syntax::ast::*;
 use syntax::parse::token::Nonterminal;
+use syntax::parse::token::Lit as TokenLit;
 use syntax::ptr::P;
 use syntax::source_map::Spanned;
 use syntax::tokenstream::{DelimSpan, TokenTree};

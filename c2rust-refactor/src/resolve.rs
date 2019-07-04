@@ -1,4 +1,4 @@
-use rustc::hir::def::Def;
+use rustc::hir::def::{DefKind, Res};
 use rustc::hir::def_id::{DefId, CRATE_DEF_INDEX, LOCAL_CRATE};
 use rustc::hir::Node;
 use rustc::hir::{ForeignMod, Mod};
@@ -6,12 +6,13 @@ use rustc::ty::TyCtxt;
 use syntax::ast::Ident;
 use syntax_pos::symbol::Symbol;
 
-fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>) {
+fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>) {
     use rustc::hir::ItemKind::*;
 
     for &iid in &m.item_ids {
         let node = tcx.hir().get_by_hir_id(iid.id);
         let item = expect!([node] Node::Item(i) => i);
+        let item_did = tcx.hir().local_def_id_from_hir_id(item.hir_id);
 
         match item.node {
             ForeignMod(ref fm) => {
@@ -19,7 +20,6 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>
             }
 
             ExternCrate(..) => {
-                let item_did = tcx.hir().local_def_id_from_hir_id(item.hir_id);
                 let krate = tcx
                     .extern_mod_stmt_cnum(item_did)
                     .expect("no cnum available for `extern crate`");
@@ -29,7 +29,7 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>
                 };
                 // This is a little bogus (the thing at `krate_did` isn't really a module), but it
                 // works well enough.
-                let krate_def = Def::Mod(krate_did);
+                let krate_def = Res::Def(DefKind::Mod, krate_did);
                 children.push((item.ident.name, krate_def));
             }
 
@@ -37,24 +37,25 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Def)>
             // case where the `use` resolves to an extern crate's item.  For now we just use the
             // default logic, which omits the `use` (there is no `Def::Use` variant).
             _ => {
-                if let Some(def) = tcx.hir().describe_def_by_hir_id(item.hir_id) {
-                    children.push((item.ident.name, def));
+                if let Some(def) = tcx.def_kind(item_did) {
+                    children.push((item.ident.name, Res::Def(def, item_did)));
                 }
             }
         }
     }
 }
 
-fn push_hir_foreign_mod_children(tcx: TyCtxt, fm: &ForeignMod, children: &mut Vec<(Symbol, Def)>) {
+fn push_hir_foreign_mod_children(tcx: TyCtxt, fm: &ForeignMod, children: &mut Vec<(Symbol, Res)>) {
     for fi in &fm.items {
-        if let Some(def) = tcx.hir().describe_def_by_hir_id(fi.hir_id) {
-            children.push((fi.ident.name, def));
+        let did = tcx.hir().local_def_id_from_hir_id(fi.hir_id);
+        if let Some(def) = tcx.def_kind(did) {
+            children.push((fi.ident.name, Res::Def(def, did)));
         }
     }
 }
 
 /// List the names and `Def`s of all children of the indicated module.
-pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Def)> {
+pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res)> {
     use rustc::hir::ItemKind::*;
 
     if did.krate == LOCAL_CRATE {
@@ -86,8 +87,7 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Def)> {
             }
 
             Use(ref path, _kind) => {
-                let target_did = path.def.def_id();
-                module_children(tcx, target_did)
+                module_children(tcx, path.res.def_id())
             }
 
             Mod(ref m) => {
@@ -106,17 +106,17 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Def)> {
         }
     } else {
         let children = tcx.item_children(did);
-        children.iter().map(|c| (c.ident.name, c.def)).collect()
+        children.iter().map(|c| (c.ident.name, c.res)).collect()
     }
 }
 
 /// Resolve an absolute path to a `Def`.
-pub fn resolve_absolute(tcx: TyCtxt, path: &[Ident]) -> Def {
+pub fn resolve_absolute(tcx: TyCtxt, path: &[Ident]) -> Res {
     let krate_did = DefId {
         krate: LOCAL_CRATE,
         index: CRATE_DEF_INDEX,
     };
-    let mut cur_def = Def::Mod(krate_did);
+    let mut cur_def = Res::Def(DefKind::Mod, krate_did);
 
     'a: for ident in path {
         for (sym, def) in module_children(tcx, cur_def.def_id()) {

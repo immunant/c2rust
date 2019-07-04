@@ -39,8 +39,8 @@ impl WorkList {
     }
 }
 
-pub struct InterCtxt<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
-    cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
+pub struct InterCtxt<'c, 'lty, 'tcx> {
+    cx: &'c mut Ctxt<'lty, 'tcx>,
 
     // Note: all IDs here are function IDs.  Variants are ignored.
     complete_cset: HashMap<DefId, ConstraintSet<'lty>>,
@@ -51,8 +51,8 @@ pub struct InterCtxt<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
     static_rev_deps: HashMap<Var, HashSet<DefId>>,
 }
 
-impl<'c, 'lty, 'a, 'tcx> InterCtxt<'c, 'lty, 'a, 'tcx> {
-    pub fn new(cx: &'c mut Ctxt<'lty, 'a, 'tcx>) -> InterCtxt<'c, 'lty, 'a, 'tcx> {
+impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
+    pub fn new(cx: &'c mut Ctxt<'lty, 'tcx>) -> InterCtxt<'c, 'lty, 'tcx> {
         InterCtxt {
             cx: cx,
             complete_cset: HashMap::new(),

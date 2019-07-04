@@ -17,7 +17,7 @@ use syntax::ast::{Crate, NodeId, CRATE_NODE_ID};
 use syntax::ast::{Expr, Item, Pat, Stmt, Ty};
 use syntax::ext::base::NamedSyntaxExtension;
 use syntax::feature_gate::AttributeType;
-use syntax::parse::lexer::comments::{gather_comments_and_literals, Comment, Literal};
+use syntax::parse::lexer::comments::{gather_comments, Comment};
 use syntax::ptr::P;
 use syntax::source_map::SourceMap;
 use syntax::symbol::Symbol;
@@ -76,7 +76,7 @@ pub struct RefactorState {
     config: interface::Config,
     compiler: interface::Compiler,
     cmd_reg: Registry,
-    file_io: Arc<FileIO + Sync + Send>,
+    file_io: Arc<dyn FileIO + Sync + Send>,
 
     /// The original crate AST.  This is used as the "old" AST when rewriting.  This is always a
     /// real unexpanded AST, as it was loaded from disk, with full user-provided source text.
@@ -84,8 +84,6 @@ pub struct RefactorState {
 
     /// Original comments from the parsed crate
     comment_map: CommentMap,
-    /// Original literals from the parsed crate
-    literals: Vec<Literal>,
 
     /// Mapping from `krate` IDs to `disk_krate` IDs
     node_map: NodeMap,
@@ -103,14 +101,13 @@ fn parse_crate(compiler: &interface::Compiler) -> Crate {
 }
 
 #[cfg_attr(feature = "profile", flame)]
-fn parse_extras(compiler: &interface::Compiler) -> (Vec<Comment>, Vec<Literal>) {
+fn parse_extras(compiler: &interface::Compiler) -> Vec<Comment> {
     let mut comments = vec![];
-    let mut literals = vec![];
     for file in compiler.source_map().files().iter() {
         if let Some(src) = &file.src {
             let mut reader = src.as_bytes();
 
-            let (mut new_comments, mut new_literals) = gather_comments_and_literals(
+            let mut new_comments = gather_comments(
                 &compiler.session().parse_sess,
                 file.name.clone(),
                 &mut reader,
@@ -121,15 +118,11 @@ fn parse_extras(compiler: &interface::Compiler) -> (Vec<Comment>, Vec<Literal>) 
             for c in &mut new_comments {
                 c.pos = c.pos + file.start_pos;
             }
-            for l in &mut new_literals {
-                l.pos = l.pos + file.start_pos;
-            }
             comments.append(&mut new_comments);
-            literals.append(&mut new_literals);
         }
     }
 
-    (comments, literals)
+    comments
 }
 
 impl RefactorState {
@@ -137,12 +130,12 @@ impl RefactorState {
     pub fn new(
         config: interface::Config,
         cmd_reg: Registry,
-        file_io: Arc<FileIO + Sync + Send>,
+        file_io: Arc<dyn FileIO + Sync + Send>,
         marks: HashSet<(NodeId, Symbol)>,
     ) -> RefactorState {
         let compiler = driver::make_compiler(&config, file_io.clone());
         let krate = parse_crate(&compiler);
-        let (comments, literals) = parse_extras(&compiler);
+        let comments = parse_extras(&compiler);
         let comment_map = collect_comments(&krate, &comments);
         let orig_krate = krate.clone();
         let (node_map, cs) = Self::init(krate, Some(marks));
@@ -154,7 +147,6 @@ impl RefactorState {
 
             orig_krate,
             comment_map,
-            literals,
 
             node_map,
 
@@ -196,11 +188,10 @@ impl RefactorState {
     pub fn load_crate(&mut self) {
         self.compiler = driver::make_compiler(&self.config, self.file_io.clone());
         let krate = parse_crate(&self.compiler);
-        let (comments, literals) = parse_extras(&self.compiler);
+        let comments = parse_extras(&self.compiler);
         let comment_map = collect_comments(&krate, &comments);
         self.orig_krate = krate.clone();
         self.comment_map = comment_map;
-        self.literals = literals;
         let (node_map, cs) = Self::init(krate, None);
         self.node_map = node_map;
         self.cs = cs;
@@ -620,7 +611,7 @@ pub trait Command {
 }
 
 /// A command builder is a function that takes some string arguments and produces a `Command`.
-pub type Builder = FnMut(&[String]) -> Box<Command> + Send;
+pub type Builder = dyn FnMut(&[String]) -> Box<dyn Command> + Send;
 
 /// Tracks known refactoring command builders, and allows invoking them by name.
 pub struct Registry {
@@ -636,12 +627,12 @@ impl Registry {
 
     pub fn register<B>(&mut self, name: &str, builder: B)
     where
-        B: FnMut(&[String]) -> Box<Command> + 'static + Send,
+        B: FnMut(&[String]) -> Box<dyn Command> + 'static + Send,
     {
         self.commands.insert(name.to_owned(), Box::new(builder));
     }
 
-    pub fn get_command(&mut self, name: &str, args: &[String]) -> Result<Box<Command>, String> {
+    pub fn get_command(&mut self, name: &str, args: &[String]) -> Result<Box<dyn Command>, String> {
         let builder = match self.commands.get_mut(name) {
             Some(command) => command,
             None => return Err(format!("Invalid command: {:#?}", name)),

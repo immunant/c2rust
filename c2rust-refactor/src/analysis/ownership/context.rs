@@ -95,8 +95,8 @@ pub struct Instantiation {
     pub first_inst_var: u32,
 }
 
-pub struct Ctxt<'lty, 'a: 'lty, 'tcx: 'a> {
-    pub tcx: TyCtxt<'a, 'tcx, 'tcx>,
+pub struct Ctxt<'lty, 'tcx> {
+    pub tcx: TyCtxt<'tcx>,
     pub lcx: LabeledTyCtxt<'lty, Option<PermVar>>,
     pub arena: &'lty SyncDroplessArena,
 
@@ -112,11 +112,11 @@ pub struct Ctxt<'lty, 'a: 'lty, 'tcx: 'a> {
     monos: HashMap<(DefId, usize), MonoSumm>,
 }
 
-impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'a, 'tcx> {
+impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
     pub fn new(
-        tcx: TyCtxt<'a, 'tcx, 'tcx>,
+        tcx: TyCtxt<'tcx>,
         arena: &'lty SyncDroplessArena,
-    ) -> Ctxt<'lty, 'a, 'tcx> {
+    ) -> Ctxt<'lty, 'tcx> {
         Ctxt {
             tcx: tcx,
             lcx: LabeledTyCtxt::new(&arena),
@@ -154,7 +154,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'a, 'tcx> {
     fn func_summ_impl<'b>(
         funcs: &'b mut HashMap<DefId, FuncSumm<'lty, 'tcx>>,
         variants: &mut HashMap<DefId, VariantSumm<'lty>>,
-        tcx: TyCtxt<'a, 'tcx, 'tcx>,
+        tcx: TyCtxt<'tcx>,
         lcx: &mut LabeledTyCtxt<'lty, Option<PermVar>>,
         did: DefId,
     ) -> &'b mut FuncSumm<'lty, 'tcx> {
@@ -250,7 +250,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'a, 'tcx> {
     fn add_variant_impl<'b>(
         funcs: &'b mut HashMap<DefId, FuncSumm<'lty, 'tcx>>,
         variants: &'b mut HashMap<DefId, VariantSumm<'lty>>,
-        tcx: TyCtxt<'a, 'tcx, 'tcx>,
+        tcx: TyCtxt<'tcx>,
         lcx: &'b mut LabeledTyCtxt<'lty, Option<PermVar>>,
         func_did: DefId,
         variant_did: DefId,
@@ -327,7 +327,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'a, 'tcx> {
     fn variant_summ_impl<'b>(
         funcs: &'b mut HashMap<DefId, FuncSumm<'lty, 'tcx>>,
         variants: &'b mut HashMap<DefId, VariantSumm<'lty>>,
-        tcx: TyCtxt<'a, 'tcx, 'tcx>,
+        tcx: TyCtxt<'tcx>,
         lcx: &'b mut LabeledTyCtxt<'lty, Option<PermVar>>,
         variant_did: DefId,
     ) -> (&'b mut FuncSumm<'lty, 'tcx>, &'b mut VariantSumm<'lty>) {
@@ -414,8 +414,8 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'a, 'tcx> {
     }
 }
 
-fn preload_constraints<'lty, 'a, 'tcx>(
-    tcx: TyCtxt<'a, 'tcx, 'tcx>,
+fn preload_constraints<'lty, 'tcx>(
+    tcx: TyCtxt<'tcx>,
     def_id: DefId,
     sig: LFnSig<'lty, 'tcx>,
 ) -> Option<ConstraintSet<'lty>> {

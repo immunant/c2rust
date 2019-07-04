@@ -164,7 +164,7 @@ impl Transform for TestDebugCallees {
             let tcx = cx.ty_ctxt();
             let hir_map = cx.hir_map();
 
-            let parent = hir_map.get_parent(e.id);
+            let parent = hir_map.get_parent_item(hir_map.node_to_hir_id(e.id));
             let parent_body = match_or!([hir_map.maybe_body_owned_by(parent)]
                                         Some(x) => x; return);
             let tables = tcx.body_tables(parent_body);
@@ -176,7 +176,7 @@ impl Transform for TestDebugCallees {
                 }
             }
 
-            fn describe_ty<'a, 'tcx: 'a>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
+            fn describe_ty<'a, 'tcx: 'a>(tcx: TyCtxt<'tcx>,
                                          desc: &str,
                                          ty: ty::Ty<'tcx>,
                                          substs: Option<&'tcx InternalSubsts<'tcx>>) {
@@ -224,9 +224,9 @@ impl Transform for TestDebugCallees {
 
                 if let Some(tdd) = tdds.get(hir_id) {
                     info!("    tdd: {:?}", tdd);
-                    if let Some(did) = tdd.opt_def_id() {
+                    if let Ok((_, did)) = tdd {
                         info!("    tdd id: {:?}", did);
-                        describe_ty(tcx, "tdd ty", tcx.type_of(did), opt_substs);
+                        describe_ty(tcx, "tdd ty", tcx.type_of(*did), opt_substs);
                     }
                 }
             };

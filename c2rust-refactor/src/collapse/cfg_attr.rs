@@ -4,6 +4,7 @@ use syntax::attr::HasAttrs;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
+use syntax_pos::sym;
 
 use smallvec::SmallVec;
 
@@ -18,7 +19,7 @@ impl CollectCfgAttrs {
         let attrs = x
             .attrs()
             .iter()
-            .filter(|attr| attr.check_name("cfg_attr"))
+            .filter(|attr| attr.check_name(sym::cfg_attr))
             .cloned()
             .collect::<Vec<_>>();
         if attrs.len() > 0 {

@@ -83,7 +83,9 @@ impl Transform for GeneralizeItems {
                 return;
             }
 
-            let parent_id = cx.hir_map().get_parent(ty.id);
+            let hir_id = cx.hir_map().node_to_hir_id(ty.id);
+            let parent_id = cx.hir_map().get_parent_item(hir_id);
+            let parent_id = cx.hir_map().hir_to_node_id(parent_id);
             if !st.marked(parent_id, "target") {
                 return;
             }
@@ -132,7 +134,9 @@ impl Transform for GeneralizeItems {
                 _ => return (qself, path),
             };
 
-            let parent_id = cx.hir_map().get_parent(path_id);
+            let hir_id = cx.hir_map().node_to_hir_id(path_id);
+            let parent_id = cx.hir_map().get_parent_item(hir_id);
+            let parent_id = cx.hir_map().hir_to_node_id(parent_id);
             let arg = if st.marked(parent_id, "target") {
                 mk().ident_ty(self.ty_var_name)
             } else {

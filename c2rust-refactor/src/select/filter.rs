@@ -74,11 +74,7 @@ impl<'ast> AnyNode<'ast> {
                 _ => None,
             },
             AnyNode::ForeignItem(fi) => match fi.node {
-                ForeignItemKind::Static(_, is_mut) => Some(if is_mut {
-                    Mutability::Mutable
-                } else {
-                    Mutability::Immutable
-                }),
+                ForeignItemKind::Static(_, mutability) => Some(mutability),
                 _ => None,
             },
             AnyNode::Pat(p) => match p.node {
@@ -267,7 +263,7 @@ pub fn matches_filter(
         }
         Filter::HasAttr(name) => node
             .attrs()
-            .map_or(false, |attrs| attr::contains_name(attrs, &name.as_str())),
+            .map_or(false, |attrs| attr::contains_name(attrs, name)),
         Filter::Matches(ref pat) => match (node, pat) {
             (AnyNode::Expr(target), &AnyPattern::Expr(ref pattern)) => {
                 MatchCtxt::from_match(st, cx, &**pattern, target).is_ok()

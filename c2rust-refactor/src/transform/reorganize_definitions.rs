@@ -10,7 +10,7 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::print::pprust::{foreign_item_to_string, item_to_string};
 use syntax::ptr::P;
-use syntax::symbol::keywords;
+use syntax::symbol::{kw, Symbol};
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::util::{join_visibility, is_relative_path, namespace, split_uses};
@@ -153,9 +153,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         if let ItemKind::ForeignMod(m) = &item.node {
                             for foreign_item in &m.items {
                                 let dest_path = mk().path(vec![
-                                    keywords::Crate.ident(),
-                                    dest_module_ident,
-                                    foreign_item.ident,
+                                    kw::Crate,
+                                    dest_module_ident.name,
+                                    foreign_item.ident.name,
                                 ]);
                                 self.path_mapping.insert(
                                     self.cx.node_def_id(foreign_item.id),
@@ -168,9 +168,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         // a simple path in the crate root and it is flat,
                         // i.e. has no submodules which contain target items.
                         let dest_path = mk().path(vec![
-                            keywords::Crate.ident(),
-                            dest_module_ident,
-                            item.ident,
+                            kw::Crate,
+                            dest_module_ident.name,
+                            item.ident.name,
                         ]);
                         self.path_mapping
                             .insert(self.cx.node_def_id(item.id), (dest_path, dest_module_id));
@@ -348,7 +348,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                 for u in split_uses(item).into_iter() {
                     let use_tree = expect!([&u.node] ItemKind::Use(u) => u);
                     let path = self.cx.resolve_use(&u);
-                    let ns = namespace(&path.def).expect("Could not identify def namespace");
+                    let ns = namespace(&path.res).expect("Could not identify def namespace");
                     if !self.insert_ident(ns, use_tree.ident(), u) {
                         return false;
                     }
@@ -379,13 +379,13 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
 
             // Value namespace
             ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
-                assert!(item.ident != keywords::Invalid.ident());
+                assert!(item.ident.name != kw::Invalid);
                 self.insert_ident(Namespace::ValueNS, item.ident, item)
             }
 
             // Type namespace
             _ => {
-                assert!(item.ident != keywords::Invalid.ident());
+                assert!(item.ident.name != kw::Invalid);
                 self.insert_ident(Namespace::TypeNS, item.ident, item)
             }
         }
@@ -463,7 +463,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         // If the import refers to the existing foreign item, do
                         // not replace it.
                         let path = self.cx.resolve_use(&new);
-                        if let Some(did) = path.def.opt_def_id() {
+                        if let Some(did) = path.res.opt_def_id() {
                             if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
                                 existing_foreign.vis.node =
                                     join_visibility(&existing_foreign.vis.node, &new.vis.node);
@@ -515,7 +515,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         // unless the use refers to the foreign declaration are
                         // attempting to insert.
                         let path = self.cx.resolve_use(&existing_item);
-                        if let Some(did) = path.def.opt_def_id() {
+                        if let Some(did) = path.res.opt_def_id() {
                             if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
                                 *existing_decl = IdentDecl::ForeignItem(new, abi);
                                 return;
@@ -604,10 +604,7 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
         (ForeignItemKind::Static(frn_ty, frn_mutbl), ItemKind::Static(ty, mutbl, _))
             if frn_ty.ast_equiv(&ty) =>
         {
-            match (frn_mutbl, mutbl) {
-                (true, Mutability::Mutable) | (false, Mutability::Immutable) => true,
-                _ => false,
-            }
+            frn_mutbl == mutbl
         }
 
         // If we have a definition for this type name we can assume it is
@@ -623,7 +620,7 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
 
 /// Check if the `Item` has the `#[header_src = "/some/path"]` attribute
 fn has_source_header(attrs: &Vec<Attribute>) -> bool {
-    attr::contains_name(attrs, "header_src")
+    attr::contains_name(attrs, Symbol::intern("header_src"))
 }
 
 /// A complementary check to `has_source_header`. Checks if the header source

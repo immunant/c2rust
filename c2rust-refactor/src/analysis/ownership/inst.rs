@@ -10,8 +10,8 @@ use super::constraint::ConstraintSet;
 use super::context::{Ctxt, Instantiation, VariantSumm};
 use super::{ConcretePerm, Perm, Var};
 
-pub struct InstCtxt<'lty, 'a: 'lty, 'tcx: 'a> {
-    cx: &'lty Ctxt<'lty, 'a, 'tcx>,
+pub struct InstCtxt<'lty, 'tcx> {
+    cx: &'lty Ctxt<'lty, 'tcx>,
 
     insts: &'lty [Instantiation],
     cset: ConstraintSet<'lty>,
@@ -23,12 +23,12 @@ pub struct InstCtxt<'lty, 'a: 'lty, 'tcx: 'a> {
     inst_assign: IndexVec<Var, Option<ConcretePerm>>,
 }
 
-impl<'lty, 'a, 'tcx> InstCtxt<'lty, 'a, 'tcx> {
+impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
     pub fn new(
-        cx: &'lty Ctxt<'lty, 'a, 'tcx>,
+        cx: &'lty Ctxt<'lty, 'tcx>,
         func_did: DefId,
         mono_idx: usize,
-    ) -> InstCtxt<'lty, 'a, 'tcx> {
+    ) -> InstCtxt<'lty, 'tcx> {
         let variant = cx.get_mono_variant_summ(func_did, mono_idx);
         let mono = cx.get_mono_summ(func_did, mono_idx);
         let cset = build_inst_cset(cx, variant, &mono.assign);
@@ -156,8 +156,8 @@ pub fn find_instantiations(cx: &mut Ctxt) {
     }
 }
 
-pub fn build_inst_cset<'lty, 'a, 'tcx>(
-    cx: &'lty Ctxt<'lty, 'a, 'tcx>,
+pub fn build_inst_cset<'lty, 'tcx>(
+    cx: &'lty Ctxt<'lty, 'tcx>,
     variant: &VariantSumm<'lty>,
     assign: &IndexVec<Var, ConcretePerm>,
 ) -> ConstraintSet<'lty> {

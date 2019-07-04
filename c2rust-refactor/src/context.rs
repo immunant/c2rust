@@ -1,4 +1,4 @@
-use rustc::hir::def::Def;
+use rustc::hir::def::{DefKind, Res};
 use rustc::hir::def_id::DefId;
 use rustc::hir::map as hir_map;
 use rustc::hir::{self, Node};
@@ -24,7 +24,7 @@ pub struct RefactorCtxt<'a, 'tcx: 'a> {
     cstore: &'a CStore,
 
     map: Option<&'a hir_map::Map<'tcx>>,
-    tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
+    tcx: Option<TyCtxt<'tcx>>,
 }
 
 impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
@@ -32,7 +32,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         sess: &'a Session,
         cstore: &'a CStore,
         map: Option<&'a hir_map::Map<'tcx>>,
-        tcx: Option<TyCtxt<'a, 'tcx, 'tcx>>,
+        tcx: Option<TyCtxt<'tcx>>,
     ) -> Self {
         Self {
             sess,
@@ -58,7 +58,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
             .expect("hir map is not available in this context (requires phase 2)")
     }
 
-    pub fn ty_ctxt(&self) -> TyCtxt<'a, 'tcx, 'tcx> {
+    pub fn ty_ctxt(&self) -> TyCtxt<'tcx> {
         self.tcx
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
@@ -72,15 +72,16 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
     /// Get the `ty::Ty` computed for a node.
     pub fn node_type(&self, id: NodeId) -> Ty<'tcx> {
-        let parent = self.hir_map().get_parent_did(id);
-        let tables = self.ty_ctxt().typeck_tables_of(parent);
         let hir_id = self.hir_map().node_to_hir_id(id);
+        let parent = self.hir_map().get_parent_did(hir_id);
+        let tables = self.ty_ctxt().typeck_tables_of(parent);
         tables.node_type(hir_id)
     }
 
     pub fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
-        let parent_node = self.hir_map().get_parent(id);
-        let parent = self.hir_map().opt_local_def_id(parent_node)?;
+        let hir_id = self.hir_map().node_to_hir_id(id);
+        let parent_node = self.hir_map().get_parent_item(hir_id);
+        let parent = self.hir_map().opt_local_def_id_from_hir_id(parent_node)?;
         if !self.ty_ctxt().has_typeck_tables(parent) {
             return None;
         }
@@ -97,13 +98,13 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
     }
 
     pub fn opt_adjusted_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
-        let parent_node = self.hir_map().get_parent(id);
-        let parent = self.hir_map().opt_local_def_id(parent_node)?;
+        let hir_id = self.hir_map().node_to_hir_id(id);
+        let parent_node = self.hir_map().get_parent_item(hir_id);
+        let parent = self.hir_map().opt_local_def_id_from_hir_id(parent_node)?;
         if !self.ty_ctxt().has_typeck_tables(parent) {
             return None;
         }
         let tables = self.ty_ctxt().typeck_tables_of(parent);
-        let hir_id = self.hir_map().node_to_hir_id(id);
         if let Some(adj) = tables
             .adjustments()
             .get(hir_id)
@@ -138,60 +139,41 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         }
     }
 
-    pub fn def_to_hir_id(&self, def: &hir::def::Def) -> Option<hir::HirId> {
-        match def {
-            Def::Mod(did)
-            | Def::Struct(did)
-            | Def::Union(did)
-            | Def::Enum(did)
-            | Def::Variant(did)
-            | Def::Trait(did)
-            | Def::Existential(did)
-            | Def::TyAlias(did)
-            | Def::ForeignTy(did)
-            | Def::AssociatedTy(did)
-            | Def::AssociatedExistential(did)
-            | Def::TyParam(did)
-            | Def::Fn(did)
-            | Def::Const(did)
-            | Def::ConstParam(did)
-            | Def::Static(did, _)
-            | Def::Ctor(did, ..)
-            | Def::SelfCtor(did)
-            | Def::Method(did)
-            | Def::AssociatedConst(did)
-            | Def::Macro(did, _)
-            | Def::TraitAlias(did) => {
+    pub fn res_to_hir_id(&self, res: &hir::def::Res) -> Option<hir::HirId> {
+        match res {
+            Res::Def(_, did) | Res::SelfCtor(did) => {
                 if did.is_local() {
                     Some(self.hir_map().local_def_id_to_hir_id(did.to_local()))
                 } else {
                     None
                 }
             }
+            Res::Local(id) => Some(*id),
 
-            // Local variables stopped having DefIds at some point and switched to NodeId
-            Def::Local(node) | Def::Upvar(node, _, _) | Def::Label(node) => {
-                Some(self.hir_map().node_to_hir_id(*node))
-            }
-
-            Def::PrimTy(_) | Def::SelfTy(_, _) | Def::ToolMod | Def::NonMacroAttr(_) | Def::Err => {
+            Res::PrimTy(_) | Res::SelfTy(..) | Res::ToolMod | Res::NonMacroAttr(_) | Res::Err => {
                 None
             }
         }
     }
 
     pub fn try_resolve_expr_to_hid(&self, e: &Expr) -> Option<hir::HirId> {
-        if let Some(def) = self.try_resolve_expr_hir(e) {
-            return self.def_to_hir_id(&def);
-        }
-
-        if self.has_ty_ctxt() {
-            if let Some(def) = self.try_resolve_node_type_dep(e.id) {
-                return self.def_to_hir_id(&def);
-            }
-        }
-
-        None
+        self.try_resolve_expr_hir(e)
+            .or_else(|| {
+                if self.has_ty_ctxt() {
+                    self.try_resolve_node_type_dep(e.id)
+                } else {
+                    None
+                }
+            })
+            .and_then(|def| {
+                if let Some(def_id) = def.opt_def_id() {
+                    self.hir_map().as_local_hir_id(def_id)
+                } else if let Res::Local(hir_id) = def {
+                    Some(hir_id)
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn try_resolve_expr(&self, e: &Expr) -> Option<DefId> {
@@ -257,7 +239,8 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         let tcx = self.ty_ctxt();
         let hir_map = self.hir_map();
 
-        let parent = hir_map.get_parent(e.id);
+        let hir_id = hir_map.node_to_hir_id(e.id);
+        let parent = hir_map.get_parent_item(hir_id);
         let parent_body = match_or!([hir_map.maybe_body_owned_by(parent)]
                                     Some(x) => x; return None);
         let tables = tcx.body_tables(parent_body);
@@ -281,17 +264,16 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
                 // gathered up and passed in a single tuple.
                 //
                 // We detect this case by the presence of a type-dependent def on the Call.
-                if let Some(func_def) = tables.type_dependent_defs().get(call_hir_id) {
-                    if !matches!([func_def] Def::Fn(..), Def::Method(..)) {
+                if let Some(Ok((kind, func_def_id))) = tables.type_dependent_defs().get(call_hir_id) {
+                    if !matches!([kind] DefKind::Fn, DefKind::Method) {
                         warn!(
                             "overloaded call dispatches to non-fnlike def {:?}",
-                            func_def
+                            kind
                         );
                         return None;
                     }
-                    let func_def_id = func_def.def_id();
-                    def_id = Some(func_def_id);
-                    poly_sig = tcx.fn_sig(func_def_id);
+                    def_id = Some(*func_def_id);
+                    poly_sig = tcx.fn_sig(*func_def_id);
                     substs = tables.node_substs_opt(call_hir_id);
                 // TODO: adjust for rust-call ABI
                 } else {
@@ -312,14 +294,13 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 
                     // (3) Type-dependent function (`S::f()`).  Unlike the next case, these don't
                     // get fully resolved until typeck, so the results are recorded differently.
-                    } else if let Some(func_def) = tables.type_dependent_defs().get(func_hir_id) {
-                        if !matches!([func_def] Def::Fn(..), Def::Method(..)) {
-                            warn!("type-dep call dispatches to non-fnlike def {:?}", func_def);
+                    } else if let Some(Ok((kind, func_def_id))) = tables.type_dependent_defs().get(func_hir_id) {
+                        if !matches!([kind] DefKind::Fn, DefKind::Method) {
+                            warn!("type-dep call dispatches to non-fnlike def {:?}", kind);
                             return None;
                         }
-                        let func_def_id = func_def.def_id();
-                        def_id = Some(func_def_id);
-                        poly_sig = tcx.fn_sig(func_def_id);
+                        def_id = Some(*func_def_id);
+                        poly_sig = tcx.fn_sig(*func_def_id);
                         substs = tables.node_substs_opt(func_hir_id);
 
                     // (4) Ordinary function call (`f()`).
@@ -339,14 +320,13 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
                 // These cases are much simpler - just get the method definition from
                 // type_dependent_defs.
                 let hir_id = hir_map.node_to_hir_id(e.id);
-                if let Some(func_def) = tables.type_dependent_defs().get(hir_id) {
-                    if !matches!([func_def] Def::Fn(..), Def::Method(..)) {
-                        warn!("type-dep call dispatches to non-fnlike def {:?}", func_def);
+                if let Some(Ok((kind, func_def_id))) = tables.type_dependent_defs().get(hir_id) {
+                    if !matches!([kind] DefKind::Fn, DefKind::Method) {
+                        warn!("type-dep call dispatches to non-fnlike def {:?}", kind);
                         return None;
                     }
-                    let func_def_id = func_def.def_id();
-                    def_id = Some(func_def_id);
-                    poly_sig = tcx.fn_sig(func_def_id);
+                    def_id = Some(*func_def_id);
+                    poly_sig = tcx.fn_sig(*func_def_id);
                     substs = tables.node_substs_opt(hir_id);
                 } else {
                     return None;
@@ -375,7 +355,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         self.opt_callee_info(e).map(|info| info.fn_sig)
     }
 
-    pub fn try_resolve_expr_hir(&self, e: &Expr) -> Option<Def> {
+    pub fn try_resolve_expr_hir(&self, e: &Expr) -> Option<Res> {
         let node = match_or!([self.hir_map().find(e.id)] Some(x) => x;
                              return None);
         let e = match_or!([node] hir::Node::Expr(e) => e;
@@ -384,10 +364,10 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
                               return None);
         let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
                              return None);
-        Some(path.def)
+        Some(path.res)
     }
 
-    pub fn try_resolve_ty_hir(&self, t: &ast::Ty) -> Option<Def> {
+    pub fn try_resolve_ty_hir(&self, t: &ast::Ty) -> Option<Res> {
         let node = match_or!([self.hir_map().find(t.id)] Some(x) => x;
                              return None);
         let t = match_or!([node] hir::Node::Ty(t) => t;
@@ -396,7 +376,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
                               return None);
         let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
                              return None);
-        Some(path.def)
+        Some(path.res)
     }
 
     /// Try to resolve a node as a reference to a type-dependent definition, like `Vec::new` (a.k.a.
@@ -404,19 +384,19 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
     ///
     /// Note that this method doesn't look up the node itself, so it can return results even for
     /// non-path nodes (unlike `try_resolve_expr/ty_hir`).
-    pub fn try_resolve_node_type_dep(&self, id: NodeId) -> Option<Def> {
+    pub fn try_resolve_node_type_dep(&self, id: NodeId) -> Option<Res> {
         let hir_map = self.hir_map();
         let tcx = self.ty_ctxt();
 
-        let parent = hir_map.get_parent(id);
+        let hir_id = hir_map.node_to_hir_id(id);
+        let parent = hir_map.get_parent_item(hir_id);
         let parent_body = match_or!([hir_map.maybe_body_owned_by(parent)]
                                     Some(x) => x; return None);
         let tables = tcx.body_tables(parent_body);
 
-        let hir_id = hir_map.node_to_hir_id(id);
         let tdd = tables.type_dependent_defs();
         let def = match_or!([tdd.get(hir_id)] Some(x) => x; return None);
-        Some(*def)
+        def.ok().map(|(kind, id)| Res::Def(kind, id))
     }
 
     /// Attempt to resolve a `Use` item to the `hir::Path` of the imported item. The

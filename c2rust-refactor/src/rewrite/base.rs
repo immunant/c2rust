@@ -16,6 +16,7 @@
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::parse::token::{DelimToken, Nonterminal, Token};
+use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{Span, SyntaxContext};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
@@ -410,7 +411,7 @@ pub fn binop_left_prec(op: &BinOp) -> ExprPrec {
     };
 
     match assoc_op {
-        AssocOp::Less | AssocOp::LessEqual | AssocOp::ObsoleteInPlace => ExprPrec::LeftLess(prec),
+        AssocOp::Less | AssocOp::LessEqual => ExprPrec::LeftLess(prec),
         _ => ExprPrec::Normal(prec),
     }
 }

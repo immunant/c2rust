@@ -2,6 +2,7 @@
 use rustc::hir;
 use rustc_target::spec::abi::{self, Abi};
 use std::rc::Rc;
+use std::str;
 use syntax::ast::*;
 use syntax::attr::mk_attr_inner;
 use syntax::parse::token::{self, DelimToken, TokenKind, Token};
@@ -163,6 +164,16 @@ impl<'a> Make<LitIntType> for IntTy {
 impl<'a> Make<LitIntType> for UintTy {
     fn make(self, _mk: &Builder) -> LitIntType {
         LitIntType::Unsigned(self)
+    }
+}
+
+impl Make<Lit> for hir::Lit {
+    fn make(self, _mk: &Builder) -> Lit {
+        Lit {
+            token: self.node.to_lit_token(),
+            node: self.node,
+            span: self.span,
+        }
     }
 }
 

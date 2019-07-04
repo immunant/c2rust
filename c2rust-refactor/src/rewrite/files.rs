@@ -11,7 +11,7 @@ use crate::rewrite::{TextAdjust, TextRewrite};
 
 /// Apply a sequence of rewrites to the source code, handling the results by passing the new text
 /// to `callback` along with the `SourceFile` describing the original source file.
-pub fn rewrite_files_with(cm: &SourceMap, rw: &TextRewrite, io: &FileIO) -> io::Result<()> {
+pub fn rewrite_files_with(cm: &SourceMap, rw: &TextRewrite, io: &dyn FileIO) -> io::Result<()> {
     let mut by_file = HashMap::new();
 
     for rw in &rw.rewrites {
@@ -92,7 +92,7 @@ fn rewrite_range(
     start: BytePos,
     end: BytePos,
     rewrites: &[TextRewrite],
-    callback: &mut FnMut(&str),
+    callback: &mut dyn FnMut(&str),
 ) {
     let mut cur = start;
 

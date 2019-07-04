@@ -1,10 +1,10 @@
 //! Miscellaneous utility functions.
-use rustc::hir::def::{Def, Namespace};
+use rustc::hir::def::{self, Namespace, Res};
 use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
-use syntax::symbol::{keywords, Symbol};
+use syntax::symbol::{kw, Symbol};
 use syntax::tokenstream::TokenStream;
 
 use super::AstEquiv;
@@ -203,36 +203,33 @@ pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
 /// Is a path relative to the current module?
 pub fn is_relative_path(path: &Path) -> bool {
     !path.segments.is_empty()
-        && (path.segments[0].ident.name == keywords::SelfLower.name()
-            || path.segments[0].ident.name == keywords::Super.name())
+        && (path.segments[0].ident.name == kw::SelfLower
+            || path.segments[0].ident.name == kw::Super)
 }
 
 /// Return the namespace the given Def is defined in. Does not yet handle the
 /// macro namespace.
-pub fn namespace(def: &Def) -> Option<Namespace> {
-    use rustc::hir::def::Def::*;
-    match def {
-        Mod(..)
-        | Struct(..)
-        | Union(..)
-        | Enum(..)
-        | Variant(..)
-        | Trait(..)
-        | Existential(..)
-        | TyAlias(..)
-        | ForeignTy(..)
-        | TraitAlias(..)
-        | AssociatedTy(..)
-        | AssociatedExistential(..)
-        | PrimTy(..)
-        | TyParam(..)
-        | SelfTy(..)
-        | ToolMod => Some(Namespace::TypeNS),
+pub fn namespace(res: &def::Res) -> Option<Namespace> {
+    use rustc::hir::def::DefKind::*;
+    match res {
+        Res::Def(kind, _) => match kind {
+            Mod | Struct | Union | Enum | Variant | Trait | Existential | TyAlias
+            | ForeignTy | TraitAlias | AssocTy | AssocExistential | TyParam => {
+                Some(Namespace::TypeNS)
+            }
+            Fn | Const | ConstParam | Static | Ctor(..) | Method | AssocConst => {
+                Some(Namespace::ValueNS)
+            }
+            Macro(..) => Some(Namespace::MacroNS),
+        }
 
-        Fn(..) | Const(..) | Static(..) | SelfCtor(..) | Method(..) | AssociatedConst(..)
-        | Local(..) | Upvar(..) | Label(..) => Some(Namespace::ValueNS),
+        Res::PrimTy(..) | Res::SelfTy(..) | Res::ToolMod => Some(Namespace::TypeNS),
 
-        _ => None,
+        Res::SelfCtor(..) | Res::Local(..) => Some(Namespace::ValueNS),
+
+        Res::NonMacroAttr(..) => Some(Namespace::MacroNS),
+
+        Res::Err => None,
     }
 }
 

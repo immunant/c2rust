@@ -7,9 +7,9 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
-use syntax::parse::token::{Token, Nonterminal};
+use syntax::parse::token::{Token, TokenKind, Nonterminal};
 use syntax::tokenstream::TokenTree;
-use syntax_pos::Span;
+use syntax_pos::{sym, Span};
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
@@ -169,13 +169,16 @@ fn build_format_macro(
     let expr_tt = |mut e: P<Expr>| {
         let span = e.span;
         e.span = DUMMY_SP;
-        TokenTree::Token(span, Token::Interpolated(Lrc::new(Nonterminal::NtExpr(e))))
+        TokenTree::Token(Token {
+            kind: TokenKind::Interpolated(Lrc::new(Nonterminal::NtExpr(e))),
+            span,
+        })
     };
     macro_tts.push(expr_tt(new_fmt_str_expr));
     for (i, arg) in fmt_args[1..].iter().enumerate() {
         if let Some(cast) = casts.get(&i) {
             let tt = expr_tt(cast.apply(arg.clone()));
-            macro_tts.push(TokenTree::Token(DUMMY_SP, Token::Comma));
+            macro_tts.push(TokenTree::Token(Token {kind: TokenKind::Comma, span: DUMMY_SP}));
             macro_tts.push(tt);
         }
     }
@@ -219,7 +222,7 @@ impl Transform for ConvertPrintfs {
         let mut fprintf_defs = HashSet::<DefId>::new();
         let mut stderr_defs = HashSet::<DefId>::new();
         visit_nodes(krate, |fi: &ForeignItem| {
-            if attr::contains_name(&fi.attrs, "no_mangle") {
+            if attr::contains_name(&fi.attrs, sym::no_mangle) {
                 match (&*fi.ident.as_str(), &fi.node) {
                     ("printf", ForeignItemKind::Fn(_, _)) => {
                         printf_defs.insert(cx.node_def_id(fi.id));

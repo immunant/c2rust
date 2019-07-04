@@ -21,8 +21,8 @@ use super::constraint::{ConstraintSet, Perm};
 use super::context::Ctxt;
 use super::{ConcretePerm, LFnSig, LTy, PermVar, Var};
 
-struct LTySource<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
-    cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
+struct LTySource<'c, 'lty, 'tcx> {
+    cx: &'c mut Ctxt<'lty, 'tcx>,
 
     // XXX - bit of a hack.  We keep the def id of the last call to `fn_sig`, and refer to that
     // inside the map_types callback to figure out the right scope for any SigVars in the type.
@@ -31,7 +31,7 @@ struct LTySource<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
     last_sig_did: Option<DefId>,
 }
 
-impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> TypeSource for LTySource<'c, 'lty, 'a, 'tcx> {
+impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> TypeSource for LTySource<'c, 'lty, 'tcx> {
     type Type = LTy<'lty, 'tcx>;
     type Signature = LFnSig<'lty, 'tcx>;
 
@@ -63,7 +63,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> TypeSource for LTySource<'c, 'lty, 'a, 'tcx> 
 }
 
 pub fn handle_marks<'a, 'tcx, 'lty>(
-    cx: &mut Ctxt<'lty, 'a, 'tcx>,
+    cx: &mut Ctxt<'lty, 'tcx>,
     st: &CommandState,
     dcx: &RefactorCtxt<'a, 'tcx>,
 ) {
@@ -157,7 +157,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
 }
 
 pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
-    cx: &mut Ctxt<'lty, 'a, 'tcx>,
+    cx: &mut Ctxt<'lty, 'tcx>,
     st: &CommandState,
     dcx: &RefactorCtxt<'a, 'tcx>,
 ) {
@@ -179,7 +179,7 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
         let mut is_variant = false;
         if let Some(attr) = attrs
             .iter()
-            .filter(|a| a.check_name("ownership_variant_of"))
+            .filter(|a| a.check_name(Symbol::intern("ownership_variant_of")))
             .next()
         {
             let meta = match_or!([attr.meta()] Some(x) => x;
@@ -191,7 +191,7 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
 
             let num_mono = attrs
                 .iter()
-                .filter(|a| a.check_name("ownership_mono"))
+                .filter(|a| a.check_name(Symbol::intern("ownership_mono")))
                 .count();
             assert!(
                 num_mono == 1,
@@ -310,7 +310,7 @@ fn parse_ownership_constraints<'lty, 'tcx>(
     let mut cset = ConstraintSet::new();
     for arg in args {
         let arg = nested_meta_item(arg)?;
-        if !arg.check_name("le") {
+        if !arg.check_name(Symbol::intern("le")) {
             return Err("expected `le(a, b)` in `ownership_constraints`");
         }
 
@@ -331,7 +331,7 @@ fn parse_perm<'lty, 'tcx>(
     meta: &ast::MetaItem,
     arena: &'lty SyncDroplessArena,
 ) -> Result<Perm<'lty>, &'static str> {
-    if meta.check_name("min") {
+    if meta.check_name(Symbol::intern("min")) {
         let args = meta_item_list(meta)?;
         if args.len() == 0 {
             return Err("`min` requires at least one argument");

@@ -259,8 +259,8 @@ fn is_uninit_call(cx: &RefactorCtxt, e: &Expr) -> bool {
 
     (crate_name.as_str() == "std" || crate_name.as_str() == "core") &&
     path.data.len() == 2 &&
-    path.data[0].data.get_opt_name().map_or(false, |sym| sym == "mem") &&
-    path.data[1].data.get_opt_name().map_or(false, |sym| sym == "uninitialized")
+    path.data[0].data.get_opt_name().map_or(false, |sym| sym.as_str() == "mem") &&
+    path.data[1].data.get_opt_name().map_or(false, |sym| sym.as_str() == "uninitialized")
 }
 
 

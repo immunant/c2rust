@@ -246,7 +246,7 @@ impl FileIO for RealFileIO {
     }
 }
 
-pub struct ArcFileIO(pub Arc<FileIO + Sync + Send>);
+pub struct ArcFileIO(pub Arc<dyn FileIO + Sync + Send>);
 
 impl FileLoader for ArcFileIO {
     fn file_exists(&self, path: &Path) -> bool {

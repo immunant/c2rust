@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use rustc::hir::def::Def;
+use rustc::hir::def::DefKind;
 use rustc::hir::def_id::{DefId};
 use rustc::ty::{Instance, TyCtxt, TyKind, Ty};
 use syntax::ast::*;
@@ -38,7 +38,7 @@ pub struct CanonicalizeExterns {
 
 fn is_foreign_symbol(tcx: TyCtxt, did: DefId) -> bool {
     tcx.is_foreign_item(did) &&
-    matches!([tcx.describe_def(did)] Some(Def::Fn(..)), Some(Def::Static(..)))
+    matches!([tcx.def_kind(did)] Some(DefKind::Fn), Some(DefKind::Static))
 }
 
 impl Transform for CanonicalizeExterns {

@@ -111,7 +111,6 @@ enum ForeignItemKind {
 }
 
 
-#[nonterminal]
 struct Generics { params, where_clause, span }
 #[extend_span]
 struct GenericParam { id, ident, attrs, bounds, kind }
@@ -120,8 +119,7 @@ enum GenericParamKind {
     Type { default },
     Const { ty },
 }
-#[nonterminal]
-struct WhereClause { id, predicates, span }
+struct WhereClause { predicates, span }
 enum WherePredicate {
     BoundPredicate(pred),
     RegionPredicate(pred),
@@ -187,14 +185,11 @@ struct PolyTraitRef { trait_ref, span, bound_generic_params }
 struct FnDecl { inputs, output, c_variadic }
 struct FnHeader { unsafety, asyncness, constness, abi }
 #[rewrite_print]
-struct Arg { ty, pat, id }
+struct Arg { attrs, ty, pat, id }
 enum FunctionRetTy {
     Default(sp),
     Ty(ty),
 }
-
-
-struct TypeBinding { id, ident, ty, span }
 
 
 #[match=custom] #[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal]
@@ -217,7 +212,6 @@ struct Expr { id, node, span, #[match=ignore] attrs }
 #[prec_contains_expr]
 enum ExprKind {
     Box(#[prec=PREFIX] expr),
-    ObsoleteInPlace(expr1, expr2),
     Array(elems),
     Call(#[prec=POSTFIX] #[prec_special=Callee] func, args),
     MethodCall(path_seg, #[prec_first=POSTFIX] args),
@@ -237,6 +231,7 @@ enum ExprKind {
     Closure(cap, is_async, mov, decl, body, span),
     Block(body, label),
     Async(cap, id, block),
+    Await(origin, expr),
     TryBlock(body),
     Assign(#[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
     AssignOp(op, #[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
@@ -281,7 +276,7 @@ flag BinOpKind;
 #[extend_span]
 struct Field { ident, expr, span, is_shorthand, attrs }
 #[extend_span]
-struct Arm { attrs, pats, guard, body }
+struct Arm { attrs, pats, guard, body, span }
 enum Guard {
     If(expr),
 }
@@ -310,6 +305,7 @@ enum PatKind {
 #[extend_span]
 struct FieldPat { ident, pat, is_shorthand, attrs }
 
+struct Lit { token, node, span }
 
 enum LitKind {
     Str(sym, style),
@@ -323,6 +319,9 @@ enum LitKind {
     Err(sym),
 }
 
+struct TokenLit { kind, symbol, suffix }
+
+flag TokenLitKind;
 
 
 flag Defaultness;
@@ -342,6 +341,7 @@ enum RangeSyntax {
 }
 flag BindingMode;
 flag CaptureBy;
+flag AwaitOrigin;
 enum BlockCheckMode {
     Default,
     Unsafe(source),
@@ -367,7 +367,7 @@ enum GenericArgs {
     AngleBracketed(abpd),
     Parenthesized(ppd),
 }
-struct AngleBracketedArgs { span, args, bindings }
+struct AngleBracketedArgs { span, args, constraints }
 struct ParenthesizedArgs { span, inputs, output }
 enum GenericArg {
     Lifetime(lt),
@@ -375,6 +375,12 @@ enum GenericArg {
     Const(c),
 }
 struct QSelf { ty, path_span, position }
+
+struct AssocTyConstraint { id, ident, kind, span }
+enum AssocTyConstraintKind {
+     Equality { ty },
+     Bound { bounds },
+}
 
 
 struct Mac_ { path, delim, tts }
@@ -436,17 +442,13 @@ enum Nonterminal {
     NtPath(p),
     NtVis(v),
     NtTT(tt),
-    NtArm(a),
-    NtImplItem(ii),
     NtTraitItem(ti),
+    NtImplItem(ii),
     NtForeignItem(fi),
-    NtGenerics(g),
-    NtWhereClause(wc),
-    NtArg(a),
 }
 
 enum TokenTree {
-    Token(sp, t),
+    Token(t),
     Delimited(sp, d, tts),
 }
 
