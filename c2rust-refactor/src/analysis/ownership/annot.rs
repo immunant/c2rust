@@ -74,7 +74,7 @@ pub fn handle_marks<'a, 'tcx, 'lty>(
             last_sig_did: None,
         };
 
-        type_map::map_types(dcx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
+        type_map::map_types(&dcx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
             eprintln!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
             if st.marked(ast_ty.id, "box") {
                 if let Some(p) = lty.label {

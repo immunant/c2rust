@@ -125,6 +125,8 @@ fn parse_extras(compiler: &interface::Compiler) -> Vec<Comment> {
     comments
 }
 
+pub const FRESH_NODE_ID_START: u32 = 0x8000_0000;
+
 impl RefactorState {
     #[cfg_attr(feature = "profile", flame)]
     pub fn new(
@@ -167,7 +169,7 @@ impl RefactorState {
         // The newly loaded `krate` and reinitialized `node_map` reference none of the old
         // `parsed_nodes`.  That means we can reset the ID counter without risk of ID collisions.
         let parsed_nodes = ParsedNodes::default();
-        let node_id_counter = NodeIdCounter::new(0x8000_0000);
+        let node_id_counter = NodeIdCounter::new(FRESH_NODE_ID_START);
 
         let cs = CommandState::new(krate, Phase::Phase1, marks, parsed_nodes, node_id_counter);
 

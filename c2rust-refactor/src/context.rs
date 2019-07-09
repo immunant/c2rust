@@ -1,7 +1,9 @@
+use std::ops::Deref;
+
 use rustc::hir::def::{DefKind, Res};
 use rustc::hir::def_id::DefId;
 use rustc::hir::map as hir_map;
-use rustc::hir::{self, Node};
+use rustc::hir::{self, Node, HirId};
 use rustc::session::Session;
 use rustc::ty::subst::InternalSubsts;
 use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
@@ -23,17 +25,18 @@ pub struct RefactorCtxt<'a, 'tcx: 'a> {
     sess: &'a Session,
     cstore: &'a CStore,
 
-    map: Option<&'a hir_map::Map<'tcx>>,
+    map: Option<HirMap<'a, 'tcx>>,
     tcx: Option<TyCtxt<'tcx>>,
 }
 
-impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
+impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn new(
         sess: &'a Session,
         cstore: &'a CStore,
         map: Option<&'a hir_map::Map<'tcx>>,
         tcx: Option<TyCtxt<'tcx>>,
     ) -> Self {
+        let map = map.map(|map| HirMap::new(sess, map));
         Self {
             sess,
             cstore,
@@ -43,33 +46,54 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct HirMap<'a, 'hir: 'a> {
+    map: &'a hir_map::Map<'hir>,
+
+    /// Next NodeId after the crate. Needed to validate NodeIds used with the
+    /// map.
+    max_node_id: NodeId,
+}
+
+impl<'a, 'hir> HirMap<'a, 'hir> {
+    fn new(sess: &'a Session, map: &'a hir_map::Map<'hir>) -> Self {
+        let max_node_id = sess.next_node_id();
+        Self { map, max_node_id }
+    }
+}
+
 // Core RefactorCtxt accessors
-impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
+impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
+    #[inline]
     pub fn session(&self) -> &'a Session {
         self.sess
     }
 
+    #[inline]
     pub fn cstore(&self) -> &'a CStore {
         self.cstore
     }
 
-    pub fn hir_map(&self) -> &'a hir_map::Map<'tcx> {
+    #[inline]
+    pub fn hir_map(&self) -> HirMap<'a, 'tcx> {
         self.map
             .expect("hir map is not available in this context (requires phase 2)")
     }
 
+    #[inline]
     pub fn ty_ctxt(&self) -> TyCtxt<'tcx> {
         self.tcx
             .expect("ty ctxt is not available in this context (requires phase 3)")
     }
 
+    #[inline]
     pub fn has_ty_ctxt(&self) -> bool {
         self.tcx.is_some()
     }
 }
 
 // Other context API methods
-impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
+impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     /// Get the `ty::Ty` computed for a node.
     pub fn node_type(&self, id: NodeId) -> Ty<'tcx> {
         let hir_id = self.hir_map().node_to_hir_id(id);
@@ -518,6 +542,51 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 
             _ => false,
         }
+    }
+}
+
+// Forwarding of HIR map queries so that we make sure to validate the NodeId, if
+// applicable, first. We only validate the NodeId if the method returns an
+// Option. If it can panic, it will just panic on an invalid NodeId.
+impl<'a, 'hir> HirMap<'a, 'hir> {
+    /// Map a crate NodeId to HirId, if possible. Only accepts NodeIds that were
+    /// in the originally parsed crate.
+    #[inline]
+    pub fn opt_node_to_hir_id(&self, id: NodeId) -> Option<HirId> {
+        if id > self.max_node_id {
+            None
+        } else {
+            Some(self.map.node_to_hir_id(id))
+        }
+    }
+
+    #[inline]
+    pub fn node_to_hir_id(&self, id: NodeId) -> HirId {
+        self.opt_node_to_hir_id(id)
+            .unwrap_or_else(|| panic!("Could not find an HIR id for NodeId: {:?}", id))
+    }
+
+    /// Retrieves the `Node` corresponding to `id`, returning `None` if cannot be found.
+    pub fn find(&self, id: NodeId) -> Option<Node<'hir>> {
+        self.opt_node_to_hir_id(id)
+            .and_then(|hir_id| self.map.find_by_hir_id(hir_id))
+    }
+
+    /// Check if the node is an argument. An argument is a local variable whose
+    /// immediate parent is an item or a closure.
+    pub fn is_argument(&self, id: NodeId) -> bool {
+        if self.opt_node_to_hir_id(id).is_none() {
+            false
+        } else {
+            self.map.is_argument(id)
+        }
+    }
+}
+
+impl<'a, 'hir> Deref for HirMap<'a, 'hir> {
+    type Target = hir_map::Map<'hir>;
+    fn deref(&self) -> &Self::Target {
+        self.map
     }
 }
 

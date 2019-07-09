@@ -53,6 +53,7 @@ use syntax::source_map::Span;
 use syntax::symbol::Symbol;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::context::RefactorCtxt;
 use crate::type_map;
 
 /// Unification key for types.
@@ -324,16 +325,16 @@ impl<'lty, 'tcx> type_map::Signature<LTy<'lty, 'tcx>> for LFnSig<'lty, 'tcx> {
 
 /// Label the `ty::Ty` for every `ast::Ty` in the crate.
 fn label_tys<'lty, 'a: 'lty, 'tcx: 'a>(
-    tcx: TyCtxt<'tcx>,
+    cx: &RefactorCtxt<'a, 'tcx>,
     ltt: &'lty LTyTable<'lty>,
     krate: &ast::Crate,
 ) -> HashMap<HirId, LTy<'lty, 'tcx>> {
     let mut ty_nodes = HashMap::new();
-    let source = LabelTysSource { tcx: tcx, ltt: ltt };
-    type_map::map_types(tcx.hir(), source, krate, |_, ast_ty, lty| {
+    let source = LabelTysSource { tcx: cx.ty_ctxt(), ltt: ltt };
+    type_map::map_types(&cx.hir_map(), source, krate, |_, ast_ty, lty| {
         // Note that AST `Ty` nodes don't have `HirId`s, so we index everything by the old `NodeId`
         // instead.
-        ty_nodes.insert(tcx.hir().node_to_hir_id(ast_ty.id), lty);
+        ty_nodes.insert(cx.hir_map().node_to_hir_id(ast_ty.id), lty);
     });
     ty_nodes
 }
@@ -963,7 +964,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
 /// Run the analysis, producing a map from `ast::Ty` `NodeId`s to an equivalence class number.
 pub fn analyze<'a, 'tcx: 'a>(
-    tcx: TyCtxt<'tcx>,
+    cx: &RefactorCtxt<'a, 'tcx>,
     krate: &ast::Crate,
 ) -> HashMap<HirId, u32> {
     let arena = SyncDroplessArena::default();
@@ -971,13 +972,13 @@ pub fn analyze<'a, 'tcx: 'a>(
 
     // Collect labeled expr/pat types from the TypeckTables of each item.
     let mut v = ExprPatVisitor {
-        tcx: tcx,
+        tcx: cx.ty_ctxt(),
         ltt: &ltt,
         unadjusted: HashMap::new(),
         adjusted: HashMap::new(),
         substs: HashMap::new(),
     };
-    tcx.hir().krate().visit_all_item_likes(&mut v);
+    cx.hir_map().krate().visit_all_item_likes(&mut v);
     let ExprPatVisitor {
         unadjusted: unadjusted_nodes,
         adjusted: nodes,
@@ -986,14 +987,14 @@ pub fn analyze<'a, 'tcx: 'a>(
     } = v;
 
     // Construct labeled types for each `ast::Ty` in the program.
-    let ty_nodes = label_tys(tcx, &ltt, krate);
+    let ty_nodes = label_tys(&cx, &ltt, krate);
 
     // Construct labeled types for primitive operations.
-    let prims = prim_tys(tcx, &ltt);
+    let prims = prim_tys(cx.ty_ctxt(), &ltt);
 
     // Run the unification pass.
     let mut v = UnifyVisitor {
-        tcx: tcx,
+        tcx: cx.ty_ctxt(),
         ltt: &ltt,
 
         unadjusted_nodes: &unadjusted_nodes,
@@ -1004,7 +1005,7 @@ pub fn analyze<'a, 'tcx: 'a>(
         defs: RefCell::new(HashMap::new()),
         def_sigs: RefCell::new(HashMap::new()),
     };
-    tcx.hir()
+    cx.hir_map()
         .krate()
         .visit_all_item_likes(&mut v.as_deep_visitor());
 

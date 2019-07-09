@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use arena::SyncDroplessArena;
-use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast::*;
@@ -20,6 +19,7 @@ use crate::analysis::labeled_ty::LabeledTyCtxt;
 use crate::analysis::ownership::{self, ConcretePerm, Var, PTy};
 use crate::analysis::ownership::constraint::{ConstraintSet, Perm};
 use crate::command::{CommandState, Registry, DriverCommand};
+use crate::context::HirMap;
 use crate::driver::{Phase};
 use crate::type_map;
 use crate::RefactorCtxt;
@@ -68,7 +68,7 @@ fn do_annotate(st: &CommandState,
     struct AnnotateFolder<'a, 'tcx: 'a> {
         label: Symbol,
         ana: ownership::AnalysisResult<'tcx, 'tcx>,
-        hir_map: &'a hir::map::Map<'tcx>,
+        hir_map: HirMap<'a, 'tcx>,
         st: &'a CommandState,
     }
 
@@ -560,7 +560,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     let s_mut = "mut".into_symbol();
     let s_box = "box".into_symbol();
 
-    type_map::map_types(cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
+    type_map::map_types(&cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
         let p = match lty.label {
             Some(x) => x,
             None => return,

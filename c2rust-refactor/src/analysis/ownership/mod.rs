@@ -28,6 +28,7 @@ use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::command::CommandState;
+use crate::context::HirMap;
 use crate::type_map;
 use crate::RefactorCtxt;
 
@@ -164,7 +165,7 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
 /// the `Ctxt`.
 fn analyze_intra<'a, 'tcx, 'lty>(
     cx: &mut Ctxt<'lty, 'tcx>,
-    hir_map: &hir::map::Map<'tcx>,
+    hir_map: &HirMap<'a, 'tcx>,
     tcx: TyCtxt<'tcx>,
 ) {
     for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
@@ -207,7 +208,7 @@ pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
     handle_marks(&mut cx, st, dcx);
 
     // Compute polymorphic signatures / constraint sets for each function
-    analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
+    analyze_intra(&mut cx, &dcx.hir_map(), dcx.ty_ctxt());
     analyze_inter(&mut cx);
 
     // Compute monomorphic signatures and select instantiations in each function

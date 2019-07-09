@@ -14,6 +14,7 @@ use syntax::symbol::kw;
 
 use crate::ast_manip::MutVisitNodes;
 use crate::command::{DriverCommand, Registry};
+use crate::context::RefactorCtxt;
 use crate::driver::Phase;
 
 /// Build an AST representing a `ty::Ty`.
@@ -266,8 +267,8 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
 
 /// Wrapper around `reflect_path` that checks first to ensure its argument is the sort of def that
 /// has a path.  `reflect_path` will panic if called on a def with no path.
-pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
-    let node = match hir_map.find(id) {
+pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
+    let node = match cx.hir_map().find(id) {
         Some(x) => x,
         None => return false,
     };
