@@ -22,7 +22,7 @@ impl VisitorImpls {
         method_name: &Ident,
         arg_pat: &Pat,
         ty: &Type,
-        noop: &Option<Block>,
+        walk: &Block,
     ) {
         self.tokens.extend(quote! {
             impl MutVisit for #ty {
@@ -35,16 +35,17 @@ impl VisitorImpls {
         let folder_name = format!("Folder{}", self.count);
         let folder_ident = Ident::new(&folder_name, Span::call_site());
 
-        let walk = match noop {
-            Some(block) => quote! { #block },
-            None => {
-                let noop_fn_name = format!("noop_{}", method_name);
-                let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
-                quote! {
-                    syntax::mut_visit::#noop_fn(#arg_pat, self);
+        if !walk.stmts.is_empty() {
+            let noop_fn_name = format!("noop_{}", method_name);
+            let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
+            self.tokens.extend(quote! {
+                impl WalkAst for #ty {
+                    fn walk<T: MutVisitor>(&mut self, v: &mut T) {
+                        syntax::mut_visit::#noop_fn(self, v);
+                    }
                 }
-            }
-        };
+            });
+        }
         self.tokens.extend(quote! {
             struct #folder_ident<F>
                 where F: FnMut(&mut #ty)
@@ -80,7 +81,7 @@ impl VisitorImpls {
         method_name: &Ident,
         arg_pat: &Pat,
         ty: &Type,
-        noop: &Option<Block>,
+        walk: &Block,
     ) {
         self.tokens.extend(quote! {
             impl MutVisit for #ty {
@@ -98,16 +99,17 @@ impl VisitorImpls {
         let folder_name = format!("Folder{}", self.count);
         let folder_ident = Ident::new(&folder_name, Span::call_site());
 
-        let walk = match noop {
-            Some(block) => quote! { #block },
-            None => {
-                let noop_fn_name = format!("noop_{}", method_name);
-                let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
-                quote! {
-                    syntax::mut_visit::#noop_fn(#arg_pat, self);
+        if !walk.stmts.is_empty() {
+            let noop_fn_name = format!("noop_{}", method_name);
+            let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
+            self.tokens.extend(quote! {
+                impl WalkAst for #ty {
+                    fn walk<T: MutVisitor>(&mut self, v: &mut T) {
+                        *self = syntax::mut_visit::#noop_fn(self.clone(), v).lone();
+                    }
                 }
-            }
-        };
+            })
+        }
         self.tokens.extend(quote! {
             struct #folder_ident<F>
                 where F: FnMut(#ty) -> SmallVec<[#ty; 1]>
@@ -151,7 +153,7 @@ impl VisitorImpls {
 impl<'ast> Visit<'ast> for VisitorImpls {
     fn visit_trait_item_method(&mut self, m: &TraitItemMethod) {
         let method_name = &m.sig.ident;
-        let method_noop = &m.default;
+        let method_noop = m.default.as_ref().unwrap();
         match &m.sig.decl.inputs[1] {
             FnArg::Captured(ArgCaptured { pat, ty, .. }) => match ty {
                 Type::Reference(TypeReference {

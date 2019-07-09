@@ -24,6 +24,11 @@ pub trait MutVisit: Sized {
     }
 }
 
+/// Trait to walk children of AST nodes with a MutVisitor
+pub trait WalkAst: Sized {
+    fn walk<T: MutVisitor>(&mut self, visitor: &mut T);
+}
+
 /// Trait for AST node types that can be rewritten with a mutable visit.
 pub trait MutVisitNodes: MutVisit + Sized {
     fn visit<T, F>(target: &mut T, callback: F)

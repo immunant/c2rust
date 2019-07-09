@@ -1,5 +1,6 @@
 //! `TryMatch` impls, to support the `matcher` module.
 use rustc_target::spec::abi::Abi;
+use std::convert::TryInto;
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::ext::hygiene::SyntaxContext;
@@ -10,8 +11,23 @@ use syntax::source_map::{Span, Spanned};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
 
+use crate::ast_manip::AstNode;
 use crate::ast_manip::util::{macro_name, PatternSymbol};
 use crate::matcher::{self, MatchCtxt, TryMatch};
+
+impl TryMatch for AstNode {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        match self {
+            AstNode::Crate(x) => mcx.try_match(x, target.try_into().unwrap()),
+            AstNode::Expr(x) => mcx.try_match(x, target.try_into().unwrap()),
+            AstNode::Pat(x) => mcx.try_match(x, target.try_into().unwrap()),
+            AstNode::Ty(x) => mcx.try_match(x, target.try_into().unwrap()),
+            AstNode::Stmts(x) => mcx.try_match(x, target.try_into().unwrap()),
+            AstNode::Stmt(x) => mcx.try_match(x, target.try_into().unwrap()),
+            AstNode::Item(x) => mcx.try_match(x, target.try_into().unwrap()),
+        }
+    }
+}
 
 impl TryMatch for Ident {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
