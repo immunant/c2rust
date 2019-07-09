@@ -228,6 +228,8 @@ fn invoke_refactor(build_dir: &PathBuf) -> Result<(), Error> {
         "--cargo",
         "--rewrite-mode",
         "inplace",
+        "rename_unnamed",
+        ";",
         "reorganize_definitions",
     ];
     let status = process::Command::new(cmd_path.into_os_string())
@@ -304,8 +306,7 @@ fn transpile_single(
 
     // Convert this into a typed AST
     let typed_context = {
-        let mut conv = ConversionContext::new(&untyped_context);
-        conv.convert(&untyped_context);
+        let conv = ConversionContext::new(&untyped_context);
         conv.typed_context
     };
 

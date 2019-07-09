@@ -52,7 +52,7 @@ impl<'c> Translation<'c> {
                         let name = self.renamer.borrow().get(&variant_id).unwrap();
 
                         // Import the enum variant if needed
-                        if let Some(cur_file) = self.cur_file.borrow().as_ref() {
+                        if let Some(cur_file) = *self.cur_file.borrow() {
                             self.add_import(cur_file, variant_id, &name);
                         }
                         return mk().path_expr(vec![name]);
@@ -82,7 +82,7 @@ impl<'c> Translation<'c> {
     /// Convert a C literal expression to a Rust expression
     pub fn convert_literal(
         &self,
-        is_static: bool,
+        ctx: ExprContext,
         ty: CQualTypeId,
         kind: &CLiteral,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
@@ -152,7 +152,7 @@ impl<'c> Translation<'c> {
                         }
                     }
                 };
-                if is_static {
+                if ctx.is_static {
                     let mut vals: Vec<P<Expr>> = vec![];
                     for c in val {
                         vals.push(mk().lit_expr(mk().int_lit(c as u128, LitIntType::Unsuffixed)));
@@ -172,6 +172,7 @@ impl<'c> Translation<'c> {
                     };
                     let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
                     let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
+                    if ctx.is_const { self.use_feature("const_transmute"); }
                     let pointer =
                         transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
                     let array = mk().unary_expr(ast::UnOp::Deref, pointer);

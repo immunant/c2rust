@@ -333,6 +333,14 @@ impl RefactorState {
 
         collapse_info.collapse(&mut self.node_map, &self.cs);
 
+        for (node, comment) in self.cs.new_comments.get_mut().drain(..) {
+            if let Some(node) = self.node_map.get(&node) {
+                self.comment_map.insert(*node, comment);
+            } else {
+                warn!("Could not create comment: {:?}", comment.lines);
+            }
+        }
+
         Ok(r)
     }
 
@@ -468,6 +476,8 @@ pub struct CommandState {
     // parsed_nodes: RefCell<ParsedNodes>,
     new_parsed_node_ids: RefCell<Vec<NodeId>>,
 
+    new_comments: RefCell<Vec<(NodeId, Comment)>>,
+
     krate_changed: Cell<bool>,
     marks_changed: Cell<bool>,
 }
@@ -486,6 +496,7 @@ impl CommandState {
             marks: RefCell::new(marks),
             parsed_nodes: RefCell::new(parsed_nodes),
             new_parsed_node_ids: RefCell::new(Vec::new()),
+            new_comments: RefCell::new(Vec::new()),
 
             krate_changed: Cell::new(false),
             marks_changed: Cell::new(false),
@@ -499,6 +510,7 @@ impl CommandState {
         reset_node_ids(self.krate.get_mut());
 
         self.new_parsed_node_ids.get_mut().clear();
+        self.new_comments.get_mut().clear();
         self.krate_changed.set(false);
         self.marks_changed.set(false);
     }
@@ -518,6 +530,10 @@ impl CommandState {
 
     pub fn krate_changed(&self) -> bool {
         self.krate_changed.get()
+    }
+
+    pub fn add_comment(&self, node: NodeId, comment: Comment) {
+        self.new_comments.borrow_mut().push((node, comment));
     }
 
     pub fn marks(&self) -> cell::Ref<HashSet<(NodeId, Symbol)>> {

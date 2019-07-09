@@ -160,7 +160,7 @@ impl TypeConverter {
         field_id: CFieldId,
         name: &str,
     ) -> String {
-        let name = if name.is_empty() { "unnamed" } else { name };
+        let name = if name.is_empty() { "c2rust_unnamed" } else { name };
 
         if !self.fields.contains_key(&record_id) {
             self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));

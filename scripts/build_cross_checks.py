@@ -18,7 +18,6 @@ from common import (
     est_parallel_link_jobs,
     invoke,
     setup_logging,
-    have_rust_toolchain,
     ensure_clang_version,
     ensure_dir,
     git_ignore_dir,
@@ -132,9 +131,6 @@ def _main():
         with pb.local.cwd(c.LIBFAKECHECKS_DIR):
             make('clean')
 
-    # prerequisites
-    if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
-        die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])

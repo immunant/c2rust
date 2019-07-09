@@ -225,7 +225,7 @@ impl<'c> Translation<'c> {
                 // We are waiting on raw va_copy support to land in rustc:
                 // https://github.com/rust-lang/rust/pull/59625
                 Err(TranslationError::new(
-                    &expr.loc,
+                    self.ast_context.display_loc(&expr.loc),
                     Context::new(TranslationErrorKind::VaCopyNotImplemented),
                 ))
                 // if ctx.is_unused() && args.len() == 2 {
@@ -614,7 +614,7 @@ impl<'c> Translation<'c> {
                 ))
             }
 
-            _ => Err(format_translation_err!(src_loc, "Unimplemented builtin {}", builtin_name)),
+            _ => Err(format_translation_err!(self.ast_context.display_loc(src_loc), "Unimplemented builtin {}", builtin_name)),
         }
     }
 

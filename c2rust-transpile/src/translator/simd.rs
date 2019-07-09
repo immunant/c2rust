@@ -80,7 +80,7 @@ impl<'c> Translation<'c> {
                     self.use_feature("stdsimd");
                 }
 
-                let mut item_store = self.item_store.borrow_mut();
+                let item_store = &mut self.items.borrow_mut()[&self.main_file];
 
                 let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
                 let x86_64_attr = mk()
@@ -88,14 +88,16 @@ impl<'c> Translation<'c> {
                     .pub_();
                 let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
 
-                item_store
-                    .uses
-                    .get_mut(vec![std_or_core.clone(), "arch".into(), "x86".into()])
-                    .insert_with_attr(name, x86_attr);
-                item_store
-                    .uses
-                    .get_mut(vec![std_or_core, "arch".into(), "x86_64".into()])
-                    .insert_with_attr(name, x86_64_attr);
+                item_store.add_use_with_attr(
+                    vec![std_or_core.clone(), "arch".into(), "x86".into()],
+                    name,
+                    x86_attr,
+                );
+                item_store.add_use_with_attr(
+                    vec![std_or_core, "arch".into(), "x86_64".into()],
+                    name,
+                    x86_64_attr,
+                );
 
                 true
             }
@@ -153,27 +155,29 @@ impl<'c> Translation<'c> {
             // bits that are behind a feature gate.
             self.use_feature("stdsimd");
 
-            let mut item_store = self.item_store.borrow_mut();
+            let item_store = &mut self.items.borrow_mut()[&self.main_file];
             let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
 
             // REVIEW: Also a linear lookup
             if !SIMD_X86_64_ONLY.contains(&name) {
                 let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
 
-                item_store
-                    .uses
-                    .get_mut(vec![std_or_core.clone(), "arch".into(), "x86".into()])
-                    .insert_with_attr(name, x86_attr);
+                item_store.add_use_with_attr(
+                    vec![std_or_core.clone(), "arch".into(), "x86".into()],
+                    name,
+                    x86_attr,
+                );
             }
 
             let x86_64_attr = mk()
                 .call_attr("cfg", vec!["target_arch = \"x86_64\""])
                 .pub_();
 
-            item_store
-                .uses
-                .get_mut(vec![std_or_core, "arch".into(), "x86_64".into()])
-                .insert_with_attr(name, x86_64_attr);
+            item_store.add_use_with_attr(
+                vec![std_or_core, "arch".into(), "x86_64".into()],
+                name,
+                x86_64_attr,
+            );
 
             return Ok(true);
         }

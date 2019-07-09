@@ -33,7 +33,10 @@ C2Rust requires LLVM 6, 7, or 8 with its corresponding clang compiler and librar
 - **Arch Linux:**
 
         pacman -S base-devel llvm clang cmake openssl
+        
+- **NixOS / nix:**
 
+        nix-shell
 
 - **OS X:** XCode command-line tools and recent LLVM (we recommend the Homebrew version) are required.
 
@@ -67,6 +70,17 @@ On Gentoo, you need to point the build system to the location of `libclang.so`
 
 
 If you have trouble with building and installing, or want to build from the latest master, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
+
+### Installing from Git
+
+If you'd like to check our recently developed features or you urgently require a bugfixed version of c2rust
+you can install it directly from Git:
+
+    cargo +nightly-2019-04-12 install --git https://github.com/immunant/c2rust.git c2rust
+   
+Please note that the master branch is under constant development and you may expirience issues or crashes.
+
+You should also set `LLVM_CONFIG_PATH` accordingly if required as described above.
 
 ## Translating C to Rust
 
@@ -140,6 +154,10 @@ If you have [bear](https://github.com/rizsotto/Bear) installed, it can be used s
 
     bear <build command>
 
+## Contact
+To report issues with translation or refactoring, please use our [Issue Tracker](https://github.com/immunant/c2rust/issues).
+
+To reach the development team, join our [discord channel](https://discord.gg/ANSrTuu) or email us at [c2rust@immunant.com](mailto:c2rust@immunant.com).
 
 ## FAQ
 
@@ -150,12 +168,6 @@ We run the C preprocessor before translation to Rust. This specializes the code 
 > What platforms can C2Rust be run on?
 
 The translator and refactoring tool support both macOS and Linux. Other features, such as cross checking the functionality between C and Rust code, are currently limited to Linux hosts. 
-
-
-## Contact
-To report issues with the translation, please use our Issue Tracker.
-
-The development team can be reached by email at c2rust@immunant.com.
 
 ## Acknowledgements and Licensing
 

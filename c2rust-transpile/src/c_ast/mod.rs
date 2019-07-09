@@ -1,8 +1,14 @@
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::cmp::Ordering;
+use std::fmt::{self, Debug, Display};
+use std::iter::FromIterator;
+use std::mem;
 use std::ops::Index;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+pub use c2rust_ast_exporter::clang_ast::{SrcFile, SrcLoc};
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub struct CTypeId(pub u64);
@@ -47,8 +53,17 @@ pub struct TypedAstContext {
 
     pub c_decls_top: Vec<CDeclId>,
     pub c_main: Option<CDeclId>,
-    pub c_files: HashMap<u64, String>,
     pub parents: HashMap<CDeclId, CDeclId>, // record fields and enum constants
+
+    // Mapping from FileId to SrcFile. Deduplicated by file path.
+    files: Vec<SrcFile>,
+    // Mapping from clang file id to translator FileId
+    file_map: Vec<FileId>,
+
+    // Vector of include paths, indexed by FileId. Each include path is the
+    // sequence of #include statement locations and the file being included at
+    // that location.
+    include_map: Vec<Vec<SrcLoc>>,
 
     // map expressions to the stack of macros they were expanded from
     pub macro_expansions: HashMap<CExprId, Vec<CDeclId>>,
@@ -67,8 +82,60 @@ pub struct CommentContext {
     stmt_comments: HashMap<CStmtId, Vec<String>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct DisplaySrcLoc {
+    file: Option<PathBuf>,
+    loc: SrcLoc,
+}
+
+impl Display for DisplaySrcLoc {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(ref file) = self.file {
+            write!(f, "{}:{}:{}", file.display(), self.loc.line, self.loc.column)
+        } else {
+            Debug::fmt(self, f)
+        }
+    }
+}
+
+pub type FileId = usize;
+
+/// Represents some AST node possibly with source location information bundled with it
+#[derive(Debug, Clone)]
+pub struct Located<T> {
+    pub loc: Option<SrcLoc>,
+    pub kind: T,
+}
+
 impl TypedAstContext {
-    pub fn new() -> TypedAstContext {
+    pub fn new(clang_files: &[SrcFile]) -> TypedAstContext {
+        let mut files: Vec<SrcFile> = vec![];
+        let mut file_map: Vec<FileId> = vec![];
+        for file in clang_files.into_iter() {
+            if let Some(existing) = files.iter().position(|f| f.path == file.path) {
+                file_map.push(existing);
+            } else {
+                file_map.push(files.len());
+                files.push(file.clone());
+            }
+        }
+
+        let mut include_map = vec![];
+        for fileid in 0..files.len() {
+            let mut include_path = vec![];
+            let mut cur = &files[fileid];
+            while let Some(include_loc) = &cur.include_loc {
+                include_path.push(SrcLoc {
+                    fileid: fileid as u64,
+                    line: include_loc.line,
+                    column: include_loc.column,
+                });
+                cur = &files[file_map[include_loc.fileid as usize]];
+            }
+            include_path.reverse();
+            include_map.push(include_path);
+        }
+
         TypedAstContext {
             c_types: HashMap::new(),
             c_exprs: HashMap::new(),
@@ -77,13 +144,72 @@ impl TypedAstContext {
 
             c_decls_top: Vec::new(),
             c_main: None,
-            c_files: HashMap::new(),
+            files,
+            file_map,
+            include_map,
             parents: HashMap::new(),
             macro_expansions: HashMap::new(),
 
             comments: vec![],
             prenamed_decls: IndexMap::new(),
         }
+    }
+
+    pub fn display_loc(&self, loc: &Option<SrcLoc>) -> Option<DisplaySrcLoc> {
+        loc.as_ref().map(|loc| {
+            DisplaySrcLoc {
+                file: self.files[self.file_map[loc.fileid as usize]].path.clone(),
+                loc: loc.clone(),
+            }
+        })
+    }
+
+    pub fn get_source_path<'a, T>(&'a self, node: &Located<T>) -> Option<&'a Path> {
+        self.file_id(node).and_then(|fileid| self.get_file_path(fileid))
+    }
+
+    pub fn get_file_path<'a>(&'a self, id: FileId) -> Option<&'a Path> {
+        self.files[id].path.as_ref().map(|p| p.as_path())
+    }
+
+
+    pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
+        /// Compare `self` with `other`, without regard to file id
+        fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
+            (a.line, a.column).cmp(&(b.line, b.column))
+        }
+        let path_a = self.include_map[self.file_map[a.fileid as usize]].clone();
+        let path_b = self.include_map[self.file_map[b.fileid as usize]].clone();
+        for (include_a, include_b) in path_a.iter().zip(path_b.iter()) {
+            if include_a.fileid != include_b.fileid {
+                return cmp_pos(&include_a, &include_b);
+            }
+        }
+        match path_a.len().cmp(&path_b.len()) {
+            Ordering::Less => {
+                // compare the place b was included in a'a file with a
+                let b = path_b.get(path_a.len()).unwrap();
+                cmp_pos(a, b)
+            }
+            Ordering::Equal => cmp_pos(a, b),
+            Ordering::Greater => {
+                // compare the place a was included in b's file with b
+                let a = path_a.get(path_b.len()).unwrap();
+                cmp_pos(a, b)
+            }
+        }
+    }
+
+    pub fn get_file_include_line_number(&self, file: FileId) -> Option<u64> {
+        self.include_map[file].first().map(|loc| loc.line)
+    }
+
+    pub fn find_file_id(&self, path: &Path) -> Option<FileId> {
+        self.files.iter().position(|f| f.path.as_ref().map_or(false, |p| p == path))
+    }
+
+    pub fn file_id<T>(&self, located: &Located<T>) -> Option<FileId> {
+        located.loc.as_ref().map(|loc| self.file_map[loc.fileid as usize])
     }
 
     pub fn iter_decls(&self) -> indexmap::map::Iter<CDeclId, CDecl> {
@@ -434,23 +560,18 @@ impl TypedAstContext {
 
     pub fn sort_top_decls(&mut self) {
         // Group and sort declarations by file and by position
-        let mut decls: HashMap<u64, Vec<(SrcLoc, CDeclId)>> = HashMap::new();
-        for decl_id in &self.c_decls_top {
-            let decl = self.index(*decl_id);
-            if let Some(ref loc) = decl.loc {
-                decls
-                    .entry(loc.fileid)
-                    .or_insert(vec![])
-                    .push((loc.clone(), *decl_id));
+        let mut decls_top = mem::replace(&mut self.c_decls_top, vec![]);
+        decls_top.sort_unstable_by(|a, b| {
+            let a = self.index(*a);
+            let b = self.index(*b);
+            match (&a.loc, &b.loc) {
+                (None, None) => Ordering::Equal,
+                (None, _) => Ordering::Less,
+                (_, None) => Ordering::Greater,
+                (Some(a), Some(b)) => self.compare_src_locs(a, b),
             }
-        }
-        decls.iter_mut().for_each(|(_, v)| v.sort());
-
-        self.c_decls_top = decls
-            .into_iter()
-            .map(|(_, v)| v.into_iter().map(|(_, id)| id))
-            .flatten()
-            .collect();
+        });
+        self.c_decls_top = decls_top;
     }
 }
 
@@ -495,7 +616,7 @@ impl CommentContext {
         let empty_vec2 = &vec![];
 
         // Match comments to declarations and statements
-        while let Some(Located { loc, kind: str }) = ast_context.comments.pop() {
+        while let Some(Located { loc, kind: comment }) = ast_context.comments.pop() {
             if let Some(loc) = loc {
                 let this_file_decls = decls.get(&loc.fileid).unwrap_or(empty_vec1);
                 let this_file_stmts = stmts.get(&loc.fileid).unwrap_or(empty_vec2);
@@ -508,38 +629,44 @@ impl CommentContext {
                     .binary_search_by_key(&loc.line, |&(ref l, _)| l.line)
                     .unwrap_or_else(|x| x);
 
+                let mut insert_decl_comment = |decl_id: CDeclId, loc, comment| {
+                    let decl_id = if let CDeclKind::NonCanonicalDecl { canonical_decl } = ast_context[decl_id].kind {
+                        canonical_decl
+                    } else {
+                        decl_id
+                    };
+                    decl_comments_map
+                        .entry(decl_id)
+                        .or_insert(BTreeMap::new())
+                        .insert(loc, comment);
+                };
+                let mut insert_stmt_comment = |stmt_id: CStmtId, loc, comment| {
+                    stmt_comments_map
+                        .entry(stmt_id)
+                        .or_insert(BTreeMap::new())
+                        .insert(loc, comment);
+                };
+
                 // Prefer the one that is higher up (biasing towards declarations if there is a tie)
                 match (this_file_decls.get(decl_ix), this_file_stmts.get(stmt_ix)) {
                     (Some(&(ref l1, d)), Some(&(ref l2, s))) => {
                         if l1 > l2 {
-                            stmt_comments_map
-                                .entry(s)
-                                .or_insert(BTreeMap::new())
-                                .insert(loc, str);
+                            insert_stmt_comment(s, loc, comment);
                         } else {
-                            decl_comments_map
-                                .entry(d)
-                                .or_insert(BTreeMap::new())
-                                .insert(loc, str);
+                            insert_decl_comment(d, loc, comment);
                         }
                     }
                     (Some(&(_, d)), None) => {
-                        decl_comments_map
-                            .entry(d)
-                            .or_insert(BTreeMap::new())
-                            .insert(loc, str);
+                        insert_decl_comment(d, loc, comment);
                     }
                     (None, Some(&(_, s))) => {
-                        stmt_comments_map
-                            .entry(s)
-                            .or_insert(BTreeMap::new())
-                            .insert(loc, str);
+                            insert_stmt_comment(s, loc, comment);
                     }
                     (None, None) => {
                         diag!(
                             Diagnostic::Comments,
                             "Didn't find a target node for the comment '{}'",
-                            str
+                            comment,
                         );
                     }
                 };
@@ -547,22 +674,18 @@ impl CommentContext {
         }
 
         // Flatten out the nested comment maps
-        let mut decl_comments = HashMap::new();
-        decl_comments_map
+        let decl_comments = decl_comments_map
             .into_iter()
-            .map(|(decl_id, map)| (decl_id, map.into_iter().map(|(_, v)| v).collect()))
-            .for_each(|(decl_id, mut comments)| {
-                let decl_id = if let CDeclKind::NonCanonicalDecl { canonical_decl } = ast_context[decl_id].kind {
-                    canonical_decl
-                } else {
-                    decl_id
-                };
+            .map(|(decl_id, map)| {
+                let mut comments = Vec::from_iter(map);
+                // Sort comments attached to this decl by source location
+                comments.sort_unstable_by(|a, b| {
+                    ast_context.compare_src_locs(&a.0, &b.0)
+                });
 
-                decl_comments
-                    .entry(decl_id)
-                    .or_insert(vec![])
-                    .append(&mut comments);
-            });
+                (decl_id, comments.into_iter().map(|(_, v)| v).collect())
+            })
+            .collect();
         let stmt_comments = stmt_comments_map
             .into_iter()
             .map(|(decl_id, map)| (decl_id, map.into_iter().map(|(_, v)| v).collect()))
@@ -639,21 +762,6 @@ impl Index<CStmtId> for TypedAstContext {
     }
 }
 
-/// Represents a position inside a C source file
-#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Clone)]
-pub struct SrcLoc {
-    pub fileid: u64,
-    pub line: u64,
-    pub column: u64,
-    pub file_path: Option<PathBuf>,
-}
-
-/// Represents some AST node possibly with source location information bundled with it
-#[derive(Debug, Clone)]
-pub struct Located<T> {
-    pub loc: Option<SrcLoc>,
-    pub kind: T,
-}
 
 /// All of our AST types should have location information bundled with them
 pub type CDecl = Located<CDeclKind>;

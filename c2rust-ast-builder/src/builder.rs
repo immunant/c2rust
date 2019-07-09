@@ -1733,14 +1733,14 @@ impl Builder {
         )
     }
 
-    pub fn use_multiple_item<Pa, I>(self, path: Pa, inner: Vec<I>) -> P<Item>
+    pub fn use_multiple_item<Pa, I, It>(self, path: Pa, inner: It) -> P<Item>
     where
         Pa: Make<Path>,
         I: Make<Ident>,
+        It: Iterator<Item = I>,
     {
         let path = path.make(&self);
         let inner_trees = inner
-            .into_iter()
             .map(|i| {
                 (
                     UseTree {

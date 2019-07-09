@@ -34,7 +34,7 @@ use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::{AstDeref, GetSpan, MaybeGetNodeId};
 use crate::driver;
 use crate::rewrite::base::{binop_left_prec, binop_right_prec};
-use crate::rewrite::base::{describe, extend_span_comments, is_rewritable};
+use crate::rewrite::base::{describe, extend_span_comments, extend_span_comments_strict, is_rewritable, rewind_span_over_whitespace};
 use crate::rewrite::{ExprPrec, Rewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, TextRewrite};
 use crate::util::Lone;
 
@@ -534,8 +534,12 @@ where
         }
     };
 
-    let old_span = old.splice_span();
-    let old_span = extend_span_comments(&old_id, old_span, &rcx);
+    let old_span = rewind_span_over_whitespace(old.splice_span(), &rcx);
+    let old_span = match extend_span_comments_strict(&old_id, old_span, &rcx) {
+        Ok(span) => span,
+        Err(_) => return false,
+    };
+    let reparsed_span = extend_span_comments(&old_id, reparsed.splice_span(), &rcx);
 
     if !is_rewritable(old_span) {
         return false;
@@ -560,11 +564,11 @@ where
         }
     }
 
-    info!("REVERT {}", describe(rcx.session(), reparsed.splice_span()));
+    info!("REVERT {}", describe(rcx.session(), reparsed_span));
     info!("    TO {}", describe(rcx.session(), old_span));
 
     let mut rw = TextRewrite::adjusted(
-        reparsed.splice_span(),
+        reparsed_span,
         old_span,
         new.get_adjustment(&rcx),
     );
@@ -619,7 +623,9 @@ fn add_comments<T>(s: String, node: &T, rcx: &RewriteCtxt) -> String
     if <T as MaybeGetNodeId>::supported() {
         if let Some(comments) = rcx.comments().get(&rcx.new_to_old_id(node.get_node_id())) {
             let mut new_s = String::new();
-            for comment in comments {
+            let mut sorted_comments = comments.iter().collect::<Vec<_>>();
+            sorted_comments.sort_by_key(|c| c.pos);
+            for comment in &sorted_comments {
                 if comment.style == CommentStyle::Isolated {
                     new_s.push('\n');
                     comment.lines.iter().for_each(|s| {
@@ -629,7 +635,7 @@ fn add_comments<T>(s: String, node: &T, rcx: &RewriteCtxt) -> String
                 }
             }
             new_s.push_str(&s);
-            for comment in comments {
+            for comment in &sorted_comments {
                 if comment.style == CommentStyle::Trailing {
                     comment.lines.iter().for_each(|s| {
                         new_s.push_str(s.as_str());
@@ -653,9 +659,20 @@ where
     let reparsed = T::parse(rcx.session(), &printed);
     let reparsed = reparsed.ast_deref();
 
-    describe_rewrite(old_span, reparsed.splice_span(), &rcx);
+    let mut expanded_old_span = old_span;
+    let mut reparsed_span = reparsed.splice_span();
 
-    let mut rw = TextRewrite::adjusted(old_span, reparsed.splice_span(), new.get_adjustment(&rcx));
+    if <T as MaybeGetNodeId>::supported() {
+        let old_id = rcx.new_to_old_id(new.get_node_id());
+        expanded_old_span = extend_span_comments(&old_id, old_span, &rcx);
+        reparsed_span = match extend_span_comments_strict(&old_id, reparsed_span, &rcx) {
+            Ok(span) => span,
+            Err(_) => return false,
+        };
+    }
+    describe_rewrite(expanded_old_span, reparsed_span, &rcx);
+
+    let mut rw = TextRewrite::adjusted(expanded_old_span, reparsed_span, new.get_adjustment(&rcx));
     // Try recovery, starting in "restricted mode" to avoid infinite recursion.
     // The guarantee of `recover_node_restricted` is that if it calls into
     // `Rewrite::rewrite(old2, new2, ...)`, then `old2.splice_span() !=
@@ -744,6 +761,8 @@ impl RewriteAt for Item {
                 // contents in its own file.
 
                 let mut item = self.clone();
+
+                let old_span = rewind_span_over_whitespace(old_span, &rcx);
 
                 // Where should the module contents be printed?
                 let inner_span = if !is_rewritable(module.inner) {

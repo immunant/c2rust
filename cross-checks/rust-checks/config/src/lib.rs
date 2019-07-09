@@ -13,6 +13,8 @@ extern crate failure;
 #[macro_use]
 extern crate failure_derive;
 
+extern crate indexmap;
+
 pub mod attr;
 #[cfg(feature = "scopes")]
 pub mod scopes;

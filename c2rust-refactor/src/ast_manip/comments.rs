@@ -24,7 +24,7 @@ pub struct Comment {
 pub struct CommentMap(HashMap<NodeId, Vec<Comment>>);
 
 impl CommentMap {
-    fn insert(&mut self, id: NodeId, comment: LexComment) {
+    pub fn insert(&mut self, id: NodeId, comment: LexComment) {
         let comment = Comment {
             style: comment.style,
             lines: comment.lines,

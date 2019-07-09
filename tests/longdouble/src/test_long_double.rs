@@ -4,7 +4,7 @@ extern crate libc;
 extern crate f128 as float128;
 extern crate num_traits;
 
-use long_double::{rust_long_double_ops, rust_cast2double, rust_cast2float, rust_cast2uint};
+use long_double::{rust_long_double_ops, rust_cast2double, rust_cast2float, rust_cast2uint, rust_ld1, rust_ld2};
 use self::float128::f128;
 use self::libc::{c_double, c_float, c_uint};
 
@@ -40,4 +40,11 @@ pub fn test_long_double_casts() {
     };
 
     assert_eq!(rust_ret, 4u32);
+}
+
+pub fn test_global_f128s() {
+    unsafe {
+        assert_eq!(rust_ld1, f128::new(1.0));
+        assert_eq!(rust_ld2, f128::new(3.0));
+    }
 }

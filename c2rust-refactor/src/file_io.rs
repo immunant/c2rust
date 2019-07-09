@@ -177,9 +177,19 @@ impl FileIO for RealFileIO {
             }
 
             if !self.output_modes.iter().any(|&mode| mode.overwrites()) {
-                // None of the modes actually updated the original file, so we need to record the
-                // new content internally.
-                let abs_path = fs::canonicalize(path)?;
+                // None of the modes actually updated the original file, so we
+                // need to record the new content internally. If we're creating
+                // a new module, we can't canonicalize the filename itself
+                // (since it doesn't exist), so canonicalize its path and append
+                // the filename.
+                let abs_path = if path.is_relative() {
+                    let parent_dir = Path::new(".").join(path.parent().unwrap());
+                    let mut abs_path = fs::canonicalize(parent_dir)?;
+                    abs_path.push(path.file_name().unwrap());
+                    abs_path
+                } else {
+                    path.to_owned()
+                };
                 state.file_state.insert(abs_path, s.to_owned());
             }
         }

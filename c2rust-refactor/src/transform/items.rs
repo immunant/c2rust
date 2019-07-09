@@ -129,8 +129,8 @@ impl Transform for RenameUnnamed {
         let mut renamer: Renamer = Default::default();
         let mut counter: usize = 0;
 
-        let has_unnamed = |ident: &Ident| { ident.as_str().contains("unnamed") };
-        let make_name = |counter| { Ident::from_str(&format!("unnamed_{}", counter)) };
+        let has_unnamed = |ident: &Ident| { ident.as_str().contains("C2RustUnnamed") };
+        let make_name = |counter| { Ident::from_str(&format!("C2RustUnnamed_{}", counter)) };
 
         // 1. Rename Anonymous types to the unique Ident
         FlatMapNodes::visit(krate, |i: P<Item>| {

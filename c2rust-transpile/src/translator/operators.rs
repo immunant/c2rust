@@ -119,7 +119,7 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_qual_type()
                     .ok_or_else(|| {
-                        format_translation_err!(lhs_loc, "bad lhs type for assignment")
+                        format_translation_err!(self.ast_context.display_loc(lhs_loc), "bad lhs type for assignment")
                     })?;
                 let rhs_type = self
                     .ast_context
@@ -127,7 +127,7 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_qual_type()
                     .ok_or_else(|| {
-                        format_translation_err!(rhs_loc, "bad rhs type for assignment")
+                        format_translation_err!(self.ast_context.display_loc(rhs_loc), "bad rhs type for assignment")
                     })?;
 
                 if ctx.is_unused() {
@@ -199,6 +199,7 @@ impl<'c> Translation<'c> {
                 .is_enum();
             let result_type = self.convert_type(lhs_ty.ctype)?;
             let val = if is_enum_result {
+                if ctx.is_const { self.use_feature("const_transmute"); }
                 WithStmts::new_unsafe_val(transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std))
             } else {
                 WithStmts::new_val(mk().cast_expr(val, result_type))
@@ -377,6 +378,7 @@ impl<'c> Translation<'c> {
                             let result_type = self.convert_type(qtype.ctype)?;
                             let val = if is_enum_result {
                                 is_unsafe = true;
+                                if ctx.is_const { self.use_feature("const_transmute"); }
                                 transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std)
                             } else {
                                 mk().cast_expr(val, result_type)

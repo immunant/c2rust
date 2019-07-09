@@ -343,7 +343,16 @@ class TestDirectory:
         self.generated_files["c_obj"].extend(static_library.obj_files)
 
         rust_file_builder = RustFileBuilder()
-        rust_file_builder.add_features(["libc", "extern_types", "simd_ffi", "stdsimd", "const_transmute", "nll", "custom_attribute"])
+        rust_file_builder.add_features([
+            "libc",
+            "extern_types",
+            "simd_ffi",
+            "stdsimd",
+            "const_transmute",
+            "nll",
+            "custom_attribute",
+            "linkage",
+        ])
 
         # .c -> .rs
         for c_file in self.c_files:
