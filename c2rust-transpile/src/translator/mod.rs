@@ -1843,23 +1843,13 @@ impl<'c> Translation<'c> {
     }
 
     /// Returns true iff type is a (pointer to)* the `va_list` structure type.
-    /// Note: the logic is based on `TypeConverter::convert_pointer`.
     pub fn is_inner_type_valist(ctxt: &TypedAstContext, qtype: CQualTypeId) -> bool {
-        match ctxt.resolve_type(qtype.ctype).kind {
-            CTypeKind::Struct(struct_id) => {
-                if let CDeclKind::Struct {
-                    name: Some(ref struct_name),
-                    ..
-                } = ctxt[struct_id].kind
-                {
-                    if struct_name == "__va_list_tag" {
-                        return true;
-                    }
-                }
-                false
-            }
-            CTypeKind::Pointer(pointer_id) => Self::is_inner_type_valist(ctxt, pointer_id),
-            _ => false,
+        if ctxt.is_va_list(qtype.ctype) {
+            true
+        } else if let CTypeKind::Pointer(pointer_id) = ctxt.resolve_type(qtype.ctype).kind {
+            Self::is_inner_type_valist(ctxt, pointer_id)
+        } else {
+            false
         }
     }
 
@@ -2958,7 +2948,9 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                if let CTypeKind::VariableArray(..) =
+                if self.ast_context.is_va_list(qual_ty.ctype) {
+                    val = mk().method_call_expr(val, "as_va_list", vec![] as Vec<P<Expr>>);
+                } else if let CTypeKind::VariableArray(..) =
                     self.ast_context.resolve_type(qual_ty.ctype).kind
                 {
                     val = mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<P<Expr>>);
@@ -3819,16 +3811,8 @@ impl<'c> Translation<'c> {
                 // memory as a local variable and to be a pointer as a function argument we would
                 // get spurious casts when trying to treat it like a VaList which has reference
                 // semantics.
-                if let CTypeKind::Struct(struct_id) = self.ast_context[pointee.ctype].kind {
-                    if let CDeclKind::Struct {
-                        name: Some(ref struct_name),
-                        ..
-                    } = self.ast_context[struct_id].kind
-                    {
-                        if struct_name == "__va_list_tag" {
-                            return Ok(val);
-                        }
-                    }
+                if self.ast_context.is_va_list(pointee.ctype) {
+                    return Ok(val)
                 }
 
                 let is_const = pointee.qualifiers.is_const;

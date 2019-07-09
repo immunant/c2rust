@@ -257,26 +257,15 @@ impl TypeConverter {
                 return Ok(optn_ty);
             }
 
-            CTypeKind::Struct(struct_id) => {
-                if self.translate_valist {
-                    if let CDeclKind::Struct {
-                        name: Some(ref struct_name),
-                        ..
-                    } = ctxt[struct_id].kind
-                    {
-                        if struct_name == "__va_list_tag" {
-                            self.features.insert("c_variadic");
-
-                            let std_or_core = if self.emit_no_std { "core" } else { "std" };
-                            let path = vec!["", std_or_core, "ffi", "VaList"];
-                            let ty = mk().path_ty(path);
-                            return Ok(ty);
-                        }
-                    }
-                }
-            }
-
             _ => {}
+        }
+        if self.translate_valist && ctxt.is_va_list(qtype.ctype) {
+            self.features.insert("c_variadic");
+
+            let std_or_core = if self.emit_no_std { "core" } else { "std" };
+            let path = vec!["", std_or_core, "ffi", "VaList"];
+            let ty = mk().path_ty(path);
+            return Ok(ty);
         }
 
         let child_ty = self.convert(ctxt, qtype.ctype)?;
