@@ -238,9 +238,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 if let Some(new_defines) = module_items.remove(&mod_info.id) {
                     need_pub_defs.extend(&new_defines.imports);
                     let new_items = new_defines.into_items(self.st);
-                    let mut new_mod = mk().pub_().mod_(new_items);
+                    let mut new_mod = mk().mod_(new_items);
                     new_mod.inline = false;
                     let new_mod_item = mk()
+                        .pub_()
                         .id(mod_info.id)
                         .mod_item(mod_info.ident, new_mod);
                     krate.module.items.push(new_mod_item);
