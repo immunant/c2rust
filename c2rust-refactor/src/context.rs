@@ -425,14 +425,14 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Attempt to resolve a `Use` item to the `hir::Path` of the imported item. The
     /// given item _must_ be a `Use`.
-    pub fn resolve_use(&self, u: &Item) -> P<hir::Path> {
+    pub fn resolve_use(&self, u: &Item) -> &P<hir::Path> {
         let hir_node = self
             .hir_map()
             .find(u.id)
             .unwrap_or_else(|| panic!("Couldn't find HIR node for {:?}", u));
         let hir_item = expect!([hir_node] hir::Node::Item(i) => i);
         let path = expect!([&hir_item.node] hir::ItemKind::Use(path, _) => path);
-        path.clone()
+        path
     }
 
     /// Compare two items for internal structural equivalence, ignoring field names.

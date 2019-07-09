@@ -97,7 +97,7 @@ class Config:
     MIN_PLUMBUM_VERSION = (1, 6, 3)
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = 'nightly-2019-06-20'
+    CUSTOM_RUST_NAME = 'nightly-2019-06-22'
 
     """
     Reflect changes to all configuration variables that depend on LLVM_VER
