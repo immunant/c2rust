@@ -450,14 +450,7 @@ impl<'c> Translation<'c> {
                 e => Err(format_err!("Unknown shuffle vector signature: {:?}", e))?,
             };
 
-            // According to https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
-            // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of the vector mask fields)
-            // is a bug, and so we need to add a cast for it to work properly
-            if shuffle_fn_name == "_mm_shuffle_ps" {
-                new_params.push(mk().cast_expr(third, mk().ident_ty("u32")));
-            } else {
-                new_params.push(third);
-            }
+            new_params.push(third);
 
             self.import_simd_function(shuffle_fn_name)?;
 
