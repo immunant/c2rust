@@ -1,5 +1,5 @@
 refactor:transform(
-   function(transform, crate)
+   function(transform)
       return transform:match(
          function(mcx)
             pat = mcx:parse_stmts([[
@@ -19,7 +19,8 @@ $'label:?Ident: while $cond:Expr {
             range_step_excl = mcx:parse_stmts("$'label: for $i in ($start .. $end).step_by($step) { $body; }")
             range_step_incl = mcx:parse_stmts("$'label: for $i in ($start ..= $end).step_by($step) { $body; }")
 
-            return mcx:fold_with(pat, crate,
+            mcx:fold_with(
+               pat,
                function(orig, mcx)
                   cond = mcx:get_expr("$cond")
                   if mcx:try_match(lt_cond, cond) then
@@ -33,11 +34,10 @@ $'label:?Ident: while $cond:Expr {
                   print("parsed cond")
 
                   incr = mcx:get_stmt("$incr")
-                  incr = transform:get_ast(incr)
-                  print(incr)
-                  if (incr.kind == "Semi" or
-                      incr.kind == "Expr") then
-                     incr = incr.expr_old
+                  incr_kind = incr:get_kind()
+                  if (incr_kind == "Semi" or
+                      incr_kind == "Expr") then
+                     incr = incr:get_node()
                   else
                      return orig
                   end
@@ -50,9 +50,8 @@ $'label:?Ident: while $cond:Expr {
                   print("parsed incr")
 
                   step = mcx:get_expr("$step")
-                  step = transform:get_ast(step)
-                  if (step.type == "Expr" and step.kind == "Lit" and
-                      step.value == 1) then
+                  if (step:get_kind() == "Lit" and
+                      step:get_node():get_value() == 1) then
                      if range_excl then
                         repl_step = range_one_excl
                      else

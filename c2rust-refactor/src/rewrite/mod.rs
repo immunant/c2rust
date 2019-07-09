@@ -62,7 +62,7 @@ use syntax::ast::*;
 use syntax::source_map::{Span, DUMMY_SP};
 use syntax::util::parser;
 
-use crate::ast_manip::ast_map::{map_ast, AstMap};
+use crate::ast_manip::{map_ast, AstMap};
 use crate::ast_manip::{GetSpan, Visit, CommentMap};
 use crate::driver;
 

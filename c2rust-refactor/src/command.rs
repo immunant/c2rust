@@ -23,7 +23,7 @@ use syntax::source_map::SourceMap;
 use syntax::symbol::Symbol;
 use syntax::visit::Visitor;
 
-use crate::ast_manip::ast_map::map_ast_into;
+use crate::ast_manip::map_ast_into;
 use crate::ast_manip::number_nodes::{
     number_nodes, number_nodes_with, reset_node_ids, NodeIdCounter,
 };
@@ -277,8 +277,12 @@ impl RefactorState {
 
         span_fix::fix_format(self.cs.krate.get_mut());
         let expanded = self.cs.krate().clone();
-        let collapse_info =
-            CollapseInfo::collect(&unexpanded, &expanded, &mut self.node_map, &self.cs);
+        let collapse_info = match phase {
+            Phase::Phase1 => None,
+            Phase::Phase2 | Phase::Phase3 => {
+                Some(CollapseInfo::collect(&unexpanded, &expanded, &mut self.node_map, &self.cs))
+            }
+        };
 
         // Run the transform
         let r = match phase {
@@ -338,7 +342,9 @@ impl RefactorState {
         self.node_map
             .init(self.cs.new_parsed_node_ids.get_mut().drain(..));
 
-        collapse_info.collapse(&mut self.node_map, &self.cs);
+        if let Some(collapse_info) = collapse_info {
+            collapse_info.collapse(&mut self.node_map, &self.cs);
+        }
 
         for (node, comment) in self.cs.new_comments.get_mut().drain(..) {
             if let Some(node) = self.node_map.get(&node) {
@@ -531,8 +537,8 @@ impl CommandState {
         self.krate.borrow_mut()
     }
 
-    pub fn map_krate<F: FnOnce(&mut Crate)>(&self, func: F) {
-        func(&mut self.krate_mut());
+    pub fn map_krate<R, F: FnOnce(&mut Crate) -> R>(&self, func: F) -> R {
+        func(&mut self.krate_mut())
     }
 
     pub fn krate_changed(&self) -> bool {

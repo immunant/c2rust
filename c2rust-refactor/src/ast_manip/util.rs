@@ -229,8 +229,20 @@ pub fn namespace(def: &Def) -> Option<Namespace> {
         | SelfTy(..)
         | ToolMod => Some(Namespace::TypeNS),
 
-        Fn(..) | Const(..) | Static(..) | SelfCtor(..) | Method(..) | AssociatedConst(..)
-        | Local(..) | Upvar(..) | Label(..) => Some(Namespace::ValueNS),
+        Fn(..)
+        | Const(..)
+        | ConstParam(..)
+        | Static(..)
+        | Ctor(..)
+        | SelfCtor(..)
+        | Method(..)
+        | AssociatedConst(..)
+        | Local(..)
+        | Upvar(..)
+        | Label(..) => Some(Namespace::ValueNS),
+
+        Macro(..)
+        | NonMacroAttr(..) => Some(Namespace::MacroNS),
 
         _ => None,
     }

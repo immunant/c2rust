@@ -4,7 +4,9 @@
 // Modules with simple APIs are private, with their public definitions reexported.
 mod ast_deref;
 mod ast_equiv;
+mod ast_map;
 mod ast_names;
+mod ast_node;
 mod fold;
 mod get_node_id;
 mod get_span;
@@ -17,8 +19,10 @@ mod visit_node;
 
 pub use self::ast_deref::AstDeref;
 pub use self::ast_equiv::AstEquiv;
+pub use self::ast_map::{map_ast, map_ast_into, map_ast_unified, map_ast_into_unified, AstMap, NodeTable, UnifiedAstMap};
 pub use self::ast_names::AstName;
-pub use self::fold::{FlatMapNodes, MutVisit, MutVisitNodes};
+pub use self::ast_node::{AstNode, AstNodeRef};
+pub use self::fold::{FlatMapNodes, MutVisit, MutVisitNodes, WalkAst};
 pub use self::get_node_id::{GetNodeId, MaybeGetNodeId};
 pub use self::get_span::GetSpan;
 pub use self::list_node_ids::ListNodeIds;
@@ -30,7 +34,6 @@ pub use self::visit_node::{visit_nodes, visit_nodes_post, VisitNode};
 pub use self::comments::{collect_comments, Comment, CommentMap, CommentStyle};
 
 // Modules with more complex APIs are left as `pub`.
-pub mod ast_map;
 pub mod comments;
 pub mod fn_edit;
 pub mod lr_expr;

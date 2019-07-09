@@ -529,7 +529,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
             ItemKind::Use(_) => {
                 for u in split_uses(item).into_iter() {
                     let use_tree = expect!([&u.node] ItemKind::Use(u) => u);
-                    let path = self.cx.resolve_use(&u);
+                    let path = self.cx.resolve_use_id(u.id);
                     let ns = namespace(&path.def).expect("Could not identify def namespace");
                     if let Err(e) = self.insert_ident(ns, use_tree.ident(), u, parent_header.clone()) {
                         return Err(e);
@@ -675,7 +675,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     if let ItemKind::Use(..) = new.node {
                         // If the import refers to the existing foreign item, do
                         // not replace it.
-                        let path = self.cx.resolve_use(&new);
+                        let path = self.cx.resolve_use_id(new.id);
                         if let Some(did) = path.def.opt_def_id() {
                             if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
                                 existing_foreign.vis.node =
@@ -734,7 +734,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         // A use takes precedence over a foreign declaration
                         // unless the use refers to the foreign declaration are
                         // attempting to insert.
-                        let path = self.cx.resolve_use(&existing_item);
+                        let path = self.cx.resolve_use_id(existing_item.id);
                         if let Some(did) = path.def.opt_def_id() {
                             if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
                                 *existing_decl = MovedDecl::new((new, abi), parent_header);

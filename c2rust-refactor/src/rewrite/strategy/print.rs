@@ -28,7 +28,7 @@ use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::util::parser;
 use syntax::ThinVec;
 
-use crate::ast_manip::ast_map::NodeTable;
+use crate::ast_manip::NodeTable;
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::{AstDeref, GetSpan, MaybeGetNodeId};
 use crate::driver;
