@@ -218,18 +218,7 @@ impl<'c> Translation<'c> {
         processed_args.extend(args[1..].iter().map(|arg| self.clean_int_or_vector_param(*arg)));
 
         let param_translation = self.convert_exprs(ctx.used(), &processed_args)?;
-        param_translation.and_then(|mut call_params| {
-            if let Some(third_param) = call_params.get_mut(2) {
-                // According to
-                // https://github.com/rust-lang-nursery/stdsimd/issues/522#issuecomment-404563825
-                // _mm_shuffle_ps taking an u32 instead of an i32 (like the rest of
-                // the vector mask fields) is a bug, and so we need to add a cast
-                // for it to work properly
-                if fn_name == "_mm_shuffle_ps" {
-                    *third_param = mk().cast_expr(third_param.clone(), mk().ident_ty("u32"));
-                }
-            }
-
+        param_translation.and_then(|call_params| {
             let call = mk().call_expr(mk().ident_expr(fn_name), call_params);
 
             if ctx.is_used() {
