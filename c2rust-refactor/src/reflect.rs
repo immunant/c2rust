@@ -1,6 +1,7 @@
 //! Functions for building AST representations of higher-level values.
 use c2rust_ast_builder::mk;
 use rustc::hir;
+use rustc::hir::def::DefKind;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::map::definitions::DefPathData;
 use rustc::hir::map::Map as HirMap;
@@ -210,44 +211,50 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
         }
 
         // Special logic for certain node kinds
-        match dk.disambiguated_data.data {
-            DefPathData::ValueNs(_) | DefPathData::TypeNs(_) => {
-                let gen = tcx.generics_of(id);
-                let num_params = gen
-                    .params
-                    .iter()
-                    .filter(|x| match x.kind {
-                        GenericParamDefKind::Lifetime { .. } => false,
-                        GenericParamDefKind::Type { .. } => true,
-                        GenericParamDefKind::Const => false,
-                    })
-                    .count();
-                if let Some(substs) = opt_substs {
-                    if substs.len() > 0 {
-                        assert!(substs.len() >= num_params);
-                        let start = substs.len() - num_params;
-                        let tys = substs[start..]
-                            .iter()
-                            .map(|ty| reflect_tcx_ty(tcx, ty))
-                            .collect::<Vec<_>>();
-                        let abpd = mk().angle_bracketed_args(tys);
-                        segments.last_mut().unwrap().args = abpd.into();
-                        opt_substs = Some(&substs[..start]);
+        if let DefPathData::Ctor = dk.disambiguated_data.data {
+            // The parent of the struct ctor in `visible_parent_map` is the parent of the
+            // struct.  But we want to visit the struct first, so we can add its name.
+            if let Some(parent_id) = tcx.parent(id) {
+                id = parent_id;
+                continue;
+            } else {
+                break;
+            }
+        }
+        match tcx.def_kind(id) {
+            // If we query for generics_of non-local defs, we may get a
+            // panic if the def cannot be generic. This is a list of
+            // DefKinds that can have generic type params.
+            Some(DefKind::Struct) | Some(DefKind::Union) | Some(DefKind::Enum)
+                | Some(DefKind::Variant) | Some(DefKind::Trait) | Some(DefKind::Existential)
+                | Some(DefKind::TyAlias) | Some(DefKind::ForeignTy) | Some(DefKind::TraitAlias)
+                | Some(DefKind::AssocTy) | Some(DefKind::AssocExistential)
+                | Some(DefKind::TyParam) | Some(DefKind::Fn) | Some(DefKind::Method)
+                | Some(DefKind::Ctor(..)) => {
+                    let gen = tcx.generics_of(id);
+                    let num_params = gen
+                        .params
+                        .iter()
+                        .filter(|x| match x.kind {
+                            GenericParamDefKind::Lifetime { .. } => false,
+                            GenericParamDefKind::Type { .. } => true,
+                            GenericParamDefKind::Const => false,
+                        })
+                        .count();
+                    if let Some(substs) = opt_substs {
+                        if substs.len() > 0 {
+                            assert!(substs.len() >= num_params);
+                            let start = substs.len() - num_params;
+                            let tys = substs[start..]
+                                .iter()
+                                .map(|ty| reflect_tcx_ty(tcx, ty))
+                                .collect::<Vec<_>>();
+                            let abpd = mk().angle_bracketed_args(tys);
+                            segments.last_mut().unwrap().args = abpd.into();
+                            opt_substs = Some(&substs[..start]);
+                        }
                     }
                 }
-            }
-
-            DefPathData::Ctor => {
-                // The parent of the struct ctor in `visible_parent_map` is the parent of the
-                // struct.  But we want to visit the struct first, so we can add its name.
-                if let Some(parent_id) = tcx.parent(id) {
-                    id = parent_id;
-                    continue;
-                } else {
-                    break;
-                }
-            }
-
             _ => {}
         }
 
