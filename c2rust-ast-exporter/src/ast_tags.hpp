@@ -15,61 +15,72 @@ enum ASTEntryTag {
     TagVarDecl,
     TagStructDecl,
     TagFieldDecl,
-    
+
     TagEnumDecl,
     TagEnumConstantDecl,
     TagTypedefDecl,
     TagUnionDecl,
-    
-    
+
+    TagNonCanonicalDecl,
+
+    TagMacroObjectDef,
+    TagMacroFunctionDef,
+
     TagCompoundStmt = 100,
     TagReturnStmt,
     TagIfStmt,
     TagGotoStmt,
     TagLabelStmt,
-    
+
     TagNullStmt,
     TagForStmt,
     TagWhileStmt,
     TagSwitchStmt,
     TagDeclStmt,
-    
+
     TagBreakStmt,
     TagCaseStmt,
     TagContinueStmt,
     TagDefaultStmt,
     TagDoStmt,
-    
+
     TagAsmStmt,
     TagAttributedStmt,
-    
+
     TagBinaryOperator = 200,
     TagUnaryOperator,
     TagDeclRefExpr,
     TagImplicitCastExpr,
     TagCallExpr,
-    
+
     TagInitListExpr,
     TagImplicitValueInitExpr,
     TagArraySubscriptExpr,
     TagCStyleCastExpr,
     TagConditionalOperator,
-    
+
     TagBinaryConditionalOperator,
     TagMemberExpr,
     TagParenExpr,
     TagUnaryExprOrTypeTraitExpr,
     TagOffsetOfExpr,
-    
+
     TagCompoundLiteralExpr,
     TagPredefinedExpr,
-    TagStmtExpr,
     TagVAArgExpr,
     TagShuffleVectorExpr,
-    
+
     TagConvertVectorExpr,
     TagDesignatedInitExpr,
-    
+
+    // Wrapper expressions
+    TagFullExpr, // unused
+    TagConstantExpr,
+
+    // GNU extensions
+    TagStmtExpr,
+    TagChooseExpr,
+
     TagIntegerLiteral = 300,
     TagStringLiteral,
     TagCharacterLiteral,
@@ -78,49 +89,49 @@ enum ASTEntryTag {
 
 enum TypeTag {
     TagTypeUnknown = 400,
-    
+
     TagInt = 500,
     TagShort,
     TagLong,
     TagLongLong,
     TagUInt,
-    
+
     TagUShort,
     TagULong,
     TagULongLong,
     TagPointer,
     TagStructType,
-    
+
     TagUnionType,
     TagDouble,
     TagLongDouble,
     TagFloat,
     TagConstantArrayType,
-    
+
     TagVariableArrayType,
     TagIncompleteArrayType,
     TagEnumType,
     TagFunctionType,
     TagTypeOfType,
-    
+
     TagVectorType,
     TagTypedefType,
     TagElaboratedType,
     TagUChar,
     TagSChar,
-    
+
     TagChar,
     TagVoid,
     TagBool,
     TagDecayedType,
     TagParenType,
-    
+
     TagSWChar,
     TagUWChar,
     TagInt128,
     TagUInt128,
     TagBuiltinFn,
-    
+
     TagAttributedType,
     TagBlockPointer,
     TagComplexType,

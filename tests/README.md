@@ -49,6 +49,8 @@ You can also mark a Rust file as unexpected to compile, by adding `//! xfail` to
 
 Adding `//! extern_crate_X` to the top of a test file will ensure `extern crate X;` gets added to the main binary driver. Be sure to also add the `X` crate to the test directory's `Cargo.toml`.
 
+Similarly, `//! feature_X` adds `#![feature(X)]` to the top of the main driver file.
+
 ## Running the tests
 
 _From the project root_, run `./scripts/test_translator.py tests` to run all of the tests in the

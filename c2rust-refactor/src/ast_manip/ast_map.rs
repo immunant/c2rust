@@ -1,20 +1,42 @@
 use std::collections::HashMap;
+use std::convert::{TryFrom, TryInto};
+use std::ops::{Deref, DerefMut};
 use syntax::ast::*;
 use syntax::visit::{self, Visitor};
 
-use crate::ast_manip::Visit;
+use super::{AstNodeRef, Visit};
 
+pub fn map_ast_into<'s, T: Visit>(x: &'s T, map: &mut AstMap<'s>) {
+    x.visit(&mut MapAstInto { map })
+}
 
+pub fn map_ast<'s, T: Visit>(x: &'s T) -> AstMap<'s> {
+    let mut m = AstMap::new();
+    map_ast_into(x, &mut m);
+    m
+}
+
+pub fn map_ast_into_unified<'s, T: Visit>(x: &'s T, map: &mut UnifiedAstMap<'s>) {
+    x.visit(&mut MapAstIntoUnified { map })
+}
+
+pub fn map_ast_unified<'s, T: Visit>(x: &'s T) -> UnifiedAstMap<'s> {
+    let mut m = UnifiedAstMap::new();
+    map_ast_into_unified(x, &mut m);
+    m
+}
 
 /// A table of references to AST nodes of some type, indexed by NodeId.
 #[derive(Clone, Debug)]
-pub struct NodeTable<'s, T: ?Sized+'s> {
+pub struct NodeTable<'s, T: ?Sized + 's> {
     nodes: HashMap<NodeId, &'s T>,
 }
 
 impl<'s, T> Default for NodeTable<'s, T> {
     fn default() -> NodeTable<'s, T> {
-        NodeTable { nodes: HashMap::new() }
+        NodeTable {
+            nodes: HashMap::new(),
+        }
     }
 }
 
@@ -42,7 +64,6 @@ impl<'s, T: ?Sized> NodeTable<'s, T> {
     }
 }
 
-
 /// A lookup table for finding nodes within an AST or AST fragment.
 #[derive(Clone, Default)]
 pub struct AstMap<'s> {
@@ -68,7 +89,6 @@ impl<'s> AstMap<'s> {
         }
     }
 }
-
 
 struct MapAstInto<'a, 's: 'a> {
     map: &'a mut AstMap<'s>,
@@ -120,13 +140,81 @@ impl<'a, 's> Visitor<'s> for MapAstInto<'a, 's> {
     }
 }
 
+/// A lookup table for finding nodes within an AST or AST fragment.
+pub struct UnifiedAstMap<'s>(HashMap<NodeId, AstNodeRef<'s>>);
 
-pub fn map_ast_into<'s, T: Visit>(x: &'s T, map: &mut AstMap<'s>) {
-    x.visit(&mut MapAstInto { map })
+impl<'s> UnifiedAstMap<'s> {
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn get_ast<T>(&self, id: &NodeId) -> Option<&'s T>
+        where &'s T: TryFrom<AstNodeRef<'s>>
+    {
+        self.0.get(id).and_then(|x| x.clone().try_into().ok())
+    }
 }
 
-pub fn map_ast<'s, T: Visit>(x: &'s T) -> AstMap<'s> {
-    let mut m = AstMap::new();
-    map_ast_into(x, &mut m);
-    m
+impl<'s> Deref for UnifiedAstMap<'s> {
+    type Target = HashMap<NodeId, AstNodeRef<'s>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'s> DerefMut for UnifiedAstMap<'s> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+struct MapAstIntoUnified<'a, 's: 'a> {
+    map: &'a mut UnifiedAstMap<'s>,
+}
+
+impl<'a, 's> Visitor<'s> for MapAstIntoUnified<'a, 's> {
+    fn visit_expr(&mut self, x: &'s Expr) {
+        if let ExprKind::Paren(_) = x.node {
+            // Ignore.  `Paren` nodes cause problems because they have the same NodeId as the inner
+            // expression.
+        } else {
+            self.map.insert(x.id, x.try_into().unwrap());
+        }
+        visit::walk_expr(self, x);
+    }
+
+    fn visit_pat(&mut self, x: &'s Pat) {
+        self.map.insert(x.id, x.try_into().unwrap());
+        visit::walk_pat(self, x);
+    }
+
+    fn visit_ty(&mut self, x: &'s Ty) {
+        self.map.insert(x.id, x.try_into().unwrap());
+        visit::walk_ty(self, x);
+    }
+
+    fn visit_stmt(&mut self, x: &'s Stmt) {
+        self.map.insert(x.id, x.try_into().unwrap());
+        visit::walk_stmt(self, x);
+    }
+
+    fn visit_item(&mut self, x: &'s Item) {
+        self.map.insert(x.id, x.try_into().unwrap());
+        visit::walk_item(self, x);
+    }
+
+    fn visit_foreign_item(&mut self, x: &'s ForeignItem) {
+        self.map.insert(x.id, x.try_into().unwrap());
+        visit::walk_foreign_item(self, x);
+    }
+
+    fn visit_block(&mut self, x: &'s Block) {
+        self.map.insert(x.id, x.try_into().unwrap());
+        visit::walk_block(self, x);
+    }
+
+    fn visit_mac(&mut self, mac: &'s Mac) {
+        visit::walk_mac(self, mac);
+    }
 }

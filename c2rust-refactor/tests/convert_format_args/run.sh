@@ -9,4 +9,6 @@ $refactor \
     select target 'crate; desc(fn && name("printf"));' \; \
     mark_arg_uses 0 target \; \
     convert_format_args \
+    clear_marks \; \
+    select target 'crate; child(foreign_mod); last;' \; \
     -- old.rs $rustflags

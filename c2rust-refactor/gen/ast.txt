@@ -56,7 +56,7 @@ enum ItemKind {
 }
 
 enum UseTreeKind {
-    Simple(ident, span1, span2),
+    Simple(ident, id1, id2),
     Glob,
     Nested(nested),
 }
@@ -88,7 +88,7 @@ struct TraitRef { path, ref_id }
 
 struct EnumDef { variants }
 #[extend_span]
-struct Variant_ { ident, #[match=ignore] attrs, data, disr_expr }
+struct Variant_ { ident, #[match=ignore] attrs, id, data, disr_expr }
 enum VariantData {
     Struct(fields, id),
     Tuple(fields, id),
@@ -118,6 +118,7 @@ struct GenericParam { id, ident, attrs, bounds, kind }
 enum GenericParamKind {
     Lifetime,
     Type { default },
+    Const { ty },
 }
 #[nonterminal]
 struct WhereClause { id, predicates, span }
@@ -165,6 +166,7 @@ enum TyKind {
     ImplicitSelf,
     #[mac_table_record] Mac(mac),
     Err,
+    CVarArgs,
 }
 
 flag TraitObjectSyntax;
@@ -182,7 +184,7 @@ enum GenericBound {
 
 struct PolyTraitRef { trait_ref, span, bound_generic_params }
 
-struct FnDecl { inputs, output, variadic }
+struct FnDecl { inputs, output, c_variadic }
 struct FnHeader { unsafety, asyncness, constness, abi }
 #[rewrite_print]
 struct Arg { ty, pat, id }
@@ -257,6 +259,7 @@ enum ExprKind {
     Paren(expr),
     Try(#[prec=POSTFIX] expr),
     Yield(#[prec=JUMP] expr),
+    Err,
 }
 
 enum IsAsync {
@@ -283,7 +286,7 @@ enum Guard {
     If(expr),
 }
 #[match=custom] #[rewrite_print_recover] #[nonterminal]
-struct Block { #[mac_table_seq] stmts, id, rules, span, recovered }
+struct Block { #[mac_table_seq] stmts, id, rules, span }
 
 
 #[match=custom] #[mac_table_record] #[nonterminal]
@@ -317,6 +320,7 @@ enum LitKind {
     Float(sym, ty),
     FloatUnsuffixed(sym),
     Bool(x),
+    Err(sym),
 }
 
 
@@ -364,18 +368,19 @@ enum GenericArgs {
     Parenthesized(ppd),
 }
 struct AngleBracketedArgs { span, args, bindings }
-struct ParenthesisedArgs { span, inputs, output }
+struct ParenthesizedArgs { span, inputs, output }
 enum GenericArg {
     Lifetime(lt),
     Type(ty),
+    Const(c),
 }
 struct QSelf { ty, path_span, position }
 
 
 struct Mac_ { path, delim, tts }
 flag MacStmtStyle;
+#[equiv_mode=ignore]
 flag TokenStream;
-flag ThinTokenStream;
 struct MacroDef { tokens, legacy }
 
 
@@ -399,9 +404,9 @@ struct AnonConst {
     value,
 }
 
-#[match=custom] flag Ident;
+#[match=custom] struct Ident { name, span }
 #[match=eq] flag Name;
-#[match=eq] flag SyntaxContext;
+#[equiv_mode=ignore] #[match=eq] flag SyntaxContext;
 
 #[equiv_mode=ignore] #[rewrite_ignore]
 flag Span;
@@ -442,11 +447,7 @@ enum Nonterminal {
 
 enum TokenTree {
     Token(sp, t),
-    Delimited(sp, d),
-}
-
-struct Delimited {
-    delim, tts
+    Delimited(sp, d, tts),
 }
 
 struct DelimSpan { open, close }
@@ -454,13 +455,13 @@ struct DelimSpan { open, close }
 flag DelimToken;
 flag Token;
 
-struct MetaItem { ident, node, span }
+struct MetaItem { path, node, span }
 enum MetaItemKind {
     Word,
     List(l),
     NameValue(lit),
 }
-enum NestedMetaItemKind {
+enum NestedMetaItem {
     MetaItem(mi),
     Literal(lit),
 }

@@ -211,3 +211,63 @@ struct two_eight_bits two_eight_bits_init(void) {
 
     return teb;
 }
+
+unsigned char ma_results[17] = {0};
+
+void multiple_assignments(void) {
+    unsigned char a = 3, b = 2;
+    three_byte_date tbd = {0, 0, 0};
+
+    tbd.day = a = 4;
+
+    ma_results[0] = tbd.day;
+    ma_results[1] = a;
+
+    tbd.month = tbd.day = b;
+
+    ma_results[2] = tbd.day;
+    ma_results[3] = tbd.month;
+
+    tbd.month = tbd.day = tbd.month = tbd.year = 8;
+
+    ma_results[4] = tbd.day;
+    ma_results[5] = tbd.month;
+    ma_results[6] = tbd.year;
+
+    tbd.month = 9;
+    a = b = tbd.month;
+
+    ma_results[7] = a;
+    ma_results[8] = b;
+
+    b = tbd.day = tbd.month;
+
+    ma_results[9] = b;
+    ma_results[10] = tbd.day;
+
+    a = tbd.day = 5;
+
+    ma_results[11] = tbd.day;
+    ma_results[12] = a;
+
+    tbd.year = a = b;
+
+    ma_results[13] = tbd.year;
+    ma_results[14] = a;
+
+    tbd.day += tbd.month += 1;
+
+    ma_results[15] = tbd.day;
+    ma_results[16] = tbd.month;
+}
+
+struct renamer_required {
+    int a;
+    unsigned int use: 1;
+};
+
+void use_renamed_field(void) {
+    struct renamer_required rr;
+
+    rr.use = 0;
+}

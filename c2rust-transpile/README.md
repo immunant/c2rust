@@ -1,3 +1,8 @@
+[![Docs]][docs.rs]
+
+[Docs]: https://docs.rs/c2rust-transpile/badge.svg
+[docs.rs]: https://docs.rs/c2rust-transpile
+
 # C2Rust Transpiler
 
 ## Basic Usage
@@ -14,10 +19,6 @@ The following arguments control the basic transpiler behavior:
   translated.
 - `--reduce-type-annotations` - Do not emit explicit type annotations when
   unnecessary.
-- `--translate-asm` - Translate C inline assembly into corresponding Rust inline
-  assembly. The translated assembly is unlikely to work as-is due to differences
-  between GCC and LLVM (used in Rust) inline assembly styles, but it can provide
-  a starting point for manual translation.
 - `-f <regex>`, `--filter <regex>` - Only translate files based on the regular
   expression used.
 
@@ -26,16 +27,18 @@ The following arguments control the basic transpiler behavior:
 The transpiler can create skeleton cargo build files for the translated Rust sources, controlled by the following options:
 
 - `-e`, `--emit-build-files` - Emit cargo build files to build the translated
-  Rust code as a library. Build files are emitted into the `c2rust-build` in the
-  current directory. This will not overwrite existing files, so remove this
-  build file directory before re-creating build files. (implies `--emit-modules`)
+  Rust code as a library. Build files are emitted in the directory specified by
+  `--output-dir`, or if not specified, the directory containing
+  `compile_commands.json`. This will not overwrite existing files, so remove
+  these build files before re-creating build files. (implies `--emit-modules`)
 - `-m <main_module>`, `--main <main_module>` - Emit cargo build files to build
   the translated Rust code as a binary. The main function must be found in the
   specified module (C source file) `<main_module>`. `<main_module>` should be
   the bare module name, not including the `.rs` extension. Build files are
-  emitted into the `c2rust-build` in the current directory. This will not
-  overwrite existing files, so remove this build file directory before
-  re-creating build files. (implies `--emit-build-files`)
+  emitted in the directory specified by `--output-dir`, or if not specified, the
+  directory containing `compile_commands.json`. This will not overwrite existing
+  files, so remove this build file directory before re-creating build
+  files. (implies `--emit-build-files`)
 
 ## Cross-check instrumentation
 

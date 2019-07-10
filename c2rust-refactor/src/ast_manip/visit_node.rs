@@ -4,15 +4,16 @@ use syntax::visit::{self, Visitor};
 
 use crate::ast_manip::Visit;
 
-
 /// Trait for AST node types that can be visited.
 pub trait VisitNode {
     fn visit_nodes<T, F>(target: &T, callback: F)
-        where T: Visit,
-              F: FnMut(&Self);
+    where
+        T: Visit,
+        F: FnMut(&Self);
     fn visit_nodes_post<T, F>(target: &T, callback: F)
-        where T: Visit,
-              F: FnMut(&Self);
+    where
+        T: Visit,
+        F: FnMut(&Self);
 }
 
 macro_rules! gen_visit_node_impl {
@@ -142,17 +143,21 @@ gen_visit_node_impl! {
 /// Visit nodes of the callback's argument type within `target`.  This function performs a preorder
 /// traversal.
 pub fn visit_nodes<N, T, F>(target: &T, callback: F)
-        where N: VisitNode,
-              T: Visit,
-              F: FnMut(&N) {
+where
+    N: VisitNode,
+    T: Visit,
+    F: FnMut(&N),
+{
     N::visit_nodes(target, callback)
 }
 
 /// Visit nodes of the callback's argument type within `target`.  This function performs a
 /// postorder traversal.
 pub fn visit_nodes_post<N, T, F>(target: &T, callback: F)
-        where N: VisitNode,
-              T: Visit,
-              F: FnMut(&N) {
+where
+    N: VisitNode,
+    T: Visit,
+    F: FnMut(&N),
+{
     N::visit_nodes(target, callback)
 }

@@ -2,11 +2,14 @@ use rustc::ty;
 use syntax::ast::*;
 use syntax::ptr::P;
 
-use crate::api::*;
+use crate::ast_manip::{fold_blocks, FlatMapNodes, AstEquiv};
 use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase, parse_expr};
+use crate::matcher::{mut_visit_match, Subst};
+use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
-use c2rust_ast_builder::IntoSymbol;
+use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::RefactorCtxt;
 
 
 /// # `struct_assign_to_update` Command
@@ -29,22 +32,22 @@ use c2rust_ast_builder::IntoSymbol;
 pub struct AssignToUpdate;
 
 impl Transform for AssignToUpdate {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let pat = parse_expr(cx.session(), "__x.__f = __y");
         let repl = parse_expr(cx.session(), "__x = __s { __f: __y, .. __x }");
 
-        fold_match(st, cx, pat, krate, |orig, mut mcx| {
-            let x = mcx.bindings.expr("__x").clone();
+        mut_visit_match(st, cx, pat, krate, |orig, mut mcx| {
+            let x = mcx.bindings.get::<_, P<Expr>>("__x").unwrap().clone();
 
             let struct_def_id = match cx.node_type(x.id).sty {
                 ty::TyKind::Adt(ref def, _) => def.did,
-                _ => return orig,
+                _ => return,
             };
             let struct_path = cx.def_path(struct_def_id);
 
-            mcx.bindings.add_path("__s", struct_path);
-            repl.clone().subst(st, cx, &mcx.bindings)
-        })
+            mcx.bindings.add("__s", struct_path);
+            *orig = repl.clone().subst(st, cx, &mcx.bindings);
+        });
     }
 
     fn min_phase(&self) -> Phase {
@@ -72,7 +75,7 @@ impl Transform for AssignToUpdate {
 pub struct MergeUpdates;
 
 impl Transform for MergeUpdates {
-    fn transform(&self, krate: Crate, _st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, _cx: &RefactorCtxt) {
         fold_blocks(krate, |curs| {
             loop {
                 // Find a struct update.
@@ -139,19 +142,21 @@ fn build_struct_update(path: Path, fields: Vec<Field>, base: P<Expr>) -> Stmt {
 pub struct Rename(pub String);
 
 impl Transform for Rename {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let new_ident = Ident::with_empty_ctxt((&self.0 as &str).into_symbol());
         let mut target_def_id = None;
 
         // Find the struct definition and rename it.
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if target_def_id.is_some() || !st.marked(i.id, "target") {
                 return smallvec![i];
             }
 
             // Make sure this is actually a struct declaration, and not, say, the target
             // declaration's containing module.
-            match_or!([struct_item_id(&i)] Some(x) => x; return smallvec![i]);
+            if !is_struct(&i) {
+                return smallvec![i];
+            }
             target_def_id = Some(cx.node_def_id(i.id));
 
             smallvec![i.map(|i| {
@@ -169,7 +174,7 @@ impl Transform for Rename {
         let target_def_id = target_def_id
             .expect("found no struct to rename");
 
-        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def| {
+        fold_resolved_paths(krate, cx, |qself, mut path, def| {
             if let Some(def_id) = def.opt_def_id() {
                 if def_id == target_def_id {
                     path.segments.last_mut().unwrap().ident = new_ident;
@@ -177,8 +182,6 @@ impl Transform for Rename {
             }
             (qself, path)
         });
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {
@@ -186,10 +189,13 @@ impl Transform for Rename {
     }
 }
 
-fn struct_item_id(i: &Item) -> Option<NodeId> {
-    let vd = match_or!([i.node] ItemKind::Struct(ref vd, _) => vd; return None);
-    let id = match_or!([*vd] VariantData::Struct(_, id) => id; return None);
-    Some(id)
+fn is_struct(i: &Item) -> bool {
+    if let ItemKind::Struct(ref vd, _) = i.node {
+        if let VariantData::Struct(..) = *vd {
+            return true;
+        }
+    }
+    false
 }
 
 

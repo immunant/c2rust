@@ -5,8 +5,8 @@ struct S {
 
 fn main() {
     let mut s = S { x: 0, y: 0 };
-    s = ::S { x: 1, ..s };
-    s = ::S { y: 2, ..s };
+    s = crate::S { x: 1, ..s };
+    s = crate::S { y: 2, ..s };
 }
 
 mod m {

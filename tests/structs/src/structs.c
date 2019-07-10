@@ -1,3 +1,6 @@
+#include <stdalign.h>
+#include <stdio.h>
+
 struct int_pair_s {
     int x, y;
 };
@@ -44,4 +47,13 @@ void entry (const unsigned sz, int buf[const]) {
     struct { struct { int x; }; struct { int y; }; } z = {0};
     buf[i++] = z.x;
     buf[i++] = z.y;
+}
+
+typedef struct {
+    int a;
+    long long int b;
+} __attribute__((aligned(8))) Aligned8Struct;
+
+size_t alignment_of_aligned8_struct(void) {
+    return alignof(Aligned8Struct);
 }

@@ -1,10 +1,10 @@
 //! Simple plugin loading infrastructure.
 //!
 //! See PLUGINS.txt for more details on plugins.
+use libc::{dlopen, dlsym, RTLD_LAZY};
 use std::ffi::CString;
 use std::mem;
 use std::path::Path;
-use libc::{dlopen, dlsym, RTLD_LAZY};
 
 use crate::command::Registry;
 
@@ -28,7 +28,10 @@ pub fn load_plugins(search_path: &[String], plugins: &[String], reg: &mut Regist
                     }
                     let sym = dlsym(so, sym_name.as_ptr());
                     if sym.is_null() {
-                        panic!("failed to locate symbol `register_commands` in `{}`", path_str);
+                        panic!(
+                            "failed to locate symbol `register_commands` in `{}`",
+                            path_str
+                        );
                     }
                     let f: fn(&mut Registry) = mem::transmute(sym);
                     f(reg);
@@ -40,7 +43,10 @@ pub fn load_plugins(search_path: &[String], plugins: &[String], reg: &mut Regist
         }
 
         if !found {
-            panic!("plugin `{}` was not found in search path ({:?})", name, search_path);
+            panic!(
+                "plugin `{}` was not found in search path ({:?})",
+                name, search_path
+            );
         }
     }
 }

@@ -11,7 +11,6 @@ from common import (
     update_or_init_submodule,
     invoke,
     setup_logging,
-    have_rust_toolchain,
     die,
 )
 
@@ -57,10 +56,6 @@ def test_rust_cross_checks():
 
 def main():
     setup_logging()
-
-    # prerequisites
-    if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
-        die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
 
     # checkout_and_build_libclevrbuf()
     build_libfakechecks()

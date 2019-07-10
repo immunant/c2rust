@@ -10,15 +10,14 @@ fn main() {
             "multi {:} {:} {:x}",
             65 as libc::c_int, 65 as u8 as char, 65 as libc::c_uint
         ));
+
+        // Needs to be properly implemented still
+        // printf("star %*d %*.*d %.*d", 1, 2, 3, 4, 5, 6, 7);
+
+        // Used to trigger a bug with macro collapsing, fixed in 3a721469
         printf(format_args!(
-            "star {:*} {:*.*} {:.*}",
-            1 as usize,
-            2 as libc::c_int,
-            3 as usize,
-            4 as usize,
-            5 as libc::c_int,
-            6 as usize,
-            7 as libc::c_int
+            "{:}{:}{:}",
+            27i32 as u8 as char, '(' as i32 as u8 as char, 'B' as i32 as u8 as char
         ));
     }
 }

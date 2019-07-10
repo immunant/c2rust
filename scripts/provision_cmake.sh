@@ -11,10 +11,10 @@ if type "cmake" > /dev/null 2>&1; then
   cmake --version | grep -q "3.9.1" && { echo "Cmake requirements already met. Nothing to do."; exit 0; }
 fi
 
-CMAKE_URL="https://cmake.org/files/v3.9/cmake-3.9.1-Linux-x86_64.sh"
+CMAKE_URL="https://cmake.org/files/v3.9/cmake-3.9.6-Linux-x86_64.sh"
 CMAKE_SCRIPT=${CMAKE_URL##*/}
 CMAKE_PREFIX=/opt/$CMAKE_SCRIPT
-CMAKE_SHA256="6fdaa13c978e3e9d0b23a17bb16e68d344a459217df0378b0785674f206562fc  $CMAKE_SCRIPT"
+CMAKE_SHA256="57cd1dc4857e4d3689d006faf6ff56d5e3635c64d456e34596476db5e9ba8031  $CMAKE_SCRIPT"
 
 WORK_DIR=`mktemp -d` && cd $WORK_DIR
 
@@ -28,7 +28,7 @@ function cleanup {
 trap cleanup EXIT
 
 echo "Downloading $CMAKE_SCRIPT"
-wget --quiet $CMAKE_URL || { echo >&2 "Cmake download failed. Aborting."; exit 1; }
+curl -s -O $CMAKE_URL || { echo >&2 "Cmake download failed. Aborting."; exit 1; }
 
 # check integrity of the downloaded script
 echo $CMAKE_SHA256 > cmake_sha256sum.txt

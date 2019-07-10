@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 import json
 import os
 import sys
-from plumbum.cmd import mv, mkdir, rename, sed, rustc, cargo, rm
+from plumbum.cmd import mv, mkdir, sed, rustc, cargo, rm
 from plumbum import local
 
 # Path to the root of the json-c codebase

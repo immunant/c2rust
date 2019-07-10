@@ -3,19 +3,37 @@ extern crate libc;
 extern crate serde_bytes;
 extern crate serde_cbor;
 
-use serde_cbor::{Value, from_slice};
+use serde_cbor::{from_slice, Value};
 use std::collections::HashMap;
-use std::ffi::{CString,CStr};
+use std::ffi::{CStr, CString};
 use std::io::{Error, ErrorKind};
 use std::path::Path;
 use std::slice;
 
 pub mod clang_ast;
 
-pub fn get_untyped_ast(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> Result<clang_ast::AstContext, Error> {
-    let cbors = get_ast_cbors(file_path, cc_db, extra_args);
-    let buffer = cbors.values().next()
-        .ok_or(Error::new(ErrorKind::InvalidData, "Could not parse input file"))?;
+pub fn get_clang_major_version() -> Option<u32> {
+    let s = unsafe { CStr::from_ptr(clang_version()) };
+    s.to_str()
+        .unwrap()
+        .split('.')
+        .next()
+        .unwrap()
+        .parse::<u32>()
+        .ok()
+}
+
+pub fn get_untyped_ast(
+    file_path: &Path,
+    cc_db: &Path,
+    extra_args: &[&str],
+    debug: bool,
+) -> Result<clang_ast::AstContext, Error> {
+    let cbors = get_ast_cbors(file_path, cc_db, extra_args, debug);
+    let buffer = cbors.values().next().ok_or(Error::new(
+        ErrorKind::InvalidData,
+        "Could not parse input file",
+    ))?;
 
     // let cbor_path = file_path.with_extension("cbor");
     // let mut cbor_file = File::create(&cbor_path)?;
@@ -30,7 +48,12 @@ pub fn get_untyped_ast(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> R
     }
 }
 
-fn get_ast_cbors(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> HashMap<String, Vec<u8>> {
+fn get_ast_cbors(
+    file_path: &Path,
+    cc_db: &Path,
+    extra_args: &[&str],
+    debug: bool,
+) -> HashMap<String, Vec<u8>> {
     let mut res = 0;
 
     let mut args_owned = vec![CString::new("ast_exporter").unwrap()];
@@ -46,31 +69,43 @@ fn get_ast_cbors(file_path: &Path, cc_db: &Path, extra_args: &[&str]) -> HashMap
 
     let hashmap;
     unsafe {
-        let ptr = ast_exporter(args_ptrs.len() as libc::c_int, args_ptrs.as_ptr(), &mut res);
+        let ptr = ast_exporter(
+            args_ptrs.len() as libc::c_int,
+            args_ptrs.as_ptr(),
+            debug.into(),
+            &mut res,
+        );
         hashmap = marshal_result(ptr);
         drop_export_result(ptr);
     }
     hashmap
 }
 
-
 include!(concat!(env!("OUT_DIR"), "/cppbindings.rs"));
 
 extern "C" {
     // ExportResult *ast_exporter(int argc, char *argv[]);
     #[no_mangle]
-    fn ast_exporter(argc: libc::c_int, argv: *const *const libc::c_char, res: *mut libc::c_int) -> *mut ExportResult;
+    fn ast_exporter(
+        argc: libc::c_int,
+        argv: *const *const libc::c_char,
+        debug: libc::c_int,
+        res: *mut libc::c_int,
+    ) -> *mut ExportResult;
 
     // void drop_export_result(ExportResult *result);
     #[no_mangle]
     fn drop_export_result(ptr: *mut ExportResult);
+
+    #[no_mangle]
+    fn clang_version() -> *const libc::c_char;
 }
 
 unsafe fn marshal_result(result: *const ExportResult) -> HashMap<String, Vec<u8>> {
     let mut output = HashMap::new();
 
     let n = (*result).entries as isize;
-    for i in 0 .. n {
+    for i in 0..n {
         let ref res = *result;
 
         // Convert name field

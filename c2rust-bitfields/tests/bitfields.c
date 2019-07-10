@@ -153,7 +153,7 @@ typedef struct {
     unsigned char day: 5;
     unsigned char month: 4;
     unsigned short year: 15;
-} __attribute((packed)) three_byte_date;
+} __attribute__((packed)) three_byte_date;
 
 unsigned int check_three_byte_date(three_byte_date const* bf, uchar day, uchar month, ushort year) {
     if (bf->day != day) {

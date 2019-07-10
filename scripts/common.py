@@ -31,15 +31,17 @@ class Colors:
 
 
 class Config:
-    HOST_SUFFIX = os.getenv('TRAVIS')
-    # use hostname outside travis continuous integration builds
-    HOST_SUFFIX = "travis" if HOST_SUFFIX == "true" else platform.node()
+    BUILD_SUFFIX = ""
+    # use custom build directory suffix if requested via env. variable
+    if os.getenv('C2RUST_BUILD_SUFFIX'):
+        BUILD_SUFFIX = os.getenv('C2RUST_BUILD_SUFFIX')
+    BUILD_TYPE = "release"
 
     NCPUS = str(multiprocessing.cpu_count())
 
     ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
     ROOT_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
-    DEPS_DIR = os.path.join(ROOT_DIR, 'build')
+    BUILD_DIR = os.path.join(ROOT_DIR, 'build' + BUILD_SUFFIX)
     RREF_DIR = os.path.join(ROOT_DIR, 'c2rust-refactor')
     C2RUST_DIR = os.path.join(ROOT_DIR, 'c2rust')
     CROSS_CHECKS_DIR = os.path.join(ROOT_DIR, "cross-checks")
@@ -62,10 +64,9 @@ class Config:
     XCHECK_DERIVE_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'derive-macros')
     XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'backends', 'dynamic-dlsym')
     XCHECK_CONFIG_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'config')
+    MACROS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-macros')
 
-    CBOR_PREFIX = os.path.join(DEPS_DIR, "tinycbor.")
-    # use an install prefix unique to the host
-    CBOR_PREFIX += HOST_SUFFIX
+    CBOR_PREFIX = os.path.join(BUILD_DIR, "tinycbor")
 
     LLVM_VER = "7.0.0"
     # make the build directory unique to the hostname such that
@@ -79,44 +80,60 @@ class Config:
     # See http://releases.llvm.org/download.html#7.0.0
     LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=LLVM_VER)
     LLVM_PUBKEY = os.path.join(ROOT_DIR, LLVM_PUBKEY)
-    LLVM_SRC = os.path.join(DEPS_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
+    LLVM_SRC = os.path.join(BUILD_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
     LLVM_CFG_DIR = os.path.join(LLVM_SRC, 'cmake/modules')
     LLVM_BLD = os.path.join(
-        DEPS_DIR,
-        'llvm-{ver}/build.{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
+        BUILD_DIR, 'llvm-{ver}/build'.format(ver=LLVM_VER))
     LLVM_INSTALL = os.path.join(
-        DEPS_DIR,
-        'llvm-{ver}/install.{host}'.format(ver=LLVM_VER, host=HOST_SUFFIX))
+        BUILD_DIR, 'llvm-{ver}/install'.format(ver=LLVM_VER))
     LLVM_BIN = os.path.join(LLVM_INSTALL, 'bin')
 
     CLANG_XCHECK_PLUGIN_SRC = os.path.join(CROSS_CHECKS_DIR,
                                            "c-checks", "clang-plugin")
-    CLANG_XCHECK_PLUGIN_BLD = os.path.join(DEPS_DIR,
-                                           'clang-xcheck-plugin.')
-    CLANG_XCHECK_PLUGIN_BLD += HOST_SUFFIX
+    CLANG_XCHECK_PLUGIN_BLD = os.path.join(BUILD_DIR,
+                                           'clang-xcheck-plugin')
 
     MIN_PLUMBUM_VERSION = (1, 6, 3)
-    CMAKELISTS_COMMANDS = """
-add_subdirectory(c2rust-ast-exporter)
-""".format(prefix=CBOR_PREFIX)  # nopep8
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = 'nightly-2018-12-03'
+    CUSTOM_RUST_NAME = 'nightly-2019-04-12'
     # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
-    CUSTOM_RUST_RUSTC_VERSION = "rustc 1.32.0-nightly (21f268495 2018-12-02)"
+    # CUSTOM_RUST_RUSTC_VERSION = "rustc 1.32.0-nightly (21f268495 2018-12-02)"
 
-    def __init__(self):
-        self.LLVM_ARCHIVE_URLS = [s.format(ver=Config.LLVM_VER)
+    """
+    Reflect changes to all configuration variables that depend on LLVM_VER
+    """
+    def _init_llvm_ver_deps(self):
+        self.LLVM_ARCHIVE_URLS = [s.format(ver=self.LLVM_VER)
                                   for s in Config.LLVM_ARCHIVE_URLS]
         self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_FILES = [os.path.basename(s)
                                    for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_DIRS = [s.replace(".tar.xz", "")
                                   for s in self.LLVM_ARCHIVE_FILES]
-        self.LLVM_ARCHIVE_FILES = [os.path.join(Config.DEPS_DIR, s)
+        self.LLVM_ARCHIVE_FILES = [os.path.join(Config.BUILD_DIR, s)
                                    for s in self.LLVM_ARCHIVE_FILES]
+        self.LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=self.LLVM_VER)
+        self.LLVM_PUBKEY = os.path.join(self.ROOT_DIR, self.LLVM_PUBKEY)
+        self.LLVM_SRC = os.path.join(self.BUILD_DIR, 'llvm-{ver}/src'.format(ver=self.LLVM_VER))
+        self.LLVM_CFG_DIR = os.path.join(self.LLVM_SRC, 'cmake/modules')
+        self.LLVM_BLD = os.path.join(
+            self.BUILD_DIR,
+            'llvm-{ver}/build'.format(ver=self.LLVM_VER))
+        self.LLVM_INSTALL = os.path.join(
+            self.BUILD_DIR,
+            'llvm-{ver}/install'.format(ver=self.LLVM_VER))
+        self.LLVM_BIN = os.path.join(self.LLVM_INSTALL, 'bin')
+        self.CLANG_XCHECK_PLUGIN_BLD = os.path.join(
+            self.BUILD_DIR,
+            'clang-xcheck-plugin')
+
+    def __init__(self):
+        self._init_llvm_ver_deps()
         self.TRANSPILER = None  # set in `update_args`
-        self.RREF_BIN = None  # set in `update_args`
+        self.RREF_BIN = None    # set in `update_args`
+        self.C2RUST_BIN = None  # set in `update_args`
+        self.TARGET_DIR = None  # set in `update_args`
         self.check_rust_toolchain()
         self.update_args()
 
@@ -137,8 +154,13 @@ add_subdirectory(c2rust-ast-exporter)
 
     def update_args(self, args=None):
         build_type = 'debug' if args and args.debug else 'release'
+        has_ver = args and hasattr(args, 'llvm_ver') and args.llvm_ver
+        llvm_ver = args.llvm_ver if has_ver else self.LLVM_VER
 
         self.BUILD_TYPE = build_type
+        self.LLVM_VER = llvm_ver
+        # update dependent variables
+        self._init_llvm_ver_deps()
 
         self.TRANSPILER = "target/{}/c2rust-transpile".format(build_type)
         self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)
@@ -167,24 +189,6 @@ add_subdirectory(c2rust-ast-exporter)
 config = Config()
 
 
-def have_rust_toolchain(name: str) -> bool:
-    """
-    Check whether name is output by `rustup show` on its own line.
-    """
-    rustup = get_cmd_or_die('rustup')
-    lines = rustup('show').split('\n')
-    return any([True for l in lines if l.startswith(name)])
-
-
-def get_host_triplet() -> str:
-    if on_linux():
-        return "x86_64-unknown-linux-gnu"
-    elif on_mac():
-        return "x86_64-apple-darwin"
-    else:
-        assert False, "not implemented"
-
-
 def update_or_init_submodule(submodule_path: str):
     git = get_cmd_or_die("git")
     invoke_quietly(git, "submodule", "update", "--init", submodule_path)
@@ -201,20 +205,21 @@ def get_rust_toolchain_binpath() -> str:
 
 def _get_rust_toolchain_path(dirtype: str) -> str:
     """
-    returns library path to custom rust libdir
-
+    Ask rustc for the correct path to its {lib,bin} directory.
     """
-    if platform.architecture()[0] != '64bit':
-        die("must be on 64-bit host")
 
-    host_triplet = get_host_triplet()
+    # If rustup is being used, it will respect the RUSTUP_TOOLCHAIN environment
+    # variable, according to:
+    # https://github.com/rust-lang/rustup.rs/blob/master/README.md#override-precedence
+    #
+    # If rustup is not being used, we can't control the toolchain; but rustc
+    # will ignore this environment variable, so setting it is harmless.
 
-    libpath = ".rustup/toolchains/{}-{}/{}/"
-    libpath = libpath.format(config.CUSTOM_RUST_NAME, host_triplet, dirtype)
-    libpath = os.path.join(pb.local.env['HOME'], libpath)
-    emsg = "custom rust compiler lib path missing: " + libpath
-    assert os.path.isdir(libpath), emsg
-    return libpath
+    sysroot = pb.local["rustc"].with_env(
+        RUSTUP_TOOLCHAIN=config.CUSTOM_RUST_NAME,
+    )("--print", "sysroot")
+
+    return os.path.join(sysroot.rstrip(), dirtype)
 
 
 def on_x86() -> bool:
@@ -232,39 +237,7 @@ def on_mac() -> bool:
 
 
 def on_linux() -> bool:
-    if on_mac():
-        return False
-    elif on_ubuntu() or on_arch() or on_debian():
-        return True
-    else:
-        # neither on mac nor on a known distro
-        assert False, "not sure"
-
-
-def on_arch() -> bool:
-    """
-    return true on arch distros.
-    """
-    distro, *_ = platform.linux_distribution()
-
-    return distro == "arch"
-
-
-def on_ubuntu() -> bool:
-    """
-    return true on recent ubuntu linux distro.
-    """
-    match = re.match(r'^.+Ubuntu-\d\d\.\d\d-\w+', platform.platform())
-    return match is not None
-
-
-def on_debian() -> bool:
-    """
-    return true on debian distro (and derivatives?).
-    """
-    distro, *_ = platform.linux_distribution()
-
-    return distro == "debian"
+    return platform.system() == "Linux"
 
 
 def regex(raw: str):
@@ -338,15 +311,6 @@ def get_cmd_or_die(cmd: str) -> Command:
         return pb.local[cmd]
     except pb.CommandNotFound:
         die("{} not in path".format(cmd), errno.ENOENT)
-
-
-def get_cmd_from_rustup(cmd: str) -> Command:
-    """
-    ask rustup for path to cmd for the right rust toolchain.
-    """
-    rustup = get_cmd_or_die("rustup")
-    toolpath = rustup('run', config.CUSTOM_RUST_NAME, 'which', cmd).strip()
-    return pb.local.get(toolpath)
 
 
 def ensure_dir(path):
@@ -520,7 +484,7 @@ def transpile(cc_db_path: str,
               filter: str = None,
               extra_transpiler_args: List[str] = [],
               emit_build_files: bool = True,
-              build_directory_contents: str = None,
+              output_dir: str = None,
               emit_modules: bool = False,
               main_module_for_build_files: str = None,
               cross_checks: bool = False,
@@ -536,9 +500,9 @@ def transpile(cc_db_path: str,
     args.extend(extra_transpiler_args)
     if emit_build_files:
         args.append('--emit-build-files')
-    if build_directory_contents:
-        args.append('--build-directory-contents')
-        args.append(build_directory_contents)
+    if output_dir:
+        args.append('--output-dir')
+        args.append(output_dir)
     if emit_modules:
         args.append('--emit-modules')
     if main_module_for_build_files:
@@ -640,8 +604,18 @@ def download_archive(aurl: str, afile: str, asig: str = None):
     def _download_helper(url: str, ofile: str):
         if not os.path.isfile(ofile):
             logging.info("downloading %s", os.path.basename(ofile))
-            follow_redirs = "-L"
-            curl(url, follow_redirs, "--max-redirs", "20", "-o", ofile)
+            curl_args = [
+                url,
+                "-L",                       # follow redirects
+                "--max-redirs", "20",
+                "--connect-timeout", "5",   # timeout for reach attempt
+                "--max-time", "10",         # how long each retry will wait
+                "--retry", "5",
+                "--retry-delay", "0",       # exponential backoff
+                "--retry-max-time", "60",   # total time before we fail
+                "-o", ofile
+            ]
+            curl(*curl_args)
 
     _download_helper(aurl, afile)
 

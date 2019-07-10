@@ -19,12 +19,12 @@ from common import (
     die,
     est_parallel_link_jobs,
     invoke,
+    invoke_quietly,
     install_sig,
     ensure_dir,
     on_x86,
     on_mac,
     setup_logging,
-    have_rust_toolchain,
     ensure_clang_version,
     git_ignore_dir,
     on_linux,
@@ -38,7 +38,7 @@ def download_llvm_sources():
     # make sure we have the gpg public key installed first
     install_sig(c.LLVM_PUBKEY)
 
-    with pb.local.cwd(c.DEPS_DIR):
+    with pb.local.cwd(c.BUILD_DIR):
         # download archives and signatures
         for (aurl, asig, afile, _) in zip(
                 c.LLVM_ARCHIVE_URLS,
@@ -71,7 +71,7 @@ def download_llvm_sources():
 
 def update_cmakelists():
     """
-    Even though we build the ast-exporter out-of-tree, we still need 
+    Even though we build the ast-exporter out-of-tree, we still need
     it to be treated as if it was in a subdirectory of clang to pick
     up the required clang headers, etc.
     """
@@ -108,19 +108,23 @@ def configure_and_build_llvm(args) -> None:
 
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
+            clang = get_cmd_or_die("clang")
+            clangpp = get_cmd_or_die("clang++")
             max_link_jobs = est_parallel_link_jobs()
             assertions = "1" if args.assertions else "0"
             ast_ext_dir = "-DLLVM_EXTERNAL_C2RUST_AST_EXPORTER_SOURCE_DIR={}"
             ast_ext_dir = ast_ext_dir.format(c.AST_EXPO_SRC_DIR)
             cargs = ["-G", "Ninja", c.LLVM_SRC,
                      "-Wno-dev",
-                     "-DCMAKE_C_COMPILER=clang",
-                     "-DCMAKE_CXX_COMPILER=clang++",
+                     "-DCMAKE_C_COMPILER={}".format(clang),
+                     "-DCMAKE_CXX_COMPILER={}".format(clangpp),
                      "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
+                     # required to build LLVM 8 on Debian Jessie
+                     "-DLLVM_TEMPORARILY_ALLOW_OLD_TOOLCHAIN=1",
                      ast_ext_dir]
 
             if on_x86():  # speed up builds on x86 hosts
@@ -166,12 +170,44 @@ def configure_and_build_llvm(args) -> None:
         os.makedirs(os.path.join(c.LLVM_INSTALL, 'bin'), exist_ok=True)
 
 
+def need_cargo_clean(args) -> bool:
+    """
+    Cargo may not pick up changes in c.BUILD_DIR that would require
+    a rebuild. This function tries to detect when we need to clean.
+    """
+    c2rust = c2rust_bin_path(args)
+    if not os.path.isfile(c2rust):
+        logging.debug("need_cargo_clean:False:no-c2rust-bin")
+        return False
+
+    find = get_cmd_or_die("find")
+    _retcode, stdout, _ = invoke_quietly(find, c.BUILD_DIR, "-cnewer", c2rust)
+    include_pattern = "install/lib/clang/{ver}/include".format(ver=c.LLVM_VER)
+    for line in stdout.split("\n")[:-1]:  # skip empty last line
+        if line.endswith("install_manifest_clang-headers.txt") or \
+                line.endswith("ninja_log") or \
+                include_pattern in line:
+            continue
+        else:
+            logging.debug("need_cargo_clean:True:%s", line)
+            return True
+    logging.debug("need_cargo_clean:False")
+    return False
+
+
 def build_transpiler(args):
     cargo = get_cmd_or_die("cargo")
+
+    if need_cargo_clean(args):
+        invoke(cargo, "clean")
+
     build_flags = ["build", "--features", "llvm-static"]
 
     if not args.debug:
         build_flags.append("--release")
+
+    if args.verbose:
+        build_flags.append("-vv")
 
     llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
     assert os.path.isfile(llvm_config), "missing binary: " + llvm_config
@@ -185,19 +221,28 @@ def build_transpiler(args):
 
     # log how we run `cargo build` to aid troubleshooting, IDE setup, etc.
     msg = "invoking cargo build as\ncd {} && \\\n".format(c.C2RUST_DIR)
+    msg += "LIBCURL_NO_PKG_CONFIG=1\\\n"
+    msg += "ZLIB_NO_PKG_CONFIG=1\\\n"
     msg += "LLVM_CONFIG_PATH={} \\\n".format(llvm_config)
     msg += "LLVM_SYSTEM_LIBS='{}' \\\n".format(llvm_system_libs)
     msg += "C2RUST_AST_EXPORTER_LIB_DIR={} \\\n".format(llvm_libdir)
-    msg += " cargo +{} ".format(c.CUSTOM_RUST_NAME)
+    msg += " cargo"
     msg += " ".join(build_flags)
     logging.debug(msg)
 
+    # NOTE: the `curl-rust` and `libz-sys` crates use the `pkg_config`
+    # crate to locate the system libraries they wrap. This causes
+    # `pkg_config` to add `/usr/lib` to `rustc`s library search path
+    # which means that our `cargo` invocation picks up the system
+    # libraries even when we're trying to link against libs we built.
+    # https://docs.rs/pkg-config/0.3.14/pkg_config/
     with pb.local.cwd(c.C2RUST_DIR):
-        with pb.local.env(LLVM_CONFIG_PATH=llvm_config,
+        with pb.local.env(LIBCURL_NO_PKG_CONFIG=1,
+                          ZLIB_NO_PKG_CONFIG=1,
+                          LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs,
                           C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
-            # build with custom rust toolchain
-            invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)
+            invoke(cargo, *build_flags)
 
 
 def _parse_args():
@@ -212,12 +257,21 @@ def _parse_args():
     parser.add_argument('--with-clang', default=False,
                         action='store_true', dest='with_clang',
                         help='build clang with this tool')
+    llvm_ver_help = 'fetch and build specified version of clang/LLVM (default: {})'.format(c.LLVM_VER)
+    # FIXME: build this list by globbing for scripts/llvm-*.0.*-key.asc
+    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0"]
+    parser.add_argument('--with-llvm-version', default=None,
+                        action='store', dest='llvm_ver',
+                        help=llvm_ver_help, choices=llvm_ver_choices)
     parser.add_argument('--without-assertions', default=True,
                         action='store_false', dest='assertions',
                         help='build the tool and clang without assertions')
     parser.add_argument('-x', '--xcode', default=False,
                         action='store_true', dest='xcode',
                         help='generate Xcode project files (macOS only)')
+    parser.add_argument('-v', '--verbose', default=False,
+                        action='store_true', dest='verbose',
+                        help='emit verbose information during build')
     c.add_args(parser)
     args = parser.parse_args()
 
@@ -237,11 +291,27 @@ def binary_in_path(binary_name) -> bool:
         return False
 
 
+def c2rust_bin_path(args):
+    c2rust_bin_path = 'target/debug/c2rust' if args.debug \
+                      else 'target/release/c2rust'
+    c2rust_bin_path = os.path.join(c.ROOT_DIR, c2rust_bin_path)
+
+    abs_curdir = os.path.abspath(os.path.curdir)
+    return os.path.relpath(c2rust_bin_path, abs_curdir)
+
+
+def print_success_msg(args):
+    """
+    print a helpful message on how to run the c2rust binary.
+    """
+    print("success! you may now run", c2rust_bin_path(args))
+
+
 def _main():
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
-    # FIXME: allow env/cli override of LLVM_SRC, LLVM_VER, and LLVM_BLD
+    # FIXME: allow env/cli override of LLVM_SRC and LLVM_BLD
     # FIXME: check that cmake and ninja are installed
     # FIXME: option to build LLVM/Clang from master?
 
@@ -255,10 +325,6 @@ def _main():
 
     args = _parse_args()
 
-    # prerequisites
-    if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
-        die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
-
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
 
@@ -266,34 +332,21 @@ def _main():
         logging.info("cleaning all dependencies and previous built files")
         shutil.rmtree(c.LLVM_SRC, ignore_errors=True)
         shutil.rmtree(c.LLVM_BLD, ignore_errors=True)
-        shutil.rmtree(c.DEPS_DIR, ignore_errors=True)
+        shutil.rmtree(c.BUILD_DIR, ignore_errors=True)
         shutil.rmtree(c.AST_EXPO_PRJ_DIR, ignore_errors=True)
         cargo = get_cmd_or_die("cargo")
         with pb.local.cwd(c.ROOT_DIR):
             invoke(cargo, "clean")
 
     ensure_dir(c.LLVM_BLD)
-    ensure_dir(c.DEPS_DIR)
-    git_ignore_dir(c.DEPS_DIR)
+    ensure_dir(c.BUILD_DIR)
+    git_ignore_dir(c.BUILD_DIR)
 
     download_llvm_sources()
-
     update_cmakelists()
-
     configure_and_build_llvm(args)
-
     build_transpiler(args)
-
-    # print a helpful message on how to run c2rust bin directly
-    c2rust_bin_path = 'target/debug/c2rust' if args.debug \
-                      else 'target/release/c2rust'
-    c2rust_bin_path = os.path.join(c.ROOT_DIR, c2rust_bin_path)
-    # if os.path.curdir
-    abs_curdir = os.path.abspath(os.path.curdir)
-    common_path = os.path.commonpath([abs_curdir, c2rust_bin_path])
-    if common_path != "/":
-        c2rust_bin_path = "." + c2rust_bin_path[len(common_path):]
-    print("success! you may now run", c2rust_bin_path)
+    print_success_msg(args)
 
 
 if __name__ == "__main__":

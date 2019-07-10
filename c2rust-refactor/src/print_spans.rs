@@ -1,14 +1,13 @@
 //! Debug command for printing the span of every major AST node.
 use syntax;
 use syntax::ast::*;
-use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::print::pprust;
+use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::visit::Visitor;
 
-use crate::ast_manip::{Visit, visit_nodes};
-use crate::command::{Registry, DriverCommand};
+use crate::ast_manip::{visit_nodes, Visit};
+use crate::command::{DriverCommand, Registry};
 use crate::driver::Phase;
-
 
 struct PrintSpanVisitor<'a> {
     cm: &'a SourceMap,
@@ -27,8 +26,14 @@ pub fn span_desc(cm: &SourceMap, span: Span) -> String {
 
     let lo = cm.lookup_byte_offset(span.lo());
     let hi = cm.lookup_byte_offset(span.hi());
-    let mut s = format!("{}: {} .. {} (raw = {:?} .. {:?})",
-                        lo.sf.name, lo.pos.0, hi.pos.0, span.lo(), span.hi());
+    let mut s = format!(
+        "{}: {} .. {} (raw = {:?} .. {:?})",
+        lo.sf.name,
+        lo.pos.0,
+        hi.pos.0,
+        span.lo(),
+        span.hi()
+    );
 
     let span2 = span.source_callsite();
     if span2 != span {
@@ -41,32 +46,52 @@ pub fn span_desc(cm: &SourceMap, span: Span) -> String {
 
 impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
     fn visit_expr(&mut self, x: &'a Expr) {
-        info!("[EXPR {:?}] {}: {}",
-              x.id, self.span_desc(x.span), pprust::expr_to_string(x));
+        info!(
+            "[EXPR {:?}] {}: {}",
+            x.id,
+            self.span_desc(x.span),
+            pprust::expr_to_string(x)
+        );
         syntax::visit::walk_expr(self, x);
     }
 
     fn visit_pat(&mut self, x: &'a Pat) {
-        info!("[PAT {:?}] {}: {}",
-              x.id, self.span_desc(x.span), pprust::pat_to_string(x));
+        info!(
+            "[PAT {:?}] {}: {}",
+            x.id,
+            self.span_desc(x.span),
+            pprust::pat_to_string(x)
+        );
         syntax::visit::walk_pat(self, x);
     }
 
     fn visit_ty(&mut self, x: &'a Ty) {
-        info!("[TY {:?}] {}: {}",
-              x.id, self.span_desc(x.span), pprust::ty_to_string(x));
+        info!(
+            "[TY {:?}] {}: {}",
+            x.id,
+            self.span_desc(x.span),
+            pprust::ty_to_string(x)
+        );
         syntax::visit::walk_ty(self, x);
     }
 
     fn visit_stmt(&mut self, x: &'a Stmt) {
-        info!("[STMT {:?}] {}: {}",
-              x.id, self.span_desc(x.span), pprust::stmt_to_string(x));
+        info!(
+            "[STMT {:?}] {}: {}",
+            x.id,
+            self.span_desc(x.span),
+            pprust::stmt_to_string(x)
+        );
         syntax::visit::walk_stmt(self, x);
     }
 
     fn visit_item(&mut self, x: &'a Item) {
-        info!("[ITEM {:?}] {}: {}",
-              x.id, self.span_desc(x.span), pprust::item_to_string(x));
+        info!(
+            "[ITEM {:?}] {}: {}",
+            x.id,
+            self.span_desc(x.span),
+            pprust::item_to_string(x)
+        );
         syntax::visit::walk_item(self, x);
     }
 
@@ -79,7 +104,6 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
 pub fn print_spans<T: Visit>(x: &T, cm: &SourceMap) {
     x.visit(&mut PrintSpanVisitor { cm: cm });
 }
-
 
 pub fn print_one_span<T: Visit>(id: usize, root: &T, cm: &SourceMap, msg: &str) {
     let mut found = false;
@@ -94,13 +118,12 @@ pub fn print_one_span<T: Visit>(id: usize, root: &T, cm: &SourceMap, msg: &str) 
     }
 }
 
-
 /// # `print_spans` Command
-/// 
+///
 /// Test command - not intended for general use.
-/// 
+///
 /// Usage: `print_spans`
-/// 
+///
 /// Print IDs, spans, and pretty-printed source for all
 /// exprs, pats, tys, stmts, and items.
 fn register_print_spans(reg: &mut Registry) {

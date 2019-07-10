@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from collections import namedtuple
 import re
 import sys
@@ -248,6 +249,9 @@ if __name__ == '__main__':
     elif mode == 'nt_match':
         import nt_match
         text = nt_match.generate(decls)
+    elif mode == 'ast_names':
+        import ast_names
+        text = ast_names.generate(decls)
     else:
         raise ValueError('unknown mode: %r' % mode)
 

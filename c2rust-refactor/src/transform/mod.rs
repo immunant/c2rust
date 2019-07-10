@@ -3,14 +3,14 @@
 
 use syntax::ast::Crate;
 
-use crate::command::{Command, RefactorState, CommandState, Registry};
-use crate::driver::{self, Phase};
-
+use crate::command::{Command, CommandState, RefactorState, Registry};
+use crate::driver::Phase;
+use crate::RefactorCtxt;
 
 /// An AST transformation that can be applied to a crate.
 pub trait Transform {
     /// Apply the transformation.
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate;
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt);
 
     /// Return the minimum phase at which this transform can operate.  See the `Phase` docs for
     /// details.  The default is `Phase2`.
@@ -20,17 +20,16 @@ pub trait Transform {
     }
 }
 
-
 /// Adapter for turning a `Transform` into a `Command`.
 pub struct TransformCommand<T: Transform>(pub T);
 
 impl<T: Transform> Command for TransformCommand<T> {
     fn run(&mut self, state: &mut RefactorState) {
-        state.transform_crate(self.0.min_phase(), |st, cx| {
-            st.map_krate(|krate| {
-                self.0.transform(krate, st, cx)
-            });
-        });
+        state
+            .transform_crate(self.0.min_phase(), |st, cx| {
+                self.0.transform(&mut *st.krate_mut(), st, cx)
+            })
+            .expect("Failed to run compiler");
     }
 }
 
@@ -38,8 +37,6 @@ impl<T: Transform> Command for TransformCommand<T> {
 fn mk<T: Transform + 'static>(t: T) -> Box<Command> {
     Box::new(TransformCommand(t))
 }
-
-
 
 macro_rules! transform_modules {
     ($($name:ident,)*) => {

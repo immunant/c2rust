@@ -5,18 +5,23 @@
 use std::collections::HashSet;
 use std::ops::Index;
 
-use c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CQualTypeId, CTypeId, MemberKind, UnOp};
+use super::TranslationError;
+use crate::c_ast::{
+    BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CQualTypeId, CTypeId, MemberKind, UnOp,
+};
+use crate::translator::{simple_metaitem, ConvertedDecl, ExprContext, Translation};
+use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
-use syntax::ast::{AttrStyle, BinOpKind, Expr, MetaItemKind, NestedMetaItem, NestedMetaItemKind, Lit, LitIntType, LitKind, StrStyle, StructField, Ty, TyKind, self};
-use syntax::ext::quote::rt::Span;
+use syntax::ast::{
+    self, AttrStyle, BinOpKind, Expr, ExprKind, Lit, LitIntType, LitKind, MetaItemKind,
+    NestedMetaItem, StmtKind, StrStyle, StructField, Ty, TyKind,
+};
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
-use syntax_pos::DUMMY_SP;
-use translator::{ExprContext, Translation, ConvertedDecl, simple_metaitem};
-use with_stmts::WithStmts;
+use syntax_pos::{Span, DUMMY_SP};
 
-use itertools::Itertools;
 use itertools::EitherOrBoth::{Both, Right};
+use itertools::Itertools;
 
 /// (name, type, bitfield_width, platform_bit_offset, platform_type_bitwidth)
 type FieldInfo = (String, CQualTypeId, Option<u64>, u64, u64);
@@ -29,8 +34,27 @@ enum FieldType {
         bytes: u64,
         attrs: Vec<(String, P<Ty>, String)>,
     },
-    Padding { bytes: u64 },
-    Regular { name: String, ctype: CTypeId, field: StructField },
+    Padding {
+        bytes: u64,
+    },
+    Regular {
+        name: String,
+        ctype: CTypeId,
+        field: StructField,
+    },
+}
+
+fn contains_block(expr_kind: &ExprKind) -> bool {
+    match expr_kind {
+        ExprKind::Block(..) => true,
+        ExprKind::Assign(lhs, rhs) => contains_block(&lhs.node) || contains_block(&rhs.node),
+        ExprKind::AssignOp(_, lhs, rhs) => contains_block(&lhs.node) || contains_block(&rhs.node),
+        ExprKind::Binary(_, lhs, rhs) => contains_block(&lhs.node) || contains_block(&rhs.node),
+        ExprKind::Unary(_, e) => contains_block(&e.node),
+        ExprKind::MethodCall(_, exprs) => exprs.iter().map(|e| contains_block(&e.node)).any(|b| b),
+        ExprKind::Cast(e, _) => contains_block(&e.node),
+        _ => false,
+    }
 }
 
 fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
@@ -38,11 +62,11 @@ fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
         vec![lhs],
         MetaItemKind::NameValue(Lit {
             span: DUMMY_SP,
-            node: LitKind::Str(Symbol::intern(rhs), StrStyle::Cooked)
+            node: LitKind::Str(Symbol::intern(rhs), StrStyle::Cooked),
         }),
     );
 
-    mk().nested_meta_item(NestedMetaItemKind::MetaItem(meta_item))
+    mk().nested_meta_item(NestedMetaItem::MetaItem(meta_item))
 }
 
 impl<'a> Translation<'a> {
@@ -55,7 +79,7 @@ impl<'a> Translation<'a> {
         &self,
         field_info: Vec<FieldInfo>,
         platform_byte_size: u64,
-    ) -> Result<Vec<FieldType>, String> {
+    ) -> Result<Vec<FieldType>, TranslationError> {
         let mut reorganized_fields = Vec::new();
         let mut last_bitfield_group: Option<FieldType> = None;
         let mut next_byte_pos = 0;
@@ -73,8 +97,8 @@ impl<'a> Translation<'a> {
                         reorganized_fields.push(field_group);
                     }
 
-                    continue
-                },
+                    continue;
+                }
                 None => {
                     // Hit non bitfield group so existing one is all set
                     if let Some(field_group) = last_bitfield_group.take() {
@@ -98,8 +122,8 @@ impl<'a> Translation<'a> {
 
                     next_byte_pos = (bit_index + platform_ty_bitwidth) / 8;
 
-                    continue
-                },
+                    continue;
+                }
                 Some(bw) => bw,
             };
 
@@ -111,7 +135,12 @@ impl<'a> Translation<'a> {
             }
 
             match last_bitfield_group {
-                Some(FieldType::BitfieldGroup { start_bit, field_name: ref mut name, ref mut bytes, ref mut attrs }) => {
+                Some(FieldType::BitfieldGroup {
+                    start_bit,
+                    field_name: ref mut name,
+                    ref mut bytes,
+                    ref mut attrs,
+                }) => {
                     name.push('_');
                     name.push_str(&field_name);
 
@@ -133,7 +162,7 @@ impl<'a> Translation<'a> {
                     let bit_range = format!("{}..={}", bit_start, bit_end);
 
                     attrs.push((field_name.clone(), ty, bit_range));
-                },
+                }
                 Some(_) => unreachable!("Found last bitfield group which is not a group"),
                 None => {
                     let mut bytes = 0;
@@ -151,9 +180,7 @@ impl<'a> Translation<'a> {
                     }
 
                     let bit_range = format!("0..={}", bitfield_width - 1);
-                    let attrs = vec![
-                        (field_name.clone(), ty, bit_range),
-                    ];
+                    let attrs = vec![(field_name.clone(), ty, bit_range)];
 
                     last_bitfield_group = Some(FieldType::BitfieldGroup {
                         start_bit: bit_index,
@@ -161,7 +188,7 @@ impl<'a> Translation<'a> {
                         bytes,
                         attrs,
                     });
-                },
+                }
             }
 
             next_byte_pos = (bit_index + bitfield_width - 1) / 8 + 1;
@@ -183,7 +210,6 @@ impl<'a> Translation<'a> {
         Ok(reorganized_fields)
     }
 
-
     /// Here we output a struct derive to generate bitfield data that looks like this:
     ///
     /// ```no_run
@@ -204,14 +230,12 @@ impl<'a> Translation<'a> {
         platform_byte_size: u64,
         span: Span,
         field_info: Vec<FieldInfo>,
-    ) -> Result<ConvertedDecl, String> {
+    ) -> Result<ConvertedDecl, TranslationError> {
         self.extern_crates.borrow_mut().insert("c2rust_bitfields");
 
-        let mut item_store = self.item_store.borrow_mut();
+        let item_store = &mut self.items.borrow_mut()[&self.main_file];
 
-        item_store.uses
-            .get_mut(vec!["c2rust_bitfields".into()])
-            .insert("BitfieldStruct");
+        item_store.add_use(vec!["c2rust_bitfields".into()], "BitfieldStruct");
 
         let mut field_entries = Vec::with_capacity(field_info.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
@@ -222,7 +246,12 @@ impl<'a> Translation<'a> {
 
         for field_type in reorganized_fields {
             match field_type {
-                FieldType::BitfieldGroup { start_bit: _, field_name, bytes, attrs } => {
+                FieldType::BitfieldGroup {
+                    start_bit: _,
+                    field_name,
+                    bytes,
+                    attrs,
+                } => {
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
@@ -247,7 +276,7 @@ impl<'a> Translation<'a> {
                     }
 
                     field_entries.push(field.pub_().struct_field(field_name, ty));
-                },
+                }
                 FieldType::Padding { bytes } => {
                     let field_name = if padding_count == 0 {
                         "_pad".into()
@@ -258,19 +287,27 @@ impl<'a> Translation<'a> {
                         mk().ident_ty("u8"),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
                     );
-                    let field = mk().pub_().struct_field(field_name, ty);
+
+                    // Mark it with `#[bitfield(padding)]`
+                    let field_padding_inner = mk().meta_item("padding", MetaItemKind::Word);
+                    let field_padding_inner =
+                        vec![mk().nested_meta_item(NestedMetaItem::MetaItem(field_padding_inner))];
+                    let field_padding_outer =
+                        mk().meta_item("bitfield", MetaItemKind::List(field_padding_inner));
+                    let field = mk()
+                        .meta_item_attr(AttrStyle::Outer, field_padding_outer)
+                        .pub_()
+                        .struct_field(field_name, ty);
 
                     padding_count += 1;
 
                     field_entries.push(field);
-                },
+                }
                 FieldType::Regular { field, .. } => field_entries.push(field),
             }
         }
 
-        let mut repr_items = vec![
-            simple_metaitem("C"),
-        ];
+        let mut repr_items = vec![simple_metaitem("C")];
 
         if let Some(align) = manual_alignment {
             repr_items.push(simple_metaitem(&format!("align({})", align)));
@@ -310,25 +347,26 @@ impl<'a> Translation<'a> {
         field_ids: &[CExprId],
         field_info: Vec<FieldInfo>,
         ctx: ExprContext,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let mut fields = Vec::with_capacity(field_ids.len());
         let reorganized_fields = self.get_field_types(field_info.clone(), platform_byte_size)?;
         let local_pat = mk().mutbl().ident_pat("init");
         let mut padding_count = 0;
-        let mut stmts = Vec::new();
 
         // Add in zero inits for both padding as well as bitfield groups
         for field_type in reorganized_fields {
             match field_type {
-                FieldType::BitfieldGroup { field_name, bytes, .. } => {
+                FieldType::BitfieldGroup {
+                    field_name, bytes, ..
+                } => {
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
                     );
                     let field = mk().field(field_name, array_expr);
 
-                    fields.push(field);
-                },
+                    fields.push(WithStmts::new_val(field));
+                }
                 FieldType::Padding { bytes } => {
                     let field_name = if padding_count == 0 {
                         "_pad".into()
@@ -343,9 +381,9 @@ impl<'a> Translation<'a> {
 
                     padding_count += 1;
 
-                    fields.push(field);
-                },
-                _ => {},
+                    fields.push(WithStmts::new_val(field));
+                }
+                _ => {}
             }
         }
 
@@ -363,47 +401,73 @@ impl<'a> Translation<'a> {
                         continue;
                     }
 
-                    fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, ctx.is_static)?));
-                },
+                    let init = self.implicit_default_expr(ty.ctype, ctx.is_static)?;
+                    if !init.is_pure() {
+                        return Err(TranslationError::generic(
+                            "Expected no statements in field expression"
+                        ));
+                    }
+                    let field = init.map(|init| mk().field(field_name, init));
+                    fields.push(field);
+                }
                 Both(field_id, (field_name, _, bitfield_width, _, _)) => {
                     let expr = self.convert_expr(ctx.used(), *field_id)?;
 
+                    if !expr.is_pure() {
+                        return Err(TranslationError::generic(
+                            "Expected no statements in field expression"
+                        ));
+                    }
+
                     if bitfield_width.is_some() {
-                        bitfield_inits.push((field_name, expr.val));
+                        bitfield_inits.push((field_name, expr));
 
                         continue;
                     }
 
-                    fields.push(mk().field(field_name, expr.val));
-                },
+                    fields.push(expr.map(|expr| mk().field(field_name, expr)));
+                }
                 _ => unreachable!(),
             }
         }
 
-        let struct_expr = mk().struct_expr(name.as_str(), fields);
-        let local_variable = P(mk().local(local_pat, None as Option<P<Ty>>, Some(struct_expr)));
+        fields.into_iter()
+            .collect::<WithStmts<Vec<ast::Field>>>()
+            .and_then(|fields| {
+                let struct_expr = mk().struct_expr(name.as_str(), fields);
+                let local_variable = P(mk().local(
+                    local_pat,
+                    None as Option<P<Ty>>,
+                    Some(struct_expr))
+                );
 
-        stmts.push(mk().local_stmt(local_variable));
+                let mut is_unsafe = false;
+                let mut stmts = vec![mk().local_stmt(local_variable)];
 
-        // Now we must use the bitfield methods to initialize bitfields
-        for (field_name, val) in bitfield_inits {
-            let field_name_setter = format!("set_{}", field_name);
-            let struct_ident = mk().ident_expr("init");
-            let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
+                // Now we must use the bitfield methods to initialize bitfields
+                for (field_name, val) in bitfield_inits {
+                    let field_name_setter = format!("set_{}", field_name);
+                    let struct_ident = mk().ident_expr("init");
+                    is_unsafe |= val.is_unsafe();
+                    let val = val.to_pure_expr()
+                        .expect("Expected no statements in bitfield initializer");
+                    let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
 
-            stmts.push(mk().expr_stmt(expr));
-        }
+                    stmts.push(mk().expr_stmt(expr));
+                }
 
-        let struct_ident = mk().ident_expr("init");
+                let struct_ident = mk().ident_expr("init");
 
-        stmts.push(mk().expr_stmt(struct_ident));
+                stmts.push(mk().expr_stmt(struct_ident));
 
-        let val = mk().block_expr(mk().block(stmts));
+                let val = mk().block_expr(mk().block(stmts)); 
 
-        Ok(WithStmts {
-            stmts: Vec::new(),
-            val,
-        })
+                if is_unsafe {
+                    Ok(WithStmts::new_unsafe_val(val))
+                } else {
+                    Ok(WithStmts::new_val(val))
+                }
+           })
     }
 
     /// This method handles zero-initializing bitfield structs including bitfields
@@ -414,28 +478,50 @@ impl<'a> Translation<'a> {
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
-    ) -> Result<P<Expr>, String> {
-        let field_info: Vec<FieldInfo> = field_ids.iter()
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+        let field_info: Vec<FieldInfo> = field_ids
+            .iter()
             .map(|field_id| match self.ast_context.index(*field_id).kind {
-                CDeclKind::Field { ref name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth, .. } =>
-                    (name.clone(), typ, bitfield_width, platform_bit_offset, platform_type_bitwidth),
+                CDeclKind::Field {
+                    typ,
+                    bitfield_width,
+                    platform_bit_offset,
+                    platform_type_bitwidth,
+                    ..
+                } => {
+                    let name = self
+                        .type_converter
+                        .borrow()
+                        .resolve_field_name(None, *field_id)
+                        .unwrap();
+                    (
+                        name,
+                        typ,
+                        bitfield_width,
+                        platform_bit_offset,
+                        platform_type_bitwidth,
+                    )
+                }
                 _ => unreachable!("Found non-field in record field list"),
-            }).collect();
+            })
+            .collect();
         let reorganized_fields = self.get_field_types(field_info, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
         let mut padding_count = 0;
 
         for field_type in reorganized_fields {
             match field_type {
-                FieldType::BitfieldGroup { field_name, bytes, .. } => {
+                FieldType::BitfieldGroup {
+                    field_name, bytes, ..
+                } => {
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
                     );
                     let field = mk().field(field_name, array_expr);
 
-                    fields.push(field);
-                },
+                    fields.push(WithStmts::new_val(field));
+                }
                 FieldType::Padding { bytes } => {
                     let field_name = if padding_count == 0 {
                         "_pad".into()
@@ -450,17 +536,23 @@ impl<'a> Translation<'a> {
 
                     padding_count += 1;
 
-                    fields.push(field);
-                },
+                    fields.push(WithStmts::new_val(field));
+                }
                 FieldType::Regular { ctype, name, .. } => {
                     let field_init = self.implicit_default_expr(ctype, is_static)?;
-
-                    fields.push(mk().field(name, field_init));
-                },
+                    if !field_init.is_pure() {
+                        return Err(TranslationError::generic(
+                            "Expected no statements in field expression"
+                        ));
+                    }
+                    fields.push(field_init.map(|init| mk().field(name, init)))
+                }
             }
         }
 
-        Ok(mk().struct_expr(name.as_str(), fields))
+        Ok(fields.into_iter()
+            .collect::<WithStmts<Vec<ast::Field>>>()
+            .map(|fields| mk().struct_expr(name.as_str(), fields)))
     }
 
     /// This method handles conversion of assignment operators on bitfields.
@@ -477,37 +569,85 @@ impl<'a> Translation<'a> {
         &self,
         ctx: ExprContext,
         op: BinOp,
-        field_name: &str,
         lhs: CExprId,
         rhs_expr: P<Expr>,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+        field_id: CDeclId,
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
-        let lhs_expr = named_reference.val.0;
-        let setter_name = format!("set_{}", field_name);
-        let lhs_expr_read = mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<P<Expr>>::new());
-        let param_expr = match op {
-            BinOp::AssignAdd => mk().binary_expr(BinOpKind::Add, lhs_expr_read, rhs_expr),
-            BinOp::AssignSubtract => mk().binary_expr(BinOpKind::Sub, lhs_expr_read, rhs_expr),
-            BinOp::AssignMultiply => mk().binary_expr(BinOpKind::Mul, lhs_expr_read, rhs_expr),
-            BinOp::AssignDivide => mk().binary_expr(BinOpKind::Div, lhs_expr_read, rhs_expr),
-            BinOp::AssignModulus => mk().binary_expr(BinOpKind::Rem, lhs_expr_read, rhs_expr),
-            BinOp::AssignBitXor => mk().binary_expr(BinOpKind::BitXor, lhs_expr_read, rhs_expr),
-            BinOp::AssignShiftLeft => mk().binary_expr(BinOpKind::Shl, lhs_expr_read, rhs_expr),
-            BinOp::AssignShiftRight => mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr),
-            BinOp::AssignBitOr => mk().binary_expr(BinOpKind::BitOr, lhs_expr_read, rhs_expr),
-            BinOp::AssignBitAnd => mk().binary_expr(BinOpKind::BitAnd, lhs_expr_read, rhs_expr),
-            BinOp::Assign => rhs_expr,
-            _ => panic!("Cannot convert non-assignment operator"),
-        };
+        named_reference.and_then(|named_reference| {
+            let lhs_expr = named_reference.0;
+            let field_name = self
+                .type_converter
+                .borrow()
+                .resolve_field_name(None, field_id)
+                .ok_or("Could not find bitfield name")?;
+            let setter_name = format!("set_{}", field_name);
+            let lhs_expr_read =
+                mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<P<Expr>>::new());
+            // Allow the value of this assignment to be used as the RHS of other assignments
+            let val = lhs_expr_read.clone();
+            let param_expr = match op {
+                BinOp::AssignAdd => mk().binary_expr(BinOpKind::Add, lhs_expr_read, rhs_expr),
+                BinOp::AssignSubtract => mk().binary_expr(BinOpKind::Sub, lhs_expr_read, rhs_expr),
+                BinOp::AssignMultiply => mk().binary_expr(BinOpKind::Mul, lhs_expr_read, rhs_expr),
+                BinOp::AssignDivide => mk().binary_expr(BinOpKind::Div, lhs_expr_read, rhs_expr),
+                BinOp::AssignModulus => mk().binary_expr(BinOpKind::Rem, lhs_expr_read, rhs_expr),
+                BinOp::AssignBitXor => mk().binary_expr(BinOpKind::BitXor, lhs_expr_read, rhs_expr),
+                BinOp::AssignShiftLeft => mk().binary_expr(BinOpKind::Shl, lhs_expr_read, rhs_expr),
+                BinOp::AssignShiftRight => mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr),
+                BinOp::AssignBitOr => mk().binary_expr(BinOpKind::BitOr, lhs_expr_read, rhs_expr),
+                BinOp::AssignBitAnd => mk().binary_expr(BinOpKind::BitAnd, lhs_expr_read, rhs_expr),
+                BinOp::Assign => rhs_expr,
+                _ => panic!("Cannot convert non-assignment operator"),
+            };
 
-        let expr = mk().method_call_expr(lhs_expr, setter_name, vec![param_expr]);
-        let val = self.panic("Empty statement expression is not supposed to be used");
-        let mut stmts = named_reference.stmts;
+            let mut stmts = vec![];
 
-        stmts.push(mk().expr_stmt(expr));
+            // If there's just one statement we should be able to be able to fit it into one line without issue
+            // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
+            // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
+            match param_expr.node {
+                ExprKind::Block(ref block, _) => {
+                    let last = block.stmts.len() - 1;
 
-        return Ok(WithStmts { stmts, val });
+                    for (i, stmt) in block.stmts.iter().enumerate() {
+                        if i == last {
+                            break;
+                        }
+
+                        stmts.push(stmt.clone());
+                    }
+
+                    let last_expr = match block.stmts[last].node {
+                        StmtKind::Expr(ref expr) => expr.clone(),
+                        _ => return Err(TranslationError::generic("Expected Expr StmtKind")),
+                    };
+                    let method_call = mk().method_call_expr(lhs_expr, setter_name, vec![last_expr]);
+
+                    stmts.push(mk().expr_stmt(method_call));
+                }
+                _ if contains_block(&param_expr.node) => {
+                    let name = self.renamer.borrow_mut().pick_name("rhs");
+                    let name_ident = mk().mutbl().ident_pat(name.clone());
+                    let temporary_stmt =
+                        mk().local(name_ident, None as Option<P<Ty>>, Some(param_expr.clone()));
+                    let assignment_expr =
+                        mk().method_call_expr(lhs_expr, setter_name, vec![mk().ident_expr(name)]);
+
+                    stmts.push(mk().local_stmt(P(temporary_stmt)));
+                    stmts.push(mk().expr_stmt(assignment_expr));
+                }
+                _ => {
+                    let assignment_expr =
+                        mk().method_call_expr(lhs_expr, setter_name, vec![param_expr.clone()]);
+
+                    stmts.push(mk().expr_stmt(assignment_expr));
+                }
+            };
+
+            return Ok(WithStmts::new(stmts, val));
+        })
     }
 
     /// This method will convert a bitfield member one of four ways:
@@ -527,19 +667,20 @@ impl<'a> Translation<'a> {
         field_name: String,
         expr_id: CExprId,
         kind: MemberKind,
-    ) -> Result<WithStmts<P<Expr>>, String> {
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let mut val = match kind {
             MemberKind::Dot => self.convert_expr(ctx, expr_id)?,
             MemberKind::Arrow => {
-                if let CExprKind::Unary(_, UnOp::AddressOf, subexpr_id, _)
-                = self.ast_context[expr_id].kind {
+                if let CExprKind::Unary(_, UnOp::AddressOf, subexpr_id, _) =
+                    self.ast_context[expr_id].kind
+                {
                     self.convert_expr(ctx, subexpr_id)?
                 } else {
-                    let mut val = self.convert_expr(ctx, expr_id)?;
+                    let val = self.convert_expr(ctx, expr_id)?;
 
                     val.map(|v| mk().unary_expr(ast::UnOp::Deref, v))
                 }
-            },
+            }
         };
 
         if !ctx.is_bitfield_write() {

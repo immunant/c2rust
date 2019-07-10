@@ -20,42 +20,40 @@ use std::u32;
 
 use arena::SyncDroplessArena;
 use rustc::hir;
-use rustc::hir::Node;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
+use rustc::hir::Node;
 use rustc::ty::TyCtxt;
-use rustc_data_structures::indexed_vec::{IndexVec, Idx};
+use rustc_data_structures::indexed_vec::{Idx, IndexVec};
 use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::command::CommandState;
-use crate::driver;
 use crate::type_map;
+use crate::RefactorCtxt;
 
-
+mod annot;
 pub mod constraint;
 mod context;
-mod annot;
-mod intra;
-mod inter;
-mod mono;
 mod inst;
+mod inter;
+mod intra;
+mod mono;
 /*
 mod mono_filter;
 */
 mod debug;
 
+use self::annot::{handle_attrs, handle_marks};
 use self::constraint::*;
 use self::context::Ctxt;
-use self::annot::{handle_marks, handle_attrs};
-use self::intra::IntraCtxt;
-use self::inter::InterCtxt;
-use self::mono::compute_all_mono_sigs;
 use self::inst::find_instantiations;
+use self::inter::InterCtxt;
+use self::intra::IntraCtxt;
+use self::mono::compute_all_mono_sigs;
 /*
 use self::mono_filter::filter_suspicious_monos;
 */
 use self::debug::*;
-
 
 /// A variable index.
 ///
@@ -99,14 +97,14 @@ pub enum PermVar {
 }
 
 /// A type where pointer type constructors are labeled with permission variables.
-pub type LTy<'tcx> = LabeledTy<'tcx, Option<PermVar>>;
-type LFnSig<'tcx> = FnSig<'tcx, Option<PermVar>>;
+pub type LTy<'lty, 'tcx> = LabeledTy<'lty, 'tcx, Option<PermVar>>;
+type LFnSig<'lty, 'tcx> = FnSig<'lty, 'tcx, Option<PermVar>>;
 
 /// A generic labeled function signature.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct FnSig<'tcx, L: 'tcx> {
-    pub inputs: &'tcx [LabeledTy<'tcx, L>],
-    pub output: LabeledTy<'tcx, L>,
+pub struct FnSig<'lty, 'tcx, L: 'lty> {
+    pub inputs: &'lty [LabeledTy<'lty, 'tcx, L>],
+    pub output: LabeledTy<'lty, 'tcx, L>,
 }
 
 /// One of the concrete permission values, READ, WRITE, or MOVE.
@@ -117,21 +115,21 @@ pub enum ConcretePerm {
     Move,
 }
 
-
-impl<'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'tcx, L>> for FnSig<'tcx, L> {
+impl<'lty, 'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'lty, 'tcx, L>>
+    for FnSig<'lty, 'tcx, L>
+{
     fn num_inputs(&self) -> usize {
         self.inputs.len()
     }
 
-    fn input(&self, idx: usize) -> LabeledTy<'tcx, L> {
+    fn input(&self, idx: usize) -> LabeledTy<'lty, 'tcx, L> {
         self.inputs[idx]
     }
 
-    fn output(&self) -> LabeledTy<'tcx, L> {
+    fn output(&self) -> LabeledTy<'lty, 'tcx, L> {
         self.output
     }
 }
-
 
 /// Check if a definition is a `fn` item of some sort.  Note that this does not return true on
 /// closures.
@@ -164,9 +162,11 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
 
 /// Run the intraprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
-fn analyze_intra<'a, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
-                           hir_map: &hir::map::Map<'tcx>,
-                           tcx: TyCtxt<'a, 'tcx, 'tcx>) {
+fn analyze_intra<'a, 'tcx, 'lty>(
+    cx: &mut Ctxt<'lty, 'a, 'tcx>,
+    hir_map: &hir::map::Map<'tcx>,
+    tcx: TyCtxt<'a, 'tcx, 'tcx>,
+) {
     for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
         // We currently don't process `static` bodies, even though they do have MIR.
         if !is_fn(hir_map, def_id) {
@@ -188,17 +188,19 @@ fn analyze_intra<'a, 'tcx>(cx: &mut Ctxt<'a, 'tcx>,
 
 /// Run the interprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
-fn analyze_inter(cx: &mut Ctxt) {
+fn analyze_inter<'lty, 'a, 'tcx>(cx: &mut Ctxt<'lty, 'a, 'tcx>) {
     let mut inter_cx = InterCtxt::new(cx);
     inter_cx.process();
     inter_cx.finish();
 }
 
 /// Run the analysis.
-pub fn analyze<'a, 'tcx>(st: &CommandState,
-                         dcx: &driver::Ctxt<'a, 'tcx>)
-                         -> AnalysisResult<'tcx> {
-    let mut cx = Ctxt::new(dcx.ty_ctxt(), dcx.ty_arena());
+pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
+    st: &CommandState,
+    dcx: &RefactorCtxt<'a, 'tcx>,
+    arena: &'lty SyncDroplessArena,
+) -> AnalysisResult<'lty, 'tcx> {
+    let mut cx = Ctxt::new(dcx.ty_ctxt(), arena);
 
     // Process the annotations and marks provided by the user.
     handle_attrs(&mut cx, st, dcx);
@@ -213,30 +215,29 @@ pub fn analyze<'a, 'tcx>(st: &CommandState,
     find_instantiations(&mut cx);
 
     // Convert results to a more usable format.
-    convert_results(&cx)
+    cx.into()
 }
 
-
 /// A type where pointers are labeled with variables.
-pub type VTy<'tcx> = LabeledTy<'tcx, Option<Var>>;
+pub type VTy<'lty, 'tcx> = LabeledTy<'lty, 'tcx, Option<Var>>;
 /// A signature where pointers are labeled with variables.
-pub type VFnSig<'tcx> = FnSig<'tcx, Option<Var>>;
+pub type VFnSig<'lty, 'tcx> = FnSig<'lty, 'tcx, Option<Var>>;
 
 /// A type where pointers are labeled with concrete permissions.
-pub type PTy<'tcx> = LabeledTy<'tcx, Option<ConcretePerm>>;
+pub type PTy<'lty, 'tcx> = LabeledTy<'lty, 'tcx, Option<ConcretePerm>>;
 /// A signature where pointers are labeled with concrete permissions.
-pub type PFnSig<'tcx> = FnSig<'tcx, Option<ConcretePerm>>;
+pub type PFnSig<'lty, 'tcx> = FnSig<'lty, 'tcx, Option<ConcretePerm>>;
 
 /// The collected results of running the analysis.
-pub struct AnalysisResult<'tcx> {
+pub struct AnalysisResult<'lty, 'tcx> {
     /// The permission-labeled type of every non-fn item.  This includes statics, consts, and
     /// struct/enum fields.
-    pub statics: HashMap<DefId, PTy<'tcx>>,
+    pub statics: HashMap<DefId, PTy<'lty, 'tcx>>,
 
     /// Results for to each (analysis-level) function.  Note that only the primary variant of each
     /// variant group will have its `DefId` present in this table - look up `variants[&id].func_id`
     /// first if you aren't sure whether a `fn` is a primary variant.
-    pub funcs: HashMap<DefId, FunctionResult<'tcx>>,
+    pub funcs: HashMap<DefId, FunctionResult<'lty, 'tcx>>,
 
     /// Results for to each variant `fn`.  Every `fn` that was analyzed should have an entry
     /// in this table.
@@ -245,17 +246,20 @@ pub struct AnalysisResult<'tcx> {
     /// Results for each monomorphization of each analysis-level function, indexed by function ID
     /// and monomorphization index.
     pub monos: HashMap<(DefId, usize), MonoResult>,
+
+    /// Arena used to allocate all type wrappers
+    arena: &'lty SyncDroplessArena,
 }
 
 /// Results specific to an analysis-level function.
-pub struct FunctionResult<'tcx> {
+pub struct FunctionResult<'lty, 'tcx> {
     /// Polymorphic function signature.  Each pointer is labeled with a `SigVar`.
-    pub sig: VFnSig<'tcx>,
+    pub sig: VFnSig<'lty, 'tcx>,
 
     pub num_sig_vars: u32,
 
     /// Constraint set relating `SigVar`s to each other and to concrete permission values.
-    pub cset: ConstraintSet<'tcx>,
+    pub cset: ConstraintSet<'lty>,
 
     /// List of variant IDs, for multi-variant functions.  If the function has only a single
     /// variant, this field is `None` and the variant's ID is the same as the function's ID.
@@ -317,150 +321,176 @@ pub struct MonoResult {
     pub callee_mono_idxs: Vec<usize>,
 }
 
-impl<'tcx> AnalysisResult<'tcx> {
+impl<'lty, 'tcx> AnalysisResult<'lty, 'tcx> {
     /// Get the function and variant results for a `fn` item-like.
-    pub fn fn_results(&self, id: DefId) -> (&FunctionResult<'tcx>, &VariantResult) {
+    pub fn fn_results(&self, id: DefId) -> (&FunctionResult<'lty, 'tcx>, &VariantResult) {
         let vr = &self.variants[&id];
         let fr = &self.funcs[&vr.func_id];
         (fr, vr)
     }
+
+    pub fn arena(&self) -> &'lty SyncDroplessArena {
+        self.arena
+    }
 }
 
-/// Extract the useful information from the `Ctxt`, and collect it into an `AnalysisResult`.
-fn convert_results<'a, 'tcx>(cx: &Ctxt<'a, 'tcx>) -> AnalysisResult<'tcx> {
-    let mut r = AnalysisResult {
-        statics: HashMap::new(),
-        funcs: HashMap::new(),
-        variants: HashMap::new(),
-        monos: HashMap::new(),
-    };
+impl<'lty, 'a, 'tcx> From<Ctxt<'lty, 'a, 'tcx>> for AnalysisResult<'lty, 'tcx> {
+    /// Extract the useful information from the `Ctxt`, and collect it into an `AnalysisResult`.
+    fn from(cx: Ctxt<'lty, 'a, 'tcx>) -> AnalysisResult<'lty, 'tcx> {
+        let mut statics = HashMap::new();
+        let mut funcs = HashMap::new();
+        let mut variants = HashMap::new();
+        let mut monos = HashMap::new();
 
-    // statics
+        // statics
 
-    let perm_lcx = LabeledTyCtxt::new(cx.arena);
-    for (&def_id, &lty) in cx.static_summ.iter() {
-        let pty = perm_lcx.relabel(lty, &mut |p| {
-            if let Some(PermVar::Static(v)) = *p {
-                Some(cx.static_assign[v])
-            } else {
-                None
-            }
-        });
-        r.statics.insert(def_id, pty);
-    }
-
-    // funcs
-
-    let var_lcx = LabeledTyCtxt::new(cx.arena);
-    for def_id in cx.func_ids() {
-        let func = cx.get_func_summ(def_id);
-
-        let sig = {
-            let mut f = |p: &Option<_>| {
-                if let Some(PermVar::Sig(v)) = *p {
-                    Some(v)
+        let perm_lcx = LabeledTyCtxt::new(cx.arena);
+        for (&def_id, &lty) in cx.static_summ.iter() {
+            let pty = perm_lcx.relabel(lty, &mut |p| {
+                if let Some(PermVar::Static(v)) = *p {
+                    Some(cx.static_assign[v])
                 } else {
                     None
                 }
-            };
-            FnSig {
-                inputs: var_lcx.relabel_slice(func.sig.inputs, &mut f),
-                output: var_lcx.relabel(func.sig.output, &mut f),
-            }
-        };
-
-        let variant_ids =
-            if func.variant_ids.len() == 1 { None }
-            else { Some(func.variant_ids.clone()) };
-
-        r.funcs.insert(def_id, FunctionResult {
-            sig: sig,
-            num_sig_vars: func.num_sig_vars,
-            cset: func.sig_cset.clone(),
-            variants: variant_ids,
-            num_monos: func.num_monos,
-        });
-
-
-        // func variants
-
-        for (idx, &var_id) in func.variant_ids.iter().enumerate() {
-            let variant = cx.get_variant_summ(var_id);
-            let func_refs = variant.insts.iter().map(|inst| {
-                FuncRef {
-                    def_id: inst.callee,
-                    span: inst.span,
-                }
-            }).collect();
-
-            r.variants.insert(var_id, VariantResult {
-                func_id: def_id,
-                index: idx,
-                func_refs: func_refs,
             });
+            statics.insert(def_id, pty);
         }
 
+        // funcs
 
-        // func monos
+        let var_lcx = LabeledTyCtxt::new(cx.arena);
+        for def_id in cx.func_ids() {
+            let func = cx.get_func_summ(def_id);
 
-        // Assign suffixes if not provided.
-        let mut suffixes = Vec::new();
-        if func.monos_provided {
-            // Do nothing. If monos were provided, we'll use their provided names.
-        } else if func.num_monos == 1 {
-            // Use the original name.
-            suffixes.push(String::new());
-        } else {
-            /// Default suffixes corresponding to the three concrete permissions.
-            static SUFFIX_BASE: [&'static str; 3] = ["", "mut", "take"];
-            // If more than one mono tries to use the same default suffix, we need to append a
-            // number to disambiguate.
-            let mut suffix_count = [0, 0, 0];
+            let sig = {
+                let mut f = |p: &Option<_>| {
+                    if let Some(PermVar::Sig(v)) = *p {
+                        Some(v)
+                    } else {
+                        None
+                    }
+                };
+                FnSig {
+                    inputs: var_lcx.relabel_slice(func.sig.inputs, &mut f),
+                    output: var_lcx.relabel(func.sig.output, &mut f),
+                }
+            };
 
-            let is_output = mono::infer_outputs(func);
+            let variant_ids = if func.variant_ids.len() == 1 {
+                None
+            } else {
+                Some(func.variant_ids.clone())
+            };
 
-            // Guess a suffix for each mono depending on its output types.  Automatic suffixes look
-            // like "", "mut", "take", "2", "mut3", "take4", etc.
-            for idx in 0 .. func.num_monos {
+            funcs.insert(
+                def_id,
+                FunctionResult {
+                    sig: sig,
+                    num_sig_vars: func.num_sig_vars,
+                    cset: func.sig_cset.clone(),
+                    variants: variant_ids,
+                    num_monos: func.num_monos,
+                },
+            );
+
+            // func variants
+
+            for (idx, &var_id) in func.variant_ids.iter().enumerate() {
+                let variant = cx.get_variant_summ(var_id);
+                let func_refs = variant
+                    .insts
+                    .iter()
+                    .map(|inst| FuncRef {
+                        def_id: inst.callee,
+                        span: inst.span,
+                    })
+                    .collect();
+
+                variants.insert(
+                    var_id,
+                    VariantResult {
+                        func_id: def_id,
+                        index: idx,
+                        func_refs: func_refs,
+                    },
+                );
+            }
+
+            // func monos
+
+            // Assign suffixes if not provided.
+            let mut suffixes = Vec::new();
+            if func.monos_provided {
+                // Do nothing. If monos were provided, we'll use their provided names.
+            } else if func.num_monos == 1 {
+                // Use the original name.
+                suffixes.push(String::new());
+            } else {
+                /// Default suffixes corresponding to the three concrete permissions.
+                static SUFFIX_BASE: [&'static str; 3] = ["", "mut", "take"];
+                // If more than one mono tries to use the same default suffix, we need to append a
+                // number to disambiguate.
+                let mut suffix_count = [0, 0, 0];
+
+                let is_output = mono::infer_outputs(func);
+
+                // Guess a suffix for each mono depending on its output types.  Automatic suffixes look
+                // like "", "mut", "take", "2", "mut3", "take4", etc.
+                for idx in 0..func.num_monos {
+                    let mono = cx.get_mono_summ(def_id, idx);
+
+                    let max_perm = is_output
+                        .iter_enumerated()
+                        .filter(|&(_, &out)| out)
+                        .map(|(v, _)| mono.assign[v])
+                        .max()
+                        .unwrap_or(ConcretePerm::Read);
+
+                    let idx = max_perm as usize;
+                    suffix_count[idx] += 1;
+                    let suffix = if suffix_count[idx] == 1 {
+                        SUFFIX_BASE[idx].to_owned()
+                    } else {
+                        format!("{}{}", SUFFIX_BASE[idx], suffix_count[idx])
+                    };
+                    suffixes.push(suffix);
+                }
+            }
+
+            for idx in 0..func.num_monos {
                 let mono = cx.get_mono_summ(def_id, idx);
 
-                let max_perm = is_output.iter_enumerated()
-                    .filter(|&(_, &out)| out)
-                    .map(|(v, _)| mono.assign[v])
-                    .max().unwrap_or(ConcretePerm::Read);
-
-                let idx = max_perm as usize;
-                suffix_count[idx] += 1;
-                let suffix = if suffix_count[idx] == 1 {
-                    SUFFIX_BASE[idx].to_owned()
+                let suffix = if func.monos_provided {
+                    mono.suffix.clone()
                 } else {
-                    format!("{}{}", SUFFIX_BASE[idx], suffix_count[idx])
+                    suffixes[idx].clone()
                 };
-                suffixes.push(suffix);
+
+                monos.insert(
+                    (def_id, idx),
+                    MonoResult {
+                        suffix: suffix,
+                        assign: mono.assign.clone(),
+                        callee_mono_idxs: mono.callee_mono_idxs.clone(),
+                    },
+                );
             }
         }
 
-        for idx in 0 .. func.num_monos {
-            let mono = cx.get_mono_summ(def_id, idx);
+        let Ctxt { arena, .. } = cx;
 
-            let suffix = 
-                if func.monos_provided { mono.suffix.clone() }
-                else { suffixes[idx].clone() };
-
-            r.monos.insert((def_id, idx), MonoResult {
-                suffix: suffix,
-                assign: mono.assign.clone(),
-                callee_mono_idxs: mono.callee_mono_idxs.clone(),
-            });
+        AnalysisResult {
+            statics,
+            funcs,
+            variants,
+            monos,
+            arena,
         }
     }
-
-    r
 }
 
 /// Print the analysis results to stderr, for debugging.
-pub fn dump_results(dcx: &driver::Ctxt,
-                    results: &AnalysisResult) {
+pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
     eprintln!("\n === summary ===");
 
     let arena = SyncDroplessArena::default();
@@ -501,8 +531,12 @@ pub fn dump_results(dcx: &driver::Ctxt,
 
                 for (j, func_ref) in vr.func_refs.iter().enumerate() {
                     let callee_fr = &results.funcs[&func_ref.def_id];
-                    eprintln!("    call #{}: {:?} :: {:?}",
-                              j, path_str(func_ref.def_id), callee_fr.sig);
+                    eprintln!(
+                        "    call #{}: {:?} :: {:?}",
+                        j,
+                        path_str(func_ref.def_id),
+                        callee_fr.sig
+                    );
                     eprintln!("      (at {:?})", func_ref.span);
                 }
             }
@@ -512,26 +546,45 @@ pub fn dump_results(dcx: &driver::Ctxt,
 
             for (j, func_ref) in vr.func_refs.iter().enumerate() {
                 let callee_fr = &results.funcs[&func_ref.def_id];
-                eprintln!("    call #{}: {:?} :: {:?}",
-                          j, path_str(func_ref.def_id), callee_fr.sig);
+                eprintln!(
+                    "    call #{}: {:?} :: {:?}",
+                    j,
+                    path_str(func_ref.def_id),
+                    callee_fr.sig
+                );
                 eprintln!("      (at {:?})", func_ref.span);
             }
         }
 
-        for i in 0 .. fr.num_monos {
+        for i in 0..fr.num_monos {
             let mr = &results.monos[&(id, i)];
 
             let var_id = fr.variants.as_ref().map_or(id, |vars| vars[i]);
             let vr = &results.variants[&var_id];
 
-            eprintln!("  mono #{} ({:?}): {}", i, mr.suffix, format_sig(fr.sig, &mr.assign));
-            for (j, (func_ref, &mono_idx)) in
-                    vr.func_refs.iter().zip(mr.callee_mono_idxs.iter()).enumerate() {
+            eprintln!(
+                "  mono #{} ({:?}): {}",
+                i,
+                mr.suffix,
+                format_sig(fr.sig, &mr.assign)
+            );
+            for (j, (func_ref, &mono_idx)) in vr
+                .func_refs
+                .iter()
+                .zip(mr.callee_mono_idxs.iter())
+                .enumerate()
+            {
                 let callee_fr = &results.funcs[&func_ref.def_id];
-                eprintln!("    call #{}: {:?} #{} :: {}",
-                          j, path_str(func_ref.def_id), mono_idx,
-                          format_sig(callee_fr.sig,
-                                     &results.monos[&(func_ref.def_id, mono_idx)].assign));
+                eprintln!(
+                    "    call #{}: {:?} #{} :: {}",
+                    j,
+                    path_str(func_ref.def_id),
+                    mono_idx,
+                    format_sig(
+                        callee_fr.sig,
+                        &results.monos[&(func_ref.def_id, mono_idx)].assign
+                    )
+                );
                 eprintln!("      (at {:?})", func_ref.span);
             }
         }

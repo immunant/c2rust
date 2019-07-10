@@ -1,14 +1,13 @@
 //! Interactive mode, for running `c2rust-refactor` as a backend for editor plugins.
 use std::marker::PhantomData;
-use std::sync::mpsc::{SyncSender, SendError};
+use std::sync::mpsc::{SendError, SyncSender};
 
+mod main_thread;
 mod plain_backend;
 mod vim8_backend;
 mod worker;
-mod main_thread;
 
 pub use self::main_thread::interact_command;
-
 
 #[derive(Clone, Debug)]
 pub enum ToServer {
@@ -22,38 +21,24 @@ pub enum ToServer {
     },
 
     /// Remove all marks from node `id`.
-    RemoveMark {
-        id: usize,
-    },
+    RemoveMark { id: usize },
 
     /// Get details about the marks on node `id`.
-    GetMarkInfo {
-        id: usize,
-    },
+    GetMarkInfo { id: usize },
 
     /// Get a list of all marks.
     GetMarkList,
 
-
     /// Provide the server with a list of available buffers.  If the compiler would load one of the
     /// named files, the server will request its contents from the client, instead of reading the
     /// contents on disk.
-    SetBuffersAvailable {
-        files: Vec<String>,
-    },
+    SetBuffersAvailable { files: Vec<String> },
 
     /// Provide the server with the contents of a buffer.
-    BufferText {
-        file: String,
-        content: String,
-    },
-
+    BufferText { file: String, content: String },
 
     /// Run a refactoring command.
-    RunCommand {
-        name: String,
-        args: Vec<String>,
-    },
+    RunCommand { name: String, args: Vec<String> },
 }
 
 #[derive(Clone, Debug)]
@@ -79,12 +64,10 @@ pub enum ToClient {
         infos: Vec<MarkInfo>,
     },
 
-
     /// Request buffer text from the client.
     GetBufferText {
         file: String,
     },
-
 
     /// Rewritten buffer text
     NewBufferText {
@@ -97,17 +80,22 @@ pub enum ToClient {
     },
 }
 
-
 /// Like `std::sync::mpsc::Sender`, but transforms sent data with a function before sending it to
 /// the receiving thread.
 #[derive(Clone, Debug)]
-pub struct WrapSender<T, U, F> where F: Fn(T) -> U {
+pub struct WrapSender<T, U, F>
+where
+    F: Fn(T) -> U,
+{
     inner: SyncSender<U>,
     convert: F,
     _marker: PhantomData<T>,
 }
 
-impl<T, U, F> WrapSender<T, U, F> where F: Fn(T) -> U {
+impl<T, U, F> WrapSender<T, U, F>
+where
+    F: Fn(T) -> U,
+{
     pub fn new(inner: SyncSender<U>, convert: F) -> WrapSender<T, U, F> {
         WrapSender {
             inner: inner,

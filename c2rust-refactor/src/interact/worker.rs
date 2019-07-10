@@ -7,10 +7,9 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::mpsc::{Sender, SyncSender, Receiver};
+use std::sync::mpsc::{Receiver, Sender, SyncSender};
 
-use crate::interact::{ToServer, ToClient};
-
+use crate::interact::{ToClient, ToServer};
 
 pub enum ToWorker {
     InputMessage(ToServer),
@@ -25,8 +24,7 @@ struct WorkerState {
 }
 
 impl WorkerState {
-    fn new(to_client: SyncSender<ToClient>,
-           to_main: Sender<ToServer>) -> WorkerState {
+    fn new(to_client: SyncSender<ToClient>, to_main: Sender<ToServer>) -> WorkerState {
         WorkerState {
             to_client: to_client,
             to_main: to_main,
@@ -35,8 +33,7 @@ impl WorkerState {
         }
     }
 
-    fn run_loop(&mut self,
-                worker_recv: Receiver<ToWorker>) {
+    fn run_loop(&mut self, worker_recv: Receiver<ToWorker>) {
         for msg in worker_recv.iter() {
             self.handle_one(msg);
         }
@@ -44,8 +41,8 @@ impl WorkerState {
 
     fn handle_one(&mut self, msg: ToWorker) {
         use self::ToWorker::*;
-        use super::ToServer::*;
         use super::ToClient::*;
+        use super::ToServer::*;
 
         match msg {
             InputMessage(BufferText { file, content }) => {
@@ -56,33 +53,37 @@ impl WorkerState {
                     None => {
                         warn!("got file {:?}, but no request for it is pending", path);
                         return;
-                    },
+                    }
                 };
                 send.send(content).unwrap();
-            },
+            }
 
             NeedFile(path, send) => {
                 info!("got request for file {:?}", path);
                 assert!(!self.pending_files.contains_key(&path));
-                self.to_client.send(GetBufferText {
-                    file: path.to_string_lossy().into_owned(),
-                }).unwrap();
+                self.to_client
+                    .send(GetBufferText {
+                        file: path.to_string_lossy().into_owned(),
+                    })
+                    .unwrap();
                 self.pending_files.insert(path, send);
-            },
+            }
 
             // Other messages pass through to the main thread.  The channels we use are unbounded,
             // so if the main thread is busy (most importantly, if it's waiting on some file
             // contents), then the message will be queued.
             InputMessage(msg) => {
                 self.to_main.send(msg).unwrap();
-            },
+            }
         }
     }
 }
 
-pub fn run_worker(recv: Receiver<ToWorker>,
-                  to_client: SyncSender<ToClient>,
-                  to_main: Sender<ToServer>) {
+pub fn run_worker(
+    recv: Receiver<ToWorker>,
+    to_client: SyncSender<ToClient>,
+    to_main: Sender<ToServer>,
+) {
     let mut state = WorkerState::new(to_client, to_main);
     state.run_loop(recv);
 }

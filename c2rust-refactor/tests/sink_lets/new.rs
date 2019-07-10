@@ -33,7 +33,6 @@ fn f() {
     }
 
     {
-
         {
             let mut x;
             {
@@ -61,7 +60,6 @@ fn f() {
         };
     }
 
-
     {
         let mut x;
         {
@@ -84,7 +82,7 @@ fn f() {
 
     {
         // Initialized `let`s can't sink, because the initializer might have side effects.
-        let mut y = 0;
+        let mut y = foo();
         {
             let mut x;
             {

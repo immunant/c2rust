@@ -1,14 +1,154 @@
 trigger:
-- master
+  branches:
+    include:
+    - master
+    - feature/ci-dev
+  paths:
+    exclude:
+    - README.md
+    - LICENSE
+    - .travis.yml
+    - book.toml
+    - docker/*
+    - vagrant/*
+    - manual/*
+    - docs/*
 
-pool:
-  vmImage: 'Ubuntu-16.04'
+jobs:
+- job: Linux
+  timeoutInMinutes: 120
+  pool:
+    vmImage: 'Ubuntu-16.04'
+  strategy:
+    matrix:
+      arch:
+        containerImage: immunant/c2rust:archlinux-base-latest
+      debian8:
+        containerImage: immunant/c2rust:debian-jessie-latest
+      debian9:
+        containerImage: immunant/c2rust:debian-stretch-latest
+      fedora29:
+        containerImage: immunant/c2rust:fedora-29-latest
+      ubuntu16:
+        containerImage: immunant/c2rust:ubuntu-xenial-latest
+      ubuntu18:
+        containerImage: immunant/c2rust:ubuntu-bionic-latest
+  container: $[ variables['containerImage'] ]
+  steps:
+  - script: |
+      # rust was installed for the `docker` user, not the user azure creates
+      # but cargo and rustup can be controlled via $CARGO_HOME and $RUSTUP_HOME.
+      # NOTE: $HOME is not set correctly for the azure user; don't rely on it.
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      cargo build
+    displayName: 'Fast build against host clang/LLVM'
 
-steps:
-- script: scripts/provision_deb.sh
-  displayName: 'Run Debian provisioning script.'
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      python3 ./scripts/test_translator.py --debug ./tests
+    displayName: 'Test translator (fast build)'
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      cargo clean
+    displayName: 'Cargo clean'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      python3 ./scripts/build_translator.py --debug --with-llvm-version=7.0.1
+    displayName: 'Developer build against local LLVM 7'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      python3 ./scripts/test_translator.py --debug ./tests
+    displayName: 'Test translator against developer build (LLVM 7)'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      cargo clean
+    displayName: 'Cargo clean'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      python3 ./scripts/build_translator.py --debug --with-llvm-version=8.0.0
+    displayName: 'Developer build against local LLVM 8'
+
+  - script: |
+      export PATH="/home/docker/.cargo/bin:$PATH"
+      export RUSTUP_HOME=/home/docker/.rustup
+      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      python3 ./scripts/test_translator.py --debug ./tests
+    displayName: 'Test translator against developer build (LLVM 8)'
+
+- job: Darwin
+  timeoutInMinutes: 120
+  pool:
+    vmImage: 'macos-10.13'
+  steps:
+  - script: |
+      ./scripts/provision_mac.sh
+      # Pick the most recent toolchain (the default is Xcode 8.3.3)
+      sudo xcode-select --switch /Applications/Xcode_10.1.app/Contents/Developer
+      # speeds up provisioning
+      export HOMEBREW_NO_AUTO_UPDATE=1
+      # helps the `curl-sys` create determine how to link in libcurl.
+      brew install pkg-config 
+      # we want to use the host curl because it has the `HTTP2` feature
+      # whereas the brew version does not, this causes curl-sys to 
+      # build its own curl which then fails to link on Azure Devops.
+      brew remove curl
+    displayName: 'Provision macOS'
+
+  - script: |
+      source $HOME/.cargo/env
+      cargo build
+    displayName: 'Fast build against host clang/LLVM'
+
+  - script: |
+      source $HOME/.cargo/env
+      python3 ./scripts/test_translator.py --debug ./tests
+    displayName: 'Test translator (fast build)'
+
+  - script: |
+      source $HOME/.cargo/env
+      cargo clean
+    displayName: 'Cargo clean'
+
+  - script: |
+      source $HOME/.cargo/env
+      python3 ./scripts/build_translator.py --debug --with-llvm-version=7.0.1
+    displayName: 'Developer build against local LLVM 7'
+
+  - script: |
+      source $HOME/.cargo/env
+      python3 ./scripts/test_translator.py --debug ./tests
+    displayName: 'Test translator against developer build (LLVM 7)'
+
+  - script: |
+      source $HOME/.cargo/env
+      cargo clean
+    displayName: 'Cargo clean'
+
+  - script: |
+      source $HOME/.cargo/env
+      python3 ./scripts/build_translator.py --debug --with-llvm-version=8.0.0
+    displayName: 'Developer build against local LLVM 8'
+
+  - script: |
+      source $HOME/.cargo/env
+      python3 ./scripts/test_translator.py --debug ./tests
+    displayName: 'Test translator against developer build (LLVM 8)'

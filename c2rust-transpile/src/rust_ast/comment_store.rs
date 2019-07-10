@@ -23,12 +23,13 @@
 //!   let updated_cmmt_store = trav.into_comment_store();
 //! ```
 
-use syntax_pos::{BytePos, DUMMY_SP, Span};
-use syntax_pos::hygiene::SyntaxContext;
-use syntax::parse::lexer::comments;
+use crate::rust_ast::traverse;
+use itertools::Itertools;
 use std::collections::BTreeMap;
 use syntax::ast::*;
-use rust_ast::traverse;
+use syntax::parse::lexer::comments;
+use syntax_pos::hygiene::SyntaxContext;
+use syntax_pos::{BytePos, Span, DUMMY_SP};
 
 pub struct CommentStore {
     /// The `Span` keys do _not_ correspond to the comment position. Instead, they refer to the
@@ -40,7 +41,6 @@ pub struct CommentStore {
 }
 
 impl CommentStore {
-
     pub fn new() -> Self {
         CommentStore {
             output_comments: BTreeMap::new(),
@@ -63,7 +63,6 @@ impl CommentStore {
     /// Add a `Comment` at the current position, then return the `Span` that should be given to
     /// something we want associated with this comment.
     pub fn add_comment(&mut self, mut cmmt: comments::Comment) -> Span {
-
         // This line is not necessary. All it does is prevent the confusing situation where comments
         // have exactly the same position as some AST node to which they are _not_ related.
         self.span_source += 1;
@@ -83,36 +82,41 @@ impl CommentStore {
 
     /// Add a comment at the current position, then return the `Span` that should be given to
     /// something we want associated with this comment.
-    pub fn add_comment_lines(&mut self, lines: Vec<String>) -> Span {
-        let lines: Vec<String> = lines
-            .into_iter()
-            .map(|mut comment| {
-                if comment.starts_with("//!") || comment.starts_with("///") ||
-                    comment.starts_with("/**") || comment.starts_with("/*!") {
-                    comment.insert(2,' ');
-                }
-                comment
-            })
-            .collect();
+    pub fn add_comment_lines(&mut self, lines: &[String]) -> Span {
+        fn translate_comment(comment: &String) -> String {
+            comment
+                .lines()
+                .map(|line: &str| {
+                    let mut line = line.to_owned();
+                    if line.starts_with("//!")
+                        || line.starts_with("///")
+                        || line.starts_with("/**")
+                        || line.starts_with("/*!")
+                    {
+                        line.insert(2, ' ');
+                    };
+                    line
+                })
+                .join("\n")
+        }
+
+        let lines: Vec<String> = lines.into_iter().map(translate_comment).collect();
 
         if lines.is_empty() {
             DUMMY_SP
         } else {
-            self.add_comment(
-                comments::Comment {
-                    style: comments::CommentStyle::Isolated,
-                    lines: lines,
-                    pos: BytePos(0), // overwritten in `add_comment`
-                }
-            )
+            self.add_comment(comments::Comment {
+                style: comments::CommentStyle::Isolated,
+                lines: lines,
+                pos: BytePos(0), // overwritten in `add_comment`
+            })
         }
     }
 }
 
-
 pub struct CommentTraverser {
     old_comments: BTreeMap<Span, comments::Comment>,
-    store: CommentStore
+    store: CommentStore,
 }
 impl CommentTraverser {
     fn reinsert_comment_at(&mut self, sp: Span) -> Span {
@@ -125,13 +129,12 @@ impl CommentTraverser {
 
     /// Turn the traverser back into a `CommentStore`.
     pub fn into_comment_store(self) -> CommentStore {
-//        assert!(old_comments.is_empty());
+        //        assert!(old_comments.is_empty());
         self.store
     }
 }
 
 impl traverse::Traversal for CommentTraverser {
-
     fn traverse_stmt(&mut self, mut s: Stmt) -> Stmt {
         s.span = self.reinsert_comment_at(s.span);
         traverse::traverse_stmt_def(self, s)

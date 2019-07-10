@@ -7,7 +7,7 @@ extern crate c2rust_xcheck_derive;
 #[macro_use]
 extern crate c2rust_xcheck_runtime;
 
-extern crate c2rust_xcheck_dlsym;
+extern crate c2rust_xcheck_backend_dynamic_dlsym;
 
 mod fibo;
 

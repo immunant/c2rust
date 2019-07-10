@@ -12,38 +12,27 @@ pub fn get_item_args(mi: &ast::MetaItem) -> ArgList<'static> {
         ArgList::from_map(
             items
                 .iter()
-                .map(|item| {
-                    match item.node {
-                        ast::NestedMetaItemKind::MetaItem(ref mi) => {
-                            let kw = unsafe {
-                                let kw_str = mi.name().interned().as_str();
-                                // FIXME: this looks unsafe, but mi.name().as_str()
-                                // returns an InternedString whose sole member is
-                                // a &'static str (which we're forcing the conversion to)
-                                // Ideally, InternedString's as_ref() or deref() would
-                                // correctly return a &'static str reference
-                                ::std::mem::transmute::<&str, &'static str>(kw_str.as_ref())
-                            };
-                            match mi.node {
-                                ast::MetaItemKind::Word => (kw, ArgValue::Nothing),
+                .map(|item| match item {
+                    ast::NestedMetaItem::MetaItem(ref mi) => {
+                        assert!(mi.path.segments.len() == 1);
+                        let kw = mi.path.segments[0].ident.as_str().get();
+                        match mi.node {
+                            ast::MetaItemKind::Word => (kw, ArgValue::Nothing),
 
-                                ast::MetaItemKind::NameValue(ref val) => match val.node {
-                                    ast::LitKind::Str(ref s, ast::StrStyle::Cooked) => {
-                                        (kw, ArgValue::Str(String::from(&*s.as_str())))
-                                    }
-
-                                    ast::LitKind::Int(i, _) => (kw, ArgValue::Int(i)),
-
-                                    _ => panic!("invalid tag value for by_value: {:?}", *val),
-                                },
-
-                                ast::MetaItemKind::List(_) => {
-                                    (kw, ArgValue::List(get_item_args(mi)))
+                            ast::MetaItemKind::NameValue(ref val) => match val.node {
+                                ast::LitKind::Str(ref s, ast::StrStyle::Cooked) => {
+                                    (kw, ArgValue::Str(String::from(&*s.as_str())))
                                 }
-                            }
+
+                                ast::LitKind::Int(i, _) => (kw, ArgValue::Int(i)),
+
+                                _ => panic!("invalid tag value for by_value: {:?}", *val),
+                            },
+
+                            ast::MetaItemKind::List(_) => (kw, ArgValue::List(get_item_args(mi))),
                         }
-                        _ => panic!("unknown item passed to by_value: {:?}", *item),
                     }
+                    _ => panic!("unknown item passed to by_value: {:?}", *item),
                 })
                 .collect(),
         )
@@ -73,6 +62,7 @@ fn parse_xcheck_type(name: &'static str, arg: &ArgValue) -> XCheckType {
                 _ => panic!("invalid literal for cross_check id: {:?}", arg),
             }
         }
+        "as_type" => XCheckType::AsType(String::from(arg.as_str())),
         "custom" => XCheckType::Custom(String::from(arg.as_str())),
         _ => panic!("unknown cross-check type: {}", name),
     }
@@ -106,7 +96,7 @@ pub fn parse_xcheck_arg(arg: &ArgValue<'static>, or_default: bool) -> Option<XCh
 }
 
 pub fn parse_attr_config(item_xcfg: &mut ItemConfig, mi: &ast::MetaItem) {
-    assert_eq!(mi.name(), "cross_check");
+    assert_eq!(mi.path, "cross_check");
     match *item_xcfg {
         ItemConfig::Defaults(ref mut d) => parse_defaults_attr_config(d, mi),
         ItemConfig::Function(ref mut f) => parse_function_attr_config(f, mi),

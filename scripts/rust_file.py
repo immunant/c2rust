@@ -34,9 +34,8 @@ class RustFile:
         args = [
             "--crate-type={}".format(crate_type.value),
             "-L",
-            current_dir,
-            *extra_args,
-        ]
+            current_dir
+        ] + extra_args
 
         if save_output:
             args.append('-o')

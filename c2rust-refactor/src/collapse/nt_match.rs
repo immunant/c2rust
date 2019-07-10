@@ -1,18 +1,17 @@
 use std::collections::HashMap;
 
-use syntax::ThinVec;
-use syntax::ast::*;
-use syntax::source_map::{Span, Spanned, SyntaxContext};
-use syntax::parse::token::{Token, DelimToken, Nonterminal};
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
 use rustc_target::spec::abi::Abi;
+use syntax::ast::*;
+use syntax::parse::token::{DelimToken, Nonterminal, Token};
+use syntax::source_map::{Span, Spanned, SyntaxContext};
+use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use syntax::ThinVec;
 
+use c2rust_ast_builder::mk;
 use std::rc::Rc;
 use syntax::ptr::P;
-use c2rust_ast_builder::mk;
 
-use crate::ast_manip::{MaybeGetNodeId, GetSpan};
-
+use crate::ast_manip::{GetSpan, MaybeGetNodeId};
 
 pub struct Ctxt {
     nts: Vec<(Span, Nonterminal)>,
@@ -23,8 +22,6 @@ impl Ctxt {
         self.nts.push((span, nt));
     }
 }
-
-
 
 pub trait NtMatch {
     /// Match up subtrees of `old` and `new`, and record `Nonterminal`s that may be useful for
@@ -65,8 +62,8 @@ impl<T: NtMatch> NtMatch for Option<T> {
         match (old, new) {
             (&Some(ref old), &Some(ref new)) => {
                 <T as NtMatch>::nt_match(old, new, cx);
-            },
-            (_, _) => {},
+            }
+            (_, _) => {}
         }
     }
 }
@@ -91,7 +88,8 @@ impl<T: NtMatch + MaybeGetNodeId> NtMatch for [T] {
         if <T as MaybeGetNodeId>::supported() {
             // For each item in `old_seq`, `nt_match` it against the item with the same NodeId in
             // `new_seq`, if such an item exists.
-            let new_id_map = new_seq.iter()
+            let new_id_map = new_seq
+                .iter()
                 .map(|new| (new.get_node_id(), new))
                 .filter(|p| p.0 != DUMMY_NODE_ID)
                 .collect::<HashMap<_, _>>();
@@ -121,8 +119,6 @@ impl<T: NtMatch + MaybeGetNodeId> NtMatch for ThinVec<T> {
         <[T] as NtMatch>::nt_match(old_seq, new_seq, cx);
     }
 }
-
-
 
 trait AsNonterminal {
     fn as_nonterminal(&self) -> Nonterminal;
@@ -185,16 +181,16 @@ impl AsNonterminal for Lit {
     }
 }
 
-
 fn check_nonterminal<T>(old: &T, new: &T, cx: &mut Ctxt) -> bool
-        where T: GetSpan + AsNonterminal {
+where
+    T: GetSpan + AsNonterminal,
+{
     let empty_ctxt = old.get_span().ctxt() == SyntaxContext::empty();
     if empty_ctxt {
         cx.record(old.get_span(), new.as_nonterminal());
     }
     empty_ctxt
 }
-
 
 pub fn match_nonterminals<T: NtMatch>(old: &T, new: &T) -> Vec<(Span, Nonterminal)> {
     let mut cx = Ctxt { nts: Vec::new() };

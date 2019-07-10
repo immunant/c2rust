@@ -194,11 +194,19 @@ Stmt *CrossCheckInserter::build_depth_check(FunctionDecl *fn_decl,
     hash_leaf_func.append("leaf"sv);
     auto hash_leaf_call = build_call(hash_leaf_func.full_name(),
                                      ctx.UnsignedLongTy, { }, ctx);
+#if CLANG_VERSION_MAJOR >= 8
+    auto return_hash_leaf =
+        ReturnStmt::Create(ctx, SourceLocation(), hash_leaf_call, nullptr);
+    return IfStmt::Create(ctx, SourceLocation(), false,
+                          nullptr, nullptr, depth_cmp,
+                          return_hash_leaf, SourceLocation(), nullptr);
+#else
     auto return_hash_leaf =
         new (ctx) ReturnStmt(SourceLocation(), hash_leaf_call, nullptr);
     return new (ctx) IfStmt(ctx, SourceLocation(), false,
                             nullptr, nullptr, depth_cmp,
                             return_hash_leaf, SourceLocation(), nullptr);
+#endif
 
 }
 
@@ -225,7 +233,11 @@ CrossCheckInserter::build_hasher_init(const std::string &hasher_prefix,
 
     // Call the initializer
     auto hasher_var_ref =
-        new (ctx) DeclRefExpr(hasher_var, false, hasher_ty,
+        new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                              ctx,
+#endif
+                              hasher_var, false, hasher_ty,
                               VK_LValue, SourceLocation());
     auto hasher_var_ptr =
         ImplicitCastExpr::Create(ctx, hasher_ptr_ty,
@@ -308,7 +320,11 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunction &func,
         auto param = fn_decl->getParamDecl(0);
         auto param_ty = param->getType();
         auto param_ref_lv =
-            new (ctx) DeclRefExpr(param, false, param_ty,
+            new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                  ctx,
+#endif
+                                  param, false, param_ty,
                                   VK_LValue, SourceLocation());
         auto param_ref_rv =
             ImplicitCastExpr::Create(ctx, param_ty,
@@ -326,12 +342,21 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunction &func,
         auto hash_invalid_call =
             build_call("__c2rust_hash_invalid_pointer", ctx.UnsignedLongTy,
                        { param_void_ref_rv }, ctx);
+#if CLANG_VERSION_MAJOR >= 8
+        auto return_hash_invalid =
+            ReturnStmt::Create(ctx, SourceLocation(), hash_invalid_call, nullptr);
+        auto if_invalid =
+            IfStmt::Create(ctx, SourceLocation(), false,
+                           nullptr, nullptr, is_invalid_call,
+                           return_hash_invalid, SourceLocation(), nullptr);
+#else
         auto return_hash_invalid =
             new (ctx) ReturnStmt(SourceLocation(), hash_invalid_call, nullptr);
         auto if_invalid =
             new (ctx) IfStmt(ctx, SourceLocation(), false,
                              nullptr, nullptr, is_invalid_call,
                              return_hash_invalid, SourceLocation(), nullptr);
+#endif
 
         auto depth_check = build_depth_check(fn_decl, "pointer", ctx);
 
@@ -352,7 +377,11 @@ void CrossCheckInserter::build_pointer_hash_function(const HashFunction &func,
 
         // Build the conditional expression and return statement
         auto return_hash_stmt =
+#if CLANG_VERSION_MAJOR >= 8
+            ReturnStmt::Create(ctx, SourceLocation(), param_hash_call, nullptr);
+#else
             new (ctx) ReturnStmt(SourceLocation(), param_hash_call, nullptr);
+#endif
         return { if_invalid, depth_check, return_hash_stmt };
     };
     build_generic_hash_function(func, ctx, body_fn);
@@ -410,7 +439,11 @@ void CrossCheckInserter::build_array_hash_function(const HashFunction &func,
                                               SourceLocation(),
                                               SourceLocation());
         // i < N
-        auto i_var_lv = new (ctx) DeclRefExpr(i_var, false, i_ty,
+        auto i_var_lv = new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                              ctx,
+#endif
+                                              i_var, false, i_ty,
                                               VK_LValue, SourceLocation());
         auto i_var_rv = ImplicitCastExpr::Create(ctx, i_var_lv->getType(),
                                                  CK_LValueToRValue,
@@ -437,7 +470,11 @@ void CrossCheckInserter::build_array_hash_function(const HashFunction &func,
         auto param = fn_decl->getParamDecl(0);
         auto param_ty = param->getType();
         auto param_ref_lv =
-            new (ctx) DeclRefExpr(param, false, param_ty,
+            new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                  ctx,
+#endif
+                                  param, false, param_ty,
                                   VK_LValue, SourceLocation());
         auto param_i_lv = new (ctx) ArraySubscriptExpr(param_ref_lv, i_var_rv,
                                                        element.orig_ty, VK_LValue,
@@ -462,7 +499,11 @@ void CrossCheckInserter::build_array_hash_function(const HashFunction &func,
                                       ctx.UnsignedLongTy,
                                       { hasher_var_ptr }, ctx);
         auto return_stmt =
+#if CLANG_VERSION_MAJOR >= 8
+            ReturnStmt::Create(ctx, SourceLocation(), finish_call, nullptr);
+#else
             new (ctx) ReturnStmt(SourceLocation(), finish_call, nullptr);
+#endif
         stmts.push_back(return_stmt);
         return stmts;
     };
@@ -477,7 +518,11 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
     auto record_decl = record_ty->getDecl();
 
     llvm::StringRef file_name;
+#if CLANG_VERSION_MAJOR >= 7
+    auto ploc = ctx.getSourceManager().getPresumedLoc(record_decl->getBeginLoc());
+#else
     auto ploc = ctx.getSourceManager().getPresumedLoc(record_decl->getLocStart());
+#endif
     if (ploc.isValid()) {
         file_name = ploc.getFilename();
     }
@@ -518,7 +563,11 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
             auto param = fn_decl->getParamDecl(0);
             auto param_ty = param->getType();
             auto param_ref_lv =
-                new (ctx) DeclRefExpr(param, false, param_ty,
+                new (ctx) DeclRefExpr(
+ #if CLANG_VERSION_MAJOR >= 8
+                                      ctx,
+#endif
+                                      param, false, param_ty,
                                       VK_LValue, SourceLocation());
             auto param_ref_rv = func.forward_argument(param_ref_lv, ctx);
             auto new_depth = get_depth(fn_decl, false, ctx);
@@ -526,7 +575,11 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
                                            ctx.UnsignedLongTy,
                                            { param_ref_rv, new_depth }, ctx);
             auto return_stmt =
+#if CLANG_VERSION_MAJOR >= 8
+                ReturnStmt::Create(ctx, SourceLocation(), hash_fn_call, nullptr);
+#else
                 new (ctx) ReturnStmt(SourceLocation(), hash_fn_call, nullptr);
+#endif
             return { return_stmt };
         };
         build_generic_hash_function(func, ctx, body_fn);
@@ -572,7 +625,11 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
             auto anyunion_call = build_call("__c2rust_hash_anyunion",
                                              ctx.UnsignedLongTy, { }, ctx);
             auto return_stmt =
+#if CLANG_VERSION_MAJOR >= 8
+                ReturnStmt::Create(ctx, SourceLocation(), anyunion_call, nullptr);
+#else
                 new (ctx) ReturnStmt(SourceLocation(), anyunion_call, nullptr);
+#endif
             return { depth_check, return_stmt };
         };
         build_generic_hash_function(func, ctx, body_fn);
@@ -613,14 +670,6 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
         for (auto *field : record_def->fields()) {
             if (field->isUnnamedBitfield())
                 continue; // Unnamed bitfields only affect layout, not contents
-            if (field->isBitField()) {
-                auto &diags = ctx.getDiagnostics();
-                auto record_decl = field->getParent();
-                report_clang_error(diags, "default cross-checking is not supported for bitfields, "
-                                          "please use a custom cross-check for '%0'",
-                                          record_name);
-                return {};
-            }
 
             XCheck field_xcheck{xcfg_scope_struct_field(record_cfg, field->getName())};
             if (field_xcheck.type == config::XCHECK_TYPE_DISABLED)
@@ -635,7 +684,11 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
                                                     SourceLocation());
             } else {
                 auto param_ref_rv =
-                    new (ctx) DeclRefExpr(param, false, param->getType(),
+                    new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                          ctx,
+#endif
+                                          param, false, param->getType(),
                                           VK_RValue, SourceLocation());
                 std::string field_hash_fn_name;
                 ExprVec field_hash_args;
@@ -685,7 +738,11 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
                                       ctx.UnsignedLongTy,
                                       { hasher_var_ptr }, ctx);
         auto return_stmt =
+#if CLANG_VERSION_MAJOR >= 8
+            ReturnStmt::Create(ctx, SourceLocation(), finish_call, nullptr);
+#else
             new (ctx) ReturnStmt(SourceLocation(), finish_call, nullptr);
+#endif
         stmts.push_back(return_stmt);
         return stmts;
     };

@@ -18,7 +18,6 @@ from common import (
     est_parallel_link_jobs,
     invoke,
     setup_logging,
-    have_rust_toolchain,
     ensure_clang_version,
     ensure_dir,
     git_ignore_dir,
@@ -65,9 +64,21 @@ def build_clang_plugin(args: str) -> None:
                      "-DBUILD_SHARED_LIBS=1",
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs)]
             if args.with_c2rust_clang:
-                cargs.extend(["-DLLVM_DIR={}/lib/cmake/llvm".format(c.LLVM_BLD),
-                              "-DClang_DIR={}/lib/cmake/clang".format(c.LLVM_BLD),
-                              "-DLLVM_EXTERNAL_LIT={}/bin/llvm-lit".format(c.LLVM_BLD)])
+                llvm_cmake_dir = os.path.join(c.LLVM_BLD, "lib", "cmake", "llvm")
+                if not os.path.exists(llvm_cmake_dir):
+                    die("missing LLVM cmake files at: " + llvm_cmake_dir)
+
+                clang_cmake_dir = os.path.join(c.LLVM_BLD, "lib", "cmake", "clang")
+                if not os.path.exists(clang_cmake_dir):
+                    die("missing clang cmake files at: " + clang_cmake_dir)
+
+                llvm_lit = os.path.join(c.LLVM_BLD, "bin", "llvm-lit")
+                if not os.path.exists(llvm_lit):
+                    die("missing llvm-lit binary at: " + llvm_lit)
+
+                cargs.extend(["-DLLVM_DIR={}".format(llvm_cmake_dir),
+                              "-DClang_DIR={}".format(clang_cmake_dir),
+                              "-DLLVM_EXTERNAL_LIT={}".format(llvm_lit)])
             else:
                 # Some distros, e.g., Arch, Ubuntu, ship llvm-lit as /usr/bin/lit
                 cargs.append("-DLLVM_EXTERNAL_LIT={}".format(pb.local['lit']))
@@ -120,9 +131,6 @@ def _main():
         with pb.local.cwd(c.LIBFAKECHECKS_DIR):
             make('clean')
 
-    # prerequisites
-    if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
-        die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])
@@ -131,8 +139,8 @@ def _main():
     # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
     ensure_dir(c.CLANG_XCHECK_PLUGIN_BLD)
-    ensure_dir(c.DEPS_DIR)
-    git_ignore_dir(c.DEPS_DIR)
+    ensure_dir(c.BUILD_DIR)
+    git_ignore_dir(c.BUILD_DIR)
 
     build_clang_plugin(args)
 

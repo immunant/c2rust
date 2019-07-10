@@ -1,5 +1,8 @@
+//! feature_const_raw_ptr_to_usize_cast
 extern crate libc;
 
+#[cfg(not(target_os = "macos"))]
+use attributes::{rust_used_static, rust_used_static2, rust_used_static3, rust_no_attrs};
 use sections::*;
 use self::libc::c_uint;
 
@@ -22,8 +25,32 @@ pub fn test_sectioned_statics() {
         let ptr_deref = unsafe {
             *(rust_fn_scoped_static_init() as *const c_uint)
         };
-        assert_eq!(ptr_deref, c_uint::max_value());
+        assert_eq!(ptr_deref, c_uint::max_value() - 1);
+        assert_eq!(rust_section_me, c_uint::max_value() - 1);
 
         rust_use_sectioned_array();
+    }
+}
+
+pub fn test_sectioned_used_static() {
+    if cfg!(not(target_os = "macos")) {
+        // This static variable is private and unused (but with the used attribute)
+        // so there's no way to directly test it was generated except through looking
+        // directly at the source file
+        let src = include_str!("attributes.rs");
+
+        let lines: Vec<&str> = src.lines().collect();
+
+        let pos = lines
+            .iter()
+            .position(|&x| x == "static mut rust_used_static4: libc::c_int = 1i32;")
+            .expect("Did not find expected static string in source");
+        // The ordering of these attributes is not stable between LLVM versions
+        assert!((lines[pos-1] == "#[used]" && lines[pos-2] == "#[link_section = \"barz\"]") ||
+                (lines[pos-2] == "#[used]" && lines[pos-1] == "#[link_section = \"barz\"]"));
+
+        // This static is pub, but we want to ensure it has attributes applied
+        assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: libc::c_int = 1i32;"));
+        assert!(src.contains("#[no_mangle]\n    #[link_name = \"no_attrs\"]\n    static mut rust_aliased_static: libc::c_int;"))
     }
 }

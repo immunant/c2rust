@@ -1,4 +1,3 @@
-//! enable_relooper
 // This code does not translate properly without the relooper
 int switch_val(int val) {
     switch (val) {

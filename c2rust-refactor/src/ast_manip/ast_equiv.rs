@@ -1,12 +1,12 @@
 //! `AstEquiv` trait for checking equivalence of two ASTs.
-use std::rc::Rc;
 use rustc_target::spec::abi::Abi;
-use syntax::ThinVec;
+use std::rc::Rc;
 use syntax::ast::*;
-use syntax::parse::token::{Token, DelimToken, Nonterminal};
+use syntax::parse::token::{DelimToken, Nonterminal, Token};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use syntax::ThinVec;
 use syntax_pos::hygiene::SyntaxContext;
 
 /// Trait for checking equivalence of AST nodes.  This is similar to `PartialEq`, but less strict,
@@ -15,7 +15,6 @@ use syntax_pos::hygiene::SyntaxContext;
 pub trait AstEquiv {
     fn ast_equiv(&self, other: &Self) -> bool;
 }
-
 
 impl<'a, T: AstEquiv> AstEquiv for &'a T {
     fn ast_equiv(&self, other: &&'a T) -> bool {
@@ -76,19 +75,15 @@ impl<T: AstEquiv> AstEquiv for Option<T> {
 
 impl<A: AstEquiv, B: AstEquiv> AstEquiv for (A, B) {
     fn ast_equiv(&self, other: &Self) -> bool {
-        self.0.ast_equiv(&other.0) &&
-        self.1.ast_equiv(&other.1)
+        self.0.ast_equiv(&other.0) && self.1.ast_equiv(&other.1)
     }
 }
 
 impl<A: AstEquiv, B: AstEquiv, C: AstEquiv> AstEquiv for (A, B, C) {
     fn ast_equiv(&self, other: &Self) -> bool {
-        self.0.ast_equiv(&other.0) &&
-        self.1.ast_equiv(&other.1) &&
-        self.2.ast_equiv(&other.2)
+        self.0.ast_equiv(&other.0) && self.1.ast_equiv(&other.1) && self.2.ast_equiv(&other.2)
     }
 }
-
 
 // Implementations for specific AST types are auto-generated.
 include!(concat!(env!("OUT_DIR"), "/ast_equiv_gen.inc.rs"));

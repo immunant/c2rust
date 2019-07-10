@@ -1,9 +1,10 @@
-use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind, StmtKind};
+use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
+use syntax::ptr::P;
 
 use crate::command::{CommandState, Registry};
-use crate::driver;
-use crate::matcher::{MatchCtxt, Subst, replace_expr, fold_match_with, find_first};
+use crate::matcher::{MatchCtxt, Subst, replace_expr, mut_visit_match_with, find_first};
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `reconstruct_while` Command
@@ -16,7 +17,7 @@ use crate::transform::Transform;
 pub struct ReconstructWhile;
 
 impl Transform for ReconstructWhile {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_expr(
             st, cx, krate,
             r#"
@@ -46,7 +47,7 @@ impl Transform for ReconstructWhile {
 pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat_str = r#"
             $i:Ident = $start:Expr;
@@ -67,35 +68,35 @@ impl Transform for ReconstructForRange {
         let range_step_excl = mcx.parse_stmts("$'label: for $i in ($start .. $end).step_by($step) { $body; }");
         let range_step_incl = mcx.parse_stmts("$'label: for $i in ($start ..= $end).step_by($step) { $body; }");
 
-        fold_match_with(mcx, pat, krate, |orig, mut mcx| {
-            let cond = mcx.bindings.expr("$cond").clone();
+        mut_visit_match_with(mcx, pat, krate, |orig, mut mcx| {
+            let cond = mcx.bindings.get::<_, P<Expr>>("$cond").unwrap().clone();
             let range_excl = if mcx.try_match(&*lt_cond, &cond).is_ok() {
                 true
             } else if mcx.try_match(&*le_cond, &cond).is_ok() {
                 false
             } else {
-                return orig;
+                return;
             };
 
-            let incr = match mcx.bindings.stmt("$incr").node {
+            let incr = match mcx.bindings.get::<_, Stmt>("$incr").unwrap().node {
                 StmtKind::Semi(ref e) |
                 StmtKind::Expr(ref e) => e.clone(),
-                _ => { return orig; }
+                _ => { return; }
             };
             if !mcx.try_match(&*i_plus_eq, &incr).is_ok() &&
                !mcx.try_match(&*i_eq_plus, &incr).is_ok() {
-                return orig;
+                return;
             }
 
-            let step = mcx.bindings.expr("$step");
+            let step = mcx.bindings.get::<_, P<Expr>>("$step").unwrap();
             let repl_step = match (is_one_expr(&*step), range_excl) {
                 (true, true) => range_one_excl.clone(),
                 (true, false) => range_one_incl.clone(),
                 (false, true) => range_step_excl.clone(),
                 (false, false) => range_step_incl.clone(),
             };
-            repl_step.subst(st, cx, &mcx.bindings)
-        })
+            *orig = repl_step.subst(st, cx, &mcx.bindings);
+        });
     }
 }
 
@@ -120,11 +121,11 @@ fn is_one_lit(l: &Lit) -> bool {
 /// Removes loop labels that are not used in a named `break` or `continue`.
 pub struct RemoveUnusedLabels;
 
-fn remove_unused_labels_from_loop_kind(krate: Crate,
+fn remove_unused_labels_from_loop_kind(krate: &mut Crate,
                                        st: &CommandState,
-                                       cx: &driver::Ctxt,
+                                       cx: &RefactorCtxt,
                                        pat: &str,
-                                       repl: &str) -> Crate {
+                                       repl: &str) {
     let mut mcx = MatchCtxt::new(st, cx);
     let pat = mcx.parse_expr(pat);
     let repl = mcx.parse_expr(repl);
@@ -133,36 +134,34 @@ fn remove_unused_labels_from_loop_kind(krate: Crate,
     let find_break = mcx.parse_expr("break $'label");
     let find_break_expr = mcx.parse_expr("break $'label $bv:Expr");
 
-    fold_match_with(mcx, pat, krate, |orig, mcx| {
-        let body = mcx.bindings.multi_stmt("$body");
+    mut_visit_match_with(mcx, pat, krate, |orig, mcx| {
+        let body = mcx.bindings.get::<_, Vec<Stmt>>("$body").unwrap();
         // TODO: Would be nice to get rid of the clones of body.  Might require making
         // `find_first` use a visitor instead of a `fold`, which means duplicating a lot of the
         // `PatternFolder` definitions in matcher.rs to make `PatternVisitor` variants.
-        if find_first(st, cx, find_continue.clone().subst(st, cx, &mcx.bindings), body.clone()).is_none() &&
-           find_first(st, cx, find_break.clone().subst(st, cx, &mcx.bindings), body.clone()).is_none() &&
-           find_first(st, cx, find_break_expr.clone().subst(st, cx, &mcx.bindings), body.clone()).is_none() {
-            repl.clone().subst(st, cx, &mcx.bindings)
-        } else {
-            orig
+        if find_first(st, cx, find_continue.clone().subst(st, cx, &mcx.bindings), &mut body.clone()).is_none() &&
+            find_first(st, cx, find_break.clone().subst(st, cx, &mcx.bindings), &mut body.clone()).is_none() &&
+            find_first(st, cx, find_break_expr.clone().subst(st, cx, &mcx.bindings), &mut body.clone()).is_none()
+        {
+            *orig = repl.clone().subst(st, cx, &mcx.bindings);
         }
-    })
+    });
 }
 
 impl Transform for RemoveUnusedLabels {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
+        remove_unused_labels_from_loop_kind(krate, st, cx,
                 "$'label:Ident: loop { $body:MultiStmt; }",
                 "loop { $body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
+        remove_unused_labels_from_loop_kind(krate, st, cx,
                 "$'label:Ident: while $cond:Expr { $body:MultiStmt; }",
                 "while $cond { $body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
+        remove_unused_labels_from_loop_kind(krate, st, cx,
                 "$'label:Ident: while let $pat:Pat = $init:Expr { $body:MultiStmt; }",
                 "while let $pat = $init { $body; }");
-        let krate = remove_unused_labels_from_loop_kind(krate, st, cx,
+        remove_unused_labels_from_loop_kind(krate, st, cx,
                 "$'label:Ident: for $pat:Pat in $iter { $body:MultiStmt; }",
                 "for $pat in $iter { $body; }");
-        krate
     }
 }
 

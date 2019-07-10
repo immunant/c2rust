@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "parse-syntax", feature(rustc_private, try_from))]
+#![cfg_attr(feature = "parse-syntax", feature(rustc_private))]
 #![feature(box_patterns)]
 
 #[macro_use]
@@ -12,6 +12,8 @@ extern crate globset;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
+
+extern crate indexmap;
 
 pub mod attr;
 #[cfg(feature = "scopes")]

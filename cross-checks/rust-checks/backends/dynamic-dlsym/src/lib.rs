@@ -1,5 +1,3 @@
-#![feature(libc)]
-
 extern crate libc;
 
 use std::env;

@@ -66,10 +66,12 @@ impl<T> Cursor<T> {
         self.left
     }
 
-
     /// Move the cursor back by one position.
     pub fn retract(&mut self) {
-        let x = self.left.pop().expect("retract: already at start of buffer");
+        let x = self
+            .left
+            .pop()
+            .expect("retract: already at start of buffer");
         self.right.push(x);
 
         while self.left_marks.last().map_or(false, |m| m.depth == 0) {
@@ -89,7 +91,7 @@ impl<T> Cursor<T> {
     /// Move the cursor back by `n` positions.
     pub fn retract_by(&mut self, n: usize) {
         // TODO: Could probably optimize this, particularly the mark-list manipulation part.
-        for _ in 0 .. n {
+        for _ in 0..n {
             self.retract();
         }
     }
@@ -116,11 +118,10 @@ impl<T> Cursor<T> {
     /// Move the cursor forward by `n` positions.
     pub fn advance_by(&mut self, steps: usize) {
         // TODO: Optimize
-        for _ in 0 .. steps {
+        for _ in 0..steps {
             self.advance();
         }
     }
-
 
     /// Return a `Mark` indicating the current position.  As long as the mark remains valid, `seek`
     /// can be used to return to this position.
@@ -192,7 +193,10 @@ impl<T> Cursor<T> {
 
     /// Remove `n` elements after the current position.
     pub fn remove_multi(&mut self, n: usize) -> Vec<T> {
-        assert!(n <= self.right.len(), "remove_multi: too close to end of buffer");
+        assert!(
+            n <= self.right.len(),
+            "remove_multi: too close to end of buffer"
+        );
         let at = self.right.len() - n;
         let mut xs = self.right.split_off(at);
         xs.reverse();
@@ -206,7 +210,11 @@ impl<T> Cursor<T> {
 
         // Remove all marks that lie within the removed range.
         let mut mark_moves = n;
-        while self.right_marks.last().map_or(false, |m| m.depth < mark_moves) {
+        while self
+            .right_marks
+            .last()
+            .map_or(false, |m| m.depth < mark_moves)
+        {
             let m = self.right_marks.pop().unwrap();
             mark_moves -= m.depth;
         }
@@ -226,12 +234,11 @@ impl<T> Cursor<T> {
     /// Advance until an element matches `pred`.  The cursor is left pointing just before the
     /// matching element.  If no element matches, the cursor points at the end of the sequence.
     pub fn advance_until<F: FnMut(&T) -> bool>(&mut self, pred: F) {
-        let n =
-            if let Some(n) = find_matching_rev(&self.right, pred) {
-                n
-            } else {
-                self.right.len()
-            };
+        let n = if let Some(n) = find_matching_rev(&self.right, pred) {
+            n
+        } else {
+            self.right.len()
+        };
 
         self.advance_by(n);
     }
@@ -239,18 +246,17 @@ impl<T> Cursor<T> {
     /// Remove elements between the current position and the given mark.  The mark must not be
     /// behind the current position in the buffer.
     pub fn remove_to_mark(&mut self, m: Mark) -> Vec<T> {
-        let depth =
-            if let Some(depth) = find_mark_depth(&self.right_marks, m) {
-                depth
-            } else if let Some(depth) = find_mark_depth(&self.left_marks, m) {
-                if depth == 0 {
-                    0
-                } else {
-                    panic!("remove_to_mark: mark is earlier in buffer than the current position");
-                }
+        let depth = if let Some(depth) = find_mark_depth(&self.right_marks, m) {
+            depth
+        } else if let Some(depth) = find_mark_depth(&self.left_marks, m) {
+            if depth == 0 {
+                0
             } else {
-                panic!("remove_to_mark: mark is no longer valid for buffer");
-            };
+                panic!("remove_to_mark: mark is earlier in buffer than the current position");
+            }
+        } else {
+            panic!("remove_to_mark: mark is no longer valid for buffer");
+        };
 
         self.remove_multi(depth)
     }
@@ -258,7 +264,9 @@ impl<T> Cursor<T> {
     /// Replace the element after the cursor by transforming it with `func`.  Does not move the
     /// cursor.
     pub fn replace<F>(&mut self, func: F)
-            where F: FnOnce(T) -> T {
+    where
+        F: FnOnce(T) -> T,
+    {
         // Don't use `remove` / `insert` to ensure that marks remain in place.
         let old = self.right.pop().expect("replace: at end of buffer");
         let new = func(old);
@@ -269,7 +277,9 @@ impl<T> Cursor<T> {
     /// results in their place.  Afterward, the cursor points past the end of the replacement
     /// sequnece.
     pub fn replace_range<F>(&mut self, start: Mark, end: Mark, func: F)
-            where F: FnOnce(Vec<T>) -> Vec<T> {
+    where
+        F: FnOnce(Vec<T>) -> Vec<T>,
+    {
         self.seek(start);
         let old = self.remove_to_mark(end);
         let new = func(old);
@@ -279,13 +289,14 @@ impl<T> Cursor<T> {
     /// Check items with `func` until it matches (returns `Some`).  Returns the result of `func` on
     /// the matched item, and leaves the cursor just before the item itself.
     pub fn advance_until_match<F, R>(&mut self, func: F) -> Option<R>
-            where F: FnMut(&T) -> Option<R> {
-        let (n, result) =
-            if let Some((n, r)) = find_matching_result_rev(&self.right, func) {
-                (n, Some(r))
-            } else {
-                (self.right.len(), None)
-            };
+    where
+        F: FnMut(&T) -> Option<R>,
+    {
+        let (n, result) = if let Some((n, r)) = find_matching_result_rev(&self.right, func) {
+            (n, Some(r))
+        } else {
+            (self.right.len(), None)
+        };
 
         self.advance_by(n);
         result
@@ -300,13 +311,21 @@ impl<T> Cursor<T> {
         let mut depth = 0;
         for m in &self.left_marks {
             depth += m.depth;
-            info!("  mark {} at (L) {} / {}",
-                     m.name, pos - depth as usize, len);
+            info!(
+                "  mark {} at (L) {} / {}",
+                m.name,
+                pos - depth as usize,
+                len
+            );
         }
         for m in &self.right_marks {
             depth += m.depth;
-            info!("  mark {} at (R) {} / {}",
-                     m.name, pos + depth as usize, len);
+            info!(
+                "  mark {} at (R) {} / {}",
+                m.name,
+                pos + depth as usize,
+                len
+            );
         }
     }
 }
@@ -345,7 +364,9 @@ fn find_matching_rev<T, F: FnMut(&T) -> bool>(buf: &[T], mut pred: F) -> Option<
 /// Find an element on which `func` matches (returns `Some`), and returns its offset into `buf` and
 /// the data returned by `func`.
 fn find_matching_result_rev<T, F, R>(buf: &[T], mut func: F) -> Option<(usize, R)>
-        where F: FnMut(&T) -> Option<R> {
+where
+    F: FnMut(&T) -> Option<R>,
+{
     for (i, x) in buf.iter().rev().enumerate() {
         if let Some(r) = func(x) {
             return Some((i, r));

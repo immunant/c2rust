@@ -66,7 +66,7 @@ class Test:
         self.example_dir = ''
         self.repo_dir = ''
         # Source directory where `Crate` files will live,
-        # e.g. `c2rust-build` or `rust`(tmux and libxml2)
+        # e.g. `rust`
         self.rust_src = ''
         self.cc_db = ''
 
@@ -83,11 +83,11 @@ class Test:
                 invoke(git, ['submodule', 'deinit', 'repo', '-f'])
 
     # Should be used on projects that utilize GNU Build Systems
-    def autotools(self):
+    def autotools(self, configure_args=[]):
         with pb.local.cwd(self.repo_dir):
             invoke(pb.local['./autogen.sh'])
             with pb.local.env(CFLAGS="-g -O0"):
-                invoke(pb.local['./configure'])
+                invoke(pb.local['./configure'], configure_args)
 
     # `gen_cc_db` generates the `compile_commands.json` for a project
     def gen_cc_db(self):
@@ -125,12 +125,13 @@ class Genann(Test):
     def __init__(self, args):
         self.args = args
         self.project_name = 'genann'
-        self.transpiler_args = ['--emit-build-files', '--overwrite-existing']
-        self.ib_cmd = ['make']
         self.example_dir = build_path(
             c.EXAMPLES_DIR, self.project_name, is_dir=True)
         self.repo_dir = build_path(self.example_dir, 'repo', is_dir=True)
-        self.rust_src = os.path.join(self.repo_dir, 'c2rust-build')
+        self.rust_src = os.path.join(self.example_dir, 'rust')
+        self.transpiler_args = ['--emit-build-files', '--overwrite-existing',
+                                '--output-dir', self.rust_src]
+        self.ib_cmd = ['make']
         self.init_submodule()
 
     def __del__(self):
@@ -156,9 +157,8 @@ class Genann(Test):
         transpile(self.cc_db,
                   emit_build_files=False,
                   extra_transpiler_args=['--emit-build-files', '--main', main,
-                      '--overwrite-existing'])
-        self.rust_src = build_path(self.repo_dir, 'c2rust-build',
-                                   is_dir=True)
+                                         '--overwrite-existing',
+                                         '--output-dir', self.rust_src])
 
 
 class Grabc(Test):
@@ -198,7 +198,9 @@ class Libxml2(Test):
         self.deinit_submodule()
 
     def gen_cc_db(self):
-        self.autotools()
+        # Without --disable-static, libtool builds two copies of many source
+        # files. We can't handle that, so we disable that behavior here.
+        self.autotools(['--disable-static'])
         with pb.local.cwd(self.repo_dir):
             invoke(make, ['clean'])
             invoke(intercept_build, *self.ib_cmd)
@@ -244,14 +246,15 @@ class Lil(Test):
     def __init__(self, args):
         self.args = args
         self.project_name = 'lil'
-        self.transpiler_args = ['--emit-build-files', '-m', 'main',
-                                '--overwrite-existing']
-        self.ib_cmd = ['make']
         self.example_dir = build_path(
             c.EXAMPLES_DIR, self.project_name, is_dir=True)
         self.repo_dir = build_path(self.example_dir, 'repo', is_dir=True)
+        self.rust_src = os.path.join(self.repo_dir, 'rust')
+        self.transpiler_args = ['--emit-build-files', '-m', 'main',
+                                '--overwrite-existing',
+                                '--output-dir', self.rust_src]
+        self.ib_cmd = ['make']
         self.build_flags = []
-        self.rust_src = os.path.join(self.repo_dir, 'c2rust-build')
         self.init_submodule()
 
     def __del__(self):

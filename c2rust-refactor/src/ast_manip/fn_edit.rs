@@ -1,14 +1,13 @@
 //! Helpers for rewriting all `fn` itemlikes, regardless of item kind.
 use smallvec::SmallVec;
 use syntax::ast::*;
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
-use syntax::util::move_map::MoveMap;
+use syntax::util::map_in_place::MapInPlace;
 use syntax::visit::{self, Visitor};
 use syntax_pos::Span;
 
-use crate::ast_manip::{Fold, Visit, GetNodeId, GetSpan};
-
+use crate::ast_manip::{GetNodeId, GetSpan, MutVisit, Visit};
 
 /// Enum indicating which kind of itemlike a `fn` is.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -46,19 +45,22 @@ impl GetSpan for FnLike {
     }
 }
 
-
-/// Folder for rewriting `fn`s using a `FnLike` callback.
+/// MutVisitor for rewriting `fn`s using a `FnLike` callback.
 struct FnFolder<F>
-        where F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
+where
+    F: FnMut(FnLike) -> SmallVec<[FnLike; 1]>,
+{
     callback: F,
 }
 
-impl<F> Folder for FnFolder<F>
-        where F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
-    fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+impl<F> MutVisitor for FnFolder<F>
+where
+    F: FnMut(FnLike) -> SmallVec<[FnLike; 1]>,
+{
+    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         match i.node {
-            ItemKind::Fn(..) => {},
-            _ => return fold::noop_fold_item(i, self),
+            ItemKind::Fn(..) => {}
+            _ => return mut_visit::noop_flat_map_item(i, self),
         }
 
         let i = i.into_inner();
@@ -76,26 +78,29 @@ impl<F> Folder for FnFolder<F>
         };
         let fls = (self.callback)(fl);
 
-        fls.into_iter().map(|fl| {
-            let block = fl.block.expect("can't remove Block from ItemKind::Fn");
-            P(Item {
-                id: fl.id,
-                ident: fl.ident,
-                span: fl.span,
-                node: ItemKind::Fn(fl.decl, header.clone(), generics.clone(), block),
-                attrs: fl.attrs,
-                vis: vis.clone(),
-                // Don't keep the old tokens.  The callback could have made arbitrary changes to
-                // the signature and body of the function.
-                tokens: None,
+        fls.into_iter()
+            .map(|fl| {
+                let block = fl.block.expect("can't remove Block from ItemKind::Fn");
+                P(Item {
+                    id: fl.id,
+                    ident: fl.ident,
+                    span: fl.span,
+                    node: ItemKind::Fn(fl.decl, header.clone(), generics.clone(), block),
+                    attrs: fl.attrs,
+                    vis: vis.clone(),
+                    // Don't keep the old tokens.  The callback could have made arbitrary changes to
+                    // the signature and body of the function.
+                    tokens: None,
+                })
             })
-        }).flat_map(|i| fold::noop_fold_item(i, self)).collect()
+            .flat_map(|i| mut_visit::noop_flat_map_item(i, self))
+            .collect()
     }
 
-    fn fold_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
         match i.node {
-            ImplItemKind::Method(..) => {},
-            _ => return fold::noop_fold_impl_item(i, self),
+            ImplItemKind::Method(..) => {}
+            _ => return mut_visit::noop_flat_map_impl_item(i, self),
         }
 
         unpack!([i.node] ImplItemKind::Method(sig, block));
@@ -115,30 +120,35 @@ impl<F> Folder for FnFolder<F>
         };
         let fls = (self.callback)(fl);
 
-        fls.into_iter().map(|fl| {
-            let sig = MethodSig {
-                header: header.clone(),
-                decl: fl.decl,
-            };
-            let block = fl.block.expect("can't remove Block from ImplItemKind::Method");
-            ImplItem {
-                id: fl.id,
-                ident: fl.ident,
-                span: fl.span,
-                node: ImplItemKind::Method(sig, block),
-                attrs: fl.attrs,
-                generics: generics.clone(),
-                vis: vis.clone(),
-                defaultness: defaultness,
-                tokens: None,
-            }
-        }).flat_map(|i| fold::noop_fold_impl_item(i, self)).collect()
+        fls.into_iter()
+            .map(|fl| {
+                let sig = MethodSig {
+                    header: header.clone(),
+                    decl: fl.decl,
+                };
+                let block = fl
+                    .block
+                    .expect("can't remove Block from ImplItemKind::Method");
+                ImplItem {
+                    id: fl.id,
+                    ident: fl.ident,
+                    span: fl.span,
+                    node: ImplItemKind::Method(sig, block),
+                    attrs: fl.attrs,
+                    generics: generics.clone(),
+                    vis: vis.clone(),
+                    defaultness: defaultness,
+                    tokens: None,
+                }
+            })
+            .flat_map(|i| mut_visit::noop_flat_map_impl_item(i, self))
+            .collect()
     }
 
-    fn fold_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> {
+    fn flat_map_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> {
         match i.node {
-            TraitItemKind::Method(..) => {},
-            _ => return fold::noop_fold_trait_item(i, self),
+            TraitItemKind::Method(..) => {}
+            _ => return mut_visit::noop_flat_map_trait_item(i, self),
         }
 
         unpack!([i.node] TraitItemKind::Method(sig, block));
@@ -156,32 +166,35 @@ impl<F> Folder for FnFolder<F>
         };
         let fls = (self.callback)(fl);
 
-        fls.into_iter().map(|fl| {
-            let sig = MethodSig {
-                header: header.clone(),
-                decl: fl.decl,
-            };
-            TraitItem {
-                id: fl.id,
-                ident: fl.ident,
-                span: fl.span,
-                node: TraitItemKind::Method(sig, fl.block),
-                attrs: fl.attrs,
-                generics: generics.clone(),
-                tokens: None,
-            }
-        }).flat_map(|i| fold::noop_fold_trait_item(i, self)).collect()
+        fls.into_iter()
+            .map(|fl| {
+                let sig = MethodSig {
+                    header: header.clone(),
+                    decl: fl.decl,
+                };
+                TraitItem {
+                    id: fl.id,
+                    ident: fl.ident,
+                    span: fl.span,
+                    node: TraitItemKind::Method(sig, fl.block),
+                    attrs: fl.attrs,
+                    generics: generics.clone(),
+                    tokens: None,
+                }
+            })
+            .flat_map(|i| mut_visit::noop_flat_map_trait_item(i, self))
+            .collect()
     }
 
-    fn fold_foreign_mod(&mut self, mut nm: ForeignMod) -> ForeignMod {
-        nm.items = nm.items.move_flat_map(|i| self.fold_foreign_item(i));
-        fold::noop_fold_foreign_mod(nm, self)
+    fn visit_foreign_mod(&mut self, nm: &mut ForeignMod) {
+        nm.items
+            .flat_map_in_place(|i| self.flat_map_foreign_item(i));
     }
 
-    fn fold_foreign_item(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
         match i.node {
-            ForeignItemKind::Fn(..) => {},
-            _ => return fold::noop_fold_foreign_item(i, self),
+            ForeignItemKind::Fn(..) => {}
+            _ => return mut_visit::noop_flat_map_foreign_item(i, self),
         }
 
         unpack!([i.node] ForeignItemKind::Fn(decl, generics));
@@ -198,51 +211,60 @@ impl<F> Folder for FnFolder<F>
         };
         let fls = (self.callback)(fl);
 
-        fls.into_iter().map(|fl| {
-            ForeignItem {
+        fls.into_iter()
+            .map(|fl| ForeignItem {
                 id: fl.id,
                 ident: fl.ident,
                 span: fl.span,
                 node: ForeignItemKind::Fn(fl.decl, generics.clone()),
                 attrs: fl.attrs,
                 vis: vis.clone(),
-            }
-        }).flat_map(|i| fold::noop_fold_foreign_item(i, self)).collect()
+            })
+            .flat_map(|i| mut_visit::noop_flat_map_foreign_item(i, self))
+            .collect()
     }
 }
 
 /// Fold over all item-like function definitions, including `ItemKind::Fn`, `ImplItemKind::Method`,
 /// `TraitItemKind::Method`, and `ForeignItemKind::Fn`.
-pub fn fold_fns<T, F>(target: T, mut callback: F) -> <T as Fold>::Result
-        where T: Fold,
-              F: FnMut(FnLike) -> FnLike {
-    fold_fns_multi(target, |fl| smallvec![callback(fl)])
+pub fn mut_visit_fns<T, F>(target: &mut T, mut callback: F)
+where
+    T: MutVisit,
+    F: FnMut(&mut FnLike),
+{
+    flat_map_fns(target, |mut fl| {
+        callback(&mut fl);
+        smallvec![fl]
+    })
 }
 
-/// Similar to `fold_fns`, but allows transforming each `FnLike` into a sequence of zero or more
+/// Similar to `mut_visit_fns`, but allows transforming each `FnLike` into a sequence of zero or more
 /// `FnLike`s.
-pub fn fold_fns_multi<T, F>(target: T, callback: F) -> <T as Fold>::Result
-        where T: Fold,
-              F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
-    let mut f = FnFolder {
-        callback: callback,
-    };
-    target.fold(&mut f)
+pub fn flat_map_fns<T, F>(target: &mut T, callback: F)
+where
+    T: MutVisit,
+    F: FnMut(FnLike) -> SmallVec<[FnLike; 1]>,
+{
+    let mut f = FnFolder { callback: callback };
+    target.visit(&mut f)
 }
-
 
 /// Visitor for visiting `fn`s using a `FnLike` callback.
 struct FnVisitor<F>
-        where F: FnMut(FnLike) {
+where
+    F: FnMut(FnLike),
+{
     callback: F,
 }
 
 impl<'ast, F> Visitor<'ast> for FnVisitor<F>
-        where F: FnMut(FnLike) {
+where
+    F: FnMut(FnLike),
+{
     fn visit_item(&mut self, i: &'ast Item) {
         visit::walk_item(self, i);
         match i.node {
-            ItemKind::Fn(..) => {},
+            ItemKind::Fn(..) => {}
             _ => return,
         }
 
@@ -264,7 +286,7 @@ impl<'ast, F> Visitor<'ast> for FnVisitor<F>
     fn visit_impl_item(&mut self, i: &'ast ImplItem) {
         visit::walk_impl_item(self, i);
         match i.node {
-            ImplItemKind::Method(..) => {},
+            ImplItemKind::Method(..) => {}
             _ => return,
         }
 
@@ -286,7 +308,7 @@ impl<'ast, F> Visitor<'ast> for FnVisitor<F>
     fn visit_trait_item(&mut self, i: &'ast TraitItem) {
         visit::walk_trait_item(self, i);
         match i.node {
-            TraitItemKind::Method(..) => {},
+            TraitItemKind::Method(..) => {}
             _ => return,
         }
 
@@ -308,7 +330,7 @@ impl<'ast, F> Visitor<'ast> for FnVisitor<F>
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {
         visit::walk_foreign_item(self, i);
         match i.node {
-            ForeignItemKind::Fn(..) => {},
+            ForeignItemKind::Fn(..) => {}
             _ => return,
         }
 
@@ -330,10 +352,10 @@ impl<'ast, F> Visitor<'ast> for FnVisitor<F>
 /// Visit all item-like function definitions, including `ItemKind::Fn`, `ImplItemKind::Method`,
 /// `TraitItemKind::Method`, and `ForeignItemKind::Fn`.
 pub fn visit_fns<T, F>(target: &T, callback: F)
-        where T: Visit,
-              F: FnMut(FnLike) {
-    let mut f = FnVisitor {
-        callback: callback,
-    };
+where
+    T: Visit,
+    F: FnMut(FnLike),
+{
+    let mut f = FnVisitor { callback: callback };
     target.visit(&mut f)
 }

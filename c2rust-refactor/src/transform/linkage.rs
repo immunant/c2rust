@@ -5,11 +5,13 @@ use syntax::attr;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
-use crate::api::*;
+use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
 use crate::ast_manip::fn_edit::{visit_fns, FnKind};
 use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase};
+use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `link_funcs` Command
@@ -56,13 +58,13 @@ use crate::transform::Transform;
 pub struct LinkFuncs;
 
 impl Transform for LinkFuncs {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         // (1) Find all `#[no_mangle]` or `#[export_name=...]` functions, and index them by symbol.
         // (2) Find all extern fns, and index them by def_id.
         let mut symbol_to_def = HashMap::new();
         let mut extern_def_to_symbol = HashMap::new();
 
-        visit_fns(&krate, |fl| {
+        visit_fns(krate, |fl| {
             let def_id = cx.node_def_id(fl.id);
             if fl.kind != FnKind::Foreign {
                 if let Some(name) = attr::first_attr_value_str_by_name(&fl.attrs, "export_name") {
@@ -76,7 +78,7 @@ impl Transform for LinkFuncs {
         });
 
         // (3) Adjust references to extern fns to refer to the `#[no_mangle]` definition instead.
-        let krate = fold_resolved_paths(krate, cx, |qself, path, def| {
+        fold_resolved_paths(krate, cx, |qself, path, def| {
             if let Some(def_id) = def.opt_def_id() {
                 if let Some(&symbol) = extern_def_to_symbol.get(&def_id) {
                     if let Some(&real_def_id) = symbol_to_def.get(&symbol) {
@@ -88,7 +90,7 @@ impl Transform for LinkFuncs {
         });
 
         // (4) Remove unused externs
-        let krate = fold_nodes(krate, |mut fm: ForeignMod| {
+        MutVisitNodes::visit(krate, |fm: &mut ForeignMod| {
             fm.items.retain(|i| {
                 let def_id = cx.node_def_id(i.id);
                 // Drop any items that resolve to a symbol in another module.
@@ -99,10 +101,7 @@ impl Transform for LinkFuncs {
                 }
                 true
             });
-            fm
         });
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {
@@ -148,12 +147,12 @@ impl Transform for LinkFuncs {
 pub struct LinkIncompleteTypes;
 
 impl Transform for LinkIncompleteTypes {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         // (1) Find complete type definitions, and index them by name.
         let mut name_to_complete = HashMap::new();
         let mut incomplete_to_name = HashMap::new();
 
-        visit_nodes(&krate, |i: &Item| {
+        visit_nodes(krate, |i: &Item| {
             let complete = match i.node {
                 ItemKind::Struct(..) => true,
                 ItemKind::Union(..) => true,
@@ -169,7 +168,7 @@ impl Transform for LinkIncompleteTypes {
         });
 
         // (2) Find incomplete type definitions (extern types), and index them by name.
-        visit_nodes(&krate, |i: &ForeignItem| {
+        visit_nodes(krate, |i: &ForeignItem| {
             let incomplete = match i.node {
                 ForeignItemKind::Ty => true,
                 _ => false,
@@ -242,11 +241,11 @@ impl Transform for LinkIncompleteTypes {
 pub struct CanonicalizeStructs;
 
 impl Transform for CanonicalizeStructs {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Find all marked structs.
         let mut canon_ids: HashMap<Symbol, DefId>  = HashMap::new();
 
-        visit_nodes(&krate, |i: &Item| {
+        visit_nodes(krate, |i: &Item| {
             if st.marked(i.id, "target") {
                 canon_ids.insert(i.ident.name, cx.node_def_id(i.id));
             }
@@ -257,7 +256,7 @@ impl Transform for CanonicalizeStructs {
         // Map removed struct IDs to their replacements.
         let mut removed_id_map = HashMap::new();
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             let should_remove = match i.node {
                 ItemKind::Struct(..) => {
                     if let Some(&canon_def_id) = canon_ids.get(&i.ident.name) {
@@ -284,7 +283,7 @@ impl Transform for CanonicalizeStructs {
 
         // (3) Remove impls for removed structs.
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             let should_remove = match i.node {
                 ItemKind::Impl(_, _, _, _, _, ref ty, _) => {
                     if let Some(ty_def_id) = cx.try_resolve_ty(ty) {
@@ -305,7 +304,7 @@ impl Transform for CanonicalizeStructs {
 
         // (4) Rewrite references to removed structs.
 
-        let krate = fold_resolved_paths(krate, cx, |qself, path, def| {
+        fold_resolved_paths(krate, cx, |qself, path, def| {
             if let Some(&canon_def_id) = def.opt_def_id().as_ref()
                 .and_then(|x| removed_id_map.get(&x)) {
                 (None, cx.def_path(canon_def_id))
@@ -313,8 +312,6 @@ impl Transform for CanonicalizeStructs {
                 (qself, path)
             }
         });
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {

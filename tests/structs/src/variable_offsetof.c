@@ -6,7 +6,6 @@ typedef struct {
 } use;
 
 size_t get_offset(size_t idx) {
-    use u; // FIXME: type gets pruned out otherwise
     return offsetof(use, mod[idx]);
 }
 
@@ -16,6 +15,5 @@ struct yield {
 };
 
 size_t get_offset2(size_t idx) {
-    struct yield u; // FIXME: type gets pruned out otherwise
     return offsetof(struct yield, mod[idx]);
 }

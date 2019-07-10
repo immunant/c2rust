@@ -5,6 +5,8 @@ use std::process::Command;
 
 fn process_ast(mode: &str, dest: &Path) {
     let mut p = Command::new("python3")
+        .arg("-B") // Don't write bytecode files (and thus pollute the source
+                   // directory)
         .arg("gen/process_ast.py")
         .arg(mode)
         .arg(dest)
@@ -29,15 +31,28 @@ fn main() {
     process_ast("list_node_ids", &out_dir.join("list_node_ids_gen.inc.rs"));
     process_ast("mac_table", &out_dir.join("mac_table_gen.inc.rs"));
     process_ast("nt_match", &out_dir.join("nt_match_gen.inc.rs"));
+    process_ast("ast_names", &out_dir.join("ast_names_gen.inc.rs"));
 
-    process_ast("rewrite_rewrite", &out_dir.join("rewrite_rewrite_gen.inc.rs"));
-    process_ast("rewrite_recursive", &out_dir.join("rewrite_recursive_gen.inc.rs"));
-    process_ast("rewrite_recover_children",
-                &out_dir.join("rewrite_recover_children_gen.inc.rs"));
-    process_ast("rewrite_seq_item",
-                &out_dir.join("rewrite_seq_item_gen.inc.rs"));
-    process_ast("rewrite_maybe_rewrite_seq",
-                &out_dir.join("rewrite_maybe_rewrite_seq_gen.inc.rs"));
+    process_ast(
+        "rewrite_rewrite",
+        &out_dir.join("rewrite_rewrite_gen.inc.rs"),
+    );
+    process_ast(
+        "rewrite_recursive",
+        &out_dir.join("rewrite_recursive_gen.inc.rs"),
+    );
+    process_ast(
+        "rewrite_recover_children",
+        &out_dir.join("rewrite_recover_children_gen.inc.rs"),
+    );
+    process_ast(
+        "rewrite_seq_item",
+        &out_dir.join("rewrite_seq_item_gen.inc.rs"),
+    );
+    process_ast(
+        "rewrite_maybe_rewrite_seq",
+        &out_dir.join("rewrite_maybe_rewrite_seq_gen.inc.rs"),
+    );
 
     println!("cargo:rerun-if-changed=gen/");
     for entry in fs::read_dir(&"gen").unwrap() {

@@ -5,16 +5,18 @@ use rustc::hir::HirId;
 use syntax::attr;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use smallvec::SmallVec;
 
-use crate::api::*;
 use c2rust_ast_builder::{mk, Make, IntoSymbol};
+use crate::ast_manip::{FlatMapNodes, MutVisit, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{self, Phase};
+use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `rename_items_regex` Command
@@ -32,14 +34,14 @@ pub struct RenameRegex {
 }
 
 impl Transform for RenameRegex {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let re = Regex::new(&self.pattern).unwrap();
 
         // (1) Fold over items and rewrite their `ident`s.  Records the new paths of modified items
         // into `new_paths`.
 
         let mut new_idents = HashMap::new();
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if let Some(label) = self.filter {
                 if !st.marked(i.id, label) {
                     return smallvec![i];
@@ -64,7 +66,7 @@ impl Transform for RenameRegex {
 
         // (2) Rewrite paths referring to renamed defs
 
-        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def| {
+        fold_resolved_paths(krate, cx, |qself, mut path, def| {
             if let Some(hir_id) = cx.def_to_hir_id(def) {
                 if let Some(new_ident) = new_idents.get(&hir_id) {
                     path.segments.last_mut().unwrap().ident = new_ident.clone();
@@ -72,8 +74,6 @@ impl Transform for RenameRegex {
             }
             (qself, path)
         });
-
-        krate
     }
 }
 
@@ -118,7 +118,7 @@ impl Transform for RenameRegex {
 pub struct RenameUnnamed;
 
 impl Transform for RenameUnnamed {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         #[derive(Debug, Default)]
         struct Renamer {
             items_to_change: HashSet<NodeId>,
@@ -129,11 +129,11 @@ impl Transform for RenameUnnamed {
         let mut renamer: Renamer = Default::default();
         let mut counter: usize = 0;
 
-        let has_unnamed = |ident: &Ident| { ident.as_str().contains("unnamed") };
-        let make_name = |counter| { Ident::from_str(&format!("unnamed_{}", counter)) };
+        let has_unnamed = |ident: &Ident| { ident.as_str().contains("C2RustUnnamed") };
+        let make_name = |counter| { Ident::from_str(&format!("C2RustUnnamed_{}", counter)) };
 
         // 1. Rename Anonymous types to the unique Ident
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if attr::contains_name(&i.attrs, "header_src") && !renamer.is_source {
                 renamer.is_source = true;
             }
@@ -161,7 +161,7 @@ impl Transform for RenameUnnamed {
         });
 
         // 2. Update types to match the new renamed Anonymous Types
-        let krate = fold_resolved_paths(krate, cx, |qself, mut path, def| {
+        fold_resolved_paths(krate, cx, |qself, mut path, def| {
             if let Some(hir_id) = cx.def_to_hir_id(def) {
                 if let Some(new_ident) = renamer.new_idents.get(&hir_id) {
                     path.segments.last_mut().unwrap().ident = new_ident.clone();
@@ -173,11 +173,11 @@ impl Transform for RenameUnnamed {
         // No need to update paths if the project wasn't transpiled
         // with `--reorganize-definitions` flag
         if !renamer.is_source {
-            return krate;
+            return;
         }
 
         // 3. Update paths to from the old AnonymousType `Ident` to the new AnonymousType `Ident`
-        let krate = fold_nodes(krate, |mut i: P<Item>| {
+        FlatMapNodes::visit(krate, |mut i: P<Item>| {
             // This pass is only intended to be ran when the `--reorganize-definition` flag is used
             // on `c2rust-transpile`, and the reason is due to having use statements importing
             // `Item`s within submodules (also the only time the `c2rust-transpile`r uses use
@@ -272,8 +272,6 @@ impl Transform for RenameUnnamed {
             }
             smallvec![i]
         });
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {
@@ -293,7 +291,7 @@ impl Transform for RenameUnnamed {
 pub struct ReplaceItems;
 
 impl Transform for ReplaceItems {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Scan items for `target` and `repl` marks, collecting the relevant `DefId`s and
         // removing all `target` items.
 
@@ -301,7 +299,7 @@ impl Transform for ReplaceItems {
         let mut repl_id = None;
 
         // (1a) Top-level items
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             if st.marked(i.id, "repl") {
                 if repl_id.is_none() {
                     repl_id = Some(cx.node_def_id(i.id));
@@ -320,7 +318,7 @@ impl Transform for ReplaceItems {
 
         // (1b) Impl items
         // TODO: Only inherent impls are supported for now.  May not work on trait impls.
-        let krate = fold_nodes(krate, |i: ImplItem| {
+        FlatMapNodes::visit(krate, |i: ImplItem| {
             if st.marked(i.id, "repl") {
                 if repl_id.is_none() {
                     repl_id = Some(cx.node_def_id(i.id));
@@ -341,7 +339,7 @@ impl Transform for ReplaceItems {
 
         // (2) Rewrite references to `target` items to refer to `repl` instead.
 
-        let krate = fold_resolved_paths(krate, cx, |qself, path, def| {
+        fold_resolved_paths(krate, cx, |qself, path, def| {
             match def.opt_def_id() {
                 Some(def_id) if target_ids.contains(&def_id) =>
                     (None, cx.def_path(repl_id)),
@@ -352,7 +350,7 @@ impl Transform for ReplaceItems {
         // (3) Find impls for `target` types, and remove them.  This way, if a struct is removed,
         // we also remove the associated `Clone` impl.
 
-        let krate = fold_nodes(krate, |i: P<Item>| {
+        FlatMapNodes::visit(krate, |i: P<Item>| {
             let opt_def_id = match i.node {
                 ItemKind::Impl(_, _, _, _, _, ref ty, _) => cx.try_resolve_ty(ty),
                 _ => None,
@@ -365,8 +363,6 @@ impl Transform for ReplaceItems {
             }
             smallvec![i]
         });
-
-        krate
     }
 
     fn min_phase(&self) -> Phase {
@@ -390,7 +386,7 @@ pub struct SetVisibility {
 }
 
 impl Transform for SetVisibility {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let vis = driver::run_parser(cx.session(), &self.vis_str,
                                      |p| p.parse_visibility(false));
 
@@ -403,8 +399,8 @@ impl Transform for SetVisibility {
             in_trait_impl: bool,
         }
 
-        impl<'a> Folder for SetVisFolder<'a> {
-            fn fold_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+        impl<'a> MutVisitor for SetVisFolder<'a> {
+            fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 if self.st.marked(i.id, "target") && !i.vis.ast_equiv(&self.vis) {
                     i = i.map(|mut i| {
                         i.vis = self.vis.clone();
@@ -415,34 +411,34 @@ impl Transform for SetVisibility {
                 let was_in_trait_impl = self.in_trait_impl;
                 self.in_trait_impl = matches!([i.node]
                         ItemKind::Impl(_, _, _, _, Some(_), _, _));
-                let r = fold::noop_fold_item(i, self);
+                let r = mut_visit::noop_flat_map_item(i, self);
                 self.in_trait_impl = was_in_trait_impl;
 
                 r
             }
 
-            fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+            fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
                 if self.in_trait_impl {
-                    return fold::noop_fold_impl_item(i, self);
+                    return mut_visit::noop_flat_map_impl_item(i, self);
                 }
 
                 if self.st.marked(i.id, "target") {
                     i.vis = self.vis.clone();
                 }
-                fold::noop_fold_impl_item(i, self)
+                mut_visit::noop_flat_map_impl_item(i, self)
             }
 
-            fn fold_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+            fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
                 if self.st.marked(i.id, "target") {
                     i.vis = self.vis.clone();
                 }
-                fold::noop_fold_foreign_item(i, self)
+                mut_visit::noop_flat_map_foreign_item(i, self)
             }
 
             // Trait items have no visibility.
         }
 
-        krate.fold(&mut SetVisFolder { st, vis, in_trait_impl: false })
+        krate.visit(&mut SetVisFolder { st, vis, in_trait_impl: false })
     }
 }
 
@@ -460,7 +456,7 @@ pub struct SetMutability {
 }
 
 impl Transform for SetMutability {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
         let mutbl = <&str as Make<Mutability>>::make(&self.mut_str, &mk());
 
         struct SetMutFolder<'a> {
@@ -468,8 +464,8 @@ impl Transform for SetMutability {
             mutbl: Mutability,
         }
 
-        impl<'a> Folder for SetMutFolder<'a> {
-            fn fold_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+        impl<'a> MutVisitor for SetMutFolder<'a> {
+            fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
                         match i.node {
@@ -479,10 +475,10 @@ impl Transform for SetMutability {
                         i
                     });
                 }
-                fold::noop_fold_item(i, self)
+                mut_visit::noop_flat_map_item(i, self)
             }
 
-            fn fold_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+            fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
                 if self.st.marked(i.id, "target") {
                     match i.node {
                         ForeignItemKind::Static(_, ref mut is_mutbl) =>
@@ -490,11 +486,11 @@ impl Transform for SetMutability {
                         _ => {},
                     }
                 }
-                fold::noop_fold_foreign_item(i, self)
+                mut_visit::noop_flat_map_foreign_item(i, self)
             }
         }
 
-        krate.fold(&mut SetMutFolder { st, mutbl })
+        krate.visit(&mut SetMutFolder { st, mutbl })
     }
 }
 
@@ -505,7 +501,7 @@ pub struct SetUnsafety {
 }
 
 impl Transform for SetUnsafety {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
         let unsafety = <&str as Make<Unsafety>>::make(&self.unsafe_str, &mk());
 
         struct SetUnsafetyFolder<'a> {
@@ -513,8 +509,8 @@ impl Transform for SetUnsafety {
             unsafety: Unsafety,
         }
 
-        impl<'a> Folder for SetUnsafetyFolder<'a> {
-            fn fold_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+        impl<'a> MutVisitor for SetUnsafetyFolder<'a> {
+            fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
                         match i.node {
@@ -529,10 +525,10 @@ impl Transform for SetUnsafety {
                         i
                     });
                 }
-                fold::noop_fold_item(i, self)
+                mut_visit::noop_flat_map_item(i, self)
             }
 
-            fn fold_trait_item(&mut self, mut i: TraitItem) -> SmallVec<[TraitItem; 1]> {
+            fn flat_map_trait_item(&mut self, mut i: TraitItem) -> SmallVec<[TraitItem; 1]> {
                 if self.st.marked(i.id, "target") {
                     match i.node {
                         TraitItemKind::Method(ref mut sig, _) =>
@@ -540,10 +536,10 @@ impl Transform for SetUnsafety {
                         _ => {},
                     }
                 }
-                fold::noop_fold_trait_item(i, self)
+                mut_visit::noop_flat_map_trait_item(i, self)
             }
 
-            fn fold_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+            fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
                 if self.st.marked(i.id, "target") {
                     match i.node {
                         ImplItemKind::Method(ref mut sig, _) =>
@@ -551,11 +547,11 @@ impl Transform for SetUnsafety {
                         _ => {},
                     }
                 }
-                fold::noop_fold_impl_item(i, self)
+                mut_visit::noop_flat_map_impl_item(i, self)
             }
         }
 
-        krate.fold(&mut SetUnsafetyFolder { st, unsafety })
+        krate.visit(&mut SetUnsafetyFolder { st, unsafety })
     }
 }
 
@@ -578,7 +574,7 @@ pub struct CreateItem {
 }
 
 impl Transform for CreateItem {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let mark = self.mark;
 
         let inside = match &self.pos as &str {
@@ -602,13 +598,13 @@ impl Transform for CreateItem {
         }
 
         impl<'a> CreateFolder<'a> {
-            fn handle_mod(&mut self, parent_id: NodeId, m: Mod, skip_dummy: bool) -> Mod {
+            fn handle_mod(&mut self, parent_id: NodeId, m: &mut Mod, skip_dummy: bool) {
                 let mut items = Vec::with_capacity(m.items.len());
 
                 // When true, insert before the next item that satisfies `skip_dummy`
                 let mut insert_inside = self.inside && self.st.marked(parent_id, self.mark);
 
-                for i in m.items {
+                for i in &m.items {
                     if insert_inside {
                         // Special case for `inside` mode with the Crate marked.  We want to insert
                         // after the injected std and prelude items, because inserting before an
@@ -620,7 +616,7 @@ impl Transform for CreateItem {
                     }
 
                     let insert = !self.inside && self.st.marked(i.id, self.mark);
-                    items.push(i);
+                    items.push(i.clone());
                     if insert {
                         items.extend(self.items.iter().cloned());
                     }
@@ -631,69 +627,55 @@ impl Transform for CreateItem {
                     items.extend(self.items.iter().cloned());
                 }
 
-                Mod { items, ..m }
+                m.items = items;
             }
         }
 
-        impl<'a> Folder for CreateFolder<'a> {
-            fn fold_crate(&mut self, c: Crate) -> Crate {
-                let c = Crate {
-                    module: self.handle_mod(CRATE_NODE_ID, c.module, true),
-                    ..c
-                };
+        impl<'a> MutVisitor for CreateFolder<'a> {
+            fn visit_crate(&mut self, c: &mut Crate) {
+                self.handle_mod(CRATE_NODE_ID, &mut c.module, true);
 
-                // We do this instead of noop_fold_module, because noop_fold_crate makes up a dummy
-                // Item for the crate, causing us to try and insert into c.module a second time.
-                // (We don't just omit fold_crate and rely on this dummy item because the dummy
-                // item has DUMMY_NODE_ID instead of CRATE_NODE_ID.)
-                Crate {
-                    module: fold::noop_fold_mod(c.module, self),
-                    ..c
+                // We do this instead of noop_visit_crate, because
+                // noop_visit_crate makes up a dummy Item for the crate, causing
+                // us to try and insert into c.module a second time.  (We don't
+                // just omit fold_crate and rely on this dummy item because the
+                // dummy item has DUMMY_NODE_ID instead of CRATE_NODE_ID.)
+                mut_visit::noop_visit_mod(&mut c.module, self);
+            }
+
+            fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+                let id = i.id;
+                if let ItemKind::Mod(m) = &mut i.node {
+                    self.handle_mod(id, m, false);
                 }
+                mut_visit::noop_flat_map_item(i, self)
             }
 
-            fn fold_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-                let i = if !matches!([i.node] ItemKind::Mod(..)) {
-                    i
-                } else {
-                    i.map(|i| {
-                        unpack!([i.node] ItemKind::Mod(m));
-                        Item {
-                            node: ItemKind::Mod(self.handle_mod(i.id, m, false)),
-                            .. i
-                        }
-                    })
-                };
-                fold::noop_fold_item(i, self)
-            }
+            fn visit_block(&mut self, b: &mut P<Block>) {
+                let mut stmts = Vec::with_capacity(b.stmts.len());
 
-            fn fold_block(&mut self, b: P<Block>) -> P<Block> {
-                let b = b.map(|b| {
-                    let mut stmts = Vec::with_capacity(b.stmts.len());
+                if self.inside && self.st.marked(b.id, self.mark) {
+                    stmts.extend(self.items.iter().cloned().map(|i| mk().item_stmt(i)));
+                }
 
-                    if self.inside && self.st.marked(b.id, self.mark) {
+                for s in &b.stmts {
+                    let insert = !self.inside && self.st.marked(s.id, self.mark);
+                    stmts.push(s.clone());
+                    if insert {
                         stmts.extend(self.items.iter().cloned().map(|i| mk().item_stmt(i)));
                     }
+                }
+                b.stmts = stmts;
 
-                    for s in b.stmts {
-                        let insert = !self.inside && self.st.marked(s.id, self.mark);
-                        stmts.push(s);
-                        if insert {
-                            stmts.extend(self.items.iter().cloned().map(|i| mk().item_stmt(i)));
-                        }
-                    }
-
-                    Block { stmts, .. b }
-                });
-                fold::noop_fold_block(b, self)
+                mut_visit::noop_visit_block(b, self)
             }
 
-            fn fold_mac(&mut self, mac: Mac) -> Mac {
-                fold::noop_fold_mac(mac, self)
+            fn visit_mac(&mut self, mac: &mut Mac) {
+                mut_visit::noop_visit_mac(mac, self)
             }
         }
 
-        krate.fold(&mut CreateFolder { st, mark, inside, items })
+        krate.visit(&mut CreateFolder { st, mark, inside, items })
     }
 }
 
@@ -709,7 +691,7 @@ impl Transform for CreateItem {
 pub struct DeleteItems;
 
 impl Transform for DeleteItems {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
         let mark = "target".into_symbol();
 
         struct DeleteFolder<'a> {
@@ -717,25 +699,22 @@ impl Transform for DeleteItems {
             mark: Symbol,
         }
 
-        impl<'a> Folder for DeleteFolder<'a> {
-            fn fold_mod(&mut self, mut m: Mod) -> Mod {
+        impl<'a> MutVisitor for DeleteFolder<'a> {
+            fn visit_mod(&mut self, m: &mut Mod) {
                 m.items.retain(|i| !self.st.marked(i.id, self.mark));
-                fold::noop_fold_mod(m, self)
+                mut_visit::noop_visit_mod(m, self)
             }
 
-            fn fold_block(&mut self, b: P<Block>) -> P<Block> {
-                let b = b.map(|mut b| {
-                    b.stmts.retain(|s| match s.node {
-                        StmtKind::Item(ref i) => !self.st.marked(i.id, self.mark),
-                        _ => true,
-                    });
-                    b
+            fn visit_block(&mut self, b: &mut P<Block>) {
+                b.stmts.retain(|s| match s.node {
+                    StmtKind::Item(ref i) => !self.st.marked(i.id, self.mark),
+                    _ => true,
                 });
-                fold::noop_fold_block(b, self)
+                mut_visit::noop_visit_block(b, self)
             }
         }
 
-        krate.fold(&mut DeleteFolder { st, mark })
+        krate.visit(&mut DeleteFolder { st, mark })
     }
 }
 

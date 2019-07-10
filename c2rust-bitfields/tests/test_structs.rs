@@ -2,18 +2,38 @@ extern crate c2rust_bitfields;
 extern crate libc;
 
 use c2rust_bitfields::BitfieldStruct;
+use libc::{c_double, c_short, c_uchar, c_uint, c_ulong, c_ushort};
 use std::mem::{size_of, transmute};
-use libc::{c_uchar, c_short, c_ushort, c_ulong, c_uint, c_double};
 
 #[link(name = "test")]
 extern "C" {
     fn check_compact_date(_: *const CompactDate, _: c_uchar, _: c_uchar, _: c_ushort) -> c_uint;
     fn assign_compact_date_day(_: *mut CompactDate, _: c_uchar);
-    fn check_overlapping_byte_date(_: *const OverlappingByteDate, _: c_ulong, _: c_ushort, _: c_ushort) -> c_uint;
-    fn check_unnamed_bitfield(_: *const UnnamedBitfield, _: c_ushort, _: c_ushort, _: c_double) -> c_uint;
-    fn check_signed_bitfields(_: *const SignedBitfields, _: c_short, _: c_ushort, _: c_short) -> c_uint;
+    fn check_overlapping_byte_date(
+        _: *const OverlappingByteDate,
+        _: c_ulong,
+        _: c_ushort,
+        _: c_ushort,
+    ) -> c_uint;
+    fn check_unnamed_bitfield(
+        _: *const UnnamedBitfield,
+        _: c_ushort,
+        _: c_ushort,
+        _: c_double,
+    ) -> c_uint;
+    fn check_signed_bitfields(
+        _: *const SignedBitfields,
+        _: c_short,
+        _: c_ushort,
+        _: c_short,
+    ) -> c_uint;
     fn assign_signed_bitfields(_: *mut SignedBitfields, _: c_short, _: c_ushort, _: c_short);
-    fn check_three_byte_date(_: *const ThreeByteDate, _: c_uchar, _: c_uchar, _: c_ushort) -> c_uint;
+    fn check_three_byte_date(
+        _: *const ThreeByteDate,
+        _: c_uchar,
+        _: c_uchar,
+        _: c_ushort,
+    ) -> c_uint;
     fn assign_three_byte_date(_: *mut ThreeByteDate, _: c_uchar, _: c_uchar, _: c_ushort);
 }
 
@@ -177,6 +197,7 @@ struct OverlappingByteDate {
     #[bitfield(name = "m", ty = "libc::c_ushort", bits = "5..=8")]
     d_m: [u8; 2],
     y: u16,
+    #[bitfield(padding)]
     _pad: [u8; 4],
 }
 
@@ -196,13 +217,14 @@ fn test_overlapping_byte_date() {
 
     let date_bytes: [u8; 8] = unsafe { transmute(date) };
 
-    assert_eq!(date_bytes, [0b10011111, 0b00000001, 0b11100010, 0b00000111, 0b0, 0b0, 0b0, 0b0]);
+    assert_eq!(
+        date_bytes,
+        [0b10011111, 0b00000001, 0b11100010, 0b00000111, 0b0, 0b0, 0b0, 0b0]
+    );
     // 10011111 | 00000001 | 11100010 | 00000111 | 0b0 | 0b0 | 0b0 | 0b0
     // 12/\-31- |        - | -2014--> | <--2014-
 
-    let ret = unsafe {
-        check_overlapping_byte_date(&date, 31, 12, 2018)
-    };
+    let ret = unsafe { check_overlapping_byte_date(&date, 31, 12, 2018) };
 
     assert_eq!(ret, 1);
 }
@@ -225,7 +247,10 @@ fn test_overlapping_byte_date2() {
 
     let date_bytes: [u8; 8] = unsafe { transmute(date) };
 
-    assert_eq!(date_bytes, [0b00001110, 0b00000001, 0b11100011, 0b00000111, 0b0, 0b0, 0b0, 0b0]);
+    assert_eq!(
+        date_bytes,
+        [0b00001110, 0b00000001, 0b11100011, 0b00000111, 0b0, 0b0, 0b0, 0b0]
+    );
 }
 
 // *** Dumping AST Record Layout
@@ -241,6 +266,7 @@ struct UnnamedBitfield {
     z: f64,
     #[bitfield(name = "x", ty = "libc::c_ushort", bits = "0..=4")]
     x: [u8; 1],
+    #[bitfield(padding)]
     _pad: [u8; 1],
     #[bitfield(name = "y", ty = "libc::c_ushort", bits = "0..=8")]
     y: [u8; 2],
@@ -264,9 +290,7 @@ fn test_unnamed_bitfield() {
     assert_eq!(unnamed_bitfield.x(), 30);
     assert_eq!(unnamed_bitfield.y(), 505);
 
-    let ret = unsafe {
-        check_unnamed_bitfield(&unnamed_bitfield, 30, 505, 3.14)
-    };
+    let ret = unsafe { check_unnamed_bitfield(&unnamed_bitfield, 30, 505, 3.14) };
 
     assert_eq!(ret, 1);
 }
@@ -281,7 +305,7 @@ fn test_unnamed_bitfield() {
 #[derive(BitfieldStruct, Copy, Clone)]
 struct SignedBitfields {
     #[bitfield(name = "x", ty = "libc::c_short", bits = "0..=3")]
-    #[bitfield(name = "y", ty = "libc::c_ushort",bits = "4..=8")]
+    #[bitfield(name = "y", ty = "libc::c_ushort", bits = "4..=8")]
     #[bitfield(name = "z", ty = "libc::c_short", bits = "9..=13")]
     x_y_z: [u8; 2],
 }
@@ -290,9 +314,7 @@ struct SignedBitfields {
 fn test_signed_bitfields() {
     assert_eq!(size_of::<SignedBitfields>(), 2);
 
-    let mut signed_bitfields = SignedBitfields {
-        x_y_z: [0; 2],
-    };
+    let mut signed_bitfields = SignedBitfields { x_y_z: [0; 2] };
 
     signed_bitfields.set_x(6);
     signed_bitfields.set_y(7);
@@ -302,9 +324,7 @@ fn test_signed_bitfields() {
     assert_eq!(signed_bitfields.y(), 7);
     assert_eq!(signed_bitfields.z(), 13);
 
-    let ret = unsafe {
-        check_signed_bitfields(&signed_bitfields, 6, 7, 13)
-    };
+    let ret = unsafe { check_signed_bitfields(&signed_bitfields, 6, 7, 13) };
 
     assert_eq!(ret, 1);
 
@@ -320,18 +340,14 @@ fn test_signed_bitfields() {
 
     assert_eq!(bytes, [0b01011010, 0b00100110]);
 
-    let ret = unsafe {
-        check_signed_bitfields(&signed_bitfields, -6, 5, -13)
-    };
+    let ret = unsafe { check_signed_bitfields(&signed_bitfields, -6, 5, -13) };
 
     assert_eq!(ret, 1);
 }
 
 #[test]
 fn test_signed_underflow_overflow() {
-    let mut signed_bitfields = SignedBitfields {
-        x_y_z: [0; 2],
-    };
+    let mut signed_bitfields = SignedBitfields { x_y_z: [0; 2] };
 
     // Overflow
     signed_bitfields.set_x(7);
@@ -343,9 +359,7 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), -8);
 
-    unsafe {
-        assert_eq!(check_signed_bitfields(&signed_bitfields, -8, 0, 0), 1)
-    }
+    unsafe { assert_eq!(check_signed_bitfields(&signed_bitfields, -8, 0, 0), 1) }
 
     // C Sanity Check:
     signed_bitfields.set_x(7);
@@ -363,9 +377,7 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), 0);
 
-    let ret = unsafe {
-        check_signed_bitfields(&signed_bitfields, 0, 31, -1)
-    };
+    let ret = unsafe { check_signed_bitfields(&signed_bitfields, 0, 31, -1) };
 
     assert_eq!(ret, 1);
 
@@ -373,9 +385,7 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), 1);
 
-    let ret = unsafe {
-        check_signed_bitfields(&signed_bitfields, 1, 31, -1)
-    };
+    let ret = unsafe { check_signed_bitfields(&signed_bitfields, 1, 31, -1) };
 
     assert_eq!(ret, 1);
 
@@ -383,9 +393,7 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), -7);
 
-    let ret = unsafe {
-        check_signed_bitfields(&signed_bitfields, -7, 31, -1)
-    };
+    let ret = unsafe { check_signed_bitfields(&signed_bitfields, -7, 31, -1) };
 
     assert_eq!(ret, 1);
 
@@ -426,18 +434,14 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), -8);
 
-    unsafe {
-        assert_eq!(check_signed_bitfields(&signed_bitfields, -8, 31, -1), 1)
-    }
+    unsafe { assert_eq!(check_signed_bitfields(&signed_bitfields, -8, 31, -1), 1) }
 
     // -9 to -15 will wrap around on underflow
     signed_bitfields.set_x(-9);
 
     assert_eq!(signed_bitfields.x(), 7);
 
-    unsafe {
-        assert_eq!(check_signed_bitfields(&signed_bitfields, 7, 31, -1), 1)
-    }
+    unsafe { assert_eq!(check_signed_bitfields(&signed_bitfields, 7, 31, -1), 1) }
 
     // C Sanity Check:
     signed_bitfields.set_x(6);
@@ -455,9 +459,7 @@ fn test_signed_underflow_overflow() {
 
     assert_eq!(signed_bitfields.x(), 1);
 
-    unsafe {
-        assert_eq!(check_signed_bitfields(&signed_bitfields, 1, 31, -1), 1)
-    }
+    unsafe { assert_eq!(check_signed_bitfields(&signed_bitfields, 1, 31, -1), 1) }
 
     // C Sanity Check:
     signed_bitfields.set_x(7);
@@ -480,8 +482,9 @@ fn test_signed_underflow_overflow() {
 #[derive(BitfieldStruct, Copy, Clone)]
 struct SingleBits {
     #[bitfield(name = "x", ty = "libc::c_ushort", bits = "0..=0")]
-    #[bitfield(name = "y", ty = "libc::c_short",bits = "1..=1")]
+    #[bitfield(name = "y", ty = "libc::c_short", bits = "1..=1")]
     x_y: [u8; 1],
+    #[bitfield(padding)]
     _pad: [u8; 1],
 }
 
@@ -535,38 +538,88 @@ struct ThreeByteDate {
     #[bitfield(name = "day", ty = "libc::c_uchar", bits = "0..=4")]
     #[bitfield(name = "month", ty = "libc::c_uchar", bits = "5..=8")]
     #[bitfield(name = "year", ty = "libc::c_ushort", bits = "9..=23")]
-    day_month_year: [u8; 3]
+    day_month_year: [u8; 3],
 }
 
 #[test]
 fn test_three_byte_date() {
     let mut date = ThreeByteDate {
-        day_month_year: [0; 3]
+        day_month_year: [0; 3],
     };
 
     date.set_day(18);
     date.set_month(7);
     date.set_year(2000);
 
-    assert_eq!(date.day_month_year, [0b11110010, 0b10100000, 0b00001111], "{:?}", date.day_month_year);
+    assert_eq!(
+        date.day_month_year,
+        [0b11110010, 0b10100000, 0b00001111],
+        "{:?}",
+        date.day_month_year
+    );
     assert_eq!(date.day(), 18);
     assert_eq!(date.month(), 7);
     assert_eq!(date.year(), 2000);
 
-    unsafe {
-        assert_eq!(check_three_byte_date(&date, 18, 7, 2000), 1)
-    }
+    unsafe { assert_eq!(check_three_byte_date(&date, 18, 7, 2000), 1) }
 
     // Check overflow wraps
-    unsafe {
-        assign_three_byte_date(&mut date, 36, 19, 2u16.pow(15) + 2)
-    }
+    unsafe { assign_three_byte_date(&mut date, 36, 19, 2u16.pow(15) + 2) }
 
     assert_eq!(date.day(), 4);
     assert_eq!(date.month(), 3);
     assert_eq!(date.year(), 2);
 
-    unsafe {
-        assert_eq!(check_three_byte_date(&date, 4, 3, 2), 1)
-    }
+    unsafe { assert_eq!(check_three_byte_date(&date, 4, 3, 2), 1) }
+}
+
+#[repr(C)]
+#[derive(BitfieldStruct)]
+struct BoolBits {
+    #[bitfield(name = "x", ty = "bool", bits = "0..=0")]
+    #[bitfield(name = "y", ty = "bool", bits = "1..=1")]
+    #[bitfield(name = "z", ty = "bool", bits = "7..=7")]
+    x_y_z: [u8; 1],
+}
+
+#[test]
+fn test_bool_bits() {
+    let mut bool_bits = BoolBits {
+        x_y_z: [u8::max_value(); 1],
+    };
+
+    assert!(bool_bits.x());
+    assert!(bool_bits.y());
+    assert!(bool_bits.z());
+
+    bool_bits.set_y(false);
+
+    assert!(bool_bits.x());
+    assert!(!bool_bits.y());
+    assert!(bool_bits.z());
+
+    bool_bits.set_x(false);
+
+    assert!(!bool_bits.x());
+    assert!(!bool_bits.y());
+    assert!(bool_bits.z());
+
+    bool_bits.set_z(false);
+
+    assert!(!bool_bits.x());
+    assert!(!bool_bits.y());
+    assert!(!bool_bits.z());
+
+    bool_bits.set_x(true);
+    bool_bits.set_z(true);
+
+    assert!(bool_bits.x());
+    assert!(!bool_bits.y());
+    assert!(bool_bits.z());
+
+    bool_bits.set_y(true);
+
+    assert!(bool_bits.x());
+    assert!(bool_bits.y());
+    assert!(bool_bits.z());
 }

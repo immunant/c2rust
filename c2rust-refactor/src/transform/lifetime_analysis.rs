@@ -7,8 +7,10 @@ use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::u32;
 
+use arena::SyncDroplessArena;
+use smallvec::SmallVec;
 use syntax::{ast, entry};
-use syntax::fold::{self, Folder};
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::symbol::Ident;
 use syntax_pos::{Span, FileName, BytePos, Pos, NO_EXPANSION};
@@ -18,14 +20,15 @@ use failure::{Error, ResultExt};
 
 use c2rust_analysis_rt::{SourceSpan, SourcePos, SpanId};
 use c2rust_analysis_rt::events::{Pointer, Event, EventKind};
-use c2rust_ast_builder::Make;
+use c2rust_ast_builder::{mk, Make};
 
 use crate::analysis::ownership;
-use crate::api::*;
+use crate::ast_manip::{visit_nodes, AstEquiv};
+use crate::context::RefactorCtxt;
 use crate::command::{CommandState, Registry};
-use crate::driver::{self, Phase};
+use crate::driver::{parse_ty, Phase};
 use crate::transform::Transform;
-use crate::ast_manip::visit_nodes;
+use crate::util::Lone;
 
 
 struct InstrumentCmd {
@@ -34,9 +37,9 @@ struct InstrumentCmd {
 }
 
 impl Transform for InstrumentCmd {
-    fn transform(&self, krate: ast::Crate, _st: &CommandState, cx: &driver::Ctxt) -> ast::Crate {
+    fn transform(&self, krate: &mut ast::Crate, _st: &CommandState, cx: &RefactorCtxt) {
         let mut folder = LifetimeInstrumenter::new(cx, &self.span_file_path, &self.main_path);
-        let folded = folder.fold_crate(krate);
+        let folded = folder.visit_crate(krate);
         folder.finalize().expect("Error instrumenting lifetimes");
         folded
     }
@@ -51,7 +54,7 @@ impl Transform for InstrumentCmd {
 const HOOK_FUNCTIONS: &[&'static str] = c2rust_analysis_rt::HOOK_FUNCTIONS;
 
 struct LifetimeInstrumenter<'a, 'tcx: 'a> {
-    cx: &'a driver::Ctxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     span_file_path: &'a str,
     main_path: ast::Path,
     hooked_functions: HashMap<Ident, P<ast::FnDecl>>,
@@ -61,14 +64,10 @@ struct LifetimeInstrumenter<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
-    fn new(cx: &'a driver::Ctxt<'a, 'tcx>, span_file_path: &'a str, main_path: &'a str) -> Self {
+    fn new(cx: &'a RefactorCtxt<'a, 'tcx>, span_file_path: &'a str, main_path: &'a str) -> Self {
         let main_path = {
             if let ast::TyKind::Path(_, ref path) = parse_ty(cx.session(), main_path).node {
-                let mut segments = path.segments.clone();
-                if let Some(seg) = path.make_root() {
-                    segments.insert(0, seg);
-                }
-                mk().path(segments)
+                path.clone()
             } else {
                 panic!("Could not parse lifetime_analysis main path argument: {:?}", main_path);
             }
@@ -138,20 +137,17 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         u32::try_from(idx).unwrap()
     }
 
-    fn instrument_entry_block(&self, block: P<ast::Block>) -> P<ast::Block> {
+    fn instrument_entry_block(&self, block: &mut P<ast::Block>) {
         let init_stmt = mk().semi_stmt(
             mk().call_expr(
                 mk().path_expr(vec!["c2rust_analysis_rt", "init"]),
                 vec![mk().lit_expr(mk().str_lit(self.span_file_path))],
             )
         );
-        block.map(|mut block| {
-            block.stmts.insert(0, init_stmt);
-            block
-        })
+        block.stmts.insert(0, init_stmt);
     }
 
-    fn instrument_main_block(&self, block: P<ast::Block>) -> P<ast::Block> {
+    fn instrument_main_block(&self, block: &mut P<ast::Block>) {
         let init_stmt = mk().local_stmt(
             P(mk().local::<_, P<ast::Ty>, _>(
                 mk().ident_pat("c2rust_analysis_ctx"), None, Some(
@@ -162,15 +158,12 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
                 )
             ))
         );
-        block.map(|mut block| {
-            block.stmts.insert(0, init_stmt);
-            block
-        })
+        block.stmts.insert(0, init_stmt);
     }
 
-    fn instrument_expr(&self, expr: P<ast::Expr>, stmts: &[ast::Stmt]) -> P<ast::Expr> {
+    fn instrument_expr(&self, expr: &mut P<ast::Expr>, stmts: &[ast::Stmt]) {
         let local = P(mk().local::<_, P<ast::Ty>, _>(
-            mk().ident_pat("ret"), None, Some(expr)
+            mk().ident_pat("ret"), None, Some(expr.clone())
         ));
 
         let mut block_stmts = vec![mk().local_stmt(local)];
@@ -178,16 +171,16 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         block_stmts.push(mk().expr_stmt(mk().path_expr(vec!["ret"])));
 
         // Build the instrumentation block
-        return mk().block_expr(mk().block(block_stmts));
+        *expr = mk().block_expr(mk().block(block_stmts));
     }
 
     fn instrument_expr_call_rt<I>(
         &mut self,
-        expr: P<ast::Expr>,
+        expr: &mut P<ast::Expr>,
         span: Span,
         fn_name: I,
         args: &[P<ast::Expr>]
-    ) -> P<ast::Expr>
+    )
     where I: Make<Ident>
     {
         let source_loc_idx = self.get_source_location_idx(span);
@@ -233,137 +226,115 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> Folder for LifetimeInstrumenter<'a, 'tcx> {
-    fn fold_foreign_item_simple(&mut self, item: ast::ForeignItem) -> ast::ForeignItem {
+impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
+    fn flat_map_foreign_item(&mut self, item: ast::ForeignItem) -> SmallVec<[ast::ForeignItem; 1]> {
         if let ast::ForeignItemKind::Fn(decl, _) = &item.node {
             if HOOK_FUNCTIONS.contains(&&*item.ident.name.as_str()) {
                 self.hooked_functions.insert(item.ident, decl.clone());
             }
         }
         self.depth += 1;
-        let folded = fold::noop_fold_foreign_item_simple(item, self);
+        let folded = mut_visit::noop_flat_map_foreign_item(item, self);
         self.depth -= 1;
         folded
     }
 
-    fn fold_expr(&mut self, expr: P<ast::Expr>) -> P<ast::Expr> {
+    fn visit_expr(&mut self, expr: &mut P<ast::Expr>) {
         // Post-order traversal so we instrument any arguments before processing
         // the expr.
-        let expr = expr.map(|expr| fold::noop_fold_expr(expr, self));
+        mut_visit::noop_visit_expr(expr, self);
 
-        match &expr.node {
-            ast::ExprKind::Call(callee, args) => {
-                if let Some((fn_name, decl)) = self.hooked_fn(callee) {
-                    // Add all original arguments, casting pointers to usize
-                    let mut args: Vec<P<ast::Expr>> = args
-                        .iter()
-                        .zip(decl.inputs.iter())
-                        .map(|(arg, arg_decl)| self.add_ptr_cast(arg, &arg_decl.ty))
-                        .collect();
-                    // Add the return value of the hooked call.
-                    args.push({
-                        let ret_expr = mk().path_expr(vec!["ret"]);
-                        match &decl.output {
-                            ast::FunctionRetTy::Ty(ty) => self.add_ptr_cast(&ret_expr, ty),
-                            _ => ret_expr,
-                        }
-                    });
+        if let ast::ExprKind::Call(callee, args) = &expr.node {
+            if let Some((fn_name, decl)) = self.hooked_fn(callee) {
+                // Add all original arguments, casting pointers to usize
+                let mut args: Vec<P<ast::Expr>> = args
+                    .iter()
+                    .zip(decl.inputs.iter())
+                    .map(|(arg, arg_decl)| self.add_ptr_cast(arg, &arg_decl.ty))
+                    .collect();
+                // Add the return value of the hooked call.
+                args.push({
+                    let ret_expr = mk().path_expr(vec!["ret"]);
+                    match &decl.output {
+                        ast::FunctionRetTy::Ty(ty) => self.add_ptr_cast(&ret_expr, ty),
+                        _ => ret_expr,
+                    }
+                });
 
-                    return self.instrument_expr_call_rt(expr.clone(), expr.span, fn_name, &args);
-                }
+                self.instrument_expr_call_rt(expr, expr.span, fn_name, &args);
+                return;
+            }
+        }
 
-                let mut instrumented = false;
-                let args = args.into_iter().map(|arg| {
+        let expr_span = expr.span.clone();
+        match &mut expr.node {
+            ast::ExprKind::Call(_callee, args) => {
+                for arg in args.iter_mut() {
                     if self.cx.node_type(arg.id).is_unsafe_ptr() && !self.is_constant(arg) {
-                        instrumented = true;
                         println!("Instrumenting arg: {:?}", arg);
                         self.instrument_expr_call_rt(
-                            arg.clone(),
+                            arg,
                             arg.span,
                             "ptr_arg",
                             &[mk().cast_expr(
                                 mk().path_expr(vec!["ret"]), mk().ident_ty("usize"),
                             )],
-                        )
-                    } else {
-                        arg.clone()
+                        );
                     }
-                }).collect();
-                if instrumented {
-                    return mk().call_expr(callee, args);
                 }
             }
             ast::ExprKind::Unary(ast::UnOp::Deref, ptr_expr) =>
                 if self.cx.node_type(ptr_expr.id).is_unsafe_ptr()
             {
-                return mk().unary_expr(
-                    "*",
-                    self.instrument_expr_call_rt(
-                        ptr_expr.clone(),
-                        expr.span,
-                        "ptr_deref",
-                        &[mk().cast_expr(mk().path_expr(vec!["ret"]), mk().ident_ty("usize"))],
-                    ),
+                self.instrument_expr_call_rt(
+                    ptr_expr,
+                    expr_span,
+                    "ptr_deref",
+                    &[mk().cast_expr(mk().path_expr(vec!["ret"]), mk().ident_ty("usize"))],
                 );
             }
             ast::ExprKind::Assign(lhs, rhs) =>
                 if self.cx.node_type(lhs.id).is_unsafe_ptr()
             {
-                return mk().assign_expr(
-                    lhs,
-                    self.instrument_expr_call_rt(
-                        rhs.clone(),
-                        expr.span,
-                        "ptr_assign",
-                        &[mk().cast_expr(mk().path_expr(vec!["ret"]), mk().ident_ty("usize"))],
-                    ),
-                );
+                self.instrument_expr_call_rt(
+                    rhs,
+                    expr_span,
+                    "ptr_assign",
+                    &[mk().cast_expr(mk().path_expr(vec!["ret"]), mk().ident_ty("usize"))],
+                )
             }
             _ => (),
         }
-
-        expr
     }
 
-    fn fold_item_simple(&mut self, item: ast::Item) -> ast::Item {
+    fn flat_map_item(&mut self, item: P<ast::Item>) -> SmallVec<[P<ast::Item>; 1]> {
         self.depth += 1;
-        let item = fold::noop_fold_item_simple(item, self);
+        let mut item: P<ast::Item> = mut_visit::noop_flat_map_item(item, self).lone();
         self.depth -= 1;
 
         // Instrument entry point if found
-        match entry::entry_point_type(&item, self.depth) {
+        match entry::entry_point_type(&*item, self.depth) {
             entry::EntryPointType::MainNamed |
             entry::EntryPointType::MainAttr |
             entry::EntryPointType::Start => {
-                return ast::Item {
-                    node: {
-                        if let ast::ItemKind::Fn(decl, header, generics, block) = item.node {
-                            ast::ItemKind::Fn(decl, header, generics, {
-                                self.instrument_entry_block(block)
-                            })
-                        } else {
-                            panic!("Expected a function item");
-                        }
-                    },
-                    ..item
+                if let ast::ItemKind::Fn(_decl, _header, _generics, block) = &mut item.node {
+                    self.instrument_entry_block(block);
+                } else {
+                    panic!("Expected a function item");
                 };
             }
-            _ => (),
+            _ => {}
         }
 
+        let item_id = item.id;
         // Instrument the real main function
-        if let ast::ItemKind::Fn(decl, header, generics, block) = item.node.clone() {
-            if self.cx.def_path(self.cx.node_def_id(item.id)).ast_equiv(&self.main_path) {
-                return ast::Item {
-                    node: ast::ItemKind::Fn(decl, header, generics, {
-                        self.instrument_main_block(block)
-                    }),
-                    ..item
-                };
+        if let ast::ItemKind::Fn(_decl, _header, _generics, block) = &mut item.node {
+            if self.cx.def_path(self.cx.node_def_id(item_id)).ast_equiv(&self.main_path) {
+                self.instrument_main_block(block);
             }
         }
 
-        item
+        smallvec![item]
     }
 }
 
@@ -374,12 +345,13 @@ struct AnalysisCmd {
 }
 
 impl Transform for AnalysisCmd {
-    fn transform(&self, krate: ast::Crate, st: &CommandState, cx: &driver::Ctxt) -> ast::Crate {
+    fn transform(&self, krate: &mut ast::Crate, st: &CommandState, cx: &RefactorCtxt) {
         // Initialize the analysis runtime so we get debug pretty printing for
         // spans
         c2rust_analysis_rt::span::set_file(&self.span_filename);
 
-        let ownership_analysis = ownership::analyze(&st, &cx);
+        let arena = SyncDroplessArena::default();
+        let ownership_analysis = ownership::analyze(&st, &cx, &arena);
 
         let mut analyzer = LifetimeAnalyzer::new(
             cx,
@@ -387,8 +359,8 @@ impl Transform for AnalysisCmd {
             &self.log_filename,
             ownership_analysis,
         );
-        analyzer.run(&krate);
-        analyzer.fold_crate(krate)
+        analyzer.run(krate);
+        analyzer.visit_crate(krate)
     }
 
     fn min_phase(&self) -> Phase {
@@ -500,8 +472,8 @@ impl fmt::Debug for MemMap {
     }
 }
 
-struct LifetimeAnalyzer<'a, 'tcx: 'a> {
-    _cx: &'a driver::Ctxt<'a, 'tcx>,
+struct LifetimeAnalyzer<'lty, 'a: 'lty, 'tcx: 'a> {
+    _cx: &'a RefactorCtxt<'a, 'tcx>,
     log_path: &'a Path,
 
     spans: Vec<Span>,
@@ -510,17 +482,17 @@ struct LifetimeAnalyzer<'a, 'tcx: 'a> {
     // TODO: replace with a Vec, SpanIds are dense
     span_to_expr: HashMap<SpanId, ast::NodeId>,
 
-    _ownership_analysis: ownership::AnalysisResult<'tcx>,
+    _ownership_analysis: ownership::AnalysisResult<'lty, 'tcx>,
 
     mem_map: MemMap,
 }
     
-impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
+impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
     fn new(
-        cx: &'a driver::Ctxt<'a, 'tcx>,
+        cx: &'a RefactorCtxt<'a, 'tcx>,
         span_file: &'a str,
         log_file: &'a str,
-        ownership_analysis: ownership::AnalysisResult<'tcx>,
+        ownership_analysis: ownership::AnalysisResult<'lty, 'tcx>,
     ) -> Self {
         let file = File::open(span_file)
             .expect(&format!("Could not open span file: {:?}", span_file));
@@ -616,7 +588,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> Folder for LifetimeAnalyzer<'a, 'tcx> {
+impl<'lty, 'a, 'tcx> MutVisitor for LifetimeAnalyzer<'lty, 'a, 'tcx> {
 }
 
 pub fn register_commands(reg: &mut Registry) {

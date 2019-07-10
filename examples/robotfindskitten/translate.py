@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import argparse
 import json
 import hashlib
@@ -5,7 +6,7 @@ import os
 import shlex
 import shutil
 import sys
-from plumbum.cmd import mv, mkdir, rename, sed, rustc, cargo, rm
+from plumbum.cmd import mv, mkdir, sed, rustc, cargo, rm
 from plumbum import local, FG
 
 # Path to the root of the robotfindskitten codebase

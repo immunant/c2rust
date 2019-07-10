@@ -6,6 +6,7 @@ authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
 license = "BSD-3-Clause"
 homepage = "https://c2rust.com/"
 repository = "https://github.com/immunant/c2rust"
+publish = false
 
 [lib]
 crate-type = ["lib", "cdylib"]
@@ -17,3 +18,4 @@ path = "src/bin/printer.rs"
 [dependencies]
 lazy_static = "1.1.0"
 zstd = "0.4"
+libc = "0.2.50"

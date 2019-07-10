@@ -24,14 +24,18 @@ python3 = get_cmd_or_die('python3')
 
 # These crates should be sorted in reverse dependency order.
 CRATES = [
-    c.XCHECK_CONFIG_CRATE_DIR,
-    c.XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR,
-    c.XCHECK_RUNTIME_CRATE_DIR,
-    c.XCHECK_DERIVE_CRATE_DIR,
-    c.XCHECK_PLUGIN_CRATE_DIR,
+    c.MACROS_CRATE_DIR,
+
+    # Not packaging cross-checking crates for now.
+    # c.XCHECK_CONFIG_CRATE_DIR,
+    # c.XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR,
+    # c.XCHECK_RUNTIME_CRATE_DIR,
+    # c.XCHECK_DERIVE_CRATE_DIR,
+    # c.XCHECK_PLUGIN_CRATE_DIR,
+
     c.AST_BUILDER_CRATE_DIR,
     c.AST_EXPORTER_CRATE_DIR,
-    c.BITFIELDS_CRATE_DIR,
+    # c.BITFIELDS_CRATE_DIR,
     c.TRANSPILE_CRATE_DIR,
     c.REFACTOR_CRATE_DIR,
     c.C2RUST_DIR,
@@ -87,11 +91,11 @@ class Driver:
             if not invoke_quietly(test_translator):
                 print_error('scripts/test_translator.py failed')
                 ok = False
-        with pb.local.cwd(c.RUST_CHECKS_DIR):
-            invoke_quietly(cargo['clean'])
-            if not invoke_quietly(cargo['test', '--release']):
-                print_error('cargo test failed in rust-checks workspace')
-                ok = False
+        # with pb.local.cwd(c.RUST_CHECKS_DIR):
+        #     invoke_quietly(cargo['clean'])
+        #     if not invoke_quietly(cargo['test', '--release']):
+        #         print_error('cargo test failed in rust-checks workspace')
+        #         ok = False
 
         return ok
 

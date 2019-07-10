@@ -42,7 +42,7 @@ cargo = get_cmd_or_die("cargo")
 
 # Intermediate files
 intermediate_files = [
-    'cc_db', 'cbor', 'c_obj', 'c_lib', 'rust_src',
+    'cc_db', 'c_obj', 'c_lib', 'rust_src',
 ]
 
 
@@ -67,8 +67,10 @@ class CFile:
             flags = set()
 
         self.path = path
-        self.enable_incremental_relooper = "incremental_relooper" in flags
+        self.disable_incremental_relooper = "disable_incremental_relooper" in flags
         self.disallow_current_block = "disallow_current_block" in flags
+        self.translate_const_macros = "translate_const_macros" in flags
+        self.reorganize_definitions = "reorganize_definitions" in flags
 
     def translate(self, cc_db, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
@@ -88,10 +90,14 @@ class CFile:
             "--overwrite-existing",
         ]
 
-        if not self.enable_incremental_relooper:
+        if self.disable_incremental_relooper:
             args.append("--no-incremental-relooper")
         if self.disallow_current_block:
             args.append("--fail-on-multiple")
+        if self.translate_const_macros:
+            args.append("--translate-const-macros")
+        if self.reorganize_definitions:
+            args.append("--reorganize-definitions")
 
         args.append("--")
         args.extend(extra_args)
@@ -184,6 +190,7 @@ class TestFile(RustFile):
         self.test_functions = test_functions or []
         self.pass_expected = "xfail" not in flags
         self.extern_crates = {flag[13:] for flag in flags if flag.startswith("extern_crate_")}
+        self.features = {flag[8:] for flag in flags if flag.startswith("feature_")}
 
 
 class TestDirectory:
@@ -197,7 +204,6 @@ class TestDirectory:
         self.keep = keep
         self.generated_files = {
             "rust_src": [],
-            "cbor": [],
             "c_obj": [],
             "c_lib": [],
             "cc_db": [],
@@ -226,7 +232,7 @@ class TestDirectory:
         file_config = None
         file_flags = set()
 
-        with open(path, 'r') as file:
+        with open(path, 'r', encoding="utf-8") as file:
             file_config = re.match(r"//! (.*)\n", file.read())
 
         if file_config:
@@ -239,7 +245,7 @@ class TestDirectory:
         return CFile(path, file_flags)
 
     def _read_rust_test_file(self, path: str) -> TestFile:
-        with open(path, 'r') as file:
+        with open(path, 'r', encoding="utf-8") as file:
             file_buffer = file.read()
 
         file_config = re.match(r"//! (.*)\n", file_buffer)
@@ -337,7 +343,16 @@ class TestDirectory:
         self.generated_files["c_obj"].extend(static_library.obj_files)
 
         rust_file_builder = RustFileBuilder()
-        rust_file_builder.add_features(["libc", "extern_types", "simd_ffi", "stdsimd", "const_transmute", "nll"])
+        rust_file_builder.add_features([
+            "libc",
+            "extern_types",
+            "simd_ffi",
+            "stdsimd",
+            "const_transmute",
+            "nll",
+            "custom_attribute",
+            "linkage",
+        ])
 
         # .c -> .rs
         for c_file in self.c_files:
@@ -376,6 +391,7 @@ class TestDirectory:
         # Build one binary that can call all the tests
         for test_file in self.rs_test_files:
             # rustc_extra_args.append(["-L", "crate={}".format(c.TARGET_DIR)])
+            rust_file_builder.add_features(test_file.features)
             rust_file_builder.add_extern_crates(test_file.extern_crates)
 
             _, file_name = os.path.split(test_file.path)
@@ -588,7 +604,6 @@ def main() -> None:
             msg = b + " not found; run cargo build --release first?"
             die(msg, errno.ENOENT)
 
-    ensure_dir(c.DEPS_DIR)
     # NOTE: it seems safe to disable this check since we now
     # that we use a rust-toolchain file for rustc versioning.
     # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)

@@ -11,25 +11,26 @@ impl<'c> Translation<'c> {
     /// directly) the resulting translated assembly statements will be unlikely to work
     /// without further manual translation. The translator will properly translate
     /// the arguments to the assembly statement, however.
-    pub fn convert_asm
-        (&self,
-         ctx: ExprContext,
-         span: Span,
-         is_volatile: bool,
-         asm: &str,
-         inputs: &[AsmOperand],
-         outputs: &[AsmOperand],
-         clobbers: &[String])
-        -> Result<Vec<Stmt>, String> {
-
+    pub fn convert_asm(
+        &self,
+        ctx: ExprContext,
+        span: Span,
+        is_volatile: bool,
+        asm: &str,
+        inputs: &[AsmOperand],
+        outputs: &[AsmOperand],
+        clobbers: &[String],
+    ) -> Result<Vec<Stmt>, TranslationError> {
         if !self.tcfg.translate_asm {
-            return Err(format!("Inline assembly not enabled, to enable use --translate-asm"))
+            return Err(TranslationError::generic(
+                "Inline assembly tranlationg not enabled.",
+            ));
         }
 
         self.use_feature("asm");
 
         fn push_expr(tokens: &mut Vec<Token>, expr: P<Expr>) {
-            tokens.push(Token::interpolated(Nonterminal::NtExpr(expr)));
+            tokens.push(Token::Interpolated(Lrc::new(Nonterminal::NtExpr(expr))));
         }
 
         let mut stmts: Vec<Stmt> = vec![];
@@ -40,19 +41,39 @@ impl<'c> Translation<'c> {
         push_expr(&mut tokens, mk().lit_expr(mk().str_lit(asm)));
 
         // Outputs and Inputs
-        for list in vec![outputs, inputs] {
-
+        for &(list, is_output) in &[(outputs, true), (inputs, false)] {
             first = true;
             tokens.push(Token::Colon); // Always emitted, even if list is empty
 
-            for &AsmOperand { ref constraints, expression } in list {
-                if first { first = false } else { tokens.push(Token::Comma) }
+            for &AsmOperand {
+                ref constraints,
+                expression,
+            } in list
+            {
+                if first {
+                    first = false
+                } else {
+                    tokens.push(Token::Comma)
+                }
 
                 let mut result = self.convert_expr(ctx.used(), expression)?;
-                stmts.append(&mut result.stmts);
+                stmts.append(result.stmts_mut());
+
+                let mut result = result.into_value();
+                if constraints.contains('*') {
+                    // If the constraint string contains `*`, then
+                    // c2rust-ast-exporter added it (there's no gcc equivalent);
+                    // in this case, we need to do what clang does and pass in
+                    // the operand by-address instead of by-value
+                    if is_output {
+                        result = mk().mutbl().addr_of_expr(result);
+                    } else {
+                        result = mk().addr_of_expr(result);
+                    }
+                }
 
                 push_expr(&mut tokens, mk().lit_expr(mk().str_lit(constraints)));
-                push_expr(&mut tokens, mk().paren_expr(result.val));
+                push_expr(&mut tokens, mk().paren_expr(result));
             }
         }
 
@@ -60,7 +81,11 @@ impl<'c> Translation<'c> {
         first = true;
         tokens.push(Token::Colon);
         for clobber in clobbers {
-            if first { first = false } else { tokens.push(Token::Comma) }
+            if first {
+                first = false
+            } else {
+                tokens.push(Token::Comma)
+            }
             push_expr(&mut tokens, mk().lit_expr(mk().str_lit(clobber)));
         }
 
@@ -70,7 +95,11 @@ impl<'c> Translation<'c> {
             push_expr(&mut tokens, mk().lit_expr(mk().str_lit("volatile")));
         }
 
-        let mac = mk().mac(vec!["asm"], tokens.into_iter().collect::<TokenStream>(), MacDelimiter::Parenthesis);
+        let mac = mk().mac(
+            vec!["asm"],
+            tokens.into_iter().collect::<TokenStream>(),
+            MacDelimiter::Parenthesis,
+        );
         let mac = mk().mac_expr(mac);
         let mac = mk().span(span).expr_stmt(mac);
         stmts.push(mac);

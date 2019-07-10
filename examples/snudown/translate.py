@@ -65,9 +65,9 @@ def main(xcheck: bool, snudown: str):
 
     transpile(cmds_json_path, emit_build_files=True,
               cross_checks=xcheck, cross_check_config=[config_path],
-              build_directory_contents="full")
+              output_dir="c2rust")
 
-    with pb.local.cwd(os.path.join(snudown, "c2rust-build")):
+    with pb.local.cwd(os.path.join(snudown, "c2rust")):
         cargo = get_cmd_or_die("cargo")
         cargo("build")
 

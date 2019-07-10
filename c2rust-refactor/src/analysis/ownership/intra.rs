@@ -2,20 +2,18 @@
 
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
-use rustc::mir::tcx::PlaceTy;
 use rustc::ty::{Ty, TyKind};
 use rustc_data_structures::indexed_vec::IndexVec;
 use rustc_target::abi::VariantIdx;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
-use super::{Var, PermVar, LTy, LFnSig, FnSig};
 use super::constraint::{ConstraintSet, Perm};
 use super::context::{Ctxt, Instantiation};
-
+use super::{FnSig, LFnSig, LTy, PermVar, Var};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Label<'tcx> {
+enum Label<'lty> {
     /// Most `TyKind` get no constructor.
     None,
 
@@ -24,7 +22,7 @@ enum Label<'tcx> {
     /// Note this can be an arbitrary permission expression, not just a `PermVar`.  Taking the
     /// address of an lvalue gives a pointer whose permission is the lvalue's path permission,
     /// which can be arbitrary.
-    Ptr(Perm<'tcx>),
+    Ptr(Perm<'lty>),
 
     /// `FnDef` ought to be labeled with something like an extra set of `Substs`, but for
     /// permissions instead of type/lifetimes.  However, every one of those `Substs` would simply
@@ -34,8 +32,8 @@ enum Label<'tcx> {
     FnDef(usize),
 }
 
-impl<'tcx> Label<'tcx> {
-    fn perm(&self) -> Perm<'tcx> {
+impl<'lty> Label<'lty> {
+    fn perm(&self) -> Perm<'lty> {
         match *self {
             Label::Ptr(p) => p,
             _ => panic!("expected Label::Ptr"),
@@ -44,15 +42,14 @@ impl<'tcx> Label<'tcx> {
 }
 
 /// Type aliases for `intra`-specific labeled types.
-type ITy<'tcx> = LabeledTy<'tcx, Label<'tcx>>;
-type IFnSig<'tcx> = FnSig<'tcx, Label<'tcx>>;
-
+type ITy<'lty, 'tcx> = LabeledTy<'lty, 'tcx, Label<'lty>>;
+type IFnSig<'lty, 'tcx> = FnSig<'lty, 'tcx, Label<'lty>>;
 
 /// Variant-local analysis context.  We run one of these for each function variant to produce the
 /// initial (incomplete) summary.
-pub struct IntraCtxt<'c, 'a: 'c, 'tcx: 'a> {
-    cx: &'c mut Ctxt<'a, 'tcx>,
-    ilcx: LabeledTyCtxt<'tcx, Label<'tcx>>,
+pub struct IntraCtxt<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
+    cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
+    ilcx: LabeledTyCtxt<'lty, Label<'tcx>>,
 
     /// ID of the variant being processed.
     def_id: DefId,
@@ -60,8 +57,8 @@ pub struct IntraCtxt<'c, 'a: 'c, 'tcx: 'a> {
     bbid: BasicBlock,
     stmt_idx: usize,
 
-    cset: ConstraintSet<'tcx>,
-    local_tys: IndexVec<Local, ITy<'tcx>>,
+    cset: ConstraintSet<'lty>,
+    local_tys: IndexVec<Local, ITy<'lty, 'tcx>>,
     next_local_var: u32,
 
     /// List of function instantiation sites.
@@ -81,10 +78,12 @@ pub struct IntraCtxt<'c, 'a: 'c, 'tcx: 'a> {
     next_inst_var: u32,
 }
 
-impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
-    pub fn new(cx: &'c mut Ctxt<'a, 'tcx>,
-               def_id: DefId,
-               mir: &'a Mir<'tcx>) -> IntraCtxt<'c, 'a, 'tcx> {
+impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
+    pub fn new(
+        cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
+        def_id: DefId,
+        mir: &'a Mir<'tcx>,
+    ) -> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         let ilcx = LabeledTyCtxt::new(cx.arena);
         IntraCtxt {
             cx: cx,
@@ -114,15 +113,17 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         self.stmt_idx = idx;
     }
 
-
     pub fn init(&mut self) {
         let sig = self.cx.variant_func_sig(self.def_id);
         let sig = self.relabel_sig(sig);
         for (l, decl) in self.mir.local_decls.iter_enumerated() {
-            let lty =
-                if l.index() == 0 { sig.output }
-                else if l.index() - 1 < self.mir.arg_count { sig.inputs[l.index() - 1] }
-                else { self.local_ty(decl.ty) };
+            let lty = if l.index() == 0 {
+                sig.output
+            } else if l.index() - 1 < self.mir.arg_count {
+                sig.inputs[l.index() - 1]
+            } else {
+                self.local_ty(decl.ty)
+            };
             self.local_tys.push(lty);
         }
 
@@ -130,21 +131,17 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         self.cset = self.cx.variant_summ(self.def_id).1.inst_cset.clone();
     }
 
-    fn relabel_ty(&mut self, lty: LTy<'tcx>) -> ITy<'tcx> {
-        self.ilcx.relabel(lty, &mut |&l| {
-            match l {
-                Some(pv) => Label::Ptr(Perm::var(pv)),
-                None => Label::None,
-            }
+    fn relabel_ty(&mut self, lty: LTy<'lty, 'tcx>) -> ITy<'lty, 'tcx> {
+        self.ilcx.relabel(lty, &mut |&l| match l {
+            Some(pv) => Label::Ptr(Perm::var(pv)),
+            None => Label::None,
         })
     }
 
-    fn relabel_sig(&mut self, sig: LFnSig<'tcx>) -> IFnSig<'tcx> {
-        let mut f = |&l: &Option<_>| {
-            match l {
-                Some(pv) => Label::Ptr(Perm::var(pv)),
-                None => Label::None,
-            }
+    fn relabel_sig(&mut self, sig: LFnSig<'lty, 'tcx>) -> IFnSig<'lty, 'tcx> {
+        let mut f = |&l: &Option<_>| match l {
+            Some(pv) => Label::Ptr(Perm::var(pv)),
+            None => Label::None,
         };
         FnSig {
             inputs: self.ilcx.relabel_slice(sig.inputs, &mut f),
@@ -161,11 +158,9 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         self.cset.remove_useless();
         self.cset.simplify_min_lhs(self.cx.arena);
 
-        self.cset.retain_perms(self.cx.arena, |p| {
-            match p {
-                Perm::LocalVar(_) => false,
-                _ => true,
-            }
+        self.cset.retain_perms(self.cx.arena, |p| match p {
+            Perm::LocalVar(_) => false,
+            _ => true,
         });
 
         self.cset.simplify(self.cx.arena);
@@ -180,114 +175,122 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         var.insts = self.insts;
     }
 
-    fn local_ty(&mut self, ty: Ty<'tcx>) -> ITy<'tcx> {
-        let Self { ref mut cx, ref mut ilcx, ref mut next_local_var,
-                ref mut next_inst_var, ref mut insts, .. } = *self;
-        ilcx.label(ty, &mut |ty| {
-            match ty.sty {
-                TyKind::Ref(_, _, _) |
-                TyKind::RawPtr(_) => {
-                    let v = Var(*next_local_var);
-                    *next_local_var += 1;
-                    Label::Ptr(Perm::LocalVar(v))
-                },
-
-                TyKind::FnDef(def_id, _) => {
-                    let (func, var) = cx.variant_summ(def_id);
-                    let num_vars = func.num_sig_vars;
-
-                    let inst_idx = insts.len();
-                    insts.push(Instantiation {
-                        callee: var.func_id,
-                        span: None,
-                        first_inst_var: *next_inst_var,
-                    });
-                    *next_inst_var += num_vars;
-
-                    Label::FnDef(inst_idx)
-                },
-
-                _ => Label::None,
+    fn local_ty(&mut self, ty: Ty<'tcx>) -> ITy<'lty, 'tcx> {
+        let Self {
+            ref mut cx,
+            ref mut ilcx,
+            ref mut next_local_var,
+            ref mut next_inst_var,
+            ref mut insts,
+            ..
+        } = *self;
+        ilcx.label(ty, &mut |ty| match ty.sty {
+            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+                let v = Var(*next_local_var);
+                *next_local_var += 1;
+                Label::Ptr(Perm::LocalVar(v))
             }
+
+            TyKind::FnDef(def_id, _) => {
+                let (func, var) = cx.variant_summ(def_id);
+                let num_vars = func.num_sig_vars;
+
+                let inst_idx = insts.len();
+                insts.push(Instantiation {
+                    callee: var.func_id,
+                    span: None,
+                    first_inst_var: *next_inst_var,
+                });
+                *next_inst_var += num_vars;
+
+                Label::FnDef(inst_idx)
+            }
+
+            _ => Label::None,
         })
     }
 
-    fn local_var_ty(&mut self, l: Local) -> ITy<'tcx> {
+    fn local_var_ty(&mut self, l: Local) -> ITy<'lty, 'tcx> {
         self.local_tys[l]
     }
 
-    fn static_ty(&mut self, def_id: DefId) -> ITy<'tcx> {
+    fn static_ty(&mut self, def_id: DefId) -> ITy<'lty, 'tcx> {
         let lty = self.cx.static_ty(def_id);
         self.relabel_ty(lty)
     }
 
-
     /// Compute the type of an `Lvalue` and the maximum permissions for accessing it.
-    fn place_lty(&mut self, lv: &Place<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
+    fn place_lty(&mut self, lv: &Place<'tcx>) -> (ITy<'lty, 'tcx>, Perm<'lty>) {
         let (ty, perm, variant) = self.place_lty_downcast(lv);
         assert!(variant.is_none(), "expected non-Downcast result");
         (ty, perm)
     }
 
-    fn place_lty_downcast(&mut self,
-                           lv: &Place<'tcx>) -> (ITy<'tcx>, Perm<'tcx>, Option<VariantIdx>) {
-        match *lv {
-            Place::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
+    fn place_lty_downcast(
+        &mut self,
+        lv: &Place<'tcx>,
+    ) -> (ITy<'lty, 'tcx>, Perm<'lty>, Option<VariantIdx>) {
+        match lv {
+            Place::Base(PlaceBase::Local(l)) => (self.local_var_ty(*l), Perm::move_(), None),
 
-            Place::Static(ref s) => (self.static_ty(s.def_id), Perm::move_(), None),
-
-            Place::Promoted(ref _p) => {
-                // TODO: test this
-                let pty = lv.ty(self.mir, self.cx.tcx);
-                let ty = expect!([pty] PlaceTy::Ty { ty } => ty);
-                (self.local_ty(ty), Perm::read(), None)
+            Place::Base(PlaceBase::Static(ref s)) => match s.kind {
+                StaticKind::Static(def_id) => (self.static_ty(def_id), Perm::move_(), None),
+                StaticKind::Promoted(ref _p) => {
+                    // TODO: test this
+                    let pty = lv.ty(self.mir, self.cx.tcx);
+                    let ty = pty.ty;
+                    (self.local_ty(ty), Perm::read(), None)
+                }
             },
 
-            Place::Projection(ref p) => {
+            Place::Projection(box p) => {
                 let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&p.base);
 
                 // Sanity check
                 match p.elem {
-                    ProjectionElem::Field(..) => {},
+                    ProjectionElem::Field(..) => {}
                     _ => assert!(base_variant.is_none(), "expected non-Downcast result"),
                 }
 
                 match p.elem {
                     // Access permissions for a deref are the minimum of all pointers along the
                     // path to the value.
-                    ProjectionElem::Deref =>
-                        (base_ty.args[0],
-                         self.cx.min_perm(base_perm, base_ty.label.perm()),
-                         None),
-                    ProjectionElem::Field(f, _) =>
-                        (self.field_lty(
-                                base_ty, base_variant.unwrap_or(VariantIdx::from_usize(0)), f),
-                         base_perm,
-                         None),
-                    ProjectionElem::Index(ref _index_op) =>
-                        (base_ty.args[0], base_perm, None),
+                    ProjectionElem::Deref => (
+                        base_ty.args[0],
+                        self.cx.min_perm(base_perm, base_ty.label.perm()),
+                        None,
+                    ),
+                    ProjectionElem::Field(f, _) => (
+                        self.field_lty(
+                            base_ty,
+                            base_variant.unwrap_or(VariantIdx::from_usize(0)),
+                            f,
+                        ),
+                        base_perm,
+                        None,
+                    ),
+                    ProjectionElem::Index(ref _index_op) => (base_ty.args[0], base_perm, None),
                     ProjectionElem::ConstantIndex { .. } => unimplemented!(),
                     ProjectionElem::Subslice { .. } => unimplemented!(),
-                    ProjectionElem::Downcast(_, variant) =>
-                        (base_ty, base_perm, Some(variant)),
+                    ProjectionElem::Downcast(_, variant) => (base_ty, base_perm, Some(variant)),
                 }
-            },
+            }
         }
     }
 
-    fn field_lty(&mut self, base_ty: ITy<'tcx>, v: VariantIdx, f: Field) -> ITy<'tcx> {
+    fn field_lty(&mut self, base_ty: ITy<'lty, 'tcx>, v: VariantIdx, f: Field) -> ITy<'lty, 'tcx> {
         match base_ty.ty.sty {
             TyKind::Adt(adt, _substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
                 let poly_ty = self.static_ty(field_def.did);
                 self.ilcx.subst(poly_ty, &base_ty.args)
-            },
+            }
             TyKind::Tuple(_tys_) => base_ty.args[f.index()],
             _ => unimplemented!(),
         }
     }
 
-    fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
+    fn rvalue_lty(&mut self, rv: &Rvalue<'tcx>) -> (ITy<'lty, 'tcx>, Perm<'lty>) {
         let ty = rv.ty(self.mir, self.cx.tcx);
 
         match *rv {
@@ -300,82 +303,95 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 self.propagate(arr_ty.args[0], op_ty, op_perm);
 
                 (arr_ty, Perm::move_())
-            },
+            }
             Rvalue::Ref(_, _, ref lv) => {
                 let (ty, perm) = self.place_lty(lv);
                 let args = self.ilcx.mk_slice(&[ty]);
-                let ref_ty = self.ilcx.mk(rv.ty(self.mir, self.cx.tcx), args, Label::Ptr(perm));
+                let ref_ty = self
+                    .ilcx
+                    .mk(rv.ty(self.mir, self.cx.tcx), args, Label::Ptr(perm));
                 (ref_ty, Perm::move_())
-            },
+            }
             Rvalue::Len(_) => (self.local_ty(ty), Perm::move_()),
             Rvalue::Cast(_, ref op, cast_raw_ty) => {
                 let cast_ty = self.local_ty(cast_raw_ty);
                 let (op_ty, op_perm) = self.operand_lty(op);
                 self.propagate(cast_ty, op_ty, Perm::move_());
                 (cast_ty, op_perm)
-            },
-            Rvalue::BinaryOp(op, ref a, ref _b) |
-            Rvalue::CheckedBinaryOp(op, ref a, ref _b) => match op {
-                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem |
-                BinOp::BitXor | BinOp::BitAnd | BinOp::BitOr | BinOp::Shl | BinOp::Shr |
-                BinOp::Eq | BinOp::Lt | BinOp::Le | BinOp::Ne | BinOp::Ge | BinOp::Gt =>
-                    (self.local_ty(ty), Perm::move_()),
+            }
+            Rvalue::BinaryOp(op, ref a, ref _b) | Rvalue::CheckedBinaryOp(op, ref a, ref _b) => {
+                match op {
+                    BinOp::Add
+                    | BinOp::Sub
+                    | BinOp::Mul
+                    | BinOp::Div
+                    | BinOp::Rem
+                    | BinOp::BitXor
+                    | BinOp::BitAnd
+                    | BinOp::BitOr
+                    | BinOp::Shl
+                    | BinOp::Shr
+                    | BinOp::Eq
+                    | BinOp::Lt
+                    | BinOp::Le
+                    | BinOp::Ne
+                    | BinOp::Ge
+                    | BinOp::Gt => (self.local_ty(ty), Perm::move_()),
 
-                BinOp::Offset => self.operand_lty(a),
-            },
+                    BinOp::Offset => self.operand_lty(a),
+                }
+            }
             Rvalue::NullaryOp(_op, _ty) => unimplemented!(),
             Rvalue::UnaryOp(op, ref _a) => match op {
                 UnOp::Not | UnOp::Neg => (self.local_ty(ty), Perm::move_()),
             },
-            Rvalue::Discriminant(ref _lv) => (self.local_ty(ty), Perm::move_()),
-            Rvalue::Aggregate(ref kind, ref ops) => {
-                match **kind {
-                    AggregateKind::Array(ty) => {
-                        let array_ty = self.local_ty(ty);
-                        for op in ops {
-                            let (op_ty, op_perm) = self.operand_lty(op);
-                            self.propagate(array_ty.args[0], op_ty, op_perm);
-                        }
-                        (array_ty, Perm::move_())
-                    },
-                    AggregateKind::Tuple => {
-                        let tuple_ty = self.local_ty(ty);
-                        for (&elem_ty, op) in tuple_ty.args.iter().zip(ops.iter()) {
-                            let (op_ty, op_perm) = self.operand_lty(op);
-                            self.propagate(elem_ty, op_ty, op_perm);
-                        }
-                        (tuple_ty, Perm::move_())
-                    },
-                    AggregateKind::Adt(adt, disr, _substs, _annot, union_variant) => {
-                        let adt_ty = self.local_ty(ty);
+            Rvalue::Discriminant(ref _lv) => unimplemented!(),
+            Rvalue::Aggregate(ref kind, ref ops) => match **kind {
+                AggregateKind::Array(ty) => {
+                    let array_ty = self.local_ty(ty);
+                    for op in ops {
+                        let (op_ty, op_perm) = self.operand_lty(op);
+                        self.propagate(array_ty.args[0], op_ty, op_perm);
+                    }
+                    (array_ty, Perm::move_())
+                }
+                AggregateKind::Tuple => {
+                    let tuple_ty = self.local_ty(ty);
+                    for (&elem_ty, op) in tuple_ty.args.iter().zip(ops.iter()) {
+                        let (op_ty, op_perm) = self.operand_lty(op);
+                        self.propagate(elem_ty, op_ty, op_perm);
+                    }
+                    (tuple_ty, Perm::move_())
+                }
+                AggregateKind::Adt(adt, disr, _substs, _annot, union_variant) => {
+                    let adt_ty = self.local_ty(ty);
 
-                        if let Some(union_variant) = union_variant {
-                            assert!(ops.len() == 1);
-                            let field_def_id = adt.non_enum_variant().fields[union_variant].did;
+                    if let Some(union_variant) = union_variant {
+                        assert!(ops.len() == 1);
+                        let field_def_id = adt.non_enum_variant().fields[union_variant].did;
+                        let poly_field_ty = self.static_ty(field_def_id);
+                        let field_ty = self.ilcx.subst(poly_field_ty, adt_ty.args);
+                        let (op_ty, op_perm) = self.operand_lty(&ops[0]);
+                        self.propagate(field_ty, op_ty, op_perm);
+                    } else {
+                        for (i, op) in ops.iter().enumerate() {
+                            let field_def_id = adt.variants[disr].fields[i].did;
                             let poly_field_ty = self.static_ty(field_def_id);
                             let field_ty = self.ilcx.subst(poly_field_ty, adt_ty.args);
-                            let (op_ty, op_perm) = self.operand_lty(&ops[0]);
+                            let (op_ty, op_perm) = self.operand_lty(op);
                             self.propagate(field_ty, op_ty, op_perm);
-                        } else {
-                            for (i, op) in ops.iter().enumerate() {
-                                let field_def_id = adt.variants[disr].fields[i].did;
-                                let poly_field_ty = self.static_ty(field_def_id);
-                                let field_ty = self.ilcx.subst(poly_field_ty, adt_ty.args);
-                                let (op_ty, op_perm) = self.operand_lty(op);
-                                self.propagate(field_ty, op_ty, op_perm);
-                            }
                         }
+                    }
 
-                        (adt_ty, Perm::move_())
-                    },
-                    AggregateKind::Closure(_, _) => unimplemented!(),
-                    AggregateKind::Generator(_, _, _) => unimplemented!(),
+                    (adt_ty, Perm::move_())
                 }
+                AggregateKind::Closure(_, _) => unimplemented!(),
+                AggregateKind::Generator(_, _, _) => unimplemented!(),
             },
         }
     }
 
-    fn operand_lty(&mut self, op: &Operand<'tcx>) -> (ITy<'tcx>, Perm<'tcx>) {
+    fn operand_lty(&mut self, op: &Operand<'tcx>) -> (ITy<'lty, 'tcx>, Perm<'lty>) {
         match *op {
             Operand::Copy(ref lv) => self.place_lty(lv),
             Operand::Move(ref lv) => self.place_lty(lv),
@@ -386,17 +402,16 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                     self.insts[inst_idx].span = Some(c.span);
                 }
                 (lty, Perm::move_())
-            },
+            }
         }
     }
-
 
     /// Handle an assignment, including the implicit assignments of function arguments and return
     /// values.  An assignment can include an implicit reborrow, reducing the permission of the
     /// topmost pointer type.  The resulting permission must be no higher than the permission of
     /// the RHS pointer, and also must be no higher than the permission of any pointer dereferenced
     /// on the path to the RHS.
-    fn propagate(&mut self, lhs: ITy<'tcx>, rhs: ITy<'tcx>, path_perm: Perm<'tcx>) {
+    fn propagate(&mut self, lhs: ITy<'lty, 'tcx>, rhs: ITy<'lty, 'tcx>, path_perm: Perm<'lty>) {
         if let (Label::Ptr(l_perm), Label::Ptr(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
 
@@ -418,7 +433,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         }
     }
 
-    fn propagate_eq(&mut self, lhs: ITy<'tcx>, rhs: ITy<'tcx>) {
+    fn propagate_eq(&mut self, lhs: ITy<'lty, 'tcx>, rhs: ITy<'lty, 'tcx>) {
         if let (Label::Ptr(l_perm), Label::Ptr(r_perm)) = (lhs.label, rhs.label) {
             self.propagate_perm(l_perm, r_perm);
             self.propagate_perm(r_perm, l_perm);
@@ -433,7 +448,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         }
     }
 
-    fn propagate_perm(&mut self, p1: Perm<'tcx>, p2: Perm<'tcx>) {
+    fn propagate_perm(&mut self, p1: Perm<'lty>, p2: Perm<'lty>) {
         eprintln!("ADD: {:?} <= {:?}", p1, p2);
         self.cset.add(p1, p2);
     }
@@ -442,9 +457,12 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         let (callee, first1, first2) = {
             let inst1 = &self.insts[idx1];
             let inst2 = &self.insts[idx2];
-            assert!(inst1.callee == inst2.callee,
-                    "impossible - tried to unify unequal FnDefs ({:?} != {:?})",
-                    inst1.callee, inst2.callee);
+            assert!(
+                inst1.callee == inst2.callee,
+                "impossible - tried to unify unequal FnDefs ({:?} != {:?})",
+                inst1.callee,
+                inst2.callee
+            );
 
             if inst1.first_inst_var == inst2.first_inst_var {
                 // The vars are already the same - no work to do
@@ -455,7 +473,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         };
 
         let num_vars = self.cx.variant_summ(callee).0.num_sig_vars;
-        for offset in 0 .. num_vars {
+        for offset in 0..num_vars {
             let p1 = Perm::InstVar(Var(first1 + offset));
             let p2 = Perm::InstVar(Var(first2 + offset));
             self.propagate_perm(p1, p2);
@@ -463,8 +481,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
         }
     }
 
-
-    fn ty_fn_sig(&mut self, ty: ITy<'tcx>) -> IFnSig<'tcx> {
+    fn ty_fn_sig(&mut self, ty: ITy<'lty, 'tcx>) -> IFnSig<'lty, 'tcx> {
         match ty.ty.sty {
             TyKind::FnDef(did, _substs) => {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
@@ -490,13 +507,11 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                     inputs: self.ilcx.subst_slice(poly_inputs, ty.args),
                     output: self.ilcx.subst(poly_output, ty.args),
                 }
-            },
+            }
 
-            TyKind::FnPtr(_) => {
-                FnSig {
-                    inputs: &ty.args[.. ty.args.len() - 1],
-                    output: ty.args[ty.args.len() - 1],
-                }
+            TyKind::FnPtr(_) => FnSig {
+                inputs: &ty.args[..ty.args.len() - 1],
+                output: ty.args[ty.args.len() - 1],
             },
 
             TyKind::Closure(_, _) => unimplemented!(),
@@ -528,36 +543,44 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                 // with them without analysing the actual asm code.
                 StatementKind::InlineAsm { .. } |
                 StatementKind::Retag { .. } |
-                StatementKind::EscapeToRaw(_) |
                 StatementKind::AscribeUserType(..) |
                 StatementKind::Nop => {},
             }
         }
 
         match bb.terminator().kind {
-            TerminatorKind::Goto { .. } |
-            TerminatorKind::FalseEdges { .. } |
-            TerminatorKind::FalseUnwind { .. } |
-            TerminatorKind::SwitchInt { .. } |
-            TerminatorKind::Resume |
-            TerminatorKind::Return |
-            TerminatorKind::Unreachable |
-            TerminatorKind::Drop { .. } |
-            TerminatorKind::Assert { .. } |
-            TerminatorKind::Yield { .. } |
-            TerminatorKind::GeneratorDrop |
-            TerminatorKind::Abort => {},
+            TerminatorKind::Goto { .. }
+            | TerminatorKind::FalseEdges { .. }
+            | TerminatorKind::FalseUnwind { .. }
+            | TerminatorKind::SwitchInt { .. }
+            | TerminatorKind::Resume
+            | TerminatorKind::Return
+            | TerminatorKind::Unreachable
+            | TerminatorKind::Drop { .. }
+            | TerminatorKind::Assert { .. }
+            | TerminatorKind::Yield { .. }
+            | TerminatorKind::GeneratorDrop
+            | TerminatorKind::Abort => {}
 
-            TerminatorKind::DropAndReplace { ref location, ref value, .. } => {
+            TerminatorKind::DropAndReplace {
+                ref location,
+                ref value,
+                ..
+            } => {
                 let (loc_ty, loc_perm) = self.place_lty(location);
                 let (val_ty, val_perm) = self.operand_lty(value);
                 self.propagate(loc_ty, val_ty, val_perm);
                 self.propagate_perm(Perm::write(), loc_perm);
                 eprintln!("    {:?}: {:?}", location, loc_ty);
                 eprintln!("    ^-- {:?}: {:?}", value, val_ty);
-            },
+            }
 
-            TerminatorKind::Call { ref func, ref args, ref destination, .. } => {
+            TerminatorKind::Call {
+                ref func,
+                ref args,
+                ref destination,
+                ..
+            } => {
                 eprintln!("    call {:?}", func);
                 let (func_ty, _func_perm) = self.operand_lty(func);
                 eprintln!("fty = {:?}", func_ty);
@@ -578,7 +601,7 @@ impl<'c, 'a, 'tcx> IntraCtxt<'c, 'a, 'tcx> {
                     eprintln!("    {:?}: {:?}", dest, dest_ty);
                     eprintln!("    ^-- (return): {:?}", sig_ty);
                 }
-            },
+            }
         }
     }
 }

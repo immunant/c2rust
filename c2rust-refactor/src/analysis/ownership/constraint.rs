@@ -1,7 +1,7 @@
 //! `ConstraintSet` and related definitions.
 use std::cmp;
-use std::collections::Bound;
 use std::collections::btree_set::{self, BTreeSet};
+use std::collections::Bound;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
@@ -9,10 +9,9 @@ use arena::SyncDroplessArena;
 
 use super::{ConcretePerm, PermVar, Var};
 
-
 /// A permission expression.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub enum Perm<'tcx> {
+pub enum Perm<'lty> {
     /// A concrete permission.
     Concrete(ConcretePerm),
 
@@ -20,7 +19,7 @@ pub enum Perm<'tcx> {
     /// permissions, not `Min`s.
     // Weird ordering, but it's necessary for `perm_range` - we need a way to write down the
     // largest and smallest possible `Perm`s, and the largest/smallest `Min` is hard to get.
-    Min(&'tcx [Perm<'tcx>]),
+    Min(&'lty [Perm<'lty>]),
 
     // Wrappers around the various `PermVar`s.
     StaticVar(Var),
@@ -29,20 +28,20 @@ pub enum Perm<'tcx> {
     LocalVar(Var),
 }
 
-impl<'tcx> Perm<'tcx> {
-    pub fn read() -> Perm<'tcx> {
+impl<'lty, 'tcx> Perm<'lty> {
+    pub fn read() -> Perm<'lty> {
         Perm::Concrete(ConcretePerm::Read)
     }
 
-    pub fn write() -> Perm<'tcx> {
+    pub fn write() -> Perm<'lty> {
         Perm::Concrete(ConcretePerm::Write)
     }
 
-    pub fn move_() -> Perm<'tcx> {
+    pub fn move_() -> Perm<'lty> {
         Perm::Concrete(ConcretePerm::Move)
     }
 
-    pub fn var(pv: PermVar) -> Perm<'tcx> {
+    pub fn var(pv: PermVar) -> Perm<'lty> {
         match pv {
             PermVar::Static(v) => Perm::StaticVar(v),
             PermVar::Sig(v) => Perm::SigVar(v),
@@ -64,12 +63,13 @@ impl<'tcx> Perm<'tcx> {
 
     /// Construct the minimum of two permissions.  This needs a reference to the arena, since it
     /// may need to allocate a new slice for `Min`.
-    pub fn min(a: Perm<'tcx>, b: Perm<'tcx>, arena: &'tcx SyncDroplessArena) -> Perm<'tcx> {
+    pub fn min(a: Perm<'lty>, b: Perm<'lty>, arena: &'lty SyncDroplessArena) -> Perm<'lty> {
         eprintln!("finding min of {:?} and {:?}", a, b);
         match (a, b) {
             // A few easy cases
-            (Perm::Concrete(ConcretePerm::Read), _) |
-            (_, Perm::Concrete(ConcretePerm::Read)) => Perm::read(),
+            (Perm::Concrete(ConcretePerm::Read), _) | (_, Perm::Concrete(ConcretePerm::Read)) => {
+                Perm::read()
+            }
 
             (Perm::Concrete(ConcretePerm::Move), p) => p,
             (p, Perm::Concrete(ConcretePerm::Move)) => p,
@@ -82,12 +82,14 @@ impl<'tcx> Perm<'tcx> {
                         all.push(p);
                     }
                 }
-                let all =
-                    if all.len() == 0 { &[] as &[_] }
-                    else { arena.alloc_slice(&all) };
+                let all = if all.len() == 0 {
+                    &[] as &[_]
+                } else {
+                    arena.alloc_slice(&all)
+                };
                 eprintln!("nontrivial min: {:?}", all);
                 Perm::Min(all)
-            },
+            }
 
             (Perm::Min(ps), p) | (p, Perm::Min(ps)) => {
                 if ps.contains(&p) {
@@ -96,13 +98,15 @@ impl<'tcx> Perm<'tcx> {
                     let mut all = Vec::with_capacity(ps.len() + 1);
                     all.extend(ps.iter().cloned());
                     all.push(p);
-                    let all =
-                        if all.len() == 0 { &[] as &[_] }
-                        else { arena.alloc_slice(&all) };
+                    let all = if all.len() == 0 {
+                        &[] as &[_]
+                    } else {
+                        arena.alloc_slice(&all)
+                    };
                     eprintln!("nontrivial min: {:?}", all);
                     Perm::Min(all)
                 }
-            },
+            }
 
             (a, b) => {
                 if a == b {
@@ -118,7 +122,7 @@ impl<'tcx> Perm<'tcx> {
 
     /// Check if `other` appears somewhere within `self`.  Note this checks syntactic presence
     /// only, not any kind of subtyping relation.
-    pub fn contains(&self, other: Perm<'tcx>) -> bool {
+    pub fn contains(&self, other: Perm<'lty>) -> bool {
         if *self == other {
             return true;
         }
@@ -130,12 +134,15 @@ impl<'tcx> Perm<'tcx> {
 
     /// Modify `self` by replacing `old` with each element of `news` in turn, yielding each result
     /// to `callback`.
-    pub fn for_each_replacement<F>(&self,
-                                   arena: &'tcx SyncDroplessArena,
-                                   old: Perm<'tcx>,
-                                   news: &[Perm<'tcx>],
-                                   mut callback: F)
-            where F: FnMut(Perm<'tcx>) {
+    pub fn for_each_replacement<F>(
+        &self,
+        arena: &'lty SyncDroplessArena,
+        old: Perm<'lty>,
+        news: &[Perm<'lty>],
+        mut callback: F,
+    ) where
+        F: FnMut(Perm<'lty>),
+    {
         if *self == old {
             // Easy case
             for &new in news {
@@ -151,7 +158,7 @@ impl<'tcx> Perm<'tcx> {
                 // be done.
                 callback(*self);
                 return;
-            },
+            }
         };
 
         let mut buf = self_ps.to_owned();
@@ -166,12 +173,12 @@ impl<'tcx> Perm<'tcx> {
                             buf.push(p);
                         }
                     }
-                },
+                }
                 _ => {
                     if !buf.contains(&new) {
                         buf.push(new);
                     }
-                },
+                }
             }
 
             if buf.len() == 1 {
@@ -185,101 +192,111 @@ impl<'tcx> Perm<'tcx> {
     }
 
     /// Iterater over each atomic (non-`Min`) permission that appears in `self`.
-    pub fn for_each_atom<F: FnMut(Perm<'tcx>)>(&self, callback: &mut F) {
+    pub fn for_each_atom<F: FnMut(Perm<'lty>)>(&self, callback: &mut F) {
         match *self {
             Perm::Min(ps) => {
                 for &p in ps {
                     p.for_each_atom(callback);
                 }
-            },
+            }
             _ => callback(*self),
         }
     }
 }
-
 
 /// A set of constraints over permission expressions, of the form `p1 <= p2`.
 ///
 /// Note that most of the more complex operations are imprecise (unsound) in certain cases
 /// involving `Min`.  Fortunately, these cases seem not to come up often in practice.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct ConstraintSet<'tcx> {
-    less: BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
-    greater: BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
+pub struct ConstraintSet<'lty> {
+    less: BTreeSet<(Perm<'lty>, Perm<'lty>)>,
+    greater: BTreeSet<(Perm<'lty>, Perm<'lty>)>,
 }
 
 /// Return a pair of bounds, suitable for use with `BTreeSet::range`, covering all pairs of
 /// permissions whose first element is `p`.
-fn perm_range(p: Perm) -> (Bound<(Perm, Perm)>, Bound<(Perm, Perm)>) {
-    (Bound::Included((p, Perm::read())),
-     Bound::Included((p, Perm::LocalVar(Var(!0)))))
+fn perm_range<'lty, 'tcx>(
+    p: Perm<'lty>,
+) -> (
+    Bound<(Perm<'lty>, Perm<'lty>)>,
+    Bound<(Perm<'lty>, Perm<'lty>)>,
+) {
+    (
+        Bound::Included((p, Perm::read())),
+        Bound::Included((p, Perm::LocalVar(Var(!0)))),
+    )
 }
 
-impl<'tcx> ConstraintSet<'tcx> {
-    pub fn new() -> ConstraintSet<'tcx> {
+impl<'lty, 'tcx> ConstraintSet<'lty> {
+    pub fn new() -> ConstraintSet<'lty> {
         ConstraintSet {
             less: BTreeSet::new(),
             greater: BTreeSet::new(),
         }
     }
 
-    pub fn iter(&self) -> btree_set::Iter<(Perm<'tcx>, Perm<'tcx>)> {
+    pub fn iter(&self) -> btree_set::Iter<(Perm<'lty>, Perm<'lty>)> {
         self.less.iter()
     }
 
-    pub fn add(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
+    pub fn add(&mut self, a: Perm<'lty>, b: Perm<'lty>) {
         self.less.insert((a, b));
         self.greater.insert((b, a));
     }
 
     /// Add all constraints from `other` to `self`.
-    pub fn import(&mut self, other: &ConstraintSet<'tcx>) {
+    pub fn import(&mut self, other: &ConstraintSet<'lty>) {
         debug!("IMPORT {} constraints", other.less.len());
-        self.less.extend(other.less.iter().cloned().filter(|&(ref a, ref b)| {
-            debug!("IMPORT CONSTRAINT: {:?} <= {:?}", a, b);
-            true
-        }));
+        self.less
+            .extend(other.less.iter().cloned().filter(|&(ref a, ref b)| {
+                debug!("IMPORT CONSTRAINT: {:?} <= {:?}", a, b);
+                true
+            }));
         self.greater.extend(other.greater.iter().cloned());
     }
 
     /// For each constraint in `other`, substitute all atomic permissions using the callback `f`,
     /// then add the constraint to `self`.
-    pub fn import_substituted<F>(&mut self,
-                                 other: &ConstraintSet<'tcx>,
-                                 arena: &'tcx SyncDroplessArena,
-                                 f: F)
-            where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
+    pub fn import_substituted<F>(
+        &mut self,
+        other: &ConstraintSet<'lty>,
+        arena: &'lty SyncDroplessArena,
+        f: F,
+    ) where
+        F: Fn(Perm<'lty>) -> Perm<'lty>,
+    {
         debug!("IMPORT {} constraints (substituted)", other.less.len());
 
-        let subst_one = |p| {
-            match p {
-                Perm::Min(ps) => {
-                    let mut buf = Vec::with_capacity(ps.len());
-                    for &p in ps {
-                        let q = f(p);
-                        if !buf.contains(&q) {
-                            buf.push(q);
-                        }
+        let subst_one = |p| match p {
+            Perm::Min(ps) => {
+                let mut buf = Vec::with_capacity(ps.len());
+                for &p in ps {
+                    let q = f(p);
+                    if !buf.contains(&q) {
+                        buf.push(q);
                     }
-                    Perm::Min(arena.alloc_slice(&buf))
-                },
-                p => f(p),
+                }
+                Perm::Min(arena.alloc_slice(&buf))
             }
+            p => f(p),
         };
 
         for &(a, b) in other.less.iter() {
             let (a2, b2) = (subst_one(a), subst_one(b));
-            debug!("IMPORT CONSTRANT: {:?} <= {:?} (substituted from {:?} <= {:?})",
-                   a2, b2, a, b);
+            debug!(
+                "IMPORT CONSTRANT: {:?} <= {:?} (substituted from {:?} <= {:?})",
+                a2, b2, a, b
+            );
             self.add(a2, b2);
         }
     }
 
     /// Clone `self`, substituting each atomic permission using the callback `f`.
-    pub fn clone_substituted<F>(&self,
-                                arena: &'tcx SyncDroplessArena,
-                                f: F) -> ConstraintSet<'tcx>
-            where F: Fn(Perm<'tcx>) -> Perm<'tcx> {
+    pub fn clone_substituted<F>(&self, arena: &'lty SyncDroplessArena, f: F) -> ConstraintSet<'lty>
+    where
+        F: Fn(Perm<'lty>) -> Perm<'lty>,
+    {
         let mut new_cset = ConstraintSet::new();
         new_cset.import_substituted(self, arena, f);
         new_cset
@@ -287,10 +304,10 @@ impl<'tcx> ConstraintSet<'tcx> {
 
     /// Run a breadth-first search over `map`, starting from `p`.  Runs callback `f` on each
     /// encountered permission.
-    fn traverse_constraints<F>(map: &BTreeSet<(Perm<'tcx>, Perm<'tcx>)>,
-                               p: Perm<'tcx>,
-                               mut f: F)
-            where F: FnMut(Perm<'tcx>) -> bool {
+    fn traverse_constraints<F>(map: &BTreeSet<(Perm<'lty>, Perm<'lty>)>, p: Perm<'lty>, mut f: F)
+    where
+        F: FnMut(Perm<'lty>) -> bool,
+    {
         let mut seen = HashSet::new();
         let mut queue = VecDeque::new();
 
@@ -315,8 +332,10 @@ impl<'tcx> ConstraintSet<'tcx> {
     ///
     /// This only traverses chains of `q <= p`, `r <= q`, etc.  It doesn't do anything intelligent
     /// regarding `Min`.
-    pub fn for_each_less_than<F>(&self, p: Perm<'tcx>, f: F)
-            where F: FnMut(Perm<'tcx>) -> bool {
+    pub fn for_each_less_than<F>(&self, p: Perm<'lty>, f: F)
+    where
+        F: FnMut(Perm<'lty>) -> bool,
+    {
         Self::traverse_constraints(&self.greater, p, f);
     }
 
@@ -324,8 +343,10 @@ impl<'tcx> ConstraintSet<'tcx> {
     ///
     /// This only traverses chains of `p <= q`, `q <= r`, etc.  It doesn't do anything intelligent
     /// regarding `Min`.
-    pub fn for_each_greater_than<F>(&self, p: Perm<'tcx>, f: F)
-            where F: FnMut(Perm<'tcx>) -> bool {
+    pub fn for_each_greater_than<F>(&self, p: Perm<'lty>, f: F)
+    where
+        F: FnMut(Perm<'lty>) -> bool,
+    {
         Self::traverse_constraints(&self.less, p, f);
     }
 
@@ -334,21 +355,19 @@ impl<'tcx> ConstraintSet<'tcx> {
     ///
     /// This function may return a lower result than necessary due to imprecise reasoning about
     /// `Min`.
-    pub fn lower_bound(&self, p: Perm<'tcx>) -> ConcretePerm {
+    pub fn lower_bound(&self, p: Perm<'lty>) -> ConcretePerm {
         match p {
             Perm::Concrete(p) => return p,
-            _ => {},
+            _ => {}
         }
 
         let mut bound = ConcretePerm::Read;
-        self.for_each_less_than(p, |p| {
-            match p {
-                Perm::Concrete(p) => {
-                    bound = cmp::max(bound, p);
-                    false
-                },
-                _ => true,
+        self.for_each_less_than(p, |p| match p {
+            Perm::Concrete(p) => {
+                bound = cmp::max(bound, p);
+                false
             }
+            _ => true,
         });
 
         bound
@@ -359,21 +378,19 @@ impl<'tcx> ConstraintSet<'tcx> {
     ///
     /// This function may return a higher result than necessary due to imprecise reasoning about
     /// `Min`.
-    pub fn upper_bound(&self, p: Perm<'tcx>) -> ConcretePerm {
+    pub fn upper_bound(&self, p: Perm<'lty>) -> ConcretePerm {
         match p {
             Perm::Concrete(p) => return p,
-            _ => {},
+            _ => {}
         }
 
         let mut bound = ConcretePerm::Move;
-        self.for_each_greater_than(p, |p| {
-            match p {
-                Perm::Concrete(p) => {
-                    bound = cmp::min(bound, p);
-                    false
-                },
-                _ => true,
+        self.for_each_greater_than(p, |p| match p {
+            Perm::Concrete(p) => {
+                bound = cmp::min(bound, p);
+                false
             }
+            _ => true,
         });
 
         bound
@@ -387,11 +404,15 @@ impl<'tcx> ConstraintSet<'tcx> {
     /// (strictly) partial assignments, it may report that a satisfying assignment is possible when
     /// it's not, but never the other way around.
     pub fn check_partial_assignment<F>(&self, eval: F) -> bool
-            where F: Fn(Perm<'tcx>) -> Option<ConcretePerm> {
+    where
+        F: Fn(Perm<'lty>) -> Option<ConcretePerm>,
+    {
         /// Evaluate a permission, recursing into `Perm::Min`s.  Returns the computed permission
         /// value along with two boolean flags `any_missing` and `all_missing`.
-        fn eval_rec<'tcx, F>(p: Perm<'tcx>, eval: &F) -> (ConcretePerm, bool, bool)
-                where F: Fn(Perm<'tcx>) -> Option<ConcretePerm> {
+        fn eval_rec<'lty, 'tcx, F>(p: Perm<'lty>, eval: &F) -> (ConcretePerm, bool, bool)
+        where
+            F: Fn(Perm<'lty>) -> Option<ConcretePerm>,
+        {
             match p {
                 Perm::Concrete(c) => (c, false, false),
                 Perm::Min(ps) => {
@@ -405,15 +426,15 @@ impl<'tcx> ConstraintSet<'tcx> {
                         any_missing |= any;
                         all_missing &= all;
                     }
-                    (min, any_missing, all_missing) 
-                },
+                    (min, any_missing, all_missing)
+                }
                 p => {
                     if let Some(c) = eval(p) {
                         (c, false, false)
                     } else {
                         (ConcretePerm::Move, true, true)
                     }
-                },
+                }
             }
         }
 
@@ -445,7 +466,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     }
 
     /// Obtain an editing cursor for this constraint set.
-    pub fn edit<'a>(&'a mut self) -> EditConstraintSet<'a, 'tcx> {
+    pub fn edit<'a>(&'a mut self) -> EditConstraintSet<'a, 'lty> {
         let to_visit = self.less.iter().cloned().collect();
         EditConstraintSet {
             cset: self,
@@ -454,7 +475,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     }
 
     /// Iterate over each atomic permission in each constraint.
-    pub fn for_each_perm<F: FnMut(Perm<'tcx>)>(&self, mut f: F) {
+    pub fn for_each_perm<F: FnMut(Perm<'lty>)>(&self, mut f: F) {
         for &(a, b) in &self.less {
             a.for_each_atom(&mut f);
             b.for_each_atom(&mut f);
@@ -463,17 +484,17 @@ impl<'tcx> ConstraintSet<'tcx> {
 }
 
 /// Editing cursor, for visiting every constraint while adding/removing as you go.
-pub struct EditConstraintSet<'a, 'tcx: 'a> {
+pub struct EditConstraintSet<'a, 'lty> {
     /// The underlying constraint set.
-    cset: &'a mut ConstraintSet<'tcx>,
+    cset: &'a mut ConstraintSet<'lty>,
 
     /// Queue of constraints that have yet to be visited.
-    to_visit: VecDeque<(Perm<'tcx>, Perm<'tcx>)>,
+    to_visit: VecDeque<(Perm<'lty>, Perm<'lty>)>,
 }
 
-impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
+impl<'a, 'lty> EditConstraintSet<'a, 'lty> {
     /// Obtain the next constraint if there are any left to be processed.
-    pub fn next(&mut self) -> Option<(Perm<'tcx>, Perm<'tcx>)> {
+    pub fn next(&mut self) -> Option<(Perm<'lty>, Perm<'lty>)> {
         while let Some((a, b)) = self.to_visit.pop_front() {
             if self.cset.less.contains(&(a, b)) {
                 return Some((a, b));
@@ -484,7 +505,7 @@ impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
 
     /// Add a new constraint.  If the constraint didn't already exist, it will be queued up to be
     /// visited in the future.
-    pub fn add(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
+    pub fn add(&mut self, a: Perm<'lty>, b: Perm<'lty>) {
         if self.cset.less.contains(&(a, b)) {
             return;
         }
@@ -494,7 +515,7 @@ impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
     }
 
     /// Add a constraint, but never queue it up for future visiting.
-    pub fn add_no_visit(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
+    pub fn add_no_visit(&mut self, a: Perm<'lty>, b: Perm<'lty>) {
         if self.cset.less.contains(&(a, b)) {
             return;
         }
@@ -503,15 +524,14 @@ impl<'a, 'tcx> EditConstraintSet<'a, 'tcx> {
     }
 
     /// Remove a constraint.
-    pub fn remove(&mut self, a: Perm<'tcx>, b: Perm<'tcx>) {
+    pub fn remove(&mut self, a: Perm<'lty>, b: Perm<'lty>) {
         self.cset.less.remove(&(a, b));
         self.cset.greater.remove(&(b, a));
         // If it remains in `to_visit`, it will be skipped by `next`.
     }
 }
 
-
-impl<'tcx> ConstraintSet<'tcx> {
+impl<'lty, 'tcx> ConstraintSet<'lty> {
     /// Remove constraints that are obviously useless, like `READ <= p`.
     pub fn remove_useless(&mut self) {
         let mut edit = self.edit();
@@ -542,15 +562,15 @@ impl<'tcx> ConstraintSet<'tcx> {
                     for &p in ps {
                         edit.add(a, p);
                     }
-                },
-                _ => {},
+                }
+                _ => {}
             }
         }
     }
 
     /// Simplify `min(...) <= ...` constraints as much as possible.  Unlike `... <= min(...)`, it
     /// may not always be possible to completely eliminate such constraints.
-    pub fn simplify_min_lhs(&mut self, arena: &'tcx SyncDroplessArena) {
+    pub fn simplify_min_lhs(&mut self, arena: &'lty SyncDroplessArena) {
         let mut edit = self.edit();
 
         'next: while let Some((a, b)) = edit.next() {
@@ -617,19 +637,31 @@ impl<'tcx> ConstraintSet<'tcx> {
                 }
             }
 
-            assert!(to_remove.len() < ps.len(), "tried to remove all arguments of `min`");
+            assert!(
+                to_remove.len() < ps.len(),
+                "tried to remove all arguments of `min`"
+            );
             if to_remove.len() == ps.len() - 1 {
                 // `min(p)` is the same as just `p`.
                 edit.remove(a, b);
-                let (_, p) = ps.iter().cloned().enumerate()
-                    .filter(|&(i, _)| !to_remove.contains(&i)).next().unwrap();
+                let (_, p) = ps
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .filter(|&(i, _)| !to_remove.contains(&i))
+                    .next()
+                    .unwrap();
                 debug!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, p, b);
                 edit.add(p, b);
             } else if to_remove.len() > 0 {
                 edit.remove(a, b);
-                let ps = ps.iter().cloned().enumerate()
+                let ps = ps
+                    .iter()
+                    .cloned()
+                    .enumerate()
                     .filter(|&(i, _)| !to_remove.contains(&i))
-                    .map(|(_, p)| p).collect::<Vec<_>>();
+                    .map(|(_, p)| p)
+                    .collect::<Vec<_>>();
                 let new_min = Perm::Min(arena.alloc_slice(&ps));
                 debug!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, new_min, b);
                 edit.add(new_min, b);
@@ -639,7 +671,7 @@ impl<'tcx> ConstraintSet<'tcx> {
     }
 
     /// Simplify the constraint set as best we can.
-    pub fn simplify(&mut self, arena: &'tcx SyncDroplessArena) {
+    pub fn simplify(&mut self, arena: &'lty SyncDroplessArena) {
         self.remove_useless();
         self.expand_min_rhs();
         self.simplify_min_lhs(arena);
@@ -651,20 +683,22 @@ impl<'tcx> ConstraintSet<'tcx> {
     ///
     /// This may be imprecise if a removed permission appears as an argument of a `Min`.  Simplify
     /// the constraint set first to remove as many `Min`s as possible before using this function.
-    pub fn retain_perms<F>(&mut self, arena: &'tcx SyncDroplessArena, filter: F)
-            where F: Fn(Perm<'tcx>) -> bool {
+    pub fn retain_perms<F>(&mut self, arena: &'lty SyncDroplessArena, filter: F)
+    where
+        F: Fn(Perm<'lty>) -> bool,
+    {
         // Collect all atomic permissions that appear in the constraint set.
         let mut atomic_perms = HashSet::new();
-        fn collect_atomic<'tcx>(p: Perm<'tcx>, dest: &mut HashSet<Perm<'tcx>>) {
+        fn collect_atomic<'lty, 'tcx>(p: Perm<'lty>, dest: &mut HashSet<Perm<'lty>>) {
             match p {
                 Perm::Min(ps) => {
                     for &p in ps {
                         collect_atomic(p, dest);
                     }
-                },
+                }
                 _ => {
                     dest.insert(p);
-                },
+                }
             }
         }
         for &(p1, p2) in &self.less {
@@ -681,10 +715,18 @@ impl<'tcx> ConstraintSet<'tcx> {
             debug!("removing perm {:?}", p);
 
             // Perms less than `p`, and perms greater than `p`.
-            let less = self.greater.range(perm_range(p))
-                .map(|&(_, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
-            let greater = self.less.range(perm_range(p))
-                .map(|&(_, b)| b).filter(|&b| b != p).collect::<Vec<_>>();
+            let less = self
+                .greater
+                .range(perm_range(p))
+                .map(|&(_, b)| b)
+                .filter(|&b| b != p)
+                .collect::<Vec<_>>();
+            let greater = self
+                .less
+                .range(perm_range(p))
+                .map(|&(_, b)| b)
+                .filter(|&b| b != p)
+                .collect::<Vec<_>>();
             debug!("    less: {:?}", less);
             debug!("    greater: {:?}", greater);
 
@@ -709,4 +751,3 @@ impl<'tcx> ConstraintSet<'tcx> {
         }
     }
 }
-

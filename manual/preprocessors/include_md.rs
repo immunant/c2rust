@@ -4,7 +4,7 @@
  * This file is subject to the terms of the Mozilla Public License, v. 2.0. If a
  * copy of the MPL was not distributed with this file, you can obtain one at
  * http://mozilla.org/MPL/2.0/.
- * 
+ *
  * Original authors of mdbook: Mathieu David <mathieudavid@mathieudavid.org>",
  * "Michael-F-Bryan <michaelfbryan@gmail.com>", "Matt Ickstadt
  * <mattico8@gmail.com>
@@ -23,8 +23,8 @@ extern crate regex;
 extern crate serde_json;
 
 use std::io;
-use std::process;
 use std::path::{Path, PathBuf};
+use std::process;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 use mdbook::book::{Book, BookItem};
@@ -32,7 +32,7 @@ use mdbook::errors::*;
 use mdbook::preprocess::{CmdPreprocessor, Preprocessor, PreprocessorContext};
 use mdbook::utils::fs::file_to_string;
 use mdbook::utils::normalize_id;
-use pulldown_cmark::{Parser, Event, Tag};
+use pulldown_cmark::{Event, Parser, Tag};
 use pulldown_cmark_to_cmark::fmt::cmark;
 use regex::{CaptureMatches, Captures, Regex};
 
@@ -42,7 +42,8 @@ pub fn make_app() -> App<'static, 'static> {
         .subcommand(
             SubCommand::with_name("supports")
                 .arg(Arg::with_name("renderer").required(true))
-                .about("Check whether a renderer is supported by this preprocessor"))
+                .about("Check whether a renderer is supported by this preprocessor"),
+        )
 }
 
 fn main() {
@@ -88,7 +89,6 @@ fn handle_supports(_pre: &dyn Preprocessor, _sub_args: &ArgMatches) -> ! {
     // All renderers are supported
     process::exit(0);
 }
-
 
 const ESCAPE_CHAR: char = '\\';
 const MAX_LINK_NESTED_DEPTH: usize = 10;
@@ -150,12 +150,7 @@ where
             Ok(new_content) => {
                 if depth < MAX_LINK_NESTED_DEPTH {
                     if let Some(rel_path) = link.link.relative_path(path) {
-                        replaced.push_str(&replace_all(
-                            &new_content,
-                            rel_path,
-                            source,
-                            depth + 1,
-                        ));
+                        replaced.push_str(&replace_all(&new_content, rel_path, source, depth + 1));
                     } else {
                         replaced.push_str(&new_content);
                     }
@@ -196,8 +191,7 @@ impl LinkType {
         let base = base.as_ref();
         match self {
             LinkType::Escaped => None,
-            LinkType::IncludeMDFile(p) |
-            LinkType::IncludeMDSection(p, _) => {
+            LinkType::IncludeMDFile(p) | LinkType::IncludeMDSection(p, _) => {
                 Some(return_relative_path(base, &p))
             }
         }
@@ -241,9 +235,7 @@ impl<'a> Link<'a> {
                     _ => None,
                 }
             }
-            (Some(mat), None, None)
-                if mat.as_str().starts_with(ESCAPE_CHAR) =>
-            {
+            (Some(mat), None, None) if mat.as_str().starts_with(ESCAPE_CHAR) => {
                 Some(LinkType::Escaped)
             }
             _ => None,
@@ -265,72 +257,68 @@ impl<'a> Link<'a> {
             let target = base.join(path);
 
             file_to_string(&target).chain_err(|| {
-                format!("Could not read file for link {} ({})",
-                        self.link_text,
-                        target.display())
+                format!(
+                    "Could not read file for link {} ({})",
+                    self.link_text,
+                    target.display()
+                )
             })
         };
 
         match self.link {
             // omit the escape char
             LinkType::Escaped => Ok((&self.link_text[1..]).to_owned()),
-            LinkType::IncludeMDFile(ref path) => {
-                read_file(path)
-            }
-            LinkType::IncludeMDSection(ref path, ref section) => {
-                read_file(path).and_then(|s| {
-                    let mut found_heading = false;
-                    let mut section_level = None;
-                    let mut section_events = Parser::new(&s).filter(|event| {
-                        match (event, section_level) {
-                            (Event::Text(t), _) => {
-                                if normalize_id(&t) == *section {
-                                    found_heading = true;
-                                }
+            LinkType::IncludeMDFile(ref path) => read_file(path),
+            LinkType::IncludeMDSection(ref path, ref section) => read_file(path).and_then(|s| {
+                let mut found_heading = false;
+                let mut section_level = None;
+                let mut section_events = Parser::new(&s).filter(|event| {
+                    match (event, section_level) {
+                        (Event::Text(t), _) => {
+                            if normalize_id(&t) == *section {
+                                found_heading = true;
                             }
-                            (Event::End(Tag::Header(level)), None) => {
-                                if found_heading {
-                                    section_level = Some(*level);
-                                }
+                        }
+                        (Event::End(Tag::Header(level)), None) => {
+                            if found_heading {
+                                section_level = Some(*level);
                             }
-                            (Event::Start(Tag::Header(level)), Some(old_level)) => {
-                                if *level == old_level {
-                                    found_heading = false;
-                                }
+                        }
+                        (Event::Start(Tag::Header(level)), Some(old_level)) => {
+                            if *level == old_level {
+                                found_heading = false;
                             }
-                            _ => (),
-                        };
-                        found_heading
-                    });
-
-                    let header_event = section_events.next().ok_or({
-                        Error::from(format!(
-                            "Could not find markdown heading {} in file {}",
-                            section,
-                            path.to_string_lossy()
-                        ))
-                    })?;
-
-                    let header_level = match section_events.next() {
-                        Some(Event::End(Tag::Header(level))) => level,
-                        _ => panic!("Expected closing header tag"),
+                        }
+                        _ => (),
                     };
+                    found_heading
+                });
 
-                    let header_events = vec![
-                        Event::Start(Tag::Header(header_level)),
-                        header_event,
-                        Event::End(Tag::Header(header_level)),
-                    ];
-                    let section_events = header_events.into_iter().chain(section_events);
+                let header_event = section_events.next().ok_or({
+                    Error::from(format!(
+                        "Could not find markdown heading {} in file {}",
+                        section,
+                        path.to_string_lossy()
+                    ))
+                })?;
 
-                    let mut buf = String::new();
-                    cmark(section_events, &mut buf, None)
-                        .map(|_| buf)
-                        .map_err(|err| {
-                            Error::from(format!("Markdown serialization failed: {}", err))
-                        })
-                })
-            }
+                let header_level = match section_events.next() {
+                    Some(Event::End(Tag::Header(level))) => level,
+                    _ => panic!("Expected closing header tag"),
+                };
+
+                let header_events = vec![
+                    Event::Start(Tag::Header(header_level)),
+                    header_event,
+                    Event::End(Tag::Header(header_level)),
+                ];
+                let section_events = header_events.into_iter().chain(section_events);
+
+                let mut buf = String::new();
+                cmark(section_events, &mut buf, None)
+                    .map(|_| buf)
+                    .map_err(|err| Error::from(format!("Markdown serialization failed: {}", err)))
+            }),
         }
     }
 }
@@ -362,7 +350,8 @@ fn find_links(contents: &str) -> LinkIter {
             \s+                        # separating whitespace
             ([a-zA-Z0-9\s_.\-:/\\\#]+) # link target path
             \s*\}\}                    # whitespace and link closing parens"
-        ).unwrap();
+        )
+        .unwrap();
     }
     LinkIter(RE.captures_iter(contents))
 }

@@ -9,6 +9,7 @@ members = [
     "analysis/plugin",
     "analysis/runtime",
     "c2rust-bitfields",
+    "c2rust-macros",
 ]
 exclude = [
     "cross-checks/pointer-tracer",

@@ -6,12 +6,16 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use rustc::hir;
 use rustc::ty::{self, TyCtxt, ParamEnv};
-use rustc::ty::subst::Substs;
+use rustc::ty::subst::InternalSubsts;
 
-use crate::api::*;
+use c2rust_ast_builder::mk;
+use crate::ast_manip::{visit_nodes};
+use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
-use crate::driver::{self, Phase};
+use crate::driver::{Phase};
+use crate::matcher::{replace_expr, replace_stmts};
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `test_one_plus_one` Command
@@ -24,7 +28,7 @@ use crate::transform::Transform;
 pub struct OnePlusOne;
 
 impl Transform for OnePlusOne {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_expr(st, cx, krate, "2", "1 + 1");
         krate
     }
@@ -41,7 +45,7 @@ impl Transform for OnePlusOne {
 pub struct FPlusOne;
 
 impl Transform for FPlusOne {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_expr(st, cx, krate, "f(__x)", "__x + 1");
         krate
     }
@@ -58,7 +62,7 @@ impl Transform for FPlusOne {
 pub struct ReplaceStmts(pub String, pub String);
 
 impl Transform for ReplaceStmts {
-    fn transform(&self, krate: Crate, st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_stmts(st, cx, krate, &self.0, &self.1);
         krate
     }
@@ -82,10 +86,10 @@ pub struct InsertRemoveArgs {
 }
 
 impl Transform for InsertRemoveArgs {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
-        let krate = fold_fns(krate, |mut fl| {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
+        mut_visit_fns(krate, |fl| {
             if !st.marked(fl.id, "target") {
-                return fl;
+                return;
             }
 
             let mut counter = 0;
@@ -96,31 +100,24 @@ impl Transform for InsertRemoveArgs {
                 arg
             };
 
-            fl.decl = fl.decl.clone().map(|mut decl| {
-                let mut new_args = Vec::new();
-                let old_arg_count = decl.inputs.len();
-                for (i, arg) in decl.inputs.into_iter().enumerate() {
-                    for _ in 0 .. self.insert_idxs.get(&i).cloned().unwrap_or(0) {
-                        new_args.push(mk_arg());
-                    }
-
-                    if !self.remove_idxs.contains(&i) {
-                        new_args.push(arg);
-                    }
-                }
-
-                for _ in 0 .. self.insert_idxs.get(&old_arg_count).cloned().unwrap_or(0) {
+            let mut new_args = Vec::new();
+            let old_arg_count = fl.decl.inputs.len();
+            for (i, arg) in fl.decl.inputs.iter().enumerate() {
+                for _ in 0 .. self.insert_idxs.get(&i).cloned().unwrap_or(0) {
                     new_args.push(mk_arg());
                 }
 
-                decl.inputs = new_args;
-                decl
-            });
+                if !self.remove_idxs.contains(&i) {
+                    new_args.push(arg.clone());
+                }
+            }
 
-            fl
+            for _ in 0 .. self.insert_idxs.get(&old_arg_count).cloned().unwrap_or(0) {
+                new_args.push(mk_arg());
+            }
+
+            fl.decl.inputs = new_args;
         });
-
-        krate
     }
 }
 
@@ -138,13 +135,13 @@ pub struct TestTypeckLoop;
 impl Command for TestTypeckLoop {
     fn run(&mut self, state: &mut RefactorState) {
         let mut i = 3;
-        state.run_typeck_loop(|krate, _st, _cx| {
+        state.run_typeck_loop(|_krate, _st, _cx| {
             i -= 1;
             info!("ran typeck loop iteration {}", i);
             if i == 0 {
-                TypeckLoopResult::Finished(krate)
+                TypeckLoopResult::Finished
             } else {
-                TypeckLoopResult::Iterate(krate)
+                TypeckLoopResult::Iterate
             }
         }).unwrap();
     }
@@ -158,12 +155,12 @@ impl Command for TestTypeckLoop {
 /// Usage: `test_debug_callees`
 /// 
 /// Inspect the details of each Call expression.  Used to debug
-/// `api::DriverCtxtExt::opt_callee_info`.
+/// `RefactorCtxt::opt_callee_info`.
 pub struct TestDebugCallees;
 
 impl Transform for TestDebugCallees {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
-        visit_nodes(&krate, |e: &Expr| {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
+        visit_nodes(krate, |e: &Expr| {
             let tcx = cx.ty_ctxt();
             let hir_map = cx.hir_map();
 
@@ -182,7 +179,7 @@ impl Transform for TestDebugCallees {
             fn describe_ty<'a, 'tcx: 'a>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
                                          desc: &str,
                                          ty: ty::Ty<'tcx>,
-                                         substs: Option<&'tcx Substs<'tcx>>) {
+                                         substs: Option<&'tcx InternalSubsts<'tcx>>) {
                 info!("    {}: {:?}", desc, ty);
                 if let Some(substs) = substs {
                     info!("      subst: {:?}",
@@ -257,7 +254,6 @@ impl Transform for TestDebugCallees {
                 _ => {},
             }
         });
-        krate
     }
 
     fn min_phase(&self) -> Phase {

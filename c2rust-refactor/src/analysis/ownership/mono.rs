@@ -1,9 +1,8 @@
 use rustc_data_structures::indexed_vec::IndexVec;
 
-use super::{ConcretePerm, PermVar, Var, LTy};
 use super::constraint::{ConstraintSet, Perm};
 use super::context::{Ctxt, FuncSumm};
-
+use super::{ConcretePerm, LTy, PermVar, Var};
 
 /// Mark all sig variables that occur in output positions.  An "output position" means the return
 /// type of a function or the target of an always-mutable reference argument.
@@ -19,9 +18,11 @@ pub fn infer_outputs(summ: &FuncSumm) -> IndexVec<Var, bool> {
         }
     }
 
-    fn walk_input<'tcx>(ty: LTy<'tcx>,
-                        is_out: &mut IndexVec<Var, bool>,
-                        cset: &ConstraintSet<'tcx>) {
+    fn walk_input<'lty, 'tcx>(
+        ty: LTy<'lty, 'tcx>,
+        is_out: &mut IndexVec<Var, bool>,
+        cset: &ConstraintSet<'lty>,
+    ) {
         let mut target_out = false;
         if let Some(p) = ty.label {
             if cset.lower_bound(Perm::var(p)) >= ConcretePerm::Write {
@@ -60,23 +61,27 @@ fn upper_bounded_vars(summ: &FuncSumm) -> IndexVec<Var, bool> {
     bounded
 }
 
-fn for_each_output_assignment<F>(summ: &FuncSumm,
-                                 is_out: &IndexVec<Var, bool>,
-                                 is_bounded: &IndexVec<Var, bool>,
-                                 mut callback: F)
-        where F: FnMut(&IndexVec<Var, Option<ConcretePerm>>) {
-
-    struct State<'a, 'tcx: 'a, F: 'a> {
+fn for_each_output_assignment<F>(
+    summ: &FuncSumm,
+    is_out: &IndexVec<Var, bool>,
+    is_bounded: &IndexVec<Var, bool>,
+    mut callback: F,
+) where
+    F: FnMut(&IndexVec<Var, Option<ConcretePerm>>),
+{
+    struct State<'lty, F: 'lty> {
         max: Var,
-        is_out: &'a IndexVec<Var, bool>,
-        is_bounded: &'a IndexVec<Var, bool>,
-        cset: &'a ConstraintSet<'tcx>,
+        is_out: &'lty IndexVec<Var, bool>,
+        is_bounded: &'lty IndexVec<Var, bool>,
+        cset: &'lty ConstraintSet<'lty>,
         assignment: IndexVec<Var, Option<ConcretePerm>>,
-        callback: &'a mut F,
+        callback: &'lty mut F,
     }
 
-    impl<'a, 'tcx, F> State<'a, 'tcx, F>
-            where F: FnMut(&IndexVec<Var, Option<ConcretePerm>>) {
+    impl<'lty, 'tcx, F> State<'lty, F>
+    where
+        F: FnMut(&IndexVec<Var, Option<ConcretePerm>>),
+    {
         fn walk_vars(&mut self, cur: Var) {
             if cur >= self.max {
                 (self.callback)(&mut self.assignment);
@@ -91,11 +96,9 @@ fn for_each_output_assignment<F>(summ: &FuncSumm,
 
             for &p in &[ConcretePerm::Move, ConcretePerm::Write, ConcretePerm::Read] {
                 self.assignment[cur] = Some(p);
-                let assign_ok = self.cset.check_partial_assignment(|p| {
-                    match p {
-                        Perm::SigVar(v) if v <= cur => self.assignment[v],
-                        _ => None,
-                    }
+                let assign_ok = self.cset.check_partial_assignment(|p| match p {
+                    Perm::SigVar(v) if v <= cur => self.assignment[v],
+                    _ => None,
                 });
                 if !assign_ok {
                     continue;
@@ -118,20 +121,22 @@ fn for_each_output_assignment<F>(summ: &FuncSumm,
         cset: &summ.sig_cset,
         assignment: IndexVec::from_elem_n(None, summ.num_sig_vars as usize),
         callback: &mut callback,
-    }.walk_vars(Var(0));
+    }
+    .walk_vars(Var(0));
 }
 
-fn find_input_assignment(summ: &FuncSumm,
-                         out_assign: &IndexVec<Var, Option<ConcretePerm>>)
-                         -> Option<IndexVec<Var, ConcretePerm>> {
-    struct State<'a, 'tcx: 'a> {
+fn find_input_assignment(
+    summ: &FuncSumm,
+    out_assign: &IndexVec<Var, Option<ConcretePerm>>,
+) -> Option<IndexVec<Var, ConcretePerm>> {
+    struct State<'lty> {
         max: Var,
-        out_assign: &'a IndexVec<Var, Option<ConcretePerm>>,
-        cset: &'a ConstraintSet<'tcx>,
+        out_assign: &'lty IndexVec<Var, Option<ConcretePerm>>,
+        cset: &'lty ConstraintSet<'lty>,
         assignment: IndexVec<Var, ConcretePerm>,
     }
 
-    impl<'a, 'tcx> State<'a, 'tcx> {
+    impl<'lty, 'tcx> State<'lty> {
         fn walk_vars(&mut self, cur: Var) -> bool {
             if cur >= self.max {
                 return true;
@@ -162,19 +167,17 @@ fn find_input_assignment(summ: &FuncSumm,
 
         fn try_assign(&mut self, cur: Var, p: ConcretePerm) -> bool {
             self.assignment[cur] = p;
-            let assign_ok = self.cset.check_partial_assignment(|p| {
-                match p {
-                    Perm::SigVar(v) => {
-                        if let Some(c) = self.out_assign[v] {
-                            Some(c)
-                        } else if v <= cur {
-                            Some(self.assignment[v])
-                        } else {
-                            None
-                        }
-                    },
-                    _ => None,
+            let assign_ok = self.cset.check_partial_assignment(|p| match p {
+                Perm::SigVar(v) => {
+                    if let Some(c) = self.out_assign[v] {
+                        Some(c)
+                    } else if v <= cur {
+                        Some(self.assignment[v])
+                    } else {
+                        None
+                    }
                 }
+                _ => None,
             });
             assign_ok
         }

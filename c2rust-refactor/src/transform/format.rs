@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::str;
 use std::str::FromStr;
+use rustc_data_structures::sync::Lrc;
 use rustc::hir::def_id::DefId;
 use syntax::ast::*;
 use syntax::attr;
@@ -10,10 +11,11 @@ use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::TokenTree;
 use syntax_pos::Span;
 
-use crate::api::*;
+use c2rust_ast_builder::mk;
+use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
-use crate::driver;
 use crate::transform::Transform;
+use crate::RefactorCtxt;
 
 
 /// # `convert_format_args` Command
@@ -47,15 +49,15 @@ use crate::transform::Transform;
 pub struct ConvertFormatArgs;
 
 impl Transform for ConvertFormatArgs {
-    fn transform(&self, krate: Crate, st: &CommandState, _cx: &driver::Ctxt) -> Crate {
-        fold_nodes(krate, |e: P<Expr>| {
+    fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
+        MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             let fmt_idx = match e.node {
                 ExprKind::Call(_, ref args) =>
                     args.iter().position(|e| st.marked(e.id, "target")),
                 _ => None,
             };
             if fmt_idx.is_none() {
-                return e;
+                return;
             }
             let fmt_idx = fmt_idx.unwrap();
 
@@ -80,7 +82,7 @@ impl Transform for ConvertFormatArgs {
             let mut new_args = args[..fmt_idx].to_owned();
             new_args.push(mk().mac_expr(mac));
 
-            mk().id(st.transfer_marks(e.id)).call_expr(func, new_args)
+            *e = mk().id(st.transfer_marks(e.id)).call_expr(func, new_args)
         })
     }
 }
@@ -104,6 +106,10 @@ fn build_format_macro(
             ExprKind::Lit(ref l) => break l,
             ExprKind::Cast(ref e, _) |
             ExprKind::Type(ref e, _) => ep = &*e,
+            // `e.as_ptr()` or `e.as_mut_ptr()` => e
+            ExprKind::MethodCall(ref ps, ref args) if args.len() == 1 &&
+                (ps.ident.as_str() == "as_ptr" ||
+                 ps.ident.as_str() == "as_mut_ptr") => ep = &args[0],
             _ => panic!("unexpected format string: {:?}", old_fmt_str_expr)
         }
     };
@@ -116,7 +122,27 @@ fn build_format_macro(
 
     let mut idx = 0;
     Parser::new(&s, |piece| match piece {
-        Piece::Text(s) => new_s.push_str(s),
+        Piece::Text(s) => {
+            // Find all occurrences of brace characters in `s`
+            let mut brace_indices = s.match_indices('{')
+                .chain(s.match_indices('}'))
+                .collect::<Vec<_>>();
+            brace_indices.sort();
+
+            // Replace all "{" with "{{" and "}" with "}}"
+            let mut last = 0;
+            for (idx, brace) in brace_indices.into_iter() {
+                new_s.push_str(&s[last..idx]);
+                if brace == "{" {
+                    new_s.push_str("{{");
+                } else {
+                    assert_eq!(brace, "}");
+                    new_s.push_str("}}");
+                }
+                last = idx + 1;
+            }
+            new_s.push_str(&s[last..]);
+        },
         Piece::Conv(c) => {
             c.push_spec(&mut new_s);
             c.add_casts(&mut idx, &mut casts);
@@ -140,8 +166,11 @@ fn build_format_macro(
     info!("new fmt str expr: {:?}", new_fmt_str_expr);
 
     let mut macro_tts: Vec<TokenTree> = Vec::new();
-    let expr_tt = |e: P<Expr>| TokenTree::Token(e.span, Token::interpolated(
-            Nonterminal::NtExpr(e)));
+    let expr_tt = |mut e: P<Expr>| {
+        let span = e.span;
+        e.span = DUMMY_SP;
+        TokenTree::Token(span, Token::Interpolated(Lrc::new(Nonterminal::NtExpr(e))))
+    };
     macro_tts.push(expr_tt(new_fmt_str_expr));
     for (i, arg) in fmt_args[1..].iter().enumerate() {
         if let Some(cast) = casts.get(&i) {
@@ -185,11 +214,11 @@ fn build_format_macro(
 pub struct ConvertPrintfs;
 
 impl Transform for ConvertPrintfs {
-    fn transform(&self, krate: Crate, _st: &CommandState, cx: &driver::Ctxt) -> Crate {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         let mut printf_defs = HashSet::<DefId>::new();
         let mut fprintf_defs = HashSet::<DefId>::new();
         let mut stderr_defs = HashSet::<DefId>::new();
-        visit_nodes(&krate, |fi: &ForeignItem| {
+        visit_nodes(krate, |fi: &ForeignItem| {
             if attr::contains_name(&fi.attrs, "no_mangle") {
                 match (&*fi.ident.as_str(), &fi.node) {
                     ("printf", ForeignItemKind::Fn(_, _)) => {
@@ -205,7 +234,7 @@ impl Transform for ConvertPrintfs {
                 }
             }
         });
-        fold_nodes(krate, |s: Stmt| {
+        FlatMapNodes::visit(krate, |s: Stmt| {
             match s.node {
                 StmtKind::Semi(ref expr) => {
                     if let ExprKind::Call(ref f, ref args) = expr.node {
@@ -244,11 +273,12 @@ enum CastType {
 }
 
 impl CastType {
-    fn apply(&self, e: P<Expr>) -> P<Expr> {
+    fn apply(&self, mut e: P<Expr>) -> P<Expr> {
         // Since these get passed to the new print! macros, they need to have spans,
         // and the spans need to match the original expressions
         // FIXME: should all the inner nodes have spans too???
         let span = e.span;
+        e.span = DUMMY_SP;
         match *self {
             CastType::Int(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
             CastType::Uint(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
@@ -262,7 +292,7 @@ impl CastType {
                 // CStr::from_ptr(e as *const libc::c_char).to_str().unwrap()
                 let e = mk().cast_expr(e, mk().ptr_ty(mk().path_ty(vec!["libc", "c_char"])));
                 let cs = mk().call_expr(
-                    mk().path_expr(mk().abs_path(vec!["std", "ffi", "CStr", "from_ptr"])),
+                    mk().path_expr(vec!["std", "ffi", "CStr", "from_ptr"]),
                     vec![e]);
                 let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
                 let call = mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new());
@@ -421,6 +451,16 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
         self.pos += 1;
     }
 
+    /// Check if the next character is `c` and, if true, consume it
+    fn eat(&mut self, c: u8) -> bool {
+        if self.peek() == c {
+            self.skip();
+            true
+        } else {
+            false
+        }
+    }
+
     /// Try to advance to the next conversion specifier.  Return `true` if a conversion was found.
     fn next_conv(&mut self) -> bool {
         if let Some(conv_offset) = self.s[self.pos..].find('%') {
@@ -440,8 +480,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
             self.skip();
             let mut conv = Conv::new();
 
-            if self.peek() == b'%' {
-                self.skip();
+            if self.eat(b'%') {
                 (self.callback)(Piece::Text("%"));
                 continue;
             }
@@ -449,8 +488,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
             if b'1' <= self.peek() && self.peek() <= b'9' || self.peek() == b'*'{
                 conv.width = Some(self.parse_amount());
             } 
-            if self.peek() == b'.' {
-                self.skip();
+            if self.eat(b'.') {
                 conv.prec = Some(self.parse_amount());
             }
             conv.ty = self.parse_conv_type();
@@ -463,8 +501,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
     }
 
     fn parse_amount(&mut self) -> Amount {
-        if self.peek() == b'*' {
-            self.skip();
+        if self.eat(b'*') {
             return Amount::NextArg;
         }
 
@@ -481,9 +518,8 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
         match self.peek() {
             b'h' => {
                 self.skip();
-                if self.peek() == b'h' {
+                if self.eat(b'h') {
                     // %hhd
-                    self.skip();
                     Length::Char
                 } else {
                     Length::Short
@@ -491,9 +527,8 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
             }
             b'l' => {
                 self.skip();
-                if self.peek() == b'l' {
+                if self.eat(b'l') {
                     // %lld
-                    self.skip();
                     Length::LongLong
                 } else {
                     Length::Long

@@ -1,5 +1,3 @@
-//! enable_relooper
-
 void foo(int a) {
     switch (a) {
         case 1: {

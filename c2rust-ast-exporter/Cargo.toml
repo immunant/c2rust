@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-ast-exporter"
-version = "0.9.0"
+version = "0.10.0"
 authors = [
         "The C2Rust Project Developers <c2rust@immunant.com>",
         "Eric Mertens <emertens@galois.com>",
@@ -15,13 +15,13 @@ description = "Clang AST extraction API for use in the C2Rust project"
 [dependencies]
 libc = "0.2"
 serde = "1.0"
-serde_bytes = "0.10"
+serde_bytes = "0.11"
 serde_cbor = "0.9"
 
 [build-dependencies]
-bindgen = { version = "0.46", features = ["logging"] }
+bindgen = { version = "0.49", features = ["logging"] }
 cmake = "0.1"
-clang-sys = "0.26"
+clang-sys = "0.28"
 env_logger = "0.6"
 
 [features]

@@ -14,25 +14,27 @@
 //! specialized function, such as `rewrite_seq_comma_sep`) to get better results than the generic
 //! `[T]` implementation.
 use rustc_target::spec::abi::Abi;
-use syntax::ThinVec;
 use syntax::ast::*;
+use syntax::parse::token::{DelimToken, Nonterminal, Token};
 use syntax::source_map::{Span, SyntaxContext};
-use syntax::parse::token::{Token, DelimToken, Nonterminal};
-use syntax::tokenstream::{TokenTree, Delimited, DelimSpan, TokenStream, ThinTokenStream};
+use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use syntax::ThinVec;
 
+use diff;
+use rustc::session::Session;
+use std::fmt::Debug;
+use std::iter::Sum;
 use std::rc::Rc;
 use syntax::ptr::P;
-use diff;
 use syntax::source_map::{Spanned, DUMMY_SP};
 use syntax::util::parser::{AssocOp, Fixity};
-use rustc::session::Session;
+use syntax_pos::{BytePos, Pos};
 
-use crate::ast_manip::{GetSpan, AstDeref};
+use crate::ast_manip::{AstDeref, CommentStyle, GetSpan};
 
 use super::strategy;
-use super::{TextRewrite, RewriteCtxtRef, SeqItemId, ExprPrec};
 use super::strategy::print;
-
+use super::{ExprPrec, RewriteCtxt, RewriteCtxtRef, SeqItemId, TextRewrite};
 
 pub trait Rewrite {
     /// Given an old AST, a new AST, and text corresponding to the old AST, transform the text into
@@ -42,7 +44,6 @@ pub trait Rewrite {
 }
 
 include!(concat!(env!("OUT_DIR"), "/rewrite_rewrite_gen.inc.rs"));
-
 
 // Generic Rewrite impls
 
@@ -67,10 +68,7 @@ impl<T: Rewrite> Rewrite for Spanned<T> {
 impl<T: Rewrite> Rewrite for Option<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
         match (old, new) {
-            (&Some(ref x1),
-             &Some(ref x2)) => {
-                Rewrite::rewrite(x1, x2, rcx)
-            }
+            (&Some(ref x1), &Some(ref x2)) => Rewrite::rewrite(x1, x2, rcx),
             (&None, &None) => true,
             (_, _) => false,
         }
@@ -79,18 +77,18 @@ impl<T: Rewrite> Rewrite for Option<T> {
 
 impl<A: Rewrite, B: Rewrite> Rewrite for (A, B) {
     fn rewrite(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {
-        <A as Rewrite>::rewrite(&old.0, &new.0, rcx.borrow()) &&
-        <B as Rewrite>::rewrite(&old.1, &new.1, rcx.borrow()) &&
-        true
+        <A as Rewrite>::rewrite(&old.0, &new.0, rcx.borrow())
+            && <B as Rewrite>::rewrite(&old.1, &new.1, rcx.borrow())
+            && true
     }
 }
 
 impl<A: Rewrite, B: Rewrite, C: Rewrite> Rewrite for (A, B, C) {
     fn rewrite(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {
-        <A as Rewrite>::rewrite(&old.0, &new.0, rcx.borrow()) &&
-        <B as Rewrite>::rewrite(&old.1, &new.1, rcx.borrow()) &&
-        <C as Rewrite>::rewrite(&old.2, &new.2, rcx.borrow()) &&
-        true
+        <A as Rewrite>::rewrite(&old.0, &new.0, rcx.borrow())
+            && <B as Rewrite>::rewrite(&old.1, &new.1, rcx.borrow())
+            && <C as Rewrite>::rewrite(&old.2, &new.2, rcx.borrow())
+            && true
     }
 }
 
@@ -111,7 +109,6 @@ impl<T: MaybeRewriteSeq> Rewrite for ThinVec<T> {
         <[T] as Rewrite>::rewrite(&old, &new, rcx)
     }
 }
-
 
 // Sequence rewriting
 
@@ -142,33 +139,36 @@ impl<T: SeqItem> SeqItem for P<T> {
     }
 }
 
-
 /// This trait is implemented (using generated impls) for every node type.  On types that implement
 /// `SeqItem`, `maybe_rewrite_seq` dispatches to `rewrite_seq`; on other types, it dispatches to
 /// `rewrite_seq_unsupported`.  The only purpose of this trait is to let `impl Rewrite for [T]`
 /// call one of those two functions depending on whether the type `T` implements `SeqItem`.
 pub trait MaybeRewriteSeq: Rewrite + Sized {
-    fn maybe_rewrite_seq(old: &[Self], new: &[Self], _outer_span: Span,
-                         rcx: RewriteCtxtRef) -> bool {
+    fn maybe_rewrite_seq(
+        old: &[Self],
+        new: &[Self],
+        _outer_span: Span,
+        rcx: RewriteCtxtRef,
+    ) -> bool {
         rewrite_seq_unsupported(old, new, rcx)
     }
 }
 
-include!(concat!(env!("OUT_DIR"), "/rewrite_maybe_rewrite_seq_gen.inc.rs"));
+include!(concat!(
+    env!("OUT_DIR"),
+    "/rewrite_maybe_rewrite_seq_gen.inc.rs"
+));
 
 impl<T: Rewrite> MaybeRewriteSeq for Spanned<T> {}
 impl<A: Rewrite, B: Rewrite> MaybeRewriteSeq for (A, B) {}
 
-
 /// Fallback case for `rewrite_seq` on unsupported types.
-pub fn rewrite_seq_unsupported<T: Rewrite>(old: &[T],
-                                           new: &[T],
-                                           mut rcx: RewriteCtxtRef) -> bool {
+pub fn rewrite_seq_unsupported<T: Rewrite>(old: &[T], new: &[T], mut rcx: RewriteCtxtRef) -> bool {
     if old.len() != new.len() {
         // Give up - hope to recover at a higher level
         return false;
     } else {
-        for i in 0 .. old.len() {
+        for i in 0..old.len() {
             if !Rewrite::rewrite(&old[i], &new[i], rcx.borrow()) {
                 return false;
             }
@@ -185,12 +185,11 @@ pub fn rewrite_seq_unsupported<T: Rewrite>(old: &[T],
 /// available.
 ///
 /// The `calc_outer_span` function helps to compute a reasonable `outer_span`.
-pub fn rewrite_seq<T, R>(old: &[R],
-                         new: &[R],
-                         outer_span: Span,
-                         mut rcx: RewriteCtxtRef) -> bool
-        where T: SeqItem + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite,
-              R: AstDeref<Target=T> {
+pub fn rewrite_seq<T, R>(old: &[R], new: &[R], outer_span: Span, mut rcx: RewriteCtxtRef) -> bool
+where
+    T: SeqItem + print::RewriteAt + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite + Debug,
+    R: AstDeref<Target = T>,
+{
     if old.len() == 0 && new.len() != 0 && !is_rewritable(outer_span) {
         // We can't handle this case because it provides us with no span information about the
         // `old` side.  We need at least one span so we know where to splice in any new items.
@@ -206,7 +205,10 @@ pub fn rewrite_seq<T, R>(old: &[R],
     // case we will properly detect a change.)
     //
     // Note we map the new IDs to corresponding old IDs, to account for NodeId renumbering.
-    let new_ids = new.iter().map(|x| rcx.new_to_old_id(ast(x).seq_item_id())).collect::<Vec<_>>();
+    let new_ids = new
+        .iter()
+        .map(|x| rcx.new_to_old_id(ast(x).seq_item_id()))
+        .collect::<Vec<_>>();
     let old_ids = old.iter().map(|x| ast(x).seq_item_id()).collect::<Vec<_>>();
 
     let mut i = 0;
@@ -217,37 +219,50 @@ pub fn rewrite_seq<T, R>(old: &[R],
             diff::Result::Left(_) => {
                 // There's an item on the left corresponding to nothing on the right.
                 // Delete the item from the left.
-                info!("DELETE {}", describe(rcx.session(), ast(&old[i]).splice_span()));
-                rcx.record(TextRewrite::new(ast(&old[i]).splice_span(), DUMMY_SP));
+                let old_span = rewind_span_over_whitespace(ast(&old[i]).splice_span(), &rcx);
+                // let old_span = ast(&old[i]).splice_span();
+                let old_span = match old_ids[i] {
+                    SeqItemId::Node(id) => extend_span_comments(&id, old_span, &rcx),
+                    _ => old_span,
+                };
+
+                info!(
+                    "DELETE {}",
+                    describe(rcx.session(), old_span)
+                );
+                rcx.record(TextRewrite::new(old_span, DUMMY_SP));
                 i += 1;
-            },
+            }
             diff::Result::Right(_) => {
                 // There's an item on the right corresponding to nothing on the left.
                 // Insert the item before the current item on the left, rewriting
                 // recursively.
-                let before =
-                    if i > 0 { ast(&old[i - 1]).splice_span() }
-                    else { outer_span.shrink_to_lo() };
-                let after =
-                    if i < old.len() { ast(&old[i]).splice_span() }
-                    else { outer_span.shrink_to_hi() };
+                let before = if i > 0 {
+                    ast(&old[i - 1]).splice_span()
+                } else {
+                    outer_span.shrink_to_lo()
+                };
+                let after = if i < old.len() {
+                    ast(&old[i]).splice_span()
+                } else {
+                    outer_span.shrink_to_hi()
+                };
 
-                let old_span =
-                    if is_rewritable(before) {
-                        before.with_lo(before.hi())
-                    } else if is_rewritable(after) {
-                        after.with_hi(after.lo())
-                    } else {
-                        warn!("can't insert new node between two non-rewritable nodes");
-                        return true;
-                    };
+                let old_span = if is_rewritable(before) {
+                    before.with_lo(before.hi())
+                } else if is_rewritable(after) {
+                    after.with_hi(after.lo())
+                } else {
+                    warn!("can't insert new node between two non-rewritable nodes");
+                    return true;
+                };
 
-                let ok = strategy::print::rewrite_at(old_span, ast(&new[j]), rcx.borrow());
+                let ok = ast(&new[j]).rewrite_at(old_span, rcx.borrow());
                 if !ok {
                     return false;
                 }
                 j += 1;
-            },
+            }
             diff::Result::Both(_, _) => {
                 let ok = Rewrite::rewrite(ast(&old[i]), ast(&new[j]), rcx.borrow());
                 if !ok {
@@ -255,7 +270,7 @@ pub fn rewrite_seq<T, R>(old: &[R],
                 }
                 i += 1;
                 j += 1;
-            },
+            }
         }
     }
 
@@ -280,19 +295,26 @@ pub fn calc_outer_span<T: GetSpan>(seq: &[T], default: Span) -> Span {
 /// Like normal sequence rewriting, but on a list of comma-separated items.  Also requires a span
 /// for each `old` item that covers the item itself along with its trailing comma (if any), and a
 /// span covering the entire sequence (for cases where `old` is empty).
-pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
-                                   new: &[R],
-                                   old_spans: &[Span],
-                                   outer_span: Span,
-                                   has_trailing_comma: bool,
-                                   mut rcx: RewriteCtxtRef) -> bool
-        where T: SeqItem + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite,
-              R: AstDeref<Target=T> {
+pub fn rewrite_seq_comma_sep<T, R>(
+    old: &[R],
+    new: &[R],
+    old_spans: &[Span],
+    outer_span: Span,
+    has_trailing_comma: bool,
+    mut rcx: RewriteCtxtRef,
+) -> bool
+where
+    T: SeqItem + print::RewriteAt + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite + Debug,
+    R: AstDeref<Target = T>,
+{
     fn ast<T: AstDeref>(x: &T) -> &<T as AstDeref>::Target {
         x.ast_deref()
     }
 
-    let new_ids = new.iter().map(|x| rcx.new_to_old_id(ast(x).seq_item_id())).collect::<Vec<_>>();
+    let new_ids = new
+        .iter()
+        .map(|x| rcx.new_to_old_id(ast(x).seq_item_id()))
+        .collect::<Vec<_>>();
     let old_ids = old.iter().map(|x| ast(x).seq_item_id()).collect::<Vec<_>>();
 
     let mut i = 0;
@@ -305,35 +327,46 @@ pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
             diff::Result::Left(_) => {
                 // There's an item on the left corresponding to nothing on the right.
                 // Delete the item from the left.
-                info!("DELETE {}", describe(rcx.session(), old_spans[i]));
-                rcx.record(TextRewrite::new(old_spans[i], DUMMY_SP));
+                let old_span = match old_ids[i] {
+                    SeqItemId::Node(id) => extend_span_comments(&id, old_spans[i], &rcx),
+                    _ => old_spans[i],
+                };
+                info!("DELETE {}", describe(rcx.session(), old_span));
+                rcx.record(TextRewrite::new(old_span, DUMMY_SP));
                 i += 1;
 
                 if i == old.len() && !has_trailing_comma {
                     comma_before = false;
                 }
-            },
+            }
             diff::Result::Right(_) => {
                 // There's an item on the right corresponding to nothing on the left.
                 // Insert the item before the current item on the left, rewriting
                 // recursively.
-                let before = if i > 0 { old_spans[i - 1] } else { outer_span.shrink_to_lo() };
-                let after = if i < old.len() { old_spans[i] } else { outer_span.shrink_to_hi() };
+                let before = if i > 0 {
+                    old_spans[i - 1]
+                } else {
+                    outer_span.shrink_to_lo()
+                };
+                let after = if i < old.len() {
+                    old_spans[i]
+                } else {
+                    outer_span.shrink_to_hi()
+                };
 
-                let old_span =
-                    if is_rewritable(before) {
-                        before.with_lo(before.hi())
-                    } else if is_rewritable(after) {
-                        after.with_hi(after.lo())
-                    } else {
-                        warn!("can't insert new node between two non-rewritable nodes");
-                        return false;
-                    };
+                let old_span = if is_rewritable(before) {
+                    before.with_lo(before.hi())
+                } else if is_rewritable(after) {
+                    after.with_hi(after.lo())
+                } else {
+                    warn!("can't insert new node between two non-rewritable nodes");
+                    return false;
+                };
 
                 if !comma_before {
                     rcx.record_text(old_span, ", ");
                 }
-                let ok = strategy::print::rewrite_at(old_span, ast(&new[j]), rcx.borrow());
+                let ok = ast(&new[j]).rewrite_at(old_span, rcx.borrow());
                 if !ok {
                     return false;
                 }
@@ -346,7 +379,7 @@ pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
                     rcx.record_text(old_span, ", ");
                     comma_before = true;
                 }
-            },
+            }
             diff::Result::Both(_, _) => {
                 let ok = Rewrite::rewrite(ast(&old[i]), ast(&new[j]), rcx.borrow());
                 if !ok {
@@ -358,13 +391,12 @@ pub fn rewrite_seq_comma_sep<T, R>(old: &[R],
                 if i == old.len() && !has_trailing_comma {
                     comma_before = false;
                 }
-            },
+            }
         }
     }
 
     true
 }
-
 
 // Misc helpers
 
@@ -380,9 +412,7 @@ pub fn binop_left_prec(op: &BinOp) -> ExprPrec {
     };
 
     match assoc_op {
-        AssocOp::Less |
-        AssocOp::LessEqual |
-        AssocOp::ObsoleteInPlace => ExprPrec::LeftLess(prec),
+        AssocOp::Less | AssocOp::LessEqual | AssocOp::ObsoleteInPlace => ExprPrec::LeftLess(prec),
         _ => ExprPrec::Normal(prec),
     }
 }
@@ -414,13 +444,127 @@ pub fn is_rewritable(sp: Span) -> bool {
 
 pub fn describe(sess: &Session, span: Span) -> String {
     let cm = sess.source_map();
-    let lo = cm.lookup_byte_offset(span.lo());
-    let hi = cm.lookup_byte_offset(span.hi());
-    let src = &lo.sf.src.as_ref().unwrap()[lo.pos.0 as usize .. hi.pos.0 as usize];
+    let loc = cm.span_to_string(span);
+    let src = cm.span_to_snippet(span);
 
-    if Rc::ptr_eq(&lo.sf, &hi.sf) {
-        format!("{}: {} .. {} = {}", lo.sf.name, lo.pos.0, hi.pos.0, src)
+    if let Ok(src) = src {
+        format!("{}: {}", loc, src)
     } else {
-        format!("{}: {} .. {}: {} = {}", lo.sf.name, lo.pos.0, hi.sf.name, hi.pos.0, src)
+        loc
+    }
+}
+
+/// Extend a span backwards through whitespace to cover the previous newline.
+pub fn rewind_span_over_whitespace(span: Span, rcx: &RewriteCtxt) -> Span {
+    let start = rcx.session().source_map().lookup_byte_offset(span.lo());
+    let find_newline = |src: &str| {
+        src[..start.pos.to_usize()].rfind(|c| !char::is_whitespace(c))
+            .map(|newline_idx| BytePos::from_usize(newline_idx+1) + start.sf.start_pos)
+            .unwrap_or(start.sf.start_pos)
+    };
+    if let Some(ref src) = start.sf.src {
+        span.with_lo(find_newline(src))
+    } else if let Some(src) = start.sf.external_src.borrow().get_source() {
+        span.with_lo(find_newline(src))
+    } else {
+        span
+    }
+}
+
+/// Extend a node span to cover comments around it. Do not error if all comments
+/// could not be matched.
+pub fn extend_span_comments(id: &NodeId, span: Span, rcx: &RewriteCtxt) -> Span {
+    match extend_span_comments_strict(id, span, rcx) {
+        Ok(span) | Err(span) => span,
+    }
+}
+
+/// Extend a node span to cover comments around it.  Returns Ok(span) if all
+/// comments were covered, and Err(span) if only some could be covered.
+pub fn extend_span_comments_strict(id: &NodeId, span: Span, rcx: &RewriteCtxt) -> Result<Span, Span> {
+    let source_map = rcx.session().source_map();
+
+    let comments = match rcx.comments().get(id) {
+        Some(comments) if comments.is_empty() => return Ok(span),
+        Some(comments) => comments,
+        None => return Ok(span),
+    };
+
+    debug!("Extending span comments for {:?} for comments: {:?}", span, comments);
+
+    let mut before = vec![];
+    let mut after = vec![];
+    for comment in comments {
+        match comment.style {
+            CommentStyle::Isolated => {
+                before.push(comment);
+            }
+
+            CommentStyle::Trailing => {
+                after.push(comment);
+            }
+
+            _ => unimplemented!("Mixed and BlankLine comment styles are not implemented"),
+        }
+    }
+
+    before.sort_by_key(|c| c.pos);
+    after.sort_by_key(|c| c.pos);
+
+    before.reverse();
+
+    let mut all_matched = true;
+
+    let mut span = rewind_span_over_whitespace(span, rcx);
+    for comment in &before {
+        let comment_size = usize::sum(comment.lines.iter().map(|l| l.len()));
+        let comment_start = BytePos::from_usize(span.lo().to_usize() - comment_size);
+        let comment_span = span.shrink_to_lo().with_lo(comment_start);
+        let source = match source_map.span_to_snippet(comment_span) {
+            Ok(snippet) => snippet,
+            Err(_) => {
+                all_matched = false;
+                break;
+            }
+        };
+        let matches = source.lines().zip(&comment.lines).all(|(src_line, comment_line)| {
+            src_line.trim() == comment_line.trim()
+        });
+        if matches {
+            // Extend to previous newline because this is an isolated comment
+            let comment_span = rewind_span_over_whitespace(comment_span, rcx);
+
+            span = span.with_lo(comment_span.lo());
+        } else {
+            debug!("comment {:?} did not match source {:?}", comment, source);
+            all_matched = false;
+            break;
+        }
+    }
+
+    for comment in &after {
+        for comment_line in &comment.lines {
+            let line_end = if comment_line.starts_with("//") {
+                BytePos::from_usize(span.hi().to_usize() + comment_line.len() + 1)
+            } else {
+                BytePos::from_usize(span.hi().to_usize() + comment_line.len())
+            };
+            let line_span = span.shrink_to_hi().with_hi(line_end);
+            let src_line = rcx.session().source_map().span_to_snippet(line_span).unwrap();
+            if comment_line.trim() == src_line.trim() {
+                span = span.with_hi(line_end);
+            } else {
+                // We need to break out of processing any after comments because
+                // a line didn't match.
+                debug!("comment {:?} did not match line {:?}", comment_line, src_line);
+                return Err(span);
+            }
+        }
+    }
+
+    if all_matched {
+        Ok(span)
+    } else {
+        Err(span)
     }
 }
