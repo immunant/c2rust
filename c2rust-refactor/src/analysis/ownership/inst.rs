@@ -184,9 +184,9 @@ pub fn build_inst_cset<'lty, 'a, 'tcx>(
     cset.simplify(cx.arena);
 
     /*
-    eprintln!("  inst constraints:");
+    debug!("  inst constraints:");
     for &(a, b) in cset.iter() {
-        eprintln!("    {:?} <= {:?}", a, b);
+        debug!("    {:?} <= {:?}", a, b);
     }
     */
 

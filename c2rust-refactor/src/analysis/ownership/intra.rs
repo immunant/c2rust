@@ -150,9 +150,9 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     }
 
     pub fn finish(mut self) {
-        eprintln!("  original constraints:");
+        debug!("  original constraints:");
         for &(a, b) in self.cset.iter() {
-            eprintln!("    {:?} <= {:?}", a, b);
+            debug!("    {:?} <= {:?}", a, b);
         }
 
         self.cset.remove_useless();
@@ -165,9 +165,9 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
 
         self.cset.simplify(self.cx.arena);
 
-        eprintln!("  simplified constraints:");
+        debug!("  simplified constraints:");
         for &(a, b) in self.cset.iter() {
-            eprintln!("    {:?} <= {:?}", a, b);
+            debug!("    {:?} <= {:?}", a, b);
         }
 
         let (_func, var) = self.cx.variant_summ(self.def_id);
@@ -396,7 +396,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             Operand::Copy(ref lv) => self.place_lty(lv),
             Operand::Move(ref lv) => self.place_lty(lv),
             Operand::Constant(ref c) => {
-                eprintln!("CONSTANT {:?}: type = {:?}", c, c.ty);
+                debug!("CONSTANT {:?}: type = {:?}", c, c.ty);
                 let lty = self.local_ty(c.ty);
                 if let Label::FnDef(inst_idx) = lty.label {
                     self.insts[inst_idx].span = Some(c.span);
@@ -449,7 +449,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     }
 
     fn propagate_perm(&mut self, p1: Perm<'lty>, p2: Perm<'lty>) {
-        eprintln!("ADD: {:?} <= {:?}", p1, p2);
+        debug!("ADD: {:?} <= {:?}", p1, p2);
         self.cset.add(p1, p2);
     }
 
@@ -522,7 +522,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
 
     pub fn handle_basic_block(&mut self, bbid: BasicBlock, bb: &BasicBlockData<'tcx>) {
         self.enter_block(bbid);
-        eprintln!("  {:?}", bbid);
+        debug!("  {:?}", bbid);
 
         for (idx, s) in bb.statements.iter().enumerate() {
             self.enter_stmt(idx);
@@ -532,8 +532,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     let (rv_ty, rv_perm) = self.rvalue_lty(rv);
                     self.propagate(lv_ty, rv_ty, rv_perm);
                     self.propagate_perm(Perm::write(), lv_perm);
-                    eprintln!("    {:?}: {:?}", lv, lv_ty);
-                    eprintln!("    ^-- {:?}: {:?}", rv, rv_ty);
+                    debug!("    {:?}: {:?}", lv, lv_ty);
+                    debug!("    ^-- {:?}: {:?}", rv, rv_ty);
                 },
                 StatementKind::FakeRead(..) |
                 StatementKind::SetDiscriminant { .. } |
@@ -571,8 +571,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 let (val_ty, val_perm) = self.operand_lty(value);
                 self.propagate(loc_ty, val_ty, val_perm);
                 self.propagate_perm(Perm::write(), loc_perm);
-                eprintln!("    {:?}: {:?}", location, loc_ty);
-                eprintln!("    ^-- {:?}: {:?}", value, val_ty);
+                debug!("    {:?}: {:?}", location, loc_ty);
+                debug!("    ^-- {:?}: {:?}", value, val_ty);
             }
 
             TerminatorKind::Call {
@@ -581,25 +581,25 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 ref destination,
                 ..
             } => {
-                eprintln!("    call {:?}", func);
+                debug!("    call {:?}", func);
                 let (func_ty, _func_perm) = self.operand_lty(func);
-                eprintln!("fty = {:?}", func_ty);
+                debug!("fty = {:?}", func_ty);
                 let sig = self.ty_fn_sig(func_ty);
 
                 // Note that `sig.inputs` may be shorter than `args`, if `func` is varargs.
                 for (&sig_ty, arg) in sig.inputs.iter().zip(args.iter()) {
                     let (arg_ty, arg_perm) = self.operand_lty(arg);
                     self.propagate(sig_ty, arg_ty, arg_perm);
-                    eprintln!("    (arg): {:?}", sig_ty);
-                    eprintln!("    ^-- {:?}: {:?}", arg, arg_ty);
+                    debug!("    (arg): {:?}", sig_ty);
+                    debug!("    ^-- {:?}: {:?}", arg, arg_ty);
                 }
                 if let Some((ref dest, _)) = *destination {
                     let sig_ty = sig.output;
                     let (dest_ty, dest_perm) = self.place_lty(dest);
                     self.propagate(dest_ty, sig_ty, Perm::move_());
                     self.propagate_perm(Perm::write(), dest_perm);
-                    eprintln!("    {:?}: {:?}", dest, dest_ty);
-                    eprintln!("    ^-- (return): {:?}", sig_ty);
+                    debug!("    {:?}: {:?}", dest, dest_ty);
+                    debug!("    ^-- (return): {:?}", sig_ty);
                 }
             }
         }

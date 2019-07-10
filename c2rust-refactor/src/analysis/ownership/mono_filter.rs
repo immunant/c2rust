@@ -53,7 +53,7 @@ pub fn filter_suspicious_monos(
                 for (i, assign) in mono_sigs.iter().enumerate() {
                     if assign[v] == ConcretePerm::Move {
                         suspicious.insert((def_id, i));
-                        eprintln!("found suspicious mono: {:?} #{}", def_id, i);
+                        debug!("found suspicious mono: {:?} #{}", def_id, i);
                     }
                 }
             }
@@ -90,7 +90,7 @@ pub fn filter_suspicious_monos(
 
     for &src in &all_monos {
         let count = caller_count.get(&src).map(|&x| x).unwrap_or(0);
-        eprintln!("{:?}: {} callers, suspicious? {}", src, count, suspicious.contains(&src));
+        debug!("{:?}: {} callers, suspicious? {}", src, count, suspicious.contains(&src));
         if suspicious.contains(&src) && count == 0 {
             queue.push_back(src);
         }

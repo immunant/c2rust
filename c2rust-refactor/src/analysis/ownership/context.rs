@@ -433,10 +433,10 @@ fn preload_constraints<'lty, 'a, 'tcx>(
         _ => return None,
     }
 
-    eprintln!("PRELOAD CONSTRAINTS for {:?}", def_id);
-    eprintln!("  {:?} -> {:?}", sig.inputs, sig.output);
+    debug!("PRELOAD CONSTRAINTS for {:?}", def_id);
+    debug!("  {:?} -> {:?}", sig.inputs, sig.output);
     for &(a, b) in cset.iter() {
-        eprintln!("    {:?} <= {:?}", a, b);
+        debug!("    {:?} <= {:?}", a, b);
     }
 
     Some(cset)
