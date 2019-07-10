@@ -12,7 +12,7 @@ use smallvec::SmallVec;
 use syntax::{ast, entry};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
-use syntax::symbol::Ident;
+use syntax::symbol::{keywords, Ident};
 use syntax_pos::{Span, FileName, BytePos, Pos, NO_EXPANSION};
 
 use indexmap::IndexSet;
@@ -66,8 +66,14 @@ struct LifetimeInstrumenter<'a, 'tcx: 'a> {
 impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
     fn new(cx: &'a RefactorCtxt<'a, 'tcx>, span_file_path: &'a str, main_path: &'a str) -> Self {
         let main_path = {
-            if let ast::TyKind::Path(_, ref path) = parse_ty(cx.session(), main_path).node {
-                path.clone()
+            if let ast::TyKind::Path(_, mut path) = parse_ty(cx.session(), main_path)
+                .into_inner()
+                .node
+            {
+                if !path.segments[0].ident.is_path_segment_keyword() {
+                    path.segments.insert(0, ast::PathSegment::from_ident(keywords::Crate.ident()));
+                }
+                path
             } else {
                 panic!("Could not parse lifetime_analysis main path argument: {:?}", main_path);
             }
