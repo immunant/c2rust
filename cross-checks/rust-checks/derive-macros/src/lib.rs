@@ -10,7 +10,7 @@ extern crate c2rust_xcheck_config as xcfg;
 fn get_attr_args<'a>(
     attrs: &'a [syn::Attribute],
     attr_name: &'static str,
-) -> impl Iterator<Item = xcfg::attr::ArgList<'a>> {
+) -> impl Iterator<Item = xcfg::attr::ArgList<String>> + 'a {
     attrs
         .iter()
         .filter(move |f| f.name() == attr_name)
@@ -20,12 +20,12 @@ fn get_attr_args<'a>(
 fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     let top_args = get_attr_args(&s.ast().attrs[..], "cross_check_hash")
         .flat_map(IntoIterator::into_iter)
-        .collect::<xcfg::attr::ArgList>();
+        .collect::<xcfg::attr::ArgList<_>>();
 
     // Allow users to override __XCHA and __XCHS
     let ahasher = top_args.get_ident_arg("ahasher", "__XCHA");
     let shasher = top_args.get_ident_arg("shasher", "__XCHS");
-    let hash_field = move |field, args: &xcfg::attr::ArgList| {
+    let hash_field = move |field, args: &xcfg::attr::ArgList<_>| {
         // FIXME: figure out the argument priorities here
         if args.contains_key("none") || args.contains_key("disabled") {
             // Cross-checking is disabled
@@ -53,7 +53,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
     let hash_fields = s.each(|bi| {
         let args = get_attr_args(&bi.ast().attrs[..], "cross_check_hash")
             .flat_map(IntoIterator::into_iter)
-            .collect::<xcfg::attr::ArgList>();
+            .collect::<xcfg::attr::ArgList<_>>();
 
         let bitfields = get_attr_args(&bi.ast().attrs[..], "bitfield").collect::<Vec<_>>();
         if bitfields.iter().any(|al| al.contains_key("padding")) {
@@ -80,7 +80,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                     quote! { self.#bf_name() }
                 };
 
-                let default_args = Default::default();
+                let default_args = xcfg::attr::ArgList::new();
                 let bf_args = if let Some(bf_args) = bf.get("cross_check") {
                     bf_args.get_list().unwrap_or(&default_args)
                 } else if let Some(bf_args) = bf.get("cross_check_hash") {
