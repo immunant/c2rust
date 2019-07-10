@@ -23,27 +23,27 @@ impl<K: Hash + Eq> ArgList<K> {
     }
 }
 
-pub fn get_item_args(mi: &syn::MetaItem) -> ArgList<String> {
+pub fn get_item_args(mi: &syn::MetaItem) -> ArgList<&str> {
     if let syn::MetaItem::List(_, ref items) = *mi {
         ArgList::from_map(
             items
                 .iter()
                 .map(|item| match *item {
                     syn::NestedMetaItem::MetaItem(ref mi) => match *mi {
-                        syn::MetaItem::Word(ref kw) => (kw.to_string(), ArgValue::Nothing),
+                        syn::MetaItem::Word(ref kw) => (kw.as_ref(), ArgValue::Nothing),
 
                         syn::MetaItem::NameValue(ref kw, ref val) => match *val {
                             syn::Lit::Str(ref s, syn::StrStyle::Cooked) => {
-                                (kw.to_string(), ArgValue::Str(s.clone()))
+                                (kw.as_ref(), ArgValue::Str(s.clone()))
                             }
 
-                            syn::Lit::Int(i, _) => (kw.to_string(), ArgValue::Int(i.into())),
+                            syn::Lit::Int(i, _) => (kw.as_ref(), ArgValue::Int(i.into())),
 
                             _ => panic!("invalid tag value for by_value: {:?}", *val),
                         },
 
                         syn::MetaItem::List(ref kw, _) => {
-                            (kw.to_string(), ArgValue::List(get_item_args(mi)))
+                            (kw.as_ref(), ArgValue::List(get_item_args(mi)))
                         }
                     },
                     _ => panic!("unknown item passed to by_value: {:?}", *item),
