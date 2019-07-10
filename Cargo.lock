@@ -202,16 +202,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "c2rust-analysis-plugin"
-version = "0.1.0"
-dependencies = [
- "bincode 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "c2rust-analysis-rt 0.1.0",
- "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "indexmap 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "c2rust-analysis-rt"
 version = "0.1.0"
 dependencies = [

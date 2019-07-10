@@ -6,7 +6,6 @@ members = [
     "c2rust-ast-builder",
     "c2rust-ast-exporter",
     "manual/preprocessors",
-    "analysis/plugin",
     "analysis/runtime",
     "c2rust-bitfields",
     "c2rust-macros",
