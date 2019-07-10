@@ -96,6 +96,7 @@ where
             // No case for TyTypeof - it can't be written in source programs currently
 
             // These cases have no internal structure to recurse on.
+            (&TyKind::CVarArgs, _) => {}
             (&TyKind::Infer, _) => {}
             (&TyKind::ImplicitSelf, _) => {}
             (&TyKind::Mac(_), _) => {}
