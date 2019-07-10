@@ -154,7 +154,8 @@ impl Instrumenter {
             plugin_dirs: vec![],
         };
 
-        c2rust_refactor::lib_main(refactor_options);
+        c2rust_refactor::lib_main(refactor_options)
+            .expect("Refactoring instrumentation pass did not run correctly");
     }
 
     fn add_instrumentation_dependency(&self) -> io::Result<()> {
@@ -228,5 +229,6 @@ fn handle_process(matches: &ArgMatches) {
         plugin_dirs: vec![],
     };
 
-    c2rust_refactor::lib_main(refactor_options);
+    c2rust_refactor::lib_main(refactor_options)
+        .expect("Refactoring instrumentation pass did not run correctly");
 }
