@@ -25,7 +25,7 @@ use c2rust_ast_builder::{mk, Make};
 use crate::analysis::ownership;
 use crate::ast_manip::{visit_nodes, AstEquiv};
 use crate::context::RefactorCtxt;
-use crate::command::{CommandState, Registry};
+use crate::command::{Command, CommandState, RefactorState, Registry};
 use crate::driver::{parse_ty, Phase};
 use crate::transform::Transform;
 use crate::util::Lone;
@@ -350,27 +350,26 @@ struct AnalysisCmd {
     log_filename: String,
 }
 
-impl Transform for AnalysisCmd {
-    fn transform(&self, krate: &mut ast::Crate, st: &CommandState, cx: &RefactorCtxt) {
-        // Initialize the analysis runtime so we get debug pretty printing for
-        // spans
-        c2rust_analysis_rt::span::set_file(&self.span_filename);
+impl Command for AnalysisCmd {
+    fn run(&mut self, state: &mut RefactorState) {
+        state.transform_crate(Phase::Phase3, |st, cx| {
+            // Initialize the analysis runtime so we get debug pretty printing for
+            // spans
+            c2rust_analysis_rt::span::set_file(&self.span_filename);
 
-        let arena = SyncDroplessArena::default();
-        let ownership_analysis = ownership::analyze(&st, &cx, &arena);
+            let arena = SyncDroplessArena::default();
+            let ownership_analysis = ownership::analyze(&st, &cx, &arena);
 
-        let mut analyzer = LifetimeAnalyzer::new(
-            cx,
-            &self.span_filename,
-            &self.log_filename,
-            ownership_analysis,
-        );
-        analyzer.run(krate);
-        analyzer.visit_crate(krate)
-    }
-
-    fn min_phase(&self) -> Phase {
-        Phase::Phase3
+            let mut analyzer = LifetimeAnalyzer::new(
+                cx,
+                &self.span_filename,
+                &self.log_filename,
+                ownership_analysis,
+            );
+            analyzer.run(&*st.krate());
+            analyzer.visit_crate(&mut *st.krate_mut());
+        })
+            .expect("Failed to run lifetime analysis");
     }
 }
 
@@ -605,7 +604,7 @@ pub fn register_commands(reg: &mut Registry) {
         main_path: args[1].clone(),
     }));
 
-    reg.register("lifetime_analysis", |args| mk(AnalysisCmd {
+    reg.register("lifetime_analysis", |args| Box::new(AnalysisCmd {
         span_filename: args[0].clone(),
         log_filename: args[1].clone(),
     }));
