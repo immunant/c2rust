@@ -390,6 +390,24 @@ impl UserData for LuaAstNode<Mod> {
             this.0.borrow_mut().items.insert(index, item.borrow().clone());
             Ok(())
         });
+
+        methods.add_method("get_items", |lua_ctx, this, ()| {
+            this.0
+                .borrow()
+                .items
+                .iter()
+                .map(|item| item.clone().to_lua(lua_ctx))
+                .collect::<Result<Vec<_>>>()
+        });
+
+        methods.add_method_mut("drain_items", |lua_ctx, this, ()| {
+            this.0
+                .borrow_mut()
+                .items
+                .drain(..)
+                .map(|item| item.to_lua(lua_ctx))
+                .collect::<Result<Vec<_>>>()
+        });
     }
 }
 
