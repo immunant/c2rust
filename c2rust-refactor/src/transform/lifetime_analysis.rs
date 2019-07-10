@@ -89,7 +89,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
     }
 
     fn finalize(self) -> Result<(), Error> {
-        eprintln!("Writing spans to {:?}", self.span_file_path);
+        debug!("Writing spans to {:?}", self.span_file_path);
         let span_file = File::create(self.span_file_path)
             .context("Could not open span file")?;
         let spans: Vec<SourceSpan> = self.spans.into_iter().collect();
@@ -277,7 +277,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
             ast::ExprKind::Call(_callee, args) => {
                 for arg in args.iter_mut() {
                     if self.cx.node_type(arg.id).is_unsafe_ptr() && !self.is_constant(arg) {
-                        println!("Instrumenting arg: {:?}", arg);
+                        debug!("Instrumenting arg: {:?}", arg);
                         self.instrument_expr_call_rt(
                             arg,
                             arg.span,
@@ -546,7 +546,7 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
             .expect("Could not open instrumentation log file");
         while let Ok(event) = bincode::deserialize_from(&mut log_file) as bincode::Result<Event> {
             let span = self.spans[event.span as usize];
-            println!("{:?} {:?}", span, event.kind);
+            debug!("{:?} {:?}", span, event.kind);
 
             let node_id = *match self.span_to_expr.get(&event.span) {
                 Some(id) => id,
@@ -575,19 +575,19 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
                     match self.mem_map.get_mut(&ptr) {
                         Some(info) => info.add_event(event.kind, node_id),
                         None => {
-                            eprintln!("Warning: Could not find allocation for {:?}", event);
+                            warn!("Warning: Could not find allocation for {:?}", event);
                         }
                     }
                 }
                 EventKind::Done => continue,
             };
 
-            println!("{:?}", self.mem_map);
+            debug!("{:?}", self.mem_map);
         }
     }
 
     fn process_chain(&self, events: &[EventPlace]) {
-        println!("Processing chain of memory events: {:#?}", events);
+        debug!("Processing chain of memory events: {:#?}", events);
 
         // TODO: create dataflow graph from this chain
 
