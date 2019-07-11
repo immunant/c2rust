@@ -1,7 +1,7 @@
 extern crate syntax;
 
 use super::{ArgList, ArgValue};
-use {DefaultsConfig, FunctionConfig, ItemConfig, StructConfig, XCheckType};
+use crate::{DefaultsConfig, FunctionConfig, ItemConfig, StructConfig, XCheckType};
 
 use std::convert::TryInto;
 

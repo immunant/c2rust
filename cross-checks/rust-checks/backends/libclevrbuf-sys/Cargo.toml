@@ -2,6 +2,7 @@
 name = "c2rust-xcheck-backend-libclevrbuf-sys"
 description = "Native bindings to the libclevrbuf library"
 version = "0.9.0"
+edition = "2018"
 authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
 license = "BSD-3-Clause"
 homepage = "https://c2rust.com/"
