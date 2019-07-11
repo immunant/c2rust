@@ -9,4 +9,4 @@ repository = "https://github.com/immunant/c2rust"
 publish = false
 
 [dependencies]
-libc = "0.2.50"
+libc = "0.2"

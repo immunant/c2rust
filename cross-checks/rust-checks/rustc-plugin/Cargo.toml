@@ -17,7 +17,7 @@ expand-macros = []
 c-hash-functions = []
 
 [dependencies]
-matches = "0.1.6"
+matches = "0.1"
 serde = "1.0"
 serde_yaml = "0.7"
 
