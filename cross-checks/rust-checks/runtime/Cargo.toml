@@ -18,4 +18,4 @@ fixed-length-array-hash = []
 
 [dependencies]
 simd = { version = "0.2", optional = true }
-libc = { version = "0.2", optional = true }
+libc = { version = "0.2", optional = true, default-features = false }
