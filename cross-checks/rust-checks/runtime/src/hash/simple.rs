@@ -1,6 +1,6 @@
 use super::CrossCheckHasher;
-use std::hash::Hasher;
-use std::mem;
+use core::hash::Hasher;
+use core::mem;
 
 #[derive(Debug, Default)]
 pub struct SimpleHasher(Option<u64>);
@@ -128,8 +128,8 @@ mod tests {
                 assert_eq!(h.finish(), $expected);
             };
         }
-        use std::f32::consts as consts_f32;
-        use std::f64::consts as consts_f64;
+        use core::f32::consts as consts_f32;
+        use core::f64::consts as consts_f64;
         // TODO: also test usize and isize???
         test_value!(0x000000000000012_u8, write_u8, 0x0000000000000012_u64);
         test_value!(0x000000000001234_u16, write_u16, 0x5a5a5a5a5a5a486e_u64);

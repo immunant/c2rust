@@ -1,5 +1,5 @@
 use super::CrossCheckHasher;
-use std::hash::Hasher;
+use core::hash::Hasher;
 
 #[derive(Debug)]
 pub struct Djb2Hasher(u32);
