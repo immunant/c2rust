@@ -404,7 +404,7 @@ struct AnonConst {
     value,
 }
 
-#[match=custom] struct Ident { name, span }
+#[match=custom] #[equiv_mode=custom] struct Ident { name, span }
 #[match=eq] flag Name;
 #[equiv_mode=ignore] #[match=eq] flag SyntaxContext;
 
