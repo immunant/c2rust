@@ -5,6 +5,7 @@ use rustc::hir::{self, Node};
 use rustc::session::Session;
 use rustc::ty::subst::InternalSubsts;
 use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
+use rustc_errors::{DiagnosticBuilder, Level};
 use rustc_metadata::cstore::CStore;
 use syntax::ast::{
     self, Expr, ExprKind, FnDecl, FunctionRetTy, Item, NodeId, Path, QSelf, DUMMY_NODE_ID,
@@ -70,6 +71,10 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 
 // Other context API methods
 impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
+    pub fn make_diagnostic(&self, level: Level, message: &str) -> DiagnosticBuilder<'a> {
+        DiagnosticBuilder::new(self.sess.diagnostic(), level, message)
+    }
+
     /// Get the `ty::Ty` computed for a node.
     pub fn node_type(&self, id: NodeId) -> Ty<'tcx> {
         let parent = self.hir_map().get_parent_did(id);

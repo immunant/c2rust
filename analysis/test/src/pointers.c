@@ -57,6 +57,12 @@ void analysis2() {
   free(s);
 }
 
+void no_owner(int should_free) {
+  global = (struct S*)malloc(sizeof(struct S));
+  if (should_free)
+    free(global);
+}
+
 void invalid() {
   struct S* s = (struct S*)malloc(sizeof(struct S));
   s->field = 10;
@@ -70,5 +76,9 @@ void invalid() {
 int main(int argc, char *argv[]) {
   exercise_allocator();
   simple_analysis();
+  analysis2();
+  no_owner(0);
+  no_owner(1);
+  invalid();
   return 0;
 }

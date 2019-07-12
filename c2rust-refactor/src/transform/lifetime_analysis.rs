@@ -8,25 +8,31 @@ use std::path::Path;
 use std::u32;
 
 use arena::SyncDroplessArena;
+use rustc_errors::Level;
 use smallvec::SmallVec;
 use syntax::{ast, entry};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::symbol::{keywords, Ident};
+use rustc::ty;
 use syntax_pos::{Span, FileName, BytePos, Pos, NO_EXPANSION};
 
 use indexmap::IndexSet;
 use failure::{Error, ResultExt};
+use petgraph::dot::Dot;
+use petgraph::graph::{Graph, NodeIndex};
+use petgraph::visit::{IntoNodeIdentifiers};
 
 use c2rust_analysis_rt::{SourceSpan, SourcePos, SpanId};
 use c2rust_analysis_rt::events::{Pointer, Event, EventKind};
 use c2rust_ast_builder::{mk, Make};
 
 use crate::analysis::ownership;
-use crate::ast_manip::{visit_nodes, AstEquiv};
+use crate::ast_manip::{lr_expr, map_ast_unified, visit_nodes, AstEquiv, UnifiedAstMap};
 use crate::context::RefactorCtxt;
 use crate::command::{Command, CommandState, RefactorState, Registry};
 use crate::driver::{parse_ty, Phase};
+use crate::reflect;
 use crate::transform::Transform;
 use crate::util::Lone;
 
@@ -180,7 +186,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         *expr = mk().block_expr(mk().block(block_stmts));
     }
 
-    fn instrument_expr_call_rt<I>(
+    fn instrument_expr_call<I>(
         &mut self,
         expr: &mut P<ast::Expr>,
         span: Span,
@@ -200,6 +206,24 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
             hook_args,
         );
         self.instrument_expr(expr, &[mk().semi_stmt(call)])
+    }
+
+    fn instrument_expr_value<I>(&mut self, expr: &mut P<ast::Expr>, span: Span, fn_name: I)
+        where I: Make<Ident>
+    {
+        let mut value = mk().path_expr(vec!["ret"]);
+        if let Some(ty::TyKind::Ref(_, ty, _)) = self.cx.opt_node_type(expr.id).map(|x| &x.sty) {
+            value = mk().cast_expr(
+                value,
+                mk().ptr_ty(reflect::reflect_tcx_ty(self.cx.ty_ctxt(), ty)),
+            );
+        }
+        self.instrument_expr_call(
+            expr,
+            span,
+            fn_name,
+            &[mk().cast_expr(value, mk().ident_ty("usize"))],
+        )
     }
 
     fn is_constant(&self, expr: &ast::Expr) -> bool {
@@ -267,7 +291,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
                     }
                 });
 
-                self.instrument_expr_call_rt(expr, expr.span, fn_name, &args);
+                self.instrument_expr_call(expr, expr.span, fn_name, &args);
                 return;
             }
         }
@@ -278,39 +302,41 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
                 for arg in args.iter_mut() {
                     if self.cx.node_type(arg.id).is_unsafe_ptr() && !self.is_constant(arg) {
                         debug!("Instrumenting arg: {:?}", arg);
-                        self.instrument_expr_call_rt(
-                            arg,
-                            arg.span,
-                            "ptr_arg",
-                            &[mk().cast_expr(
-                                mk().path_expr(vec!["ret"]), mk().ident_ty("usize"),
-                            )],
-                        );
+                        self.instrument_expr_value(arg, arg.span, "ptr_arg");
                     }
                 }
             }
             ast::ExprKind::Unary(ast::UnOp::Deref, ptr_expr) =>
                 if self.cx.node_type(ptr_expr.id).is_unsafe_ptr()
             {
-                self.instrument_expr_call_rt(
-                    ptr_expr,
-                    expr_span,
-                    "ptr_deref",
-                    &[mk().cast_expr(mk().path_expr(vec!["ret"]), mk().ident_ty("usize"))],
-                );
+                self.instrument_expr_value(ptr_expr, expr_span, "ptr_deref");
             }
             ast::ExprKind::Assign(lhs, rhs) =>
                 if self.cx.node_type(lhs.id).is_unsafe_ptr()
             {
-                self.instrument_expr_call_rt(
-                    rhs,
-                    expr_span,
-                    "ptr_assign",
-                    &[mk().cast_expr(mk().path_expr(vec!["ret"]), mk().ident_ty("usize"))],
-                )
+                self.instrument_expr_value(rhs, expr_span, "ptr_assign");
             }
-            _ => (),
+            _ => {}
         }
+    }
+
+    fn flat_map_stmt(&mut self, stmt: ast::Stmt) -> SmallVec<[ast::Stmt; 1]> {
+        let mut stmt: ast::Stmt = mut_visit::noop_flat_map_stmt(stmt, self).lone();
+        let stmt_span = stmt.span;
+        match &mut stmt.node {
+            ast::StmtKind::Local(local) => {
+                if let Some(init) = &mut local.init {
+                    let is_unsafe_ptr = self.cx.opt_node_type(init.id)
+                        .map_or(false, |ty| ty.is_unsafe_ptr());
+                    if is_unsafe_ptr {
+                        self.instrument_expr_value(init, stmt_span, "ptr_assign");
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        smallvec![stmt]
     }
 
     fn flat_map_item(&mut self, item: P<ast::Item>) -> SmallVec<[P<ast::Item>; 1]> {
@@ -366,24 +392,25 @@ impl Command for AnalysisCmd {
                 &self.log_filename,
                 ownership_analysis,
             );
-            analyzer.run(&*st.krate());
+            analyzer.run(&mut *st.krate_mut());
             analyzer.visit_crate(&mut *st.krate_mut());
         })
             .expect("Failed to run lifetime analysis");
     }
 }
 
-#[derive(Debug)]
-struct EventPlace {
+#[derive(Clone, Debug)]
+struct EventNode {
     kind: EventKind,
     // AST node where this event occurred
     node: ast::NodeId,
 }
 
+#[derive(Clone)]
 struct AllocInfo {
     base: Pointer,
     size: usize,
-    events: Vec<EventPlace>,
+    events: Vec<EventNode>,
 }
 
 impl AllocInfo {
@@ -400,7 +427,7 @@ impl AllocInfo {
     }
 
     fn add_event(&mut self, kind: EventKind, node: ast::NodeId) {
-        self.events.push(EventPlace { kind, node });
+        self.events.push(EventNode { kind, node });
     }
 }
 
@@ -478,14 +505,18 @@ impl fmt::Debug for MemMap {
 }
 
 struct LifetimeAnalyzer<'lty, 'a: 'lty, 'tcx: 'a> {
-    _cx: &'a RefactorCtxt<'a, 'tcx>,
+    cx: &'a RefactorCtxt<'a, 'tcx>,
     log_path: &'a Path,
 
     spans: Vec<Span>,
     span_ids: HashMap<Span, SpanId>,
 
     // TODO: replace with a Vec, SpanIds are dense
-    span_to_expr: HashMap<SpanId, ast::NodeId>,
+    span_to_node_id: HashMap<SpanId, ast::NodeId>,
+
+    context_map: HashMap<ast::NodeId, lr_expr::Context>,
+
+    data_flow: DataFlowGraph,
 
     _ownership_analysis: ownership::AnalysisResult<'lty, 'tcx>,
 
@@ -523,23 +554,36 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
         );
         
         Self {
-            _cx: cx,
+            cx: cx,
             log_path: Path::new(log_file),
             spans,
             span_ids,
-            span_to_expr: HashMap::new(),
+            span_to_node_id: HashMap::new(),
+            context_map: HashMap::new(),
+            data_flow: DataFlowGraph::new(),
             _ownership_analysis: ownership_analysis,
             mem_map: MemMap::new(),
         }
     }
 
-    fn run(&mut self, krate: &ast::Crate) {
+    fn run(&mut self, krate: &mut ast::Crate) {
         // Construct a mapping from expressions to spans
         visit_nodes(krate, |e: &ast::Expr| {
             if let Some(id) = self.span_ids.get(&e.span) {
-                self.span_to_expr.insert(*id, e.id);
+                self.span_to_node_id.insert(*id, e.id);
             }
         });
+        visit_nodes(krate, |e: &ast::Stmt| {
+            if let Some(id) = self.span_ids.get(&e.span) {
+                self.span_to_node_id.insert(*id, e.id);
+            }
+        });
+
+        lr_expr::fold_exprs_with_context(krate, |expr, ctx| {
+            self.context_map.insert(expr.id, ctx);
+        });
+
+        let ast_map = map_ast_unified(krate);
 
         let mut log_file = File::open(&self.log_path)
             .expect("Could not open instrumentation log file");
@@ -547,7 +591,7 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
             let span = self.spans[event.span as usize];
             debug!("{:?} {:?}", span, event.kind);
 
-            let node_id = *match self.span_to_expr.get(&event.span) {
+            let node_id = *match self.span_to_node_id.get(&event.span) {
                 Some(id) => id,
                 _ => {
                     let span = self.spans[event.span as usize];
@@ -561,8 +605,9 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
                         .add_event(event.kind, node_id);
                 }
                 EventKind::Free { ptr } => {
-                    let info = self.mem_map.free(ptr);
-                    self.process_chain(&info.events);
+                    let mut info = self.mem_map.free(ptr);
+                    info.add_event(event.kind, node_id);
+                    self.process_chain(&info.events, &ast_map);
                 }
                 EventKind::Realloc { old_ptr, size, new_ptr } => {
                     self.mem_map.realloc(old_ptr, size, new_ptr)
@@ -583,17 +628,202 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
 
             debug!("{:?}", self.mem_map);
         }
+
+        // Process memory leaks
+        for (_addr, mut info) in self.mem_map.clone().into_iter() {
+            info.add_event(EventKind::Done, ast::DUMMY_NODE_ID);
+            self.process_chain(&info.events, &ast_map);
+        }
+
+        debug!("{:?}", self.data_flow.dot());
+        let owned_paths = self.data_flow.find_owned_paths();
+        for path in &owned_paths {
+            let path_str = path.iter()
+                .map(|node| format!("{:?}", ast_map.get(&node.id).unwrap()))
+                .collect::<Vec<_>>()
+                .as_slice()
+                .join(" -> ");
+            debug!("{}", path_str);
+
+            let alloc_span = ast_map.get_ast::<ast::Expr>(&path[0].id).unwrap().span;
+            let mut diagnostic = self.cx.make_diagnostic(
+                Level::Note,
+                "Found candidate for Boxing",
+            );
+            diagnostic.set_span(alloc_span);
+            diagnostic.emit();
+        }
     }
 
-    fn process_chain(&self, events: &[EventPlace]) {
-        debug!("Processing chain of memory events: {:#?}", events);
+    fn process_chain(&mut self, events: &[EventNode], ast_map: &UnifiedAstMap) {
+        debug!("Processing chain of memory events:");
+        for event in events.windows(2) {
+            debug!(
+                "  Event: {:?} @ {:?} -> {:?} @ {:?}",
+                event[0].kind,
+                ast_map.get(&event[0].node),
+                event[1].kind,
+                ast_map.get(&event[1].node),
+            );
+            let mut nodes = event.iter().map(|event| {
+                self.data_flow.get_node(event.node, self.node_kind(event, ast_map))
+                    .unwrap_or_else(|| panic!("Could not match node kind for node {:?}", ast_map.get(&event.node)))
+            });
+            let start = nodes.next().unwrap();
+            let end = nodes.next().unwrap();
+            let kind = match event[1].kind {
+                EventKind::Free{..} | EventKind::Realloc{..} | EventKind::Deref(..) | EventKind::Done
+                    => DataFlowEdge::Use,
+                EventKind::Assign(..) => DataFlowEdge::Assign,
+                EventKind::Arg(..) => DataFlowEdge::Call,
+                kind => panic!("Unexpected event kind: {:?}", kind),
+            };
+            self.data_flow.add_flow(start, end, kind);
+        }
+    }
 
-        // TODO: create dataflow graph from this chain
-
+    fn node_kind(&self, event: &EventNode, ast_map: &UnifiedAstMap) -> DataFlowNodeKind {
+        match event.kind {
+            EventKind::Alloc{..} => DataFlowNodeKind::Alloc,
+            EventKind::Free{..} => DataFlowNodeKind::Free,
+            EventKind::Realloc{..} => DataFlowNodeKind::Realloc,
+            EventKind::Deref(..) => DataFlowNodeKind::Deref,
+            EventKind::Assign(..) => {
+                if let Some(expr) = ast_map.get_ast::<ast::Expr>(&event.node) {
+                    let lhs = expect!([expr.node] ast::ExprKind::Assign(ref lhs, _) => lhs);
+                    DataFlowNodeKind::from_lvalue(&lhs.node)
+                } else if let Some(stmt) = ast_map.get_ast::<ast::Stmt>(&event.node) {
+                    assert!(matches!([stmt.node] ast::StmtKind::Local(..)));
+                    DataFlowNodeKind::Local
+                } else {
+                    panic!("Unexpected AST node kind for event {:?}", event);
+                }
+            }
+            EventKind::Arg(..) => DataFlowNodeKind::Arg,
+            EventKind::Done => DataFlowNodeKind::Leak,
+        }
     }
 }
 
 impl<'lty, 'a, 'tcx> MutVisitor for LifetimeAnalyzer<'lty, 'a, 'tcx> {
+}
+
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum DataFlowNodeKind {
+    Alloc,
+    Realloc,
+    Local,
+    Arg,
+    Deref,
+    Pointer,
+    Free,
+    Leak,
+}
+
+impl DataFlowNodeKind {
+    fn from_lvalue(kind: &ast::ExprKind) -> Self {
+        match kind {
+            ast::ExprKind::Path(..) => DataFlowNodeKind::Local,
+            ast::ExprKind::Index(base, _) => DataFlowNodeKind::from_lvalue(&base.node),
+            ast::ExprKind::Field(base, _) => DataFlowNodeKind::from_lvalue(&base.node),
+            ast::ExprKind::Unary(ast::UnOp::Deref, _) => DataFlowNodeKind::Pointer,
+            _ => panic!("Unexpected lvalue expression kind"),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DataFlowNode {
+    kind: DataFlowNodeKind,
+    id: ast::NodeId,
+}
+
+#[derive(Copy, Clone, Debug)]
+enum DataFlowEdge {
+    Assign,
+    Call,
+    Use,
+}
+
+struct DataFlowGraph {
+    graph: Graph<DataFlowNode, DataFlowEdge>,
+    nodes: HashMap<ast::NodeId, NodeIndex>,
+}
+
+impl DataFlowGraph {
+    fn new() -> Self {
+        Self {
+            graph: Graph::new(),
+            nodes: HashMap::new(),
+        }
+    }
+
+    fn get_node(&mut self, id: ast::NodeId, kind: DataFlowNodeKind) -> Option<NodeIndex> {
+        let index = self.nodes.get(&id).map(|x| *x).unwrap_or_else(|| {
+            let new_index = self.graph.add_node(DataFlowNode { kind, id });
+            self.nodes.insert(id, new_index);
+            new_index
+        });
+        if self.graph[index].kind != kind {
+            None
+        } else {
+            Some(index)
+        }
+    }
+
+    fn add_flow(&mut self, start: NodeIndex, end: NodeIndex, kind: DataFlowEdge) {
+        self.graph.add_edge(start, end, kind);
+    }
+
+    fn dot<'a>(&'a self) -> Dot<&'a Graph<DataFlowNode, DataFlowEdge>> {
+        Dot::new(&self.graph)
+    }
+
+    fn find_owned_paths(&self) -> Vec<Vec<DataFlowNode>> {
+        let frees = self.graph.node_identifiers().filter(|node_id| {
+            let node_kind = self.graph[*node_id].kind;
+            node_kind == DataFlowNodeKind::Free || node_kind == DataFlowNodeKind::Leak
+        });
+
+        // Paths from allocation to free, where the allocation can be owned the
+        // entire time.
+        let mut allocation_paths = HashMap::new();
+
+        // Allocation nodes with multiple paths to a free, so there is no clear
+        // ownership path.
+        let mut multiple_allocation_paths = vec![];
+
+        for free in frees {
+            let mut path = vec![self.graph[free].clone()];
+            let mut cur = free;
+            while self.graph[cur].kind != DataFlowNodeKind::Alloc {
+                cur = self.graph
+                    .neighbors_directed(cur, petgraph::Direction::Incoming)
+                    .next()
+                    .unwrap();
+
+                // We don't care about derefs along the ownership path
+                if self.graph[cur].kind != DataFlowNodeKind::Deref {
+                    path.push(self.graph[cur].clone());
+                }
+            }
+
+            // We want a path from allocation to free
+            path.reverse();
+
+            let existing = allocation_paths.insert(cur, path);
+            if existing.is_some() {
+                multiple_allocation_paths.push(cur);
+            }
+        }
+
+        for node_id in &multiple_allocation_paths {
+            allocation_paths.remove(&node_id);
+        }
+
+        allocation_paths.into_iter().map(|(_, v)| v).collect()
+    }
 }
 
 pub fn register_commands(reg: &mut Registry) {

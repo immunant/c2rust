@@ -1,4 +1,12 @@
-use libc;
+#![allow(dead_code,
+         mutable_transmutes,
+         non_camel_case_types,
+         non_snake_case,
+         non_upper_case_globals,
+         unused_assignments,
+         unused_mut)]
+#![feature(const_raw_ptr_to_usize_cast)]
+extern crate libc;
 extern "C" {
     #[no_mangle]
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
@@ -12,7 +20,7 @@ extern "C" {
     #[no_mangle]
     fn free(__ptr: *mut libc::c_void);
     #[no_mangle]
-    fn printf(_: *const libc::c_char, ...) -> libc::c_int;
+    fn printf(_: *const libc::c_char, _: ...) -> libc::c_int;
 }
 pub type size_t = libc::c_ulong;
 #[derive ( Copy , Clone )]
@@ -91,6 +99,11 @@ pub unsafe extern "C" fn analysis2() {
     free(s as *mut libc::c_void);
 }
 #[no_mangle]
+pub unsafe extern "C" fn no_owner(mut should_free: libc::c_int) {
+    global = malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
+    if 0 != should_free { free(global as *mut libc::c_void); };
+}
+#[no_mangle]
 pub unsafe extern "C" fn invalid() {
     let mut s: *mut S =
         malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
@@ -105,6 +118,10 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
  -> libc::c_int {
     exercise_allocator();
     simple_analysis();
+    analysis2();
+    no_owner(0i32);
+    no_owner(1i32);
+    invalid();
     return 0i32;
 }
 pub fn main() {

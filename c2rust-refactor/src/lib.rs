@@ -22,6 +22,7 @@ extern crate libc;
 extern crate json;
 #[macro_use]
 extern crate log;
+extern crate petgraph;
 extern crate regex;
 extern crate rustc;
 extern crate rustc_codegen_utils;
