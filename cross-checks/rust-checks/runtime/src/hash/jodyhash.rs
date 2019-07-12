@@ -2,8 +2,8 @@
 // from https://github.com/jbruchon/jodyhash
 
 use super::CrossCheckHasher;
-use std::hash::Hasher;
-use std::ops::BitXor;
+use core::hash::Hasher;
+use core::ops::BitXor;
 
 #[derive(Debug, Default)]
 pub struct JodyHasher(u64);

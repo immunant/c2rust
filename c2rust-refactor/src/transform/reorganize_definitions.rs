@@ -608,7 +608,9 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     DeclKind::Item(existing_item) => match &existing_item.node {
                         ItemKind::Ty(..) | ItemKind::Struct(..) | ItemKind::Union(..)
                         | ItemKind::Enum(..) => {
-                            if self.cx.structural_eq(&new, &existing_item) {
+                            // Does the new item match the existing item, except
+                            // for unnamed names?
+                            if new.node.unnamed_equiv(&existing_item.node) {
                                 return Ok(existing_item.ident);
                             }
                         }

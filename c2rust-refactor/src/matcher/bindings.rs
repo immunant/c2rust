@@ -226,6 +226,30 @@ macro_rules! define_binding_values {
                     (_, _) => false,
                 }
             }
+            fn unnamed_equiv(&self, other: &Self) -> bool {
+                match (self, other) {
+                    $(
+                        (&Value::$Thing(ref x1),
+                         &Value::$Thing(ref x2)) => {
+                            x1.unnamed_equiv(x2)
+                        },
+                        (&Value::$Thing(ref x1),
+                         &Value::Optional(Some(box Value::$Thing(ref x2)))) => {
+                            x1.unnamed_equiv(x2)
+                        },
+                        (&Value::Optional(Some(box Value::$Thing(ref x1))),
+                         &Value::$Thing(ref x2)) => {
+                            x1.unnamed_equiv(x2)
+                        },
+                        (&Value::Optional(Some(box Value::$Thing(ref x1))),
+                         &Value::Optional(Some(box Value::$Thing(ref x2)))) => {
+                            x1.unnamed_equiv(x2)
+                        },
+                    )*
+                    (&Value::Optional(None), &Value::Optional(None)) => true,
+                    (_, _) => false,
+                }
+            }
         }
 
         $(
