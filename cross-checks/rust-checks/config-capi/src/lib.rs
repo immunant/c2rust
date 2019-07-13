@@ -115,7 +115,11 @@ pub unsafe extern "C" fn xcfg_config_parse(
     cfg: *mut xcfg::Config,
     buf: StringLenPtr,
 ) -> *const xcfg::Config {
-    let cfg = Box::from_raw(cfg);
+    let cfg = if cfg.is_null() {
+        Box::default()
+    } else {
+        Box::from_raw(cfg)
+    };
     let second_cfg = serde_yaml::from_slice(buf.to_slice())
         .unwrap_or_else(|e| panic!("invalid YAML '{:?}': {}", buf.to_str(), e));
     let second_cfg = xcfg::Config::new(second_cfg);
@@ -125,8 +129,10 @@ pub unsafe extern "C" fn xcfg_config_parse(
 
 #[no_mangle]
 pub unsafe extern "C" fn xcfg_config_destroy(cfg: *mut xcfg::Config) {
-    let cfg = Box::from_raw(cfg);
-    drop(cfg);
+    if !cfg.is_null() {
+        let cfg = Box::from_raw(cfg);
+        drop(cfg);
+    }
 }
 
 // C API for cross-check types
@@ -195,8 +201,10 @@ pub unsafe extern "C" fn xcfg_scope_stack_new(
 
 #[no_mangle]
 pub unsafe extern "C" fn xcfg_scope_stack_destroy(scope_stack: *mut xcfg::scopes::ScopeStack) {
-    let scope_stack = Box::from_raw(scope_stack);
-    drop(scope_stack);
+    if !scope_stack.is_null() {
+        let scope_stack = Box::from_raw(scope_stack);
+        drop(scope_stack);
+    }
 }
 
 #[no_mangle]
