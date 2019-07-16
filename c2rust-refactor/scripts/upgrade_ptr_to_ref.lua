@@ -17,51 +17,39 @@ function Variable.new(used, id, locl, binding, ident)
     return self
 end
 
-Visitor = {}
-
-function Visitor.new(transform_ctx, node_ids)
-    self = {}
-    self.tctx = transform_ctx
-    self.node_ids = node_ids
-
-    setmetatable(self, Visitor)
-    Visitor.__index = Visitor
-
-    return self
-end
-
-function Visitor:visit_fn_like(fn_like)
-    -- Skip foreign functions - we only want functions with bodies
-    if fn_like.kind == "Foreign" then
-        return
-    end
-
-    -- Most trait methods don't have default impls, though they can
-    if fn_like.kind == "TraitMethod" and not fn_like.block then
-        return
-    end
-
-    debug("FnLike name: " .. fn_like.ident)
-
-    args = fn_like.decl.args
-    stmts = fn_like.block.stmts
-
-    for _, arg in ipairs(args) do
-        -- TODO: Pattern might not be an ident (ie could be tuple of ptrs)
-        if self.node_ids[arg.id] and arg.ty.kind == "Ptr" then
-            debug("Found node: " .. arg.id)
-
-            arg.ty.kind = "Rptr"
-        end
-    end
-
-    return true
-end
-
 refactor:transform(
     function(transform_ctx)
         node_ids = Set.new{12, 21}
-        return transform_ctx:visit_fn_like(Visitor.new(transform_ctx, node_ids))
+        return transform_ctx:visit_fn_like_new(function(fn_like)
+            -- Skip foreign functions - we only want functions with bodies
+            print("Hello wurld")
+            fn_like_kind = fn_like:get_kind()
+
+            if fn_like_kind == "Foreign" then
+                return
+            end
+
+            -- Most trait methods don't have default impls, though they can
+            if fn_like_kind == "TraitMethod" and not fn_like:has_block() then
+                return
+            end
+
+            debug("FnLike name: " .. fn_like:get_ident())
+
+            args = fn_like:get_decl().args
+            stmts = fn_like:get_block().stmts
+
+            for _, arg in ipairs(args) do
+                -- TODO: Pattern might not be an ident (ie could be tuple of ptrs)
+                if node_ids[arg.id] and arg.ty.kind == "Ptr" then
+                    debug("Found node: " .. arg.id)
+
+                    arg.ty.kind = "Rptr"
+                end
+            end
+
+            return true
+        end)
     end
 )
 

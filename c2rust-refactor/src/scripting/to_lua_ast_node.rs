@@ -12,6 +12,7 @@ use rlua::{Context, Error, Function, Result, Scope, ToLua, UserData, UserDataMet
 use rlua::prelude::LuaString;
 
 use crate::ast_manip::{util, visit_nodes, AstName, AstNode, WalkAst};
+use crate::ast_manip::fn_edit::{FnLike, FnKind};
 use super::DisplayLuaError;
 
 /// Refactoring module
@@ -34,7 +35,6 @@ impl<T> ToLuaExt for T
         lua.create_userdata(LuaAstNode::new(self))?.to_lua(lua)
     }
 }
-    
 
 impl<T> ToLuaScoped for T
     where T: 'static + Sized,
@@ -474,5 +474,59 @@ impl ToLuaExt for AstNode {
             AstNode::Stmt(x) => x.to_lua(lua),
             AstNode::Item(x) => x.to_lua(lua),
         }
+    }
+}
+
+/// FnLike AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type FnLikeAstNode
+unsafe impl Send for LuaAstNode<P<FnLike>> {}
+impl UserData for LuaAstNode<FnLike> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_kind", |lua_ctx, this, ()| {
+            Ok(this.0.borrow().kind.to_lua(lua_ctx))
+        });
+
+        methods.add_method("get_id", |lua_ctx, this, ()| {
+            this.0.borrow().id.to_lua(lua_ctx)
+        });
+
+        methods.add_method("get_ident", |lua_ctx, this, ()| {
+            this.0.borrow().ident.to_lua(lua_ctx)
+        });
+
+        methods.add_method("has_block", |lua_ctx, this, ()| {
+            this.0.borrow().block.is_some().to_lua(lua_ctx)
+        });
+
+        // methods.add_method("get_block", |lua_ctx, this, ()| {
+        //     this.0.borrow().block.to_lua(lua_ctx)
+        // });
+
+        // methods.add_method("get_decl", |lua_ctx, this, ()| {
+        //     LuaAstNode::new(this.0.borrow().decl)
+        // });
+    }
+}
+
+impl ToLuaExt for FnKind {
+    fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        match self {
+            FnKind::Normal => "Normal",
+            FnKind::ImplMethod => "ImplMethod",
+            FnKind::TraitMethod => "TraitMethod",
+            FnKind::Foreign => "Foreign",
+        }.to_lua(lua)
+    }
+}
+
+/// FnLike AST node handle
+//
+// @type FnLikeAstNode
+impl UserData for LuaAstNode<FnDecl> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+
     }
 }
