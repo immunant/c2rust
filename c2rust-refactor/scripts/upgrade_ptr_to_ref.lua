@@ -49,7 +49,7 @@ function Visitor:visit_fn_like(fn_like)
     for _, arg in ipairs(args) do
         -- TODO: Pattern might not be an ident (ie could be tuple of ptrs)
         if self.node_ids[arg.id] and arg.ty.kind == "Ptr" then
-            print("Found 'em cap: " .. arg.id .. " " .. arg.ty.kind)
+            debug("Found node: " .. arg.id)
 
             arg.ty.kind = "Rptr"
         end
@@ -60,7 +60,7 @@ end
 
 refactor:transform(
     function(transform_ctx)
-        node_ids = Set.new{12}
+        node_ids = Set.new{12, 21}
         return transform_ctx:visit_fn_like(Visitor.new(transform_ctx, node_ids))
     end
 )
