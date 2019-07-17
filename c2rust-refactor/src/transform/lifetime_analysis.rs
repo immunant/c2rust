@@ -13,7 +13,7 @@ use smallvec::SmallVec;
 use syntax::{ast, entry};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
-use syntax::symbol::{keywords, Ident, Symbol};
+use syntax::symbol::{kw, Ident, Symbol};
 use rustc::ty;
 use syntax_pos::{Span, FileName, BytePos, Pos, DUMMY_SP, NO_EXPANSION};
 
@@ -154,7 +154,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
                 .node
             {
                 if !path.segments[0].ident.is_path_segment_keyword() {
-                    path.segments.insert(0, ast::PathSegment::from_ident(keywords::Crate.ident()));
+                    path.segments.insert(0, mk().path_segment(kw::Crate));
                 }
                 path
             } else {
@@ -366,7 +366,6 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
             match e.node {
                 // These expressions are const if composed of const expressions
                 ast::ExprKind::Box(..)
-                | ast::ExprKind::ObsoleteInPlace(..)
                 | ast::ExprKind::Array(..)
                 | ast::ExprKind::Tup(..)
                 | ast::ExprKind::Binary(..)
@@ -520,11 +519,12 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
     }
 
     fn flat_map_item(&mut self, item: P<ast::Item>) -> SmallVec<[P<ast::Item>; 1]> {
-        let hir_id = self.cx.hir_map().node_to_hir_id(item.id);
-        // We shouldn't instrument inside any functions that we are hooking to
-        // avoid double instrumenting malloc and wrapper function calls.
-        if self.hooked_fn(hir_id).is_some() {
-            return smallvec![item];
+        if let Some(hir_id) = self.cx.hir_map().opt_node_to_hir_id(item.id) {
+            // We shouldn't instrument inside any functions that we are hooking to
+            // avoid double instrumenting malloc and wrapper function calls.
+            if self.hooked_fn(hir_id).is_some() {
+                return smallvec![item];
+            }
         }
 
         self.depth += 1;
@@ -1027,8 +1027,8 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                     //     .expect("Could not find call expr for argument");
                     if let Some(source) = self.get_source(&sources, input_ptr) {
                         // TODO: construct an argument node for the callee argument
-                        let callee_fn = self.cx.hir_map().hir_to_node_id(self.canonical_def(callee));
-                        if let Some(body_id) = self.cx.hir_map().maybe_body_owned_by(callee_fn) {
+                        let callee_hir_id = self.canonical_def(callee);
+                        if let Some(body_id) = self.cx.hir_map().maybe_body_owned_by(callee_hir_id) {
                             let body = self.cx.hir_map().body(body_id);
                             let arg = &body.arguments[arg_index];
                             let arg_id = arg.pat.hir_id;
