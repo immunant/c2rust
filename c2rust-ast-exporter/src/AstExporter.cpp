@@ -1530,8 +1530,8 @@ class TranslateASTVisitor final
     }
 
     bool VisitAddrLabelExpr(AddrLabelExpr *E) {
-        printError("Cannot translate GNU address of label expression", E);
-        abort();
+        printWarning("Cannot translate GNU address of label expression", E);
+        return true;
     }
 
     bool VisitChooseExpr(ChooseExpr *E) {
