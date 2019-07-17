@@ -1,57 +1,30 @@
 require "utils"
 
-Variable = {}
+Visitor = {}
 
-function Variable.new(used, id, locl, binding, ident)
-    self = {}
-    self.used = used
-    self.id = id
-    self.locl = locl
-    self.binding = binding
-    self.ident = ident
-    self.shadowed = false
+function Visitor.new(node_id)
+   self = {}
+   self.node_ids = node_ids
 
-    setmetatable(self, Variable)
-    Variable.__index = Variable
+   setmetatable(self, Visitor)
+   Visitor.__index = Visitor
 
-    return self
+   return self
+end
+
+function Visitor:visit_arg(arg)
+    arg_ty = arg:get_ty()
+
+    if self.node_ids[arg:get_id()] and arg_ty:get_kind() == "Ptr" then
+        arg_ty:to_rptr(nil, arg_ty:get_mut_ty())
+        arg:set_ty(arg_ty)
+    end
 end
 
 refactor:transform(
     function(transform_ctx)
         node_ids = Set.new{12, 21}
-        return transform_ctx:visit_fn_like_new(function(fn_like)
-            -- Skip foreign functions - we only want functions with bodies
-            fn_like_kind = fn_like:get_kind()
-
-            if fn_like_kind == "Foreign" then
-                return
-            end
-
-            -- Most trait methods don't have default impls, though they can
-            if fn_like_kind == "TraitMethod" and not fn_like:has_block() then
-                return
-            end
-
-            debug("FnLike name: " .. fn_like:get_ident())
-
-            args = fn_like:get_decl():get_args()
-            -- stmts = fn_like:get_block().stmts
-
-            for _, arg in ipairs(args) do
-                -- TODO: Pattern might not be an ident (ie could be tuple of ptrs)
-                arg_id = arg:get_id()
-                arg_ty = arg:get_ty()
-
-                if node_ids[arg_id] and arg_ty:get_kind() == "Ptr" then
-                    debug("Found node: " .. arg_id)
-
-                    arg_ty:to_rptr(arg_ty:get_mut_ty())
-                end
-            end
-
-            return true
-        end)
+        return transform_ctx:visit_crate_new(Visitor.new(node_ids))
     end
 )
 

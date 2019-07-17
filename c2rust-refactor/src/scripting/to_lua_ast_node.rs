@@ -337,7 +337,7 @@ impl UserData for LuaAstNode<P<Ty>> {
             }
         });
 
-        methods.add_method("to_rptr", |_lua_ctx, this, mut_ty: LuaAstNode<MutTy>| {
+        methods.add_method("to_rptr", |_lua_ctx, this, (_lt, mut_ty): (Option<LuaString>, LuaAstNode<MutTy>)| {
             // TODO: Support explicit lifetimes
 
             this.0.borrow_mut().node = TyKind::Rptr(None, mut_ty.0.borrow().clone());
@@ -548,10 +548,6 @@ impl UserData for LuaAstNode<FnLike> {
         methods.add_method("has_block", |lua_ctx, this, ()| {
             this.0.borrow().block.is_some().to_lua(lua_ctx)
         });
-
-        methods.add_method("get_decl", |_lua_ctx, this, ()| {
-            Ok(LuaAstNode::new(this.0.borrow().decl.clone()))
-        });
     }
 }
 
@@ -599,6 +595,12 @@ impl UserData for LuaAstNode<Arg> {
 
         methods.add_method("get_ty", |_lua_ctx, this, ()| {
             Ok(LuaAstNode::new(this.0.borrow().ty.clone()))
+        });
+
+        methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
+            this.0.borrow_mut().ty = ty.0.borrow().clone();
+
+            Ok(())
         });
     }
 }
