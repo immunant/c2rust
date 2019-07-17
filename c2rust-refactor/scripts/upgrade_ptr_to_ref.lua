@@ -1,6 +1,4 @@
 -- Take a set of node ids (params) and turn them (if a pointer) into a reference
-require "utils"
-
 Visitor = {}
 
 function Visitor.new(node_id)
@@ -14,11 +12,21 @@ function Visitor.new(node_id)
 end
 
 function Visitor:visit_arg(arg)
-    if self.node_ids[arg:get_id()] then
+    arg_id = arg:get_id()
+
+    if self.node_ids[arg_id] then
         arg_ty = arg:get_ty()
 
         if arg_ty:get_kind() == "Ptr" then
-            arg_ty:to_rptr(nil, arg_ty:get_mut_ty())
+            mut_ty = arg_ty:get_mut_ty()
+
+            if self.node_ids[arg_id] == "ref_slice" then
+                pointee_ty = mut_ty:get_ty()
+                pointee_ty:wrap_in_slice()
+                mut_ty:set_ty(pointee_ty)
+            end
+
+            arg_ty:to_rptr(nil, mut_ty)
             arg:set_ty(arg_ty)
         end
     end
@@ -26,7 +34,11 @@ end
 
 refactor:transform(
     function(transform_ctx)
-        node_ids = Set.new{12, 21}
+        node_ids = {
+            [12] = "ref",
+            [21] = "ref",
+            [58] = "ref_slice",
+        }
         return transform_ctx:visit_crate_new(Visitor.new(node_ids))
     end
 )

@@ -1,4 +1,5 @@
 use std::cell::{Ref, RefCell};
+use std::mem::swap;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
@@ -6,6 +7,7 @@ use rustc::hir::def::Res;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::mut_visit::*;
+use syntax::source_map::DUMMY_SP;
 use syntax_pos::Span;
 
 use rlua::{Context, Error, Function, Result, Scope, ToLua, UserData, UserDataMethods, Value};
@@ -344,6 +346,21 @@ impl UserData for LuaAstNode<P<Ty>> {
 
             Ok(())
         });
+
+        methods.add_method("wrap_in_slice", |_lua_ctx, this, ()| {
+            let mut ty = this.0.borrow_mut();
+            let mut placeholder = TyKind::Err;
+
+            swap(&mut placeholder, &mut ty.node);
+
+            ty.node = TyKind::Slice(P(Ty {
+                id: DUMMY_NODE_ID,
+                node: placeholder,
+                span: DUMMY_SP,
+            }));
+
+            Ok(())
+        });
     }
 }
 
@@ -357,7 +374,19 @@ impl UserData for LuaAstNode<Vec<Stmt>> {}
 // thread that did not acquire it.
 // @type MutTyAstNode
 unsafe impl Send for LuaAstNode<MutTy> {}
-impl UserData for LuaAstNode<MutTy> {}
+impl UserData for LuaAstNode<MutTy> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_ty", |_lua_ctx, this, ()| {
+            Ok(LuaAstNode::new(this.0.borrow().ty.clone()))
+        });
+
+        methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
+            this.0.borrow_mut().ty = ty.0.borrow().clone();
+
+            Ok(())
+        });
+    }
+}
 
 /// Stmt AST node handle
 //
