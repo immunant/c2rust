@@ -305,11 +305,59 @@ impl UserData for LuaAstNode<P<Expr>> {
 // thread that did not acquire it.
 // @type TyAstNode
 unsafe impl Send for LuaAstNode<P<Ty>> {}
-impl UserData for LuaAstNode<P<Ty>> {}
+impl UserData for LuaAstNode<P<Ty>> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_kind", |lua_ctx, this, ()| {
+            match &this.0.borrow().node {
+                TyKind::Path(..) => "Path",
+                TyKind::Ptr(..) => "Ptr",
+                TyKind::BareFn(..) => "BareFn",
+                TyKind::Array(..) => "Array",
+                TyKind::Rptr(..) => "Rptr",
+                TyKind::Typeof(..) => "Typeof",
+                TyKind::Paren(..) => "Paren",
+                TyKind::Slice(..) => "Slice",
+                TyKind::Tup(..) => "Tup",
+                TyKind::Never => "Never",
+                TyKind::ImplicitSelf => "ImplicitSelf",
+                TyKind::CVarArgs => "CVarArgs",
+                TyKind::Infer => "Infer",
+                TyKind::TraitObject(..) => "TraitObject",
+                TyKind::ImplTrait(..) => "ImplTrait",
+                TyKind::Mac(..) => "Mac",
+                TyKind::Err => "Err",
+            }.to_lua(lua_ctx)
+        });
+
+        methods.add_method("get_mut_ty", |_lua_ctx, this, ()| {
+            match &this.0.borrow().node {
+                TyKind::Ptr(mut_ty) |
+                TyKind::Rptr(_, mut_ty) => Ok(Some(LuaAstNode::new(mut_ty.clone()))),
+                _ => Ok(None),
+            }
+        });
+
+        methods.add_method("to_rptr", |_lua_ctx, this, mut_ty: LuaAstNode<MutTy>| {
+            // TODO: Support explicit lifetimes
+
+            this.0.borrow_mut().node = TyKind::Rptr(None, mut_ty.0.borrow().clone());
+
+            Ok(())
+        });
+    }
+}
 
 unsafe impl Send for LuaAstNode<Vec<Stmt>> {}
 impl UserData for LuaAstNode<Vec<Stmt>> {}
 
+
+/// MutTy AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type MutTyAstNode
+unsafe impl Send for LuaAstNode<MutTy> {}
+impl UserData for LuaAstNode<MutTy> {}
 
 /// Stmt AST node handle
 //
@@ -501,13 +549,9 @@ impl UserData for LuaAstNode<FnLike> {
             this.0.borrow().block.is_some().to_lua(lua_ctx)
         });
 
-        // methods.add_method("get_block", |lua_ctx, this, ()| {
-        //     this.0.borrow().block.to_lua(lua_ctx)
-        // });
-
-        // methods.add_method("get_decl", |lua_ctx, this, ()| {
-        //     LuaAstNode::new(this.0.borrow().decl)
-        // });
+        methods.add_method("get_decl", |_lua_ctx, this, ()| {
+            Ok(LuaAstNode::new(this.0.borrow().decl.clone()))
+        });
     }
 }
 
@@ -522,11 +566,39 @@ impl ToLuaExt for FnKind {
     }
 }
 
-/// FnLike AST node handle
+/// FnDecl AST node handle
 //
-// @type FnLikeAstNode
-impl UserData for LuaAstNode<FnDecl> {
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type FnDeclAstNode
+unsafe impl Send for LuaAstNode<P<FnDecl>> {}
+impl UserData for LuaAstNode<P<FnDecl>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_args", |_lua_ctx, this, ()| {
+            Ok(this.0
+                .borrow()
+                .inputs
+                .iter()
+                .map(|arg| LuaAstNode::new(arg.clone()))
+                .collect::<Vec<_>>())
+        });
+    }
+}
 
+/// Arg AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type ArgAstNode
+unsafe impl Send for LuaAstNode<Arg> {}
+impl UserData for LuaAstNode<Arg> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_id", |lua_ctx, this, ()| {
+            this.0.borrow().id.to_lua(lua_ctx)
+        });
+
+        methods.add_method("get_ty", |_lua_ctx, this, ()| {
+            Ok(LuaAstNode::new(this.0.borrow().ty.clone()))
+        });
     }
 }
