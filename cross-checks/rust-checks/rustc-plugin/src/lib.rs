@@ -42,8 +42,8 @@ mod default_config;
 trait AstExtBuilder {
     fn expr_u64(&self, sp: Span, u: u64) -> P<ast::Expr>;
 
-    fn expr_std_some(&self, sp: Span, expr: P<ast::Expr>) -> P<ast::Expr>;
-    fn expr_std_none(&self, sp: Span) -> P<ast::Expr>;
+    fn expr_option_some(&self, sp: Span, expr: P<ast::Expr>) -> P<ast::Expr>;
+    fn expr_option_none(&self, sp: Span) -> P<ast::Expr>;
 
     fn expr_mac(
         &self,
@@ -86,9 +86,9 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
         )
     }
 
-    fn expr_std_some(&self, sp: Span, expr: P<ast::Expr>) -> P<ast::Expr> {
+    fn expr_option_some(&self, sp: Span, expr: P<ast::Expr>) -> P<ast::Expr> {
         let idents = vec![
-            self.ident_of("std"),
+            self.ident_of("core"),
             self.ident_of("option"),
             self.ident_of("Option"),
             self.ident_of("Some"),
@@ -96,9 +96,9 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
         self.expr_call_global(sp, idents, vec![expr])
     }
 
-    fn expr_std_none(&self, sp: Span) -> P<ast::Expr> {
+    fn expr_option_none(&self, sp: Span) -> P<ast::Expr> {
         let idents = vec![
-            self.ident_of("std"),
+            self.ident_of("core"),
             self.ident_of("option"),
             self.ident_of("Option"),
             self.ident_of("None"),
@@ -260,7 +260,7 @@ impl CrossCheckBuilder for xcfg::XCheckType {
             exp.insert_djb2_name(id, String::from(name));
 
             let id_expr = cx.expr_u64(DUMMY_SP, id as u64);
-            cx.expr_std_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag, id_expr]))
+            cx.expr_option_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag, id_expr]))
         })
     }
 
@@ -308,17 +308,17 @@ impl CrossCheckBuilder for xcfg::XCheckType {
                 f(tag_expr, vec![val_cast_let, val_update])
             }
 
-            xcfg::XCheckType::None | xcfg::XCheckType::Disabled => cx.expr_std_none(DUMMY_SP),
+            xcfg::XCheckType::None | xcfg::XCheckType::Disabled => cx.expr_option_none(DUMMY_SP),
             xcfg::XCheckType::Fixed(id) => {
                 let id = cx.expr_u64(DUMMY_SP, id);
-                cx.expr_std_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, id]))
+                cx.expr_option_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, id]))
             }
             xcfg::XCheckType::Djb2(ref s) => {
                 let id = djb2_hash(s);
                 exp.insert_djb2_name(id, s.clone());
 
                 let id_expr = cx.expr_u64(DUMMY_SP, id as u64);
-                cx.expr_std_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, id_expr]))
+                cx.expr_option_some(DUMMY_SP, cx.expr_tuple(DUMMY_SP, vec![tag_expr, id_expr]))
             }
             xcfg::XCheckType::Custom(ref s) => {
                 let file_name = hashed_file_name("c2rust-xcheck-custom", &s);
@@ -326,7 +326,7 @@ impl CrossCheckBuilder for xcfg::XCheckType {
                 let custom_expr = p
                     .parse_expr()
                     .expect(&format!("failed to parse expr: '{}'", s));
-                cx.expr_std_some(
+                cx.expr_option_some(
                     DUMMY_SP,
                     cx.expr_tuple(DUMMY_SP, vec![tag_expr, custom_expr]),
                 )

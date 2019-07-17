@@ -8,7 +8,7 @@ pub const FUNCTION_RETURN_TAG: u8 = 4;
 #[inline]
 unsafe fn call_rb_xcheck_sym<T>(sym: *mut T, tag: u8, val: u64) {
     if !sym.is_null() {
-        let rb_xcheck_fn: unsafe extern "C" fn(u8, u64) = ::std::mem::transmute(sym);
+        let rb_xcheck_fn: unsafe extern "C" fn(u8, u64) = core::mem::transmute(sym);
         rb_xcheck_fn(tag, val);
     } else {
         // FIXME: or do nothing???
@@ -21,7 +21,7 @@ unsafe fn call_rb_xcheck_sym<T>(sym: *mut T, tag: u8, val: u64) {
 #[cfg(feature = "xcheck-with-dlsym")]
 unsafe fn rb_xcheck(tag: u8, val: u64) {
     extern crate libc;
-    static mut RB_XCHECK_SYM: *mut libc::c_void = ::std::ptr::null_mut();
+    static mut RB_XCHECK_SYM: *mut libc::c_void = core::ptr::null_mut();
     static RB_XCHECK_INIT: ::std::sync::Once = ::std::sync::ONCE_INIT;
     RB_XCHECK_INIT.call_once(|| {
         let rb_xcheck_name = ::std::ffi::CString::new("rb_xcheck").unwrap();
