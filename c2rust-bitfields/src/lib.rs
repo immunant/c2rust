@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "no_std", no_std)]
+
 extern crate c2rust_bitfields_derive;
 
 pub use c2rust_bitfields_derive::BitfieldStruct;
