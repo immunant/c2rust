@@ -148,7 +148,7 @@ fn xcheck_hash_derive(s: synstructure::Structure) -> quote::Tokens {
                     where __XCHA: ::c2rust_xcheck_runtime::hash::CrossCheckHasher,
                           __XCHS: ::c2rust_xcheck_runtime::hash::CrossCheckHasher {
                 #[allow(unused_imports)]
-                use std::hash::Hasher;
+                use core::hash::Hasher;
                 #hash_code
             }
         },
