@@ -1,3 +1,4 @@
+-- Take a set of node ids (params) and turn them (if a pointer) into a reference
 require "utils"
 
 Visitor = {}
@@ -13,11 +14,13 @@ function Visitor.new(node_id)
 end
 
 function Visitor:visit_arg(arg)
-    arg_ty = arg:get_ty()
+    if self.node_ids[arg:get_id()] then
+        arg_ty = arg:get_ty()
 
-    if self.node_ids[arg:get_id()] and arg_ty:get_kind() == "Ptr" then
-        arg_ty:to_rptr(nil, arg_ty:get_mut_ty())
-        arg:set_ty(arg_ty)
+        if arg_ty:get_kind() == "Ptr" then
+            arg_ty:to_rptr(nil, arg_ty:get_mut_ty())
+            arg:set_ty(arg_ty)
+        end
     end
 end
 
