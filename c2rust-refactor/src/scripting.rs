@@ -543,43 +543,6 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         // @function visit_fn_like
         // @tparam Visitor object Visitor whose methods will be called during the traversal
         methods.add_method(
-            "visit_fn_like_new",
-            |lua_ctx, this, callback: LuaFunction| {
-                this.st.map_krate(|krate| {
-                    let mut result = Ok(());
-
-                    let wrapper = |fn_like: &mut FnLike| -> LuaResult<()> {
-                        let node = LuaAstNode::new(fn_like.clone());
-                        lua_ctx.scope(|scope| {
-                            let param = scope.create_static_userdata(node)?;
-
-                            callback.call(param)
-                        })
-                    };
-
-                    mut_visit_fns(krate, |mut fn_like| {
-                        if result.is_err() {
-                            return;
-                        }
-
-                        match wrapper(&mut fn_like) {
-                            Ok(()) => (),
-                            Err(e) => {
-                                result = Err(e);
-                                return;
-                            }
-                        };
-                    });
-
-                    result
-                })
-            },
-        );
-
-        /// Visits every fn like via a lua object's methods
-        // @function visit_fn_like
-        // @tparam Visitor object Visitor whose methods will be called during the traversal
-        methods.add_method(
             "visit_fn_like",
             |lua_ctx, this, visitor_obj: LuaTable| {
                 this.st.map_krate(|krate| {
