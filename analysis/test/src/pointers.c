@@ -8,6 +8,10 @@ struct S {
   int field;
 };
 
+void* malloc_wrapper(size_t size) {
+  return malloc(size);
+}
+
 void exercise_allocator() {
   struct S* s = (struct S*)malloc(sizeof(struct S));
   s->field = 10;
@@ -46,6 +50,13 @@ void simple_analysis() {
   free(s);
 }
 
+void inter_function_analysis() {
+  struct S* s = (struct S*)malloc_wrapper(sizeof(struct S));
+  s->field = 11;
+  printf("%i\n", s->field);
+  free(s);
+}
+
 void analysis2_helper(struct S *s) {
   printf("%i\n", s->field);
 }
@@ -77,6 +88,7 @@ int main(int argc, char *argv[]) {
   exercise_allocator();
   simple_analysis();
   analysis2();
+  inter_function_analysis();
   no_owner(0);
   no_owner(1);
   invalid();

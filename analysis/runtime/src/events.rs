@@ -46,6 +46,7 @@ pub enum EventKind {
     Deref(Pointer),
     Assign(Pointer),
     Arg(Pointer),
+    Ret(Pointer),
     Done,
 }
 
@@ -64,6 +65,7 @@ impl fmt::Debug for EventKind {
             EventKind::Deref(ptr) => write!(f, "deref({:p})", ptr as *const u8),
             EventKind::Assign(ptr) => write!(f, "assign({:p})", ptr as *const u8),
             EventKind::Arg(ptr) => write!(f, "arg({:p})", ptr as *const u8),
+            EventKind::Ret(ptr) => write!(f, "ret({:p})", ptr as *const u8),
             EventKind::Done => write!(f, "done"),
         }
     }

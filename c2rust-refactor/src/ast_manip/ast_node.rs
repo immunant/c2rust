@@ -4,7 +4,7 @@ use derive_more::{From, TryInto};
 use syntax::ast;
 use syntax::ptr::P;
 
-#[derive(Clone, Debug, From, TryInto)]
+#[derive(Copy, Clone, Debug, From, TryInto)]
 pub enum AstNodeRef<'a> {
     Crate(&'a ast::Crate),
     Expr(&'a ast::Expr),

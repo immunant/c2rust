@@ -31,6 +31,11 @@ pub struct S {
 #[no_mangle]
 pub static mut global: *mut S = 0 as *const S as *mut S;
 #[no_mangle]
+pub unsafe extern "C" fn malloc_wrapper(mut size: size_t)
+ -> *mut libc::c_void {
+    return malloc(size);
+}
+#[no_mangle]
 pub unsafe extern "C" fn exercise_allocator() {
     let mut s: *mut S =
         malloc(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
@@ -87,6 +92,14 @@ pub unsafe extern "C" fn simple_analysis() {
     free(s as *mut libc::c_void);
 }
 #[no_mangle]
+pub unsafe extern "C" fn inter_function_analysis() {
+    let mut s: *mut S =
+        malloc_wrapper(::std::mem::size_of::<S>() as libc::c_ulong) as *mut S;
+    (*s).field = 11i32;
+    printf(b"%i\n\x00" as *const u8 as *const libc::c_char, (*s).field);
+    free(s as *mut libc::c_void);
+}
+#[no_mangle]
 pub unsafe extern "C" fn analysis2_helper(mut s: *mut S) {
     printf(b"%i\n\x00" as *const u8 as *const libc::c_char, (*s).field);
 }
@@ -119,6 +132,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
     exercise_allocator();
     simple_analysis();
     analysis2();
+    inter_function_analysis();
     no_owner(0i32);
     no_owner(1i32);
     invalid();

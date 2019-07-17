@@ -64,6 +64,7 @@ struct Instrumenter {
     _out_tempdir: Option<TempDir>,
     out_config: Config,
     out_path: PathBuf,
+    debug: bool,
     main_path: String,
 }
 
@@ -100,7 +101,11 @@ impl Instrumenter {
                 "Could not create output target directory {}",
                 out_target_dir.to_string_lossy()
             ));
-        let out_target_dir = out_target_dir.join("release");
+        let out_target_dir = if matches.is_present("debug") {
+            out_target_dir.join("debug")
+        } else {
+            out_target_dir.join("release")
+        };
         unix::fs::symlink(&ctx.target_dir, &out_target_dir)
             .expect(&format!(
                 "Could not create output target directory symlink from {} to {}",
@@ -117,6 +122,7 @@ impl Instrumenter {
             _out_tempdir: out_tempdir,
             out_config,
             out_path,
+            debug: matches.is_present("debug"),
             main_path: matches.value_of_lossy("main").unwrap().to_string(),
         }
     }
@@ -171,7 +177,7 @@ impl Instrumenter {
     /// Returns the target directory containing the built crate
     fn build(&self) -> CargoResult<()> {
         let mut compile_opts = CompileOptions::new(&self.out_config, CompileMode::Build)?;
-        compile_opts.build_config.release = true;
+        compile_opts.build_config.release = !self.debug;
 
         let manifest_file = find_root_manifest_for_wd(self.out_config.cwd())?;
 

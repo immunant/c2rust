@@ -11,6 +11,9 @@ subcommands:
             long: keep-temps
             help: "Keep temporary rewritten source files"
             hidden: true
+        - debug:
+            long: debug
+            help: "Build a debug version of the instrumented code"
         - main:
             long: main
             default_value: "main"

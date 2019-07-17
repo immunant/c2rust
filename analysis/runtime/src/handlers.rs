@@ -69,3 +69,10 @@ pub fn ptr_arg(span: SpanId, ptr: usize) {
         kind: EventKind::Arg(ptr),
     }).unwrap();
 }
+
+pub fn ptr_ret(span: SpanId, ptr: usize) {
+    TX.send(Event {
+        span,
+        kind: EventKind::Ret(ptr),
+    }).unwrap();
+}

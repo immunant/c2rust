@@ -1,21 +1,21 @@
 use std::collections::{BTreeMap, HashMap};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::fs::File;
 use std::iter::FromIterator;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Bound, Deref, DerefMut};
 use std::path::Path;
 use std::u32;
 
-use arena::SyncDroplessArena;
+use rustc::hir::{self, HirId, DUMMY_HIR_ID};
 use rustc_errors::Level;
 use smallvec::SmallVec;
 use syntax::{ast, entry};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
-use syntax::symbol::{keywords, Ident};
+use syntax::symbol::{keywords, Ident, Symbol};
 use rustc::ty;
-use syntax_pos::{Span, FileName, BytePos, Pos, NO_EXPANSION};
+use syntax_pos::{Span, FileName, BytePos, Pos, DUMMY_SP, NO_EXPANSION};
 
 use indexmap::IndexSet;
 use failure::{Error, ResultExt};
@@ -27,8 +27,8 @@ use c2rust_analysis_rt::{SourceSpan, SourcePos, SpanId};
 use c2rust_analysis_rt::events::{Pointer, Event, EventKind};
 use c2rust_ast_builder::{mk, Make};
 
-use crate::analysis::ownership;
-use crate::ast_manip::{lr_expr, map_ast_unified, visit_nodes, AstEquiv, UnifiedAstMap};
+use crate::ast_manip::{lr_expr, map_ast_unified, visit_nodes, AstEquiv, AstNodeRef, UnifiedAstMap};
+use crate::ast_manip::fn_edit::{visit_fns, FnLike};
 use crate::context::RefactorCtxt;
 use crate::command::{Command, CommandState, RefactorState, Registry};
 use crate::driver::{parse_ty, Phase};
@@ -44,7 +44,7 @@ struct InstrumentCmd {
 
 impl Transform for InstrumentCmd {
     fn transform(&self, krate: &mut ast::Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        let mut folder = LifetimeInstrumenter::new(cx, &self.span_file_path, &self.main_path);
+        let mut folder = LifetimeInstrumenter::new(cx, &self.span_file_path, &self.main_path, krate);
         let folded = folder.visit_crate(krate);
         folder.finalize().expect("Error instrumenting lifetimes");
         folded
@@ -59,18 +59,95 @@ impl Transform for InstrumentCmd {
 /// ../../runtime/src/lib.rs for the implementations of these hooks)
 const HOOK_FUNCTIONS: &[&'static str] = c2rust_analysis_rt::HOOK_FUNCTIONS;
 
+trait GetPointerArg {
+    /// Get the input pointer expression out of `ast_node`
+    fn get_ptr_expr<'a>(&self, ast_node: AstNodeRef<'a>) -> Option<&'a ast::Expr>;
+}
+
+impl GetPointerArg for EventKind {
+    fn get_ptr_expr<'a>(&self, ast_node: AstNodeRef<'a>) -> Option<&'a ast::Expr> {
+        match self {
+            EventKind::Alloc{..} => None,
+            EventKind::Free{..} | EventKind::Realloc{..} => {
+                let expr: &ast::Expr = ast_node.try_into().unwrap();
+                let args = expect!([&expr.node] ast::ExprKind::Call(_, args) => args);
+                Some(&args[0])
+            }
+            EventKind::Arg{..} | EventKind::Assign{..} | EventKind::Deref{..} | EventKind::Ret{..} => {
+                let expr: &ast::Expr = ast_node.try_into().unwrap();
+                Some(get_ptr_expr(expr))
+            }
+            EventKind::Done => None,
+        }
+    }
+}
+
+/// Get the final value of a block
+fn get_block_value(block: &ast::Block) -> &ast::Expr {
+    let last_stmt = block
+        .stmts
+        .last()
+        .expect("Instrumented block expression must have a non-trivial value");
+    if let ast::StmtKind::Expr(last_expr) = &last_stmt.node {
+        last_expr
+    } else {
+        panic!("Instrumented block expression must have a non-trivial value");
+    }
+}
+
+fn get_block_value_mut(block: &mut ast::Block) -> &mut P<ast::Expr> {
+    let last_stmt = block
+        .stmts
+        .last_mut()
+        .expect("Instrumented block expression must have a non-trivial value");
+    if let ast::StmtKind::Expr(last_expr) = &mut last_stmt.node {
+        last_expr
+    } else {
+        panic!("Instrumented block expression must have a non-trivial value");
+    }
+}
+
+fn get_ptr_expr(expr: &ast::Expr) -> &ast::Expr {
+    match &expr.node {
+        ast::ExprKind::Cast(e, _) | ast::ExprKind::Type(e, _) | ast::ExprKind::Paren(e) => {
+            get_ptr_expr(e)
+        }
+
+        ast::ExprKind::Loop(block, _) | ast::ExprKind::Block(block, _)
+        | ast::ExprKind::TryBlock(block) => {
+            get_block_value(block)
+        }
+
+        ast::ExprKind::Unary(ast::UnOp::Deref, e) => e,
+
+        _ => expr,
+    }
+}
+
+fn instrumented_inner_value(expr: &ast::Expr) -> &ast::Expr {
+    if let ast::ExprKind::Block(block, _) = &expr.node {
+        if let ast::StmtKind::Local(local) = &block.stmts[0].node {
+            if let Some(init) = &local.init {
+                return init;
+            }
+        }
+    }
+
+    expr
+}
+
 struct LifetimeInstrumenter<'a, 'tcx: 'a> {
     cx: &'a RefactorCtxt<'a, 'tcx>,
     span_file_path: &'a str,
     main_path: ast::Path,
-    hooked_functions: HashMap<Ident, P<ast::FnDecl>>,
+    hooked_functions: HashMap<Symbol, P<ast::FnDecl>>,
 
     spans: IndexSet<SourceSpan>,
     depth: usize,
 }
 
 impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
-    fn new(cx: &'a RefactorCtxt<'a, 'tcx>, span_file_path: &'a str, main_path: &'a str) -> Self {
+    fn new(cx: &'a RefactorCtxt<'a, 'tcx>, span_file_path: &'a str, main_path: &'a str, krate: &ast::Crate) -> Self {
         let main_path = {
             if let ast::TyKind::Path(_, mut path) = parse_ty(cx.session(), main_path)
                 .into_inner()
@@ -84,10 +161,16 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
                 panic!("Could not parse lifetime_analysis main path argument: {:?}", main_path);
             }
         };
+        let mut hooked_functions = HashMap::new();
+        visit_fns(krate, |function: FnLike| {
+            if HOOK_FUNCTIONS.contains(&&*function.ident.name.as_str()) {
+                hooked_functions.insert(function.ident.name, function.decl.clone());
+            }
+        });
         Self {
             cx,
             span_file_path,
-            hooked_functions: HashMap::new(),
+            hooked_functions,
             spans: IndexSet::new(),
             depth: 0,
             main_path,
@@ -106,16 +189,19 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
 
     /// Check if the callee expr is a function we've hooked. Returns the name of
     /// the function and its declaration if found.
-    fn hooked_fn(&self, callee: &ast::Expr) -> Option<(Ident, &ast::FnDecl)> {
-        match &callee.node {
-            ast::ExprKind::Path(None, path)
-                if path.segments.len() == 1 =>
-            {
+    fn hooked_fn(&self, fn_hir_id: HirId) -> Option<(Ident, &ast::FnDecl)> {
+        match self.cx.hir_map().find_by_hir_id(fn_hir_id) {
+            Some(hir::Node::ForeignItem(item)) => {
                 self.hooked_functions
-                    .get(&path.segments[0].ident)
-                    .and_then(|decl| Some((path.segments[0].ident, &**decl)))
+                    .get(&item.ident.name)
+                    .and_then(|decl| Some((item.ident, &**decl)))
             }
-            _ => None,
+            Some(hir::Node::Item(item)) => {
+                self.hooked_functions
+                    .get(&item.ident.name)
+                    .and_then(|decl| Some((item.ident, &**decl)))
+            }
+            _ => None
         }
     }
 
@@ -173,7 +259,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         block.stmts.insert(0, init_stmt);
     }
 
-    fn instrument_expr(&self, expr: &mut P<ast::Expr>, stmts: &[ast::Stmt]) {
+    fn instrument_expr_block(&self, expr: &mut P<ast::Expr>, stmts: &[ast::Stmt]) {
         let local = P(mk().local::<_, P<ast::Ty>, _>(
             mk().ident_pat("ret"), None, Some(expr.clone())
         ));
@@ -188,42 +274,90 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
 
     fn instrument_expr_call<I>(
         &mut self,
-        expr: &mut P<ast::Expr>,
         span: Span,
         fn_name: I,
         args: &[P<ast::Expr>]
-    )
+    ) -> P<ast::Expr>
     where I: Make<Ident>
     {
         let source_loc_idx = self.get_source_location_idx(span);
         let mut hook_args = vec![mk().lit_expr(mk().int_lit(source_loc_idx as u128, "u32"))];
         hook_args.extend(args.into_iter().cloned());
-        let call = mk().call_expr(
+        mk().call_expr(
             mk().path_expr(vec![
                 mk().ident("c2rust_analysis_rt"),
                 mk().ident(fn_name),
             ]),
             hook_args,
-        );
-        self.instrument_expr(expr, &[mk().semi_stmt(call)])
+        )
     }
 
-    fn instrument_expr_value<I>(&mut self, expr: &mut P<ast::Expr>, span: Span, fn_name: I)
-        where I: Make<Ident>
+    fn instrument_expr_use<I>(&mut self, expr: &mut P<ast::Expr>, fn_name: I)
+        where I: Make<Ident> + Copy
     {
+        match &mut expr.node {
+            ast::ExprKind::If(_, true_block, else_block)
+            | ast::ExprKind::IfLet(_, _, true_block, else_block) => {
+                self.instrument_expr_use(get_block_value_mut(true_block), fn_name);
+                if let Some(else_block) = else_block {
+                    self.instrument_expr_use(else_block, fn_name);
+                }
+                return;
+            }
+
+            ast::ExprKind::While(..)
+            | ast::ExprKind::WhileLet(..)
+            | ast::ExprKind::ForLoop(..) => {
+                panic!("Unexpected loop expression without value: {:?}", expr);
+            }
+
+            ast::ExprKind::Match(_, arms) => {
+                for arm in arms.iter_mut() {
+                    self.instrument_expr_use(&mut arm.body, fn_name);
+                }
+                return;
+            }
+
+            _ => {}
+        }
+
+        let inner = instrumented_inner_value(expr);
+
+        // Insert the instrumentation block
+        debug!("Instrumenting expression: {:?}", inner);
+        let span = inner.span;
+
+        // `ret` is the local created inside the instrumentation block
+        // by `instrument_expr_block`
         let mut value = mk().path_expr(vec!["ret"]);
-        if let Some(ty::TyKind::Ref(_, ty, _)) = self.cx.opt_node_type(expr.id).map(|x| &x.sty) {
+        if let Some(ty::TyKind::Ref(_, ty, _)) = self.cx
+            .opt_node_type(inner.id)
+            .map(|x| &x.sty)
+        {
+            // Cast the reference to a raw pointer
             value = mk().cast_expr(
                 value,
                 mk().ptr_ty(reflect::reflect_tcx_ty(self.cx.ty_ctxt(), ty)),
             );
         }
-        self.instrument_expr_call(
-            expr,
+        let call = self.instrument_expr_call(
             span,
             fn_name,
             &[mk().cast_expr(value, mk().ident_ty("usize"))],
-        )
+        );
+        if inner.id != expr.id {
+            if let ast::ExprKind::Block(block, _) = &mut expr.node {
+                // Insert the new instrumentation call right before the
+                // return value
+                let index = block.stmts.len()-1;
+                block.stmts.insert(index, mk().semi_stmt(call));
+            } else {
+                panic!("Expected a block for already instrumented expression: {:?}", expr);
+            }
+        } else {
+            // Make a new instrumentation block
+            self.instrument_expr_block(expr, &[mk().semi_stmt(call)]);
+        }
     }
 
     fn is_constant(&self, expr: &ast::Expr) -> bool {
@@ -257,89 +391,142 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
-    fn flat_map_foreign_item(&mut self, item: ast::ForeignItem) -> SmallVec<[ast::ForeignItem; 1]> {
-        if let ast::ForeignItemKind::Fn(decl, _) = &item.node {
-            if HOOK_FUNCTIONS.contains(&&*item.ident.name.as_str()) {
-                self.hooked_functions.insert(item.ident, decl.clone());
-            }
-        }
-        self.depth += 1;
-        let folded = mut_visit::noop_flat_map_foreign_item(item, self);
-        self.depth -= 1;
-        folded
-    }
+    // fn flat_map_foreign_item(&mut self, item: ast::ForeignItem) -> SmallVec<[ast::ForeignItem; 1]> {
+    //     if let ast::ForeignItemKind::Fn(decl, _) = &item.node {
+    //         if HOOK_FUNCTIONS.contains(&&*item.ident.name.as_str()) {
+    //             self.hooked_functions.insert(item.ident.name, decl.clone());
+    //         }
+    //     }
+    //     self.depth += 1;
+    //     let folded = mut_visit::noop_flat_map_foreign_item(item, self);
+    //     self.depth -= 1;
+    //     folded
+    // }
 
     fn visit_expr(&mut self, expr: &mut P<ast::Expr>) {
         // Post-order traversal so we instrument any arguments before processing
         // the expr.
         mut_visit::noop_visit_expr(expr, self);
 
-        if let ast::ExprKind::Call(callee, args) = &expr.node {
-            if let Some((fn_name, decl)) = self.hooked_fn(callee) {
-                // Add all original arguments, casting pointers to usize
-                let mut args: Vec<P<ast::Expr>> = args
-                    .iter()
-                    .zip(decl.inputs.iter())
-                    .map(|(arg, arg_decl)| self.add_ptr_cast(arg, &arg_decl.ty))
-                    .collect();
-                // Add the return value of the hooked call.
-                args.push({
-                    let ret_expr = mk().path_expr(vec!["ret"]);
-                    match &decl.output {
-                        ast::FunctionRetTy::Ty(ty) => self.add_ptr_cast(&ret_expr, ty),
-                        _ => ret_expr,
-                    }
-                });
+        // Don't re-instrument a value
+        if expr.span == DUMMY_SP {
+            return;
+        }
 
-                self.instrument_expr_call(expr, expr.span, fn_name, &args);
-                return;
+        if let ast::ExprKind::Call(callee, args) = &expr.node {
+            if let Some(def) = self.cx.try_resolve_expr_to_hid(callee) {
+                if let Some((fn_name, decl)) = self.hooked_fn(def) {
+                    // Add all original arguments, casting pointers to usize
+                    let mut args: Vec<P<ast::Expr>> = args
+                        .iter()
+                        .zip(decl.inputs.iter())
+                    // .filter(|(_, arg_decl)| {
+                    //     // We don't want to pass ADT types to the handlers,
+                    //     // since they can't define a correct argument type for
+                    //     // ADTs in the instrumented program.
+                    //     if let Some(ty) = self.cx.opt_node_type(arg_decl.ty.id) {
+                    //         if let ty::Adt(..) = ty.sty {
+                    //             return false;
+                    //         }
+                    //     }
+                    //     true
+                    // })
+                        .map(|(arg, arg_decl)| self.add_ptr_cast(arg, &arg_decl.ty))
+                        .collect();
+                    // Add the return value of the hooked call.
+                    args.push({
+                        let ret_expr = mk().path_expr(vec!["ret"]);
+                        match &decl.output {
+                            ast::FunctionRetTy::Ty(ty) => self.add_ptr_cast(&ret_expr, ty),
+                            _ => ret_expr,
+                        }
+                    });
+
+                    let call = self.instrument_expr_call(expr.span, fn_name, &args);
+                    self.instrument_expr_block(expr, &[mk().semi_stmt(call)]);
+                    return;
+                }
             }
         }
 
-        let expr_span = expr.span.clone();
         match &mut expr.node {
             ast::ExprKind::Call(_callee, args) => {
                 for arg in args.iter_mut() {
                     if self.cx.node_type(arg.id).is_unsafe_ptr() && !self.is_constant(arg) {
                         debug!("Instrumenting arg: {:?}", arg);
-                        self.instrument_expr_value(arg, arg.span, "ptr_arg");
+                        self.instrument_expr_use(arg, "ptr_arg");
                     }
                 }
             }
-            ast::ExprKind::Unary(ast::UnOp::Deref, ptr_expr) =>
-                if self.cx.node_type(ptr_expr.id).is_unsafe_ptr()
-            {
-                self.instrument_expr_value(ptr_expr, expr_span, "ptr_deref");
+            ast::ExprKind::Unary(ast::UnOp::Deref, ptr_expr) => {
+                let inner = instrumented_inner_value(ptr_expr);
+                if self.cx.node_type(inner.id).is_unsafe_ptr() {
+                    self.instrument_expr_use(ptr_expr, "ptr_deref");
+                }
             }
-            ast::ExprKind::Assign(lhs, rhs) =>
-                if self.cx.node_type(lhs.id).is_unsafe_ptr()
-            {
-                self.instrument_expr_value(rhs, expr_span, "ptr_assign");
+            ast::ExprKind::Assign(lhs, rhs) => {
+                // We assume that we never instrument the left-hand side of an
+                // assignment here. That should hold true but if it ever does
+                // not, we should grab its inner value.
+                assert_ne!(lhs.span, DUMMY_SP);
+
+                if self.cx.node_type(lhs.id).is_unsafe_ptr() {
+                    self.instrument_expr_use(rhs, "ptr_assign");
+                }
+            }
+            ast::ExprKind::Ret(Some(ret)) => {
+                let inner = instrumented_inner_value(ret);
+                if self.cx.node_type(inner.id).is_unsafe_ptr() {
+                    self.instrument_expr_use(ret, "ptr_ret");
+                }
             }
             _ => {}
         }
     }
 
-    fn flat_map_stmt(&mut self, stmt: ast::Stmt) -> SmallVec<[ast::Stmt; 1]> {
-        let mut stmt: ast::Stmt = mut_visit::noop_flat_map_stmt(stmt, self).lone();
-        let stmt_span = stmt.span;
+    fn flat_map_stmt(&mut self, mut stmt: ast::Stmt) -> SmallVec<[ast::Stmt; 1]> {
         match &mut stmt.node {
             ast::StmtKind::Local(local) => {
-                if let Some(init) = &mut local.init {
-                    let is_unsafe_ptr = self.cx.opt_node_type(init.id)
+                // TODO: We don't handle @ subpattern patterns or let binding
+                // decomposition yet.
+                if let ast::PatKind::Ident(binding, _local_ident, None) = local.pat.node {
+                    let is_unsafe_ptr = self.cx.opt_node_type(local.id)
                         .map_or(false, |ty| ty.is_unsafe_ptr());
-                    if is_unsafe_ptr {
-                        self.instrument_expr_value(init, stmt_span, "ptr_assign");
+                    if let Some(init) = &mut local.init {
+                        if is_unsafe_ptr {
+                            if let ast::BindingMode::ByRef(_) = binding {
+                                // We can only handle taking a reference to a
+                                // directly dereferenced value for now. As this
+                                // is the only kind of reference the translator
+                                // creates, that's fine.
+                                if let ast::ExprKind::Unary(ast::UnOp::Deref, ptr_value) = &mut init.node {
+                                    self.instrument_expr_use(ptr_value, "ptr_assign");
+                                }
+                            } else {
+                                self.instrument_expr_use(init, "ptr_assign");
+                            }
+                        }
                     }
                 }
             }
             _ => {}
         }
 
-        smallvec![stmt]
+        // TODO: Instrument implicit function returns (block with Expr at end)
+
+        // We do pre-order traversal because we want let ref mut x = *foo to be
+        // a pointer assignment rather than a deref.
+        mut_visit::noop_flat_map_stmt(stmt, self)
     }
 
     fn flat_map_item(&mut self, item: P<ast::Item>) -> SmallVec<[P<ast::Item>; 1]> {
+        let hir_id = self.cx.hir_map().node_to_hir_id(item.id);
+        // We shouldn't instrument inside any functions that we are hooking to
+        // avoid double instrumenting malloc and wrapper function calls.
+        if self.hooked_fn(hir_id).is_some() {
+            return smallvec![item];
+        }
+
         self.depth += 1;
         let mut item: P<ast::Item> = mut_visit::noop_flat_map_item(item, self).lone();
         self.depth -= 1;
@@ -383,14 +570,14 @@ impl Command for AnalysisCmd {
             // spans
             c2rust_analysis_rt::span::set_file(&self.span_filename);
 
-            let arena = SyncDroplessArena::default();
-            let ownership_analysis = ownership::analyze(&st, &cx, &arena);
+            // let arena = SyncDroplessArena::default();
+            // let ownership_analysis = ownership::analyze(&st, &cx, &arena);
 
             let mut analyzer = LifetimeAnalyzer::new(
                 cx,
                 &self.span_filename,
                 &self.log_filename,
-                ownership_analysis,
+                // ownership_analysis,
             );
             analyzer.run(&mut *st.krate_mut());
             analyzer.visit_crate(&mut *st.krate_mut());
@@ -445,12 +632,31 @@ impl MemMap {
     }
 
     fn is_allocated(&self, ptr: Pointer) -> bool {
-        let alloc = match self.range(..ptr).next_back() {
-            Some(a) => a.1,
-            None => return false,
-        };
+        self.get(&ptr).is_some()
+    }
 
-        alloc.contains(ptr)
+    fn get(&self, ptr: &Pointer) -> Option<&AllocInfo> {
+        self.0.range((Bound::Unbounded, Bound::Included(ptr)))
+            .next_back()
+            .and_then(|a| {
+                if a.1.contains(*ptr) {
+                    Some(a.1)
+                } else {
+                    None
+                }
+            })
+    }
+
+    fn get_mut(&mut self, ptr: &Pointer) -> Option<&mut AllocInfo> {
+        self.0.range_mut((Bound::Unbounded, Bound::Included(ptr)))
+            .next_back()
+            .and_then(|a| {
+                if a.1.contains(*ptr) {
+                    Some(a.1)
+                } else {
+                    None
+                }
+            })
     }
 
     fn alloc(&mut self, size: usize, ptr: Pointer) -> &mut AllocInfo {
@@ -458,21 +664,20 @@ impl MemMap {
             panic!("Inserting an allocation overlapping an existing allocation??");
         }
 
-        if let Some(old) = self.insert(ptr, AllocInfo::new(ptr, size)) {
+        if let Some(old) = self.0.insert(ptr, AllocInfo::new(ptr, size)) {
             panic!("Inserting an allocation at the same address as {:?}", old);
         }
 
-        self.get_mut(&ptr).unwrap()
+        self.0.get_mut(&ptr).unwrap()
     }
 
-    fn free(&mut self, ptr: Pointer) -> AllocInfo {
-        self.remove(&ptr)
-            .unwrap_or_else(|| panic!("Could not free allocation at {:?}", ptr))
+    fn free(&mut self, ptr: Pointer) -> Option<AllocInfo> {
+        self.0.remove(&ptr)
     }
 
     fn realloc(&mut self, old_ptr: Pointer, size: usize, new_ptr: Pointer) -> &mut AllocInfo {
         if old_ptr == new_ptr {
-            let alloc = self.get_mut(&old_ptr)
+            let alloc = self.0.get_mut(&old_ptr)
                 .unwrap_or_else(|| panic!("Could not realloc from {:?}", old_ptr));
             alloc.size = size;
             alloc
@@ -504,7 +709,7 @@ impl fmt::Debug for MemMap {
     }
 }
 
-struct LifetimeAnalyzer<'lty, 'a: 'lty, 'tcx: 'a> {
+struct LifetimeAnalyzer<'a, 'tcx: 'a> {
     cx: &'a RefactorCtxt<'a, 'tcx>,
     log_path: &'a Path,
 
@@ -518,17 +723,17 @@ struct LifetimeAnalyzer<'lty, 'a: 'lty, 'tcx: 'a> {
 
     data_flow: DataFlowGraph,
 
-    _ownership_analysis: ownership::AnalysisResult<'lty, 'tcx>,
+    // _ownership_analysis: ownership::AnalysisResult<'lty, 'tcx>,
 
     mem_map: MemMap,
 }
     
-impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
+impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
     fn new(
         cx: &'a RefactorCtxt<'a, 'tcx>,
         span_file: &'a str,
         log_file: &'a str,
-        ownership_analysis: ownership::AnalysisResult<'lty, 'tcx>,
+        // ownership_analysis: ownership::AnalysisResult<'lty, 'tcx>,
     ) -> Self {
         let file = File::open(span_file)
             .expect(&format!("Could not open span file: {:?}", span_file));
@@ -561,21 +766,29 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
             span_to_node_id: HashMap::new(),
             context_map: HashMap::new(),
             data_flow: DataFlowGraph::new(),
-            _ownership_analysis: ownership_analysis,
+            // _ownership_analysis: ownership_analysis,
             mem_map: MemMap::new(),
         }
     }
 
     fn run(&mut self, krate: &mut ast::Crate) {
-        // Construct a mapping from expressions to spans
-        visit_nodes(krate, |e: &ast::Expr| {
-            if let Some(id) = self.span_ids.get(&e.span) {
-                self.span_to_node_id.insert(*id, e.id);
+        // Construct a mapping from expressions to spans. It is important that
+        // we visit statements before expressions, as we want the expression for
+        // most statements.
+        visit_nodes(krate, |e: &ast::Stmt| {
+            if let ast::StmtKind::Local(..) = e.node {
+                if let Some(id) = self.span_ids.get(&e.span) {
+                    if self.span_to_node_id.insert(*id, e.id).is_some() {
+                        warn!("Duplicate node for span {:?}", e.span);
+                    }
+                }
             }
         });
-        visit_nodes(krate, |e: &ast::Stmt| {
+        visit_nodes(krate, |e: &ast::Expr| {
             if let Some(id) = self.span_ids.get(&e.span) {
-                self.span_to_node_id.insert(*id, e.id);
+                if self.span_to_node_id.insert(*id, e.id).is_some() {
+                    warn!("Duplicate node for span {:?}", e.span);
+                }
             }
         });
 
@@ -605,9 +818,10 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
                         .add_event(event.kind, node_id);
                 }
                 EventKind::Free { ptr } => {
-                    let mut info = self.mem_map.free(ptr);
-                    info.add_event(event.kind, node_id);
-                    self.process_chain(&info.events, &ast_map);
+                    if let Some(mut info) = self.mem_map.free(ptr) {
+                        info.add_event(event.kind, node_id);
+                        self.process_chain(&info.events, &ast_map);
+                    }
                 }
                 EventKind::Realloc { old_ptr, size, new_ptr } => {
                     self.mem_map.realloc(old_ptr, size, new_ptr)
@@ -615,6 +829,7 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
                 }
                 EventKind::Assign(ptr) |
                 EventKind::Arg(ptr) |
+                EventKind::Ret(ptr) |
                 EventKind::Deref(ptr) => {
                     match self.mem_map.get_mut(&ptr) {
                         Some(info) => info.add_event(event.kind, node_id),
@@ -639,13 +854,21 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
         let owned_paths = self.data_flow.find_owned_paths();
         for path in &owned_paths {
             let path_str = path.iter()
-                .map(|node| format!("{:?}", ast_map.get(&node.id).unwrap()))
+                .map(|node| {
+                    let node_id = self.cx.hir_map().hir_to_node_id(node.id);
+                    if let Some(ast_node) = ast_map.get(&node_id) {
+                        format!("{:?}", ast_node)
+                    } else {
+                        "??".to_string()
+                    }
+                })
                 .collect::<Vec<_>>()
                 .as_slice()
                 .join(" -> ");
             debug!("{}", path_str);
 
-            let alloc_span = ast_map.get_ast::<ast::Expr>(&path[0].id).unwrap().span;
+            let node_id = self.cx.hir_map().hir_to_node_id(path[0].id);
+            let alloc_span = ast_map.get_ast::<ast::Expr>(&node_id).unwrap().span;
             let mut diagnostic = self.cx.make_diagnostic(
                 Level::Note,
                 "Found candidate for Boxing",
@@ -655,57 +878,172 @@ impl<'lty, 'a, 'tcx> LifetimeAnalyzer<'lty, 'a, 'tcx> {
         }
     }
 
-    fn process_chain(&mut self, events: &[EventNode], ast_map: &UnifiedAstMap) {
-        debug!("Processing chain of memory events:");
-        for event in events.windows(2) {
-            debug!(
-                "  Event: {:?} @ {:?} -> {:?} @ {:?}",
-                event[0].kind,
-                ast_map.get(&event[0].node),
-                event[1].kind,
-                ast_map.get(&event[1].node),
-            );
-            let mut nodes = event.iter().map(|event| {
-                self.data_flow.get_node(event.node, self.node_kind(event, ast_map))
-                    .unwrap_or_else(|| panic!("Could not match node kind for node {:?}", ast_map.get(&event.node)))
-            });
-            let start = nodes.next().unwrap();
-            let end = nodes.next().unwrap();
-            let kind = match event[1].kind {
-                EventKind::Free{..} | EventKind::Realloc{..} | EventKind::Deref(..) | EventKind::Done
-                    => DataFlowEdge::Use,
-                EventKind::Assign(..) => DataFlowEdge::Assign,
-                EventKind::Arg(..) => DataFlowEdge::Call,
-                kind => panic!("Unexpected event kind: {:?}", kind),
-            };
-            self.data_flow.add_flow(start, end, kind);
+    fn canonical_def(&self, expr: &ast::Expr) -> hir::HirId {
+        match &expr.node {
+            ast::ExprKind::Cast(sub, _) => self.canonical_def(sub),
+            
+            _ => {
+                if let Some(hir_id) = self.cx.try_resolve_expr_to_hid(expr) {
+                    return hir_id;
+                }
+
+                self.cx.hir_map().node_to_hir_id(expr.id)
+            }
         }
     }
 
-    fn node_kind(&self, event: &EventNode, ast_map: &UnifiedAstMap) -> DataFlowNodeKind {
-        match event.kind {
-            EventKind::Alloc{..} => DataFlowNodeKind::Alloc,
-            EventKind::Free{..} => DataFlowNodeKind::Free,
-            EventKind::Realloc{..} => DataFlowNodeKind::Realloc,
-            EventKind::Deref(..) => DataFlowNodeKind::Deref,
-            EventKind::Assign(..) => {
-                if let Some(expr) = ast_map.get_ast::<ast::Expr>(&event.node) {
-                    let lhs = expect!([expr.node] ast::ExprKind::Assign(ref lhs, _) => lhs);
-                    DataFlowNodeKind::from_lvalue(&lhs.node)
-                } else if let Some(stmt) = ast_map.get_ast::<ast::Stmt>(&event.node) {
-                    assert!(matches!([stmt.node] ast::StmtKind::Local(..)));
-                    DataFlowNodeKind::Local
-                } else {
-                    panic!("Unexpected AST node kind for event {:?}", event);
-                }
+    /// Look up the canonical definition of `expr` in `sources`.
+    fn get_source(&self, sources: &HashMap<HirId, NodeIndex>, expr: &ast::Expr) -> Option<NodeIndex> {
+        if let ast::ExprKind::Call(callee, _) = &expr.node {
+            debug!("    Callee node id: {:?}", self.cx.hir_map().hir_to_node_id(self.canonical_def(callee)));
+            if let Some(source) = sources.get(&self.canonical_def(callee)) {
+                return Some(*source);
             }
-            EventKind::Arg(..) => DataFlowNodeKind::Arg,
-            EventKind::Done => DataFlowNodeKind::Leak,
+        }
+        sources.get(&self.canonical_def(expr)).copied()
+    }
+
+    /// Process the sequence of events in `events`, adding nodes and edges to
+    /// `self.data_flow`. All events must refer to the same allocation.
+    fn process_chain(&mut self, events: &[EventNode], ast_map: &UnifiedAstMap) {
+        debug!("Processing chain of memory events:");
+        let mut allocation = None;
+
+        let mut sources: HashMap<HirId, NodeIndex> = HashMap::new();
+
+        for event in events {
+            debug!(
+                "  Event: {:?} @ {:?}",
+                event.kind,
+                ast_map.get(&event.node),
+            );
+            let input_ptr = if let EventKind::Done = event.kind {
+                None
+            } else {
+                event.kind.get_ptr_expr(*ast_map.get(&event.node).unwrap())
+            };
+            match event.kind {
+                EventKind::Alloc{..} => {
+                    let id = self.cx.hir_map().node_to_hir_id(event.node);
+                    let alloc_node = self.data_flow.get_node(id, DataFlowNodeKind::Alloc);
+                    allocation = Some(alloc_node);
+                    sources.insert(id, alloc_node);
+                }
+                EventKind::Realloc{..} => {
+                    let id = self.cx.hir_map().node_to_hir_id(event.node);
+                    let realloc_node = self.data_flow.get_node(id, DataFlowNodeKind::Realloc);
+                    sources.insert(id, realloc_node);
+                    allocation = Some(realloc_node);
+
+                    let input_ptr = input_ptr.expect("Could not identify input pointer to realloc");
+                    if let Some(source) = self.get_source(&sources, input_ptr) {
+                        self.data_flow.add_flow(source, realloc_node, DataFlowEdge::Use);
+                    }
+                }
+                EventKind::Free{..} | EventKind::Deref(..) => {
+                    let input_ptr = input_ptr.expect("Could not identify input pointer to free or deref");
+                    if let Some(source) = self.get_source(&sources, input_ptr) {
+                        let id = self.cx.hir_map().node_to_hir_id(event.node);
+                        let node_kind = match event.kind {
+                            EventKind::Free{..} => DataFlowNodeKind::Free,
+                            EventKind::Deref{..} => DataFlowNodeKind::Deref,
+                            _ => panic!("Unexpected event kind"),
+                        };
+                        let new_node = self.data_flow.get_node(id, node_kind);
+                        self.data_flow.add_flow(source, new_node, DataFlowEdge::Use);
+                    } else {
+                        warn!("    Did not find def {:?} for in sources", input_ptr);
+                    }
+                }
+                EventKind::Ret{..} => {
+                    let input_ptr = input_ptr.expect("Could not identify input pointer to ret");
+                    if let Some(source) = self.get_source(&sources, input_ptr) {
+                        let id = self.cx.hir_map().node_to_hir_id(event.node);
+                        let fn_id = self.cx.hir_map().get_parent_item(id);
+                        let dest = self.data_flow.get_node(fn_id, DataFlowNodeKind::Ret);
+                        sources.insert(fn_id, dest);
+                        self.data_flow.add_flow(source, dest, DataFlowEdge::Use);
+                    } else {
+                        warn!("    Did not find def {:?} for in sources", input_ptr);
+                    }
+                }                    
+                EventKind::Done => {
+                    let leak_node = self.data_flow.get_node(DUMMY_HIR_ID, DataFlowNodeKind::Leak);
+                    self.data_flow.add_flow(allocation.unwrap(), leak_node, DataFlowEdge::Use);
+                }
+                EventKind::Assign(..) => {
+                    let input_ptr = input_ptr.expect("Could not identify input pointer to assignment");
+                    let source = self.get_source(&sources, input_ptr);
+                    let mut node_id = event.node;
+                    // Walk up from the assigned value to the assignment node
+                    loop {
+                        if let Some(expr) = ast_map.get_ast::<ast::Expr>(&node_id) {
+                            if let ast::ExprKind::Assign(..) = &expr.node {
+                                break;
+                            }
+                        } else if let Some(_stmt) = ast_map.get_ast::<ast::Stmt>(&node_id) {
+                            break;
+                        }
+                        node_id = self.cx.hir_map().get_parent_node(node_id);
+                    }
+                    if let Some(expr) = ast_map.get_ast::<ast::Expr>(&node_id) {
+                        let lhs = expect!([expr.node] ast::ExprKind::Assign(ref lhs, _) => lhs);
+                        let dest_id = self.canonical_def(lhs);
+                        let dest = self.data_flow.get_node(
+                            dest_id,
+                            DataFlowNodeKind::from_lvalue(&lhs.node),
+                        );
+                        if let Some(source) = source {
+                            self.data_flow.add_flow(source, dest, DataFlowEdge::Assign);
+                        }
+                        sources.insert(dest_id, dest);
+                    } else if let Some(stmt) = ast_map.get_ast::<ast::Stmt>(&node_id) {
+                        let local = expect!([&stmt.node] ast::StmtKind::Local(local) => local);
+                        let id = self.cx.hir_map().node_to_hir_id(local.pat.id);
+                        let dest = self.data_flow.get_node(id, DataFlowNodeKind::Local);
+                        if let Some(source) = source {
+                            self.data_flow.add_flow(source, dest, DataFlowEdge::Assign);
+                        }
+                        sources.insert(id, dest);
+                    } else {
+                        panic!("Unexpected AST node kind for event {:?}", event);
+                    }
+                },
+                EventKind::Arg(..) => {
+                    let input_ptr = input_ptr.expect("Could not identify input pointer to argument");
+                    let mut node_id = self.cx.hir_map().get_parent_node(event.node);
+                    // Walk up to the call
+                    let (callee, call_args) = loop {
+                        if let Some(expr) = ast_map.get_ast::<ast::Expr>(&node_id) {
+                            if let ast::ExprKind::Call(callee, call_args) = &expr.node {
+                                break (callee, call_args);
+                            }
+                        }
+                        node_id = self.cx.hir_map().get_parent_node(node_id);
+                    };
+                    let arg_index = call_args.iter().position(|arg| arg.id == event.node)
+                        .expect("Could not find event node id in call argument list");
+                    // let call = ast_map.get_ast::<ast::Expr>(&node_id)
+                    //     .expect("Could not find call expr for argument");
+                    if let Some(source) = self.get_source(&sources, input_ptr) {
+                        // TODO: construct an argument node for the callee argument
+                        let callee_fn = self.cx.hir_map().hir_to_node_id(self.canonical_def(callee));
+                        if let Some(body_id) = self.cx.hir_map().maybe_body_owned_by(callee_fn) {
+                            let body = self.cx.hir_map().body(body_id);
+                            let arg = &body.arguments[arg_index];
+                            let arg_id = arg.pat.hir_id;
+                            let dest = self.data_flow.get_node(arg_id, DataFlowNodeKind::Arg);
+                            self.data_flow.add_flow(source, dest, DataFlowEdge::Use);
+                            sources.insert(arg_id, dest);
+                        }
+                    }
+                },
+            };
         }
     }
 }
 
-impl<'lty, 'a, 'tcx> MutVisitor for LifetimeAnalyzer<'lty, 'a, 'tcx> {
+impl<'a, 'tcx> MutVisitor for LifetimeAnalyzer<'a, 'tcx> {
 }
 
 
@@ -717,6 +1055,7 @@ enum DataFlowNodeKind {
     Arg,
     Deref,
     Pointer,
+    Ret,
     Free,
     Leak,
 }
@@ -736,7 +1075,7 @@ impl DataFlowNodeKind {
 #[derive(Clone, Debug)]
 struct DataFlowNode {
     kind: DataFlowNodeKind,
-    id: ast::NodeId,
+    id: HirId,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -748,7 +1087,7 @@ enum DataFlowEdge {
 
 struct DataFlowGraph {
     graph: Graph<DataFlowNode, DataFlowEdge>,
-    nodes: HashMap<ast::NodeId, NodeIndex>,
+    nodes: HashMap<HirId, Vec<NodeIndex>>,
 }
 
 impl DataFlowGraph {
@@ -759,21 +1098,21 @@ impl DataFlowGraph {
         }
     }
 
-    fn get_node(&mut self, id: ast::NodeId, kind: DataFlowNodeKind) -> Option<NodeIndex> {
-        let index = self.nodes.get(&id).map(|x| *x).unwrap_or_else(|| {
-            let new_index = self.graph.add_node(DataFlowNode { kind, id });
-            self.nodes.insert(id, new_index);
-            new_index
-        });
-        if self.graph[index].kind != kind {
-            None
-        } else {
-            Some(index)
+    fn get_node(&mut self, id: HirId, kind: DataFlowNodeKind) -> NodeIndex {
+        if let Some(indices) = self.nodes.get(&id) {
+            for index in indices {
+                if self.graph[*index].kind == kind {
+                    return *index;
+                }
+            }
         }
+        let new_index = self.graph.add_node(DataFlowNode { kind, id });
+        self.nodes.entry(id).or_default().push(new_index);
+        new_index
     }
 
     fn add_flow(&mut self, start: NodeIndex, end: NodeIndex, kind: DataFlowEdge) {
-        self.graph.add_edge(start, end, kind);
+        self.graph.update_edge(start, end, kind);
     }
 
     fn dot<'a>(&'a self) -> Dot<&'a Graph<DataFlowNode, DataFlowEdge>> {
@@ -801,7 +1140,7 @@ impl DataFlowGraph {
                 cur = self.graph
                     .neighbors_directed(cur, petgraph::Direction::Incoming)
                     .next()
-                    .unwrap();
+                    .unwrap_or_else(|| panic!("Could not find incoming edge to {:?}", cur));
 
                 // We don't care about derefs along the ownership path
                 if self.graph[cur].kind != DataFlowNodeKind::Deref {
