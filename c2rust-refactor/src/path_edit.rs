@@ -1,6 +1,6 @@
 //! `fold_resolved_paths` function, for rewriting paths based on their resolved `DefId`.
 use rustc::hir;
-use rustc::hir::def::Def;
+use rustc::hir::def::Res;
 use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
@@ -13,7 +13,7 @@ use crate::RefactorCtxt;
 
 struct ResolvedPathFolder<'a, 'tcx: 'a, F>
 where
-    F: FnMut(NodeId, Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path),
+    F: FnMut(NodeId, Option<QSelf>, Path, &Res) -> (Option<QSelf>, Path),
 {
     cx: &'a RefactorCtxt<'a, 'tcx>,
     callback: F,
@@ -21,7 +21,7 @@ where
 
 impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
 where
-    F: FnMut(NodeId, Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path),
+    F: FnMut(NodeId, Option<QSelf>, Path, &Res) -> (Option<QSelf>, Path),
 {
     // Some helper functions that get both the AST node and its HIR equivalent.
 
@@ -137,7 +137,7 @@ where
         unpack!([&mut item.node] ItemKind::Use(tree));
         if let hir::ItemKind::Use(ref hir_path, _) = hir.node {
             debug!("{:?}", hir_path);
-            let (_, new_path) = (self.callback)(id, None, tree.prefix.clone(), &hir_path.def);
+            let (_, new_path) = (self.callback)(id, None, tree.prefix.clone(), &hir_path.res);
             tree.prefix = new_path;
         }
     }
@@ -153,7 +153,7 @@ where
     ) -> (Option<QSelf>, Path) {
         match *hir_qpath {
             hir::QPath::Resolved(_, ref hir_path) => {
-                (self.callback)(id, qself, path, &hir_path.def)
+                (self.callback)(id, qself, path, &hir_path.res)
             }
 
             hir::QPath::TypeRelative(ref hir_ty, _) => {
@@ -188,7 +188,7 @@ where
 
 impl<'a, 'tcx, F> MutVisitor for ResolvedPathFolder<'a, 'tcx, F>
 where
-    F: FnMut(NodeId, Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path),
+    F: FnMut(NodeId, Option<QSelf>, Path, &Res) -> (Option<QSelf>, Path),
 {
     // There are several places in the AST that a `Path` can appear:
     //  - PatKind::Ident (single-element paths only)
@@ -267,7 +267,7 @@ where
 pub fn fold_resolved_paths<T, F>(target: &mut T, cx: &RefactorCtxt, mut callback: F)
 where
     T: MutVisit,
-    F: FnMut(Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path),
+    F: FnMut(Option<QSelf>, Path, &Res) -> (Option<QSelf>, Path),
 {
     let mut f = ResolvedPathFolder {
         cx: cx,
@@ -281,7 +281,7 @@ where
 pub fn fold_resolved_paths_with_id<T, F>(target: &mut T, cx: &RefactorCtxt, callback: F)
 where
     T: MutVisit,
-    F: FnMut(NodeId, Option<QSelf>, Path, &Def) -> (Option<QSelf>, Path),
+    F: FnMut(NodeId, Option<QSelf>, Path, &Res) -> (Option<QSelf>, Path),
 {
     let mut f = ResolvedPathFolder {
         cx: cx,

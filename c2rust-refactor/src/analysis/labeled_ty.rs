@@ -140,7 +140,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                 self.mk(ty, self.mk_slice(&args), label)
             }
             Tuple(ref elems) => {
-                let args = elems.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
+                let args = elems.types().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
 
@@ -182,7 +182,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         substs: &[LabeledTy<'lty, 'tcx, L>],
     ) -> LabeledTy<'lty, 'tcx, L> {
         match lty.ty.sty {
-            TyKind::Param(ref tp) => substs[tp.idx as usize],
+            TyKind::Param(ref tp) => substs[tp.index as usize],
             _ => self.mk(
                 lty.ty,
                 self.subst_slice(lty.args, substs),

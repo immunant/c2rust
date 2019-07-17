@@ -6,7 +6,6 @@
 //! for `SelectOp` for descriptions of the available commands.
 
 use regex::Regex;
-use rustc::hir::def_id::LocalDefId;
 use std::collections::HashSet;
 use syntax::ast::*;
 use syntax::ptr::P;
@@ -156,8 +155,7 @@ pub fn run_select<S: IntoSymbol>(st: &CommandState, cx: &RefactorCtxt, ops: &[Se
                     .map(|seg| seg.ident)
                     .collect::<Vec<_>>();
                 let def = resolve::resolve_absolute(cx.ty_ctxt(), &segs);
-                let ldid = LocalDefId::from_def_id(def.def_id());
-                let node_id = cx.hir_map().local_def_id_to_node_id(ldid);
+                let node_id = cx.hir_map().as_local_node_id(def.def_id()).unwrap();
                 sel.insert(node_id);
             }
 

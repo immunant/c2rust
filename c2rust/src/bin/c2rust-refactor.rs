@@ -155,7 +155,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
         }
         None => String::new(),
     };
-    let transforms: Box<Iterator<Item = String>> = match args.value_of("transforms-file") {
+    let transforms: Box<dyn Iterator<Item = String>> = match args.value_of("transforms-file") {
         Some(_) => Box::new(shlex::Shlex::new(&transforms_file)),
         None => Box::new(args.values_of("transforms").unwrap().map(String::from)),
     };

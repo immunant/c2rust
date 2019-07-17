@@ -34,7 +34,7 @@ impl<T: Transform> Command for TransformCommand<T> {
 }
 
 /// Wrap a `Transform` to produce a `Box<Command>`.
-fn mk<T: Transform + 'static>(t: T) -> Box<Command> {
+fn mk<T: Transform + 'static>(t: T) -> Box<dyn Command> {
     Box::new(TransformCommand(t))
 }
 

@@ -303,8 +303,8 @@ fn get_rustc_cargo_args() -> Vec<String> {
             id: PackageId,
             target: &Target,
             mode: CompileMode,
-            handle_stdout: &mut FnMut(&str) -> CargoResult<()>,
-            handle_stderr: &mut FnMut(&str) -> CargoResult<()>,
+            handle_stdout: &mut dyn FnMut(&str) -> CargoResult<()>,
+            handle_stderr: &mut dyn FnMut(&str) -> CargoResult<()>,
         ) -> CargoResult<()> {
             if self.maybe_record_cmd(&cmd, &id, target) {
                 Ok(())
@@ -327,7 +327,7 @@ fn get_rustc_cargo_args() -> Vec<String> {
         target_pkg: ws.current().unwrap().package_id().clone(),
         pkg_args: Mutex::new(None),
     });
-    let exec_dyn: Arc<Executor> = exec.clone();
+    let exec_dyn: Arc<dyn Executor> = exec.clone();
 
     let _ = ops::compile_with_exec(&ws, &compile_opts, &exec_dyn);
 

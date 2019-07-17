@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::parse::token::{DelimToken, Nonterminal, Token};
+use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{Span, Spanned, SyntaxContext};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
@@ -155,13 +156,13 @@ as_nonterminal_impl!(MetaItem, NtMeta);
 as_nonterminal_impl!(Path, NtPath);
 as_nonterminal_impl!(Visibility, NtVis);
 as_nonterminal_impl!(TokenTree, NtTT);
-as_nonterminal_impl!(Arm, NtArm);
+// as_nonterminal_impl!(Arm, NtArm);
 as_nonterminal_impl!(ImplItem, NtImplItem);
 as_nonterminal_impl!(TraitItem, NtTraitItem);
 as_nonterminal_impl!(ForeignItem, NtForeignItem);
-as_nonterminal_impl!(Generics, NtGenerics);
-as_nonterminal_impl!(WhereClause, NtWhereClause);
-as_nonterminal_impl!(Arg, NtArg);
+// as_nonterminal_impl!(Generics, NtGenerics);
+// as_nonterminal_impl!(WhereClause, NtWhereClause);
+// as_nonterminal_impl!(Arg, NtArg);
 
 impl AsNonterminal for Ident {
     fn as_nonterminal(&self) -> Nonterminal {

@@ -74,11 +74,7 @@ impl<'ast> AnyNode<'ast> {
                 _ => None,
             },
             AnyNode::ForeignItem(fi) => match fi.node {
-                ForeignItemKind::Static(_, is_mut) => Some(if is_mut {
-                    Mutability::Mutable
-                } else {
-                    Mutability::Immutable
-                }),
+                ForeignItemKind::Static(_, mutability) => Some(mutability),
                 _ => None,
             },
             AnyNode::Pat(p) => match p.node {
@@ -249,7 +245,7 @@ pub fn matches_filter(
         Filter::Mutable => node.mutbl().map_or(false, |m| m == Mutability::Mutable),
         Filter::Name(ref re) => node.name().map_or(false, |n| re.is_match(&n.as_str())),
         Filter::PathPrefix(drop_segs, ref expect_path) => {
-            if !reflect::can_reflect_path(cx.hir_map(), node.id()) {
+            if !reflect::can_reflect_path(cx, node.id()) {
                 return false;
             }
             let def_id = match cx.hir_map().opt_local_def_id(node.id()) {
@@ -267,7 +263,7 @@ pub fn matches_filter(
         }
         Filter::HasAttr(name) => node
             .attrs()
-            .map_or(false, |attrs| attr::contains_name(attrs, &name.as_str())),
+            .map_or(false, |attrs| attr::contains_name(attrs, name)),
         Filter::Matches(ref pat) => match (node, pat) {
             (AnyNode::Expr(target), &AnyPattern::Expr(ref pattern)) => {
                 MatchCtxt::from_match(st, cx, &**pattern, target).is_ok()

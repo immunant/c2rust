@@ -204,10 +204,6 @@ gen_visitor_impls! {
         //     noop_visit_lifetime(l, self);
         // }
 
-        fn visit_ty_binding(&mut self, t: &mut TypeBinding) {
-            noop_visit_ty_binding(t, self);
-        }
-
         fn visit_mod(&mut self, m: &mut Mod) {
             noop_visit_mod(m, self);
         }

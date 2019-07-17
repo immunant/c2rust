@@ -113,7 +113,6 @@ gen_visit_impls! {
         //    generic_args: &'ast GenericArgs
         //) { ... }
         fn visit_generic_arg(&mut self, generic_arg: &'ast GenericArg) { ... }
-        fn visit_assoc_type_binding(&mut self, type_binding: &'ast TypeBinding) { ... }
         fn visit_attribute(&mut self, _attr: &'ast Attribute) { ... }
         //fn visit_tt(&mut self, tt: TokenTree) { ... }
         //fn visit_tts(&mut self, tts: TokenStream) { ... }

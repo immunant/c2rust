@@ -48,12 +48,12 @@ type IFnSig<'lty, 'tcx> = FnSig<'lty, 'tcx, Label<'lty>>;
 /// Variant-local analysis context.  We run one of these for each function variant to produce the
 /// initial (incomplete) summary.
 pub struct IntraCtxt<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
-    cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
+    cx: &'c mut Ctxt<'lty, 'tcx>,
     ilcx: LabeledTyCtxt<'lty, Label<'tcx>>,
 
     /// ID of the variant being processed.
     def_id: DefId,
-    mir: &'a Mir<'tcx>,
+    mir: &'a Body<'tcx>,
     bbid: BasicBlock,
     stmt_idx: usize,
 
@@ -80,9 +80,9 @@ pub struct IntraCtxt<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
 
 impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     pub fn new(
-        cx: &'c mut Ctxt<'lty, 'a, 'tcx>,
+        cx: &'c mut Ctxt<'lty, 'tcx>,
         def_id: DefId,
-        mir: &'a Mir<'tcx>,
+        mir: &'a Body<'tcx>,
     ) -> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         let ilcx = LabeledTyCtxt::new(cx.arena);
         IntraCtxt {

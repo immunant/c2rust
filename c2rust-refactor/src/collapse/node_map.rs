@@ -2,7 +2,7 @@
 use rustc_data_structures::sync::Lrc;
 use std::collections::HashMap;
 use syntax::ast::*;
-use syntax::parse::token::{Nonterminal, Token};
+use syntax::parse::token::{Nonterminal, Token, TokenKind};
 use syntax::source_map::Span;
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::visit::{self, Visitor};
@@ -64,7 +64,7 @@ fn nt_span(nt: &Nonterminal) -> Option<Span> {
 fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Lrc<Nonterminal>>) {
     for tt in ts.into_trees() {
         match tt {
-            TokenTree::Token(_, Token::Interpolated(nt)) => {
+            TokenTree::Token(Token{kind: TokenKind::Interpolated(nt), ..}) => {
                 if let Some(span) = nt_span(&nt) {
                     span_map.insert(span, nt.clone());
                 }

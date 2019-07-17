@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::parse::token::{DelimToken, Nonterminal, Token};
+use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{Span, SyntaxContext};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
@@ -12,6 +13,7 @@ use syntax::attr;
 use syntax::ptr::P;
 use syntax::source_map::Spanned;
 use syntax::visit::Visitor;
+use syntax_pos::Symbol;
 
 use crate::ast_manip::Visit;
 use crate::ast_manip::{GetNodeId, GetSpan};
@@ -355,7 +357,7 @@ fn get_child_invoc<'a>(
     match invoc {
         InvocKind::ItemAttr(..) => {
             if let MacNodeRef::Item(i) = new {
-                if attr::contains_name(&i.attrs, "automatically_derived") {
+                if attr::contains_name(&i.attrs, Symbol::intern("automatically_derived")) {
                     return Some(InvocKind::Derive(id));
                 }
             }
@@ -481,9 +483,9 @@ impl MaybeInvoc for Item {
         match self.node {
             ItemKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => {
-                if attr::contains_name(&self.attrs, "derive")
-                    || attr::contains_name(&self.attrs, "cfg")
-                    || attr::contains_name(&self.attrs, "test")
+                if attr::contains_name(&self.attrs, Symbol::intern("derive"))
+                    || attr::contains_name(&self.attrs, Symbol::intern("cfg"))
+                    || attr::contains_name(&self.attrs, Symbol::intern("test"))
                 {
                     Some(InvocKind::ItemAttr(self))
                 } else {

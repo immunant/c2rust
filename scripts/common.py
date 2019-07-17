@@ -96,9 +96,7 @@ class Config:
     MIN_PLUMBUM_VERSION = (1, 6, 3)
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = 'nightly-2019-04-12'
-    # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
-    # CUSTOM_RUST_RUSTC_VERSION = "rustc 1.32.0-nightly (21f268495 2018-12-02)"
+    CUSTOM_RUST_NAME = 'nightly-2019-06-22'
 
     """
     Reflect changes to all configuration variables that depend on LLVM_VER

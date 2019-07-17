@@ -19,7 +19,8 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::lexer::comments::CommentStyle;
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
+use syntax::parse::token::{DelimToken, Nonterminal, Token, TokenKind};
+use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::print::pprust::{self, PrintState};
 use syntax::ptr::P;
 use syntax::source_map::{BytePos, DUMMY_SP, FileName, SourceFile, Span, Spanned, dummy_spanned};
@@ -159,13 +160,13 @@ impl PrintParse for Attribute {
     type Parsed = Attribute;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
         driver::run_parser(sess, src, |p| {
-            match p.token {
+            match p.token.kind {
                 // `parse_attribute` doesn't handle inner or outer doc comments.
-                Token::DocComment(s) => {
+                TokenKind::DocComment(s) => {
                     assert!(src.ends_with('\n'));
                     // Expand the `span` to include the trailing \n.  Otherwise multiple spliced
                     // doc comments will run together into a single line.
-                    let span = p.span.with_hi(p.span.hi() + BytePos(1));
+                    let span = p.token.span.with_hi(p.token.span.hi() + BytePos(1));
                     let attr = attr::mk_sugared_doc_attr(attr::mk_attr_id(), s, span);
                     p.bump();
                     return Ok(attr);
@@ -706,7 +707,7 @@ fn create_file_for_module(
     let filename = match old_sf.name.clone() {
         FileName::Real(mut path) => {
             let mod_file_name = format!("{}.rs", module_item.ident.to_string());
-            if let Some(path_attr) = attr::first_attr_value_str_by_name(&module_item.attrs, "path") {
+            if let Some(path_attr) = attr::first_attr_value_str_by_name(&module_item.attrs, Symbol::intern("path")) {
                 path.pop();
                 path.push(path_attr.to_string());
             } else {

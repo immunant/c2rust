@@ -536,7 +536,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         });
 
         methods.add_method("get_use_def", |lua_ctx, this, id: u32| {
-            this.cx.resolve_use_id(ast::NodeId::from_u32(id)).def.to_lua(lua_ctx)
+            this.cx.resolve_use_id(ast::NodeId::from_u32(id)).res.to_lua(lua_ctx)
         });
     }
 }

@@ -44,7 +44,7 @@ use std::result;
 use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::parse::parser::{Parser, PathStyle};
-use syntax::parse::token::Token;
+use syntax::parse::token::TokenKind;
 use syntax::parse::{self, PResult};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
@@ -464,10 +464,11 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             None,
             false,
             false,
+            None,
         );
         let pattern = func(&mut p).unwrap();
 
-        let label = if p.eat(&Token::Comma) {
+        let label = if p.eat(&TokenKind::Comma) {
             p.parse_ident().unwrap().name
         } else {
             "target".into_symbol()
@@ -493,6 +494,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             None,
             false,
             false,
+            None,
         );
         let path_pattern = p.parse_path(style).unwrap();
 
@@ -539,9 +541,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             None,
             false,
             false,
+            None,
         );
         let pattern = func(&mut p).unwrap();
-        p.expect(&Token::Comma).unwrap();
+        p.expect(&TokenKind::Comma).unwrap();
         let ty_pattern = p.parse_ty().unwrap();
 
         let tcx_ty = self
@@ -597,7 +600,7 @@ fn make_bindings_parser<'a>(sess: &'a Session, src: &str) -> (Parser<'a>, Bindin
         None,
     );
     let (ts, bt) = parse_bindings(ts);
-    (parse::stream_to_parser(&sess.parse_sess, ts), bt)
+    (parse::stream_to_parser(&sess.parse_sess, ts, None), bt)
 }
 
 pub trait TryMatch {

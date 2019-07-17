@@ -12,10 +12,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use syntax::ast::*;
 use syntax::attr;
 use syntax::mut_visit::{self, MutVisitor};
-use syntax::parse::token::{Nonterminal, Token};
+use syntax::parse::token::{Nonterminal, Token, TokenKind};
 use syntax::ptr::P;
 use syntax::source_map::{BytePos, Span};
 use syntax::tokenstream::{self, TokenStream, TokenTree};
+use syntax_pos::sym;
 
 use super::mac_table::{InvocId, InvocKind, MacTable};
 use super::nt_match::{self, NtMatch};
@@ -64,9 +65,10 @@ impl<'a> CollapseMacros<'a> {
         for (span, nt) in nt_match::match_nonterminals(old, new) {
             trace!(
                 "  got {} at {:?}",
-                ::syntax::print::pprust::token_to_string(&Token::Interpolated(Lrc::new(
-                    nt.clone()
-                ))),
+                ::syntax::print::pprust::token_to_string(&Token {
+                    kind: TokenKind::Interpolated(Lrc::new(nt.clone())),
+                    span,
+                }),
                 span,
             );
             self.token_rewrites.push(RewriteItem { invoc_id, span, nt });
@@ -334,24 +336,24 @@ fn restore_attrs(mut new: Item, old: &Item) -> Item {
     // If the original item had a `#[derive]` attr, transfer it to the new one.
     // TODO: handle multiple instances of `#[derive]`
     // TODO: try to keep attrs in the same order
-    if let Some(attr) = attr::find_by_name(&old.attrs, "derive") {
-        if !attr::contains_name(&new.attrs, "derive") {
+    if let Some(attr) = attr::find_by_name(&old.attrs, sym::derive) {
+        if !attr::contains_name(&new.attrs, sym::derive) {
             new.attrs.push(attr.clone());
         }
     }
 
-    if let Some(attr) = attr::find_by_name(&old.attrs, "cfg") {
-        if !attr::contains_name(&new.attrs, "cfg") {
+    if let Some(attr) = attr::find_by_name(&old.attrs, sym::cfg) {
+        if !attr::contains_name(&new.attrs, sym::cfg) {
             new.attrs.push(attr.clone());
         }
     }
 
     // Remove #[rustc_copy_clone_marker], if it's present
     new.attrs.retain(|attr| {
-        !attr.check_name("rustc_copy_clone_marker") &&
+        !attr.check_name(sym::rustc_copy_clone_marker) &&
         // TODO: don't erase user-written #[structural_match] attrs
         // (It can be written explicitly, but is also inserted by #[derive(Eq)].)
-        !attr.check_name("structural_match")
+        !attr.check_name(sym::structural_match)
     });
 
     new
@@ -460,17 +462,17 @@ fn rewrite_tokens(
 
         if let Some(item) = rewrites.remove(&tt.span().lo()) {
             assert!(item.invoc_id == invoc_id);
-            new_tts.push(TokenTree::Token(
-                item.span,
-                Token::Interpolated(Lrc::new(item.nt)),
-            ));
+            new_tts.push(TokenTree::Token(Token {
+                kind: TokenKind::Interpolated(Lrc::new(item.nt)),
+                span: item.span,
+            }));
             ignore_until = Some(item.span.hi());
             continue;
         }
 
         match tt {
-            TokenTree::Token(sp, t) => {
-                new_tts.push(TokenTree::Token(sp, t));
+            TokenTree::Token(t) => {
+                new_tts.push(TokenTree::Token(t));
             }
             TokenTree::Delimited(sp, delim, tts) => {
                 new_tts.push(TokenTree::Delimited(

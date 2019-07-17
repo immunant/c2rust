@@ -148,7 +148,8 @@ impl InteractState {
 
                 let msg = self
                     .run_compiler(driver::Phase::Phase2, |_krate, cx| {
-                        let span = cx.hir_map().span(id);
+                        let hir_id = cx.hir_map().node_to_hir_id(id);
+                        let span = cx.hir_map().span(hir_id);
                         let lo = cx.session().source_map().lookup_char_pos(span.lo());
                         let hi = cx.session().source_map().lookup_char_pos(span.hi());
                         let file = filename_to_str(&lo.file.name);
