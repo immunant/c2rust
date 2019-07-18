@@ -309,26 +309,8 @@ impl UserData for LuaAstNode<P<Expr>> {
 unsafe impl Send for LuaAstNode<P<Ty>> {}
 impl UserData for LuaAstNode<P<Ty>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_kind", |lua_ctx, this, ()| {
-            match &this.0.borrow().node {
-                TyKind::Path(..) => "Path",
-                TyKind::Ptr(..) => "Ptr",
-                TyKind::BareFn(..) => "BareFn",
-                TyKind::Array(..) => "Array",
-                TyKind::Rptr(..) => "Rptr",
-                TyKind::Typeof(..) => "Typeof",
-                TyKind::Paren(..) => "Paren",
-                TyKind::Slice(..) => "Slice",
-                TyKind::Tup(..) => "Tup",
-                TyKind::Never => "Never",
-                TyKind::ImplicitSelf => "ImplicitSelf",
-                TyKind::CVarArgs => "CVarArgs",
-                TyKind::Infer => "Infer",
-                TyKind::TraitObject(..) => "TraitObject",
-                TyKind::ImplTrait(..) => "ImplTrait",
-                TyKind::Mac(..) => "Mac",
-                TyKind::Err => "Err",
-            }.to_lua(lua_ctx)
+        methods.add_method("get_kind", |_lua_ctx, this, ()| {
+            Ok(this.0.borrow().node.ast_name())
         });
 
         methods.add_method("get_mut_ty", |_lua_ctx, this, ()| {
@@ -581,13 +563,13 @@ impl UserData for LuaAstNode<FnLike> {
 }
 
 impl ToLuaExt for FnKind {
-    fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+    fn to_lua<'lua>(self, ctx: Context<'lua>) -> Result<Value<'lua>> {
         match self {
             FnKind::Normal => "Normal",
             FnKind::ImplMethod => "ImplMethod",
             FnKind::TraitMethod => "TraitMethod",
             FnKind::Foreign => "Foreign",
-        }.to_lua(lua)
+        }.to_lua(ctx)
     }
 }
 
