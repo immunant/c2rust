@@ -3,6 +3,7 @@ use rustc_target::spec::abi::Abi;
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::parse::token::{DelimToken, Nonterminal, Token};
+use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};

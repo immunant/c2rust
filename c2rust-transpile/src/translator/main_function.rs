@@ -4,6 +4,7 @@
 //! Rust.
 
 use super::*;
+use syntax::parse::token::{self, TokenKind};
 
 impl<'c> Translation<'c> {
     pub fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, TranslationError> {
@@ -131,6 +132,8 @@ impl<'c> Translation<'c> {
                         mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<P<Expr>>),
                     ),
                 ))));
+                let var_name_ident = mk().ident("var_name");
+                let var_value_ident = mk().ident("var_value");
                 stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().tuple_pat(vec![mk().ident_pat("var_name"), mk().ident_pat("var_value")]),
                     mk().call_expr(vars_fn, vec![] as Vec<P<Expr>>),
@@ -141,12 +144,14 @@ impl<'c> Translation<'c> {
                             Some(mk().mac_expr(mk().mac(
                                 vec!["format"],
                                 vec![
-                                    Token::Interpolated(Lrc::new(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit("{}={}"))))),
-                                    Token::Comma,
-                                    Token::from_ast_ident(mk().ident("var_name")),
-                                    Token::Comma,
-                                    Token::from_ast_ident(mk().ident("var_value")),
-                                ].into_iter().collect::<TokenStream>(),
+                                    token::Interpolated(Lrc::new(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit("{}={}"))))),
+                                    token::Comma,
+                                    TokenKind::Ident(var_name_ident.name, var_name_ident.is_raw_guess()),
+                                    token::Comma,
+                                    TokenKind::Ident(var_value_ident.name, var_value_ident.is_raw_guess())
+                                ].into_iter()
+                                    .map(|tk| TokenTree::token(tk, DUMMY_SP))
+                                    .collect::<TokenStream>(),
                                 MacDelimiter::Parenthesis,
                             )))
                         ))),

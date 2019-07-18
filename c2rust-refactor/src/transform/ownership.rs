@@ -2,13 +2,12 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use arena::SyncDroplessArena;
-use rustc::hir;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::mut_visit::{self, MutVisitor};
-use syntax::parse::token::{self, Token, DelimToken};
+use syntax::parse::token::{self, Token, TokenKind, DelimToken};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream, DelimSpan};
@@ -20,6 +19,7 @@ use crate::analysis::labeled_ty::LabeledTyCtxt;
 use crate::analysis::ownership::{self, ConcretePerm, Var, PTy};
 use crate::analysis::ownership::constraint::{ConstraintSet, Perm};
 use crate::command::{CommandState, Registry, DriverCommand};
+use crate::context::HirMap;
 use crate::driver::{Phase};
 use crate::type_map;
 use crate::RefactorCtxt;
@@ -68,7 +68,7 @@ fn do_annotate(st: &CommandState,
     struct AnnotateFolder<'a, 'tcx: 'a> {
         label: Symbol,
         ana: ownership::AnalysisResult<'tcx, 'tcx>,
-        hir_map: &'a hir::map::Map<'tcx>,
+        hir_map: HirMap<'a, 'tcx>,
         st: &'a CommandState,
     }
 
@@ -200,7 +200,7 @@ fn build_constraints_attr(cset: &ConstraintSet) -> Attribute {
                 let mut ts = Vec::new();
                 for (i, &p) in ps.iter().enumerate() {
                     if i > 0 {
-                        ts.push(token(Token::Comma));
+                        ts.push(token(TokenKind::Comma));
                     }
                     push_perm_tokens(p, &mut ts);
                 }
@@ -213,13 +213,13 @@ fn build_constraints_attr(cset: &ConstraintSet) -> Attribute {
 
     for (i, &(a, b)) in cset.iter().enumerate() {
         if i > 0 {
-            args.push(token(Token::Comma));
+            args.push(token(TokenKind::Comma));
         }
         args.push(ident_token("le"));
 
         let mut le_args = Vec::new();
         push_perm_tokens(a, &mut le_args);
-        le_args.push(token(Token::Comma));
+        le_args.push(token(TokenKind::Comma));
         push_perm_tokens(b, &mut le_args);
 
         args.push(parens(le_args));
@@ -234,7 +234,7 @@ fn build_mono_attr(suffix: &str, assign: &IndexVec<Var, ConcretePerm>) -> Attrib
     args.push(str_token(suffix));
 
     for &p in assign.iter() {
-        args.push(token(Token::Comma));
+        args.push(token(TokenKind::Comma));
         args.push(perm_token(p));
     }
 
@@ -248,19 +248,23 @@ fn perm_token(p: ConcretePerm) -> TokenTree {
         ConcretePerm::Write => "WRITE",
         ConcretePerm::Move => "MOVE",
     };
-    TokenTree::Token(DUMMY_SP, Token::Ident(mk().ident(name), false))
+    ident_token(name)
 }
 
 fn ident_token(name: &str) -> TokenTree {
-    token(Token::Ident(mk().ident(name), false))
+    token(TokenKind::Ident(Symbol::intern(name), false))
 }
 
 fn str_token(s: &str) -> TokenTree {
-    token(Token::Literal(token::Lit::Str_(s.into_symbol()), None))
+    token(TokenKind::Literal(token::Lit {
+        kind: token::LitKind::Str,
+        symbol: s.into_symbol(),
+        suffix: None,
+    }))
 }
 
-fn token(t: Token) -> TokenTree {
-    TokenTree::Token(DUMMY_SP, t)
+fn token(kind: TokenKind) -> TokenTree {
+    TokenTree::Token(Token{kind, span: DUMMY_SP})
 }
 
 fn parens(ts: Vec<TokenTree>) -> TokenTree {
@@ -358,12 +362,12 @@ fn do_split_variants(st: &CommandState,
                 fl.attrs.retain(|a| {
                     // If a `variant_of` annotation was present, then this fn should be part of a
                     // variant set, and we should have bailed out of the split logic already.
-                    assert!(!a.check_name("ownership_variant_of"));
+                    assert!(!a.check_name("ownership_variant_of".into_symbol()));
 
                     // Remove all `ownership_mono` (we add a new one below) and also remove
                     // `ownership_constraints` from all but the first split fn.
-                    !a.check_name("ownership_mono") &&
-                    (!a.check_name("ownership_constraints") || mono_idx == 0)
+                    !a.check_name("ownership_mono".into_symbol()) &&
+                    (!a.check_name("ownership_constraints".into_symbol()) || mono_idx == 0)
                 });
 
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
@@ -409,7 +413,9 @@ fn do_split_variants(st: &CommandState,
             }
 
             // Figure out where we are.
-            let src = cx.hir_map().get_parent(e.id);
+            let hir_id = cx.hir_map().node_to_hir_id(e.id);
+            let src = cx.hir_map().get_parent_item(hir_id);
+            let src = cx.hir_map().hir_to_node_id(src);
             let src_def_id = cx.node_def_id(src);
             let (src_fr, src_vr) = ana.fn_results(src_def_id);
 
@@ -554,7 +560,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     let s_mut = "mut".into_symbol();
     let s_box = "box".into_symbol();
 
-    type_map::map_types(cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
+    type_map::map_types(&cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
         let p = match lty.label {
             Some(x) => x,
             None => return,

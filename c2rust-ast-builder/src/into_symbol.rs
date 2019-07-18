@@ -1,4 +1,3 @@
-use syntax::symbol::keywords::Keyword;
 use syntax::symbol::{InternedString, Symbol};
 
 /// Conversion of string-like values into interned `Symbol`s.
@@ -33,11 +32,5 @@ impl<'a> IntoSymbol for &'a String {
 impl IntoSymbol for InternedString {
     fn into_symbol(self) -> Symbol {
         self.as_symbol()
-    }
-}
-
-impl IntoSymbol for Keyword {
-    fn into_symbol(self) -> Symbol {
-        self.name()
     }
 }

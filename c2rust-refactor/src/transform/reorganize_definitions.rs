@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
 use crate::transform::Transform;
-use rustc::hir::Node;
+use rustc::hir::{HirId, Node};
 use rustc::hir::def::{Namespace, PerNS};
 use rustc::hir::def_id::DefId;
 use rustc_target::spec::abi::Abi;
@@ -12,7 +12,7 @@ use syntax::attr::{self, HasAttrs};
 use syntax::parse::lexer::comments::{Comment, CommentStyle};
 use syntax::print::pprust::{foreign_item_to_string, item_to_string};
 use syntax::ptr::P;
-use syntax::symbol::keywords;
+use syntax::symbol::{kw, Symbol};
 use syntax_pos::BytePos;
 
 use c2rust_ast_builder::mk;
@@ -178,9 +178,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         if let ItemKind::ForeignMod(m) = &item.node {
                             for foreign_item in &m.items {
                                 let dest_path = mk().path(vec![
-                                    keywords::Crate.ident(),
-                                    dest_module_ident,
-                                    foreign_item.ident,
+                                    kw::Crate,
+                                    dest_module_ident.name,
+                                    foreign_item.ident.name,
                                 ]);
                                 self.path_mapping.insert(
                                     self.cx.node_def_id(foreign_item.id),
@@ -193,9 +193,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         // a simple path in the crate root and it is flat,
                         // i.e. has no submodules which contain target items.
                         let dest_path = mk().path(vec![
-                            keywords::Crate.ident(),
-                            dest_module_ident,
-                            new_ident,
+                            kw::Crate,
+                            dest_module_ident.name,
+                            new_ident.name,
                         ]);
                         self.path_mapping
                             .insert(self.cx.node_def_id(item.id), (dest_path, dest_module_id));
@@ -232,7 +232,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }]
         });
 
-        let mut need_pub_defs = HashSet::<NodeId>::new();
+        let mut need_pub_defs = HashSet::<HirId>::new();
         for mod_info in self.modules.values() {
             if mod_info.new {
                 if let Some(new_defines) = module_items.remove(&mod_info.id) {
@@ -250,10 +250,12 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         }
 
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
-            if need_pub_defs.contains(&item.id) {
-                match item.vis.node.clone() {
-                    VisibilityKind::Public | VisibilityKind::Crate(_) => {}
-                    _ => item.vis.node = VisibilityKind::Crate(CrateSugar::PubCrate),
+            if let Some(hir_id) = self.cx.hir_map().opt_node_to_hir_id(item.id) {
+                if need_pub_defs.contains(&hir_id) {
+                    match item.vis.node.clone() {
+                        VisibilityKind::Public | VisibilityKind::Crate(_) => {}
+                        _ => item.vis.node = VisibilityKind::Crate(CrateSugar::PubCrate),
+                    }
                 }
             }
             smallvec![item]
@@ -261,11 +263,11 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
         // Remove src_loc attributes
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
-            item.attrs.retain(|attr| !attr.check_name("src_loc"));
+            item.attrs.retain(|attr| !attr.check_name(Symbol::intern("src_loc")));
             smallvec![item]
         });
         FlatMapNodes::visit(krate, |mut item: ForeignItem| {
-            item.attrs.retain(|attr| !attr.check_name("src_loc"));
+            item.attrs.retain(|attr| !attr.check_name(Symbol::intern("src_loc")));
             smallvec![item]
         });
     }
@@ -438,7 +440,8 @@ impl MovedDecl {
         where T: Into<DeclKind>
     {
         let node: DeclKind = decl.into();
-        let loc: Option<SrcLoc> = attr::find_by_name(node.attrs(), "src_loc").map(|l| l.into());
+        let loc: Option<SrcLoc> = attr::find_by_name(node.attrs(), Symbol::intern("src_loc"))
+            .map(|l| l.into());
 
         Self {
             node,
@@ -502,7 +505,7 @@ struct ModuleDefines<'a, 'tcx: 'a> {
     unnamed_items: PerNS<Vec<MovedDecl>>,
     impls: Vec<P<Item>>,
     // Set of imported definition NodeIds that must be made pub(crate) at least
-    imports: HashSet<NodeId>,
+    imports: HashSet<HirId>,
 }
 
 impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
@@ -530,13 +533,13 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                 for u in split_uses(item).into_iter() {
                     let use_tree = expect!([&u.node] ItemKind::Use(u) => u);
                     let path = self.cx.resolve_use_id(u.id);
-                    let ns = namespace(&path.def).expect("Could not identify def namespace");
+                    let ns = namespace(&path.res).expect("Could not identify def namespace");
                     if let Err(e) = self.insert_ident(ns, use_tree.ident(), u, parent_header.clone()) {
                         return Err(e);
                     }
-                    if let Some(def_id) = self.cx.hir_map().as_local_node_id(path.def.def_id()) {
+                    if let Some(def_id) = self.cx.hir_map().as_local_hir_id(path.res.def_id()) {
                         let def_mod_id = self.cx.hir_map().get_module_parent_node(def_id);
-                        if def_mod_id != self.info.id {
+                        if self.cx.hir_map().hir_to_node_id(def_mod_id) != self.info.id {
                             self.imports.insert(def_id);
                         }
                     }
@@ -567,14 +570,14 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
 
             // Value namespace
             ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
-                assert!(item.ident != keywords::Invalid.ident());
+                assert!(item.ident.name != kw::Invalid);
                 self.insert_ident(Namespace::ValueNS, item.ident, item, parent_header)
                     .map(Some)
             }
 
             // Type namespace
             _ => {
-                assert!(item.ident != keywords::Invalid.ident());
+                assert!(item.ident.name != kw::Invalid);
                 self.insert_ident(Namespace::TypeNS, item.ident, item, parent_header)
                     .map(Some)
             }
@@ -678,7 +681,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         // If the import refers to the existing foreign item, do
                         // not replace it.
                         let path = self.cx.resolve_use_id(new.id);
-                        if let Some(did) = path.def.opt_def_id() {
+                        if let Some(did) = path.res.opt_def_id() {
                             if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
                                 existing_foreign.vis.node =
                                     join_visibility(&existing_foreign.vis.node, &new.vis.node);
@@ -737,7 +740,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         // unless the use refers to the foreign declaration are
                         // attempting to insert.
                         let path = self.cx.resolve_use_id(existing_item.id);
-                        if let Some(did) = path.def.opt_def_id() {
+                        if let Some(did) = path.res.opt_def_id() {
                             if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
                                 *existing_decl = MovedDecl::new((new, abi), parent_header);
                                 return;
@@ -904,10 +907,7 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
         (ForeignItemKind::Static(frn_ty, frn_mutbl), ItemKind::Static(ty, mutbl, _))
             if frn_ty.ast_equiv(&ty) =>
         {
-            match (frn_mutbl, mutbl) {
-                (true, Mutability::Mutable) | (false, Mutability::Immutable) => true,
-                _ => false,
-            }
+            frn_mutbl == mutbl
         }
 
         // If we have a definition for this type name we can assume it is
@@ -923,12 +923,12 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
 
 /// Check if the `Item` has the `#[header_src = "/some/path"]` attribute
 fn has_source_header(attrs: &Vec<Attribute>) -> bool {
-    attr::contains_name(attrs, "header_src")
+    attr::contains_name(attrs, Symbol::intern("header_src"))
 }
 
 /// Check if the `Item` has the `#[header_src = "/some/path"]` attribute
 fn parse_source_header(attrs: &Vec<Attribute>) -> Option<(String, usize)> {
-    attr::find_by_name(attrs, "header_src")
+    attr::find_by_name(attrs, Symbol::intern("header_src"))
         .map(|attr| {
             let value_str = attr.value_str()
                 .expect("Expected a value for header_src attribute")

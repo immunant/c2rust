@@ -9,6 +9,8 @@ use rustc::ty;
 use syntax::ast::*;
 use syntax::visit::{self, Visitor};
 
+use crate::context::HirMap;
+
 /// Provider of a higher-level type representation.
 ///
 /// Methods can return `None` under any circumstances to indicate that the provider can't find a
@@ -327,7 +329,7 @@ where
 /// by `source`.  The callback will be passed matching pairs of AST-level and higher-level type
 /// representations.
 pub fn map_types<'a, 'tcx, S, F>(
-    hir_map: &'a hir::map::Map<'tcx>,
+    hir_map: &HirMap<'a, 'tcx>,
     source: S,
     krate: &Crate,
     callback: F,

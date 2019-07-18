@@ -9,6 +9,8 @@ pub mod syntax;
 
 use indexmap::IndexMap;
 
+use std::cmp::Eq;
+use std::hash::Hash;
 use std::iter::FromIterator;
 use std::ops::Deref;
 
@@ -16,14 +18,14 @@ use std::ops::Deref;
 use self::quote::ToTokens;
 
 #[derive(Debug)]
-pub enum ArgValue<'a> {
+pub enum ArgValue<K: Hash + Eq> {
     Nothing,
     Str(String),
     Int(u128),
-    List(ArgList<'a>),
+    List(ArgList<K>),
 }
 
-impl<'a> ArgValue<'a> {
+impl<K: Hash + Eq> ArgValue<K> {
     pub fn get_str(&self) -> Option<&str> {
         match *self {
             ArgValue::Str(ref s) => Some(&s[..]),
@@ -35,14 +37,14 @@ impl<'a> ArgValue<'a> {
         self.get_str().expect("argument expects string value")
     }
 
-    pub fn get_list(&self) -> Option<&ArgList<'a>> {
+    pub fn get_list(&self) -> Option<&ArgList<K>> {
         match *self {
             ArgValue::List(ref l) => Some(l),
             _ => None,
         }
     }
 
-    pub fn as_list(&self) -> &ArgList<'a> {
+    pub fn as_list(&self) -> &ArgList<K> {
         self.get_list().expect("argument expects list value")
     }
 
@@ -54,22 +56,22 @@ impl<'a> ArgValue<'a> {
     }
 }
 
-type ArgListInnerMap<'a> = IndexMap<&'a str, ArgValue<'a>>;
+type ArgListInnerMap<K> = IndexMap<K, ArgValue<K>>;
 
-#[derive(Debug, Default)]
-pub struct ArgList<'a>(ArgListInnerMap<'a>);
+#[derive(Debug)]
+pub struct ArgList<K: Hash + Eq>(ArgListInnerMap<K>);
 
-impl<'a> Deref for ArgList<'a> {
-    type Target = ArgListInnerMap<'a>;
+impl<K: Hash + Eq> Deref for ArgList<K> {
+    type Target = ArgListInnerMap<K>;
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<'a> IntoIterator for ArgList<'a> {
-    type Item = <ArgListInnerMap<'a> as IntoIterator>::Item;
-    type IntoIter = <ArgListInnerMap<'a> as IntoIterator>::IntoIter;
+impl<K: Hash + Eq> IntoIterator for ArgList<K> {
+    type Item = (K, ArgValue<K>);
+    type IntoIter = indexmap::map::IntoIter<K, ArgValue<K>>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -77,24 +79,29 @@ impl<'a> IntoIterator for ArgList<'a> {
     }
 }
 
-impl<'a> FromIterator<(&'a str, ArgValue<'a>)> for ArgList<'a> {
+impl<K: Hash + Eq> FromIterator<(K, ArgValue<K>)> for ArgList<K> {
     #[inline]
-    fn from_iter<T>(iter: T) -> ArgList<'a>
+    fn from_iter<T>(iter: T) -> ArgList<K>
     where
-        T: IntoIterator<Item = (&'a str, ArgValue<'a>)>,
+        T: IntoIterator<Item = (K, ArgValue<K>)>,
     {
         ArgList(iter.into_iter().collect())
     }
 }
 
-impl<'a> ArgList<'a> {
+impl<K: Hash + Eq> ArgList<K> {
+    #[inline]
+    pub fn new() -> ArgList<K> {
+        ArgList(ArgListInnerMap::new())
+    }
+
     #[allow(dead_code)]
-    fn from_map(m: ArgListInnerMap<'a>) -> ArgList<'a> {
+    fn from_map(m: ArgListInnerMap<K>) -> ArgList<K> {
         ArgList(m)
     }
 
     #[cfg(feature = "with-quote")]
-    pub fn get_token_arg<D>(&self, arg: &str, default: D) -> self::quote::Tokens
+    pub fn get_token_arg<D>(&self, arg: &K, default: D) -> self::quote::Tokens
     where
         self::quote::Tokens: ::std::convert::From<D>,
     {

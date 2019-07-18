@@ -6,7 +6,7 @@ use std::vec;
 use syntax::ast::Path;
 use syntax::parse;
 use syntax::parse::parser::{Parser, PathStyle};
-use syntax::parse::token::{DelimToken, Lit, Token};
+use syntax::parse::token::{DelimToken, Lit, LitKind, Token, TokenKind};
 use syntax::parse::ParseSess;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenStream, TokenTree};
@@ -62,22 +62,22 @@ impl<'a> Stream<'a> {
 
     fn token(&mut self) -> PResult<Token> {
         match self.take()? {
-            TokenTree::Token(_, tok) => Ok(tok),
+            TokenTree::Token(tok) => Ok(tok),
             TokenTree::Delimited(..) => fail!("expected token, but got delimited"),
         }
     }
 
-    fn expect(&mut self, expect: &Token) -> PResult<()> {
+    fn expect(&mut self, expect: &TokenKind) -> PResult<()> {
         let actual = self.token()?;
-        if &actual != expect {
+        if &actual.kind != expect {
             fail!("expected {:?}, but got {:?}", expect, actual);
         }
         Ok(())
     }
 
-    fn maybe_expect(&mut self, expect: &Token) -> bool {
+    fn maybe_expect(&mut self, expect: &TokenKind) -> bool {
         let found = match self.peek() {
-            Some(&TokenTree::Token(_, ref tok)) => tok == expect,
+            Some(&TokenTree::Token(ref tok)) => &tok.kind == expect,
             _ => false,
         };
         if found {
@@ -87,8 +87,8 @@ impl<'a> Stream<'a> {
     }
 
     fn name(&mut self) -> PResult<Symbol> {
-        match self.token()? {
-            Token::Ident(i, _) => Ok(i.name),
+        match self.token()?.kind {
+            TokenKind::Ident(i, _) => Ok(i),
             t => fail!("expected name, but got {:?}", t),
         }
     }
@@ -101,7 +101,7 @@ impl<'a> Stream<'a> {
                 }
                 Ok(tts.into())
             }
-            TokenTree::Token(_, tok) => fail!("expected parens, but got {:?}", tok),
+            TokenTree::Token(tok) => fail!("expected parens, but got {:?}", tok),
         }
     }
 
@@ -124,15 +124,15 @@ impl<'a> Stream<'a> {
     }
 
     fn lit(&mut self) -> PResult<Lit> {
-        match self.token()? {
-            Token::Literal(lit, _) => Ok(lit),
+        match self.token()?.kind {
+            TokenKind::Literal(lit) => Ok(lit),
             t => fail!("expected literal, but got {:?}", t),
         }
     }
 
     fn path(&mut self) -> PResult<Path> {
         let ts = mem::replace(&mut self.toks, Vec::new().into_iter());
-        let mut p = Parser::new(self.sess, ts.collect(), None, false, false);
+        let mut p = Parser::new(self.sess, ts.collect(), None, false, false, None);
         let path = p
             .parse_path(PathStyle::Mod)
             .map_err(|e| format!("error parsing path: {}", e.message()))?;
@@ -149,7 +149,7 @@ impl<'a> Stream<'a> {
 
     fn filter_or(&mut self) -> PResult<Filter> {
         let mut parts = vec![self.filter_and()?];
-        while self.maybe_expect(&Token::OrOr) {
+        while self.maybe_expect(&TokenKind::OrOr) {
             parts.push(self.filter_and()?);
         }
 
@@ -162,7 +162,7 @@ impl<'a> Stream<'a> {
 
     fn filter_and(&mut self) -> PResult<Filter> {
         let mut parts = vec![self.filter_single()?];
-        while self.maybe_expect(&Token::AndAnd) {
+        while self.maybe_expect(&TokenKind::AndAnd) {
             parts.push(self.filter_single()?);
         }
 
@@ -174,7 +174,7 @@ impl<'a> Stream<'a> {
     }
 
     fn filter_single(&mut self) -> PResult<Filter> {
-        if self.maybe_expect(&Token::Not) {
+        if self.maybe_expect(&TokenKind::Not) {
             let filt = self.filter_single()?;
             Ok(Filter::Not(Box::new(filt)))
         } else if let Some(mut inner) = self.maybe_parens() {
@@ -217,12 +217,12 @@ impl<'a> Stream<'a> {
                 "path_prefix" => {
                     let mut inner = self.parens()?;
                     let seg_count_lit = inner.lit()?;
-                    inner.expect(&Token::Comma)?;
+                    inner.expect(&TokenKind::Comma)?;
                     let path = inner.path()?;
                     inner.last()?;
 
-                    let seg_count = match seg_count_lit {
-                        Lit::Integer(sym) => match usize::from_str(&sym.as_str()) {
+                    let seg_count = match seg_count_lit.kind {
+                        LitKind::Integer => match usize::from_str(&seg_count_lit.symbol.as_str()) {
                             Ok(i) => i,
                             Err(e) => fail!("error parsing integer: {}", e),
                         },
@@ -241,9 +241,8 @@ impl<'a> Stream<'a> {
                     let lit = inner.lit()?;
                     inner.last()?;
 
-                    let s = match lit {
-                        Lit::Str_(s) => s,
-                        Lit::StrRaw(s, _) => s,
+                    let s = match lit.kind {
+                        LitKind::Str | LitKind::StrRaw(_) => lit.symbol,
                         l => fail!("expected string literal, but got {:?}", l),
                     };
                     // First, make sure `s` parses as a regex on its own
@@ -266,11 +265,11 @@ impl<'a> Stream<'a> {
                 "match_expr" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false);
+                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
                     let mut x = p
                         .parse_expr()
                         .map_err(|e| format!("error parsing expr: {}", e.message()))?;
-                    p.expect(&Token::Eof)
+                    p.expect(&TokenKind::Eof)
                         .map_err(|e| format!("error parsing expr: {}", e.message()))?;
 
                     remove_paren(&mut x);
@@ -280,11 +279,11 @@ impl<'a> Stream<'a> {
                 "match_pat" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false);
+                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
                     let mut x = p
                         .parse_pat(None)
                         .map_err(|e| format!("error parsing pat: {}", e.message()))?;
-                    p.expect(&Token::Eof)
+                    p.expect(&TokenKind::Eof)
                         .map_err(|e| format!("error parsing pat: {}", e.message()))?;
 
                     remove_paren(&mut x);
@@ -294,11 +293,11 @@ impl<'a> Stream<'a> {
                 "match_ty" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false);
+                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
                     let mut x = p
                         .parse_ty()
                         .map_err(|e| format!("error parsing ty: {}", e.message()))?;
-                    p.expect(&Token::Eof)
+                    p.expect(&TokenKind::Eof)
                         .map_err(|e| format!("error parsing ty: {}", e.message()))?;
 
                     remove_paren(&mut x);
@@ -308,16 +307,16 @@ impl<'a> Stream<'a> {
                 "match_stmt" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false);
+                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
                     let mut x = match p.parse_stmt() {
                         Ok(Some(x)) => x,
                         Ok(None) => fail!("expected stmt"),
                         Err(e) => fail!("error parsing stmt: {}", e.message()),
                     };
-                    if let Token::Semi = p.token {
+                    if let TokenKind::Semi = p.token.kind {
                         p.bump();
                     }
-                    p.expect(&Token::Eof)
+                    p.expect(&TokenKind::Eof)
                         .map_err(|e| format!("error parsing stmt: {}", e.message()))?;
 
                     remove_paren(&mut x);
@@ -435,7 +434,7 @@ impl<'a> Stream<'a> {
             name => fail!("unknown select op `{}`", name),
         };
 
-        self.expect(&Token::Semi)?;
+        self.expect(&TokenKind::Semi)?;
         Ok(op)
     }
 }

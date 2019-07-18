@@ -1,6 +1,6 @@
 //! This module implements commands for manipulating the current set of marked nodes.
 use rustc::hir;
-use rustc::hir::def::Def;
+use rustc::hir::def::{DefKind, Res};
 use rustc::ty::TyKind;
 use std::str::FromStr;
 use syntax::ast;
@@ -26,15 +26,17 @@ impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
     fn handle_qpath(&mut self, use_id: NodeId, hp: &hir::QPath) {
         match hp {
             &hir::QPath::Resolved(_, ref path) => {
-                if let Some(def_id) = path.def.opt_def_id() {
+                if let Some(def_id) = path.res.opt_def_id() {
                     if let Some(id) = self.cx.hir_map().as_local_node_id(def_id) {
                         if self.st.marked(id, self.label) {
                             self.st.add_mark(use_id, self.label);
                         }
 
                         // For struct and node constructors, also check the parent item
-                        if matches!([path.def] Def::Ctor(..)) {
-                            let parent_id = self.cx.hir_map().get_parent(id);
+                        if matches!([path.res] Res::Def(DefKind::Ctor(..), _)) {
+                            let hir_id = self.cx.hir_map().node_to_hir_id(id);
+                            let parent_id = self.cx.hir_map().get_parent_item(hir_id);
+                            let parent_id = self.cx.hir_map().hir_to_node_id(parent_id);
                             if self.st.marked(parent_id, self.label) {
                                 self.st.add_mark(use_id, self.label);
                             }
@@ -143,7 +145,7 @@ pub fn find_mark_uses<T: Visit>(target: &T, st: &CommandState, cx: &RefactorCtxt
     let old_ids = st
         .marks()
         .iter()
-        .filter(|&&(_, l)| l == label)
+        .filter(|&&(_, l)| l.as_str() == label)
         .map(|&(id, _)| id)
         .collect::<Vec<_>>();
 

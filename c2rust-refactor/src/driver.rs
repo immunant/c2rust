@@ -12,6 +12,7 @@ use rustc::util::common::ErrorReported;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
 use rustc_data_structures::declare_box_region_type;
 use rustc_data_structures::sync::{Lock, Lrc};
+use rustc_data_structures::thin_vec::ThinVec;
 use rustc_driver;
 use rustc_errors::DiagnosticBuilder;
 use rustc_incremental::DepGraphFuture;
@@ -38,15 +39,15 @@ use syntax::ext::base::NamedSyntaxExtension;
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::feature_gate::AttributeType;
 use syntax::parse::parser::Parser;
-use syntax::parse::token::Token;
+use syntax::parse::token::TokenKind;
 use syntax::parse::{self, PResult};
 use syntax::ptr::P;
 use syntax::source_map::SourceMap;
 use syntax::source_map::{FileLoader, RealFileLoader};
-use syntax::symbol::{keywords, Symbol};
+use syntax::symbol::{kw, Symbol};
 use syntax::tokenstream::TokenTree;
-use syntax_pos::FileName;
-use syntax_pos::Span;
+use syntax_pos::{FileName, Span};
+use syntax_pos::edition::Edition;
 
 use crate::ast_manip::remove_paren;
 use crate::command::{RefactorState, Registry};
@@ -86,7 +87,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         sess: &'a Session,
         cstore: &'a CStore,
         map: &'a hir_map::Map<'tcx>,
-        tcx: TyCtxt<'a, 'tcx, 'tcx>,
+        tcx: TyCtxt<'tcx>,
     ) -> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, cstore, Some(map), Some(tcx))
     }
@@ -279,7 +280,7 @@ where
     config.opts.incremental = None;
     config.file_loader = file_loader;
 
-    syntax::with_globals(move || {
+    syntax::with_globals(Edition::Edition2018, move || {
         ty::tls::GCX_PTR.set(&Lock::new(0), || {
             ty::tls::with_thread_locals(|| {
                 interface::run_compiler_in_existing_thread_pool(config, f)
@@ -292,7 +293,7 @@ where
 pub fn run_refactoring<F, R>(
     mut config: interface::Config,
     cmd_reg: Registry,
-    file_io: Arc<FileIO + Sync + Send>,
+    file_io: Arc<dyn FileIO + Sync + Send>,
     marks: HashSet<(NodeId, Symbol)>,
     f: F,
 ) -> R
@@ -303,7 +304,7 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
 
-    syntax::with_globals(move || {
+    syntax::with_globals(Edition::Edition2018, move || {
         ty::tls::GCX_PTR.set(&Lock::new(0), || {
             ty::tls::with_thread_locals(|| {
                 let state = RefactorState::new(config, cmd_reg, file_io, marks);
@@ -377,7 +378,7 @@ declare_box_region_type!(
     (&'gcx GlobalCtxt<'gcx>) -> ((), ())
 );
 
-pub fn make_compiler(config: &Config, file_io: Arc<FileIO + Sync + Send>) -> interface::Compiler {
+pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) -> interface::Compiler {
     let mut config = clone_config(config);
     config.file_loader = Some(Box::new(ArcFileIO(file_io)));
     let (sess, codegen_backend, source_map) = util::create_session(
@@ -466,7 +467,7 @@ pub fn make_compiler(config: &Config, file_io: Arc<FileIO + Sync + Send>) -> int
 
 pub fn build_session_from_args(
     args: &[String],
-    file_loader: Option<Box<FileLoader + Sync + Send>>,
+    file_loader: Option<Box<dyn FileLoader + Sync + Send>>,
 ) -> Session {
     let matches = rustc_driver::handle_options(args).expect("rustc arg parsing failed");
     let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
@@ -482,8 +483,8 @@ pub fn build_session_from_args(
 fn build_session(
     sopts: SessionOptions,
     in_path: Option<PathBuf>,
-    file_loader: Option<Box<FileLoader + Sync + Send>>,
-) -> (Session, CStore, Box<CodegenBackend>) {
+    file_loader: Option<Box<dyn FileLoader + Sync + Send>>,
+) -> (Session, CStore, Box<dyn CodegenBackend>) {
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_interface::util::diagnostics_registry();
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
@@ -630,7 +631,7 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
 pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
     let mut p = make_parser(sess, src);
 
-    let rules = if p.eat_keyword(keywords::Unsafe) {
+    let rules = if p.eat_keyword(kw::Unsafe) {
         BlockCheckMode::Unsafe(UnsafeSource::UserProvided)
     } else {
         BlockCheckMode::Default
@@ -649,9 +650,10 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
 fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
     // `parse_arg` is private, so we make do with `parse_pat` + `parse_ty`.
     let pat = p.parse_pat(None)?;
-    p.expect(&Token::Colon)?;
+    p.expect(&TokenKind::Colon)?;
     let ty = p.parse_ty()?;
     Ok(Arg {
+        attrs: ThinVec::new(),
         pat,
         ty,
         id: DUMMY_NODE_ID,

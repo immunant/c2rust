@@ -29,12 +29,12 @@ impl<'c> Translation<'c> {
 
         self.use_feature("asm");
 
-        fn push_expr(tokens: &mut Vec<Token>, expr: P<Expr>) {
-            tokens.push(Token::Interpolated(Lrc::new(Nonterminal::NtExpr(expr))));
+        fn push_expr(tokens: &mut Vec<TokenTree>, expr: P<Expr>) {
+            tokens.push(TokenTree::token(token::Interpolated(Lrc::new(Nonterminal::NtExpr(expr))), DUMMY_SP));
         }
 
         let mut stmts: Vec<Stmt> = vec![];
-        let mut tokens: Vec<Token> = vec![];
+        let mut tokens: Vec<TokenTree> = vec![];
         let mut first;
 
         // Assembly template
@@ -43,7 +43,7 @@ impl<'c> Translation<'c> {
         // Outputs and Inputs
         for &(list, is_output) in &[(outputs, true), (inputs, false)] {
             first = true;
-            tokens.push(Token::Colon); // Always emitted, even if list is empty
+            tokens.push( TokenTree::token(token::Colon, DUMMY_SP)); // Always emitted, even if list is empty
 
             for &AsmOperand {
                 ref constraints,
@@ -53,7 +53,7 @@ impl<'c> Translation<'c> {
                 if first {
                     first = false
                 } else {
-                    tokens.push(Token::Comma)
+                    tokens.push( TokenTree::token(token::Comma, DUMMY_SP))
                 }
 
                 let mut result = self.convert_expr(ctx.used(), expression)?;
@@ -79,19 +79,19 @@ impl<'c> Translation<'c> {
 
         // Clobbers
         first = true;
-        tokens.push(Token::Colon);
+        tokens.push( TokenTree::token(token::Colon, DUMMY_SP));
         for clobber in clobbers {
             if first {
                 first = false
             } else {
-                tokens.push(Token::Comma)
+                tokens.push(TokenTree::token(token::Comma, DUMMY_SP))
             }
             push_expr(&mut tokens, mk().lit_expr(mk().str_lit(clobber)));
         }
 
         // Options
         if is_volatile {
-            tokens.push(Token::Colon);
+            tokens.push( TokenTree::token(token::Colon, DUMMY_SP));
             push_expr(&mut tokens, mk().lit_expr(mk().str_lit("volatile")));
         }
 

@@ -2,7 +2,7 @@ use rlua::prelude::{LuaError, LuaResult, LuaString, LuaTable, LuaValue};
 use rustc_target::spec::abi::Abi;
 use syntax::ast::{
     Arg, BindingMode, Block, Crate, Expr, ExprKind, FloatTy, FnDecl, ImplItem, ImplItemKind,
-    Item, ItemKind, LitKind, Local, Mod, Mutability::*, NodeId, Pat, PatKind, Path, PathSegment,
+    Item, ItemKind, Lit, LitKind, Local, Mod, Mutability::*, NodeId, Pat, PatKind, Path, PathSegment,
     Stmt, StmtKind, UintTy, IntTy, LitIntType, Ident, DUMMY_NODE_ID, BinOpKind, UnOp, BlockCheckMode,
     Label, StrStyle, TyKind, Ty, MutTy, Unsafety, FunctionRetTy, BareFnTy, UnsafeSource::*, Field,
     AnonConst, Lifetime, AngleBracketedArgs, GenericArgs, GenericArg, VisibilityKind, InlineAsm,
@@ -79,7 +79,7 @@ fn dummy_generic_args() -> GenericArgs {
     GenericArgs::AngleBracketed(AngleBracketedArgs {
         span: DUMMY_SP,
         args: Vec::new(),
-        bindings: Vec::new(),
+        constraints: Vec::new(),
     })
 }
 
@@ -149,6 +149,7 @@ fn dummy_arm() -> Arm {
         pats: Vec::new(),
         guard: None,
         body: dummy_expr(),
+        span: DUMMY_SP,
     }
 }
 
@@ -291,6 +292,7 @@ impl MergeLuaAst for P<FnDecl> {
         for lua_arg in lua_args.sequence_values::<LuaTable>() {
             let lua_arg = lua_arg?;
             let mut arg = Arg {
+                attrs: ThinVec::new(),
                 ty: dummy_ty(),
                 pat: dummy_pat(),
                 id: get_node_id_or_default(&lua_arg, "id")?,
@@ -548,7 +550,7 @@ impl MergeLuaAst for P<Item> {
     }
 }
 
-fn lit_from_int(int: u128, suffix: Option<&str>) -> Spanned<LitKind> {
+fn lit_from_int(int: u128, suffix: Option<&str>) -> LitKind {
     let suffix = match suffix {
         None => LitIntType::Unsuffixed,
         Some("u8") => LitIntType::Unsigned(UintTy::U8),
@@ -566,7 +568,7 @@ fn lit_from_int(int: u128, suffix: Option<&str>) -> Spanned<LitKind> {
         _ => unreachable!("Unknown int suffix"),
     };
 
-    dummy_spanned(LitKind::Int(int, suffix))
+    LitKind::Int(int, suffix)
 }
 
 impl MergeLuaAst for P<Expr> {
@@ -590,8 +592,8 @@ impl MergeLuaAst for P<Expr> {
                 let val: LuaValue = table.get("value")?;
                 let suffix: Option<LuaString> = table.get("suffix")?;
                 let suffix = suffix.as_ref().map(|s| s.to_str()).transpose()?;
-                let lit = match val {
-                    LuaValue::Boolean(val) => dummy_spanned(LitKind::Bool(val)),
+                let lit_kind = match val {
+                    LuaValue::Boolean(val) => LitKind::Bool(val),
                     LuaValue::Integer(i) => lit_from_int(i as u128, suffix),
                     LuaValue::Number(num) => {
                         let num_kind: LuaString = table.get("num_kind")?;
@@ -611,12 +613,12 @@ impl MergeLuaAst for P<Expr> {
 
                             let sym = Symbol::intern(&string);
 
-                            dummy_spanned(match suffix {
+                            match suffix {
                                 None => LitKind::FloatUnsuffixed(sym),
                                 Some("f32") => LitKind::Float(sym, FloatTy::F32),
                                 Some("f64") => LitKind::Float(sym, FloatTy::F64),
                                 Some(e) => unreachable!("Unknown float suffix: {}{}", num, e),
-                            })
+                            }
                         }
                     },
                     LuaValue::String(lua_string) => {
@@ -632,7 +634,7 @@ impl MergeLuaAst for P<Expr> {
                                 .map(|b| *b)
                                 .collect();
 
-                            dummy_spanned(LitKind::ByteStr(Rc::new(bytes)))
+                            LitKind::ByteStr(Rc::new(bytes))
                         } else {
                             let string = lua_string.to_str()?;
 
@@ -642,25 +644,29 @@ impl MergeLuaAst for P<Expr> {
                                     .next()
                                     .ok_or(LuaError::external("Found empty string where char was expected."));
 
-                                dummy_spanned(LitKind::Char(ch?))
+                                LitKind::Char(ch?)
                             } else {
                                 // TODO: Raw strings?
                                 let symbol = Symbol::intern(string);
                                 let style = StrStyle::Cooked;
 
-                                dummy_spanned(LitKind::Str(symbol, style))
+                                LitKind::Str(symbol, style)
                             }
                         }
                     },
                     LuaValue::Nil => {
                         let symbol = Symbol::intern("NIL");
 
-                        dummy_spanned(LitKind::Err(symbol))
+                        LitKind::Err(symbol)
                     },
                     _ => unimplemented!("MergeLuaAst unimplemented lit: {:?}", val),
                 };
 
-                ExprKind::Lit(lit)
+                ExprKind::Lit(Lit {
+                    token: lit_kind.to_lit_token(),
+                    node: lit_kind,
+                    span: DUMMY_SP,
+                })
             },
             "Binary" | "AssignOp" | "Assign" => {
                 let lua_lhs = table.get("lhs")?;
@@ -1300,7 +1306,7 @@ impl MergeLuaAst for GenericArgs {
                 GenericArgs::AngleBracketed(AngleBracketedArgs {
                     args,
                     span,
-                    bindings: Vec::new(), // TODO
+                    constraints: Vec::new(), // TODO
                 })
             },
             "Parenthesized" => unimplemented!("MergeLuaAst unimplemented for Parenthesized"),

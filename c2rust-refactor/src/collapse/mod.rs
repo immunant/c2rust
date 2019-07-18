@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::source_map::Span;
+use syntax_pos::sym;
 
 mod cfg_attr;
 mod deleted;
@@ -97,10 +98,10 @@ impl<'ast> CollapseInfo<'ast> {
 /// also injected.
 fn injected_items(krate: &Crate) -> (&'static [&'static str], bool) {
     // Mirrors the logic in syntax::std_inject
-    if attr::contains_name(&krate.attrs, "no_core") {
+    if attr::contains_name(&krate.attrs, sym::no_core) {
         (&[], false)
-    } else if attr::contains_name(&krate.attrs, "no_std") {
-        if attr::contains_name(&krate.attrs, "compiler_builtins") {
+    } else if attr::contains_name(&krate.attrs, sym::no_std) {
+        if attr::contains_name(&krate.attrs, sym::compiler_builtins) {
             (&["core"], true)
         } else {
             (&["core", "compiler_builtins"], true)
@@ -119,14 +120,15 @@ pub fn collapse_injected(krate: &mut Crate) {
         match i.node {
             ItemKind::ExternCrate(_) => {
                 // Remove the first `extern crate` matching each entry in `crate_names`.
-                if crate_names.remove_item(&i.ident.as_str().get()).is_some() {
+                if let Some(index) = crate_names.iter().position(|s| i.ident.as_str() == *s) {
+                    crate_names.remove(index);
                     false
                 } else {
                     true
                 }
             }
             ItemKind::Use(_) => {
-                if expect_prelude && attr::contains_name(&i.attrs, "prelude_import") {
+                if expect_prelude && attr::contains_name(&i.attrs, sym::prelude_import) {
                     expect_prelude = false;
                     false
                 } else {

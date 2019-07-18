@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::iter::FromIterator;
 use std::ops::Index;
 use std::path::{self, PathBuf};
 use std::{char, io};
@@ -10,13 +9,16 @@ use failure::{err_msg, Context, Fail};
 use indexmap::{IndexMap, IndexSet};
 
 use rustc_data_structures::sync::Lrc;
+use syntax::attr;
 use syntax::ast::*;
-use syntax::parse::token::{self, DelimToken, Nonterminal, Token};
+use syntax::parse::token::{self, DelimToken, Nonterminal};
 use syntax::print::pprust::*;
 use syntax::ptr::*;
+use syntax::source_map::dummy_spanned;
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
 use syntax_pos::{Span, DUMMY_SP};
+use syntax_pos::edition::Edition;
 
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
@@ -498,7 +500,7 @@ pub fn translate(
     }
 
     // `with_globals` sets up a thread-local variable required by the syntax crate.
-    with_globals(|| {
+    with_globals(Edition::Edition2018, || {
         // Identify typedefs that name unnamed types and collapse the two declarations
         // into a single name and declaration, eliminating the typedef altogether.
         let mut prenamed_decls: IndexMap<CDeclId, CDeclId> = IndexMap::new();
@@ -939,14 +941,10 @@ fn bool_to_int(val: P<Expr>) -> P<Expr> {
 fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
     if let Some(src_loc) = src_loc.as_ref() {
         let loc_str = format!("{}:{}", src_loc.line, src_loc.column);
-        attrs.push(mk().attribute(
-            AttrStyle::Outer,
-            "src_loc",
-            TokenStream::from_iter(vec![
-                Token::Eq,
-                Token::Literal(token::Lit::Str_(loc_str.into_symbol()), None)
-            ]),
-        ));
+        attrs.push(attr::mk_attr_outer(DUMMY_SP, attr::mk_attr_id(), attr::mk_name_value_item_str(
+            Ident::from_str("src_loc"),
+            dummy_spanned(loc_str.into_symbol()),
+        )));
     }
 }
 
@@ -1078,9 +1076,8 @@ impl<'c> Translation<'c> {
 
     fn panic_or_err_helper(&self, msg: &str, panic: bool) -> P<Expr> {
         let macro_name = if panic { "panic" } else { "compile_error" };
-        let macro_msg = vec![Token::Interpolated(Lrc::new(Nonterminal::NtExpr(
-            mk().lit_expr(mk().str_lit(msg)),
-        )))]
+        let macro_msg = vec![TokenTree::token(token::Interpolated(Lrc::new(Nonterminal::NtExpr(
+            mk().lit_expr(mk().str_lit(msg))))), DUMMY_SP)]
         .into_iter()
         .collect::<TokenStream>();
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
@@ -1877,23 +1874,13 @@ impl<'c> Translation<'c> {
     }
 
     /// Returns true iff type is a (pointer to)* the `va_list` structure type.
-    /// Note: the logic is based on `TypeConverter::convert_pointer`.
     pub fn is_inner_type_valist(ctxt: &TypedAstContext, qtype: CQualTypeId) -> bool {
-        match ctxt.resolve_type(qtype.ctype).kind {
-            CTypeKind::Struct(struct_id) => {
-                if let CDeclKind::Struct {
-                    name: Some(ref struct_name),
-                    ..
-                } = ctxt[struct_id].kind
-                {
-                    if struct_name == "__va_list_tag" {
-                        return true;
-                    }
-                }
-                false
-            }
-            CTypeKind::Pointer(pointer_id) => Self::is_inner_type_valist(ctxt, pointer_id),
-            _ => false,
+        if ctxt.is_va_list(qtype.ctype) {
+            true
+        } else if let CTypeKind::Pointer(pointer_id) = ctxt.resolve_type(qtype.ctype).kind {
+            Self::is_inner_type_valist(ctxt, pointer_id)
+        } else {
+            false
         }
     }
 
@@ -3013,7 +3000,9 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                if let CTypeKind::VariableArray(..) =
+                if self.ast_context.is_va_list(qual_ty.ctype) {
+                    val = mk().method_call_expr(val, "as_va_list", vec![] as Vec<P<Expr>>);
+                } else if let CTypeKind::VariableArray(..) =
                     self.ast_context.resolve_type(qual_ty.ctype).kind
                 {
                     val = mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<P<Expr>>);
@@ -3066,12 +3055,12 @@ impl<'c> Translation<'c> {
 
                     // offset_of!(Struct, field[expr as usize]) as ty
                     let macro_body = vec![
-                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(ty_ident))),
-                        TokenTree::Token(DUMMY_SP, Token::Comma),
-                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(field_ident))),
-                        TokenTree::Token(DUMMY_SP, Token::OpenDelim(DelimToken::Bracket)),
-                        TokenTree::Token(DUMMY_SP, Token::Interpolated(Lrc::new(index_expr))),
-                        TokenTree::Token(DUMMY_SP, Token::CloseDelim(DelimToken::Bracket)),
+                        TokenTree::token(token::Interpolated(Lrc::new(ty_ident)), DUMMY_SP),
+                        TokenTree::token(token::Comma, DUMMY_SP),
+                        TokenTree::token(token::Interpolated(Lrc::new(field_ident)), DUMMY_SP),
+                        TokenTree::token(token::OpenDelim(DelimToken::Bracket), DUMMY_SP),
+                        TokenTree::token(token::Interpolated(Lrc::new(index_expr)), DUMMY_SP),
+                        TokenTree::token(token::CloseDelim(DelimToken::Bracket), DUMMY_SP),
                     ];
                     let path = mk().path("offset_of");
                     let mac = mk().mac_expr(mk().mac(path, macro_body, MacDelimiter::Parenthesis));
@@ -3868,16 +3857,8 @@ impl<'c> Translation<'c> {
                 // memory as a local variable and to be a pointer as a function argument we would
                 // get spurious casts when trying to treat it like a VaList which has reference
                 // semantics.
-                if let CTypeKind::Struct(struct_id) = self.ast_context[pointee.ctype].kind {
-                    if let CDeclKind::Struct {
-                        name: Some(ref struct_name),
-                        ..
-                    } = self.ast_context[struct_id].kind
-                    {
-                        if struct_name == "__va_list_tag" {
-                            return Ok(val);
-                        }
-                    }
+                if self.ast_context.is_va_list(pointee.ctype) {
+                    return Ok(val)
                 }
 
                 let is_const = pointee.qualifiers.is_const;

@@ -7,6 +7,7 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
+use syntax_pos::sym;
 use smallvec::SmallVec;
 
 use c2rust_ast_builder::{mk, IntoSymbol};
@@ -174,7 +175,7 @@ impl Transform for ToMethod {
             // don't have a Def for locals any more, and thus no def_id. We need
             // to fix this in path_edit.rs
             fold_resolved_paths(&mut f.block, cx, |qself, path, def| {
-                match cx.def_to_hir_id(&def) {
+                match cx.res_to_hir_id(&def) {
                     Some(hir_id) =>
                         if hir_id == arg_hir_id {
                             assert!(qself.is_none());
@@ -279,7 +280,8 @@ impl Transform for FixUnusedUnsafe {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |b: &mut P<Block>| {
             if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
-                let parent = cx.hir_map().get_parent_did(b.id);
+                let hir_id = cx.hir_map().node_to_hir_id(b.id);
+                let parent = cx.hir_map().get_parent_did(hir_id);
                 let result = cx.ty_ctxt().unsafety_check_result(parent);
                 let unused = result.unsafe_blocks.iter().any(|&(id, used)| {
                     id == cx.hir_map().node_to_hir_id(b.id) && !used
@@ -573,9 +575,9 @@ impl Transform for WrapApi {
 
             // Get the exported symbol name of the function
             let symbol =
-                if let Some(sym) = attr::first_attr_value_str_by_name(&i.attrs, "export_name") {
+                if let Some(sym) = attr::first_attr_value_str_by_name(&i.attrs, sym::export_name) {
                     sym
-                } else if attr::contains_name(&i.attrs, "no_mangle") {
+                } else if attr::contains_name(&i.attrs, sym::no_mangle) {
                     i.ident.name
                 } else {
                     warn!("marked function `{:?}` does not have a stable symbol", i.ident.name);
@@ -585,8 +587,8 @@ impl Transform for WrapApi {
             // Remove export-related attrs from the original function, and set it to Abi::Rust.
             let i = i.map(|mut i| {
                 i.attrs.retain(|attr| {
-                    attr.path != "no_mangle" &&
-                    attr.path != "export_name"
+                    attr.path != sym::no_mangle &&
+                    attr.path != sym::export_name
                 });
 
                 match i.node {
@@ -644,7 +646,7 @@ impl Transform for WrapApi {
             let wrapper_name = format!("{}_wrapper", symbol.as_str());
             let wrapper =
                 mk().vis(i.vis.clone()).unsafe_().abi(old_abi)
-                        .str_attr("export_name", symbol).fn_item(
+                        .str_attr(sym::export_name, symbol).fn_item(
                     &wrapper_name,
                     wrapper_decl,
                     mk().block(vec![
@@ -680,7 +682,7 @@ impl Transform for WrapApi {
             if callees.contains(&id) || q.is_some() {
                 return (q, p);
             }
-            let hir_id = match_or!([cx.def_to_hir_id(d)] Some(x) => x; return (q, p));
+            let hir_id = match_or!([cx.res_to_hir_id(d)] Some(x) => x; return (q, p));
             let name = match_or!([wrapper_map.get(&hir_id)] Some(x) => x; return (q, p));
 
             let mut new_path = p.clone();
@@ -737,7 +739,7 @@ impl Transform for Abstract {
         let func_src = format!("unsafe fn {} {{\n    {}\n}}",
                                self.sig, self.body.as_ref().unwrap_or(&self.pat));
         let func: P<Item> = st.parse_items(cx, &func_src).lone();
-        st.add_mark(func.id, "new");
+        st.add_mark(func.id, sym::new);
 
         // Build the call expression template
 

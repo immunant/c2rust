@@ -118,7 +118,7 @@ impl Display for TranslationErrorKind {
 }
 
 impl Fail for TranslationError {
-    fn cause(&self) -> Option<&Fail> {
+    fn cause(&self) -> Option<&dyn Fail> {
         self.inner.cause()
     }
 

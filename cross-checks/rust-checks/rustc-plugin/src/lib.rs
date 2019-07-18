@@ -27,14 +27,15 @@ use std::path::PathBuf;
 use smallvec::SmallVec;
 
 use syntax::ast;
-use syntax::ext::base::{Annotatable, ExtCtxt, MultiItemModifier, SyntaxExtension};
+use syntax::edition::Edition;
+use syntax::ext::base::{Annotatable, ExtCtxt, MultiItemModifier, SyntaxExtension, SyntaxExtensionKind};
 use syntax::ext::build::AstBuilder;
 use syntax::mut_visit::{self, ExpectOne, MutVisitor};
 use syntax::parse::{new_parser_from_source_str, parse_stream_from_source_str, token, ParseSess};
 use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax::source_map::{FileLoader, FileName, RealFileLoader, Span, Spanned, DUMMY_SP};
-use syntax::symbol::{keywords, Symbol};
+use syntax::symbol::{Ident, Symbol};
 use syntax::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
 
 mod default_config;
@@ -124,7 +125,7 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
         delim: ast::MacDelimiter,
         tts: TokenStream,
     ) -> P<ast::Item> {
-        let name = keywords::Invalid.ident();
+        let name = Ident::invalid();
         let node = ast::Mac_ { path, delim, tts };
         let attrs = vec![];
         self.item(
@@ -188,9 +189,13 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
     fn args_to_tts(&self, sp: Span, args: Vec<token::Nonterminal>) -> TokenStream {
         let mut tsb = TokenStreamBuilder::new();
         let mut add_comma = false;
+        let comma_tok = token::Token {
+            kind: token::TokenKind::Comma,
+            span: DUMMY_SP,
+        };
         for arg in args {
             if add_comma {
-                tsb.push(TokenTree::Token(DUMMY_SP, token::Token::Comma));
+                tsb.push(TokenTree::Token(comma_tok.clone()));
             } else {
                 add_comma = true;
             }
@@ -451,7 +456,7 @@ struct CrossChecker<'a, 'cx: 'a, 'exp> {
 }
 
 fn find_cross_check_attr(attrs: &[ast::Attribute]) -> Option<&ast::Attribute> {
-    attrs.iter().find(|attr| attr.check_name("cross_check"))
+    attrs.iter().find(|attr| attr.check_name(Symbol::intern("cross_check")))
 }
 
 impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
@@ -1034,7 +1039,7 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
                                         DUMMY_SP,
                                         self.cx.ident_of("cross_check_value"),
                                     );
-                                    let mut mac_args = vec![
+                                    let mac_args = vec![
                                         token::NtIdent(self.cx.ident_of("UNKNOWN_TAG"), false),
                                         token::NtExpr(ident_expr),
                                         token::NtTy(ahasher),
@@ -1124,7 +1129,7 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
         });
 
         // Remove #[cross_check] from attributes, then append #[cross_check_hash]
-        sf.attrs.retain(|attr| !attr.check_name("cross_check"));
+        sf.attrs.retain(|attr| !attr.check_name(Symbol::intern("cross_check")));
         sf.attrs.extend(hash_attr.into_iter());
     }
 
@@ -1216,7 +1221,7 @@ impl CrossCheckExpander {
         // #[plugin(c2rust_xcheck_plugin(config_file = "..."))]
         let fl = RealFileLoader;
         args.iter()
-            .filter(|nmi| nmi.check_name("config_file"))
+            .filter(|nmi| nmi.check_name(Symbol::intern("config_file")))
             .map(|mi| mi.value_str().expect("invalid string for config_file"))
             .map(|fsym| PathBuf::from(&*fsym.as_str()))
             .map(|fp| {
@@ -1236,7 +1241,7 @@ impl CrossCheckExpander {
     fn parse_djb2_names_files(args: &[ast::NestedMetaItem]) -> Vec<PathBuf> {
         let fl = RealFileLoader;
         args.iter()
-            .filter(|nmi| nmi.check_name("djb2_names_file"))
+            .filter(|nmi| nmi.check_name(Symbol::intern("djb2_names_file")))
             .map(|mi| mi.value_str().expect("invalid string for config_file"))
             .map(|fsym| PathBuf::from(&*fsym.as_str()))
             .map(|fp| {
@@ -1273,7 +1278,7 @@ impl CrossCheckExpander {
         for fp in &self.djb2_names_files {
             // TODO: should probably read the existing file,
             // and merge our names into the existing contents
-            let mut f = fs::File::create(fp)
+            let f = fs::File::create(fp)
                 .unwrap_or_else(|e| panic!("could not create djb2 names file {:?}: {}", fp, e));
             serde_yaml::to_writer(f, djb2_names).unwrap_or_else(|e| {
                 panic!("could not write YAML to djb2 names file {:?}: {}", fp, e)
@@ -1339,8 +1344,9 @@ impl MultiItemModifier for CrossCheckExpander {
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
     let ecc = CrossCheckExpander::new(reg.args());
+    let ext = SyntaxExtensionKind::LegacyAttr(Box::new(ecc));
     reg.register_syntax_extension(
         Symbol::intern("cross_check"),
-        SyntaxExtension::MultiModifier(Box::new(ecc)),
+        SyntaxExtension::default(ext, Edition::Edition2018),
     );
 }

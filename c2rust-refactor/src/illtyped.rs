@@ -1,5 +1,5 @@
 use rustc::hir;
-use rustc::hir::def::Def;
+use rustc::hir::def::Res;
 use rustc::ty::{self, ParamEnv, TyCtxt};
 use smallvec::SmallVec;
 use syntax::ast::*;
@@ -10,7 +10,7 @@ use crate::ast_manip::MutVisit;
 use crate::RefactorCtxt;
 
 fn types_approx_equal<'tcx>(
-    tcx: TyCtxt<'_, 'tcx, 'tcx>,
+    tcx: TyCtxt<'tcx>,
     ty1: ty::Ty<'tcx>,
     ty2: ty::Ty<'tcx>,
 ) -> bool {
@@ -121,7 +121,6 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             ExprKind::Box(content) => {
                 illtyped |= self.ensure(content, ty.boxed_ty());
             }
-            ExprKind::ObsoleteInPlace(..) => {} // NYI
             ExprKind::Array(elems) => {
                 let expected_elem_ty = ty.builtin_index().unwrap();
                 for e in elems {
@@ -134,7 +133,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             }
             ExprKind::Tup(elems) => {
                 let elem_tys = expect!([ty.sty] ty::TyKind::Tuple(elem_tys) => elem_tys);
-                for (elem, elem_ty) in elems.iter_mut().zip(elem_tys) {
+                for (elem, elem_ty) in elems.iter_mut().zip(elem_tys.types()) {
                     illtyped |= self.ensure(elem, elem_ty);
                 }
             }
@@ -318,9 +317,9 @@ fn handle_struct<'tcx, F>(
     };
 
     // Get the variant def using the resolution of the path.
-    let variant_hir_def = match_or!([resolve_struct_path(cx, expr_id)] Some(x) => x;
+    let variant_hir_res = match_or!([resolve_struct_path(cx, expr_id)] Some(x) => x;
                                     return);
-    let vdef = adt_def.variant_of_def(variant_hir_def);
+    let vdef = adt_def.variant_of_res(variant_hir_res);
 
     mut_visit::visit_vec(fields, |f| {
         let idx = match_or!([cx.ty_ctxt().find_field_index(f.ident, vdef)] Some(x) => x; return);
@@ -331,13 +330,13 @@ fn handle_struct<'tcx, F>(
     mut_visit::visit_opt(maybe_expr, |e| ensure(e, ty));
 }
 
-fn resolve_struct_path(cx: &RefactorCtxt, id: NodeId) -> Option<Def> {
+fn resolve_struct_path(cx: &RefactorCtxt, id: NodeId) -> Option<Res> {
     let node = match_or!([cx.hir_map().find(id)] Some(x) => x; return None);
     let expr = match_or!([node] hir::Node::Expr(e) => e; return None);
     let qpath: &hir::QPath =
         match_or!([expr.node] hir::ExprKind::Struct(ref q, ..) => q; return None);
     let path = match_or!([qpath] hir::QPath::Resolved(_, ref path) => path; return None);
-    Some(path.def)
+    Some(path.res)
 }
 
 pub fn fold_illtyped<'tcx, F, T>(cx: &RefactorCtxt<'_, 'tcx>, x: &mut T, f: F)

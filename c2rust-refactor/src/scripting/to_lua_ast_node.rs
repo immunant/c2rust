@@ -2,7 +2,7 @@ use std::cell::{Ref, RefCell};
 use std::ops::DerefMut;
 use std::sync::Arc;
 
-use rustc::hir::def::Def;
+use rustc::hir::def::Res;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::mut_visit::*;
@@ -229,13 +229,13 @@ impl UserData for LuaAstNode<PathSegment> {
 }
 
 
-/// Def AST node handle
+/// Def result AST node handle
 //
 // This object is NOT thread-safe. Do not use an object of this class from a
 // thread that did not acquire it.
 // @type DefAstNode
-unsafe impl Send for LuaAstNode<Def> {}
-impl UserData for LuaAstNode<Def> {
+unsafe impl Send for LuaAstNode<Res> {}
+impl UserData for LuaAstNode<Res> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_namespace", |_lua_ctx, this, ()| {
             Ok(util::namespace(&*this.0.borrow()).map(|namespace| namespace.descr()))

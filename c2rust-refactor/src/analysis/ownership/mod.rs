@@ -28,6 +28,7 @@ use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::command::CommandState;
+use crate::context::HirMap;
 use crate::type_map;
 use crate::RefactorCtxt;
 
@@ -163,9 +164,9 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
 /// Run the intraprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
 fn analyze_intra<'a, 'tcx, 'lty>(
-    cx: &mut Ctxt<'lty, 'a, 'tcx>,
-    hir_map: &hir::map::Map<'tcx>,
-    tcx: TyCtxt<'a, 'tcx, 'tcx>,
+    cx: &mut Ctxt<'lty, 'tcx>,
+    hir_map: &HirMap<'a, 'tcx>,
+    tcx: TyCtxt<'tcx>,
 ) {
     for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
         // We currently don't process `static` bodies, even though they do have MIR.
@@ -188,7 +189,7 @@ fn analyze_intra<'a, 'tcx, 'lty>(
 
 /// Run the interprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
-fn analyze_inter<'lty, 'a, 'tcx>(cx: &mut Ctxt<'lty, 'a, 'tcx>) {
+fn analyze_inter<'lty, 'tcx>(cx: &mut Ctxt<'lty, 'tcx>) {
     let mut inter_cx = InterCtxt::new(cx);
     inter_cx.process();
     inter_cx.finish();
@@ -207,7 +208,7 @@ pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
     handle_marks(&mut cx, st, dcx);
 
     // Compute polymorphic signatures / constraint sets for each function
-    analyze_intra(&mut cx, dcx.hir_map(), dcx.ty_ctxt());
+    analyze_intra(&mut cx, &dcx.hir_map(), dcx.ty_ctxt());
     analyze_inter(&mut cx);
 
     // Compute monomorphic signatures and select instantiations in each function
@@ -334,9 +335,9 @@ impl<'lty, 'tcx> AnalysisResult<'lty, 'tcx> {
     }
 }
 
-impl<'lty, 'a, 'tcx> From<Ctxt<'lty, 'a, 'tcx>> for AnalysisResult<'lty, 'tcx> {
+impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
     /// Extract the useful information from the `Ctxt`, and collect it into an `AnalysisResult`.
-    fn from(cx: Ctxt<'lty, 'a, 'tcx>) -> AnalysisResult<'lty, 'tcx> {
+    fn from(cx: Ctxt<'lty, 'tcx>) -> AnalysisResult<'lty, 'tcx> {
         let mut statics = HashMap::new();
         let mut funcs = HashMap::new();
         let mut variants = HashMap::new();

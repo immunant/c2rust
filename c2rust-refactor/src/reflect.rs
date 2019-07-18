@@ -1,6 +1,7 @@
 //! Functions for building AST representations of higher-level values.
 use c2rust_ast_builder::mk;
 use rustc::hir;
+use rustc::hir::def::DefKind;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::map::definitions::DefPathData;
 use rustc::hir::map::Map as HirMap;
@@ -10,19 +11,20 @@ use rustc::ty::{self, DefIdTree, GenericParamDefKind, TyCtxt};
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::DUMMY_SP;
-use syntax::symbol::keywords;
+use syntax::symbol::kw;
 
 use crate::ast_manip::MutVisitNodes;
 use crate::command::{DriverCommand, Registry};
+use crate::context::RefactorCtxt;
 use crate::driver::Phase;
 
 /// Build an AST representing a `ty::Ty`.
-pub fn reflect_tcx_ty<'a, 'gcx, 'tcx>(tcx: TyCtxt<'a, 'gcx, 'tcx>, ty: ty::Ty<'tcx>) -> P<Ty> {
+pub fn reflect_tcx_ty<'a, 'gcx, 'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> P<Ty> {
     reflect_tcx_ty_inner(tcx, ty, false)
 }
 
 fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(
-    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+    tcx: TyCtxt<'tcx>,
     ty: ty::Ty<'tcx>,
     infer_args: bool,
 ) -> P<Ty> {
@@ -64,7 +66,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(
         Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
         GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
         Never => mk().never_ty(),
-        Tuple(tys) => mk().tuple_ty(tys.iter().map(|&ty| reflect_tcx_ty(tcx, ty)).collect()),
+        Tuple(tys) => mk().tuple_ty(tys.types().map(|ty| reflect_tcx_ty(tcx, &ty)).collect()),
         Projection(..) => mk().infer_ty(),             // TODO
         UnnormalizedProjection(..) => mk().infer_ty(), // TODO
         Opaque(..) => mk().infer_ty(),                 // TODO (impl Trait)
@@ -113,7 +115,7 @@ pub fn reflect_def_path(tcx: TyCtxt, id: DefId) -> (Option<QSelf>, Path) {
 
 /// Build a path referring to a specific def.
 fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
-    tcx: TyCtxt<'a, 'gcx, 'tcx>,
+    tcx: TyCtxt<'tcx>,
     id: DefId,
     opt_substs: Option<&[ty::Ty<'tcx>]>,
 ) -> (Option<QSelf>, Path) {
@@ -129,14 +131,14 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
         match dk.disambiguated_data.data {
             DefPathData::CrateRoot => {
                 if id.krate == LOCAL_CRATE {
-                    segments.push(mk().path_segment(keywords::Crate.ident()));
+                    segments.push(mk().path_segment(kw::Crate));
                     break;
                 } else {
                     // Write `::crate_name` as the name of the crate. This is
                     // now correct in Rust 2018, regardless of whether we have
                     // an `extern crate`.
                     segments.push(mk().path_segment(tcx.crate_name(id.krate)));
-                    segments.push(mk().path_segment(keywords::PathRoot.ident()));
+                    segments.push(mk().path_segment(kw::PathRoot));
                     break;
                 }
             }
@@ -181,7 +183,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
 
             DefPathData::ValueNs(name) => {
                 if segments.len() == 0 {
-                    if name != "" {
+                    if name.as_str() != "" {
                         segments.push(mk().path_segment(name));
                     }
                 } else {
@@ -194,74 +196,65 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
             }
 
             DefPathData::TypeNs(name)
-            | DefPathData::Module(name)
-            | DefPathData::MacroDef(name)
-            | DefPathData::EnumVariant(name)
-            | DefPathData::Field(name)
             | DefPathData::GlobalMetaData(name) => {
-                if name != "" {
+                if name.as_str() != "" {
                     segments.push(mk().path_segment(name));
                 }
             }
 
-            DefPathData::TypeParam(name) | DefPathData::ConstParam(name) => {
-                if name != "" {
-                    segments.push(mk().path_segment(name));
-                    break;
-                }
-            }
-
-            DefPathData::Trait(_)
-            | DefPathData::AssocTypeInTrait(_)
-            | DefPathData::AssocTypeInImpl(_)
-            | DefPathData::AssocExistentialInImpl(_)
+            DefPathData::LifetimeNs(_)
+            | DefPathData::MacroNs(_)
             | DefPathData::ClosureExpr
-            | DefPathData::LifetimeParam(_)
             | DefPathData::Ctor
             | DefPathData::AnonConst
-            | DefPathData::ImplTrait
-            | DefPathData::TraitAlias(_) => {}
+            | DefPathData::ImplTrait => {}
         }
 
         // Special logic for certain node kinds
-        match dk.disambiguated_data.data {
-            DefPathData::ValueNs(_) | DefPathData::TypeNs(_) => {
-                let gen = tcx.generics_of(id);
-                let num_params = gen
-                    .params
-                    .iter()
-                    .filter(|x| match x.kind {
-                        GenericParamDefKind::Lifetime { .. } => false,
-                        GenericParamDefKind::Type { .. } => true,
-                        GenericParamDefKind::Const => false,
-                    })
-                    .count();
-                if let Some(substs) = opt_substs {
-                    if substs.len() > 0 {
-                        assert!(substs.len() >= num_params);
-                        let start = substs.len() - num_params;
-                        let tys = substs[start..]
-                            .iter()
-                            .map(|ty| reflect_tcx_ty(tcx, ty))
-                            .collect::<Vec<_>>();
-                        let abpd = mk().angle_bracketed_args(tys);
-                        segments.last_mut().unwrap().args = abpd.into();
-                        opt_substs = Some(&substs[..start]);
+        if let DefPathData::Ctor = dk.disambiguated_data.data {
+            // The parent of the struct ctor in `visible_parent_map` is the parent of the
+            // struct.  But we want to visit the struct first, so we can add its name.
+            if let Some(parent_id) = tcx.parent(id) {
+                id = parent_id;
+                continue;
+            } else {
+                break;
+            }
+        }
+        match tcx.def_kind(id) {
+            // If we query for generics_of non-local defs, we may get a
+            // panic if the def cannot be generic. This is a list of
+            // DefKinds that can have generic type params.
+            Some(DefKind::Struct) | Some(DefKind::Union) | Some(DefKind::Enum)
+                | Some(DefKind::Variant) | Some(DefKind::Trait) | Some(DefKind::Existential)
+                | Some(DefKind::TyAlias) | Some(DefKind::ForeignTy) | Some(DefKind::TraitAlias)
+                | Some(DefKind::AssocTy) | Some(DefKind::AssocExistential)
+                | Some(DefKind::TyParam) | Some(DefKind::Fn) | Some(DefKind::Method)
+                | Some(DefKind::Ctor(..)) => {
+                    let gen = tcx.generics_of(id);
+                    let num_params = gen
+                        .params
+                        .iter()
+                        .filter(|x| match x.kind {
+                            GenericParamDefKind::Lifetime { .. } => false,
+                            GenericParamDefKind::Type { .. } => true,
+                            GenericParamDefKind::Const => false,
+                        })
+                        .count();
+                    if let Some(substs) = opt_substs {
+                        if substs.len() > 0 {
+                            assert!(substs.len() >= num_params);
+                            let start = substs.len() - num_params;
+                            let tys = substs[start..]
+                                .iter()
+                                .map(|ty| reflect_tcx_ty(tcx, ty))
+                                .collect::<Vec<_>>();
+                            let abpd = mk().angle_bracketed_args(tys);
+                            segments.last_mut().unwrap().args = abpd.into();
+                            opt_substs = Some(&substs[..start]);
+                        }
                     }
                 }
-            }
-
-            DefPathData::Ctor => {
-                // The parent of the struct ctor in `visible_parent_map` is the parent of the
-                // struct.  But we want to visit the struct first, so we can add its name.
-                if let Some(parent_id) = tcx.parent(id) {
-                    id = parent_id;
-                    continue;
-                } else {
-                    break;
-                }
-            }
-
             _ => {}
         }
 
@@ -281,8 +274,8 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
 
 /// Wrapper around `reflect_path` that checks first to ensure its argument is the sort of def that
 /// has a path.  `reflect_path` will panic if called on a def with no path.
-pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
-    let node = match hir_map.find(id) {
+pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
+    let node = match cx.hir_map().find(id) {
         Some(x) => x,
         None => return false,
     };
@@ -306,6 +299,7 @@ pub fn can_reflect_path(hir_map: &hir::map::Map, id: NodeId) -> bool {
         | Node::Ty(_)
         | Node::TraitRef(_)
         | Node::Pat(_)
+        | Node::Arm(_)
         | Node::Block(_)
         | Node::Lifetime(_)
         | Node::Visibility(_)

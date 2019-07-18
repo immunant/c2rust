@@ -7,13 +7,13 @@ use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::parse::PResult;
 use syntax::parse::parser::Parser;
-use syntax::parse::token::{Token, BinOpToken};
+use syntax::parse::token::{TokenKind, BinOpToken};
 use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax_pos::Span;
 use smallvec::SmallVec;
 
-use c2rust_ast_builder::mk;
+use c2rust_ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisit, MutVisitNodes, fold_output_exprs};
 use crate::ast_manip::fn_edit::{mut_visit_fns, visit_fns};
 use crate::ast_manip::lr_expr::{self, fold_expr_with_context, fold_exprs_with_context};
@@ -634,28 +634,28 @@ struct Rule {
 }
 
 fn parse_rule<'a>(p: &mut Parser<'a>) -> PResult<'a, Rule> {
-    let ectx = if p.eat(&Token::Ident(Ident::from_str("rval"), false)) {
+    let ectx = if p.eat(&TokenKind::Ident("rval".into_symbol(), false)) {
         Some(lr_expr::Context::Rvalue)
-    } else if p.eat(&Token::Ident(Ident::from_str("lval"), false)) {
+    } else if p.eat(&TokenKind::Ident("lval".into_symbol(), false)) {
         Some(lr_expr::Context::Lvalue)
-    } else if p.eat(&Token::Ident(Ident::from_str("lval_mut"), false)) {
+    } else if p.eat(&TokenKind::Ident("lval_mut".into_symbol(), false)) {
         Some(lr_expr::Context::LvalueMut)
     } else {
-        p.expect(&Token::BinOp(BinOpToken::Star))?;
+        p.expect(&TokenKind::BinOp(BinOpToken::Star))?;
         None
     };
-    p.expect(&Token::Comma)?;
+    p.expect(&TokenKind::Comma)?;
 
     let actual_ty = p.parse_ty()?;
-    p.expect(&Token::Comma)?;
+    p.expect(&TokenKind::Comma)?;
 
     let expected_ty = p.parse_ty()?;
 
-    p.expect(&Token::FatArrow)?;
+    p.expect(&TokenKind::FatArrow)?;
 
     let cast_expr = p.parse_expr()?;
 
-    p.expect(&Token::Eof)?;
+    p.expect(&TokenKind::Eof)?;
 
     Ok(Rule { ectx, actual_ty, expected_ty, cast_expr })
 }
@@ -1349,7 +1349,8 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             return true;
         }
 
-        if self.can_cast(cur_ty, expected.ty, self.cx.hir_map().get_parent_did(expr.id)) {
+        let hir_id = self.cx.hir_map().node_to_hir_id(expr.id);
+        if self.can_cast(cur_ty, expected.ty, self.cx.hir_map().get_parent_did(hir_id)) {
             self.num_inserted_casts += 1;
             *expr = mk().cast_expr(expr.clone(), reflect_tcx_ty(self.cx.ty_ctxt(), expected.ty));
             return true;
@@ -1364,7 +1365,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 fn can_coerce<'a, 'tcx>(
     from_ty: ty::Ty<'tcx>,
     to_ty: ty::Ty<'tcx>,
-    tcx: TyCtxt<'a, 'tcx, 'tcx>,
+    tcx: TyCtxt<'tcx>,
 ) -> bool {
     use rustc::ty::TyKind::*;
 
