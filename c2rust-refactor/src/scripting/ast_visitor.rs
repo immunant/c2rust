@@ -390,6 +390,16 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
         }
     }
 
+    fn visit_expr(&mut self, m: &mut P<Expr>) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_expr")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_expr(m, self)
+    }
+
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_item")
             .expect("Could not get lua visitor function");
