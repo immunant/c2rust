@@ -54,12 +54,12 @@ impl StringLenPtr {
         }
     }
 
-    fn to_slice(&self) -> &[u8] {
+    fn as_slice(&self) -> &[u8] {
         unsafe { slice::from_raw_parts(self.ptr as *const u8, self.len as usize) }
     }
 
-    fn to_str(&self) -> &str {
-        str::from_utf8(self.to_slice()).unwrap()
+    fn as_str(&self) -> &str {
+        str::from_utf8(self.as_slice()).unwrap()
     }
 }
 
@@ -120,8 +120,8 @@ pub unsafe extern "C" fn xcfg_config_parse(
     } else {
         Box::from_raw(cfg)
     };
-    let second_cfg = serde_yaml::from_slice(buf.to_slice())
-        .unwrap_or_else(|e| panic!("invalid YAML '{:?}': {}", buf.to_str(), e));
+    let second_cfg = serde_yaml::from_slice(buf.as_slice())
+        .unwrap_or_else(|e| panic!("invalid YAML '{:?}': {}", buf.as_str(), e));
     let second_cfg = xcfg::Config::new(second_cfg);
     let merged_cfg = cfg.merge(second_cfg);
     Box::into_raw(Box::new(merged_cfg))
@@ -213,7 +213,7 @@ pub extern "C" fn xcfg_scope_stack_push_file<'stk>(
     external_config: Option<&xcfg::Config>,
     file_name: StringLenPtr,
 ) -> Option<&'stk xcfg::scopes::ScopeConfig> {
-    scope_stack.and_then(|stk| stk.push_file(external_config.unwrap(), file_name.to_str()))
+    scope_stack.and_then(|stk| stk.push_file(external_config.unwrap(), file_name.as_str()))
 }
 
 #[no_mangle]
@@ -235,23 +235,23 @@ pub extern "C" fn xcfg_scope_stack_push_item<'stk>(
         .map(|i| {
             assert_eq!(pre_xcfg.elem_size as usize, mem::size_of::<StringLenPtr>());
             let pre_str = unsafe { pre_xcfg.get(i as usize) };
-            serde_yaml::from_slice(pre_str.to_slice())
-                .unwrap_or_else(|e| panic!("invalid YAML '{}': {}", pre_str.to_str(), e))
+            serde_yaml::from_slice(pre_str.as_slice())
+                .unwrap_or_else(|e| panic!("invalid YAML '{}': {}", pre_str.as_str(), e))
         })
         .collect::<Vec<_>>();
     let post_xcfg = (0..post_xcfg.len)
         .map(|i| {
             assert_eq!(post_xcfg.elem_size as usize, mem::size_of::<StringLenPtr>());
             let post_str = unsafe { post_xcfg.get(i as usize) };
-            serde_yaml::from_slice(post_str.to_slice())
-                .unwrap_or_else(|e| panic!("invalid YAML '{}': {}", post_str.to_str(), e))
+            serde_yaml::from_slice(post_str.as_slice())
+                .unwrap_or_else(|e| panic!("invalid YAML '{}': {}", post_str.as_str(), e))
         })
         .collect::<Vec<_>>();
     scope_stack.map(|stk| {
         stk.push_item(
             item_kind,
-            file_name.to_str(),
-            item_name.to_str(),
+            file_name.as_str(),
+            item_name.as_str(),
             &pre_xcfg,
             &post_xcfg,
         )
@@ -339,7 +339,7 @@ pub extern "C" fn xcfg_scope_function_arg<'sc>(
 ) -> Option<&'sc xcfg::XCheckType> {
     let res = scope_config.and_then(|sc| match sc.item {
         xcfg::scopes::ItemConfig::Function(ref f) => {
-            let arg_index = xcfg::FieldIndex::Str(String::from(arg_name.to_str()));
+            let arg_index = xcfg::FieldIndex::Str(String::from(arg_name.as_str()));
             f.args.get(&arg_index)
         }
         _ => None,
@@ -400,7 +400,7 @@ pub extern "C" fn xcfg_scope_struct_field<'sc>(
 ) -> Option<&'sc xcfg::XCheckType> {
     scope_config.and_then(|sc| match sc.item {
         xcfg::scopes::ItemConfig::Struct(ref s) => {
-            let field_index = xcfg::FieldIndex::Str(String::from(field_name.to_str()));
+            let field_index = xcfg::FieldIndex::Str(field_name.as_str().to_owned());
             s.fields.get(&field_index)
         }
         _ => None,
