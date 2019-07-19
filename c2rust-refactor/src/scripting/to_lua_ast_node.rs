@@ -15,6 +15,7 @@ use rlua::prelude::LuaString;
 
 use crate::ast_manip::{util, visit_nodes, AstName, AstNode, WalkAst};
 use crate::ast_manip::fn_edit::{FnLike, FnKind};
+use crate::scripting::merge_lua_ast::dummy_spanned;
 use super::DisplayLuaError;
 
 /// Refactoring module
@@ -309,9 +310,8 @@ impl UserData for LuaAstNode<P<Expr>> {
         methods.add_method("get_exprs", |_lua_ctx, this, ()| {
             match &this.borrow().node {
                 ExprKind::Field(expr, _) |
-                ExprKind::Unary(_, expr) => {
-                    Ok(vec![LuaAstNode::new(expr.clone())])
-                },
+                ExprKind::Unary(_, expr) => Ok(vec![LuaAstNode::new(expr.clone())]),
+                ExprKind::MethodCall(_, exprs) => Ok(exprs.iter().map(|e| LuaAstNode::new(e.clone())).collect()),
                 e => unimplemented!("LuaAstNode<P<Expr>>:get_exprs() for {}", e.ast_name()),
             }
         });
@@ -320,6 +320,7 @@ impl UserData for LuaAstNode<P<Expr>> {
             match &mut this.borrow_mut().node {
                 ExprKind::Field(expr, _) |
                 ExprKind::Unary(_, expr) => *expr = exprs[0].borrow().clone(),
+                ExprKind::MethodCall(_, exprs) => *exprs = exprs.iter().map(|e| e.clone()).collect(),
                 e => unimplemented!("LuaAstNode<P<Expr>>:set_exprs() for {}", e.ast_name()),
             }
 
@@ -337,6 +338,52 @@ impl UserData for LuaAstNode<P<Expr>> {
 
         methods.add_method("print", |_lua_ctx, this, ()| {
             println!("{:?}", this.0.borrow());
+
+            Ok(())
+        });
+
+        methods.add_method("get_method_name", |lua_ctx, this, ()| {
+            if let ExprKind::MethodCall(path_seg, ..) = &this.borrow().node {
+                return path_seg.ident.as_str().get().to_lua(lua_ctx).map(|s| Some(s))
+            }
+
+            Ok(None)
+        });
+
+        methods.add_method("get_lit", |_lua_ctx, this, ()| {
+            if let ExprKind::Lit(lit) = &this.borrow().node {
+                return Ok(Some(LuaAstNode::new(lit.clone())))
+            }
+
+            Ok(None)
+        });
+
+        methods.add_method("to_lit", |_lua_ctx, this, lit: LuaAstNode<Lit>| {
+            let lit = lit.borrow().clone();
+
+            this.borrow_mut().node = ExprKind::Lit(lit);
+
+            Ok(())
+        });
+
+        methods.add_method("to_index", |_lua_ctx, this, (indexed, indexee): (LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
+            let indexed = indexed.borrow().clone();
+            let indexee = indexee.borrow().clone();
+
+            this.borrow_mut().node = ExprKind::Index(indexed, indexee);
+
+            Ok(())
+        });
+
+        methods.add_method("to_binary", |_lua_ctx, this, (op, lhs, rhs): (LuaString, LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
+            let op = match op.to_str()? {
+                "Add" => BinOpKind::Add,
+                _ => unimplemented!("BinOpKind parsing from string"),
+            };
+            let lhs = lhs.borrow().clone();
+            let rhs = rhs.borrow().clone();
+
+            this.borrow_mut().node = ExprKind::Binary(dummy_spanned(op), lhs, rhs);
 
             Ok(())
         });
@@ -472,7 +519,7 @@ unsafe impl Send for LuaAstNode<Lit> {}
 impl UserData for LuaAstNode<Lit> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_value", |lua_ctx, this, ()| {
-            match this.0.borrow().node {
+            match this.borrow().node {
                 LitKind::Str(s, _) => {
                     s.to_string().to_lua(lua_ctx)
                 }
@@ -485,6 +532,24 @@ impl UserData for LuaAstNode<Lit> {
                     )));
                 }
             }
+        });
+
+        methods.add_method("strip_suffix", |_lua_ctx, this, ()| {
+            let mut lit = this.borrow_mut();
+
+            if let LitKind::Int(_, ref mut suffix) = lit.node {
+                *suffix = LitIntType::Unsuffixed
+            }
+
+            lit.token.suffix = None;
+
+            Ok(())
+        });
+
+        methods.add_method("print", |_lua_ctx, this, ()| {
+            println!("{:?}", this.borrow());
+
+            Ok(())
         });
     }
 }
@@ -655,6 +720,10 @@ impl UserData for LuaAstNode<Arg> {
             this.borrow_mut().ty = ty.borrow().clone();
 
             Ok(())
+        });
+
+        methods.add_method("get_pat_id", |lua_ctx, this, ()| {
+            Ok(this.borrow().pat.id.to_lua(lua_ctx))
         });
     }
 }

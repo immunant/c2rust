@@ -6,13 +6,12 @@ pub unsafe extern "C" fn ten_mul(acc: *mut f64, digit: i32, r: *const f64) -> i3
     return 0i32;
 }
 
-unsafe fn ptr_to_slice(p: *const u8) {}
-
 struct Ctx {
-    data: [u32; 10],
+    data: [u8; 10],
 }
 
-unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx) {
-    (*ctx).data[0] = 1;
-    (*ctx2).data[0] = 1;
+unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx, p: *const u8) {
+    let off = 1;
+    (*ctx).data[0] = *p.offset(0isize).offset(3isize);
+    (*ctx2).data[0] = *p.offset(3isize).offset(off);
 }

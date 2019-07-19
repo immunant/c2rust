@@ -8,7 +8,7 @@ use std::sync::Arc;
 use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaString, LuaTable, LuaValue};
 use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
-use syntax::ast::{self, DUMMY_NODE_ID, Expr};
+use syntax::ast::{self, DUMMY_NODE_ID, Expr, NodeId};
 use syntax::mut_visit::MutVisitor;
 use syntax::ptr::P;
 
@@ -482,6 +482,15 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             "get_expr_path_hrid",
             |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
                 Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(|id| id.local_id.as_u32()))
+            },
+        );
+
+        methods.add_method(
+            "get_nodeid_hrid",
+            |_lua_ctx, this, id: i64| {
+                let hrid = this.cx.hir_map().node_to_hir_id(NodeId::from_usize(id as usize));
+
+                Ok(hrid.local_id.as_u32())
             },
         );
 

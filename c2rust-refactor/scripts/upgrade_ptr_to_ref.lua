@@ -13,6 +13,23 @@ function Variable.new(id, locl)
     return self
 end
 
+function strip_int_suffix(expr)
+    local lit = expr:get_lit()
+
+    if lit then
+        lit:strip_suffix()
+        expr:to_lit(lit)
+    end
+
+    return expr
+end
+
+function is_int_zero(expr)
+    local lit = expr:get_lit()
+
+    return lit and lit:get_value() == 0
+end
+
 Visitor = {}
 
 function Visitor.new(tctx, node_id)
@@ -20,7 +37,6 @@ function Visitor.new(tctx, node_id)
    self.tctx = tctx
    self.node_ids = node_ids
    self.vars = {}
-   self.param_idx = 0
 
    setmetatable(self, Visitor)
    Visitor.__index = Visitor
@@ -28,25 +44,17 @@ function Visitor.new(tctx, node_id)
    return self
 end
 
-function Visitor:visit_fn_header(header)
-    self.param_idx = 0
-end
-
 function Visitor:visit_arg(arg)
-    arg_id = arg:get_id()
-
-    self.param_idx = self.param_idx + 1
+    local arg_id = arg:get_id()
 
     if self.node_ids[arg_id] then
-        arg_ty = arg:get_ty()
+        local arg_ty = arg:get_ty()
 
         if arg_ty:get_kind() == "Ptr" then
-            mut_ty = arg_ty:get_mut_ty()
-            -- arg_pat_id = arg:get_pat_id()
+            local mut_ty = arg_ty:get_mut_ty()
+            arg_pat_hrid = self.tctx:get_nodeid_hrid(arg:get_pat_id())
 
-            -- NOTE: This is a 1-index of param position, so will
-            -- need tweaking to support locals
-            self.vars[self.param_idx] = Variable.new(self.param_idx, false)
+            self.vars[arg_pat_hrid] = Variable.new(arg_id, false)
 
             if self.node_ids[arg_id] == "ref_slice" then
                 pointee_ty = mut_ty:get_ty()
@@ -61,21 +69,58 @@ function Visitor:visit_arg(arg)
 end
 
 function Visitor:visit_expr(expr)
+    expr_kind = expr:get_kind()
+
     -- (*foo).bar -> (foo).bar (can't remove parens..)
-    -- REVIEW: Or MethodCall?
-    if expr:get_kind() == "Field" then
-        field_expr = expr:get_exprs()[1]
+    -- TODO: Or MethodCall? FnPtr could be a field
+    if expr_kind == "Field" then
+        local field_expr = expr:get_exprs()[1]
 
         if field_expr:get_kind() == "Unary" and field_expr:get_op() == "Deref" then
-            deref_expr = field_expr:get_exprs()[1]
+            local derefed_expr = field_expr:get_exprs()[1]
 
-            if deref_expr:get_kind() == "Path" then
-                id = self.tctx:get_expr_path_hrid(deref_expr)
+            if derefed_expr:get_kind() == "Path" then
+                local id = self.tctx:get_expr_path_hrid(derefed_expr)
 
                 -- This is a path we're expecting to modify
                 if self.vars[id] then
-                    expr:set_exprs{deref_expr}
+                    expr:set_exprs{derefed_expr}
                 end
+            end
+        end
+    -- *p.offset(x).offset(y) -> p[x + y]
+    elseif expr_kind == "Unary" and expr:get_op() == "Deref" then
+        local derefed_exprs = expr:get_exprs()
+        local unwrapped_expr = derefed_exprs[1]
+
+        if unwrapped_expr:get_method_name() == "offset" then
+            offset_expr = nil
+
+            while true do
+                local unwrapped_exprs = unwrapped_expr:get_exprs()
+                unwrapped_expr = unwrapped_exprs[1]
+                local method_name = unwrapped_expr:get_method_name()
+
+                -- Accumulate offset params
+                if not offset_expr then
+                    offset_expr = strip_int_suffix(unwrapped_exprs[2])
+                elseif not is_int_zero(unwrapped_exprs[2]) then
+                    offset_expr:to_binary("Add", strip_int_suffix(unwrapped_exprs[2]), offset_expr)
+                end
+
+                if method_name ~= "offset" then
+                    break
+                end
+            end
+
+            -- Should be left with a path, otherwise bail
+            local id = self.tctx:get_expr_path_hrid(unwrapped_expr)
+            local var = self.vars[id]
+
+            -- We only want to apply this operation if we're converting
+            -- a pointer to an array
+            if var and self.node_ids[var.id] == "ref_slice" and offset_expr then
+                expr:to_index(unwrapped_expr, offset_expr)
             end
         end
     end
@@ -86,8 +131,8 @@ refactor:transform(
         node_ids = {
             [12] = "ref",
             [21] = "ref",
-            [56] = "ref_slice",
-            [70] = "ref",
+            [63] = "ref",
+            [73] = "ref_slice",
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_ids))
     end

@@ -19,7 +19,7 @@ use std::rc::Rc;
 use crate::ast_manip::fn_edit::{FnKind, FnLike};
 use crate::scripting::into_lua_ast::{LuaSpan, LuaSyntaxContext};
 
-fn dummy_spanned<T>(node: T) -> Spanned<T> {
+pub(crate) fn dummy_spanned<T>(node: T) -> Spanned<T> {
     Spanned {
         node,
         span: DUMMY_SP,
