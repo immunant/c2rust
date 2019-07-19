@@ -412,6 +412,16 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
         }
     }
 
+    fn visit_fn_header(&mut self, m: &mut FnHeader) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_fn_header")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_fn_header(m, self)
+    }
+
     fn visit_mac(&mut self, mac: &mut Mac) {
         mut_visit::noop_visit_mac(mac, self);
     }

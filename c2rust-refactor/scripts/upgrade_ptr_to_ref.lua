@@ -20,6 +20,7 @@ function Visitor.new(tctx, node_id)
    self.tctx = tctx
    self.node_ids = node_ids
    self.vars = {}
+   self.param_idx = 0
 
    setmetatable(self, Visitor)
    Visitor.__index = Visitor
@@ -27,17 +28,25 @@ function Visitor.new(tctx, node_id)
    return self
 end
 
+function Visitor:visit_fn_header(header)
+    self.param_idx = 0
+end
+
 function Visitor:visit_arg(arg)
     arg_id = arg:get_id()
+
+    self.param_idx = self.param_idx + 1
 
     if self.node_ids[arg_id] then
         arg_ty = arg:get_ty()
 
         if arg_ty:get_kind() == "Ptr" then
             mut_ty = arg_ty:get_mut_ty()
-            arg_pat_id = arg:get_pat_id()
+            -- arg_pat_id = arg:get_pat_id()
 
-            self.vars[arg_pat_id] = Variable.new(arg_pat_id, false)
+            -- NOTE: This is a 1-index of param position, so will
+            -- need tweaking to support locals
+            self.vars[self.param_idx] = Variable.new(self.param_idx, false)
 
             if self.node_ids[arg_id] == "ref_slice" then
                 pointee_ty = mut_ty:get_ty()
@@ -77,8 +86,8 @@ refactor:transform(
         node_ids = {
             [12] = "ref",
             [21] = "ref",
-            [57] = "ref_slice",
-            [73] = "ref",
+            [56] = "ref_slice",
+            [70] = "ref",
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_ids))
     end

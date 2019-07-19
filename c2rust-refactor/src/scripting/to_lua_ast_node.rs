@@ -656,9 +656,13 @@ impl UserData for LuaAstNode<Arg> {
 
             Ok(())
         });
-
-        methods.add_method("get_pat_id", |lua_ctx, this, ()| {
-            Ok(this.borrow().pat.id.to_lua(lua_ctx))
-        });
     }
 }
+
+/// FnHeader AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type FnHeaderAstNode
+unsafe impl Send for LuaAstNode<FnHeader> {}
+impl UserData for LuaAstNode<FnHeader> {}
