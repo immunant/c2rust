@@ -12,7 +12,7 @@ use std::io::Read;
 use std::process;
 use std::str::FromStr;
 
-use c2rust_refactor::{file_io, Command, Cursor, Mark, Options, RustcArgSource};
+use c2rust_refactor::{file_io, CargoTarget, Command, Cursor, Mark, Options, RustcArgSource};
 
 fn main() {
     let yaml = load_yaml!("../refactor.yaml");
@@ -137,7 +137,14 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
         Some(args) => RustcArgSource::CmdLine(args),
         None => {
             assert!(args.is_present("cargo"));
-            RustcArgSource::Cargo
+            let target = if let Some(bin) = args.value_of("bin") {
+                CargoTarget::Bin(bin.to_string())
+            } else if args.is_present("bins") {
+                CargoTarget::AllBins
+            } else {
+                CargoTarget::Lib
+            };
+            RustcArgSource::Cargo(target)
         }
     };
 
