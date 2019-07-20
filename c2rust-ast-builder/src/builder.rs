@@ -518,6 +518,18 @@ impl Builder {
         path.make(&self)
     }
 
+    pub fn use_tree<Pa, K>(self, prefix: Pa, kind: K) -> UseTree
+    where
+        Pa: Make<Path>,
+        K: Make<UseTreeKind>,
+    {
+        UseTree {
+            span: DUMMY_SP,
+            prefix: prefix.make(&self),
+            kind: kind.make(&self),
+        }
+    }
+
 //    pub fn abs_path<Pa>(self, path: Pa) -> Path
 //    where
 //        Pa: Make<Path>,
@@ -1707,11 +1719,26 @@ impl Builder {
         )
     }
 
+    pub fn use_item<U>(self, tree: U) -> P<Item>
+    where
+        U: Make<UseTree>,
+    {
+        let use_tree = tree.make(&self);
+        Self::item(
+            Ident::invalid(),
+            self.attrs,
+            self.vis,
+            self.span,
+            self.id,
+            ItemKind::Use(P(use_tree)),
+        )
+    }
+
     // `use <path>;` item
     // TODO: for now, we only support simple paths with an optional rename;
     // if we ever need them, we should add support for globs and nested trees,
     // e.g., `use foo::*;` and `use foo::{a, b, c};`
-    pub fn use_item<Pa, I>(self, path: Pa, rename: Option<I>) -> P<Item>
+    pub fn use_simple_item<Pa, I>(self, path: Pa, rename: Option<I>) -> P<Item>
     where
         Pa: Make<Path>,
         I: Make<Ident>,

@@ -864,7 +864,7 @@ fn make_submodule(
 /// Pretty-print the leading pragmas and extern crate declarations
 fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
     if t.tcfg.emit_modules {
-        s.print_item(&mk().use_item(vec!["libc"], None as Option<Ident>))?;
+        s.print_item(&mk().use_simple_item(vec!["libc"], None as Option<Ident>))?;
     } else {
         let pragmas = t.get_pragmas();
         for (key, mut values) in pragmas {

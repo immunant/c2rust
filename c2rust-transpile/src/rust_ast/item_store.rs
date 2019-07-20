@@ -58,7 +58,7 @@ impl PathedMultiImports {
             if leaves.len() == 1 {
                 path.push(leaves.pop().unwrap());
 
-                attrs.use_item(path, None as Option<Ident>)
+                attrs.use_simple_item(path, None as Option<Ident>)
             } else {
                 attrs.use_multiple_item(path, leaves.into_iter())
             }
