@@ -5,10 +5,10 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::sync::Arc;
 
-use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaTable, LuaValue};
-use rlua::{AnyUserData, Lua, UserData, UserDataMethods};
+use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaString, LuaTable, LuaValue};
+use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
-use syntax::ast;
+use syntax::ast::{self, DUMMY_NODE_ID};
 use syntax::mut_visit::MutVisitor;
 use syntax::ptr::P;
 
@@ -395,6 +395,66 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
         });
         Ok(())
     }
+
+    fn create_use_tree<'lua>(
+        &self,
+        lua_ctx: LuaContext<'lua>,
+        lua_tree: LuaTable<'lua>,
+        ident: Option<ast::Ident>
+    ) -> LuaResult<ast::UseTree> {
+        let mut trees: Vec<ast::UseTree> = vec![];
+        for pair in lua_tree.pairs::<LuaValue, LuaValue>() {
+            let (key, value) = pair?;
+            match key {
+                LuaValue::Integer(_) => {
+                    let ident_str = LuaString::from_lua(value, lua_ctx)?;
+                    // TODO: handle renames
+                    trees.push(mk().use_tree(
+                        ident_str.to_str()?,
+                        ast::UseTreeKind::Simple(None, DUMMY_NODE_ID, DUMMY_NODE_ID),
+                    ));
+                }
+
+                LuaValue::String(s) => match value {
+                    LuaValue::String(ref glob) if glob.to_str()? == "*" => {
+                        trees.push(mk().use_tree(s.to_str()?, ast::UseTreeKind::Glob));
+                    }
+
+                    LuaValue::Table(items) => {
+                        trees.push(self.create_use_tree(
+                            lua_ctx,
+                            items,
+                            Some(ast::Ident::from_str(s.to_str()?)),
+                        )?);
+                    }
+
+                    _ => return Err(LuaError::FromLuaConversionError {
+                        from: "UseTree table value",
+                        to: "ast::UseTree",
+                        message: Some("UseTree table keys must be \"*\" or a table".to_string()),
+                    })
+                },
+
+                _ => return Err(LuaError::FromLuaConversionError {
+                    from: "UseTree table key",
+                    to: "ast::UseTree",
+                    message: Some("UseTree table keys must be integer or string".to_string()),
+                }),
+            }
+        }
+
+        if trees.len() == 1 {
+            let mut use_tree = trees.pop().unwrap();
+            if let Some(ident) = ident {
+                use_tree.prefix.segments.insert(0, ast::PathSegment::from_ident(ident));
+            }
+            return Ok(use_tree);
+        }
+        let prefix = ast::Path::from_ident(ident.unwrap_or_else(|| ast::Ident::from_str("")));
+        Ok(mk().use_tree(prefix, ast::UseTreeKind::Nested(
+            trees.into_iter().map(|u| (u, DUMMY_NODE_ID)).collect()
+        )))
+    }
 }
 
 /// Transformation context
@@ -529,10 +589,13 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
 
         /// Create a new use item
         // @function create_use
-        // @tparam path Array of idents for use item
+        // @tparam tab Tree of paths to convert into a UseTree. Each leaf of the tree corresponds to a UseTree and is an array of items to import. Each of these items may be a string (the item name), an array with two values: the item name and an identifier to rebind the item name to (i.e. `a as b`), or the literal string '*' indicating a glob import from that module. The prefix for each UseTree is the sequence of keys in the map along the path to that leaf array.
         // @treturn LuaAstNode New use item node
-        methods.add_function("create_use", |lua_ctx, segments: Vec<String>| {
-            mk().use_item(segments, None as Option<ast::Ident>).to_lua(lua_ctx)
+        methods.add_method("create_use", |lua_ctx, this, (tree, pub_vis): (LuaTable, bool)| {
+            let use_tree = this.create_use_tree(lua_ctx, tree, None)?;
+            let mut builder = mk();
+            if pub_vis { builder = builder.pub_(); }
+            Ok(builder.use_item(use_tree).to_lua(lua_ctx))
         });
 
         methods.add_method("get_use_def", |lua_ctx, this, id: u32| {

@@ -113,6 +113,10 @@ impl UserData for LuaAstNode<P<Item>> {
             Ok(())
         });
 
+        methods.add_method("get_vis", |_lua_ctx, this, ()| {
+            Ok(this.0.borrow().vis.ast_name())
+        });
+
         /// Visit statements
         // @function visit_stmts
         // @tparam function(LuaAstNode) callback Function to call when visiting each statement
@@ -392,6 +396,10 @@ impl UserData for LuaAstNode<Lit> {
 unsafe impl Send for LuaAstNode<Mod> {}
 impl UserData for LuaAstNode<Mod> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("num_items", |_lua_ctx, this, ()| {
+            Ok(this.0.borrow().items.len())
+        });
+
         methods.add_method_mut("insert_item", |_lua_ctx, this, (index, item): (usize, LuaAstNode<P<Item>>)| {
             this.0.borrow_mut().items.insert(index, item.borrow().clone());
             Ok(())
