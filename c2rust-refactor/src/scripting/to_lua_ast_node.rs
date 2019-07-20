@@ -56,12 +56,6 @@ impl<T> LuaAstNode<T> {
         Self(Arc::new(RefCell::new(item)))
     }
 
-    pub fn into_inner(self) -> T {
-        Arc::try_unwrap(self.0)
-            .unwrap_or_else(|_| panic!("LuaAstNode is duplicated"))
-            .into_inner()
-    }
-
     pub fn borrow(&self) -> Ref<T> {
         self.0.borrow()
     }
@@ -70,6 +64,18 @@ impl<T> LuaAstNode<T> {
         where F: Fn(&mut T)
     {
         f(self.0.borrow_mut().deref_mut());
+    }
+}
+
+impl<T> LuaAstNode<T>
+    where T: Clone
+{
+    // TODO: make sure we aren't leaking LuaAstNodes into Lua, never to be freed
+    pub fn into_inner(self) -> T {
+        match Arc::try_unwrap(self.0) {
+            Ok(cell) => cell.into_inner(),
+            Err(arc) => arc.borrow().clone(),
+        }
     }
 }
 
