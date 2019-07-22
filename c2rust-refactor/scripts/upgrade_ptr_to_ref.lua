@@ -27,28 +27,28 @@ end
 RefCfg = {}
 
 function RefCfg.new(is_slice, lifetime)
-   self = {}
-   self.is_slice = is_slice
-   self.lifetime = lifetime
+    self = {}
+    self.is_slice = is_slice
+    self.lifetime = lifetime
 
-   setmetatable(self, RefCfg)
-   RefCfg.__index = RefCfg
+    setmetatable(self, RefCfg)
+    RefCfg.__index = RefCfg
 
-   return self
+    return self
 end
 
 Visitor = {}
 
 function Visitor.new(tctx, node_id)
-   self = {}
-   self.tctx = tctx
-   self.node_ids = node_ids
-   self.vars = {}
+    self = {}
+    self.tctx = tctx
+    self.node_ids = node_ids
+    self.vars = {}
 
-   setmetatable(self, Visitor)
-   Visitor.__index = Visitor
+    setmetatable(self, Visitor)
+    Visitor.__index = Visitor
 
-   return self
+    return self
 end
 
 -- Takes a ptr type and returns the newly modified ref type
