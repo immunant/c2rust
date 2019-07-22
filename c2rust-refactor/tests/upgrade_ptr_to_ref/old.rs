@@ -15,3 +15,10 @@ unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx, p: *const u8) {
     (*ctx).data[0] = *p.offset(0isize).offset(3isize);
     (*ctx2).data[0] = *p.offset(3isize).offset(off);
 }
+
+struct Ptrs {
+    r: *const u32,
+    r2: *mut u32,
+    s: *const u32,
+    s2: *mut u32,
+}

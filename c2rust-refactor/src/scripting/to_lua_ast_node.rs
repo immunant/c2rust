@@ -411,10 +411,21 @@ impl UserData for LuaAstNode<P<Ty>> {
             }
         });
 
-        methods.add_method("to_rptr", |_lua_ctx, this, (_lt, mut_ty): (Option<LuaString>, LuaAstNode<MutTy>)| {
-            // TODO: Support explicit lifetimes
+        methods.add_method("to_rptr", |_lua_ctx, this, (lt, mut_ty): (Option<LuaString>, LuaAstNode<MutTy>)| {
+            let lt = lt.map(|lt| {
+                let lt_str = lt.to_str()?;
+                let mut lt_string = String::with_capacity(lt_str.len() + 1);
 
-            this.0.borrow_mut().node = TyKind::Rptr(None, mut_ty.0.borrow().clone());
+                lt_string.push('\'');
+                lt_string.push_str(lt_str);
+
+                Ok(Lifetime {
+                    id: DUMMY_NODE_ID,
+                    ident: Ident::from_str(&lt_string),
+                })
+            }).transpose()?;
+
+            this.0.borrow_mut().node = TyKind::Rptr(lt, mut_ty.0.borrow().clone());
 
             Ok(())
         });
@@ -741,3 +752,100 @@ impl UserData for LuaAstNode<Arg> {
 // @type FnHeaderAstNode
 unsafe impl Send for LuaAstNode<FnHeader> {}
 impl UserData for LuaAstNode<FnHeader> {}
+
+/// StructField AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type StructFieldAstNode
+unsafe impl Send for LuaAstNode<StructField> {}
+impl UserData for LuaAstNode<StructField> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_id", |lua_ctx, this, ()| {
+            this.borrow().id.to_lua(lua_ctx)
+        });
+
+        methods.add_method("get_ty", |_lua_ctx, this, ()| {
+            Ok(LuaAstNode::new(this.borrow().ty.clone()))
+        });
+
+        methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
+            this.borrow_mut().ty = ty.borrow().clone();
+
+            Ok(())
+        });
+
+        methods.add_method("print", |_lua_ctx, this, ()| {
+            println!("{:?}", this.borrow());
+
+            Ok(())
+        });
+    }
+}
+
+/// ItemKind AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type ItemKindAstNode
+unsafe impl Send for LuaAstNode<ItemKind> {}
+impl UserData for LuaAstNode<ItemKind> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_kind", |_lua_ctx, this, ()| {
+            Ok(this.borrow().ast_name())
+        });
+
+        methods.add_method("add_lifetime", |_lua_ctx, this, string: LuaString| {
+            let lt_str = string.to_str()?;
+            let mut lt_string = String::with_capacity(lt_str.len() + 1);
+
+            lt_string.push('\'');
+            lt_string.push_str(lt_str);
+
+            let generic_param = GenericParam {
+                id: DUMMY_NODE_ID,
+                ident: Ident::from_str(&lt_string),
+                attrs: Default::default(),
+                bounds: Vec::new(),
+                kind: GenericParamKind::Lifetime,
+            };
+
+            if let ItemKind::Struct(_, generics) = &mut *this.borrow_mut() {
+                let diff = |p: &GenericParam| {
+                    if let GenericParamKind::Lifetime = p.kind {
+                        p.ident == generic_param.ident
+                    } else {
+                        false
+                    }
+                };
+
+                if generics.params.iter().any(diff) {
+                    return Ok(());
+                }
+
+                generics.params.push(generic_param);
+            }
+
+            Ok(())
+        });
+
+        methods.add_method("get_field_ids", |_lua_ctx, this, ()| {
+            if let ItemKind::Struct(variant_data, _) = &*this.borrow() {
+                return Ok(Some(variant_data
+                    .fields()
+                    .iter()
+                    .map(|f| f.id.as_u32())
+                    .collect::<Vec<_>>()
+                ));
+            }
+
+            Ok(None)
+        });
+
+        methods.add_method("print", |_lua_ctx, this, ()| {
+            println!("{:?}", this.borrow());
+
+            Ok(())
+        });
+    }
+}

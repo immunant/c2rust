@@ -15,3 +15,10 @@ unsafe fn struct_ptr(ctx: &mut Ctx, ctx2: *mut Ctx, p: &[u8]) {
     (ctx).data[0] = p[0 + 3];
     (*ctx2).data[0] = p[3 + off];
 }
+
+struct Ptrs<'r, 's> {
+    r: &'r u32,
+    r2: &'r mut u32,
+    s: &'s [u32],
+    s2: &'s mut [u32],
+}

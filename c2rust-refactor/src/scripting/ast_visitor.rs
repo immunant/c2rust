@@ -422,6 +422,26 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
         mut_visit::noop_visit_fn_header(m, self)
     }
 
+    fn visit_struct_field(&mut self, m: &mut StructField) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_struct_field")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_struct_field(m, self)
+    }
+
+    fn visit_item_kind(&mut self, m: &mut ItemKind) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_item_kind")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_item_kind(m, self)
+    }
+
     fn visit_mac(&mut self, mac: &mut Mac) {
         mut_visit::noop_visit_mac(mac, self);
     }
