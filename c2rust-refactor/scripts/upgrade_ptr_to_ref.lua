@@ -26,15 +26,27 @@ end
 
 RefCfg = {}
 
-function RefCfg.new(is_slice, lifetime)
+function RefCfg.new(mod_type, lifetime)
     self = {}
-    self.is_slice = is_slice
+    self.mod_type = mod_type
     self.lifetime = lifetime
 
     setmetatable(self, RefCfg)
     RefCfg.__index = RefCfg
 
     return self
+end
+
+function RefCfg:is_slice()
+    return self.mod_type == "slice"
+end
+
+function RefCfg:is_ref()
+    return self.mod_type == "ref"
+end
+
+function RefCfg:is_opt_box()
+    return self.mod_type == "opt_box"
 end
 
 Visitor = {}
@@ -52,16 +64,27 @@ function Visitor.new(tctx, node_id)
 end
 
 -- Takes a ptr type and returns the newly modified ref type
-function ptr_to_ref(ptr_ty, conversion_cfg)
+function upgrade_ptr(ptr_ty, conversion_cfg)
     local mut_ty = ptr_ty:get_mut_ty()
 
-    if conversion_cfg.is_slice then
+    if conversion_cfg:is_slice() then
         local pointee_ty = mut_ty:get_ty()
         pointee_ty:wrap_in_slice()
         mut_ty:set_ty(pointee_ty)
     end
 
-    ptr_ty:to_rptr(conversion_cfg.lifetime, mut_ty)
+    if conversion_cfg:is_opt_box() then
+        local pointee_ty = mut_ty:get_ty()
+
+        pointee_ty:wrap_as_generic_angle_arg("Box")
+        pointee_ty:wrap_as_generic_angle_arg("Option")
+
+        return pointee_ty
+    else
+        ptr_ty:to_rptr(conversion_cfg.lifetime, mut_ty)
+
+        return ptr_ty
+    end
 end
 
 function Visitor:visit_arg(arg)
@@ -74,9 +97,7 @@ function Visitor:visit_arg(arg)
         if arg_ty:get_kind() == "Ptr" then
             local arg_pat_hrid = self.tctx:get_nodeid_hrid(arg:get_pat_id())
 
-            ptr_to_ref(arg_ty, conversion_cfg)
-
-            arg:set_ty(arg_ty)
+            arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
 
             self.vars[arg_pat_hrid] = Variable.new(arg_id, false)
         end
@@ -134,7 +155,7 @@ function Visitor:visit_expr(expr)
 
             -- We only want to apply this operation if we're converting
             -- a pointer to an array
-            if var and self.node_ids[var.id].is_slice and offset_expr then
+            if var and self.node_ids[var.id]:is_slice() and offset_expr then
                 expr:to_index(unwrapped_expr, offset_expr)
             end
         end
@@ -144,9 +165,6 @@ end
 function Visitor:visit_item_kind(item_kind)
     if item_kind:get_kind() == "Struct" then
         local field_ids = item_kind:get_field_ids()
-
-        item_kind:print()
-        print(field_ids)
 
         for _, field_id in ipairs(field_ids) do
             local ref_cfg = self.node_ids[field_id]
@@ -165,23 +183,22 @@ function Visitor:visit_struct_field(field)
     if conversion_cfg then
         local field_ty = field:get_ty()
 
-        ptr_to_ref(field_ty, conversion_cfg)
-
-        field:set_ty(field_ty)
+        field:set_ty(upgrade_ptr(field_ty, conversion_cfg))
     end
 end
 
 refactor:transform(
     function(transform_ctx)
         node_ids = {
-            [12] = RefCfg.new(false, nil),
-            [21] = RefCfg.new(false, nil),
-            [63] = RefCfg.new(false, nil),
-            [73] = RefCfg.new(true, nil),
-            [116] = RefCfg.new(false, "r"),
-            [120] = RefCfg.new(false, "r"),
-            [124] = RefCfg.new(true, "s"),
-            [128] = RefCfg.new(true, "s"),
+            [12] = RefCfg.new("ref", nil),
+            [21] = RefCfg.new("ref", nil),
+            [63] = RefCfg.new("ref", nil),
+            [73] = RefCfg.new("slice", nil),
+            [116] = RefCfg.new("ref", "r"),
+            [120] = RefCfg.new("ref", "r"),
+            [124] = RefCfg.new("slice", "s"),
+            [128] = RefCfg.new("slice", "s"),
+            [132] = RefCfg.new("opt_box", nil),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_ids))
     end

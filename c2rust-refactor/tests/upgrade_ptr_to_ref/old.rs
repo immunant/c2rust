@@ -21,4 +21,5 @@ struct Ptrs {
     r2: *mut u32,
     s: *const u32,
     s2: *mut u32,
+    boxed: *mut u32,
 }

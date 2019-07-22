@@ -337,7 +337,7 @@ impl UserData for LuaAstNode<P<Expr>> {
         });
 
         methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.0.borrow());
+            println!("{:?}", this.borrow());
 
             Ok(())
         });
@@ -400,11 +400,11 @@ unsafe impl Send for LuaAstNode<P<Ty>> {}
 impl UserData for LuaAstNode<P<Ty>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().node.ast_name())
+            Ok(this.borrow().node.ast_name())
         });
 
         methods.add_method("get_mut_ty", |_lua_ctx, this, ()| {
-            match &this.0.borrow().node {
+            match &this.borrow().node {
                 TyKind::Ptr(mut_ty) |
                 TyKind::Rptr(_, mut_ty) => Ok(Some(LuaAstNode::new(mut_ty.clone()))),
                 _ => Ok(None),
@@ -425,13 +425,13 @@ impl UserData for LuaAstNode<P<Ty>> {
                 })
             }).transpose()?;
 
-            this.0.borrow_mut().node = TyKind::Rptr(lt, mut_ty.0.borrow().clone());
+            this.borrow_mut().node = TyKind::Rptr(lt, mut_ty.borrow().clone());
 
             Ok(())
         });
 
         methods.add_method("wrap_in_slice", |_lua_ctx, this, ()| {
-            let mut ty = this.0.borrow_mut();
+            let mut ty = this.borrow_mut();
             let mut placeholder = TyKind::Err;
 
             swap(&mut placeholder, &mut ty.node);
@@ -441,6 +441,37 @@ impl UserData for LuaAstNode<P<Ty>> {
                 node: placeholder,
                 span: DUMMY_SP,
             }));
+
+            Ok(())
+        });
+
+        methods.add_method("wrap_as_generic_angle_arg", |_lua_ctx, this, name: LuaString| {
+            let mut ty = this.borrow_mut();
+            let mut placeholder = TyKind::Err;
+
+            swap(&mut placeholder, &mut ty.node);
+
+            let arg = GenericArg::Type(P(Ty {
+                id: DUMMY_NODE_ID,
+                node: placeholder,
+                span: DUMMY_SP,
+            }));
+            let args = GenericArgs::AngleBracketed(AngleBracketedArgs {
+                span: DUMMY_SP,
+                args: vec![arg],
+                constraints: Vec::new(),
+            });
+            let path_segment = PathSegment {
+                ident: Ident::from_str(name.to_str()?),
+                id: DUMMY_NODE_ID,
+                args: Some(P(args)),
+            };
+            let path = Path {
+                span: DUMMY_SP,
+                segments: vec![path_segment],
+            };
+
+            ty.node = TyKind::Path(None, path);
 
             Ok(())
         });

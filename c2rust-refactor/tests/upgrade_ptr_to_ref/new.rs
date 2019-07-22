@@ -21,4 +21,5 @@ struct Ptrs<'r, 's> {
     r2: &'r mut u32,
     s: &'s [u32],
     s2: &'s mut [u32],
+    boxed: Option<Box<u32>>,
 }
