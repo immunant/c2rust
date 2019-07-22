@@ -12,6 +12,6 @@ struct Ctx {
 
 unsafe fn struct_ptr(ctx: &mut Ctx, ctx2: *mut Ctx, p: &[u8]) {
     let off = 1;
-    (ctx).data[0] = p[3];
+    (ctx).data[0] = p[0 + 3];
     (*ctx2).data[0] = p[3 + off];
 }

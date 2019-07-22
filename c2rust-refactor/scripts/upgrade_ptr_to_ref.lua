@@ -46,8 +46,9 @@ end
 
 function Visitor:visit_arg(arg)
     local arg_id = arg:get_id()
+    local conversion_type = self.node_ids[arg_id]
 
-    if self.node_ids[arg_id] then
+    if conversion_type then
         local arg_ty = arg:get_ty()
 
         if arg_ty:get_kind() == "Ptr" then
@@ -56,7 +57,7 @@ function Visitor:visit_arg(arg)
 
             self.vars[arg_pat_hrid] = Variable.new(arg_id, false)
 
-            if self.node_ids[arg_id] == "ref_slice" then
+            if conversion_type == "ref_slice" then
                 pointee_ty = mut_ty:get_ty()
                 pointee_ty:wrap_in_slice()
                 mut_ty:set_ty(pointee_ty)
@@ -104,7 +105,7 @@ function Visitor:visit_expr(expr)
                 -- Accumulate offset params
                 if not offset_expr then
                     offset_expr = strip_int_suffix(unwrapped_exprs[2])
-                elseif not is_int_zero(unwrapped_exprs[2]) then
+                else
                     offset_expr:to_binary("Add", strip_int_suffix(unwrapped_exprs[2]), offset_expr)
                 end
 

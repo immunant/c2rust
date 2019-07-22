@@ -725,6 +725,12 @@ impl UserData for LuaAstNode<Arg> {
         methods.add_method("get_pat_id", |lua_ctx, this, ()| {
             Ok(this.borrow().pat.id.to_lua(lua_ctx))
         });
+
+        methods.add_method("print", |_lua_ctx, this, ()| {
+            println!("{:?}", this.borrow());
+
+            Ok(())
+        });
     }
 }
 
