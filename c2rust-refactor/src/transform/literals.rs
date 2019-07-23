@@ -1,5 +1,6 @@
 use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
+use syntax::parse::token;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 
@@ -34,7 +35,8 @@ impl Transform for ByteStrToStr {
                     match l.node {
                         LitKind::ByteStr(ref bs) => {
                             let s = String::from_utf8((**bs).clone()).unwrap();
-                            l.node = LitKind::Str(Symbol::intern(&s), StrStyle::Cooked)
+                            l.node = LitKind::Str(Symbol::intern(&s), StrStyle::Cooked);
+                            l.token.kind = token::LitKind::Str;
                         }
                         _ => {}
                     }
@@ -59,6 +61,12 @@ impl Transform for ByteStrToStr {
 /// mark a literal node.
 pub struct RemoveNullTerminator;
 
+fn strip_null(s: &mut Symbol) {
+    assert!(s.as_str().ends_with("\0"));
+    let end = s.as_str().len() - 1;
+    *s = Symbol::intern(&s.as_str()[..end]);
+}
+
 impl Transform for RemoveNullTerminator {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
@@ -72,12 +80,12 @@ impl Transform for RemoveNullTerminator {
                         LitKind::ByteStr(bs) => {
                             if bs.last() == Some(&0) {
                                 Lrc::get_mut(bs).unwrap().pop();
+                                strip_null(&mut l.token.symbol);
                             }
                         }
                         LitKind::Str(ref mut s, _style) => {
                             if s.as_str().ends_with("\0") {
-                                let end = s.as_str().len() - 1;
-                                *s = Symbol::intern(&s.as_str()[..end]);
+                                strip_null(s);
                             }
                         }
                         _ => {}
