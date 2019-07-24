@@ -15,7 +15,7 @@ extern "C" {
 }
 
 const BUFFER_SIZE: usize = 9;
-const ALIGNMENT_BUFFER_SIZE: usize = 22;
+const ALIGNMENT_BUFFER_SIZE: usize = 176;
 
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
@@ -43,17 +43,22 @@ pub fn test_alignments() {
     let mut buffer = [0; ALIGNMENT_BUFFER_SIZE];
     let mut rust_buffer = [0; ALIGNMENT_BUFFER_SIZE];
     let expected_buffer = [
-        16,  8, // S1
-        11,  1, // S2
-        12,  2, // S3
-        12,  4, // S4
-        16,  8, // S5
-        11,  1, // S6
-        16,  8, // S7
-        16,  8, // S8
-        16,  8, // S9
-        16,  8, // S10
-        16, 16, // S11
+        16,  8, 42, 1337, 65537, 0, 2, 8, 0, 0, 0, // S1
+        11,  1, 42, 1337, 65537, 0, 1, 3, 0, 0, 0, // S2
+        12,  2, 42, 1337, 65537, 0, 2, 4, 0, 0, 0, // S3
+        12,  4, 42, 1337, 65537, 0, 2, 4, 0, 0, 0, // S4
+        16,  8, 42, 1337, 65537, 0, 2, 8, 0, 0, 0, // S5
+        11,  1, 42, 1337, 65537, 0, 1, 3, 0, 0, 0, // S6
+        16,  8, 42, 1337, 65537, 0, 2, 8, 0, 0, 0, // S7
+        16,  8, 42, 1337, 65537, 0, 2, 8, 0, 0, 0, // S8
+        16,  8, 42, 1337, 65537, 0, 2, 8, 0, 0, 0, // S9
+        16,  8, 42, 1337, 65537, 0, 2, 8, 0, 0, 0, // S10
+        16, 16, 42, 1337, 65537, 0, 2, 8, 0, 0, 0, // S11
+        11,  1, 42, 1337, 65537, 0, 1, 3, 0, 0, 0, // S12
+        12,  2, 42, 1337, 65537, 0, 1, 3, 0, 0, 0, // S13
+        12,  4, 42, 1337, 65537, 0, 1, 3, 0, 0, 0, // S14
+        16,  8, 42, 1337, 65537, 0, 1, 3, 0, 0, 0, // S15
+        16, 16, 42, 1337, 65537, 0, 1, 3, 0, 0, 0, // S16
     ];
 
     unsafe {
@@ -61,6 +66,6 @@ pub fn test_alignments() {
         rust_alignment_entry(ALIGNMENT_BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
     }
 
-    assert_eq!(buffer, rust_buffer);
-    assert_eq!(buffer, expected_buffer);
+    assert_eq!(&buffer[..], &rust_buffer[..]);
+    assert_eq!(&buffer[..], &expected_buffer[..]);
 }

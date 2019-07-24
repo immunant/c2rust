@@ -12,6 +12,7 @@ pub struct TypeConverter {
     pub translate_valist: bool,
     renamer: Renamer<CDeclId>,
     fields: HashMap<CDeclId, Renamer<CFieldId>>,
+    suffix_names: HashMap<(CDeclId, &'static str), String>,
     features: HashSet<&'static str>,
     emit_no_std: bool,
 }
@@ -131,6 +132,7 @@ impl TypeConverter {
             translate_valist: false,
             renamer: Renamer::new(&RESERVED_NAMES),
             fields: HashMap::new(),
+            suffix_names: HashMap::new(),
             features: HashSet::new(),
             emit_no_std,
         }
@@ -152,6 +154,19 @@ impl TypeConverter {
 
     pub fn resolve_decl_name(&self, decl_id: CDeclId) -> Option<String> {
         self.renamer.get(&decl_id)
+    }
+
+    pub fn resolve_decl_suffix_name(&mut self, decl_id: CDeclId, suffix: &'static str) -> &str {
+        let key = (decl_id, suffix);
+        if !self.suffix_names.contains_key(&key) {
+            let mut suffix_name = self.resolve_decl_name(decl_id)
+                .unwrap_or_else(|| "C2RustUnnamed".to_string());
+            suffix_name += suffix;
+
+            let suffix_name = self.renamer.pick_name(&suffix_name);
+            self.suffix_names.insert(key, suffix_name);
+        }
+        self.suffix_names.get(&key).unwrap()
     }
 
     pub fn declare_field_name(

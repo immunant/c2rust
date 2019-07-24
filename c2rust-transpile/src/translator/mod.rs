@@ -259,6 +259,17 @@ fn simple_metaitem(name: &str) -> NestedMetaItem {
     mk().nested_meta_item(NestedMetaItem::MetaItem(meta_item))
 }
 
+fn int_arg_metaitem(name: &str, arg: u128) -> NestedMetaItem {
+    let lit = mk().int_lit(arg, LitIntType::Unsuffixed);
+    let inner = mk().meta_item(
+        vec![name],
+        MetaItemKind::List(vec![
+            mk().nested_meta_item(NestedMetaItem::Literal(lit))
+        ]),
+    );
+    mk().nested_meta_item(NestedMetaItem::MetaItem(inner))
+}
+
 fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
     let opt_literal_val = match val.node {
         ExprKind::Lit(ref l) => match l.node {
@@ -619,6 +630,11 @@ pub fn translate(
                     Ok(ConvertedDecl::ForeignItem(item)) => {
                         t.insert_foreign_item(item, decl);
                     }
+                    Ok(ConvertedDecl::Items(items)) => {
+                        for item in items {
+                            t.insert_item(item, decl);
+                        }
+                    }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
                         let ref k = t.ast_context.get_decl(&decl_id).map(|x| &x.kind);
@@ -680,6 +696,11 @@ pub fn translate(
                     }
                     Ok(ConvertedDecl::ForeignItem(item)) => {
                         t.insert_foreign_item(item, decl);
+                    }
+                    Ok(ConvertedDecl::Items(items)) => {
+                        for item in items {
+                            t.insert_item(item, decl);
+                        }
                     }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
@@ -980,6 +1001,7 @@ pub enum ExprUse {
 pub enum ConvertedDecl {
     ForeignItem(ForeignItem),
     Item(P<Item>),
+    Items(Vec<P<Item>>),
     NoItem,
 }
 
@@ -1413,14 +1435,13 @@ impl<'c> Translation<'c> {
                     }
                 }
 
+                let mut derives = vec!["Copy", "Clone"];
                 if has_bitfields {
-                    return self.convert_bitfield_struct_decl(
-                        name,
-                        manual_alignment,
+                    field_entries = self.convert_bitfield_struct_fields(
                         platform_byte_size,
-                        s,
                         field_info,
-                    );
+                    )?;
+                    derives.push("BitfieldStruct");
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
@@ -1431,41 +1452,67 @@ impl<'c> Translation<'c> {
                 } else {
                     max_field_alignment
                 };
-                match max_field_alignment {
-                    Some(1) => reprs.push(simple_metaitem("packed")),
-                    Some(mfi) if mfi > 1 => {
-                        let lit = mk().int_lit(mfi as u128, LitIntType::Unsuffixed);
-                        let inner = mk().meta_item(
-                            vec!["packed"],
-                            MetaItemKind::List(vec![
-                                mk().nested_meta_item(NestedMetaItem::Literal(lit))
-                            ]),
-                        );
-                        reprs.push(mk().nested_meta_item(NestedMetaItem::MetaItem(inner)));
+                'result: {
+                    match (max_field_alignment, manual_alignment) {
+                        (Some(mf), Some(ma)) => {
+                            // This is the most complicated case: we have `packed(M), align(N)`
+                            // which Rust doesn't currently support; instead, we split
+                            // the structure into 2 structures like this:
+                            //   #[align(N)]
+                            //   pub struct Foo(pub Foo_Inner);
+                            //   #[packed(M)]
+                            //   pub struct Foo_Inner {
+                            //     ...fields...
+                            //   }
+                            assert!(self.ast_context.has_inner_struct_decl(decl_id));
+                            let inner_name = self.resolve_decl_inner_name(decl_id);
+                            let mut inner_reprs = reprs.clone();
+                            if mf > 1 {
+                                inner_reprs.push(int_arg_metaitem("packed", mf as u128))
+                            } else {
+                                inner_reprs.push(simple_metaitem("packed"))
+                            };
+                            let inner_repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(inner_reprs));
+                            let inner_struct = mk().span(s)
+                                .pub_()
+                                .call_attr("derive", derives)
+                                .meta_item_attr(AttrStyle::Outer, inner_repr_attr)
+                                .struct_item(inner_name.clone(), field_entries, false);
+
+                            reprs.push(int_arg_metaitem("align", ma as u128));
+                            let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
+                            let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
+                            let outer_struct = mk().span(s)
+                                .pub_()
+                                .call_attr("derive", vec!["Copy", "Clone"])
+                                .meta_item_attr(AttrStyle::Outer, repr_attr)
+                                .struct_item(name, vec![outer_field], true);
+
+                            let structs = vec![outer_struct, inner_struct];
+                            break 'result Ok(ConvertedDecl::Items(structs));
+                        }
+
+                        (Some(1), None) => reprs.push(simple_metaitem("packed")),
+
+                        (Some(mf), None) if mf > 1 => reprs.push(int_arg_metaitem("packed", mf as u128)),
+
+                        // https://github.com/rust-lang/rust/issues/33626
+                        (None, Some(ma)) => reprs.push(int_arg_metaitem("align", ma as u128)),
+
+                        _ => { }
                     }
-                    _ => { }
+
+                    let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
+
+                    assert!(!self.ast_context.has_inner_struct_decl(decl_id));
+                    Ok(ConvertedDecl::Item(
+                        mk().span(s)
+                            .pub_()
+                            .call_attr("derive", derives)
+                            .meta_item_attr(AttrStyle::Outer, repr_attr)
+                            .struct_item(name, field_entries, false),
+                    ))
                 }
-                // https://github.com/rust-lang/rust/issues/33626
-                if let Some(alignment) = manual_alignment {
-                    let lit = mk().int_lit(alignment as u128, LitIntType::Unsuffixed);
-                    let inner = mk().meta_item(
-                        vec!["align"],
-                        MetaItemKind::List(vec![
-                            mk().nested_meta_item(NestedMetaItem::Literal(lit))
-                        ]),
-                    );
-                    reprs.push(mk().nested_meta_item(NestedMetaItem::MetaItem(inner)));
-                };
-
-                let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
-
-                Ok(ConvertedDecl::Item(
-                    mk().span(s)
-                        .pub_()
-                        .call_attr("derive", vec!["Copy", "Clone"])
-                        .meta_item_attr(AttrStyle::Outer, repr_attr)
-                        .struct_item(name, field_entries, false),
-                ))
             }
 
             CDeclKind::Union {
@@ -2480,16 +2527,18 @@ impl<'c> Translation<'c> {
                 if skip {
                     Ok(cfg::DeclStmtInfo::new(vec![], vec![], vec![]))
                 } else {
-                    let item = match self.convert_decl(ctx, decl_id)? {
-                        ConvertedDecl::Item(item) => item,
-                        ConvertedDecl::ForeignItem(item) => mk().abi("C").foreign_items(vec![item]),
+                    let items = match self.convert_decl(ctx, decl_id)? {
+                        ConvertedDecl::Item(item) => vec![item],
+                        ConvertedDecl::ForeignItem(item) => vec![mk().abi("C").foreign_items(vec![item])],
+                        ConvertedDecl::Items(items) => items,
                         ConvertedDecl::NoItem => return Ok(cfg::DeclStmtInfo::empty()),
                     };
 
+                    let item_stmt = |item| mk().item_stmt(item);
                     Ok(cfg::DeclStmtInfo::new(
-                        vec![mk().item_stmt(item.clone())],
+                        items.iter().cloned().map(item_stmt).collect(),
                         vec![],
-                        vec![mk().item_stmt(item)],
+                        items.into_iter().map(item_stmt).collect(),
                     ))
                 }
             }
@@ -3044,11 +3093,7 @@ impl<'c> Translation<'c> {
                         kind.as_decl_or_typedef()
                             .expect("Did not find decl_id for offsetof struct")
                     };
-                    let name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_decl_name(decl_id)
-                        .expect("Did not find name for offsetof struct");
+                    let name = self.resolve_decl_inner_name(decl_id);
                     let ty_ident = Nonterminal::NtIdent(mk().ident(name), false);
 
                     // Field name
@@ -3427,49 +3472,64 @@ impl<'c> Translation<'c> {
             }
 
             CExprKind::Member(_, expr, decl, kind, _) => {
-                let is_bitfield = match &self.ast_context[decl].kind {
-                    CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
-                    _ => unreachable!("Found a member which is not a field"),
-                };
-
-                if is_bitfield {
-                    let field_name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_field_name(None, decl)
-                        .unwrap();
-
-                    self.convert_bitfield_member_expr(ctx, field_name, expr, kind)
-                } else if ctx.is_unused() {
+                if ctx.is_unused() {
                     self.convert_expr(ctx, expr)
                 } else {
-                    let field_name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_field_name(None, decl)
-                        .unwrap();
-                    match kind {
+                    let mut val = match kind {
                         MemberKind::Dot => {
-                            let val = self.convert_expr(ctx, expr)?;
-                            Ok(val.map(|v| mk().field_expr(v, field_name)))
+                            self.convert_expr(ctx, expr)?
                         }
                         MemberKind::Arrow => {
                             if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _) =
                                 self.ast_context[expr].kind
                             {
-                                let val = self.convert_expr(ctx, subexpr_id)?;
-                                Ok(val.map(|v| mk().field_expr(v, field_name)))
+                                // Special-case the `(&x)->field` pattern
+                                // Convert it directly into `x.field`
+                                self.convert_expr(ctx, subexpr_id)?
                             } else {
                                 let val = self.convert_expr(ctx, expr)?;
-                                Ok(val.map(|v| {
-                                    mk().field_expr(
-                                        mk().unary_expr(ast::UnOp::Deref, v),
-                                        field_name,
-                                    )
-                                }))
+                                val.map(|v| mk().unary_expr(ast::UnOp::Deref, v))
                             }
                         }
-                    }
+                    };
+
+                    let record_id = self.ast_context.parents[&decl];
+                    if self.ast_context.has_inner_struct_decl(record_id) {
+                        // The structure is split into an outer and an inner,
+                        // so we need to go through the outer structure to the inner one
+                        val = val.map(|v| mk().field_expr(v, "0"));
+                    };
+
+                    let field_name = self
+                        .type_converter
+                        .borrow()
+                        .resolve_field_name(None, decl)
+                        .unwrap();
+                    let is_bitfield = match &self.ast_context[decl].kind {
+                        CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
+                        _ => unreachable!("Found a member which is not a field"),
+                    };
+                    if is_bitfield {
+                        // Convert a bitfield member one of four ways:
+                        // A) bf.a()
+                        // B) (*bf).a()
+                        // C) bf
+                        // D) (*bf)
+                        //
+                        // The first two are when we know this bitfield member is going to be read
+                        // from (default), possibly requiring a dereference first. The latter two
+                        // are generated when we are expecting to require a write, which will need
+                        // to make a method call with some input which we do not yet have access
+                        // to and will have to be handled elsewhere, IE `bf.set_a(1)`
+                        if !ctx.is_bitfield_write {
+                            // Cases A and B above
+                            val = val.map(|v| mk().method_call_expr(v, field_name, vec![] as Vec<P<Expr>>));
+                        }
+                    } else {
+                        val = val.map(|v| mk().field_expr(v, field_name));
+                    };
+
+                    Ok(val)
                 }
             }
 
@@ -4095,24 +4155,20 @@ impl<'c> Translation<'c> {
             return Ok(init.clone());
         }
 
+        let name_decl_id = match self.ast_context.index(type_id).kind {
+            CTypeKind::Typedef(decl_id) => decl_id,
+            _ => decl_id,
+        };
+
         // Otherwise, construct the initializer
-        let init = match self.ast_context.index(decl_id).kind {
+        let mut init = match self.ast_context.index(decl_id).kind {
             // Zero initialize all of the fields
             CDeclKind::Struct {
                 ref fields,
                 platform_byte_size,
                 ..
             } => {
-                let name_decl_id = match self.ast_context.index(type_id).kind {
-                    CTypeKind::Typedef(decl_id) => decl_id,
-                    _ => decl_id,
-                };
-
-                let name = self
-                    .type_converter
-                    .borrow()
-                    .resolve_decl_name(name_decl_id)
-                    .unwrap();
+                let name = self.resolve_decl_inner_name(name_decl_id);
 
                 let fields = match *fields {
                     Some(ref fields) => fields,
@@ -4209,12 +4265,38 @@ impl<'c> Translation<'c> {
             )),
         };
 
+        if self.ast_context.has_inner_struct_decl(name_decl_id) {
+            // If the structure is split into an outer/inner,
+            // wrap the inner initializer using the outer structure
+            let outer_name = self.type_converter
+                .borrow()
+                .resolve_decl_name(name_decl_id)
+                .unwrap();
+
+            let outer_path = mk().path_expr(vec![outer_name]);
+            init = init.map(|i| mk().call_expr(outer_path, vec![i]));
+        };
+
         if init.is_pure() {
             // Insert the initializer into the cache, then return it
             self.zero_inits.borrow_mut().insert(decl_id, init.clone());
             Ok(init)
         } else {
             Err(TranslationError::generic("Expected no statements in zero initializer"))
+        }
+    }
+
+    fn resolve_decl_inner_name(&self, decl_id: CDeclId) -> String {
+        if self.ast_context.has_inner_struct_decl(decl_id) {
+            self.type_converter
+                .borrow_mut()
+                .resolve_decl_suffix_name(decl_id, "_Inner")
+                .to_owned()
+        } else {
+            self.type_converter
+                .borrow()
+                .resolve_decl_name(decl_id)
+                .unwrap()
         }
     }
 

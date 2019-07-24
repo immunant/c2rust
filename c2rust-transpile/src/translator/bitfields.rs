@@ -7,9 +7,9 @@ use std::ops::Index;
 
 use super::TranslationError;
 use crate::c_ast::{
-    BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CQualTypeId, CTypeId, MemberKind, UnOp,
+    BinOp, CDeclId, CDeclKind, CExprId, CQualTypeId, CTypeId,
 };
-use crate::translator::{simple_metaitem, ConvertedDecl, ExprContext, Translation};
+use crate::translator::{ExprContext, Translation};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use syntax::ast::{
@@ -18,7 +18,7 @@ use syntax::ast::{
 };
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
-use syntax_pos::{Span, DUMMY_SP};
+use syntax_pos::DUMMY_SP;
 
 use itertools::EitherOrBoth::{Both, Right};
 use itertools::Itertools;
@@ -226,14 +226,11 @@ impl<'a> Translation<'a> {
     ///     _pad: [u8; 2],
     /// }
     /// ```
-    pub fn convert_bitfield_struct_decl(
+    pub fn convert_bitfield_struct_fields(
         &self,
-        name: String,
-        manual_alignment: Option<u64>,
         platform_byte_size: u64,
-        span: Span,
         field_info: Vec<FieldInfo>,
-    ) -> Result<ConvertedDecl, TranslationError> {
+    ) -> Result<Vec<StructField>, TranslationError> {
         self.extern_crates.borrow_mut().insert("c2rust_bitfields");
 
         let item_store = &mut self.items.borrow_mut()[&self.main_file];
@@ -309,23 +306,7 @@ impl<'a> Translation<'a> {
                 FieldType::Regular { field, .. } => field_entries.push(field),
             }
         }
-
-        let mut repr_items = vec![simple_metaitem("C")];
-
-        if let Some(align) = manual_alignment {
-            repr_items.push(simple_metaitem(&format!("align({})", align)));
-        }
-
-        let repr_attr = mk().meta_item("repr", MetaItemKind::List(repr_items));
-
-        let item = mk()
-            .span(span)
-            .pub_()
-            .call_attr("derive", vec!["BitfieldStruct", "Clone", "Copy"])
-            .meta_item_attr(AttrStyle::Outer, repr_attr)
-            .struct_item(name, field_entries, false);
-
-        Ok(ConvertedDecl::Item(item))
+        Ok(field_entries)
     }
 
     /// Here we output a block to generate a struct literal initializer in.
@@ -651,45 +632,5 @@ impl<'a> Translation<'a> {
 
             return Ok(WithStmts::new(stmts, val));
         })
-    }
-
-    /// This method will convert a bitfield member one of four ways:
-    /// A) bf.a()
-    /// B) (*bf).a()
-    /// C) bf
-    /// D) (*bf)
-    ///
-    /// The first two are when we know this bitfield member is going to be read
-    /// from (default), possibly requiring a dereference first. The latter two
-    /// are generated when we are expecting to require a write, which will need
-    /// to make a method call with some input which we do not yet have access
-    /// to and will have to be handled elsewhere, IE `bf.set_a(1)`
-    pub fn convert_bitfield_member_expr(
-        &self,
-        ctx: ExprContext,
-        field_name: String,
-        expr_id: CExprId,
-        kind: MemberKind,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let mut val = match kind {
-            MemberKind::Dot => self.convert_expr(ctx, expr_id)?,
-            MemberKind::Arrow => {
-                if let CExprKind::Unary(_, UnOp::AddressOf, subexpr_id, _) =
-                    self.ast_context[expr_id].kind
-                {
-                    self.convert_expr(ctx, subexpr_id)?
-                } else {
-                    let val = self.convert_expr(ctx, expr_id)?;
-
-                    val.map(|v| mk().unary_expr(ast::UnOp::Deref, v))
-                }
-            }
-        };
-
-        if !ctx.is_bitfield_write() {
-            val = val.map(|v| mk().method_call_expr(v, field_name, vec![] as Vec<P<Expr>>));
-        }
-
-        Ok(val)
     }
 }

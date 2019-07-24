@@ -1,4 +1,5 @@
 #include <stdalign.h>
+#include <stddef.h>
 #include <stdio.h>
 
 struct int_pair_s {
@@ -80,22 +81,47 @@ DEFINE_TEST_STRUCT(S8) __attribute__((aligned(2)));
 DEFINE_TEST_STRUCT(S9) __attribute__((aligned(4)));
 DEFINE_TEST_STRUCT(S10) __attribute__((aligned(8)));
 DEFINE_TEST_STRUCT(S11) __attribute__((aligned(16)));
+DEFINE_TEST_STRUCT(S12) __attribute__((packed, aligned(1)));
+DEFINE_TEST_STRUCT(S13) __attribute__((packed, aligned(2)));
+DEFINE_TEST_STRUCT(S14) __attribute__((packed, aligned(4)));
+DEFINE_TEST_STRUCT(S15) __attribute__((packed, aligned(8)));
+DEFINE_TEST_STRUCT(S16) __attribute__((packed, aligned(16)));
 #undef DEFINE_TEST_STRUCT
 
 void alignment_entry(const unsigned sz, int buf[const]) {
     int i = 0;
 
-#define CHECK_TEST_STRUCT(s) do { buf[i++] = sizeof(s); buf[i++] = alignof(s); } while (0)
-    CHECK_TEST_STRUCT(struct S1);
-    CHECK_TEST_STRUCT(struct S2);
-    CHECK_TEST_STRUCT(struct S3);
-    CHECK_TEST_STRUCT(struct S4);
-    CHECK_TEST_STRUCT(struct S5);
-    CHECK_TEST_STRUCT(struct S6);
-    CHECK_TEST_STRUCT(struct S7);
-    CHECK_TEST_STRUCT(struct S8);
-    CHECK_TEST_STRUCT(struct S9);
-    CHECK_TEST_STRUCT(struct S10);
-    CHECK_TEST_STRUCT(struct S11);
+#define CHECK_TEST_STRUCT(S) \
+    do { \
+        struct S s = { .c = 42, .s = 1337, .ll = 65537 }; \
+        buf[i++] = sizeof(s); \
+        buf[i++] = alignof(s); \
+        buf[i++] = s.c; \
+        buf[i++] = s.s; \
+        buf[i++] = s.ll; \
+        buf[i++] = offsetof(struct S, c); \
+        buf[i++] = offsetof(struct S, s); \
+        buf[i++] = offsetof(struct S, ll); \
+        struct S sz = { }; \
+        buf[i++] = sz.c; \
+        buf[i++] = sz.s; \
+        buf[i++] = sz.ll; \
+    } while (0)
+    CHECK_TEST_STRUCT(S1);
+    CHECK_TEST_STRUCT(S2);
+    CHECK_TEST_STRUCT(S3);
+    CHECK_TEST_STRUCT(S4);
+    CHECK_TEST_STRUCT(S5);
+    CHECK_TEST_STRUCT(S6);
+    CHECK_TEST_STRUCT(S7);
+    CHECK_TEST_STRUCT(S8);
+    CHECK_TEST_STRUCT(S9);
+    CHECK_TEST_STRUCT(S10);
+    CHECK_TEST_STRUCT(S11);
+    CHECK_TEST_STRUCT(S12);
+    CHECK_TEST_STRUCT(S13);
+    CHECK_TEST_STRUCT(S14);
+    CHECK_TEST_STRUCT(S15);
+    CHECK_TEST_STRUCT(S16);
 #undef CHECK_TEST_STRUCT
 }

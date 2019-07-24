@@ -249,7 +249,23 @@ impl<'c> Translation<'c> {
                 }
             }
             CTypeKind::Struct(struct_id) => {
-                self.convert_struct_literal(ctx, struct_id, ids.as_ref())
+                let mut literal = self.convert_struct_literal(ctx, struct_id, ids.as_ref());
+                if self.ast_context.has_inner_struct_decl(struct_id) {
+                    // If the structure is split into an outer/inner,
+                    // wrap the inner initializer using the outer structure
+                    let outer_name = self.type_converter
+                        .borrow()
+                        .resolve_decl_name(struct_id)
+                        .unwrap();
+
+                    let outer_path = mk().path_expr(vec![outer_name]);
+                    literal = literal.map(|lit_ws| {
+                        lit_ws.map(|lit| {
+                            mk().call_expr(outer_path, vec![lit])
+                        })
+                    });
+                };
+                literal
             }
             CTypeKind::Union(union_id) => {
                 self.convert_union_literal(ctx, union_id, ids.as_ref(), ty, opt_union_field_id)
@@ -365,11 +381,7 @@ impl<'c> Translation<'c> {
             _ => panic!("Struct literal declaration mismatch"),
         };
 
-        let struct_name = self
-            .type_converter
-            .borrow()
-            .resolve_decl_name(struct_id)
-            .unwrap();
+        let struct_name = self.resolve_decl_inner_name(struct_id);
 
         if has_bitfields {
             return self.convert_bitfield_struct_literal(
