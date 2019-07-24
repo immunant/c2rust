@@ -62,10 +62,11 @@ class CStaticLibrary:
 
 
 class CFile:
-    def __init__(self, path: str, flags: Set[str] = None) -> None:
+    def __init__(self, logLevel: str, path: str, flags: Set[str] = None) -> None:
         if not flags:
             flags = set()
 
+        self.logLevel = logLevel
         self.path = path
         self.disable_incremental_relooper = "disable_incremental_relooper" in flags
         self.disallow_current_block = "disallow_current_block" in flags
@@ -246,7 +247,7 @@ class TestDirectory:
         if "skip_translation" in file_flags:
             return
 
-        return CFile(path, file_flags)
+        return CFile(self.logLevel, path, file_flags)
 
     def _read_rust_test_file(self, path: str) -> TestFile:
         with open(path, 'r', encoding="utf-8") as file:
