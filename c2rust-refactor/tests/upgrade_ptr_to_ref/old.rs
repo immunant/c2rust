@@ -1,3 +1,11 @@
+#![feature(rustc_private)]
+extern crate libc;
+
+extern "C" {
+    #[no_mangle]
+    fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn ten_mul(acc: *mut f64, digit: i32, r: *const f64) -> i32 {
     *acc *= 10i32 as f64;
@@ -22,4 +30,25 @@ struct Ptrs {
     s: *const u32,
     s2: *mut u32,
     boxed: *mut u32,
+}
+
+struct SizedData {
+    buf: *mut u32,
+    bsize: usize,
+}
+
+unsafe fn init_buf(sd: *mut SizedData) -> i32 {
+    let mut buf: *mut u32 = 0 as *mut u32;
+
+    buf = malloc((*sd).bsize as libc::c_ulong) as *mut u32;
+
+    if buf.is_null() {
+        return 1;
+    }
+
+    *buf.offset(0) = 1;
+
+    (*sd).buf = buf;
+
+    return 0;
 }

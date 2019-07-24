@@ -3,14 +3,20 @@ use std::fmt;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaString, LuaTable, LuaValue};
 use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
-use syntax::ast::{self, DUMMY_NODE_ID, Expr, NodeId};
+use syntax::ThinVec;
+use syntax::ast::{self, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, MacDelimiter, NodeId};
 use syntax::mut_visit::MutVisitor;
+use syntax::parse::token::{Nonterminal, Token, TokenKind};
 use syntax::ptr::P;
+use syntax::source_map::dummy_spanned;
+use syntax::tokenstream::TokenTree;
+use syntax_pos::DUMMY_SP;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::MutVisit;
@@ -617,5 +623,70 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         methods.add_method("get_use_def", |lua_ctx, this, id: u32| {
             this.cx.resolve_use_id(ast::NodeId::from_u32(id)).res.to_lua(lua_ctx)
         });
+
+        methods.add_method("binary_expr", |_lua_ctx, _this, (op, lhs, rhs): (LuaString, LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
+            let op = match op.to_str()? {
+                "Add" => BinOpKind::Add,
+                "Div" => BinOpKind::Div,
+                _ => unimplemented!("BinOpKind parsing from string"),
+            };
+            let lhs = lhs.borrow().clone();
+            let rhs = rhs.borrow().clone();
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Binary(dummy_spanned(op), lhs, rhs),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("ident_path_expr", |_lua_ctx, _this, path: LuaString| {
+            let path = syntax::ast::Path::from_ident(Ident::from_str(path.to_str()?));
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Path(None, path),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("vec_mac_init_num", |_lua_ctx, _this, (init, num): (LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
+            let init = Rc::new(Nonterminal::NtExpr(init.borrow().clone()));
+            let num = Rc::new(Nonterminal::NtExpr(num.borrow().clone()));
+            let macro_body = vec![
+                TokenTree::Token(Token { kind: TokenKind::Interpolated(init), span: DUMMY_SP }),
+                TokenTree::Token(Token { kind: TokenKind::Semi, span: DUMMY_SP }),
+                TokenTree::Token(Token { kind: TokenKind::Interpolated(num), span: DUMMY_SP}),
+            ];
+            let mac = mk().mac(mk().path("vec"), macro_body, MacDelimiter::Bracket);
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Mac(mac),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        // methods.add_method("unsuffixed_int_lit_expr", |_lua_ctx, _this, int: u32| {
+        //     let lit = Lit {
+        //         lit: Lit,
+        //         node: LitKind::Int,
+        //         span: DUMMY_SP,
+        //     };
+        //     let expr = P(Expr {
+        //         id: DUMMY_NODE_ID,
+        //         node: ExprKind::Literal(lit),
+        //         span: DUMMY_SP,
+        //         attrs: ThinVec::new(),
+        //     });
+
+        //     Ok(LuaAstNode::new(expr))
+        // });
     }
 }

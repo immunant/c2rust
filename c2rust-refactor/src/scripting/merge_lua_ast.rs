@@ -10,7 +10,7 @@ use syntax::ast::{
     UseTree, UseTreeKind, Arm, Guard,
 };
 use syntax::source_map::symbol::Symbol;
-use syntax::source_map::{DUMMY_SP, Span, SpanData, Spanned};
+use syntax::source_map::{DUMMY_SP, dummy_spanned, Span, SpanData};
 use syntax::ptr::P;
 use syntax::ThinVec;
 
@@ -18,13 +18,6 @@ use std::rc::Rc;
 
 use crate::ast_manip::fn_edit::{FnKind, FnLike};
 use crate::scripting::into_lua_ast::{LuaSpan, LuaSyntaxContext};
-
-pub(crate) fn dummy_spanned<T>(node: T) -> Spanned<T> {
-    Spanned {
-        node,
-        span: DUMMY_SP,
-    }
-}
 
 fn dummy_expr() -> P<Expr> {
     P(Expr {
