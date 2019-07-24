@@ -1548,18 +1548,23 @@ impl Builder {
         })
     }
 
-    pub fn struct_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
+    pub fn struct_item<I>(self, name: I, fields: Vec<StructField>, tuple: bool) -> P<Item>
     where
         I: Make<Ident>,
     {
         let name = name.make(&self);
+        let variant_data = if tuple {
+            VariantData::Tuple(fields, DUMMY_NODE_ID)
+        } else {
+            VariantData::Struct(fields, false)
+        };
         Self::item(
             name,
             self.attrs,
             self.vis,
             self.span,
             self.id,
-            ItemKind::Struct(VariantData::Struct(fields, false), self.generics),
+            ItemKind::Struct(variant_data, self.generics),
         )
     }
 

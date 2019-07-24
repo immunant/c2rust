@@ -323,7 +323,7 @@ impl<'a> Translation<'a> {
             .pub_()
             .call_attr("derive", vec!["BitfieldStruct", "Clone", "Copy"])
             .meta_item_attr(AttrStyle::Outer, repr_attr)
-            .struct_item(name, field_entries);
+            .struct_item(name, field_entries, false);
 
         Ok(ConvertedDecl::Item(item))
     }

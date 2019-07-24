@@ -1464,7 +1464,7 @@ impl<'c> Translation<'c> {
                         .pub_()
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .meta_item_attr(AttrStyle::Outer, repr_attr)
-                        .struct_item(name, field_entries),
+                        .struct_item(name, field_entries, false),
                 ))
             }
 
@@ -1505,7 +1505,7 @@ impl<'c> Translation<'c> {
                             .pub_()
                             .call_attr("derive", vec!["Copy", "Clone"])
                             .call_attr("repr", vec!["C"])
-                            .struct_item(name, vec![]),
+                            .struct_item(name, vec![], false),
                     )
                 } else {
                     ConvertedDecl::Item(
