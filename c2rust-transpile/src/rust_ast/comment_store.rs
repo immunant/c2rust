@@ -82,7 +82,7 @@ impl CommentStore {
 
     /// Add a comment at the current position, then return the `Span` that should be given to
     /// something we want associated with this comment.
-    pub fn add_comment_lines(&mut self, lines: &[String]) -> Span {
+    pub fn add_comment_lines(&mut self, lines: &[String]) -> Option<Span> {
         fn translate_comment(comment: &String) -> String {
             comment
                 .lines()
@@ -103,13 +103,13 @@ impl CommentStore {
         let lines: Vec<String> = lines.into_iter().map(translate_comment).collect();
 
         if lines.is_empty() {
-            DUMMY_SP
+            None
         } else {
-            self.add_comment(comments::Comment {
+            Some(self.add_comment(comments::Comment {
                 style: comments::CommentStyle::Isolated,
                 lines: lines,
                 pos: BytePos(0), // overwritten in `add_comment`
-            })
+            }))
         }
     }
 }

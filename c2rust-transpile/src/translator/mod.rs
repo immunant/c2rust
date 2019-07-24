@@ -1316,15 +1316,11 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         decl_id: CDeclId,
     ) -> Result<ConvertedDecl, TranslationError> {
-        let mut s = {
-            match self
-                .comment_context
-                .get_decl_comment(decl_id)
-            {
-                Some(decl_cmt) => self.comment_store.borrow_mut().add_comment_lines(decl_cmt),
-                None => DUMMY_SP,
-            }
-        };
+        let mut s = self
+            .comment_context
+            .get_decl_comment(decl_id)
+            .and_then(|decl_cmt| self.comment_store.borrow_mut().add_comment_lines(decl_cmt))
+            .unwrap_or(DUMMY_SP);
 
         let decl = self
             .ast_context
@@ -1747,7 +1743,8 @@ impl<'c> Translation<'c> {
                     s = self
                         .comment_store
                         .borrow_mut()
-                        .add_comment_lines(&[comment]);
+                        .add_comment_lines(&[comment])
+                        .unwrap_or(s);
 
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
 
@@ -2337,7 +2334,8 @@ impl<'c> Translation<'c> {
                     let span = self
                         .comment_store
                         .borrow_mut()
-                        .add_comment_lines(&[comment]);
+                        .add_comment_lines(&[comment])
+                        .unwrap_or(DUMMY_SP);
                     let static_item =
                         mk().span(span)
                             .mutbl()

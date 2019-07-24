@@ -391,7 +391,7 @@ impl StructureState {
                 }
             }
             Singleton(StmtOrComment::Stmt(mut s)) => {
-                s.span = comment_store.add_comment_lines(&queued_comments);
+                s.span = comment_store.add_comment_lines(&queued_comments).unwrap_or(s.span);
                 queued_comments.clear();
                 output.push(s);
             }
@@ -404,7 +404,7 @@ impl StructureState {
             Goto(to) => {
                 // Assign to `current_block` the next label we want to go to.
 
-                let s = comment_store.add_comment_lines(&queued_comments);
+                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let lbl_expr = if self.debug_labels {
@@ -421,7 +421,7 @@ impl StructureState {
             Match(cond, cases) => {
                 // Make a `match`.
 
-                let s = comment_store.add_comment_lines(&queued_comments);
+                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let arms: Vec<Arm> = cases
@@ -451,7 +451,7 @@ impl StructureState {
                 //   * `if <cond-expr> { } else { .. }` turns into `if !<cond-expr> { .. }`
                 //
 
-                let s = comment_store.add_comment_lines(&queued_comments);
+                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let then = {
@@ -510,7 +510,7 @@ impl StructureState {
             GotoTable(cases, then) => {
                 // Dispatch based on the next `current_block` value.
 
-                let s = comment_store.add_comment_lines(&queued_comments);
+                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let mut arms: Vec<Arm> = cases
@@ -556,7 +556,7 @@ impl StructureState {
                 //   * Loops that start with an `if <cond-expr> { break; }` get converted into `while` loops
                 //
 
-                let s = comment_store.add_comment_lines(&queued_comments);
+                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let body = {
@@ -607,7 +607,7 @@ impl StructureState {
             Exit(exit_style, lbl) => {
                 // Make a (possibly labelled) `break` or `continue`.
 
-                let s = comment_store.add_comment_lines(&queued_comments);
+                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let lbl = lbl.map(|l| l.pretty_print());
