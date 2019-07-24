@@ -24,7 +24,7 @@ macro_rules! diag {
     ($type:path, $($arg:tt)*) => (warn!(target: &$type.to_string(), $($arg)*))
 }
 
-pub fn init(mut enabled_warnings: HashSet<Diagnostic>) {
+pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilter) {
     enabled_warnings.extend(DEFAULT_WARNINGS.iter().cloned());
 
     let colors = ColoredLevelConfig::new();
@@ -51,7 +51,7 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>) {
                 warn_flag,
             ))
         })
-        .level(log::LevelFilter::Warn)
+        .level(log_level)
         .filter(move |metadata| {
             if enabled_warnings.contains(&Diagnostic::All) {
                 return true;

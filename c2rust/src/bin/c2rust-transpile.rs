@@ -32,6 +32,16 @@ fn main() {
         .map(|s| Diagnostic::from_str(s).unwrap())
         .collect();
 
+    let log_level = match matches.value_of("log-level") {
+        Some("off") => log::LevelFilter::Off,
+        Some("error") => log::LevelFilter::Error,
+        Some("warn") => log::LevelFilter::Warn,
+        Some("info") => log::LevelFilter::Info,
+        Some("debug") => log::LevelFilter::Debug,
+        Some("trace") => log::LevelFilter::Trace,
+        _ => panic!("Invalid log level"),
+    };
+
     let mut tcfg = TranspilerConfig {
         dump_untyped_context: matches.is_present("dump-untyped-clang-ast"),
         dump_typed_context: matches.is_present("dump-typed-clang-ast"),
@@ -105,6 +115,7 @@ fn main() {
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: matches.is_present("emit-no-std"),
         enabled_warnings,
+        log_level,
     };
     // main implies emit-build-files
     if tcfg.main != None {

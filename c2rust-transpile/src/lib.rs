@@ -107,6 +107,7 @@ pub struct TranspilerConfig {
     pub output_dir: Option<PathBuf>,
     pub translate_const_macros: bool,
     pub disable_refactoring: bool,
+    pub log_level: log::LevelFilter,
 
     // Options that control build files
     /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
@@ -118,7 +119,7 @@ pub struct TranspilerConfig {
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
-    diagnostics::init(tcfg.enabled_warnings.clone());
+    diagnostics::init(tcfg.enabled_warnings.clone(), tcfg.log_level);
 
     let cmds = get_compile_commands(cc_db, &tcfg.filter).expect(&format!(
         "Could not parse compile commands from {}",

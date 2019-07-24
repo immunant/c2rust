@@ -166,3 +166,14 @@ args:
       long: disable-refactoring
       help: Disable running refactoring tool after translation
       takes_value: false
+  - log-level:
+      long: log-level
+      help: Logging level
+      possible_values:
+        - off
+        - error
+        - warn
+        - info
+        - debug
+        - trace
+      default_value: warn
