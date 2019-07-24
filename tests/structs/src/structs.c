@@ -57,3 +57,45 @@ typedef struct {
 size_t alignment_of_aligned8_struct(void) {
     return alignof(Aligned8Struct);
 }
+
+#define DEFINE_TEST_STRUCT(x) struct x { char c; short s; long long ll; }
+DEFINE_TEST_STRUCT(S1);
+
+#pragma pack(push, 1)
+DEFINE_TEST_STRUCT(S2);
+
+#pragma pack(2)
+DEFINE_TEST_STRUCT(S3);
+
+#pragma pack(4)
+DEFINE_TEST_STRUCT(S4);
+
+#pragma pack(8)
+DEFINE_TEST_STRUCT(S5);
+#pragma pack(pop)
+
+DEFINE_TEST_STRUCT(S6) __attribute__((packed));
+DEFINE_TEST_STRUCT(S7) __attribute__((aligned(1)));
+DEFINE_TEST_STRUCT(S8) __attribute__((aligned(2)));
+DEFINE_TEST_STRUCT(S9) __attribute__((aligned(4)));
+DEFINE_TEST_STRUCT(S10) __attribute__((aligned(8)));
+DEFINE_TEST_STRUCT(S11) __attribute__((aligned(16)));
+#undef DEFINE_TEST_STRUCT
+
+void alignment_entry(const unsigned sz, int buf[const]) {
+    int i = 0;
+
+#define CHECK_TEST_STRUCT(s) do { buf[i++] = sizeof(s); buf[i++] = alignof(s); } while (0)
+    CHECK_TEST_STRUCT(struct S1);
+    CHECK_TEST_STRUCT(struct S2);
+    CHECK_TEST_STRUCT(struct S3);
+    CHECK_TEST_STRUCT(struct S4);
+    CHECK_TEST_STRUCT(struct S5);
+    CHECK_TEST_STRUCT(struct S6);
+    CHECK_TEST_STRUCT(struct S7);
+    CHECK_TEST_STRUCT(struct S8);
+    CHECK_TEST_STRUCT(struct S9);
+    CHECK_TEST_STRUCT(struct S10);
+    CHECK_TEST_STRUCT(struct S11);
+#undef CHECK_TEST_STRUCT
+}

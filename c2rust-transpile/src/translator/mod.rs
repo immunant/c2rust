@@ -1428,10 +1428,27 @@ impl<'c> Translation<'c> {
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
-
-                if is_packed || max_field_alignment == Some(1) {
-                    reprs.push(simple_metaitem("packed"));
+                let max_field_alignment = if is_packed {
+                    // `__attribute__((packed))` forces a max alignment of 1,
+                    // overriding `#pragma pack`; this is also what clang does
+                    Some(1)
+                } else {
+                    max_field_alignment
                 };
+                match max_field_alignment {
+                    Some(1) => reprs.push(simple_metaitem("packed")),
+                    Some(mfi) if mfi > 1 => {
+                        let lit = mk().int_lit(mfi as u128, LitIntType::Unsuffixed);
+                        let inner = mk().meta_item(
+                            vec!["packed"],
+                            MetaItemKind::List(vec![
+                                mk().nested_meta_item(NestedMetaItem::Literal(lit))
+                            ]),
+                        );
+                        reprs.push(mk().nested_meta_item(NestedMetaItem::MetaItem(inner)));
+                    }
+                    _ => { }
+                }
                 // https://github.com/rust-lang/rust/issues/33626
                 if let Some(alignment) = manual_alignment {
                     let lit = mk().int_lit(alignment as u128, LitIntType::Unsuffixed);
