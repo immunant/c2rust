@@ -4286,6 +4286,9 @@ impl<'c> Translation<'c> {
         }
     }
 
+    /// Resolve the inner name of a structure declaration
+    /// if there is one (if the structure was split),
+    /// otherwise just return the normal name
     fn resolve_decl_inner_name(&self, decl_id: CDeclId) -> String {
         if self.ast_context.has_inner_struct_decl(decl_id) {
             self.type_converter
