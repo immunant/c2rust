@@ -457,6 +457,15 @@ impl UserData for LuaAstNode<P<Expr>> {
             Ok(())
         });
 
+        methods.add_method("to_method_call", |_lua_ctx, this, (segment, exprs): (LuaString, Vec<LuaAstNode<P<Expr>>>)| {
+            let segment = PathSegment::from_ident(Ident::from_str(segment.to_str()?));
+            let exprs = exprs.iter().map(|e| e.borrow().clone()).collect();
+
+            this.borrow_mut().node = ExprKind::MethodCall(segment, exprs);
+
+            Ok(())
+        });
+
         methods.add_method("to_field", |_lua_ctx, this, (expr, ident): (LuaAstNode<P<Expr>>, LuaString)| {
             let expr = expr.borrow().clone();
 

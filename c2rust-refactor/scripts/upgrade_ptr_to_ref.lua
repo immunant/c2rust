@@ -212,15 +212,15 @@ function Visitor:visit_expr(expr)
                     path_expr:to_call{path_expr}
 
                     -- TODO: zero-init will only work for numbers, not structs
-                    -- local init = self.tctx:lit()
-                    local binary_expr = self.tctx:binary_expr("Div", param_expr, path_expr)
+                    local init = self.tctx:int_lit_expr(0, nil)
+                    local usize_ty = self.tctx:ident_path_ty("usize")
+                    local cast_expr = self.tctx:cast_expr(param_expr, usize_ty)
+                    local binary_expr = self.tctx:binary_expr("Div", cast_expr, path_expr)
                     local some_path_expr = self.tctx:ident_path_expr("Some")
-                    local vec_expr = self.tctx:vec_mac_init_num(some_path_expr, binary_expr)
+                    local vec_expr = self.tctx:vec_mac_init_num(init, binary_expr)
 
-                    vec_expr:to_field(vec_expr, "into_boxed_slice")
-                    vec_expr:to_call{vec_expr}
+                    vec_expr:to_method_call("into_boxed_slice", {vec_expr})
                     rhs:to_call{some_path_expr, vec_expr}
-                    -- rhs:to_call{some_path_expr, box_expr}
                     expr:set_exprs{lhs, rhs}
                 end
             end

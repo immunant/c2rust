@@ -10,11 +10,15 @@ use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaString, Lua
 use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
 use syntax::ThinVec;
-use syntax::ast::{self, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, MacDelimiter, NodeId};
+use syntax::ast::{
+    self, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, MacDelimiter, NodeId,
+    Ty, TyKind,
+};
 use syntax::mut_visit::MutVisitor;
-use syntax::parse::token::{Nonterminal, Token, TokenKind};
+use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
 use syntax::ptr::P;
 use syntax::source_map::dummy_spanned;
+use syntax::symbol::Symbol;
 use syntax::tokenstream::TokenTree;
 use syntax_pos::DUMMY_SP;
 
@@ -654,6 +658,17 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             Ok(LuaAstNode::new(expr))
         });
 
+        methods.add_method("ident_path_ty", |_lua_ctx, _this, path: LuaString| {
+            let path = syntax::ast::Path::from_ident(Ident::from_str(path.to_str()?));
+            let expr = P(Ty {
+                id: DUMMY_NODE_ID,
+                node: TyKind::Path(None, path),
+                span: DUMMY_SP,
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
         methods.add_method("vec_mac_init_num", |_lua_ctx, _this, (init, num): (LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
             let init = Rc::new(Nonterminal::NtExpr(init.borrow().clone()));
             let num = Rc::new(Nonterminal::NtExpr(num.borrow().clone()));
@@ -673,20 +688,57 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             Ok(LuaAstNode::new(expr))
         });
 
-        // methods.add_method("unsuffixed_int_lit_expr", |_lua_ctx, _this, int: u32| {
-        //     let lit = Lit {
-        //         lit: Lit,
-        //         node: LitKind::Int,
-        //         span: DUMMY_SP,
-        //     };
-        //     let expr = P(Expr {
-        //         id: DUMMY_NODE_ID,
-        //         node: ExprKind::Literal(lit),
-        //         span: DUMMY_SP,
-        //         attrs: ThinVec::new(),
-        //     });
+        methods.add_method("int_lit_expr", |_lua_ctx, _this, (int, _suffix): (i64, Option<LuaString>)| {
+            let lit = Lit {
+                token: TokenLit {
+                    kind: TokenLitKind::Integer,
+                    symbol: Symbol::intern(&format!("{}", int)),
+                    suffix: None,
+                },
+                node: LitKind::Int(int as u128, LitIntType::Unsuffixed),
+                span: DUMMY_SP,
+            };
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Lit(lit),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
 
-        //     Ok(LuaAstNode::new(expr))
-        // });
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("int_lit_expr", |_lua_ctx, _this, (int, _suffix): (i64, Option<LuaString>)| {
+            let lit = Lit {
+                token: TokenLit {
+                    kind: TokenLitKind::Integer,
+                    symbol: Symbol::intern(&format!("{}", int)),
+                    suffix: None,
+                },
+                node: LitKind::Int(int as u128, LitIntType::Unsuffixed),
+                span: DUMMY_SP,
+            };
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Lit(lit),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("cast_expr", |_lua_ctx, _this, (expr, ty): (LuaAstNode<P<Expr>>, LuaAstNode<P<Ty>>)| {
+            let expr = expr.borrow().clone();
+            let ty = ty.borrow().clone();
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Cast(expr, ty),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
     }
 }
