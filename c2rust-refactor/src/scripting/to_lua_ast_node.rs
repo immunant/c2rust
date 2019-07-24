@@ -7,7 +7,9 @@ use rustc::hir::def::Res;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::mut_visit::*;
+use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{DUMMY_SP, dummy_spanned};
+use syntax::symbol::Symbol;
 use syntax_pos::Span;
 
 use rlua::{Context, Error, Function, Result, Scope, ToLua, UserData, UserDataMethods, Value};
@@ -484,6 +486,22 @@ impl UserData for LuaAstNode<P<Expr>> {
 
         methods.add_method("to_path", |_lua_ctx, this, path: LuaAstNode<Path>| {
             this.borrow_mut().node = ExprKind::Path(None, path.borrow().clone());
+
+            Ok(())
+        });
+
+        methods.add_method("to_bool_lit", |_lua_ctx, this, b: bool| {
+            let lit = Lit {
+                token: TokenLit {
+                    kind: TokenLitKind::Bool,
+                    symbol: Symbol::intern(&format!("{}", b)),
+                    suffix: None,
+                },
+                node: LitKind::Bool(b),
+                span: DUMMY_SP,
+            };
+
+            this.borrow_mut().node = ExprKind::Lit(lit);
 
             Ok(())
         });

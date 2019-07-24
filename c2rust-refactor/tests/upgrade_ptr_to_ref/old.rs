@@ -52,3 +52,19 @@ unsafe fn init_buf(sd: *mut SizedData) -> i32 {
 
     return 0;
 }
+
+unsafe fn init_buf2(sd: *mut SizedData) -> i32 {
+    let mut buf: *mut u32 = 0 as *mut u32;
+
+    buf = malloc((*sd).bsize as libc::c_ulong) as *mut u32;
+
+    if buf.is_null() {
+        return 1;
+    }
+
+    *buf.offset(0) = 1;
+
+    (*sd).buf = buf;
+
+    return 0;
+}

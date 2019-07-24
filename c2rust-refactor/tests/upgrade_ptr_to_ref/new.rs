@@ -55,3 +55,20 @@ unsafe fn init_buf(sd: &mut SizedData) -> i32 {
 
     return 0;
 }
+
+unsafe fn init_buf2(sd: &mut SizedData) -> i32 {
+    let mut buf;
+
+    buf = vec![0; sd.bsize as libc::c_ulong as usize / ::core::mem::size_of::<u32>()]
+        .into_boxed_slice();
+
+    if false {
+        return 1;
+    }
+
+    buf[0] = 1;
+
+    (sd).buf = Some(buf);
+
+    return 0;
+}

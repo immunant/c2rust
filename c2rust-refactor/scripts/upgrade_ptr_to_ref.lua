@@ -58,7 +58,11 @@ function RefCfg:is_opt_box_slice()
 end
 
 function RefCfg:is_slice_any()
-    return self:is_slice() or self:is_opt_box_slice()
+    return self:is_slice() or self:is_opt_box_slice() or self:is_box_slice()
+end
+
+function RefCfg:is_box_slice()
+    return self.mod_type == "box_slice"
 end
 
 Visitor = {}
@@ -66,7 +70,9 @@ Visitor = {}
 function Visitor.new(tctx, node_id)
     self = {}
     self.tctx = tctx
+    -- NodeId -> RefCfg
     self.node_ids = node_ids
+    -- PatHrId -> Variable
     self.vars = {}
 
     setmetatable(self, Visitor)
@@ -85,6 +91,7 @@ function upgrade_ptr(ptr_ty, conversion_cfg)
         mut_ty:set_ty(pointee_ty)
     end
 
+    -- REVIEW: Maybe there's a way to clean up this flow:
     if conversion_cfg:is_opt_box() then
         local pointee_ty = mut_ty:get_ty()
 
@@ -137,9 +144,10 @@ function Visitor:visit_expr(expr)
 
             if derefed_expr:get_kind() == "Path" then
                 local id = self.tctx:get_expr_path_hrid(derefed_expr)
+                local var = self.vars[id]
 
                 -- This is a path we're expecting to modify
-                if self.vars[id] then
+                if var and self.node_ids[var.id] then
                     expr:set_exprs{derefed_expr}
                 end
             end
@@ -186,19 +194,28 @@ function Visitor:visit_expr(expr)
                 expr:to_index(unwrapped_expr, offset_expr)
             end
         end
-    -- p.is_null() -> p.is_some()
+    -- p.is_null() -> p.is_none() or false when not using an option
     elseif expr:get_method_name() == "is_null" then
-        expr:set_method_name("is_none")
-    -- p = malloc(X) as *mut T -> p = Some(vec![0; X / size_of<T>].into_boxed_slice())
+        local id = self.tctx:get_expr_path_hrid(expr:get_exprs()[1])
+        local var = self.vars[id]
+
+        if var and self.node_ids[var.id]:is_box_slice() then -- is_box_any?
+            expr:to_bool_lit(false)
+        else
+            expr:set_method_name("is_none")
+        end
     elseif expr_kind == "Assign" then
         local exprs = expr:get_exprs()
         local lhs = exprs[1]
         local rhs = exprs[2]
-
+        local rhs_kind = rhs:get_kind()
         local id = self.tctx:get_expr_path_hrid(lhs)
         local var = self.vars[id]
 
-        if rhs:get_kind() == "Cast" then
+        -- p = malloc(X) as *mut T -> p = Some(vec![0; X / size_of<T>].into_boxed_slice())
+        -- or p = vec![0; X / size_of<T>].into_boxed_slice()
+        if rhs_kind == "Cast" then
+            local conversion_cfg = self.node_ids[var.id]
             local cast_expr = rhs:get_exprs()[1]
             local cast_ty = rhs:get_ty()
 
@@ -219,21 +236,51 @@ function Visitor:visit_expr(expr)
                     path_expr:to_path(path)
                     path_expr:to_call{path_expr}
 
-                    -- TODO: zero-init will only work for numbers, not structs
+                    -- TODO: zero-init will only work for numbers, not structs/unions
                     local init = self.tctx:int_lit_expr(0, nil)
                     local usize_ty = self.tctx:ident_path_ty("usize")
                     local cast_expr = self.tctx:cast_expr(param_expr, usize_ty)
                     local binary_expr = self.tctx:binary_expr("Div", cast_expr, path_expr)
-                    local some_path_expr = self.tctx:ident_path_expr("Some")
                     local vec_expr = self.tctx:vec_mac_init_num(init, binary_expr)
 
                     vec_expr:to_method_call("into_boxed_slice", {vec_expr})
-                    rhs:to_call{some_path_expr, vec_expr}
+
+                    -- Only wrap in Some if we're assigning to an opt variable
+                    if conversion_cfg:is_opt_any() then
+                        local some_path_expr = self.tctx:ident_path_expr("Some")
+                        rhs:to_call{some_path_expr, vec_expr}
+                    else
+                        rhs = vec_expr
+                    end
+
+                    expr:set_exprs{lhs, rhs}
+                end
+            end
+        -- lhs = rhs -> lhs = Some(rhs)
+        elseif rhs_kind == "Path" then
+            local id = self.tctx:get_expr_path_hrid(rhs)
+            local var = self.vars[id]
+
+            if var and self.node_ids[var.id]:is_box_slice() then -- is_box_any?
+                local lhs_ty = self.tctx:get_expr_ty(lhs)
+
+                -- If lhs was a ptr, and rhs isn't wrapped in some, wrap it
+                -- TODO: Validate rhs needs to be wrapped
+                if lhs_ty:get_kind() == "Ptr" then
+                    local some_path_expr = self.tctx:ident_path_expr("Some")
+
+                    rhs:to_call{some_path_expr, rhs}
                     expr:set_exprs{lhs, rhs}
                 end
             end
         end
     end
+end
+
+-- HrIds may be reused in different functions, so we should clear them out
+-- so we don't accidentally access old info
+function Visitor:visit_fn_decl(fn_decl)
+    self.vars = {}
 end
 
 function Visitor:visit_item_kind(item_kind)
@@ -261,23 +308,45 @@ function Visitor:visit_struct_field(field)
     end
 end
 
+function is_null_ptr(expr)
+    if expr and expr:get_kind() == "Cast" then
+        local cast_expr = expr:get_exprs()[1]
+        local cast_ty = expr:get_ty()
+
+        if cast_expr:get_lit():get_value() == 0 and cast_ty:get_kind() == "Ptr" then
+            return true
+        end
+    end
+
+    return false
+end
+
 function Visitor:visit_local(locl)
     local local_id = locl:get_id()
     local conversion_cfg = self.node_ids[local_id]
 
-    -- let x: *mut T = 0 as *mut T; -> let x = None;
-    if conversion_cfg and conversion_cfg:is_opt_any() then
-        local init = locl:get_init()
+    -- let x: *mut T = 0 as *mut T; -> let mut x = None;
+    -- or let mut x;
+    if conversion_cfg then
+        if conversion_cfg:is_opt_any() then
+            local init = locl:get_init()
 
-        if init and init:get_kind() == "Cast" then
-            local cast_expr = init:get_exprs()[1]
-            local cast_ty = init:get_ty()
-
-            if cast_expr:get_lit():get_value() == 0 and cast_ty:get_kind() == "Ptr" then
+            if is_null_ptr(init) then
                 init:to_ident_path("None")
 
                 locl:set_ty(nil)
                 locl:set_init(init)
+
+                local arg_pat_hrid = self.tctx:get_nodeid_hrid(locl:get_pat_id())
+
+                self.vars[arg_pat_hrid] = Variable.new(local_id, true)
+            end
+        elseif conversion_cfg:is_box_slice() then
+            local init = locl:get_init()
+
+            if is_null_ptr(init) then
+                locl:set_ty(nil)
+                locl:set_init(nil)
 
                 local arg_pat_hrid = self.tctx:get_nodeid_hrid(locl:get_pat_id())
 
@@ -302,6 +371,8 @@ refactor:transform(
             [151] = RefCfg.new("opt_box_slice", nil),
             [159] = RefCfg.new("ref", nil),
             [167] = RefCfg.new("opt_box_slice", nil),
+            [221] = RefCfg.new("ref", nil),
+            [229] = RefCfg.new("box_slice", nil),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_ids))
     end

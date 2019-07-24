@@ -30,6 +30,7 @@ use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
 use crate::matcher::{mut_visit_match_with, MatchCtxt, Pattern, Subst, TryMatch};
 use crate::path_edit::fold_resolved_paths_with_id;
+use crate::reflect::reflect_tcx_ty;
 use crate::RefactorCtxt;
 
 pub mod ast_visitor;
@@ -739,6 +740,13 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             });
 
             Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("get_expr_ty", |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
+            let rty = this.cx.node_type(expr.borrow().id);
+            let ty = reflect_tcx_ty(this.cx.ty_ctxt(), rty);
+
+            Ok(LuaAstNode::new(ty))
         });
     }
 }
