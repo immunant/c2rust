@@ -176,11 +176,20 @@ function Visitor:visit_expr(expr)
             -- We only want to apply this operation if we're converting
             -- a pointer to an array
             if var and self.node_ids[var.id]:is_slice_any() and offset_expr then
+                -- If we're using an option, we must unwrap (or map/match)
+                if self.node_ids[var.id]:is_opt_any() then
+                    -- TODO: or as_ref
+                    unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
+                    unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
+                end
+
                 expr:to_index(unwrapped_expr, offset_expr)
             end
         end
+    -- p.is_null() -> p.is_some()
     elseif expr:get_method_name() == "is_null" then
         expr:set_method_name("is_none")
+    -- p = malloc(X) as *mut T -> p = Some(vec![0; X / size_of<T>].into_boxed_slice())
     elseif expr_kind == "Assign" then
         local exprs = expr:get_exprs()
         local lhs = exprs[1]
@@ -207,7 +216,6 @@ function Visitor:visit_expr(expr)
 
                     path:set_segments{"", "core", "mem", "size_of"}
                     path:set_generic_angled_arg_tys(4, {pointee_ty})
-                    -- TODO: usize cast
                     path_expr:to_path(path)
                     path_expr:to_call{path_expr}
 

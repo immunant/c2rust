@@ -49,7 +49,7 @@ unsafe fn init_buf(sd: &mut SizedData) -> i32 {
         return 1;
     }
 
-    buf[0] = 1;
+    buf.as_mut().unwrap()[0] = 1;
 
     (sd).buf = buf;
 
