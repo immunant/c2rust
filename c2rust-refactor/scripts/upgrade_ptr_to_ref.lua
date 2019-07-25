@@ -143,7 +143,7 @@ function Visitor:visit_arg(arg)
 end
 
 function Visitor:visit_expr(expr)
-    expr_kind = expr:get_kind()
+    local expr_kind = expr:get_kind()
 
     -- (*foo).bar -> (foo).bar (can't remove parens..)
     -- TODO: Or MethodCall? FnPtr could be a field
@@ -225,13 +225,13 @@ function Visitor:visit_expr(expr)
         local id = self.tctx:get_expr_path_hirid(lhs)
         local var = self.vars[id]
 
-        -- p = malloc(X) as *mut T -> p = Some(vec![0; X / size_of<T>].into_boxed_slice())
-        -- or p = vec![0; X / size_of<T>].into_boxed_slice()
         if rhs_kind == "Cast" then
             local conversion_cfg = var and self.node_id_cfgs[var.id]
             local cast_expr = rhs:get_exprs()[1]
             local cast_ty = rhs:get_ty()
 
+            -- p = malloc(X) as *mut T -> p = Some(vec![0; X / size_of<T>].into_boxed_slice())
+            -- or p = vec![0; X / size_of<T>].into_boxed_slice()
             if cast_ty:get_kind() == "Ptr" and cast_expr:get_kind() == "Call" then
                 local call_exprs = cast_expr:get_exprs()
                 local path_expr = call_exprs[1]
@@ -268,12 +268,12 @@ function Visitor:visit_expr(expr)
 
                     expr:set_exprs{lhs, rhs}
                 end
+            -- p = 0 as *mut/const T -> p = None
             elseif is_null_ptr(rhs) then
-                rhs:to_ident_path("None")
-
                 local conversion_cfg = self:get_expr_cfg(lhs)
 
                 if conversion_cfg and conversion_cfg:is_opt_any() then
+                    rhs:to_ident_path("None")
                     expr:set_exprs{lhs, rhs}
                 end
             end
@@ -294,6 +294,24 @@ function Visitor:visit_expr(expr)
                     rhs:to_call{some_path_expr, rhs}
                     expr:set_exprs{lhs, rhs}
                 end
+            end
+        end
+    -- free(foo.bar as *mut libc::c_void) -> foo.bar.take()
+    elseif expr_kind == "Call" then
+        local call_exprs = expr:get_exprs()
+        local path_expr = call_exprs[1]
+        local param_expr = call_exprs[2]
+        local path = path_expr:get_path()
+        local segments = path:get_segments()
+
+        -- In case free is called from another module check the last segment
+        if segments[#segments] == "free" and param_expr:get_kind() == "Cast" then
+            -- REVIEW: What if there's a multi-layered cast?
+            local uncasted_expr = param_expr:get_exprs()[1]
+            local conversion_cfg = self:get_expr_cfg(uncasted_expr)
+
+            if conversion_cfg and conversion_cfg:is_opt_any() then
+                expr:to_method_call("take", {uncasted_expr})
             end
         end
     end
