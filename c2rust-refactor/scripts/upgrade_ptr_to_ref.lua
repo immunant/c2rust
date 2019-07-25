@@ -1,4 +1,5 @@
--- Take a set of node ids (params) and turn them (if a pointer) into a reference
+-- Take a set of node ids (locals/params) and turn them (if a pointer) into a reference
+-- or Box
 Variable = {}
 
 function Variable.new(id, locl)
@@ -9,6 +10,18 @@ function Variable.new(id, locl)
 
     setmetatable(self, Variable)
     Variable.__index = Variable
+
+    return self
+end
+
+Field = {}
+
+function Field.new(id)
+    self = {}
+    self.id = id
+
+    setmetatable(self, Field)
+    Field.__index = Field
 
     return self
 end
@@ -45,6 +58,10 @@ function RefCfg:is_ref()
     return self.mod_type == "ref"
 end
 
+function RefCfg:is_ref_or_slice()
+    return self:is_ref() or self:is_slice()
+end
+
 function RefCfg:is_opt_any()
     return self:is_opt_box() or self:is_opt_box_slice()
 end
@@ -67,13 +84,15 @@ end
 
 Visitor = {}
 
-function Visitor.new(tctx, node_id)
+function Visitor.new(tctx, node_id_cfgs)
     self = {}
     self.tctx = tctx
     -- NodeId -> RefCfg
-    self.node_ids = node_ids
+    self.node_id_cfgs = node_id_cfgs
     -- PatHrId -> Variable
     self.vars = {}
+    -- ?HrId -> Field
+    self.fields = {}
 
     setmetatable(self, Visitor)
     Visitor.__index = Visitor
@@ -81,42 +100,34 @@ function Visitor.new(tctx, node_id)
     return self
 end
 
--- Takes a ptr type and returns the newly modified ref type
+-- Takes a ptr type and returns the newly modified type
 function upgrade_ptr(ptr_ty, conversion_cfg)
     local mut_ty = ptr_ty:get_mut_ty()
+    local pointee_ty = mut_ty:get_ty()
 
-    if conversion_cfg:is_slice() then
-        local pointee_ty = mut_ty:get_ty()
+    -- T -> [T]
+    if conversion_cfg:is_slice_any() then
         pointee_ty:wrap_in_slice()
-        mut_ty:set_ty(pointee_ty)
     end
 
-    -- REVIEW: Maybe there's a way to clean up this flow:
-    if conversion_cfg:is_opt_box() then
-        local pointee_ty = mut_ty:get_ty()
-
-        pointee_ty:wrap_as_generic_angle_arg("Box")
-        pointee_ty:wrap_as_generic_angle_arg("Option")
-
-        return pointee_ty
-    elseif conversion_cfg:is_opt_box_slice() then
-        local pointee_ty = mut_ty:get_ty()
-
-        pointee_ty:wrap_in_slice()
-        pointee_ty:wrap_as_generic_angle_arg("Box")
-        pointee_ty:wrap_as_generic_angle_arg("Option")
-
-        return pointee_ty
-    else
+    -- T -> &T / &mut T or [T] -> &[T] / &mut [T]
+    if conversion_cfg:is_ref_or_slice() then
+        mut_ty:set_ty(pointee_ty)
         ptr_ty:to_rptr(conversion_cfg.lifetime, mut_ty)
 
         return ptr_ty
     end
+
+    -- T -> Option<Box<T>> or [T] -> Option<Box<[T]>>
+    pointee_ty:wrap_as_generic_angle_arg("Box")
+    pointee_ty:wrap_as_generic_angle_arg("Option")
+
+    return pointee_ty
 end
 
 function Visitor:visit_arg(arg)
     local arg_id = arg:get_id()
-    local conversion_cfg = self.node_ids[arg_id]
+    local conversion_cfg = self.node_id_cfgs[arg_id]
 
     if conversion_cfg then
         local arg_ty = arg:get_ty()
@@ -147,7 +158,7 @@ function Visitor:visit_expr(expr)
                 local var = self.vars[id]
 
                 -- This is a path we're expecting to modify
-                if var and self.node_ids[var.id] then
+                if var and self.node_id_cfgs[var.id] then
                     expr:set_exprs{derefed_expr}
                 end
             end
@@ -183,9 +194,9 @@ function Visitor:visit_expr(expr)
 
             -- We only want to apply this operation if we're converting
             -- a pointer to an array
-            if var and self.node_ids[var.id]:is_slice_any() and offset_expr then
+            if var and self.node_id_cfgs[var.id]:is_slice_any() and offset_expr then
                 -- If we're using an option, we must unwrap (or map/match)
-                if self.node_ids[var.id]:is_opt_any() then
+                if self.node_id_cfgs[var.id]:is_opt_any() then
                     -- TODO: or as_ref
                     unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
                     unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
@@ -199,10 +210,12 @@ function Visitor:visit_expr(expr)
         local id = self.tctx:get_expr_path_hrid(expr:get_exprs()[1])
         local var = self.vars[id]
 
-        if var and self.node_ids[var.id]:is_box_slice() then -- is_box_any?
-            expr:to_bool_lit(false)
-        else
-            expr:set_method_name("is_none")
+        if var then
+            if self.node_id_cfgs[var.id]:is_opt_any() then
+                expr:set_method_name("is_none")
+            else
+                expr:to_bool_lit(false)
+            end
         end
     elseif expr_kind == "Assign" then
         local exprs = expr:get_exprs()
@@ -215,11 +228,11 @@ function Visitor:visit_expr(expr)
         -- p = malloc(X) as *mut T -> p = Some(vec![0; X / size_of<T>].into_boxed_slice())
         -- or p = vec![0; X / size_of<T>].into_boxed_slice()
         if rhs_kind == "Cast" then
-            local conversion_cfg = self.node_ids[var.id]
+            local conversion_cfg = var and self.node_id_cfgs[var.id]
             local cast_expr = rhs:get_exprs()[1]
             local cast_ty = rhs:get_ty()
 
-            if cast_ty:get_kind() == "Ptr" then
+            if cast_ty:get_kind() == "Ptr" and cast_expr:get_kind() == "Call" then
                 local call_exprs = cast_expr:get_exprs()
                 local path_expr = call_exprs[1]
                 local param_expr = call_exprs[2]
@@ -257,11 +270,12 @@ function Visitor:visit_expr(expr)
                 end
             end
         -- lhs = rhs -> lhs = Some(rhs)
+        -- TODO: Should probably expand to work on more complex exprs
         elseif rhs_kind == "Path" then
             local id = self.tctx:get_expr_path_hrid(rhs)
             local var = self.vars[id]
 
-            if var and self.node_ids[var.id]:is_box_slice() then -- is_box_any?
+            if var and not self.node_id_cfgs[var.id]:is_opt_any() then
                 local lhs_ty = self.tctx:get_expr_ty(lhs)
 
                 -- If lhs was a ptr, and rhs isn't wrapped in some, wrap it
@@ -288,7 +302,10 @@ function Visitor:visit_item_kind(item_kind)
         local field_ids = item_kind:get_field_ids()
 
         for _, field_id in ipairs(field_ids) do
-            local ref_cfg = self.node_ids[field_id]
+            local ref_cfg = self.node_id_cfgs[field_id]
+            local field_hrid = self.tctx:get_nodeid_hrid(field_id)
+
+            self.fields[field_hrid] = Field.new(field_id)
 
             if ref_cfg and ref_cfg.lifetime then
                 item_kind:add_lifetime(ref_cfg.lifetime)
@@ -299,7 +316,7 @@ end
 
 function Visitor:visit_struct_field(field)
     local field_id = field:get_id()
-    local conversion_cfg = self.node_ids[field_id]
+    local conversion_cfg = self.node_id_cfgs[field_id]
 
     if conversion_cfg then
         local field_ty = field:get_ty()
@@ -323,7 +340,7 @@ end
 
 function Visitor:visit_local(locl)
     local local_id = locl:get_id()
-    local conversion_cfg = self.node_ids[local_id]
+    local conversion_cfg = self.node_id_cfgs[local_id]
 
     -- let x: *mut T = 0 as *mut T; -> let mut x = None;
     -- or let mut x;
@@ -358,7 +375,7 @@ end
 
 refactor:transform(
     function(transform_ctx)
-        node_ids = {
+        local node_id_cfgs = {
             [26] = RefCfg.new("ref", nil),
             [35] = RefCfg.new("ref", nil),
             [77] = RefCfg.new("ref", nil),
@@ -373,8 +390,9 @@ refactor:transform(
             [167] = RefCfg.new("opt_box_slice", nil),
             [221] = RefCfg.new("ref", nil),
             [229] = RefCfg.new("box_slice", nil),
+            [288] = RefCfg.new("ref", nil),
         }
-        return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_ids))
+        return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end
 )
 

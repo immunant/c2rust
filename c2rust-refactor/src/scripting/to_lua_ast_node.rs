@@ -329,6 +329,13 @@ impl UserData for LuaAstNode<P<Expr>> {
             }
         });
 
+        methods.add_method("get_ident", |lua_ctx, this, ()| {
+            match &this.borrow().node {
+                ExprKind::Field(_, ident) => ident.to_lua(lua_ctx).map(|i| Some(i)),
+                _ => Ok(None),
+            }
+        });
+
         methods.add_method("get_path", |_lua_ctx, this, ()| {
             match &this.borrow().node {
                 ExprKind::Path(_, path)
@@ -355,7 +362,7 @@ impl UserData for LuaAstNode<P<Expr>> {
 
                     Ok(exprs)
                 },
-                e => unimplemented!("LuaAstNode<P<Expr>>:get_exprs() for {}", e.ast_name()),
+                _ => Ok(Vec::new()),
             }
         });
 
