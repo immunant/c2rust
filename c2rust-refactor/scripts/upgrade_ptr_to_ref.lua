@@ -133,7 +133,7 @@ function Visitor:visit_arg(arg)
         local arg_ty = arg:get_ty()
 
         if arg_ty:get_kind() == "Ptr" then
-            local arg_pat_hrid = self.tctx:get_nodeid_hrid(arg:get_pat_id())
+            local arg_pat_hrid = self.tctx:get_nodeid_hirid(arg:get_pat_id())
 
             arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
 
@@ -154,7 +154,7 @@ function Visitor:visit_expr(expr)
             local derefed_expr = field_expr:get_exprs()[1]
 
             if derefed_expr:get_kind() == "Path" then
-                local id = self.tctx:get_expr_path_hrid(derefed_expr)
+                local id = self.tctx:get_expr_path_hirid(derefed_expr)
                 local var = self.vars[id]
 
                 -- This is a path we're expecting to modify
@@ -189,7 +189,7 @@ function Visitor:visit_expr(expr)
             end
 
             -- Should be left with a path, otherwise bail
-            local id = self.tctx:get_expr_path_hrid(unwrapped_expr)
+            local id = self.tctx:get_expr_path_hirid(unwrapped_expr)
             local var = self.vars[id]
 
             -- We only want to apply this operation if we're converting
@@ -207,11 +207,11 @@ function Visitor:visit_expr(expr)
         end
     -- p.is_null() -> p.is_none() or false when not using an option
     elseif expr:get_method_name() == "is_null" then
-        local id = self.tctx:get_expr_path_hrid(expr:get_exprs()[1])
-        local var = self.vars[id]
+        local callee = expr:get_exprs()[1]
+        local conversion_cfg = self:get_expr_cfg(callee)
 
-        if var then
-            if self.node_id_cfgs[var.id]:is_opt_any() then
+        if conversion_cfg then
+            if conversion_cfg:is_opt_any() then
                 expr:set_method_name("is_none")
             else
                 expr:to_bool_lit(false)
@@ -222,7 +222,7 @@ function Visitor:visit_expr(expr)
         local lhs = exprs[1]
         local rhs = exprs[2]
         local rhs_kind = rhs:get_kind()
-        local id = self.tctx:get_expr_path_hrid(lhs)
+        local id = self.tctx:get_expr_path_hirid(lhs)
         local var = self.vars[id]
 
         -- p = malloc(X) as *mut T -> p = Some(vec![0; X / size_of<T>].into_boxed_slice())
@@ -268,11 +268,19 @@ function Visitor:visit_expr(expr)
 
                     expr:set_exprs{lhs, rhs}
                 end
+            elseif is_null_ptr(rhs) then
+                rhs:to_ident_path("None")
+
+                local conversion_cfg = self:get_expr_cfg(lhs)
+
+                if conversion_cfg and conversion_cfg:is_opt_any() then
+                    expr:set_exprs{lhs, rhs}
+                end
             end
         -- lhs = rhs -> lhs = Some(rhs)
         -- TODO: Should probably expand to work on more complex exprs
         elseif rhs_kind == "Path" then
-            local id = self.tctx:get_expr_path_hrid(rhs)
+            local id = self.tctx:get_expr_path_hirid(rhs)
             local var = self.vars[id]
 
             if var and not self.node_id_cfgs[var.id]:is_opt_any() then
@@ -291,6 +299,27 @@ function Visitor:visit_expr(expr)
     end
 end
 
+function Visitor:get_expr_cfg(expr)
+    local hrid = self.tctx:get_expr_path_hirid(expr)
+    local node_id = nil
+    local var = self.vars[hrid]
+
+    -- If we're looking at a local or param, lookup from the variable map
+    if var then
+        node_id = var.id
+    -- Otherwise check the field map
+    elseif expr:get_kind() == "Field" then
+        hirid = self.tctx:get_field_expr_hirid(expr)
+        local field = self.fields[hirid]
+
+        if field then
+            node_id = field.id
+        end
+    end
+
+    return self.node_id_cfgs[node_id]
+end
+
 -- HrIds may be reused in different functions, so we should clear them out
 -- so we don't accidentally access old info
 function Visitor:visit_fn_decl(fn_decl)
@@ -303,7 +332,7 @@ function Visitor:visit_item_kind(item_kind)
 
         for _, field_id in ipairs(field_ids) do
             local ref_cfg = self.node_id_cfgs[field_id]
-            local field_hrid = self.tctx:get_nodeid_hrid(field_id)
+            local field_hrid = self.tctx:get_nodeid_hirid(field_id)
 
             self.fields[field_hrid] = Field.new(field_id)
 
@@ -354,7 +383,7 @@ function Visitor:visit_local(locl)
                 locl:set_ty(nil)
                 locl:set_init(init)
 
-                local arg_pat_hrid = self.tctx:get_nodeid_hrid(locl:get_pat_id())
+                local arg_pat_hrid = self.tctx:get_nodeid_hirid(locl:get_pat_id())
 
                 self.vars[arg_pat_hrid] = Variable.new(local_id, true)
             end
@@ -365,7 +394,7 @@ function Visitor:visit_local(locl)
                 locl:set_ty(nil)
                 locl:set_init(nil)
 
-                local arg_pat_hrid = self.tctx:get_nodeid_hrid(locl:get_pat_id())
+                local arg_pat_hrid = self.tctx:get_nodeid_hirid(locl:get_pat_id())
 
                 self.vars[arg_pat_hrid] = Variable.new(local_id, true)
             end

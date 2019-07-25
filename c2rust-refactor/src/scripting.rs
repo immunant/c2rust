@@ -490,14 +490,14 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         );
 
         methods.add_method(
-            "get_expr_path_hrid",
+            "get_expr_path_hirid",
             |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
                 Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(|id| id.local_id.as_u32()))
             },
         );
 
         methods.add_method(
-            "get_nodeid_hrid",
+            "get_nodeid_hirid",
             |_lua_ctx, this, id: i64| {
                 let hrid = this.cx.hir_map().node_to_hir_id(NodeId::from_usize(id as usize));
 
@@ -747,6 +747,32 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let ty = reflect_tcx_ty(this.cx.ty_ctxt(), rty);
 
             Ok(LuaAstNode::new(ty))
+        });
+
+        methods.add_method("get_field_expr_hirid", |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
+            use rustc::ty::TyKind;
+
+            let expr = expr.borrow();
+
+            let (ref expr, ref ident) = match &expr.node {
+                ExprKind::Field(expr, ident) => (expr, ident),
+                _ => return Ok(None)
+            };
+
+            if let TyKind::Adt(def, _) = &this.cx.adjusted_node_type(expr.id).sty {
+                // Assuming only one variant, struct
+                let def = def.variants.iter().next().unwrap();
+
+                for field in def.fields.iter() {
+                    if field.ident == **ident {
+                        let hir_id = this.cx.hir_map().as_local_hir_id(field.did);
+
+                        return Ok(hir_id.map(|h| h.local_id.as_u32()));
+                    }
+                }
+            };
+
+            Ok(None)
         });
     }
 }

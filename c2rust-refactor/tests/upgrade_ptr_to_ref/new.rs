@@ -72,3 +72,13 @@ unsafe fn init_buf2(sd: &mut SizedData) -> i32 {
 
     return 0;
 }
+
+use libc::free;
+
+unsafe fn destroy_buf(sd: &mut SizedData) {
+    if (sd).buf.is_none() {
+        return;
+    }
+    (sd).buf.take();
+    (sd).buf = None;
+}
