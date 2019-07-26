@@ -126,13 +126,12 @@ impl<'a> Translation<'a> {
                         // Hit non bitfield group so existing one is all set
                         if let Some(field_group) = last_bitfield_group.take() {
                             reorganized_fields.push(field_group);
-                        }
 
-                        let bytes = platform_bit_offset / 8 - next_byte_pos;
-
-                        // Need to add padding first
-                        if bytes > 1 {
-                            reorganized_fields.push(FieldType::Padding { bytes });
+                            // Need to add padding first
+                            let bytes = platform_bit_offset / 8 - next_byte_pos;
+                            if bytes > 0 {
+                                reorganized_fields.push(FieldType::Padding { bytes });
+                            }
                         }
 
                         let field = mk().pub_().struct_field(field_name.clone(), ty);
