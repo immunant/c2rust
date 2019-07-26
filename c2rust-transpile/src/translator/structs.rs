@@ -219,14 +219,14 @@ impl<'a> Translation<'a> {
         // Find leftover bitfield group at end: it's all set
         if let Some(field_group) = last_bitfield_group.take() {
             reorganized_fields.push(field_group);
-        }
 
-        // Packed structs can cause platform_byte_size < next_byte_pos
-        if platform_byte_size > next_byte_pos {
-            let bytes = platform_byte_size - next_byte_pos;
+            // Packed structs can cause platform_byte_size < next_byte_pos
+            if platform_byte_size > next_byte_pos {
+                let bytes = platform_byte_size - next_byte_pos;
 
-            // Need to add padding to end if we haven't hit the expected total byte size
-            reorganized_fields.push(FieldType::Padding { bytes });
+                // Need to add padding to end if we haven't hit the expected total byte size
+                reorganized_fields.push(FieldType::Padding { bytes });
+            }
         }
 
         Ok(reorganized_fields)
