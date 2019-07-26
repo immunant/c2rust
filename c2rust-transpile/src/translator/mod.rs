@@ -4138,7 +4138,7 @@ impl<'c> Translation<'c> {
                 ..
             } => {
                 let name = self.resolve_decl_inner_name(name_decl_id);
-                self.struct_zero_initializer(name, fields, platform_byte_size, is_static)?
+                self.convert_struct_zero_initializer(name, fields, platform_byte_size, is_static)?
             }
 
             CDeclKind::Struct { fields: None, .. } => {

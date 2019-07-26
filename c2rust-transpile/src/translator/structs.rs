@@ -499,7 +499,7 @@ impl<'a> Translation<'a> {
 
     /// This method handles zero-initializing bitfield structs including bitfields
     /// & padding fields
-    pub fn struct_zero_initializer(
+    pub fn convert_struct_zero_initializer(
         &self,
         name: String,
         field_ids: &[CDeclId],
