@@ -1421,59 +1421,57 @@ impl<'c> Translation<'c> {
                 } else {
                     max_field_alignment
                 };
+                match max_field_alignment {
+                    Some(1) => reprs.push(simple_metaitem("packed")),
+                    Some(mf) if mf > 1 => reprs.push(int_arg_metaitem("packed", mf as u128)),
+                    _ => { }
+                }
+
                 'result: {
-                    match (max_field_alignment, manual_alignment) {
-                        (Some(mf), Some(ma)) => {
-                            // This is the most complicated case: we have `packed(M), align(N)`
-                            // which Rust doesn't currently support; instead, we split
-                            // the structure into 2 structures like this:
-                            //   #[align(N)]
-                            //   pub struct Foo(pub Foo_Inner);
-                            //   #[packed(M)]
-                            //   pub struct Foo_Inner {
-                            //     ...fields...
-                            //   }
-                            assert!(self.ast_context.has_inner_struct_decl(decl_id));
-                            let inner_name = self.resolve_decl_inner_name(decl_id);
-                            let mut inner_reprs = reprs.clone();
-                            if mf > 1 {
-                                inner_reprs.push(int_arg_metaitem("packed", mf as u128))
-                            } else {
-                                inner_reprs.push(simple_metaitem("packed"))
-                            };
-                            let inner_repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(inner_reprs));
-                            let inner_struct = mk().span(s)
-                                .pub_()
-                                .call_attr("derive", derives)
-                                .meta_item_attr(AttrStyle::Outer, inner_repr_attr)
-                                .struct_item(inner_name.clone(), field_entries, false);
-
-                            reprs.push(int_arg_metaitem("align", ma as u128));
-                            let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
-                            let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
-                            let outer_struct = mk().span(s)
-                                .pub_()
-                                .call_attr("derive", vec!["Copy", "Clone"])
-                                .meta_item_attr(AttrStyle::Outer, repr_attr)
-                                .struct_item(name, vec![outer_field], true);
-
-                            let structs = vec![outer_struct, inner_struct];
-                            break 'result Ok(ConvertedDecl::Items(structs));
-                        }
-
-                        (Some(1), None) => reprs.push(simple_metaitem("packed")),
-
-                        (Some(mf), None) if mf > 1 => reprs.push(int_arg_metaitem("packed", mf as u128)),
+                    if let Some(manual_alignment) = manual_alignment {
+                        // This is the most complicated case: we have `align(N)` which
+                        // might be mixed with or included into a `packed` structure,
+                        // which Rust doesn't currently support; instead, we split
+                        // the structure into 2 structures like this:
+                        //   #[align(N)]
+                        //   pub struct Foo(pub Foo_Inner);
+                        //   #[packed(M)]
+                        //   pub struct Foo_Inner {
+                        //     ...fields...
+                        //   }
+                        //
+                        // TODO: right now, we always emit the pair of structures
+                        // instead, we should only split when needed, but that
+                        // would significantly complicate the implementation
+                        assert!(self.ast_context.has_inner_struct_decl(decl_id));
+                        let inner_name = self.resolve_decl_inner_name(decl_id);
+                        let inner_repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
+                        let inner_struct = mk().span(s)
+                            .pub_()
+                            .call_attr("derive", derives)
+                            .meta_item_attr(AttrStyle::Outer, inner_repr_attr)
+                            .struct_item(inner_name.clone(), field_entries, false);
 
                         // https://github.com/rust-lang/rust/issues/33626
-                        (None, Some(ma)) => reprs.push(int_arg_metaitem("align", ma as u128)),
+                        let outer_reprs = vec![
+                            simple_metaitem("C"),
+                            int_arg_metaitem("align", manual_alignment as u128),
+                            // TODO: copy others from `reprs` above
+                        ];
+                        let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(outer_reprs));
+                        let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
+                        let outer_struct = mk().span(s)
+                            .pub_()
+                            .call_attr("derive", vec!["Copy", "Clone"])
+                            .meta_item_attr(AttrStyle::Outer, repr_attr)
+                            .struct_item(name, vec![outer_field], true);
 
-                        _ => { }
-                    }
-
-                    let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
+                        let structs = vec![outer_struct, inner_struct];
+                        break 'result Ok(ConvertedDecl::Items(structs));
+                    };
 
                     assert!(!self.ast_context.has_inner_struct_decl(decl_id));
+                    let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
                     Ok(ConvertedDecl::Item(
                         mk().span(s)
                             .pub_()

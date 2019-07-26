@@ -576,18 +576,7 @@ impl TypedAstContext {
 
     pub fn has_inner_struct_decl(&self, decl_id: CDeclId) -> bool {
         match self[decl_id].kind {
-            CDeclKind::Struct {
-                is_packed: true,
-                manual_alignment: Some(_),
-                ..
-            } => true,
-
-            CDeclKind::Struct {
-                max_field_alignment: Some(mf),
-                manual_alignment: Some(_),
-                ..
-            } if mf >= 1 => true,
-
+            CDeclKind::Struct { manual_alignment: Some(_), .. } => true,
             _ => false
         }
     }
