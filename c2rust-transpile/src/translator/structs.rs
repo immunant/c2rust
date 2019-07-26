@@ -128,8 +128,8 @@ impl<'a> Translation<'a> {
                             reorganized_fields.push(field_group);
 
                             // Need to add padding first
-                            let bytes = platform_bit_offset / 8 - next_byte_pos;
-                            if bytes > 0 {
+                            if (platform_bit_offset / 8) > next_byte_pos  {
+                                let bytes = (platform_bit_offset / 8) - next_byte_pos;
                                 reorganized_fields.push(FieldType::Padding { bytes });
                             }
                         }
@@ -150,9 +150,8 @@ impl<'a> Translation<'a> {
                 };
 
                 // Ensure we aren't looking at overlapping bits in the same byte
-                if platform_bit_offset / 8 > next_byte_pos {
+                if (platform_bit_offset / 8) > next_byte_pos {
                     let bytes = (platform_bit_offset / 8) - next_byte_pos;
-
                     reorganized_fields.push(FieldType::Padding { bytes });
                 }
 
