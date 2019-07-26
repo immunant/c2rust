@@ -291,6 +291,15 @@ impl<'a> Translation<'a> {
         let reorganized_fields = self.get_field_types(field_ids, platform_byte_size)?;
 
         let mut padding_count = 0;
+        let mut next_padding_field = || {
+            let field_name = if padding_count == 0 {
+                "_pad".into()
+            } else {
+                format!("_pad{}", padding_count + 1)
+            };
+            padding_count += 1;
+            field_name
+        };
 
         for field_type in reorganized_fields {
             match field_type {
@@ -326,11 +335,7 @@ impl<'a> Translation<'a> {
                     field_entries.push(field.pub_().struct_field(field_name, ty));
                 }
                 FieldType::Padding { bytes } => {
-                    let field_name = if padding_count == 0 {
-                        "_pad".into()
-                    } else {
-                        format!("_pad{}", padding_count + 1)
-                    };
+                    let field_name = next_padding_field();
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
@@ -347,18 +352,10 @@ impl<'a> Translation<'a> {
                         .pub_()
                         .struct_field(field_name, ty);
 
-                    padding_count += 1;
-
                     field_entries.push(field);
                 }
                 FieldType::ComputedPadding { ident } => {
-                    let field_name = if padding_count == 0 {
-                        "_pad".into()
-                    } else {
-                        format!("_pad{}", padding_count + 1)
-                    };
-                    padding_count += 1;
-
+                    let field_name = next_padding_field();
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
                         mk().ident_expr(ident),
@@ -420,6 +417,16 @@ impl<'a> Translation<'a> {
         let reorganized_fields = self.get_field_types(field_decl_ids, platform_byte_size)?;
         let local_pat = mk().mutbl().ident_pat("init");
         let mut padding_count = 0;
+        let mut next_padding_field = || {
+            let field_name = if padding_count == 0 {
+                "_pad".into()
+            } else {
+                format!("_pad{}", padding_count + 1)
+            };
+            padding_count += 1;
+            field_name
+        };
+
 
         // Add in zero inits for both padding as well as bitfield groups
         for field_type in reorganized_fields {
@@ -436,29 +443,17 @@ impl<'a> Translation<'a> {
                     fields.push(WithStmts::new_val(field));
                 }
                 FieldType::Padding { bytes } => {
-                    let field_name = if padding_count == 0 {
-                        "_pad".into()
-                    } else {
-                        format!("_pad{}", padding_count + 1)
-                    };
+                    let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
                     );
                     let field = mk().field(field_name, array_expr);
 
-                    padding_count += 1;
-
                     fields.push(WithStmts::new_val(field));
                 }
                 FieldType::ComputedPadding { ident } => {
-                    let field_name = if padding_count == 0 {
-                        "_pad".into()
-                    } else {
-                        format!("_pad{}", padding_count + 1)
-                    };
-                    padding_count += 1;
-
+                    let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
                         mk().ident_expr(ident),
@@ -594,7 +589,17 @@ impl<'a> Translation<'a> {
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let reorganized_fields = self.get_field_types(field_ids, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
+
         let mut padding_count = 0;
+        let mut next_padding_field = || {
+            let field_name = if padding_count == 0 {
+                "_pad".into()
+            } else {
+                format!("_pad{}", padding_count + 1)
+            };
+            padding_count += 1;
+            field_name
+        };
 
         for field_type in reorganized_fields {
             match field_type {
@@ -610,29 +615,17 @@ impl<'a> Translation<'a> {
                     fields.push(WithStmts::new_val(field));
                 }
                 FieldType::Padding { bytes } => {
-                    let field_name = if padding_count == 0 {
-                        "_pad".into()
-                    } else {
-                        format!("_pad{}", padding_count + 1)
-                    };
+                    let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
                     );
                     let field = mk().field(field_name, array_expr);
 
-                    padding_count += 1;
-
                     fields.push(WithStmts::new_val(field));
                 }
                 FieldType::ComputedPadding { ident } => {
-                    let field_name = if padding_count == 0 {
-                        "_pad".into()
-                    } else {
-                        format!("_pad{}", padding_count + 1)
-                    };
-                    padding_count += 1;
-
+                    let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
                         mk().ident_expr(ident),
