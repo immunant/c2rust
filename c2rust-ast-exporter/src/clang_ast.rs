@@ -22,18 +22,56 @@ impl LRValue {
     }
 }
 
-#[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq)]
+#[derive(Copy, Debug, Clone, PartialOrd, PartialEq, Ord, Eq)]
 pub struct SrcLoc {
     pub fileid: u64,
     pub line: u64,
     pub column: u64,
 }
 
+#[derive(Copy, Debug, Clone, PartialOrd, PartialEq, Ord, Eq)]
+pub struct SrcSpan {
+    pub fileid: u64,
+    pub begin_line: u64,
+    pub begin_column: u64,
+    pub end_line: u64,
+    pub end_column: u64,
+}
+
+impl From<SrcLoc> for SrcSpan {
+    fn from(loc: SrcLoc) -> Self {
+        Self {
+            fileid: loc.fileid,
+            begin_line: loc.line,
+            begin_column: loc.column,
+            end_line: loc.line,
+            end_column: loc.column,
+        }
+    }
+}
+
+impl SrcSpan {
+    pub fn begin(&self) -> SrcLoc {
+        SrcLoc {
+            fileid: self.fileid,
+            line: self.begin_line,
+            column: self.begin_column,
+        }
+    }
+    pub fn end(&self) -> SrcLoc {
+        SrcLoc {
+            fileid: self.fileid,
+            line: self.end_line,
+            column: self.end_column,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AstNode {
     pub tag: ASTEntryTag,
     pub children: Vec<Option<u64>>,
-    pub loc: SrcLoc,
+    pub loc: SrcSpan,
     pub type_id: Option<u64>,
     pub rvalue: LRValue,
 
@@ -152,10 +190,10 @@ pub fn process(items: Value) -> error::Result<AstContext> {
                 .map(|x| expect_opt_u64(x).unwrap())
                 .collect::<Vec<Option<u64>>>();
 
-            let type_id: Option<u64> = expect_opt_u64(&entry[6]).unwrap();
+            let type_id: Option<u64> = expect_opt_u64(&entry[8]).unwrap();
             let fileid = entry[3].as_u64().unwrap();
 
-            let macro_expansions = entry[8]
+            let macro_expansions = entry[10]
                 .as_array()
                 .unwrap()
                 .iter()
@@ -165,19 +203,21 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             let node = AstNode {
                 tag: import_ast_tag(tag),
                 children,
-                loc: SrcLoc {
+                loc: SrcSpan {
                     fileid,
-                    line: entry[4].as_u64().unwrap(),
-                    column: entry[5].as_u64().unwrap(),
+                    begin_line: entry[4].as_u64().unwrap(),
+                    begin_column: entry[5].as_u64().unwrap(),
+                    end_line: entry[6].as_u64().unwrap(),
+                    end_column: entry[7].as_u64().unwrap(),
                 },
                 type_id,
-                rvalue: if entry[7].as_boolean().unwrap() {
+                rvalue: if entry[9].as_boolean().unwrap() {
                     LRValue::RValue
                 } else {
                     LRValue::LValue
                 },
                 macro_expansions,
-                extras: entry[9..].to_vec(),
+                extras: entry[11..].to_vec(),
             };
 
             asts.insert(entry_id, node);

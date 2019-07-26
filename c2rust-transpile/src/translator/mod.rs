@@ -20,6 +20,7 @@ use syntax::{ast, with_globals};
 use syntax_pos::{Span, DUMMY_SP};
 use syntax_pos::edition::Edition;
 
+use crate::rust_ast::pos_to_span;
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::traverse::Traversal;
@@ -737,8 +738,6 @@ pub fn translate(
         let translation = to_string(|s| {
             print_header(s, &t)?;
 
-            // Re-order comments
-            let mut traverser = t.comment_store.into_inner().into_comment_traverser();
             let mut mod_items: Vec<P<Item>> = Vec::new();
 
             // Keep track of new uses we need while building header submodules
@@ -747,18 +746,31 @@ pub fn translate(
             // Header Reorganization: Submodule Item Stores
             for (file_id, ref mut mod_item_store) in t.items.borrow_mut().iter_mut() {
                 if *file_id != t.main_file {
-                    mod_items.push(make_submodule(
+                    let mut submodule = make_submodule(
                         &t.ast_context,
                         mod_item_store,
                         *file_id,
                         &mut new_uses,
                         &t.mod_names,
-                    ));
+                    );
+                    let comments = t.comment_context.get_remaining_comments(*file_id);
+                    submodule.span = match t
+                        .comment_store
+                        .borrow_mut()
+                        .add_comments(&comments)
+                    {
+                        Some(pos) => submodule.span.with_hi(pos),
+                        None => submodule.span,
+                    };
+                    mod_items.push(submodule);
                 }
             }
 
             // Main file item store
             let (items, foreign_items, uses) = t.items.borrow_mut()[&t.main_file].drain();
+
+            // Re-order comments
+            let mut traverser = t.comment_store.into_inner().into_comment_traverser();
 
             // Add a comment mapping span to each node that should have a
             // comment printed before it. The pretty printer picks up these
@@ -776,9 +788,12 @@ pub fn translate(
                 .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
                 .collect();
 
+            let mut reordered_comment_store = traverser.into_comment_store();
+            let remaining_comments = t.comment_context.get_remaining_comments(t.main_file);
+            reordered_comment_store.add_comments(&remaining_comments);
             s.comments()
                 .get_or_insert(vec![])
-                .extend(traverser.into_comment_store().into_comments());
+                .extend(reordered_comment_store.into_comments());
 
             for mod_item in mod_items {
                 s.print_item(&*mod_item)?;
@@ -806,6 +821,8 @@ pub fn translate(
             for x in items {
                 s.print_item(&*x)?;
             }
+
+            s.print_remaining_comments()?;
 
             Ok(())
         });
@@ -1083,6 +1100,34 @@ impl<'c> Translation<'c> {
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
     }
 
+    fn get_comment_span_before(&self, src_loc: Option<SrcSpan>) -> Span {
+        if let Some(src_loc) = src_loc {
+            let comments = self.comment_context
+                .get_comments_before(src_loc.begin(), &self.ast_context);
+            self.comment_store
+                .borrow_mut()
+                .add_comments(&comments)
+                .map(pos_to_span)
+                .unwrap_or(DUMMY_SP)
+        } else {
+            DUMMY_SP
+        }
+    }
+
+    fn extend_comment_span_end(&self, src_loc: Option<SrcSpan>, span: Span) -> Span {
+        if let Some(src_loc) = src_loc {
+            let comments = self
+                .comment_context
+                .get_comments_before(src_loc.end(), &self.ast_context);
+            match self.comment_store.borrow_mut().add_comments(&comments) {
+                Some(pos) => span.with_hi(pos),
+                None => span,
+            }
+        } else {
+            span
+        }
+    }
+
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
         if self.tcfg.cross_checks {
             mk.call_attr("cross_check", args)
@@ -1316,18 +1361,14 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         decl_id: CDeclId,
     ) -> Result<ConvertedDecl, TranslationError> {
-        let mut s = self
-            .comment_context
-            .get_decl_comment(decl_id)
-            .and_then(|decl_cmt| self.comment_store.borrow_mut().add_comment_lines(decl_cmt))
-            .unwrap_or(DUMMY_SP);
-
         let decl = self
             .ast_context
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
-        let _src_loc = &decl.loc;
+        let mut s = self.get_comment_span_before(decl.loc);
+
+        // let src_loc = &decl.loc;
 
         match decl.kind {
             CDeclKind::Struct { fields: None, .. }
@@ -1342,6 +1383,8 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(decl_id)
                     .unwrap();
+
+                let s = self.extend_comment_span_end(decl.loc, s);
                 let extern_item = mk().span(s).pub_().ty_foreign_item(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
@@ -1459,6 +1502,7 @@ impl<'c> Translation<'c> {
 
                 let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
 
+                let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(ConvertedDecl::Item(
                     mk().span(s)
                         .pub_()
@@ -1498,6 +1542,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
+                let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(if field_syns.is_empty() {
                     // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
                     ConvertedDecl::Item(
@@ -1532,6 +1577,7 @@ impl<'c> Translation<'c> {
                     .resolve_decl_name(decl_id)
                     .expect("Enums should already be renamed");
                 let ty = self.convert_type(integral_type.ctype)?;
+                let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(ConvertedDecl::Item(
                     mk().span(s).pub_().type_item(enum_name, ty),
                 ))
@@ -1557,6 +1603,7 @@ impl<'c> Translation<'c> {
                     }
                 };
 
+                let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(ConvertedDecl::Item(
                     mk().span(s).pub_().const_item(name, ty, val),
                 ))
@@ -1618,14 +1665,14 @@ impl<'c> Translation<'c> {
                 let is_main = self.ast_context.c_main == Some(decl_id);
 
                 let converted_function = self.convert_function(
-                    ctx, s, is_global, is_inline, is_main, is_var, is_extern, new_name, name,
-                    &args, ret, body, attrs,
+                    ctx, &decl, s, is_global, is_inline, is_main, is_var, is_extern,
+                    new_name, name, &args, ret, body, attrs,
                 );
 
                 converted_function.or_else(|e| match self.tcfg.replace_unsupported_decls {
                     ReplaceMode::Extern if body.is_none() => self.convert_function(
-                        ctx, s, is_global, false, is_main, is_var, is_extern, new_name, name,
-                        &args, ret, None, attrs,
+                        ctx, &decl, s, is_global, false, is_main, is_var, is_extern,
+                        new_name, name, &args, ret, None, attrs,
                     ),
                     _ => Err(e),
                 })
@@ -1740,10 +1787,16 @@ impl<'c> Translation<'c> {
 
                     let comment = String::from("// Initialized in run_static_initializers");
                     // REVIEW: We might want to add the comment to the original span comments
+                    let comment_pos = if s == DUMMY_SP {
+                        None
+                    } else {
+                        Some(s.lo())
+                    };
                     s = self
                         .comment_store
                         .borrow_mut()
-                        .add_comment_lines(&[comment])
+                        .extend_existing_comments(&[comment], comment_pos)
+                        .map(pos_to_span)
                         .unwrap_or(s);
 
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
@@ -1901,6 +1954,7 @@ impl<'c> Translation<'c> {
     fn convert_function(
         &self,
         ctx: ExprContext,
+        c_decl: &CDecl,
         span: Span,
         is_global: bool,
         is_inline: bool,
@@ -2024,7 +2078,8 @@ impl<'c> Translation<'c> {
                     _ => panic!("function body expects to be a compound statement"),
                 };
                 body_stmts.append(&mut self.convert_function_body(ctx, name, body_ids, ret)?);
-                let block = stmts_block(body_stmts);
+                let mut block = stmts_block(body_stmts);
+                block.span = self.extend_comment_span_end(c_decl.loc, block.span);
 
                 // Only add linkage attributes if the function is `extern`
                 let mut mk_ = if is_main {
@@ -2334,7 +2389,8 @@ impl<'c> Translation<'c> {
                     let span = self
                         .comment_store
                         .borrow_mut()
-                        .add_comment_lines(&[comment])
+                        .add_comments(&[comment])
+                        .map(pos_to_span)
                         .unwrap_or(DUMMY_SP);
                     let static_item =
                         mk().span(span)
@@ -4305,7 +4361,7 @@ impl<'c> Translation<'c> {
         let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
-            add_src_loc_attr(&mut item.attrs, &decl.loc);
+            add_src_loc_attr(&mut item.attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut item_stores = self.items.borrow_mut();
             let items = item_stores
                 .entry(decl_file_id.unwrap())
@@ -4323,7 +4379,7 @@ impl<'c> Translation<'c> {
         let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
-            add_src_loc_attr(&mut item.attrs, &decl.loc);
+            add_src_loc_attr(&mut item.attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut items = self.items.borrow_mut();
             let mod_block_items = items
                 .entry(decl_file_id.unwrap())

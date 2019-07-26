@@ -2,7 +2,7 @@
 
 use super::*;
 
-use crate::rust_ast::comment_store;
+use crate::rust_ast::{comment_store, pos_to_span};
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
@@ -382,6 +382,16 @@ impl StructureState {
     ) {
         use crate::cfg::structures::StructuredAST::*;
 
+        let span = match ast {
+            // Singleton is handled below
+            Empty | Singleton(_) | Append(..) => DUMMY_SP,
+
+            _ => comment_store
+                .add_comments(&queued_comments)
+                .map(pos_to_span)
+                .unwrap_or(DUMMY_SP),
+        };
+
         match ast {
             Empty => {}
 
@@ -391,7 +401,10 @@ impl StructureState {
                 }
             }
             Singleton(StmtOrComment::Stmt(mut s)) => {
-                s.span = comment_store.add_comment_lines(&queued_comments).unwrap_or(s.span);
+                s.span = comment_store
+                    .add_comments(&queued_comments)
+                    .map(pos_to_span)
+                    .unwrap_or(s.span);
                 queued_comments.clear();
                 output.push(s);
             }
@@ -404,7 +417,6 @@ impl StructureState {
             Goto(to) => {
                 // Assign to `current_block` the next label we want to go to.
 
-                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let lbl_expr = if self.debug_labels {
@@ -413,7 +425,7 @@ impl StructureState {
                     to.to_num_expr()
                 };
                 output.push(
-                    mk().span(s)
+                    mk().span(span)
                         .semi_stmt(mk().assign_expr(self.current_block.clone(), lbl_expr)),
                 );
             }
@@ -421,7 +433,6 @@ impl StructureState {
             Match(cond, cases) => {
                 // Make a `match`.
 
-                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let arms: Vec<Arm> = cases
@@ -440,7 +451,7 @@ impl StructureState {
 
                 let e = mk().match_expr(cond, arms);
 
-                output.push(mk().span(s).expr_stmt(e));
+                output.push(mk().span(span).expr_stmt(e));
             }
 
             If(cond, then, els) => {
@@ -451,7 +462,6 @@ impl StructureState {
                 //   * `if <cond-expr> { } else { .. }` turns into `if !<cond-expr> { .. }`
                 //
 
-                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let then = {
@@ -503,14 +513,13 @@ impl StructureState {
                     }
                 };
 
-                if_stmt.span = s;
+                if_stmt.span = span;
                 output.push(if_stmt);
             }
 
             GotoTable(cases, then) => {
                 // Dispatch based on the next `current_block` value.
 
-                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let mut arms: Vec<Arm> = cases
@@ -547,7 +556,7 @@ impl StructureState {
 
                 let e = mk().match_expr(self.current_block.clone(), arms);
 
-                output.push(mk().span(s).expr_stmt(e));
+                output.push(mk().span(span).expr_stmt(e));
             }
 
             Loop(lbl, body) => {
@@ -556,7 +565,6 @@ impl StructureState {
                 //   * Loops that start with an `if <cond-expr> { break; }` get converted into `while` loops
                 //
 
-                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let body = {
@@ -590,7 +598,7 @@ impl StructureState {
                                             mk().block(body.iter().skip(1).cloned().collect()),
                                             lbl.map(|l| l.pretty_print()),
                                         );
-                                        output.push(mk().span(s).expr_stmt(e));
+                                        output.push(mk().span(span).expr_stmt(e));
                                         return;
                                     }
                                 }
@@ -601,13 +609,12 @@ impl StructureState {
 
                 let e = mk().loop_expr(mk().block(body), lbl.map(|l| l.pretty_print()));
 
-                output.push(mk().span(s).expr_stmt(e));
+                output.push(mk().span(span).expr_stmt(e));
             }
 
             Exit(exit_style, lbl) => {
                 // Make a (possibly labelled) `break` or `continue`.
 
-                let s = comment_store.add_comment_lines(&queued_comments).unwrap_or(DUMMY_SP);
                 queued_comments.clear();
 
                 let lbl = lbl.map(|l| l.pretty_print());
@@ -616,7 +623,7 @@ impl StructureState {
                     ExitStyle::Continue => mk().continue_expr(lbl),
                 };
 
-                output.push(mk().span(s).semi_stmt(e));
+                output.push(mk().span(span).semi_stmt(e));
             }
         }
     }

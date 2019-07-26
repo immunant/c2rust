@@ -343,7 +343,7 @@ impl ConversionContext {
     fn convert(&mut self, untyped_context: &AstContext) -> () {
         for raw_comment in &untyped_context.comments {
             let comment = Located {
-                loc: Some(raw_comment.loc.clone()),
+                loc: Some(raw_comment.loc.into()),
                 kind: raw_comment.string.clone(),
             };
             self.typed_context.comments.push(comment);

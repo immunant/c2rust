@@ -1,14 +1,14 @@
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display};
-use std::iter::FromIterator;
 use std::mem;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
 
-pub use c2rust_ast_exporter::clang_ast::{SrcFile, SrcLoc};
+pub use c2rust_ast_exporter::clang_ast::{SrcFile, SrcLoc, SrcSpan};
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub struct CTypeId(pub u64);
@@ -34,7 +34,6 @@ pub type CEnumConstantId = CDeclId; // Enum's need to point to child 'DeclKind::
 
 pub use self::conversion::*;
 pub use self::print::Printer;
-use super::diagnostics::Diagnostic;
 
 mod conversion;
 pub mod iterators;
@@ -78,20 +77,19 @@ pub struct TypedAstContext {
 /// Comments associated with a typed AST context
 #[derive(Debug, Clone)]
 pub struct CommentContext {
-    decl_comments: HashMap<CDeclId, Vec<String>>,
-    stmt_comments: HashMap<CStmtId, Vec<String>>,
+    comments_by_file: HashMap<FileId, RefCell<Vec<Located<String>>>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct DisplaySrcLoc {
+pub struct DisplaySrcSpan {
     file: Option<PathBuf>,
-    loc: SrcLoc,
+    loc: SrcSpan,
 }
 
-impl Display for DisplaySrcLoc {
+impl Display for DisplaySrcSpan {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(ref file) = self.file {
-            write!(f, "{}:{}:{}", file.display(), self.loc.line, self.loc.column)
+            write!(f, "{}:{}:{}", file.display(), self.loc.begin_line, self.loc.begin_column)
         } else {
             Debug::fmt(self, f)
         }
@@ -103,8 +101,17 @@ pub type FileId = usize;
 /// Represents some AST node possibly with source location information bundled with it
 #[derive(Debug, Clone)]
 pub struct Located<T> {
-    pub loc: Option<SrcLoc>,
+    pub loc: Option<SrcSpan>,
     pub kind: T,
+}
+
+impl<T> Located<T> {
+    pub fn begin_loc(&self) -> Option<SrcLoc> {
+        self.loc.map(|loc| loc.begin())
+    }
+    pub fn end_loc(&self) -> Option<SrcLoc> {
+        self.loc.map(|loc| loc.end())
+    }
 }
 
 impl TypedAstContext {
@@ -155,9 +162,9 @@ impl TypedAstContext {
         }
     }
 
-    pub fn display_loc(&self, loc: &Option<SrcLoc>) -> Option<DisplaySrcLoc> {
+    pub fn display_loc(&self, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
         loc.as_ref().map(|loc| {
-            DisplaySrcLoc {
+            DisplaySrcSpan {
                 file: self.files[self.file_map[loc.fileid as usize]].path.clone(),
                 loc: loc.clone(),
             }
@@ -209,7 +216,7 @@ impl TypedAstContext {
     }
 
     pub fn file_id<T>(&self, located: &Located<T>) -> Option<FileId> {
-        located.loc.as_ref().map(|loc| self.file_map[loc.fileid as usize])
+        located.loc.as_ref().and_then(|loc| self.file_map.get(loc.fileid as usize).copied())
     }
 
     pub fn iter_decls(&self) -> indexmap::map::Iter<CDeclId, CDecl> {
@@ -568,7 +575,7 @@ impl TypedAstContext {
                 (None, None) => Ordering::Equal,
                 (None, _) => Ordering::Less,
                 (_, None) => Ordering::Greater,
-                (Some(a), Some(b)) => self.compare_src_locs(a, b),
+                (Some(a), Some(b)) => self.compare_src_locs(&a.begin(), &b.begin()),
             }
         });
         self.c_decls_top = decls_top;
@@ -578,133 +585,86 @@ impl TypedAstContext {
 impl CommentContext {
     pub fn empty() -> CommentContext {
         CommentContext {
-            decl_comments: HashMap::new(),
-            stmt_comments: HashMap::new(),
+            comments_by_file: HashMap::new(),
         }
     }
 
-    // Try to match up every comment with a declaration or a statement
+    /// Build a CommentContext from the comments in this `ast_context`
     pub fn new(ast_context: &mut TypedAstContext) -> CommentContext {
-        // Group and sort declarations by file and by position
-        let mut decls: HashMap<u64, Vec<(SrcLoc, CDeclId)>> = HashMap::new();
-        for (decl_id, ref loc_decl) in &ast_context.c_decls {
-            if let Some(ref loc) = loc_decl.loc {
-                decls
-                    .entry(loc.fileid)
-                    .or_insert(vec![])
-                    .push((loc.clone(), *decl_id));
-            }
-        }
-        decls.iter_mut().for_each(|(_, v)| v.sort());
+        let mut comments_by_file: HashMap<FileId, Vec<Located<String>>> = HashMap::new();
 
-        // Group and sort statements by file and by position
-        let mut stmts: HashMap<u64, Vec<(SrcLoc, CStmtId)>> = HashMap::new();
-        for (stmt_id, ref loc_stmt) in &ast_context.c_stmts {
-            if let Some(ref loc) = loc_stmt.loc {
-                stmts
-                    .entry(loc.fileid)
-                    .or_insert(vec![])
-                    .push((loc.clone(), *stmt_id));
-            }
-        }
-        stmts.iter_mut().for_each(|(_, v)| v.sort());
-
-        let mut decl_comments_map: HashMap<CDeclId, BTreeMap<SrcLoc, String>> = HashMap::new();
-        let mut stmt_comments_map: HashMap<CStmtId, BTreeMap<SrcLoc, String>> = HashMap::new();
-
-        let empty_vec1 = &vec![];
-        let empty_vec2 = &vec![];
-
-        // Match comments to declarations and statements
-        while let Some(Located { loc, kind: comment }) = ast_context.comments.pop() {
-            if let Some(loc) = loc {
-                let this_file_decls = decls.get(&loc.fileid).unwrap_or(empty_vec1);
-                let this_file_stmts = stmts.get(&loc.fileid).unwrap_or(empty_vec2);
-
-                // Find the closest declaration and statement
-                let decl_ix = this_file_decls
-                    .binary_search_by_key(&loc.line, |&(ref l, _)| l.line)
-                    .unwrap_or_else(|x| x);
-                let stmt_ix = this_file_stmts
-                    .binary_search_by_key(&loc.line, |&(ref l, _)| l.line)
-                    .unwrap_or_else(|x| x);
-
-                let mut insert_decl_comment = |decl_id: CDeclId, loc, comment| {
-                    let decl_id = if let CDeclKind::NonCanonicalDecl { canonical_decl } = ast_context[decl_id].kind {
-                        canonical_decl
-                    } else {
-                        decl_id
-                    };
-                    decl_comments_map
-                        .entry(decl_id)
-                        .or_insert(BTreeMap::new())
-                        .insert(loc, comment);
-                };
-                let mut insert_stmt_comment = |stmt_id: CStmtId, loc, comment| {
-                    stmt_comments_map
-                        .entry(stmt_id)
-                        .or_insert(BTreeMap::new())
-                        .insert(loc, comment);
-                };
-
-                // Prefer the one that is higher up (biasing towards declarations if there is a tie)
-                match (this_file_decls.get(decl_ix), this_file_stmts.get(stmt_ix)) {
-                    (Some(&(ref l1, d)), Some(&(ref l2, s))) => {
-                        if l1 > l2 {
-                            insert_stmt_comment(s, loc, comment);
-                        } else {
-                            insert_decl_comment(d, loc, comment);
-                        }
-                    }
-                    (Some(&(_, d)), None) => {
-                        insert_decl_comment(d, loc, comment);
-                    }
-                    (None, Some(&(_, s))) => {
-                            insert_stmt_comment(s, loc, comment);
-                    }
-                    (None, None) => {
-                        diag!(
-                            Diagnostic::Comments,
-                            "Didn't find a target node for the comment '{}'",
-                            comment,
-                        );
-                    }
-                };
+        // Group comments by their file
+        for comment in &ast_context.comments {
+            // Comments without a valid FileId are probably clang
+            // compiler-internal definitions
+            if let Some(file_id) = ast_context.file_id(&comment) {
+                comments_by_file
+                    .entry(file_id)
+                    .or_default()
+                    .push(comment.clone());
             }
         }
 
-        // Flatten out the nested comment maps
-        let decl_comments = decl_comments_map
+        // Sort in REVERSE! Last element is the first in file source
+        // ordering. This makes it easy to pop the next comment off.
+        for comments in comments_by_file.values_mut() {
+            comments.sort_by(|a, b| {
+                ast_context.compare_src_locs(
+                    &b.loc.unwrap().begin(),
+                    &a.loc.unwrap().begin(),
+                )
+            });
+        }
+
+        let comments_by_file = comments_by_file
             .into_iter()
-            .map(|(decl_id, map)| {
-                let mut comments = Vec::from_iter(map);
-                // Sort comments attached to this decl by source location
-                comments.sort_unstable_by(|a, b| {
-                    ast_context.compare_src_locs(&a.0, &b.0)
-                });
-
-                (decl_id, comments.into_iter().map(|(_, v)| v).collect())
-            })
-            .collect();
-        let stmt_comments = stmt_comments_map
-            .into_iter()
-            .map(|(decl_id, map)| (decl_id, map.into_iter().map(|(_, v)| v).collect()))
+            .map(|(k, v)| (k, RefCell::new(v)))
             .collect();
 
         CommentContext {
-            decl_comments,
-            stmt_comments,
+            comments_by_file,
         }
     }
 
-    // Extract the comment for a given declaration
-    pub fn get_decl_comment(&self, decl_id: CDeclId) -> Option<&[String]> {
-        self.decl_comments.get(&decl_id).map(Vec::as_ref)
+    pub fn get_comments_before(&self, loc: SrcLoc, ctx: &TypedAstContext) -> Vec<String> {
+        let file_id = ctx.file_map[loc.fileid as usize];
+        let mut extracted_comments = vec![];
+        let mut comments = match self.comments_by_file.get(&file_id) {
+            None => return extracted_comments,
+            Some(comments) => comments.borrow_mut(),
+        };
+        loop {
+            if comments.is_empty() { break; }
+            let next_comment_loc = comments
+                .last()
+                .unwrap()
+                .begin_loc()
+                .expect("All comments must have a source location");
+            if ctx.compare_src_locs(&next_comment_loc, &loc) != Ordering::Less {
+                break;
+            }
+
+            extracted_comments.push(comments.pop().unwrap().kind);
+        }
+        extracted_comments
     }
 
-    // Extract the comment for a given statement
-    pub fn get_stmt_comment(&self, stmt_id: CStmtId) -> Option<&[String]> {
-        self.stmt_comments.get(&stmt_id).map(Vec::as_ref)
+    pub fn get_comments_before_located<T>(
+        &self,
+        located: &Located<T>,
+        ctx: &TypedAstContext,
+    ) -> Vec<String> {
+        match located.begin_loc() {
+            None => vec![],
+            Some(loc) => self.get_comments_before(loc, ctx),
+        }
+    }
+
+    pub fn get_remaining_comments(&mut self, file_id: FileId) -> Vec<String> {
+        match self.comments_by_file.remove(&file_id) {
+            Some(comments) => comments.into_inner().into_iter().map(|c| c.kind).collect(),
+            None => vec![],
+        }
     }
 }
 

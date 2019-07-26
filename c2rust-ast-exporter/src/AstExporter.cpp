@@ -460,9 +460,9 @@ class TranslateASTVisitor final
     }
 
     // Template required because Decl and Stmt don't share a common base class
-    void encode_entry_raw(void *ast, ASTEntryTag tag, SourceLocation loc,
-                          const QualType ty, bool rvalue, bool isVaList,
-                          bool encodeMacroExpansions,
+    void encode_entry_raw(void *ast, ASTEntryTag tag, SourceRange loc,
+                          const QualType ty, bool rvalue,
+                          bool isVaList, bool encodeMacroExpansions,
                           const std::vector<void *> &childIds,
                           std::function<void(CborEncoder *)> extra) {
         if (!markForExport(ast, tag))
@@ -489,17 +489,19 @@ class TranslateASTVisitor final
         cbor_encoder_close_container(&local, &childEnc);
 
         // 3 - File number
-        // 4 - Line number
-        // 5 - Column number
-        encodeSourcePos(&local, loc, isVaList);
+        // 4 - Begin Line number
+        // 5 - Begin Column number
+        // 6 - End Line number
+        // 7 - End Column number
+        encodeSourceSpan(&local, loc, isVaList);
 
-        // 6 - Type ID (only for expressions)
+        // 8 - Type ID (only for expressions)
         encode_qualtype(&local, ty);
 
-        // 7 - Is Rvalue (only for expressions)
+        // 9 - Is Rvalue (only for expressions)
         cbor_encode_boolean(&local, rvalue);
 
-        // 8 - Macro expansion stack, starting with initial macro call and ending
+        // 10 - Macro expansion stack, starting with initial macro call and ending
         // with the innermost replacement.
         cbor_encoder_create_array(&local, &childEnc,
                                   encodeMacroExpansions ? curMacroExpansionStack.size() : 0);
@@ -511,7 +513,7 @@ class TranslateASTVisitor final
         }
         cbor_encoder_close_container(&local, &childEnc);
 
-        // 9.. - Extra entries
+        // 11.. - Extra entries
         extra(&local);
 
         cbor_encoder_close_container(encoder, &local);
@@ -531,13 +533,8 @@ class TranslateASTVisitor final
         auto ty = ast->getType();
         auto isVaList = false;
         auto encodeMacroExpansions = true;
-#if CLANG_VERSION_MAJOR < 8
-        SourceLocation loc = ast->getLocStart();
-#else
-        SourceLocation loc = ast->getBeginLoc();
-#endif // CLANG_VERSION_MAJOR
-        encode_entry_raw(ast, tag, loc, ty, ast->isRValue(), isVaList, encodeMacroExpansions,
-                         childIds, extra);
+        encode_entry_raw(ast, tag, ast->getSourceRange(), ty, ast->isRValue(), isVaList,
+                         encodeMacroExpansions, childIds, extra);
         typeEncoder.VisitQualType(ty);
     }
 
@@ -548,13 +545,8 @@ class TranslateASTVisitor final
         auto rvalue = false;
         auto isVaList = false;
         auto encodeMacroExpansions = false;
-#if CLANG_VERSION_MAJOR < 8
-        SourceLocation loc = ast->getLocStart();
-#else
-        SourceLocation loc = ast->getBeginLoc();
-#endif // CLANG_VERSION_MAJOR
-        encode_entry_raw(ast, tag, loc, s, rvalue, isVaList, encodeMacroExpansions,
-                         childIds, extra);
+        encode_entry_raw(ast, tag, ast->getSourceRange(), s, rvalue, isVaList,
+                         encodeMacroExpansions, childIds, extra);
     }
 
     void encode_entry(
@@ -563,7 +555,7 @@ class TranslateASTVisitor final
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto rvalue = false;
         auto encodeMacroExpansions = false;
-        encode_entry_raw(ast, tag, ast->getLocation(), T, rvalue,
+        encode_entry_raw(ast, tag, ast->getSourceRange(), T, rvalue,
                          isVaList(ast, T), encodeMacroExpansions, childIds, extra);
     }
 
@@ -571,7 +563,7 @@ class TranslateASTVisitor final
     /// definition location is not the same as the canonical declaration
     /// location.
     void encode_entry(
-        Decl *ast, ASTEntryTag tag, SourceLocation loc,
+        Decl *ast, ASTEntryTag tag, SourceRange loc,
         const std::vector<void *> &childIds, const QualType T,
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto rvalue = false;
@@ -702,7 +694,8 @@ class TranslateASTVisitor final
             std::vector<void *> childIds(Info.Expressions.begin(),
                                          Info.Expressions.end());
 
-            encode_entry_raw(Mac, tag, Mac->getDefinitionLoc(), QualType(), false,
+            auto range = SourceRange(Mac->getDefinitionLoc(), Mac->getDefinitionEndLoc());
+            encode_entry_raw(Mac, tag, range, QualType(), false,
                              false, false, childIds, [Name](CborEncoder *local) {
                                  cbor_encode_string(local, Name.str());
                              });
@@ -719,13 +712,39 @@ class TranslateASTVisitor final
             manager.isMacroBodyExpansion(loc))
             loc = manager.getFileLoc(loc);
 
+        auto fileid = getExporterFileId(manager.getFileID(loc), isVaList);
         auto line = manager.getPresumedLineNumber(loc);
         auto col = manager.getPresumedColumnNumber(loc);
-        auto fileid = getExporterFileId(manager.getFileID(loc), isVaList);
 
         cbor_encode_uint(enc, fileid);
         cbor_encode_uint(enc, line);
         cbor_encode_uint(enc, col);
+    }
+
+    void encodeSourceSpan(CborEncoder *enc, SourceRange loc, bool isVaList = false) {
+        auto &manager = Context->getSourceManager();
+
+        auto begin = loc.getBegin();
+        auto end = loc.getEnd();
+        // A check to see if the Source Location is a Macro
+        if (manager.isMacroArgExpansion(begin) ||
+            manager.isMacroBodyExpansion(begin))
+            begin = manager.getFileLoc(begin);
+        if (manager.isMacroArgExpansion(end) ||
+            manager.isMacroBodyExpansion(end))
+            end = manager.getFileLoc(end);
+
+        auto fileid = getExporterFileId(manager.getFileID(begin), isVaList);
+        auto begin_line = manager.getPresumedLineNumber(begin);
+        auto begin_col = manager.getPresumedColumnNumber(begin);
+        auto end_line = manager.getPresumedLineNumber(end);
+        auto end_col = manager.getPresumedColumnNumber(end);
+
+        cbor_encode_uint(enc, fileid);
+        cbor_encode_uint(enc, begin_line);
+        cbor_encode_uint(enc, begin_col);
+        cbor_encode_uint(enc, end_line);
+        cbor_encode_uint(enc, end_col);
     }
 
     uint64_t getExporterFileId(FileID id, bool isVaList) {
@@ -1560,10 +1579,10 @@ class TranslateASTVisitor final
         if (!FD->isCanonicalDecl()) {
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {FD->getCanonicalDecl()};
-            auto loc = FD->getLocation();
+            auto span = FD->getSourceRange();
             if (FD->doesThisDeclarationHaveABody())
-                loc = FD->getCanonicalDecl()->getLocation();
-            encode_entry(FD, TagNonCanonicalDecl, loc, childIds, FD->getType());
+                span = FD->getCanonicalDecl()->getSourceRange();
+            encode_entry(FD, TagNonCanonicalDecl, span, childIds, FD->getType());
             return true;
         }
 
@@ -1588,8 +1607,9 @@ class TranslateASTVisitor final
         childIds.push_back(body);
 
         auto functionType = FD->getType();
+        auto span = paramsFD->getSourceRange();
         encode_entry(
-            FD, TagFunctionDecl, paramsFD->getLocation(), childIds, functionType,
+            FD, TagFunctionDecl, span, childIds, functionType,
             [this, FD](CborEncoder *array) {
                 auto name = FD->getNameAsString();
                 cbor_encode_string(array, name);
