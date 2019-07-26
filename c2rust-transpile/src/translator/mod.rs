@@ -49,6 +49,9 @@ pub use crate::diagnostics::{TranslationError, TranslationErrorKind};
 use crate::CrateSet;
 use crate::PragmaVec;
 
+pub const INNER_SUFFIX: &str = "_Inner";
+pub const PADDING_SUFFIX: &str = "_PADDING";
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum DecayRef {
     Yes,
@@ -1445,6 +1448,7 @@ impl<'c> Translation<'c> {
                         // would significantly complicate the implementation
                         assert!(self.ast_context.has_inner_struct_decl(decl_id));
                         let inner_name = self.resolve_decl_inner_name(decl_id);
+                        let inner_ty = mk().path_ty(vec![inner_name.clone()]);
                         let inner_repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
                         let inner_struct = mk().span(s)
                             .pub_()
@@ -1453,6 +1457,7 @@ impl<'c> Translation<'c> {
                             .struct_item(inner_name.clone(), field_entries, false);
 
                         // https://github.com/rust-lang/rust/issues/33626
+                        let outer_ty = mk().path_ty(vec![name.clone()]);
                         let outer_reprs = vec![
                             simple_metaitem("C"),
                             int_arg_metaitem("align", manual_alignment as u128),
@@ -1466,7 +1471,21 @@ impl<'c> Translation<'c> {
                             .meta_item_attr(AttrStyle::Outer, repr_attr)
                             .struct_item(name, vec![outer_field], true);
 
-                        let structs = vec![outer_struct, inner_struct];
+                        // Emit `const X_PADDING: usize = size_of(Outer) - size_of(Inner);`
+                        let padding_name = self.type_converter
+                            .borrow_mut()
+                            .resolve_decl_suffix_name(decl_id, PADDING_SUFFIX)
+                            .to_owned();
+                        let padding_ty = mk().path_ty(vec!["usize"]);
+                        let outer_size = self.compute_size_of_ty(outer_ty)?.to_expr();
+                        let inner_size = self.compute_size_of_ty(inner_ty)?.to_expr();
+                        let padding_value =
+                            mk().binary_expr(BinOpKind::Sub, outer_size, inner_size);
+                        let padding_const = mk().span(s)
+                            .call_attr("allow", vec!["dead_code", "non_upper_case_globals"])
+                            .const_item(padding_name, padding_ty, padding_value);
+
+                        let structs = vec![outer_struct, inner_struct, padding_const];
                         break 'result Ok(ConvertedDecl::Items(structs));
                     };
 
@@ -2856,8 +2875,15 @@ impl<'c> Translation<'c> {
                 }))
             });
         }
-        let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
         let ty = self.convert_type(type_id)?;
+        self.compute_size_of_ty(ty)
+    }
+
+    fn compute_size_of_ty(
+        &self,
+        ty: P<Ty>,
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+        let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
         let name = "size_of";
         let params = mk().angle_bracketed_args(vec![ty]);
         let path = vec![
@@ -4223,7 +4249,7 @@ impl<'c> Translation<'c> {
         if self.ast_context.has_inner_struct_decl(decl_id) {
             self.type_converter
                 .borrow_mut()
-                .resolve_decl_suffix_name(decl_id, "_Inner")
+                .resolve_decl_suffix_name(decl_id, INNER_SUFFIX)
                 .to_owned()
         } else {
             self.type_converter

@@ -9,7 +9,7 @@ use super::TranslationError;
 use crate::c_ast::{
     BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId,
 };
-use crate::translator::{ExprContext, Translation};
+use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use syntax::ast::{
@@ -34,10 +34,14 @@ enum FieldType {
     Padding {
         bytes: u64,
     },
+    ComputedPadding {
+        ident: String,
+    },
     Regular {
         name: String,
         ctype: CTypeId,
         field: StructField,
+        use_inner_type: bool,
     },
 }
 
@@ -95,8 +99,10 @@ impl<'a> Translation<'a> {
                 platform_type_bitwidth,
                 ..
             } = self.ast_context.index(*field_id).kind {
-                let record_id = record_id.get_or_insert_with(|| {
-                    self.ast_context.parents[field_id]
+                let (record_id, is_packed) = record_id.get_or_insert_with(|| {
+                    let record_id = self.ast_context.parents[field_id];
+                    let is_packed = self.ast_context.is_packed_struct_decl(record_id);
+                    (record_id, is_packed)
                 });
                 let field_name = self
                     .type_converter
@@ -110,7 +116,7 @@ impl<'a> Translation<'a> {
                 });
 
                 let ctype = typ.ctype;
-                let ty = self.convert_type(ctype)?;
+                let mut ty = self.convert_type(ctype)?;
                 let bitfield_width = match bitfield_width {
                     // Bitfield widths of 0 should just be markers for clang,
                     // we shouldn't need to explicitly handle it ourselves
@@ -134,13 +140,42 @@ impl<'a> Translation<'a> {
                             }
                         }
 
+                        let mut use_inner_type = false;
+                        let mut extra_fields = vec![];
+                        if *is_packed && self.ast_context.is_aligned_struct_type(ctype) {
+                            // If we're embedding an aligned structure inside a packed one,
+                            // we need to use the `_Inner` version and add padding
+                            let decl_id = self
+                                .ast_context
+                                .resolve_type(ctype)
+                                .kind
+                                .as_underlying_decl()
+                                .unwrap();
+
+                            let inner_name = self.resolve_decl_inner_name(decl_id);
+                            ty = mk().path_ty(mk().path(vec![inner_name]));
+
+                            use_inner_type = true;
+
+                            // Add the padding field
+                            let padding_name = self.type_converter
+                                .borrow_mut()
+                                .resolve_decl_suffix_name(decl_id, PADDING_SUFFIX)
+                                .to_owned();
+                            extra_fields.push(FieldType::ComputedPadding {
+                                ident: padding_name
+                            })
+                        }
+
                         let field = mk().pub_().struct_field(field_name.clone(), ty);
 
                         reorganized_fields.push(FieldType::Regular {
                             name: field_name,
                             ctype,
                             field,
+                            use_inner_type,
                         });
+                        reorganized_fields.extend(extra_fields.into_iter());
 
                         next_byte_pos = (platform_bit_offset + platform_type_bitwidth) / 8;
 
@@ -316,6 +351,26 @@ impl<'a> Translation<'a> {
 
                     field_entries.push(field);
                 }
+                FieldType::ComputedPadding { ident } => {
+                    let field_name = if padding_count == 0 {
+                        "_pad".into()
+                    } else {
+                        format!("_pad{}", padding_count + 1)
+                    };
+                    padding_count += 1;
+
+                    let ty = mk().array_ty(
+                        mk().ident_ty("u8"),
+                        mk().ident_expr(ident),
+                    );
+
+                    // TODO: disable cross-checks on this field
+                    let field = mk()
+                        .pub_()
+                        .struct_field(field_name, ty);
+
+                    field_entries.push(field);
+                }
                 FieldType::Regular { field, .. } => field_entries.push(field),
             }
         }
@@ -396,12 +451,29 @@ impl<'a> Translation<'a> {
 
                     fields.push(WithStmts::new_val(field));
                 }
+                FieldType::ComputedPadding { ident } => {
+                    let field_name = if padding_count == 0 {
+                        "_pad".into()
+                    } else {
+                        format!("_pad{}", padding_count + 1)
+                    };
+                    padding_count += 1;
+
+                    let array_expr = mk().repeat_expr(
+                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().ident_expr(ident),
+                    );
+                    let field = mk().field(field_name, array_expr);
+
+                    fields.push(WithStmts::new_val(field));
+                }
                 _ => {}
             }
         }
 
         // Bitfield widths of 0 should just be markers for clang,
         // we shouldn't need to explicitly handle it ourselves
+        let is_packed = self.ast_context.is_packed_struct_decl(struct_id);
         let field_info_iter = field_decl_ids.iter()
             .filter_map(|field_id| {
                 match self.ast_context.index(*field_id).kind {
@@ -412,7 +484,10 @@ impl<'a> Translation<'a> {
                             .borrow()
                             .resolve_field_name(None, *field_id)
                             .unwrap();
-                        Some((field_name, typ, bitfield_width))
+
+                        let use_inner_type =
+                            is_packed && self.ast_context.is_aligned_struct_type(typ.ctype);
+                        Some((field_name, typ, bitfield_width, use_inner_type))
                     }
                     _ => None
                 }
@@ -423,27 +498,38 @@ impl<'a> Translation<'a> {
         // Specified record fields which are not bitfields need to be added
         for item in zipped_iter {
             match item {
-                Right((field_name, ty, bitfield_width)) => {
+                Right((field_name, ty, bitfield_width, use_inner_type)) => {
                     if bitfield_width.is_some() {
                         continue;
                     }
 
-                    let init = self.implicit_default_expr(ty.ctype, ctx.is_static)?;
+                    let mut init = self.implicit_default_expr(ty.ctype, ctx.is_static)?;
                     if !init.is_pure() {
                         return Err(TranslationError::generic(
                             "Expected no statements in field expression"
                         ));
                     }
+                    if use_inner_type {
+                        // Small hack: we need a value of the inner type,
+                        // but `implicit_default_expr` produced a value
+                        // of the outer type, so unwrap it manually
+                        init = init.map(|fi| mk().field_expr(fi, "0"));
+                    }
                     let field = init.map(|init| mk().field(field_name, init));
                     fields.push(field);
                 }
-                Both(field_id, (field_name, _, bitfield_width)) => {
-                    let expr = self.convert_expr(ctx.used(), *field_id)?;
+                Both(field_id, (field_name, _, bitfield_width, use_inner_type)) => {
+                    let mut expr = self.convert_expr(ctx.used(), *field_id)?;
 
                     if !expr.is_pure() {
                         return Err(TranslationError::generic(
                             "Expected no statements in field expression"
                         ));
+                    }
+
+                    if use_inner_type {
+                        // See comment above
+                        expr = expr.map(|fi| mk().field_expr(fi, "0"));
                     }
 
                     if bitfield_width.is_some() {
@@ -539,12 +625,32 @@ impl<'a> Translation<'a> {
 
                     fields.push(WithStmts::new_val(field));
                 }
-                FieldType::Regular { ctype, name, .. } => {
-                    let field_init = self.implicit_default_expr(ctype, is_static)?;
+                FieldType::ComputedPadding { ident } => {
+                    let field_name = if padding_count == 0 {
+                        "_pad".into()
+                    } else {
+                        format!("_pad{}", padding_count + 1)
+                    };
+                    padding_count += 1;
+
+                    let array_expr = mk().repeat_expr(
+                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().ident_expr(ident),
+                    );
+                    let field = mk().field(field_name, array_expr);
+
+                    fields.push(WithStmts::new_val(field));
+                }
+                FieldType::Regular { ctype, name, use_inner_type, .. } => {
+                    let mut field_init = self.implicit_default_expr(ctype, is_static)?;
                     if !field_init.is_pure() {
                         return Err(TranslationError::generic(
                             "Expected no statements in field expression"
                         ));
+                    }
+                    if use_inner_type {
+                        // See comment above
+                        field_init = field_init.map(|fi| mk().field_expr(fi, "0"));
                     }
                     fields.push(field_init.map(|init| mk().field(name, init)))
                 }
