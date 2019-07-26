@@ -36,13 +36,13 @@ use crate::TranspilerConfig;
 use c2rust_ast_exporter::clang_ast::LRValue;
 
 mod assembly;
-mod bitfields;
 mod builtins;
 mod literals;
 mod main_function;
 mod named_references;
 mod operators;
 mod simd;
+mod structs;
 mod variadic;
 
 pub use crate::diagnostics::{TranslationError, TranslationErrorKind};
@@ -1381,7 +1381,6 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(decl_id)
                     .unwrap();
-                let mut has_bitfields = false;
 
                 // Check if the last field might be a flexible array member
                 if let Some(last_id) = fields.last() {
@@ -1396,52 +1395,22 @@ impl<'c> Translation<'c> {
                 }
 
                 // Gather up all the field names and field types
-                let mut field_entries = vec![];
-                let mut field_info = Vec::new();
-
-                for &x in fields {
-                    match self.ast_context.index(x).kind {
-                        CDeclKind::Field {
-                            ref name,
-                            typ,
-                            bitfield_width,
-                            platform_bit_offset,
-                            platform_type_bitwidth,
-                        } => {
-                            let name = self
-                                .type_converter
-                                .borrow_mut()
-                                .declare_field_name(decl_id, x, name);
-
-                            has_bitfields |= bitfield_width.is_some();
-
-                            field_info.push((
-                                name.clone(),
-                                typ.clone(),
-                                bitfield_width,
-                                platform_bit_offset,
-                                platform_type_bitwidth,
-                            ));
-
-                            let typ = self.convert_type(typ.ctype)?;
-
-                            field_entries.push(mk().pub_().struct_field(name, typ));
-                        }
-                        _ => {
-                            return Err(TranslationError::generic(
-                                "Found non-field in record field list",
-                            ))
-                        }
-                    }
-                }
+                let field_entries =
+                    self.convert_struct_fields(fields, platform_byte_size)?;
 
                 let mut derives = vec!["Copy", "Clone"];
+                let has_bitfields = fields
+                    .iter()
+                    .any(|field_id| match self.ast_context.index(*field_id).kind {
+                        CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
+                        _ => unreachable!("Found non-field in record field list"),
+                    });
                 if has_bitfields {
-                    field_entries = self.convert_bitfield_struct_fields(
-                        platform_byte_size,
-                        field_info,
-                    )?;
                     derives.push("BitfieldStruct");
+                    self.extern_crates.borrow_mut().insert("c2rust_bitfields");
+
+                    let item_store = &mut self.items.borrow_mut()[&self.main_file];
+                    item_store.add_use(vec!["c2rust_bitfields".into()], "BitfieldStruct");
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
@@ -4164,56 +4133,19 @@ impl<'c> Translation<'c> {
         let mut init = match self.ast_context.index(decl_id).kind {
             // Zero initialize all of the fields
             CDeclKind::Struct {
-                ref fields,
+                fields: Some(ref fields),
                 platform_byte_size,
                 ..
             } => {
                 let name = self.resolve_decl_inner_name(name_decl_id);
-
-                let fields = match *fields {
-                    Some(ref fields) => fields,
-                    None => {
-                        return Err(TranslationError::generic(
-                            "Attempted to zero-initialize forward-declared struct",
-                        ))
-                    }
-                };
-
-                let has_bitfields = fields
-                    .iter()
-                    .map(|field_id| match self.ast_context.index(*field_id).kind {
-                        CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
-                        _ => unreachable!("Found non-field in record field list"),
-                    })
-                    .any(|x| x);
-
-                if has_bitfields {
-                    self.bitfield_zero_initializer(name, fields, platform_byte_size, is_static)?
-                } else {
-                    let fields: WithStmts<Vec<Field>> = fields
-                        .into_iter()
-                        .map(|field_id| {
-                            let name = self
-                                .type_converter
-                                .borrow()
-                                .resolve_field_name(Some(decl_id), *field_id)
-                                .unwrap();
-
-                            match self.ast_context.index(*field_id).kind {
-                                CDeclKind::Field { typ, .. } => {
-                                    Ok(self.implicit_default_expr(typ.ctype, is_static)?
-                                       .map(|field_init| mk().field(name, field_init)))
-                                }
-                                _ => Err(TranslationError::generic(
-                                    "Found non-field in record field list",
-                                )),
-                            }
-                        })
-                        .collect::<Result<_, TranslationError>>()?;
-
-                    fields.map(|fields| mk().struct_expr(vec![name], fields))
-                }
+                self.struct_zero_initializer(name, fields, platform_byte_size, is_static)?
             }
+
+            CDeclKind::Struct { fields: None, .. } => {
+                return Err(TranslationError::generic(
+                    "Attempted to zero-initialize forward-declared struct",
+                ))
+            },
 
             // Zero initialize the first field
             CDeclKind::Union { ref fields, .. } => {
