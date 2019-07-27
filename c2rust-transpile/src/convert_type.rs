@@ -8,10 +8,16 @@ use std::ops::Index;
 use syntax::ast::*;
 use syntax::ptr::P;
 
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+enum FieldKey {
+    Field(CFieldId),
+    Padding(usize),
+}
+
 pub struct TypeConverter {
     pub translate_valist: bool,
     renamer: Renamer<CDeclId>,
-    fields: HashMap<CDeclId, Renamer<CFieldId>>,
+    fields: HashMap<CDeclId, Renamer<FieldKey>>,
     suffix_names: HashMap<(CDeclId, &'static str), String>,
     features: HashSet<&'static str>,
     emit_no_std: bool,
@@ -184,8 +190,29 @@ impl TypeConverter {
         self.fields
             .get_mut(&record_id)
             .unwrap()
-            .insert(field_id, name)
+            .insert(FieldKey::Field(field_id), name)
             .expect("Field already declared")
+    }
+
+    pub fn declare_padding(
+        &mut self,
+        record_id: CRecordId,
+        padding_idx: usize,
+    ) -> String {
+        if !self.fields.contains_key(&record_id) {
+            self.fields.insert(record_id, Renamer::new(&RESERVED_NAMES));
+        }
+
+        let key = FieldKey::Padding(padding_idx);
+        if let Some(name) = self.fields.get(&record_id).unwrap().get(&key) {
+            name
+        } else {
+            self.fields
+                .get_mut(&record_id)
+                .unwrap()
+                .insert(key, "c2rust_padding")
+                .unwrap()
+        }
     }
 
     /** Resolve the Rust name associated with a field declaration. The optional record_id
@@ -196,9 +223,10 @@ impl TypeConverter {
         record_id: Option<CRecordId>,
         field_id: CFieldId,
     ) -> Option<String> {
+        let key = FieldKey::Field(field_id);
         match record_id {
-            Some(record_id) => self.fields.get(&record_id).and_then(|x| x.get(&field_id)),
-            None => self.fields.values().flat_map(|x| x.get(&field_id)).next(),
+            Some(record_id) => self.fields.get(&record_id).and_then(|x| x.get(&key)),
+            None => self.fields.values().flat_map(|x| x.get(&key)).next(),
         }
     }
 

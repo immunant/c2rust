@@ -1411,7 +1411,7 @@ impl<'c> Translation<'c> {
 
                 // Gather up all the field names and field types
                 let field_entries =
-                    self.convert_struct_fields(fields, platform_byte_size)?;
+                    self.convert_struct_fields(decl_id, fields, platform_byte_size)?;
 
                 let mut derives = vec!["Copy", "Clone"];
                 let has_bitfields = fields
@@ -4171,8 +4171,7 @@ impl<'c> Translation<'c> {
                 platform_byte_size,
                 ..
             } => {
-                let name = self.resolve_decl_inner_name(name_decl_id);
-                self.convert_struct_zero_initializer(name, fields, platform_byte_size, is_static)?
+                self.convert_struct_zero_initializer(name_decl_id, fields, platform_byte_size, is_static)?
             }
 
             CDeclKind::Struct { fields: None, .. } => {

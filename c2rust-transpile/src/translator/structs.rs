@@ -276,6 +276,7 @@ impl<'a> Translation<'a> {
     /// ```
     pub fn convert_struct_fields(
         &self,
+        struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
     ) -> Result<Vec<StructField>, TranslationError> {
@@ -286,11 +287,10 @@ impl<'a> Translation<'a> {
 
         let mut padding_count = 0;
         let mut next_padding_field = || {
-            let field_name = if padding_count == 0 {
-                "_pad".into()
-            } else {
-                format!("_pad{}", padding_count + 1)
-            };
+            let field_name = self
+                .type_converter
+                .borrow_mut()
+                .declare_padding(struct_id, padding_count);
             padding_count += 1;
             field_name
         };
@@ -412,11 +412,10 @@ impl<'a> Translation<'a> {
         let local_pat = mk().mutbl().ident_pat("init");
         let mut padding_count = 0;
         let mut next_padding_field = || {
-            let field_name = if padding_count == 0 {
-                "_pad".into()
-            } else {
-                format!("_pad{}", padding_count + 1)
-            };
+            let field_name = self
+                .type_converter
+                .borrow_mut()
+                .declare_padding(struct_id, padding_count);
             padding_count += 1;
             field_name
         };
@@ -576,21 +575,21 @@ impl<'a> Translation<'a> {
     /// & padding fields
     pub fn convert_struct_zero_initializer(
         &self,
-        name: String,
+        struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+        let name = self.resolve_decl_inner_name(struct_id);
         let reorganized_fields = self.get_field_types(field_ids, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
 
         let mut padding_count = 0;
         let mut next_padding_field = || {
-            let field_name = if padding_count == 0 {
-                "_pad".into()
-            } else {
-                format!("_pad{}", padding_count + 1)
-            };
+            let field_name = self
+                .type_converter
+                .borrow_mut()
+                .declare_padding(struct_id, padding_count);
             padding_count += 1;
             field_name
         };
