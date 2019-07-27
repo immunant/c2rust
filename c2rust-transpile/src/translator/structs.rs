@@ -92,7 +92,6 @@ impl<'a> Translation<'a> {
 
         for field_id in field_ids {
             if let CDeclKind::Field {
-                ref name,
                 typ,
                 bitfield_width,
                 platform_bit_offset,
@@ -107,13 +106,8 @@ impl<'a> Translation<'a> {
                 let field_name = self
                     .type_converter
                     .borrow()
-                    .resolve_field_name(Some(*record_id), *field_id);
-                let field_name = field_name.unwrap_or_else(|| {
-                    // If the field hasn't been declared, do it now
-                    self.type_converter
-                        .borrow_mut()
-                        .declare_field_name(*record_id, *field_id, name)
-                });
+                    .resolve_field_name(Some(*record_id), *field_id)
+                    .unwrap();
 
                 let ctype = typ.ctype;
                 let mut ty = self.convert_type(ctype)?;

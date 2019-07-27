@@ -1397,6 +1397,18 @@ impl<'c> Translation<'c> {
                     }
                 }
 
+                // Pre-declare all the field names, checking for duplicates
+                for &x in fields {
+                    if let CDeclKind::Field {
+                        ref name,
+                        ..
+                    } = self.ast_context.index(x).kind {
+                        self.type_converter
+                            .borrow_mut()
+                            .declare_field_name(decl_id, x, name);
+                    }
+                }
+
                 // Gather up all the field names and field types
                 let field_entries =
                     self.convert_struct_fields(fields, platform_byte_size)?;
