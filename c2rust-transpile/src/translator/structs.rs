@@ -6,9 +6,7 @@ use std::collections::HashSet;
 use std::ops::Index;
 
 use super::TranslationError;
-use crate::c_ast::{
-    BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId,
-};
+use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
 use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
@@ -66,7 +64,7 @@ fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
         MetaItemKind::NameValue(Lit {
             token,
             node,
-            span: DUMMY_SP
+            span: DUMMY_SP,
         }),
     );
 
@@ -97,7 +95,8 @@ impl<'a> Translation<'a> {
                 platform_bit_offset,
                 platform_type_bitwidth,
                 ..
-            } = self.ast_context.index(*field_id).kind {
+            } = self.ast_context.index(*field_id).kind
+            {
                 let field_name = self
                     .type_converter
                     .borrow()
@@ -123,7 +122,7 @@ impl<'a> Translation<'a> {
                             reorganized_fields.push(field_group);
 
                             // Need to add padding first
-                            if (platform_bit_offset / 8) > next_byte_pos  {
+                            if (platform_bit_offset / 8) > next_byte_pos {
                                 let bytes = (platform_bit_offset / 8) - next_byte_pos;
                                 reorganized_fields.push(FieldType::Padding { bytes });
                             }
@@ -131,8 +130,9 @@ impl<'a> Translation<'a> {
 
                         let mut use_inner_type = false;
                         let mut extra_fields = vec![];
-                        if self.ast_context.is_packed_struct_decl(record_id) &&
-                           self.ast_context.is_aligned_struct_type(ctype) {
+                        if self.ast_context.is_packed_struct_decl(record_id)
+                            && self.ast_context.is_aligned_struct_type(ctype)
+                        {
                             // If we're embedding an aligned structure inside a packed one,
                             // we need to use the `_Inner` version and add padding
                             let decl_id = self
@@ -148,12 +148,13 @@ impl<'a> Translation<'a> {
                             use_inner_type = true;
 
                             // Add the padding field
-                            let padding_name = self.type_converter
+                            let padding_name = self
+                                .type_converter
                                 .borrow_mut()
                                 .resolve_decl_suffix_name(decl_id, PADDING_SUFFIX)
                                 .to_owned();
                             extra_fields.push(FieldType::ComputedPadding {
-                                ident: padding_name
+                                ident: padding_name,
                             })
                         }
 
@@ -346,15 +347,10 @@ impl<'a> Translation<'a> {
                 }
                 FieldType::ComputedPadding { ident } => {
                     let field_name = next_padding_field();
-                    let ty = mk().array_ty(
-                        mk().ident_ty("u8"),
-                        mk().ident_expr(ident),
-                    );
+                    let ty = mk().array_ty(mk().ident_ty("u8"), mk().ident_expr(ident));
 
                     // TODO: disable cross-checks on this field
-                    let field = mk()
-                        .pub_()
-                        .struct_field(field_name, ty);
+                    let field = mk().pub_().struct_field(field_name, ty);
 
                     field_entries.push(field);
                 }
@@ -398,13 +394,14 @@ impl<'a> Translation<'a> {
                 return Err(TranslationError::generic(
                     "Attempted to zero-initialize forward-declared struct",
                 ))
-            },
+            }
 
-            _ => panic!("Struct literal declaration mismatch")
+            _ => panic!("Struct literal declaration mismatch"),
         };
 
         let mut fields = Vec::with_capacity(field_decl_ids.len());
-        let reorganized_fields = self.get_field_types(struct_id, field_decl_ids, platform_byte_size)?;
+        let reorganized_fields =
+            self.get_field_types(struct_id, field_decl_ids, platform_byte_size)?;
         let local_pat = mk().mutbl().ident_pat("init");
         let mut padding_count = 0;
         let mut next_padding_field = || {
@@ -415,7 +412,6 @@ impl<'a> Translation<'a> {
             padding_count += 1;
             field_name
         };
-
 
         // Add in zero inits for both padding as well as bitfield groups
         for field_type in reorganized_fields {
@@ -458,24 +454,30 @@ impl<'a> Translation<'a> {
         // Bitfield widths of 0 should just be markers for clang,
         // we shouldn't need to explicitly handle it ourselves
         let is_packed = self.ast_context.is_packed_struct_decl(struct_id);
-        let field_info_iter = field_decl_ids.iter()
-            .filter_map(|field_id| {
-                match self.ast_context.index(*field_id).kind {
-                    CDeclKind::Field { bitfield_width: Some(0), .. } => None,
-                    CDeclKind::Field { typ, bitfield_width, .. } => { 
-                        let field_name = self
-                            .type_converter
-                            .borrow()
-                            .resolve_field_name(None, *field_id)
-                            .unwrap();
+        let field_info_iter = field_decl_ids.iter().filter_map(|field_id| {
+            match self.ast_context.index(*field_id).kind {
+                CDeclKind::Field {
+                    bitfield_width: Some(0),
+                    ..
+                } => None,
+                CDeclKind::Field {
+                    typ,
+                    bitfield_width,
+                    ..
+                } => {
+                    let field_name = self
+                        .type_converter
+                        .borrow()
+                        .resolve_field_name(None, *field_id)
+                        .unwrap();
 
-                        let use_inner_type =
-                            is_packed && self.ast_context.is_aligned_struct_type(typ.ctype);
-                        Some((field_name, typ, bitfield_width, use_inner_type))
-                    }
-                    _ => None
+                    let use_inner_type =
+                        is_packed && self.ast_context.is_aligned_struct_type(typ.ctype);
+                    Some((field_name, typ, bitfield_width, use_inner_type))
                 }
-            });
+                _ => None,
+            }
+        });
         let zipped_iter = field_expr_ids.iter().zip_longest(field_info_iter);
         let mut bitfield_inits = Vec::new();
 
@@ -490,7 +492,7 @@ impl<'a> Translation<'a> {
                     let mut init = self.implicit_default_expr(ty.ctype, ctx.is_static)?;
                     if !init.is_pure() {
                         return Err(TranslationError::generic(
-                            "Expected no statements in field expression"
+                            "Expected no statements in field expression",
                         ));
                     }
                     if use_inner_type {
@@ -507,7 +509,7 @@ impl<'a> Translation<'a> {
 
                     if !expr.is_pure() {
                         return Err(TranslationError::generic(
-                            "Expected no statements in field expression"
+                            "Expected no statements in field expression",
                         ));
                     }
 
@@ -528,15 +530,13 @@ impl<'a> Translation<'a> {
             }
         }
 
-        fields.into_iter()
+        fields
+            .into_iter()
             .collect::<WithStmts<Vec<ast::Field>>>()
             .and_then(|fields| {
                 let struct_expr = mk().struct_expr(name.as_str(), fields);
-                let local_variable = P(mk().local(
-                    local_pat,
-                    None as Option<P<Ty>>,
-                    Some(struct_expr))
-                );
+                let local_variable =
+                    P(mk().local(local_pat, None as Option<P<Ty>>, Some(struct_expr)));
 
                 let mut is_unsafe = false;
                 let mut stmts = vec![mk().local_stmt(local_variable)];
@@ -546,7 +546,8 @@ impl<'a> Translation<'a> {
                     let field_name_setter = format!("set_{}", field_name);
                     let struct_ident = mk().ident_expr("init");
                     is_unsafe |= val.is_unsafe();
-                    let val = val.to_pure_expr()
+                    let val = val
+                        .to_pure_expr()
                         .expect("Expected no statements in bitfield initializer");
                     let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
 
@@ -557,14 +558,14 @@ impl<'a> Translation<'a> {
 
                 stmts.push(mk().expr_stmt(struct_ident));
 
-                let val = mk().block_expr(mk().block(stmts)); 
+                let val = mk().block_expr(mk().block(stmts));
 
                 if is_unsafe {
                     Ok(WithStmts::new_unsafe_val(val))
                 } else {
                     Ok(WithStmts::new_val(val))
                 }
-           })
+            })
     }
 
     /// This method handles zero-initializing bitfield structs including bitfields
@@ -623,11 +624,16 @@ impl<'a> Translation<'a> {
 
                     fields.push(WithStmts::new_val(field));
                 }
-                FieldType::Regular { ctype, name, use_inner_type, .. } => {
+                FieldType::Regular {
+                    ctype,
+                    name,
+                    use_inner_type,
+                    ..
+                } => {
                     let mut field_init = self.implicit_default_expr(ctype, is_static)?;
                     if !field_init.is_pure() {
                         return Err(TranslationError::generic(
-                            "Expected no statements in field expression"
+                            "Expected no statements in field expression",
                         ));
                     }
                     if use_inner_type {
@@ -639,7 +645,8 @@ impl<'a> Translation<'a> {
             }
         }
 
-        Ok(fields.into_iter()
+        Ok(fields
+            .into_iter()
             .collect::<WithStmts<Vec<ast::Field>>>()
             .map(|fields| mk().struct_expr(name.as_str(), fields)))
     }
@@ -684,7 +691,9 @@ impl<'a> Translation<'a> {
                 BinOp::AssignModulus => mk().binary_expr(BinOpKind::Rem, lhs_expr_read, rhs_expr),
                 BinOp::AssignBitXor => mk().binary_expr(BinOpKind::BitXor, lhs_expr_read, rhs_expr),
                 BinOp::AssignShiftLeft => mk().binary_expr(BinOpKind::Shl, lhs_expr_read, rhs_expr),
-                BinOp::AssignShiftRight => mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr),
+                BinOp::AssignShiftRight => {
+                    mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr)
+                }
                 BinOp::AssignBitOr => mk().binary_expr(BinOpKind::BitOr, lhs_expr_read, rhs_expr),
                 BinOp::AssignBitAnd => mk().binary_expr(BinOpKind::BitAnd, lhs_expr_read, rhs_expr),
                 BinOp::Assign => rhs_expr,
