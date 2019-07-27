@@ -81,6 +81,7 @@ impl<'a> Translation<'a> {
     /// 3. A standard field into a FieldType::Regular
     fn get_field_types(
         &self,
+        record_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
     ) -> Result<Vec<FieldType>, TranslationError> {
@@ -88,7 +89,6 @@ impl<'a> Translation<'a> {
         let mut last_bitfield_group: Option<FieldType> = None;
         let mut next_byte_pos = 0;
         let mut encountered_bytes = HashSet::new();
-        let mut record_id = None;
 
         for field_id in field_ids {
             if let CDeclKind::Field {
@@ -98,15 +98,10 @@ impl<'a> Translation<'a> {
                 platform_type_bitwidth,
                 ..
             } = self.ast_context.index(*field_id).kind {
-                let (record_id, is_packed) = record_id.get_or_insert_with(|| {
-                    let record_id = self.ast_context.parents[field_id];
-                    let is_packed = self.ast_context.is_packed_struct_decl(record_id);
-                    (record_id, is_packed)
-                });
                 let field_name = self
                     .type_converter
                     .borrow()
-                    .resolve_field_name(Some(*record_id), *field_id)
+                    .resolve_field_name(Some(record_id), *field_id)
                     .unwrap();
 
                 let ctype = typ.ctype;
@@ -136,7 +131,8 @@ impl<'a> Translation<'a> {
 
                         let mut use_inner_type = false;
                         let mut extra_fields = vec![];
-                        if *is_packed && self.ast_context.is_aligned_struct_type(ctype) {
+                        if self.ast_context.is_packed_struct_decl(record_id) &&
+                           self.ast_context.is_aligned_struct_type(ctype) {
                             // If we're embedding an aligned structure inside a packed one,
                             // we need to use the `_Inner` version and add padding
                             let decl_id = self
@@ -283,7 +279,7 @@ impl<'a> Translation<'a> {
         let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
-        let reorganized_fields = self.get_field_types(field_ids, platform_byte_size)?;
+        let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
 
         let mut padding_count = 0;
         let mut next_padding_field = || {
@@ -408,7 +404,7 @@ impl<'a> Translation<'a> {
         };
 
         let mut fields = Vec::with_capacity(field_decl_ids.len());
-        let reorganized_fields = self.get_field_types(field_decl_ids, platform_byte_size)?;
+        let reorganized_fields = self.get_field_types(struct_id, field_decl_ids, platform_byte_size)?;
         let local_pat = mk().mutbl().ident_pat("init");
         let mut padding_count = 0;
         let mut next_padding_field = || {
@@ -581,7 +577,7 @@ impl<'a> Translation<'a> {
         is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         let name = self.resolve_decl_inner_name(struct_id);
-        let reorganized_fields = self.get_field_types(field_ids, platform_byte_size)?;
+        let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
 
         let mut padding_count = 0;
