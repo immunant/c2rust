@@ -1430,7 +1430,7 @@ impl<'c> Translation<'c> {
                     _ => { }
                 }
 
-                if let Some(manual_alignment) = manual_alignment {
+                if let Some(alignment) = manual_alignment {
                     // This is the most complicated case: we have `align(N)` which
                     // might be mixed with or included into a `packed` structure,
                     // which Rust doesn't currently support; instead, we split
@@ -1459,7 +1459,7 @@ impl<'c> Translation<'c> {
                     let outer_ty = mk().path_ty(vec![name.clone()]);
                     let outer_reprs = vec![
                         simple_metaitem("C"),
-                        int_arg_metaitem("align", manual_alignment as u128),
+                        int_arg_metaitem("align", alignment as u128),
                         // TODO: copy others from `reprs` above
                     ];
                     let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(outer_reprs));
