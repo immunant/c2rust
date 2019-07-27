@@ -571,12 +571,12 @@ impl<'a> Translation<'a> {
     /// & padding fields
     pub fn convert_struct_zero_initializer(
         &self,
+        name: String,
         struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let name = self.resolve_decl_inner_name(struct_id);
         let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
 
