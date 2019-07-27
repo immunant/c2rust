@@ -1430,65 +1430,63 @@ impl<'c> Translation<'c> {
                     _ => { }
                 }
 
-                'result: {
-                    if let Some(manual_alignment) = manual_alignment {
-                        // This is the most complicated case: we have `align(N)` which
-                        // might be mixed with or included into a `packed` structure,
-                        // which Rust doesn't currently support; instead, we split
-                        // the structure into 2 structures like this:
-                        //   #[align(N)]
-                        //   pub struct Foo(pub Foo_Inner);
-                        //   #[packed(M)]
-                        //   pub struct Foo_Inner {
-                        //     ...fields...
-                        //   }
-                        //
-                        // TODO: right now, we always emit the pair of structures
-                        // instead, we should only split when needed, but that
-                        // would significantly complicate the implementation
-                        assert!(self.ast_context.has_inner_struct_decl(decl_id));
-                        let inner_name = self.resolve_decl_inner_name(decl_id);
-                        let inner_ty = mk().path_ty(vec![inner_name.clone()]);
-                        let inner_repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
-                        let inner_struct = mk().span(s)
-                            .pub_()
-                            .call_attr("derive", derives)
-                            .meta_item_attr(AttrStyle::Outer, inner_repr_attr)
-                            .struct_item(inner_name.clone(), field_entries, false);
+                if let Some(manual_alignment) = manual_alignment {
+                    // This is the most complicated case: we have `align(N)` which
+                    // might be mixed with or included into a `packed` structure,
+                    // which Rust doesn't currently support; instead, we split
+                    // the structure into 2 structures like this:
+                    //   #[align(N)]
+                    //   pub struct Foo(pub Foo_Inner);
+                    //   #[packed(M)]
+                    //   pub struct Foo_Inner {
+                    //     ...fields...
+                    //   }
+                    //
+                    // TODO: right now, we always emit the pair of structures
+                    // instead, we should only split when needed, but that
+                    // would significantly complicate the implementation
+                    assert!(self.ast_context.has_inner_struct_decl(decl_id));
+                    let inner_name = self.resolve_decl_inner_name(decl_id);
+                    let inner_ty = mk().path_ty(vec![inner_name.clone()]);
+                    let inner_repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
+                    let inner_struct = mk().span(s)
+                        .pub_()
+                        .call_attr("derive", derives)
+                        .meta_item_attr(AttrStyle::Outer, inner_repr_attr)
+                        .struct_item(inner_name.clone(), field_entries, false);
 
-                        // https://github.com/rust-lang/rust/issues/33626
-                        let outer_ty = mk().path_ty(vec![name.clone()]);
-                        let outer_reprs = vec![
-                            simple_metaitem("C"),
-                            int_arg_metaitem("align", manual_alignment as u128),
-                            // TODO: copy others from `reprs` above
-                        ];
-                        let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(outer_reprs));
-                        let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
-                        let outer_struct = mk().span(s)
-                            .pub_()
-                            .call_attr("derive", vec!["Copy", "Clone"])
-                            .meta_item_attr(AttrStyle::Outer, repr_attr)
-                            .struct_item(name, vec![outer_field], true);
+                    // https://github.com/rust-lang/rust/issues/33626
+                    let outer_ty = mk().path_ty(vec![name.clone()]);
+                    let outer_reprs = vec![
+                        simple_metaitem("C"),
+                        int_arg_metaitem("align", manual_alignment as u128),
+                        // TODO: copy others from `reprs` above
+                    ];
+                    let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(outer_reprs));
+                    let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
+                    let outer_struct = mk().span(s)
+                        .pub_()
+                        .call_attr("derive", vec!["Copy", "Clone"])
+                        .meta_item_attr(AttrStyle::Outer, repr_attr)
+                        .struct_item(name, vec![outer_field], true);
 
-                        // Emit `const X_PADDING: usize = size_of(Outer) - size_of(Inner);`
-                        let padding_name = self.type_converter
-                            .borrow_mut()
-                            .resolve_decl_suffix_name(decl_id, PADDING_SUFFIX)
-                            .to_owned();
-                        let padding_ty = mk().path_ty(vec!["usize"]);
-                        let outer_size = self.compute_size_of_ty(outer_ty)?.to_expr();
-                        let inner_size = self.compute_size_of_ty(inner_ty)?.to_expr();
-                        let padding_value =
-                            mk().binary_expr(BinOpKind::Sub, outer_size, inner_size);
-                        let padding_const = mk().span(s)
-                            .call_attr("allow", vec!["dead_code", "non_upper_case_globals"])
-                            .const_item(padding_name, padding_ty, padding_value);
+                    // Emit `const X_PADDING: usize = size_of(Outer) - size_of(Inner);`
+                    let padding_name = self.type_converter
+                        .borrow_mut()
+                        .resolve_decl_suffix_name(decl_id, PADDING_SUFFIX)
+                        .to_owned();
+                    let padding_ty = mk().path_ty(vec!["usize"]);
+                    let outer_size = self.compute_size_of_ty(outer_ty)?.to_expr();
+                    let inner_size = self.compute_size_of_ty(inner_ty)?.to_expr();
+                    let padding_value =
+                        mk().binary_expr(BinOpKind::Sub, outer_size, inner_size);
+                    let padding_const = mk().span(s)
+                        .call_attr("allow", vec!["dead_code", "non_upper_case_globals"])
+                        .const_item(padding_name, padding_ty, padding_value);
 
-                        let structs = vec![outer_struct, inner_struct, padding_const];
-                        break 'result Ok(ConvertedDecl::Items(structs));
-                    };
-
+                    let structs = vec![outer_struct, inner_struct, padding_const];
+                    Ok(ConvertedDecl::Items(structs))
+                } else {
                     assert!(!self.ast_context.has_inner_struct_decl(decl_id));
                     let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
                     Ok(ConvertedDecl::Item(
