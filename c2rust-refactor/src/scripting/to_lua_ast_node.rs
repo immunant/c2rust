@@ -4,6 +4,7 @@ use std::ops::DerefMut;
 use std::sync::Arc;
 
 use rustc::hir::def::Res;
+use rustc::hir::HirId;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::mut_visit::*;
@@ -12,7 +13,7 @@ use syntax::source_map::{DUMMY_SP, dummy_spanned};
 use syntax::symbol::Symbol;
 use syntax_pos::Span;
 
-use rlua::{Context, Error, Function, Result, Scope, ToLua, UserData, UserDataMethods, Value};
+use rlua::{Context, Error, Function, MetaMethod, Result, Scope, ToLua, UserData, UserDataMethods, Value};
 use rlua::prelude::LuaString;
 
 use crate::ast_manip::{util, visit_nodes, AstName, AstNode, WalkAst};
@@ -157,6 +158,73 @@ impl UserData for LuaAstNode<P<Item>> {
                 ItemKind::Use(e) => Ok(e.to_lua(lua_ctx)),
                 node => Err(Error::external(format!("Item node {:?} not implemented yet", node))),
             }
+        });
+
+        methods.add_method("get_field_ids", |_lua_ctx, this, ()| {
+            if let ItemKind::Struct(variant_data, _) = &this.borrow().node {
+                return Ok(Some(variant_data
+                    .fields()
+                    .iter()
+                    .map(|f| f.id.as_u32())
+                    .collect::<Vec<_>>()
+                ));
+            }
+
+            Ok(None)
+        });
+
+        methods.add_method("get_arg_ids", |_lua_ctx, this, ()| {
+            if let ItemKind::Fn(decl, ..) = &this.borrow().node {
+                return Ok(Some(decl
+                    .inputs
+                    .iter()
+                    .map(|a| a.id.as_u32())
+                    .collect::<Vec<_>>()
+                ));
+            }
+
+            Ok(None)
+        });
+
+        methods.add_method("add_lifetime", |_lua_ctx, this, string: LuaString| {
+            let lt_str = string.to_str()?;
+            let mut lt_string = String::with_capacity(lt_str.len() + 1);
+
+            lt_string.push('\'');
+            lt_string.push_str(lt_str);
+
+            let generic_param = GenericParam {
+                id: DUMMY_NODE_ID,
+                ident: Ident::from_str(&lt_string),
+                attrs: Default::default(),
+                bounds: Vec::new(),
+                kind: GenericParamKind::Lifetime,
+            };
+
+            if let ItemKind::Struct(_, generics)
+                 | ItemKind::Fn(_, _, generics, _) = &mut this.borrow_mut().node {
+                let diff = |p: &GenericParam| {
+                    if let GenericParamKind::Lifetime = p.kind {
+                        p.ident == generic_param.ident
+                    } else {
+                        false
+                    }
+                };
+
+                if generics.params.iter().any(diff) {
+                    return Ok(());
+                }
+
+                generics.params.push(generic_param);
+            }
+
+            Ok(())
+        });
+
+        methods.add_method("print", |_lua_ctx, this, ()| {
+            println!("{:?}", this.borrow());
+
+            Ok(())
         });
     }
 }
@@ -532,6 +600,10 @@ impl UserData for LuaAstNode<P<Ty>> {
 
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
             Ok(this.borrow().node.ast_name())
+        });
+
+        methods.add_method("get_id", |_lua_ctx, this, ()| {
+            Ok(this.borrow().id.to_lua(_lua_ctx))
         });
 
         methods.add_method("get_mut_ty", |_lua_ctx, this, ()| {
@@ -1008,7 +1080,8 @@ impl UserData for LuaAstNode<ItemKind> {
                 kind: GenericParamKind::Lifetime,
             };
 
-            if let ItemKind::Struct(_, generics) = &mut *this.borrow_mut() {
+            if let ItemKind::Struct(_, generics)
+                 | ItemKind::Fn(_, _, generics, _) = &mut *this.borrow_mut() {
                 let diff = |p: &GenericParam| {
                     if let GenericParamKind::Lifetime = p.kind {
                         p.ident == generic_param.ident
@@ -1040,10 +1113,38 @@ impl UserData for LuaAstNode<ItemKind> {
             Ok(None)
         });
 
+        methods.add_method("get_arg_ids", |_lua_ctx, this, ()| {
+            if let ItemKind::Fn(decl, ..) = &*this.borrow() {
+                return Ok(Some(decl
+                    .inputs
+                    .iter()
+                    .map(|a| a.id.as_u32())
+                    .collect::<Vec<_>>()
+                ));
+            }
+
+            Ok(None)
+        });
+
         methods.add_method("print", |_lua_ctx, this, ()| {
             println!("{:?}", this.borrow());
 
             Ok(())
+        });
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct LuaHirId(pub HirId);
+
+impl UserData for LuaHirId {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_meta_method(MetaMethod::Eq, |_lua_ctx, this, rhs: LuaHirId| {
+            Ok(*this == rhs)
+        });
+
+        methods.add_meta_method(MetaMethod::ToString, |_lua_ctx, this, ()| {
+            Ok(format!("HirId {{ owner: {}, local_id: {} }}", this.0.owner.as_u32(), this.0.local_id.as_u32()))
         });
     }
 }

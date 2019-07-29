@@ -225,6 +225,26 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             .unwrap_or_else(|| panic!("expr does not resolve to a def: {:?}", e))
     }
 
+    pub fn try_resolve_ty_to_hid(&self, ty: &ast::Ty) -> Option<hir::HirId> {
+        self.try_resolve_ty_hir(ty)
+            .or_else(|| {
+                if self.has_ty_ctxt() {
+                    self.try_resolve_node_type_dep(ty.id)
+                } else {
+                    None
+                }
+            })
+            .and_then(|def| {
+                if let Some(def_id) = def.opt_def_id() {
+                    self.hir_map().as_local_hir_id(def_id)
+                } else if let Res::Local(hir_id) = def {
+                    Some(hir_id)
+                } else {
+                    None
+                }
+            })
+    }
+
     pub fn try_resolve_ty(&self, t: &ast::Ty) -> Option<DefId> {
         if let Some(def) = self.try_resolve_ty_hir(t) {
             return def.opt_def_id();

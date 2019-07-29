@@ -42,7 +42,7 @@ use ast_visitor::{LuaAstVisitor, LuaAstVisitorNew};
 use into_lua_ast::IntoLuaAst;
 use merge_lua_ast::MergeLuaAst;
 use to_lua_ast_node::LuaAstNode;
-use to_lua_ast_node::{ToLuaExt, ToLuaScoped};
+use to_lua_ast_node::{LuaHirId, ToLuaExt, ToLuaScoped};
 
 /// Refactoring module
 // @module Refactor
@@ -492,16 +492,32 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         methods.add_method(
             "get_expr_path_hirid",
             |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
-                Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(|id| id.local_id.as_u32()))
+                Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(|id| LuaHirId(id)))
             },
         );
 
         methods.add_method(
+            "get_ty_path_hirid",
+            |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
+                Ok(this.cx.try_resolve_ty_to_hid(&ty.borrow()).map(|id| LuaHirId(id)))
+            },
+        );
+
+        methods.add_method("resolve_ty_to_hirid", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
+            let def_id = match this.cx.try_resolve_ty(&ty.borrow()) {
+                Some(id) => id,
+                None => return Ok(None),
+            };
+
+           Ok(this.cx.hir_map().as_local_hir_id(def_id).map(|id| LuaHirId(id)))
+        });
+
+        methods.add_method(
             "get_nodeid_hirid",
             |_lua_ctx, this, id: i64| {
-                let hrid = this.cx.hir_map().node_to_hir_id(NodeId::from_usize(id as usize));
+                let node_id = NodeId::from_usize(id as usize);
 
-                Ok(hrid.local_id.as_u32())
+                Ok(Some(LuaHirId(this.cx.hir_map().node_to_hir_id(node_id))))
             },
         );
 
@@ -767,7 +783,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                     if field.ident == **ident {
                         let hir_id = this.cx.hir_map().as_local_hir_id(field.did);
 
-                        return Ok(hir_id.map(|h| h.local_id.as_u32()));
+                        return Ok(hir_id.map(|id| LuaHirId(id)));
                     }
                 }
             };

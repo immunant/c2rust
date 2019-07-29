@@ -37,6 +37,18 @@ function strip_int_suffix(expr)
     return expr
 end
 
+Struct = {}
+
+function Struct.new(lifetimes)
+    self = {}
+    self.lifetimes = lifetimes
+
+    setmetatable(self, Struct)
+    Struct.__index = Struct
+
+    return self
+end
+
 RefCfg = {}
 
 function RefCfg.new(mod_type, lifetime)
@@ -91,8 +103,10 @@ function Visitor.new(tctx, node_id_cfgs)
     self.node_id_cfgs = node_id_cfgs
     -- PatHrId -> Variable
     self.vars = {}
-    -- ?HrId -> Field
+    -- HrId -> Field
     self.fields = {}
+    -- HrId -> Struct
+    self.structs = {}
 
     setmetatable(self, Visitor)
     Visitor.__index = Visitor
@@ -125,6 +139,26 @@ function upgrade_ptr(ptr_ty, conversion_cfg)
     return pointee_ty
 end
 
+function Visitor:add_arg_lifetimes(arg, arg_ty)
+    -- Deref type until we get a concrete type
+    while true do
+        local mut_ty = arg_ty:get_mut_ty()
+
+        if not mut_ty then
+            break
+        end
+
+        arg_ty = mut_ty:get_ty()
+    end
+
+    if arg_ty:get_kind() == "Path" then
+        local hirid = self.tctx:get_ty_path_hirid(arg_ty)
+        -- arg_ty:print()
+        -- print("TyId: " .. arg_ty:get_id() .. " HirId:", (hirid or "nil"))
+        -- print(self.tctx:resolve_ty_to_hirid(arg_ty))
+    end
+end
+
 function Visitor:visit_arg(arg)
     local arg_id = arg:get_id()
     local conversion_cfg = self.node_id_cfgs[arg_id]
@@ -137,9 +171,35 @@ function Visitor:visit_arg(arg)
 
             arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
 
-            self.vars[arg_pat_hrid] = Variable.new(arg_id, false)
+            self:add_arg_lifetimes(arg, arg_ty)
+
+            self:add_var(arg_pat_hrid, Variable.new(arg_id, false))
         end
     end
+end
+
+function Visitor:add_var(hirid, var)
+    local hirid_str = tostring(hirid)
+
+    self.vars[hirid_str] = var
+end
+
+function Visitor:get_var(hirid)
+    local hirid_str = tostring(hirid)
+
+    return self.vars[hirid_str]
+end
+
+function Visitor:add_field(hirid, field)
+    local hirid_str = tostring(hirid)
+
+    self.fields[hirid_str] = field
+end
+
+function Visitor:get_field(hirid)
+    local hirid_str = tostring(hirid)
+
+    return self.fields[hirid_str]
 end
 
 function Visitor:visit_expr(expr)
@@ -154,8 +214,8 @@ function Visitor:visit_expr(expr)
             local derefed_expr = field_expr:get_exprs()[1]
 
             if derefed_expr:get_kind() == "Path" then
-                local id = self.tctx:get_expr_path_hirid(derefed_expr)
-                local var = self.vars[id]
+                local hirid = self.tctx:get_expr_path_hirid(derefed_expr)
+                local var = self:get_var(hirid)
 
                 -- This is a path we're expecting to modify
                 if var and self.node_id_cfgs[var.id] then
@@ -189,8 +249,8 @@ function Visitor:visit_expr(expr)
             end
 
             -- Should be left with a path, otherwise bail
-            local id = self.tctx:get_expr_path_hirid(unwrapped_expr)
-            local var = self.vars[id]
+            local hirid = self.tctx:get_expr_path_hirid(unwrapped_expr)
+            local var = self:get_var(hirid)
 
             -- We only want to apply this operation if we're converting
             -- a pointer to an array
@@ -222,8 +282,8 @@ function Visitor:visit_expr(expr)
         local lhs = exprs[1]
         local rhs = exprs[2]
         local rhs_kind = rhs:get_kind()
-        local id = self.tctx:get_expr_path_hirid(lhs)
-        local var = self.vars[id]
+        local hirid = self.tctx:get_expr_path_hirid(lhs)
+        local var = self:get_var(hirid)
 
         if rhs_kind == "Cast" then
             local conversion_cfg = var and self.node_id_cfgs[var.id]
@@ -280,8 +340,8 @@ function Visitor:visit_expr(expr)
         -- lhs = rhs -> lhs = Some(rhs)
         -- TODO: Should probably expand to work on more complex exprs
         elseif rhs_kind == "Path" then
-            local id = self.tctx:get_expr_path_hirid(rhs)
-            local var = self.vars[id]
+            local hirid = self.tctx:get_expr_path_hirid(rhs)
+            local var = self:get_var(hirid)
 
             if var and not self.node_id_cfgs[var.id]:is_opt_any() then
                 local lhs_ty = self.tctx:get_expr_ty(lhs)
@@ -318,9 +378,9 @@ function Visitor:visit_expr(expr)
 end
 
 function Visitor:get_expr_cfg(expr)
-    local hrid = self.tctx:get_expr_path_hirid(expr)
+    local hirid = self.tctx:get_expr_path_hirid(expr)
     local node_id = nil
-    local var = self.vars[hrid]
+    local var = self:get_var(hirid)
 
     -- If we're looking at a local or param, lookup from the variable map
     if var then
@@ -328,7 +388,7 @@ function Visitor:get_expr_cfg(expr)
     -- Otherwise check the field map
     elseif expr:get_kind() == "Field" then
         hirid = self.tctx:get_field_expr_hirid(expr)
-        local field = self.fields[hirid]
+        local field = self:get_field(hirid)
 
         if field then
             node_id = field.id
@@ -344,30 +404,46 @@ function Visitor:visit_fn_decl(fn_decl)
     self.vars = {}
 end
 
-function Visitor:visit_item_kind(item_kind)
-    if item_kind:get_kind() == "Struct" then
-        local field_ids = item_kind:get_field_ids()
+function Visitor:flat_map_item(item, walk)
+    local item_kind = item:get_kind()
+
+    if item_kind == "Struct" then
+        local field_ids = item:get_field_ids()
 
         for _, field_id in ipairs(field_ids) do
             local ref_cfg = self.node_id_cfgs[field_id]
             local field_hrid = self.tctx:get_nodeid_hirid(field_id)
 
-            self.fields[field_hrid] = Field.new(field_id)
+            self:add_field(field_hrid, Field.new(field_id))
 
             if ref_cfg and ref_cfg.lifetime then
-                item_kind:add_lifetime(ref_cfg.lifetime)
+                item:add_lifetime(ref_cfg.lifetime)
+            end
+        end
+    elseif item_kind == "Fn" then
+        local arg_ids = item:get_arg_ids()
+
+        for _, arg_id in ipairs(arg_ids) do
+            local ref_cfg = self.node_id_cfgs[arg_id]
+
+            if ref_cfg and ref_cfg.lifetime then
+                item:add_lifetime(ref_cfg.lifetime)
+                -- TODO other lifetimes
             end
         end
     end
+
+    walk(item)
+
+    return {item}
 end
 
 function Visitor:visit_struct_field(field)
     local field_id = field:get_id()
+    local field_ty = field:get_ty()
     local conversion_cfg = self.node_id_cfgs[field_id]
 
-    if conversion_cfg then
-        local field_ty = field:get_ty()
-
+    if conversion_cfg and field_ty:get_kind() == "Ptr" then
         field:set_ty(upgrade_ptr(field_ty, conversion_cfg))
     end
 end
@@ -401,9 +477,9 @@ function Visitor:visit_local(locl)
                 locl:set_ty(nil)
                 locl:set_init(init)
 
-                local arg_pat_hrid = self.tctx:get_nodeid_hirid(locl:get_pat_id())
+                local pat_hrid = self.tctx:get_nodeid_hirid(locl:get_pat_id())
 
-                self.vars[arg_pat_hrid] = Variable.new(local_id, true)
+                self:add_var(pat_hrid, Variable.new(local_id, true))
             end
         elseif conversion_cfg:is_box_slice() then
             local init = locl:get_init()
@@ -412,9 +488,9 @@ function Visitor:visit_local(locl)
                 locl:set_ty(nil)
                 locl:set_init(nil)
 
-                local arg_pat_hrid = self.tctx:get_nodeid_hirid(locl:get_pat_id())
+                local pat_hrid = self.tctx:get_nodeid_hirid(locl:get_pat_id())
 
-                self.vars[arg_pat_hrid] = Variable.new(local_id, true)
+                self:add_var(pat_hrid, Variable.new(local_id, true))
             end
         end
     end
@@ -438,6 +514,7 @@ refactor:transform(
             [221] = RefCfg.new("ref", nil),
             [229] = RefCfg.new("box_slice", nil),
             [288] = RefCfg.new("ref", nil),
+            [326] = RefCfg.new("ref", "a"),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end
