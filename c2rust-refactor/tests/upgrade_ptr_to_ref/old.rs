@@ -78,3 +78,25 @@ unsafe fn destroy_buf(sd: *mut SizedData) {
 }
 
 unsafe fn explicit_lifetimes(_ptrs: *mut Ptrs) {}
+
+struct HeapItem {
+    item: *mut u32,
+    opt_item: *mut u32,
+}
+
+unsafe fn init_opt_item(hi: *mut HeapItem) {
+    let mut ptr: *mut u32 = 0 as *mut u32;
+
+    if (*hi).item.is_null() {
+        return;
+    }
+
+    if !(*hi).opt_item.is_null() {
+        return;
+    }
+
+    ptr = malloc(32) as *mut u32;
+    *ptr = *(*hi).item;
+
+    (*hi).opt_item = ptr;
+}

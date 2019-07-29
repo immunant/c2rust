@@ -94,6 +94,14 @@ function RefCfg:is_box_slice()
     return self.mod_type == "box_slice"
 end
 
+function RefCfg:is_box()
+    return self.mod_type == "box"
+end
+
+function RefCfg:is_box_any()
+    return self:is_opt_box() or self:is_opt_box_slice() or self:is_box_slice() or self:is_box()
+end
+
 Visitor = {}
 
 function Visitor.new(tctx, node_id_cfgs)
@@ -132,9 +140,13 @@ function upgrade_ptr(ptr_ty, conversion_cfg)
         return ptr_ty
     end
 
-    -- T -> Option<Box<T>> or [T] -> Option<Box<[T]>>
+    -- T -> Box<T> or [T] -> Box<[T]>
     pointee_ty:wrap_as_generic_angle_arg("Box")
-    pointee_ty:wrap_as_generic_angle_arg("Option")
+
+    -- Box<T> -> Option<Box<T>> or Box<[T]> -> Option<Box<[T]>>
+    if conversion_cfg:is_opt_any() then
+        pointee_ty:wrap_as_generic_angle_arg("Option")
+    end
 
     return pointee_ty
 end
@@ -180,9 +192,11 @@ function Visitor:visit_arg(arg)
 end
 
 function Visitor:add_var(hirid, var)
-    local hirid_str = tostring(hirid)
+    if hirid then
+        local hirid_str = tostring(hirid)
 
-    self.vars[hirid_str] = var
+        self.vars[hirid_str] = var
+    end
 end
 
 function Visitor:get_var(hirid)
@@ -192,9 +206,11 @@ function Visitor:get_var(hirid)
 end
 
 function Visitor:add_field(hirid, field)
-    local hirid_str = tostring(hirid)
+    if hirid then
+        local hirid_str = tostring(hirid)
 
-    self.fields[hirid_str] = field
+        self.fields[hirid_str] = field
+    end
 end
 
 function Visitor:get_field(hirid)
@@ -204,9 +220,11 @@ function Visitor:get_field(hirid)
 end
 
 function Visitor:add_struct(hirid, struct)
-    local hirid_str = tostring(hirid)
+    if hirid then
+        local hirid_str = tostring(hirid)
 
-    self.structs[hirid_str] = struct
+        self.structs[hirid_str] = struct
+    end
 end
 
 function Visitor:get_struct(hirid)
@@ -316,27 +334,37 @@ function Visitor:visit_expr(expr)
                 if segments[#segments] == "malloc" then
                     local mut_ty = cast_ty:get_mut_ty()
                     local pointee_ty = mut_ty:get_ty()
-
-                    path:set_segments{"", "core", "mem", "size_of"}
-                    path:set_generic_angled_arg_tys(4, {pointee_ty})
-                    path_expr:to_path(path)
-                    path_expr:to_call{path_expr}
-
+                    local new_rhs = nil
                     -- TODO: zero-init will only work for numbers, not structs/unions
                     local init = self.tctx:int_lit_expr(0, nil)
-                    local usize_ty = self.tctx:ident_path_ty("usize")
-                    local cast_expr = self.tctx:cast_expr(param_expr, usize_ty)
-                    local binary_expr = self.tctx:binary_expr("Div", cast_expr, path_expr)
-                    local vec_expr = self.tctx:vec_mac_init_num(init, binary_expr)
 
-                    vec_expr:to_method_call("into_boxed_slice", {vec_expr})
+                    -- For slices we want to use vec![init; num].into_boxed_slice
+                    if conversion_cfg:is_slice_any() then
+                        path:set_segments{"", "core", "mem", "size_of"}
+                        path:set_generic_angled_arg_tys(4, {pointee_ty})
+                        path_expr:to_path(path)
+                        path_expr:to_call{path_expr}
+
+                        local usize_ty = self.tctx:ident_path_ty("usize")
+                        local cast_expr = self.tctx:cast_expr(param_expr, usize_ty)
+                        local binary_expr = self.tctx:binary_expr("Div", cast_expr, path_expr)
+
+                        new_rhs = self.tctx:vec_mac_init_num(init, binary_expr)
+                        new_rhs:to_method_call("into_boxed_slice", {new_rhs})
+                    elseif conversion_cfg:is_box_any() then
+                        path:set_segments{"Box", "new"}
+                        path_expr:to_path(path)
+                        path_expr:to_call{path_expr, init}
+
+                        new_rhs = path_expr
+                    end
 
                     -- Only wrap in Some if we're assigning to an opt variable
                     if conversion_cfg:is_opt_any() then
                         local some_path_expr = self.tctx:ident_path_expr("Some")
-                        rhs:to_call{some_path_expr, vec_expr}
+                        rhs:to_call{some_path_expr, new_rhs}
                     else
-                        rhs = vec_expr
+                        rhs = new_rhs
                     end
 
                     expr:set_exprs{lhs, rhs}
@@ -487,8 +515,9 @@ function is_null_ptr(expr)
     if expr and expr:get_kind() == "Cast" then
         local cast_expr = expr:get_exprs()[1]
         local cast_ty = expr:get_ty()
+        local lit = cast_expr:get_lit()
 
-        if cast_expr:get_lit():get_value() == 0 and cast_ty:get_kind() == "Ptr" then
+        if lit and lit:get_value() == 0 and cast_ty:get_kind() == "Ptr" then
             return true
         end
     end
@@ -511,23 +540,20 @@ function Visitor:visit_local(locl)
 
                 locl:set_ty(nil)
                 locl:set_init(init)
-
-                local pat_hrid = self.tctx:get_nodeid_hirid(locl:get_pat_id())
-
-                self:add_var(pat_hrid, Variable.new(local_id, true))
             end
-        elseif conversion_cfg:is_box_slice() then
+            -- self:add_var(pat_hrid, Variable.new(local_id, true))
+        elseif conversion_cfg:is_box_any() then
             local init = locl:get_init()
 
             if is_null_ptr(init) then
                 locl:set_ty(nil)
                 locl:set_init(nil)
-
-                local pat_hrid = self.tctx:get_nodeid_hirid(locl:get_pat_id())
-
-                self:add_var(pat_hrid, Variable.new(local_id, true))
             end
         end
+
+        local pat_hirid = self.tctx:get_nodeid_hirid(locl:get_pat_id())
+
+        self:add_var(pat_hirid, Variable.new(local_id, true))
     end
 end
 
@@ -550,6 +576,10 @@ refactor:transform(
             [229] = RefCfg.new("box_slice", nil),
             [288] = RefCfg.new("ref", nil),
             [326] = RefCfg.new("ref", "a"),
+            [333] = RefCfg.new("box", nil),
+            [337] = RefCfg.new("opt_box", nil),
+            [342] = RefCfg.new("ref", nil),
+            [348] = RefCfg.new("box", nil),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end

@@ -84,3 +84,25 @@ unsafe fn destroy_buf(sd: &mut SizedData) {
 }
 
 unsafe fn explicit_lifetimes<'a>(_ptrs: &'a mut Ptrs<'r, 's>) {}
+
+struct HeapItem {
+    item: Box<u32>,
+    opt_item: Option<Box<u32>>,
+}
+
+unsafe fn init_opt_item(hi: &mut HeapItem) {
+    let mut ptr;
+
+    if false {
+        return;
+    }
+
+    if !(hi).opt_item.is_none() {
+        return;
+    }
+
+    ptr = Box::new(0);
+    *ptr = *(hi).item;
+
+    (hi).opt_item = Some(ptr);
+}
