@@ -131,8 +131,6 @@ impl<'c> Translation<'c> {
         val_id: CExprId,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         if self.tcfg.translate_valist {
-            // https://github.com/rust-lang/rust/pull/49878/files
-
             let val = self.convert_expr(ctx.used(), val_id)?;
 
             // The current implementation of the C-variadics feature doesn't allow us to

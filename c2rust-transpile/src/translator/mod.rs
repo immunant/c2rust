@@ -5,7 +5,7 @@ use std::{char, io};
 
 use dtoa;
 
-use failure::{err_msg, Context, Fail};
+use failure::{err_msg, Fail};
 use indexmap::{IndexMap, IndexSet};
 
 use rustc_data_structures::sync::Lrc;
