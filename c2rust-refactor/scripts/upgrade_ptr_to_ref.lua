@@ -141,22 +141,22 @@ end
 
 function Visitor:add_arg_lifetimes(arg, arg_ty)
     -- Deref type until we get a concrete type
-    while true do
-        local mut_ty = arg_ty:get_mut_ty()
-
-        if not mut_ty then
-            break
+    arg_ty:map_ptr_root(function(path_ty)
+        if path_ty:get_kind() ~= "Path" then
+            return path_ty
         end
 
-        arg_ty = mut_ty:get_ty()
-    end
+        local hirid = self.tctx:resolve_ty_to_hirid(path_ty)
+        local struct = self:get_struct(hirid)
 
-    if arg_ty:get_kind() == "Path" then
-        local hirid = self.tctx:get_ty_path_hirid(arg_ty)
-        -- arg_ty:print()
-        -- print("TyId: " .. arg_ty:get_id() .. " HirId:", (hirid or "nil"))
-        -- print(self.tctx:resolve_ty_to_hirid(arg_ty))
-    end
+        if struct then
+            for _, lifetime in pairs(struct.lifetimes) do
+                path_ty:add_lifetime(lifetime)
+            end
+        end
+
+        return path_ty
+    end)
 end
 
 function Visitor:visit_arg(arg)
@@ -172,8 +172,9 @@ function Visitor:visit_arg(arg)
             arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
 
             self:add_arg_lifetimes(arg, arg_ty)
-
             self:add_var(arg_pat_hrid, Variable.new(arg_id, false))
+
+            arg:set_ty(arg_ty)
         end
     end
 end
@@ -200,6 +201,18 @@ function Visitor:get_field(hirid)
     local hirid_str = tostring(hirid)
 
     return self.fields[hirid_str]
+end
+
+function Visitor:add_struct(hirid, struct)
+    local hirid_str = tostring(hirid)
+
+    self.structs[hirid_str] = struct
+end
+
+function Visitor:get_struct(hirid)
+    local hirid_str = tostring(hirid)
+
+    return self.structs[hirid_str]
 end
 
 function Visitor:visit_expr(expr)
@@ -408,6 +421,7 @@ function Visitor:flat_map_item(item, walk)
     local item_kind = item:get_kind()
 
     if item_kind == "Struct" then
+        local lifetimes = {}
         local field_ids = item:get_field_ids()
 
         for _, field_id in ipairs(field_ids) do
@@ -418,8 +432,29 @@ function Visitor:flat_map_item(item, walk)
 
             if ref_cfg and ref_cfg.lifetime then
                 item:add_lifetime(ref_cfg.lifetime)
+
+                -- Using a lua array because we need deterministic order
+                -- but a hash set would be ideal here rather than linear
+                -- lookup - but there aren't usually many explcit
+                -- lifetimes anyway
+                local found = false
+
+                for _, lifetime in ipairs(lifetimes) do
+                    if lifetime == ref_cfg.lifetime then
+                        found = true
+                        break
+                    end
+                end
+
+                if not found then
+                    table.insert(lifetimes, ref_cfg.lifetime)
+                end
             end
         end
+
+        local hirid = self.tctx:get_nodeid_hirid(item:get_id())
+
+        self:add_struct(hirid, Struct.new(lifetimes))
     elseif item_kind == "Fn" then
         local arg_ids = item:get_arg_ids()
 

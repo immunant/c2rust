@@ -614,6 +614,18 @@ impl UserData for LuaAstNode<P<Ty>> {
             }
         });
 
+        methods.add_method("set_mut_ty", |_lua_ctx, this, mt: LuaAstNode<MutTy>| {
+            match &mut this.borrow_mut().node {
+                TyKind::Ptr(mut_ty) |
+                TyKind::Rptr(_, mut_ty) => {
+                    *mut_ty = mt.borrow().clone();
+
+                    Ok(())
+                },
+                _ => Ok(()),
+            }
+        });
+
         methods.add_method("to_rptr", |_lua_ctx, this, (lt, mut_ty): (Option<LuaString>, LuaAstNode<MutTy>)| {
             let lt = lt.map(|lt| {
                 let lt_str = lt.to_str()?;
@@ -677,6 +689,60 @@ impl UserData for LuaAstNode<P<Ty>> {
             ty.node = TyKind::Path(None, path);
 
             Ok(())
+        });
+
+        methods.add_method("add_lifetime", |_lua_ctx, this, lifetime: LuaString| {
+            if let TyKind::Path(_, path) = &mut this.borrow_mut().node {
+                let lt_str = lifetime.to_str()?;
+                let mut lt_string = String::with_capacity(lt_str.len() + 1);
+
+                lt_string.push('\'');
+                lt_string.push_str(lt_str);
+
+                let segments_len = path.segments.len();
+                let mut segment = &mut path.segments[segments_len - 1];
+                let arg = GenericArg::Lifetime(Lifetime {
+                    id: DUMMY_NODE_ID,
+                    ident: Ident::from_str(&lt_string),
+                });
+
+                if let Some(generic_args) = &mut segment.args {
+                    if let GenericArgs::AngleBracketed(args) = &mut **generic_args {
+                        args.args.push(arg);
+                    }
+                } else {
+                    let args = GenericArgs::AngleBracketed(AngleBracketedArgs {
+                        span: DUMMY_SP,
+                        args: vec![arg],
+                        constraints: Vec::new(),
+                    });
+
+                    segment.args = Some(P(args));
+                }
+            }
+
+            Ok(())
+        });
+
+        methods.add_method("map_ptr_root", |_lua_ctx, this, func: Function| {
+            let ty = &mut *this.borrow_mut();
+
+            fn apply_callback(ty: &mut P<Ty>, callback: Function) -> Result<()> {
+                match &mut ty.node {
+                    TyKind::Rptr(_, mut_ty)
+                    | TyKind::Ptr(mut_ty) => return apply_callback(&mut mut_ty.ty, callback),
+                    _ => {
+                        let ty_clone = ty.clone();
+                        let new_ty = callback.call::<_, LuaAstNode<P<Ty>>>(LuaAstNode::new(ty_clone))?;
+
+                        *ty = new_ty.into_inner();
+                    },
+                }
+
+                Ok(())
+            }
+
+            apply_callback(ty, func)
         });
     }
 }

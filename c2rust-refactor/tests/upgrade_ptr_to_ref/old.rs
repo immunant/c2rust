@@ -76,3 +76,5 @@ unsafe fn destroy_buf(sd: *mut SizedData) {
     free((*sd).buf as *mut libc::c_void);
     (*sd).buf = 0 as *mut u32;
 }
+
+unsafe fn explicit_lifetimes(_ptrs: *mut Ptrs) {}

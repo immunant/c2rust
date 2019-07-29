@@ -82,3 +82,5 @@ unsafe fn destroy_buf(sd: &mut SizedData) {
     (sd).buf.take();
     (sd).buf = None;
 }
+
+unsafe fn explicit_lifetimes<'a>(_ptrs: &'a mut Ptrs<'r, 's>) {}
