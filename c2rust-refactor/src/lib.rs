@@ -146,7 +146,7 @@ pub struct Command {
 
 #[derive(Clone, Debug)]
 pub enum CargoTarget {
-    Lib,
+    All,
     AllBins,
     Bin(String),
 }
@@ -264,7 +264,8 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<Vec<String>> {
             }
 
             let do_record = match (&self.target_type, &target.kind()) {
-                (CargoTarget::Lib, TargetKind::Lib(_)) => true,
+                (CargoTarget::All, TargetKind::Lib(..)) => true,
+                (CargoTarget::All, TargetKind::Bin) => true,
                 (CargoTarget::AllBins, TargetKind::Bin) => true,
                 (CargoTarget::Bin(bin), TargetKind::Bin) => target.name() == bin,
                 _ => false,
@@ -365,7 +366,11 @@ pub fn lib_main(opts: Options) -> interface::Result<()> {
 }
 
 fn main_impl(opts: Options) -> interface::Result<()> {
-    for rustc_args in get_rustc_arg_strings(opts.rustc_args.clone()) {
+    let target_args = get_rustc_arg_strings(opts.rustc_args.clone());
+    if target_args.is_empty() {
+        warn!("Could not derive any rustc invocations for refactoring");
+    }
+    for rustc_args in target_args {
         let mut marks = HashSet::new();
         for m in &opts.marks {
             let label = m.label.as_ref().map_or("target", |s| s).into_symbol();

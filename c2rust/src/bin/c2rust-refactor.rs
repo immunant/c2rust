@@ -142,7 +142,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
             } else if args.is_present("bins") {
                 CargoTarget::AllBins
             } else {
-                CargoTarget::Lib
+                CargoTarget::All
             };
             RustcArgSource::Cargo(target)
         }
