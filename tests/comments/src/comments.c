@@ -23,9 +23,15 @@ int test_fn() {
   /* comment in a function */
 
   /* another */
+  int x = CONSTANT;
+  /* before while */
+  while (x < 5) {
+    /* in while */
+    x++;
+  }
 
   /* before a statement */
-  return CONSTANT + CONSTANT1;
+  return x + CONSTANT1;
 
   /* after all statements */
 }

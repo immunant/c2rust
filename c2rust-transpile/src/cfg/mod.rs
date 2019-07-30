@@ -30,7 +30,7 @@ use syntax;
 use syntax::ast::{Arm, Expr, ExprKind, Lit, LitIntType, LitKind, Pat, Stmt, StmtKind};
 use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax_pos::DUMMY_SP;
+use syntax_pos::{DUMMY_SP, Span};
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -135,6 +135,7 @@ pub enum Structure<Stmt> {
     Simple {
         entries: IndexSet<Label>,
         body: Vec<Stmt>,
+        span: Span,
         terminator: GenTerminator<StructureLabel<Stmt>>,
     },
     /// Looping constructs
@@ -172,6 +173,7 @@ impl Structure<StmtOrDecl> {
             Structure::Simple {
                 entries,
                 body,
+                span,
                 terminator,
             } => {
                 let body = body
@@ -184,6 +186,7 @@ impl Structure<StmtOrDecl> {
                 Structure::Simple {
                     entries,
                     body,
+                    span,
                     terminator,
                 }
             }
@@ -238,6 +241,9 @@ pub struct BasicBlock<L, S> {
 
     /// Variables defined in this block
     defined: IndexSet<CDeclId>,
+
+    /// Span of this block
+    span: Span,
 }
 
 impl<L: Clone, S1> BasicBlock<L, S1> {
@@ -249,6 +255,7 @@ impl<L: Clone, S1> BasicBlock<L, S1> {
             terminator: self.terminator.clone(),
             live: self.live.clone(),
             defined: self.defined.clone(),
+            span: self.span,
         }
     }
 }
@@ -269,6 +276,7 @@ impl<L, S> BasicBlock<L, S> {
             terminator,
             live: IndexSet::new(),
             defined: IndexSet::new(),
+            span: DUMMY_SP,
         }
     }
 
@@ -744,6 +752,15 @@ impl<Lbl: Copy + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
             // It makes no sense to remap something to itself
             for from in from_any {
                 if from != to_final {
+                    let span = self.nodes[&from].span;
+                    let tgt_span = &mut self.nodes[&to_final].span;
+                    if *tgt_span == DUMMY_SP {
+                        *tgt_span = span;
+                    } else if span != DUMMY_SP {
+                        // If we can't transfer this basic block's span to the
+                        // target, don't delete it
+                        continue;
+                    }
                     actual_rewrites.insert(from, to_final);
                 }
             }
@@ -1123,6 +1140,9 @@ struct WipBlock {
 
     /// Variables live in this WIP.
     live: IndexSet<CDeclId>,
+
+    /// Span of this block
+    span: Span,
 }
 
 impl Extend<Stmt> for WipBlock {
@@ -1142,9 +1162,9 @@ impl WipBlock {
         self.body.push(StmtOrDecl::Decl(decl))
     }
 
-    pub fn push_comment(&mut self, cmmt: String) {
-        self.body.push(StmtOrDecl::Comment(cmmt))
-    }
+    // pub fn push_comment(&mut self, cmmt: String) {
+    //     self.body.push(StmtOrDecl::Comment(cmmt))
+    // }
 }
 
 /// This impl block deals with creating control flow graphs
@@ -1193,6 +1213,7 @@ impl CfgBuilder {
             body,
             defined,
             live,
+            span,
         } = wip;
         self.add_block(
             label,
@@ -1201,6 +1222,7 @@ impl CfgBuilder {
                 terminator,
                 defined,
                 live,
+                span,
             },
         );
     }
@@ -1289,6 +1311,7 @@ impl CfgBuilder {
             body: vec![],
             defined: IndexSet::new(),
             live: self.current_variables(),
+            span: DUMMY_SP,
         }
     }
 
@@ -1378,16 +1401,11 @@ impl CfgBuilder {
         // Entry label
         entry: Label,
     ) -> Result<Option<Label>, TranslationError> {
-        let add_comments_before = |loc: Option<SrcLoc>, wip: &mut WipBlock| {
-            if let Some(loc) = loc {
-                let comments = translator
-                    .comment_context
-                    .get_comments_before(loc, &translator.ast_context);
-                for cmmt in comments {
-                    wip.push_comment(cmmt);
-                }
-            }
-        };
+        // let add_comment_span = |id: SomeId, wip: &mut WipBlock| {
+        //     if let Some(span) = translator.spans.get(id) {
+        //         wip.push_span(span);
+        //     }
+        // };
 
         // Add to the per_stmt_stack
         let live_in: IndexSet<CDeclId> = self.currently_live.last().unwrap().clone();
@@ -1396,8 +1414,7 @@ impl CfgBuilder {
 
         let mut wip = self.new_wip_block(entry);
 
-        // Add statement comment into current block right before the current statement
-        add_comments_before(translator.ast_context[stmt_id].begin_loc(), &mut wip);
+        wip.span = translator.get_span(SomeId::Stmt(stmt_id)).unwrap_or(DUMMY_SP);
 
         let out_wip: Result<Option<WipBlock>, TranslationError> =
             match translator.ast_context.index(stmt_id).kind {
@@ -1412,7 +1429,7 @@ impl CfgBuilder {
                             .insert(*decl, info);
 
                         // Add declaration comment into current block right before the declaration
-                        add_comments_before(translator.ast_context[*decl].begin_loc(), &mut wip);
+                        // add_comment_span(SomeId::Decl(*decl), &mut wip);
 
                         wip.push_decl(*decl);
                         wip.defined.insert(*decl);
@@ -1429,9 +1446,6 @@ impl CfgBuilder {
                     let (stmts, ret_val) = WithStmts::with_stmts_opt(val).discard_unsafe();
                     wip.extend(stmts);
                     wip.push_stmt(mk().expr_stmt(mk().return_expr(ret_val)));
-
-                    // Add any comments left before the end of the return
-                    add_comments_before(translator.ast_context[stmt_id].end_loc(), &mut wip);
 
                     self.add_wip_block(wip, End);
 
@@ -1455,7 +1469,7 @@ impl CfgBuilder {
                     let (stmts, val) = translator.convert_condition(ctx, true, scrutinee)?.discard_unsafe();
                     wip.extend(stmts);
                     // Add any comments left before the end of the condition
-                    add_comments_before(translator.ast_context[scrutinee].end_loc(), &mut wip);
+                    // add_comment_span(translator.ast_context[scrutinee].end_loc(), &mut wip);
 
                     let cond_val = translator.ast_context[scrutinee].kind.get_bool();
                     self.add_wip_block(
@@ -1514,10 +1528,10 @@ impl CfgBuilder {
                     let mut cond_wip = self.new_wip_block(cond_entry);
                     cond_wip.extend(stmts);
                     // Add any comments left before the end of the condition
-                    add_comments_before(
-                        translator.ast_context[condition].end_loc(),
-                        &mut cond_wip,
-                    );
+                    // add_comments_before(
+                    //     translator.ast_context[condition].end_loc(),
+                    //     &mut cond_wip,
+                    // );
 
                     self.add_wip_block(
                         cond_wip,
@@ -1586,10 +1600,10 @@ impl CfgBuilder {
                     let mut cond_wip = self.new_wip_block(cond_entry);
                     cond_wip.extend(stmts);
                     // Add any comments left before the end of the condition
-                    add_comments_before(
-                        translator.ast_context[condition].end_loc(),
-                        &mut cond_wip,
-                    );
+                    // add_comments_before(
+                    //     translator.ast_context[condition].end_loc(),
+                    //     &mut cond_wip,
+                    // );
                     self.add_wip_block(
                         cond_wip,
                         match cond_val {
@@ -1642,10 +1656,10 @@ impl CfgBuilder {
                             let mut cond_wip = slf.new_wip_block(cond_entry);
                             cond_wip.extend(stmts);
                             // Add any comments left before the end of the condition
-                            add_comments_before(
-                                translator.ast_context[cond].end_loc(),
-                                &mut cond_wip,
-                            );
+                            // add_comments_before(
+                            //     translator.ast_context[cond].end_loc(),
+                            //     &mut cond_wip,
+                            // );
                             slf.add_wip_block(
                                 cond_wip,
                                 match cond_val {
@@ -1685,10 +1699,10 @@ impl CfgBuilder {
                                 let mut incr_wip = slf.new_wip_block(incr_entry);
                                 incr_wip.extend(incr_stmts);
                                 // Add any comments left before the end of the increment
-                                add_comments_before(
-                                    translator.ast_context[incr].end_loc(),
-                                    &mut incr_wip,
-                                );
+                                // add_comments_before(
+                                //     translator.ast_context[incr].end_loc(),
+                                //     &mut incr_wip,
+                                // );
                                 slf.add_wip_block(incr_wip, Jump(cond_entry));
                             }
                         }
@@ -1759,10 +1773,10 @@ impl CfgBuilder {
 
                     wip.extend(translator.convert_expr(ctx.unused(), expr)?.into_stmts());
                     // Add any comments left before the end of the expr
-                    add_comments_before(
-                        translator.ast_context[expr].end_loc(),
-                        &mut wip,
-                    );
+                    // add_comments_before(
+                    //     translator.ast_context[expr].end_loc(),
+                    //     &mut wip,
+                    // );
 
                     // If we can tell the expression is going to diverge, there is no falling through to
                     // the next block.
@@ -1864,10 +1878,10 @@ impl CfgBuilder {
                         .discard_unsafe();
                     wip.extend(stmts);
                     // Add any comments left before the end of the condition
-                    add_comments_before(
-                        translator.ast_context[scrutinee].end_loc(),
-                        &mut wip,
-                    );
+                    // add_comments_before(
+                    //     translator.ast_context[scrutinee].end_loc(),
+                    //     &mut wip,
+                    // );
 
                     let wip_label = wip.label;
                     self.add_wip_block(wip, End); // NOTE: the `End` here is temporary and gets updated
@@ -1932,14 +1946,14 @@ impl CfgBuilder {
                     Ok(Some(wip))
                 }
             };
-        let mut out_wip: Option<WipBlock> = out_wip?; // This statement exists to help type inference...
-        if let Some(wip) = &mut out_wip {
-            // Add any comments left before the end of the statement
-            add_comments_before(
-                translator.ast_context[stmt_id].end_loc(),
-                wip,
-            );
-        }
+        let out_wip: Option<WipBlock> = out_wip?; // This statement exists to help type inference...
+        // if let Some(wip) = &mut out_wip {
+        //     // Add any comments left before the end of the statement
+        //     add_comments_before(
+        //         translator.ast_context[stmt_id].end_loc(),
+        //         wip,
+        //     );
+        // }
 
         let out_end = self.fresh_label();
         let out_wip: Option<WipBlock> = out_wip.map(|w| {

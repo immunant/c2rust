@@ -25,6 +25,7 @@ pub fn reloop(
                     terminator,
                     defined: bb.defined,
                     live: bb.live,
+                    span: bb.span,
                 },
             )
         })
@@ -194,6 +195,7 @@ impl RelooperState {
                     terminator,
                     live,
                     defined,
+                    span,
                 } = bb;
 
                 // Flag declarations for everything that is live going in but not already in scope.
@@ -216,6 +218,7 @@ impl RelooperState {
                 result.push(Structure::Simple {
                     entries,
                     body,
+                    span,
                     terminator,
                 });
 
@@ -227,6 +230,7 @@ impl RelooperState {
                 result.push(Structure::Simple {
                     entries,
                     body,
+                    span: DUMMY_SP,
                     terminator,
                 });
             };
@@ -544,6 +548,7 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
             &Structure::Simple {
                 ref entries,
                 ref body,
+                ref span,
                 ref terminator,
             } => {
                 // Here, we ensure that all labels in a terminator are mentioned only once in the
@@ -612,6 +617,7 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                                 let first_structure = Structure::Simple {
                                     entries,
                                     body,
+                                    span: DUMMY_SP,
                                     terminator,
                                 };
 
@@ -626,10 +632,12 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
 
                         let terminator = terminator.map_labels(rewrite);
                         let body = body.clone();
+                        let span = *span;
                         let entries = entries.clone();
                         acc_structures.push(Structure::Simple {
                             entries,
                             body,
+                            span,
                             terminator,
                         });
                     }
@@ -640,10 +648,12 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
 
                         let entries = entries.clone();
                         let body = body.clone();
+                        let span = *span;
                         let terminator = terminator.clone();
                         acc_structures.push(Structure::Simple {
                             entries,
                             body,
+                            span,
                             terminator,
                         });
                     }

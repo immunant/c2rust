@@ -158,6 +158,13 @@ impl CommentStore {
             Some(self.insert_comments(smallvec![new_comment], pos))
         }
     }
+
+    /// Move comments associated with `old` to `new`.
+    pub fn move_comments(&mut self, old: BytePos, new: BytePos) {
+        if let Some(comments) = self.output_comments.remove(&old) {
+            self.output_comments.get_mut(&new).unwrap().extend(comments);
+        }
+    }
 }
 
 pub struct CommentTraverser {

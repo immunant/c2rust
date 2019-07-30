@@ -39,6 +39,8 @@ mod conversion;
 pub mod iterators;
 mod print;
 
+use iterators::{DFNodes, SomeId};
+
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug, Clone)]
 pub struct TypedAstContext {
@@ -217,6 +219,15 @@ impl TypedAstContext {
 
     pub fn file_id<T>(&self, located: &Located<T>) -> Option<FileId> {
         located.loc.as_ref().and_then(|loc| self.file_map.get(loc.fileid as usize).copied())
+    }
+
+    pub fn get_src_loc(&self, id: SomeId) -> Option<SrcSpan> {
+        match id {
+            SomeId::Stmt(id) => self.index(id).loc,
+            SomeId::Expr(id) => self.index(id).loc,
+            SomeId::Decl(id) => self.index(id).loc,
+            SomeId::Type(id) => self.index(id).loc,
+        }
     }
 
     pub fn iter_decls(&self) -> indexmap::map::Iter<CDeclId, CDecl> {
@@ -441,7 +452,6 @@ impl TypedAstContext {
     }
 
     pub fn prune_unused_decls(&mut self) {
-        use self::iterators::{DFNodes, SomeId};
         // Starting from a set of root declarations, walk each one to find declarations it
         // depends on. Then walk each of those, recursively.
 

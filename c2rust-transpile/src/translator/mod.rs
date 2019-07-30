@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Index;
 use std::path::{self, PathBuf};
 use std::{char, io};
@@ -39,6 +40,7 @@ use c2rust_ast_exporter::clang_ast::LRValue;
 mod assembly;
 mod bitfields;
 mod builtins;
+mod comments;
 mod literals;
 mod main_function;
 mod named_references;
@@ -238,6 +240,12 @@ pub struct Translation<'c> {
     // Comment support
     pub comment_context: CommentContext, // Incoming comments
     pub comment_store: RefCell<CommentStore>,     // Outgoing comments
+
+    // Comments that we processed at a non-canonical decl that need to be
+    // attached when we see the canonical decl
+    decl_comments: RefCell<HashMap<CDeclId, Span>>,
+
+    spans: HashMap<SomeId, Span>,
 
     // Items indexed by file id of the source
     items: RefCell<IndexMap<FileId, ItemStore>>,
@@ -473,13 +481,15 @@ pub fn translate(
 
     t.extern_crates.borrow_mut().insert("libc");
 
-    // Headers often pull in declarations that are unused;
-    // we simplify the translator output by omitting those.
-    t.ast_context.prune_unused_decls();
-
     // Sort the top-level declarations by file and source location so that we
     // preserve the ordering of all declarations in each file.
     t.ast_context.sort_top_decls();
+
+    t.locate_comments();
+
+    // Headers often pull in declarations that are unused;
+    // we simplify the translator output by omitting those.
+    t.ast_context.prune_unused_decls();
 
     enum Name<'a> {
         VarName(&'a str),
@@ -709,6 +719,10 @@ pub fn translate(
                     t.generate_submodule_imports(*top_id, decl_file_id);
                 }
             }
+        }
+
+        if !t.decl_comments.borrow().is_empty() {
+            warn!("Some comments on non-canonical decls did not get attached to their canonical decl");
         }
 
         // Add the main entry point
@@ -1040,6 +1054,8 @@ impl<'c> Translation<'c> {
             macro_types: RefCell::new(IndexMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
+            decl_comments: RefCell::new(HashMap::new()),
+            spans: HashMap::new(),
             sectioned_static_initializers: RefCell::new(Vec::new()),
             items: RefCell::new(items),
             mod_names: RefCell::new(IndexMap::new()),
@@ -1100,33 +1116,19 @@ impl<'c> Translation<'c> {
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
     }
 
-    fn get_comment_span_before(&self, src_loc: Option<SrcSpan>) -> Span {
-        if let Some(src_loc) = src_loc {
-            let comments = self.comment_context
-                .get_comments_before(src_loc.begin(), &self.ast_context);
-            self.comment_store
-                .borrow_mut()
-                .add_comments(&comments)
-                .map(pos_to_span)
-                .unwrap_or(DUMMY_SP)
-        } else {
-            DUMMY_SP
-        }
-    }
-
-    fn extend_comment_span_end(&self, src_loc: Option<SrcSpan>, span: Span) -> Span {
-        if let Some(src_loc) = src_loc {
-            let comments = self
-                .comment_context
-                .get_comments_before(src_loc.end(), &self.ast_context);
-            match self.comment_store.borrow_mut().add_comments(&comments) {
-                Some(pos) => span.with_hi(pos),
-                None => span,
-            }
-        } else {
-            span
-        }
-    }
+    // fn extend_comment_span_end(&self, src_loc: Option<SrcSpan>, span: Span) -> Span {
+    //     if let Some(src_loc) = src_loc {
+    //         let comments = self
+    //             .comment_context
+    //             .get_comments_before(src_loc.end(), &self.ast_context);
+    //         match self.comment_store.borrow_mut().add_comments(&comments) {
+    //             Some(pos) => span.with_hi(pos),
+    //             None => span,
+    //         }
+    //     } else {
+    //         span
+    //     }
+    // }
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
         if self.tcfg.cross_checks {
@@ -1366,9 +1368,25 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
-        let mut s = self.get_comment_span_before(decl.loc);
-
-        // let src_loc = &decl.loc;
+        let mut s = self.spans.get(&SomeId::Decl(decl_id)).copied().unwrap_or(DUMMY_SP);
+        // let mut s = if let Some(src_loc) = decl.loc {
+        //     let comments = self.comment_context
+        //         .get_comments_before(src_loc.begin(), &self.ast_context);
+        //     let mut store = self.comment_store.borrow_mut();
+        //     let comment_pos = store.add_comments(&comments);
+        //     let noncanonical_comment_span = self.decl_comments.borrow_mut().remove(&decl_id);
+        //     match (noncanonical_comment_span, comment_pos) {
+        //         (Some(old), Some(new)) => {
+        //             store.move_comments(old.lo(), new);
+        //             pos_to_span(new)
+        //         }
+        //         (Some(old), None) => old,
+        //         (None, Some(new)) => pos_to_span(new),
+        //         (None, None) => DUMMY_SP,
+        //     }
+        // } else {
+        //     DUMMY_SP
+        // };
 
         match decl.kind {
             CDeclKind::Struct { fields: None, .. }
@@ -1384,7 +1402,7 @@ impl<'c> Translation<'c> {
                     .resolve_decl_name(decl_id)
                     .unwrap();
 
-                let s = self.extend_comment_span_end(decl.loc, s);
+                // let s = self.extend_comment_span_end(decl.loc, s);
                 let extern_item = mk().span(s).pub_().ty_foreign_item(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
@@ -1502,7 +1520,7 @@ impl<'c> Translation<'c> {
 
                 let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
 
-                let s = self.extend_comment_span_end(decl.loc, s);
+                // let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(ConvertedDecl::Item(
                     mk().span(s)
                         .pub_()
@@ -1542,7 +1560,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                let s = self.extend_comment_span_end(decl.loc, s);
+                // let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(if field_syns.is_empty() {
                     // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
                     ConvertedDecl::Item(
@@ -1577,7 +1595,7 @@ impl<'c> Translation<'c> {
                     .resolve_decl_name(decl_id)
                     .expect("Enums should already be renamed");
                 let ty = self.convert_type(integral_type.ctype)?;
-                let s = self.extend_comment_span_end(decl.loc, s);
+                // let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(ConvertedDecl::Item(
                     mk().span(s).pub_().type_item(enum_name, ty),
                 ))
@@ -1603,7 +1621,7 @@ impl<'c> Translation<'c> {
                     }
                 };
 
-                let s = self.extend_comment_span_end(decl.loc, s);
+                // let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(ConvertedDecl::Item(
                     mk().span(s).pub_().const_item(name, ty, val),
                 ))
@@ -1665,13 +1683,13 @@ impl<'c> Translation<'c> {
                 let is_main = self.ast_context.c_main == Some(decl_id);
 
                 let converted_function = self.convert_function(
-                    ctx, &decl, s, is_global, is_inline, is_main, is_var, is_extern,
+                    ctx, s, is_global, is_inline, is_main, is_var, is_extern,
                     new_name, name, &args, ret, body, attrs,
                 );
 
                 converted_function.or_else(|e| match self.tcfg.replace_unsupported_decls {
                     ReplaceMode::Extern if body.is_none() => self.convert_function(
-                        ctx, &decl, s, is_global, false, is_main, is_var, is_extern,
+                        ctx, s, is_global, false, is_main, is_var, is_extern,
                         new_name, name, &args, ret, None, attrs,
                     ),
                     _ => Err(e),
@@ -1786,7 +1804,6 @@ impl<'c> Translation<'c> {
                     let mut init = init?.to_expr();
 
                     let comment = String::from("// Initialized in run_static_initializers");
-                    // REVIEW: We might want to add the comment to the original span comments
                     let comment_pos = if s == DUMMY_SP {
                         None
                     } else {
@@ -1890,6 +1907,20 @@ impl<'c> Translation<'c> {
             // Do not translate non-canonical decls. They will be translated at
             // their canonical declaration.
             CDeclKind::NonCanonicalDecl { .. } => Ok(ConvertedDecl::NoItem),
+            //     if s != DUMMY_SP {
+            //         self.decl_comments
+            //             .borrow_mut()
+            //             .entry(canonical_decl)
+            //             .and_modify(|comment_span| {
+            //                 self.comment_store
+            //                     .borrow_mut()
+            //                     .move_comments(comment_span.lo(), s.lo());
+            //                 *comment_span = s;
+            //             })
+            //             .or_insert(s);
+            //     }
+            //     Ok(ConvertedDecl::NoItem)
+            // }
         }
     }
 
@@ -1954,7 +1985,6 @@ impl<'c> Translation<'c> {
     fn convert_function(
         &self,
         ctx: ExprContext,
-        c_decl: &CDecl,
         span: Span,
         is_global: bool,
         is_inline: bool,
@@ -2079,7 +2109,9 @@ impl<'c> Translation<'c> {
                 };
                 body_stmts.append(&mut self.convert_function_body(ctx, name, body_ids, ret)?);
                 let mut block = stmts_block(body_stmts);
-                block.span = self.extend_comment_span_end(c_decl.loc, block.span);
+                if let Some(span) = self.get_span(SomeId::Stmt(body)) {
+                    block.span = span;
+                }
 
                 // Only add linkage attributes if the function is `extern`
                 let mut mk_ = if is_main {
