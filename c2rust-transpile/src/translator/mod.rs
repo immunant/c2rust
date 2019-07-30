@@ -190,29 +190,34 @@ impl ExprContext {
 pub struct FunContext {
     /// The name of the function we're currently translating
     name: Option<String>,
-    /// The va_list decl that we promote to a Rust function arg
-    promoted_va_decl: Option<CDeclId>,
-    /// The va_list decls that we did not promote because they were `va_copy`ed.
-    copied_va_decls: Option<IndexSet<CDeclId>>,
+    /// The name we give to the Rust function argument corresponding
+    /// to the elipsis in variadic C functions.
+    va_list_arg_name: Option<String>,
+    /// The va_list decls that are either `va_start`ed or `va_copy`ed.
+    va_list_decl_ids: Option<IndexSet<CDeclId>>,
 }
 
 impl FunContext {
     pub fn new() -> Self {
         FunContext {
             name: None,
-            promoted_va_decl: None,
-            copied_va_decls: None,
+            va_list_arg_name: None,
+            va_list_decl_ids: None,
         }
     }
 
     pub fn enter_new(&mut self, fn_name: &str) {
         self.name = Some(fn_name.to_string());
-        self.promoted_va_decl = None;
-        self.copied_va_decls = None;
+        self.va_list_arg_name = None;
+        self.va_list_decl_ids = None;
     }
 
-    pub fn get_name<'a>(&'a self) -> &'a str {
+    pub fn get_name(&self) -> &str {
         return self.name.as_ref().unwrap();
+    }
+
+    pub fn get_va_list_arg_name(&self) -> &str {
+        return self.va_list_arg_name.as_ref().unwrap();
     }
 }
 
@@ -1916,17 +1921,6 @@ impl<'c> Translation<'c> {
     ) -> Result<ConvertedDecl, TranslationError> {
         self.function_context.borrow_mut().enter_new(name);
 
-        let is_valist: bool = arguments
-            .iter()
-            .any(|&(_, _, typ)| Self::is_inner_type_valist(&self.ast_context, typ));
-        if is_variadic || is_valist {
-            if let Some(body_id) = body {
-                if !self.is_well_formed_variadic(body_id) {
-                    return Err(format_err!("Variadic function definition is not well-formed.").into());
-                }
-            }
-        }
-
         self.with_scope(|| {
             let mut args: Vec<Arg> = vec![];
 
@@ -1959,21 +1953,16 @@ impl<'c> Translation<'c> {
                 args.push(mk().arg(ty, pat))
             }
 
-            // handle variadic arguments
             if is_variadic {
-                if let Some(va_decl_id) = self.get_promoted_va_decl() {
-                    // `register_va_arg` succeeded
-                    let var = self
-                        .renamer
-                        .borrow_mut()
-                        .get(&va_decl_id)
-                        .expect(&format!("Failed to get name for variadic argument"));
+                // function definitions
+                if let Some(body_id) = body {
+                    let arg_va_list_name = self.register_va_decls(body_id);
 
-                    // FIXME: detect mutability requirements
-                    let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(var);
-                    args.push(mk().arg(mk().cvar_args_ty(), pat))
-                } else {
-                    args.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
+                    // FIXME: detect mutability requirements.
+                    let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(arg_va_list_name);
+                    args.push(mk().arg(mk().cvar_args_ty(), pat));
+                } else {  // function declarations
+                    args.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()));
                 }
             }
 
@@ -2302,11 +2291,6 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         decl_id: CDeclId,
     ) -> Result<cfg::DeclStmtInfo, TranslationError> {
-        if self.is_promoted_va_decl(decl_id) {
-            // `va_list` decl was promoted to arg
-            self.use_feature("c_variadic");
-            return Ok(cfg::DeclStmtInfo::empty());
-        }
 
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable {
@@ -2375,9 +2359,8 @@ impl<'c> Translation<'c> {
                     .insert(decl_id, &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
 
-                if self.is_copied_va_decl(decl_id) {
-                    // translate `va_list` declarations not promoted to an arg
-                    // to `VaList` and do not emit an initializer.
+                if self.is_va_decl(decl_id) {
+                    // translate `va_list` variables to `VaListImpl`s and omit the initializer.
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
                     let ty = {
                         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };

@@ -215,9 +215,18 @@ impl<'c> Translation<'c> {
             "__builtin_va_start" => {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some(va_id) = self.match_vastart(args[0]) {
-                        if self.is_promoted_va_decl(va_id) {
-                            // `va_start` is automatically called for the promoted decl.
-                            return Ok(WithStmts::new_val(self.panic_or_err("va_start stub")));
+                        if let Some(_) = self.ast_context.get_decl(&va_id) {
+                            let dst = self.convert_expr(ctx.used(), args[0])?;
+                            let fn_ctx = self.function_context.borrow();
+                            let src = fn_ctx.get_va_list_arg_name();
+
+                            let call_expr = mk().method_call_expr(mk().ident_expr(src), "clone", vec![] as Vec<P<Expr>>);
+                            let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
+                            let stmt = mk().semi_stmt(assign_expr);
+
+                            return Ok(WithStmts::new(
+                                vec![stmt],
+                                self.panic_or_err("va_start stub")));
                         }
                     }
                 }
