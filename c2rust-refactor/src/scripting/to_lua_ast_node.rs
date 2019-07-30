@@ -999,8 +999,8 @@ impl ToLuaExt for AstNode {
 unsafe impl Send for LuaAstNode<P<FnLike>> {}
 impl UserData for LuaAstNode<FnLike> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_kind", |lua_ctx, this, ()| {
-            Ok(this.borrow().kind.to_lua(lua_ctx))
+        methods.add_method("get_kind", |_lua_ctx, this, ()| {
+            Ok(this.borrow().kind.ast_name())
         });
 
         methods.add_method("get_id", |lua_ctx, this, ()| {

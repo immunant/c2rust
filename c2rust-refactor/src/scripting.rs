@@ -490,13 +490,13 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         );
 
         methods.add_method(
-            "get_expr_path_hirid",
+            "resolve_path_hirid",
             |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
                 Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(|id| LuaHirId(id)))
             },
         );
 
-        methods.add_method("resolve_ty_to_hirid", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
+        methods.add_method("resolve_ty_hirid", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
             let def_id = match this.cx.try_resolve_ty(&ty.borrow()) {
                 Some(id) => id,
                 None => return Ok(None),
@@ -506,7 +506,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         });
 
         methods.add_method(
-            "get_nodeid_hirid",
+            "nodeid_to_hirid",
             |_lua_ctx, this, id: i64| {
                 let node_id = NodeId::from_usize(id as usize);
 
@@ -691,26 +691,6 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let expr = P(Expr {
                 id: DUMMY_NODE_ID,
                 node: ExprKind::Mac(mac),
-                span: DUMMY_SP,
-                attrs: ThinVec::new(),
-            });
-
-            Ok(LuaAstNode::new(expr))
-        });
-
-        methods.add_method("int_lit_expr", |_lua_ctx, _this, (int, _suffix): (i64, Option<LuaString>)| {
-            let lit = Lit {
-                token: TokenLit {
-                    kind: TokenLitKind::Integer,
-                    symbol: Symbol::intern(&format!("{}", int)),
-                    suffix: None,
-                },
-                node: LitKind::Int(int as u128, LitIntType::Unsuffixed),
-                span: DUMMY_SP,
-            };
-            let expr = P(Expr {
-                id: DUMMY_NODE_ID,
-                node: ExprKind::Lit(lit),
                 span: DUMMY_SP,
                 attrs: ThinVec::new(),
             });

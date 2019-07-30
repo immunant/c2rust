@@ -98,7 +98,7 @@ unsafe fn init_opt_item(hi: &mut HeapItem) {
     }
 
     if !(hi).opt_item.is_none() {
-        return;
+        (hi).opt_item.take();
     }
 
     ptr = Box::new(0);

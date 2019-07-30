@@ -49,56 +49,56 @@ function Struct.new(lifetimes)
     return self
 end
 
-RefCfg = {}
+ConvCfg = {}
 
-function RefCfg.new(mod_type, lifetime)
+function ConvCfg.new(conv_type, lifetime)
     self = {}
-    self.mod_type = mod_type
+    self.conv_type = conv_type
     self.lifetime = lifetime
 
-    setmetatable(self, RefCfg)
-    RefCfg.__index = RefCfg
+    setmetatable(self, ConvCfg)
+    ConvCfg.__index = ConvCfg
 
     return self
 end
 
-function RefCfg:is_slice()
-    return self.mod_type == "slice"
+function ConvCfg:is_slice()
+    return self.conv_type == "slice"
 end
 
-function RefCfg:is_ref()
-    return self.mod_type == "ref"
+function ConvCfg:is_ref()
+    return self.conv_type == "ref"
 end
 
-function RefCfg:is_ref_or_slice()
+function ConvCfg:is_ref_or_slice()
     return self:is_ref() or self:is_slice()
 end
 
-function RefCfg:is_opt_any()
+function ConvCfg:is_opt_any()
     return self:is_opt_box() or self:is_opt_box_slice()
 end
 
-function RefCfg:is_opt_box()
-    return self.mod_type == "opt_box"
+function ConvCfg:is_opt_box()
+    return self.conv_type == "opt_box"
 end
 
-function RefCfg:is_opt_box_slice()
-    return self.mod_type == "opt_box_slice"
+function ConvCfg:is_opt_box_slice()
+    return self.conv_type == "opt_box_slice"
 end
 
-function RefCfg:is_slice_any()
+function ConvCfg:is_slice_any()
     return self:is_slice() or self:is_opt_box_slice() or self:is_box_slice()
 end
 
-function RefCfg:is_box_slice()
-    return self.mod_type == "box_slice"
+function ConvCfg:is_box_slice()
+    return self.conv_type == "box_slice"
 end
 
-function RefCfg:is_box()
-    return self.mod_type == "box"
+function ConvCfg:is_box()
+    return self.conv_type == "box"
 end
 
-function RefCfg:is_box_any()
+function ConvCfg:is_box_any()
     return self:is_opt_box() or self:is_opt_box_slice() or self:is_box_slice() or self:is_box()
 end
 
@@ -107,7 +107,7 @@ Visitor = {}
 function Visitor.new(tctx, node_id_cfgs)
     self = {}
     self.tctx = tctx
-    -- NodeId -> RefCfg
+    -- NodeId -> ConvCfg
     self.node_id_cfgs = node_id_cfgs
     -- PatHrId -> Variable
     self.vars = {}
@@ -158,7 +158,7 @@ function Visitor:add_arg_lifetimes(arg, arg_ty)
             return path_ty
         end
 
-        local hirid = self.tctx:resolve_ty_to_hirid(path_ty)
+        local hirid = self.tctx:resolve_ty_hirid(path_ty)
         local struct = self:get_struct(hirid)
 
         if struct then
@@ -179,7 +179,7 @@ function Visitor:visit_arg(arg)
         local arg_ty = arg:get_ty()
 
         if arg_ty:get_kind() == "Ptr" then
-            local arg_pat_hrid = self.tctx:get_nodeid_hirid(arg:get_pat_id())
+            local arg_pat_hrid = self.tctx:nodeid_to_hirid(arg:get_pat_id())
 
             arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
 
@@ -245,7 +245,7 @@ function Visitor:visit_expr(expr)
             local derefed_expr = field_expr:get_exprs()[1]
 
             if derefed_expr:get_kind() == "Path" then
-                local hirid = self.tctx:get_expr_path_hirid(derefed_expr)
+                local hirid = self.tctx:resolve_path_hirid(derefed_expr)
                 local var = self:get_var(hirid)
 
                 -- This is a path we're expecting to modify
@@ -280,7 +280,7 @@ function Visitor:visit_expr(expr)
             end
 
             -- Should be left with a path, otherwise bail
-            local hirid = self.tctx:get_expr_path_hirid(unwrapped_expr)
+            local hirid = self.tctx:resolve_path_hirid(unwrapped_expr)
             local var = self:get_var(hirid)
 
             -- We only want to apply this operation if we're converting
@@ -313,7 +313,7 @@ function Visitor:visit_expr(expr)
         local lhs = exprs[1]
         local rhs = exprs[2]
         local rhs_kind = rhs:get_kind()
-        local hirid = self.tctx:get_expr_path_hirid(lhs)
+        local hirid = self.tctx:resolve_path_hirid(lhs)
         local var = self:get_var(hirid)
 
         if rhs_kind == "Cast" then
@@ -381,7 +381,7 @@ function Visitor:visit_expr(expr)
         -- lhs = rhs -> lhs = Some(rhs)
         -- TODO: Should probably expand to work on more complex exprs
         elseif rhs_kind == "Path" then
-            local hirid = self.tctx:get_expr_path_hirid(rhs)
+            local hirid = self.tctx:resolve_path_hirid(rhs)
             local var = self:get_var(hirid)
 
             if var and not self.node_id_cfgs[var.id]:is_opt_any() then
@@ -419,7 +419,7 @@ function Visitor:visit_expr(expr)
 end
 
 function Visitor:get_expr_cfg(expr)
-    local hirid = self.tctx:get_expr_path_hirid(expr)
+    local hirid = self.tctx:resolve_path_hirid(expr)
     local node_id = nil
     local var = self:get_var(hirid)
 
@@ -454,7 +454,7 @@ function Visitor:flat_map_item(item, walk)
 
         for _, field_id in ipairs(field_ids) do
             local ref_cfg = self.node_id_cfgs[field_id]
-            local field_hrid = self.tctx:get_nodeid_hirid(field_id)
+            local field_hrid = self.tctx:nodeid_to_hirid(field_id)
 
             self:add_field(field_hrid, Field.new(field_id))
 
@@ -480,7 +480,7 @@ function Visitor:flat_map_item(item, walk)
             end
         end
 
-        local hirid = self.tctx:get_nodeid_hirid(item:get_id())
+        local hirid = self.tctx:nodeid_to_hirid(item:get_id())
 
         self:add_struct(hirid, Struct.new(lifetimes))
     elseif item_kind == "Fn" then
@@ -551,7 +551,7 @@ function Visitor:visit_local(locl)
             end
         end
 
-        local pat_hirid = self.tctx:get_nodeid_hirid(locl:get_pat_id())
+        local pat_hirid = self.tctx:nodeid_to_hirid(locl:get_pat_id())
 
         self:add_var(pat_hirid, Variable.new(local_id, true))
     end
@@ -560,26 +560,26 @@ end
 refactor:transform(
     function(transform_ctx)
         local node_id_cfgs = {
-            [26] = RefCfg.new("ref", nil),
-            [35] = RefCfg.new("ref", nil),
-            [77] = RefCfg.new("ref", nil),
-            [87] = RefCfg.new("slice", nil),
-            [130] = RefCfg.new("ref", "r"),
-            [134] = RefCfg.new("ref", "r"),
-            [138] = RefCfg.new("slice", "s"),
-            [142] = RefCfg.new("slice", "s"),
-            [146] = RefCfg.new("opt_box", nil),
-            [151] = RefCfg.new("opt_box_slice", nil),
-            [159] = RefCfg.new("ref", nil),
-            [167] = RefCfg.new("opt_box_slice", nil),
-            [221] = RefCfg.new("ref", nil),
-            [229] = RefCfg.new("box_slice", nil),
-            [288] = RefCfg.new("ref", nil),
-            [326] = RefCfg.new("ref", "a"),
-            [333] = RefCfg.new("box", nil),
-            [337] = RefCfg.new("opt_box", nil),
-            [342] = RefCfg.new("ref", nil),
-            [348] = RefCfg.new("box", nil),
+            [26] = ConvCfg.new("ref", nil),
+            [35] = ConvCfg.new("ref", nil),
+            [77] = ConvCfg.new("ref", nil),
+            [87] = ConvCfg.new("slice", nil),
+            [130] = ConvCfg.new("ref", "r"),
+            [134] = ConvCfg.new("ref", "r"),
+            [138] = ConvCfg.new("slice", "s"),
+            [142] = ConvCfg.new("slice", "s"),
+            [146] = ConvCfg.new("opt_box", nil),
+            [151] = ConvCfg.new("opt_box_slice", nil),
+            [159] = ConvCfg.new("ref", nil),
+            [167] = ConvCfg.new("opt_box_slice", nil),
+            [221] = ConvCfg.new("ref", nil),
+            [229] = ConvCfg.new("box_slice", nil),
+            [288] = ConvCfg.new("ref", nil),
+            [326] = ConvCfg.new("ref", "a"),
+            [333] = ConvCfg.new("box", nil),
+            [337] = ConvCfg.new("opt_box", nil),
+            [342] = ConvCfg.new("ref", nil),
+            [348] = ConvCfg.new("box", nil),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end

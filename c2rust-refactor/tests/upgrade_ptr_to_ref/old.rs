@@ -92,7 +92,7 @@ unsafe fn init_opt_item(hi: *mut HeapItem) {
     }
 
     if !(*hi).opt_item.is_null() {
-        return;
+        free((*hi).opt_item as *mut libc::c_void);
     }
 
     ptr = malloc(32) as *mut u32;
