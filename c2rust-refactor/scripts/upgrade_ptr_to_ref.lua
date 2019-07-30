@@ -254,13 +254,13 @@ function Visitor:visit_expr(expr)
                 end
             end
         end
-    -- *p.offset(x).offset(y) -> p[x + y]
     elseif expr_kind == "Unary" and expr:get_op() == "Deref" then
         local derefed_exprs = expr:get_exprs()
         local unwrapped_expr = derefed_exprs[1]
 
+        -- *p.offset(x).offset(y) -> p[x + y]
         if unwrapped_expr:get_method_name() == "offset" then
-            offset_expr = nil
+            local offset_expr = nil
 
             while true do
                 local unwrapped_exprs = unwrapped_expr:get_exprs()
@@ -287,6 +287,7 @@ function Visitor:visit_expr(expr)
             -- a pointer to an array
             if var and self.node_id_cfgs[var.id]:is_slice_any() and offset_expr then
                 -- If we're using an option, we must unwrap (or map/match)
+                -- *ptr[1] -> *ptr.as_mut().unwrap()[1]
                 if self.node_id_cfgs[var.id]:is_opt_any() then
                     -- TODO: or as_ref
                     unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
@@ -294,6 +295,19 @@ function Visitor:visit_expr(expr)
                 end
 
                 expr:to_index(unwrapped_expr, offset_expr)
+            end
+        -- *ptr = 1 -> **ptr.as_mut().unwrap() = 1
+        elseif unwrapped_expr:get_kind() == "Path" then
+            local hirid = self.tctx:resolve_path_hirid(unwrapped_expr)
+            local var = self:get_var(hirid)
+
+            -- If we're using an option, we must unwrap (or map/match)
+            if var and self.node_id_cfgs[var.id]:is_opt_box() then
+                -- TODO: or as_ref
+                unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
+                expr:to_method_call("unwrap", {unwrapped_expr})
+                expr:to_unary("Deref", expr)
+                expr:to_unary("Deref", expr)
             end
         end
     -- p.is_null() -> p.is_none() or false when not using an option
@@ -317,7 +331,7 @@ function Visitor:visit_expr(expr)
         local var = self:get_var(hirid)
 
         if rhs_kind == "Cast" then
-            local conversion_cfg = var and self.node_id_cfgs[var.id]
+            print(var, hirid)
             local cast_expr = rhs:get_exprs()[1]
             local cast_ty = rhs:get_ty()
 
@@ -329,9 +343,10 @@ function Visitor:visit_expr(expr)
                 local param_expr = call_exprs[2]
                 local path = path_expr:get_path()
                 local segments = path:get_segments()
+                local conversion_cfg = var and self.node_id_cfgs[var.id]
 
                 -- In case malloc is called from another module check the last segment
-                if segments[#segments] == "malloc" then
+                if conversion_cfg and segments[#segments] == "malloc" then
                     local mut_ty = cast_ty:get_mut_ty()
                     local pointee_ty = mut_ty:get_ty()
                     local new_rhs = nil
@@ -351,6 +366,7 @@ function Visitor:visit_expr(expr)
 
                         new_rhs = self.tctx:vec_mac_init_num(init, binary_expr)
                         new_rhs:to_method_call("into_boxed_slice", {new_rhs})
+                    -- For boxes we want Box::new(init)
                     elseif conversion_cfg:is_box_any() then
                         path:set_segments{"Box", "new"}
                         path_expr:to_path(path)
@@ -580,6 +596,8 @@ refactor:transform(
             [337] = ConvCfg.new("opt_box", nil),
             [342] = ConvCfg.new("ref", nil),
             [348] = ConvCfg.new("box", nil),
+            [423] = ConvCfg.new("ref", nil),
+            [429] = ConvCfg.new("opt_box", nil),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end

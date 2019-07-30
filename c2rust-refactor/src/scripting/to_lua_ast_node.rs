@@ -525,6 +525,18 @@ impl UserData for LuaAstNode<P<Expr>> {
             Ok(())
         });
 
+        methods.add_method("to_unary", |_lua_ctx, this, (op, expr): (LuaString, LuaAstNode<P<Expr>>)| {
+            let op = match op.to_str()? {
+                "Deref" => UnOp::Deref,
+                _ => unimplemented!("UnOp parsing from string"),
+            };
+            let expr = expr.borrow().clone();
+
+            this.borrow_mut().node = ExprKind::Unary(op, expr);
+
+            Ok(())
+        });
+
         methods.add_method("to_call", |_lua_ctx, this, exprs: Vec<LuaAstNode<P<Expr>>>| {
             let func = exprs[0].borrow().clone();
             let params = exprs.iter().skip(1).map(|lan| lan.borrow().clone()).collect();

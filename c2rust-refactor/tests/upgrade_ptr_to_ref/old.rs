@@ -96,6 +96,33 @@ unsafe fn init_opt_item(hi: *mut HeapItem) {
     }
 
     ptr = malloc(32) as *mut u32;
+
+    if ptr.is_null() {
+        return
+    }
+
+    *ptr = *(*hi).item;
+
+    (*hi).opt_item = ptr;
+}
+
+unsafe fn init_opt_item2(hi: *mut HeapItem) {
+    let mut ptr: *mut u32 = 0 as *mut u32;
+
+    if (*hi).item.is_null() {
+        return;
+    }
+
+    if !(*hi).opt_item.is_null() {
+        free((*hi).opt_item as *mut libc::c_void);
+    }
+
+    ptr = malloc(32) as *mut u32;
+
+    if ptr.is_null() {
+        return
+    }
+
     *ptr = *(*hi).item;
 
     (*hi).opt_item = ptr;

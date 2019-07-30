@@ -102,7 +102,34 @@ unsafe fn init_opt_item(hi: &mut HeapItem) {
     }
 
     ptr = Box::new(0);
+
+    if false {
+        return;
+    }
+
     *ptr = *(hi).item;
 
     (hi).opt_item = Some(ptr);
+}
+
+unsafe fn init_opt_item2(hi: &mut HeapItem) {
+    let mut ptr = None;
+
+    if false {
+        return;
+    }
+
+    if !(hi).opt_item.is_none() {
+        (hi).opt_item.take();
+    }
+
+    ptr = Some(Box::new(0));
+
+    if ptr.is_none() {
+        return;
+    }
+
+    **ptr.as_mut().unwrap() = *(hi).item;
+
+    (hi).opt_item = ptr;
 }
