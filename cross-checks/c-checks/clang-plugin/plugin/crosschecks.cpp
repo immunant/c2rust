@@ -504,7 +504,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                      dni,
                                      fd->getType(), fd->getTypeSourceInfo(),
                                      SC_Static, true, true,
+#if CLANG_VERSION_MAJOR >= 9
+                                     fd->getConstexprKind());
+#else
                                      fd->isConstexpr());
+#endif
             body_fn_decl->setParams(fd->parameters());
             body_fn_decl->setBody(old_body);
             parent_dc->addDecl(body_fn_decl);
