@@ -18,16 +18,14 @@ pub fn structured_cfg(
         structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
 
     let s = StructureState {
-        enable_comments: true,
+        // enable_comments: true,
         debug_labels,
         current_block,
     };
-    let mut queued = vec![];
-    let mut stmts = vec![];
-    s.into_stmt(ast, comment_store, &mut queued, &mut stmts, DUMMY_SP);
-    if !queued.is_empty() {
-        eprintln!("Did not find a statement for comments {:?}", queued);
-    }
+    let (mut stmts, _span) = s.into_stmt(ast, comment_store, DUMMY_SP);
+    // if !queued.is_empty() {
+    //     eprintln!("Did not find a statement for comments {:?}", queued);
+    // }
 
     // If the very last statement in the vector is a `return`, we can either cut it out or replace
     // it with the returned value.
@@ -385,7 +383,7 @@ pub fn has_multiple<Stmt>(root: &Vec<Structure<Stmt>>) -> bool {
 }
 
 struct StructureState {
-    enable_comments: bool,
+    // enable_comments: bool,
     debug_labels: bool,
     current_block: P<Expr>,
 }
@@ -395,22 +393,21 @@ impl StructureState {
         &self,
         ast: StructuredAST<P<Expr>, P<Pat>, Label, StmtOrComment>,
         comment_store: &mut comment_store::CommentStore,
-        queued_comments: &mut Vec<String>,
-        output: &mut Vec<Stmt>,
         parent_span: Span,
-    ) -> Span {
+    ) -> (Vec<Stmt>, Span) {
         use crate::cfg::structures::StructuredASTKind::*;
 
         let begin_span = ast.span.shrink_to_lo();
         let span = if ast.span != DUMMY_SP { ast.span } else { parent_span };
 
-        match ast.node {
-            Empty => {}
+        let stmt = match ast.node {
+            Empty => return (vec![], ast.span),
 
-            Singleton(StmtOrComment::Comment(c)) => {
-                if self.enable_comments {
-                    queued_comments.push(c);
-                }
+            Singleton(StmtOrComment::Comment(_c)) => {
+                // if self.enable_comments {
+                //     queued_comments.push(c);
+                // }
+                return (vec![], ast.span);
             }
             Singleton(StmtOrComment::Stmt(mut s)) => {
                 // s.span = comment_store
@@ -421,51 +418,45 @@ impl StructureState {
                 if s.span == DUMMY_SP {
                     s.span = span;
                 }
-                output.push(s);
+                s
             }
 
             Append(box Spanned {node: Empty, span}, rhs) => {
                 let next_span = if span != DUMMY_SP { span } else { begin_span };
-                let rhs_span = self.into_stmt(*rhs, comment_store, queued_comments, output, next_span);
-                return span.with_hi(rhs_span.hi());
+                let (rhs_stmts, rhs_span) = self.into_stmt(*rhs, comment_store, next_span);
+                return (rhs_stmts, span.with_hi(rhs_span.hi()));
             }
 
             Append(lhs, rhs) => {
-                let lhs_span = self.into_stmt(*lhs, comment_store, queued_comments, output, begin_span);
-                let rhs_span = self.into_stmt(*rhs, comment_store, queued_comments, output, DUMMY_SP);
-                return lhs_span.with_hi(rhs_span.hi());
+                let (mut stmts, lhs_span) = self.into_stmt(*lhs, comment_store, begin_span);
+                let (rhs_stmts, rhs_span) = self.into_stmt(*rhs, comment_store, DUMMY_SP);
+                stmts.extend(rhs_stmts);
+                return (stmts, lhs_span.with_hi(rhs_span.hi()));
             }
 
             Goto(to) => {
                 // Assign to `current_block` the next label we want to go to.
 
-                queued_comments.clear();
+                // queued_comments.clear();
 
                 let lbl_expr = if self.debug_labels {
                     to.to_string_expr()
                 } else {
                     to.to_num_expr()
                 };
-                output.push(
-                    mk().span(span)
-                        .semi_stmt(mk().assign_expr(self.current_block.clone(), lbl_expr)),
-                );
+                mk().span(span)
+                    .semi_stmt(mk().assign_expr(self.current_block.clone(), lbl_expr))
             }
 
             Match(cond, cases) => {
                 // Make a `match`.
 
-                queued_comments.clear();
+                // queued_comments.clear();
 
                 let arms: Vec<Arm> = cases
                     .into_iter()
                     .map(|(pats, stmts)| -> Arm {
-                        let (stmts, span) = {
-                            let mut output = vec![];
-                            let span = self.into_stmt(stmts, comment_store, queued_comments, &mut output, DUMMY_SP);
-                            
-                            (output, span)
-                        };
+                        let (stmts, span) = self.into_stmt(stmts, comment_store, DUMMY_SP);
 
                         let body = mk().span(span).block_expr(mk().block(stmts));
                         mk().arm(pats, None as Option<P<Expr>>, body)
@@ -474,7 +465,7 @@ impl StructureState {
 
                 let e = mk().match_expr(cond, arms);
 
-                output.push(mk().span(span).expr_stmt(e));
+                mk().span(span).expr_stmt(e)
             }
 
             If(cond, then, els) => {
@@ -485,19 +476,11 @@ impl StructureState {
                 //   * `if <cond-expr> { } else { .. }` turns into `if !<cond-expr> { .. }`
                 //
 
-                queued_comments.clear();
+                // queued_comments.clear();
 
-                let (then_stmts, then_span) = {
-                    let mut output = vec![];
-                    let span = self.into_stmt(*then, comment_store, queued_comments, &mut output, DUMMY_SP);
-                    (output, span)
-                };
+                let (then_stmts, then_span) = self.into_stmt(*then, comment_store, DUMMY_SP);
 
-                let (mut els_stmts, els_span) = {
-                    let mut output = vec![];
-                    let span = self.into_stmt(*els, comment_store, queued_comments, &mut output, DUMMY_SP);
-                    (output, span)
-                };
+                let (mut els_stmts, els_span) = self.into_stmt(*els, comment_store, DUMMY_SP);
 
                 let mut if_stmt = match (then_stmts.is_empty(), els_stmts.is_empty()) {
                     (true, true) => mk().semi_stmt(cond),
@@ -541,22 +524,18 @@ impl StructureState {
                 };
 
                 if_stmt.span = span;
-                output.push(if_stmt);
+                if_stmt
             }
 
             GotoTable(cases, then) => {
                 // Dispatch based on the next `current_block` value.
 
-                queued_comments.clear();
+                // queued_comments.clear();
 
                 let mut arms: Vec<Arm> = cases
                     .into_iter()
                     .map(|(lbl, stmts)| -> Arm {
-                        let (stmts, stmts_span) = {
-                            let mut output = vec![];
-                            let span = self.into_stmt(stmts, comment_store, queued_comments, &mut output, DUMMY_SP);
-                            (output, span)
-                        };
+                        let (stmts, stmts_span) = self.into_stmt(stmts, comment_store, DUMMY_SP);
 
                         let lbl_expr = if self.debug_labels {
                             lbl.to_string_expr()
@@ -569,11 +548,7 @@ impl StructureState {
                     })
                     .collect();
 
-                let (then, then_span) = {
-                    let mut output = vec![];
-                    let span = self.into_stmt(*then, comment_store, queued_comments, &mut output, DUMMY_SP);
-                    (output, span)
-                };
+                let (then, then_span) = self.into_stmt(*then, comment_store, DUMMY_SP);
 
                 arms.push(mk().arm(
                     vec![mk().wild_pat()],
@@ -583,7 +558,7 @@ impl StructureState {
 
                 let e = mk().match_expr(self.current_block.clone(), arms);
 
-                output.push(mk().span(span).expr_stmt(e));
+                mk().span(span).expr_stmt(e)
             }
 
             Loop(lbl, body) => {
@@ -592,13 +567,9 @@ impl StructureState {
                 //   * Loops that start with an `if <cond-expr> { break; }` get converted into `while` loops
                 //
 
-                queued_comments.clear();
+                // queued_comments.clear();
 
-                let (body, body_span) = {
-                    let mut output = vec![];
-                    let span = self.into_stmt(*body, comment_store, queued_comments, &mut output, DUMMY_SP);
-                    (output, span)
-                };
+                let (body, body_span) = self.into_stmt(*body, comment_store, DUMMY_SP);
 
                 // TODO: this is ugly but it needn't be. We are just pattern matching on particular ASTs.
                 if let Some(&Stmt {
@@ -627,8 +598,7 @@ impl StructureState {
                                             mk().span(body_span).block(body.iter().skip(1).cloned().collect()),
                                             lbl.map(|l| l.pretty_print()),
                                         );
-                                        output.push(mk().span(span).expr_stmt(e));
-                                        return ast.span;
+                                        return (vec![mk().span(span).expr_stmt(e)], ast.span);
                                     }
                                 }
                             }
@@ -638,13 +608,13 @@ impl StructureState {
 
                 let e = mk().loop_expr(mk().span(body_span).block(body), lbl.map(|l| l.pretty_print()));
 
-                output.push(mk().span(span).expr_stmt(e));
+                mk().span(span).expr_stmt(e)
             }
 
             Exit(exit_style, lbl) => {
                 // Make a (possibly labelled) `break` or `continue`.
 
-                queued_comments.clear();
+                // queued_comments.clear();
 
                 let lbl = lbl.map(|l| l.pretty_print());
                 let e = match exit_style {
@@ -652,11 +622,11 @@ impl StructureState {
                     ExitStyle::Continue => mk().continue_expr(lbl),
                 };
 
-                output.push(mk().span(span).semi_stmt(e));
+                mk().span(span).semi_stmt(e)
             }
-        }
+        };
 
-        ast.span
+        (vec![stmt], ast.span)
     }
 }
 
