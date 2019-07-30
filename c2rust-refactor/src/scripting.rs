@@ -62,7 +62,11 @@ pub fn run_lua_file(
     let io = Arc::new(RealFileIO::new(rewrite_modes));
 
     driver::run_refactoring(config, registry, io, HashSet::new(), |state| {
-        let lua = Lua::new();
+        // We use the unsafe _with_debug method because we want to be able to use
+        // lua libraries which happen to support pretty printing. This should be fine
+        // so long as we're confident they don't use riskier parts of the debug lib.
+        let lua = unsafe { Lua::new_with_debug() };
+
         lua.context(|lua_ctx| {
             // Add the script's current directory to the lua path so that local
             // files can be imported

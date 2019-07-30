@@ -1,5 +1,7 @@
--- Take a set of node ids (locals/params) and turn them (if a pointer) into a reference
--- or Box
+require "pl"
+
+-- Take a set of node ids (locals/params/fields) and turn them (if a pointer)
+-- into a reference or Box
 Variable = {}
 
 function Variable.new(id, locl)
@@ -162,7 +164,7 @@ function Visitor:add_arg_lifetimes(arg, arg_ty)
         local struct = self:get_struct(hirid)
 
         if struct then
-            for _, lifetime in pairs(struct.lifetimes) do
+            for lifetime in struct.lifetimes:iter() do
                 path_ty:add_lifetime(lifetime)
             end
         end
@@ -331,7 +333,6 @@ function Visitor:visit_expr(expr)
         local var = self:get_var(hirid)
 
         if rhs_kind == "Cast" then
-            print(var, hirid)
             local cast_expr = rhs:get_exprs()[1]
             local cast_ty = rhs:get_ty()
 
@@ -465,7 +466,7 @@ function Visitor:flat_map_item(item, walk)
     local item_kind = item:get_kind()
 
     if item_kind == "Struct" then
-        local lifetimes = {}
+        local lifetimes = OrderedMap()
         local field_ids = item:get_field_ids()
 
         for _, field_id in ipairs(field_ids) do
@@ -477,22 +478,7 @@ function Visitor:flat_map_item(item, walk)
             if ref_cfg and ref_cfg.lifetime then
                 item:add_lifetime(ref_cfg.lifetime)
 
-                -- Using a lua array because we need deterministic order
-                -- but a hash set would be ideal here rather than linear
-                -- lookup - but there aren't usually many explcit
-                -- lifetimes anyway
-                local found = false
-
-                for _, lifetime in ipairs(lifetimes) do
-                    if lifetime == ref_cfg.lifetime then
-                        found = true
-                        break
-                    end
-                end
-
-                if not found then
-                    table.insert(lifetimes, ref_cfg.lifetime)
-                end
+                lifetimes[ref_cfg.lifetime] = true
             end
         end
 
@@ -557,7 +543,6 @@ function Visitor:visit_local(locl)
                 locl:set_ty(nil)
                 locl:set_init(init)
             end
-            -- self:add_var(pat_hrid, Variable.new(local_id, true))
         elseif conversion_cfg:is_box_any() then
             local init = locl:get_init()
 
