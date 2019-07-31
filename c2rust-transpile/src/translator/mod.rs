@@ -3405,8 +3405,11 @@ impl<'c> Translation<'c> {
                             .iter()
                             .enumerate()
                             .filter_map(|(pos, param)| {
-                                if self.ast_context.is_pointer_to_va_list(param.ctype)
-                                { Some(pos) } else { None }
+                                if self.ast_context.is_pointer_to_va_list(param.ctype) {
+                                    Some(pos)
+                                } else {
+                                    None
+                                }
                             })
                             .collect();
 
