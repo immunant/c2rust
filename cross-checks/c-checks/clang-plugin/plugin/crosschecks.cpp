@@ -385,7 +385,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
         }
 
         if (FunctionDecl *fd = dyn_cast<FunctionDecl>(d)) {
-            if (!fd->hasBody())
+            if (!fd->doesThisDeclarationHaveABody())
                 continue;
             auto fd_ident = fd->getIdentifier();
             if (fd_ident == nullptr) {
