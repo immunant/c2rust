@@ -28,6 +28,13 @@ int test_fn() {
   while (x < 5) {
     /* in while */
     x++;
+    /* end of while */
+  }
+
+  if (x > 100) {
+    /* in an if */
+    x = 10;
+    /* end of if */
   }
 
   /* before a statement */

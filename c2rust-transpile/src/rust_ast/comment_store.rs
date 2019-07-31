@@ -77,6 +77,7 @@ impl CommentStore {
     pub fn into_comment_traverser(self) -> CommentTraverser {
         CommentTraverser {
             old_comments: self.output_comments,
+            old_to_new_pos: BTreeMap::new(),
             store: CommentStore::new(),
         }
     }
@@ -161,6 +162,9 @@ impl CommentStore {
 
     /// Move comments associated with `old` to `new`.
     pub fn move_comments(&mut self, old: BytePos, new: BytePos) {
+        if old == new {
+            return;
+        }
         if let Some(comments) = self.output_comments.remove(&old) {
             self.output_comments.get_mut(&new).unwrap().extend(comments);
         }
@@ -169,14 +173,19 @@ impl CommentStore {
 
 pub struct CommentTraverser {
     old_comments: BTreeMap<BytePos, SmallVec<[comments::Comment; 1]>>,
+    old_to_new_pos: BTreeMap<BytePos, BytePos>,
     store: CommentStore,
 }
 impl CommentTraverser {
-    fn reinsert_comment_at(&mut self, sp: BytePos) -> BytePos {
+    fn reinsert_comment_at(&mut self, sp: BytePos) -> Option<BytePos> {
         if let Some(cmmts) = self.old_comments.remove(&sp) {
-            self.store.insert_comments(cmmts, None)
+            let new_pos = self.store.insert_comments(cmmts, None);
+            self.old_to_new_pos.insert(sp, new_pos);
+            Some(new_pos)
+        } else if let Some(new_pos) = self.old_to_new_pos.get(&sp) {
+            Some(*new_pos)
         } else {
-            sp
+            None
         }
     }
 
@@ -191,10 +200,12 @@ macro_rules! reinsert_and_traverse {
     ($fn:ident, $ty:ty, $traverse:path) => {
         fn $fn(&mut self, mut x: $ty) -> $ty {
             let orig = x.span.data();
-            x.span = pos_to_span(self.reinsert_comment_at(orig.lo));
+            x.span = pos_to_span(self.reinsert_comment_at(orig.lo).unwrap_or(BytePos(0)));
             x = $traverse(self, x);
             if orig.lo != orig.hi {
-                x.span = x.span.with_hi(self.reinsert_comment_at(orig.hi));
+                if let Some(new_hi) = self.reinsert_comment_at(orig.hi) {
+                    x.span = x.span.with_hi(new_hi);
+                }
             }
             x
         }
@@ -212,7 +223,7 @@ impl traverse::Traversal for CommentTraverser {
     reinsert_and_traverse!(traverse_item, Item, traverse::traverse_item_def);
 
     fn traverse_foreign_item(&mut self, mut i: ForeignItem) -> ForeignItem {
-        i.span = pos_to_span(self.reinsert_comment_at(i.span.lo()));
+        i.span = pos_to_span(self.reinsert_comment_at(i.span.lo()).unwrap_or(BytePos(0)));
         i
     }
 }

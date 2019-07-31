@@ -1368,25 +1368,7 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
-        let mut s = self.spans.get(&SomeId::Decl(decl_id)).copied().unwrap_or(DUMMY_SP);
-        // let mut s = if let Some(src_loc) = decl.loc {
-        //     let comments = self.comment_context
-        //         .get_comments_before(src_loc.begin(), &self.ast_context);
-        //     let mut store = self.comment_store.borrow_mut();
-        //     let comment_pos = store.add_comments(&comments);
-        //     let noncanonical_comment_span = self.decl_comments.borrow_mut().remove(&decl_id);
-        //     match (noncanonical_comment_span, comment_pos) {
-        //         (Some(old), Some(new)) => {
-        //             store.move_comments(old.lo(), new);
-        //             pos_to_span(new)
-        //         }
-        //         (Some(old), None) => old,
-        //         (None, Some(new)) => pos_to_span(new),
-        //         (None, None) => DUMMY_SP,
-        //     }
-        // } else {
-        //     DUMMY_SP
-        // };
+        let mut s = self.get_span(SomeId::Decl(decl_id)).unwrap_or(DUMMY_SP);
 
         match decl.kind {
             CDeclKind::Struct { fields: None, .. }

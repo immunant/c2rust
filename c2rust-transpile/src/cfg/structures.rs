@@ -1,6 +1,7 @@
 //! This modules handles converting `Vec<Structure>` into `Vec<Stmt>`.
 
 use syntax::source_map::{dummy_spanned, Spanned};
+use syntax_pos::BytePos;
 
 use super::*;
 
@@ -22,7 +23,7 @@ pub fn structured_cfg(
         debug_labels,
         current_block,
     };
-    let (mut stmts, _span) = s.into_stmt(ast, comment_store, DUMMY_SP);
+    let (mut stmts, _span) = s.into_stmt(ast, comment_store);
     // if !queued.is_empty() {
     //     eprintln!("Did not find a statement for comments {:?}", queued);
     // }
@@ -125,6 +126,7 @@ pub type StructuredAST<E, P, L, S> = Spanned<StructuredASTKind<E, P, L, S>>;
 
 /// Defunctionalized version of `StructuredStatement` trait
 #[allow(missing_docs)]
+#[derive(Debug)]
 pub enum StructuredASTKind<E, P, L, S> {
     Empty,
     Singleton(S),
@@ -190,8 +192,11 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
     }
 
     fn extend_span(&mut self, span: Span) {
-        if self.span != DUMMY_SP {
-            self.span = self.span.with_hi(span.hi());
+        if !self.span.is_dummy() {
+            self.span = span_subst_hi(self.span, span).unwrap_or_else(|| {
+                warn!("Could not extend span {:?} to {:?}", self.span, span);
+                self.span
+            });
         } else {
             self.span = span;
         }
@@ -388,17 +393,45 @@ struct StructureState {
     current_block: P<Expr>,
 }
 
+/// Returns a `Span` between the beginning of `span` or `other`, whichever is
+/// non-zero, and the end of `span`. If both `span` and `other` have non-zero
+/// beginnings, return `None`.
+fn span_subst_lo(span: Span, other: Span) -> Option<Span> {
+    if span.is_dummy() {
+        return Some(other.shrink_to_lo());
+    } else if span.lo() == BytePos(0) {
+        return Some(span.between(other));
+    } else if other.lo() != BytePos(0) && other.lo() != span.lo() {
+        return None;
+    }
+    Some(span)
+}
+
+/// Returns a `Span` between the beginning of `span` and the end of `span` or
+/// `other`, whichever is non-zero. If both `span` and `other` have non-zero
+/// endings, return `None`.
+fn span_subst_hi(span: Span, other: Span) -> Option<Span> {
+    if other.lo() != other.hi() {
+        if span.lo() == span.hi() {
+            return Some(other.between(span));
+        } else if other.hi() != span.hi() {
+            return None;
+        }
+    }
+    Some(span)
+}
+
 impl StructureState {
     pub fn into_stmt(
         &self,
         ast: StructuredAST<P<Expr>, P<Pat>, Label, StmtOrComment>,
         comment_store: &mut comment_store::CommentStore,
-        parent_span: Span,
     ) -> (Vec<Stmt>, Span) {
         use crate::cfg::structures::StructuredASTKind::*;
 
-        let begin_span = ast.span.shrink_to_lo();
-        let span = if ast.span != DUMMY_SP { ast.span } else { parent_span };
+        // let begin_span = ast.span.shrink_to_lo();
+        // let span = if ast.span != DUMMY_SP { ast.span } else { parent_span };
+        let span = ast.span;
 
         let stmt = match ast.node {
             Empty => return (vec![], ast.span),
@@ -415,23 +448,69 @@ impl StructureState {
                 //     .map(pos_to_span)
                 //     .unwrap_or(s.span);
                 // queued_comments.clear();
-                if s.span == DUMMY_SP {
-                    s.span = span;
-                }
-                s
+                let span = s.span.substitute_dummy(ast.span);
+                s.span = span;
+                return (vec![s], span);
             }
 
-            Append(box Spanned {node: Empty, span}, rhs) => {
-                let next_span = if span != DUMMY_SP { span } else { begin_span };
-                let (rhs_stmts, rhs_span) = self.into_stmt(*rhs, comment_store, next_span);
-                return (rhs_stmts, span.with_hi(rhs_span.hi()));
+            Append(box Spanned {node: Empty, span: lhs_span}, rhs) => {
+                let span = ast.span.substitute_dummy(lhs_span);
+                let span = span_subst_lo(span, lhs_span).unwrap_or_else(|| {
+                    comment_store.move_comments(lhs_span.lo(), span.lo());
+                    span
+                });
+
+                let (mut stmts, stmts_span) = self.into_stmt(*rhs, comment_store);
+                let span = span_subst_hi(span, stmts_span).unwrap_or_else(|| {
+                    comment_store.move_comments(span.hi(), stmts_span.hi());
+                    span.with_hi(stmts_span.hi())
+                });
+
+                // Adjust the first and last elements of the block if this AST
+                // node has a span.
+                if let Some(stmt) = stmts.first_mut() {
+                    stmt.span = span_subst_lo(stmt.span, span).unwrap_or_else(|| {
+                        comment_store.move_comments(stmt.span.lo(), span.lo());
+                        stmt.span.with_lo(span.lo())
+                    });
+                }
+                if let Some(stmt) = stmts.last_mut() {
+                    stmt.span = span_subst_hi(stmt.span, span).unwrap_or_else(|| {
+                        comment_store.move_comments(stmt.span.hi(), span.hi());
+                        stmt.span.with_hi(span.hi())
+                    });
+                }
+                return (stmts, span);
             }
 
             Append(lhs, rhs) => {
-                let (mut stmts, lhs_span) = self.into_stmt(*lhs, comment_store, begin_span);
-                let (rhs_stmts, rhs_span) = self.into_stmt(*rhs, comment_store, DUMMY_SP);
+                let (mut stmts, lhs_span) = self.into_stmt(*lhs, comment_store);
+                let span = ast.span.substitute_dummy(lhs_span.shrink_to_lo());
+                let span = span_subst_lo(span, lhs_span).unwrap_or_else(|| {
+                    comment_store.move_comments(lhs_span.lo(), span.lo());
+                    span
+                });
+                let (rhs_stmts, rhs_span) = self.into_stmt(*rhs, comment_store);
+                let span = span_subst_hi(span, rhs_span).unwrap_or_else(|| {
+                    comment_store.move_comments(span.hi(), rhs_span.hi());
+                    span.with_hi(rhs_span.hi())
+                });
                 stmts.extend(rhs_stmts);
-                return (stmts, lhs_span.with_hi(rhs_span.hi()));
+                // Adjust the first and last elements of the block if this AST
+                // node has a span.
+                if let Some(stmt) = stmts.first_mut() {
+                    stmt.span = span_subst_lo(stmt.span, span).unwrap_or_else(|| {
+                        comment_store.move_comments(stmt.span.lo(), span.lo());
+                        stmt.span.with_lo(span.lo())
+                    });
+                }
+                if let Some(stmt) = stmts.last_mut() {
+                    stmt.span = span_subst_hi(stmt.span, span).unwrap_or_else(|| {
+                        comment_store.move_comments(stmt.span.hi(), span.hi());
+                        stmt.span.with_hi(span.hi())
+                    });
+                }
+                return (stmts, span);
             }
 
             Goto(to) => {
@@ -456,9 +535,9 @@ impl StructureState {
                 let arms: Vec<Arm> = cases
                     .into_iter()
                     .map(|(pats, stmts)| -> Arm {
-                        let (stmts, span) = self.into_stmt(stmts, comment_store, DUMMY_SP);
+                        let (stmts, span) = self.into_stmt(stmts, comment_store);
 
-                        let body = mk().span(span).block_expr(mk().block(stmts));
+                        let body = mk().block_expr(mk().span(span).block(stmts));
                         mk().arm(pats, None as Option<P<Expr>>, body)
                     })
                     .collect();
@@ -478,9 +557,9 @@ impl StructureState {
 
                 // queued_comments.clear();
 
-                let (then_stmts, then_span) = self.into_stmt(*then, comment_store, DUMMY_SP);
+                let (then_stmts, then_span) = self.into_stmt(*then, comment_store);
 
-                let (mut els_stmts, els_span) = self.into_stmt(*els, comment_store, DUMMY_SP);
+                let (mut els_stmts, els_span) = self.into_stmt(*els, comment_store);
 
                 let mut if_stmt = match (then_stmts.is_empty(), els_stmts.is_empty()) {
                     (true, true) => mk().semi_stmt(cond),
@@ -535,7 +614,7 @@ impl StructureState {
                 let mut arms: Vec<Arm> = cases
                     .into_iter()
                     .map(|(lbl, stmts)| -> Arm {
-                        let (stmts, stmts_span) = self.into_stmt(stmts, comment_store, DUMMY_SP);
+                        let (stmts, stmts_span) = self.into_stmt(stmts, comment_store);
 
                         let lbl_expr = if self.debug_labels {
                             lbl.to_string_expr()
@@ -548,7 +627,7 @@ impl StructureState {
                     })
                     .collect();
 
-                let (then, then_span) = self.into_stmt(*then, comment_store, DUMMY_SP);
+                let (then, then_span) = self.into_stmt(*then, comment_store);
 
                 arms.push(mk().arm(
                     vec![mk().wild_pat()],
@@ -569,7 +648,7 @@ impl StructureState {
 
                 // queued_comments.clear();
 
-                let (body, body_span) = self.into_stmt(*body, comment_store, DUMMY_SP);
+                let (body, body_span) = self.into_stmt(*body, comment_store);
 
                 // TODO: this is ugly but it needn't be. We are just pattern matching on particular ASTs.
                 if let Some(&Stmt {
