@@ -754,9 +754,9 @@ impl<Lbl: Copy + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
                 if from != to_final {
                     let span = self.nodes[&from].span;
                     let tgt_span = &mut self.nodes[&to_final].span;
-                    if *tgt_span == DUMMY_SP {
+                    if tgt_span.is_dummy() {
                         *tgt_span = span;
-                    } else if span != DUMMY_SP {
+                    } else if !span.is_dummy() {
                         // If we can't transfer this basic block's span to the
                         // target, don't delete it
                         continue;

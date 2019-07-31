@@ -576,9 +576,9 @@ impl StructureState {
                     node: syntax::ast::StmtKind::Expr(ref expr),
                     span: stmt_span,
                     ..
-                }) = body.iter().nth(0)
+                }) = body.first()
                 {
-                    let span = if stmt_span != DUMMY_SP { stmt_span } else { span };
+                    let span = if !stmt_span.is_dummy() { stmt_span } else { span };
                     if let syntax::ast::ExprKind::If(ref cond, ref thn, None) = expr.node {
                         if let &syntax::ast::Block {
                             ref stmts,
