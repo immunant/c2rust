@@ -261,7 +261,7 @@ class TestDirectory:
             file_flags = {flag.strip() for flag in flags_str.split(',')}
 
         found_tests = re.findall(
-            r"(//(.*))?\npub fn (test_\w+)\(\)", file_buffer)
+            r"(//(.*))?\n\s*pub fn (test_\w+)\(\)", file_buffer)
         test_fns = []
 
         for _, config, test_name in found_tests:
