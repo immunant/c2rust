@@ -133,3 +133,54 @@ unsafe fn init_opt_item2(hi: &mut HeapItem) {
 
     (hi).opt_item = ptr;
 }
+
+use libc::{int32_t, memset, uint16_t, uint32_t};
+
+struct HTab {
+    pub hdr: HashHDR,
+    pub nmaps: libc::c_int,
+    pub mapp: [Option<Box<[uint32_t]>>; 32],
+}
+
+struct HashHDR {
+    pub bsize: int32_t,
+    pub bitmaps: [uint16_t; 32],
+}
+
+unsafe fn bm(
+    hashp: &mut HTab,
+    pnum: libc::c_int,
+    nbits: libc::c_int,
+    ndx: libc::c_int,
+) -> libc::c_int {
+    let mut ip;
+    let mut clearbytes: libc::c_int = 0;
+    let mut clearints: libc::c_int = 0;
+
+    ip = vec![0; hashp.hdr.bsize as libc::c_ulong as usize / ::core::mem::size_of::<uint32_t>()]
+         .into_boxed_slice();
+
+    if false {
+        return 1i32;
+    }
+
+    (hashp).nmaps += 1;
+    clearints = (nbits - 1i32 >> 5i32) + 1i32;
+    clearbytes = clearints << 2i32;
+    memset(
+        ip.as_mut_ptr() as *mut libc::c_char as *mut libc::c_void,
+        0i32,
+        clearbytes as usize,
+    );
+    memset(
+        (ip.as_mut_ptr() as *mut libc::c_char).offset(clearbytes as isize) as *mut libc::c_void,
+        0xffi32,
+        ((hashp).hdr.bsize - clearbytes) as usize,
+    );
+    ip[(clearints - 1i32) as usize] = 0xffffffffu32 << (nbits & (1i32 << 5i32) - 1i32);
+    let ref mut fresh2 = ip[(0i32 / 32i32) as usize];
+    *fresh2 |= (1i32 << 0i32 % 32i32) as libc::c_uint;
+    (hashp).hdr.bitmaps[ndx as usize] = pnum as uint16_t;
+    (hashp).mapp[ndx as usize] = Some(ip);
+    return 0i32;
+}

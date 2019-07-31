@@ -397,6 +397,16 @@ impl UserData for LuaAstNode<P<Expr>> {
             }
         });
 
+        methods.add_method("set_ty", |_lua_ctx, this, lty: LuaAstNode<P<Ty>>| {
+            match &mut this.borrow_mut().node {
+                ExprKind::Cast(_, ty)
+                | ExprKind::Type(_, ty) => *ty = lty.borrow().clone(),
+                e => unimplemented!("LuaAstNode<P<Expr>>:set_ty() for {}", e.ast_name()),
+            }
+
+            Ok(())
+        });
+
         methods.add_method("get_ident", |lua_ctx, this, ()| {
             match &this.borrow().node {
                 ExprKind::Field(_, ident) => ident.to_lua(lua_ctx).map(|i| Some(i)),
@@ -592,6 +602,68 @@ impl UserData for LuaAstNode<P<Expr>> {
 
             Ok(())
         });
+
+        methods.add_method("map_paths", |_lua_ctx, this, func: Function| {
+            let expr = &mut *this.borrow_mut();
+
+            fn apply_callback(expr: &mut P<Expr>, callback: &Function) -> Result<()> {
+                match &mut expr.node {
+                    ExprKind::Box(expr)
+                    | ExprKind::Unary(_, expr)
+                    | ExprKind::Cast(expr, _)
+                    | ExprKind::Type(expr, _)
+                    | ExprKind::While(expr, _, _)
+                    | ExprKind::ForLoop(_, expr, _, _)
+                    | ExprKind::Match(expr, _)
+                    | ExprKind::Closure(_, _, _, _, expr, _)
+                    | ExprKind::Await(_, expr)
+                    | ExprKind::Field(expr, _)
+                    | ExprKind::AddrOf(_, expr)
+                    | ExprKind::Repeat(expr, _)
+                    | ExprKind::Paren(expr)
+                    | ExprKind::Try(expr) => apply_callback(expr, callback)?,
+                    ExprKind::Array(exprs)
+                    | ExprKind::MethodCall(_, exprs)
+                    | ExprKind::Tup(exprs) => {
+                        for expr in exprs.iter_mut() {
+                            apply_callback(expr, callback)?;
+                        }
+                    },
+                    ExprKind::Call(expr, exprs) => {
+                        apply_callback(expr, callback)?;
+
+                        for expr in exprs.iter_mut() {
+                            apply_callback(expr, callback)?;
+                        }
+                    },
+                    ExprKind::Binary(_, expr1, expr2)
+                    | ExprKind::Assign(expr1, expr2)
+                    | ExprKind::AssignOp(_, expr1, expr2)
+                    | ExprKind::Index(expr1, expr2) => {
+                            apply_callback(expr1, callback)?;
+                            apply_callback(expr2, callback)?;
+                    },
+                    ExprKind::If(expr, _, opt_expr) => {
+                        apply_callback(expr, callback)?;
+
+                        if let Some(expr) = opt_expr {
+                            apply_callback(expr, callback)?;
+                        }
+                    },
+                    ExprKind::Path(..) => {
+                        let expr_clone = expr.clone();
+                        let new_expr = callback.call::<_, LuaAstNode<P<Expr>>>(LuaAstNode::new(expr_clone))?;
+
+                        *expr = new_expr.into_inner();
+                    },
+                    _ => (),
+                }
+
+                Ok(())
+            }
+
+            apply_callback(expr, &func)
+        });
     }
 }
 
@@ -618,6 +690,34 @@ impl UserData for LuaAstNode<P<Ty>> {
             Ok(this.borrow().id.to_lua(_lua_ctx))
         });
 
+        methods.add_method("get_tys", |_lua_ctx, this, ()| {
+            match &this.borrow().node {
+                TyKind::Slice(ty)
+                | TyKind::Array(ty, _) => {
+                    Ok(Some(vec![LuaAstNode::new(ty.clone())]))
+                },
+                | TyKind::Tup(tys) => Ok(Some(tys.iter().map(|t| LuaAstNode::new(t.clone())).collect())),
+                e => unimplemented!("LuaAstNode<P<Ty>>:get_tys() for {}", e.ast_name()),
+            }
+        });
+
+        methods.add_method("set_tys", |_lua_ctx, this, ltys: Vec<LuaAstNode<P<Ty>>>| {
+            match &mut this.borrow_mut().node {
+                TyKind::Slice(ty)
+                | TyKind::Array(ty, _) => *ty = ltys[0].borrow().clone(),
+                | TyKind::Tup(tys) => {
+                    tys.truncate(0);
+
+                    for lty in ltys.iter() {
+                        tys.push(lty.borrow().clone());
+                    }
+                },
+                e => unimplemented!("LuaAstNode<P<Ty>>:set_tys() for {}", e.ast_name()),
+            }
+
+            Ok(())
+        });
+
         methods.add_method("get_mut_ty", |_lua_ctx, this, ()| {
             match &this.borrow().node {
                 TyKind::Ptr(mut_ty) |
@@ -636,6 +736,23 @@ impl UserData for LuaAstNode<P<Ty>> {
                 },
                 _ => Ok(()),
             }
+        });
+
+        methods.add_method("get_path", |_lua_ctx, this, ()| {
+            let path = match &this.borrow().node {
+                TyKind::Path(_, path) => path.clone(),
+                _ => return Ok(None),
+            };
+
+            Ok(Some(LuaAstNode::new(path)))
+        });
+
+        methods.add_method("to_simple_path", |_lua_ctx, this, path: LuaString| {
+            let path = Path::from_ident(Ident::from_str(path.to_str()?));
+
+            this.borrow_mut().node = TyKind::Path(None, path);
+
+            Ok(())
         });
 
         methods.add_method("to_rptr", |_lua_ctx, this, (lt, mut_ty): (Option<LuaString>, LuaAstNode<MutTy>)| {

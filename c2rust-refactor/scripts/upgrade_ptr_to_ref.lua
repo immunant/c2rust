@@ -296,6 +296,19 @@ function Visitor:visit_expr(expr)
                     unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
                 end
 
+                -- A cast to isize may have been applied by translator for offset(x)
+                -- We should convert it to usize for the index
+                if offset_expr:get_kind() == "Cast" then
+                    local cast_expr = offset_expr:get_exprs()[1]
+                    local cast_ty = offset_expr:get_ty()
+
+                    if cast_ty:get_kind() == "Path" and cast_ty:get_path():get_segments()[1] == "isize" then
+                        cast_ty:to_simple_path("usize")
+
+                        offset_expr:set_ty(cast_ty)
+                    end
+                end
+
                 expr:to_index(unwrapped_expr, offset_expr)
             end
         -- *ptr = 1 -> **ptr.as_mut().unwrap() = 1
@@ -431,6 +444,25 @@ function Visitor:visit_expr(expr)
             if conversion_cfg and conversion_cfg:is_opt_any() then
                 expr:to_method_call("take", {uncasted_expr})
             end
+        -- ip as *mut c_void -> ip.as_mut_ptr() as *mut c_void
+        -- Though this should be expanded to support other exprs like
+        -- fields
+        elseif segments[#segments] == "memset" then
+            param_expr:map_paths(function(path_expr)
+                local cfg = self:get_expr_cfg(path_expr)
+
+                if cfg and cfg:is_box_any() then
+                    path_expr:print()
+                    path_expr:to_method_call("as_mut_ptr", {path_expr})
+                    path_expr:print()
+                end
+
+                return path_expr
+            end)
+
+            call_exprs[2] = param_expr
+
+            expr:set_exprs(call_exprs)
         end
     end
 end
@@ -508,8 +540,24 @@ function Visitor:visit_struct_field(field)
     local field_ty = field:get_ty()
     local conversion_cfg = self.node_id_cfgs[field_id]
 
-    if conversion_cfg and field_ty:get_kind() == "Ptr" then
-        field:set_ty(upgrade_ptr(field_ty, conversion_cfg))
+    if conversion_cfg then
+        local field_ty_kind = field_ty:get_kind()
+
+        -- *mut T -> Box<T>, or Box<[T]> or Option<Box<T>> or Option<Box<[T]>>
+        if field_ty_kind == "Ptr" then
+            field:set_ty(upgrade_ptr(field_ty, conversion_cfg))
+        -- [*mut T; X] -> [Box<T>; X] or [Box<[T]>; X] or [Option<Box<T>>; X]
+        -- or [Option<Box<[T]>; X]
+        elseif field_ty_kind == "Array" then
+            local inner_ty = field_ty:get_tys()[1]
+
+            if inner_ty:get_kind() == "Ptr" then
+                inner_ty = upgrade_ptr(inner_ty, conversion_cfg)
+
+                field_ty:set_tys{inner_ty}
+                field:set_ty(field_ty)
+            end
+        end
     end
 end
 
@@ -583,6 +631,9 @@ refactor:transform(
             [348] = ConvCfg.new("box", nil),
             [423] = ConvCfg.new("ref", nil),
             [429] = ConvCfg.new("opt_box", nil),
+            [529] = ConvCfg.new("opt_box_slice", nil),
+            [547] = ConvCfg.new("ref", nil),
+            [571] = ConvCfg.new("box_slice", nil),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end
