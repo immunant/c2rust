@@ -37,7 +37,6 @@ impl<'c> NodeVisitor for CommentLocator<'c> {
             if let Some(existing) = self.spans.get(&id) {
                 let new_pos = self.comment_store.extend_existing_comments(&comments, Some(existing.lo()));
                 debug!("Attaching more comments {:?} to id {:?} at pos {:?}", comments, id, new_pos);
-                assert_eq!(Some(existing.lo()), new_pos);
             } else if let Some(pos) = self.comment_store.add_comments(&comments) {
                 debug!("Attaching comments {:?} to id {:?} at pos {:?}", comments, id, pos);
                 let span = pos_to_span(pos);
