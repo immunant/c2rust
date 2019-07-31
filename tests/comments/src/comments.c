@@ -24,6 +24,10 @@ int test_fn() {
 
   /* another */
   int x = CONSTANT;
+
+  /* comment on empty stmt */
+  (void)x;
+
   /* before while */
   while (x < 5) {
     /* in while */

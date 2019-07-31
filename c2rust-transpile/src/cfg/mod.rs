@@ -1989,6 +1989,8 @@ impl CfgBuilder {
             false,
         )?;
 
+        let inner_span = stmts.first().map(|stmt| stmt.span);
+
         // Remove unnecessary break statements. We only need a break statement if we failed to
         // remove the tail expr.
         let need_block =
@@ -2002,6 +2004,12 @@ impl CfgBuilder {
         }
 
         let mut flattened_wip = self.new_wip_block(entry);
+        // Copy span from removed statement if there was only one.
+        if stmts.is_empty() {
+            if let Some(span) = inner_span {
+                flattened_wip.span = span;
+            }
+        }
         flattened_wip.extend(stmts);
         let term = if let Some(l) = next_lbl {
             GenTerminator::Jump(l)
