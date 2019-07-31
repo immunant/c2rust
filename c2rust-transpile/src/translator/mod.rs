@@ -241,10 +241,6 @@ pub struct Translation<'c> {
     pub comment_context: CommentContext, // Incoming comments
     pub comment_store: RefCell<CommentStore>,     // Outgoing comments
 
-    // Comments that we processed at a non-canonical decl that need to be
-    // attached when we see the canonical decl
-    decl_comments: RefCell<HashMap<CDeclId, Span>>,
-
     spans: HashMap<SomeId, Span>,
 
     // Items indexed by file id of the source
@@ -721,10 +717,6 @@ pub fn translate(
             }
         }
 
-        if !t.decl_comments.borrow().is_empty() {
-            warn!("Some comments on non-canonical decls did not get attached to their canonical decl");
-        }
-
         // Add the main entry point
         if let Some(main_id) = t.ast_context.c_main {
             match t.convert_main(main_id) {
@@ -1054,7 +1046,6 @@ impl<'c> Translation<'c> {
             macro_types: RefCell::new(IndexMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
-            decl_comments: RefCell::new(HashMap::new()),
             spans: HashMap::new(),
             sectioned_static_initializers: RefCell::new(Vec::new()),
             items: RefCell::new(items),
@@ -1115,20 +1106,6 @@ impl<'c> Translation<'c> {
         .collect::<TokenStream>();
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
     }
-
-    // fn extend_comment_span_end(&self, src_loc: Option<SrcSpan>, span: Span) -> Span {
-    //     if let Some(src_loc) = src_loc {
-    //         let comments = self
-    //             .comment_context
-    //             .get_comments_before(src_loc.end(), &self.ast_context);
-    //         match self.comment_store.borrow_mut().add_comments(&comments) {
-    //             Some(pos) => span.with_hi(pos),
-    //             None => span,
-    //         }
-    //     } else {
-    //         span
-    //     }
-    // }
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
         if self.tcfg.cross_checks {
@@ -1384,7 +1361,6 @@ impl<'c> Translation<'c> {
                     .resolve_decl_name(decl_id)
                     .unwrap();
 
-                // let s = self.extend_comment_span_end(decl.loc, s);
                 let extern_item = mk().span(s).pub_().ty_foreign_item(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
@@ -1502,7 +1478,6 @@ impl<'c> Translation<'c> {
 
                 let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
 
-                // let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(ConvertedDecl::Item(
                     mk().span(s)
                         .pub_()
@@ -1542,7 +1517,6 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                // let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(if field_syns.is_empty() {
                     // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
                     ConvertedDecl::Item(
@@ -1577,7 +1551,6 @@ impl<'c> Translation<'c> {
                     .resolve_decl_name(decl_id)
                     .expect("Enums should already be renamed");
                 let ty = self.convert_type(integral_type.ctype)?;
-                // let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(ConvertedDecl::Item(
                     mk().span(s).pub_().type_item(enum_name, ty),
                 ))
@@ -1603,7 +1576,6 @@ impl<'c> Translation<'c> {
                     }
                 };
 
-                // let s = self.extend_comment_span_end(decl.loc, s);
                 Ok(ConvertedDecl::Item(
                     mk().span(s).pub_().const_item(name, ty, val),
                 ))
@@ -1786,7 +1758,7 @@ impl<'c> Translation<'c> {
                     let mut init = init?.to_expr();
 
                     let comment = String::from("// Initialized in run_static_initializers");
-                    let comment_pos = if s == DUMMY_SP {
+                    let comment_pos = if s.is_dummy() {
                         None
                     } else {
                         Some(s.lo())
@@ -1889,20 +1861,6 @@ impl<'c> Translation<'c> {
             // Do not translate non-canonical decls. They will be translated at
             // their canonical declaration.
             CDeclKind::NonCanonicalDecl { .. } => Ok(ConvertedDecl::NoItem),
-            //     if s != DUMMY_SP {
-            //         self.decl_comments
-            //             .borrow_mut()
-            //             .entry(canonical_decl)
-            //             .and_modify(|comment_span| {
-            //                 self.comment_store
-            //                     .borrow_mut()
-            //                     .move_comments(comment_span.lo(), s.lo());
-            //                 *comment_span = s;
-            //             })
-            //             .or_insert(s);
-            //     }
-            //     Ok(ConvertedDecl::NoItem)
-            // }
         }
     }
 

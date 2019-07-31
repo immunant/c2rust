@@ -9,24 +9,20 @@ use crate::rust_ast::comment_store;
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
-    root: &Vec<Structure<StmtOrComment>>,
+    root: &Vec<Structure<Stmt>>,
     comment_store: &mut comment_store::CommentStore,
     current_block: P<Expr>,
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> Result<Vec<Stmt>, TranslationError> {
-    let ast: StructuredAST<P<Expr>, P<Pat>, Label, StmtOrComment> =
+    let ast: StructuredAST<P<Expr>, P<Pat>, Label, Stmt> =
         structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
 
     let s = StructureState {
-        // enable_comments: true,
         debug_labels,
         current_block,
     };
     let (mut stmts, _span) = s.into_stmt(ast, comment_store);
-    // if !queued.is_empty() {
-    //     eprintln!("Did not find a statement for comments {:?}", queued);
-    // }
 
     // If the very last statement in the vector is a `return`, we can either cut it out or replace
     // it with the returned value.
@@ -207,11 +203,11 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 ///
 /// TODO: move this into `structured_cfg`?
 fn structured_cfg_help<
-    S: StructuredStatement<E = P<Expr>, P = P<Pat>, L = Label, S = StmtOrComment>,
+    S: StructuredStatement<E = P<Expr>, P = P<Pat>, L = Label, S = Stmt>,
 >(
     exits: Vec<(Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>)>,
     next: &IndexSet<Label>,
-    root: &Vec<Structure<StmtOrComment>>,
+    root: &Vec<Structure<Stmt>>,
     used_loop_labels: &mut IndexSet<Label>,
 ) -> Result<S, TranslationError> {
     let mut next: &IndexSet<Label> = next;
@@ -241,7 +237,7 @@ fn structured_cfg_help<
                 };
 
                 let mut branch =
-                    |slbl: &StructureLabel<StmtOrComment>| -> Result<S, TranslationError> {
+                    |slbl: &StructureLabel<Stmt>| -> Result<S, TranslationError> {
                         match slbl {
                             &StructureLabel::Nested(ref nested) => {
                                 structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
@@ -388,7 +384,6 @@ pub fn has_multiple<Stmt>(root: &Vec<Structure<Stmt>>) -> bool {
 }
 
 struct StructureState {
-    // enable_comments: bool,
     debug_labels: bool,
     current_block: P<Expr>,
 }
@@ -424,30 +419,17 @@ fn span_subst_hi(span: Span, other: Span) -> Option<Span> {
 impl StructureState {
     pub fn into_stmt(
         &self,
-        ast: StructuredAST<P<Expr>, P<Pat>, Label, StmtOrComment>,
+        ast: StructuredAST<P<Expr>, P<Pat>, Label, Stmt>,
         comment_store: &mut comment_store::CommentStore,
     ) -> (Vec<Stmt>, Span) {
         use crate::cfg::structures::StructuredASTKind::*;
 
-        // let begin_span = ast.span.shrink_to_lo();
-        // let span = if ast.span != DUMMY_SP { ast.span } else { parent_span };
         let span = ast.span;
 
         let stmt = match ast.node {
             Empty => return (vec![], ast.span),
 
-            Singleton(StmtOrComment::Comment(_c)) => {
-                // if self.enable_comments {
-                //     queued_comments.push(c);
-                // }
-                return (vec![], ast.span);
-            }
-            Singleton(StmtOrComment::Stmt(mut s)) => {
-                // s.span = comment_store
-                //     .add_comments(&queued_comments)
-                //     .map(pos_to_span)
-                //     .unwrap_or(s.span);
-                // queued_comments.clear();
+            Singleton(mut s) => {
                 let span = s.span.substitute_dummy(ast.span);
                 s.span = span;
                 return (vec![s], span);
@@ -516,8 +498,6 @@ impl StructureState {
             Goto(to) => {
                 // Assign to `current_block` the next label we want to go to.
 
-                // queued_comments.clear();
-
                 let lbl_expr = if self.debug_labels {
                     to.to_string_expr()
                 } else {
@@ -529,8 +509,6 @@ impl StructureState {
 
             Match(cond, cases) => {
                 // Make a `match`.
-
-                // queued_comments.clear();
 
                 let arms: Vec<Arm> = cases
                     .into_iter()
@@ -554,8 +532,6 @@ impl StructureState {
                 //   * `if <cond-expr> { .. } else { }` turns into `if <cond-expr> { .. }`
                 //   * `if <cond-expr> { } else { .. }` turns into `if !<cond-expr> { .. }`
                 //
-
-                // queued_comments.clear();
 
                 let (then_stmts, then_span) = self.into_stmt(*then, comment_store);
 
@@ -609,8 +585,6 @@ impl StructureState {
             GotoTable(cases, then) => {
                 // Dispatch based on the next `current_block` value.
 
-                // queued_comments.clear();
-
                 let mut arms: Vec<Arm> = cases
                     .into_iter()
                     .map(|(lbl, stmts)| -> Arm {
@@ -645,8 +619,6 @@ impl StructureState {
                 //
                 //   * Loops that start with an `if <cond-expr> { break; }` get converted into `while` loops
                 //
-
-                // queued_comments.clear();
 
                 let (body, body_span) = self.into_stmt(*body, comment_store);
 
@@ -692,8 +664,6 @@ impl StructureState {
 
             Exit(exit_style, lbl) => {
                 // Make a (possibly labelled) `break` or `continue`.
-
-                // queued_comments.clear();
 
                 let lbl = lbl.map(|l| l.pretty_print());
                 let e = match exit_style {
