@@ -25,3 +25,5 @@ quote = { version = "0.3", optional = true }
 failure = "0.1"
 failure_derive = "0.1"
 indexmap = { version = "1.0", features = ["serde-1"] }
+regex = "1.1"
+itertools = "0.8"
