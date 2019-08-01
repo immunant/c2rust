@@ -154,12 +154,11 @@ impl ScopeConfig {
             .unwrap_or(false)
     }
 
-    fn get_item_configs(&self, item: &str) -> &[super::ItemConfigRef] {
-        self.items
-            .as_ref()
-            .and_then(|nil| nil.name_map.get(item))
-            .map(|items| &items[..])
-            .unwrap_or_default()
+    fn get_item_configs<'a>(
+        &'a self,
+        item: &'a str,
+    ) -> impl Iterator<Item = super::ItemConfigRef> + 'a {
+        self.items.iter().flat_map(move |nil| nil.get(item))
     }
 
     // Getters for various options
@@ -334,7 +333,7 @@ impl ScopeStack {
             for xcfg in pre_xcfg {
                 new_config.parse_xcfg_config(&xcfg);
             }
-            for xcfg in old_config.get_item_configs(item_name) {
+            for ref xcfg in old_config.get_item_configs(item_name) {
                 new_config.parse_xcfg_config(xcfg);
             }
             for xcfg in post_xcfg {

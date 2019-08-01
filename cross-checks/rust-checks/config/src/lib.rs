@@ -276,8 +276,7 @@ impl ItemList {
 
 #[derive(Debug, Default, Clone)]
 pub struct NamedItemList {
-    // FIXME: _items is unused; do we really need it???
-    pub name_map: HashMap<String, Vec<ItemConfigRef>>,
+    name_map: HashMap<String, Vec<ItemConfigRef>>,
 }
 
 impl NamedItemList {
@@ -291,6 +290,18 @@ impl NamedItemList {
             }
         }
         NamedItemList { name_map: map }
+    }
+
+    pub fn get<'a>(
+        &'a self,
+        item: &str,
+    ) -> impl Iterator<Item = ItemConfigRef> + 'a {
+        self.name_map
+            .get(item)
+            .map(|items| &items[..])
+            .unwrap_or_default()
+            .iter()
+            .cloned()
     }
 
     pub fn extend(&mut self, other: NamedItemList) {
