@@ -60,7 +60,7 @@ Each array element maps a file name (represented as a string) to a list of indiv
 Each item is encoded in YAML as an associative array.
 All items have a few common array members:
  * `item` specifies the type of the current item, e.g., `function`, `struct` or others.
- * `name` specifies the name of the item, i.e., the name of the function or structure.
+ * `name` specifies the name of the item, i.e., the name of the function or structure, as either a C identifier or a regular expression.
 
 ### Function cross-check configuration
 Function cross-checks are configured using entries with `item: function`.
