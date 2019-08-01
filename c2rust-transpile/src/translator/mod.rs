@@ -1892,17 +1892,6 @@ impl<'c> Translation<'c> {
         // common type to minimize casts.
     }
 
-    /// Returns true iff type is a (pointer to)* the `va_list` structure type.
-    pub fn is_inner_type_valist(ctxt: &TypedAstContext, qtype: CQualTypeId) -> bool {
-        if ctxt.is_va_list(qtype.ctype) {
-            true
-        } else if let CTypeKind::Pointer(pointer_id) = ctxt.resolve_type(qtype.ctype).kind {
-            Self::is_inner_type_valist(ctxt, pointer_id)
-        } else {
-            false
-        }
-    }
-
     fn convert_function(
         &self,
         ctx: ExprContext,
@@ -3001,9 +2990,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                if self.ast_context.is_va_list(qual_ty.ctype) {
-                    val = mk().method_call_expr(val, "as_va_list", vec![] as Vec<P<Expr>>);
-                } else if let CTypeKind::VariableArray(..) =
+                if let CTypeKind::VariableArray(..) =
                     self.ast_context.resolve_type(qual_ty.ctype).kind
                 {
                     val = mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<P<Expr>>);
