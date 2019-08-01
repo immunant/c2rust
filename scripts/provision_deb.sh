@@ -28,7 +28,8 @@ apt-get install -qq \
     python3-setuptools \
     software-properties-common \
     unzip \
-    libncurses5-dev
+    libncurses5-dev \
+    luarocks
 
 # Older releases do not include clang 6 and later so we grab 
 # the latest versions of those packages from the LLVM project. 
@@ -58,3 +59,8 @@ update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100
 # Install python3 and packages
 pip3 install -r $SCRIPT_DIR/requirements.txt
 
+# Set the system-wide Lua path to include luarocks directories
+luarocks path > /etc/profile.d/luarocks-path.sh
+
+# Install penlight lua package with luarocks
+luarocks install penlight
