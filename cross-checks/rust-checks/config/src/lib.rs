@@ -19,6 +19,8 @@ pub mod attr;
 #[cfg(feature = "scopes")]
 pub mod scopes;
 
+use indexmap::IndexMap;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -313,7 +315,7 @@ pub struct ExtFileConfig {
 #[serde(untagged)]
 pub enum RootConfig {
     /// Filename-to-config mapping
-    NameMap(HashMap<String, FileConfig>),
+    NameMap(IndexMap<String, FileConfig>),
 
     /// Vector of ExtFileConfig elements
     ExtVector(Vec<ExtFileConfig>),
@@ -352,7 +354,6 @@ impl RootConfig {
         match self {
             RootConfig::NameMap(map_self) => {
                 // Convert the NameMap into an ordered Vec
-                // WARNING: the elements are emitted in random order
                 RootConfig::ExtVector(
                     map_self
                         .into_iter()
