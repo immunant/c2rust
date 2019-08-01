@@ -146,6 +146,7 @@ struct HashHDR {
     pub bsize: int32_t,
     pub bitmaps: [uint16_t; 32],
     pub magic: int32_t,
+    pub spares: [int32_t; 32],
 }
 
 unsafe fn bm(
@@ -187,7 +188,14 @@ unsafe fn bm(
 }
 
 unsafe extern "C" fn byteswap(srcp: &mut HashHDR, destp: &mut HashHDR) {
+    let mut i: libc::c_int = 0;
     (destp).magic = (srcp).magic.swap_bytes();
+    i = 0i32;
+    while i < 32i32 {
+        (destp).spares[i as usize] = (srcp).spares[i as usize].swap_bytes();
+        (destp).bitmaps[i as usize] = (srcp).bitmaps[i as usize].swap_bytes();
+        i += 1
+    }
 }
 
 unsafe extern "C" fn byteswap2(hashp: &mut HTab) {

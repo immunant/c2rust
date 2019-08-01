@@ -970,6 +970,12 @@ impl UserData for LuaAstNode<Stmt> {
 
             Ok(())
         });
+
+        methods.add_method("print", |_lua_ctx, this, ()| {
+            println!("{:?}", this.borrow());
+
+            Ok(())
+        });
     }
 }
 

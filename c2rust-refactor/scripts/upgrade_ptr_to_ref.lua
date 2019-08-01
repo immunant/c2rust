@@ -112,6 +112,10 @@ function ConvCfg:is_byteswap()
     return self.conv_type == "byteswap"
 end
 
+function ConvCfg:is_array()
+    return self.conv_type == "array"
+end
+
 Visitor = {}
 
 function Visitor.new(tctx, node_id_cfgs)
@@ -268,7 +272,8 @@ function Visitor:visit_expr(expr)
         local derefed_exprs = expr:get_exprs()
         local unwrapped_expr = derefed_exprs[1]
 
-        -- *p.offset(x).offset(y) -> p[x + y]
+        -- *p.offset(x).offset(y) -> p[x + y] (pointer) or
+        -- *p.as_mut_ptr().offset(x).offset(y) -> p[x + y] (array)
         if unwrapped_expr:get_method_name() == "offset" then
             local offset_expr = nil
 
@@ -284,21 +289,26 @@ function Visitor:visit_expr(expr)
                     offset_expr:to_binary("Add", strip_int_suffix(unwrapped_exprs[2]), offset_expr)
                 end
 
-                if method_name ~= "offset" then
+                -- May start with conversion to pointer if an array
+                if method_name == "as_mut_ptr" then
+                    local unwrapped_exprs = unwrapped_expr:get_exprs()
+                    unwrapped_expr = unwrapped_exprs[1]
+
+                    break
+                elseif method_name ~= "offset" then
                     break
                 end
             end
 
-            -- Should be left with a path, otherwise bail
-            local hirid = self.tctx:resolve_path_hirid(unwrapped_expr)
-            local var = self:get_var(hirid)
+            -- Should be left with a path or field, otherwise bail
+            local cfg = self:get_expr_cfg(unwrapped_expr)
 
             -- We only want to apply this operation if we're converting
             -- a pointer to an array
-            if var and self.node_id_cfgs[var.id]:is_slice_any() and offset_expr then
+            if cfg and (cfg:is_slice_any() or cfg:is_array()) then
                 -- If we're using an option, we must unwrap (or map/match)
                 -- *ptr[1] -> *ptr.as_mut().unwrap()[1]
-                if self.node_id_cfgs[var.id]:is_opt_any() then
+                if cfg:is_opt_any() then
                     -- TODO: or as_ref
                     unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
                     unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
@@ -555,11 +565,13 @@ function Visitor:flat_map_stmt(stmt, walk)
             local lhs = expr:find_subexpr(lhs_id)
             local rhs = expr:find_subexpr(rhs_id)
 
-            rhs:to_method_call("swap_bytes", {rhs})
+            if lhs and rhs then
+                rhs:to_method_call("swap_bytes", {rhs})
 
-            local assign_expr = self.tctx:assign_expr(lhs, rhs)
+                local assign_expr = self.tctx:assign_expr(lhs, rhs)
 
-            stmt:to_semi(assign_expr)
+                stmt:to_semi(assign_expr)
+            end
         end
     end
 
@@ -665,21 +677,29 @@ refactor:transform(
             [423] = ConvCfg.new("ref"),
             [429] = ConvCfg.new("opt_box"),
             [529] = ConvCfg.new("opt_box_slice"),
-            [550] = ConvCfg.new("ref"),
-            [574] = ConvCfg.new("box_slice"),
-            [784] = ConvCfg.new("ref"),
-            [789] = ConvCfg.new("ref"),
-            [944] = ConvCfg.new("ref"),
-            [950] = ConvCfg.new("box"), -- FIXME: not a box
-            [1181] = ConvCfg.new("byteswap", {799, 817}),
-            [1182] = ConvCfg.new("del"),
-            [1183] = ConvCfg.new("del"),
-            [1184] = ConvCfg.new("del"),
-            [1187] = ConvCfg.new("del"),
-            [1188] = ConvCfg.new("byteswap", {983, 983}),
-            [1189] = ConvCfg.new("del"),
-            [1190] = ConvCfg.new("del"),
-            [1191] = ConvCfg.new("del"),
+            [540] = ConvCfg.new("array"),
+            [549] = ConvCfg.new("array"),
+            [556] = ConvCfg.new("ref"),
+            [580] = ConvCfg.new("box_slice"),
+            [790] = ConvCfg.new("ref"),
+            [795] = ConvCfg.new("ref"),
+            [1312] = ConvCfg.new("ref"),
+            [1318] = ConvCfg.new("box"), -- FIXME: not a box
+            [1557] = ConvCfg.new("byteswap", {811, 829}),
+            [1558] = ConvCfg.new("del"),
+            [1559] = ConvCfg.new("del"),
+            [1560] = ConvCfg.new("del"),
+            [1565] = ConvCfg.new("del"),
+            [1566] = ConvCfg.new("byteswap", {1351, 1351}),
+            [1567] = ConvCfg.new("del"),
+            [1568] = ConvCfg.new("del"),
+            [1569] = ConvCfg.new("del"),
+            [1549] = ConvCfg.new("byteswap", {978, 1006}),
+            [1550] = ConvCfg.new("del"),
+            [1551] = ConvCfg.new("del"),
+            [1552] = ConvCfg.new("del"),
+            [1553] = ConvCfg.new("byteswap", {1206, 1234}),
+            [1554] = ConvCfg.new("del"),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end

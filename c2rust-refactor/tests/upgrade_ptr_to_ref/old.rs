@@ -140,6 +140,7 @@ struct HashHDR {
     pub bsize: int32_t,
     pub bitmaps: [uint16_t; 32],
     pub magic: int32_t,
+    pub spares: [int32_t; 32],
 }
 
 unsafe fn bm(
@@ -180,6 +181,7 @@ unsafe fn bm(
 }
 
 unsafe extern "C" fn byteswap(srcp: *mut HashHDR, destp: *mut HashHDR) {
+    let mut i: libc::c_int = 0;
     *(&mut (*destp).magic as *mut int32_t as *mut libc::c_char).offset(0isize)
         =
         *(&mut (*srcp).magic as *mut int32_t as
@@ -196,6 +198,34 @@ unsafe extern "C" fn byteswap(srcp: *mut HashHDR, destp: *mut HashHDR) {
         =
         *(&mut (*srcp).magic as *mut int32_t as
               *mut libc::c_char).offset(0isize);
+    i = 0i32;
+    while i < 32i32 {
+        *(&mut *(*destp).spares.as_mut_ptr().offset(i as isize) as
+              *mut int32_t as *mut libc::c_char).offset(0isize) =
+            *(&mut *(*srcp).spares.as_mut_ptr().offset(i as isize) as
+                  *mut int32_t as *mut libc::c_char).offset(3isize);
+        *(&mut *(*destp).spares.as_mut_ptr().offset(i as isize) as
+              *mut int32_t as *mut libc::c_char).offset(1isize) =
+            *(&mut *(*srcp).spares.as_mut_ptr().offset(i as isize) as
+                  *mut int32_t as *mut libc::c_char).offset(2isize);
+        *(&mut *(*destp).spares.as_mut_ptr().offset(i as isize) as
+              *mut int32_t as *mut libc::c_char).offset(2isize) =
+            *(&mut *(*srcp).spares.as_mut_ptr().offset(i as isize) as
+                  *mut int32_t as *mut libc::c_char).offset(1isize);
+        *(&mut *(*destp).spares.as_mut_ptr().offset(i as isize) as
+              *mut int32_t as *mut libc::c_char).offset(3isize) =
+            *(&mut *(*srcp).spares.as_mut_ptr().offset(i as isize) as
+                  *mut int32_t as *mut libc::c_char).offset(0isize);
+        *(&mut *(*destp).bitmaps.as_mut_ptr().offset(i as isize) as
+              *mut uint16_t as *mut libc::c_char).offset(0isize) =
+            *(&mut *(*srcp).bitmaps.as_mut_ptr().offset(i as isize) as
+                  *mut uint16_t as *mut libc::c_char).offset(1isize);
+        *(&mut *(*destp).bitmaps.as_mut_ptr().offset(i as isize) as
+              *mut uint16_t as *mut libc::c_char).offset(1isize) =
+            *(&mut *(*srcp).bitmaps.as_mut_ptr().offset(i as isize) as
+                  *mut uint16_t as *mut libc::c_char).offset(0isize);
+        i += 1
+    };
 }
 
 unsafe extern "C" fn byteswap2(hashp: *mut HTab) {
