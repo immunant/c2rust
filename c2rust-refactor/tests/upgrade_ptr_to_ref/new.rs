@@ -145,6 +145,7 @@ struct HTab {
 struct HashHDR {
     pub bsize: int32_t,
     pub bitmaps: [uint16_t; 32],
+    pub magic: int32_t,
 }
 
 unsafe fn bm(
@@ -183,4 +184,15 @@ unsafe fn bm(
     (hashp).hdr.bitmaps[ndx as usize] = pnum as uint16_t;
     (hashp).mapp[ndx as usize] = Some(ip);
     return 0i32;
+}
+
+unsafe extern "C" fn byteswap(srcp: &mut HashHDR, destp: &mut HashHDR) {
+    (destp).magic = (srcp).magic.swap_bytes();
+}
+
+unsafe extern "C" fn byteswap2(hashp: &mut HTab) {
+    let mut hdrp;
+    hdrp = &mut (hashp).hdr;
+
+    (hdrp).magic = (hdrp).magic.swap_bytes();
 }

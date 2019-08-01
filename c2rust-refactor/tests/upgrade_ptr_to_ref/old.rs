@@ -139,6 +139,7 @@ struct HTab {
 struct HashHDR {
     pub bsize: int32_t,
     pub bitmaps: [uint16_t; 32],
+    pub magic: int32_t,
 }
 
 unsafe fn bm(
@@ -176,4 +177,37 @@ unsafe fn bm(
     (*hashp).hdr.bitmaps[ndx as usize] = pnum as uint16_t;
     (*hashp).mapp[ndx as usize] = ip;
     return 0i32;
+}
+
+unsafe extern "C" fn byteswap(srcp: *mut HashHDR, destp: *mut HashHDR) {
+    *(&mut (*destp).magic as *mut int32_t as *mut libc::c_char).offset(0isize)
+        =
+        *(&mut (*srcp).magic as *mut int32_t as
+              *mut libc::c_char).offset(3isize);
+    *(&mut (*destp).magic as *mut int32_t as *mut libc::c_char).offset(1isize)
+        =
+        *(&mut (*srcp).magic as *mut int32_t as
+              *mut libc::c_char).offset(2isize);
+    *(&mut (*destp).magic as *mut int32_t as *mut libc::c_char).offset(2isize)
+        =
+        *(&mut (*srcp).magic as *mut int32_t as
+              *mut libc::c_char).offset(1isize);
+    *(&mut (*destp).magic as *mut int32_t as *mut libc::c_char).offset(3isize)
+        =
+        *(&mut (*srcp).magic as *mut int32_t as
+              *mut libc::c_char).offset(0isize);
+}
+
+unsafe extern "C" fn byteswap2(hashp: *mut HTab) {
+    let mut hdrp: *mut HashHDR = 0 as *mut HashHDR;
+    hdrp = &mut (*hashp).hdr;
+    let mut _tmp: uint32_t = (*hdrp).magic as uint32_t;
+    *(&mut (*hdrp).magic as *mut int32_t as *mut libc::c_char).offset(0isize)
+        = *(&mut _tmp as *mut uint32_t as *mut libc::c_char).offset(3isize);
+    *(&mut (*hdrp).magic as *mut int32_t as *mut libc::c_char).offset(1isize)
+        = *(&mut _tmp as *mut uint32_t as *mut libc::c_char).offset(2isize);
+    *(&mut (*hdrp).magic as *mut int32_t as *mut libc::c_char).offset(2isize)
+        = *(&mut _tmp as *mut uint32_t as *mut libc::c_char).offset(1isize);
+    *(&mut (*hdrp).magic as *mut int32_t as *mut libc::c_char).offset(3isize)
+        = *(&mut _tmp as *mut uint32_t as *mut libc::c_char).offset(0isize);
 }

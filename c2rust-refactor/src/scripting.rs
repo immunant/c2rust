@@ -660,6 +660,19 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             Ok(LuaAstNode::new(expr))
         });
 
+        methods.add_method("assign_expr", |_lua_ctx, _this, (lhs, rhs): (LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
+            let lhs = lhs.borrow().clone();
+            let rhs = rhs.borrow().clone();
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Assign(lhs, rhs),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
         methods.add_method("ident_path_expr", |_lua_ctx, _this, path: LuaString| {
             let path = syntax::ast::Path::from_ident(Ident::from_str(path.to_str()?));
             let expr = P(Expr {

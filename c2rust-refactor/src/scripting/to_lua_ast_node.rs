@@ -23,6 +23,81 @@ use super::DisplayLuaError;
 /// Refactoring module
 // @module Refactor
 
+fn find_subexpr<'a, C>(expr: &'a mut P<Expr>, cmp: &C) -> Result<Option<&'a mut P<Expr>>>
+where
+    C: Fn(&P<Expr>) -> bool,
+{
+    if cmp(expr) {
+        return Ok(Some(expr));
+    }
+
+    match &mut expr.node {
+        ExprKind::Box(expr)
+        | ExprKind::Unary(_, expr)
+        | ExprKind::Cast(expr, _)
+        | ExprKind::Type(expr, _)
+        | ExprKind::While(expr, _, _)
+        | ExprKind::ForLoop(_, expr, _, _)
+        | ExprKind::Match(expr, _)
+        | ExprKind::Closure(_, _, _, _, expr, _)
+        | ExprKind::Await(_, expr)
+        | ExprKind::Field(expr, _)
+        | ExprKind::AddrOf(_, expr)
+        | ExprKind::Repeat(expr, _)
+        | ExprKind::Paren(expr)
+        | ExprKind::Try(expr) => {
+            if let Some(e) = find_subexpr(expr, cmp)? {
+                return Ok(Some(e));
+            };
+        },
+        ExprKind::Array(exprs)
+        | ExprKind::MethodCall(_, exprs)
+        | ExprKind::Tup(exprs) => {
+            for expr in exprs.iter_mut() {
+                if let Some(e) = find_subexpr(expr, cmp)? {
+                    return Ok(Some(e));
+                };
+            }
+        },
+        ExprKind::Call(expr, exprs) => {
+            if let Some(e) = find_subexpr(expr, cmp)? {
+                return Ok(Some(e));
+            };
+
+            for expr in exprs.iter_mut() {
+                if let Some(e) = find_subexpr(expr, cmp)? {
+                    return Ok(Some(e));
+                };
+            }
+        },
+        ExprKind::Binary(_, expr1, expr2)
+        | ExprKind::Assign(expr1, expr2)
+        | ExprKind::AssignOp(_, expr1, expr2)
+        | ExprKind::Index(expr1, expr2) => {
+            if let Some(e) = find_subexpr(expr1, cmp)? {
+                return Ok(Some(e));
+            };
+
+            if let Some(e) = find_subexpr(expr2, cmp)? {
+                return Ok(Some(e));
+            };
+        },
+        ExprKind::If(expr, _, opt_expr) => {
+            if let Some(e) = find_subexpr(expr, cmp)? {
+                return Ok(Some(e));
+            };
+
+            if let Some(expr) = opt_expr {
+                if let Some(e) = find_subexpr(expr, cmp)? {
+                    return Ok(Some(e));
+                };
+            }
+        },
+        _ => (),
+    };
+
+    Ok(None)
+}
 
 pub(crate) trait ToLuaExt {
     fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>>;
@@ -603,66 +678,29 @@ impl UserData for LuaAstNode<P<Expr>> {
             Ok(())
         });
 
-        methods.add_method("map_paths", |_lua_ctx, this, func: Function| {
+        methods.add_method("find_subexpr", |_lua_ctx, this, id: u32| {
             let expr = &mut *this.borrow_mut();
+            let node_id = NodeId::from_u32(id);
+            let opt_expr = find_subexpr(expr, &|sub_expr| sub_expr.id == node_id)?;
 
-            fn apply_callback(expr: &mut P<Expr>, callback: &Function) -> Result<()> {
-                match &mut expr.node {
-                    ExprKind::Box(expr)
-                    | ExprKind::Unary(_, expr)
-                    | ExprKind::Cast(expr, _)
-                    | ExprKind::Type(expr, _)
-                    | ExprKind::While(expr, _, _)
-                    | ExprKind::ForLoop(_, expr, _, _)
-                    | ExprKind::Match(expr, _)
-                    | ExprKind::Closure(_, _, _, _, expr, _)
-                    | ExprKind::Await(_, expr)
-                    | ExprKind::Field(expr, _)
-                    | ExprKind::AddrOf(_, expr)
-                    | ExprKind::Repeat(expr, _)
-                    | ExprKind::Paren(expr)
-                    | ExprKind::Try(expr) => apply_callback(expr, callback)?,
-                    ExprKind::Array(exprs)
-                    | ExprKind::MethodCall(_, exprs)
-                    | ExprKind::Tup(exprs) => {
-                        for expr in exprs.iter_mut() {
-                            apply_callback(expr, callback)?;
-                        }
-                    },
-                    ExprKind::Call(expr, exprs) => {
-                        apply_callback(expr, callback)?;
+            Ok(opt_expr.map(|expr| LuaAstNode::new(expr.clone())))
+        });
 
-                        for expr in exprs.iter_mut() {
-                            apply_callback(expr, callback)?;
-                        }
-                    },
-                    ExprKind::Binary(_, expr1, expr2)
-                    | ExprKind::Assign(expr1, expr2)
-                    | ExprKind::AssignOp(_, expr1, expr2)
-                    | ExprKind::Index(expr1, expr2) => {
-                            apply_callback(expr1, callback)?;
-                            apply_callback(expr2, callback)?;
-                    },
-                    ExprKind::If(expr, _, opt_expr) => {
-                        apply_callback(expr, callback)?;
+        methods.add_method("map_first_path", |_lua_ctx, this, func: Function| {
+            let expr = &mut *this.borrow_mut();
+            let opt_expr = find_subexpr(expr, &|sub_expr| match sub_expr.node {
+                ExprKind::Path(..) => true,
+                _ => false,
+            })?;
 
-                        if let Some(expr) = opt_expr {
-                            apply_callback(expr, callback)?;
-                        }
-                    },
-                    ExprKind::Path(..) => {
-                        let expr_clone = expr.clone();
-                        let new_expr = callback.call::<_, LuaAstNode<P<Expr>>>(LuaAstNode::new(expr_clone))?;
+            if let Some(expr) = opt_expr {
+                let expr_clone = expr.clone();
+                let new_expr = func.call::<_, LuaAstNode<P<Expr>>>(LuaAstNode::new(expr_clone))?;
 
-                        *expr = new_expr.into_inner();
-                    },
-                    _ => (),
-                }
-
-                Ok(())
+                *expr = new_expr.into_inner();
             }
 
-            apply_callback(expr, &func)
+            Ok(())
         });
     }
 }
@@ -909,15 +947,28 @@ unsafe impl Send for LuaAstNode<Stmt> {}
 impl UserData for LuaAstNode<Stmt> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().node.ast_name())
+            Ok(this.borrow().node.ast_name())
         });
+
+        methods.add_method("get_id", |lua_ctx, this, ()| {
+            this.borrow().id.to_lua(lua_ctx)
+        });
+
         methods.add_method("get_node", |lua_ctx, this, ()| {
-            match this.0.borrow().node.clone() {
+            match this.borrow().node.clone() {
                 StmtKind::Expr(e) | StmtKind::Semi(e) => e.to_lua(lua_ctx),
                 StmtKind::Local(l) => l.to_lua(lua_ctx),
                 StmtKind::Item(i) => i.to_lua(lua_ctx),
                 StmtKind::Mac(_) => Err(Error::external(format!("Mac stmts aren't implemented yet"))),
             }
+        });
+
+        methods.add_method("to_semi", |_lua_ctx, this, semi: LuaAstNode<P<Expr>>| {
+            let semi = semi.borrow().clone();
+
+            this.borrow_mut().node = StmtKind::Semi(semi);
+
+            Ok(())
         });
     }
 }
