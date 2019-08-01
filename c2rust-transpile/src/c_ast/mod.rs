@@ -256,7 +256,7 @@ impl TypedAstContext {
         }
     }
 
-    /// Predicate for structs that are used to implement C's `va_list`.
+    /// Predicate for types that are used to implement C's `va_list`.
     pub fn is_va_list(&self, typ: CTypeId) -> bool {
         let resolved_ctype = self.resolve_type(typ);
         match resolved_ctype.kind {
@@ -276,7 +276,7 @@ impl TypedAstContext {
         }
     }
 
-    /// Predicate for pointers to structs that are binary compatible with C's `va_list`.
+    /// Predicate for pointers to types that are used to implement C's `va_list`.
     pub fn is_pointer_to_va_list(&self, typ: CTypeId) -> bool {
         let resolved_ctype = self.resolve_type(typ);
         match resolved_ctype.kind {
