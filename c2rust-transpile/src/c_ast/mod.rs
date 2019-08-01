@@ -643,8 +643,7 @@ impl CommentContext {
             None => return extracted_comments,
             Some(comments) => comments.borrow_mut(),
         };
-        loop {
-            if comments.is_empty() { break; }
+        while !comments.is_empty() {
             let next_comment_loc = comments
                 .last()
                 .unwrap()
@@ -667,6 +666,28 @@ impl CommentContext {
         match located.begin_loc() {
             None => vec![],
             Some(loc) => self.get_comments_before(loc, ctx),
+        }
+    }
+
+    pub fn peek_next_comment_on_line(&self, loc: SrcLoc, ctx: &TypedAstContext) -> Option<Located<String>> {
+        let file_id = ctx.file_map[loc.fileid as usize];
+        let comments = self.comments_by_file.get(&file_id)?.borrow();
+        comments.last().and_then(|comment| {
+            let next_comment_loc = comment
+                .begin_loc()
+                .expect("All comments must have a source location");
+            if next_comment_loc.line != loc.line {
+                None
+            } else {
+                Some(comment.clone())
+            }
+        })
+    }
+
+    /// Advance over the current comment in `file`
+    pub fn advance_comment(&self, file: FileId) {
+        if let Some(comments) = self.comments_by_file.get(&file) {
+            let _ = comments.borrow_mut().pop();
         }
     }
 

@@ -12,13 +12,14 @@ use indexmap::{IndexMap, IndexSet};
 use rustc_data_structures::sync::Lrc;
 use syntax::attr;
 use syntax::ast::*;
+use syntax::parse::lexer::comments::CommentStyle;
 use syntax::parse::token::{self, DelimToken, Nonterminal};
-use syntax::print::pprust::*;
+use syntax::print::pprust::{self, PrintState};
 use syntax::ptr::*;
-use syntax::source_map::dummy_spanned;
+use syntax::source_map::{dummy_spanned, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
-use syntax_pos::{Span, DUMMY_SP};
+use syntax_pos::{FileName, Span, DUMMY_SP};
 use syntax_pos::edition::Edition;
 
 use crate::rust_ast::pos_to_span;
@@ -836,6 +837,37 @@ pub fn translate(
     })
 }
 
+/// Same as pprust::to_string, but initializes the printer with an empty
+/// SourceMap, which is necessary to get the printer to print trailing comments
+/// on the same line.
+fn to_string<F>(f: F) -> String where
+    F: FnOnce(&mut pprust::State<'_>) -> io::Result<()>,
+{
+    let mut wr = Vec::new();
+    {
+        let ann = pprust::NoAnn;
+
+        // We need a dummy SourceMap with a dummy file so that pprust can try to
+        // look up source line numbers for Spans. This is needed to be able to
+        // print trailing comments after exprs/stmts/etc. on the same line. The
+        // SourceMap will think that all Spans are invalid, but will return line
+        // 0 for all of them.
+        let sm = SourceMap::new(FilePathMapping::empty());
+        sm.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
+
+        let mut printer = pprust::State::new(
+            &sm,
+            Box::new(&mut wr),
+            &ann,
+            None,
+            false,
+        );
+        f(&mut printer).unwrap();
+        printer.s.eof().unwrap();
+    }
+    String::from_utf8(wr).unwrap()
+}
+
 fn make_submodule(
     ast_context: &TypedAstContext,
     item_store: &mut ItemStore,
@@ -885,7 +917,7 @@ fn make_submodule(
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
-fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
+fn print_header(s: &mut pprust::State, t: &Translation) -> io::Result<()> {
     if t.tcfg.emit_modules {
         s.print_item(&mk().use_simple_item(vec!["libc"], None as Option<Ident>))?;
     } else {
@@ -1766,7 +1798,11 @@ impl<'c> Translation<'c> {
                     s = self
                         .comment_store
                         .borrow_mut()
-                        .extend_existing_comments(&[comment], comment_pos)
+                        .extend_existing_comments(
+                            &[comment],
+                            comment_pos,
+                            CommentStyle::Isolated,
+                        )
                         .map(pos_to_span)
                         .unwrap_or(s);
 

@@ -388,7 +388,7 @@ impl VisitNode {
 
 pub trait NodeVisitor {
     /// Visit nodes in pre-order traversal. Returns true if we should traverse
-    /// children. If we are not traversing children, the node will not be
+    /// children. If we are not traversing children, the node will still be
     /// visited by `post`.
     fn pre(&mut self, _id: SomeId) -> bool { true }
     fn post(&mut self, _id: SomeId) {}
@@ -398,10 +398,9 @@ pub trait NodeVisitor {
             if !node.seen {
                 let id = node.id;
                 node.seen = true;
+                stack.push(node);
 
                 if self.pre(id) {
-                    stack.push(node);
-
                     let children = immediate_children_all_types(context, id);
                     // Add children in reverse order since we visit the end of the stack first
                     stack.extend(children.into_iter().rev().map(VisitNode::new));

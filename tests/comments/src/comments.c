@@ -13,7 +13,7 @@ int a_function() {
 /* and another */
 
 /* one more */
-#define CONSTANT 0
+#define CONSTANT 0 /* comment at the end of define */
 
 /* something in between */
 
@@ -23,13 +23,13 @@ int test_fn() {
   /* comment in a function */
 
   /* another */
-  int x = CONSTANT;
+  int x = CONSTANT; /* at end of statement line */
 
   /* comment on empty stmt */
   (void)x;
 
   /* before while */
-  while (x < 5) {
+  while (x < 5) { /* trailing block begin */
     /* in while */
     x++;
     /* end of while */

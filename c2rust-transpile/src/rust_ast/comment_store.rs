@@ -44,8 +44,7 @@
 //! Trailing comments can be printed after the following elements hi pos, but on
 //! the same line:
 //! - Stmt
-//! - Comma separated Expr
-//! - Field
+//! - Comma separated Expr (struct initializer, tuples literals, etc.)
 //!
 //! Before the close of a Block
 
@@ -104,21 +103,34 @@ impl CommentStore {
         // node to which they are _not_ related.
         self.current_position += 1;
 
-        // The position of the comment has to be LESS than the span of the AST node it annotates.
+        // The position of isolated comments have to be LESS than the span of
+        // the AST node it annotates.
         for cmmt in &mut new_comments {
-            cmmt.pos = BytePos(self.current_position);
-            self.current_position += 1;
+            if let comments::CommentStyle::Isolated = cmmt.style {
+                cmmt.pos = BytePos(self.current_position);
+                self.current_position += 1;
+            }
         }
 
         let new_pos = BytePos(self.current_position);
+
+        // The position of trailing comments have to be GREATER than the span of
+        // the AST node it follows.
+        for cmmt in &mut new_comments {
+            if let comments::CommentStyle::Trailing = cmmt.style {
+                self.current_position += 1;
+                cmmt.pos = BytePos(self.current_position);
+            }
+        }
+
         self.output_comments.insert(new_pos, new_comments);
         new_pos
     }
 
-    /// Add a comment at the current position, then return the `Span` that should be given to
-    /// something we want associated with this comment.
+    /// Add an isolated comment at the current position, then return the `Span`
+    /// that should be given to something we want associated with this comment.
     pub fn add_comments(&mut self, lines: &[String]) -> Option<BytePos> {
-        self.extend_existing_comments(lines, None)
+        self.extend_existing_comments(lines, None, comments::CommentStyle::Isolated)
     }
 
     /// Add a comment at the specified position, then return the `BytePos` that
@@ -128,6 +140,7 @@ impl CommentStore {
         &mut self,
         lines: &[String],
         pos: Option<BytePos>,
+        style: comments::CommentStyle,
     ) -> Option<BytePos> {
         fn translate_comment(comment: &String) -> String {
             comment
@@ -152,7 +165,7 @@ impl CommentStore {
             None
         } else {
             let new_comment = comments::Comment {
-                style: comments::CommentStyle::Isolated,
+                style,
                 lines: lines,
                 pos: BytePos(0), // overwritten in `add_comment`
             };
