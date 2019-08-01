@@ -24,6 +24,7 @@ macro_rules! match_or {
 
 impl<'c> Translation<'c> {
 
+    /// Returns true iff `va_start`, `va_end`, or `va_copy` may be called on `decl_id`.
     pub fn is_va_decl(&self, decl_id: CDeclId) -> bool {
         let fn_ctx = self.function_context.borrow();
         if let Some(ref decls) = fn_ctx.va_list_decl_ids {

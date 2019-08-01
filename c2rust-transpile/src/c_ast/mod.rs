@@ -268,6 +268,10 @@ impl TypedAstContext {
                     false
                 }
             },
+            // va_list is a 1 element array; return true iff element type is struct __va_list_tag
+            CTypeKind::ConstantArray(typ, 1) => {
+                return self.is_va_list(typ);
+            },
             _ => false
         }
     }
@@ -296,34 +300,6 @@ impl TypedAstContext {
             false
         }
     }
-
-//    pub fn is_va_list(&self, typ: CTypeId) -> bool {
-//        match self.resolve_type(typ).kind {
-//            CTypeKind::Struct(struct_id) => {
-//                if let CDeclKind::Struct {
-//                    name: Some(ref struct_name),
-//                    ..
-//                } = self[struct_id].kind {
-//                    if struct_name == "__va_list_tag" {
-//                        return true;
-//                    }
-//                }
-//            }
-//
-//            // va_list is a 1 element array of type struct __va_list_tag
-//            CTypeKind::ConstantArray(typ, 1) => {
-//                return self.is_va_list(typ);
-//            }
-//
-//            // Allow a decayed reference to the array to count as a va_list
-//            CTypeKind::Pointer(pointee_qty) => {
-//                return self.is_va_list(pointee_qty.ctype);
-//            }
-//
-//            _ => {}
-//        }
-//        false
-//    }
 
     /// Can the given field decl be a flexible array member?
     pub fn maybe_flexible_array(&self, typ: CTypeId) -> bool {

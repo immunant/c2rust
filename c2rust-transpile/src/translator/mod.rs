@@ -2359,7 +2359,10 @@ impl<'c> Translation<'c> {
                     .insert(decl_id, &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
 
-                if self.is_va_decl(decl_id) {
+                let is_va_decl = self.is_va_decl(decl_id) ||
+                    self.ast_context.is_va_list(typ.ctype);
+
+                if  is_va_decl {
                     // translate `va_list` variables to `VaListImpl`s and omit the initializer.
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
                     let ty = {
