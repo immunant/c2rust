@@ -501,6 +501,15 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagReference if expected_ty & OTHER_TYPE != 0 => {
+                    let referenced = ty_node.extras[0].as_u64().expect("Reference child not found");
+                    let referenced_new = self.visit_qualified_type(referenced);
+
+                    let reference_ty = CTypeKind::Reference(referenced_new);
+                    self.add_type(new_id, not_located(reference_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
                 TypeTag::TagBlockPointer if expected_ty & OTHER_TYPE != 0 => {
                     let pointed = ty_node.extras[0]
                         .as_u64()

@@ -1391,6 +1391,9 @@ pub enum CTypeKind {
     // Pointer types (6.7.5.1)
     Pointer(CQualTypeId),
 
+    // C++ Reference
+    Reference(CQualTypeId),
+
     // Array types (6.7.5.2)
     //
     // A qualifier on an array type means the same thing as a qualifier on its element type. Since

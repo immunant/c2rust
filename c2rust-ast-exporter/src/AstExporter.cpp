@@ -387,6 +387,18 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
         VisitQualType(pointee);
     }
 
+    // Although C does not have references, Clang's built-in functions for
+    // `va_start`, `va_end`, etc. may use C++ references in 32-bit mode.
+    void VisitReferenceType(const clang::ReferenceType *T) {
+        auto pointee = T->getPointeeType();
+        auto qt = encodeQualType(pointee);
+
+        encodeType(T, TagReference,
+                   [qt](CborEncoder *local) { cbor_encode_uint(local, qt); });
+
+        VisitQualType(pointee);
+    }
+
     void VisitTypedefType(const TypedefType *T);
 
     void VisitTypeOfType(const TypeOfType *T) {
