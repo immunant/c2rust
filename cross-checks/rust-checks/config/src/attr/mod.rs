@@ -7,12 +7,11 @@ pub mod syn;
 #[cfg(feature = "parse-syntax")]
 pub mod syntax;
 
-use indexmap::IndexMap;
+use indexmap::{Equivalent, IndexMap};
 
 use std::cmp::Eq;
 use std::hash::Hash;
 use std::iter::FromIterator;
-use std::ops::Deref;
 
 #[cfg(feature = "with-quote")]
 use self::quote::ToTokens;
@@ -61,14 +60,6 @@ type ArgListInnerMap<K> = IndexMap<K, ArgValue<K>>;
 #[derive(Debug)]
 pub struct ArgList<K: Hash + Eq>(ArgListInnerMap<K>);
 
-impl<K: Hash + Eq> Deref for ArgList<K> {
-    type Target = ArgListInnerMap<K>;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl<K: Hash + Eq> IntoIterator for ArgList<K> {
     type Item = (K, ArgValue<K>);
     type IntoIter = indexmap::map::IntoIter<K, ArgValue<K>>;
@@ -109,5 +100,27 @@ impl<K: Hash + Eq> ArgList<K> {
             || self::quote::Tokens::from(default),
             ArgValue::get_str_tokens,
         )
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn contains_key<Q: ?Sized>(&self, key: &Q) -> bool
+    where
+        Q: Hash + Equivalent<K>,
+    {
+        self.0.contains_key(key)
+    }
+
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&ArgValue<K>>
+    where
+        Q: Hash + Equivalent<K>,
+    {
+        self.0.get(key)
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&K, &ArgValue<K>)> + 'a {
+        self.0.iter()
     }
 }
