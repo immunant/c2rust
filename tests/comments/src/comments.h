@@ -2,6 +2,9 @@
 
 /* another header comment */
 
+/* comment on the decl of test_fn */
+int test_fn();
+
 /* a comment on a declaration */
 int a_function();
 

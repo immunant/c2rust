@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Index;
 use std::path::{self, PathBuf};
 use std::{char, io};
@@ -11,15 +12,17 @@ use indexmap::{IndexMap, IndexSet};
 use rustc_data_structures::sync::Lrc;
 use syntax::attr;
 use syntax::ast::*;
+use syntax::parse::lexer::comments::CommentStyle;
 use syntax::parse::token::{self, DelimToken, Nonterminal};
-use syntax::print::pprust::*;
+use syntax::print::pprust::{self, PrintState};
 use syntax::ptr::*;
-use syntax::source_map::dummy_spanned;
+use syntax::source_map::{dummy_spanned, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
-use syntax_pos::{Span, DUMMY_SP};
+use syntax_pos::{FileName, Span, DUMMY_SP};
 use syntax_pos::edition::Edition;
 
+use crate::rust_ast::pos_to_span;
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::traverse::Traversal;
@@ -38,6 +41,7 @@ use c2rust_ast_exporter::clang_ast::LRValue;
 mod assembly;
 mod bitfields;
 mod builtins;
+mod comments;
 mod literals;
 mod main_function;
 mod named_references;
@@ -237,6 +241,8 @@ pub struct Translation<'c> {
     // Comment support
     pub comment_context: CommentContext, // Incoming comments
     pub comment_store: RefCell<CommentStore>,     // Outgoing comments
+
+    spans: HashMap<SomeId, Span>,
 
     // Items indexed by file id of the source
     items: RefCell<IndexMap<FileId, ItemStore>>,
@@ -472,13 +478,15 @@ pub fn translate(
 
     t.extern_crates.borrow_mut().insert("libc");
 
-    // Headers often pull in declarations that are unused;
-    // we simplify the translator output by omitting those.
-    t.ast_context.prune_unused_decls();
-
     // Sort the top-level declarations by file and source location so that we
     // preserve the ordering of all declarations in each file.
     t.ast_context.sort_top_decls();
+
+    t.locate_comments();
+
+    // Headers often pull in declarations that are unused;
+    // we simplify the translator output by omitting those.
+    t.ast_context.prune_unused_decls();
 
     enum Name<'a> {
         VarName(&'a str),
@@ -737,8 +745,6 @@ pub fn translate(
         let translation = to_string(|s| {
             print_header(s, &t)?;
 
-            // Re-order comments
-            let mut traverser = t.comment_store.into_inner().into_comment_traverser();
             let mut mod_items: Vec<P<Item>> = Vec::new();
 
             // Keep track of new uses we need while building header submodules
@@ -747,18 +753,31 @@ pub fn translate(
             // Header Reorganization: Submodule Item Stores
             for (file_id, ref mut mod_item_store) in t.items.borrow_mut().iter_mut() {
                 if *file_id != t.main_file {
-                    mod_items.push(make_submodule(
+                    let mut submodule = make_submodule(
                         &t.ast_context,
                         mod_item_store,
                         *file_id,
                         &mut new_uses,
                         &t.mod_names,
-                    ));
+                    );
+                    let comments = t.comment_context.get_remaining_comments(*file_id);
+                    submodule.span = match t
+                        .comment_store
+                        .borrow_mut()
+                        .add_comments(&comments)
+                    {
+                        Some(pos) => submodule.span.with_hi(pos),
+                        None => submodule.span,
+                    };
+                    mod_items.push(submodule);
                 }
             }
 
             // Main file item store
             let (items, foreign_items, uses) = t.items.borrow_mut()[&t.main_file].drain();
+
+            // Re-order comments
+            let mut traverser = t.comment_store.into_inner().into_comment_traverser();
 
             // Add a comment mapping span to each node that should have a
             // comment printed before it. The pretty printer picks up these
@@ -776,9 +795,12 @@ pub fn translate(
                 .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
                 .collect();
 
+            let mut reordered_comment_store = traverser.into_comment_store();
+            let remaining_comments = t.comment_context.get_remaining_comments(t.main_file);
+            reordered_comment_store.add_comments(&remaining_comments);
             s.comments()
                 .get_or_insert(vec![])
-                .extend(traverser.into_comment_store().into_comments());
+                .extend(reordered_comment_store.into_comments());
 
             for mod_item in mod_items {
                 s.print_item(&*mod_item)?;
@@ -807,10 +829,43 @@ pub fn translate(
                 s.print_item(&*x)?;
             }
 
+            s.print_remaining_comments()?;
+
             Ok(())
         });
         (translation, pragmas, crates)
     })
+}
+
+/// Same as pprust::to_string, but initializes the printer with an empty
+/// SourceMap, which is necessary to get the printer to print trailing comments
+/// on the same line.
+fn to_string<F>(f: F) -> String where
+    F: FnOnce(&mut pprust::State<'_>) -> io::Result<()>,
+{
+    let mut wr = Vec::new();
+    {
+        let ann = pprust::NoAnn;
+
+        // We need a dummy SourceMap with a dummy file so that pprust can try to
+        // look up source line numbers for Spans. This is needed to be able to
+        // print trailing comments after exprs/stmts/etc. on the same line. The
+        // SourceMap will think that all Spans are invalid, but will return line
+        // 0 for all of them.
+        let sm = SourceMap::new(FilePathMapping::empty());
+        sm.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
+
+        let mut printer = pprust::State::new(
+            &sm,
+            Box::new(&mut wr),
+            &ann,
+            None,
+            false,
+        );
+        f(&mut printer).unwrap();
+        printer.s.eof().unwrap();
+    }
+    String::from_utf8(wr).unwrap()
 }
 
 fn make_submodule(
@@ -862,7 +917,7 @@ fn make_submodule(
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
-fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
+fn print_header(s: &mut pprust::State, t: &Translation) -> io::Result<()> {
     if t.tcfg.emit_modules {
         s.print_item(&mk().use_simple_item(vec!["libc"], None as Option<Ident>))?;
     } else {
@@ -1023,6 +1078,7 @@ impl<'c> Translation<'c> {
             macro_types: RefCell::new(IndexMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
+            spans: HashMap::new(),
             sectioned_static_initializers: RefCell::new(Vec::new()),
             items: RefCell::new(items),
             mod_names: RefCell::new(IndexMap::new()),
@@ -1316,18 +1372,12 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         decl_id: CDeclId,
     ) -> Result<ConvertedDecl, TranslationError> {
-        let mut s = self
-            .comment_context
-            .get_decl_comment(decl_id)
-            .and_then(|decl_cmt| self.comment_store.borrow_mut().add_comment_lines(decl_cmt))
-            .unwrap_or(DUMMY_SP);
-
         let decl = self
             .ast_context
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
-        let _src_loc = &decl.loc;
+        let mut s = self.get_span(SomeId::Decl(decl_id)).unwrap_or(DUMMY_SP);
 
         match decl.kind {
             CDeclKind::Struct { fields: None, .. }
@@ -1342,6 +1392,7 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(decl_id)
                     .unwrap();
+
                 let extern_item = mk().span(s).pub_().ty_foreign_item(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
@@ -1618,14 +1669,14 @@ impl<'c> Translation<'c> {
                 let is_main = self.ast_context.c_main == Some(decl_id);
 
                 let converted_function = self.convert_function(
-                    ctx, s, is_global, is_inline, is_main, is_var, is_extern, new_name, name,
-                    &args, ret, body, attrs,
+                    ctx, s, is_global, is_inline, is_main, is_var, is_extern,
+                    new_name, name, &args, ret, body, attrs,
                 );
 
                 converted_function.or_else(|e| match self.tcfg.replace_unsupported_decls {
                     ReplaceMode::Extern if body.is_none() => self.convert_function(
-                        ctx, s, is_global, false, is_main, is_var, is_extern, new_name, name,
-                        &args, ret, None, attrs,
+                        ctx, s, is_global, false, is_main, is_var, is_extern,
+                        new_name, name, &args, ret, None, attrs,
                     ),
                     _ => Err(e),
                 })
@@ -1739,11 +1790,20 @@ impl<'c> Translation<'c> {
                     let mut init = init?.to_expr();
 
                     let comment = String::from("// Initialized in run_static_initializers");
-                    // REVIEW: We might want to add the comment to the original span comments
+                    let comment_pos = if s.is_dummy() {
+                        None
+                    } else {
+                        Some(s.lo())
+                    };
                     s = self
                         .comment_store
                         .borrow_mut()
-                        .add_comment_lines(&[comment])
+                        .extend_existing_comments(
+                            &[comment],
+                            comment_pos,
+                            CommentStyle::Isolated,
+                        )
+                        .map(pos_to_span)
                         .unwrap_or(s);
 
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
@@ -2024,7 +2084,10 @@ impl<'c> Translation<'c> {
                     _ => panic!("function body expects to be a compound statement"),
                 };
                 body_stmts.append(&mut self.convert_function_body(ctx, name, body_ids, ret)?);
-                let block = stmts_block(body_stmts);
+                let mut block = stmts_block(body_stmts);
+                if let Some(span) = self.get_span(SomeId::Stmt(body)) {
+                    block.span = span;
+                }
 
                 // Only add linkage attributes if the function is `extern`
                 let mut mk_ = if is_main {
@@ -2334,7 +2397,8 @@ impl<'c> Translation<'c> {
                     let span = self
                         .comment_store
                         .borrow_mut()
-                        .add_comment_lines(&[comment])
+                        .add_comments(&[comment])
+                        .map(pos_to_span)
                         .unwrap_or(DUMMY_SP);
                     let static_item =
                         mk().span(span)
@@ -4305,7 +4369,7 @@ impl<'c> Translation<'c> {
         let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
-            add_src_loc_attr(&mut item.attrs, &decl.loc);
+            add_src_loc_attr(&mut item.attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut item_stores = self.items.borrow_mut();
             let items = item_stores
                 .entry(decl_file_id.unwrap())
@@ -4323,7 +4387,7 @@ impl<'c> Translation<'c> {
         let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
-            add_src_loc_attr(&mut item.attrs, &decl.loc);
+            add_src_loc_attr(&mut item.attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut items = self.items.borrow_mut();
             let mod_block_items = items
                 .entry(decl_file_id.unwrap())

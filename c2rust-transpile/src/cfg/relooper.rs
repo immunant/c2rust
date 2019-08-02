@@ -11,7 +11,7 @@ pub fn reloop(
     use_c_loop_info: bool,       // use the loop information in the CFG (slower, but better)
     use_c_multiple_info: bool,   // use the multiple information in the CFG (slower, but better)
     live_in: IndexSet<CDeclId>,  // declarations we assume are live going into this graph
-) -> (Vec<Stmt>, Vec<Structure<StmtOrComment>>) {
+) -> (Vec<Stmt>, Vec<Structure<Stmt>>) {
     let entries: IndexSet<Label> = vec![cfg.entries].into_iter().collect();
     let blocks = cfg
         .nodes
@@ -25,6 +25,7 @@ pub fn reloop(
                     terminator,
                     defined: bb.defined,
                     live: bb.live,
+                    span: bb.span,
                 },
             )
         })
@@ -54,7 +55,7 @@ pub fn reloop(
         .collect();
 
     // We map over the existing structure and flatten everything to `Stmt`
-    let mut relooped: Vec<Structure<StmtOrComment>> = relooped_with_decls
+    let mut relooped: Vec<Structure<Stmt>> = relooped_with_decls
         .into_iter()
         .map(|s| s.place_decls(&lift_me, &mut store))
         .collect();
@@ -194,6 +195,7 @@ impl RelooperState {
                     terminator,
                     live,
                     defined,
+                    span,
                 } = bb;
 
                 // Flag declarations for everything that is live going in but not already in scope.
@@ -216,6 +218,7 @@ impl RelooperState {
                 result.push(Structure::Simple {
                     entries,
                     body,
+                    span,
                     terminator,
                 });
 
@@ -227,6 +230,7 @@ impl RelooperState {
                 result.push(Structure::Simple {
                     entries,
                     body,
+                    span: DUMMY_SP,
                     terminator,
                 });
             };
@@ -544,6 +548,7 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
             &Structure::Simple {
                 ref entries,
                 ref body,
+                ref span,
                 ref terminator,
             } => {
                 // Here, we ensure that all labels in a terminator are mentioned only once in the
@@ -612,6 +617,7 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                                 let first_structure = Structure::Simple {
                                     entries,
                                     body,
+                                    span: DUMMY_SP,
                                     terminator,
                                 };
 
@@ -626,10 +632,12 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
 
                         let terminator = terminator.map_labels(rewrite);
                         let body = body.clone();
+                        let span = *span;
                         let entries = entries.clone();
                         acc_structures.push(Structure::Simple {
                             entries,
                             body,
+                            span,
                             terminator,
                         });
                     }
@@ -640,10 +648,12 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
 
                         let entries = entries.clone();
                         let body = body.clone();
+                        let span = *span;
                         let terminator = terminator.clone();
                         acc_structures.push(Structure::Simple {
                             entries,
                             body,
+                            span,
                             terminator,
                         });
                     }
