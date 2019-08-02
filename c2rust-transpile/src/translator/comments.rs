@@ -122,7 +122,7 @@ impl<'c> NodeVisitor for CommentLocator<'c> {
             let comments = self.comment_context
                 .get_comments_before(loc.end(), &self.ast_context);
             if let Some(pos) = self.comment_store.add_comments(&comments) {
-                debug!("Attaching comments {:?} to id {:?} at pos {:?}", comments, id, pos);
+                debug!("Attaching comments {:?} to end of id {:?} at pos {:?}", comments, id, pos);
                 let span = self.spans.entry(id)
                     .or_insert(DUMMY_SP);
                 *span = span.with_hi(pos);

@@ -467,7 +467,7 @@ impl StructureState {
 
             Append(lhs, rhs) => {
                 let (mut stmts, lhs_span) = self.into_stmt(*lhs, comment_store);
-                let span = ast.span.substitute_dummy(lhs_span.shrink_to_lo());
+                let span = ast.span.substitute_dummy(lhs_span);
                 let span = span_subst_lo(span, lhs_span).unwrap_or_else(|| {
                     comment_store.move_comments(lhs_span.lo(), span.lo());
                     span
