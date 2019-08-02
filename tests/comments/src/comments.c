@@ -26,7 +26,7 @@ int test_fn() {
   int x = CONSTANT; /* at end of statement line */
 
   /* comment on empty stmt */
-  (void)x;
+  (void)x; /* trailing comment on empty stmt */
 
   /* before while */
   while (x < 5) { /* trailing block begin */

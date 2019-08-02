@@ -2007,7 +2007,12 @@ impl CfgBuilder {
         // Copy span from removed statement if there was only one.
         if stmts.is_empty() {
             if let Some(span) = inner_span {
-                flattened_wip.span = span;
+                // We move any comments on the high end of the span to the low,
+                // because those comments should go before the next node, not after.
+                flattened_wip.span = translator
+                    .comment_store
+                    .borrow_mut()
+                    .move_comments_to_begin(span);
             }
         }
         flattened_wip.extend(stmts);

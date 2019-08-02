@@ -54,7 +54,7 @@ use smallvec::{smallvec, SmallVec};
 use std::collections::BTreeMap;
 use syntax::ast::*;
 use syntax::parse::lexer::comments;
-use syntax_pos::BytePos;
+use syntax_pos::{BytePos, Span};
 
 pub struct CommentStore {
     /// The `BytePos` keys do _not_ correspond to the comment position. Instead, they refer to the
@@ -181,6 +181,32 @@ impl CommentStore {
         if let Some(comments) = self.output_comments.remove(&old) {
             self.output_comments.get_mut(&new).unwrap().extend(comments);
         }
+    }
+
+    /// Move any comments attached to the end of `span` to its beginning and
+    /// return a new span for those comments.
+    pub fn move_comments_to_begin(&mut self, span: Span) -> Span {
+        let span = if span.lo() != span.hi() {
+            if span.lo() == BytePos(0) {
+                span.shrink_to_hi()
+            } else {
+                let new_comments = self.output_comments.remove(&span.hi())
+                    .unwrap_or_else(|| panic!("Expected comments attached to the high end of span {:?}", span));
+                self.output_comments.get_mut(&span.lo()).unwrap().extend(new_comments);
+                span.shrink_to_lo()
+            }
+        } else {
+            span
+        };
+
+        // All comments attached to this span should become isolated.
+        if let Some(comments) = self.output_comments.get_mut(&span.lo()) {
+            for comment in comments {
+                comment.style = comments::CommentStyle::Isolated;
+            }
+        }
+
+        span
     }
 }
 
