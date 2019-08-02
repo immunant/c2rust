@@ -39,6 +39,14 @@ int test_fn() {
     /* in an if */
     x = 10;
     /* end of if */
+  } else if (x > 200) {
+    /* in else if */
+    x = 12;
+    /* end of else if */
+  } else {
+    /* in else */
+    x = x;
+    /* end of else */
   }
 
   /* before a statement */

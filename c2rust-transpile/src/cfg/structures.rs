@@ -552,12 +552,19 @@ impl StructureState {
                     }
                     (false, false) => {
                         fn is_expr(kind: &StmtKind) -> bool {
-                            match kind {
-                                &StmtKind::Expr(_) => true,
+                            match &kind {
+                                StmtKind::Expr(expr) => match &expr.node {
+                                    ExprKind::If(..) | ExprKind::IfLet(..)
+                                    | ExprKind::Block(..) => true,
+                                    _ => false,
+                                },
                                 _ => false,
                             }
                         }
 
+                        // Do the else statemtents contain a single If, IfLet or
+                        // Block expression? The pretty printer handles only
+                        // these kinds of expressions for the else case.
                         let is_els_expr = els_stmts.len() == 1 && is_expr(&els_stmts[0].node);
 
                         let els_branch = if is_els_expr {
