@@ -256,8 +256,33 @@ impl TypedAstContext {
         }
     }
 
+    /// Follow a chain of typedefs and return true iff the last typedef is named
+    /// `__buitin_va_list` thus naming the type clang uses to represent `va_list`s.
+    pub fn is_builtin_va_list(&self, typ: CTypeId) -> bool {
+        match self.index(typ).kind {
+            CTypeKind::Typedef(decl) => match &self.index(decl).kind {
+                    CDeclKind::Typedef { name: nam, typ: ty, .. } => {
+                        if nam == "__builtin_va_list" {
+                            true
+                        } else {
+                            self.is_builtin_va_list(ty.ctype)
+                        }
+                    },
+                    _ => panic!("Typedef decl did not point to a typedef"),
+            },
+            _ => false,
+        }
+    }
+
     /// Predicate for types that are used to implement C's `va_list`.
+    /// FIXME: can we get rid of this method and use `is_builtin_va_list` instead?
     pub fn is_va_list(&self, typ: CTypeId) -> bool {
+        // detect `va_list`s based on typedef (should work across implementations)
+//        if self.is_builtin_va_list(typ) {
+//            return true;
+//        }
+
+        // detect `va_list`s based on type (assumes struct-based implementation)
         let resolved_ctype = self.resolve_type(typ);
         match resolved_ctype.kind {
             CTypeKind::Struct(record_id) => {
