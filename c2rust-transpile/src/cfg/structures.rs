@@ -443,10 +443,7 @@ impl StructureState {
                 });
 
                 let (mut stmts, stmts_span) = self.into_stmt(*rhs, comment_store);
-                let span = span_subst_hi(span, stmts_span).unwrap_or_else(|| {
-                    comment_store.move_comments(span.hi(), stmts_span.hi());
-                    span.with_hi(stmts_span.hi())
-                });
+                let span = span_subst_hi(span, stmts_span).unwrap_or(span);
 
                 // Adjust the first and last elements of the block if this AST
                 // node has a span.
@@ -457,10 +454,7 @@ impl StructureState {
                     });
                 }
                 if let Some(stmt) = stmts.last_mut() {
-                    stmt.span = span_subst_hi(stmt.span, span).unwrap_or_else(|| {
-                        comment_store.move_comments(stmt.span.hi(), span.hi());
-                        stmt.span.with_hi(span.hi())
-                    });
+                    stmt.span = span_subst_hi(stmt.span, span).unwrap_or(stmt.span);
                 }
                 return (stmts, span);
             }
@@ -473,10 +467,7 @@ impl StructureState {
                     span
                 });
                 let (rhs_stmts, rhs_span) = self.into_stmt(*rhs, comment_store);
-                let span = span_subst_hi(span, rhs_span).unwrap_or_else(|| {
-                    comment_store.move_comments(span.hi(), rhs_span.hi());
-                    span.with_hi(rhs_span.hi())
-                });
+                let span = span_subst_hi(span, rhs_span).unwrap_or(span);
                 stmts.extend(rhs_stmts);
                 // Adjust the first and last elements of the block if this AST
                 // node has a span.
@@ -487,10 +478,7 @@ impl StructureState {
                     });
                 }
                 if let Some(stmt) = stmts.last_mut() {
-                    stmt.span = span_subst_hi(stmt.span, span).unwrap_or_else(|| {
-                        comment_store.move_comments(stmt.span.hi(), span.hi());
-                        stmt.span.with_hi(span.hi())
-                    });
+                    stmt.span = span_subst_hi(stmt.span, span).unwrap_or(stmt.span);
                 }
                 return (stmts, span);
             }
