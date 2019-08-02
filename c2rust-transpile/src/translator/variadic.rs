@@ -35,11 +35,24 @@ impl<'c> Translation<'c> {
     }
 
     pub fn match_vastart(&self, expr: CExprId) -> Option<CDeclId> {
-        match_or! { [self.ast_context[expr].kind]
-        CExprKind::ImplicitCast(_, e, _, _, _) => e }
-        match_or! { [self.ast_context[e].kind]
-        CExprKind::DeclRef(_, va_id, _) => va_id }
-        Some(va_id)
+        // struct-based va_list (e.g. x86_64)
+        fn match_vastart_struct(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
+            match_or! { [ast_context[expr].kind]
+            CExprKind::ImplicitCast(_, e, _, _, _) => e }
+            match_or! { [ast_context[e].kind]
+            CExprKind::DeclRef(_, va_id, _) => va_id }
+            Some(va_id)
+        }
+
+        // char pointer-based va_list (e.g. x86)
+        fn match_vastart_pointer(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
+            match_or! { [ast_context[expr].kind]
+            CExprKind::DeclRef(_, va_id, _) => va_id }
+            Some(va_id)
+        }
+
+        match_vastart_struct(&self.ast_context, expr)
+            .or_else(|| match_vastart_pointer(&self.ast_context, expr))
     }
 
     pub fn match_vaend(&self, expr: CExprId) -> Option<CDeclId> {
