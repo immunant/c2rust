@@ -590,6 +590,37 @@ impl TypedAstContext {
         });
         self.c_decls_top = decls_top;
     }
+
+    pub fn has_inner_struct_decl(&self, decl_id: CDeclId) -> bool {
+        match self.index(decl_id).kind {
+            CDeclKind::Struct { manual_alignment: Some(_), .. } => true,
+            _ => false
+        }
+    }
+
+    pub fn is_packed_struct_decl(&self, decl_id: CDeclId) -> bool {
+        match self.index(decl_id).kind {
+            CDeclKind::Struct { is_packed: true, .. } => true,
+            CDeclKind::Struct { max_field_alignment: Some(_), .. } => true,
+            _ => false
+        }
+    }
+
+    pub fn is_aligned_struct_type(&self, typ: CTypeId) -> bool {
+        if let Some(decl_id) = self
+            .resolve_type(typ)
+            .kind
+            .as_underlying_decl()
+        {
+            if let CDeclKind::Struct {
+                manual_alignment: Some(_),
+                ..
+            } = self.index(decl_id).kind {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl CommentContext {
