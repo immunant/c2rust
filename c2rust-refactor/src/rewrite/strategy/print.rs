@@ -13,6 +13,7 @@ use rustc::session::Session;
 use rustc_data_structures::sync::Lrc;
 use rustc_target::spec::abi::Abi;
 use std::fmt::Debug;
+use std::fs;
 use std::path;
 use std::rc::Rc;
 use syntax::ast::*;
@@ -715,6 +716,11 @@ fn create_file_for_module(
                     path.pop();
                     if path.file_name().map_or(true, |path| path != "src") {
                         path.push("src");
+
+                        // Attempt to create the output directory, if it doesn't
+                        // exist
+                        let _ = fs::create_dir_all(&path);
+
                         // Add a #[path = "..."] attribute
                         let path_item = attr::mk_name_value_item_str(
                             Ident::from_str("path"),
