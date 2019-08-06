@@ -167,26 +167,6 @@ function upgrade_ptr(ptr_ty, conversion_cfg)
     return pointee_ty
 end
 
-function Visitor:add_arg_lifetimes(arg, arg_ty)
-    -- Deref type until we get a concrete type
-    arg_ty:map_ptr_root(function(path_ty)
-        if path_ty:get_kind() ~= "Path" then
-            return path_ty
-        end
-
-        local hirid = self.tctx:resolve_ty_hirid(path_ty)
-        local struct = self:get_struct(hirid)
-
-        if struct then
-            for lifetime in struct.lifetimes:iter() do
-                path_ty:add_lifetime(lifetime)
-            end
-        end
-
-        return path_ty
-    end)
-end
-
 function Visitor:visit_arg(arg)
     local arg_id = arg:get_id()
     local conversion_cfg = self.node_id_cfgs[arg_id]
@@ -199,7 +179,6 @@ function Visitor:visit_arg(arg)
 
             arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
 
-            self:add_arg_lifetimes(arg, arg_ty)
             self:add_var(arg_pat_hrid, Variable.new(arg_id, false))
 
             arg:set_ty(arg_ty)
@@ -538,16 +517,49 @@ function Visitor:flat_map_item(item, walk)
 
         self:add_struct(hirid, Struct.new(lifetimes))
     elseif item_kind == "Fn" then
-        local arg_ids = item:get_arg_ids()
+        print("Found fn")
+        local args = item:get_args()
 
-        for _, arg_id in ipairs(arg_ids) do
+        for i, arg in ipairs(args) do
+            local arg_id = arg:get_id()
             local ref_cfg = self.node_id_cfgs[arg_id]
 
             if ref_cfg and ref_cfg.extra_data then
                 item:add_lifetime(ref_cfg.extra_data)
-                -- TODO other lifetimes
             end
+
+            local arg_ty = arg:get_ty()
+
+            arg_ty:map_ptr_root(function(path_ty)
+                path_ty:print()
+                if path_ty:get_kind() ~= "Path" then
+                    return path_ty
+                end
+
+                local hirid = self.tctx:resolve_ty_hirid(path_ty)
+                local struct = self:get_struct(hirid)
+
+                if struct then
+                    for lifetime in struct.lifetimes:iter() do
+                        path_ty:add_lifetime(lifetime)
+                        item:add_lifetime(lifetime)
+                    end
+                end
+
+                return path_ty
+            end)
+
+            arg:set_ty(arg_ty)
+
+            local hirid = self.tctx:nodeid_to_hirid(arg_id)
+
+            -- local hirid = self.tctx:resolve_ty_hirid(path_ty)
+            local struct = self:get_struct(hirid)
+
+            print(hirid, struct)
         end
+
+        item:set_args(args)
     end
 
     walk(item)

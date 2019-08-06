@@ -261,10 +261,31 @@ impl UserData for LuaAstNode<P<Item>> {
             Ok(None)
         });
 
+        methods.add_method("get_args", |_lua_ctx, this, ()| {
+            if let ItemKind::Fn(decl, ..) = &this.borrow().node {
+                return Ok(Some(decl
+                    .inputs
+                    .iter()
+                    .map(|a| LuaAstNode::new(a.clone()))
+                    .collect::<Vec<_>>()
+                ));
+            }
+
+            Ok(None)
+        });
+
+        methods.add_method("set_args", |_lua_ctx, this, args: Vec<LuaAstNode<Arg>>| {
+            if let ItemKind::Fn(decl, ..) = &mut this.borrow_mut().node {
+                decl.inputs = args.iter().map(|a| a.borrow().clone()).collect();
+            }
+
+            Ok(())
+        });
+
         methods.add_method("add_lifetime", |_lua_ctx, this, string: LuaString| {
             let lt_str = string.to_str()?;
 
-            add_item_lifetime(&mut this.borrow_mut().node, lt_str, true);
+            add_item_lifetime(&mut this.borrow_mut().node, lt_str);
 
             Ok(())
         });
@@ -1286,7 +1307,7 @@ impl UserData for LuaAstNode<ItemKind> {
         methods.add_method("add_lifetime", |_lua_ctx, this, string: LuaString| {
             let lt_str = string.to_str()?;
 
-            add_item_lifetime(&mut this.borrow_mut(), lt_str, true);
+            add_item_lifetime(&mut this.borrow_mut(), lt_str);
 
             Ok(())
         });
@@ -1340,7 +1361,7 @@ impl UserData for LuaHirId {
     }
 }
 
-fn add_item_lifetime(item_kind: &mut ItemKind, lt_name: &str, ensure_unique: bool) {
+fn add_item_lifetime(item_kind: &mut ItemKind, lt_name: &str) {
     let mut lt_string = String::with_capacity(lt_name.len() + 1);
 
     lt_string.push('\'');
@@ -1356,18 +1377,16 @@ fn add_item_lifetime(item_kind: &mut ItemKind, lt_name: &str, ensure_unique: boo
 
     if let ItemKind::Struct(_, generics)
             | ItemKind::Fn(_, _, generics, _) = item_kind {
-        if ensure_unique {
-            let diff = |p: &GenericParam| {
-                if let GenericParamKind::Lifetime = p.kind {
-                    p.ident == generic_param.ident
-                } else {
-                    false
-                }
-            };
-
-            if generics.params.iter().any(diff) {
-                return;
+        let diff = |p: &GenericParam| {
+            if let GenericParamKind::Lifetime = p.kind {
+                p.ident == generic_param.ident
+            } else {
+                false
             }
+        };
+
+        if generics.params.iter().any(diff) {
+            return;
         }
 
         generics.params.push(generic_param);

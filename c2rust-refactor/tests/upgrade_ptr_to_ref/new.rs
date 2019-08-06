@@ -83,7 +83,7 @@ unsafe fn destroy_buf(sd: &mut SizedData) {
     (sd).buf = None;
 }
 
-unsafe fn explicit_lifetimes<'a>(_ptrs: &'a mut Ptrs<'r, 's>) {}
+unsafe fn explicit_lifetimes<'a, 'r, 's>(_ptrs: &'a mut Ptrs<'r, 's>) {}
 
 struct HeapItem {
     item: Box<u32>,
