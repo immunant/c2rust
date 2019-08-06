@@ -241,3 +241,49 @@ unsafe extern "C" fn byteswap2(hashp: *mut HTab) {
     *(&mut (*hdrp).magic as *mut int32_t as *mut libc::c_char).offset(3isize)
         = *(&mut _tmp as *mut uint32_t as *mut libc::c_char).offset(0isize);
 }
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct _category {
+    pub cat_first: [u8; 4],
+    pub delta: libc::c_ushort,
+}
+
+impl _category {
+    fn first(&self) -> libc::c_uint { 0 }
+    fn cat(&self) -> Category { 0 }
+}
+
+pub type Category = libc::c_uint;
+
+static mut categories: [_category; 2129] = [_category{cat_first: [0; 4], delta: 0,}; 2129];
+
+unsafe extern "C" fn bisearch_cat(
+    ucs: libc::c_uint,
+    table: *const _category,
+    mut max: libc::c_int,
+) -> Category {
+    let mut min: libc::c_int = 0i32;
+    let mut mid: libc::c_int = 0;
+    if ucs < (*table.offset(0isize)).first()
+        || ucs
+            > ((*table.offset(max as isize)).first() as libc::c_int
+                + (*table.offset(max as isize)).delta as libc::c_int) as libc::c_uint
+    {
+        return 4294967295 as Category;
+    }
+    while max >= min {
+        mid = (min + max) / 2i32;
+        if ucs
+            > ((*table.offset(mid as isize)).first() as libc::c_int
+                + (*table.offset(mid as isize)).delta as libc::c_int) as libc::c_uint
+        {
+            min = mid + 1i32
+        } else if ucs < (*table.offset(mid as isize)).first() {
+            max = mid - 1i32
+        } else {
+            return (*table.offset(mid as isize)).cat();
+        }
+    }
+    return 4294967295 as Category;
+}

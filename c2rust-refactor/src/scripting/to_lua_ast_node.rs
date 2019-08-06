@@ -492,8 +492,8 @@ impl UserData for LuaAstNode<P<Expr>> {
         methods.add_method("get_path", |_lua_ctx, this, ()| {
             match &this.borrow().node {
                 ExprKind::Path(_, path)
-                | ExprKind::Struct(path, ..) => Ok(LuaAstNode::new(path.clone())),
-                e => unimplemented!("LuaAstNode<P<Expr>>:get_path() for {}", e.ast_name()),
+                | ExprKind::Struct(path, ..) => Ok(Some(LuaAstNode::new(path.clone()))),
+                e => Ok(None),
             }
         });
 

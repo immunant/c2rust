@@ -451,10 +451,10 @@ function Visitor:visit_expr(expr)
         local path_expr = call_exprs[1]
         local param_expr = call_exprs[2]
         local path = path_expr:get_path()
-        local segments = path:get_segments()
+        local segments = path and path:get_segments()
 
         -- In case free is called from another module check the last segment
-        if segments[#segments] == "free" and param_expr:get_kind() == "Cast" then
+        if segments and segments[#segments] == "free" and param_expr:get_kind() == "Cast" then
             -- REVIEW: What if there's a multi-layered cast?
             local uncasted_expr = param_expr:get_exprs()[1]
             local conversion_cfg = self:get_expr_cfg(uncasted_expr)
@@ -465,7 +465,7 @@ function Visitor:visit_expr(expr)
         -- ip as *mut c_void -> ip.as_mut_ptr() as *mut c_void
         -- Though this should be expanded to support other exprs like
         -- fields
-        elseif segments[#segments] == "memset" then
+        elseif segments and segments[#segments] == "memset" then
             param_expr:map_first_path(function(path_expr)
                 local cfg = self:get_expr_cfg(path_expr)
 
@@ -685,21 +685,24 @@ refactor:transform(
             [795] = ConvCfg.new("ref"),
             [1312] = ConvCfg.new("ref"),
             [1318] = ConvCfg.new("box"), -- FIXME: not a box
-            [1557] = ConvCfg.new("byteswap", {811, 829}),
-            [1558] = ConvCfg.new("del"),
-            [1559] = ConvCfg.new("del"),
-            [1560] = ConvCfg.new("del"),
-            [1565] = ConvCfg.new("del"),
-            [1566] = ConvCfg.new("byteswap", {1351, 1351}),
-            [1567] = ConvCfg.new("del"),
-            [1568] = ConvCfg.new("del"),
-            [1569] = ConvCfg.new("del"),
-            [1549] = ConvCfg.new("byteswap", {978, 1006}),
-            [1550] = ConvCfg.new("del"),
-            [1551] = ConvCfg.new("del"),
-            [1552] = ConvCfg.new("del"),
-            [1553] = ConvCfg.new("byteswap", {1206, 1234}),
-            [1554] = ConvCfg.new("del"),
+            -- byteswap and byteswap2 fns
+            [1866] = ConvCfg.new("byteswap", {811, 829}),
+            [1867] = ConvCfg.new("del"),
+            [1868] = ConvCfg.new("del"),
+            [1869] = ConvCfg.new("del"),
+            [1858] = ConvCfg.new("del"),
+            [1859] = ConvCfg.new("byteswap", {1035, 1063}),
+            [1860] = ConvCfg.new("del"),
+            [1861] = ConvCfg.new("del"),
+            [1862] = ConvCfg.new("del"),
+            [1863] = ConvCfg.new("byteswap", {1263, 1291}),
+            [1874] = ConvCfg.new("del"),
+            [1876] = ConvCfg.new("del"),
+            [1875] = ConvCfg.new("del"),
+            [1877] = ConvCfg.new("byteswap", {1421, 1421}),
+            [1878] = ConvCfg.new("del"),
+            -- _category, Category, categories, bisearch_cat
+            [1535] = ConvCfg.new("slice"),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end
