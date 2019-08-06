@@ -29,11 +29,13 @@ function Field.new(node_id)
 end
 
 function strip_int_suffix(expr)
-    local lit = expr:get_lit()
+    if expr:get_kind() == "Lit" then
+        local lit = expr:get_node()
 
-    if lit then
-        lit:strip_suffix()
-        expr:to_lit(lit)
+        if lit then
+            lit:strip_suffix()
+            expr:to_lit(lit)
+        end
     end
 
     return expr
@@ -506,6 +508,8 @@ end
 
 -- HrIds may be reused in different functions, so we should clear them out
 -- so we don't accidentally access old info
+-- NOTE: If this script encounters any nested functions, this will reset variables
+-- prematurely. We should push and pop a stack of variable scopes to account for this
 function Visitor:visit_fn_decl(fn_decl)
     self.vars = {}
 end
@@ -610,10 +614,13 @@ function is_null_ptr(expr)
     if expr and expr:get_kind() == "Cast" then
         local cast_expr = expr:get_exprs()[1]
         local cast_ty = expr:get_ty()
-        local lit = cast_expr:get_lit()
 
-        if lit and lit:get_value() == 0 and cast_ty:get_kind() == "Ptr" then
-            return true
+        if cast_expr:get_kind() == "Lit" then
+            local lit = cast_expr:get_node()
+
+            if lit and lit:get_value() == 0 and cast_ty:get_kind() == "Ptr" then
+                return true
+            end
         end
     end
 
@@ -653,6 +660,8 @@ end
 
 refactor:transform(
     function(transform_ctx)
+        -- TODO: These ids should be passed into this script. They are currently only
+        -- provided as part of this test case.
         local node_id_cfgs = {
             [26] = ConvCfg.new("ref"),
             [35] = ConvCfg.new("ref"),

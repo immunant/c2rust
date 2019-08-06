@@ -263,35 +263,8 @@ impl UserData for LuaAstNode<P<Item>> {
 
         methods.add_method("add_lifetime", |_lua_ctx, this, string: LuaString| {
             let lt_str = string.to_str()?;
-            let mut lt_string = String::with_capacity(lt_str.len() + 1);
 
-            lt_string.push('\'');
-            lt_string.push_str(lt_str);
-
-            let generic_param = GenericParam {
-                id: DUMMY_NODE_ID,
-                ident: Ident::from_str(&lt_string),
-                attrs: Default::default(),
-                bounds: Vec::new(),
-                kind: GenericParamKind::Lifetime,
-            };
-
-            if let ItemKind::Struct(_, generics)
-                 | ItemKind::Fn(_, _, generics, _) = &mut this.borrow_mut().node {
-                let diff = |p: &GenericParam| {
-                    if let GenericParamKind::Lifetime = p.kind {
-                        p.ident == generic_param.ident
-                    } else {
-                        false
-                    }
-                };
-
-                if generics.params.iter().any(diff) {
-                    return Ok(());
-                }
-
-                generics.params.push(generic_param);
-            }
+            add_item_lifetime(&mut this.borrow_mut().node, lt_str, true);
 
             Ok(())
         });
@@ -493,7 +466,7 @@ impl UserData for LuaAstNode<P<Expr>> {
             match &this.borrow().node {
                 ExprKind::Path(_, path)
                 | ExprKind::Struct(path, ..) => Ok(Some(LuaAstNode::new(path.clone()))),
-                e => Ok(None),
+                _ => Ok(None),
             }
         });
 
@@ -543,6 +516,7 @@ impl UserData for LuaAstNode<P<Expr>> {
         methods.add_method("get_op", |_lua_ctx, this, ()| {
             match &this.borrow().node {
                 ExprKind::Unary(op, _) => Ok(Some(op.ast_name())),
+                // TODO: BinOp needs AstName impl
                 // ExprKind::Binary(op, ..) |
                 // ExprKind::AssignOp(op, ..) => Ok(op.ast_name()),
                 _ => Ok(None),
@@ -569,14 +543,6 @@ impl UserData for LuaAstNode<P<Expr>> {
             }
 
             Ok(())
-        });
-
-        methods.add_method("get_lit", |_lua_ctx, this, ()| {
-            if let ExprKind::Lit(lit) = &this.borrow().node {
-                return Ok(Some(LuaAstNode::new(lit.clone())))
-            }
-
-            Ok(None)
         });
 
         methods.add_method("to_lit", |_lua_ctx, this, lit: LuaAstNode<Lit>| {
@@ -1319,35 +1285,8 @@ impl UserData for LuaAstNode<ItemKind> {
 
         methods.add_method("add_lifetime", |_lua_ctx, this, string: LuaString| {
             let lt_str = string.to_str()?;
-            let mut lt_string = String::with_capacity(lt_str.len() + 1);
 
-            lt_string.push('\'');
-            lt_string.push_str(lt_str);
-
-            let generic_param = GenericParam {
-                id: DUMMY_NODE_ID,
-                ident: Ident::from_str(&lt_string),
-                attrs: Default::default(),
-                bounds: Vec::new(),
-                kind: GenericParamKind::Lifetime,
-            };
-
-            if let ItemKind::Struct(_, generics)
-                 | ItemKind::Fn(_, _, generics, _) = &mut *this.borrow_mut() {
-                let diff = |p: &GenericParam| {
-                    if let GenericParamKind::Lifetime = p.kind {
-                        p.ident == generic_param.ident
-                    } else {
-                        false
-                    }
-                };
-
-                if generics.params.iter().any(diff) {
-                    return Ok(());
-                }
-
-                generics.params.push(generic_param);
-            }
+            add_item_lifetime(&mut this.borrow_mut(), lt_str, true);
 
             Ok(())
         });
@@ -1398,5 +1337,39 @@ impl UserData for LuaHirId {
         methods.add_meta_method(MetaMethod::ToString, |_lua_ctx, this, ()| {
             Ok(format!("HirId {{ owner: {}, local_id: {} }}", this.0.owner.as_u32(), this.0.local_id.as_u32()))
         });
+    }
+}
+
+fn add_item_lifetime(item_kind: &mut ItemKind, lt_name: &str, ensure_unique: bool) {
+    let mut lt_string = String::with_capacity(lt_name.len() + 1);
+
+    lt_string.push('\'');
+    lt_string.push_str(lt_name);
+
+    let generic_param = GenericParam {
+        id: DUMMY_NODE_ID,
+        ident: Ident::from_str(&lt_string),
+        attrs: Default::default(),
+        bounds: Vec::new(),
+        kind: GenericParamKind::Lifetime,
+    };
+
+    if let ItemKind::Struct(_, generics)
+            | ItemKind::Fn(_, _, generics, _) = item_kind {
+        if ensure_unique {
+            let diff = |p: &GenericParam| {
+                if let GenericParamKind::Lifetime = p.kind {
+                    p.ident == generic_param.ident
+                } else {
+                    false
+                }
+            };
+
+            if generics.params.iter().any(diff) {
+                return;
+            }
+        }
+
+        generics.params.push(generic_param);
     }
 }
