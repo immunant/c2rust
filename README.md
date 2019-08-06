@@ -102,9 +102,9 @@ To generate a `Cargo.toml` template for a Rust library, add the `-e` option:
 
 To generate a `Cargo.toml` template for a Rust binary, do this:
 
-    c2rust transpile --main myprog path/to/compile_commands.json
+    c2rust transpile --binary myprog path/to/compile_commands.json
 
-Where `--main myprog` tells the transpiler to use the `main` method from `myprog.rs` as the entry point.
+Where `--binary myprog` tells the transpiler to use the `main` method from `myprog.rs` as the entry point for a binary.
 
 The translated Rust files will not depend directly on each other like
 normal Rust modules. They will export and import functions through the C

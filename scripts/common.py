@@ -504,7 +504,7 @@ def transpile(cc_db_path: str,
     if emit_modules:
         args.append('--emit-modules')
     if main_module_for_build_files:
-        args.append('--main')
+        args.append('--binary')
         args.append(main_module_for_build_files)
     if cross_checks:
         args.append('--cross-checks')

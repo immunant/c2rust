@@ -7,23 +7,22 @@ version = "0.0.0"
 publish = false
 edition = "2018"
 
-{{#if main_module~}}
-[[bin]]
-path = "{{root_rs_file}}"
-name = "{{crate_name}}"
-{{else~}}
 [lib]
-path = "{{root_rs_file}}"
-crate-type = ["staticlib"]
-{{~/if}}
-
+name = "{{crate_name}}"
+path = "{{lib_rs_file}}"
+crate-type = ["lib", "staticlib"]
+{{#each binaries}}
+[[bin]]
+path = "{{path}}"
+name = "{{name}}"
+{{/each}}
 [dependencies]
-{{#if c2rust_bitfields~}}c2rust-bitfields = "0.2"{{~/if}}
-{{#if f128~}}f128 = "0.2"{{~/if}}
-{{#if num_traits~}}num-traits = "0.2"{{~/if}}
+{{#if c2rust_bitfields~}}c2rust-bitfields = "0.2"{{~/if~}}
+{{~#if f128~}}f128 = "0.2"{{~/if~}}
+{{~#if num_traits~}}num-traits = "0.2"{{~/if~}}
 libc = "0.2"
 
-{{#if cross_checks~}}
+{{~#if cross_checks~}}
 [dependencies.c2rust-xcheck-plugin]
 version = "*"
 

@@ -470,7 +470,7 @@ pub fn translate(
     tcfg: &TranspilerConfig,
     main_file: PathBuf,
 ) -> (String, PragmaVec, CrateSet) {
-    let mut t = Translation::new(ast_context, tcfg, main_file);
+    let mut t = Translation::new(ast_context, tcfg, main_file.as_path());
     let ctx = ExprContext {
         used: true,
         is_static: false,
@@ -767,7 +767,7 @@ pub fn translate(
 
         // pass all converted items to the Rust pretty printer
         let translation = to_string(|s| {
-            print_header(s, &t)?;
+            print_header(s, &t, t.tcfg.is_binary(main_file.as_path()))?;
 
             let mut mod_items: Vec<P<Item>> = Vec::new();
 
@@ -941,8 +941,8 @@ fn make_submodule(
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
-fn print_header(s: &mut pprust::State, t: &Translation) -> io::Result<()> {
-    if t.tcfg.emit_modules {
+fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) -> io::Result<()> {
+    if t.tcfg.emit_modules && !is_binary {
         s.print_item(&mk().use_simple_item(vec!["libc"], None as Option<Ident>))?;
     } else {
         let pragmas = t.get_pragmas();
@@ -1007,6 +1007,10 @@ fn print_header(s: &mut pprust::State, t: &Translation) -> io::Result<()> {
                 mk().path_expr(sys_alloc_path),
             ))?;
         }
+
+        if is_binary {
+            s.print_item(&mk().use_glob_item(vec!["c2rust"]))?;
+        }
     }
     Ok(())
 }
@@ -1067,7 +1071,7 @@ impl<'c> Translation<'c> {
     pub fn new(
         mut ast_context: TypedAstContext,
         tcfg: &'c TranspilerConfig,
-        main_file: PathBuf,
+        main_file: &path::Path,
     ) -> Self {
         let comment_context = CommentContext::new(&mut ast_context);
         let mut type_converter = TypeConverter::new(tcfg.emit_no_std);
@@ -1076,7 +1080,7 @@ impl<'c> Translation<'c> {
             type_converter.translate_valist = true
         }
 
-        let main_file = ast_context.find_file_id(&main_file).unwrap_or(0);
+        let main_file = ast_context.find_file_id(main_file).unwrap_or(0);
         let items = indexmap!{main_file => ItemStore::new()};
 
         Translation {

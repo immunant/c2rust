@@ -1740,9 +1740,6 @@ impl Builder {
     }
 
     // `use <path>;` item
-    // TODO: for now, we only support simple paths with an optional rename;
-    // if we ever need them, we should add support for globs and nested trees,
-    // e.g., `use foo::*;` and `use foo::{a, b, c};`
     pub fn use_simple_item<Pa, I>(self, path: Pa, rename: Option<I>) -> P<Item>
     where
         Pa: Make<Path>,
@@ -1788,6 +1785,26 @@ impl Builder {
             span: DUMMY_SP,
             prefix: path,
             kind: UseTreeKind::Nested(inner_trees),
+        };
+        Self::item(
+            Ident::invalid(),
+            self.attrs,
+            self.vis,
+            self.span,
+            self.id,
+            ItemKind::Use(P(use_tree)),
+        )
+    }
+
+    pub fn use_glob_item<Pa>(self, path: Pa) -> P<Item>
+    where
+        Pa: Make<Path>,
+    {
+        let path = path.make(&self);
+        let use_tree = UseTree {
+            span: DUMMY_SP,
+            prefix: path,
+            kind: UseTreeKind::Glob,
         };
         Self::item(
             Ident::invalid(),
