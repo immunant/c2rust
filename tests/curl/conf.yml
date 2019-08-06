@@ -1,6 +1,6 @@
 transpile:
   autogen: true
-  main: tool_main
+  binary: tool_main
 
 cargo:
   autogen: true

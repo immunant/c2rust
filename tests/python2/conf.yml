@@ -11,7 +11,7 @@ requirements:
 
 transpile:
   autogen: true
-  main: python
+  binary: python
     
 cargo:
   autogen: true

@@ -6,6 +6,6 @@ requirements:
 
 transpile:
   autogen: true
-  main: fullbench # zstdcli
+  binary: fullbench # zstdcli
   cflags: -Qunused-arguments
 

@@ -12,7 +12,7 @@ set -e; set -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0" )" && pwd)"
 
 RUST_BACKTRACE=1 c2rust transpile \
-    --output-dir "$SCRIPT_DIR/repo" {{main}} \
+    --output-dir "$SCRIPT_DIR/repo" {{binary}} \
     {{tflags}} ${EXTRA_TFLAGS:---overwrite-existing} \
     compile_commands.json \
     -- {{cflags}} ${EXTRA_CFLAGS:--w} \
@@ -66,11 +66,11 @@ def autogen_transpile(conf_file, yaml: Dict):
     if transpile and isinstance(transpile, Dict):
         ag = transpile.get("autogen")
         if ag and isinstance(ag, bool):
-            params = {"main": "--emit-build-files", "cflags": ""}
+            params = {"binary": "--emit-build-files", "cflags": ""}
 
-            main = transpile.get("main")
-            if main:
-                params["main"] = f"--main {main}"
+            binary = transpile.get("binary")
+            if binary:
+                params["binary"] = f"--binary {binary}"
 
             cflags = transpile.get("cflags")
             if cflags:

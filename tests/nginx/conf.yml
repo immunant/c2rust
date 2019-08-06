@@ -9,4 +9,4 @@ cargo:
   autogen: true
 transpile:
   autogen: true
-  main: nginx
+  binary: nginx

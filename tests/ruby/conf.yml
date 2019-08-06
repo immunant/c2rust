@@ -9,7 +9,7 @@ requirements:
 
 transpile:
   autogen: true
-  main: ruby
+  binary: ruby
 #  cflags: "-O0"
   xfail: true
 
