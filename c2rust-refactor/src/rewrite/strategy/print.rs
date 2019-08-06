@@ -666,7 +666,7 @@ where
         let old_id = rcx.new_to_old_id(new.get_node_id());
         expanded_old_span = extend_span_comments(&old_id, old_span, &rcx);
         reparsed_span = match extend_span_comments_strict(&old_id, reparsed_span, &rcx) {
-            Ok(span) => span,
+            Ok(span) => rewind_span_over_whitespace(span, &rcx),
             Err(_) => return false,
         };
     }

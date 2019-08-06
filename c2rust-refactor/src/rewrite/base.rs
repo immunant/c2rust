@@ -221,7 +221,6 @@ where
                 // There's an item on the left corresponding to nothing on the right.
                 // Delete the item from the left.
                 let old_span = ast(&old[i]).splice_span();
-                // let old_span = ast(&old[i]).splice_span();
                 let old_span = match old_ids[i] {
                     SeqItemId::Node(id) => extend_span_comments(&id, old_span, &rcx),
                     _ => old_span,
