@@ -177,11 +177,9 @@ function Visitor:visit_arg(arg)
         if arg_ty:get_kind() == "Ptr" then
             local arg_pat_hrid = self.tctx:nodeid_to_hirid(arg:get_pat_id())
 
-            arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
-
             self:add_var(arg_pat_hrid, Variable.new(arg_id, false))
 
-            arg:set_ty(arg_ty)
+            arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
         end
     end
 end
@@ -517,7 +515,6 @@ function Visitor:flat_map_item(item, walk)
 
         self:add_struct(hirid, Struct.new(lifetimes))
     elseif item_kind == "Fn" then
-        print("Found fn")
         local args = item:get_args()
 
         for i, arg in ipairs(args) do
@@ -530,8 +527,9 @@ function Visitor:flat_map_item(item, walk)
 
             local arg_ty = arg:get_ty()
 
+            -- Grab lifetimes from the argument type
+            -- TODO: Maybe this shouldn't map but just traverse?
             arg_ty:map_ptr_root(function(path_ty)
-                path_ty:print()
                 if path_ty:get_kind() ~= "Path" then
                     return path_ty
                 end
@@ -551,12 +549,7 @@ function Visitor:flat_map_item(item, walk)
 
             arg:set_ty(arg_ty)
 
-            local hirid = self.tctx:nodeid_to_hirid(arg_id)
-
-            -- local hirid = self.tctx:resolve_ty_hirid(path_ty)
-            local struct = self:get_struct(hirid)
-
-            print(hirid, struct)
+            -- TODO: Possibly move visit_arg into here?
         end
 
         item:set_args(args)
