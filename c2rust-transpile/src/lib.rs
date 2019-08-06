@@ -125,6 +125,12 @@ impl TranspilerConfig {
         let name = get_module_name(fname).unwrap();
         self.binaries.contains(&name)
     }
+
+    fn crate_name(&self) -> String {
+        self.output_dir.as_ref().and_then(
+            |x| x.file_name().map(|x| x.to_string_lossy().into_owned())
+        ).unwrap_or_else(|| "c2rust".into())
+    }
 }
 
 /// Make sure that module name:

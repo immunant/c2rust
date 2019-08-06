@@ -193,9 +193,7 @@ fn emit_cargo_toml(
         .collect::<Vec<_>>();
 
     let json = json!({
-        "crate_name": tcfg.output_dir.as_ref().and_then(
-            |x| x.file_name().map(|x| x.to_string_lossy())
-        ).unwrap_or("c2rust".into()),
+        "crate_name": tcfg.crate_name(),
         "lib_rs_file": get_lib_rs_file_name(tcfg),
         "binaries": binaries,
         "cross_checks": tcfg.cross_checks,
