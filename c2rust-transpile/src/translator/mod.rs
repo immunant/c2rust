@@ -279,7 +279,7 @@ fn int_arg_metaitem(name: &str, arg: u128) -> NestedMetaItem {
     mk().nested_meta_item(NestedMetaItem::MetaItem(inner))
 }
 
-fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
+fn cast_int(val: P<Expr>, name: &str, need_lit_suffix: bool) -> P<Expr> {
     let opt_literal_val = match val.node {
         ExprKind::Lit(ref l) => match l.node {
             LitKind::Int(i, _) => Some(i),
@@ -288,28 +288,38 @@ fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
         _ => None,
     };
     match opt_literal_val {
+        Some(i) if !need_lit_suffix => mk().lit_expr(mk().int_lit(i, LitIntType::Unsuffixed)),
         Some(i) => mk().lit_expr(mk().int_lit(i, name)),
         None => mk().cast_expr(val, mk().path_ty(vec![name])),
     }
 }
 
 /// Pointer offset that casts its argument to isize
-fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    pointer_offset_isize(ptr, cast_int(offset, "isize"))
-}
+fn pointer_offset(
+    ptr: P<Expr>,
+    offset: P<Expr>,
+    multiply_by: Option<P<Expr>>,
+    neg: bool,
+    mut deref: bool,
+) -> P<Expr> {
+    let mut offset = cast_int(offset, "isize", false);
 
-/// Pointer offset that requires its argument to have type isize
-fn pointer_offset_isize(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    mk().method_call_expr(ptr, "offset", vec![offset])
-}
+    if let Some(mul) = multiply_by {
+        let mul = cast_int(mul, "isize", false);
+        offset = mk().binary_expr(BinOpKind::Mul, offset, mul);
+        deref = false;
+    }
 
-fn pointer_neg_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    let offset = cast_int(offset, "isize");
-    pointer_neg_offset_isize(ptr, offset)
-}
+    if neg {
+        offset = mk().unary_expr(ast::UnOp::Neg, offset);
+    }
 
-fn pointer_neg_offset_isize(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    mk().method_call_expr(ptr, "offset", vec![mk().unary_expr(ast::UnOp::Neg, offset)])
+    let res = mk().method_call_expr(ptr, "offset", vec![offset]);
+    if deref {
+        mk().unary_expr(ast::UnOp::Deref, res)
+    } else {
+        res
+    }
 }
 
 /// Given an expression with type Option<fn(...)->...>, unwrap
@@ -2948,7 +2958,7 @@ impl<'c> Translation<'c> {
             return elts.and_then(|lhs| {
                 let len = self.convert_expr(ctx.used().not_static(), len)?;
                 Ok(len.map(|len| {
-                    let rhs = cast_int(len, "usize");
+                    let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOpKind::Mul, lhs, rhs)
                 }))
             });
@@ -3406,17 +3416,10 @@ impl<'c> Translation<'c> {
 
                             // Don't dereference the offset if we're still within the variable portion
                             if let Some(elt_type_id) = var_elt_type_id {
-                                match self.compute_size_of_expr(elt_type_id) {
-                                    None => {
-                                        mk().unary_expr(ast::UnOp::Deref, pointer_offset(lhs, rhs))
-                                    }
-                                    Some(sz) => pointer_offset(
-                                        lhs,
-                                        mk().binary_expr(BinOpKind::Mul, sz, cast_int(rhs, "usize")),
-                                    ),
-                                }
+                                let mul = self.compute_size_of_expr(elt_type_id);
+                                pointer_offset(lhs, rhs, mul, false, true)
                             } else {
-                                mk().index_expr(lhs, cast_int(rhs, "usize"))
+                                mk().index_expr(lhs, cast_int(rhs, "usize", false))
                             }
                         }))
                     } else {
@@ -3440,14 +3443,8 @@ impl<'c> Translation<'c> {
                                 }
                             };
 
-                            if let Some(sz) = self.compute_size_of_expr(pointee_type_id.ctype) {
-                                let offset =
-                                    mk().binary_expr(BinOpKind::Mul, sz, cast_int(rhs, "usize"));
-                                Ok(pointer_offset(lhs, offset))
-                            } else {
-                                // Otherwise, use the pointer and make a deref of a pointer offset expression
-                                Ok(mk().unary_expr(ast::UnOp::Deref, pointer_offset(lhs, rhs)))
-                            }
+                            let mul = self.compute_size_of_expr(pointee_type_id.ctype);
+                            Ok(pointer_offset(lhs, rhs, mul, false, true))
                         })
                     }
                 })

@@ -297,7 +297,7 @@ impl<'c> Translation<'c> {
                         vec![mk().local_stmt(P(mk().local(
                             mk().mutbl().ident_pat(&alloca_name),
                             None as Option<P<Ty>>,
-                            Some(vec_expr(zero_elem, cast_int(count, "usize"))),
+                            Some(vec_expr(zero_elem, cast_int(count, "usize", false))),
                         )))],
                         mk().method_call_expr(
                             mk().ident_expr(&alloca_name),
