@@ -55,10 +55,15 @@ end
 
 ConvCfg = {}
 
-function ConvCfg.new(conv_type, extra_data)
+function ConvCfg.new(args)
     self = {}
-    self.conv_type = conv_type
-    self.extra_data = extra_data
+    self.conv_type = args[1]
+
+    for i, arg in ipairs(args) do
+        args[i] = args[i + 1]
+    end
+
+    self.extra_data = args
 
     setmetatable(self, ConvCfg)
     ConvCfg.__index = ConvCfg
@@ -159,6 +164,14 @@ function upgrade_ptr(ptr_ty, conversion_cfg)
     local mut_ty = ptr_ty:get_mut_ty()
     local pointee_ty = mut_ty:get_ty()
 
+    -- If we explicitly specify mutability, enforce its application
+    -- otherwise we leave it as was (ie *const -> &, *mut -> &mut)
+    if conversion_cfg.extra_data.mutability == "mut" then
+        mut_ty:set_mutable(true)
+    elseif conversion_cfg.extra_data.mutability == "immut" then
+        mut_ty:set_mutable(false)
+    end
+
     -- T -> [T]
     if conversion_cfg:is_slice_any() then
         pointee_ty:wrap_in_slice()
@@ -169,7 +182,7 @@ function upgrade_ptr(ptr_ty, conversion_cfg)
     -- T -> &T / &mut T or [T] -> &[T] / &mut [T]
     if conversion_cfg:is_ref_any() or non_boxed_slice then
         mut_ty:set_ty(pointee_ty)
-        pointee_ty:to_rptr(conversion_cfg.extra_data, mut_ty)
+        pointee_ty:to_rptr(conversion_cfg.extra_data.lifetime, mut_ty)
 
         if not conversion_cfg:is_box_any() and not conversion_cfg:is_opt_any() then
             return pointee_ty
@@ -537,10 +550,10 @@ function Visitor:flat_map_item(item, walk)
 
             self:add_field(field_hrid, Field.new(field_id))
 
-            if ref_cfg and ref_cfg.extra_data then
-                item:add_lifetime(ref_cfg.extra_data)
+            if ref_cfg and ref_cfg.extra_data.lifetime then
+                item:add_lifetime(ref_cfg.extra_data.lifetime)
 
-                lifetimes[ref_cfg.extra_data] = true
+                lifetimes[ref_cfg.extra_data.lifetime] = true
             end
         end
 
@@ -554,8 +567,8 @@ function Visitor:flat_map_item(item, walk)
             local arg_id = arg:get_id()
             local ref_cfg = self.node_id_cfgs[arg_id]
 
-            if ref_cfg and ref_cfg.extra_data then
-                item:add_lifetime(ref_cfg.extra_data)
+            if ref_cfg and ref_cfg.extra_data.lifetime then
+                item:add_lifetime(ref_cfg.extra_data.lifetime)
             end
 
             local arg_ty = arg:get_ty()
@@ -701,59 +714,74 @@ refactor:transform(
         -- TODO: These ids should be passed into this script. They are currently only
         -- provided as part of this test case.
         local node_id_cfgs = {
-            [26] = ConvCfg.new("ref"),
-            [35] = ConvCfg.new("ref"),
-            [77] = ConvCfg.new("ref"),
-            [87] = ConvCfg.new("slice"),
-            [130] = ConvCfg.new("ref", "r"),
-            [134] = ConvCfg.new("ref", "r"),
-            [138] = ConvCfg.new("slice", "s"),
-            [142] = ConvCfg.new("slice", "s"),
-            [146] = ConvCfg.new("opt_box"),
-            [151] = ConvCfg.new("opt_box_slice"),
-            [159] = ConvCfg.new("ref"),
-            [167] = ConvCfg.new("opt_box_slice"),
-            [221] = ConvCfg.new("ref"),
-            [229] = ConvCfg.new("box_slice"),
-            [288] = ConvCfg.new("ref"),
-            [326] = ConvCfg.new("ref", "a"),
-            [333] = ConvCfg.new("box"),
-            [337] = ConvCfg.new("opt_box"),
-            [342] = ConvCfg.new("ref"),
-            [348] = ConvCfg.new("box"),
-            [423] = ConvCfg.new("ref"),
-            [429] = ConvCfg.new("opt_box"),
-            [529] = ConvCfg.new("opt_box_slice"),
-            [540] = ConvCfg.new("array"),
-            [549] = ConvCfg.new("array"),
-            [556] = ConvCfg.new("ref"),
-            [580] = ConvCfg.new("box_slice"),
-            [790] = ConvCfg.new("ref"),
-            [795] = ConvCfg.new("ref"),
-            [1312] = ConvCfg.new("ref"),
-            [1318] = ConvCfg.new("box"), -- FIXME: not a box
-            -- byteswap and byteswap2 fns
-            [1909] = ConvCfg.new("byteswap", {811, 829}),
-            [1910] = ConvCfg.new("del"),
-            [1911] = ConvCfg.new("del"),
-            [1912] = ConvCfg.new("del"),
-            [1901] = ConvCfg.new("del"),
-            [1902] = ConvCfg.new("byteswap", {1035, 1063}),
-            [1903] = ConvCfg.new("del"),
-            [1904] = ConvCfg.new("del"),
-            [1905] = ConvCfg.new("del"),
-            [1906] = ConvCfg.new("byteswap", {1263, 1291}),
-            [1917] = ConvCfg.new("del"),
-            [1918] = ConvCfg.new("del"),
-            [1919] = ConvCfg.new("del"),
-            [1920] = ConvCfg.new("byteswap", {1421, 1421}),
-            [1921] = ConvCfg.new("del"),
+            -- ten_mul
+            [26] = ConvCfg.new{"ref"},
+            [35] = ConvCfg.new{"ref"},
+            -- struct_ptr
+            [77] = ConvCfg.new{"ref"},
+            [87] = ConvCfg.new{"slice", mutability="immut"},
+            -- Ptrs
+            [130] = ConvCfg.new{"ref", lifetime="r"},
+            [134] = ConvCfg.new{"ref", lifetime="r"},
+            [138] = ConvCfg.new{"slice", lifetime="s"},
+            [142] = ConvCfg.new{"slice", lifetime="s"},
+            [146] = ConvCfg.new{"opt_box"},
+            -- SizedData
+            [151] = ConvCfg.new{"opt_box_slice"},
+            -- init_buf
+            [159] = ConvCfg.new{"ref"},
+            [167] = ConvCfg.new{"opt_box_slice"},
+            -- init_buf2
+            [221] = ConvCfg.new{"ref"},
+            [229] = ConvCfg.new{"box_slice"},
+            -- destroy_buf
+            [288] = ConvCfg.new{"ref"},
+            -- explicit_lifetimes
+            [326] = ConvCfg.new{"ref", lifetime="a"},
+            -- HeapItem
+            [333] = ConvCfg.new{"box"},
+            [337] = ConvCfg.new{"opt_box"},
+            -- init_opt_item
+            [342] = ConvCfg.new{"ref"},
+            [348] = ConvCfg.new{"box"},
+            -- init_opt_item2
+            [423] = ConvCfg.new{"ref"},
+            [429] = ConvCfg.new{"opt_box"},
+            -- HTab
+            [529] = ConvCfg.new{"opt_box_slice"},
+            -- HashHDR
+            [540] = ConvCfg.new{"array"},
+            [549] = ConvCfg.new{"array"},
+            -- bm
+            [556] = ConvCfg.new{"ref"},
+            [580] = ConvCfg.new{"box_slice"},
+            -- byteswap
+            [790] = ConvCfg.new{"ref"},
+            [795] = ConvCfg.new{"ref"},
+            [1909] = ConvCfg.new{"byteswap", 811, 829},
+            [1910] = ConvCfg.new{"del"},
+            [1911] = ConvCfg.new{"del"},
+            [1912] = ConvCfg.new{"del"},
+            [1901] = ConvCfg.new{"del"},
+            [1902] = ConvCfg.new{"byteswap", 1035, 1063},
+            [1903] = ConvCfg.new{"del"},
+            [1904] = ConvCfg.new{"del"},
+            [1905] = ConvCfg.new{"del"},
+            [1906] = ConvCfg.new{"byteswap", 1263, 1291},
+            -- byteswap2
+            [1312] = ConvCfg.new{"ref"},
+            [1318] = ConvCfg.new{"box"}, -- FIXME: not a box
+            [1917] = ConvCfg.new{"del"},
+            [1918] = ConvCfg.new{"del"},
+            [1919] = ConvCfg.new{"del"},
+            [1920] = ConvCfg.new{"byteswap", 1421, 1421},
+            [1921] = ConvCfg.new{"del"},
             -- _category, Category, categories, bisearch_cat
-            [1535] = ConvCfg.new("slice"),
+            [1535] = ConvCfg.new{"slice"},
             -- opt_params
-            [1728] = ConvCfg.new("opt_ref"),
-            [1733] = ConvCfg.new("opt_ref"),
-            [1738] = ConvCfg.new("opt_slice"),
+            [1728] = ConvCfg.new{"opt_ref"},
+            [1733] = ConvCfg.new{"opt_ref"},
+            [1738] = ConvCfg.new{"opt_slice"},
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end

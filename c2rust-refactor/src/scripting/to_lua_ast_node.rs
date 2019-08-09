@@ -914,11 +914,21 @@ unsafe impl Send for LuaAstNode<MutTy> {}
 impl UserData for LuaAstNode<MutTy> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_ty", |_lua_ctx, this, ()| {
-            Ok(LuaAstNode::new(this.0.borrow().ty.clone()))
+            Ok(LuaAstNode::new(this.borrow().ty.clone()))
         });
 
         methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
-            this.0.borrow_mut().ty = ty.0.borrow().clone();
+            this.borrow_mut().ty = ty.borrow().clone();
+
+            Ok(())
+        });
+
+        methods.add_method("set_mutable", |_lua_ctx, this, mutable: bool| {
+            this.borrow_mut().mutbl = if mutable {
+                Mutability::Mutable
+            } else {
+                Mutability::Immutable
+            };
 
             Ok(())
         });

@@ -18,7 +18,7 @@ struct Ctx {
     data: [u8; 10],
 }
 
-unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx, p: *const u8) {
+unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx, p: *mut u8) {
     let off = 1;
     (*ctx).data[0] = *p.offset(0isize).offset(3isize);
     (*ctx2).data[0] = *p.offset(3isize).offset(off);
