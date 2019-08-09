@@ -380,6 +380,26 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
         }
     }
 
+    fn visit_arg(&mut self, m: &mut Arg) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_arg")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        } else {
+            mut_visit::noop_visit_arg(m, self)
+        }
+    }
+
+    fn visit_expr(&mut self, m: &mut P<Expr>) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_expr")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_expr(m, self)
+    }
+
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_item")
             .expect("Could not get lua visitor function");
@@ -390,6 +410,68 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
         } else {
             mut_visit::noop_flat_map_item(i, self)
         }
+    }
+
+    fn flat_map_stmt(&mut self, i: Stmt) -> SmallVec<[Stmt; 1]> {
+        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_stmt")
+            .expect("Could not get lua visitor function");
+
+        if let Some(method) = visit_method {
+            let new_items = self.call_flat_map(method, i);
+            new_items.into_iter().map(|i| i.into_inner()).collect()
+        } else {
+            mut_visit::noop_flat_map_stmt(i, self)
+        }
+    }
+
+    fn visit_fn_header(&mut self, m: &mut FnHeader) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_fn_header")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_fn_header(m, self)
+    }
+
+    fn visit_fn_decl(&mut self, m: &mut P<FnDecl>) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_fn_decl")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_fn_decl(m, self)
+    }
+
+    fn visit_struct_field(&mut self, m: &mut StructField) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_struct_field")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_struct_field(m, self)
+    }
+
+    fn visit_item_kind(&mut self, m: &mut ItemKind) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_item_kind")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_item_kind(m, self)
+    }
+
+    fn visit_local(&mut self, m: &mut P<Local>) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_local")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_local(m, self)
     }
 
     fn visit_mac(&mut self, mac: &mut Mac) {
