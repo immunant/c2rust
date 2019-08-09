@@ -4357,12 +4357,6 @@ impl<'c> Translation<'c> {
                 mk().unary_expr(ast::UnOp::Not, val)
             }
         } else {
-            let zero = if ty.is_floating_type() {
-                mk().lit_expr(mk().float_unsuffixed_lit("0."))
-            } else {
-                mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
-            };
-
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
@@ -4397,10 +4391,16 @@ impl<'c> Translation<'c> {
             };
 
             // The backup is to just compare against zero
-            if target {
-                mk().binary_expr(BinOpKind::Ne, zero, val)
+            let zero = if ty.is_floating_type() {
+                mk().lit_expr(mk().float_unsuffixed_lit("0."))
             } else {
-                mk().binary_expr(BinOpKind::Eq, zero, val)
+                mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
+            };
+
+            if target {
+                mk().binary_expr(BinOpKind::Ne, val, zero)
+            } else {
+                mk().binary_expr(BinOpKind::Eq, val, zero)
             }
         }
     }
