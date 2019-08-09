@@ -74,12 +74,20 @@ function ConvCfg:is_ref()
     return self.conv_type == "ref"
 end
 
+function ConvCfg:is_ref_any()
+    return self:is_ref() or self:is_opt_ref()
+end
+
 function ConvCfg:is_ref_or_slice()
     return self:is_ref() or self:is_slice()
 end
 
+function ConvCfg:is_opt_ref()
+    return self.conv_type == "opt_ref"
+end
+
 function ConvCfg:is_opt_any()
-    return self:is_opt_box() or self:is_opt_box_slice()
+    return self:is_opt_box() or self:is_opt_box_slice() or self:is_opt_ref()
 end
 
 function ConvCfg:is_opt_box()
@@ -149,15 +157,19 @@ function upgrade_ptr(ptr_ty, conversion_cfg)
     end
 
     -- T -> &T / &mut T or [T] -> &[T] / &mut [T]
-    if conversion_cfg:is_ref_or_slice() then
+    if conversion_cfg:is_ref_any() or conversion_cfg:is_slice() then
         mut_ty:set_ty(pointee_ty)
-        ptr_ty:to_rptr(conversion_cfg.extra_data, mut_ty)
+        pointee_ty:to_rptr(conversion_cfg.extra_data, mut_ty)
 
-        return ptr_ty
+        if not conversion_cfg:is_box_any() and not conversion_cfg:is_opt_any() then
+            return pointee_ty
+        end
     end
 
     -- T -> Box<T> or [T] -> Box<[T]>
-    pointee_ty:wrap_as_generic_angle_arg("Box")
+    if conversion_cfg:is_box_any() then
+        pointee_ty:wrap_as_generic_angle_arg("Box")
+    end
 
     -- Box<T> -> Option<Box<T>> or Box<[T]> -> Option<Box<[T]>>
     if conversion_cfg:is_opt_any() then
@@ -313,13 +325,20 @@ function Visitor:visit_expr(expr)
             local hirid = self.tctx:resolve_path_hirid(unwrapped_expr)
             local var = self:get_var(hirid)
 
-            -- If we're using an option, we must unwrap (or map/match)
-            if var and self.node_id_cfgs[var.id]:is_opt_box() then
-                -- TODO: or as_ref
-                unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
-                expr:to_method_call("unwrap", {unwrapped_expr})
-                expr:to_unary("Deref", expr)
-                expr:to_unary("Deref", expr)
+            -- If we're using an option, we must unwrap
+            if var then
+                -- If boxed, must get inner reference to mutate (or map/match)
+                if self.node_id_cfgs[var.id]:is_opt_box() then
+                    -- TODO: or as_ref
+                    unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
+                    expr:to_method_call("unwrap", {unwrapped_expr})
+                    expr:to_unary("Deref", expr)
+                    expr:to_unary("Deref", expr)
+                -- If an optional ref, we can unwrap and deref directly
+                elseif self.node_id_cfgs[var.id]:is_opt_ref() then
+                    unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
+                    expr:to_unary("Deref", unwrapped_expr)
+                end
             end
         end
     -- p.is_null() -> p.is_none() or false when not using an option
@@ -700,23 +719,26 @@ refactor:transform(
             [1312] = ConvCfg.new("ref"),
             [1318] = ConvCfg.new("box"), -- FIXME: not a box
             -- byteswap and byteswap2 fns
-            [1866] = ConvCfg.new("byteswap", {811, 829}),
-            [1867] = ConvCfg.new("del"),
-            [1868] = ConvCfg.new("del"),
-            [1869] = ConvCfg.new("del"),
-            [1858] = ConvCfg.new("del"),
-            [1859] = ConvCfg.new("byteswap", {1035, 1063}),
-            [1860] = ConvCfg.new("del"),
-            [1861] = ConvCfg.new("del"),
-            [1862] = ConvCfg.new("del"),
-            [1863] = ConvCfg.new("byteswap", {1263, 1291}),
-            [1874] = ConvCfg.new("del"),
-            [1876] = ConvCfg.new("del"),
-            [1875] = ConvCfg.new("del"),
-            [1877] = ConvCfg.new("byteswap", {1421, 1421}),
-            [1878] = ConvCfg.new("del"),
+            [1897] = ConvCfg.new("byteswap", {811, 829}),
+            [1898] = ConvCfg.new("del"),
+            [1899] = ConvCfg.new("del"),
+            [1900] = ConvCfg.new("del"),
+            [1889] = ConvCfg.new("del"),
+            [1890] = ConvCfg.new("byteswap", {1035, 1063}),
+            [1891] = ConvCfg.new("del"),
+            [1892] = ConvCfg.new("del"),
+            [1893] = ConvCfg.new("del"),
+            [1894] = ConvCfg.new("byteswap", {1263, 1291}),
+            [1905] = ConvCfg.new("del"),
+            [1906] = ConvCfg.new("del"),
+            [1907] = ConvCfg.new("del"),
+            [1908] = ConvCfg.new("byteswap", {1421, 1421}),
+            [1909] = ConvCfg.new("del"),
             -- _category, Category, categories, bisearch_cat
             [1535] = ConvCfg.new("slice"),
+            -- opt_params
+            [1728] = ConvCfg.new("opt_ref"),
+            [1733] = ConvCfg.new("opt_ref"),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end
