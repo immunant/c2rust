@@ -86,8 +86,12 @@ function ConvCfg:is_opt_ref()
     return self.conv_type == "opt_ref"
 end
 
+function ConvCfg:is_opt_slice()
+    return self.conv_type == "opt_slice"
+end
+
 function ConvCfg:is_opt_any()
-    return self:is_opt_box() or self:is_opt_box_slice() or self:is_opt_ref()
+    return self:is_opt_box() or self:is_opt_box_slice() or self:is_opt_ref() or self:is_opt_slice()
 end
 
 function ConvCfg:is_opt_box()
@@ -98,8 +102,12 @@ function ConvCfg:is_opt_box_slice()
     return self.conv_type == "opt_box_slice"
 end
 
+function ConvCfg:is_opt_box_any()
+    return self:is_opt_box() or self:is_opt_box_slice()
+end
+
 function ConvCfg:is_slice_any()
-    return self:is_slice() or self:is_opt_box_slice() or self:is_box_slice()
+    return self:is_slice() or self:is_opt_box_slice() or self:is_box_slice() or self:is_opt_slice()
 end
 
 function ConvCfg:is_box_slice()
@@ -156,8 +164,10 @@ function upgrade_ptr(ptr_ty, conversion_cfg)
         pointee_ty:wrap_in_slice()
     end
 
+    local non_boxed_slice = conversion_cfg:is_slice_any() and not conversion_cfg:is_box_any()
+
     -- T -> &T / &mut T or [T] -> &[T] / &mut [T]
-    if conversion_cfg:is_ref_any() or conversion_cfg:is_slice() then
+    if conversion_cfg:is_ref_any() or non_boxed_slice then
         mut_ty:set_ty(pointee_ty)
         pointee_ty:to_rptr(conversion_cfg.extra_data, mut_ty)
 
@@ -297,11 +307,15 @@ function Visitor:visit_expr(expr)
             -- We only want to apply this operation if we're converting
             -- a pointer to an array
             if cfg and (cfg:is_slice_any() or cfg:is_array()) then
-                -- If we're using an option, we must unwrap (or map/match)
-                -- *ptr[1] -> *ptr.as_mut().unwrap()[1]
+                -- If we're using an option, we must unwrap (or map/match) using
+                -- as_mut (or as_ref) to avoid a move:
+                -- *ptr[1] -> *ptr.as_mut().unwrap()[1] otherwise we can just unwrap
+                -- *ptr[1] -> *ptr.unwrap()[1]
                 if cfg:is_opt_any() then
                     -- TODO: or as_ref
-                    unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
+                    if cfg:is_opt_box_any() then
+                        unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
+                    end
                     unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
                 end
 
@@ -719,26 +733,27 @@ refactor:transform(
             [1312] = ConvCfg.new("ref"),
             [1318] = ConvCfg.new("box"), -- FIXME: not a box
             -- byteswap and byteswap2 fns
-            [1897] = ConvCfg.new("byteswap", {811, 829}),
-            [1898] = ConvCfg.new("del"),
-            [1899] = ConvCfg.new("del"),
-            [1900] = ConvCfg.new("del"),
-            [1889] = ConvCfg.new("del"),
-            [1890] = ConvCfg.new("byteswap", {1035, 1063}),
-            [1891] = ConvCfg.new("del"),
-            [1892] = ConvCfg.new("del"),
-            [1893] = ConvCfg.new("del"),
-            [1894] = ConvCfg.new("byteswap", {1263, 1291}),
+            [1909] = ConvCfg.new("byteswap", {811, 829}),
+            [1910] = ConvCfg.new("del"),
+            [1911] = ConvCfg.new("del"),
+            [1912] = ConvCfg.new("del"),
+            [1901] = ConvCfg.new("del"),
+            [1902] = ConvCfg.new("byteswap", {1035, 1063}),
+            [1903] = ConvCfg.new("del"),
+            [1904] = ConvCfg.new("del"),
             [1905] = ConvCfg.new("del"),
-            [1906] = ConvCfg.new("del"),
-            [1907] = ConvCfg.new("del"),
-            [1908] = ConvCfg.new("byteswap", {1421, 1421}),
-            [1909] = ConvCfg.new("del"),
+            [1906] = ConvCfg.new("byteswap", {1263, 1291}),
+            [1917] = ConvCfg.new("del"),
+            [1918] = ConvCfg.new("del"),
+            [1919] = ConvCfg.new("del"),
+            [1920] = ConvCfg.new("byteswap", {1421, 1421}),
+            [1921] = ConvCfg.new("del"),
             -- _category, Category, categories, bisearch_cat
             [1535] = ConvCfg.new("slice"),
             -- opt_params
             [1728] = ConvCfg.new("opt_ref"),
             [1733] = ConvCfg.new("opt_ref"),
+            [1738] = ConvCfg.new("opt_slice"),
         }
         return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
     end
