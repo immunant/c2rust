@@ -194,6 +194,7 @@ fn emit_cargo_toml(
 
     let json = json!({
         "crate_name": tcfg.crate_name(),
+        "crate_rust_name": tcfg.crate_name().replace('-', "_"),
         "lib_rs_file": get_lib_rs_file_name(tcfg),
         "binaries": binaries,
         "cross_checks": tcfg.cross_checks,
