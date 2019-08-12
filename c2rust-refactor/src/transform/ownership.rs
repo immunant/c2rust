@@ -47,6 +47,13 @@ pub fn register_commands(reg: &mut Registry) {
             do_mark_pointers(st, cx);
         }))
     });
+
+    reg.register("ownership_script_export", |_args| {
+        Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
+            do_mark_pointers(st, cx);
+            do_script_export(st, cx);
+        }))
+    });
 }
 
 /// # `ownership_annotate` Command
@@ -573,5 +580,44 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
         };
 
         st.add_mark(ast_ty.id, label);
+    });
+}
+
+fn do_script_export(st: &CommandState, cx: &RefactorCtxt) {
+    struct MarkVariablesVisitor<'a, 'tcx: 'a> {
+        hir_map: HirMap<'a, 'tcx>,
+        st: &'a CommandState,
+    }
+
+    println!("Marks: {:?}", st.marks());
+
+    impl<'lty, 'a, 'tcx> MutVisitor for MarkVariablesVisitor<'a, 'tcx> {
+        fn visit_arg(&mut self, arg: &mut Arg) {
+            let ty = &arg.ty;
+            let is_ref = self.st.marked(ty.id, "ref");
+            let is_mut = self.st.marked(ty.id, "mut");
+            let is_box = self.st.marked(ty.id, "box");
+
+            if !is_ref && !is_mut && !is_box {
+                return mut_visit::noop_visit_arg(arg, self);
+            }
+
+            println!("Found arg: {:?}: {}, {}, {}", arg, is_ref, is_mut, is_box);
+
+            mut_visit::noop_visit_arg(arg, self)
+        }
+
+        fn visit_local(&mut self, local: &mut P<Local>) {
+            dbg!(&local);
+
+            mut_visit::noop_visit_local(local, self)
+        }
+    }
+
+    st.map_krate(|krate| {
+        krate.visit(&mut MarkVariablesVisitor {
+            hir_map: cx.hir_map(),
+            st,
+        })
     });
 }
