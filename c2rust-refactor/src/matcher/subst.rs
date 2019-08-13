@@ -19,7 +19,7 @@
 
 use smallvec::SmallVec;
 use syntax::ast::Mac;
-use syntax::ast::{Expr, Ident, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
+use syntax::ast::{Expr, ExprKind, Ident, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 
@@ -36,6 +36,28 @@ struct SubstFolder<'a, 'tcx: 'a> {
     st: &'a CommandState,
     cx: &'a RefactorCtxt<'a, 'tcx>,
     bindings: &'a Bindings,
+}
+
+impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
+    fn subst_opt_label(&mut self, ol: &mut Option<Label>) {
+        if let Some(l) = ol {
+            let ps = l.ident.pattern_symbol();
+            if let Some(i) = ps.and_then(|sym| self.bindings.get::<_, Ident>(sym)) {
+                l.ident = i.clone();
+            } else {
+                let i = ps.and_then(|sym| self.bindings.get_opt::<_, Ident>(sym));
+                match i {
+                    Some(Some(i)) => l.ident = i.clone(),
+                    Some(None) => {
+                        *ol = None;
+                        return;
+                    }
+                    None => {}
+                }
+            }
+        }
+    }
+
 }
 
 impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
@@ -78,6 +100,20 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             } else if let Some(Some(binding)) = self.bindings.get_opt::<_, P<Expr>>(sym) {
                 *e = binding.clone();
             }
+        }
+
+        // Some Expr nodes contain an optional label, which we need to handle here,
+        // since `visit_label` takes the inner `Label` instead of `Option<Label>`
+        match e.node {
+            ExprKind::While(_, _, ref mut label) |
+            ExprKind::ForLoop(_, _, _, ref mut label) |
+            ExprKind::Loop(_, ref mut label) |
+            ExprKind::Block(_, ref mut label) |
+            ExprKind::Break(ref mut label, _) |
+            ExprKind::Continue(ref mut label) => {
+                self.subst_opt_label(label);
+            }
+            _ => {}
         }
 
         mut_visit::noop_visit_expr(e, self);
@@ -131,17 +167,6 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         } else {
             mut_visit::noop_flat_map_item(i, self)
         }
-    }
-
-    fn visit_label(&mut self, l: &mut Label) {
-        let ps = l.ident.pattern_symbol();
-        if let Some(i) = ps.and_then(|sym| self.bindings.get::<_, Ident>(sym)) {
-            l.ident = i.clone();
-        } else if let Some(Some(i)) = ps.and_then(|sym| self.bindings.get_opt::<_, Ident>(sym)) {
-            l.ident = i.clone();
-        }
-
-        mut_visit::noop_visit_label(l, self);
     }
 
     fn visit_mac(&mut self, mac: &mut Mac) {
