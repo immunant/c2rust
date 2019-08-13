@@ -517,7 +517,11 @@ pub fn extend_span_comments_strict(id: &NodeId, mut span: Span, rcx: &RewriteCtx
 
     for comment in &before {
         let cur_span = rewind_span_over_whitespace(span, rcx);
-        let comment_size = usize::sum(comment.lines.iter().map(|l| l.len()));
+
+        // Count the number of characters, including newlines between lines, but
+        // not the final newline.
+        let comment_size = usize::sum(comment.lines.iter().map(|l| l.len()+1)) - 1;
+
         let comment_start = BytePos::from_usize(cur_span.lo().to_usize() - comment_size);
         let comment_span = cur_span.shrink_to_lo().with_lo(comment_start);
         let source = match source_map.span_to_snippet(comment_span) {
