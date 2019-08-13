@@ -23,6 +23,7 @@
 use std::collections::hash_map::{self, Entry, HashMap};
 
 use arena::SyncDroplessArena;
+use log::Level;
 use rustc::hir::def_id::DefId;
 use rustc::ty::{Ty, TyCtxt, TyKind};
 use rustc_data_structures::indexed_vec::IndexVec;
@@ -433,10 +434,12 @@ fn preload_constraints<'lty, 'tcx>(
         _ => return None,
     }
 
-    eprintln!("PRELOAD CONSTRAINTS for {:?}", def_id);
-    eprintln!("  {:?} -> {:?}", sig.inputs, sig.output);
-    for &(a, b) in cset.iter() {
-        eprintln!("    {:?} <= {:?}", a, b);
+    debug!("PRELOAD CONSTRAINTS for {:?}", def_id);
+    debug!("  {:?} -> {:?}", sig.inputs, sig.output);
+    if log_enabled!(Level::Debug) {
+        for &(a, b) in cset.iter() {
+            debug!("    {:?} <= {:?}", a, b);
+        }
     }
 
     Some(cset)
