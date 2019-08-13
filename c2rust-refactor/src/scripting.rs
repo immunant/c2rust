@@ -121,10 +121,25 @@ impl UserData for RefactorState {
         methods.add_method_mut(
             "run_command",
             |_lua_ctx, this, (name, args): (String, Vec<String>)| {
-                this.load_crate();
-                let res = this.run(&name, &args).map_err(|e| LuaError::external(e));
+                this.run(&name, &args).map_err(|e| LuaError::external(e))
+            },
+        );
+
+        methods.add_method_mut(
+            "save_crate",
+            |_lua_ctx, this, ()| {
                 this.save_crate();
-                res
+
+                Ok(())
+            },
+        );
+
+        methods.add_method_mut(
+            "load_crate",
+            |_lua_ctx, this, ()| {
+                this.load_crate();
+
+                Ok(())
             },
         );
 
@@ -138,7 +153,6 @@ impl UserData for RefactorState {
                 Some(3) | None => Phase::Phase3,
                 _ => return Err(LuaError::external("Phase must be nil, 1, 2, or 3")),
             };
-            this.load_crate();
             this.transform_crate(phase, |st, cx| {
                 enter_transform(st, cx, |transform| {
                     let res: LuaResult<()> = lua_ctx.scope(|scope| {
@@ -157,7 +171,6 @@ impl UserData for RefactorState {
                 });
             })
             .map_err(|e| LuaError::external(format!("Failed to run compiler: {:#?}", e)))?;
-            this.save_crate();
             Ok(())
         });
     }

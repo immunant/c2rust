@@ -46,7 +46,7 @@ pub enum SelectOp {
     Item(Path),
 
     /// `child(f)`: Replace the current selection with the set of all nodes that are direct
-    /// children of selected nodes and that match filter `f`.  
+    /// children of selected nodes and that match filter `f`.
     ChildMatch(Filter),
     /// `desc(f)`: Replace the current selection with the set of all nodes that are descendants of
     /// selected nodes and that match filter `f`.

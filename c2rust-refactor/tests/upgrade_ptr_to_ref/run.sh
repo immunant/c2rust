@@ -5,4 +5,4 @@ if [ `uname` = 'Darwin' ]; then
     export LD_LIBRARY_PATH=$not_LD_LIBRARY_PATH
 fi
 
-$refactor script ../../scripts/upgrade_ptr_to_ref.lua -- old.rs $rustflags
+$refactor script ../../scripts/test_upgrade_ptr_to_ref.lua -- old.rs $rustflags
