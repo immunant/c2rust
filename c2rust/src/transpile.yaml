@@ -138,6 +138,7 @@ args:
       help: Emit Rust build files for a binary using the main function in the specified translation unit (implies -e/--emit-build-files)
       takes_value: true
       multiple: true
+      number_of_values: 1
   - overwrite-existing:
       long: overwrite-existing
       help: Emit files even if it causes existing files to be overwritten
