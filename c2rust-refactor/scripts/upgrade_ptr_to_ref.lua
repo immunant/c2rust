@@ -205,6 +205,8 @@ end
 function Visitor:visit_arg(arg)
     local arg_id = arg:get_id()
     local conversion_cfg = self.node_id_cfgs[arg_id]
+    arg:print()
+    print(arg:get_ty():get_id(), conversion_cfg or "nil")
 
     if conversion_cfg then
         local arg_ty = arg:get_ty()
@@ -709,13 +711,61 @@ function Visitor:visit_local(locl)
     end
 end
 
+MarkConverter = {}
+
+function MarkConverter.new(marks)
+    self = {}
+    self.marks = marks
+    self.node_id_cfgs = {}
+
+    setmetatable(self, MarkConverter)
+    MarkConverter.__index = MarkConverter
+
+    return self
+end
+
+function MarkConverter:visit_arg(arg)
+    local arg_id = arg:get_id()
+    local arg_ty_id = arg:get_ty():get_id()
+    local marks = self.marks[arg_ty_id] or {}
+    arg:get_ty():print()
+    print(arg_ty_id, pretty.write(marks))
+
+    for _, mark in ipairs(marks) do
+        print(mark, arg_id, arg_ty_id)
+        arg:print()
+        if mark == "ref" then
+            self.node_id_cfgs[arg_id] = ConvCfg.new{"ref", mutability="immut"}
+        elseif mark == "mut" then
+            self.node_id_cfgs[arg_id] = ConvCfg.new{"ref", mutability="mut"}
+        end
+    end
+end
+
+function infer_node_id_cfgs()
+    local marks = refactor:get_marks()
+    local converter = MarkConverter.new(marks)
+
+    refactor:transform(
+        function(transform_ctx)
+            return transform_ctx:visit_crate_new(converter)
+        end
+    )
+
+    return converter.node_id_cfgs
+end
+
 function run_ptr_upgrades(node_id_cfgs)
     if not node_id_cfgs then
         refactor:run_command("select", {"ann", "crate; desc(fn || field);"})
         refactor:run_command("ownership_annotate", {"ann"})
+        -- refactor:clear_marks()
+        -- refactor:dump_marks()
+        refactor:dump_ty_ids()
         refactor:run_command("ownership_mark_pointers", {})
+        refactor:dump_ty_ids()
         refactor:dump_marks()
-        node_id_cfgs = {} -- TODO
+        node_id_cfgs = infer_node_id_cfgs()
         -- refactor:run_command("ownership_clear_annotations", {})
     end
 

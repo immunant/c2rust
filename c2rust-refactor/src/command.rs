@@ -89,7 +89,7 @@ pub struct RefactorState {
     node_map: NodeMap,
 
     /// Mutable state available to a driver command
-    cs: CommandState,
+    pub cs: CommandState,
 }
 
 #[cfg_attr(feature = "profile", flame)]

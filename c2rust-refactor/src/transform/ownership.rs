@@ -572,6 +572,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
             ConcretePerm::Move => s_box,
         };
 
+        println!("Added {} to {}: {:?}", label, ast_ty.id, ast_ty);
         st.add_mark(ast_ty.id, label);
     });
 }
