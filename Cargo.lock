@@ -170,10 +170,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "c2rust"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
- "c2rust-refactor 0.10.1",
- "c2rust-transpile 0.10.0",
+ "c2rust-refactor 0.11.0",
+ "c2rust-transpile 0.11.0",
  "chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -185,11 +185,11 @@ dependencies = [
 
 [[package]]
 name = "c2rust-ast-builder"
-version = "0.10.0"
+version = "0.11.0"
 
 [[package]]
 name = "c2rust-ast-exporter"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "bindgen 0.49.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clang-sys 0.28.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -219,7 +219,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-macros"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "proc-macro2 0.4.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 0.6.12 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -243,10 +243,10 @@ dependencies = [
 
 [[package]]
 name = "c2rust-refactor"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
- "c2rust-ast-builder 0.10.0",
- "c2rust-macros 0.10.0",
+ "c2rust-ast-builder 0.11.0",
+ "c2rust-macros 0.11.0",
  "cargo 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "derive_more 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -266,10 +266,10 @@ dependencies = [
 
 [[package]]
 name = "c2rust-transpile"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
- "c2rust-ast-builder 0.10.0",
- "c2rust-ast-exporter 0.10.0",
+ "c2rust-ast-builder 0.11.0",
+ "c2rust-ast-exporter 0.11.0",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "colored 1.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "dtoa 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
