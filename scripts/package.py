@@ -108,8 +108,8 @@ class Driver:
             exit(1)
 
         # Tag and publish the tag to github
-        if not self._git_push_public():
-            if not confirm('Could not complete git tag and merge successfully, do you want to continue?'):
+        if not self._git_push_tag():
+            if not confirm('Could not complete git tag successfully, do you want to continue?'):
                 exit(1)
 
         if not self.dry_run:
@@ -166,25 +166,15 @@ class Driver:
         cmd = cargo['package', '--color', 'always', '--no-verify', '--allow-dirty']
         return self._invoke(cmd)
 
-    def _git_push_public(self):
+    def _git_push_tag(self):
         remotes = git('remote', '--verbose')
         matches = re.search(r'(\S+)\s+git@github\.com:immunant/c2rust\.git', remotes)
         if not matches:
             print_error('Missing github.com:immunant/c2rust.git remote')
             return False
-        public_remote = matches.group(1)
+        remote = matches.group(1)
 
-        # branches = git('branch', '-vv')
-        # public_branches = re.findall(r'^. (\S+).*' + public_remote + '/master', branches, re.MULTILINE)
-        # if len(public_branches) == 0:
-        #     print_error('Could not find public branch tracking {}/master'.format(public_remote))
-        #     exit(1)
-        # elif len(public_branches) > 1:
-        #     print_error('More than one public branch tracking {}/master found. Ensure only one branch is tracking the public mirror.'.format(public_remote))
-        #     exit(1)
-        # public_branch = public_branches[0]
-
-        if not self.dry_run and not confirm('Warning: git tag {} will be created and merged into the public master. Do you want to proceed?'.format(self.version)):
+        if not self.dry_run and not confirm('Warning: git tag {} will be created and pushed to github. Do you want to proceed?'.format(self.version)):
             print_error('git tag and merge not confirmed, exiting.')
             exit(1)
 
@@ -193,13 +183,7 @@ class Driver:
             git['tag', self.version],
 
             # Push the new tag to both remotes
-            git['push', 'origin', self.version],
-            git['push', public_remote, self.version],
-
-            # Merge the new tag into the public master
-            git['checkout', public_remote + '/master'],
-            git['merge', self.version],
-            git['push', public_remote, 'HEAD:master'],
+            git['push', remote, self.version],
         ]
 
         for cmd in cmds:
