@@ -20,6 +20,16 @@ impl PatternSymbol for Ident {
     }
 }
 
+impl PatternSymbol for Lit {
+    fn pattern_symbol(&self) -> Option<Symbol> {
+        match self.node {
+            // FIXME: can this conflict with regular Err literals???
+            LitKind::Err(ref sym) => Some(sym.clone()),
+            _ => None
+        }
+    }
+}
+
 impl PatternSymbol for Label {
     fn pattern_symbol(&self) -> Option<Symbol> {
         self.ident.pattern_symbol()

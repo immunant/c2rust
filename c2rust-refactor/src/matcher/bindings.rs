@@ -3,8 +3,8 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::convert::{TryFrom, TryInto};
 
 use derive_more::{From, TryInto};
-use syntax::ast::{Expr, Ident, Item, Pat, Path, Stmt, Ty};
-use syntax::parse::token::{Token, TokenKind};
+use syntax::ast::{Expr, Ident, Item, Lit, Pat, Path, Stmt, Ty};
+use syntax::parse::token::{Token, TokenKind, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::DUMMY_SP;
 use syntax::symbol::Symbol;
@@ -271,6 +271,7 @@ macro_rules! define_binding_values {
 define_binding_values! {
     Ident(Ident),
     Path(Path),
+    Lit(Lit),
     Expr(P<Expr>),
     Pat(P<Pat>),
     Ty(P<Ty>),
@@ -330,7 +331,16 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                     let dollar_sym = Symbol::intern(&format!("${}", ident));
                     let ident_ty = maybe_get_type(&mut c);
                     bt.set_type(dollar_sym, ident_ty);
-                    TokenTree::Token(Token{kind: TokenKind::Ident(dollar_sym, is_raw), span})
+
+                    let token_kind = match ident_ty {
+                        Type::Lit | Type::Optional(Type::Lit) => {
+                            // Lit nodes don't have an Ident, so we stick the name
+                            // inside a LitKind::Err
+                            TokenKind::lit(TokenLitKind::Err, dollar_sym, None)
+                        }
+                        _ => TokenKind::Ident(dollar_sym, is_raw)
+                    };
+                    TokenTree::Token(Token{kind: token_kind, span})
                 }
 
                 Some(TokenTree::Token(Token{kind: TokenKind::Lifetime(ident), span})) => {

@@ -41,7 +41,7 @@ use rustc::session::Session;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Pat, Path, Stmt, Ty};
+use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::parse::parser::{Parser, PathStyle};
 use syntax::parse::token::TokenKind;
@@ -332,6 +332,26 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             Some(&bindings::Type::Path) => {}
             Some(&bindings::Type::Unknown) => {}
             None if sym.as_str().starts_with("__") => {}
+            _ => return Ok(false),
+        }
+
+        let ok = self.bindings.try_add(sym, target.clone());
+        if ok {
+            Ok(true)
+        } else {
+            Err(Error::NonlinearMismatch)
+        }
+    }
+
+    pub fn maybe_capture_lit(&mut self, pattern: &Lit, target: &Lit) -> Result<bool> {
+        let sym = match pattern.pattern_symbol() {
+            Some(x) => x,
+            None => return Ok(false),
+        };
+
+        match self.types.get(&sym) {
+            Some(&bindings::Type::Lit) => {}
+            Some(&bindings::Type::Unknown) => {}
             _ => return Ok(false),
         }
 
