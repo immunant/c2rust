@@ -185,20 +185,20 @@ impl UserData for LuaAstNode<P<Item>> {
         });
 
         methods.add_method("get_id", |lua_ctx, this, ()| {
-            this.0.borrow().id.to_lua(lua_ctx)
+            this.borrow().id.to_lua(lua_ctx)
         });
 
         methods.add_method("get_ident", |lua_ctx, this, ()| {
-            this.0.borrow().ident.to_lua(lua_ctx)
+            this.borrow().ident.to_lua(lua_ctx)
         });
 
         methods.add_method("set_ident", |_lua_ctx, this, ident: LuaString| {
-            this.0.borrow_mut().ident = Ident::from_str(ident.to_str()?);
+            this.borrow_mut().ident = Ident::from_str(ident.to_str()?);
             Ok(())
         });
 
         methods.add_method("get_vis", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().vis.ast_name())
+            Ok(this.borrow().vis.ast_name())
         });
 
         /// Visit statements
@@ -229,7 +229,7 @@ impl UserData for LuaAstNode<P<Item>> {
         });
 
         methods.add_method("get_node", |lua_ctx, this, ()| {
-            match this.0.borrow().node.clone() {
+            match this.borrow().node.clone() {
                 ItemKind::Use(e) => Ok(e.to_lua(lua_ctx)),
                 node => Err(Error::external(format!("Item node {:?} not implemented yet", node))),
             }
@@ -307,19 +307,19 @@ unsafe impl Send for LuaAstNode<P<ForeignItem>> {}
 impl UserData for LuaAstNode<P<ForeignItem>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().node.ast_name())
+            Ok(this.borrow().node.ast_name())
         });
 
         methods.add_method("get_id", |lua_ctx, this, ()| {
-            this.0.borrow().id.to_lua(lua_ctx)
+            this.borrow().id.to_lua(lua_ctx)
         });
 
         methods.add_method("get_ident", |lua_ctx, this, ()| {
-            this.0.borrow().ident.to_lua(lua_ctx)
+            this.borrow().ident.to_lua(lua_ctx)
         });
 
         methods.add_method("set_ident", |_lua_ctx, this, ident: LuaString| {
-            this.0.borrow_mut().ident = Ident::from_str(ident.to_str()?);
+            this.borrow_mut().ident = Ident::from_str(ident.to_str()?);
             Ok(())
         });
     }
@@ -340,25 +340,24 @@ unsafe impl Send for LuaAstNode<Path> {}
 impl UserData for LuaAstNode<Path> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_span", |lua_ctx, this, ()| {
-            this.0.borrow().span.to_lua(lua_ctx)
+            this.borrow().span.to_lua(lua_ctx)
         });
         methods.add_method("has_generic_args", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().segments.iter().any(|s| s.args.is_some()))
+            Ok(this.borrow().segments.iter().any(|s| s.args.is_some()))
         });
         methods.add_method("get_segments", |lua_ctx, this, ()| {
-            this.0
-                .borrow()
+            this.borrow()
                 .segments
                 .iter()
                 .map(|s| s.ident.to_lua(lua_ctx))
                 .collect::<Result<Vec<_>>>()
         });
         methods.add_method("set_segments", |_lua_ctx, this, new_segments: Vec<LuaString>| {
-            let has_generic_args = this.0.borrow().segments.iter().any(|s| s.args.is_some());
+            let has_generic_args = this.borrow().segments.iter().any(|s| s.args.is_some());
             if has_generic_args {
                 Err(Error::external("One or more path segments have generic args, cannot set segments as strings"))
             } else {
-                this.0.borrow_mut().segments = new_segments.into_iter().map(|new_seg| {
+                this.borrow_mut().segments = new_segments.into_iter().map(|new_seg| {
                     Ok(PathSegment::from_ident(Ident::from_str(new_seg.to_str()?)))
                 }).collect::<Result<Vec<_>>>()?;
                 Ok(())
@@ -366,10 +365,10 @@ impl UserData for LuaAstNode<Path> {
         });
         methods.add_method("map_segments", |lua_ctx, this, callback: Function| {
             let new_segments = lua_ctx.scope(|scope| {
-                let segments = this.0.borrow().segments.iter().map(|s| scope.create_static_userdata(LuaAstNode::new(s.clone())).unwrap()).collect::<Vec<_>>().to_lua(lua_ctx);
+                let segments = this.borrow().segments.iter().map(|s| scope.create_static_userdata(LuaAstNode::new(s.clone())).unwrap()).collect::<Vec<_>>().to_lua(lua_ctx);
                 callback.call::<_, Vec<LuaAstNode<PathSegment>>>(segments)
             }).unwrap();
-            this.0.borrow_mut().segments = new_segments.into_iter().map(|s| s.into_inner()).collect();
+            this.borrow_mut().segments = new_segments.into_iter().map(|s| s.into_inner()).collect();
             Ok(())
         });
 
@@ -391,7 +390,7 @@ impl UserData for LuaAstNode<Path> {
 impl UserData for LuaAstNode<PathSegment> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_ident", |lua_ctx, this, ()| {
-            this.0.borrow().ident.to_lua(lua_ctx)
+            this.borrow().ident.to_lua(lua_ctx)
         });
     }
 }
@@ -406,7 +405,7 @@ unsafe impl Send for LuaAstNode<Res> {}
 impl UserData for LuaAstNode<Res> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_namespace", |_lua_ctx, this, ()| {
-            Ok(util::namespace(&*this.0.borrow()).map(|namespace| namespace.descr()))
+            Ok(util::namespace(&*this.borrow()).map(|namespace| namespace.descr()))
         });
     }
 }
@@ -1094,17 +1093,16 @@ unsafe impl Send for LuaAstNode<Mod> {}
 impl UserData for LuaAstNode<Mod> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("num_items", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().items.len())
+            Ok(this.borrow().items.len())
         });
 
         methods.add_method_mut("insert_item", |_lua_ctx, this, (index, item): (usize, LuaAstNode<P<Item>>)| {
-            this.0.borrow_mut().items.insert(index, item.borrow().clone());
+            this.borrow_mut().items.insert(index, item.borrow().clone());
             Ok(())
         });
 
         methods.add_method("get_items", |lua_ctx, this, ()| {
-            this.0
-                .borrow()
+            this.borrow()
                 .items
                 .iter()
                 .map(|item| item.clone().to_lua(lua_ctx))
@@ -1112,8 +1110,7 @@ impl UserData for LuaAstNode<Mod> {
         });
 
         methods.add_method_mut("drain_items", |lua_ctx, this, ()| {
-            this.0
-                .borrow_mut()
+            this.borrow_mut()
                 .items
                 .drain(..)
                 .map(|item| item.to_lua(lua_ctx))
@@ -1132,22 +1129,22 @@ unsafe impl Send for LuaAstNode<P<UseTree>> {}
 impl UserData for LuaAstNode<P<UseTree>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().kind.ast_name())
+            Ok(this.borrow().kind.ast_name())
         });
 
         methods.add_method("get_prefix", |lua_ctx, this, ()| {
-            this.0.borrow().prefix.clone().to_lua(lua_ctx)
+            this.borrow().prefix.clone().to_lua(lua_ctx)
         });
 
         methods.add_method("get_rename", |_lua_ctx, this, ()| {
-            match this.0.borrow().kind {
+            match this.borrow().kind {
                 UseTreeKind::Simple(Some(rename), _, _) => Ok(Some(rename.to_string())),
                 _ => Ok(None),
             }
         });
 
         methods.add_method("get_nested", |lua_ctx, this, ()| {
-            match &this.0.borrow().kind {
+            match &this.borrow().kind {
                 UseTreeKind::Nested(trees) => Ok(Some(
                     trees.clone()
                         .into_iter()
