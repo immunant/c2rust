@@ -147,12 +147,14 @@ impl CommentStore {
                 .lines()
                 .map(|line: &str| {
                     let mut line = line.to_owned();
-                    if line.starts_with("//!")
-                        || line.starts_with("///")
-                        || line.starts_with("/**")
-                        || line.starts_with("/*!")
+                    let begin = line.trim_start();
+                    if begin.starts_with("//!")
+                        || begin.starts_with("///")
+                        || begin.starts_with("/**")
+                        || begin.starts_with("/*!")
                     {
-                        line.insert(2, ' ');
+                        let begin_loc = line.len() - begin.len();
+                        line.insert(2+begin_loc, ' ');
                     };
                     line
                 })
