@@ -336,6 +336,18 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
             },
         );
 
+        /// Get matched binding for a literal variable
+        // @function get_lit
+        // @tparam string pattern Literal variable pattern
+        // @treturn LuaAstNode Literal matched by this binding
+        methods.add_method_mut("get_lit", |lua_ctx, this, pattern: String| {
+            this.mcx.bindings
+                .get::<_, ast::Lit>(pattern)
+                .unwrap()
+                .clone()
+                .to_lua(lua_ctx)
+        });
+
         /// Get matched binding for an expression variable
         // @function get_expr
         // @tparam string pattern Expression variable pattern
@@ -343,6 +355,18 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         methods.add_method_mut("get_expr", |lua_ctx, this, pattern: String| {
             this.mcx.bindings
                 .get::<_, P<ast::Expr>>(pattern)
+                .unwrap()
+                .clone()
+                .to_lua(lua_ctx)
+        });
+
+        /// Get matched binding for a type variable
+        // @function get_ty
+        // @tparam string pattern Type variable pattern
+        // @treturn LuaAstNode Type matched by this binding
+        methods.add_method_mut("get_ty", |lua_ctx, this, pattern: String| {
+            this.mcx.bindings
+                .get::<_, P<ast::Ty>>(pattern)
                 .unwrap()
                 .clone()
                 .to_lua(lua_ctx)
