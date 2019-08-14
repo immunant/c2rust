@@ -113,7 +113,7 @@ class Driver:
                 exit(1)
 
         if not self.dry_run:
-            if not confirm('Are you sure you want to publish version {} to crates.io?'):
+            if not confirm('Are you sure you want to publish version {} to crates.io?'.format(self.version)):
                 print_error('Publishing not confirmed, exiting.')
                 exit(1)
 
@@ -187,7 +187,7 @@ class Driver:
         ]
 
         for cmd in cmds:
-            if not self._invoke(cmd, dry_run=True):
+            if not self._invoke(cmd):
                 return False
         return True
 
@@ -196,7 +196,7 @@ class Driver:
         if self.dry_run:
             args += ['--dry-run']
         cmd = cargo[args]
-        return self._invoke(cmd, dry_run=True)
+        return self._invoke(cmd)
 
 
 def _parse_args():
