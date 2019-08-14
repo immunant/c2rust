@@ -73,4 +73,5 @@ $'label:?Ident: while $cond:Expr {
       )
    end
 )
+refactor:save_crate()
 print("finished")

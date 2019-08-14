@@ -724,5 +724,4 @@ function run_ptr_upgrades(node_id_cfgs)
             return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
         end
     )
-    refactor:save_crate()
 end

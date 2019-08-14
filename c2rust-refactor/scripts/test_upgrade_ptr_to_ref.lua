@@ -73,5 +73,7 @@ node_id_cfgs = {
 
 run_ptr_upgrades(node_id_cfgs)
 
+refactor:save_crate()
+
 print("Finished test_run_ptr_upgrades.lua")
 

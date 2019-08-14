@@ -127,25 +127,17 @@ impl UserData for RefactorState {
 
         methods.add_method_mut(
             "save_crate",
-            |_lua_ctx, this, ()| {
-                this.save_crate();
-
-                Ok(())
-            },
+            |_lua_ctx, this, ()| Ok(this.save_crate()),
         );
 
         methods.add_method_mut(
             "load_crate",
-            |_lua_ctx, this, ()| {
-                this.load_crate();
-
-                Ok(())
-            },
+            |_lua_ctx, this, ()| Ok(this.load_crate()),
         );
 
         methods.add_method_mut(
             "dump_marks",
-            |_lua_ctx, this, ()| Ok(println!("Marks: {:?}", this.marks()))
+            |_lua_ctx, this, ()| Ok(println!("Marks: {:?}", this.marks())),
         );
 
         /// Run a custom refactoring transformation
