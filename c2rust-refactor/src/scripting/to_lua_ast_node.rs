@@ -1047,6 +1047,10 @@ impl UserData for LuaAstNode<P<Local>> {
 unsafe impl Send for LuaAstNode<Lit> {}
 impl UserData for LuaAstNode<Lit> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_kind", |_lua_ctx, this, ()| {
+            Ok(this.0.borrow().node.ast_name())
+        });
+
         methods.add_method("get_value", |lua_ctx, this, ()| {
             match this.borrow().node {
                 LitKind::Str(s, _) => {
