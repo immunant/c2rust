@@ -566,6 +566,33 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
 #[allow(unused_doc_comments)]
 impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method(
+            "dump_marks",
+            |_lua_ctx, this, ()| Ok(println!("Marks: {:?}", this.st.marks())),
+        );
+
+        methods.add_method_mut(
+            "clear_marks",
+            |_lua_ctx, this, ()| Ok(this.st.marks_mut().clear()),
+        );
+
+        methods.add_method(
+            "get_marks",
+            |lua_ctx, this, ()| {
+                let tbl = lua_ctx.create_table()?;
+
+                for (node_id, sym) in this.st.marks().iter() {
+                    let list: Option<LuaTable> = tbl.get("node_id")?;
+                    let list = list.unwrap_or(lua_ctx.create_table()?);
+
+                    list.set(list.len()? + 1, sym.as_str().get())?;
+                    tbl.set(node_id.as_usize(), list)?;
+                }
+
+                Ok(tbl)
+            },
+        );
+
         /// Replace matching statements using given callback
         // @function replace_stmts_with
         // @tparam string needle Statements pattern to search for, may include variable bindings

@@ -742,16 +742,10 @@ function MarkConverter:visit_arg(arg)
     end
 end
 
-function infer_node_id_cfgs()
-    local marks = refactor:get_marks()
+function infer_node_id_cfgs(ctx)
+    local marks = ctx:get_marks()
     local converter = MarkConverter.new(marks)
-
-    refactor:transform(
-        function(transform_ctx)
-            return transform_ctx:visit_crate_new(converter)
-        end
-    )
-
+    ctx:visit_crate_new(converter)
     return converter.node_id_cfgs
 end
 
@@ -761,17 +755,19 @@ function run_ptr_upgrades(node_id_cfgs)
         refactor:run_command("ownership_annotate", {"ann"})
         -- refactor:clear_marks()
         -- refactor:dump_marks()
-        refactor:dump_ty_ids()
+        -- refactor:dump_ty_ids()
         refactor:run_command("ownership_mark_pointers", {})
-        refactor:dump_ty_ids()
-        refactor:dump_marks()
-        node_id_cfgs = infer_node_id_cfgs()
+        -- refactor:dump_ty_ids()
+        -- refactor:dump_marks()
         -- refactor:run_command("ownership_clear_annotations", {})
     end
 
     refactor:transform(
         function(transform_ctx)
-            return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
+           if not node_id_cfgs then
+              node_id_cfgs = infer_node_id_cfgs(transform_ctx)
+           end
+           return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
         end
     )
 end
