@@ -143,6 +143,11 @@ impl UserData for RefactorState {
             },
         );
 
+        methods.add_method_mut(
+            "dump_marks",
+            |_lua_ctx, this, ()| Ok(println!("Marks: {:?}", this.marks()))
+        );
+
         /// Run a custom refactoring transformation
         // @function transform
         // @tparam function(TransformCtxt) callback Transformation function called with a fresh @{TransformCtxt}. This @{TransformCtxt} can operate on the crate to implement transformations.
