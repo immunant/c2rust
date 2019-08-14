@@ -1,0 +1,9 @@
+transpile:
+  autogen: true
+  binary: runtest
+
+cargo:
+  autogen: true
+
+  # blocked on va_copy support
+  xfail: true
