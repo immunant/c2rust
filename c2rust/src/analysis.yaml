@@ -3,6 +3,13 @@ version: 0.1.0
 author: |
   - The C2Rust Project Developers <c2rust@immunant.com>
 about: Analyze unsafe Rust for safety improvement opportunities
+args:
+  - binary:
+      long: binary
+      short: b
+      help: "Binary module to analyze"
+      takes_value: true
+      required: true
 subcommands:
   - instrument:
       about: Instrument Rust code to track dynamic lifetimes of allocations
@@ -17,7 +24,7 @@ subcommands:
         - main:
             long: main
             default_value: "main"
-            help: "Full path to main function"
+            help: "Name of main function"
   - process:
       about: Process instrumented run(s)
       args:

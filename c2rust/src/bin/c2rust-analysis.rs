@@ -24,10 +24,11 @@ fn main() {
     let yaml = load_yaml!("../analysis.yaml");
     let matches = App::from_yaml(yaml)
         .get_matches();
+    let binary = matches.value_of_lossy("binary").unwrap().to_string();
 
     match matches.subcommand() {
-        ("instrument", Some(sub_matches)) => Instrumenter::new(sub_matches).run(), 
-        ("process", Some(sub_matches)) => handle_process(sub_matches),
+        ("instrument", Some(sub_matches)) => Instrumenter::new(binary, sub_matches).run(), 
+        ("process", Some(sub_matches)) => handle_process(binary, sub_matches),
        _ => (),
     };
 }
@@ -65,11 +66,12 @@ struct Instrumenter {
     out_config: Config,
     out_path: PathBuf,
     debug: bool,
-    main_path: String,
+    main_fn: String,
+    binary_mod: String,
 }
 
 impl Instrumenter {
-    fn new(matches: &ArgMatches) -> Self {
+    fn new(binary: String, matches: &ArgMatches) -> Self {
         let ctx = AnalysisContext::new();
 
         let mut out_tempdir = Some(tempdir().expect("Could not create temporary directory"));
@@ -123,7 +125,8 @@ impl Instrumenter {
             out_config,
             out_path,
             debug: matches.is_present("debug"),
-            main_path: matches.value_of_lossy("main").unwrap().to_string(),
+            main_fn: matches.value_of_lossy("main").unwrap().to_string(),
+            binary_mod: binary,
         }
     }
 
@@ -149,11 +152,13 @@ impl Instrumenter {
                     name: String::from("lifetime_analysis_instrument"),
                     args: vec![
                         String::from(self.ctx.span_path().to_str().unwrap()),
-                        self.main_path.clone(),
+                        self.main_fn.clone(),
                     ],
                 },
             ],
-            rustc_args: c2rust_refactor::RustcArgSource::Cargo(c2rust_refactor::CargoTarget::All),
+            rustc_args: c2rust_refactor::RustcArgSource::Cargo(
+                c2rust_refactor::CargoTarget::Bin(self.binary_mod.clone()),
+            ),
             cursors: vec![],
             marks: vec![],
             plugins: vec![],
@@ -212,7 +217,7 @@ fn copy_recursively(src: &Path, dest: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn handle_process(matches: &ArgMatches) {
+fn handle_process(binary: String, matches: &ArgMatches) {
     let ctx = AnalysisContext::new();
 
     let span_path = String::from(ctx.target_dir.join(SPAN_FILENAME).canonicalize().unwrap().to_string_lossy());
@@ -228,7 +233,9 @@ fn handle_process(matches: &ArgMatches) {
                 args: vec![span_path, log_path],
             },
         ],
-        rustc_args: c2rust_refactor::RustcArgSource::Cargo(c2rust_refactor::CargoTarget::All),
+        rustc_args: c2rust_refactor::RustcArgSource::Cargo(
+            c2rust_refactor::CargoTarget::Bin(binary),
+        ),
         cursors: vec![],
         marks: vec![],
         plugins: vec![],
