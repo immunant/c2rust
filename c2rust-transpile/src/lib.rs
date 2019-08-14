@@ -1,5 +1,6 @@
 #![feature(rustc_private)]
 #![feature(label_break_value)]
+#![feature(box_patterns)]
 
 extern crate colored;
 extern crate dtoa;
@@ -59,6 +60,7 @@ use c2rust_ast_exporter as ast_exporter;
 
 use crate::build_files::{emit_build_files, get_build_dir};
 use crate::compile_cmds::get_compile_commands;
+use crate::convert_type::RESERVED_NAMES;
 pub use crate::translator::ReplaceMode;
 use std::prelude::v1::Vec;
 
@@ -107,18 +109,57 @@ pub struct TranspilerConfig {
     pub output_dir: Option<PathBuf>,
     pub translate_const_macros: bool,
     pub disable_refactoring: bool,
+    pub log_level: log::LevelFilter,
 
     // Options that control build files
-    /// Emit `Cargo.toml` and one of `main.rs`, `lib.rs`
+    /// Emit `Cargo.toml` and `lib.rs`
     pub emit_build_files: bool,
-    /// Names the translation unit containing the main function
-    pub main: Option<String>,
+    /// Names of translation units containing main functions that we should make
+    /// into binaries
+    pub binaries: Vec<String>,
 }
+
+impl TranspilerConfig {
+    fn is_binary(&self, file: &Path) -> bool {
+        let fname = &file.file_stem().unwrap().to_str().map(String::from);
+        let name = get_module_name(fname).unwrap();
+        self.binaries.contains(&name)
+    }
+
+    fn crate_name(&self) -> String {
+        self.output_dir.as_ref().and_then(
+            |x| x.file_name().map(|x| x.to_string_lossy().into_owned())
+        ).unwrap_or_else(|| "c2rust".into())
+    }
+}
+
+/// Make sure that module name:
+/// - does not contain illegal characters,
+/// - does not clash with reserved keywords.
+fn get_module_name(filename: &Option<String>) -> Option<String> {
+    if let Some(ref name) = filename {
+        // module names cannot contain periods or dashes
+        let mut module = name.chars().map(|c|
+            match c {
+                '.' | '-' => '_',
+                _ => c
+            }
+        ).collect();
+
+        // make sure the module name does not clash with keywords
+        if RESERVED_NAMES.contains(&name.as_str()) {
+            module = format!("r#{}", module);
+        }
+        return Some(module);
+    }
+    None
+}
+
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
-    diagnostics::init(tcfg.enabled_warnings.clone());
+    diagnostics::init(tcfg.enabled_warnings.clone(), tcfg.log_level);
 
     let cmds = get_compile_commands(cc_db, &tcfg.filter).expect(&format!(
         "Could not parse compile commands from {}",

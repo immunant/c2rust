@@ -137,7 +137,7 @@ impl Transform for CollectToStruct {
 fn build_collected_struct(name: &str, matches: &[Bindings]) -> P<Item> {
     let fields = matches.iter().map(
         |bnd| mk().struct_field(bnd.get::<_, Ident>("__x").unwrap(), bnd.get::<_, P<Ty>>("__t").unwrap())).collect::<Vec<_>>();
-    mk().struct_item(name, fields)
+    mk().struct_item(name, fields, false)
 }
 
 fn build_struct_instance(struct_name: &str,

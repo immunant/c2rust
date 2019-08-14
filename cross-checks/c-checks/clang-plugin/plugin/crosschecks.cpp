@@ -385,7 +385,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
         }
 
         if (FunctionDecl *fd = dyn_cast<FunctionDecl>(d)) {
-            if (!fd->hasBody())
+            if (!fd->doesThisDeclarationHaveABody())
                 continue;
             auto fd_ident = fd->getIdentifier();
             if (fd_ident == nullptr) {
@@ -504,7 +504,11 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                      dni,
                                      fd->getType(), fd->getTypeSourceInfo(),
                                      SC_Static, true, true,
+#if CLANG_VERSION_MAJOR >= 9
+                                     fd->getConstexprKind());
+#else
                                      fd->isConstexpr());
+#endif
             body_fn_decl->setParams(fd->parameters());
             body_fn_decl->setBody(old_body);
             parent_dc->addDecl(body_fn_decl);

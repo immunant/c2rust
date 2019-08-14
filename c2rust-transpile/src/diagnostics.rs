@@ -8,7 +8,7 @@ use std::io;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::c_ast::DisplaySrcLoc;
+use crate::c_ast::DisplaySrcSpan;
 use c2rust_ast_exporter::get_clang_major_version;
 
 const DEFAULT_WARNINGS: &[Diagnostic] = &[];
@@ -20,11 +20,12 @@ pub enum Diagnostic {
     Comments,
 }
 
+#[allow(unused_macros)]
 macro_rules! diag {
     ($type:path, $($arg:tt)*) => (warn!(target: &$type.to_string(), $($arg)*))
 }
 
-pub fn init(mut enabled_warnings: HashSet<Diagnostic>) {
+pub fn init(mut enabled_warnings: HashSet<Diagnostic>, log_level: log::LevelFilter) {
     enabled_warnings.extend(DEFAULT_WARNINGS.iter().cloned());
 
     let colors = ColoredLevelConfig::new();
@@ -51,7 +52,7 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>) {
                 warn_flag,
             ))
         })
-        .level(log::LevelFilter::Warn)
+        .level(log_level)
         .filter(move |metadata| {
             if enabled_warnings.contains(&Diagnostic::All) {
                 return true;
@@ -68,7 +69,7 @@ pub fn init(mut enabled_warnings: HashSet<Diagnostic>) {
 
 #[derive(Debug, Clone)]
 pub struct TranslationError {
-    loc: Vec<DisplaySrcLoc>,
+    loc: Vec<DisplaySrcSpan>,
     inner: Arc<Context<TranslationErrorKind>>,
 }
 
@@ -148,7 +149,7 @@ impl TranslationError {
         self.inner.get_context().clone()
     }
 
-    pub fn new(loc: Option<DisplaySrcLoc>, inner: Context<TranslationErrorKind>) -> Self {
+    pub fn new(loc: Option<DisplaySrcSpan>, inner: Context<TranslationErrorKind>) -> Self {
         let mut loc_stack = vec![];
         if let Some(loc) = loc {
             loc_stack.push(loc.clone());
@@ -166,7 +167,7 @@ impl TranslationError {
         }
     }
 
-    pub fn add_loc(mut self, loc: Option<DisplaySrcLoc>) -> Self {
+    pub fn add_loc(mut self, loc: Option<DisplaySrcSpan>) -> Self {
         if let Some(loc) = loc {
             self.loc.push(loc);
         }

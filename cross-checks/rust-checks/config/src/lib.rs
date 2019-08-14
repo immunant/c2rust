@@ -1,5 +1,5 @@
 #![cfg_attr(feature = "parse-syntax", feature(rustc_private))]
-#![feature(box_patterns)]
+#![feature(box_patterns, is_sorted)]
 
 #[macro_use]
 extern crate serde_derive;
@@ -18,6 +18,10 @@ extern crate indexmap;
 pub mod attr;
 #[cfg(feature = "scopes")]
 pub mod scopes;
+
+use indexmap::IndexMap;
+use itertools::Itertools;
+use regex::RegexSet;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -272,27 +276,105 @@ impl ItemList {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct NamedItemList {
-    // FIXME: _items is unused; do we really need it???
-    pub name_map: HashMap<String, Vec<ItemConfigRef>>,
+    /// Vector of all items in this list
+    items: ItemList,
+
+    /// Map from C identifier names to their positions in `items`
+    c_ident_map: HashMap<String, Vec<usize>>,
+
+    /// Regex set for non-identifier names
+    regexes: RegexSet,
+
+    /// Mapping from RegexSet indices to their positions in `items`
+    regex_indices: Vec<usize>,
+}
+
+impl Default for NamedItemList {
+    fn default() -> NamedItemList {
+        let v: Vec<&str> = vec![];
+        NamedItemList {
+            items: Default::default(),
+            c_ident_map: Default::default(),
+            regexes: RegexSet::new(&v).unwrap(),
+            regex_indices: Default::default(),
+        }
+    }
+}
+
+fn is_c_ident(s: &str) -> bool {
+    s.chars().all(|ch| {
+        ('a'..='z').contains(&ch)
+            || ('A'..='Z').contains(&ch)
+            || ('0'..='9').contains(&ch)
+            || ch == '_'
+    })
 }
 
 impl NamedItemList {
     pub fn new(items: &ItemList) -> NamedItemList {
-        let mut map: HashMap<String, Vec<_>> = HashMap::new();
-        for item in items.0.iter() {
-            if let Some(item_name) = item.name().map(String::from) {
-                map.entry(item_name)
-                    .or_default()
-                    .push(ItemConfigRef::clone(item));
-            }
+        let items = items
+            .items()
+            .iter()
+            .filter(|item| item.name().is_some())
+            .map(Rc::clone)
+            .collect();
+        Self::from_inner_items(items)
+    }
+
+    fn from_inner_items(items: Vec<ItemConfigRef>) -> NamedItemList {
+        let item_names = items
+            .iter()
+            .enumerate()
+            .map(|(idx, item)| (item.name().unwrap(), idx));
+
+        let mut c_ident_map = HashMap::<String, Vec<usize>>::new();
+        item_names
+            .clone()
+            .filter(|(item, _)| is_c_ident(&item))
+            .for_each(|(item, idx)| {
+                c_ident_map.entry(item.to_owned()).or_default().push(idx);
+            });
+
+        let regex_names = item_names.filter(|(item, _)| !is_c_ident(&item));
+        let regexes = regex_names.clone().map(|(item, _)| item);
+        let regexes = RegexSet::new(regexes).unwrap();
+        let regex_indices = regex_names.map(|(_, idx)| idx).collect();
+        NamedItemList {
+            items: ItemList(items),
+            c_ident_map,
+            regexes,
+            regex_indices,
         }
-        NamedItemList { name_map: map }
+    }
+
+    pub fn get<'a>(&'a self, item: &str) -> impl Iterator<Item = ItemConfigRef> + 'a {
+        let v = vec![];
+        let c_ident_indices = self.c_ident_map.get(item).unwrap_or(&v);
+
+        let indices = self
+            .regexes
+            .matches(item)
+            .iter()
+            .map(|idx| self.regex_indices[idx])
+            .merge(c_ident_indices.iter().copied())
+            .collect::<Vec<_>>();
+
+        assert!(indices.is_sorted());
+        indices
+            .into_iter()
+            .map(move |idx| Rc::clone(self.items.0.get(idx).unwrap()))
     }
 
     pub fn extend(&mut self, other: NamedItemList) {
-        self.name_map.extend(other.name_map.into_iter());
+        if other.items.0.is_empty() {
+            return;
+        }
+
+        let mut items = std::mem::replace(&mut self.items, Default::default());
+        items.0.extend(other.items.0.into_iter());
+        *self = Self::from_inner_items(items.0);
     }
 }
 
@@ -313,7 +395,7 @@ pub struct ExtFileConfig {
 #[serde(untagged)]
 pub enum RootConfig {
     /// Filename-to-config mapping
-    NameMap(HashMap<String, FileConfig>),
+    NameMap(IndexMap<String, FileConfig>),
 
     /// Vector of ExtFileConfig elements
     ExtVector(Vec<ExtFileConfig>),
@@ -352,7 +434,6 @@ impl RootConfig {
         match self {
             RootConfig::NameMap(map_self) => {
                 // Convert the NameMap into an ordered Vec
-                // WARNING: the elements are emitted in random order
                 RootConfig::ExtVector(
                     map_self
                         .into_iter()

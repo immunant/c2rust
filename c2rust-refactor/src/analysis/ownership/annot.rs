@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use arena::SyncDroplessArena;
+use log::Level;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast;
@@ -213,8 +214,10 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
                     });
 
                     debug!("found constraints for {:?}:", def_id);
-                    for &(a, b) in cset.iter() {
-                        debug!("  {:?} <= {:?}", a, b);
+                    if log_enabled!(Level::Debug) {
+                        for &(a, b) in cset.iter() {
+                            debug!("  {:?} <= {:?}", a, b);
+                        }
                     }
 
                     let (func, _var) = cx.variant_summ(def_id);

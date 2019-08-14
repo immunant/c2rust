@@ -25,7 +25,7 @@ clap = {version = "2.33", features = ["yaml"]}
 c2rust-analysis-rt = { path = "../analysis/runtime" }
 env_logger = "0.6"
 log = "0.4"
-rlua = "0.16"
+rlua = "0.16.3"
 slotmap = {version = "0.3", features = ["unstable"]}
 derive_more = "0.14"
 c2rust-macros = { version = "0.10.0", path = "../c2rust-macros" }

@@ -343,7 +343,7 @@ impl ConversionContext {
     fn convert(&mut self, untyped_context: &AstContext) -> () {
         for raw_comment in &untyped_context.comments {
             let comment = Located {
-                loc: Some(raw_comment.loc.clone()),
+                loc: Some(raw_comment.loc.into()),
                 kind: raw_comment.string.clone(),
             };
             self.typed_context.comments.push(comment);
@@ -498,6 +498,15 @@ impl ConversionContext {
 
                     let pointer_ty = CTypeKind::Pointer(pointed_new);
                     self.add_type(new_id, not_located(pointer_ty));
+                    self.processed_nodes.insert(new_id, OTHER_TYPE);
+                }
+
+                TypeTag::TagReference if expected_ty & OTHER_TYPE != 0 => {
+                    let referenced = ty_node.extras[0].as_u64().expect("Reference child not found");
+                    let referenced_new = self.visit_qualified_type(referenced);
+
+                    let reference_ty = CTypeKind::Reference(referenced_new);
+                    self.add_type(new_id, not_located(reference_ty));
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 

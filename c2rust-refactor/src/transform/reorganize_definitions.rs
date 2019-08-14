@@ -866,14 +866,14 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
             let cur_mod_name = item.parent_header.map(|x| x.ident);
             match item.node {
                 DeclKind::Item(i) => {
-                    if last_item_mod != cur_mod_name {
+                    if last_item_mod != cur_mod_name && cur_mod_name.is_some() {
                         st.add_comment(i.id, make_header_comment(last_item_mod, cur_mod_name));
                         last_item_mod = cur_mod_name;
                     }
                     items.push(i);
                 }
                 DeclKind::ForeignItem(fi, abi) => {
-                    if last_foreign_item_mod != cur_mod_name {
+                    if last_foreign_item_mod != cur_mod_name && cur_mod_name.is_some() {
                         st.add_comment(fi.id, make_header_comment(last_foreign_item_mod, cur_mod_name));
                         last_foreign_item_mod = cur_mod_name;
                     }

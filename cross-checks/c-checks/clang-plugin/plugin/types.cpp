@@ -700,10 +700,17 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
                     // Build the argument vector
                     auto &args = std::get<1>(field_hash_fn_sig);
                     auto arg_build_fn = [&ctx, param_ref_rv] (DeclaratorDecl *decl) {
+#if CLANG_VERSION_MAJOR >= 9
+                        return MemberExpr::CreateImplicit(ctx, param_ref_rv, true,
+                                                          decl, decl->getType(),
+                                                          VK_LValue, OK_Ordinary);
+
+#else
                         return new (ctx) MemberExpr(param_ref_rv, true, SourceLocation(),
                                                     decl, SourceLocation(),
                                                     decl->getType(), VK_LValue,
                                                     OK_Ordinary);
+#endif
                     };
                     field_hash_args = generic_custom_args(ctx, field_decls,
                                                           args, arg_build_fn);
@@ -715,9 +722,15 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
                     auto field_hash_fn = get_type_hash_function(field_ty, field_ty_name, ctx, true);
                     field_hash_fn_name = field_hash_fn.name.full_name();
                     auto field_ref_lv =
+#if CLANG_VERSION_MAJOR >= 9
+                        MemberExpr::CreateImplicit(ctx, param_ref_rv, true,
+                                                   field, field->getType(),
+                                                   VK_LValue, OK_Ordinary);
+#else
                         new (ctx) MemberExpr(param_ref_rv, true, SourceLocation(),
                                              field, SourceLocation(),
                                              field->getType(), VK_LValue, OK_Ordinary);
+#endif
                     auto field_ref_rv = field_hash_fn.forward_argument(field_ref_lv, ctx);
                     field_hash_args.push_back(field_ref_rv);
                 }

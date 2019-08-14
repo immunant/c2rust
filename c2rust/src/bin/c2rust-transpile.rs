@@ -32,6 +32,16 @@ fn main() {
         .map(|s| Diagnostic::from_str(s).unwrap())
         .collect();
 
+    let log_level = match matches.value_of("log-level") {
+        Some("off") => log::LevelFilter::Off,
+        Some("error") => log::LevelFilter::Error,
+        Some("warn") => log::LevelFilter::Warn,
+        Some("info") => log::LevelFilter::Info,
+        Some("debug") => log::LevelFilter::Debug,
+        Some("trace") => log::LevelFilter::Trace,
+        _ => panic!("Invalid log level"),
+    };
+
     let mut tcfg = TranspilerConfig {
         dump_untyped_context: matches.is_present("dump-untyped-clang-ast"),
         dump_typed_context: matches.is_present("dump-typed-clang-ast"),
@@ -88,13 +98,10 @@ fn main() {
         emit_modules: matches.is_present("emit-modules"),
         emit_build_files: matches.is_present("emit-build-files"),
         output_dir: matches.value_of("output-dir").map(PathBuf::from),
-        main: {
-            if matches.is_present("main") {
-                Some(String::from(matches.value_of("main").unwrap()))
-            } else {
-                None
-            }
-        },
+        binaries: matches
+            .values_of("binary")
+            .map(|values| values.map(String::from).collect())
+            .unwrap_or_else(|| vec![]),
         panic_on_translator_failure: {
             match matches.value_of("invalid-code") {
                 Some("panic") => true,
@@ -105,9 +112,10 @@ fn main() {
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: matches.is_present("emit-no-std"),
         enabled_warnings,
+        log_level,
     };
-    // main implies emit-build-files
-    if tcfg.main != None {
+    // binaries imply emit-build-files
+    if !tcfg.binaries.is_empty() {
         tcfg.emit_build_files = true
     };
     // emit-build-files implies emit-modules

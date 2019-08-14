@@ -10,9 +10,8 @@ grep -Ei 'debian|buntu|mint' /etc/*release > /dev/null || {
 export DEBIAN_FRONTEND=noninteractive
 SCRIPT_DIR="$(dirname "$0")"
 
-apt-get update -qq
 # gnupg2: required for gnupg2 key retrieval
-apt-get install -qq \
+apt-get update -qq && apt-get install -qq \
     cmake \
     curl \
     dirmngr \
@@ -28,7 +27,8 @@ apt-get install -qq \
     python3-setuptools \
     software-properties-common \
     unzip \
-    libncurses5-dev
+    libncurses5-dev \
+    luarocks
 
 # Older releases do not include clang 6 and later so we grab 
 # the latest versions of those packages from the LLVM project. 
@@ -55,6 +55,14 @@ update-alternatives --install /usr/bin/clang clang /usr/bin/clang-6.0 100
 update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100
 # update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-6.0 100
 
-# Install python3 and packages
+# Current version of scan-build requires setuptools 20.5 or newer to parse
+# environment markers in install_requires
+pip3 install "setuptools >= 20.5"
+# Install python3 packages
 pip3 install -r $SCRIPT_DIR/requirements.txt
 
+# Set the system-wide Lua path to include luarocks directories
+luarocks path > /etc/profile.d/luarocks-path.sh
+
+# Install penlight lua package with luarocks
+luarocks install penlight

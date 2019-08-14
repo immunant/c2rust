@@ -400,31 +400,13 @@ impl<'c> Translation<'c> {
 
                     // Everything else
                     c_ast::BinOp::AssignAdd if pointer_lhs.is_some() => {
-                        let ptr = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
-                            Some(sz) => {
-                                let offset = mk().binary_expr(
-                                    BinOpKind::Mul,
-                                    cast_int(rhs, "isize"),
-                                    cast_int(sz, "isize"),
-                                );
-                                pointer_offset_isize(write.clone(), offset)
-                            }
-                            None => pointer_offset(write.clone(), rhs),
-                        };
+                        let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
+                        let ptr = pointer_offset(write.clone(), rhs, mul, false, false);
                         WithStmts::new_val(mk().assign_expr(&write, ptr))
                     }
                     c_ast::BinOp::AssignSubtract if pointer_lhs.is_some() => {
-                        let ptr = match self.compute_size_of_expr(pointer_lhs.unwrap().ctype) {
-                            Some(sz) => pointer_neg_offset_isize(
-                                write.clone(),
-                                mk().binary_expr(
-                                    BinOpKind::Mul,
-                                    cast_int(rhs, "isize"),
-                                    cast_int(sz, "isize"),
-                                ),
-                            ),
-                            None => pointer_neg_offset(write.clone(), rhs),
-                        };
+                        let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
+                        let ptr = pointer_offset(write.clone(), rhs, mul, true, false);
                         WithStmts::new_val(mk().assign_expr(&write, ptr))
                     }
 
@@ -689,29 +671,11 @@ impl<'c> Translation<'c> {
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = lhs_type {
-            match self.compute_size_of_expr(pointee.ctype) {
-                Some(sz) => {
-                    let rhs = mk().binary_expr(
-                        BinOpKind::Mul,
-                        cast_int(rhs, "isize"),
-                        cast_int(sz, "isize"),
-                    );
-                    Ok(pointer_offset_isize(lhs, rhs))
-                }
-                None => Ok(pointer_offset(lhs, rhs)),
-            }
+            let mul = self.compute_size_of_expr(pointee.ctype);
+            Ok(pointer_offset(lhs, rhs, mul, false, false))
         } else if let &CTypeKind::Pointer(pointee) = rhs_type {
-            match self.compute_size_of_expr(pointee.ctype) {
-                Some(sz) => {
-                    let lhs = mk().binary_expr(
-                        BinOpKind::Mul,
-                        cast_int(lhs, "isize"),
-                        cast_int(sz, "isize"),
-                    );
-                    Ok(pointer_offset_isize(rhs, lhs))
-                }
-                None => Ok(pointer_offset(rhs, lhs)),
-            }
+            let mul = self.compute_size_of_expr(pointee.ctype);
+            Ok(pointer_offset(rhs, lhs, mul, false, false))
         } else if lhs_type.is_unsigned_integral_type() {
             if ctx.is_const {
                 return Err(TranslationError::generic(
@@ -750,22 +714,14 @@ impl<'c> Translation<'c> {
             let mut offset = mk().method_call_expr(lhs, "wrapping_offset_from", vec![rhs]);
 
             if let Some(sz) = self.compute_size_of_expr(pointee.ctype) {
-                offset = mk().binary_expr(BinOpKind::Div, offset, cast_int(sz, "isize"))
+                let div = cast_int(sz, "isize", false);
+                offset = mk().binary_expr(BinOpKind::Div, offset, div);
             }
 
             Ok(mk().cast_expr(offset, ty))
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
-            match self.compute_size_of_expr(pointee.ctype) {
-                None => Ok(pointer_neg_offset(lhs, rhs)),
-                Some(sz) => Ok(pointer_neg_offset_isize(
-                    lhs,
-                    mk().binary_expr(
-                        BinOpKind::Mul,
-                        cast_int(rhs, "isize"),
-                        cast_int(sz, "isize"),
-                    ),
-                )),
-            }
+            let mul = self.compute_size_of_expr(pointee.ctype);
+            Ok(pointer_offset(lhs, rhs, mul, true, false))
         } else if lhs_type.is_unsigned_integral_type() {
             if ctx.is_const {
                 return Err(TranslationError::generic(

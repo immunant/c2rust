@@ -19,9 +19,3 @@ extern crate {{this}};
 #[path = "{{this.path}}"]
 pub mod {{this.name}};
 {{/each}}
-
-{{~#if main_module~}}
-    {{~#if cross_checks~}}#[cross_check(none)]
-    {{/if}}
-fn main() { {{main_module}}::main() }
-{{/if}}

@@ -4,6 +4,7 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
+use log::Level;
 use rustc::hir::def_id::DefId;
 
 use super::constraint::{ConstraintSet, Perm};
@@ -112,8 +113,10 @@ impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
 
         // Simplify away inst vars to produce a new complete cset for this fn.
         debug!("  original constraints:");
-        for &(a, b) in cset.iter() {
-            debug!("    {:?} <= {:?}", a, b);
+        if log_enabled!(Level::Debug) {
+            for &(a, b) in cset.iter() {
+                debug!("    {:?} <= {:?}", a, b);
+            }
         }
 
         cset.remove_useless();
@@ -125,8 +128,10 @@ impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
         });
 
         debug!("  simplified constraints:");
-        for &(a, b) in cset.iter() {
-            debug!("    {:?} <= {:?}", a, b);
+        if log_enabled!(Level::Debug) {
+            for &(a, b) in cset.iter() {
+                debug!("    {:?} <= {:?}", a, b);
+            }
         }
 
         // Update `cx.static_assign`
@@ -159,8 +164,10 @@ impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
         let cset = self.compute_one_cset(def_id);
 
         debug!("save cset for {:?}", def_id);
-        for &(a, b) in cset.iter() {
-            debug!("  {:?} <= {:?}", a, b);
+        if log_enabled!(Level::Debug) {
+            for &(a, b) in cset.iter() {
+                debug!("  {:?} <= {:?}", a, b);
+            }
         }
 
         // Update `complete_cset`

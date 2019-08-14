@@ -100,6 +100,7 @@ enum TypeTag {
     TagULong,
     TagULongLong,
     TagPointer,
+    TagReference,
     TagStructType,
 
     TagUnionType,

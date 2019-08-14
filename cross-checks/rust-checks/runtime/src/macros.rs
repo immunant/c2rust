@@ -12,7 +12,7 @@ macro_rules! cross_check_raw {
         cross_check_raw!(UNKNOWN_TAG, $item)
     };
     ($tag:ident, $item:expr) => {{
-        use std::iter::once;
+        use core::iter::once;
         cross_check_iter!(once(($crate::xcheck::$tag, $item as u64)))
     }};
 }

@@ -13,7 +13,7 @@ use serde_json::json;
 use super::TranspilerConfig;
 use crate::CrateSet;
 use crate::PragmaSet;
-use crate::convert_type::RESERVED_NAMES;
+use crate::get_module_name;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -75,7 +75,7 @@ pub fn emit_build_files(
     reg.register_template_string("build.rs", include_str!("build.rs.hbs"))
         .unwrap();
 
-    emit_cargo_toml(tcfg, &reg, &build_dir, &crates);
+    emit_cargo_toml(tcfg, &reg, &build_dir, &modules, &crates);
     if tcfg.translate_valist {
         emit_rust_toolchain(tcfg, &build_dir);
     }
@@ -89,35 +89,12 @@ struct Module {
     name: String,
 }
 
-fn get_root_rs_file_name(tcfg: &TranspilerConfig) -> &str {
-    match (&tcfg.main, &tcfg.output_dir) {
-        (Some(_), None) => "c2rust-main.rs",
-        (None, None) => "c2rust-lib.rs",
-        (Some(_), Some(_)) => "main.rs",
-        (None, Some(_)) => "lib.rs",
+fn get_lib_rs_file_name(tcfg: &TranspilerConfig) -> &str {
+    if tcfg.output_dir.is_some() {
+        "lib.rs"
+    } else {
+        "c2rust-lib.rs"
     }
-}
-
-/// Make sure that module name:
-/// - does not contain illegal characters,
-/// - does not clash with reserved keywords.
-fn get_module_name(main: &Option<String>) -> Option<String> {
-    if let Some(ref name) = main {
-        // module names cannot contain periods or dashes
-        let mut module = name.chars().map(|c|
-            match c {
-                '.' | '-' => '_',
-                _ => c
-            }
-        ).collect();
-
-        // make sure the module name does not clash with keywords
-        if RESERVED_NAMES.contains(&name.as_str()) {
-            module = format!("r#{}", module);
-        }
-        return Some(module);
-    }
-    None
 }
 
 /// Emit `build.rs` to make it easier to link in native libraries
@@ -147,24 +124,29 @@ fn emit_lib_rs(
 
     let modules = modules
         .iter()
-        .map(|m| {
-            let relpath = diff_paths(m, build_dir).unwrap();
-            let path = relpath.to_str().unwrap().to_string();
-            let fname = &m.file_stem().unwrap().to_str().map(String::from);
-            let name = get_module_name(fname).unwrap();
-            Module { path, name }
+        .filter_map(|m| {
+            if tcfg.is_binary(&m) {
+                // Don't add binary modules to lib.rs, these are emitted to
+                // standalone, separate binary modules.
+                None
+            } else {
+                let relpath = diff_paths(m, build_dir).unwrap();
+                let path = relpath.to_str().unwrap().to_string();
+                let fname = &m.file_stem().unwrap().to_str().map(String::from);
+                let name = get_module_name(fname).unwrap();
+                Some(Module { path, name })
+            }
         })
         .collect::<Vec<_>>();
 
-    let file_name = get_root_rs_file_name(tcfg);
+    let file_name = get_lib_rs_file_name(tcfg);
     let rs_xcheck_backend = tcfg.cross_check_backend.replace("-", "_");
     let json = json!({
-        "root_rs_file": file_name,
+        "lib_rs_file": file_name,
         "reorganize_definitions": tcfg.reorganize_definitions,
         "translate_valist": tcfg.translate_valist,
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": rs_xcheck_backend,
-        "main_module": get_module_name(&tcfg.main),
         "plugin_args": plugin_args,
         "modules": modules,
         "pragmas": pragmas,
@@ -185,15 +167,36 @@ fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
 }
 
-fn emit_cargo_toml(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path, crates: &CrateSet) {
+fn emit_cargo_toml(
+    tcfg: &TranspilerConfig,
+    reg: &Handlebars,
+    build_dir: &Path,
+    modules: &[PathBuf],
+    crates: &CrateSet,
+) {
     // rust_checks_path is gone because we don't want to refer to the source
     // path but instead want the cross-check libs to be installed via cargo.
+
+    let binaries = modules
+        .iter()
+        .filter_map(|m| {
+            if tcfg.is_binary(&m) {
+                let relpath = diff_paths(m, build_dir).unwrap();
+                let path = relpath.to_str().unwrap().to_string();
+                let fname = &m.file_stem().unwrap().to_str().map(String::from);
+                let name = get_module_name(fname).unwrap();
+                Some(Module { path, name })
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
     let json = json!({
-        "crate_name": tcfg.output_dir.as_ref().and_then(
-            |x| x.file_name().map(|x| x.to_string_lossy())
-        ).unwrap_or("c2rust".into()),
-        "root_rs_file": get_root_rs_file_name(tcfg),
-        "main_module": tcfg.main.is_some(),
+        "crate_name": tcfg.crate_name(),
+        "crate_rust_name": tcfg.crate_name().replace('-', "_"),
+        "lib_rs_file": get_lib_rs_file_name(tcfg),
+        "binaries": binaries,
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": tcfg.cross_check_backend,
         "c2rust_bitfields": crates.contains("c2rust_bitfields"),

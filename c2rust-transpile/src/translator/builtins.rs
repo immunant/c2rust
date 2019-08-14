@@ -193,7 +193,7 @@ impl<'c> Translation<'c> {
             "__builtin_object_size" => {
                 // We can't convert this to Rust, but it should be safe to always return -1/0
                 // (depending on the value of `type`), so we emit the following:
-                // `if (type & 2) == 0 { -1 } else { 0 }`
+                // `(if (type & 2) == 0 { -1isize } else { 0isize }) as libc::size_t`
                 let ptr_arg = self.convert_expr(ctx.unused(), args[0])?;
                 let type_arg = self.convert_expr(ctx.used(), args[1])?;
                 ptr_arg.and_then(|_| {
@@ -202,10 +202,12 @@ impl<'c> Translation<'c> {
                                                           mk().lit_expr(mk().int_lit(2, "")));
                         let if_cond = mk().binary_expr(BinOpKind::Eq, type_and_2,
                                                        mk().lit_expr(mk().int_lit(0, "")));
-                        let minus_one = mk().unary_expr(UnOp::Neg, mk().lit_expr(mk().int_lit(1, "")));
-                        mk().ifte_expr(if_cond,
+                        let minus_one = mk().unary_expr(UnOp::Neg, mk().lit_expr(mk().int_lit(1, "isize")));
+                        let if_expr = mk().ifte_expr(if_cond,
                                        mk().block(vec![mk().expr_stmt(minus_one)]),
-                                       Some(mk().lit_expr(mk().int_lit(0, ""))))
+                                       Some(mk().lit_expr(mk().int_lit(0, "isize"))));
+                        let size_t = mk().path_ty(vec!["libc", "size_t"]);
+                        mk().cast_expr(if_expr, size_t)
                     }))
                 })
             }
@@ -295,7 +297,7 @@ impl<'c> Translation<'c> {
                         vec![mk().local_stmt(P(mk().local(
                             mk().mutbl().ident_pat(&alloca_name),
                             None as Option<P<Ty>>,
-                            Some(vec_expr(zero_elem, cast_int(count, "usize"))),
+                            Some(vec_expr(zero_elem, cast_int(count, "usize", false))),
                         )))],
                         mk().method_call_expr(
                             mk().ident_expr(&alloca_name),

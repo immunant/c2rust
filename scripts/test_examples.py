@@ -156,7 +156,7 @@ class Genann(Test):
     def _transpile_example(self, main: str):
         transpile(self.cc_db,
                   emit_build_files=False,
-                  extra_transpiler_args=['--emit-build-files', '--main', main,
+                  extra_transpiler_args=['--emit-build-files', '--binary', main,
                                          '--overwrite-existing',
                                          '--output-dir', self.rust_src])
 
@@ -250,7 +250,7 @@ class Lil(Test):
             c.EXAMPLES_DIR, self.project_name, is_dir=True)
         self.repo_dir = build_path(self.example_dir, 'repo', is_dir=True)
         self.rust_src = os.path.join(self.repo_dir, 'rust')
-        self.transpiler_args = ['--emit-build-files', '-m', 'main',
+        self.transpiler_args = ['--emit-build-files', '-b', 'main',
                                 '--overwrite-existing',
                                 '--output-dir', self.rust_src]
         self.ib_cmd = ['make']

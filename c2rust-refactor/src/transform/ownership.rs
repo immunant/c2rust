@@ -50,11 +50,11 @@ pub fn register_commands(reg: &mut Registry) {
 }
 
 /// # `ownership_annotate` Command
-/// 
+///
 /// Usage: `ownership_annotate [MARK]`
-/// 
+///
 /// Marks: `MARK`/`target`
-/// 
+///
 /// Run ownership analysis on functions bearing `MARK` (default: `target`),
 /// and add attributes to each function describing its inferred
 /// ownership properties.
@@ -294,11 +294,11 @@ fn build_variant_attr(group: &str) -> Attribute {
 
 
 /// # `ownership_split_variants` Command
-/// 
+///
 /// Usage: `ownership_split_variants [MARK]`
-/// 
+///
 /// Marks: `MARK`/`target`
-/// 
+///
 /// Run ownership analysis on functions bearing `MARK` (default: `target`),
 /// and split each ownership-polymorphic functions into multiple
 /// monomorphic variants.
@@ -329,7 +329,7 @@ fn do_split_variants(st: &CommandState,
             if !st.marked(fl.id, label) {
                 return smallvec![fl];
             }
-            eprintln!("looking at {:?}", fl.ident);
+            debug!("looking at {:?}", fl.ident);
 
             let def_id = match_or!([cx.hir_map().opt_local_def_id(fl.id)]
                                    Some(x) => x; return smallvec![fl]);
@@ -489,11 +489,11 @@ fn callee_new_name(cx: &RefactorCtxt,
 
 
 /// # `ownership_mark_pointers` Command
-/// 
+///
 /// Usage: `ownership_mark_pointers [MARK]`
-/// 
+///
 /// Marks: reads `MARK`/`target`; sets `ref`, `mut`, and `box`
-/// 
+///
 /// Run ownership analysis on functions bearing `MARK` (default: `target`),
 /// then for pointer type appearing in their argument and return types,
 /// apply one of the marks `ref`, `mut`, or `box`, reflecting the results

@@ -115,7 +115,7 @@ args:
   - emit-build-files:
       long: emit-build-files
       short: e
-      help: Emit Rust build files, i.e., Cargo.toml for a library (or a binary if -m/--main is given). Implies --emit-modules.
+      help: Emit Rust build files, i.e., Cargo.toml for a library (and one or more binaries if -b/--binary is given). Implies --emit-modules.
       takes_value: false
   - output-dir:
       long: output-dir
@@ -132,11 +132,13 @@ args:
       long: fail-on-error
       help: Fail to translate a module when a portion is not able to be translated
       takes_value: false
-  - main:
-      long: main
-      short: m
+  - binary:
+      long: binary
+      short: b
       help: Emit Rust build files for a binary using the main function in the specified translation unit (implies -e/--emit-build-files)
       takes_value: true
+      multiple: true
+      number_of_values: 1
   - overwrite-existing:
       long: overwrite-existing
       help: Emit files even if it causes existing files to be overwritten
@@ -166,3 +168,14 @@ args:
       long: disable-refactoring
       help: Disable running refactoring tool after translation
       takes_value: false
+  - log-level:
+      long: log-level
+      help: Logging level
+      possible_values:
+        - off
+        - error
+        - warn
+        - info
+        - debug
+        - trace
+      default_value: warn

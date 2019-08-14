@@ -13,5 +13,13 @@ yum install --quiet --assumeyes epel-release
 # NOTE: CentOS version of cmake is too old 
 yum install --quiet --assumeyes which ninja-build make cmake
 
+yum install --quiet --assumeyes luarocks
+
+# Set the system-wide Lua path to include luarocks directories
+luarocks path > /etc/profile.d/luarocks-path.sh
+
+# Install penlight lua package with luarocks
+luarocks install penlight
+
 # TODO: provision remaining packages and test
 echo >&2 "Provisioning incomplete."; exit 1; 

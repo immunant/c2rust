@@ -7,7 +7,7 @@ use syntax::util::map_in_place::MapInPlace;
 use syntax::visit::{self, Visitor};
 use syntax_pos::Span;
 
-use crate::ast_manip::{GetNodeId, GetSpan, MutVisit, Visit};
+use crate::ast_manip::{AstName, GetNodeId, GetSpan, MutVisit, Visit};
 
 /// Enum indicating which kind of itemlike a `fn` is.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -31,6 +31,17 @@ pub struct FnLike {
     // TODO: This should probably include `generics`, and maybe some kind of "parent generics" for
     // impl and trait items.
     // TODO: Also unsafety, constness, and abi (these should be much easier to add)
+}
+
+impl AstName for FnKind {
+    fn ast_name(&self) -> String {
+        match self {
+            FnKind::Normal => "Normal",
+            FnKind::ImplMethod => "ImplMethod",
+            FnKind::TraitMethod => "TraitMethod",
+            FnKind::Foreign => "Foreign",
+        }.into()
+    }
 }
 
 impl GetNodeId for FnLike {

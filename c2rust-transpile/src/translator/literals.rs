@@ -249,7 +249,23 @@ impl<'c> Translation<'c> {
                 }
             }
             CTypeKind::Struct(struct_id) => {
-                self.convert_struct_literal(ctx, struct_id, ids.as_ref())
+                let mut literal = self.convert_struct_literal(ctx, struct_id, ids.as_ref());
+                if self.ast_context.has_inner_struct_decl(struct_id) {
+                    // If the structure is split into an outer/inner,
+                    // wrap the inner initializer using the outer structure
+                    let outer_name = self.type_converter
+                        .borrow()
+                        .resolve_decl_name(struct_id)
+                        .unwrap();
+
+                    let outer_path = mk().path_expr(vec![outer_name]);
+                    literal = literal.map(|lit_ws| {
+                        lit_ws.map(|lit| {
+                            mk().call_expr(outer_path, vec![lit])
+                        })
+                    });
+                };
+                literal
             }
             CTypeKind::Union(union_id) => {
                 self.convert_union_literal(ctx, union_id, ids.as_ref(), ty, opt_union_field_id)
@@ -306,98 +322,5 @@ impl<'c> Translation<'c> {
             }
             _ => panic!("Expected union decl"),
         }
-    }
-
-    fn convert_struct_literal(
-        &self,
-        ctx: ExprContext,
-        struct_id: CRecordId,
-        ids: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let mut has_bitfields = false;
-        let (field_decls, platform_byte_size) = match self.ast_context.index(struct_id).kind {
-            CDeclKind::Struct {
-                ref fields,
-                platform_byte_size,
-                ..
-            } => {
-                let mut fieldnames = vec![];
-
-                let fields = match fields {
-                    &Some(ref fields) => fields,
-                    &None => {
-                        return Err(TranslationError::generic(
-                            "Attempted to construct forward-declared struct",
-                        ))
-                    }
-                };
-
-                for &x in fields {
-                    let name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_field_name(Some(struct_id), x)
-                        .unwrap();
-                    if let CDeclKind::Field {
-                        typ,
-                        bitfield_width,
-                        platform_type_bitwidth,
-                        platform_bit_offset,
-                        ..
-                    } = self.ast_context.index(x).kind
-                    {
-                        has_bitfields |= bitfield_width.is_some();
-
-                        fieldnames.push((
-                            name,
-                            typ,
-                            bitfield_width,
-                            platform_bit_offset,
-                            platform_type_bitwidth,
-                        ));
-                    } else {
-                        panic!("Struct field decl type mismatch")
-                    }
-                }
-
-                (fieldnames, platform_byte_size)
-            }
-            _ => panic!("Struct literal declaration mismatch"),
-        };
-
-        let struct_name = self
-            .type_converter
-            .borrow()
-            .resolve_decl_name(struct_id)
-            .unwrap();
-
-        if has_bitfields {
-            return self.convert_bitfield_struct_literal(
-                struct_name,
-                platform_byte_size,
-                ids,
-                field_decls,
-                ctx,
-            );
-        }
-
-        Ok(field_decls.iter()
-           .zip(ids.iter().map(Some).chain(iter::repeat(None)))
-
-           // We're now iterating over pairs of (field_decl, Option<id>). The id
-           // is Some until we run out of specified initializers, when we switch
-           // to implicit default initializers.
-           .map(|(decl, maybe_id)| {
-               let &(ref field_name, ty, _, _, _) = decl;
-               let field_init = match maybe_id {
-                   Some(id) => self.convert_expr(ctx.used(), *id)?,
-                   None => self.implicit_default_expr(ty.ctype, ctx.is_static)?,
-               };
-               Ok(field_init.map(|expr| mk().field(field_name, expr)))
-           })
-           .collect::<Result<WithStmts<Vec<ast::Field>>, TranslationError>>()?
-           .map(|fields| {
-               mk().struct_expr(vec![mk().path_segment(struct_name)], fields)
-           }))
     }
 }

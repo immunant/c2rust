@@ -1,5 +1,6 @@
 //! Intraprocedural step of the analysis.
 
+use log::Level;
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
 use rustc::ty::{Ty, TyKind};
@@ -151,8 +152,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
 
     pub fn finish(mut self) {
         debug!("  original constraints:");
-        for &(a, b) in self.cset.iter() {
+        if log_enabled!(Level::Debug) {
+            for &(a, b) in self.cset.iter() {
             debug!("    {:?} <= {:?}", a, b);
+            }
         }
 
         self.cset.remove_useless();
@@ -166,8 +169,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         self.cset.simplify(self.cx.arena);
 
         debug!("  simplified constraints:");
-        for &(a, b) in self.cset.iter() {
-            debug!("    {:?} <= {:?}", a, b);
+        if log_enabled!(Level::Debug) {
+            for &(a, b) in self.cset.iter() {
+                debug!("    {:?} <= {:?}", a, b);
+            }
         }
 
         let (_func, var) = self.cx.variant_summ(self.def_id);

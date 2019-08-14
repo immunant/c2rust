@@ -62,10 +62,11 @@ class CStaticLibrary:
 
 
 class CFile:
-    def __init__(self, path: str, flags: Set[str] = None) -> None:
+    def __init__(self, logLevel: str, path: str, flags: Set[str] = None) -> None:
         if not flags:
             flags = set()
 
+        self.logLevel = logLevel
         self.path = path
         self.disable_incremental_relooper = "disable_incremental_relooper" in flags
         self.disallow_current_block = "disallow_current_block" in flags
@@ -98,6 +99,9 @@ class CFile:
             args.append("--translate-const-macros")
         if self.reorganize_definitions:
             args.append("--reorganize-definitions")
+
+        if self.logLevel == 'DEBUG':
+            args.append("--log-level=debug")
 
         args.append("--")
         args.extend(extra_args)
@@ -194,7 +198,7 @@ class TestFile(RustFile):
 
 
 class TestDirectory:
-    def __init__(self, full_path: str, files: str, keep: List[str]) -> None:
+    def __init__(self, full_path: str, files: str, keep: List[str], logLevel: str) -> None:
         self.c_files = []
         self.rs_test_files = []
         self.full_path = full_path
@@ -202,6 +206,7 @@ class TestDirectory:
         self.files = files
         self.name = full_path.split('/')[-1]
         self.keep = keep
+        self.logLevel = logLevel
         self.generated_files = {
             "rust_src": [],
             "c_obj": [],
@@ -242,7 +247,7 @@ class TestDirectory:
         if "skip_translation" in file_flags:
             return
 
-        return CFile(path, file_flags)
+        return CFile(self.logLevel, path, file_flags)
 
     def _read_rust_test_file(self, path: str) -> TestFile:
         with open(path, 'r', encoding="utf-8") as file:
@@ -549,7 +554,8 @@ def readable_directory(directory: str) -> str:
 
 def get_testdirectories(
         directory: str, files: str,
-        keep: List[str], test_longdoubles: bool) -> Generator[TestDirectory, None, None]:
+        keep: List[str], test_longdoubles: bool,
+        logLevel: str) -> Generator[TestDirectory, None, None]:
     for entry in os.listdir(directory):
         path = os.path.abspath(os.path.join(directory, entry))
 
@@ -557,7 +563,7 @@ def get_testdirectories(
             if path.endswith("longdouble") and not test_longdoubles:
                 continue
 
-            yield TestDirectory(path, files, keep)
+            yield TestDirectory(path, files, keep, logLevel)
 
 
 def main() -> None:
@@ -592,7 +598,8 @@ def main() -> None:
     args = parser.parse_args()
     c.update_args(args)
     test_directories = get_testdirectories(args.directory, args.regex_files,
-                                           args.keep, args.test_longdoubles)
+                                           args.keep, args.test_longdoubles,
+                                           args.logLevel)
     setup_logging(args.logLevel)
 
     logging.debug("args: %s", " ".join(sys.argv))
