@@ -23,6 +23,9 @@ def get_args():
                         dest='requirements', choices=['ubuntu'],
                         action='store', type=str, default=None,
                         help='Print requirements for platform and exit')
+    parser.add_argument('--ignore-requirements',
+                        action='store_true',
+                        help='Ignore test requirements')
     return parser.parse_args()
 
 

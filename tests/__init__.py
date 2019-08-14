@@ -143,7 +143,8 @@ class Test(object):
 
 
 def run_tests(conf):
-    requirements.check(conf)
+    if not conf.ignore_requirements:
+        requirements.check(conf)
 
     tests = [Test(td) for td in conf.project_dirs]
 
