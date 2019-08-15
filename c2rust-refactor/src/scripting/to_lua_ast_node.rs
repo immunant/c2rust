@@ -1327,6 +1327,24 @@ impl UserData for LuaAstNode<Arg> {
             Ok(this.borrow().pat.id.to_lua(lua_ctx))
         });
 
+        methods.add_method("set_binding", |_lua_ctx, this, binding_str: LuaString| {
+            match &mut this.borrow_mut().pat.node {
+                PatKind::Ident(binding, ..) => {
+                    *binding = match binding_str.to_str()? {
+                        "ByRefMut" => BindingMode::ByRef(Mutability::Mutable),
+                        "ByRefImmut" => BindingMode::ByRef(Mutability::Immutable),
+                        "ByValMut" => BindingMode::ByValue(Mutability::Mutable),
+                        "ByValImmut" => BindingMode::ByValue(Mutability::Immutable),
+                        _ => panic!("Unknown binding kind"),
+                    };
+                },
+                _ => (),
+            }
+
+
+            Ok(())
+        });
+
         methods.add_method("print", |_lua_ctx, this, ()| {
             println!("{:?}", this.borrow());
 

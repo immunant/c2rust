@@ -205,11 +205,13 @@ end
 function Visitor:visit_arg(arg)
     local arg_id = arg:get_id()
     local conversion_cfg = self.node_id_cfgs[arg_id]
-    arg:print()
-    print(arg:get_ty():get_id(), conversion_cfg or "nil")
 
     if conversion_cfg then
         local arg_ty = arg:get_ty()
+
+        if conversion_cfg.extra_data.binding then
+            arg:set_binding(conversion_cfg.extra_data.binding)
+        end
 
         if arg_ty:get_kind() == "Ptr" then
             local arg_pat_hrid = self.tctx:nodeid_to_hirid(arg:get_pat_id())
@@ -356,17 +358,20 @@ function Visitor:visit_expr(expr)
 
             -- If we're using an option, we must unwrap
             if var then
-                -- If boxed, must get inner reference to mutate (or map/match)
-                if self.node_id_cfgs[var.id]:is_opt_box() then
-                    -- TODO: or as_ref
-                    unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
+                -- Must get inner reference to mutate (or map/match)
+                if self.node_id_cfgs[var.id]:is_opt_any() then
+                    local as_x = nil
+
+                    if self.node_id_cfgs[var.id].extra_data.mutability == "immut" then
+                        as_x = "as_ref"
+                    else
+                        as_x = "as_mut"
+                    end
+
+                    unwrapped_expr:to_method_call(as_x, {unwrapped_expr})
                     expr:to_method_call("unwrap", {unwrapped_expr})
                     expr:to_unary("Deref", expr)
                     expr:to_unary("Deref", expr)
-                -- If an optional ref, we can unwrap and deref directly
-                elseif self.node_id_cfgs[var.id]:is_opt_ref() then
-                    unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
-                    expr:to_unary("Deref", unwrapped_expr)
                 end
             end
         end
@@ -728,16 +733,12 @@ function MarkConverter:visit_arg(arg)
     local arg_id = arg:get_id()
     local arg_ty_id = arg:get_ty():get_id()
     local marks = self.marks[arg_ty_id] or {}
-    arg:get_ty():print()
-    print(arg_ty_id, pretty.write(marks))
 
     for _, mark in ipairs(marks) do
-        print(mark, arg_id, arg_ty_id)
-        arg:print()
         if mark == "ref" then
-            self.node_id_cfgs[arg_id] = ConvCfg.new{"ref", mutability="immut"}
+            self.node_id_cfgs[arg_id] = ConvCfg.new{"opt_ref", mutability="immut"}
         elseif mark == "mut" then
-            self.node_id_cfgs[arg_id] = ConvCfg.new{"ref", mutability="mut"}
+            self.node_id_cfgs[arg_id] = ConvCfg.new{"opt_ref", mutability="mut", binding="ByValMut"}
         end
     end
 end
@@ -753,13 +754,9 @@ function run_ptr_upgrades(node_id_cfgs)
     if not node_id_cfgs then
         refactor:run_command("select", {"ann", "crate; desc(fn || field);"})
         refactor:run_command("ownership_annotate", {"ann"})
-        -- refactor:clear_marks()
-        -- refactor:dump_marks()
-        -- refactor:dump_ty_ids()
+        refactor:clear_marks()
         refactor:run_command("ownership_mark_pointers", {})
-        -- refactor:dump_ty_ids()
-        -- refactor:dump_marks()
-        -- refactor:run_command("ownership_clear_annotations", {})
+        -- TODO: refactor:run_command("ownership_clear_annotations", {})
     end
 
     refactor:transform(
