@@ -3,9 +3,8 @@ extern crate c2rust_xcheck_derive;
 extern crate c2rust_xcheck_runtime;
 
 extern crate c2rust_bitfields;
-#[macro_use]
-extern crate c2rust_bitfields_derive;
 
+use c2rust_bitfields::BitfieldStruct;
 use c2rust_xcheck_runtime::hash::jodyhash::JodyHasher;
 use c2rust_xcheck_runtime::hash::simple::SimpleHasher;
 use c2rust_xcheck_runtime::hash::CrossCheckHash as XCH;
