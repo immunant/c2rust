@@ -1067,23 +1067,42 @@ impl UserData for LuaAstNode<Lit> {
             }
         });
 
-        methods.add_method("replace_suffix", |_lua_ctx, this, suffix_str: LuaString| {
+        methods.add_method("replace_suffix", |_lua_ctx, this, lua_suffix: LuaString| {
             let mut lit = this.borrow_mut();
 
             match lit.node {
-                LitKind::Int(_, ref mut suffix) => {
-                    let suffix_str = suffix_str.to_str()?;
-                    if suffix_str.is_empty() {
-                        *suffix = LitIntType::Unsuffixed;
-                        lit.token.suffix = None;
-                        return Ok(());
+                LitKind::Int(int, _) => {
+                    let suffix = lua_suffix.to_str()?;
+                    match suffix {
+                        "" => {
+                            lit.node = LitKind::Int(int, LitIntType::Unsuffixed);
+                            lit.token.suffix = None;
+                            return Ok(());
+                        }
+                        "f32" | "f64" => {
+                            let (float_ty, suffix_sym) = if suffix == "f32" {
+                                (FloatTy::F32, sym::f32)
+                            } else {
+                                (FloatTy::F64, sym::f64)
+                            };
+
+                            let int_sym = Symbol::intern(&int.to_string());
+                            lit.node = LitKind::Float(int_sym, float_ty);
+                            lit.token = TokenLit {
+                                kind: TokenLitKind::Float,
+                                symbol: int_sym,
+                                suffix: Some(suffix_sym),
+                            };
+                            return Ok(());
+                        }
+                        _ => {}
                     }
 
-                    macro_rules! impl_suffix_match {
+                    macro_rules! impl_suffix_int_match {
                         ($([$suffix:ident, $outer:path, $inner:path]),*) => {
-                            match suffix_str {
+                            match suffix {
                                 $(stringify!($suffix) => {
-                                    *suffix = $outer($inner);
+                                    lit.node = LitKind::Int(int, $outer($inner));
                                     lit.token.suffix = Some(sym::$suffix);
                                     return Ok(());
                                 })*
@@ -1091,7 +1110,7 @@ impl UserData for LuaAstNode<Lit> {
                             }
                         }
                     }
-                    impl_suffix_match!(
+                    impl_suffix_int_match!(
                         [usize, LitIntType::Unsigned, UintTy::Usize],
                         [u8,    LitIntType::Unsigned, UintTy::U8],
                         [u16,   LitIntType::Unsigned, UintTy::U16],
@@ -1108,7 +1127,7 @@ impl UserData for LuaAstNode<Lit> {
 
                     Err(Error::external(format!(
                         "{} literal suffix is not yet implemented",
-                        suffix_str
+                        suffix
                     )))
                 }
 
