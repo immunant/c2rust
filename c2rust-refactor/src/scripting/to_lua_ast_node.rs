@@ -10,7 +10,7 @@ use syntax::ptr::P;
 use syntax::mut_visit::*;
 use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{DUMMY_SP, dummy_spanned};
-use syntax::symbol::Symbol;
+use syntax::symbol::{Symbol, sym};
 use syntax_pos::Span;
 
 use rlua::{Context, Error, Function, MetaMethod, Result, Scope, ToLua, UserData, UserDataMethods, Value};
@@ -1064,6 +1064,57 @@ impl UserData for LuaAstNode<Lit> {
                         node
                     )));
                 }
+            }
+        });
+
+        methods.add_method("replace_suffix", |_lua_ctx, this, suffix_str: LuaString| {
+            let mut lit = this.borrow_mut();
+
+            match lit.node {
+                LitKind::Int(_, ref mut suffix) => {
+                    let suffix_str = suffix_str.to_str()?;
+                    if suffix_str.is_empty() {
+                        *suffix = LitIntType::Unsuffixed;
+                        lit.token.suffix = None;
+                        return Ok(());
+                    }
+
+                    macro_rules! impl_suffix_match {
+                        ($([$suffix:ident, $outer:path, $inner:path]),*) => {
+                            match suffix_str {
+                                $(stringify!($suffix) => {
+                                    *suffix = $outer($inner);
+                                    lit.token.suffix = Some(sym::$suffix);
+                                    return Ok(());
+                                })*
+                                _ => {}
+                            }
+                        }
+                    }
+                    impl_suffix_match!(
+                        [usize, LitIntType::Unsigned, UintTy::Usize],
+                        [u8,    LitIntType::Unsigned, UintTy::U8],
+                        [u16,   LitIntType::Unsigned, UintTy::U16],
+                        [u32,   LitIntType::Unsigned, UintTy::U32],
+                        [u64,   LitIntType::Unsigned, UintTy::U64],
+                        [u128,  LitIntType::Unsigned, UintTy::U128],
+                        [isize, LitIntType::Signed,    IntTy::Isize],
+                        [i8,    LitIntType::Signed,    IntTy::I8],
+                        [i16,   LitIntType::Signed,    IntTy::I16],
+                        [i32,   LitIntType::Signed,    IntTy::I32],
+                        [i64,   LitIntType::Signed,    IntTy::I64],
+                        [i128,  LitIntType::Signed,    IntTy::I128]
+                    );
+
+                    Err(Error::external(format!(
+                        "{} literal suffix is not yet implemented",
+                        suffix_str
+                    )))
+                }
+
+                _ => Err(Error::external(format!(
+                        "LuaAstNode<Lit>::replace_suffix() is not yet implemented for {}",
+                        lit.ast_name())))
             }
         });
 
