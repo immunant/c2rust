@@ -6,7 +6,7 @@ This crate is used to generate structs with bitfields in [c2rust](https://www.gi
 * The ability to take references/pointers to non bitfield fields
 * Provide methods to read from and write to bitfields
 
-We currently provide a single custom derive, `BitfieldStruct`, as well as a dependent field attribute `bitfield`.
+We currently provide a single custom derive, `BitfieldStruct`, as well as a dependent field attribute `bitfield`. The dependent field attribute `padding` may optionally be used as a no-op marker for automated tools.
 
 ## Requirements
 

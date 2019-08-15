@@ -71,7 +71,7 @@ macro_rules! impl_int {
                         }
                     }
 
-                    // If the int type is signed, attempt to sign extend unconditionally
+                    // If the int type is signed, sign extend unconditionally
                     if Self::IS_SIGNED {
                         let bit_width = rhs_bit - lhs_bit + 1;
                         let unused_bits = Self::TOTAL_BIT_SIZE - bit_width;
@@ -86,9 +86,6 @@ macro_rules! impl_int {
         )+
     };
 }
-
-
-
 
 impl_int!{u8, u16, u32, u64, u128, i8, i16, i32, i64, i128}
 

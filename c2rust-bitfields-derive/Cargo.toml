@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-bitfields-derive"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
     "The C2Rust Project Developers <c2rust@immunant.com>",
     "Daniel Kolsoi <djk@immunant.com>",
