@@ -748,6 +748,11 @@ function MarkConverter:visit_arg(arg)
     local arg_ty_id = arg:get_ty():get_id()
     local marks = self.marks[arg_ty_id] or {}
 
+    -- Skip over args likely from extern fns
+    if arg:get_pat():get_kind() == "Wild" then
+        return
+    end
+
     for _, mark in ipairs(marks) do
         local conv_type = "opt_ref"
 

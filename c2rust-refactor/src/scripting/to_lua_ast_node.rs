@@ -982,7 +982,13 @@ impl UserData for LuaAstNode<Stmt> {
 // thread that did not acquire it.
 // @type PatAstNode
 unsafe impl Send for LuaAstNode<P<Pat>> {}
-impl UserData for LuaAstNode<P<Pat>> {}
+impl UserData for LuaAstNode<P<Pat>> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_kind", |_lua_ctx, this, ()| {
+            Ok(this.0.borrow().node.ast_name())
+        });
+    }
+}
 
 
 /// Crate AST node handle
@@ -1321,6 +1327,10 @@ impl UserData for LuaAstNode<Arg> {
             this.borrow_mut().ty = ty.borrow().clone();
 
             Ok(())
+        });
+
+        methods.add_method("get_pat", |_lua_ctx, this, ()| {
+            Ok(LuaAstNode::new(this.borrow().pat.clone()))
         });
 
         methods.add_method("get_pat_id", |lua_ctx, this, ()| {
