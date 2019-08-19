@@ -9,8 +9,6 @@ extern "C" {
 }
 
 #[no_mangle]
-#[ownership_mono("", WRITE, READ)]
-#[ownership_constraints(le(WRITE, _0))]
 pub unsafe extern "C" fn ten_mul(mut acc: Option<&mut f64>, digit: i32, r: Option<&f64>) -> i32 {
     **acc.as_mut().unwrap() *= 10i32 as f64;
     **acc.as_mut().unwrap() += digit as f64;
@@ -21,9 +19,7 @@ pub unsafe extern "C" fn ten_mul(mut acc: Option<&mut f64>, digit: i32, r: Optio
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct SizedData {
-    #[ownership_static(READ)]
     buf: *mut u32,
-    #[ownership_static()]
     bsize: usize,
 }
 
