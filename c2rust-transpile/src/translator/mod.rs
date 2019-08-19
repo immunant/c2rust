@@ -1042,7 +1042,7 @@ fn bool_to_int(val: P<Expr>) -> P<Expr> {
 fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
     if let Some(src_loc) = src_loc.as_ref() {
         let loc_str = format!("{}:{}", src_loc.line, src_loc.column);
-        attrs.push(attr::mk_attr_outer(DUMMY_SP, attr::mk_attr_id(), attr::mk_name_value_item_str(
+        attrs.push(attr::mk_attr_outer(attr::mk_name_value_item_str(
             Ident::from_str("src_loc"),
             dummy_spanned(loc_str.into_symbol()),
         )));

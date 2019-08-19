@@ -43,16 +43,16 @@ enum ItemKind {
     Mod(module),
     ForeignMod(fm),
     GlobalAsm(asm),
-    Ty(ty, generics),
-    Existential(bounds, generics),
+    TyAlias(ty, generics),
+    OpaqueTy(bounds, generics),
     Enum(def, generics),
     Struct(vd, generics),
     Union(vd, generics),
     Trait(is_auto, unsafety, generics, bounds, #[mac_table_seq] items),
+    TraitAlias(generics, bounds),
     Impl(unsafety, polarity, generics, defaultness, trait_ref, ty, #[mac_table_seq] items),
     Mac(mac),
     MacroDef(tts),
-    TraitAlias(generics,bounds),
 }
 
 enum UseTreeKind {
@@ -221,17 +221,16 @@ enum ExprKind {
     Lit(lit),
     Cast(#[prec=As] expr, ty),
     Type(#[prec=Colon] expr, ty),
+    Let(pats, #[prec_special=Cond] expr),
     If(#[prec_special=Cond] cond, then_body, else_body),
-    IfLet(pat, #[prec_special=Cond] expr, then_body, else_body),
     While(#[prec_special=Cond] cond, body, label),
-    WhileLet(pat, #[prec_special=Cond] expr, body, label),
     ForLoop(pat, #[prec_special=Cond] iter, body, label),
     Loop(body, label),
     Match(#[prec_special=Cond] target, arms),
     Closure(cap, is_async, mov, decl, body, span),
     Block(body, label),
     Async(cap, id, block),
-    Await(origin, expr),
+    Await(expr),
     TryBlock(body),
     Assign(#[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
     AssignOp(op, #[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
@@ -277,9 +276,6 @@ flag BinOpKind;
 struct Field { ident, expr, span, is_shorthand, attrs }
 #[extend_span]
 struct Arm { attrs, pats, guard, body, span }
-enum Guard {
-    If(expr),
-}
 #[match=custom] #[rewrite_print_recover] #[nonterminal]
 struct Block { #[mac_table_seq] stmts, id, rules, span }
 

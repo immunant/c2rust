@@ -542,8 +542,7 @@ impl StructureState {
                         fn is_expr(kind: &StmtKind) -> bool {
                             match &kind {
                                 StmtKind::Expr(expr) => match &expr.node {
-                                    ExprKind::If(..) | ExprKind::IfLet(..)
-                                    | ExprKind::Block(..) => true,
+                                    ExprKind::If(..) | ExprKind::Block(..) => true,
                                     _ => false,
                                 },
                                 _ => false,

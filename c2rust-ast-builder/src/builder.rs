@@ -963,7 +963,7 @@ impl Builder {
         Pa: Make<P<Pat>>,
     {
         let pats = pats.into_iter().map(|pat| pat.make(&self)).collect();
-        let guard = guard.map(|g| Guard::If(g.make(&self)));
+        let guard = guard.map(|g| g.make(&self));
         let body = body.make(&self);
         Arm {
             attrs: self.attrs,
@@ -1064,7 +1064,7 @@ impl Builder {
             // The else branch in libsyntax must be one of these three cases,
             // otherwise we have to manually add the block around the else expression
             match e.node {
-                ExprKind::If { .. } | ExprKind::IfLet { .. } | ExprKind::Block(_, None) => e,
+                ExprKind::If { .. } | ExprKind::Block(_, None) => e,
                 _ => mk().block_expr(mk().block(vec![mk().expr_stmt(e)])),
             }
         });
@@ -1158,7 +1158,7 @@ impl Builder {
         let pats: Vec<P<Pat>> = pats.into_iter().map(|x| x.make(&self)).collect();
         P(Pat {
             id: self.id,
-            node: PatKind::Tuple(pats, None),
+            node: PatKind::Tuple(pats),
             span: self.span,
         })
     }
@@ -1605,7 +1605,7 @@ impl Builder {
     {
         let ty = ty.make(&self);
         let name = name.make(&self);
-        let kind = ItemKind::Ty(ty, self.generics);
+        let kind = ItemKind::TyAlias(ty, self.generics);
         Self::item(name, self.attrs, self.vis, self.span, self.id, kind)
     }
 
@@ -2084,6 +2084,7 @@ impl Builder {
             ty: ty,
             pat: pat,
             id: self.id,
+            span: DUMMY_SP,
         }
     }
 
@@ -2137,7 +2138,7 @@ impl Builder {
     }
 
     pub fn meta_item_attr(mut self, style: AttrStyle, meta_item: MetaItem) -> Self {
-        let mut attr = mk_attr_inner(DUMMY_SP, AttrId(0), meta_item);
+        let mut attr = mk_attr_inner(meta_item);
         attr.style = style;
         self.attrs.push(attr);
         self
@@ -2189,6 +2190,7 @@ impl Builder {
                 path: path,
                 delim: delim,
                 tts: tts,
+                prior_type_ascription: None,
             },
             span: self.span,
         }
