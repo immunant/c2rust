@@ -19,9 +19,7 @@ pub unsafe extern "C" fn ten_mul(acc: *mut f64, digit: i32, r: *mut f64) -> i32 
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct SizedData {
-    #[ownership_static(READ)]
     buf: *mut u32,
-    #[ownership_static()]
     bsize: usize,
 }
 

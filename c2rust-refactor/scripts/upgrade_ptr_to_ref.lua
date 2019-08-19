@@ -778,11 +778,8 @@ end
 
 function run_ptr_upgrades(node_id_cfgs)
     if not node_id_cfgs then
-        refactor:run_command("select", {"ann", "crate; desc(fn || field);"})
-        refactor:run_command("ownership_annotate", {"ann"})
-        refactor:clear_marks()
+        refactor:run_command("select", {"target", "crate; desc(fn || field);"})
         refactor:run_command("ownership_mark_pointers", {})
-        -- TODO: refactor:run_command("ownership_clear_annotations", {})
     end
 
     refactor:transform(
