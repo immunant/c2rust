@@ -268,8 +268,6 @@ end
 function Visitor:visit_expr(expr)
     local expr_kind = expr:get_kind()
 
-    -- (*foo).bar -> (foo).bar (can't remove parens..)
-    -- TODO: Or MethodCall? FnPtr could be a field
     if expr_kind == "Field" then
         local field_expr = expr:get_exprs()[1]
 
@@ -279,9 +277,25 @@ function Visitor:visit_expr(expr)
             if derefed_expr:get_kind() == "Path" then
                 local hirid = self.tctx:resolve_path_hirid(derefed_expr)
                 local var = self:get_var(hirid)
+                local cfg = var and self.node_id_cfgs[var.id]
 
                 -- This is a path we're expecting to modify
-                if var and self.node_id_cfgs[var.id] then
+                if cfg then
+                    -- (foo).bar -> (foo).as_mut().unwrap().bar
+                    if cfg:is_opt_any() then
+                        local as_x = nil
+
+                        if self.node_id_cfgs[var.id].extra_data.mutability == "immut" then
+                            as_x = "as_ref"
+                        else
+                            as_x = "as_mut"
+                        end
+
+                        derefed_expr:to_method_call(as_x, {derefed_expr})
+                        derefed_expr:to_method_call("unwrap", {derefed_expr})
+                    end
+
+                    -- (*foo).bar -> (foo).bar (can't remove parens..)
                     expr:set_exprs{derefed_expr}
                 end
             end
@@ -735,10 +749,17 @@ function MarkConverter:visit_arg(arg)
     local marks = self.marks[arg_ty_id] or {}
 
     for _, mark in ipairs(marks) do
+        local conv_type = "opt_ref"
+
         if mark == "ref" then
-            self.node_id_cfgs[arg_id] = ConvCfg.new{"opt_ref", mutability="immut"}
+            -- TODO: If has slice attr
+            if false then
+                conv_type = "opt_slice"
+            end
+
+            self.node_id_cfgs[arg_id] = ConvCfg.new{conv_type, mutability="immut"}
         elseif mark == "mut" then
-            self.node_id_cfgs[arg_id] = ConvCfg.new{"opt_ref", mutability="mut", binding="ByValMut"}
+            self.node_id_cfgs[arg_id] = ConvCfg.new{conv_type, mutability="mut", binding="ByValMut"}
         end
     end
 end
@@ -761,10 +782,10 @@ function run_ptr_upgrades(node_id_cfgs)
 
     refactor:transform(
         function(transform_ctx)
-           if not node_id_cfgs then
-              node_id_cfgs = infer_node_id_cfgs(transform_ctx)
-           end
-           return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
+            if not node_id_cfgs then
+                node_id_cfgs = infer_node_id_cfgs(transform_ctx)
+            end
+            return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
         end
     )
 end
