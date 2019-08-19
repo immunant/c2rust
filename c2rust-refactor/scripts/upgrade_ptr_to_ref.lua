@@ -281,11 +281,11 @@ function Visitor:visit_expr(expr)
 
                 -- This is a path we're expecting to modify
                 if cfg then
-                    -- (foo).bar -> (foo).as_mut().unwrap().bar
+                    -- (*foo).bar -> (*foo).as_mut().unwrap().bar
                     if cfg:is_opt_any() then
                         local as_x = nil
 
-                        if self.node_id_cfgs[var.id].extra_data.mutability == "immut" then
+                        if cfg.extra_data.mutability == "immut" then
                             as_x = "as_ref"
                         else
                             as_x = "as_mut"
