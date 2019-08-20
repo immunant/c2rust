@@ -543,11 +543,10 @@ impl UserData for LuaAstNode<P<Expr>> {
             }
         });
 
-        methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.borrow());
-
-            Ok(())
-        });
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
 
         methods.add_method("get_method_name", |lua_ctx, this, ()| {
             if let ExprKind::MethodCall(path_seg, ..) = &this.borrow().node {

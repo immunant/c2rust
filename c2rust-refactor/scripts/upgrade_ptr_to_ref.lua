@@ -351,7 +351,7 @@ function Visitor:visit_expr(expr)
                         unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
                     end
                 else
-                    log_error("Found offset method applied to a reference")
+                    log_error("Found offset method applied to a reference: " .. tostring(expr))
                     return
                 end
 
