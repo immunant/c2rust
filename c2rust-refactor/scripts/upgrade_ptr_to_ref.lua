@@ -760,17 +760,23 @@ function MarkConverter:visit_arg(arg)
 
     for _, mark in ipairs(marks) do
         local conv_type = "opt_ref"
+        local mutability = nil
+        local binding = nil
+        -- TODO: If has slice attr
+        if false then
+            conv_type = "opt_slice"
+        end
 
         if mark == "ref" then
-            -- TODO: If has slice attr
-            if false then
-                conv_type = "opt_slice"
-            end
-
-            self.node_id_cfgs[arg_id] = ConvCfg.new{conv_type, mutability="immut"}
+            mutability = "immut"
         elseif mark == "mut" then
-            self.node_id_cfgs[arg_id] = ConvCfg.new{conv_type, mutability="mut", binding="ByValMut"}
+            mutability = "mut"
+            binding = "ByValMut"
+        elseif mark == "box" then
+            conv_type = "opt_box"
         end
+
+        self.node_id_cfgs[arg_id] = ConvCfg.new{conv_type, mutability=mutability, binding=binding}
     end
 end
 
@@ -784,6 +790,7 @@ end
 function run_ptr_upgrades(node_id_cfgs)
     if not node_id_cfgs then
         refactor:run_command("select", {"target", "crate; desc(fn || field);"})
+        -- refactor:run_command("ownership_annotate", {"target"})
         refactor:run_command("ownership_mark_pointers", {})
     end
 

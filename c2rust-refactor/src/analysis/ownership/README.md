@@ -29,7 +29,7 @@ Here is a simple example to illustrate the major features of the analysis:
         let data = malloc(size_of::<i32>() * len);
         let arr = malloc(size_of::<Array>());
         (*arr).data = data;
-        array
+        arr
     }
 
     unsafe fn delete_array(arr: *mut Array) {
@@ -96,7 +96,7 @@ includes a monomorphization step, which chooses a set of concrete
 instantiations for each polymorphic function, and selects an instantiation to
 use for each call site.  In the example above, `element_ptr` would have both
 `READ, READ` and `WRITE, WRITE` instantiations, with the first being used for
-the callsite in `get` and the second at the callsite in `set`.  
+the callsite in `get` and the second at the callsite in `set`.
 
 
 # Implementation

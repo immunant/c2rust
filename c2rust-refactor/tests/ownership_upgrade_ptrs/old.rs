@@ -6,6 +6,8 @@ extern "C" {
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
     #[no_mangle]
     fn memset(_: *mut libc::c_void, _: libc::c_int, _: libc::c_ulong);
+    #[no_mangle]
+    fn free(_: *mut libc::c_void);
 }
 
 #[no_mangle]
@@ -76,4 +78,9 @@ pub unsafe extern "C" fn __ibitmap(mut hashp: *mut HTAB,
     (*hashp).hdr.bitmaps[ndx as usize] = pnum as libc::c_ushort;
     (*hashp).mapp[ndx as usize] = ip;
     return 0i32;
+}
+
+#[ownership_mono("", MOVE)]
+fn move_ptr(ptr: *mut u32) {
+    free(ptr as *mut libc::c_void);
 }
