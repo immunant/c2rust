@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Index;
 use std::path::{self, PathBuf};
 use std::{char, io};
@@ -11,15 +12,17 @@ use indexmap::{IndexMap, IndexSet};
 use rustc_data_structures::sync::Lrc;
 use syntax::attr;
 use syntax::ast::*;
+use syntax::parse::lexer::comments::CommentStyle;
 use syntax::parse::token::{self, DelimToken, Nonterminal};
-use syntax::print::pprust::*;
+use syntax::print::pprust::{self, PrintState};
 use syntax::ptr::*;
-use syntax::source_map::dummy_spanned;
+use syntax::source_map::{dummy_spanned, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
-use syntax_pos::{Span, DUMMY_SP};
+use syntax_pos::{FileName, Span, DUMMY_SP};
 use syntax_pos::edition::Edition;
 
+use crate::rust_ast::pos_to_span;
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::traverse::Traversal;
@@ -36,18 +39,22 @@ use crate::TranspilerConfig;
 use c2rust_ast_exporter::clang_ast::LRValue;
 
 mod assembly;
-mod bitfields;
 mod builtins;
+mod comments;
 mod literals;
 mod main_function;
 mod named_references;
 mod operators;
 mod simd;
+mod structs;
 mod variadic;
 
 pub use crate::diagnostics::{TranslationError, TranslationErrorKind};
 use crate::CrateSet;
 use crate::PragmaVec;
+
+pub const INNER_SUFFIX: &str = "_Inner";
+pub const PADDING_SUFFIX: &str = "_PADDING";
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum DecayRef {
@@ -243,6 +250,8 @@ pub struct Translation<'c> {
     pub comment_context: CommentContext, // Incoming comments
     pub comment_store: RefCell<CommentStore>,     // Outgoing comments
 
+    spans: HashMap<SomeId, Span>,
+
     // Items indexed by file id of the source
     items: RefCell<IndexMap<FileId, ItemStore>>,
 
@@ -264,7 +273,18 @@ fn simple_metaitem(name: &str) -> NestedMetaItem {
     mk().nested_meta_item(NestedMetaItem::MetaItem(meta_item))
 }
 
-fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
+fn int_arg_metaitem(name: &str, arg: u128) -> NestedMetaItem {
+    let lit = mk().int_lit(arg, LitIntType::Unsuffixed);
+    let inner = mk().meta_item(
+        vec![name],
+        MetaItemKind::List(vec![
+            mk().nested_meta_item(NestedMetaItem::Literal(lit))
+        ]),
+    );
+    mk().nested_meta_item(NestedMetaItem::MetaItem(inner))
+}
+
+fn cast_int(val: P<Expr>, name: &str, need_lit_suffix: bool) -> P<Expr> {
     let opt_literal_val = match val.node {
         ExprKind::Lit(ref l) => match l.node {
             LitKind::Int(i, _) => Some(i),
@@ -273,28 +293,38 @@ fn cast_int(val: P<Expr>, name: &str) -> P<Expr> {
         _ => None,
     };
     match opt_literal_val {
+        Some(i) if !need_lit_suffix => mk().lit_expr(mk().int_lit(i, LitIntType::Unsuffixed)),
         Some(i) => mk().lit_expr(mk().int_lit(i, name)),
         None => mk().cast_expr(val, mk().path_ty(vec![name])),
     }
 }
 
 /// Pointer offset that casts its argument to isize
-fn pointer_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    pointer_offset_isize(ptr, cast_int(offset, "isize"))
-}
+fn pointer_offset(
+    ptr: P<Expr>,
+    offset: P<Expr>,
+    multiply_by: Option<P<Expr>>,
+    neg: bool,
+    mut deref: bool,
+) -> P<Expr> {
+    let mut offset = cast_int(offset, "isize", false);
 
-/// Pointer offset that requires its argument to have type isize
-fn pointer_offset_isize(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    mk().method_call_expr(ptr, "offset", vec![offset])
-}
+    if let Some(mul) = multiply_by {
+        let mul = cast_int(mul, "isize", false);
+        offset = mk().binary_expr(BinOpKind::Mul, offset, mul);
+        deref = false;
+    }
 
-fn pointer_neg_offset(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    let offset = cast_int(offset, "isize");
-    pointer_neg_offset_isize(ptr, offset)
-}
+    if neg {
+        offset = mk().unary_expr(ast::UnOp::Neg, offset);
+    }
 
-fn pointer_neg_offset_isize(ptr: P<Expr>, offset: P<Expr>) -> P<Expr> {
-    mk().method_call_expr(ptr, "offset", vec![mk().unary_expr(ast::UnOp::Neg, offset)])
+    let res = mk().method_call_expr(ptr, "offset", vec![offset]);
+    if deref {
+        mk().unary_expr(ast::UnOp::Deref, res)
+    } else {
+        res
+    }
 }
 
 /// Given an expression with type Option<fn(...)->...>, unwrap
@@ -455,7 +485,7 @@ pub fn translate(
     tcfg: &TranspilerConfig,
     main_file: PathBuf,
 ) -> (String, PragmaVec, CrateSet) {
-    let mut t = Translation::new(ast_context, tcfg, main_file);
+    let mut t = Translation::new(ast_context, tcfg, main_file.as_path());
     let ctx = ExprContext {
         used: true,
         is_static: false,
@@ -477,13 +507,15 @@ pub fn translate(
 
     t.extern_crates.borrow_mut().insert("libc");
 
-    // Headers often pull in declarations that are unused;
-    // we simplify the translator output by omitting those.
-    t.ast_context.prune_unused_decls();
-
     // Sort the top-level declarations by file and source location so that we
     // preserve the ordering of all declarations in each file.
     t.ast_context.sort_top_decls();
+
+    t.locate_comments();
+
+    // Headers often pull in declarations that are unused;
+    // we simplify the translator output by omitting those.
+    t.ast_context.prune_unused_decls();
 
     enum Name<'a> {
         VarName(&'a str),
@@ -624,6 +656,11 @@ pub fn translate(
                     Ok(ConvertedDecl::ForeignItem(item)) => {
                         t.insert_foreign_item(item, decl);
                     }
+                    Ok(ConvertedDecl::Items(items)) => {
+                        for item in items {
+                            t.insert_item(item, decl);
+                        }
+                    }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
                         let ref k = t.ast_context.get_decl(&decl_id).map(|x| &x.kind);
@@ -686,6 +723,11 @@ pub fn translate(
                     Ok(ConvertedDecl::ForeignItem(item)) => {
                         t.insert_foreign_item(item, decl);
                     }
+                    Ok(ConvertedDecl::Items(items)) => {
+                        for item in items {
+                            t.insert_item(item, decl);
+                        }
+                    }
                     Ok(ConvertedDecl::NoItem) => {}
                     Err(e) => {
                         let ref decl = t.ast_context.get_decl(top_id);
@@ -740,10 +782,8 @@ pub fn translate(
 
         // pass all converted items to the Rust pretty printer
         let translation = to_string(|s| {
-            print_header(s, &t)?;
+            print_header(s, &t, t.tcfg.is_binary(main_file.as_path()))?;
 
-            // Re-order comments
-            let mut traverser = t.comment_store.into_inner().into_comment_traverser();
             let mut mod_items: Vec<P<Item>> = Vec::new();
 
             // Keep track of new uses we need while building header submodules
@@ -752,18 +792,31 @@ pub fn translate(
             // Header Reorganization: Submodule Item Stores
             for (file_id, ref mut mod_item_store) in t.items.borrow_mut().iter_mut() {
                 if *file_id != t.main_file {
-                    mod_items.push(make_submodule(
+                    let mut submodule = make_submodule(
                         &t.ast_context,
                         mod_item_store,
                         *file_id,
                         &mut new_uses,
                         &t.mod_names,
-                    ));
+                    );
+                    let comments = t.comment_context.get_remaining_comments(*file_id);
+                    submodule.span = match t
+                        .comment_store
+                        .borrow_mut()
+                        .add_comments(&comments)
+                    {
+                        Some(pos) => submodule.span.with_hi(pos),
+                        None => submodule.span,
+                    };
+                    mod_items.push(submodule);
                 }
             }
 
             // Main file item store
             let (items, foreign_items, uses) = t.items.borrow_mut()[&t.main_file].drain();
+
+            // Re-order comments
+            let mut traverser = t.comment_store.into_inner().into_comment_traverser();
 
             // Add a comment mapping span to each node that should have a
             // comment printed before it. The pretty printer picks up these
@@ -781,9 +834,12 @@ pub fn translate(
                 .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
                 .collect();
 
+            let mut reordered_comment_store = traverser.into_comment_store();
+            let remaining_comments = t.comment_context.get_remaining_comments(t.main_file);
+            reordered_comment_store.add_comments(&remaining_comments);
             s.comments()
                 .get_or_insert(vec![])
-                .extend(traverser.into_comment_store().into_comments());
+                .extend(reordered_comment_store.into_comments());
 
             for mod_item in mod_items {
                 s.print_item(&*mod_item)?;
@@ -812,10 +868,43 @@ pub fn translate(
                 s.print_item(&*x)?;
             }
 
+            s.print_remaining_comments()?;
+
             Ok(())
         });
         (translation, pragmas, crates)
     })
+}
+
+/// Same as pprust::to_string, but initializes the printer with an empty
+/// SourceMap, which is necessary to get the printer to print trailing comments
+/// on the same line.
+fn to_string<F>(f: F) -> String where
+    F: FnOnce(&mut pprust::State<'_>) -> io::Result<()>,
+{
+    let mut wr = Vec::new();
+    {
+        let ann = pprust::NoAnn;
+
+        // We need a dummy SourceMap with a dummy file so that pprust can try to
+        // look up source line numbers for Spans. This is needed to be able to
+        // print trailing comments after exprs/stmts/etc. on the same line. The
+        // SourceMap will think that all Spans are invalid, but will return line
+        // 0 for all of them.
+        let sm = SourceMap::new(FilePathMapping::empty());
+        sm.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
+
+        let mut printer = pprust::State::new(
+            &sm,
+            Box::new(&mut wr),
+            &ann,
+            None,
+            false,
+        );
+        f(&mut printer).unwrap();
+        printer.s.eof().unwrap();
+    }
+    String::from_utf8(wr).unwrap()
 }
 
 fn make_submodule(
@@ -867,8 +956,8 @@ fn make_submodule(
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
-fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
-    if t.tcfg.emit_modules {
+fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) -> io::Result<()> {
+    if t.tcfg.emit_modules && !is_binary {
         s.print_item(&mk().use_simple_item(vec!["libc"], None as Option<Ident>))?;
     } else {
         let pragmas = t.get_pragmas();
@@ -933,6 +1022,10 @@ fn print_header(s: &mut State, t: &Translation) -> io::Result<()> {
                 mk().path_expr(sys_alloc_path),
             ))?;
         }
+
+        if is_binary {
+            s.print_item(&mk().use_glob_item(vec![&t.tcfg.crate_name()]))?;
+        }
     }
     Ok(())
 }
@@ -985,6 +1078,7 @@ pub enum ExprUse {
 pub enum ConvertedDecl {
     ForeignItem(ForeignItem),
     Item(P<Item>),
+    Items(Vec<P<Item>>),
     NoItem,
 }
 
@@ -992,7 +1086,7 @@ impl<'c> Translation<'c> {
     pub fn new(
         mut ast_context: TypedAstContext,
         tcfg: &'c TranspilerConfig,
-        main_file: PathBuf,
+        main_file: &path::Path,
     ) -> Self {
         let comment_context = CommentContext::new(&mut ast_context);
         let mut type_converter = TypeConverter::new(tcfg.emit_no_std);
@@ -1001,7 +1095,7 @@ impl<'c> Translation<'c> {
             type_converter.translate_valist = true
         }
 
-        let main_file = ast_context.find_file_id(&main_file).unwrap_or(0);
+        let main_file = ast_context.find_file_id(main_file).unwrap_or(0);
         let items = indexmap!{main_file => ItemStore::new()};
 
         Translation {
@@ -1028,6 +1122,7 @@ impl<'c> Translation<'c> {
             macro_types: RefCell::new(IndexMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
+            spans: HashMap::new(),
             sectioned_static_initializers: RefCell::new(Vec::new()),
             items: RefCell::new(items),
             mod_names: RefCell::new(IndexMap::new()),
@@ -1321,18 +1416,12 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         decl_id: CDeclId,
     ) -> Result<ConvertedDecl, TranslationError> {
-        let mut s = self
-            .comment_context
-            .get_decl_comment(decl_id)
-            .and_then(|decl_cmt| self.comment_store.borrow_mut().add_comment_lines(decl_cmt))
-            .unwrap_or(DUMMY_SP);
-
         let decl = self
             .ast_context
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
-        let _src_loc = &decl.loc;
+        let mut s = self.get_span(SomeId::Decl(decl_id)).unwrap_or(DUMMY_SP);
 
         match decl.kind {
             CDeclKind::Struct { fields: None, .. }
@@ -1347,6 +1436,7 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(decl_id)
                     .unwrap();
+
                 let extern_item = mk().span(s).pub_().ty_foreign_item(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
@@ -1364,7 +1454,6 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(decl_id)
                     .unwrap();
-                let mut has_bitfields = false;
 
                 // Check if the last field might be a flexible array member
                 if let Some(last_id) = fields.last() {
@@ -1378,54 +1467,35 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                // Gather up all the field names and field types
-                let mut field_entries = vec![];
-                let mut field_info = Vec::new();
-
+                // Pre-declare all the field names, checking for duplicates
                 for &x in fields {
-                    match self.ast_context.index(x).kind {
-                        CDeclKind::Field {
-                            ref name,
-                            typ,
-                            bitfield_width,
-                            platform_bit_offset,
-                            platform_type_bitwidth,
-                        } => {
-                            let name = self
-                                .type_converter
-                                .borrow_mut()
-                                .declare_field_name(decl_id, x, name);
-
-                            has_bitfields |= bitfield_width.is_some();
-
-                            field_info.push((
-                                name.clone(),
-                                typ.clone(),
-                                bitfield_width,
-                                platform_bit_offset,
-                                platform_type_bitwidth,
-                            ));
-
-                            let typ = self.convert_type(typ.ctype)?;
-
-                            field_entries.push(mk().pub_().struct_field(name, typ));
-                        }
-                        _ => {
-                            return Err(TranslationError::generic(
-                                "Found non-field in record field list",
-                            ))
-                        }
+                    if let CDeclKind::Field {
+                        ref name,
+                        ..
+                    } = self.ast_context.index(x).kind {
+                        self.type_converter
+                            .borrow_mut()
+                            .declare_field_name(decl_id, x, name);
                     }
                 }
 
+                // Gather up all the field names and field types
+                let field_entries =
+                    self.convert_struct_fields(decl_id, fields, platform_byte_size)?;
+
+                let mut derives = vec!["Copy", "Clone"];
+                let has_bitfields = fields
+                    .iter()
+                    .any(|field_id| match self.ast_context.index(*field_id).kind {
+                        CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
+                        _ => unreachable!("Found non-field in record field list"),
+                    });
                 if has_bitfields {
-                    return self.convert_bitfield_struct_decl(
-                        name,
-                        manual_alignment,
-                        platform_byte_size,
-                        s,
-                        field_info,
-                    );
+                    derives.push("BitfieldStruct");
+                    self.extern_crates.borrow_mut().insert("c2rust_bitfields");
+
+                    let item_store = &mut self.items.borrow_mut()[&self.main_file];
+                    item_store.add_use(vec!["c2rust_bitfields".into()], "BitfieldStruct");
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
@@ -1438,39 +1508,77 @@ impl<'c> Translation<'c> {
                 };
                 match max_field_alignment {
                     Some(1) => reprs.push(simple_metaitem("packed")),
-                    Some(mfi) if mfi > 1 => {
-                        let lit = mk().int_lit(mfi as u128, LitIntType::Unsuffixed);
-                        let inner = mk().meta_item(
-                            vec!["packed"],
-                            MetaItemKind::List(vec![
-                                mk().nested_meta_item(NestedMetaItem::Literal(lit))
-                            ]),
-                        );
-                        reprs.push(mk().nested_meta_item(NestedMetaItem::MetaItem(inner)));
-                    }
+                    Some(mf) if mf > 1 => reprs.push(int_arg_metaitem("packed", mf as u128)),
                     _ => { }
                 }
-                // https://github.com/rust-lang/rust/issues/33626
+
                 if let Some(alignment) = manual_alignment {
-                    let lit = mk().int_lit(alignment as u128, LitIntType::Unsuffixed);
-                    let inner = mk().meta_item(
-                        vec!["align"],
-                        MetaItemKind::List(vec![
-                            mk().nested_meta_item(NestedMetaItem::Literal(lit))
-                        ]),
-                    );
-                    reprs.push(mk().nested_meta_item(NestedMetaItem::MetaItem(inner)));
-                };
+                    // This is the most complicated case: we have `align(N)` which
+                    // might be mixed with or included into a `packed` structure,
+                    // which Rust doesn't currently support; instead, we split
+                    // the structure into 2 structures like this:
+                    //   #[align(N)]
+                    //   pub struct Foo(pub Foo_Inner);
+                    //   #[packed(M)]
+                    //   pub struct Foo_Inner {
+                    //     ...fields...
+                    //   }
+                    //
+                    // TODO: right now, we always emit the pair of structures
+                    // instead, we should only split when needed, but that
+                    // would significantly complicate the implementation
+                    assert!(self.ast_context.has_inner_struct_decl(decl_id));
+                    let inner_name = self.resolve_decl_inner_name(decl_id);
+                    let inner_ty = mk().path_ty(vec![inner_name.clone()]);
+                    let inner_repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
+                    let inner_struct = mk().span(s)
+                        .pub_()
+                        .call_attr("derive", derives)
+                        .meta_item_attr(AttrStyle::Outer, inner_repr_attr)
+                        .struct_item(inner_name.clone(), field_entries, false);
 
-                let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
-
-                Ok(ConvertedDecl::Item(
-                    mk().span(s)
+                    // https://github.com/rust-lang/rust/issues/33626
+                    let outer_ty = mk().path_ty(vec![name.clone()]);
+                    let outer_reprs = vec![
+                        simple_metaitem("C"),
+                        int_arg_metaitem("align", alignment as u128),
+                        // TODO: copy others from `reprs` above
+                    ];
+                    let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(outer_reprs));
+                    let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
+                    let outer_struct = mk().span(s)
                         .pub_()
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .meta_item_attr(AttrStyle::Outer, repr_attr)
-                        .struct_item(name, field_entries),
-                ))
+                        .struct_item(name, vec![outer_field], true);
+
+                    // Emit `const X_PADDING: usize = size_of(Outer) - size_of(Inner);`
+                    let padding_name = self.type_converter
+                        .borrow_mut()
+                        .resolve_decl_suffix_name(decl_id, PADDING_SUFFIX)
+                        .to_owned();
+                    let padding_ty = mk().path_ty(vec!["usize"]);
+                    let outer_size = self.compute_size_of_ty(outer_ty)?.to_expr();
+                    let inner_size = self.compute_size_of_ty(inner_ty)?.to_expr();
+                    let padding_value =
+                        mk().binary_expr(BinOpKind::Sub, outer_size, inner_size);
+                    let padding_const = mk().span(s)
+                        .call_attr("allow", vec!["dead_code", "non_upper_case_globals"])
+                        .const_item(padding_name, padding_ty, padding_value);
+
+                    let structs = vec![outer_struct, inner_struct, padding_const];
+                    Ok(ConvertedDecl::Items(structs))
+                } else {
+                    assert!(!self.ast_context.has_inner_struct_decl(decl_id));
+                    let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
+                    Ok(ConvertedDecl::Item(
+                        mk().span(s)
+                            .pub_()
+                            .call_attr("derive", derives)
+                            .meta_item_attr(AttrStyle::Outer, repr_attr)
+                            .struct_item(name, field_entries, false),
+                    ))
+                }
             }
 
             CDeclKind::Union {
@@ -1510,7 +1618,7 @@ impl<'c> Translation<'c> {
                             .pub_()
                             .call_attr("derive", vec!["Copy", "Clone"])
                             .call_attr("repr", vec!["C"])
-                            .struct_item(name, vec![]),
+                            .struct_item(name, vec![], false),
                     )
                 } else {
                     ConvertedDecl::Item(
@@ -1623,14 +1731,14 @@ impl<'c> Translation<'c> {
                 let is_main = self.ast_context.c_main == Some(decl_id);
 
                 let converted_function = self.convert_function(
-                    ctx, s, is_global, is_inline, is_main, is_var, is_extern, new_name, name,
-                    &args, ret, body, attrs,
+                    ctx, s, is_global, is_inline, is_main, is_var, is_extern,
+                    new_name, name, &args, ret, body, attrs,
                 );
 
                 converted_function.or_else(|e| match self.tcfg.replace_unsupported_decls {
                     ReplaceMode::Extern if body.is_none() => self.convert_function(
-                        ctx, s, is_global, false, is_main, is_var, is_extern, new_name, name,
-                        &args, ret, None, attrs,
+                        ctx, s, is_global, false, is_main, is_var, is_extern,
+                        new_name, name, &args, ret, None, attrs,
                     ),
                     _ => Err(e),
                 })
@@ -1744,11 +1852,20 @@ impl<'c> Translation<'c> {
                     let mut init = init?.to_expr();
 
                     let comment = String::from("// Initialized in run_static_initializers");
-                    // REVIEW: We might want to add the comment to the original span comments
+                    let comment_pos = if s.is_dummy() {
+                        None
+                    } else {
+                        Some(s.lo())
+                    };
                     s = self
                         .comment_store
                         .borrow_mut()
-                        .add_comment_lines(&[comment])
+                        .extend_existing_comments(
+                            &[comment],
+                            comment_pos,
+                            CommentStyle::Isolated,
+                        )
+                        .map(pos_to_span)
                         .unwrap_or(s);
 
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
@@ -2002,7 +2119,10 @@ impl<'c> Translation<'c> {
                     _ => panic!("function body expects to be a compound statement"),
                 };
                 body_stmts.append(&mut self.convert_function_body(ctx, name, body_ids, ret)?);
-                let block = stmts_block(body_stmts);
+                let mut block = stmts_block(body_stmts);
+                if let Some(span) = self.get_span(SomeId::Stmt(body)) {
+                    block.span = span;
+                }
 
                 // Only add linkage attributes if the function is `extern`
                 let mut mk_ = if is_main {
@@ -2307,7 +2427,8 @@ impl<'c> Translation<'c> {
                     let span = self
                         .comment_store
                         .borrow_mut()
-                        .add_comment_lines(&[comment])
+                        .add_comments(&[comment])
+                        .map(pos_to_span)
                         .unwrap_or(DUMMY_SP);
                     let static_item =
                         mk().span(span)
@@ -2452,16 +2573,18 @@ impl<'c> Translation<'c> {
                 if skip {
                     Ok(cfg::DeclStmtInfo::new(vec![], vec![], vec![]))
                 } else {
-                    let item = match self.convert_decl(ctx, decl_id)? {
-                        ConvertedDecl::Item(item) => item,
-                        ConvertedDecl::ForeignItem(item) => mk().abi("C").foreign_items(vec![item]),
+                    let items = match self.convert_decl(ctx, decl_id)? {
+                        ConvertedDecl::Item(item) => vec![item],
+                        ConvertedDecl::ForeignItem(item) => vec![mk().abi("C").foreign_items(vec![item])],
+                        ConvertedDecl::Items(items) => items,
                         ConvertedDecl::NoItem => return Ok(cfg::DeclStmtInfo::empty()),
                     };
 
+                    let item_stmt = |item| mk().item_stmt(item);
                     Ok(cfg::DeclStmtInfo::new(
-                        vec![mk().item_stmt(item.clone())],
+                        items.iter().cloned().map(item_stmt).collect(),
                         vec![],
-                        vec![mk().item_stmt(item)],
+                        items.into_iter().map(item_stmt).collect(),
                     ))
                 }
             }
@@ -2807,13 +2930,20 @@ impl<'c> Translation<'c> {
             return elts.and_then(|lhs| {
                 let len = self.convert_expr(ctx.used().not_static(), len)?;
                 Ok(len.map(|len| {
-                    let rhs = cast_int(len, "usize");
+                    let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOpKind::Mul, lhs, rhs)
                 }))
             });
         }
-        let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
         let ty = self.convert_type(type_id)?;
+        self.compute_size_of_ty(ty)
+    }
+
+    fn compute_size_of_ty(
+        &self,
+        ty: P<Ty>,
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+        let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
         let name = "size_of";
         let params = mk().angle_bracketed_args(vec![ty]);
         let path = vec![
@@ -3014,11 +3144,7 @@ impl<'c> Translation<'c> {
                         kind.as_decl_or_typedef()
                             .expect("Did not find decl_id for offsetof struct")
                     };
-                    let name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_decl_name(decl_id)
-                        .expect("Did not find name for offsetof struct");
+                    let name = self.resolve_decl_inner_name(decl_id);
                     let ty_ident = Nonterminal::NtIdent(mk().ident(name), false);
 
                     // Field name
@@ -3260,17 +3386,10 @@ impl<'c> Translation<'c> {
 
                             // Don't dereference the offset if we're still within the variable portion
                             if let Some(elt_type_id) = var_elt_type_id {
-                                match self.compute_size_of_expr(elt_type_id) {
-                                    None => {
-                                        mk().unary_expr(ast::UnOp::Deref, pointer_offset(lhs, rhs))
-                                    }
-                                    Some(sz) => pointer_offset(
-                                        lhs,
-                                        mk().binary_expr(BinOpKind::Mul, sz, cast_int(rhs, "usize")),
-                                    ),
-                                }
+                                let mul = self.compute_size_of_expr(elt_type_id);
+                                pointer_offset(lhs, rhs, mul, false, true)
                             } else {
-                                mk().index_expr(lhs, cast_int(rhs, "usize"))
+                                mk().index_expr(lhs, cast_int(rhs, "usize", false))
                             }
                         }))
                     } else {
@@ -3294,14 +3413,8 @@ impl<'c> Translation<'c> {
                                 }
                             };
 
-                            if let Some(sz) = self.compute_size_of_expr(pointee_type_id.ctype) {
-                                let offset =
-                                    mk().binary_expr(BinOpKind::Mul, sz, cast_int(rhs, "usize"));
-                                Ok(pointer_offset(lhs, offset))
-                            } else {
-                                // Otherwise, use the pointer and make a deref of a pointer offset expression
-                                Ok(mk().unary_expr(ast::UnOp::Deref, pointer_offset(lhs, rhs)))
-                            }
+                            let mul = self.compute_size_of_expr(pointee_type_id.ctype);
+                            Ok(pointer_offset(lhs, rhs, mul, false, true))
                         })
                     }
                 })
@@ -3428,49 +3541,64 @@ impl<'c> Translation<'c> {
             }
 
             CExprKind::Member(_, expr, decl, kind, _) => {
-                let is_bitfield = match &self.ast_context[decl].kind {
-                    CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
-                    _ => unreachable!("Found a member which is not a field"),
-                };
-
-                if is_bitfield {
-                    let field_name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_field_name(None, decl)
-                        .unwrap();
-
-                    self.convert_bitfield_member_expr(ctx, field_name, expr, kind)
-                } else if ctx.is_unused() {
+                if ctx.is_unused() {
                     self.convert_expr(ctx, expr)
                 } else {
-                    let field_name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_field_name(None, decl)
-                        .unwrap();
-                    match kind {
+                    let mut val = match kind {
                         MemberKind::Dot => {
-                            let val = self.convert_expr(ctx, expr)?;
-                            Ok(val.map(|v| mk().field_expr(v, field_name)))
+                            self.convert_expr(ctx, expr)?
                         }
                         MemberKind::Arrow => {
                             if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _) =
                                 self.ast_context[expr].kind
                             {
-                                let val = self.convert_expr(ctx, subexpr_id)?;
-                                Ok(val.map(|v| mk().field_expr(v, field_name)))
+                                // Special-case the `(&x)->field` pattern
+                                // Convert it directly into `x.field`
+                                self.convert_expr(ctx, subexpr_id)?
                             } else {
                                 let val = self.convert_expr(ctx, expr)?;
-                                Ok(val.map(|v| {
-                                    mk().field_expr(
-                                        mk().unary_expr(ast::UnOp::Deref, v),
-                                        field_name,
-                                    )
-                                }))
+                                val.map(|v| mk().unary_expr(ast::UnOp::Deref, v))
                             }
                         }
-                    }
+                    };
+
+                    let record_id = self.ast_context.parents[&decl];
+                    if self.ast_context.has_inner_struct_decl(record_id) {
+                        // The structure is split into an outer and an inner,
+                        // so we need to go through the outer structure to the inner one
+                        val = val.map(|v| mk().field_expr(v, "0"));
+                    };
+
+                    let field_name = self
+                        .type_converter
+                        .borrow()
+                        .resolve_field_name(None, decl)
+                        .unwrap();
+                    let is_bitfield = match &self.ast_context[decl].kind {
+                        CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
+                        _ => unreachable!("Found a member which is not a field"),
+                    };
+                    if is_bitfield {
+                        // Convert a bitfield member one of four ways:
+                        // A) bf.a()
+                        // B) (*bf).a()
+                        // C) bf
+                        // D) (*bf)
+                        //
+                        // The first two are when we know this bitfield member is going to be read
+                        // from (default), possibly requiring a dereference first. The latter two
+                        // are generated when we are expecting to require a write, which will need
+                        // to make a method call with some input which we do not yet have access
+                        // to and will have to be handled elsewhere, IE `bf.set_a(1)`
+                        if !ctx.is_bitfield_write {
+                            // Cases A and B above
+                            val = val.map(|v| mk().method_call_expr(v, field_name, vec![] as Vec<P<Expr>>));
+                        }
+                    } else {
+                        val = val.map(|v| mk().field_expr(v, field_name));
+                    };
+
+                    Ok(val)
                 }
             }
 
@@ -4096,69 +4224,28 @@ impl<'c> Translation<'c> {
             return Ok(init.clone());
         }
 
+        let name_decl_id = match self.ast_context.index(type_id).kind {
+            CTypeKind::Typedef(decl_id) => decl_id,
+            _ => decl_id,
+        };
+
         // Otherwise, construct the initializer
-        let init = match self.ast_context.index(decl_id).kind {
+        let mut init = match self.ast_context.index(decl_id).kind {
             // Zero initialize all of the fields
             CDeclKind::Struct {
-                ref fields,
+                fields: Some(ref fields),
                 platform_byte_size,
                 ..
             } => {
-                let name_decl_id = match self.ast_context.index(type_id).kind {
-                    CTypeKind::Typedef(decl_id) => decl_id,
-                    _ => decl_id,
-                };
-
-                let name = self
-                    .type_converter
-                    .borrow()
-                    .resolve_decl_name(name_decl_id)
-                    .unwrap();
-
-                let fields = match *fields {
-                    Some(ref fields) => fields,
-                    None => {
-                        return Err(TranslationError::generic(
-                            "Attempted to zero-initialize forward-declared struct",
-                        ))
-                    }
-                };
-
-                let has_bitfields = fields
-                    .iter()
-                    .map(|field_id| match self.ast_context.index(*field_id).kind {
-                        CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
-                        _ => unreachable!("Found non-field in record field list"),
-                    })
-                    .any(|x| x);
-
-                if has_bitfields {
-                    self.bitfield_zero_initializer(name, fields, platform_byte_size, is_static)?
-                } else {
-                    let fields: WithStmts<Vec<Field>> = fields
-                        .into_iter()
-                        .map(|field_id| {
-                            let name = self
-                                .type_converter
-                                .borrow()
-                                .resolve_field_name(Some(decl_id), *field_id)
-                                .unwrap();
-
-                            match self.ast_context.index(*field_id).kind {
-                                CDeclKind::Field { typ, .. } => {
-                                    Ok(self.implicit_default_expr(typ.ctype, is_static)?
-                                       .map(|field_init| mk().field(name, field_init)))
-                                }
-                                _ => Err(TranslationError::generic(
-                                    "Found non-field in record field list",
-                                )),
-                            }
-                        })
-                        .collect::<Result<_, TranslationError>>()?;
-
-                    fields.map(|fields| mk().struct_expr(vec![name], fields))
-                }
+                let name = self.resolve_decl_inner_name(name_decl_id);
+                self.convert_struct_zero_initializer(name, decl_id, fields, platform_byte_size, is_static)?
             }
+
+            CDeclKind::Struct { fields: None, .. } => {
+                return Err(TranslationError::generic(
+                    "Attempted to zero-initialize forward-declared struct",
+                ))
+            },
 
             // Zero initialize the first field
             CDeclKind::Union { ref fields, .. } => {
@@ -4210,12 +4297,41 @@ impl<'c> Translation<'c> {
             )),
         };
 
+        if self.ast_context.has_inner_struct_decl(name_decl_id) {
+            // If the structure is split into an outer/inner,
+            // wrap the inner initializer using the outer structure
+            let outer_name = self.type_converter
+                .borrow()
+                .resolve_decl_name(name_decl_id)
+                .unwrap();
+
+            let outer_path = mk().path_expr(vec![outer_name]);
+            init = init.map(|i| mk().call_expr(outer_path, vec![i]));
+        };
+
         if init.is_pure() {
             // Insert the initializer into the cache, then return it
             self.zero_inits.borrow_mut().insert(decl_id, init.clone());
             Ok(init)
         } else {
             Err(TranslationError::generic("Expected no statements in zero initializer"))
+        }
+    }
+
+    /// Resolve the inner name of a structure declaration
+    /// if there is one (if the structure was split),
+    /// otherwise just return the normal name
+    fn resolve_decl_inner_name(&self, decl_id: CDeclId) -> String {
+        if self.ast_context.has_inner_struct_decl(decl_id) {
+            self.type_converter
+                .borrow_mut()
+                .resolve_decl_suffix_name(decl_id, INNER_SUFFIX)
+                .to_owned()
+        } else {
+            self.type_converter
+                .borrow()
+                .resolve_decl_name(decl_id)
+                .unwrap()
         }
     }
 
@@ -4242,12 +4358,6 @@ impl<'c> Translation<'c> {
                 mk().unary_expr(ast::UnOp::Not, val)
             }
         } else {
-            let zero = if ty.is_floating_type() {
-                mk().lit_expr(mk().float_unsuffixed_lit("0."))
-            } else {
-                mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
-            };
-
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
@@ -4282,10 +4392,16 @@ impl<'c> Translation<'c> {
             };
 
             // The backup is to just compare against zero
-            if target {
-                mk().binary_expr(BinOpKind::Ne, zero, val)
+            let zero = if ty.is_floating_type() {
+                mk().lit_expr(mk().float_unsuffixed_lit("0."))
             } else {
-                mk().binary_expr(BinOpKind::Eq, zero, val)
+                mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
+            };
+
+            if target {
+                mk().binary_expr(BinOpKind::Ne, val, zero)
+            } else {
+                mk().binary_expr(BinOpKind::Eq, val, zero)
             }
         }
     }
@@ -4306,7 +4422,7 @@ impl<'c> Translation<'c> {
         let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
-            add_src_loc_attr(&mut item.attrs, &decl.loc);
+            add_src_loc_attr(&mut item.attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut item_stores = self.items.borrow_mut();
             let items = item_stores
                 .entry(decl_file_id.unwrap())
@@ -4324,7 +4440,7 @@ impl<'c> Translation<'c> {
         let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
-            add_src_loc_attr(&mut item.attrs, &decl.loc);
+            add_src_loc_attr(&mut item.attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut items = self.items.borrow_mut();
             let mod_block_items = items
                 .entry(decl_file_id.unwrap())

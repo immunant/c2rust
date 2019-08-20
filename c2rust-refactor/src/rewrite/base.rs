@@ -220,8 +220,7 @@ where
             diff::Result::Left(_) => {
                 // There's an item on the left corresponding to nothing on the right.
                 // Delete the item from the left.
-                let old_span = rewind_span_over_whitespace(ast(&old[i]).splice_span(), &rcx);
-                // let old_span = ast(&old[i]).splice_span();
+                let old_span = ast(&old[i]).splice_span();
                 let old_span = match old_ids[i] {
                     SeqItemId::Node(id) => extend_span_comments(&id, old_span, &rcx),
                     _ => old_span,
@@ -482,7 +481,7 @@ pub fn extend_span_comments(id: &NodeId, span: Span, rcx: &RewriteCtxt) -> Span 
 
 /// Extend a node span to cover comments around it.  Returns Ok(span) if all
 /// comments were covered, and Err(span) if only some could be covered.
-pub fn extend_span_comments_strict(id: &NodeId, span: Span, rcx: &RewriteCtxt) -> Result<Span, Span> {
+pub fn extend_span_comments_strict(id: &NodeId, mut span: Span, rcx: &RewriteCtxt) -> Result<Span, Span> {
     let source_map = rcx.session().source_map();
 
     let comments = match rcx.comments().get(id) {
@@ -516,11 +515,15 @@ pub fn extend_span_comments_strict(id: &NodeId, span: Span, rcx: &RewriteCtxt) -
 
     let mut all_matched = true;
 
-    let mut span = rewind_span_over_whitespace(span, rcx);
     for comment in &before {
-        let comment_size = usize::sum(comment.lines.iter().map(|l| l.len()));
-        let comment_start = BytePos::from_usize(span.lo().to_usize() - comment_size);
-        let comment_span = span.shrink_to_lo().with_lo(comment_start);
+        let cur_span = rewind_span_over_whitespace(span, rcx);
+
+        // Count the number of characters, including newlines between lines, but
+        // not the final newline.
+        let comment_size = usize::sum(comment.lines.iter().map(|l| l.len()+1)) - 1;
+
+        let comment_start = BytePos::from_usize(cur_span.lo().to_usize() - comment_size);
+        let comment_span = cur_span.shrink_to_lo().with_lo(comment_start);
         let source = match source_map.span_to_snippet(comment_span) {
             Ok(snippet) => snippet,
             Err(_) => {
@@ -529,15 +532,14 @@ pub fn extend_span_comments_strict(id: &NodeId, span: Span, rcx: &RewriteCtxt) -
             }
         };
         let matches = source.lines().zip(&comment.lines).all(|(src_line, comment_line)| {
+            if src_line.trim() != comment_line.trim() {
+                debug!("comment {:?} did not match source {:?}", comment_line, src_line);
+            }
             src_line.trim() == comment_line.trim()
         });
         if matches {
-            // Extend to previous newline because this is an isolated comment
-            let comment_span = rewind_span_over_whitespace(comment_span, rcx);
-
-            span = span.with_lo(comment_span.lo());
+            span = cur_span.with_lo(comment_span.lo());
         } else {
-            debug!("comment {:?} did not match source {:?}", comment, source);
             all_matched = false;
             break;
         }

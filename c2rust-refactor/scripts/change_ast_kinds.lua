@@ -50,5 +50,6 @@ refactor:transform(
         return transform_ctx:visit_fn_like(Visitor.new())
     end
 )
+refactor:save_crate()
 
 print("Finished change_ast_kinds.lua")

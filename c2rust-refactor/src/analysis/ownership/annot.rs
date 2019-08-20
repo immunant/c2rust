@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use arena::SyncDroplessArena;
+use log::Level;
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 use syntax::ast;
@@ -75,7 +76,7 @@ pub fn handle_marks<'a, 'tcx, 'lty>(
         };
 
         type_map::map_types(&dcx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
-            eprintln!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
+            debug!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
             if st.marked(ast_ty.id, "box") {
                 if let Some(p) = lty.label {
                     fixed_vars.push((p, source.last_sig_did, ConcretePerm::Move));
@@ -98,7 +99,7 @@ pub fn handle_marks<'a, 'tcx, 'lty>(
 
     // For any marked types that are in signatures, add constraints to the parent function's cset.
     for (p, did, min_perm) in fixed_vars {
-        eprintln!("FIXED VAR: {:?} = {:?} (in {:?})", p, min_perm, did);
+        debug!("FIXED VAR: {:?} = {:?} (in {:?})", p, min_perm, did);
         match p {
             PermVar::Static(v) => {
                 let new_perm = cmp::max(min_perm, cx.static_assign[v]);
@@ -167,7 +168,7 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
     };
     krate.visit(&mut v);
 
-    eprintln!("HANDLE_ATTRS: found {} annotated defs", v.def_attrs.len());
+    debug!("HANDLE_ATTRS: found {} annotated defs", v.def_attrs.len());
 
     // Primary variant ID for each variant group (keyed by group name)
     let mut variant_group_primary = HashMap::new();
@@ -212,9 +213,11 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
                         panic!("bad #[ownership_constraints] for {:?}: {}", def_id, e)
                     });
 
-                    eprintln!("found constraints for {:?}:", def_id);
-                    for &(a, b) in cset.iter() {
-                        eprintln!("  {:?} <= {:?}", a, b);
+                    debug!("found constraints for {:?}:", def_id);
+                    if log_enabled!(Level::Debug) {
+                        for &(a, b) in cset.iter() {
+                            debug!("  {:?} <= {:?}", a, b);
+                        }
                     }
 
                     let (func, _var) = cx.variant_summ(def_id);

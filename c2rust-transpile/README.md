@@ -31,7 +31,7 @@ The transpiler can create skeleton cargo build files for the translated Rust sou
   `--output-dir`, or if not specified, the directory containing
   `compile_commands.json`. This will not overwrite existing files, so remove
   these build files before re-creating build files. (implies `--emit-modules`)
-- `-m <main_module>`, `--main <main_module>` - Emit cargo build files to build
+- `-b <main_module>`, `--binary <main_module>` - Emit cargo build files to build
   the translated Rust code as a binary. The main function must be found in the
   specified module (C source file) `<main_module>`. `<main_module>` should be
   the bare module name, not including the `.rs` extension. Build files are

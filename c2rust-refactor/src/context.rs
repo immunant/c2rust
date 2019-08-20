@@ -103,7 +103,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     }
 
     pub fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
-        let hir_id = self.hir_map().node_to_hir_id(id);
+        let hir_id = self.hir_map().opt_node_to_hir_id(id)?;
         let parent_node = self.hir_map().get_parent_item(hir_id);
         let parent = self.hir_map().opt_local_def_id_from_hir_id(parent_node)?;
         if !self.ty_ctxt().has_typeck_tables(parent) {

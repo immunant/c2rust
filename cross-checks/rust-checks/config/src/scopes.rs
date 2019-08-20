@@ -286,7 +286,7 @@ impl ScopeConfig {
             }
 
             //p @ (_, _) => panic!("mismatched configuration: {:?}", p),
-            (_, _) => { } // Because of regexes, we may get mismatches; ignore them
+            (_, _) => {} // Because of regexes, we may get mismatches; ignore them
         }
     }
 }

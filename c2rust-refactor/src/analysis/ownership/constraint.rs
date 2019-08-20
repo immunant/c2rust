@@ -64,7 +64,7 @@ impl<'lty, 'tcx> Perm<'lty> {
     /// Construct the minimum of two permissions.  This needs a reference to the arena, since it
     /// may need to allocate a new slice for `Min`.
     pub fn min(a: Perm<'lty>, b: Perm<'lty>, arena: &'lty SyncDroplessArena) -> Perm<'lty> {
-        eprintln!("finding min of {:?} and {:?}", a, b);
+        debug!("finding min of {:?} and {:?}", a, b);
         match (a, b) {
             // A few easy cases
             (Perm::Concrete(ConcretePerm::Read), _) | (_, Perm::Concrete(ConcretePerm::Read)) => {
@@ -87,7 +87,7 @@ impl<'lty, 'tcx> Perm<'lty> {
                 } else {
                     arena.alloc_slice(&all)
                 };
-                eprintln!("nontrivial min: {:?}", all);
+                debug!("nontrivial min: {:?}", all);
                 Perm::Min(all)
             }
 
@@ -103,7 +103,7 @@ impl<'lty, 'tcx> Perm<'lty> {
                     } else {
                         arena.alloc_slice(&all)
                     };
-                    eprintln!("nontrivial min: {:?}", all);
+                    debug!("nontrivial min: {:?}", all);
                     Perm::Min(all)
                 }
             }
@@ -113,7 +113,7 @@ impl<'lty, 'tcx> Perm<'lty> {
                     a
                 } else {
                     let all = arena.alloc_slice(&[a, b]);
-                    eprintln!("nontrivial min: {:?}", all);
+                    debug!("nontrivial min: {:?}", all);
                     Perm::Min(all)
                 }
             }

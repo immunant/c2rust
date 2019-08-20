@@ -19,6 +19,7 @@ use std::fmt;
 use std::u32;
 
 use arena::SyncDroplessArena;
+use log::Level;
 use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::Node;
@@ -492,7 +493,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
 
 /// Print the analysis results to stderr, for debugging.
 pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
-    eprintln!("\n === summary ===");
+    debug!("\n === summary ===");
 
     let arena = SyncDroplessArena::default();
     let new_lcx = LabeledTyCtxt::new(&arena);
@@ -510,7 +511,7 @@ pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
     ids.sort();
     for id in ids {
         let ty = results.statics[&id];
-        eprintln!("static {} :: {:?}", path_str(id), Pretty(ty));
+        debug!("static {} :: {:?}", path_str(id), Pretty(ty));
     }
 
     let mut ids = results.funcs.keys().cloned().collect::<Vec<_>>();
@@ -518,42 +519,44 @@ pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
     for id in ids {
         let fr = &results.funcs[&id];
 
-        eprintln!("func {}:", path_str(id));
+        debug!("func {}:", path_str(id));
 
-        eprintln!("  sig constraints:");
-        for &(a, b) in fr.cset.iter() {
-            eprintln!("    {:?} <= {:?}", a, b);
+        debug!("  sig constraints:");
+        if log_enabled!(Level::Debug) {
+            for &(a, b) in fr.cset.iter() {
+                debug!("    {:?} <= {:?}", a, b);
+            }
         }
 
         if let Some(ref var_ids) = fr.variants {
             for (i, &var_id) in var_ids.iter().enumerate() {
-                eprintln!("  variant {}: {}", i, path_str(var_id));
+                debug!("  variant {}: {}", i, path_str(var_id));
                 let vr = &results.variants[&var_id];
 
                 for (j, func_ref) in vr.func_refs.iter().enumerate() {
                     let callee_fr = &results.funcs[&func_ref.def_id];
-                    eprintln!(
+                    debug!(
                         "    call #{}: {:?} :: {:?}",
                         j,
                         path_str(func_ref.def_id),
                         callee_fr.sig
                     );
-                    eprintln!("      (at {:?})", func_ref.span);
+                    debug!("      (at {:?})", func_ref.span);
                 }
             }
         } else {
-            eprintln!("  single variant");
+            debug!("  single variant");
             let vr = &results.variants[&id];
 
             for (j, func_ref) in vr.func_refs.iter().enumerate() {
                 let callee_fr = &results.funcs[&func_ref.def_id];
-                eprintln!(
+                debug!(
                     "    call #{}: {:?} :: {:?}",
                     j,
                     path_str(func_ref.def_id),
                     callee_fr.sig
                 );
-                eprintln!("      (at {:?})", func_ref.span);
+                debug!("      (at {:?})", func_ref.span);
             }
         }
 
@@ -563,7 +566,7 @@ pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
             let var_id = fr.variants.as_ref().map_or(id, |vars| vars[i]);
             let vr = &results.variants[&var_id];
 
-            eprintln!(
+            debug!(
                 "  mono #{} ({:?}): {}",
                 i,
                 mr.suffix,
@@ -576,7 +579,7 @@ pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
                 .enumerate()
             {
                 let callee_fr = &results.funcs[&func_ref.def_id];
-                eprintln!(
+                debug!(
                     "    call #{}: {:?} #{} :: {}",
                     j,
                     path_str(func_ref.def_id),
@@ -586,7 +589,7 @@ pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
                         &results.monos[&(func_ref.def_id, mono_idx)].assign
                     )
                 );
-                eprintln!("      (at {:?})", func_ref.span);
+                debug!("      (at {:?})", func_ref.span);
             }
         }
     }

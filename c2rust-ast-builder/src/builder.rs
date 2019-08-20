@@ -1548,18 +1548,23 @@ impl Builder {
         })
     }
 
-    pub fn struct_item<I>(self, name: I, fields: Vec<StructField>) -> P<Item>
+    pub fn struct_item<I>(self, name: I, fields: Vec<StructField>, tuple: bool) -> P<Item>
     where
         I: Make<Ident>,
     {
         let name = name.make(&self);
+        let variant_data = if tuple {
+            VariantData::Tuple(fields, DUMMY_NODE_ID)
+        } else {
+            VariantData::Struct(fields, false)
+        };
         Self::item(
             name,
             self.attrs,
             self.vis,
             self.span,
             self.id,
-            ItemKind::Struct(VariantData::Struct(fields, false), self.generics),
+            ItemKind::Struct(variant_data, self.generics),
         )
     }
 
@@ -1735,9 +1740,6 @@ impl Builder {
     }
 
     // `use <path>;` item
-    // TODO: for now, we only support simple paths with an optional rename;
-    // if we ever need them, we should add support for globs and nested trees,
-    // e.g., `use foo::*;` and `use foo::{a, b, c};`
     pub fn use_simple_item<Pa, I>(self, path: Pa, rename: Option<I>) -> P<Item>
     where
         Pa: Make<Path>,
@@ -1783,6 +1785,26 @@ impl Builder {
             span: DUMMY_SP,
             prefix: path,
             kind: UseTreeKind::Nested(inner_trees),
+        };
+        Self::item(
+            Ident::invalid(),
+            self.attrs,
+            self.vis,
+            self.span,
+            self.id,
+            ItemKind::Use(P(use_tree)),
+        )
+    }
+
+    pub fn use_glob_item<Pa>(self, path: Pa) -> P<Item>
+    where
+        Pa: Make<Path>,
+    {
+        let path = path.make(&self);
+        let use_tree = UseTree {
+            span: DUMMY_SP,
+            prefix: path,
+            kind: UseTreeKind::Glob,
         };
         Self::item(
             Ident::invalid(),

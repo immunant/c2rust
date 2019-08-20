@@ -305,6 +305,7 @@ enum PatKind {
 #[extend_span]
 struct FieldPat { ident, pat, is_shorthand, attrs }
 
+#[match=custom]
 struct Lit { token, node, span }
 
 enum LitKind {

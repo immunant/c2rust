@@ -3,14 +3,24 @@ use std::fmt;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaString, LuaTable, LuaValue};
 use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
-use syntax::ast::{self, DUMMY_NODE_ID};
+use syntax::ThinVec;
+use syntax::ast::{
+    self, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, MacDelimiter, NodeId,
+    Ty, TyKind,
+};
 use syntax::mut_visit::MutVisitor;
+use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
 use syntax::ptr::P;
+use syntax::source_map::dummy_spanned;
+use syntax::symbol::Symbol;
+use syntax::tokenstream::TokenTree;
+use syntax_pos::DUMMY_SP;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::MutVisit;
@@ -20,6 +30,7 @@ use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
 use crate::matcher::{mut_visit_match_with, MatchCtxt, Pattern, Subst, TryMatch};
 use crate::path_edit::fold_resolved_paths_with_id;
+use crate::reflect::reflect_tcx_ty;
 use crate::RefactorCtxt;
 
 pub mod ast_visitor;
@@ -31,7 +42,7 @@ use ast_visitor::{LuaAstVisitor, LuaAstVisitorNew};
 use into_lua_ast::IntoLuaAst;
 use merge_lua_ast::MergeLuaAst;
 use to_lua_ast_node::LuaAstNode;
-use to_lua_ast_node::{ToLuaExt, ToLuaScoped};
+use to_lua_ast_node::{LuaHirId, ToLuaExt, ToLuaScoped};
 
 /// Refactoring module
 // @module Refactor
@@ -51,7 +62,11 @@ pub fn run_lua_file(
     let io = Arc::new(RealFileIO::new(rewrite_modes));
 
     driver::run_refactoring(config, registry, io, HashSet::new(), |state| {
-        let lua = Lua::new();
+        // We use the unsafe _with_debug method because we want to be able to use
+        // lua libraries which happen to support pretty printing. This should be fine
+        // so long as we're confident they don't use riskier parts of the debug lib.
+        let lua = unsafe { Lua::new_with_debug() };
+
         lua.context(|lua_ctx| {
             // Add the script's current directory to the lua path so that local
             // files can be imported
@@ -106,11 +121,23 @@ impl UserData for RefactorState {
         methods.add_method_mut(
             "run_command",
             |_lua_ctx, this, (name, args): (String, Vec<String>)| {
-                this.load_crate();
-                let res = this.run(&name, &args).map_err(|e| LuaError::external(e));
-                this.save_crate();
-                res
+                this.run(&name, &args).map_err(|e| LuaError::external(e))
             },
+        );
+
+        methods.add_method_mut(
+            "save_crate",
+            |_lua_ctx, this, ()| Ok(this.save_crate()),
+        );
+
+        methods.add_method_mut(
+            "load_crate",
+            |_lua_ctx, this, ()| Ok(this.load_crate()),
+        );
+
+        methods.add_method_mut(
+            "dump_marks",
+            |_lua_ctx, this, ()| Ok(println!("Marks: {:?}", this.marks())),
         );
 
         /// Run a custom refactoring transformation
@@ -123,7 +150,6 @@ impl UserData for RefactorState {
                 Some(3) | None => Phase::Phase3,
                 _ => return Err(LuaError::external("Phase must be nil, 1, 2, or 3")),
             };
-            this.load_crate();
             this.transform_crate(phase, |st, cx| {
                 enter_transform(st, cx, |transform| {
                     let res: LuaResult<()> = lua_ctx.scope(|scope| {
@@ -142,7 +168,6 @@ impl UserData for RefactorState {
                 });
             })
             .map_err(|e| LuaError::external(format!("Failed to run compiler: {:#?}", e)))?;
-            this.save_crate();
             Ok(())
         });
     }
@@ -311,6 +336,18 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
             },
         );
 
+        /// Get matched binding for a literal variable
+        // @function get_lit
+        // @tparam string pattern Literal variable pattern
+        // @treturn LuaAstNode Literal matched by this binding
+        methods.add_method_mut("get_lit", |lua_ctx, this, pattern: String| {
+            this.mcx.bindings
+                .get::<_, ast::Lit>(pattern)
+                .unwrap()
+                .clone()
+                .to_lua(lua_ctx)
+        });
+
         /// Get matched binding for an expression variable
         // @function get_expr
         // @tparam string pattern Expression variable pattern
@@ -318,6 +355,18 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         methods.add_method_mut("get_expr", |lua_ctx, this, pattern: String| {
             this.mcx.bindings
                 .get::<_, P<ast::Expr>>(pattern)
+                .unwrap()
+                .clone()
+                .to_lua(lua_ctx)
+        });
+
+        /// Get matched binding for a type variable
+        // @function get_ty
+        // @tparam string pattern Type variable pattern
+        // @treturn LuaAstNode Type matched by this binding
+        methods.add_method_mut("get_ty", |lua_ctx, this, pattern: String| {
+            this.mcx.bindings
+                .get::<_, P<ast::Ty>>(pattern)
                 .unwrap()
                 .clone()
                 .to_lua(lua_ctx)
@@ -478,6 +527,31 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             },
         );
 
+        methods.add_method(
+            "resolve_path_hirid",
+            |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
+                Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(|id| LuaHirId(id)))
+            },
+        );
+
+        methods.add_method("resolve_ty_hirid", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
+            let def_id = match this.cx.try_resolve_ty(&ty.borrow()) {
+                Some(id) => id,
+                None => return Ok(None),
+            };
+
+           Ok(this.cx.hir_map().as_local_hir_id(def_id).map(|id| LuaHirId(id)))
+        });
+
+        methods.add_method(
+            "nodeid_to_hirid",
+            |_lua_ctx, this, id: i64| {
+                let node_id = NodeId::from_usize(id as usize);
+
+                Ok(Some(LuaHirId(this.cx.hir_map().node_to_hir_id(node_id))))
+            },
+        );
+
         /// Replace matching expressions using given callback
         // @function replace_expr_with
         // @tparam string needle Expression pattern to search for, may include variable bindings
@@ -600,6 +674,145 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
 
         methods.add_method("get_use_def", |lua_ctx, this, id: u32| {
             this.cx.resolve_use_id(ast::NodeId::from_u32(id)).res.to_lua(lua_ctx)
+        });
+
+        methods.add_method("binary_expr", |_lua_ctx, _this, (op, lhs, rhs): (LuaString, LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
+            let op = match op.to_str()? {
+                "Add" => BinOpKind::Add,
+                "Div" => BinOpKind::Div,
+                _ => unimplemented!("BinOpKind parsing from string"),
+            };
+            let lhs = lhs.borrow().clone();
+            let rhs = rhs.borrow().clone();
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Binary(dummy_spanned(op), lhs, rhs),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("assign_expr", |_lua_ctx, _this, (lhs, rhs): (LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
+            let lhs = lhs.borrow().clone();
+            let rhs = rhs.borrow().clone();
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Assign(lhs, rhs),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("ident_path_expr", |_lua_ctx, _this, path: LuaString| {
+            let path = syntax::ast::Path::from_ident(Ident::from_str(path.to_str()?));
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Path(None, path),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("ident_path_ty", |_lua_ctx, _this, path: LuaString| {
+            let path = syntax::ast::Path::from_ident(Ident::from_str(path.to_str()?));
+            let expr = P(Ty {
+                id: DUMMY_NODE_ID,
+                node: TyKind::Path(None, path),
+                span: DUMMY_SP,
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("vec_mac_init_num", |_lua_ctx, _this, (init, num): (LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
+            let init = Rc::new(Nonterminal::NtExpr(init.borrow().clone()));
+            let num = Rc::new(Nonterminal::NtExpr(num.borrow().clone()));
+            let macro_body = vec![
+                TokenTree::Token(Token { kind: TokenKind::Interpolated(init), span: DUMMY_SP }),
+                TokenTree::Token(Token { kind: TokenKind::Semi, span: DUMMY_SP }),
+                TokenTree::Token(Token { kind: TokenKind::Interpolated(num), span: DUMMY_SP}),
+            ];
+            let mac = mk().mac(mk().path("vec"), macro_body, MacDelimiter::Bracket);
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Mac(mac),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("int_lit_expr", |_lua_ctx, _this, (int, _suffix): (i64, Option<LuaString>)| {
+            let lit = Lit {
+                token: TokenLit {
+                    kind: TokenLitKind::Integer,
+                    symbol: Symbol::intern(&format!("{}", int)),
+                    suffix: None,
+                },
+                node: LitKind::Int(int as u128, LitIntType::Unsuffixed),
+                span: DUMMY_SP,
+            };
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Lit(lit),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("cast_expr", |_lua_ctx, _this, (expr, ty): (LuaAstNode<P<Expr>>, LuaAstNode<P<Ty>>)| {
+            let expr = expr.borrow().clone();
+            let ty = ty.borrow().clone();
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::Cast(expr, ty),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method("get_expr_ty", |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
+            let rty = this.cx.node_type(expr.borrow().id);
+            let ty = reflect_tcx_ty(this.cx.ty_ctxt(), rty);
+
+            Ok(LuaAstNode::new(ty))
+        });
+
+        methods.add_method("get_field_expr_hirid", |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
+            use rustc::ty::TyKind;
+
+            let expr = expr.borrow();
+
+            let (ref expr, ref ident) = match &expr.node {
+                ExprKind::Field(expr, ident) => (expr, ident),
+                _ => return Ok(None)
+            };
+
+            if let TyKind::Adt(def, _) = &this.cx.adjusted_node_type(expr.id).sty {
+                // Assuming only one variant, struct
+                let def = def.variants.iter().next().unwrap();
+
+                for field in def.fields.iter() {
+                    if field.ident == **ident {
+                        let hir_id = this.cx.hir_map().as_local_hir_id(field.did);
+
+                        return Ok(hir_id.map(|id| LuaHirId(id)));
+                    }
+                }
+            };
+
+            Ok(None)
         });
     }
 }

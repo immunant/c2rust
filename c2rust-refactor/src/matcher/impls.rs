@@ -67,6 +67,16 @@ impl TryMatch for Path {
     }
 }
 
+impl TryMatch for Lit {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        if mcx.maybe_capture_lit(self, target)? {
+            return Ok(());
+        }
+
+        default_try_match_lit(self, target, mcx)
+    }
+}
+
 impl TryMatch for Expr {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if mcx.maybe_capture_expr(self, target)? {

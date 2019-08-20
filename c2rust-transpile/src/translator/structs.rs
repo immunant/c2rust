@@ -6,10 +6,8 @@ use std::collections::HashSet;
 use std::ops::Index;
 
 use super::TranslationError;
-use crate::c_ast::{
-    BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CQualTypeId, CTypeId, MemberKind, UnOp,
-};
-use crate::translator::{simple_metaitem, ConvertedDecl, ExprContext, Translation};
+use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
+use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use syntax::ast::{
@@ -18,13 +16,10 @@ use syntax::ast::{
 };
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
-use syntax_pos::{Span, DUMMY_SP};
+use syntax_pos::DUMMY_SP;
 
 use itertools::EitherOrBoth::{Both, Right};
 use itertools::Itertools;
-
-/// (name, type, bitfield_width, platform_bit_offset, platform_type_bitwidth)
-type FieldInfo = (String, CQualTypeId, Option<u64>, u64, u64);
 
 #[derive(Debug)]
 enum FieldType {
@@ -37,10 +32,14 @@ enum FieldType {
     Padding {
         bytes: u64,
     },
+    ComputedPadding {
+        ident: String,
+    },
     Regular {
         name: String,
         ctype: CTypeId,
         field: StructField,
+        use_inner_type: bool,
     },
 }
 
@@ -65,7 +64,7 @@ fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
         MetaItemKind::NameValue(Lit {
             token,
             node,
-            span: DUMMY_SP
+            span: DUMMY_SP,
         }),
     );
 
@@ -80,7 +79,8 @@ impl<'a> Translation<'a> {
     /// 3. A standard field into a FieldType::Regular
     fn get_field_types(
         &self,
-        field_info: Vec<FieldInfo>,
+        record_id: CRecordId,
+        field_ids: &[CDeclId],
         platform_byte_size: u64,
     ) -> Result<Vec<FieldType>, TranslationError> {
         let mut reorganized_fields = Vec::new();
@@ -88,126 +88,171 @@ impl<'a> Translation<'a> {
         let mut next_byte_pos = 0;
         let mut encountered_bytes = HashSet::new();
 
-        for (field_name, ty, bitfield_width, bit_index, platform_ty_bitwidth) in field_info {
-            let ctype = ty.ctype;
-            let ty = self.convert_type(ctype)?;
-            let bitfield_width = match bitfield_width {
-                // Bitfield widths of 0 should just be markers for clang,
-                // we shouldn't need to explicitly handle it ourselves
-                Some(0) => {
-                    // Hit non bitfield group so existing one is all set
-                    if let Some(field_group) = last_bitfield_group.take() {
-                        reorganized_fields.push(field_group);
-                    }
+        for field_id in field_ids {
+            if let CDeclKind::Field {
+                typ,
+                bitfield_width,
+                platform_bit_offset,
+                platform_type_bitwidth,
+                ..
+            } = self.ast_context.index(*field_id).kind
+            {
+                let field_name = self
+                    .type_converter
+                    .borrow()
+                    .resolve_field_name(Some(record_id), *field_id)
+                    .unwrap();
 
-                    continue;
-                }
-                None => {
-                    // Hit non bitfield group so existing one is all set
-                    if let Some(field_group) = last_bitfield_group.take() {
-                        reorganized_fields.push(field_group);
-                    }
-
-                    let bytes = bit_index / 8 - next_byte_pos;
-
-                    // Need to add padding first
-                    if bytes > 1 {
-                        reorganized_fields.push(FieldType::Padding { bytes });
-                    }
-
-                    let field = mk().pub_().struct_field(field_name.clone(), ty);
-
-                    reorganized_fields.push(FieldType::Regular {
-                        name: field_name,
-                        ctype,
-                        field,
-                    });
-
-                    next_byte_pos = (bit_index + platform_ty_bitwidth) / 8;
-
-                    continue;
-                }
-                Some(bw) => bw,
-            };
-
-            // Ensure we aren't looking at overlapping bits in the same byte
-            if bit_index / 8 > next_byte_pos {
-                let bytes = (bit_index / 8) - next_byte_pos;
-
-                reorganized_fields.push(FieldType::Padding { bytes });
-            }
-
-            match last_bitfield_group {
-                Some(FieldType::BitfieldGroup {
-                    start_bit,
-                    field_name: ref mut name,
-                    ref mut bytes,
-                    ref mut attrs,
-                }) => {
-                    name.push('_');
-                    name.push_str(&field_name);
-
-                    let end_bit = bit_index + bitfield_width;
-
-                    // Add to the total byte size of the bitfield group only if
-                    // we have not already enountered this byte
-                    for bit in bit_index..end_bit {
-                        let byte = bit / 8;
-
-                        if !encountered_bytes.contains(&byte) {
-                            *bytes += 1;
-                            encountered_bytes.insert(byte);
+                let ctype = typ.ctype;
+                let mut ty = self.convert_type(ctype)?;
+                let bitfield_width = match bitfield_width {
+                    // Bitfield widths of 0 should just be markers for clang,
+                    // we shouldn't need to explicitly handle it ourselves
+                    Some(0) => {
+                        // Hit non bitfield group so existing one is all set
+                        if let Some(field_group) = last_bitfield_group.take() {
+                            reorganized_fields.push(field_group);
                         }
+
+                        continue;
                     }
+                    None => {
+                        // Hit non bitfield group so existing one is all set
+                        if let Some(field_group) = last_bitfield_group.take() {
+                            reorganized_fields.push(field_group);
 
-                    let bit_start = bit_index - start_bit;
-                    let bit_end = bit_start + bitfield_width - 1;
-                    let bit_range = format!("{}..={}", bit_start, bit_end);
-
-                    attrs.push((field_name.clone(), ty, bit_range));
-                }
-                Some(_) => unreachable!("Found last bitfield group which is not a group"),
-                None => {
-                    let mut bytes = 0;
-                    let end_bit = bit_index + bitfield_width;
-
-                    // Add to the total byte size of the bitfield group only if
-                    // we have not already enountered this byte
-                    for bit in bit_index..end_bit {
-                        let byte = bit / 8;
-
-                        if !encountered_bytes.contains(&byte) {
-                            bytes += 1;
-                            encountered_bytes.insert(byte);
+                            // Need to add padding first
+                            if (platform_bit_offset / 8) > next_byte_pos {
+                                let bytes = (platform_bit_offset / 8) - next_byte_pos;
+                                reorganized_fields.push(FieldType::Padding { bytes });
+                            }
                         }
+
+                        let mut use_inner_type = false;
+                        let mut extra_fields = vec![];
+                        if self.ast_context.is_packed_struct_decl(record_id)
+                            && self.ast_context.is_aligned_struct_type(ctype)
+                        {
+                            // If we're embedding an aligned structure inside a packed one,
+                            // we need to use the `_Inner` version and add padding
+                            let decl_id = self
+                                .ast_context
+                                .resolve_type(ctype)
+                                .kind
+                                .as_underlying_decl()
+                                .unwrap();
+
+                            let inner_name = self.resolve_decl_inner_name(decl_id);
+                            ty = mk().path_ty(mk().path(vec![inner_name]));
+
+                            use_inner_type = true;
+
+                            // Add the padding field
+                            let padding_name = self
+                                .type_converter
+                                .borrow_mut()
+                                .resolve_decl_suffix_name(decl_id, PADDING_SUFFIX)
+                                .to_owned();
+                            extra_fields.push(FieldType::ComputedPadding {
+                                ident: padding_name,
+                            })
+                        }
+
+                        let field = mk().pub_().struct_field(field_name.clone(), ty);
+
+                        reorganized_fields.push(FieldType::Regular {
+                            name: field_name,
+                            ctype,
+                            field,
+                            use_inner_type,
+                        });
+                        reorganized_fields.extend(extra_fields.into_iter());
+
+                        next_byte_pos = (platform_bit_offset + platform_type_bitwidth) / 8;
+
+                        continue;
                     }
+                    Some(bw) => bw,
+                };
 
-                    let bit_range = format!("0..={}", bitfield_width - 1);
-                    let attrs = vec![(field_name.clone(), ty, bit_range)];
-
-                    last_bitfield_group = Some(FieldType::BitfieldGroup {
-                        start_bit: bit_index,
-                        field_name,
-                        bytes,
-                        attrs,
-                    });
+                // Ensure we aren't looking at overlapping bits in the same byte
+                if (platform_bit_offset / 8) > next_byte_pos {
+                    let bytes = (platform_bit_offset / 8) - next_byte_pos;
+                    reorganized_fields.push(FieldType::Padding { bytes });
                 }
-            }
 
-            next_byte_pos = (bit_index + bitfield_width - 1) / 8 + 1;
+                match last_bitfield_group {
+                    Some(FieldType::BitfieldGroup {
+                        start_bit,
+                        field_name: ref mut name,
+                        ref mut bytes,
+                        ref mut attrs,
+                    }) => {
+                        name.push('_');
+                        name.push_str(&field_name);
+
+                        let end_bit = platform_bit_offset + bitfield_width;
+
+                        // Add to the total byte size of the bitfield group only if
+                        // we have not already enountered this byte
+                        for bit in platform_bit_offset..end_bit {
+                            let byte = bit / 8;
+
+                            if !encountered_bytes.contains(&byte) {
+                                *bytes += 1;
+                                encountered_bytes.insert(byte);
+                            }
+                        }
+
+                        let bit_start = platform_bit_offset - start_bit;
+                        let bit_end = bit_start + bitfield_width - 1;
+                        let bit_range = format!("{}..={}", bit_start, bit_end);
+
+                        attrs.push((field_name.clone(), ty, bit_range));
+                    }
+                    Some(_) => unreachable!("Found last bitfield group which is not a group"),
+                    None => {
+                        let mut bytes = 0;
+                        let end_bit = platform_bit_offset + bitfield_width;
+
+                        // Add to the total byte size of the bitfield group only if
+                        // we have not already enountered this byte
+                        for bit in platform_bit_offset..end_bit {
+                            let byte = bit / 8;
+
+                            if !encountered_bytes.contains(&byte) {
+                                bytes += 1;
+                                encountered_bytes.insert(byte);
+                            }
+                        }
+
+                        let bit_range = format!("0..={}", bitfield_width - 1);
+                        let attrs = vec![(field_name.clone(), ty, bit_range)];
+
+                        last_bitfield_group = Some(FieldType::BitfieldGroup {
+                            start_bit: platform_bit_offset,
+                            field_name,
+                            bytes,
+                            attrs,
+                        });
+                    }
+                }
+
+                next_byte_pos = (platform_bit_offset + bitfield_width - 1) / 8 + 1;
+            }
         }
 
         // Find leftover bitfield group at end: it's all set
         if let Some(field_group) = last_bitfield_group.take() {
             reorganized_fields.push(field_group);
-        }
 
-        // Packed structs can cause platform_byte_size < next_byte_pos
-        if platform_byte_size > next_byte_pos {
-            let bytes = platform_byte_size - next_byte_pos;
+            // Packed structs can cause platform_byte_size < next_byte_pos
+            if platform_byte_size > next_byte_pos {
+                let bytes = platform_byte_size - next_byte_pos;
 
-            // Need to add padding to end if we haven't hit the expected total byte size
-            reorganized_fields.push(FieldType::Padding { bytes });
+                // Need to add padding to end if we haven't hit the expected total byte size
+                reorganized_fields.push(FieldType::Padding { bytes });
+            }
         }
 
         Ok(reorganized_fields)
@@ -226,26 +271,26 @@ impl<'a> Translation<'a> {
     ///     _pad: [u8; 2],
     /// }
     /// ```
-    pub fn convert_bitfield_struct_decl(
+    pub fn convert_struct_fields(
         &self,
-        name: String,
-        manual_alignment: Option<u64>,
+        struct_id: CRecordId,
+        field_ids: &[CDeclId],
         platform_byte_size: u64,
-        span: Span,
-        field_info: Vec<FieldInfo>,
-    ) -> Result<ConvertedDecl, TranslationError> {
-        self.extern_crates.borrow_mut().insert("c2rust_bitfields");
-
-        let item_store = &mut self.items.borrow_mut()[&self.main_file];
-
-        item_store.add_use(vec!["c2rust_bitfields".into()], "BitfieldStruct");
-
-        let mut field_entries = Vec::with_capacity(field_info.len());
+    ) -> Result<Vec<StructField>, TranslationError> {
+        let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
-        let reorganized_fields = self.get_field_types(field_info, platform_byte_size)?;
+        let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
 
         let mut padding_count = 0;
+        let mut next_padding_field = || {
+            let field_name = self
+                .type_converter
+                .borrow_mut()
+                .declare_padding(struct_id, padding_count);
+            padding_count += 1;
+            field_name
+        };
 
         for field_type in reorganized_fields {
             match field_type {
@@ -281,11 +326,7 @@ impl<'a> Translation<'a> {
                     field_entries.push(field.pub_().struct_field(field_name, ty));
                 }
                 FieldType::Padding { bytes } => {
-                    let field_name = if padding_count == 0 {
-                        "_pad".into()
-                    } else {
-                        format!("_pad{}", padding_count + 1)
-                    };
+                    let field_name = next_padding_field();
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
@@ -302,30 +343,21 @@ impl<'a> Translation<'a> {
                         .pub_()
                         .struct_field(field_name, ty);
 
-                    padding_count += 1;
+                    field_entries.push(field);
+                }
+                FieldType::ComputedPadding { ident } => {
+                    let field_name = next_padding_field();
+                    let ty = mk().array_ty(mk().ident_ty("u8"), mk().ident_expr(ident));
+
+                    // TODO: disable cross-checks on this field
+                    let field = mk().pub_().struct_field(field_name, ty);
 
                     field_entries.push(field);
                 }
                 FieldType::Regular { field, .. } => field_entries.push(field),
             }
         }
-
-        let mut repr_items = vec![simple_metaitem("C")];
-
-        if let Some(align) = manual_alignment {
-            repr_items.push(simple_metaitem(&format!("align({})", align)));
-        }
-
-        let repr_attr = mk().meta_item("repr", MetaItemKind::List(repr_items));
-
-        let item = mk()
-            .span(span)
-            .pub_()
-            .call_attr("derive", vec!["BitfieldStruct", "Clone", "Copy"])
-            .meta_item_attr(AttrStyle::Outer, repr_attr)
-            .struct_item(name, field_entries);
-
-        Ok(ConvertedDecl::Item(item))
+        Ok(field_entries)
     }
 
     /// Here we output a block to generate a struct literal initializer in.
@@ -343,18 +375,43 @@ impl<'a> Translation<'a> {
     ///     init
     /// }
     /// ```
-    pub fn convert_bitfield_struct_literal(
+    pub fn convert_struct_literal(
         &self,
-        name: String,
-        platform_byte_size: u64,
-        field_ids: &[CExprId],
-        field_info: Vec<FieldInfo>,
         ctx: ExprContext,
+        struct_id: CRecordId,
+        field_expr_ids: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let mut fields = Vec::with_capacity(field_ids.len());
-        let reorganized_fields = self.get_field_types(field_info.clone(), platform_byte_size)?;
+        let name = self.resolve_decl_inner_name(struct_id);
+
+        let (field_decl_ids, platform_byte_size) = match self.ast_context.index(struct_id).kind {
+            CDeclKind::Struct {
+                fields: Some(ref fields),
+                platform_byte_size,
+                ..
+            } => (fields, platform_byte_size),
+
+            CDeclKind::Struct { fields: None, .. } => {
+                return Err(TranslationError::generic(
+                    "Attempted to zero-initialize forward-declared struct",
+                ))
+            }
+
+            _ => panic!("Struct literal declaration mismatch"),
+        };
+
+        let mut fields = Vec::with_capacity(field_decl_ids.len());
+        let reorganized_fields =
+            self.get_field_types(struct_id, field_decl_ids, platform_byte_size)?;
         let local_pat = mk().mutbl().ident_pat("init");
         let mut padding_count = 0;
+        let mut next_padding_field = || {
+            let field_name = self
+                .type_converter
+                .borrow_mut()
+                .declare_padding(struct_id, padding_count);
+            padding_count += 1;
+            field_name
+        };
 
         // Add in zero inits for both padding as well as bitfield groups
         for field_type in reorganized_fields {
@@ -371,18 +428,22 @@ impl<'a> Translation<'a> {
                     fields.push(WithStmts::new_val(field));
                 }
                 FieldType::Padding { bytes } => {
-                    let field_name = if padding_count == 0 {
-                        "_pad".into()
-                    } else {
-                        format!("_pad{}", padding_count + 1)
-                    };
+                    let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
                     );
                     let field = mk().field(field_name, array_expr);
 
-                    padding_count += 1;
+                    fields.push(WithStmts::new_val(field));
+                }
+                FieldType::ComputedPadding { ident } => {
+                    let field_name = next_padding_field();
+                    let array_expr = mk().repeat_expr(
+                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().ident_expr(ident),
+                    );
+                    let field = mk().field(field_name, array_expr);
 
                     fields.push(WithStmts::new_val(field));
                 }
@@ -392,34 +453,69 @@ impl<'a> Translation<'a> {
 
         // Bitfield widths of 0 should just be markers for clang,
         // we shouldn't need to explicitly handle it ourselves
-        let field_info_iter = field_info.iter().filter(|info| info.2 != Some(0));
-        let zipped_iter = field_ids.iter().zip_longest(field_info_iter);
+        let is_packed = self.ast_context.is_packed_struct_decl(struct_id);
+        let field_info_iter = field_decl_ids.iter().filter_map(|field_id| {
+            match self.ast_context.index(*field_id).kind {
+                CDeclKind::Field {
+                    bitfield_width: Some(0),
+                    ..
+                } => None,
+                CDeclKind::Field {
+                    typ,
+                    bitfield_width,
+                    ..
+                } => {
+                    let field_name = self
+                        .type_converter
+                        .borrow()
+                        .resolve_field_name(None, *field_id)
+                        .unwrap();
+
+                    let use_inner_type =
+                        is_packed && self.ast_context.is_aligned_struct_type(typ.ctype);
+                    Some((field_name, typ, bitfield_width, use_inner_type))
+                }
+                _ => None,
+            }
+        });
+        let zipped_iter = field_expr_ids.iter().zip_longest(field_info_iter);
         let mut bitfield_inits = Vec::new();
 
         // Specified record fields which are not bitfields need to be added
         for item in zipped_iter {
             match item {
-                Right((field_name, ty, bitfield_width, _, _)) => {
+                Right((field_name, ty, bitfield_width, use_inner_type)) => {
                     if bitfield_width.is_some() {
                         continue;
                     }
 
-                    let init = self.implicit_default_expr(ty.ctype, ctx.is_static)?;
+                    let mut init = self.implicit_default_expr(ty.ctype, ctx.is_static)?;
                     if !init.is_pure() {
                         return Err(TranslationError::generic(
-                            "Expected no statements in field expression"
+                            "Expected no statements in field expression",
                         ));
+                    }
+                    if use_inner_type {
+                        // Small hack: we need a value of the inner type,
+                        // but `implicit_default_expr` produced a value
+                        // of the outer type, so unwrap it manually
+                        init = init.map(|fi| mk().field_expr(fi, "0"));
                     }
                     let field = init.map(|init| mk().field(field_name, init));
                     fields.push(field);
                 }
-                Both(field_id, (field_name, _, bitfield_width, _, _)) => {
-                    let expr = self.convert_expr(ctx.used(), *field_id)?;
+                Both(field_id, (field_name, _, bitfield_width, use_inner_type)) => {
+                    let mut expr = self.convert_expr(ctx.used(), *field_id)?;
 
                     if !expr.is_pure() {
                         return Err(TranslationError::generic(
-                            "Expected no statements in field expression"
+                            "Expected no statements in field expression",
                         ));
+                    }
+
+                    if use_inner_type {
+                        // See comment above
+                        expr = expr.map(|fi| mk().field_expr(fi, "0"));
                     }
 
                     if bitfield_width.is_some() {
@@ -434,15 +530,13 @@ impl<'a> Translation<'a> {
             }
         }
 
-        fields.into_iter()
+        fields
+            .into_iter()
             .collect::<WithStmts<Vec<ast::Field>>>()
             .and_then(|fields| {
                 let struct_expr = mk().struct_expr(name.as_str(), fields);
-                let local_variable = P(mk().local(
-                    local_pat,
-                    None as Option<P<Ty>>,
-                    Some(struct_expr))
-                );
+                let local_variable =
+                    P(mk().local(local_pat, None as Option<P<Ty>>, Some(struct_expr)));
 
                 let mut is_unsafe = false;
                 let mut stmts = vec![mk().local_stmt(local_variable)];
@@ -452,7 +546,8 @@ impl<'a> Translation<'a> {
                     let field_name_setter = format!("set_{}", field_name);
                     let struct_ident = mk().ident_expr("init");
                     is_unsafe |= val.is_unsafe();
-                    let val = val.to_pure_expr()
+                    let val = val
+                        .to_pure_expr()
                         .expect("Expected no statements in bitfield initializer");
                     let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
 
@@ -463,54 +558,38 @@ impl<'a> Translation<'a> {
 
                 stmts.push(mk().expr_stmt(struct_ident));
 
-                let val = mk().block_expr(mk().block(stmts)); 
+                let val = mk().block_expr(mk().block(stmts));
 
                 if is_unsafe {
                     Ok(WithStmts::new_unsafe_val(val))
                 } else {
                     Ok(WithStmts::new_val(val))
                 }
-           })
+            })
     }
 
     /// This method handles zero-initializing bitfield structs including bitfields
     /// & padding fields
-    pub fn bitfield_zero_initializer(
+    pub fn convert_struct_zero_initializer(
         &self,
         name: String,
+        struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let field_info: Vec<FieldInfo> = field_ids
-            .iter()
-            .map(|field_id| match self.ast_context.index(*field_id).kind {
-                CDeclKind::Field {
-                    typ,
-                    bitfield_width,
-                    platform_bit_offset,
-                    platform_type_bitwidth,
-                    ..
-                } => {
-                    let name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_field_name(None, *field_id)
-                        .unwrap();
-                    (
-                        name,
-                        typ,
-                        bitfield_width,
-                        platform_bit_offset,
-                        platform_type_bitwidth,
-                    )
-                }
-                _ => unreachable!("Found non-field in record field list"),
-            })
-            .collect();
-        let reorganized_fields = self.get_field_types(field_info, platform_byte_size)?;
+        let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
+
         let mut padding_count = 0;
+        let mut next_padding_field = || {
+            let field_name = self
+                .type_converter
+                .borrow_mut()
+                .declare_padding(struct_id, padding_count);
+            padding_count += 1;
+            field_name
+        };
 
         for field_type in reorganized_fields {
             match field_type {
@@ -526,34 +605,48 @@ impl<'a> Translation<'a> {
                     fields.push(WithStmts::new_val(field));
                 }
                 FieldType::Padding { bytes } => {
-                    let field_name = if padding_count == 0 {
-                        "_pad".into()
-                    } else {
-                        format!("_pad{}", padding_count + 1)
-                    };
+                    let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
                         mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
                     );
                     let field = mk().field(field_name, array_expr);
 
-                    padding_count += 1;
+                    fields.push(WithStmts::new_val(field));
+                }
+                FieldType::ComputedPadding { ident } => {
+                    let field_name = next_padding_field();
+                    let array_expr = mk().repeat_expr(
+                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().ident_expr(ident),
+                    );
+                    let field = mk().field(field_name, array_expr);
 
                     fields.push(WithStmts::new_val(field));
                 }
-                FieldType::Regular { ctype, name, .. } => {
-                    let field_init = self.implicit_default_expr(ctype, is_static)?;
+                FieldType::Regular {
+                    ctype,
+                    name,
+                    use_inner_type,
+                    ..
+                } => {
+                    let mut field_init = self.implicit_default_expr(ctype, is_static)?;
                     if !field_init.is_pure() {
                         return Err(TranslationError::generic(
-                            "Expected no statements in field expression"
+                            "Expected no statements in field expression",
                         ));
+                    }
+                    if use_inner_type {
+                        // See comment above
+                        field_init = field_init.map(|fi| mk().field_expr(fi, "0"));
                     }
                     fields.push(field_init.map(|init| mk().field(name, init)))
                 }
             }
         }
 
-        Ok(fields.into_iter()
+        Ok(fields
+            .into_iter()
             .collect::<WithStmts<Vec<ast::Field>>>()
             .map(|fields| mk().struct_expr(name.as_str(), fields)))
     }
@@ -598,7 +691,9 @@ impl<'a> Translation<'a> {
                 BinOp::AssignModulus => mk().binary_expr(BinOpKind::Rem, lhs_expr_read, rhs_expr),
                 BinOp::AssignBitXor => mk().binary_expr(BinOpKind::BitXor, lhs_expr_read, rhs_expr),
                 BinOp::AssignShiftLeft => mk().binary_expr(BinOpKind::Shl, lhs_expr_read, rhs_expr),
-                BinOp::AssignShiftRight => mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr),
+                BinOp::AssignShiftRight => {
+                    mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr)
+                }
                 BinOp::AssignBitOr => mk().binary_expr(BinOpKind::BitOr, lhs_expr_read, rhs_expr),
                 BinOp::AssignBitAnd => mk().binary_expr(BinOpKind::BitAnd, lhs_expr_read, rhs_expr),
                 BinOp::Assign => rhs_expr,
@@ -651,45 +746,5 @@ impl<'a> Translation<'a> {
 
             return Ok(WithStmts::new(stmts, val));
         })
-    }
-
-    /// This method will convert a bitfield member one of four ways:
-    /// A) bf.a()
-    /// B) (*bf).a()
-    /// C) bf
-    /// D) (*bf)
-    ///
-    /// The first two are when we know this bitfield member is going to be read
-    /// from (default), possibly requiring a dereference first. The latter two
-    /// are generated when we are expecting to require a write, which will need
-    /// to make a method call with some input which we do not yet have access
-    /// to and will have to be handled elsewhere, IE `bf.set_a(1)`
-    pub fn convert_bitfield_member_expr(
-        &self,
-        ctx: ExprContext,
-        field_name: String,
-        expr_id: CExprId,
-        kind: MemberKind,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let mut val = match kind {
-            MemberKind::Dot => self.convert_expr(ctx, expr_id)?,
-            MemberKind::Arrow => {
-                if let CExprKind::Unary(_, UnOp::AddressOf, subexpr_id, _) =
-                    self.ast_context[expr_id].kind
-                {
-                    self.convert_expr(ctx, subexpr_id)?
-                } else {
-                    let val = self.convert_expr(ctx, expr_id)?;
-
-                    val.map(|v| mk().unary_expr(ast::UnOp::Deref, v))
-                }
-            }
-        };
-
-        if !ctx.is_bitfield_write() {
-            val = val.map(|v| mk().method_call_expr(v, field_name, vec![] as Vec<P<Expr>>));
-        }
-
-        Ok(val)
     }
 }
