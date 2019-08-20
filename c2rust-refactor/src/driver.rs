@@ -12,7 +12,6 @@ use rustc::util::common::ErrorReported;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
 use rustc_data_structures::declare_box_region_type;
 use rustc_data_structures::sync::{Lock, Lrc};
-use rustc_data_structures::thin_vec::ThinVec;
 use rustc_driver;
 use rustc_errors::DiagnosticBuilder;
 use rustc_incremental::DepGraphFuture;
@@ -39,7 +38,7 @@ use syntax::ext::base::NamedSyntaxExtension;
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::feature_gate::AttributeType;
 use syntax::parse::parser::Parser;
-use syntax::parse::token::TokenKind;
+use syntax::parse::token::{self, TokenKind};
 use syntax::parse::{self, PResult};
 use syntax::ptr::P;
 use syntax::source_map::SourceMap;
@@ -648,12 +647,17 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
 }
 
 fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
-    // `parse_arg` is private, so we make do with `parse_pat` + `parse_ty`.
+    // `parse_arg` is private, so we make do with `parse_attribute`,
+    // `parse_pat`, & `parse_ty`.
+    let mut attrs: Vec<ast::Attribute> = Vec::new();
+    while let token::Pound = p.token.kind {
+        attrs.push(p.parse_attribute(false).unwrap());
+    }
     let pat = p.parse_pat(None)?;
     p.expect(&TokenKind::Colon)?;
     let ty = p.parse_ty()?;
     Ok(Arg {
-        attrs: ThinVec::new(),
+        attrs: attrs.into(),
         pat,
         ty,
         id: DUMMY_NODE_ID,

@@ -1,4 +1,4 @@
-#![feature(rustc_private, custom_attribute)]
+#![feature(rustc_private, custom_attribute, param_attrs)]
 extern crate libc;
 
 extern "C" {
