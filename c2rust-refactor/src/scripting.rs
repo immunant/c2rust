@@ -88,6 +88,13 @@ pub fn run_lua_file(
                 let refactor = scope.create_nonstatic_userdata(state)?;
                 lua_ctx.globals().set("refactor", refactor)?;
 
+                let log_error = scope.create_function(|_lua_ctx, string: LuaString| {
+                    error!("{}", string.to_str()?);
+
+                    Ok(())
+                })?;
+
+                lua_ctx.globals().set("log_error", log_error)?;
                 lua_ctx.load(&script).exec()
             })
         })

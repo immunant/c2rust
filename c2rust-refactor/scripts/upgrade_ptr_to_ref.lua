@@ -96,7 +96,7 @@ function ConvCfg:is_opt_slice()
 end
 
 function ConvCfg:is_opt_any()
-    return self:is_opt_box() or self:is_opt_box_slice() or self:is_opt_ref() or self:is_opt_slice()
+    return self:is_opt_box_any() or self:is_opt_ref() or self:is_opt_slice()
 end
 
 function ConvCfg:is_opt_box()
@@ -124,7 +124,7 @@ function ConvCfg:is_box()
 end
 
 function ConvCfg:is_box_any()
-    return self:is_opt_box() or self:is_opt_box_slice() or self:is_box_slice() or self:is_box()
+    return self:is_opt_box_any() or self:is_box_slice() or self:is_box()
 end
 
 function ConvCfg:is_del()
@@ -337,17 +337,22 @@ function Visitor:visit_expr(expr)
 
             -- We only want to apply this operation if we're converting
             -- a pointer to an array
-            if cfg and (cfg:is_slice_any() or cfg:is_array()) then
-                -- If we're using an option, we must unwrap (or map/match) using
-                -- as_mut (or as_ref) to avoid a move:
-                -- *ptr[1] -> *ptr.as_mut().unwrap()[1] otherwise we can just unwrap
-                -- *ptr[1] -> *ptr.unwrap()[1]
-                if cfg:is_opt_any() then
-                    -- TODO: or as_ref
-                    if cfg:is_opt_box_any() then
-                        unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
+            if cfg then
+                if cfg:is_slice_any() or cfg:is_array() then
+                    -- If we're using an option, we must unwrap (or map/match) using
+                    -- as_mut (or as_ref) to avoid a move:
+                    -- *ptr[1] -> *ptr.as_mut().unwrap()[1] otherwise we can just unwrap
+                    -- *ptr[1] -> *ptr.unwrap()[1]
+                    if cfg:is_opt_any() then
+                        -- TODO: or as_ref
+                        if cfg:is_opt_box_any() then
+                            unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
+                        end
+                        unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
                     end
-                    unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
+                else
+                    log_error("Found offset method applied to a reference")
+                    return
                 end
 
                 -- A cast to isize may have been applied by translator for offset(x)
