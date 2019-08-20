@@ -11,10 +11,10 @@ extern "C" {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ten_mul(mut acc: Option<&mut f64>, digit: i32, r: Option<&f64>) -> i32 {
-    **acc.as_mut().unwrap() *= 10i32 as f64;
-    **acc.as_mut().unwrap() += digit as f64;
-    **acc.as_mut().unwrap() += **r.as_ref().unwrap();
+pub unsafe extern "C" fn ten_mul(mut acc: &mut f64, digit: i32, r: Option<&f64>) -> i32 {
+    *acc *= 10i32 as f64;
+    *acc += digit as f64;
+    *acc += **r.as_ref().unwrap();
     return 0i32;
 }
 
