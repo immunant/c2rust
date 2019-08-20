@@ -760,6 +760,11 @@ function MarkConverter:visit_arg(arg)
 
     for _, mark in ipairs(marks) do
         local conv_type = "opt_ref"
+        for _,attr in ipairs(arg:get_attrs()) do
+           if attr:ident() == "nonnull" then
+              conv_type = "ref"
+           end
+        end
         local mutability = nil
         local binding = nil
         -- TODO: If has slice attr

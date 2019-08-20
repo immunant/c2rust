@@ -1354,6 +1354,15 @@ impl UserData for LuaAstNode<Arg> {
             Ok(())
         });
 
+        methods.add_method("get_attrs", |_lua_ctx, this, ()| {
+            Ok(this
+               .borrow()
+               .attrs
+               .iter()
+               .map(|attr| LuaAstNode::new(attr.clone()))
+               .collect::<Vec<_>>())
+        });
+
         methods.add_method("print", |_lua_ctx, this, ()| {
             println!("{:?}", this.borrow());
 
@@ -1450,6 +1459,24 @@ impl UserData for LuaAstNode<ItemKind> {
             println!("{:?}", this.borrow());
 
             Ok(())
+        });
+    }
+}
+
+/// Attribute AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type FnHeaderAstNode
+unsafe impl Send for LuaAstNode<Attribute> {}
+impl UserData for LuaAstNode<Attribute> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("ident", |lua_ctx, this, ()| {
+            if let Some(ident) = this.borrow().ident() {
+                Ok(Some(ident.to_lua(lua_ctx)?))
+            } else {
+                Ok(None)
+            }
         });
     }
 }

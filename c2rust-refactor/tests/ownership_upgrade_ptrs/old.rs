@@ -11,7 +11,7 @@ extern "C" {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ten_mul(#[a] acc: *mut f64, digit: i32, r: *mut f64) -> i32 {
+pub unsafe extern "C" fn ten_mul(#[nonnull] acc: *mut f64, digit: i32, r: *mut f64) -> i32 {
     *acc *= 10i32 as f64;
     *acc += digit as f64;
     *acc += *r;
