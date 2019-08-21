@@ -31,8 +31,7 @@ struct Ctx {
     data: [u8; 10],
 }
 
-#[ptr_to_slice(p)]
-unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx, p: *mut u8) {
+unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx, #[slice] p: *mut u8) {
     let off = 1;
     (*ctx).data[0] = *p.offset(0isize).offset(3isize);
     (*ctx2).data[0] = *p.offset(3isize).offset(off);
@@ -83,4 +82,8 @@ pub unsafe extern "C" fn __ibitmap(mut hashp: *mut HTAB,
 #[ownership_mono("", MOVE)]
 fn move_ptr(ptr: *mut u32) {
     free(ptr as *mut libc::c_void);
+}
+
+fn attrs(#[nonnull] a: *const f64, #[nonnull] #[slice] b: *const f64) -> f64 {
+    *a + *b.offset(2)
 }

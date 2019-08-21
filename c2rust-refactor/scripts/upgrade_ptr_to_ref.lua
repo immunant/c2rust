@@ -759,26 +759,55 @@ function MarkConverter:visit_arg(arg)
     end
 
     for _, mark in ipairs(marks) do
-        local conv_type = "opt_ref"
-        for _,attr in ipairs(arg:get_attrs()) do
-           if attr:ident() == "nonnull" then
-              conv_type = "ref"
-           end
-        end
+        local opt = true
+        local slice = false
         local mutability = nil
         local binding = nil
-        -- TODO: If has slice attr
-        if false then
-            conv_type = "opt_slice"
+        local conv_type = ""
+
+        for _, attr in ipairs(arg:get_attrs()) do
+            local attr_ident = attr:ident()
+
+            if attr_ident == "nonnull" then
+                opt = false
+            elseif attr_ident == "slice" then
+                slice = true
+            end
         end
+
+        if opt then
+            conv_type = "opt_"
+        end
+
+        print(mark, arg)
 
         if mark == "ref" then
             mutability = "immut"
+
+            if slice then
+                conv_type = conv_type .. "slice"
+            else
+                conv_type = conv_type .. "ref"
+            end
         elseif mark == "mut" then
             mutability = "mut"
             binding = "ByValMut"
+
+            if slice then
+                conv_type = conv_type .. "slice"
+            else
+                conv_type = conv_type .. "ref"
+            end
         elseif mark == "box" then
-            conv_type = "opt_box"
+            conv_type = conv_type .. "box"
+
+            if slice then
+                conv_type = conv_type .. "_slice"
+            end
+        end
+
+        if conv_type == "" or conv_type[#conv_type] == "_" then
+            log_error("Could not build appropriate conversion cfg for: " .. tostring(arg))
         end
 
         self.node_id_cfgs[arg_id] = ConvCfg.new{conv_type, mutability=mutability, binding=binding}

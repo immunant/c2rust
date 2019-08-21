@@ -31,11 +31,10 @@ struct Ctx {
     data: [u8; 10],
 }
 
-#[ptr_to_slice(p)]
-unsafe fn struct_ptr(mut ctx: Option<&mut Ctx>, mut ctx2: Option<&mut Ctx>, p: Option<&u8>) {
+unsafe fn struct_ptr(mut ctx: Option<&mut Ctx>, mut ctx2: Option<&mut Ctx>, p: Option<&[u8]>) {
     let off = 1;
-    (ctx.as_mut().unwrap()).data[0] = *p.offset(0isize).offset(3isize);
-    (ctx2.as_mut().unwrap()).data[0] = *p.offset(3isize).offset(off);
+    (ctx.as_mut().unwrap()).data[0] = p.unwrap()[0 + 3];
+    (ctx2.as_mut().unwrap()).data[0] = p.unwrap()[3 + off];
 }
 
 #[repr(C)]
@@ -91,4 +90,8 @@ pub unsafe extern "C" fn __ibitmap(
 #[ownership_mono("", MOVE)]
 fn move_ptr(ptr: Option<Box<u32>>) {
     ptr.take();
+}
+
+fn attrs(a: &f64, b: &[f64]) -> f64 {
+    *a + b[2]
 }

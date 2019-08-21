@@ -1363,11 +1363,10 @@ impl UserData for LuaAstNode<Arg> {
                .collect::<Vec<_>>())
         });
 
-        methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.borrow());
-
-            Ok(())
-        });
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
     }
 }
 
