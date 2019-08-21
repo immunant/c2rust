@@ -758,6 +758,8 @@ function MarkConverter:visit_arg(arg)
         return
     end
 
+    local attrs = arg:get_attrs()
+
     for _, mark in ipairs(marks) do
         local opt = true
         local slice = false
@@ -765,7 +767,7 @@ function MarkConverter:visit_arg(arg)
         local binding = nil
         local conv_type = ""
 
-        for _, attr in ipairs(arg:get_attrs()) do
+        for _, attr in ipairs(attrs) do
             local attr_ident = attr:ident()
 
             if attr_ident == "nonnull" then
@@ -778,8 +780,6 @@ function MarkConverter:visit_arg(arg)
         if opt then
             conv_type = "opt_"
         end
-
-        print(mark, arg)
 
         if mark == "ref" then
             mutability = "immut"
