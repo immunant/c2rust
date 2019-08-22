@@ -113,7 +113,7 @@ impl<'c> Translation<'c> {
 
                 let ty = self.convert_type(type_id.ctype)?;
 
-                let lhs_type = self
+                let lhs_type_id = self
                     .ast_context
                     .index(lhs)
                     .kind
@@ -121,10 +121,11 @@ impl<'c> Translation<'c> {
                     .ok_or_else(|| {
                         format_translation_err!(self.ast_context.display_loc(lhs_loc), "bad lhs type for assignment")
                     })?;
-                let rhs_type = self
+                let rhs_kind = &self
                     .ast_context
                     .index(rhs)
-                    .kind
+                    .kind;
+                let rhs_type_id = rhs_kind
                     .get_qual_type()
                     .ok_or_else(|| {
                         format_translation_err!(self.ast_context.display_loc(rhs_loc), "bad rhs type for assignment")
@@ -135,24 +136,34 @@ impl<'c> Translation<'c> {
                        .and_then(|_| self.convert_expr(ctx, rhs))?
                        .map(|_| self.panic_or_err("Binary expression is not supposed to be used")))
                 } else {
-                    self.convert_expr(ctx, lhs)?
-                        .and_then(|lhs_val| {
-                            self.convert_expr(ctx, rhs)?
-                               .result_map(|rhs_val| {
-                                   let expr_ids = Some((lhs, rhs));
-                                   self.convert_binary_operator(
-                                       ctx,
-                                       op,
-                                       ty,
-                                       type_id.ctype,
-                                       lhs_type,
-                                       rhs_type,
-                                       lhs_val,
-                                       rhs_val,
-                                       expr_ids,
-                                   )
-                               })
+                    let rhs_ctx = ctx;
+
+                    // When we use wrapping_offset_from on pointers,
+                    // we must ensure we have an explicit raw ptr for the self param
+                    if op == c_ast::BinOp::Subtract {
+                        let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+
+                        if let CTypeKind::Pointer(_) = ty_kind {
+                            ctx = ctx.decay_ref();
+                        }
+                    }
+
+                    self.convert_expr(ctx, lhs)?.and_then(|lhs_val| {
+                        self.convert_expr(rhs_ctx, rhs)?.result_map(|rhs_val| {
+                            let expr_ids = Some((lhs, rhs));
+                            self.convert_binary_operator(
+                                ctx,
+                                op,
+                                ty,
+                                type_id.ctype,
+                                lhs_type_id,
+                                rhs_type_id,
+                                lhs_val,
+                                rhs_val,
+                                expr_ids,
+                            )
                         })
+                    })
                 }
             }
         }

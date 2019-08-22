@@ -64,4 +64,10 @@ void calls_all(void) {
     if (&i == k) {}
 
     cmp_ref(i, &n);
+
+    // wrapping_offset_from requires self to be a raw pointer,
+    // and self params don't ref decay. So lhs should decay,
+    // but not rhs
+    int o = 1;
+    int p = &o - &i;
 }

@@ -1,4 +1,4 @@
-//! feature_c_variadic
+//! feature_c_variadic, feature_ptr_wrapping_offset_from
 
 extern crate libc;
 
