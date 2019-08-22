@@ -1,5 +1,4 @@
 use super::*;
-use std::collections::HashMap;
 
 #[derive(Copy, Clone, Debug)]
 pub enum VaPart {
@@ -24,55 +23,36 @@ macro_rules! match_or {
 }
 
 impl<'c> Translation<'c> {
-    /// Install a fake variable into the renamer as a kludge until we have
-    /// proper variadic function definition support
-    fn register_va_decls(
-        &self,
-        promoted_decl_id: Option<CDeclId>,
-        copied_decl_ids: IndexSet<CDeclId>,
-    ) {
-        let mut fn_ctx = self.function_context.borrow_mut();
-        fn_ctx.copied_va_decls = Some(copied_decl_ids);
 
-        if let Some(decl_id) = promoted_decl_id {
-            // found a promotable `va_list`
-            fn_ctx.promoted_va_decl = Some(decl_id);
-            match self.ast_context[decl_id].kind {
-                CDeclKind::Variable { ref ident, .. } => {
-                    self.renamer
-                        .borrow_mut()
-                        .insert(decl_id, ident)
-                        .expect(&format!("Failed to install variadic function kludge"));
-                }
-                _ => panic!("va_arg was not a variable"),
-            }
-        }
-    }
-
-    pub fn is_promoted_va_decl(&self, decl_id: CDeclId) -> bool {
+    /// Returns true iff `va_start`, `va_end`, or `va_copy` may be called on `decl_id`.
+    pub fn is_va_decl(&self, decl_id: CDeclId) -> bool {
         let fn_ctx = self.function_context.borrow();
-        fn_ctx.promoted_va_decl == Some(decl_id)
-    }
-
-    pub fn is_copied_va_decl(&self, decl_id: CDeclId) -> bool {
-        let fn_ctx = self.function_context.borrow();
-        if let Some(ref decls) = fn_ctx.copied_va_decls {
+        if let Some(ref decls) = fn_ctx.va_list_decl_ids {
             decls.contains(&decl_id)
         } else {
             false
         }
     }
 
-    pub fn get_promoted_va_decl(&self) -> Option<CDeclId> {
-        self.function_context.borrow().promoted_va_decl
-    }
-
     pub fn match_vastart(&self, expr: CExprId) -> Option<CDeclId> {
-        match_or! { [self.ast_context[expr].kind]
-        CExprKind::ImplicitCast(_, e, _, _, _) => e }
-        match_or! { [self.ast_context[e].kind]
-        CExprKind::DeclRef(_, va_id, _) => va_id }
-        Some(va_id)
+        // struct-based va_list (e.g. x86_64)
+        fn match_vastart_struct(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
+            match_or! { [ast_context[expr].kind]
+            CExprKind::ImplicitCast(_, e, _, _, _) => e }
+            match_or! { [ast_context[e].kind]
+            CExprKind::DeclRef(_, va_id, _) => va_id }
+            Some(va_id)
+        }
+
+        // char pointer-based va_list (e.g. x86)
+        fn match_vastart_pointer(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
+            match_or! { [ast_context[expr].kind]
+            CExprKind::DeclRef(_, va_id, _) => va_id }
+            Some(va_id)
+        }
+
+        match_vastart_struct(&self.ast_context, expr)
+            .or_else(|| match_vastart_pointer(&self.ast_context, expr))
     }
 
     pub fn match_vaend(&self, expr: CExprId) -> Option<CDeclId> {
@@ -131,8 +111,6 @@ impl<'c> Translation<'c> {
         val_id: CExprId,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         if self.tcfg.translate_valist {
-            // https://github.com/rust-lang/rust/pull/49878/files
-
             let val = self.convert_expr(ctx.used(), val_id)?;
 
             // The current implementation of the C-variadics feature doesn't allow us to
@@ -193,14 +171,17 @@ impl<'c> Translation<'c> {
         }
     }
 
-    /// Determine if a variadic function body declares a va_list argument
-    /// and contains a va_start and va_end call for that argument list.
-    /// If it does, the declaration ID for that variable is registered so that
-    /// the resulting Rust function can have that variable argument list
-    /// variable moved up to the argument list.
-    pub fn is_well_formed_variadic(&self, body: CStmtId) -> bool {
-        // maps each va_list to the operations performed on it (e.g. va_start, va_end)
-        let mut candidates: HashMap<CDeclId, Vec<VaPart>> = HashMap::new();
+    /// Update the current function context by i) enabling the C variadics feature, ii) naming the
+    /// Rust function argument that corresponds to the elipsis in the original C function, and iii)
+    /// building a list of variable declarations to be translated into `VaListImpl`s. Returns the
+    /// name of the `VaList` function argument for convenience.
+    pub fn register_va_decls(&self, body: CStmtId) -> String {
+        self.use_feature("c_variadic");
+
+        let va_list_arg_name = self.renamer.borrow_mut().pick_name("args");
+
+        // collect `va_list` variables that are `va_start`ed, `va_end`ed, or `va_copied`.
+        let mut va_list_decl_ids: IndexSet<CDeclId> = IndexSet::new();
 
         let mut iter = DFExpr::new(&self.ast_context, body.into());
         while let Some(s) = iter.next() {
@@ -210,72 +191,16 @@ impl<'c> Translation<'c> {
                         VaPart::Start(va_id) | VaPart::End(va_id) => va_id,
                         VaPart::Copy(dst_va_id, _src_va_id) => dst_va_id,
                     };
-                    candidates.entry(id).or_insert(vec![]).push(part);
+                    va_list_decl_ids.insert(id);
                 }
             }
         }
 
-        if candidates.len() == 0 {
-            // no calls to `va_start`, `va_copy` or `va_end` is fine
-            return true;
-        }
+        // update current function context
+        let mut fn_ctx = self.function_context.borrow_mut();
+        fn_ctx.va_list_arg_name = Some(va_list_arg_name.clone());
+        fn_ctx.va_list_decl_ids = Some(va_list_decl_ids);
 
-        let start_called = |k: &CDeclId| {
-            candidates[k].iter().any(|e| {
-                if let VaPart::Start(_) = e {
-                    true
-                } else {
-                    false
-                }
-            })
-        };
-        let copy_called = |k: &CDeclId| {
-            candidates[k].iter().any(|e| {
-                if let VaPart::Copy(_, _) = e {
-                    true
-                } else {
-                    false
-                }
-            })
-        };
-
-        // va_lists initialized by `va_copy`
-        let copied = candidates
-            .keys()
-            .filter_map(|k| {
-                if copy_called(k) {
-                    Some(*k)
-                } else {
-                    None
-                }
-            })
-            .collect::<IndexSet<CDeclId>>();
-
-        // va_lists initialized by `va_start`
-        let promotable = candidates
-            .keys()
-            .filter_map(|k| {
-                if start_called(k) {
-                    Some(*k)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<CDeclId>>();
-
-        if promotable.len() + copied.len() > 0 {
-            // have promotable and/or copied va_lists that need registration
-            let promoted = match promotable.len() {
-                0 => None,
-                1 => Some(promotable[0]),
-                _ => panic!(
-                    "couldn't determine which va_list to promote in {}",
-                    self.function_context.borrow().get_name()
-                ),
-            };
-            self.register_va_decls(promoted, copied);
-            return true;
-        }
-        false
+        va_list_arg_name
     }
 }

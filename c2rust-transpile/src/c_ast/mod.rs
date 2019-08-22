@@ -274,6 +274,62 @@ impl TypedAstContext {
         }
     }
 
+    /// Follow a chain of typedefs and return true iff the last typedef is named
+    /// `__buitin_va_list` thus naming the type clang uses to represent `va_list`s.
+    pub fn is_builtin_va_list(&self, typ: CTypeId) -> bool {
+        match self.index(typ).kind {
+            CTypeKind::Typedef(decl) => match &self.index(decl).kind {
+                    CDeclKind::Typedef { name: nam, typ: ty, .. } => {
+                        if nam == "__builtin_va_list" {
+                            true
+                        } else {
+                            self.is_builtin_va_list(ty.ctype)
+                        }
+                    },
+                    _ => panic!("Typedef decl did not point to a typedef"),
+            },
+            _ => false,
+        }
+    }
+
+    /// Predicate for types that are used to implement C's `va_list`.
+    /// FIXME: can we get rid of this method and use `is_builtin_va_list` instead?
+    pub fn is_va_list(&self, typ: CTypeId) -> bool {
+        // detect `va_list`s based on typedef (should work across implementations)
+//        if self.is_builtin_va_list(typ) {
+//            return true;
+//        }
+
+        // detect `va_list`s based on type (assumes struct-based implementation)
+        let resolved_ctype = self.resolve_type(typ);
+        match resolved_ctype.kind {
+            CTypeKind::Struct(record_id) => {
+                let r#struct = &self[record_id];
+                if let CDeclKind::Struct { name: Some(ref nam), .. } = r#struct.kind {
+                    return nam == "__va_list_tag"
+                } else {
+                    false
+                }
+            },
+            // va_list is a 1 element array; return true iff element type is struct __va_list_tag
+            CTypeKind::ConstantArray(typ, 1) => {
+                return self.is_va_list(typ);
+            },
+            _ => false
+        }
+    }
+
+    /// Predicate for pointers to types that are used to implement C's `va_list`.
+    pub fn is_pointer_to_va_list(&self, typ: CTypeId) -> bool {
+        let resolved_ctype = self.resolve_type(typ);
+        match resolved_ctype.kind {
+            CTypeKind::Pointer(p) => {
+                self.is_va_list(p.ctype)
+            },
+            _ => false
+        }
+    }
+
     /// Predicate for function pointers
     pub fn is_function_pointer(&self, typ: CTypeId) -> bool {
         let resolved_ctype = self.resolve_type(typ);
@@ -286,34 +342,6 @@ impl TypedAstContext {
         } else {
             false
         }
-    }
-
-    pub fn is_va_list(&self, typ: CTypeId) -> bool {
-        match self.resolve_type(typ).kind {
-            CTypeKind::Struct(struct_id) => {
-                if let CDeclKind::Struct {
-                    name: Some(ref struct_name),
-                    ..
-                } = self[struct_id].kind {
-                    if struct_name == "__va_list_tag" {
-                        return true;
-                    }
-                }
-            }
-
-            // va_list is a 1 element array of type struct __va_list_tag
-            CTypeKind::ConstantArray(typ, 1) => {
-                return self.is_va_list(typ);
-            }
-
-            // Allow a decayed reference to the array to count as a va_list
-            CTypeKind::Pointer(pointee_qty) => {
-                return self.is_va_list(pointee_qty.ctype);
-            }
-
-            _ => {}
-        }
-        false
     }
 
     /// Can the given field decl be a flexible array member?

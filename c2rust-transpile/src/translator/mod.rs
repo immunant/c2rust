@@ -6,7 +6,7 @@ use std::{char, io};
 
 use dtoa;
 
-use failure::{err_msg, Context, Fail};
+use failure::{err_msg, Fail};
 use indexmap::{IndexMap, IndexSet};
 
 use rustc_data_structures::sync::Lrc;
@@ -197,29 +197,34 @@ impl ExprContext {
 pub struct FunContext {
     /// The name of the function we're currently translating
     name: Option<String>,
-    /// The va_list decl that we promote to a Rust function arg
-    promoted_va_decl: Option<CDeclId>,
-    /// The va_list decls that we did not promote because they were `va_copy`ed.
-    copied_va_decls: Option<IndexSet<CDeclId>>,
+    /// The name we give to the Rust function argument corresponding
+    /// to the elipsis in variadic C functions.
+    va_list_arg_name: Option<String>,
+    /// The va_list decls that are either `va_start`ed or `va_copy`ed.
+    va_list_decl_ids: Option<IndexSet<CDeclId>>,
 }
 
 impl FunContext {
     pub fn new() -> Self {
         FunContext {
             name: None,
-            promoted_va_decl: None,
-            copied_va_decls: None,
+            va_list_arg_name: None,
+            va_list_decl_ids: None,
         }
     }
 
     pub fn enter_new(&mut self, fn_name: &str) {
         self.name = Some(fn_name.to_string());
-        self.promoted_va_decl = None;
-        self.copied_va_decls = None;
+        self.va_list_arg_name = None;
+        self.va_list_decl_ids = None;
     }
 
-    pub fn get_name<'a>(&'a self) -> &'a str {
+    pub fn get_name(&self) -> &str {
         return self.name.as_ref().unwrap();
+    }
+
+    pub fn get_va_list_arg_name(&self) -> &str {
+        return self.va_list_arg_name.as_ref().unwrap();
     }
 }
 
@@ -2004,17 +2009,6 @@ impl<'c> Translation<'c> {
         // common type to minimize casts.
     }
 
-    /// Returns true iff type is a (pointer to)* the `va_list` structure type.
-    pub fn is_inner_type_valist(ctxt: &TypedAstContext, qtype: CQualTypeId) -> bool {
-        if ctxt.is_va_list(qtype.ctype) {
-            true
-        } else if let CTypeKind::Pointer(pointer_id) = ctxt.resolve_type(qtype.ctype).kind {
-            Self::is_inner_type_valist(ctxt, pointer_id)
-        } else {
-            false
-        }
-    }
-
     fn convert_function(
         &self,
         ctx: ExprContext,
@@ -2032,17 +2026,6 @@ impl<'c> Translation<'c> {
         attrs: &IndexSet<c_ast::Attribute>,
     ) -> Result<ConvertedDecl, TranslationError> {
         self.function_context.borrow_mut().enter_new(name);
-
-        let is_valist: bool = arguments
-            .iter()
-            .any(|&(_, _, typ)| Self::is_inner_type_valist(&self.ast_context, typ));
-        if is_variadic || is_valist {
-            if let Some(body_id) = body {
-                if !self.is_well_formed_variadic(body_id) {
-                    return Err(format_err!("Variadic function definition is not well-formed.").into());
-                }
-            }
-        }
 
         self.with_scope(|| {
             let mut args: Vec<Arg> = vec![];
@@ -2076,21 +2059,16 @@ impl<'c> Translation<'c> {
                 args.push(mk().arg(ty, pat))
             }
 
-            // handle variadic arguments
             if is_variadic {
-                if let Some(va_decl_id) = self.get_promoted_va_decl() {
-                    // `register_va_arg` succeeded
-                    let var = self
-                        .renamer
-                        .borrow_mut()
-                        .get(&va_decl_id)
-                        .expect(&format!("Failed to get name for variadic argument"));
+                // function definitions
+                if let Some(body_id) = body {
+                    let arg_va_list_name = self.register_va_decls(body_id);
 
-                    // FIXME: detect mutability requirements
-                    let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(var);
-                    args.push(mk().arg(mk().cvar_args_ty(), pat))
-                } else {
-                    args.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
+                    // FIXME: detect mutability requirements.
+                    let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(arg_va_list_name);
+                    args.push(mk().arg(mk().cvar_args_ty(), pat));
+                } else {  // function declarations
+                    args.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()));
                 }
             }
 
@@ -2422,11 +2400,6 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         decl_id: CDeclId,
     ) -> Result<cfg::DeclStmtInfo, TranslationError> {
-        if self.is_promoted_va_decl(decl_id) {
-            // `va_list` decl was promoted to arg
-            self.use_feature("c_variadic");
-            return Ok(cfg::DeclStmtInfo::empty());
-        }
 
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable {
@@ -2496,13 +2469,12 @@ impl<'c> Translation<'c> {
                     .insert(decl_id, &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
 
-                if self.is_copied_va_decl(decl_id) {
-                    // translate `va_list` declarations not promoted to an arg
-                    // to `VaList` and do not emit an initializer.
+                if  self.ast_context.is_va_list(typ.ctype) {
+                    // translate `va_list` variables to `VaListImpl`s and omit the initializer.
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
                     let ty = {
                         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
-                        let path = vec!["", std_or_core, "ffi", "VaList"];
+                        let path = vec!["", std_or_core, "ffi", "VaListImpl"];
                         mk().path_ty(path)
                     };
                     let local_mut = mk().local::<_, _, P<Expr>>(pat_mut, Some(ty), None);
@@ -3145,9 +3117,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                if self.ast_context.is_va_list(qual_ty.ctype) {
-                    val = mk().method_call_expr(val, "as_va_list", vec![] as Vec<P<Expr>>);
-                } else if let CTypeKind::VariableArray(..) =
+                if let CTypeKind::VariableArray(..) =
                     self.ast_context.resolve_type(qual_ty.ctype).kind
                 {
                     val = mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<P<Expr>>);
@@ -3524,7 +3494,38 @@ impl<'c> Translation<'c> {
                     // We want to decay refs only when function is variadic
                     ctx.decay_ref = DecayRef::from(is_variadic);
 
-                    let args = self.convert_exprs(ctx.used(), args)?;
+                    let mut args = self.convert_exprs(ctx.used(), args)?;
+
+                    // the C variadics feature requires us to call `as_va_list` on a `VaListImpl`
+                    // when calling a function expecting to receive an object that is binary
+                    // compatible with C's `va_list`.
+                    if let Some(CTypeKind::Function(_, params, _, _, _)) = fn_ty {
+                        // look for parameters of type `va_list`
+                        let positions: Vec<usize> = params
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(pos, param)| {
+                                if self.ast_context.is_pointer_to_va_list(param.ctype) {
+                                    Some(pos)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        // ... call `as_va_list` for such parameters
+                        if !positions.is_empty() {
+                            args = args.map(|mut val| {
+                                for pos in positions {
+                                    val[pos] = mk().method_call_expr(
+                                        val[pos].clone(),
+                                        "as_va_list",
+                                        Vec::<P<Expr>>::new());
+                                }
+                                val
+                            });
+                        }
+                    }
 
                     let res: Result<_, TranslationError> = Ok(
                         args.map(|args| mk().call_expr(func, args))
