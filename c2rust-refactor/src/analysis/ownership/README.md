@@ -16,7 +16,7 @@ lattice, where READ < WRITE < MOVE.  The READ permission indicates that the
 pointed-to data may be read, the WRITE permission indicates that the pointed-to
 data may be modified, and the MOVE permission indicates that the pointed-to
 data may be "moved", or consumed in a linear-typed fashion.  The MOVE
-permission also includes the ability to free the pointed-to data, which amouns
+permission also includes the ability to free the pointed-to data, which amounts
 to "moving to nowhere".
 
 Here is a simple example to illustrate the major features of the analysis:
