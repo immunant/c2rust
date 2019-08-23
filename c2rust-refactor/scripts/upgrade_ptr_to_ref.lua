@@ -704,6 +704,26 @@ function is_null_ptr(expr)
     return false
 end
 
+function is_void_ptr(ty)
+    if ty:get_kind() == "Ptr" then
+        local mut_ty = ty:get_mut_ty()
+        local pointee_ty = mut_ty:get_ty()
+        local path = pointee_ty:get_path()
+
+        if path then
+            local segments = path:get_segments()
+
+            if segments[#segments] == "c_void" then
+                return true
+            end
+        end
+
+        return is_void_ptr(pointee_ty)
+    end
+
+    return false
+end
+
 function Visitor:visit_local(locl)
     local local_id = locl:get_id()
     local conversion_cfg = self.node_id_cfgs[local_id]
@@ -750,11 +770,17 @@ end
 
 function MarkConverter:visit_arg(arg)
     local arg_id = arg:get_id()
-    local arg_ty_id = arg:get_ty():get_id()
+    local arg_ty = arg:get_ty()
+    local arg_ty_id = arg_ty:get_id()
     local marks = self.marks[arg_ty_id] or {}
 
     -- Skip over args likely from extern fns
     if arg:get_pat():get_kind() == "Wild" then
+        return
+    end
+
+    -- Skip over pointers to void
+    if is_void_ptr(arg_ty) then
         return
     end
 

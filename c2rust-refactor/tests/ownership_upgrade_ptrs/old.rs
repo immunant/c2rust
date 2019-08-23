@@ -87,3 +87,28 @@ fn move_ptr(ptr: *mut u32) {
 fn attrs(#[nonnull] a: *const f64, #[nonnull] #[slice] b: *const f64) -> f64 {
     *a + *b.offset(2)
 }
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct chacha_ctx {
+    input: [u32; 16]
+}
+
+unsafe extern "C" fn chacha_ivsetup(mut x: *mut chacha_ctx, #[slice] mut iv: *const u8) {
+    (*x).input[12usize] = 0;
+    (*x).input[13usize] = 0;
+    (*x).input[14usize] = *iv.offset(0isize).offset(0isize) as u32
+        | (*iv.offset(0isize).offset(1isize) as u32) << 8i32
+        | (*iv.offset(0isize).offset(2isize) as u32) << 16i32
+        | (*iv.offset(0isize).offset(3isize) as u32) << 24i32;
+    (*x).input[15usize] = *iv.offset(4isize).offset(0isize) as u32
+        | (*iv.offset(4isize).offset(1isize) as u32) << 8i32
+        | (*iv.offset(4isize).offset(2isize) as u32) << 16i32
+        | (*iv.offset(4isize).offset(3isize) as u32) << 24i32;
+}
+
+unsafe extern "C" fn void_ptrs(a: *mut libc::c_void,b: *const libc::c_void) {
+    let c = a as *mut u32;
+
+    *c = *(b as *const u32);
+}

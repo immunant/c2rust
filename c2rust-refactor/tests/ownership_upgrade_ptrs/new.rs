@@ -95,3 +95,28 @@ fn move_ptr(ptr: Option<Box<u32>>) {
 fn attrs(a: &f64, b: &[f64]) -> f64 {
     *a + b[2]
 }
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct chacha_ctx {
+    input: [u32; 16],
+}
+
+unsafe extern "C" fn chacha_ivsetup(mut x: Option<&mut chacha_ctx>, mut iv: Option<&[u8]>) {
+    (x.as_mut().unwrap()).input[12usize] = 0;
+    (x.as_mut().unwrap()).input[13usize] = 0;
+    (x.as_mut().unwrap()).input[14usize] = iv.unwrap()[0 + 0] as u32
+        | (iv.unwrap()[0 + 1] as u32) << 8i32
+        | (iv.unwrap()[0 + 2] as u32) << 16i32
+        | (iv.unwrap()[0 + 3] as u32) << 24i32;
+    (x.as_mut().unwrap()).input[15usize] = iv.unwrap()[4 + 0] as u32
+        | (iv.unwrap()[4 + 1] as u32) << 8i32
+        | (iv.unwrap()[4 + 2] as u32) << 16i32
+        | (iv.unwrap()[4 + 3] as u32) << 24i32;
+}
+
+unsafe extern "C" fn void_ptrs(a: *mut libc::c_void,b: *const libc::c_void) {
+    let c = a as *mut u32;
+
+    *c = *(b as *const u32);
+}
