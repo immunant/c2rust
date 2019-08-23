@@ -115,7 +115,7 @@ The `va_decl` attribute indicates which, if any, declaration corresponds to the 
 
 Comments are tricky to translate. Part of the issue is that comments are typically removed from C source code as part of the pre-processing phase. To handle this we extract comments from the original source code and track their source position information. In addition we track source position information for the various syntactic elements of the C translation unit.
 
-During translation of a statement or a declaration we look into the set of comments to see if we're as close as we're going to get to the home location of this comment. If we are we allocated a unique, temporary span idea to associated between the comment and the syntax element that should carry the comment.
+During translation of a statement or a declaration we look into the set of comments to see if we're as close as we're going to get to the home location of this comment. If so, we are allocated a unique, temporary span ID to associate between the comment and the syntax element that should carry the comment. 
 
 Once all of the translation is complete we revisit all of the synthetic span IDs to reassign them so that they are in ascending order, as required by `libsyntax`. Once we've done this renumbering, `libsyntax` is able to emit the comments in the correct location during the final rendering of the Rust AST.
 
