@@ -699,11 +699,10 @@ impl UserData for LuaAstNode<P<Expr>> {
 unsafe impl Send for LuaAstNode<P<Ty>> {}
 impl UserData for LuaAstNode<P<Ty>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.borrow());
-
-            Ok(())
-        });
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
 
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
             Ok(this.borrow().node.ast_name())

@@ -8,6 +8,14 @@ extern "C" {
     fn memset(_: *mut libc::c_void, _: libc::c_int, _: libc::c_ulong);
     #[no_mangle]
     fn free(_: *mut libc::c_void);
+    #[no_mangle]
+    fn fabs(_: libc::c_double) -> libc::c_double;
+    #[no_mangle]
+    fn cosh(_: libc::c_double) -> libc::c_double;
+    #[no_mangle]
+    fn sinh(_: libc::c_double) -> libc::c_double;
+    #[no_mangle]
+    fn exp(_: libc::c_double) -> libc::c_double;
 }
 
 #[no_mangle]
@@ -102,7 +110,7 @@ struct chacha_ctx {
     input: [u32; 16],
 }
 
-unsafe extern "C" fn chacha_ivsetup(mut x: Option<&mut chacha_ctx>, mut iv: Option<&[u8]>) {
+unsafe extern "C" fn chacha_ivsetup(mut x: Option<&mut chacha_ctx>, iv: Option<&[u8]>) {
     (x.as_mut().unwrap()).input[12usize] = 0;
     (x.as_mut().unwrap()).input[13usize] = 0;
     (x.as_mut().unwrap()).input[14usize] = iv.unwrap()[0 + 0] as u32
@@ -119,4 +127,90 @@ unsafe extern "C" fn void_ptrs(a: *mut libc::c_void,b: *const libc::c_void) {
     let c = a as *mut u32;
 
     *c = *(b as *const u32);
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct _category {
+    pub cat_first: [u8; 4],
+    pub delta: libc::c_ushort,
+}
+
+impl _category {
+    fn cat(&self) -> category {
+        0
+    }
+
+    fn first(&self) -> u32 {
+        0
+    }
+}
+
+pub type category = libc::c_uint;
+
+unsafe extern "C" fn bisearch_cat(
+    ucs: libc::c_uint,
+    table: Option<&[_category]>,
+    mut max: libc::c_int,
+) -> category {
+    let mut min: libc::c_int = 0i32;
+    let mut mid: libc::c_int = 0;
+    if ucs < (table.unwrap()[0]).first()
+        || ucs
+            > ((table.unwrap()[max as usize]).first() as libc::c_int
+                + (table.unwrap()[max as usize]).delta as libc::c_int) as libc::c_uint
+    {
+        return 4294967295 as category;
+    }
+    while max >= min {
+        mid = (min + max) / 2i32;
+        if ucs
+            > ((table.unwrap()[mid as usize]).first() as libc::c_int
+                + (table.unwrap()[mid as usize]).delta as libc::c_int) as libc::c_uint
+        {
+            min = mid + 1i32
+        } else if ucs < (table.unwrap()[mid as usize]).first() {
+            max = mid - 1i32
+        } else {
+            return (table.unwrap()[mid as usize]).cat();
+        }
+    }
+    return 4294967295 as category;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn _cchsh(
+    x: libc::c_double,
+    mut c: Option<&mut libc::c_double>,
+    mut s: Option<&mut libc::c_double>,
+) {
+    let mut e: libc::c_double = 0.;
+    let mut ei: libc::c_double = 0.;
+    if fabs(x) <= 0.5f64 {
+        **c.as_mut().unwrap() = cosh(x);
+        **s.as_mut().unwrap() = sinh(x)
+    } else {
+        e = exp(x);
+        ei = 0.5f64 / e;
+        e = 0.5f64 * e;
+        **s.as_mut().unwrap() = e - ei;
+        **c.as_mut().unwrap() = e + ei
+    };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rand_r(mut seed: Option<&mut libc::c_uint>) -> libc::c_int {
+    let mut k: libc::c_long = 0;
+    let mut s: libc::c_long = **seed.as_mut().unwrap() as libc::c_long;
+    if s == 0i32 as libc::c_long {
+        s = 0x12345987i32 as libc::c_long
+    }
+    k = s / 127773i32 as libc::c_long;
+    s = 16807i32 as libc::c_long * (s - k * 127773i32 as libc::c_long)
+        - 2836i32 as libc::c_long * k;
+    if s < 0i32 as libc::c_long {
+        s += 2147483647i32 as libc::c_long
+    }
+    **seed.as_mut().unwrap() = s as libc::c_uint;
+    return (s & 0x7fffffffi32 as libc::c_long) as libc::c_int;
 }
