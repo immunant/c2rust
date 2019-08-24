@@ -23,6 +23,9 @@
 [submodule "tests/nginx/repo"]
 	path = tests/nginx/repo
 	url = https://github.com/nginx/nginx.git
+[submodule "tests/libxml2/repo"]
+	path = tests/libxml2/repo
+	url = https://github.com/GNOME/libxml2.git
 [submodule "tests/redis/repo"]
 	path = tests/redis/repo
 	url = https://github.com/antirez/redis.git
