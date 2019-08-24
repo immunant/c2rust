@@ -120,7 +120,7 @@ impl TypedAstContext {
     pub fn new(clang_files: &[SrcFile]) -> TypedAstContext {
         let mut files: Vec<SrcFile> = vec![];
         let mut file_map: Vec<FileId> = vec![];
-        for file in clang_files.into_iter() {
+        for file in clang_files {
             if let Some(existing) = files.iter().position(|f| f.path == file.path) {
                 file_map.push(existing);
             } else {
@@ -139,7 +139,7 @@ impl TypedAstContext {
                     line: include_loc.line,
                     column: include_loc.column,
                 });
-                cur = &files[file_map[include_loc.fileid as usize]];
+                cur = &clang_files[include_loc.fileid as usize];
             }
             include_path.reverse();
             include_map.push(include_path);
