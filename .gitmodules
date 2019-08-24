@@ -23,3 +23,6 @@
 [submodule "tests/nginx/repo"]
 	path = tests/nginx/repo
 	url = https://github.com/nginx/nginx.git
+[submodule "tests/redis/repo"]
+	path = tests/redis/repo
+	url = https://github.com/antirez/redis.git

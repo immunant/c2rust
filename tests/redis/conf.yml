@@ -1,0 +1,9 @@
+transpile:
+  autogen: true
+  binary: redis-server
+
+  # needs support for __atomic_*
+  xfail: true
+
+cargo:
+  autogen: true
