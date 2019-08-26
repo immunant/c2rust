@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Are we on a supported distro? Note: We can't use dpkg-vendor 
 # because it is installed via `build-essential`.
 grep -Ei 'debian|buntu|mint' /etc/*release > /dev/null || {
