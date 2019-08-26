@@ -10,8 +10,19 @@ grep -Ei 'debian|buntu|mint' /etc/*release > /dev/null || {
 export DEBIAN_FRONTEND=noninteractive
 SCRIPT_DIR="$(dirname "$0")"
 
+# Retry the `apt-get update` command a few times upon failure
+# to work around transient network problems in CI.
+n=0
+tries=5
+until [ $n -ge $tries ]
+do
+    apt-get update -qq && break
+    n=$[$n+1]
+    sleep 30
+done
+
 # gnupg2: required for gnupg2 key retrieval
-apt-get update -qq && apt-get install -qq \
+apt-get install -qq \
     cmake \
     curl \
     dirmngr \
