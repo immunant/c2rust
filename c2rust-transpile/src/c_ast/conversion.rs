@@ -1,10 +1,19 @@
 use crate::c_ast::*;
 use c2rust_ast_exporter::clang_ast::*;
+use failure::err_msg;
 use serde_cbor::Value;
 use std::collections::HashMap;
 use std::vec::Vec;
 
 use super::Located;
+use crate::diagnostics::{Diagnostic, TranslationError, TranslationErrorKind};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ClangAstParseErrorKind {
+    MissingChild,
+    MissingType,
+    MissingNode,
+}
 
 /// Possible node types
 pub type NodeType = u16;
@@ -213,24 +222,93 @@ pub struct ConversionContext {
 
     /// Typed context we are building up during the conversion
     pub typed_context: TypedAstContext,
+
+    pub invalid_clang_ast: bool,
+}
+
+fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
+    loc.as_ref().map(|loc| {
+        DisplaySrcSpan {
+            file: ctx.files[loc.fileid as usize].path.clone(),
+            loc: loc.clone(),
+        }
+    })
 }
 
 impl ConversionContext {
     /// Create a new 'ConversionContext' seeded with top-level nodes from an 'AstContext'.
     pub fn new(untyped_context: &AstContext) -> ConversionContext {
+        let mut invalid_clang_ast = false;
+
         // This starts out as all of the top-level nodes, which we expect to be 'DECL's
         let mut visit_as: Vec<(ClangId, NodeType)> = Vec::new();
         for top_node in untyped_context.top_nodes.iter().rev() {
             if untyped_context.ast_nodes.contains_key(&top_node) {
                 visit_as.push((*top_node, node_types::DECL));
+            } else {
+                diag!(
+                    Diagnostic::ClangAst,
+                    "{}",
+                    TranslationError::new(None, err_msg(
+                        format!("Missing top-level node with id: {}", top_node)
+                    ).context(TranslationErrorKind::InvalidClangAst(
+                        ClangAstParseErrorKind::MissingNode,
+                    ))),
+                );
+                invalid_clang_ast = true;
             }
         }
+
+        for node in untyped_context.ast_nodes.values() {
+            for child in node.children.iter().flatten() {
+                if !untyped_context.ast_nodes.contains_key(child) {
+                    diag!(
+                        Diagnostic::ClangAst,
+                        "{}",
+                        TranslationError::new(
+                            display_loc(untyped_context, &Some(node.loc)),
+                            err_msg(format!(
+                                "Missing child {} of node {:?}",
+                                child,
+                                node,
+                            )).context(TranslationErrorKind::InvalidClangAst(
+                                ClangAstParseErrorKind::MissingChild,
+                            )),
+                        ),
+                    );
+                    invalid_clang_ast = true;
+                }
+            }
+
+            if let Some(type_id) = &node.type_id {
+                let type_ptr = type_id & TypeNode::ID_MASK;
+                if !untyped_context.type_nodes.contains_key(&type_ptr) {
+                    diag!(
+                        Diagnostic::ClangAst,
+                        "{}",
+                        TranslationError::new(
+                            display_loc(untyped_context, &Some(node.loc)),
+                            err_msg(format!(
+                                "Missing type {} for node: {:?}",
+                                type_id,
+                                node,
+                            )).context(TranslationErrorKind::InvalidClangAst(
+                                ClangAstParseErrorKind::MissingType,
+                            )),
+                        ),
+                    );
+                    invalid_clang_ast = true;
+                }
+            }
+        }
+
 
         let mut ctx = ConversionContext {
             id_mapper: IdMapper::new(),
             processed_nodes: HashMap::new(),
             visit_as,
             typed_context: TypedAstContext::new(&untyped_context.files),
+            invalid_clang_ast,
         };
 
         ctx.convert(untyped_context);

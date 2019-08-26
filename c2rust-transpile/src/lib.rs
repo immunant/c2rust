@@ -348,6 +348,9 @@ fn transpile_single(
     // Convert this into a typed AST
     let typed_context = {
         let conv = ConversionContext::new(&untyped_context);
+        if conv.invalid_clang_ast && tcfg.fail_on_error {
+            panic!("Clang AST was invalid");
+        }
         conv.typed_context
     };
 

@@ -1595,6 +1595,7 @@ class TranslateASTVisitor final
             if (FD->doesThisDeclarationHaveABody())
                 span = FD->getCanonicalDecl()->getSourceRange();
             encode_entry(FD, TagNonCanonicalDecl, span, childIds, FD->getType());
+            typeEncoder.VisitQualType(FD->getType());
             return true;
         }
 
@@ -1695,6 +1696,7 @@ class TranslateASTVisitor final
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {VD->getCanonicalDecl()};
             encode_entry(VD, TagNonCanonicalDecl, VD->getLocation(), childIds, VD->getType());
+            typeEncoder.VisitQualType(VD->getType());
             return true;
         }
 
@@ -1925,6 +1927,7 @@ class TranslateASTVisitor final
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
             encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, D->getType());
+            typeEncoder.VisitQualType(D->getType());
             return true;
         }
 
@@ -1965,15 +1968,16 @@ class TranslateASTVisitor final
     }
 
     bool VisitTypedefNameDecl(TypedefNameDecl *D) {
+        auto typeForDecl = D->getUnderlyingType();
         if (!D->isCanonicalDecl()) {
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
-            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, D->getUnderlyingType());
+            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, typeForDecl);
+            typeEncoder.VisitQualType(typeForDecl);
             return true;
         }
 
         std::vector<void *> childIds;
-        auto typeForDecl = D->getUnderlyingType();
         encode_entry(D, TagTypedefDecl, childIds, typeForDecl,
                      [D](CborEncoder *array) {
                          auto name = D->getNameAsString();
