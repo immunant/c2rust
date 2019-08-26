@@ -138,9 +138,10 @@ impl<'c> Translation<'c> {
                 } else {
                     let rhs_ctx = ctx;
 
-                    // When we use wrapping_offset_from on pointers,
-                    // we must ensure we have an explicit raw ptr for the self param
-                    if op == c_ast::BinOp::Subtract {
+                    // When we use methods on pointers (ie wrapping_offset_from or offset)
+                    // we must ensure we have an explicit raw ptr for the self param, as
+                    // self references do not decay
+                    if op == c_ast::BinOp::Subtract || op == c_ast::BinOp::Add {
                         let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
 
                         if let CTypeKind::Pointer(_) = ty_kind {

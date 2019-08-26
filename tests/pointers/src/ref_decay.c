@@ -70,4 +70,8 @@ void calls_all(void) {
     // but not rhs
     int o = 1;
     int p = &o - &i;
+
+    // Offset calls must have self decayed
+    int *q = &o + 0;
+    q = &o - 0;
 }
