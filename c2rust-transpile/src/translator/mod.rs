@@ -3393,7 +3393,8 @@ impl<'c> Translation<'c> {
                             }
                         }))
                     } else {
-                        let lhs = self.convert_expr(ctx.used(), *lhs)?;
+                        // LHS must be ref decayed for the offset method call's self param
+                        let lhs = self.convert_expr(ctx.used().decay_ref(), *lhs)?;
                         lhs.result_map(|lhs| {
                             // stmts.extend(lhs.stmts_mut());
                             // is_unsafe = is_unsafe || lhs.is_unsafe();

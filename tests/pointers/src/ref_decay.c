@@ -28,6 +28,12 @@ int cmp_ref(int a, int **b) {
     return &a != *b;
 }
 
+typedef struct Page {
+    unsigned char *idx;
+} Page;
+
+void takesPtr(const unsigned char *p) {}
+
 void calls_all(void) {
     int i = 1;
     const int j = 2;
@@ -74,4 +80,8 @@ void calls_all(void) {
     // Offset calls must have self decayed
     int *q = &o + 0;
     q = &o - 0;
+
+    // Ptr index offset must have self decayed
+    Page *r;
+    takesPtr((&(r)->idx[0])[0]);
 }
