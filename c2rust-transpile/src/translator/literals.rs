@@ -102,7 +102,7 @@ impl<'c> Translation<'c> {
                         // Fallback for characters outside of the valid Unicode range
                         if (val as i32) < 0 {
                             mk().unary_expr("-", mk().lit_expr(
-                                mk().int_lit(-(val as i32) as u128, LitIntType::Signed(IntTy::I32))
+                                mk().int_lit((val as i32).abs() as u128, LitIntType::Signed(IntTy::I32))
                             ))
                         } else {
                             mk().lit_expr(
@@ -155,7 +155,16 @@ impl<'c> Translation<'c> {
                 if ctx.is_static {
                     let mut vals: Vec<P<Expr>> = vec![];
                     for c in val {
-                        vals.push(mk().lit_expr(mk().int_lit(c as u128, LitIntType::Unsuffixed)));
+                        if (c as i8) < 0 {
+                            // Fallback for characters outside of the normal ASCII range. Python 2
+                            // doc strings, for example, contain non-ASCII chars (https://git.io/fjAxu).
+                            // NOTE: the conversion to i32 avoids overflow when calling abs on -128.
+                            vals.push(mk().unary_expr("-", mk().lit_expr(
+                                mk().int_lit(((c as i8) as i32).abs() as u128, LitIntType::Unsuffixed))
+                            ));
+                        } else {
+                            vals.push(mk().lit_expr(mk().int_lit(c as u128, LitIntType::Unsuffixed)));
+                        }
                     }
                     let array = mk().array_expr(vals);
                     Ok(WithStmts::new_val(array))
