@@ -157,7 +157,7 @@ impl<'c> Translation<'c> {
 
                 if ctx.is_unused() {
                     Ok(WithStmts::new(
-                        vec![mk().expr_stmt(val)],
+                        vec![mk().semi_stmt(val)],
                         self.panic_or_err("convert_vaarg unused"),
                     ))
                 } else {
