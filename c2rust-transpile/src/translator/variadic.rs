@@ -147,20 +147,20 @@ impl<'c> Translation<'c> {
                     .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![ty]));
                 let val = mk().method_call_expr(val, path, vec![] as Vec<P<Expr>>);
 
-                let val = if have_fn_ptr {
-                    // transmute result of call to `arg` when expecting a function pointer
-                    if ctx.is_const { self.use_feature("const_transmute"); }
-                    transmute_expr(mk().infer_ty(), mk().infer_ty(), val, self.tcfg.emit_no_std)
-                } else {
-                    val
-                };
-
                 if ctx.is_unused() {
                     Ok(WithStmts::new(
                         vec![mk().semi_stmt(val)],
                         self.panic_or_err("convert_vaarg unused"),
                     ))
                 } else {
+                    let val = if have_fn_ptr {
+                        // transmute result of call to `arg` when expecting a function pointer
+                        if ctx.is_const { self.use_feature("const_transmute"); }
+                        transmute_expr(mk().infer_ty(), mk().infer_ty(), val, self.tcfg.emit_no_std)
+                    } else {
+                        val
+                    };
+
                     Ok(WithStmts::new_val(val))
                 }
             })
