@@ -170,7 +170,7 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn covert_assignment_operator_aux(
+    fn convert_assignment_operator_aux(
         &self,
         ctx: ExprContext,
         bin_op_kind: BinOpKind,
@@ -191,8 +191,20 @@ impl<'c> Translation<'c> {
         {
             Ok(WithStmts::new_val(mk().assign_op_expr(bin_op_kind, write, rhs)))
         } else {
+            let resolved_computed_kind = &self.ast_context.resolve_type(compute_lhs_ty.ctype).kind;
             let lhs_type = self.convert_type(compute_lhs_ty.ctype)?;
-            let lhs = mk().cast_expr(read, lhs_type.clone());
+
+            // We can't simply as-cast into a non primitive like f128
+            let lhs = if *resolved_computed_kind == CTypeKind::LongDouble {
+                self.extern_crates.borrow_mut().insert("f128");
+
+                let fn_path = mk().path_expr(vec!["f128", "f128", "from"]);
+                let args = vec![read];
+
+                mk().call_expr(fn_path, args)
+            } else {
+                mk().cast_expr(read, lhs_type.clone())
+            };
             let ty = self.convert_type(compute_res_ty.ctype)?;
             let val = self.convert_binary_operator(
                 ctx,
@@ -214,7 +226,15 @@ impl<'c> Translation<'c> {
                 if ctx.is_const { self.use_feature("const_transmute"); }
                 WithStmts::new_unsafe_val(transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std))
             } else {
-                WithStmts::new_val(mk().cast_expr(val, result_type))
+                // We can't as-cast from a non primitive like f128 back to the result_type
+                if *resolved_computed_kind == CTypeKind::LongDouble {
+                    let resolved_lhs_kind = &self.ast_context.resolve_type(lhs_ty.ctype).kind;
+                    let val = WithStmts::new_val(val);
+
+                    self.f128_cast_to(val, resolved_lhs_kind)?
+                } else {
+                    WithStmts::new_val(mk().cast_expr(val, result_type))
+                }
             };
             Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
         }
@@ -422,7 +442,7 @@ impl<'c> Translation<'c> {
                         WithStmts::new_val(mk().assign_expr(&write, ptr))
                     }
 
-                    c_ast::BinOp::AssignAdd => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignAdd => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Add,
                         c_ast::BinOp::Add,
@@ -434,7 +454,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignSubtract => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignSubtract => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Sub,
                         c_ast::BinOp::Subtract,
@@ -446,7 +466,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignMultiply => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignMultiply => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Mul,
                         c_ast::BinOp::Multiply,
@@ -458,7 +478,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignDivide => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignDivide => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Div,
                         c_ast::BinOp::Divide,
@@ -470,7 +490,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignModulus => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignModulus => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Rem,
                         c_ast::BinOp::Modulus,
@@ -482,7 +502,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignBitXor => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignBitXor => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::BitXor,
                         c_ast::BinOp::BitXor,
@@ -494,7 +514,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignShiftLeft => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignShiftLeft => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Shl,
                         c_ast::BinOp::ShiftLeft,
@@ -506,7 +526,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignShiftRight => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignShiftRight => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Shr,
                         c_ast::BinOp::ShiftRight,
@@ -518,7 +538,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignBitOr => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignBitOr => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::BitOr,
                         c_ast::BinOp::BitOr,
@@ -530,7 +550,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignBitAnd => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignBitAnd => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::BitAnd,
                         c_ast::BinOp::BitAnd,
