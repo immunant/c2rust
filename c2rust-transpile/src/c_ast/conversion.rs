@@ -1629,7 +1629,7 @@ impl ConversionContext {
                     let true_expr = self.visit_expr(true_expr);
 
                     let false_expr =
-                        node.children[1].expect("ChooseExpr false expression not found");
+                        node.children[2].expect("ChooseExpr false expression not found");
                     let false_expr = self.visit_expr(false_expr);
 
                     let ty = node.type_id.expect("Expected expression to have type");
@@ -1647,6 +1647,43 @@ impl ConversionContext {
                         false_expr,
                         condition_is_true,
                     );
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
+                }
+
+                ASTEntryTag::TagAtomicExpr => {
+                    let name = node.extras[0]
+                        .as_string()
+                        .expect("Expected to find builtin operator name")
+                        .to_owned();
+
+                    // The order of children is defined by Clang in class
+                    // AtomicExpr
+                    let mut children = node.children.iter();
+                    let ptr = self.visit_expr(
+                        children.next().unwrap().expect("Atomic must have a ptr argument"),
+                    );
+                    let order = self.visit_expr(
+                        children.next().unwrap().expect("Atomic must have an order argument"),
+                    );
+                    let val1 = children.next().map(|e| self.visit_expr(e.unwrap()));
+                    let order_fail = children.next().map(|e| self.visit_expr(e.unwrap()));
+                    let val2 = children.next().map(|e| self.visit_expr(e.unwrap()));
+                    let weak = children.next().map(|e| self.visit_expr(e.unwrap()));
+
+                    let typ = node.type_id.expect("Expected expression to have type");
+                    let typ = self.visit_qualified_type(typ);
+
+                    let e = CExprKind::Atomic {
+                        typ,
+                        name,
+                        ptr,
+                        order,
+                        val1,
+                        order_fail,
+                        val2,
+                        weak,
+                    };
 
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
                 }

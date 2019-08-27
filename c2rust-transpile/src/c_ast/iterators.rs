@@ -59,6 +59,13 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
         | Choose(_, c, t, e, _) => intos![c, t, e],
         BinaryConditional(_, c, t) => intos![c, t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
+        Atomic { ptr, order, val1, order_fail, val2, weak, ..} => {
+            [Some(ptr), Some(order), val1, order_fail, val2, weak]
+                .iter()
+                .flatten()
+                .map(|&x| x.into())
+                .collect()
+        }
         ImplicitCast(_, e, _, _, _)
         | ExplicitCast(_, e, _, _, _)
         | Member(_, e, _, _, _)
@@ -104,6 +111,13 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
         | Choose(_, c, t, e, _) => intos![c, t, e],
         BinaryConditional(_, c, t) => intos![c, t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
+        Atomic { ptr, order, val1, order_fail, val2, weak, ..} => {
+            [Some(ptr), Some(order), val1, order_fail, val2, weak]
+                .iter()
+                .flatten()
+                .map(|&x| x.into())
+                .collect()
+        }
         Member(_, e, _, _, _) | Predefined(_, e) => intos![e],
         // Normally we don't step into the result type annotation field, because it's not really
         // part of the expression.  But for `ExplicitCast`, the result type is actually the cast's

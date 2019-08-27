@@ -365,6 +365,19 @@ impl TypedAstContext {
         }
     }
 
+    /// Resolve expression value, ignoring any casts
+    pub fn resolve_expr_value(&self, expr_id: CExprId) -> &CExprKind {
+        let expr = &self.index(expr_id).kind;
+        match expr {
+            CExprKind::ImplicitCast(_, subexpr, _, _, _) |
+            CExprKind::ExplicitCast(_, subexpr, _, _, _) |
+            CExprKind::Paren(_, subexpr) => {
+                self.resolve_expr_value(*subexpr)
+            }
+            _ => expr
+        }
+    }
+
     /// Resolve true expression type, iterating through any casts and variable
     /// references.
     pub fn resolve_expr_type_id(&self, expr_id: CExprId) -> Option<(CExprId, CTypeId)> {
@@ -431,7 +444,8 @@ impl TypedAstContext {
             CExprKind::ImplicitValueInit { .. } |
             CExprKind::Predefined(..) |
             CExprKind::Statements(..) | // TODO: more precision
-            CExprKind::VAArg(..) => false,
+            CExprKind::VAArg(..) |
+            CExprKind::Atomic{..} => false,
 
             CExprKind::Literal(_, _) |
             CExprKind::DeclRef(_, _, _) |
@@ -1023,6 +1037,18 @@ pub enum CExprKind {
     // GNU choose expr. Condition, true expr, false expr, was condition true?
     Choose(CQualTypeId, CExprId, CExprId, CExprId, bool),
 
+    // GNU/C11 atomic expr
+    Atomic {
+        typ: CQualTypeId,
+        name: String,
+        ptr: CExprId,
+        order: CExprId,
+        val1: Option<CExprId>,
+        order_fail: Option<CExprId>,
+        val2: Option<CExprId>,
+        weak: Option<CExprId>,
+    },
+
     BadExpr,
 }
 
@@ -1071,7 +1097,8 @@ impl CExprKind {
             | CExprKind::ShuffleVector(ty, _)
             | CExprKind::ConvertVector(ty, _)
             | CExprKind::DesignatedInitExpr(ty, _, _) => Some(ty),
-            | CExprKind::Choose(ty, _, _, _, _) => Some(ty),
+            | CExprKind::Choose(ty, _, _, _, _)
+            | CExprKind::Atomic{typ: ty, ..} => Some(ty),
         }
     }
 

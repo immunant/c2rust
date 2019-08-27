@@ -39,6 +39,7 @@ use crate::TranspilerConfig;
 use c2rust_ast_exporter::clang_ast::LRValue;
 
 mod assembly;
+mod atomics;
 mod builtins;
 mod comments;
 mod literals;
@@ -3646,6 +3647,9 @@ impl<'c> Translation<'c> {
                 Ok(chosen_expr)
             }
 
+            CExprKind::Atomic{ref name, ptr, order, val1, order_fail, val2, weak, ..} => {
+                self.convert_atomic(ctx, name, ptr, order, val1, order_fail, val2, weak)
+            }
         }
     }
 
@@ -3695,6 +3699,8 @@ impl<'c> Translation<'c> {
         Ok(None)
     }
 
+    /// If `ctx` is unused, convert `expr` to a semi statement, otherwise return
+    /// `expr`.
     fn convert_side_effects_expr(
         &self,
         ctx: ExprContext,

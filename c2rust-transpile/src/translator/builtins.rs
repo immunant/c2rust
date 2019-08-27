@@ -351,34 +351,25 @@ impl<'c> Translation<'c> {
             | "__sync_bool_compare_and_swap_4"
             | "__sync_bool_compare_and_swap_8"
             | "__sync_bool_compare_and_swap_16" => {
-                self.use_feature("core_intrinsics");
-
-                // Emit `atomic_cxchg(a0, a1, a2).idx`
-                let atomic_cxchg =
-                    mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_cxchg"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 let arg2 = self.convert_expr(ctx.used(), args[2])?;
                 arg0.and_then(|arg0| {
                     arg1.and_then(|arg1| {
                         arg2.and_then(|arg2| {
-                            let call = mk().call_expr(atomic_cxchg, vec![arg0, arg1, arg2]);
-                            let field_idx = if builtin_name.starts_with("__sync_val") {
-                                "0"
-                            } else {
-                                "1"
-                            };
-                            let call_expr = mk().field_expr(call, field_idx);
-                            self.convert_side_effects_expr(
+                            let returns_val = builtin_name.starts_with("__sync_val");
+                            self.convert_atomic_cxchg(
                                 ctx,
-                                WithStmts::new_val(call_expr),
-                                "Builtin is not supposed to be used",
+                                "atomic_cxchg",
+                                arg0,
+                                arg1,
+                                arg2,
+                                returns_val,
                             )
                         })
                     })
                 })
             }
-
             "__sync_fetch_and_add_1"
             | "__sync_fetch_and_add_2"
             | "__sync_fetch_and_add_4"
@@ -439,82 +430,35 @@ impl<'c> Translation<'c> {
             | "__sync_nand_and_fetch_4"
             | "__sync_nand_and_fetch_8"
             | "__sync_nand_and_fetch_16" => {
-                self.use_feature("core_intrinsics");
-
-                let (func_name, binary_op, is_nand) = if builtin_name.contains("_add_") {
-                    ("atomic_xadd", BinOpKind::Add, false)
+                let func_name = if builtin_name.contains("_add_") {
+                    "atomic_xadd"
                 } else if builtin_name.contains("_sub_") {
-                    ("atomic_xsub", BinOpKind::Sub, false)
+                    "atomic_xsub"
                 } else if builtin_name.contains("_or_") {
-                    ("atomic_or", BinOpKind::BitOr, false)
+                    "atomic_or"
                 } else if builtin_name.contains("_xor_") {
-                    ("atomic_xor", BinOpKind::BitXor, false)
+                    "atomic_xor"
                 } else if builtin_name.contains("_nand_") {
-                    ("atomic_nand", BinOpKind::BitAnd, true)
+                    "atomic_nand"
                 } else {
                     // We can't explicitly check for "_and_" since they all contain it
-                    ("atomic_and", BinOpKind::BitAnd, false)
+                    "atomic_and"
                 };
 
-                // Emit `atomic_func(a0, a1) (op a1)?`
-                let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", func_name]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
-                if builtin_name.starts_with("__sync_fetch") {
-                    // __sync_fetch_and_XXX
-                    arg0.and_then(|arg0| {
-                        arg1.and_then(|arg1| {
-                            let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
-                            self.convert_side_effects_expr(
-                                ctx,
-                                WithStmts::new_val(call_expr),
-                                "Builtin is not supposed to be used",
-                            )
-                        })
+                let fetch_first = builtin_name.starts_with("__sync_fetch");
+                arg0.and_then(|arg0| {
+                    arg1.and_then(|arg1| {
+                        self.convert_atomic_op(
+                            ctx,
+                            func_name,
+                            arg0,
+                            arg1,
+                            fetch_first,
+                        )
                     })
-                } else {
-                    // __sync_XXX_and_fetch
-                    arg0.and_then(|arg0| {
-                        arg1.and_then(|arg1| {
-                            // Since the value of `arg1` is used twice, we need to copy
-                            // it into a local temporary so we don't duplicate any side-effects
-                            // To preserve ordering of side-effects, we also do this for arg0
-                            let arg0_name = self.renamer.borrow_mut().fresh();
-                            let arg0_let = mk().local_stmt(P(mk().local(
-                                mk().ident_pat(&arg0_name),
-                                None as Option<P<Ty>>,
-                                Some(arg0),
-                            )));
-
-                            let arg1_name = self.renamer.borrow_mut().fresh();
-                            let arg1_let = mk().local_stmt(P(mk().local(
-                                mk().ident_pat(&arg1_name),
-                                None as Option<P<Ty>>,
-                                Some(arg1),
-                            )));
-
-                            let call = mk().call_expr(
-                                atomic_func,
-                                vec![mk().ident_expr(&arg0_name), mk().ident_expr(&arg1_name)],
-                            );
-                            let val = mk().binary_expr(binary_op, call, mk().ident_expr(arg1_name));
-                            let val = if is_nand {
-                                // For nand, return `!(atomic_nand(arg0, arg1) & arg1)`
-                                mk().unary_expr(UnOp::Not, val)
-                            } else {
-                                val
-                            };
-                            self.convert_side_effects_expr(
-                                ctx,
-                                WithStmts::new(
-                                    vec![arg0_let, arg1_let],
-                                    val,
-                                ),
-                                "Builtin is not supposed to be used",
-                            )
-                        })
-                    })
-                }
+                })
             }
 
             "__sync_synchronize" => {

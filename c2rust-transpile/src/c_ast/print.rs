@@ -226,6 +226,32 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b")")
             }
 
+            Some(&CExprKind::Atomic{ref name, ptr, order, val1, order_fail, val2, weak, ..}) => {
+                self.writer.write_fmt(format_args!("{}(", name))?;
+
+                self.print_expr(ptr, context)?;
+                if let Some(val1) = val1 {
+                    self.writer.write_all(b", ")?;
+                    self.print_expr(val1, context)?;
+                }
+                if let Some(val2) = val2 {
+                    self.writer.write_all(b", ")?;
+                    self.print_expr(val2, context)?;
+                }
+                if let Some(weak) = weak {
+                    self.writer.write_all(b", ")?;
+                    self.print_expr(weak, context)?;
+                }
+                self.writer.write_all(b", ")?;
+                self.print_expr(order, context)?;
+                if let Some(order_fail) = order_fail {
+                    self.writer.write_all(b", ")?;
+                    self.print_expr(order_fail, context)?;
+                }
+
+                self.writer.write_all(b")")
+            }
+
             None => panic!("Could not find expression with ID {:?}", expr_id),
             // _ => unimplemented!("Printer::print_expr"),
         }

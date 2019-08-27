@@ -1,7 +1,7 @@
 //! feature_core_intrinsics, extern_crate_core
 extern crate libc;
 
-use atomics::rust_atomics_entry;
+use atomics::{rust_atomics_entry, rust_new_atomics};
 use mem_x_fns::rust_mem_x;
 use math::{rust_ffs, rust_ffsl, rust_ffsll};
 use self::libc::{c_int, c_uint, c_char, c_long, c_longlong};
@@ -10,6 +10,8 @@ use self::libc::{c_int, c_uint, c_char, c_long, c_longlong};
 extern "C" {
     #[no_mangle]
     fn atomics_entry(_: c_uint, _: *mut c_int);
+    #[no_mangle]
+    fn new_atomics(_: c_uint, _: *mut c_int);
     #[no_mangle]
     fn mem_x(_: *const c_char, _: *mut c_char);
     #[no_mangle]
@@ -33,6 +35,21 @@ pub fn test_atomics() {
     }
 
     for index in 0..BUFFER_SIZE {
+        assert_eq!(buffer[index], rust_buffer[index]);
+    }
+}
+
+pub fn test_new_atomics() {
+    let mut buffer = [0; BUFFER_SIZE];
+    let mut rust_buffer = [0; BUFFER_SIZE];
+
+    unsafe {
+       new_atomics(BUFFER_SIZE as u32, buffer.as_mut_ptr());
+       rust_new_atomics(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
+    }
+
+    for index in 0..BUFFER_SIZE {
+        eprintln!("buffer[{}] = {}", index, buffer[index]);
         assert_eq!(buffer[index], rust_buffer[index]);
     }
 }

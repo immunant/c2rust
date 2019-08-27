@@ -1556,7 +1556,21 @@ class TranslateASTVisitor final
 #endif // CLANG_VERSION_MAJOR
 
     bool VisitAtomicExpr(AtomicExpr *E) {
-        printWarning("Encountered unsupported atomic expression", E);
+        auto children = E->children();
+        std::vector<void *> childIds(std::begin(children), std::end(children));
+        encode_entry(E, TagAtomicExpr, childIds,
+                     [E, this](CborEncoder *array) {
+                         switch (E->getOp()) {
+#define BUILTIN(ID, TYPE, ATTRS)
+#define ATOMIC_BUILTIN(ID, TYPE, ATTRS) \
+                             case AtomicExpr::AO ## ID:                 \
+                                 cbor_encode_string(array, #ID);       \
+                                 break;
+#include "clang/Basic/Builtins.def"
+                         default: printError("Unknown atomic builtin: " +
+                                             std::to_string(E->getOp()), E);
+                         };
+                     });
         return true;
     }
 
