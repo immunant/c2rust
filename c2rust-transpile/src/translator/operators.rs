@@ -355,8 +355,8 @@ impl<'c> Translation<'c> {
                 ))
         };
 
-        lhs_translation.and_then(|(write, read)| {
-            rhs_translation.and_then(|rhs| {
+        rhs_translation.and_then(|rhs| {
+            lhs_translation.and_then(|(write, read)| {
                 // Assignment expression itself
                 let assign_stmt = match op {
                     // Regular (possibly volatile) assignment
