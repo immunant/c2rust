@@ -15,4 +15,3 @@ transpile:
     
 cargo:
   autogen: true
-  xfail: true
