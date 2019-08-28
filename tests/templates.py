@@ -33,8 +33,10 @@ set -e; set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0" )" && pwd)"
 
+# Do a release build in case the C code contains signed integer overflows
+# that trap in a debug build.
 (cd "$SCRIPT_DIR/repo" \
-    && cargo ${TOOLCHAIN} build 2>&1 | tee ../`basename "$0"`.log)
+    && RUSTFLAGS=-Awarnings cargo ${TOOLCHAIN} build --release 2>&1 | tee ../`basename "$0"`.log)
 
 """
 
