@@ -336,7 +336,7 @@ function Visitor:visit_expr(expr)
             local cfg = self:get_expr_cfg(unwrapped_expr)
 
             -- We only want to apply this operation if we're converting
-            -- a pointer to an array
+            -- a pointer to an array/slice
             if cfg then
                 if cfg:is_slice_any() or cfg:is_array() then
                     -- If we're using an option, we must unwrap (or map/match) using
@@ -345,7 +345,7 @@ function Visitor:visit_expr(expr)
                     -- *ptr[1] -> *ptr.unwrap()[1]
                     if cfg:is_opt_any() then
                         -- TODO: or as_ref
-                        if cfg:is_opt_box_any() then
+                        if cfg:is_opt_box_any() or cfg.extra_data.mutability == "mut" then
                             unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
                         end
                         unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})

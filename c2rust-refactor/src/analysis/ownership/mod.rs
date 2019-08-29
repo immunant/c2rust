@@ -211,7 +211,7 @@ fn is_mut_t(ty: &TyS) -> bool {
 
 fn register_std_constraints<'a, 'tcx, 'lty>(
     ctxt: &mut Ctxt<'lty, 'tcx>,
-    hir_map: &HirMap<'a, 'tcx>,
+    tctxt: TyCtxt<'tcx>,
 ) {
     for (def_id, func_summ) in ctxt.funcs_mut() {
         // #[ownership_constraints(le(WRITE, _0), le(WRITE, _1), le(_0, _1))]
@@ -225,17 +225,13 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
             };
             let ret_is_mut_t = is_mut_t(func_summ.sig.output.ty);
             if param0_is_mut_t && param1_is_isize && ret_is_mut_t {
-                if let Some(Node::Item(item)) = hir_map.get_if_local(*def_id) {
-                    if dbg!(item.ident.as_str().get()) == "offset" {
-                        func_summ.cset_provided = true;
-                        func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(0)));
-                        func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(1)));
-                        func_summ.sig_cset.add(Perm::SigVar(Var(0)), Perm::SigVar(Var(1)));
-                        dbg!(&func_summ);
-                    }
-                } else {
-                    println!("Not a local");
-                };
+                if tctxt.def_path(*def_id).to_string_no_crate() == "::ptr[0]::{{impl}}[1]::offset[0]" {
+                    func_summ.cset_provided = true;
+                    func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(0)));
+                    func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(1)));
+                    // REVIEW: Not sure if this last one is correct or necessary.
+                    func_summ.sig_cset.add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
+                }
             }
         }
     }
@@ -256,7 +252,7 @@ pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
     // Compute polymorphic signatures / constraint sets for each function
     analyze_intra(&mut cx, &dcx.hir_map(), dcx.ty_ctxt());
     // Inject constraints for std functions
-    register_std_constraints(&mut cx, &dcx.hir_map());
+    register_std_constraints(&mut cx, dcx.ty_ctxt());
     analyze_inter(&mut cx);
 
     // Compute monomorphic signatures and select instantiations in each function

@@ -39,7 +39,7 @@ struct Ctx {
     data: [u8; 10],
 }
 
-unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx, #[slice] p: *mut u8) {
+unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx, #[slice] p: *const u8) {
     let off = 1;
     (*ctx).data[0] = *p.offset(0isize).offset(3isize);
     (*ctx2).data[0] = *p.offset(3isize).offset(off);
@@ -196,4 +196,9 @@ pub unsafe extern "C" fn rand_r(seed: *mut libc::c_uint) -> libc::c_int {
     if s < 0i32 as libc::c_long { s += 2147483647i32 as libc::c_long }
     *seed = s as libc::c_uint;
     return (s & 0x7fffffffi32 as libc::c_long) as libc::c_int;
+}
+
+fn offset_assign_is_mut(#[slice] z: *mut u8) {
+    *z.offset(0) = 1;
+    *z.offset(1) = 1;
 }

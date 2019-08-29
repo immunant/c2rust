@@ -214,3 +214,8 @@ pub unsafe extern "C" fn rand_r(mut seed: Option<&mut libc::c_uint>) -> libc::c_
     **seed.as_mut().unwrap() = s as libc::c_uint;
     return (s & 0x7fffffffi32 as libc::c_long) as libc::c_int;
 }
+
+fn offset_assign_is_mut(mut z: Option<&mut [u8]>) {
+    z.as_mut().unwrap()[0] = 1;
+    z.as_mut().unwrap()[1] = 1;
+}
