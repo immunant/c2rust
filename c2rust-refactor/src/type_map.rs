@@ -101,6 +101,7 @@ where
             (&TyKind::Infer, _) => {}
             (&TyKind::ImplicitSelf, _) => {}
             (&TyKind::Mac(_), _) => {}
+            (TyKind::CVarArgs, Adt(..)) => {}
 
             (_, _) => {
                 panic!(
