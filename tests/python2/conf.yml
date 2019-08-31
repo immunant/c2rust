@@ -7,7 +7,13 @@ requirements:
         - liblzma-dev
         - libgdbm-dev
         - tk-dev # apt-get -y --no-install-recommends install tk-dev
-
+        - libncurses5-dev
+        - libexpat1-dev 
+        - libssl-dev 
+        - zlib1g-dev
+        - libsqlite3-dev
+        - libbz2-dev
+        - libdb-dev
 
 transpile:
   autogen: true
@@ -15,3 +21,4 @@ transpile:
     
 cargo:
   autogen: true
+  rustflags: "-C link-args=-Wl,-export-dynamic"

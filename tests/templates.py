@@ -36,7 +36,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0" )" && pwd)"
 # Do a release build in case the C code contains signed integer overflows
 # that trap in a debug build.
 (cd "$SCRIPT_DIR/repo" \
-    && RUSTFLAGS=-Awarnings cargo ${TOOLCHAIN} build --release 2>&1 | tee ../`basename "$0"`.log)
+    && RUSTFLAGS="-Awarnings {{extra_rustflags}}" cargo ${TOOLCHAIN} build --release 2>&1 | tee ../`basename "$0"`.log)
 
 """
 
@@ -55,6 +55,9 @@ def autogen_cargo(conf_file, yaml: Dict):
         ag = cargo.get("autogen")
         if ag and isinstance(ag, bool):
             params = {}
+            rustflags = cargo.get("rustflags")
+            if rustflags and isinstance(rustflags, str):
+                params['extra_rustflags'] = rustflags
 
             out_path = os.path.join(
                 os.path.dirname(conf_file),
