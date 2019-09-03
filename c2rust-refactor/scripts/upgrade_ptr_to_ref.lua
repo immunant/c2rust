@@ -582,20 +582,24 @@ function Visitor:visit_expr(expr)
                     if fn.is_foreign then
                         -- TODO: Should base decay on mutability of param not
                         -- the variable
-                        -- TODO: This may need tweaking for non-opt types and boxed locals
+                        -- TODO: This may need tweaking for boxed locals
                         local as_x = get_as_x(cfg.extra_data.mutability)
                         local as_x_ptr = get_x_ptr(cfg.extra_data.mutability)
 
-                        if as_x == "as_mut" then
-                            path_expr:to_method_call("as_mut", {path_expr})
-                        end
+                        if cfg:is_opt_any() then
+                            if as_x == "as_mut" then
+                                path_expr:to_method_call("as_mut", {path_expr})
+                            end
 
-                        path_expr:to_method_call("unwrap", {path_expr})
+                            path_expr:to_method_call("unwrap", {path_expr})
 
-                        if cfg:is_slice_any() then
+                            if cfg:is_slice_any() then
+                                path_expr:to_method_call(as_x_ptr, {path_expr})
+                            elseif as_x == "as_mut" then
+                                path_expr:to_unary("Deref", path_expr)
+                            end
+                        elseif cfg:is_slice_any() then
                             path_expr:to_method_call(as_x_ptr, {path_expr})
-                        elseif as_x == "as_mut" then
-                            path_expr:to_unary("Deref", path_expr)
                         end
                     else
                         -- TODO: Conversion to converted signatures

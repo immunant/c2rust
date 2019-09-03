@@ -205,10 +205,23 @@ fn offset_assign_is_mut(#[slice] z: *mut u8) {
     *z.offset(1) = 1;
 }
 
-unsafe fn decay_calls(cp: *const u32, mp: *mut u32, #[slice] cs: *const u32, #[slice] ms: *mut u32) {
+unsafe fn decay_calls(
+    cp: *const u32,
+    mp: *mut u32,
+    #[slice] cs: *const u32,
+    #[slice] ms: *mut u32,
+    #[nonnull] nncp: *const u32,
+    #[nonnull] nnmp: *mut u32,
+    #[nonnull] #[slice] nncs: *const u32,
+    #[nonnull] #[slice] nnms: *mut u32,
+) {
     *mp = 1;
     *ms.offset(0) = 1;
+    *nnmp = 1;
+    *nnms.offset(0) = 1;
 
     takes_ptrs(mp, cp);
     takes_ptrs(ms, cs);
+    takes_ptrs(nnmp, nncp);
+    takes_ptrs(nnms, nncs);
 }

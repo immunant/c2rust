@@ -227,10 +227,18 @@ unsafe fn decay_calls(
     mut mp: Option<&mut u32>,
     cs: Option<&[u32]>,
     mut ms: Option<&mut [u32]>,
+    nncp: &u32,
+    mut nnmp: &mut u32,
+    nncs: &[u32],
+    mut nnms: &mut [u32],
 ) {
     **mp.as_mut().unwrap() = 1;
     ms.as_mut().unwrap()[0] = 1;
+    *nnmp = 1;
+    nnms[0] = 1;
 
     takes_ptrs(*mp.as_mut().unwrap(), cp.unwrap());
     takes_ptrs(ms.as_mut().unwrap().as_mut_ptr(), cs.unwrap().as_ptr());
+    takes_ptrs(nnmp, nncp);
+    takes_ptrs(nnms.as_mut_ptr(), nncs.as_ptr());
 }
