@@ -232,8 +232,5 @@ unsafe fn decay_calls(
     ms.as_mut().unwrap()[0] = 1;
 
     takes_ptrs(*mp.as_mut().unwrap(), *cp.as_ref().unwrap());
-    takes_ptrs(
-        ms.as_mut().unwrap().as_mut_ptr(),
-        cs.as_ref().unwrap().as_ptr(),
-    );
+    takes_ptrs(ms.as_mut().unwrap().as_mut_ptr(), cs.unwrap().as_ptr());
 }

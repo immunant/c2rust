@@ -574,7 +574,10 @@ function Visitor:visit_expr(expr)
                                 local as_x = get_as_x(cfg.extra_data.mutability)
                                 local as_x_ptr = get_x_ptr(cfg.extra_data.mutability)
 
-                                path_expr:to_method_call(as_x, {path_expr})
+                                if not (cfg:is_slice_any() and as_x == "as_ref") then
+                                    path_expr:to_method_call(as_x, {path_expr})
+                                end
+
                                 path_expr:to_method_call("unwrap", {path_expr})
 
                                 if cfg:is_slice_any() then
