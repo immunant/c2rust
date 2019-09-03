@@ -309,18 +309,20 @@ function Visitor:visit_expr(expr)
                 local cfg = var and self.node_id_cfgs[var.id]
 
                 -- This is a path we're expecting to modify
-                if cfg then
-                    -- (*foo).bar -> (*foo).as_mut().unwrap().bar
-                    if cfg:is_opt_any() then
-                        local as_x = get_as_x(cfg.extra_data.mutability)
-
-                        derefed_expr:to_method_call(as_x, {derefed_expr})
-                        derefed_expr:to_method_call("unwrap", {derefed_expr})
-                    end
-
-                    -- (*foo).bar -> (foo).bar (can't remove parens..)
-                    expr:set_exprs{derefed_expr}
+                if not cfg then
+                    return
                 end
+
+                -- (*foo).bar -> (*foo).as_mut().unwrap().bar
+                if cfg:is_opt_any() then
+                    local as_x = get_as_x(cfg.extra_data.mutability)
+
+                    derefed_expr:to_method_call(as_x, {derefed_expr})
+                    derefed_expr:to_method_call("unwrap", {derefed_expr})
+                end
+
+                -- (*foo).bar -> (foo).bar (can't remove parens..)
+                expr:set_exprs{derefed_expr}
             end
         end
     elseif expr_kind == "Unary" and expr:get_op() == "Deref" then
@@ -358,63 +360,67 @@ function Visitor:visit_expr(expr)
             -- Should be left with a path or field, otherwise bail
             local cfg = self:get_expr_cfg(unwrapped_expr)
 
+            if not cfg then
+                return
+            end
+
             -- We only want to apply this operation if we're converting
             -- a pointer to an array/slice
-            if cfg then
-                if cfg:is_slice_any() or cfg:is_array() then
-                    -- If we're using an option, we must unwrap (or map/match) using
-                    -- as_mut (or as_ref) to avoid a move:
-                    -- *ptr[1] -> *ptr.as_mut().unwrap()[1] otherwise we can just unwrap
-                    -- *ptr[1] -> *ptr.unwrap()[1]
-                    if cfg:is_opt_any() then
-                        -- TODO: or as_ref
-                        if cfg:is_opt_box_any() or cfg.extra_data.mutability == "mut" then
-                            unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
-                        end
-                        unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
+            if cfg:is_slice_any() or cfg:is_array() then
+                -- If we're using an option, we must unwrap (or map/match) using
+                -- as_mut (or as_ref) to avoid a move:
+                -- *ptr[1] -> *ptr.as_mut().unwrap()[1] otherwise we can just unwrap
+                -- *ptr[1] -> *ptr.unwrap()[1]
+                if cfg:is_opt_any() then
+                    -- TODO: or as_ref
+                    if cfg:is_opt_box_any() or cfg.extra_data.mutability == "mut" then
+                        unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
                     end
-                else
-                    log_error("Found offset method applied to a reference: " .. tostring(expr))
-                    return
+                    unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
                 end
-
-                -- A cast to isize may have been applied by translator for offset(x)
-                -- We should convert it to usize for the index
-                if offset_expr:get_kind() == "Cast" then
-                    local cast_expr = offset_expr:get_exprs()[1]
-                    local cast_ty = offset_expr:get_ty()
-
-                    if cast_ty:get_kind() == "Path" and cast_ty:get_path():get_segments()[1] == "isize" then
-                        cast_ty:to_simple_path("usize")
-
-                        offset_expr:set_ty(cast_ty)
-                    end
-                end
-
-                expr:to_index(unwrapped_expr, offset_expr)
+            else
+                log_error("Found offset method applied to a reference: " .. tostring(expr))
+                return
             end
+
+            -- A cast to isize may have been applied by translator for offset(x)
+            -- We should convert it to usize for the index
+            if offset_expr:get_kind() == "Cast" then
+                local cast_expr = offset_expr:get_exprs()[1]
+                local cast_ty = offset_expr:get_ty()
+
+                if cast_ty:get_kind() == "Path" and cast_ty:get_path():get_segments()[1] == "isize" then
+                    cast_ty:to_simple_path("usize")
+
+                    offset_expr:set_ty(cast_ty)
+                end
+            end
+
+            expr:to_index(unwrapped_expr, offset_expr)
         -- *ptr = 1 -> **ptr.as_mut().unwrap() = 1
         elseif unwrapped_expr:get_kind() == "Path" then
             local hirid = self.tctx:resolve_path_hirid(unwrapped_expr)
             local var = self:get_var(hirid)
 
+            if not var then
+                return
+            end
+
             -- If we're using an option, we must unwrap
-            if var then
-                -- Must get inner reference to mutate (or map/match)
-                if self.node_id_cfgs[var.id]:is_opt_any() then
-                    local as_x = nil
+            -- Must get inner reference to mutate (or map/match)
+            if self.node_id_cfgs[var.id]:is_opt_any() then
+                local as_x = nil
 
-                    if self.node_id_cfgs[var.id].extra_data.mutability == "immut" then
-                        as_x = "as_ref"
-                    else
-                        as_x = "as_mut"
-                    end
-
-                    unwrapped_expr:to_method_call(as_x, {unwrapped_expr})
-                    expr:to_method_call("unwrap", {unwrapped_expr})
-                    expr:to_unary("Deref", expr)
-                    expr:to_unary("Deref", expr)
+                if self.node_id_cfgs[var.id].extra_data.mutability == "immut" then
+                    as_x = "as_ref"
+                else
+                    as_x = "as_mut"
                 end
+
+                unwrapped_expr:to_method_call(as_x, {unwrapped_expr})
+                expr:to_method_call("unwrap", {unwrapped_expr})
+                expr:to_unary("Deref", expr)
+                expr:to_unary("Deref", expr)
             end
         end
     -- p.is_null() -> p.is_none() or false when not using an option
@@ -422,12 +428,14 @@ function Visitor:visit_expr(expr)
         local callee = expr:get_exprs()[1]
         local conversion_cfg = self:get_expr_cfg(callee)
 
-        if conversion_cfg then
-            if conversion_cfg:is_opt_any() then
-                expr:set_method_name("is_none")
-            else
-                expr:to_bool_lit(false)
-            end
+        if not conversion_cfg then
+            return
+        end
+
+        if conversion_cfg:is_opt_any() then
+            expr:set_method_name("is_none")
+        else
+            expr:to_bool_lit(false)
         end
     elseif expr_kind == "Assign" then
         local exprs = expr:get_exprs()
@@ -555,44 +563,48 @@ function Visitor:visit_expr(expr)
             expr:set_exprs(call_exprs)
         -- Skip; handled elsewhere by local conversion
         elseif segments and segments[#segments] == "malloc" then
-        -- Generic function call conversions
+        -- Generic function call param conversions
         elseif segments then
             local hirid = self.tctx:resolve_path_hirid(path_expr)
             local fn = self:get_fn(hirid)
 
             for i, param_expr in ipairs(call_exprs) do
                 -- Skip function name path expr
-                if i > 1 then
-                    param_expr:map_first_path(function(path_expr)
-                        local cfg = self:get_expr_cfg(path_expr)
+                if i == 1 then goto continue end
 
-                        if cfg then
-                            if fn.is_foreign then
-                                -- REVIEW: Does this work for boxed locals?
-                                -- TODO: Should base decay on mutability of param not
-                                -- the variable
-                                local as_x = get_as_x(cfg.extra_data.mutability)
-                                local as_x_ptr = get_x_ptr(cfg.extra_data.mutability)
+                param_expr:map_first_path(function(path_expr)
+                    local cfg = self:get_expr_cfg(path_expr)
 
-                                if not (cfg:is_slice_any() and as_x == "as_ref") then
-                                    path_expr:to_method_call(as_x, {path_expr})
-                                end
+                    if not cfg then
+                        return path_expr
+                    end
 
-                                path_expr:to_method_call("unwrap", {path_expr})
+                    if fn.is_foreign then
+                        -- TODO: Should base decay on mutability of param not
+                        -- the variable
+                        -- TODO: This may need tweaking for non-opt types and boxed locals
+                        local as_x = get_as_x(cfg.extra_data.mutability)
+                        local as_x_ptr = get_x_ptr(cfg.extra_data.mutability)
 
-                                if cfg:is_slice_any() then
-                                    path_expr:to_method_call(as_x_ptr, {path_expr})
-                                else
-                                    path_expr:to_unary("Deref", path_expr)
-                                end
-                            else
-                                -- TODO: Conversion to converted signatures
-                            end
+                        if not (cfg:is_slice_any() and as_x == "as_ref") then
+                            path_expr:to_method_call(as_x, {path_expr})
                         end
 
-                        return path_expr
-                    end)
-                end
+                        path_expr:to_method_call("unwrap", {path_expr})
+
+                        if cfg:is_slice_any() then
+                            path_expr:to_method_call(as_x_ptr, {path_expr})
+                        else
+                            path_expr:to_unary("Deref", path_expr)
+                        end
+                    else
+                        -- TODO: Conversion to converted signatures
+                    end
+
+                    return path_expr
+                end)
+
+                ::continue::
             end
 
             expr:set_exprs(call_exprs)
@@ -718,23 +730,26 @@ function Visitor:flat_map_stmt(stmt, walk)
     local stmt_kind = stmt:get_kind()
     local cfg = self.node_id_cfgs[stmt:get_id()]
 
-    if cfg then
-        if cfg:is_del() then
-            return {}
-        elseif cfg:is_byteswap() and stmt:get_kind() == "Semi" then
-            local expr = stmt:get_node()
-            local lhs_id = cfg.extra_data[1]
-            local rhs_id = cfg.extra_data[2]
-            local lhs = expr:find_subexpr(lhs_id)
-            local rhs = expr:find_subexpr(rhs_id)
+    if not cfg then
+        walk(stmt)
+        return {stmt}
+    end
 
-            if lhs and rhs then
-                rhs:to_method_call("swap_bytes", {rhs})
+    if cfg:is_del() then
+        return {}
+    elseif cfg:is_byteswap() and stmt:get_kind() == "Semi" then
+        local expr = stmt:get_node()
+        local lhs_id = cfg.extra_data[1]
+        local rhs_id = cfg.extra_data[2]
+        local lhs = expr:find_subexpr(lhs_id)
+        local rhs = expr:find_subexpr(rhs_id)
 
-                local assign_expr = self.tctx:assign_expr(lhs, rhs)
+        if lhs and rhs then
+            rhs:to_method_call("swap_bytes", {rhs})
 
-                stmt:to_semi(assign_expr)
-            end
+            local assign_expr = self.tctx:assign_expr(lhs, rhs)
+
+            stmt:to_semi(assign_expr)
         end
     end
 
