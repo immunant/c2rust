@@ -412,6 +412,18 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
         }
     }
 
+    fn flat_map_foreign_item(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_foreign_item")
+            .expect("Could not get lua visitor function");
+
+        if let Some(method) = visit_method {
+            let new_items = self.call_flat_map(method, i);
+            new_items.into_iter().map(|i| i.into_inner()).collect()
+        } else {
+            mut_visit::noop_flat_map_foreign_item(i, self)
+        }
+    }
+
     fn flat_map_stmt(&mut self, i: Stmt) -> SmallVec<[Stmt; 1]> {
         let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_stmt")
             .expect("Could not get lua visitor function");

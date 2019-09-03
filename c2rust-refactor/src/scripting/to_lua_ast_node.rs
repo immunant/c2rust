@@ -222,7 +222,7 @@ impl UserData for LuaAstNode<P<Item>> {
 
         methods.add_method("visit_foreign_items", |lua_ctx, this, callback: Function| {
             visit_nodes(&**this.borrow(), |node: &ForeignItem| {
-                callback.call::<_, ()>(P(node.clone()).to_lua(lua_ctx))
+                callback.call::<_, ()>(node.clone().to_lua(lua_ctx))
                 .unwrap_or_else(|e| panic!("Lua callback failed in visit_foreign_items: {}", DisplayLuaError(e)));
             });
             Ok(())
@@ -303,8 +303,8 @@ impl UserData for LuaAstNode<P<Item>> {
 // This object is NOT thread-safe. Do not use an object of this class from a
 // thread that did not acquire it.
 // @type ForeignItemAstNode
-unsafe impl Send for LuaAstNode<P<ForeignItem>> {}
-impl UserData for LuaAstNode<P<ForeignItem>> {
+unsafe impl Send for LuaAstNode<ForeignItem> {}
+impl UserData for LuaAstNode<ForeignItem> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
             Ok(this.borrow().node.ast_name())

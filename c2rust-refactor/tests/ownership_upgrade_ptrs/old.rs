@@ -16,6 +16,8 @@ extern "C" {
     fn sinh(_: libc::c_double) -> libc::c_double;
     #[no_mangle]
     fn exp(_: libc::c_double) -> libc::c_double;
+    #[no_mangle]
+    fn takes_ptrs(_: *mut u32, _: *const u32);
 }
 
 #[no_mangle]
@@ -201,4 +203,12 @@ pub unsafe extern "C" fn rand_r(seed: *mut libc::c_uint) -> libc::c_int {
 fn offset_assign_is_mut(#[slice] z: *mut u8) {
     *z.offset(0) = 1;
     *z.offset(1) = 1;
+}
+
+unsafe fn decay_calls(cp: *const u32, mp: *mut u32, #[slice] cs: *const u32, #[slice] ms: *mut u32) {
+    *mp = 1;
+    *ms.offset(0) = 1;
+
+    takes_ptrs(mp, cp);
+    takes_ptrs(ms, cs);
 }

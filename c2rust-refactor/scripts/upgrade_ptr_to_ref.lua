@@ -53,6 +53,19 @@ function Struct.new(lifetimes)
     return self
 end
 
+Fn = {}
+
+function Fn.new(node_id, is_foreign)
+    self = {}
+    self.id = node_id
+    self.is_foreign = is_foreign
+
+    setmetatable(self, Fn)
+    Fn.__index = Fn
+
+    return self
+end
+
 ConvCfg = {}
 
 function ConvCfg.new(args)
@@ -152,6 +165,8 @@ function Visitor.new(tctx, node_id_cfgs)
     self.fields = {}
     -- HrId -> Struct
     self.structs = {}
+    -- HrId -> Fn
+    self.fns = {}
 
     setmetatable(self, Visitor)
     Visitor.__index = Visitor
@@ -237,6 +252,20 @@ function Visitor:get_var(hirid)
     return self.vars[hirid_str]
 end
 
+function Visitor:add_fn(hirid, fn)
+    if hirid then
+        local hirid_str = tostring(hirid)
+
+        self.fns[hirid_str] = fn
+    end
+end
+
+function Visitor:get_fn(hirid)
+    local hirid_str = tostring(hirid)
+
+    return self.fns[hirid_str]
+end
+
 function Visitor:add_field(hirid, field)
     if hirid then
         local hirid_str = tostring(hirid)
@@ -283,13 +312,7 @@ function Visitor:visit_expr(expr)
                 if cfg then
                     -- (*foo).bar -> (*foo).as_mut().unwrap().bar
                     if cfg:is_opt_any() then
-                        local as_x = nil
-
-                        if cfg.extra_data.mutability == "immut" then
-                            as_x = "as_ref"
-                        else
-                            as_x = "as_mut"
-                        end
+                        local as_x = get_as_x(cfg.extra_data.mutability)
 
                         derefed_expr:to_method_call(as_x, {derefed_expr})
                         derefed_expr:to_method_call("unwrap", {derefed_expr})
@@ -500,14 +523,14 @@ function Visitor:visit_expr(expr)
     elseif expr_kind == "Call" then
         local call_exprs = expr:get_exprs()
         local path_expr = call_exprs[1]
-        local param_expr = call_exprs[2]
+        local first_param_expr = call_exprs[2]
         local path = path_expr:get_path()
         local segments = path and path:get_segments()
 
         -- In case free is called from another module check the last segment
-        if segments and segments[#segments] == "free" and param_expr:get_kind() == "Cast" then
+        if segments and segments[#segments] == "free" and first_param_expr:get_kind() == "Cast" then
             -- REVIEW: What if there's a multi-layered cast?
-            local uncasted_expr = param_expr:get_exprs()[1]
+            local uncasted_expr = first_param_expr:get_exprs()[1]
             local conversion_cfg = self:get_expr_cfg(uncasted_expr)
 
             if conversion_cfg and conversion_cfg:is_opt_any() then
@@ -517,7 +540,7 @@ function Visitor:visit_expr(expr)
         -- Though this should be expanded to support other exprs like
         -- fields
         elseif segments and segments[#segments] == "memset" then
-            param_expr:map_first_path(function(path_expr)
+            first_param_expr:map_first_path(function(path_expr)
                 local cfg = self:get_expr_cfg(path_expr)
 
                 if cfg and cfg:is_box_any() then
@@ -527,7 +550,47 @@ function Visitor:visit_expr(expr)
                 return path_expr
             end)
 
-            call_exprs[2] = param_expr
+            call_exprs[2] = first_param_expr
+
+            expr:set_exprs(call_exprs)
+        -- Skip; handled elsewhere by local conversion
+        elseif segments and segments[#segments] == "malloc" then
+        -- Generic function call conversions
+        elseif segments then
+            local hirid = self.tctx:resolve_path_hirid(path_expr)
+            local fn = self:get_fn(hirid)
+
+            for i, param_expr in ipairs(call_exprs) do
+                -- Skip function name path expr
+                if i > 1 then
+                    param_expr:map_first_path(function(path_expr)
+                        local cfg = self:get_expr_cfg(path_expr)
+
+                        if cfg then
+                            if fn.is_foreign then
+                                -- REVIEW: Does this work for boxed locals?
+                                -- TODO: Should base decay on mutability of param not
+                                -- the variable
+                                local as_x = get_as_x(cfg.extra_data.mutability)
+                                local as_x_ptr = get_x_ptr(cfg.extra_data.mutability)
+
+                                path_expr:to_method_call(as_x, {path_expr})
+                                path_expr:to_method_call("unwrap", {path_expr})
+
+                                if cfg:is_slice_any() then
+                                    path_expr:to_method_call(as_x_ptr, {path_expr})
+                                else
+                                    path_expr:to_unary("Deref", path_expr)
+                                end
+                            else
+                                -- TODO: Conversion to converted signatures
+                            end
+                        end
+
+                        return path_expr
+                    end)
+                end
+            end
 
             expr:set_exprs(call_exprs)
         end
@@ -600,7 +663,7 @@ function Visitor:flat_map_item(item, walk)
             local arg_ty = arg:get_ty()
 
             -- Grab lifetimes from the argument type
-            -- TODO: Maybe this shouldn't map but just traverse?
+            -- REVIEW: Maybe this shouldn't map but just traverse?
             arg_ty:map_ptr_root(function(path_ty)
                 if path_ty:get_kind() ~= "Path" then
                     return path_ty
@@ -625,11 +688,27 @@ function Visitor:flat_map_item(item, walk)
         end
 
         item:set_args(args)
+
+        local fn_id = item:get_id()
+        local hirid = self.tctx:nodeid_to_hirid(fn_id)
+
+        self:add_fn(hirid, Fn.new(fn_id, false))
     end
 
     walk(item)
 
     return {item}
+end
+
+function Visitor:flat_map_foreign_item(foreign_item)
+    if foreign_item:get_kind() == "Fn" then
+        local fn_id = foreign_item:get_id()
+        local hirid = self.tctx:nodeid_to_hirid(fn_id)
+
+        self:add_fn(hirid, Fn.new(fn_id, true))
+    end
+
+    return {foreign_item}
 end
 
 function Visitor:flat_map_stmt(stmt, walk)
@@ -684,6 +763,26 @@ function Visitor:visit_struct_field(field)
                 field:set_ty(field_ty)
             end
         end
+    end
+end
+
+function get_as_x(mutability)
+    if mutability == "immut" then
+        return "as_ref"
+    elseif mutability == "mut" then
+        return "as_mut"
+    else
+        log_error("[get_as_x] Found unknown mutability: " .. tostring(mutability))
+    end
+end
+
+function get_x_ptr(mutability)
+    if mutability == "immut" then
+        return "as_ptr"
+    elseif mutability == "mut" then
+        return "as_mut_ptr"
+    else
+        log_error("[get_x_ptr] Found unknown mutability: " .. tostring(mutability))
     end
 end
 
