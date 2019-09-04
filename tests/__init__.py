@@ -30,6 +30,20 @@ class Test(object):
         """
         Returns true iff subsequent tests should run
         """
+
+        def print_log_tail_on_fail(script_path):
+            logfile = f"{script_path}.log"
+            if os.path.isfile(logfile):
+                proc = subprocess.Popen(['tail', '-n', 20, logfile], stdout=subprocess.PIPE)
+                lines = proc.stdout.readlines()
+                print(lines)
+            else:
+                print("{color}Missing log file: {logf}{nocolor}".format(
+                    color=Colors.WARNING,
+                    logf=logfile,
+                    nocolor=Colors.NO_COLOR)
+                )
+
         prev_dir = os.getcwd()
         script_path = os.path.join(self.dir, script)
         if not verbose:
@@ -74,6 +88,7 @@ class Test(object):
                     outcome=outcome,
                     nocolor=Colors.NO_COLOR)
                 )
+                print_log_tail_on_fail(script_path)
             if not xfail:
                 exit(1)
             else:

@@ -7,19 +7,25 @@ from tests.util import *
 
 def check_apt_package(yaml: List[str]):
     assert isinstance(yaml, List), "expected list of apt packages"
+    errors = []
     for p in yaml:
         args = ["dpkg", "-l", p]
 
         try:
             output: bytes = subprocess.check_output(args)
         except subprocess.CalledProcessError:
-            die(f"package not installed: {p}")
+            errors.append(f"package not installed: {p}")
+            continue
 
         output: str = output.decode()
         last: str = output.splitlines()[-1]
-        expected = f"ii  {p}"
+        expected: str = f"ii  {p}"
         if not last.startswith(expected):
-            die(f"package not (properly) installed: {p}")
+            errors.append(f"package not (properly) installed: {p} (dpkg output: {output}) ")
+    
+    if errors:
+        errors = "\n".join(errors)
+        die(errors)
 
 
 def check_apt(yaml: Dict):
@@ -82,7 +88,7 @@ def check_file(file: str, yaml):
         check_host("ubuntu", reqs)
 
     else:
-        warn("requirements checking id not implemented for non-ubuntu hosts")
+        warn("requirements checking is not implemented for non-ubuntu hosts")
 
 
 def check(conf):
