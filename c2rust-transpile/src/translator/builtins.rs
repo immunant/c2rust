@@ -80,6 +80,20 @@ impl<'c> Translation<'c> {
                     "NAN",
                 ])))
             },
+            "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
+                // Long doubles require the Float trait from num_traits to call this method
+                if builtin_name == "__builtin_signbitl" {
+                    self.items.borrow_mut()[&self.main_file].add_use(vec!["num_traits".into()], "Float");
+                }
+
+                let val = self.convert_expr(ctx.used(), args[0])?;
+
+                Ok(val.map(|v| {
+                    let val = mk().method_call_expr(v, "is_sign_negative", vec![] as Vec<P<Expr>>);
+
+                    mk().cast_expr(val, mk().path_ty(vec!["libc", "c_int"]))
+                }))
+            },
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
 
