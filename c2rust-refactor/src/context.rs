@@ -412,7 +412,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         let hir_map = self.hir_map();
         let tcx = self.ty_ctxt();
 
-        let hir_id = hir_map.node_to_hir_id(id);
+        let hir_id = hir_map.opt_node_to_hir_id(id)?;
         let parent = hir_map.get_parent_item(hir_id);
         let parent_body = match_or!([hir_map.maybe_body_owned_by(parent)]
                                     Some(x) => x; return None);

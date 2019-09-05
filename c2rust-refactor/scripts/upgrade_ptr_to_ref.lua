@@ -581,16 +581,22 @@ function Visitor:visit_expr(expr)
                 -- Skip function name path expr
                 if i == 1 then goto continue end
 
-                -- Turns a null ptr into None if the call param was a
-                -- converted optional
-                if is_null_ptr(param_expr) then
-                    local param_cfg = self:get_param_cfg(fn, i - 1)
+                local param_cfg = self:get_param_cfg(fn, i - 1)
 
-                    if param_cfg and param_cfg:is_opt_any() then
+                if param_cfg and param_cfg:is_opt_any() then
+                    -- Turns a null ptr into None if the call param was a
+                    -- converted optional
+                    if is_null_ptr(param_expr) then
                         param_expr:to_ident_path("None")
-                    end
+                        goto continue
 
-                    goto continue
+                    -- &T -> Some(&T)
+                    elseif param_expr:get_kind() == "AddrOf" then
+                        local some_path_expr = self.tctx:ident_path_expr("Some")
+                        param_expr:to_call{some_path_expr, param_expr}
+
+                        goto continue
+                    end
                 end
 
                 param_expr:map_first_path(function(path_expr)
