@@ -55,10 +55,11 @@ end
 
 Fn = {}
 
-function Fn.new(node_id, is_foreign)
+function Fn.new(node_id, is_foreign, arg_ids)
     self = {}
     self.id = node_id
     self.is_foreign = is_foreign
+    self.arg_ids = arg_ids
 
     setmetatable(self, Fn)
     Fn.__index = Fn
@@ -172,6 +173,14 @@ function Visitor.new(tctx, node_id_cfgs)
     Visitor.__index = Visitor
 
     return self
+end
+
+function Visitor:get_param_cfg(fn, idx)
+    if not fn then return end
+
+    local arg_id = fn.arg_ids[idx]
+
+    return self.node_id_cfgs[arg_id]
 end
 
 -- Takes a ptr type and returns the newly modified type
@@ -572,6 +581,18 @@ function Visitor:visit_expr(expr)
                 -- Skip function name path expr
                 if i == 1 then goto continue end
 
+                -- Turns a null ptr into None if the call param was a
+                -- converted optional
+                if is_null_ptr(param_expr) then
+                    local param_cfg = self:get_param_cfg(fn, i - 1)
+
+                    if param_cfg and param_cfg:is_opt_any() then
+                        param_expr:to_ident_path("None")
+                    end
+
+                    goto continue
+                end
+
                 param_expr:map_first_path(function(path_expr)
                     local cfg = self:get_expr_cfg(path_expr)
 
@@ -670,10 +691,13 @@ function Visitor:flat_map_item(item, walk)
         self:add_struct(hirid, Struct.new(lifetimes))
     elseif item_kind == "Fn" then
         local args = item:get_args()
+        local arg_ids = {}
 
         for i, arg in ipairs(args) do
             local arg_id = arg:get_id()
             local ref_cfg = self.node_id_cfgs[arg_id]
+
+            table.insert(arg_ids, arg_id)
 
             if ref_cfg and ref_cfg.extra_data.lifetime then
                 item:add_lifetime(ref_cfg.extra_data.lifetime)
@@ -711,7 +735,7 @@ function Visitor:flat_map_item(item, walk)
         local fn_id = item:get_id()
         local hirid = self.tctx:nodeid_to_hirid(fn_id)
 
-        self:add_fn(hirid, Fn.new(fn_id, false))
+        self:add_fn(hirid, Fn.new(fn_id, false, arg_ids))
     end
 
     walk(item)
@@ -724,7 +748,7 @@ function Visitor:flat_map_foreign_item(foreign_item)
         local fn_id = foreign_item:get_id()
         local hirid = self.tctx:nodeid_to_hirid(fn_id)
 
-        self:add_fn(hirid, Fn.new(fn_id, true))
+        self:add_fn(hirid, Fn.new(fn_id, true, {}))
     end
 
     return {foreign_item}
