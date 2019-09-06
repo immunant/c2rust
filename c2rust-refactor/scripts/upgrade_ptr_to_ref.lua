@@ -573,7 +573,9 @@ function Visitor:visit_expr(expr)
         -- Skip; handled elsewhere by local conversion
         elseif segments and segments[#segments] == "malloc" then
         -- Generic function call param conversions
-        elseif segments then
+        -- NOTE: Some(x) counts as a function call on x, so we skip Some
+        -- so as to not recurse when we generate that expr
+        elseif segments and segments[#segments] ~= "Some" then
             local hirid = self.tctx:resolve_path_hirid(path_expr)
             local fn = self:get_fn(hirid)
 
@@ -584,8 +586,7 @@ function Visitor:visit_expr(expr)
                 local param_cfg = self:get_param_cfg(fn, i - 1)
 
                 if param_cfg and param_cfg:is_opt_any() then
-                    -- Turns a null ptr into None if the call param was a
-                    -- converted optional
+                    -- 0 as *const/mut T -> None
                     if is_null_ptr(param_expr) then
                         param_expr:to_ident_path("None")
                         goto continue
@@ -596,9 +597,20 @@ function Visitor:visit_expr(expr)
                         param_expr:to_call{some_path_expr, param_expr}
 
                         goto continue
+                    -- path -> Some(path)
+                    elseif param_expr:get_kind() == "Path" then
+                        local path_cfg = self:get_expr_cfg(param_expr)
+
+                        if path_cfg and not path_cfg:is_opt_any() then
+                            local some_path_expr = self.tctx:ident_path_expr("Some")
+                            param_expr:to_call{some_path_expr, param_expr}
+
+                            goto continue
+                        end
                     end
                 end
 
+                -- x.unwrap() or x.as_mut().unwrap()
                 param_expr:map_first_path(function(path_expr)
                     local cfg = self:get_expr_cfg(path_expr)
 

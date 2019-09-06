@@ -225,3 +225,15 @@ unsafe fn decay_calls(
     takes_ptrs(nnmp, nncp);
     takes_ptrs(nnms, nncs);
 }
+
+unsafe fn rewritten_calls(
+    #[nonnull] nncp: *const u32,
+    #[nonnull] nnmp: *mut u32,
+    #[nonnull] nnmp2: *mut u32,
+    #[nonnull] #[slice] nncs: *const u32,
+    #[nonnull] #[slice] nnms: *mut u32,
+    #[nonnull] #[slice] nnms2: *mut u32,
+) {
+    decay_calls(0 as *const u32, 0 as *mut u32, 0 as *const u32, 0 as *mut u32, nncp, nnmp, nncs, nnms);
+    decay_calls(nncp, nnmp, nncs, nnms, nncp, nnmp2, nncs, nnms2);
+}

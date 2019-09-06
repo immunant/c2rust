@@ -242,3 +242,24 @@ unsafe fn decay_calls(
     takes_ptrs(nnmp, nncp);
     takes_ptrs(nnms.as_mut_ptr(), nncs.as_ptr());
 }
+
+unsafe fn rewritten_calls(
+    nncp: &u32,
+    mut nnmp: &mut u32,
+    mut nnmp2: &mut u32,
+    nncs: &[u32],
+    mut nnms: &mut [u32],
+    mut nnms2: &mut [u32],
+) {
+    decay_calls(None, None, None, None, nncp, nnmp, nncs, nnms);
+    decay_calls(
+        Some(nncp),
+        Some(nnmp),
+        Some(nncs),
+        Some(nnms),
+        nncp,
+        nnmp2,
+        nncs,
+        nnms2,
+    );
+}
