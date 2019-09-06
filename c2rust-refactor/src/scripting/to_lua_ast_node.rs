@@ -616,6 +616,19 @@ impl UserData for LuaAstNode<P<Expr>> {
             Ok(())
         });
 
+        methods.add_method("to_addr_of", |_lua_ctx, this, (expr, mutable): (LuaAstNode<P<Expr>>, bool)| {
+            let expr = expr.borrow().clone();
+            let mutability = if mutable {
+                Mutability::Mutable
+            } else {
+                Mutability::Immutable
+            };
+
+            this.borrow_mut().node = ExprKind::AddrOf(mutability, expr);
+
+            Ok(())
+        });
+
         methods.add_method("to_method_call", |_lua_ctx, this, (segment, exprs): (LuaString, Vec<LuaAstNode<P<Expr>>>)| {
             let segment = PathSegment::from_ident(Ident::from_str(segment.to_str()?));
             let exprs = exprs.iter().map(|e| e.borrow().clone()).collect();

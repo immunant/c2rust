@@ -584,21 +584,45 @@ function Visitor:visit_expr(expr)
                 if i == 1 then goto continue end
 
                 local param_cfg = self:get_param_cfg(fn, i - 1)
+                local param_kind = param_expr:get_kind()
+
+                -- static.as_ptr/as_mut_ptr() -> &static/&mut static
+                -- &static/&mut static -> Option<&static/&mut static>
+                if param_cfg and param_kind == "MethodCall" then
+                    local exprs = param_expr:get_exprs()
+                    local path_expr = exprs[1]
+
+                    if #exprs == 1 and path_expr:get_kind() == "Path" then
+                        local method_name = param_expr:get_method_name()
+
+                        if method_name == "as_ptr" then
+                            param_expr:to_addr_of(path_expr, false)
+                        elseif method_name == "as_mut_ptr" then
+                            param_expr:to_addr_of(path_expr, true)
+                        end
+
+                        if param_cfg:is_opt_any() then
+                            local some_path_expr = self.tctx:ident_path_expr("Some")
+                            param_expr:to_call{some_path_expr, param_expr}
+                        end
+
+                        goto continue
+                    end
+                end
 
                 if param_cfg and param_cfg:is_opt_any() then
                     -- 0 as *const/mut T -> None
                     if is_null_ptr(param_expr) then
                         param_expr:to_ident_path("None")
                         goto continue
-
                     -- &T -> Some(&T)
-                    elseif param_expr:get_kind() == "AddrOf" then
+                    elseif param_kind == "AddrOf" then
                         local some_path_expr = self.tctx:ident_path_expr("Some")
                         param_expr:to_call{some_path_expr, param_expr}
 
                         goto continue
                     -- path -> Some(path)
-                    elseif param_expr:get_kind() == "Path" then
+                    elseif param_kind == "Path" then
                         local path_cfg = self:get_expr_cfg(param_expr)
 
                         if path_cfg and not path_cfg:is_opt_any() then

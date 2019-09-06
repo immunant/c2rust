@@ -263,3 +263,17 @@ unsafe fn rewritten_calls(
         nnms2,
     );
 }
+
+static mut categories: [_category; 2129] = [_category {
+    cat_first: [0; 4],
+    delta: 0,
+}; 2129];
+
+#[no_mangle]
+pub unsafe extern "C" fn category(ucs: libc::c_uint) -> category {
+    return bisearch_cat(
+        ucs,
+        Some(&categories),
+        (categories.len() - 1) as libc::c_int,
+    );
+}

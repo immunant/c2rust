@@ -237,3 +237,10 @@ unsafe fn rewritten_calls(
     decay_calls(0 as *const u32, 0 as *mut u32, 0 as *const u32, 0 as *mut u32, nncp, nnmp, nncs, nnms);
     decay_calls(nncp, nnmp, nncs, nnms, nncp, nnmp2, nncs, nnms2);
 }
+
+static mut categories: [_category; 2129] = [_category{cat_first: [0; 4], delta: 0,}; 2129];
+
+#[no_mangle]
+pub unsafe extern "C" fn category(ucs: libc::c_uint) -> category {
+    return bisearch_cat(ucs, categories.as_ptr(), (categories.len() - 1) as libc::c_int);
+}
