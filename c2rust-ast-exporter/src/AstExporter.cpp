@@ -2275,6 +2275,11 @@ class TranslateConsumer : public clang::ASTConsumer {
                     }
                 }
 
+                // Empty-decls aren't exported. This avoids warnings during conversion.
+                if(isa<EmptyDecl>(d)) {
+                    continue;
+                }
+
                 cbor_encode_uint(&array, reinterpret_cast<std::uintptr_t>(d));
             }
             cbor_encoder_close_container(&outer, &array);
