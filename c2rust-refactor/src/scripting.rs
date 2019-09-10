@@ -132,39 +132,6 @@ impl UserData for RefactorState {
             },
         );
 
-        // Debugging; TODO: Remove
-        methods.add_method_mut(
-            "dump_ty_ids",
-            |_lua_ctx, this, ()| {
-                use syntax::mut_visit;
-                use indexmap::IndexSet;
-
-                struct TyVisitor {
-                    ty_ids: IndexSet<NodeId>,
-                }
-
-                impl<'lty> MutVisitor for TyVisitor {
-                    fn visit_ty(&mut self, ty: &mut P<Ty>) {
-                        self.ty_ids.insert(ty.id);
-
-                        mut_visit::noop_visit_ty(ty, self)
-                    }
-                }
-
-                let mut vis = TyVisitor {
-                    ty_ids: IndexSet::new(),
-                };
-
-                this.cs.map_krate(|krate| {
-                    krate.visit(&mut vis)
-                });
-
-                println!("{:?}", vis.ty_ids);
-
-                Ok(())
-            },
-        );
-
         methods.add_method_mut(
             "save_crate",
             |_lua_ctx, this, ()| Ok(this.save_crate()),
