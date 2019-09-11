@@ -333,9 +333,12 @@ pub struct AnalysisResult<'lty, 'tcx> {
 }
 
 /// Results specific to an analysis-level function.
+#[derive(Debug)]
 pub struct FunctionResult<'lty, 'tcx> {
     /// Polymorphic function signature.  Each pointer is labeled with a `SigVar`.
     pub sig: VFnSig<'lty, 'tcx>,
+
+    pub locals: Vec<VTy<'lty, 'tcx>>,
 
     pub num_sig_vars: u32,
 
@@ -354,6 +357,7 @@ pub struct FunctionResult<'lty, 'tcx> {
 /// Results specific to a variant `fn`.
 ///
 /// Each variant has a parent `FunctionResult`, identified by the `func_id` field.
+#[derive(Debug)]
 pub struct VariantResult {
     /// ID of the parent function.
     pub func_id: DefId,
@@ -368,6 +372,7 @@ pub struct VariantResult {
 }
 
 /// A reference to a function.
+#[derive(Debug)]
 pub struct FuncRef {
     /// Function ID of the callee.  Note this refers to an analysis-level function, even if the
     /// `Expr` in the AST refers to a specific variant.
@@ -464,10 +469,21 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 Some(func.variant_ids.clone())
             };
 
+            let mut f = |p: &Option<_>| {
+                if let Some(PermVar::Local(v)) = *p {
+                    Some(v)
+                } else {
+                    None
+                }
+            };
+
+            let locals = var_lcx.relabel_slice(&func.locals, &mut f).to_vec();
+
             funcs.insert(
                 def_id,
                 FunctionResult {
-                    sig: sig,
+                    sig,
+                    locals,
                     num_sig_vars: func.num_sig_vars,
                     cset: func.sig_cset.clone(),
                     variants: variant_ids,

@@ -505,8 +505,12 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     let arena = SyncDroplessArena::default();
     let ana = ownership::analyze(&st, &cx, &arena);
 
+    use rustc::ty::TyCtxt;
+
     struct AnalysisTypeSource<'lty, 'tcx: 'lty> {
         ana: &'lty ownership::AnalysisResult<'lty, 'tcx>,
+        ty_ctxt: TyCtxt<'tcx>,
+        hir_map: HirMap<'lty, 'tcx>,
     }
 
     impl<'lty, 'tcx> type_map::TypeSource for AnalysisTypeSource<'lty, 'tcx> {
@@ -551,11 +555,24 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
             Some(sig)
         }
 
+        fn pat_type(&mut self, p: &Pat) -> Option<Self::Type> {
+            let hir_id = dbg!(self.hir_map.opt_node_to_hir_id(p.id)?);
+            let fn_def_id = dbg!(self.hir_map.get_parent_did(hir_id));
+            let f = self.ana.funcs.get(&fn_def_id)?;
+
+            dbg!(f);
+
+            // self.ana.locals.get(p.id).cloned()
+            None
+        }
+
         fn closure_sig(&mut self, _did: DefId) -> Option<Self::Signature> { None }
     }
 
     let source = AnalysisTypeSource {
         ana: &ana,
+        ty_ctxt: cx.ty_ctxt(),
+        hir_map: cx.hir_map(),
     };
 
     let s_ref = "ref".into_symbol();
@@ -563,6 +580,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     let s_box = "box".into_symbol();
 
     type_map::map_types(&cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
+        dbg!((&ast_ty, &ast_ty.id, &lty.label));
         let p = match lty.label {
             Some(x) => x,
             None => return,

@@ -154,17 +154,17 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         debug!("  original constraints:");
         if log_enabled!(Level::Debug) {
             for &(a, b) in self.cset.iter() {
-            debug!("    {:?} <= {:?}", a, b);
+                debug!("    {:?} <= {:?}", a, b);
             }
         }
 
         self.cset.remove_useless();
         self.cset.simplify_min_lhs(self.cx.arena);
 
-        self.cset.retain_perms(self.cx.arena, |p| match p {
-            Perm::LocalVar(_) => false,
-            _ => true,
-        });
+        // self.cset.retain_perms(self.cx.arena, |p| match p {
+        //     Perm::LocalVar(_) => false,
+        //     _ => true,
+        // });
 
         self.cset.simplify(self.cx.arena);
 
@@ -362,7 +362,12 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     let array_ty = self.local_ty(ty);
                     for op in ops {
                         let (op_ty, op_perm) = self.operand_lty(op);
-                        self.propagate(array_ty.args[0], op_ty, op_perm);
+                        // REVIEW: array of struct inits in run_static_initializers
+                        // cause this to return None. Not certain skipping is the
+                        // correct course of action.
+                        if let Some(arg0) = array_ty.args.get(0) {
+                            self.propagate(arg0, op_ty, op_perm);
+                        }
                     }
                     (array_ty, Perm::move_())
                 }

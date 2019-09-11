@@ -44,6 +44,8 @@ pub struct FuncSumm<'lty, 'tcx> {
     pub sig: LFnSig<'lty, 'tcx>,
     pub num_sig_vars: u32,
 
+    pub locals: Vec<LTy<'lty, 'tcx>>,
+
     /// Constraints over signature variables only.
     ///
     /// Populated by `inter`.  May be initialized early by `annot` if an `#[ownership_constraints]`
@@ -209,7 +211,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     sig_cset: cset,
                     cset_provided: provided,
                     monos_provided: false,
-
+                    locals: Vec::new(),
                     variant_ids: vec![did],
                     num_monos: 0,
                 })

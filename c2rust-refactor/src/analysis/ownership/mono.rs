@@ -216,14 +216,12 @@ pub fn get_mono_sigs(summ: &FuncSumm) -> Vec<IndexVec<Var, ConcretePerm>> {
 pub fn compute_all_mono_sigs(cx: &mut Ctxt) {
     let ids = cx.variant_ids().collect::<Vec<_>>();
     for &id in &ids {
-        let assigns = {
-            let (func, _var) = cx.variant_summ(id);
-            if func.monos_provided {
-                // No work for us to do in this pass.
-                continue;
-            }
-            get_mono_sigs(func)
-        };
+        let (func, _var) = cx.variant_summ(id);
+        if func.monos_provided {
+            // No work for us to do in this pass.
+            continue;
+        }
+        let assigns = get_mono_sigs(func);
         assert!(assigns.len() > 0, "found no mono sigs for {:?}", id);
 
         for assign in assigns {
