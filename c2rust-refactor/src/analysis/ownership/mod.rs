@@ -25,7 +25,7 @@ use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::{Mutability, Node};
 use rustc::ty::{TyCtxt, TyKind, TypeAndMut, TyS};
 use rustc_index::vec::{Idx, IndexVec};
-use syntax::ast::IntTy;
+use syntax::ast::{IntTy, NodeId};
 use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -334,11 +334,11 @@ pub struct AnalysisResult<'lty, 'tcx> {
 
 /// Results specific to an analysis-level function.
 #[derive(Debug)]
-pub struct FunctionResult<'lty, 'tcx> {
+pub struct FunctionResult<'lty, 'tcx: 'lty> {
     /// Polymorphic function signature.  Each pointer is labeled with a `SigVar`.
     pub sig: VFnSig<'lty, 'tcx>,
 
-    pub locals: Vec<VTy<'lty, 'tcx>>,
+    pub locals: HashMap<NodeId, VTy<'lty, 'tcx>>,
 
     pub num_sig_vars: u32,
 
@@ -469,7 +469,8 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 Some(func.variant_ids.clone())
             };
 
-            let mut f = |p: &Option<_>| {
+            // LTy -> VTy
+            let mut f = |p: &Option<PermVar>| -> Option<Var> {
                 if let Some(PermVar::Local(v)) = *p {
                     Some(v)
                 } else {
@@ -477,7 +478,11 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 }
             };
 
-            let locals = var_lcx.relabel_slice(&func.locals, &mut f).to_vec();
+            let locals = func.locals
+                .iter()
+                .enumerate()
+                .map(|(k, v)| (NodeId::from_usize(k), var_lcx.relabel(&v, &mut f)))
+                .collect();
 
             funcs.insert(
                 def_id,

@@ -505,11 +505,8 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     let arena = SyncDroplessArena::default();
     let ana = ownership::analyze(&st, &cx, &arena);
 
-    use rustc::ty::TyCtxt;
-
     struct AnalysisTypeSource<'lty, 'tcx: 'lty> {
         ana: &'lty ownership::AnalysisResult<'lty, 'tcx>,
-        ty_ctxt: TyCtxt<'tcx>,
         hir_map: HirMap<'lty, 'tcx>,
     }
 
@@ -541,6 +538,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
             let sig = {
                 let mut f = |l: &Option<_>| {
                     if let Some(v) = *l {
+                        dbg!((v, &mr.assign));
                         Some(mr.assign[v])
                     } else {
                         None
@@ -556,14 +554,38 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
         }
 
         fn pat_type(&mut self, p: &Pat) -> Option<Self::Type> {
-            let hir_id = dbg!(self.hir_map.opt_node_to_hir_id(p.id)?);
-            let fn_def_id = dbg!(self.hir_map.get_parent_did(hir_id));
+            let hir_id = self.hir_map.opt_node_to_hir_id(p.id)?;
+            let fn_def_id = self.hir_map.get_parent_did(hir_id);
+            let (fr, vr) = self.ana.fn_results(fn_def_id);
+            // Only provide signatures for monomorphic fns.
+            if fr.variants.is_none() && fr.num_monos > 1 {
+                return None;
+            }
+            let mono_idx =
+                if fr.variants.is_none() { 0 }
+                else { vr.index };
+
+            let mr = &self.ana.monos[&(vr.func_id, mono_idx)];
             let f = self.ana.funcs.get(&fn_def_id)?;
 
-            dbg!(f);
+            dbg!(&f.locals);
+            let local_var = f.locals[&NodeId::from_usize(1)]; // FIXME: Select actually correct local
 
-            // self.ana.locals.get(p.id).cloned()
-            None
+            // VTy -> PTy
+            let mut f = |l: &Option<Var>| -> Option<ConcretePerm> {
+                if let Some(v) = *l {
+                    dbg!((v, &mr.assign));
+                    // Some(mr.assign[v])
+                    // None
+                    Some(ConcretePerm::Read) // FIXME: Needs actual analysis
+                } else {
+                    None
+                }
+            };
+
+            let lcx = LabeledTyCtxt::new(self.ana.arena());
+
+            Some(lcx.relabel(local_var, &mut f))
         }
 
         fn closure_sig(&mut self, _did: DefId) -> Option<Self::Signature> { None }
@@ -571,7 +593,6 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
     let source = AnalysisTypeSource {
         ana: &ana,
-        ty_ctxt: cx.ty_ctxt(),
         hir_map: cx.hir_map(),
     };
 

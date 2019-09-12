@@ -85,6 +85,60 @@ function ConvCfg.new(args)
     return self
 end
 
+function ConvCfg.from_mark(mark, attrs)
+    local opt = true
+    local slice = false
+    local mutability = nil
+    local binding = nil
+    local conv_type = ""
+
+    for _, attr in ipairs(attrs) do
+        local attr_ident = attr:ident()
+
+        if attr_ident == "nonnull" then
+            opt = false
+        elseif attr_ident == "slice" then
+            slice = true
+        end
+    end
+
+    if opt then
+        conv_type = "opt_"
+    end
+
+    if mark == "ref" then
+        mutability = "immut"
+
+        if slice then
+            conv_type = conv_type .. "slice"
+        else
+            conv_type = conv_type .. "ref"
+        end
+    elseif mark == "mut" then
+        mutability = "mut"
+        binding = "ByValMut"
+
+        if slice then
+            conv_type = conv_type .. "slice"
+        else
+            conv_type = conv_type .. "ref"
+        end
+    elseif mark == "box" then
+        conv_type = conv_type .. "box"
+
+        if slice then
+            conv_type = conv_type .. "_slice"
+        end
+    end
+
+    if conv_type == "" or conv_type[#conv_type] == "_" then
+        log_error("Could not build appropriate conversion cfg for: " .. tostring(arg))
+        return
+    end
+
+    return ConvCfg.new{conv_type, mutability=mutability, binding=binding}
+end
+
 function ConvCfg:is_slice()
     return self.conv_type == "slice"
 end
@@ -732,6 +786,7 @@ end
 
 function Visitor:flat_map_item(item, walk)
     local item_kind = item:get_kind()
+    print("Item:", item:get_id(), item_kind)
 
     if item_kind == "Struct" then
         local lifetimes = OrderedMap()
@@ -1000,56 +1055,18 @@ function MarkConverter:flat_map_param(arg)
     local attrs = arg:get_attrs()
 
     for _, mark in ipairs(marks) do
-        local opt = true
-        local slice = false
-        local mutability = nil
-        local binding = nil
-        local conv_type = ""
+        self.node_id_cfgs[arg_id] = ConvCfg.from_mark(mark, attrs)
+    end
+end
 
-        for _, attr in ipairs(attrs) do
-            local attr_ident = attr:ident()
+function MarkConverter:visit_local(locl)
+    local ty = locl:get_ty()
+    local ty_id = ty:get_id()
+    local id = locl:get_id()
+    local marks = self.marks[ty_id] or {}
 
-            if attr_ident == "nonnull" then
-                opt = false
-            elseif attr_ident == "slice" then
-                slice = true
-            end
-        end
-
-        if opt then
-            conv_type = "opt_"
-        end
-
-        if mark == "ref" then
-            mutability = "immut"
-
-            if slice then
-                conv_type = conv_type .. "slice"
-            else
-                conv_type = conv_type .. "ref"
-            end
-        elseif mark == "mut" then
-            mutability = "mut"
-            binding = "ByValMut"
-
-            if slice then
-                conv_type = conv_type .. "slice"
-            else
-                conv_type = conv_type .. "ref"
-            end
-        elseif mark == "box" then
-            conv_type = conv_type .. "box"
-
-            if slice then
-                conv_type = conv_type .. "_slice"
-            end
-        end
-
-        if conv_type == "" or conv_type[#conv_type] == "_" then
-            log_error("Could not build appropriate conversion cfg for: " .. tostring(arg))
-        end
-
-        self.node_id_cfgs[arg_id] = ConvCfg.new{conv_type, mutability=mutability, binding=binding}
+    for _, mark in ipairs(marks) do
+        self.node_id_cfgs[id] = ConvCfg.from_mark(mark, {})
     end
 
     return {arg}
