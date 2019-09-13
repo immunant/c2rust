@@ -5,6 +5,7 @@
     box_patterns,
     generator_trait,
     vec_remove_item,
+    option_flattening,
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 

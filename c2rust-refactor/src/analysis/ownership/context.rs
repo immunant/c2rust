@@ -44,7 +44,8 @@ pub struct FuncSumm<'lty, 'tcx> {
     pub sig: LFnSig<'lty, 'tcx>,
     pub num_sig_vars: u32,
 
-    pub locals: Vec<LTy<'lty, 'tcx>>,
+    /// Mapping of local pat spans to LTys
+    pub locals: HashMap<Span, LTy<'lty, 'tcx>>,
 
     /// Constraints over signature variables only.
     ///
@@ -211,7 +212,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     sig_cset: cset,
                     cset_provided: provided,
                     monos_provided: false,
-                    locals: Vec::new(),
+                    locals: HashMap::new(),
                     variant_ids: vec![did],
                     num_monos: 0,
                 })

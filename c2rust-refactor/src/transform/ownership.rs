@@ -565,22 +565,19 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
                 if fr.variants.is_none() { 0 }
                 else { vr.index };
 
-            let mr = &self.ana.monos[&(vr.func_id, mono_idx)];
+            let mr = &self.ana.monos.get(&(vr.func_id, mono_idx))?;
             let f = self.ana.funcs.get(&fn_def_id)?;
 
-            dbg!(&f.locals);
-            let local_var = f.locals[&NodeId::from_usize(1)]; // FIXME: Select actually correct local
+            let local_var = f.locals.get(&p.span)?;
+            dbg!(&local_var);
 
             // VTy -> PTy
             let mut f = |l: &Option<Var>| -> Option<ConcretePerm> {
-                if let Some(v) = *l {
-                    dbg!((v, &mr.assign));
-                    // Some(mr.assign[v])
-                    // None
-                    Some(ConcretePerm::Read) // FIXME: Needs actual analysis
-                } else {
-                    None
-                }
+                l.map(|v| {
+                    dbg!((v, &mr));
+
+                    ConcretePerm::Read // FIXME: Needs actual analysis
+                })
             };
 
             let lcx = LabeledTyCtxt::new(self.ana.arena());
