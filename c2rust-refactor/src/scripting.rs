@@ -104,6 +104,24 @@ pub fn run_lua_file(
     Ok(())
 }
 
+/// Takes a set of marks and turns it into a lua table
+fn lua_serialize_marks<'lua>(
+    marks: &HashSet<(NodeId, Symbol)>,
+    lua_ctx: LuaContext<'lua>,
+) -> LuaResult<LuaTable<'lua>> {
+    let tbl = lua_ctx.create_table()?;
+
+    for (node_id, sym) in marks.iter() {
+        let list: Option<LuaTable> = tbl.get(node_id.as_usize())?;
+        let list = list.unwrap_or(lua_ctx.create_table()?);
+
+        list.set(list.len()? + 1, sym.as_str().get())?;
+        tbl.set(node_id.as_usize(), list)?;
+    }
+
+    Ok(tbl)
+}
+
 struct DisplayLuaError(LuaError);
 
 impl fmt::Display for DisplayLuaError {
@@ -154,19 +172,7 @@ impl UserData for RefactorState {
 
         methods.add_method(
             "get_marks",
-            |lua_ctx, this, ()| {
-                let tbl = lua_ctx.create_table()?;
-
-                for (node_id, sym) in this.marks().iter() {
-                    let list: Option<LuaTable> = tbl.get("node_id")?;
-                    let list = list.unwrap_or(lua_ctx.create_table()?);
-
-                    list.set(list.len()? + 1, sym.as_str().get())?;
-                    tbl.set(node_id.as_usize(), list)?;
-                }
-
-                Ok(tbl)
-            },
+            |lua_ctx, this, ()| lua_serialize_marks(&*&this.marks(), lua_ctx),
         );
 
         /// Run a custom refactoring transformation
@@ -552,19 +558,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
 
         methods.add_method(
             "get_marks",
-            |lua_ctx, this, ()| {
-                let tbl = lua_ctx.create_table()?;
-
-                for (node_id, sym) in this.st.marks().iter() {
-                    let list: Option<LuaTable> = tbl.get("node_id")?;
-                    let list = list.unwrap_or(lua_ctx.create_table()?);
-
-                    list.set(list.len()? + 1, sym.as_str().get())?;
-                    tbl.set(node_id.as_usize(), list)?;
-                }
-
-                Ok(tbl)
-            },
+            |lua_ctx, this, ()| lua_serialize_marks(&*this.st.marks(), lua_ctx),
         );
 
         /// Replace matching statements using given callback

@@ -209,14 +209,20 @@ fn is_mut_t(ty: &TyS) -> bool {
     false
 }
 
+/// This function adds permission constraints to builtin functions like ptr.offset()
+/// so that ownership analysis can reason about them properly
+// TODO: When we want to add more constraints to functions here, we should make this
+// more generic
 fn register_std_constraints<'a, 'tcx, 'lty>(
     ctxt: &mut Ctxt<'lty, 'tcx>,
     tctxt: TyCtxt<'tcx>,
 ) {
     for (def_id, func_summ) in ctxt.funcs_mut() {
+        let fn_name_path = tctxt.def_path(*def_id).to_string_no_crate();
+
         // #[ownership_constraints(le(WRITE, _0), le(WRITE, _1), le(_0, _1))]
         // fn offset<T>(self: *mut T, _: isize) -> *mut T;
-        if func_summ.sig.inputs.len() == 2 {
+        if func_summ.sig.inputs.len() == 2 && fn_name_path == "::ptr[0]::{{impl}}[1]::offset[0]" {
             let param0_is_mut_t = is_mut_t(func_summ.sig.inputs[0].ty);
             let param1_is_isize = if let TyKind::Int(int_ty) = func_summ.sig.inputs[1].ty.sty {
                 int_ty == IntTy::Isize
@@ -225,13 +231,11 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
             };
             let ret_is_mut_t = is_mut_t(func_summ.sig.output.ty);
             if param0_is_mut_t && param1_is_isize && ret_is_mut_t {
-                if tctxt.def_path(*def_id).to_string_no_crate() == "::ptr[0]::{{impl}}[1]::offset[0]" {
-                    func_summ.cset_provided = true;
-                    func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(0)));
-                    func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(1)));
-                    // REVIEW: Not sure if this last one is correct or necessary.
-                    func_summ.sig_cset.add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
-                }
+                func_summ.cset_provided = true;
+                func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(0)));
+                func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(1)));
+                // REVIEW: Not sure if this last one is correct or necessary.
+                func_summ.sig_cset.add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
             }
         }
     }
