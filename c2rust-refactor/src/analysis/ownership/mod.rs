@@ -341,6 +341,9 @@ pub struct FunctionResult<'lty, 'tcx: 'lty> {
     /// Mapping of local pat spans to VTys
     pub locals: HashMap<Span, VTy<'lty, 'tcx>>,
 
+    /// Mapping of local vars to concrete permissions
+    pub local_assign: IndexVec<Var, ConcretePerm>,
+
     pub num_sig_vars: u32,
 
     /// Constraint set relating `SigVar`s to each other and to concrete permission values.
@@ -493,6 +496,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                     cset: func.sig_cset.clone(),
                     variants: variant_ids,
                     num_monos: func.num_monos,
+                    local_assign: func.local_assign.clone(),
                 },
             );
 

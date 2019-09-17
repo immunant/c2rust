@@ -203,7 +203,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         let (func, var) = self.cx.variant_summ(self.def_id);
         var.inst_cset = self.cset;
         var.insts = self.insts;
-        func.locals = dbg!(relabeled_locals);
+        func.locals = relabeled_locals;
     }
 
     fn local_ty(&mut self, ty: Ty<'tcx>) -> ITy<'lty, 'tcx> {

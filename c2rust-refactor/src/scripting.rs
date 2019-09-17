@@ -172,7 +172,7 @@ impl UserData for RefactorState {
 
         methods.add_method(
             "get_marks",
-            |lua_ctx, this, ()| lua_serialize_marks(&*&this.marks(), lua_ctx),
+            |lua_ctx, this, ()| lua_serialize_marks(&*this.marks(), lua_ctx),
         );
 
         /// Run a custom refactoring transformation

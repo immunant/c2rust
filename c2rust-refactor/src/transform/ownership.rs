@@ -556,33 +556,17 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
         fn pat_type(&mut self, p: &Pat) -> Option<Self::Type> {
             let hir_id = self.hir_map.opt_node_to_hir_id(p.id)?;
             let fn_def_id = self.hir_map.get_parent_did(hir_id);
-            let (fr, vr) = self.ana.fn_results(fn_def_id);
-            // Only provide signatures for monomorphic fns.
-            if fr.variants.is_none() && fr.num_monos > 1 {
-                return None;
-            }
-            let mono_idx =
-                if fr.variants.is_none() { 0 }
-                else { vr.index };
-
-            let mr = &self.ana.monos.get(&(vr.func_id, mono_idx))?;
             let f = self.ana.funcs.get(&fn_def_id)?;
-
             let local_var = f.locals.get(&p.span)?;
-            dbg!(&local_var);
 
             // VTy -> PTy
-            let mut f = |l: &Option<Var>| -> Option<ConcretePerm> {
-                l.map(|v| {
-                    dbg!((v, &mr));
-
-                    ConcretePerm::Read // FIXME: Needs actual analysis
-                })
+            let mut map_fn = |opt_var: &Option<Var>| -> Option<ConcretePerm> {
+                opt_var.map(|var| f.local_assign[var])
             };
 
             let lcx = LabeledTyCtxt::new(self.ana.arena());
 
-            Some(lcx.relabel(local_var, &mut f))
+            Some(lcx.relabel(local_var, &mut map_fn))
         }
 
         fn closure_sig(&mut self, _did: DefId) -> Option<Self::Signature> { None }

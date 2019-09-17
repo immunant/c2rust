@@ -198,7 +198,84 @@ fn find_input_assignment(
     }
 }
 
-pub fn get_mono_sigs(summ: &FuncSumm) -> Vec<IndexVec<Var, ConcretePerm>> {
+fn find_local_assignment(
+    summ: &FuncSumm,
+    // out_assign: &IndexVec<Var, Option<ConcretePerm>>,
+) -> Option<IndexVec<Var, ConcretePerm>> {
+    struct State<'lty> {
+        max: Var,
+        // out_assign: &'lty IndexVec<Var, Option<ConcretePerm>>,
+        cset: &'lty ConstraintSet<'lty>,
+        assignment: IndexVec<Var, ConcretePerm>,
+    }
+
+    impl<'lty, 'tcx> State<'lty> {
+        fn walk_vars(&mut self, cur: Var) -> bool {
+            if cur >= self.max {
+                return true;
+            }
+
+            let next = Var(cur.0 + 1);
+            // if let Some(p) = self.out_assign[cur] {
+            //     let ok = self.try_assign(cur, p);
+            //     if !ok {
+            //         return false;
+            //     }
+            //     return self.walk_vars(next);
+            // }
+
+            for &p in &[ConcretePerm::Read, ConcretePerm::Write, ConcretePerm::Move] {
+                let ok = self.try_assign(cur, p);
+                if !ok {
+                    continue;
+                }
+
+                if self.walk_vars(next) {
+                    return true;
+                }
+            }
+
+            false
+        }
+
+        fn try_assign(&mut self, cur: Var, p: ConcretePerm) -> bool {
+            self.assignment[cur] = p;
+            let assign_ok = self.cset.check_partial_assignment(|p| match p {
+                Perm::SigVar(v) => {
+                    /*if let Some(c) = self.out_assign[v] {
+                        Some(c)
+                    } else*/ if v <= cur {
+                        Some(self.assignment[v])
+                    } else {
+                        dbg!(("SigVar", v));
+                        None
+                    }
+                }
+                e => {
+                    dbg!(e);
+                    None
+                },
+            });
+            assign_ok
+        }
+    }
+
+    let mut s = State {
+        max: Var(summ.locals.len() as u32),
+        // out_assign: out_assign,
+        cset: &summ.sig_cset,
+        assignment: IndexVec::from_elem_n(ConcretePerm::Read, summ.locals.len()),
+    };
+    let ok = s.walk_vars(Var(0));
+
+    if ok {
+        Some(s.assignment)
+    } else {
+        None
+    }
+}
+
+pub fn get_mono_sigs(summ: &FuncSumm) -> (Vec<IndexVec<Var, ConcretePerm>>, IndexVec<Var, ConcretePerm>) {
     let is_out = infer_outputs(&summ);
     let is_bounded = upper_bounded_vars(&summ);
 
@@ -210,7 +287,9 @@ pub fn get_mono_sigs(summ: &FuncSumm) -> Vec<IndexVec<Var, ConcretePerm>> {
         }
     });
 
-    assigns
+    let local_assigns = find_local_assignment(summ).unwrap();
+
+    (assigns, local_assigns)
 }
 
 pub fn compute_all_mono_sigs(cx: &mut Ctxt) {
@@ -221,8 +300,10 @@ pub fn compute_all_mono_sigs(cx: &mut Ctxt) {
             // No work for us to do in this pass.
             continue;
         }
-        let assigns = get_mono_sigs(func);
+        let (assigns, local_assigns) = get_mono_sigs(func);
         assert!(assigns.len() > 0, "found no mono sigs for {:?}", id);
+
+        func.local_assign = local_assigns;
 
         for assign in assigns {
             let mono = cx.add_mono(id).2;

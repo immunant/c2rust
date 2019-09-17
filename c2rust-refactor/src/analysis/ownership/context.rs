@@ -61,6 +61,9 @@ pub struct FuncSumm<'lty, 'tcx> {
 
     pub variant_ids: Vec<DefId>,
     pub num_monos: usize,
+
+    /// Assignment of concrete permissions to local vars
+    pub local_assign: IndexVec<Var, ConcretePerm>,
 }
 
 #[derive(Debug)]
@@ -215,6 +218,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     locals: HashMap::new(),
                     variant_ids: vec![did],
                     num_monos: 0,
+                    local_assign: IndexVec::new(),
                 })
             }
 
