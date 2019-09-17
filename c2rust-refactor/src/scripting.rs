@@ -88,6 +88,13 @@ pub fn run_lua_file(
                 let refactor = scope.create_nonstatic_userdata(state)?;
                 lua_ctx.globals().set("refactor", refactor)?;
 
+                let log_error = scope.create_function(|_lua_ctx, string: LuaString| {
+                    error!("{}", string.to_str()?);
+
+                    Ok(())
+                })?;
+
+                lua_ctx.globals().set("log_error", log_error)?;
                 lua_ctx.load(&script).exec()
             })
         })
@@ -95,6 +102,24 @@ pub fn run_lua_file(
     .unwrap_or_else(|e| panic!("User script failed: {}", DisplayLuaError(e)));
 
     Ok(())
+}
+
+/// Takes a set of marks and turns it into a lua table
+fn lua_serialize_marks<'lua>(
+    marks: &HashSet<(NodeId, Symbol)>,
+    lua_ctx: LuaContext<'lua>,
+) -> LuaResult<LuaTable<'lua>> {
+    let tbl = lua_ctx.create_table()?;
+
+    for (node_id, sym) in marks.iter() {
+        let list: Option<LuaTable> = tbl.get(node_id.as_usize())?;
+        let list = list.unwrap_or(lua_ctx.create_table()?);
+
+        list.set(list.len()? + 1, sym.as_str().get())?;
+        tbl.set(node_id.as_usize(), list)?;
+    }
+
+    Ok(tbl)
 }
 
 struct DisplayLuaError(LuaError);
@@ -135,9 +160,19 @@ impl UserData for RefactorState {
             |_lua_ctx, this, ()| Ok(this.load_crate()),
         );
 
-        methods.add_method_mut(
+        methods.add_method(
             "dump_marks",
             |_lua_ctx, this, ()| Ok(println!("Marks: {:?}", this.marks())),
+        );
+
+        methods.add_method_mut(
+            "clear_marks",
+            |_lua_ctx, this, ()| Ok(this.clear_marks()),
+        );
+
+        methods.add_method(
+            "get_marks",
+            |lua_ctx, this, ()| lua_serialize_marks(&*&this.marks(), lua_ctx),
         );
 
         /// Run a custom refactoring transformation
@@ -511,6 +546,21 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
 #[allow(unused_doc_comments)]
 impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method(
+            "dump_marks",
+            |_lua_ctx, this, ()| Ok(println!("Marks: {:?}", this.st.marks())),
+        );
+
+        methods.add_method_mut(
+            "clear_marks",
+            |_lua_ctx, this, ()| Ok(this.st.marks_mut().clear()),
+        );
+
+        methods.add_method(
+            "get_marks",
+            |lua_ctx, this, ()| lua_serialize_marks(&*this.st.marks(), lua_ctx),
+        );
+
         /// Replace matching statements using given callback
         // @function replace_stmts_with
         // @tparam string needle Statements pattern to search for, may include variable bindings

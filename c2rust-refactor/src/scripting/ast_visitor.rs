@@ -412,6 +412,18 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
         }
     }
 
+    fn flat_map_foreign_item(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_foreign_item")
+            .expect("Could not get lua visitor function");
+
+        if let Some(method) = visit_method {
+            let new_items = self.call_flat_map(method, i);
+            new_items.into_iter().map(|i| i.into_inner()).collect()
+        } else {
+            mut_visit::noop_flat_map_foreign_item(i, self)
+        }
+    }
+
     fn flat_map_stmt(&mut self, i: Stmt) -> SmallVec<[Stmt; 1]> {
         let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_stmt")
             .expect("Could not get lua visitor function");
@@ -462,6 +474,16 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
         }
 
         mut_visit::noop_visit_item_kind(m, self)
+    }
+
+    fn visit_ty(&mut self, m: &mut P<Ty>) {
+        let visit_method: Option<LuaFunction> = self.visitor.get("visit_ty")
+            .expect("Could not get lua visitor function");
+        if let Some(method) = visit_method {
+            self.call_visit(method, m);
+        }
+
+        mut_visit::noop_visit_ty(m, self)
     }
 
     fn visit_local(&mut self, m: &mut P<Local>) {

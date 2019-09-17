@@ -39,6 +39,7 @@ use super::{ConcretePerm, FnSig, LFnSig, LTy, PermVar, Var};
 // analysis.  These structures generally start out minimally initialized, and are populated as
 // parts of the analysis runs.
 
+#[derive(Debug)]
 pub struct FuncSumm<'lty, 'tcx> {
     pub sig: LFnSig<'lty, 'tcx>,
     pub num_sig_vars: u32,
@@ -59,6 +60,7 @@ pub struct FuncSumm<'lty, 'tcx> {
     pub num_monos: usize,
 }
 
+#[derive(Debug)]
 pub struct VariantSumm<'lty> {
     pub func_id: DefId,
     pub variant_idx: usize,
@@ -90,6 +92,7 @@ pub struct MonoSumm {
     pub suffix: String,
 }
 
+#[derive(Debug)]
 pub struct Instantiation {
     pub callee: DefId,
     pub span: Option<Span>,
@@ -234,6 +237,10 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
         FuncIds {
             inner: self.funcs.keys(),
         }
+    }
+
+    pub fn funcs_mut(&mut self) -> hash_map::IterMut<DefId, FuncSumm<'lty, 'tcx>> {
+        self.funcs.iter_mut()
     }
 
     pub fn variant_ids<'b>(&'b self) -> VariantIds<'b, 'lty> {

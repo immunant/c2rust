@@ -323,6 +323,11 @@ where
                     cx.record_macro_with_id(child_invoc_id, new.as_mac_node_ref());
                 } else {
                     cx.record_macro_with_id(invoc_id, new.as_mac_node_ref());
+
+                    // Recurse into children so they get added to the node map.
+                    if let InvocKind::ItemAttr(_) = invoc {
+                        CollectMacros::collect_macros(old, new, cx);
+                    }
                 }
                 cx.record_node_id_match(old.get_node_id(), new.get_node_id());
                 j += 1;

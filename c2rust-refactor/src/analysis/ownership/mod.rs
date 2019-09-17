@@ -22,9 +22,10 @@ use arena::SyncDroplessArena;
 use log::Level;
 use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
-use rustc::hir::Node;
-use rustc::ty::TyCtxt;
+use rustc::hir::{Mutability, Node};
+use rustc::ty::{TyCtxt, TyKind, TyS};
 use rustc_data_structures::indexed_vec::{Idx, IndexVec};
+use syntax::ast::IntTy;
 use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -196,6 +197,50 @@ fn analyze_inter<'lty, 'tcx>(cx: &mut Ctxt<'lty, 'tcx>) {
     inter_cx.finish();
 }
 
+fn is_mut_t(ty: &TyS) -> bool {
+    if let TyKind::RawPtr(mut_ty) = ty.sty {
+        if mut_ty.mutbl == Mutability::MutMutable {
+            if let TyKind::Param(param_ty) = mut_ty.ty.sty {
+                return param_ty.name.as_str().get() == "T";
+            }
+        }
+    }
+
+    false
+}
+
+/// This function adds permission constraints to builtin functions like ptr.offset()
+/// so that ownership analysis can reason about them properly
+// TODO: When we want to add more constraints to functions here, we should make this
+// more generic
+fn register_std_constraints<'a, 'tcx, 'lty>(
+    ctxt: &mut Ctxt<'lty, 'tcx>,
+    tctxt: TyCtxt<'tcx>,
+) {
+    for (def_id, func_summ) in ctxt.funcs_mut() {
+        let fn_name_path = tctxt.def_path(*def_id).to_string_no_crate();
+
+        // #[ownership_constraints(le(WRITE, _0), le(WRITE, _1), le(_0, _1))]
+        // fn offset<T>(self: *mut T, _: isize) -> *mut T;
+        if func_summ.sig.inputs.len() == 2 && fn_name_path == "::ptr[0]::{{impl}}[1]::offset[0]" {
+            let param0_is_mut_t = is_mut_t(func_summ.sig.inputs[0].ty);
+            let param1_is_isize = if let TyKind::Int(int_ty) = func_summ.sig.inputs[1].ty.sty {
+                int_ty == IntTy::Isize
+            } else {
+                false
+            };
+            let ret_is_mut_t = is_mut_t(func_summ.sig.output.ty);
+            if param0_is_mut_t && param1_is_isize && ret_is_mut_t {
+                func_summ.cset_provided = true;
+                func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(0)));
+                func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(1)));
+                // REVIEW: Not sure if this last one is correct or necessary.
+                func_summ.sig_cset.add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
+            }
+        }
+    }
+}
+
 /// Run the analysis.
 pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
     st: &CommandState,
@@ -210,6 +255,8 @@ pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
 
     // Compute polymorphic signatures / constraint sets for each function
     analyze_intra(&mut cx, &dcx.hir_map(), dcx.ty_ctxt());
+    // Inject constraints for std functions
+    register_std_constraints(&mut cx, dcx.ty_ctxt());
     analyze_inter(&mut cx);
 
     // Compute monomorphic signatures and select instantiations in each function
@@ -306,6 +353,7 @@ pub struct FuncRef {
 /// function's `variants` field is `None`, then the ID of the variant is the same as the function
 /// ID.  Otherwise, the variant ID is found by indexing into `variants` with the index of this
 /// monomorphization.
+#[derive(Debug)]
 pub struct MonoResult {
     /// Suffix to add to the function name when this monomorphization is split into its own `fn`.
     /// Usually something like `"mut"` or `"take"`.  If empty, the original name should be used.
