@@ -76,6 +76,12 @@ impl Idx for Var {
     }
 }
 
+impl Var {
+    fn next(self) -> Self {
+        Var(self.0 + 1)
+    }
+}
+
 /// A permission variable.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PermVar {

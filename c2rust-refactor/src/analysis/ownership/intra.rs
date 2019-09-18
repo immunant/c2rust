@@ -88,11 +88,11 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     ) -> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         let ilcx = LabeledTyCtxt::new(cx.arena);
         IntraCtxt {
-            cx: cx,
-            ilcx: ilcx,
+            cx,
+            ilcx,
 
-            def_id: def_id,
-            mir: mir,
+            def_id,
+            mir,
             bbid: START_BLOCK,
             stmt_idx: !0,
 

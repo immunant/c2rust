@@ -88,7 +88,7 @@ fn for_each_output_assignment<F>(
                 return;
             }
 
-            let next = Var(cur.0 + 1);
+            let next = cur.next();
             if !self.is_out[cur] {
                 self.walk_vars(next);
                 return;
@@ -116,8 +116,8 @@ fn for_each_output_assignment<F>(
 
     State {
         max: Var(is_out.len() as u32),
-        is_out: is_out,
-        is_bounded: is_bounded,
+        is_out,
+        is_bounded,
         cset: &summ.sig_cset,
         assignment: IndexVec::from_elem_n(None, summ.num_sig_vars as usize),
         callback: &mut callback,
@@ -142,7 +142,7 @@ fn find_input_assignment(
                 return true;
             }
 
-            let next = Var(cur.0 + 1);
+            let next = cur.next();
             if let Some(p) = self.out_assign[cur] {
                 let ok = self.try_assign(cur, p);
                 if !ok {
@@ -167,7 +167,7 @@ fn find_input_assignment(
 
         fn try_assign(&mut self, cur: Var, p: ConcretePerm) -> bool {
             self.assignment[cur] = p;
-            let assign_ok = self.cset.check_partial_assignment(|p| match p {
+            self.cset.check_partial_assignment(|p| match p {
                 Perm::SigVar(v) => {
                     if let Some(c) = self.out_assign[v] {
                         Some(c)
@@ -178,14 +178,13 @@ fn find_input_assignment(
                     }
                 }
                 _ => None,
-            });
-            assign_ok
+            })
         }
     }
 
     let mut s = State {
         max: Var(out_assign.len() as u32),
-        out_assign: out_assign,
+        out_assign,
         cset: &summ.sig_cset,
         assignment: IndexVec::from_elem_n(ConcretePerm::Read, summ.num_sig_vars as usize),
     };
@@ -215,7 +214,7 @@ fn find_local_assignment(
                 return true;
             }
 
-            let next = Var(cur.0 + 1);
+            let next = cur.next();
             // if let Some(p) = self.out_assign[cur] {
             //     let ok = self.try_assign(cur, p);
             //     if !ok {
@@ -240,8 +239,9 @@ fn find_local_assignment(
 
         fn try_assign(&mut self, cur: Var, p: ConcretePerm) -> bool {
             self.assignment[cur] = p;
-            let assign_ok = self.cset.check_partial_assignment(|p| match p {
-                Perm::SigVar(v) => {
+            self.cset.check_partial_assignment(|p| match p {
+                Perm::LocalVar(v) => {
+                    dbg!(v);
                     /*if let Some(c) = self.out_assign[v] {
                         Some(c)
                     } else*/ if v <= cur {
@@ -255,8 +255,7 @@ fn find_local_assignment(
                     dbg!(e);
                     None
                 },
-            });
-            assign_ok
+            })
         }
     }
 
@@ -301,7 +300,7 @@ pub fn compute_all_mono_sigs(cx: &mut Ctxt) {
             continue;
         }
         let (assigns, local_assigns) = get_mono_sigs(func);
-        assert!(assigns.len() > 0, "found no mono sigs for {:?}", id);
+        assert!(!assigns.is_empty(), "found no mono sigs for {:?}", id);
 
         func.local_assign = local_assigns;
 

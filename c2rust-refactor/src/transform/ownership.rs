@@ -538,7 +538,6 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
             let sig = {
                 let mut f = |l: &Option<_>| {
                     if let Some(v) = *l {
-                        dbg!((v, &mr.assign));
                         Some(mr.assign[v])
                     } else {
                         None
