@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Index;
 use std::path::{self, PathBuf};
+use std::rc::Rc;
 use std::{char, io};
 
 use dtoa;
@@ -9,7 +10,6 @@ use dtoa;
 use failure::{err_msg, Fail};
 use indexmap::{IndexMap, IndexSet};
 
-use rustc_data_structures::sync::Lrc;
 use syntax::attr;
 use syntax::ast::*;
 use syntax::parse::lexer::comments::CommentStyle;
@@ -1177,7 +1177,7 @@ impl<'c> Translation<'c> {
 
     fn panic_or_err_helper(&self, msg: &str, panic: bool) -> P<Expr> {
         let macro_name = if panic { "panic" } else { "compile_error" };
-        let macro_msg = vec![TokenTree::token(token::Interpolated(Lrc::new(Nonterminal::NtExpr(
+        let macro_msg = vec![TokenTree::token(token::Interpolated(Rc::new(Nonterminal::NtExpr(
             mk().lit_expr(mk().str_lit(msg))))), DUMMY_SP)]
         .into_iter()
         .collect::<TokenStream>();
@@ -3167,11 +3167,11 @@ impl<'c> Translation<'c> {
 
                     // offset_of!(Struct, field[expr as usize]) as ty
                     let macro_body = vec![
-                        TokenTree::token(token::Interpolated(Lrc::new(ty_ident)), DUMMY_SP),
+                        TokenTree::token(token::Interpolated(Rc::new(ty_ident)), DUMMY_SP),
                         TokenTree::token(token::Comma, DUMMY_SP),
-                        TokenTree::token(token::Interpolated(Lrc::new(field_ident)), DUMMY_SP),
+                        TokenTree::token(token::Interpolated(Rc::new(field_ident)), DUMMY_SP),
                         TokenTree::token(token::OpenDelim(DelimToken::Bracket), DUMMY_SP),
-                        TokenTree::token(token::Interpolated(Lrc::new(index_expr)), DUMMY_SP),
+                        TokenTree::token(token::Interpolated(Rc::new(index_expr)), DUMMY_SP),
                         TokenTree::token(token::CloseDelim(DelimToken::Bracket), DUMMY_SP),
                     ];
                     let path = mk().path("offset_of");
