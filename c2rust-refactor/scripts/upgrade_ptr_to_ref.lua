@@ -123,13 +123,99 @@ function ConvCfg.from_mark(mark, attrs)
         else
             conv_type = conv_type .. "ref"
         end
-    elseif mark == "box" then
+    elseif mark == "move" then
         conv_type = conv_type .. "box"
 
         if slice then
             conv_type = conv_type .. "_slice"
         end
     end
+
+    if conv_type == "" or conv_type[#conv_type] == "_" then
+        log_error("Could not build appropriate conversion cfg for: " .. tostring(arg))
+        return
+    end
+
+    return ConvCfg.new{conv_type, mutability=mutability, binding=binding}
+end
+
+function ConvCfg.local_from_marks(marks, attrs, box)
+    local opt = true
+    local slice = false
+    local mutability = nil
+    local binding = nil
+    local conv_type = ""
+    local mut = false
+    local ref = false
+
+    -- TEMP: disabled til other stuff fixed
+    -- if true then return end
+
+    for _, attr in ipairs(attrs) do
+        local attr_ident = attr:ident()
+
+        if attr_ident == "nonnull" then
+            opt = false
+        elseif attr_ident == "slice" then
+            slice = true
+        end
+    end
+
+    for i, mark in ipairs(marks) do
+        if mark == "ref" then
+            ref = true
+        elseif mark == "mut" then
+            mut = true
+        elseif mark == "box" then
+            box = true
+        elseif mark == "move" then
+            log_warn("Found unimplemented move mark")
+            return
+        end
+    end
+
+    -- TODO: And technically move is mutually exclusive too
+    if ref and mut then
+        log_error("Found both ref and mut marks on a single type")
+        return
+    end
+
+    if opt then
+        conv_type = "opt_"
+    end
+
+    if box then
+        conv_type = conv_type .. "box"
+
+        if slice then
+            conv_type = conv_type .. "_slice"
+        end
+    elseif ref then
+        mutability = "immut"
+
+        if slice then
+            conv_type = conv_type .. "slice"
+        else
+            conv_type = conv_type .. "ref"
+        end
+    elseif mut then
+        mutability = "mut"
+        binding = "ByValMut"
+
+        if slice then
+            conv_type = conv_type .. "slice"
+        else
+            conv_type = conv_type .. "ref"
+        end
+    -- elseif mark == "box" then
+    --     conv_type = conv_type .. "box"
+
+    --     if slice then
+    --         conv_type = conv_type .. "_slice"
+    --     end
+    end
+
+    -- print(conv_type)
 
     if conv_type == "" or conv_type[#conv_type] == "_" then
         log_error("Could not build appropriate conversion cfg for: " .. tostring(arg))
@@ -786,7 +872,6 @@ end
 
 function Visitor:flat_map_item(item, walk)
     local item_kind = item:get_kind()
-    print("Item:", item:get_id(), item_kind)
 
     if item_kind == "Struct" then
         local lifetimes = OrderedMap()
@@ -1025,10 +1110,12 @@ end
 
 MarkConverter = {}
 
-function MarkConverter.new(marks)
+function MarkConverter.new(marks, boxes, tctx)
     self = {}
     self.marks = marks
     self.node_id_cfgs = {}
+    self.boxes = boxes
+    self.tctx = tctx
 
     setmetatable(self, MarkConverter)
     MarkConverter.__index = MarkConverter
@@ -1054,28 +1141,88 @@ function MarkConverter:flat_map_param(arg)
 
     local attrs = arg:get_attrs()
 
+    -- TODO: Box support
     for _, mark in ipairs(marks) do
-        self.node_id_cfgs[arg_id] = ConvCfg.from_mark(mark, attrs)
+        if mark ~= "ref" and mark ~= "mut" then
+            log_warn("Mark --->: " .. mark)
+        end
+        self.node_id_cfgs[arg_id] = ConvCfg.from_mark(mark, attrs, false)
     end
 end
 
 function MarkConverter:visit_local(locl)
     local ty = locl:get_ty()
+
+    -- Locals with no type annotation are skipped
+    if not ty then return end
+
     local ty_id = ty:get_id()
     local id = locl:get_id()
+    local pat_hirid = self.tctx:nodeid_to_hirid(locl:get_pat_id())
     local marks = self.marks[ty_id] or {}
+    local box = self.boxes[tostring(pat_hirid)]
+    local attrs = locl:get_attrs()
 
-    for _, mark in ipairs(marks) do
-        self.node_id_cfgs[id] = ConvCfg.from_mark(mark, {})
+    self.node_id_cfgs[id] = ConvCfg.local_from_marks(marks, attrs, box)
+end
+
+MallocMarker = {}
+
+function MallocMarker.new(tctx)
+    self = {}
+    self.tctx = tctx
+    self.boxes = {}
+
+    setmetatable(self, MallocMarker)
+    MallocMarker.__index = MallocMarker
+
+    return self
+end
+
+function MallocMarker:visit_expr(expr)
+    local expr_kind = expr:get_kind()
+
+    -- Mark types as "box" for malloc/calloc
+    if expr_kind == "Assign" then
+        local exprs = expr:get_exprs()
+        local lhs = exprs[1]
+        local rhs = exprs[2]
+        local rhs_kind = rhs:get_kind()
+        local hirid = self.tctx:resolve_path_hirid(lhs)
+
+        if rhs_kind == "Cast" then
+            local cast_expr = rhs:get_exprs()[1]
+            local cast_ty = rhs:get_ty()
+
+            if cast_ty:get_kind() == "Ptr" and cast_expr:get_kind() == "Call" then
+                local call_exprs = cast_expr:get_exprs()
+                local path_expr = call_exprs[1]
+                local param_expr = call_exprs[2]
+                local path = path_expr:get_path()
+                local segments = path:get_segments()
+
+                -- In case malloc is called from another module check the last segment
+                if segments[#segments] == "malloc" or segments[#segments] == "calloc" then
+                    -- TODO: Non path support. IE Field
+                    self.boxes[tostring(hirid)] = true
+                    print("Marked var ", lhs)
+                end
+            end
+        end
     end
 
     return {arg}
 end
 
-function infer_node_id_cfgs(ctx)
-    local marks = ctx:get_marks()
-    local converter = MarkConverter.new(marks)
-    ctx:visit_crate_new(converter)
+function infer_node_id_cfgs(tctx)
+    local marks = tctx:get_marks()
+    local malloc_marker = MallocMarker.new(tctx)
+
+    tctx:visit_crate_new(malloc_marker)
+    -- marks = malloc_marker.marks
+
+    local converter = MarkConverter.new(marks, malloc_marker.boxes, tctx)
+    tctx:visit_crate_new(converter)
     return converter.node_id_cfgs
 end
 
@@ -1084,12 +1231,14 @@ function run_ptr_upgrades(node_id_cfgs)
         refactor:run_command("select", {"target", "crate; desc(fn || field);"})
         -- refactor:run_command("ownership_annotate", {"target"})
         refactor:run_command("ownership_mark_pointers", {})
+        -- refactor:dump_marks()
     end
 
     refactor:transform(
         function(transform_ctx)
             if not node_id_cfgs then
                 node_id_cfgs = infer_node_id_cfgs(transform_ctx)
+                -- pretty.dump(node_id_cfgs)
             end
             return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
         end

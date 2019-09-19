@@ -1051,6 +1051,14 @@ impl UserData for LuaAstNode<P<Local>> {
         methods.add_method("get_pat_id", |lua_ctx, this, ()| {
             Ok(this.borrow().pat.id.to_lua(lua_ctx))
         });
+
+        methods.add_method("get_attrs", |_lua_ctx, this, ()| {
+            Ok(this.borrow()
+                .attrs
+                .iter()
+                .map(|attr| LuaAstNode::new(attr.clone()))
+                .collect::<Vec<_>>())
+        });
     }
 }
 

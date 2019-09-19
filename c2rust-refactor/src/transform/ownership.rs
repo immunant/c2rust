@@ -271,7 +271,7 @@ fn parens(ts: Vec<TokenTree>) -> TokenTree {
     TokenTree::Delimited(
         DelimSpan::dummy(),
         DelimToken::Paren,
-        ts.into_iter().collect::<TokenStream>().into(),
+        ts.into_iter().collect::<TokenStream>(),
     )
 }
 
@@ -356,7 +356,7 @@ fn do_split_variants(st: &CommandState,
                 let mr = &ana.monos[&(vr.func_id, mono_idx)];
                 let mut fl = fl.clone();
 
-                if mr.suffix.len() > 0 {
+                if !mr.suffix.is_empty() {
                     fl.ident = mk().ident(format!("{}_{}", fl.ident.name, mr.suffix));
                 }
 
@@ -578,10 +578,10 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
     let s_ref = "ref".into_symbol();
     let s_mut = "mut".into_symbol();
-    let s_box = "box".into_symbol();
+    let s_move = "move".into_symbol();
 
     type_map::map_types(&cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
-        dbg!((&ast_ty, &ast_ty.id, &lty.label));
+        // dbg!((&ast_ty, &ast_ty.id, &lty.label));
         let p = match lty.label {
             Some(x) => x,
             None => return,
@@ -590,7 +590,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
         let label = match p {
             ConcretePerm::Read => s_ref,
             ConcretePerm::Write => s_mut,
-            ConcretePerm::Move => s_box,
+            ConcretePerm::Move => s_move,
         };
 
         st.add_mark(ast_ty.id, label);

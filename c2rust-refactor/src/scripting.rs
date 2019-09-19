@@ -93,8 +93,14 @@ pub fn run_lua_file(
 
                     Ok(())
                 })?;
+                let log_warn = scope.create_function(|_lua_ctx, string: LuaString| {
+                    warn!("{}", string.to_str()?);
+
+                    Ok(())
+                })?;
 
                 lua_ctx.globals().set("log_error", log_error)?;
+                lua_ctx.globals().set("log_warn", log_warn)?;
                 lua_ctx.load(&script).exec()
             })
         })
@@ -146,7 +152,7 @@ impl UserData for RefactorState {
         methods.add_method_mut(
             "run_command",
             |_lua_ctx, this, (name, args): (String, Vec<String>)| {
-                this.run(&name, &args).map_err(|e| LuaError::external(e))
+                this.run(&name, &args).map_err(LuaError::external)
             },
         );
 
@@ -623,7 +629,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         methods.add_method(
             "resolve_path_hirid",
             |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
-                Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(|id| LuaHirId(id)))
+                Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(LuaHirId))
             },
         );
 
@@ -633,7 +639,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                 None => return Ok(None),
             };
 
-           Ok(this.cx.hir_map().as_local_hir_id(def_id).map(|id| LuaHirId(id)))
+           Ok(this.cx.hir_map().as_local_hir_id(def_id).map(LuaHirId))
         });
 
         methods.add_method(
@@ -641,7 +647,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             |_lua_ctx, this, id: i64| {
                 let node_id = NodeId::from_usize(id as usize);
 
-                Ok(Some(LuaHirId(this.cx.hir_map().node_to_hir_id(node_id))))
+                Ok(LuaHirId(this.cx.hir_map().node_to_hir_id(node_id)))
             },
         );
 
@@ -914,7 +920,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                     if field.ident == **ident {
                         let hir_id = this.cx.hir_map().as_local_hir_id(field.did);
 
-                        return Ok(hir_id.map(|id| LuaHirId(id)));
+                        return Ok(hir_id.map(LuaHirId));
                     }
                 }
             };
