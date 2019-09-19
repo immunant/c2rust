@@ -1,10 +1,12 @@
 //! Type equivalence-class analysis.  The goal is to find groups of types annotations that must be
 //! equal for the crate to typecheck.  Example:
 //!
+//! ```ignore
 //!     fn f(x: i32, y: i32) {
 //!         let a: i32 = x;
 //!         let b: i32 = y;
 //!     }
+//! ```
 //!
 //! Here the equivalence classes are {x, a} and {y, b}.  The annotations on `x` and `a` must match
 //! for the program to typecheck, but the annotations on `x` and `y` do not need to match because

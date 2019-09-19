@@ -26,6 +26,7 @@ use crate::RefactorCtxt;
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     mod a {
 ///         #[no_mangle]
 ///         unsafe extern "C" fn foo() { ... }
@@ -41,9 +42,11 @@ use crate::RefactorCtxt;
 ///             foo();
 ///         }
 ///     }
+/// ```
 /// 
 /// After running `link_funcs`:
 /// 
+/// ```ignore
 ///     mod a {
 ///         #[no_mangle]
 ///         unsafe extern "C" fn foo() { ... }
@@ -56,6 +59,7 @@ use crate::RefactorCtxt;
 ///             ::a::foo();
 ///         }
 ///     }
+/// ```
 pub struct LinkFuncs;
 
 impl Transform for LinkFuncs {
@@ -122,6 +126,7 @@ impl Transform for LinkFuncs {
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     mod a {
 ///         struct Foo { ... }
 ///     }
@@ -133,9 +138,11 @@ impl Transform for LinkFuncs {
 /// 
 ///         unsafe fn use_foo(x: &Foo) { ... }
 ///     }
+/// ```
 /// 
 /// After running `link_incomplete_types`:
 /// 
+/// ```ignore
 ///     mod a {
 ///         struct Foo { ... }
 ///     }
@@ -145,6 +152,7 @@ impl Transform for LinkFuncs {
 ///         // 2. `use_foo` now references `Foo` directly
 ///         unsafe fn use_foo(x: &::a::Foo) { ... }
 ///     }
+/// ```
 pub struct LinkIncompleteTypes;
 
 impl Transform for LinkIncompleteTypes {
@@ -214,6 +222,7 @@ impl Transform for LinkIncompleteTypes {
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     mod a {
 ///         pub struct Foo { ... }  // Foo: target
 ///     }
@@ -223,9 +232,11 @@ impl Transform for LinkIncompleteTypes {
 /// 
 ///         unsafe fn use_foo(x: &Foo) { ... }
 ///     }
+/// ```
 /// 
 /// After running `canonicalize_structs`:
 /// 
+/// ```ignore
 ///     mod a {
 ///         pub struct Foo { ... }
 ///     }
@@ -235,6 +246,7 @@ impl Transform for LinkIncompleteTypes {
 ///         // 2. `use_foo` now references `::a::Foo` directly
 ///         unsafe fn use_foo(x: &::a::Foo) { ... }
 ///     }
+/// ```
 /// 
 /// Note that this transform does not check or adjust item visibility.  If the
 /// `target` type is not visible throughout the crate, this may introduce compile

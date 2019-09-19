@@ -30,7 +30,8 @@ use c2rust_ast_builder::{mk, IntoSymbol};
 /// that was replaced with `VAR`.
 /// 
 /// Example:
-/// 
+///
+/// ```ignore
 ///     struct Foo {    // Foo: target
 ///         x: i32,     // i32: target
 ///         y: i32,
@@ -41,9 +42,11 @@ use c2rust_ast_builder::{mk, IntoSymbol};
 ///     fn main() {
 ///         f(...);
 ///     }
+/// ```
 /// 
 /// After running `generalize_items T`:
-/// 
+///
+/// ```ignore
 ///     // 1. Foo gains a new type parameter `T`
 ///     struct Foo<T> {
 ///         // 2. Marked type annotations become `T`
@@ -63,6 +66,7 @@ use c2rust_ast_builder::{mk, IntoSymbol};
 ///         // first type that was replaced with `T`.
 ///         f::<i32>(...);
 ///     }
+/// ```
 pub struct GeneralizeItems {
     ty_var_name: Symbol,
     replacement_ty: Option<String>,

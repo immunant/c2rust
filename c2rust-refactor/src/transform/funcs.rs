@@ -377,6 +377,7 @@ impl Transform for SinkUnsafe {
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     extern "C" {
 ///         fn foo(x: i32) -> i32;
 ///     }
@@ -388,10 +389,12 @@ impl Transform for SinkUnsafe {
 ///     fn main() {
 ///         let x = unsafe { foo(123) };
 ///     }
+/// ```
 /// 
 /// After transformation, with `fn foo` marked `target` and `mod wrappers` marked
 /// `dest`:
 /// 
+/// ```ignore
 ///     extern "C" {
 ///         fn foo(x: i32) -> i32;
 ///     }
@@ -405,6 +408,7 @@ impl Transform for SinkUnsafe {
 ///     fn main() {
 ///         let x = unsafe { ::wrappers::foo(123) };
 ///     }
+/// ```
 /// 
 /// Note that this also replaces the function in expressions that take its address,
 /// which may cause problem as the wrapper function has a different type that the
@@ -707,14 +711,18 @@ impl Transform for WrapApi {
 /// 
 /// Input:
 /// 
+/// ```ignore
 ///     1 + 2
+/// ```
 /// 
 /// After running `abstract 'add(x: u32, y: u32) -> u32' 'x + y'`:
 /// 
+/// ```ignore
 ///     add(1, 2)
 /// 
 ///     // Elsewhere:
 ///     fn add(x: u32, y: u32) -> u32 { x + y }
+/// ```
 /// 
 /// All type and value parameter names in `sig` act as bindings when matching `pat`.  The captured
 /// exprs and types are passed as parameters when building the new call expression.  The body of
