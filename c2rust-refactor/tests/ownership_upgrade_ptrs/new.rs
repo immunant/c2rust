@@ -71,31 +71,38 @@ pub unsafe extern "C" fn __ibitmap(
     nbits: libc::c_int,
     ndx: libc::c_int,
 ) -> libc::c_int {
-    let mut ip: *mut libc::c_uint = 0 as *mut libc::c_uint;
+    #[slice]
+    #[nonnull]
+    let mut ip;
     let mut clearbytes: libc::c_int = 0;
     let mut clearints: libc::c_int = 0;
-    ip = malloc((hashp.as_mut().unwrap()).hdr.bsize as libc::c_ulong) as *mut libc::c_uint;
-    if ip.is_null() {
+    ip = vec![
+        0;
+        hashp.as_mut().unwrap().hdr.bsize as libc::c_ulong as usize
+            / ::core::mem::size_of::<libc::c_uint>()
+    ]
+    .into_boxed_slice();
+    if false {
         return 1i32;
     }
     (hashp.as_mut().unwrap()).nmaps += 1;
     clearints = (nbits - 1i32 >> 5i32) + 1i32;
     clearbytes = clearints << 2i32;
     memset(
-        ip as *mut libc::c_char as *mut libc::c_void,
+        ip.as_mut_ptr() as *mut libc::c_char as *mut libc::c_void,
         0i32,
         clearbytes as libc::c_ulong,
     );
     memset(
-        (ip as *mut libc::c_char).offset(clearbytes as isize) as *mut libc::c_void,
+        (ip.as_mut_ptr() as *mut libc::c_char).offset(clearbytes as isize) as *mut libc::c_void,
         0xffi32,
         ((hashp.as_mut().unwrap()).hdr.bsize - clearbytes) as libc::c_ulong,
     );
-    *ip.offset((clearints - 1i32) as isize) = 0xffffffffu32 << (nbits & (1i32 << 5i32) - 1i32);
-    let ref mut fresh2 = *ip.offset((0i32 / 32i32) as isize);
+    ip[(clearints - 1i32) as usize] = 0xffffffffu32 << (nbits & (1i32 << 5i32) - 1i32);
+    let ref mut fresh2 = ip[(0i32 / 32i32) as usize];
     *fresh2 |= (1i32 << 0i32 % 32i32) as libc::c_uint;
     (hashp.as_mut().unwrap()).hdr.bitmaps[ndx as usize] = pnum as libc::c_ushort;
-    (hashp.as_mut().unwrap()).mapp[ndx as usize] = ip;
+    (hashp.as_mut().unwrap()).mapp[ndx as usize] = Some(ip);
     return 0i32;
 }
 

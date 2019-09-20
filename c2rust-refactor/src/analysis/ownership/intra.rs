@@ -171,10 +171,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         self.cset.remove_useless();
         self.cset.simplify_min_lhs(self.cx.arena);
 
-        // self.cset.retain_perms(self.cx.arena, |p| match p {
-        //     Perm::LocalVar(_) => false,
-        //     _ => true,
-        // });
+        self.cset.retain_perms(self.cx.arena, |p| match p {
+            Perm::LocalVar(_) => false,
+            _ => true,
+        });
 
         self.cset.simplify(self.cx.arena);
 

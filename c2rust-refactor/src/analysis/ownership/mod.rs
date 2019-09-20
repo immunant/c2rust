@@ -582,7 +582,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 monos.insert(
                     (def_id, idx),
                     MonoResult {
-                        suffix: suffix,
+                        suffix,
                         assign: mono.assign.clone(),
                         callee_mono_idxs: mono.callee_mono_idxs.clone(),
                     },

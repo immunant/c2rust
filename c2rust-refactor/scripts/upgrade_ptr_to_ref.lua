@@ -85,7 +85,7 @@ function ConvCfg.new(args)
     return self
 end
 
-function ConvCfg.from_mark(mark, attrs)
+function ConvCfg.from_marks(marks, attrs)
     local opt = true
     local slice = false
     local mutability = nil
@@ -106,7 +106,7 @@ function ConvCfg.from_mark(mark, attrs)
         conv_type = "opt_"
     end
 
-    if mark == "ref" then
+    if marks["ref"] then
         mutability = "immut"
 
         if slice then
@@ -114,7 +114,7 @@ function ConvCfg.from_mark(mark, attrs)
         else
             conv_type = conv_type .. "ref"
         end
-    elseif mark == "mut" then
+    elseif marks["mut"] then
         mutability = "mut"
         binding = "ByValMut"
 
@@ -123,7 +123,7 @@ function ConvCfg.from_mark(mark, attrs)
         else
             conv_type = conv_type .. "ref"
         end
-    elseif mark == "move" then
+    elseif marks["move"] then
         conv_type = conv_type .. "box"
 
         if slice then
@@ -145,11 +145,9 @@ function ConvCfg.local_from_marks(marks, attrs, box)
     local mutability = nil
     local binding = nil
     local conv_type = ""
-    local mut = false
-    local ref = false
-
-    -- TEMP: disabled til other stuff fixed
-    -- if true then return end
+    local mut = marks["mut"]
+    local ref = marks["ref"]
+    local move = marks["move"]
 
     for _, attr in ipairs(attrs) do
         local attr_ident = attr:ident()
@@ -161,17 +159,9 @@ function ConvCfg.local_from_marks(marks, attrs, box)
         end
     end
 
-    for i, mark in ipairs(marks) do
-        if mark == "ref" then
-            ref = true
-        elseif mark == "mut" then
-            mut = true
-        elseif mark == "box" then
-            box = true
-        elseif mark == "move" then
-            log_warn("Found unimplemented move mark")
-            return
-        end
+    if move then
+        log_warn("Found unimplemented move mark")
+        return
     end
 
     -- TODO: And technically move is mutually exclusive too
@@ -215,7 +205,7 @@ function ConvCfg.local_from_marks(marks, attrs, box)
     --     end
     end
 
-    -- print(conv_type)
+    print(conv_type)
 
     if conv_type == "" or conv_type[#conv_type] == "_" then
         log_error("Could not build appropriate conversion cfg for: " .. tostring(arg))
@@ -1142,12 +1132,7 @@ function MarkConverter:flat_map_param(arg)
     local attrs = arg:get_attrs()
 
     -- TODO: Box support
-    for _, mark in ipairs(marks) do
-        if mark ~= "ref" and mark ~= "mut" then
-            log_warn("Mark --->: " .. mark)
-        end
-        self.node_id_cfgs[arg_id] = ConvCfg.from_mark(mark, attrs, false)
-    end
+    self.node_id_cfgs[arg_id] = ConvCfg.from_marks(marks, attrs, false)
 end
 
 function MarkConverter:visit_local(locl)
@@ -1162,6 +1147,9 @@ function MarkConverter:visit_local(locl)
     local marks = self.marks[ty_id] or {}
     local box = self.boxes[tostring(pat_hirid)]
     local attrs = locl:get_attrs()
+
+    -- Bail if empty
+    if next(marks) == nil then return end
 
     self.node_id_cfgs[id] = ConvCfg.local_from_marks(marks, attrs, box)
 end

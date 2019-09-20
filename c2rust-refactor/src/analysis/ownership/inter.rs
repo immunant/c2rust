@@ -123,7 +123,7 @@ impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
         cset.simplify_min_lhs(self.cx.arena);
 
         cset.retain_perms(self.cx.arena, |p| match p {
-            Perm::InstVar(_) => false,
+            Perm::LocalVar(_) | Perm::InstVar(_) => false,
             _ => true,
         });
 
@@ -151,7 +151,7 @@ impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
 
         // Simplify away static vars too.
         cset.retain_perms(self.cx.arena, |p| match p {
-            Perm::InstVar(_) | Perm::StaticVar(_) => false,
+            Perm::LocalVar(_) | Perm::InstVar(_) | Perm::StaticVar(_) => false,
             _ => true,
         });
 

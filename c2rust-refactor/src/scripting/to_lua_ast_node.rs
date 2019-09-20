@@ -1489,6 +1489,11 @@ impl UserData for LuaAstNode<ItemKind> {
 unsafe impl Send for LuaAstNode<Attribute> {}
 impl UserData for LuaAstNode<Attribute> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
+
         methods.add_method("ident", |lua_ctx, this, ()| {
             if let Some(ident) = this.borrow().ident() {
                 Ok(Some(ident.to_lua(lua_ctx)?))

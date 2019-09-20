@@ -69,6 +69,8 @@ pub unsafe extern "C" fn __ibitmap(mut hashp: *mut HTAB,
                                    pnum: libc::c_int,
                                    nbits: libc::c_int,
                                    ndx: libc::c_int) -> libc::c_int {
+    #[slice]
+    #[nonnull]
     let mut ip: *mut libc::c_uint = 0 as *mut libc::c_uint;
     let mut clearbytes: libc::c_int = 0;
     let mut clearints: libc::c_int = 0;
