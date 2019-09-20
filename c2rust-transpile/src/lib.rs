@@ -173,7 +173,13 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 
     let results = cmds
         .iter()
-        .map(|cmd| transpile_single(&tcfg, cmd.abs_file().as_path(), cc_db, extra_clang_args))
+        .map(|cmd| transpile_single(
+            &tcfg,
+            cmd.file.as_path(),
+            cmd.directory.as_path(),
+            cc_db,
+            extra_clang_args)
+        )
         .collect::<Vec<TranspileResult>>();
     let mut modules = vec![];
     let mut modules_skipped = false;
@@ -303,18 +309,20 @@ fn reorganize_definitions(build_dir: &PathBuf) -> Result<(), Error> {
 
 fn transpile_single(
     tcfg: &TranspilerConfig,
-    input_path: &Path,
+    input_file: &Path,
+    input_dir: &Path,
     cc_db: &Path,
     extra_clang_args: &[&str],
 ) -> TranspileResult {
-    let output_path = get_output_path(tcfg, input_path);
+    let output_path = get_output_path(tcfg, input_file);
     if output_path.exists() && !tcfg.overwrite_existing {
         println!("Skipping existing file {}", output_path.display());
         return (output_path, None, None);
     }
 
-    let file = input_path.file_name().unwrap().to_str().unwrap();
-    println!("Transpiling {}", file);
+    let input_path =  input_dir.join(input_file);
+    let input_path = input_path.as_path();
+    println!("Transpiling {}", input_file.display());
     if !input_path.exists() {
         warn!(
             "Input C file {} does not exist, skipping!",
@@ -381,8 +389,8 @@ fn transpile_single(
     (output_path, Some(pragmas), Some(crates))
 }
 
-fn get_output_path(tcfg: &TranspilerConfig, input_path: &Path) -> PathBuf {
-    let mut path_buf = PathBuf::from(input_path);
+fn get_output_path(tcfg: &TranspilerConfig, input_file: &Path) -> PathBuf {
+    let mut path_buf = PathBuf::from(input_file);
 
     // When an output file name is not explictly specified, we should convert files
     // with dashes to underscores, as they are not allowed in rust file names.
@@ -400,15 +408,16 @@ fn get_output_path(tcfg: &TranspilerConfig, input_path: &Path) -> PathBuf {
         // Place the source files in output_dir/src/
         let mut output_path = output_dir.clone();
         output_path.push("src");
-        if !output_path.exists() {
-            fs::create_dir_all(&output_path).expect(&format!(
+        
+        output_path.push(path_buf.as_os_str());
+        
+        let output_dir = output_path.parent().unwrap();
+        if !output_dir.exists() {
+            fs::create_dir_all(&output_dir).expect(&format!(
                 "couldn't create source directory: {}",
-                output_path.display()
+                output_dir.display()
             ));
-        }
-        // FIXME: replicate the subdirectory structure as well???
-        // this currently puts all the output files in the same directory
-        output_path.push(path_buf.file_name().unwrap());
+        }        
         output_path
     } else {
         path_buf

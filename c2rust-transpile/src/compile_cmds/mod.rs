@@ -10,7 +10,7 @@ use regex::Regex;
 pub struct CompileCmd {
     /// The working directory of the compilation. All paths specified in the command
     /// or file fields must be either absolute or relative to this directory.
-    directory: PathBuf,
+    pub directory: PathBuf,
     /// The main translation unit source processed by this compilation step. This is
     /// used by tools as the key into the compilation database. There can be multiple
     /// command objects for the same file, for example if the same source file is compiled

@@ -1697,6 +1697,8 @@ impl<'c> Translation<'c> {
                     .get(&decl_id)
                     .expect("Functions should already be renamed");
 
+                println!("translating function {}", new_name);
+
                 if self.import_simd_function(new_name)? {
                     return Ok(ConvertedDecl::NoItem);
                 }
@@ -2732,6 +2734,15 @@ impl<'c> Translation<'c> {
             .convert(&self.ast_context, type_id)
     }
 
+    fn convert_function_type(&self, type_id: CTypeId, params: &Vec<CParamId>) -> Result<P<Ty>, TranslationError> {
+        if let Some(cur_file) = *self.cur_file.borrow() {
+            self.import_type(type_id, cur_file);
+        }
+        self.type_converter
+            .borrow_mut()
+            .convert_function_special(&self.ast_context, type_id, params)
+    }
+
     /// Construct an expression for a NULL at any type, including forward declarations,
     /// function pointers, and normal pointers.
     fn null_ptr(&self, type_id: CTypeId, is_static: bool) -> Result<P<Expr>, TranslationError> {
@@ -3112,8 +3123,9 @@ impl<'c> Translation<'c> {
                 // If we are referring to a function and need its address, we
                 // need to cast it to fn() to ensure that it has a real address.
                 if ctx.needs_address() {
-                    if let &CDeclKind::Function { .. } = decl {
-                        let ty = self.convert_type(qual_ty.ctype)?;
+                    if let &CDeclKind::Function { parameters: ref params, .. } = decl {
+//                        println!("converting function type with params: {:?}", params);
+                        let ty = self.convert_function_type(qual_ty.ctype, params)?;
                         val = mk().cast_expr(val, ty);
                     }
                 }
