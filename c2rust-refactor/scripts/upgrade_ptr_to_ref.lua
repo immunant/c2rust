@@ -91,63 +91,10 @@ function ConvCfg.from_marks(marks, attrs)
     local mutability = nil
     local binding = nil
     local conv_type = ""
-
-    for _, attr in ipairs(attrs) do
-        local attr_ident = attr:ident()
-
-        if attr_ident == "nonnull" then
-            opt = false
-        elseif attr_ident == "slice" then
-            slice = true
-        end
-    end
-
-    if opt then
-        conv_type = "opt_"
-    end
-
-    if marks["ref"] then
-        mutability = "immut"
-
-        if slice then
-            conv_type = conv_type .. "slice"
-        else
-            conv_type = conv_type .. "ref"
-        end
-    elseif marks["mut"] then
-        mutability = "mut"
-        binding = "ByValMut"
-
-        if slice then
-            conv_type = conv_type .. "slice"
-        else
-            conv_type = conv_type .. "ref"
-        end
-    elseif marks["move"] then
-        conv_type = conv_type .. "box"
-
-        if slice then
-            conv_type = conv_type .. "_slice"
-        end
-    end
-
-    if conv_type == "" or conv_type[#conv_type] == "_" then
-        log_error("Could not build appropriate conversion cfg for: " .. tostring(arg))
-        return
-    end
-
-    return ConvCfg.new{conv_type, mutability=mutability, binding=binding}
-end
-
-function ConvCfg.local_from_marks(marks, attrs, box)
-    local opt = true
-    local slice = false
-    local mutability = nil
-    local binding = nil
-    local conv_type = ""
     local mut = marks["mut"]
     local ref = marks["ref"]
     local move = marks["move"]
+    local box = marks["box"]
 
     for _, attr in ipairs(attrs) do
         local attr_ident = attr:ident()
@@ -157,11 +104,6 @@ function ConvCfg.local_from_marks(marks, attrs, box)
         elseif attr_ident == "slice" then
             slice = true
         end
-    end
-
-    if move then
-        log_warn("Found unimplemented move mark")
-        return
     end
 
     -- TODO: And technically move is mutually exclusive too
@@ -174,7 +116,8 @@ function ConvCfg.local_from_marks(marks, attrs, box)
         conv_type = "opt_"
     end
 
-    if box then
+    -- Box and Move are not identical, but have overlap
+    if box or move then
         conv_type = conv_type .. "box"
 
         if slice then
@@ -197,15 +140,7 @@ function ConvCfg.local_from_marks(marks, attrs, box)
         else
             conv_type = conv_type .. "ref"
         end
-    -- elseif mark == "box" then
-    --     conv_type = conv_type .. "box"
-
-    --     if slice then
-    --         conv_type = conv_type .. "_slice"
-    --     end
     end
-
-    print(conv_type)
 
     if conv_type == "" or conv_type[#conv_type] == "_" then
         log_error("Could not build appropriate conversion cfg for: " .. tostring(arg))
@@ -1129,10 +1064,13 @@ function MarkConverter:flat_map_param(arg)
         return {arg}
     end
 
+    -- Skip if there are no marks
+    if next(marks) == nil then return end
+
     local attrs = arg:get_attrs()
 
     -- TODO: Box support
-    self.node_id_cfgs[arg_id] = ConvCfg.from_marks(marks, attrs, false)
+    self.node_id_cfgs[arg_id] = ConvCfg.from_marks(marks, attrs)
 end
 
 function MarkConverter:visit_local(locl)
@@ -1145,13 +1083,16 @@ function MarkConverter:visit_local(locl)
     local id = locl:get_id()
     local pat_hirid = self.tctx:nodeid_to_hirid(locl:get_pat_id())
     local marks = self.marks[ty_id] or {}
-    local box = self.boxes[tostring(pat_hirid)]
     local attrs = locl:get_attrs()
 
-    -- Bail if empty
+    if self.boxes[tostring(pat_hirid)] then
+        marks["box"] = true
+    end
+
+    -- Skip if there are no marks
     if next(marks) == nil then return end
 
-    self.node_id_cfgs[id] = ConvCfg.local_from_marks(marks, attrs, box)
+    self.node_id_cfgs[id] = ConvCfg.from_marks(marks, attrs)
 end
 
 MallocMarker = {}
