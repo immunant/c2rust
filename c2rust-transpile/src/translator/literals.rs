@@ -141,12 +141,21 @@ impl<'c> Translation<'c> {
             CLiteral::String(ref val, width) => {
                 let mut val = val.to_owned();
 
+                let mut expects_uchars = false;
                 match self.ast_context.resolve_type(ty.ctype).kind {
-                    // Match the literal size to the expected size padding with zeros as needed
-                    CTypeKind::ConstantArray(_, size) => val.resize(size * (width as usize), 0),
+
+                    CTypeKind::ConstantArray(elem_ty, size) => {
+                        // Is the element type is unsigned char?
+                        if &CTypeKind::UChar == &self.ast_context.resolve_type(elem_ty).kind {
+                            expects_uchars = true;
+                        }
+                        // Match the literal size to the expected size padding with zeros as needed
+                        val.resize(size * (width as usize), 0)
+                    },
 
                     // Add zero terminator
                     _ => {
+//                        println()
                         for _ in 0..width {
                             val.push(0);
                         }
@@ -155,9 +164,10 @@ impl<'c> Translation<'c> {
                 if ctx.is_static {
                     let mut vals: Vec<P<Expr>> = vec![];
                     for c in val {
-                        if (c as i8) < 0 {
-                            // Fallback for characters outside of the normal ASCII range. Python 2
-                            // doc strings, for example, contain non-ASCII chars (https://git.io/fjAxu).
+                        // Emit negative literals if the expected type is not unsigned char. This
+                        // provides a fallback for characters outside of the normal ASCII range.
+                        // Python 2 doc strings, for example, contain non-ASCII chars (https://git.io/fjAxu).
+                        if !expects_uchars && (c as i8) < 0 {
                             // NOTE: the conversion to i32 avoids overflow when calling abs on -128.
                             vals.push(mk().unary_expr("-", mk().lit_expr(
                                 mk().int_lit(((c as i8) as i32).abs() as u128, LitIntType::Unsuffixed))
