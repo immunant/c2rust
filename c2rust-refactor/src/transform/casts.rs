@@ -24,9 +24,8 @@ impl Transform for RemoveRedundantCasts {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let tcx = cx.ty_ctxt();
         let mut mcx = MatchCtxt::new(st, cx);
-        let outer_pat = mcx.parse_expr("$oe:Expr as $ot:Ty");
-        let inner_pat = mcx.parse_expr("$ie:Expr as $it:Ty");
-        mut_visit_match_with(mcx, outer_pat, krate, |ast, mut mcx| {
+        let pat = mcx.parse_expr("$oe:Expr as $ot:Ty");
+        mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             let oe = mcx.bindings.get::<_, P<Expr>>("$oe").unwrap();
             let oe_ty = cx.adjusted_node_type(oe.id);
             let oe_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), oe_ty);
@@ -39,33 +38,32 @@ impl Transform for RemoveRedundantCasts {
                 return;
             }
 
-            let oe = oe.clone(); // Un-borrow mcx
-            let ot = ot.clone();
-            if mcx.try_match(&*inner_pat, &oe).is_ok() {
-                // Found a double cast
-                let ie = mcx.bindings.get::<_, P<Expr>>("$ie").unwrap();
-                let ie_ty = cx.adjusted_node_type(ie.id);
-                let ie_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ie_ty);
+            match oe.node {
+                ExprKind::Cast(ref ie, ref it) => {
+                    // Found a double cast
+                    let ie_ty = cx.adjusted_node_type(ie.id);
+                    let ie_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ie_ty);
 
-                let it = mcx.bindings.get::<_, P<Ty>>("$it").unwrap();
-                let it_ty = cx.adjusted_node_type(it.id);
-                let it_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), it_ty);
-                assert!(it_ty != ot_ty);
+                    let it_ty = cx.adjusted_node_type(it.id);
+                    let it_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), it_ty);
+                    assert!(it_ty != ot_ty);
 
-                match check_double_cast(ie_ty.into(), it_ty.into(), ot_ty.into()) {
-                    DoubleCastAction::RemoveBoth => {
-                        *ast = ie.clone();
+                    match check_double_cast(ie_ty.into(), it_ty.into(), ot_ty.into()) {
+                        DoubleCastAction::RemoveBoth => {
+                            *ast = ie.clone();
+                        }
+                        DoubleCastAction::RemoveInner => {
+                            // Rewrite to `$ie as $ot`, removing the inner cast
+                            *ast = mk().cast_expr(ie, ot);
+                        }
+                        DoubleCastAction::KeepBoth => { }
                     }
-                    DoubleCastAction::RemoveInner => {
-                        // Rewrite to `$ie as $ot`, removing the inner cast
-                        *ast = mk().cast_expr(ie, ot);
-                    }
-                    DoubleCastAction::KeepBoth => { }
                 }
-                return;
+
+                // TODO: constant + cast, e.g., `0i32 as f32`
+                // TODO: unary/binaryop op + cast, e.g., `(x as i32 + y as i32) as i8`
+                _ => {}
             }
-            // TODO: constant + cast, e.g., `0i32 as f32`
-            // TODO: unary/binaryop op + cast, e.g., `(x as i32 + y as i32) as i8`
         })
     }
 
