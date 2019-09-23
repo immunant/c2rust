@@ -581,6 +581,17 @@ impl UserData for LuaAstNode<P<Expr>> {
             Ok(())
         });
 
+        type OptLuaExpr = Option<LuaAstNode<P<Expr>>>;
+
+        methods.add_method("to_range", |_lua_ctx, this, (lhs, rhs): (OptLuaExpr, OptLuaExpr)| {
+            let opt_lhs_expr = lhs.map(|e| e.borrow().clone());
+            let opt_rhs_expr = rhs.map(|e| e.borrow().clone());
+
+            this.borrow_mut().node = ExprKind::Range(opt_lhs_expr, opt_rhs_expr, RangeLimits::HalfOpen);
+
+            Ok(())
+        });
+
         methods.add_method("to_binary", |_lua_ctx, this, (op, lhs, rhs): (LuaString, LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
             let op = match op.to_str()? {
                 "Add" => BinOpKind::Add,
@@ -1356,19 +1367,15 @@ impl UserData for LuaAstNode<Param> {
         });
 
         methods.add_method("set_binding", |_lua_ctx, this, binding_str: LuaString| {
-            match &mut this.borrow_mut().pat.kind {
-                PatKind::Ident(binding, ..) => {
-                    *binding = match binding_str.to_str()? {
-                        "ByRefMut" => BindingMode::ByRef(Mutability::Mutable),
-                        "ByRefImmut" => BindingMode::ByRef(Mutability::Immutable),
-                        "ByValMut" => BindingMode::ByValue(Mutability::Mutable),
-                        "ByValImmut" => BindingMode::ByValue(Mutability::Immutable),
-                        _ => panic!("Unknown binding kind"),
-                    };
-                },
-                _ => (),
+            if let PatKind::Ident(binding, ..) = &mut this.borrow_mut().pat.kind {
+                *binding = match binding_str.to_str()? {
+                    "ByRefMut" => BindingMode::ByRef(Mutability::Mutable),
+                    "ByRefImmut" => BindingMode::ByRef(Mutability::Immutable),
+                    "ByValMut" => BindingMode::ByValue(Mutability::Mutable),
+                    "ByValImmut" => BindingMode::ByValue(Mutability::Immutable),
+                    _ => panic!("Unknown binding kind"),
+                };
             }
-
 
             Ok(())
         });

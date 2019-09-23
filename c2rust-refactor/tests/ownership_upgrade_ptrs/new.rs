@@ -286,3 +286,37 @@ pub unsafe extern "C" fn category(ucs: libc::c_uint) -> category {
         (categories.len() - 1) as libc::c_int,
     );
 }
+
+pub type u32_0 = libc::c_uint;
+pub type u8_0 = libc::c_uchar;
+
+static mut sigma: [libc::c_char; 16] = [
+    101, 120, 112, 97, 110, 100, 32, 51, 50, 45, 98, 121, 116, 101, 32, 107,
+];
+static mut tau: [libc::c_char; 16] = [
+    101, 120, 112, 97, 110, 100, 32, 49, 54, 45, 98, 121, 116, 101, 32, 107,
+];
+unsafe extern "C" fn chacha_keysetup(
+    mut x: Option<&mut chacha_ctx>,
+    mut k: Option<&[u8_0]>,
+    kbits: u32_0,
+    ivbits: u32_0,
+) {
+    #[slice]
+    let mut constants = None; /* kbits == 128 */
+    (x.as_mut().unwrap()).input[4] = k.unwrap()[0 + 0] as u32_0
+        | (k.unwrap()[0 + 1] as u32_0) << 8i32
+        | (k.unwrap()[0 + 2] as u32_0) << 16i32
+        | (k.unwrap()[0 + 3] as u32_0) << 24i32;
+    if kbits == 256i32 as libc::c_uint {
+        /* recommended */
+        k = Some(&k.unwrap()[16..]);
+        constants = Some(&sigma)
+    } else {
+        constants = Some(&tau)
+    }
+    (x.as_mut().unwrap()).input[8] = k.unwrap()[0 + 0] as u32_0
+        | (k.unwrap()[0 + 1] as u32_0) << 8i32
+        | (k.unwrap()[0 + 2] as u32_0) << 16i32
+        | (k.unwrap()[0 + 3] as u32_0) << 24i32;
+}

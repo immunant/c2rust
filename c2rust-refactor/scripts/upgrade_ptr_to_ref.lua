@@ -4,10 +4,10 @@ require "pl"
 -- into a reference or Box
 Variable = {}
 
-function Variable.new(node_id, is_locl)
+function Variable.new(node_id, kind)
     self = {}
     self.id = node_id
-    self.is_locl = is_locl
+    self.kind = kind
     self.shadowed = false
 
     setmetatable(self, Variable)
@@ -225,7 +225,7 @@ function Visitor.new(tctx, node_id_cfgs)
     self.tctx = tctx
     -- NodeId -> ConvCfg
     self.node_id_cfgs = node_id_cfgs
-    -- PatHrId -> Variable
+    -- PatHrId [except statics] -> Variable
     self.vars = {}
     -- HrId -> Field
     self.fields = {}
@@ -305,7 +305,7 @@ function Visitor:flat_map_param(arg)
         if arg_ty:get_kind() == "Ptr" then
             local arg_pat_hrid = self.tctx:nodeid_to_hirid(arg:get_pat_id())
 
-            self:add_var(arg_pat_hrid, Variable.new(arg_id, false))
+            self:add_var(arg_pat_hrid, Variable.new(arg_id, "param"))
 
             arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
         end
@@ -395,6 +395,45 @@ function Visitor:visit_expr(expr, walk)
         self:rewrite_assign_expr(expr)
     elseif expr_kind == "Call" then
         self:rewrite_call_expr(expr)
+    elseif expr_kind == "MethodCall" then
+        self:rewrite_method_call_expr(expr)
+    end
+end
+
+function Visitor:rewrite_method_call_expr(expr)
+    local exprs = expr:get_exprs()
+    local method_name = expr:get_method_name()
+
+    -- x.offset(y) -> &x[y..] or Some(&x.unwrap()[y..])
+    -- Only really works for positive pointer offsets
+    if method_name == "offset" then
+        local offset_expr, caller = self:rewrite_chained_offsets(expr)
+        local cfg = self:get_expr_cfg(caller)
+
+        if not cfg or not cfg:is_slice_any() then return end
+
+        offset_expr:to_range(offset_expr, nil)
+
+        local is_mut = cfg.extra_data.mutability == "mut"
+
+        if cfg:is_opt_any() then
+            if is_mut then
+                caller:to_method_call("as_mut", {caller})
+            end
+
+            caller:to_method_call("unwrap", {caller})
+        end
+
+        expr:to_index(caller, offset_expr)
+        expr:to_addr_of(expr, is_mut)
+    -- static_var.as_mut/ptr -> &[mut]static_var
+    elseif method_name == "as_ptr" or method_name == "as_mut_ptr" then
+        local hirid = self.tctx:resolve_path_hirid(exprs[1])
+        local var = hirid and self:get_var(hirid)
+
+        if var and var.kind == "static" then
+            expr:to_addr_of(exprs[1], method_name == "as_mut_ptr")
+        end
     end
 
     walk(expr)
@@ -407,9 +446,7 @@ function Visitor:rewrite_field_expr(expr)
         local derefed_expr = field_expr:get_exprs()[1]
 
         if derefed_expr:get_kind() == "Path" then
-            local hirid = self.tctx:resolve_path_hirid(derefed_expr)
-            local var = self:get_var(hirid)
-            local cfg = var and self.node_id_cfgs[var.id]
+            local cfg = self:get_expr_cfg(derefed_expr)
 
             -- This is a path we're expecting to modify
             if not cfg then
@@ -430,6 +467,35 @@ function Visitor:rewrite_field_expr(expr)
     end
 end
 
+function Visitor:rewrite_chained_offsets(unwrapped_expr)
+    local offset_expr = nil
+
+    while true do
+        local unwrapped_exprs = unwrapped_expr:get_exprs()
+        unwrapped_expr = unwrapped_exprs[1]
+        local method_name = unwrapped_expr:get_method_name()
+
+        -- Accumulate offset params
+        if not offset_expr then
+            offset_expr = strip_int_suffix(unwrapped_exprs[2])
+        else
+            offset_expr:to_binary("Add", strip_int_suffix(unwrapped_exprs[2]), offset_expr)
+        end
+
+        -- May start with conversion to pointer if an array
+        if method_name == "as_mut_ptr" then
+            local unwrapped_exprs = unwrapped_expr:get_exprs()
+            unwrapped_expr = unwrapped_exprs[1]
+
+            break
+        elseif method_name ~= "offset" then
+            break
+        end
+    end
+
+    return offset_expr, unwrapped_expr
+end
+
 function Visitor:rewrite_deref_expr(expr)
     local derefed_exprs = expr:get_exprs()
     local unwrapped_expr = derefed_exprs[1]
@@ -437,30 +503,7 @@ function Visitor:rewrite_deref_expr(expr)
     -- *p.offset(x).offset(y) -> p[x + y] (pointer) or
     -- *p.as_mut_ptr().offset(x).offset(y) -> p[x + y] (array)
     if unwrapped_expr:get_method_name() == "offset" then
-        local offset_expr = nil
-
-        while true do
-            local unwrapped_exprs = unwrapped_expr:get_exprs()
-            unwrapped_expr = unwrapped_exprs[1]
-            local method_name = unwrapped_expr:get_method_name()
-
-            -- Accumulate offset params
-            if not offset_expr then
-                offset_expr = strip_int_suffix(unwrapped_exprs[2])
-            else
-                offset_expr:to_binary("Add", strip_int_suffix(unwrapped_exprs[2]), offset_expr)
-            end
-
-            -- May start with conversion to pointer if an array
-            if method_name == "as_mut_ptr" then
-                local unwrapped_exprs = unwrapped_expr:get_exprs()
-                unwrapped_expr = unwrapped_exprs[1]
-
-                break
-            elseif method_name ~= "offset" then
-                break
-            end
-        end
+        local offset_expr, unwrapped_expr = self:rewrite_chained_offsets(unwrapped_expr)
 
         -- Should be left with a path or field, otherwise bail
         local cfg = self:get_expr_cfg(unwrapped_expr)
@@ -504,19 +547,14 @@ function Visitor:rewrite_deref_expr(expr)
         expr:to_index(unwrapped_expr, offset_expr)
     -- *ptr = 1 -> **ptr.as_mut().unwrap() = 1
     elseif unwrapped_expr:get_kind() == "Path" then
-        local hirid = self.tctx:resolve_path_hirid(unwrapped_expr)
-        local var = self:get_var(hirid)
-
-        if not var then
-            return
-        end
+        local cfg = self:get_expr_cfg(unwrapped_expr)
 
         -- If we're using an option, we must unwrap
         -- Must get inner reference to mutate (or map/match)
-        if self.node_id_cfgs[var.id]:is_opt_any() then
+        if cfg and cfg:is_opt_any() then
             local as_x = nil
 
-            if self.node_id_cfgs[var.id].extra_data.mutability == "immut" then
+            if cfg.extra_data.mutability == "immut" then
                 as_x = "as_ref"
             else
                 as_x = "as_mut"
@@ -602,12 +640,10 @@ function Visitor:rewrite_assign_expr(expr)
             end
         end
     -- lhs = rhs -> lhs = Some(rhs)
-    -- TODO: Should probably expand to work on more complex exprs
     elseif rhs_kind == "Path" then
-        local hirid = self.tctx:resolve_path_hirid(rhs)
-        local var = self:get_var(hirid)
+        local cfg = self:get_expr_cfg(rhs)
 
-        if var and not self.node_id_cfgs[var.id]:is_opt_any() then
+        if cfg and not cfg:is_opt_any() then
             local lhs_ty = self.tctx:get_expr_ty(lhs)
 
             -- If lhs was a ptr, and rhs isn't wrapped in some, wrap it
@@ -618,6 +654,17 @@ function Visitor:rewrite_assign_expr(expr)
                 rhs:to_call{some_path_expr, rhs}
                 expr:set_exprs{lhs, rhs}
             end
+        end
+    -- lhs = rhs.offset(x) -> rhs = Some(rhs[x..])
+    -- NOTE: indexing is applied by rewrite_method_call_expr
+    -- and ptr to reference conversion handled elsewhere
+    elseif rhs:get_method_name() == "offset" or rhs:get_method_name() == "as_ptr" then
+        local lhs_cfg = self:get_expr_cfg(lhs)
+
+        if lhs_cfg and lhs_cfg:is_opt_any() then
+            local some_path_expr = self.tctx:ident_path_expr("Some")
+            rhs:to_call{some_path_expr, rhs}
+            expr:set_exprs{lhs, rhs}
         end
     end
 end
@@ -789,9 +836,16 @@ end
 -- so we don't accidentally access old info
 -- NOTE: If this script encounters any nested functions, this will reset variables
 -- prematurely. We should push and pop a stack of variable scopes to account for this
-function Visitor:visit_fn_decl(fn_decl, walk)
-    self.vars = {}
+function Visitor:visit_fn_decl(fn_decl)
+    local static_vars = {}
 
+    for hirid, var in pairs(self.vars) do
+        if var.kind == "static" then
+            static_vars[hirid] = var
+        end
+    end
+
+    self.vars = static_vars
     walk(fn_decl)
 end
 
@@ -865,6 +919,10 @@ function Visitor:flat_map_item(item, walk)
         local hirid = self.tctx:nodeid_to_hirid(fn_id)
 
         self:add_fn(hirid, Fn.new(fn_id, false, arg_ids))
+    elseif item_kind == "Static" then
+        local hirid = self.tctx:nodeid_to_hirid(item:get_id())
+
+        self:add_var(hirid, Variable.new(item:get_id(), "static"))
     end
 
     walk(item)
@@ -1015,6 +1073,10 @@ function Visitor:visit_local(locl, walk)
 
                 locl:set_ty(nil)
                 locl:set_init(init)
+            -- elseif init:get_kind() == "Cast" then
+            --     local rhs_cfg = self:get_expr_cfg(init:get_exprs()[1])
+
+            --     locl:set_ty(nil)
             end
         elseif conversion_cfg:is_box_any() then
             local init = locl:get_init()
@@ -1027,7 +1089,7 @@ function Visitor:visit_local(locl, walk)
 
         local pat_hirid = self.tctx:nodeid_to_hirid(locl:get_pat_id())
 
-        self:add_var(pat_hirid, Variable.new(local_id, true))
+        self:add_var(pat_hirid, Variable.new(local_id, "local"))
     end
 
     walk(locl)
@@ -1097,6 +1159,8 @@ end
 
 MallocMarker = {}
 
+-- This visitor finds variables that are assigned
+-- a malloc or calloc and marks them as "box"
 function MallocMarker.new(tctx)
     self = {}
     self.tctx = tctx
@@ -1126,7 +1190,6 @@ function MallocMarker:visit_expr(expr)
             if cast_ty:get_kind() == "Ptr" and cast_expr:get_kind() == "Call" then
                 local call_exprs = cast_expr:get_exprs()
                 local path_expr = call_exprs[1]
-                local param_expr = call_exprs[2]
                 local path = path_expr:get_path()
                 local segments = path:get_segments()
 
@@ -1134,7 +1197,6 @@ function MallocMarker:visit_expr(expr)
                 if segments[#segments] == "malloc" or segments[#segments] == "calloc" then
                     -- TODO: Non path support. IE Field
                     self.boxes[tostring(hirid)] = true
-                    print("Marked var ", lhs)
                 end
             end
         end
@@ -1148,7 +1210,6 @@ function infer_node_id_cfgs(tctx)
     local malloc_marker = MallocMarker.new(tctx)
 
     tctx:visit_crate_new(malloc_marker)
-    -- marks = malloc_marker.marks
 
     local converter = MarkConverter.new(marks, malloc_marker.boxes, tctx)
     tctx:visit_crate_new(converter)

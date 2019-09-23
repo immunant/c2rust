@@ -248,3 +248,33 @@ static mut categories: [_category; 2129] = [_category{cat_first: [0; 4], delta: 
 pub unsafe extern "C" fn category(ucs: libc::c_uint) -> category {
     return bisearch_cat(ucs, categories.as_ptr(), (categories.len() - 1) as libc::c_int);
 }
+
+pub type u32_0 = libc::c_uint;
+pub type u8_0 = libc::c_uchar;
+
+static mut sigma: [libc::c_char; 16] =
+    [101, 120, 112, 97, 110, 100, 32, 51, 50, 45, 98, 121, 116, 101, 32, 107];
+static mut tau: [libc::c_char; 16] =
+    [101, 120, 112, 97, 110, 100, 32, 49, 54, 45, 98, 121, 116, 101, 32, 107];
+unsafe extern "C" fn chacha_keysetup(mut x: *mut chacha_ctx,
+                                     #[slice] mut k: *const u8_0, kbits: u32_0,
+                                     ivbits: u32_0) {
+    #[slice]
+    let mut constants: *const libc::c_char =
+        0 as *const libc::c_char; /* kbits == 128 */
+    (*x).input[4] =
+        *k.offset(0).offset(0) as u32_0 |
+            (*k.offset(0).offset(1) as u32_0) << 8i32 |
+            (*k.offset(0).offset(2) as u32_0) << 16i32 |
+            (*k.offset(0).offset(3) as u32_0) << 24i32;
+    if kbits == 256i32 as libc::c_uint {
+        /* recommended */
+        k = k.offset(16);
+        constants = sigma.as_ptr()
+    } else { constants = tau.as_ptr() }
+    (*x).input[8] =
+        *k.offset(0).offset(0) as u32_0 |
+            (*k.offset(0).offset(1) as u32_0) << 8i32 |
+            (*k.offset(0).offset(2) as u32_0) << 16i32 |
+            (*k.offset(0).offset(3) as u32_0) << 24i32;
+}
