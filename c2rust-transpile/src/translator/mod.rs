@@ -14,7 +14,6 @@ use syntax::attr;
 use syntax::ast::*;
 use syntax::parse::lexer::comments::CommentStyle;
 use syntax::parse::token::{self, DelimToken, Nonterminal};
-use syntax::print::pprust::{self, PrintState};
 use syntax::ptr::*;
 use syntax::source_map::{dummy_spanned, FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
@@ -27,6 +26,7 @@ use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::traverse::Traversal;
 use c2rust_ast_builder::{mk, Builder, IntoSymbol};
+use c2rust_ast_printer::pprust::{self, PrintState};
 
 use crate::c_ast;
 use crate::c_ast::iterators::{DFExpr, SomeId};
