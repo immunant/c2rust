@@ -319,4 +319,38 @@ unsafe extern "C" fn chacha_keysetup(
         | (k.unwrap()[0 + 1] as u32_0) << 8i32
         | (k.unwrap()[0 + 2] as u32_0) << 16i32
         | (k.unwrap()[0 + 3] as u32_0) << 24i32;
+    (x.as_mut().unwrap()).input[0] = constants.unwrap()[0 + 0] as u32_0
+        | (constants.unwrap()[0 + 1] as u32_0) << 8i32
+        | (constants.unwrap()[0 + 2] as u32_0) << 16i32
+        | (constants.unwrap()[0 + 3] as u32_0) << 24i32;
+}
+
+unsafe extern "C" fn chacha_keysetup2(
+    mut x: Option<&mut chacha_ctx>,
+    mut k: Option<&[u8_0]>,
+    kbits: u32_0,
+    ivbits: u32_0,
+) {
+    #[slice]
+    #[nonnull]
+    let mut constants; /* kbits == 128 */
+    (x.as_mut().unwrap()).input[4] = k.unwrap()[0 + 0] as u32_0
+        | (k.unwrap()[0 + 1] as u32_0) << 8i32
+        | (k.unwrap()[0 + 2] as u32_0) << 16i32
+        | (k.unwrap()[0 + 3] as u32_0) << 24i32;
+    if kbits == 256i32 as libc::c_uint {
+        /* recommended */
+        k = Some(&k.unwrap()[16..]);
+        constants = &sigma
+    } else {
+        constants = &tau
+    }
+    (x.as_mut().unwrap()).input[8] = k.unwrap()[0 + 0] as u32_0
+        | (k.unwrap()[0 + 1] as u32_0) << 8i32
+        | (k.unwrap()[0 + 2] as u32_0) << 16i32
+        | (k.unwrap()[0 + 3] as u32_0) << 24i32;
+    (x.as_mut().unwrap()).input[0] = constants[0 + 0] as u32_0
+        | (constants[0 + 1] as u32_0) << 8i32
+        | (constants[0 + 2] as u32_0) << 16i32
+        | (constants[0 + 3] as u32_0) << 24i32;
 }

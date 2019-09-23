@@ -1060,38 +1060,33 @@ end
 
 function Visitor:visit_local(locl, walk)
     local local_id = locl:get_id()
-    local conversion_cfg = self.node_id_cfgs[local_id]
+    local cfg = self.node_id_cfgs[local_id]
+
+    if not cfg then return end
+
+    local init = locl:get_init()
 
     -- let x: *mut T = 0 as *mut T; -> let mut x = None;
     -- or let mut x;
-    if conversion_cfg then
-        if conversion_cfg:is_opt_any() then
-            local init = locl:get_init()
+    if cfg:is_opt_any() then
+        if is_null_ptr(init) then
+            init:to_ident_path("None")
 
-            if is_null_ptr(init) then
-                init:to_ident_path("None")
+            locl:set_ty(nil)
+            locl:set_init(init)
+        -- elseif init:get_kind() == "Cast" then
+        --     local rhs_cfg = self:get_expr_cfg(init:get_exprs()[1])
 
-                locl:set_ty(nil)
-                locl:set_init(init)
-            -- elseif init:get_kind() == "Cast" then
-            --     local rhs_cfg = self:get_expr_cfg(init:get_exprs()[1])
-
-            --     locl:set_ty(nil)
-            end
-        elseif conversion_cfg:is_box_any() then
-            local init = locl:get_init()
-
-            if is_null_ptr(init) then
-                locl:set_ty(nil)
-                locl:set_init(nil)
-            end
+        --     locl:set_ty(nil)
         end
-
-        local pat_hirid = self.tctx:nodeid_to_hirid(locl:get_pat_id())
-
-        self:add_var(pat_hirid, Variable.new(local_id, "local"))
+    elseif is_null_ptr(init) then
+        locl:set_ty(nil)
+        locl:set_init(nil)
     end
 
+    local pat_hirid = self.tctx:nodeid_to_hirid(locl:get_pat_id())
+
+    self:add_var(pat_hirid, Variable.new(local_id, "local"))
     walk(locl)
 end
 
