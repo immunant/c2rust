@@ -353,7 +353,8 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<Vec<String>> {
 
 #[cfg_attr(feature = "profile", flame)]
 pub fn lib_main(opts: Options) -> interface::Result<()> {
-    env_logger::init();
+    rustc_driver::init_rustc_env_logger();
+    rustc_driver::install_ice_hook();
     info!("Begin refactoring");
 
     // Make sure we compile with the toolchain version that the refactoring tool
@@ -362,7 +363,7 @@ pub fn lib_main(opts: Options) -> interface::Result<()> {
         env::set_var("RUSTUP_TOOLCHAIN", toolchain_ver);
     }
 
-    rustc_driver::report_ices_to_stderr_if_any(move || main_impl(opts)).and_then(|x| x)
+    rustc_driver::catch_fatal_errors(move || main_impl(opts)).and_then(|x| x)
 }
 
 fn main_impl(opts: Options) -> interface::Result<()> {

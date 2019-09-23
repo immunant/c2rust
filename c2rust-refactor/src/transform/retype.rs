@@ -424,12 +424,12 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
             mut_visit::noop_flat_map_item(i, self)
         }
 
-        fn visit_struct_field(&mut self, sf: &mut StructField) {
+        fn flat_map_struct_field(&mut self, mut sf: StructField) -> SmallVec<[StructField; 1]> {
             let old_ty = sf.ty.clone();
             if (self.retype)(&mut sf.ty) {
                 self.changed_defs.insert(sf.id, (old_ty, sf.ty.clone()));
             }
-            mut_visit::noop_visit_struct_field(sf, self)
+            mut_visit::noop_flat_map_struct_field(sf, self)
         }
     }
 
@@ -860,8 +860,9 @@ impl<'a> MutVisitor for RetypePrepFolder<'a> {
     }
 
     /// Replace marked struct field types with their new types
-    fn visit_struct_field(&mut self, field: &mut StructField) {
+    fn flat_map_struct_field(&mut self, mut field: StructField) -> SmallVec<[StructField; 1]> {
         self.map_type(&mut field.ty);
+        return mut_visit::noop_flat_map_struct_field(field, self)
     }
 
     /// Remove all local variable types forcing type inference to update their
@@ -964,7 +965,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
         visit_fns(krate, |func| {
             if func.block.is_some() {
-                let def_id = self.cx.hir_map().local_def_id(func.id);
+                let def_id = self.cx.hir_map().local_def_id_from_node_id(func.id);
                 let tables = self.cx.ty_ctxt().typeck_tables_of(def_id);
                 if tables.tainted_by_errors {
                     errors = true

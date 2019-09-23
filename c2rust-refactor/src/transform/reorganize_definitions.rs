@@ -10,12 +10,12 @@ use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::attr::{self, HasAttrs};
 use syntax::parse::lexer::comments::{Comment, CommentStyle};
-use syntax::print::pprust::{foreign_item_to_string, item_to_string};
 use syntax::ptr::P;
 use syntax::symbol::{kw, Symbol};
 use syntax_pos::BytePos;
 
 use c2rust_ast_builder::mk;
+use c2rust_ast_printer::pprust::{foreign_item_to_string, item_to_string};
 use crate::ast_manip::util::{join_visibility, is_relative_path, namespace, split_uses};
 use crate::ast_manip::{AstEquiv, FlatMapNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
@@ -609,7 +609,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
             for existing_decl in self.unnamed_items[ns].iter_mut() {
                 match &existing_decl.node {
                     DeclKind::Item(existing_item) => match &existing_item.node {
-                        ItemKind::Ty(..) | ItemKind::Struct(..) | ItemKind::Union(..)
+                        ItemKind::TyAlias(..) | ItemKind::Struct(..) | ItemKind::Union(..)
                         | ItemKind::Enum(..) => {
                             // Does the new item match the existing item, except
                             // for unnamed names?
@@ -921,7 +921,7 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
 
         // If we have a definition for this type name we can assume it is
         // equivalent.
-        (ForeignItemKind::Ty, ItemKind::Ty(..))
+        (ForeignItemKind::Ty, ItemKind::TyAlias(..))
         | (ForeignItemKind::Ty, ItemKind::Enum(..))
         | (ForeignItemKind::Ty, ItemKind::Struct(..))
         | (ForeignItemKind::Ty, ItemKind::Union(..)) => true,

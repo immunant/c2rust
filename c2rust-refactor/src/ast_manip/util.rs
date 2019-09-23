@@ -89,10 +89,10 @@ impl PatternSymbol for Ty {
 
 impl PatternSymbol for Mac {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        if self.node.tts != TokenStream::empty() {
+        if self.tts != TokenStream::empty() {
             return None;
         }
-        self.node.path.pattern_symbol()
+        self.path.pattern_symbol()
     }
 }
 
@@ -152,7 +152,7 @@ pub fn extend_span_attrs(mut s: Span, attrs: &[Attribute]) -> Span {
 
 /// Get the name of a macro invocation.
 pub fn macro_name(mac: &Mac) -> Name {
-    let p = &mac.node.path;
+    let p = &mac.path;
     p.segments.last().unwrap().ident.name
 }
 
@@ -223,8 +223,8 @@ pub fn namespace(res: &def::Res) -> Option<Namespace> {
     use rustc::hir::def::DefKind::*;
     match res {
         Res::Def(kind, _) => match kind {
-            Mod | Struct | Union | Enum | Variant | Trait | Existential | TyAlias
-            | ForeignTy | TraitAlias | AssocTy | AssocExistential | TyParam => {
+            Mod | Struct | Union | Enum | Variant | Trait | OpaqueTy | TyAlias
+            | ForeignTy | TraitAlias | AssocTy | AssocOpaqueTy | TyParam => {
                 Some(Namespace::TypeNS)
             }
             Fn | Const | ConstParam | Static | Ctor(..) | Method | AssocConst => {

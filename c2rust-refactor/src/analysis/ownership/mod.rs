@@ -234,7 +234,7 @@ fn is_mut_t(ty: &TyS) -> bool {
     if let TyKind::RawPtr(mut_ty) = ty.sty {
         if mut_ty.mutbl == Mutability::MutMutable {
             if let TyKind::Param(param_ty) = mut_ty.ty.sty {
-                return param_ty.name.as_str().get() == "T";
+                return param_ty.name.as_str() == "T";
             }
         }
     }

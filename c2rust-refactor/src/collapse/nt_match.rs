@@ -186,7 +186,7 @@ fn check_nonterminal<T>(old: &T, new: &T, cx: &mut Ctxt) -> bool
 where
     T: GetSpan + AsNonterminal,
 {
-    let empty_ctxt = old.get_span().ctxt() == SyntaxContext::empty();
+    let empty_ctxt = old.get_span().ctxt() == SyntaxContext::root();
     if empty_ctxt {
         cx.record(old.get_span(), new.as_nonterminal());
     }

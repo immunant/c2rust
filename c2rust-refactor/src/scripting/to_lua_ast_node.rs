@@ -40,7 +40,7 @@ where
         | ExprKind::ForLoop(_, expr, _, _)
         | ExprKind::Match(expr, _)
         | ExprKind::Closure(_, _, _, _, expr, _)
-        | ExprKind::Await(_, expr)
+        | ExprKind::Await(expr)
         | ExprKind::Field(expr, _)
         | ExprKind::AddrOf(_, expr)
         | ExprKind::Repeat(expr, _)
@@ -274,7 +274,7 @@ impl UserData for LuaAstNode<P<Item>> {
             Ok(None)
         });
 
-        methods.add_method("set_args", |_lua_ctx, this, args: Vec<LuaAstNode<Arg>>| {
+        methods.add_method("set_args", |_lua_ctx, this, args: Vec<LuaAstNode<Param>>| {
             if let ItemKind::Fn(decl, ..) = &mut this.borrow_mut().node {
                 decl.inputs = args.iter().map(|a| a.borrow().clone()).collect();
             }
@@ -419,7 +419,7 @@ impl ToLuaExt for NodeId {
 
 impl ToLuaExt for Ident {
     fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
-        self.as_str().get().to_lua(lua)
+        self.as_str().to_lua(lua)
     }
 }
 
@@ -550,7 +550,7 @@ impl UserData for LuaAstNode<P<Expr>> {
 
         methods.add_method("get_method_name", |lua_ctx, this, ()| {
             if let ExprKind::MethodCall(path_seg, ..) = &this.borrow().node {
-                return path_seg.ident.as_str().get().to_lua(lua_ctx).map(|s| Some(s))
+                return path_seg.ident.as_str().to_lua(lua_ctx).map(|s| Some(s))
             }
 
             Ok(None)
@@ -1318,13 +1318,13 @@ impl UserData for LuaAstNode<P<FnDecl>> {
     }
 }
 
-/// Arg AST node handle
+/// Param AST node handle
 //
 // This object is NOT thread-safe. Do not use an object of this class from a
 // thread that did not acquire it.
-// @type ArgAstNode
-unsafe impl Send for LuaAstNode<Arg> {}
-impl UserData for LuaAstNode<Arg> {
+// @type ParamAstNode
+unsafe impl Send for LuaAstNode<Param> {}
+impl UserData for LuaAstNode<Param> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_id", |lua_ctx, this, ()| {
             this.borrow().id.to_lua(lua_ctx)
@@ -1519,6 +1519,7 @@ fn add_item_lifetime(item_kind: &mut ItemKind, lt_name: &str) {
         attrs: Default::default(),
         bounds: Vec::new(),
         kind: GenericParamKind::Lifetime,
+        is_placeholder: false,
     };
 
     if let ItemKind::Struct(_, generics)

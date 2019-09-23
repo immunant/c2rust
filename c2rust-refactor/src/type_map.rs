@@ -157,7 +157,7 @@ where
             }
 
             ExprKind::Closure(_, _, _, ref decl, _, _) => {
-                let def_id = self.hir_map.local_def_id(e.id);
+                let def_id = self.hir_map.local_def_id_from_node_id(e.id);
                 if let Some(sig) = self.source.closure_sig(def_id) {
                     self.record_fn_decl(sig, decl);
                 }
@@ -200,7 +200,7 @@ where
     }
 
     fn visit_item(&mut self, i: &'ast Item) {
-        let def_id = self.hir_map.local_def_id(i.id);
+        let def_id = self.hir_map.local_def_id_from_node_id(i.id);
         match i.node {
             ItemKind::Static(ref ast_ty, _, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
@@ -220,7 +220,7 @@ where
                 }
             }
 
-            ItemKind::Ty(ref ast_ty, _) => {
+            ItemKind::TyAlias(ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
@@ -240,7 +240,7 @@ where
     }
 
     fn visit_struct_field(&mut self, f: &'ast StructField) {
-        let def_id = self.hir_map.local_def_id(f.id);
+        let def_id = self.hir_map.local_def_id_from_node_id(f.id);
         if let Some(ty) = self.source.def_type(def_id) {
             self.record_ty(ty, &f.ty);
         }
@@ -249,7 +249,7 @@ where
     }
 
     fn visit_impl_item(&mut self, i: &'ast ImplItem) {
-        let def_id = self.hir_map.local_def_id(i.id);
+        let def_id = self.hir_map.local_def_id_from_node_id(i.id);
         match i.node {
             ImplItemKind::Const(ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
@@ -263,7 +263,7 @@ where
                 }
             }
 
-            ImplItemKind::Type(ref ast_ty) => {
+            ImplItemKind::TyAlias(ref ast_ty) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
@@ -276,7 +276,7 @@ where
     }
 
     fn visit_trait_item(&mut self, i: &'ast TraitItem) {
-        let def_id = self.hir_map.local_def_id(i.id);
+        let def_id = self.hir_map.local_def_id_from_node_id(i.id);
         match i.node {
             TraitItemKind::Const(ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
@@ -305,7 +305,7 @@ where
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {
-        let def_id = self.hir_map.local_def_id(i.id);
+        let def_id = self.hir_map.local_def_id_from_node_id(i.id);
         match i.node {
             ForeignItemKind::Fn(ref decl, _) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {

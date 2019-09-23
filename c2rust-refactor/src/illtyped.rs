@@ -209,25 +209,18 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 // TODO: do something clever with tr + fl
                 illtyped |= self.ensure(cond, tcx.mk_bool());
             }
-            ExprKind::IfLet(pats, expr, _tr, _fl) => {
-                if let Some(pat_ty) = self.cx.opt_node_type(pats[0].id) {
+            ExprKind::Let(pat, expr) => {
+                if let Some(pat_ty) = self.cx.opt_node_type(pat.id) {
                     illtyped |= self.ensure(expr, pat_ty);
                 }
-                // TODO: do something clever with tr + fl
-                // TODO: handle discrepancies between different pattern tys
             }
             ExprKind::While(cond, _body, _opt_label) => {
                 illtyped |= self.ensure(cond, tcx.mk_bool());
             }
-            ExprKind::WhileLet(pats, expr, _body, _opt_label) => {
-                if let Some(pat_ty) = self.cx.opt_node_type(pats[0].id) {
-                    illtyped |= self.ensure(expr, pat_ty);
-                }
-            }
             ExprKind::Match(expr, arms) => {
                 if let Some(pat_ty) = arms
                     .get(0)
-                    .and_then(|arm| self.cx.opt_node_type(arm.pats[0].id))
+                    .and_then(|arm| self.cx.opt_node_type(arm.pat.id))
                 {
                     illtyped |= self.ensure(expr, pat_ty);
                 }
@@ -277,7 +270,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     info!("STATIC: expected ty {:?}, expr {:?}", expected_ty, expr);
 
                     let tcx = self.cx.ty_ctxt();
-                    let node_id = tcx.hir().as_local_node_id(did).unwrap();
+                    let node_id = tcx.hir().as_local_hir_id(did).unwrap();
                     match tcx.hir().get(node_id) {
                         hir::Node::Item(item) => match item.node {
                             hir::ItemKind::Static(ref t, ..) => info!("  - ty hir = {:?}", t),

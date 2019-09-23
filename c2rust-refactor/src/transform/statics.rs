@@ -119,7 +119,7 @@ impl Transform for CollectToStruct {
         let mut init_mcx = MatchCtxt::new(st, cx);
         init_mcx.set_type("__x", BindingType::Ident);
         init_mcx.bindings.add(
-            "__s", Ident::with_empty_ctxt((&self.instance_name as &str).into_symbol()));
+            "__s", Ident::with_dummy_span((&self.instance_name as &str).into_symbol()));
 
         mut_visit_match_with(init_mcx, ident_pat, krate, |orig, mcx| {
             let static_id = match old_statics.get(&mcx.bindings.get::<_, Ident>("__x").unwrap().name) {

@@ -281,6 +281,7 @@ name = "c2rust-refactor"
 version = "0.12.0"
 dependencies = [
  "c2rust-ast-builder 0.11.0",
+ "c2rust-ast-printer 0.11.0",
  "c2rust-macros 0.11.0",
  "cargo 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",

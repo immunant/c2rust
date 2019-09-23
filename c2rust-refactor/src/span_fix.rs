@@ -53,7 +53,7 @@ impl FixFormat {
             return false;
         }
 
-        if e.span.ctxt() == SyntaxContext::empty() {
+        if e.span.ctxt() == SyntaxContext::root() {
             return false;
         }
 
@@ -64,7 +64,7 @@ impl FixFormat {
 impl MutVisitor for FixFormat {
     fn visit_expr(&mut self, e: &mut P<Expr>) {
         if self.in_format
-            && e.span.ctxt() == SyntaxContext::empty()
+            && e.span.ctxt() == SyntaxContext::root()
             && matches!([e.node] ExprKind::AddrOf(..))
         {
             trace!("EXITING format! at {:?}", e);

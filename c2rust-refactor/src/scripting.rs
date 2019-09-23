@@ -115,7 +115,7 @@ fn lua_serialize_marks<'lua>(
         let list: Option<LuaTable> = tbl.get(node_id.as_usize())?;
         let list = list.unwrap_or(lua_ctx.create_table()?);
 
-        list.set(list.len()? + 1, sym.as_str().get())?;
+        list.set(list.len()? + 1, &*sym.as_str())?;
         tbl.set(node_id.as_usize(), list)?;
     }
 

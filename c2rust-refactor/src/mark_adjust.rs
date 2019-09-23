@@ -98,7 +98,7 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
                 });
             }
 
-            PatKind::TupleStruct(_, _, _) => {
+            PatKind::TupleStruct(_, _) => {
                 expect!([hir.node] hir::PatKind::TupleStruct(ref hp, _, _) => {
                     info!("looking at PatTupleStruct {:?}", x);
                     self.handle_qpath(x.id, hp);

@@ -31,12 +31,11 @@ use std::sync::Arc;
 use syntax::ast;
 use syntax::ast::DUMMY_NODE_ID;
 use syntax::ast::{
-    Arg, Block, BlockCheckMode, Expr, ForeignItem, ImplItem, Item, ItemKind, NodeId, Pat, Stmt, Ty,
-    UnsafeSource,
+    Block, BlockCheckMode, Expr, ForeignItem, ImplItem, Item, ItemKind, NodeId, Param, Pat, Stmt,
+    Ty, UnsafeSource,
 };
 use syntax::ext::base::NamedSyntaxExtension;
 use syntax::ext::hygiene::SyntaxContext;
-use syntax::feature_gate::AttributeType;
 use syntax::parse::parser::Parser;
 use syntax::parse::token::{self, TokenKind};
 use syntax::parse::{self, PResult};
@@ -45,7 +44,7 @@ use syntax::source_map::SourceMap;
 use syntax::source_map::{FileLoader, RealFileLoader};
 use syntax::symbol::{kw, Symbol};
 use syntax::tokenstream::TokenTree;
-use syntax_pos::{FileName, Span};
+use syntax_pos::{FileName, Span, DUMMY_SP};
 use syntax_pos::edition::Edition;
 
 use crate::ast_manip::remove_paren;
@@ -334,14 +333,12 @@ struct Queries {
     parse: Query<ast::Crate>,
     crate_name: Query<String>,
     register_plugins: Query<(ast::Crate, PluginInfo)>,
-    expansion: Query<(ast::Crate, Rc<Option<RefCell<BoxedResolver>>>)>,
+    expansion: Query<(ast::Crate, Steal<Rc<RefCell<BoxedResolver>>>)>,
     dep_graph: Query<DepGraph>,
     lower_to_hir: Query<(Steal<hir_map::Forest>, ExpansionResult)>,
     prepare_outputs: Query<OutputFilenames>,
-    codegen_channel: Query<(
-        Steal<mpsc::Sender<Box<dyn Any + Send>>>,
-        Steal<mpsc::Receiver<Box<dyn Any + Send>>>,
-    )>,
+    codegen_channel: Query<(Steal<mpsc::Sender<Box<dyn Any + Send>>>,
+                            Steal<mpsc::Receiver<Box<dyn Any + Send>>>)>,
     global_ctxt: Query<BoxedGlobalCtxt>,
     ongoing_codegen: Query<Box<dyn Any>>,
     link: Query<()>,
@@ -363,7 +360,6 @@ impl<T> Default for Query<T> {
 #[allow(dead_code)]
 struct PluginInfo {
     syntax_exts: Vec<NamedSyntaxExtension>,
-    attributes: Vec<(String, AttributeType)>,
 }
 
 struct ExpansionResult {
@@ -646,7 +642,7 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
     }
 }
 
-fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
+fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Param> {
     // `parse_arg` is private, so we make do with `parse_attribute`,
     // `parse_pat`, & `parse_ty`.
     let mut attrs: Vec<ast::Attribute> = Vec::new();
@@ -656,16 +652,18 @@ fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
     let pat = p.parse_pat(None)?;
     p.expect(&TokenKind::Colon)?;
     let ty = p.parse_ty()?;
-    Ok(Arg {
+    Ok(Param {
         attrs: attrs.into(),
         pat,
         ty,
         id: DUMMY_NODE_ID,
+        span: DUMMY_SP,
+        is_placeholder: false,
     })
 }
 
 #[cfg_attr(feature = "profile", flame)]
-pub fn parse_arg(sess: &Session, src: &str) -> Arg {
+pub fn parse_arg(sess: &Session, src: &str) -> Param {
     let mut p = make_parser(sess, src);
     match parse_arg_inner(&mut p) {
         Ok(mut arg) => {
@@ -734,5 +732,5 @@ where
 /// to the `SourceMap` on every call.
 pub fn make_span_for_text(cm: &SourceMap, s: &str) -> Span {
     let fm = cm.new_source_file(FileName::anon_source_code(s), s.to_string());
-    Span::new(fm.start_pos, fm.end_pos, SyntaxContext::empty())
+    Span::new(fm.start_pos, fm.end_pos, SyntaxContext::root())
 }

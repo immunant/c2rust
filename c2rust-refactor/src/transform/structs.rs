@@ -151,7 +151,7 @@ pub struct Rename(pub String);
 
 impl Transform for Rename {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let new_ident = Ident::with_empty_ctxt((&self.0 as &str).into_symbol());
+        let new_ident = Ident::with_dummy_span((&self.0 as &str).into_symbol());
         let mut target_def_id = None;
 
         // Find the struct definition and rename it.

@@ -39,7 +39,7 @@ where
             }
 
             hir::PatKind::TupleStruct(ref qpath, _, _) => {
-                unpack!([&mut p.node] PatKind::TupleStruct(path, _fields, _dotdot_pos));
+                unpack!([&mut p.node] PatKind::TupleStruct(path, _fields));
                 let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(
                     new_qself.is_none(),

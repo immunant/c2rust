@@ -221,7 +221,7 @@ impl FileIO for RealFileIO {
         // the json instead.
         let rw = rewrite::TextRewrite {
             old_span: DUMMY_SP,
-            new_span: Span::new(sf.start_pos, sf.end_pos, SyntaxContext::empty()),
+            new_span: Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root()),
             rewrites: rws.to_owned(),
             nodes: nodes.to_owned(),
             adjust: rewrite::TextAdjust::None,

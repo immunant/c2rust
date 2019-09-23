@@ -166,7 +166,7 @@ impl Transform for LinkIncompleteTypes {
                 ItemKind::Struct(..) => true,
                 ItemKind::Union(..) => true,
                 ItemKind::Enum(..) => true,
-                ItemKind::Ty(..) => true,
+                ItemKind::TyAlias(..) => true,
                 _ => false,
             };
 

@@ -74,19 +74,19 @@ fn do_annotate(st: &CommandState,
 
     impl<'lty, 'a, 'tcx> AnnotateFolder<'a, 'tcx> {
         fn static_attr_for(&self, id: NodeId) -> Option<Attribute> {
-            self.hir_map.opt_local_def_id(id)
+            self.hir_map.opt_local_def_id_from_node_id(id)
                 .and_then(|def_id| self.ana.statics.get(&def_id))
                 .and_then(|&ty| build_static_attr(ty))
         }
 
         fn constraints_attr_for(&self, id: NodeId) -> Option<Attribute> {
-            self.hir_map.opt_local_def_id(id)
+            self.hir_map.opt_local_def_id_from_node_id(id)
                 .and_then(|def_id| self.ana.funcs.get(&def_id))
                 .map(|fr| build_constraints_attr(&fr.cset))
         }
 
         fn push_mono_attrs_for(&self, id: NodeId, dest: &mut Vec<Attribute>) {
-            if let Some((def_id, (fr, vr))) = self.hir_map.opt_local_def_id(id)
+            if let Some((def_id, (fr, vr))) = self.hir_map.opt_local_def_id_from_node_id(id)
                     .map(|def_id| (def_id, self.ana.fn_results(def_id))) {
                 if fr.num_sig_vars == 0 {
                     return;
@@ -154,9 +154,9 @@ fn do_annotate(st: &CommandState,
             mut_visit::noop_flat_map_impl_item(i, self)
         }
 
-        fn visit_struct_field(&mut self, sf: &mut StructField) {
+        fn flat_map_struct_field(&mut self, mut sf: StructField) -> SmallVec<[StructField; 1]> {
             if !self.st.marked(sf.id, self.label) {
-                return mut_visit::noop_visit_struct_field(sf, self);
+                return mut_visit::noop_flat_map_struct_field(sf, self);
             }
 
             self.clean_attrs(&mut sf.attrs);
@@ -164,7 +164,7 @@ fn do_annotate(st: &CommandState,
                 sf.attrs.push(attr);
             }
 
-            mut_visit::noop_visit_struct_field(sf, self)
+            mut_visit::noop_flat_map_struct_field(sf, self)
         }
     }
 
@@ -331,7 +331,7 @@ fn do_split_variants(st: &CommandState,
             }
             debug!("looking at {:?}", fl.ident);
 
-            let def_id = match_or!([cx.hir_map().opt_local_def_id(fl.id)]
+            let def_id = match_or!([cx.hir_map().opt_local_def_id_from_node_id(fl.id)]
                                    Some(x) => x; return smallvec![fl]);
             if !ana.variants.contains_key(&def_id) {
                 return smallvec![fl];

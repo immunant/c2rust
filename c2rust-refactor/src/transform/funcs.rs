@@ -486,7 +486,7 @@ impl Transform for WrapExtern {
                     let wrapper_args = f.decl.inputs.iter()
                         .zip(arg_names.iter())
                         .map(|(old, name)| {
-                            Arg {
+                            Param {
                                 pat: mk().ident_pat(name.clone()),
                                 ..old.clone()
                             }

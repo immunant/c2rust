@@ -52,7 +52,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(
         Str => mk().ident_ty("str"),
         Array(ty, len) => mk().array_ty(
             reflect_tcx_ty(tcx, ty),
-            mk().lit_expr(mk().int_lit(len.unwrap_usize(tcx) as u128, "usize")),
+            mk().lit_expr(mk().int_lit(len.eval_usize(tcx, ty::ParamEnv::empty()) as u128, "usize")),
         ),
         Slice(ty) => mk().slice_ty(reflect_tcx_ty(tcx, ty)),
         RawPtr(mty) => mk()
@@ -226,9 +226,9 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
             // panic if the def cannot be generic. This is a list of
             // DefKinds that can have generic type params.
             Some(DefKind::Struct) | Some(DefKind::Union) | Some(DefKind::Enum)
-                | Some(DefKind::Variant) | Some(DefKind::Trait) | Some(DefKind::Existential)
+                | Some(DefKind::Variant) | Some(DefKind::Trait) | Some(DefKind::OpaqueTy)
                 | Some(DefKind::TyAlias) | Some(DefKind::ForeignTy) | Some(DefKind::TraitAlias)
-                | Some(DefKind::AssocTy) | Some(DefKind::AssocExistential)
+                | Some(DefKind::AssocTy) | Some(DefKind::AssocOpaqueTy)
                 | Some(DefKind::TyParam) | Some(DefKind::Fn) | Some(DefKind::Method)
                 | Some(DefKind::Ctor(..)) => {
                     let gen = tcx.generics_of(id);
@@ -300,6 +300,7 @@ pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
         | Node::TraitRef(_)
         | Node::Pat(_)
         | Node::Arm(_)
+        | Node::Param(_)
         | Node::Block(_)
         | Node::Lifetime(_)
         | Node::Visibility(_)

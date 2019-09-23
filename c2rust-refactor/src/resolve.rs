@@ -10,9 +10,9 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>
     use rustc::hir::ItemKind::*;
 
     for &iid in &m.item_ids {
-        let node = tcx.hir().get_by_hir_id(iid.id);
+        let node = tcx.hir().get(iid.id);
         let item = expect!([node] Node::Item(i) => i);
-        let item_did = tcx.hir().local_def_id_from_hir_id(item.hir_id);
+        let item_did = tcx.hir().local_def_id(item.hir_id);
 
         match item.node {
             ForeignMod(ref fm) => {
@@ -47,7 +47,7 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>
 
 fn push_hir_foreign_mod_children(tcx: TyCtxt, fm: &ForeignMod, children: &mut Vec<(Symbol, Res)>) {
     for fi in &fm.items {
-        let did = tcx.hir().local_def_id_from_hir_id(fi.hir_id);
+        let did = tcx.hir().local_def_id(fi.hir_id);
         if let Some(def) = tcx.def_kind(did) {
             children.push((fi.ident.name, Res::Def(def, did)));
         }

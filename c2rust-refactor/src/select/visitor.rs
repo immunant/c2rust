@@ -33,9 +33,9 @@ impl<'ast, 'a, 'tcx> ChildMatchVisitor<'a, 'tcx> {
         self.in_old = was_in_old;
     }
 
-    fn walk_args(&mut self, x: &'ast [Arg]) {
+    fn walk_args(&mut self, x: &'ast [Param]) {
         for arg in x {
-            if self.in_old && self.matches(AnyNode::Arg(arg)) {
+            if self.in_old && self.matches(AnyNode::Param(arg)) {
                 self.new.insert(arg.id);
             }
 
@@ -183,9 +183,9 @@ impl<'ast, 'a, 'tcx> DescMatchVisitor<'a, 'tcx> {
         }
     }
 
-    fn walk_args(&mut self, x: &'ast [Arg]) {
+    fn walk_args(&mut self, x: &'ast [Param]) {
         for arg in x {
-            if self.in_old && self.matches(AnyNode::Arg(arg)) {
+            if self.in_old && self.matches(AnyNode::Param(arg)) {
                 self.new.insert(arg.id);
             }
 
@@ -318,9 +318,9 @@ impl<'ast, 'a, 'tcx> FilterVisitor<'a, 'tcx> {
         filter::matches_filter(self.st, self.cx, node, self.filt)
     }
 
-    fn walk_args(&mut self, x: &'ast [Arg]) {
+    fn walk_args(&mut self, x: &'ast [Param]) {
         for arg in x {
-            if self.old.contains(&arg.id) && self.matches(AnyNode::Arg(arg)) {
+            if self.old.contains(&arg.id) && self.matches(AnyNode::Param(arg)) {
                 self.new.insert(arg.id);
             }
         }
@@ -398,7 +398,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
 
     fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
         for arg in &fd.inputs {
-            if self.old.contains(&arg.id) && self.matches(AnyNode::Arg(arg)) {
+            if self.old.contains(&arg.id) && self.matches(AnyNode::Param(arg)) {
                 self.new.insert(arg.id);
             }
         }

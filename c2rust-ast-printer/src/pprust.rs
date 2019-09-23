@@ -410,11 +410,11 @@ pub fn item_to_string(i: &ast::Item) -> String {
     to_string(|s| s.print_item(i))
 }
 
-fn impl_item_to_string(i: &ast::ImplItem) -> String {
+pub fn impl_item_to_string(i: &ast::ImplItem) -> String {
     to_string(|s| s.print_impl_item(i))
 }
 
-fn trait_item_to_string(i: &ast::TraitItem) -> String {
+pub fn trait_item_to_string(i: &ast::TraitItem) -> String {
     to_string(|s| s.print_trait_item(i))
 }
 
@@ -434,7 +434,7 @@ pub fn vis_to_string(v: &ast::Visibility) -> String {
     to_string(|s| s.print_visibility(v))
 }
 
-fn block_to_string(blk: &ast::Block) -> String {
+pub fn block_to_string(blk: &ast::Block) -> String {
     to_string(|s| {
         // Containing cbox, will be closed by `print_block` at `}`.
         s.cbox(INDENT_UNIT);
@@ -456,15 +456,15 @@ pub fn attribute_to_string(attr: &ast::Attribute) -> String {
     to_string(|s| s.print_attribute(attr))
 }
 
-// pub fn param_to_string(arg: &ast::Param) -> String {
-//     to_string(|s| s.print_param(arg, false))
-// }
+pub fn param_to_string(arg: &ast::Param) -> String {
+    to_string(|s| s.print_param(arg, false))
+}
 
-fn foreign_item_to_string(arg: &ast::ForeignItem) -> String {
+pub fn foreign_item_to_string(arg: &ast::ForeignItem) -> String {
     to_string(|s| s.print_foreign_item(arg))
 }
 
-fn visibility_qualified(vis: &ast::Visibility, s: &str) -> String {
+pub fn visibility_qualified(vis: &ast::Visibility, s: &str) -> String {
     format!("{}{}", to_string(|s| s.print_visibility(vis)), s)
 }
 

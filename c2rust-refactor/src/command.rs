@@ -12,6 +12,7 @@ use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::mem;
+use std::ops::Deref;
 use std::sync::Arc;
 use syntax::ast::{Crate, NodeId, CRATE_NODE_ID};
 use syntax::ast::{Expr, Item, Pat, Stmt, Ty};
@@ -105,12 +106,10 @@ fn parse_extras(compiler: &interface::Compiler) -> Vec<Comment> {
     let mut comments = vec![];
     for file in compiler.source_map().files().iter() {
         if let Some(src) = &file.src {
-            let mut reader = src.as_bytes();
-
             let mut new_comments = gather_comments(
                 &compiler.session().parse_sess,
                 file.name.clone(),
-                &mut reader,
+                src.deref().clone(),
             );
 
             // gather_comments_and_literals starts positions at 0 each time, so
@@ -358,8 +357,8 @@ impl RefactorState {
             Phase::Phase1 => {}
             Phase::Phase2 | Phase::Phase3 => {
                 if let Ok(expansion) = self.compiler.expansion() {
-                    if let Ok(resolver) = Lrc::try_unwrap(expansion.take().1) {
-                        resolver.map(|x| x.into_inner().complete());
+                    if let Ok(resolver) = Lrc::try_unwrap(expansion.take().1.steal()) {
+                        resolver.into_inner().complete();
                     } else {
                         panic!("Could not drop resolver");
                     }

@@ -87,17 +87,17 @@ impl TryMatch for Expr {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
-                    &mac.node.tts,
+                    &mac.tts,
                     |p| p.parse_expr().map(|p| p.into_inner()),
                     target,
                 ),
-                "def" => mcx.do_def_expr(&mac.node.tts, target),
+                "def" => mcx.do_def_expr(&mac.tts, target),
                 "typed" => mcx.do_typed(
-                    &mac.node.tts,
+                    &mac.tts,
                     |p| p.parse_expr().map(|p| p.into_inner()),
                     target,
                 ),
-                "cast" => mcx.do_cast(&mac.node.tts, |p| p.parse_expr(), target),
+                "cast" => mcx.do_cast(&mac.tts, |p| p.parse_expr(), target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
         }
@@ -116,12 +116,12 @@ impl TryMatch for Pat {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
-                    &mac.node.tts,
+                    &mac.tts,
                     |p| p.parse_pat(None).map(|p| p.into_inner()),
                     target,
                 ),
                 "typed" => mcx.do_typed(
-                    &mac.node.tts,
+                    &mac.tts,
                     |p| p.parse_pat(None).map(|p| p.into_inner()),
                     target,
                 ),
@@ -143,11 +143,11 @@ impl TryMatch for Ty {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
-                    &mac.node.tts,
+                    &mac.tts,
                     |p| p.parse_ty().map(|p| p.into_inner()),
                     target,
                 ),
-                "def" => mcx.do_def_ty(&mac.node.tts, target),
+                "def" => mcx.do_def_ty(&mac.tts, target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
         }

@@ -105,7 +105,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
         let hir_id = self.hir_map().opt_node_to_hir_id(id)?;
         let parent_node = self.hir_map().get_parent_item(hir_id);
-        let parent = self.hir_map().opt_local_def_id_from_hir_id(parent_node)?;
+        let parent = self.hir_map().opt_local_def_id(parent_node)?;
         if !self.ty_ctxt().has_typeck_tables(parent) {
             return None;
         }
@@ -124,7 +124,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn opt_adjusted_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
         let hir_id = self.hir_map().node_to_hir_id(id);
         let parent_node = self.hir_map().get_parent_item(hir_id);
-        let parent = self.hir_map().opt_local_def_id_from_hir_id(parent_node)?;
+        let parent = self.hir_map().opt_local_def_id(parent_node)?;
         if !self.ty_ctxt().has_typeck_tables(parent) {
             return None;
         }
@@ -157,9 +157,14 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     /// Obtain the `DefId` of a definition node, such as a `fn` item.
     pub fn node_def_id(&self, id: NodeId) -> DefId {
         match self.hir_map().find(id) {
-            Some(Node::Binding(_)) => self.node_def_id(self.hir_map().get_parent_node(id)),
-            Some(Node::Item(item)) => self.hir_map().local_def_id_from_hir_id(item.hir_id),
-            _ => self.hir_map().local_def_id(id),
+            Some(Node::Binding(_)) => {
+                let hir_id = self.hir_map().node_to_hir_id(id);
+                self.node_def_id(self.hir_map().hir_to_node_id(
+                    self.hir_map().get_parent_node(hir_id)
+                ))
+            }
+            Some(Node::Item(item)) => self.hir_map().local_def_id(item.hir_id),
+            _ => self.hir_map().local_def_id_from_node_id(id),
         }
     }
 
@@ -425,7 +430,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Attempt to resolve a `Use` item id to the `hir::Path` of the imported
     /// item. The given item _must_ be a `Use`.
-    pub fn resolve_use_id(&self, id: NodeId) -> &P<hir::Path> {
+    pub fn resolve_use_id(&self, id: NodeId) -> &hir::ptr::P<hir::Path> {
         let hir_node = self
             .hir_map()
             .find(id)
@@ -444,7 +449,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         use syntax::ast::ItemKind::*;
         match (&item1.node, &item2.node) {
             // * Assure that these two items are in fact of the same type, just to be safe.
-            (Ty(..), Ty(..)) => true,
+            (TyAlias(..), TyAlias(..)) => true,
 
             (Const(..), Const(..)) => true,
 
@@ -460,11 +465,10 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                 let variants = enum1.variants.iter().zip(enum2.variants.iter());
                 let mut fields = variants.flat_map(|(variant1, variant2)| {
                     variant1
-                        .node
                         .data
                         .fields()
                         .iter()
-                        .zip(variant2.node.data.fields().iter())
+                        .zip(variant2.data.fields().iter())
                 });
                 fields.all(|(field1, field2)| {
                     match (self.opt_node_type(field1.id), self.opt_node_type(field2.id)) {
@@ -569,16 +573,15 @@ impl<'a, 'hir> HirMap<'a, 'hir> {
     /// Retrieves the `Node` corresponding to `id`, returning `None` if cannot be found.
     pub fn find(&self, id: NodeId) -> Option<Node<'hir>> {
         self.opt_node_to_hir_id(id)
-            .and_then(|hir_id| self.map.find_by_hir_id(hir_id))
+            .and_then(|hir_id| self.map.find(hir_id))
     }
 
     /// Check if the node is an argument. An argument is a local variable whose
     /// immediate parent is an item or a closure.
     pub fn is_argument(&self, id: NodeId) -> bool {
-        if self.opt_node_to_hir_id(id).is_none() {
-            false
-        } else {
-            self.map.is_argument(id)
+        match self.opt_node_to_hir_id(id) {
+            Some(id) => self.map.is_argument(id),
+            None => false,
         }
     }
 }

@@ -207,8 +207,8 @@ fn record_qualifier_rewrite(old_span: Span, new_span: Span, mut rcx: RewriteCtxt
 }
 
 fn rewrite_arg_list_with_tokens(
-    old: &[Arg],
-    new: &[Arg],
+    old: &[Param],
+    new: &[Param],
     args_tokens: TokenStream,
     args_span: Span,
     rcx: RewriteCtxtRef,

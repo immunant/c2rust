@@ -1,8 +1,9 @@
 //! `fold_output_exprs` function, for visiting return-value expressions.
 use smallvec::SmallVec;
 use syntax::ast::*;
-use syntax::mut_visit::{self, visit_opt, visit_vec, MutVisitor};
+use syntax::mut_visit::{self, visit_opt, MutVisitor};
 use syntax::ptr::P;
+use syntax::util::map_in_place::MapInPlace;
 
 use crate::ast_manip::MutVisit;
 use crate::util::Lone;
@@ -85,11 +86,9 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
                 visit_opt(rest, |rest| self.visit_expr(rest));
             }
 
-            ExprKind::IfLet(pats, cond, then, rest) => {
-                visit_vec(pats, |pat| self.visit_pat(pat));
-                self.with_trailing(false, |f| f.visit_expr(cond));
-                self.visit_block(then);
-                visit_opt(rest, |rest| self.visit_expr(rest));
+            ExprKind::Let(pat, expr) => {
+                self.visit_pat(pat);
+                self.with_trailing(false, |f| f.visit_expr(expr));
             }
 
             // TODO: Handle `loop` + `break`-with-expr.  If the `loop` is a trailing
@@ -98,7 +97,7 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
             //ExprKind::Loop(body) => { TODO },
             ExprKind::Match(target, arms) => {
                 self.with_trailing(false, |f| f.visit_expr(target));
-                visit_vec(arms, |arm| self.visit_arm(arm));
+                arms.flat_map_in_place(|arm| self.flat_map_arm(arm));
             }
 
             ExprKind::Block(b, _lbl) => {

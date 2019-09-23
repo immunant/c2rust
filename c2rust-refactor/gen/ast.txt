@@ -79,8 +79,8 @@ struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, generics, 
 enum ImplItemKind {
     Const(ty, init),
     Method(sig, body),
-    Type(ty),
-    Existential(bounds),
+    TyAlias(ty),
+    OpaqueTy(bounds),
     Macro(mac),
 }
 
@@ -88,7 +88,7 @@ struct TraitRef { path, ref_id }
 
 struct EnumDef { variants }
 #[extend_span]
-struct Variant_ { ident, #[match=ignore] attrs, id, data, disr_expr }
+struct Variant { ident, #[match=ignore] attrs, id, data, disr_expr, span, is_placeholder }
 enum VariantData {
     Struct(fields, id),
     Tuple(fields, id),
@@ -96,7 +96,7 @@ enum VariantData {
 }
 
 #[extend_span]
-struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs }
+struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs, is_placeholder }
 
 struct MethodSig { header, decl }
 
@@ -113,7 +113,7 @@ enum ForeignItemKind {
 
 struct Generics { params, where_clause, span }
 #[extend_span]
-struct GenericParam { id, ident, attrs, bounds, kind }
+struct GenericParam { id, ident, attrs, bounds, kind, is_placeholder }
 enum GenericParamKind {
     Lifetime,
     Type { default },
@@ -185,7 +185,7 @@ struct PolyTraitRef { trait_ref, span, bound_generic_params }
 struct FnDecl { inputs, output, c_variadic }
 struct FnHeader { unsafety, asyncness, constness, abi }
 #[rewrite_print]
-struct Arg { attrs, ty, pat, id }
+struct Param { attrs, ty, pat, id, span, is_placeholder }
 enum FunctionRetTy {
     Default(sp),
     Ty(ty),
@@ -273,9 +273,9 @@ enum UnOp {
 #[match=eq]
 flag BinOpKind;
 #[extend_span]
-struct Field { ident, expr, span, is_shorthand, attrs }
+struct Field { id, ident, expr, span, is_shorthand, attrs, is_placeholder }
 #[extend_span]
-struct Arm { attrs, pats, guard, body, span }
+struct Arm { id, attrs, pat, guard, body, span, is_placeholder }
 #[match=custom] #[rewrite_print_recover] #[nonterminal]
 struct Block { #[mac_table_seq] stmts, id, rules, span }
 
@@ -286,20 +286,22 @@ enum PatKind {
     Wild,
     Ident(mode, id, pat),
     Struct(path, fields, dotdot),
-    TupleStruct(path, fields, dotdot),
+    TupleStruct(path, fields),
+    Or(paths),
     Path(qself, path),
-    Tuple(pats, dotdot),
+    Tuple(pats),
     Box(pat),
     Ref(pat, mutbl),
     Lit(expr),
     Range(lo, hi, end),
-    Slice(start, mid, end),
+    Slice(pats),
+    Rest,
     Paren(pat),
     #[mac_table_record] Mac(mac),
 }
 
 #[extend_span]
-struct FieldPat { ident, pat, is_shorthand, attrs }
+struct FieldPat { id, ident, pat, is_shorthand, attrs, span, is_placeholder }
 
 #[match=custom]
 struct Lit { token, node, span }
@@ -338,7 +340,6 @@ enum RangeSyntax {
 }
 flag BindingMode;
 flag CaptureBy;
-flag AwaitOrigin;
 enum BlockCheckMode {
     Default,
     Unsafe(source),
@@ -380,7 +381,7 @@ enum AssocTyConstraintKind {
 }
 
 
-struct Mac_ { path, delim, tts }
+struct Mac { path, delim, tts, span, prior_type_ascription }
 flag MacStmtStyle;
 #[equiv_mode=ignore]
 flag TokenStream;
@@ -389,9 +390,9 @@ struct MacroDef { tokens, legacy }
 
 struct InlineAsm {
 asm, asm_str_style, outputs, inputs, clobbers,
-volatile, alignstack, dialect, ctxt
+volatile, alignstack, dialect
 }
-struct GlobalAsm { asm, ctxt }
+struct GlobalAsm { asm }
 struct InlineAsmOutput { constraint, expr, is_rw, is_indirect }
 
 #[match=custom] struct Label { ident }

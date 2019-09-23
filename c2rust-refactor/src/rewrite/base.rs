@@ -128,7 +128,7 @@ impl SeqItem for Attribute {
     }
 }
 
-impl SeqItem for Arg {
+impl SeqItem for Param {
     fn seq_item_id(&self) -> SeqItemId {
         SeqItemId::Node(self.id)
     }
@@ -439,7 +439,7 @@ pub fn binop_right_prec(op: &BinOp) -> ExprPrec {
 pub fn is_rewritable(sp: Span) -> bool {
     sp != DUMMY_SP &&
     // If it has a non-default SyntaxContext, it was generated as part of a macro expansion.
-    sp.ctxt() == SyntaxContext::empty()
+    sp.ctxt() == SyntaxContext::root()
 }
 
 pub fn describe(sess: &Session, span: Span) -> String {

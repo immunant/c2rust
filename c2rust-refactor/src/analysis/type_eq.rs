@@ -694,11 +694,13 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
             // ExprKind::If was replaced by ExprKind::Match, which needs to be
             // handled here
 
-            ExprKind::While(ref cond, ref body, _) => {
-                self.ltt.unify(self.prim_lty("bool"), self.expr_lty(cond));
-                self.ltt.unify(self.prim_lty("()"), self.block_lty(body));
-                self.ltt.unify(rty, self.prim_lty("()"));
-            }
+            // ExprKind::While was replaced by ExprKind::Loop ( ExprKind::Match
+            // ), which needs to be handled here
+            // ExprKind::While(ref cond, ref body, _) => {
+            //     self.ltt.unify(self.prim_lty("bool"), self.expr_lty(cond));
+            //     self.ltt.unify(self.prim_lty("()"), self.block_lty(body));
+            //     self.ltt.unify(rty, self.prim_lty("()"));
+            // }
 
             ExprKind::Loop(..) => {} // TODO
 
@@ -846,6 +848,8 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
             PatKind::TupleStruct(..) => {} // TODO
 
+            PatKind::Or(..) => {} // TODO
+
             PatKind::Path(..) => {} // TODO
 
             PatKind::Tuple(ref ps, None) => {
@@ -898,7 +902,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         }
 
         let body = self.tcx.hir().body(body_id);
-        let def_id = self.tcx.hir().local_def_id_from_hir_id(id);
+        let def_id = self.tcx.hir().local_def_id(id);
         let sig = self.def_sig(def_id);
         // The results of `def_sig` and `def_lty` are produced by calling `tcx.fn_sig` /
         // `tcx.type_of` and giving the results fresh labels, so they initially have no connection
@@ -910,7 +914,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         // the argument types that appear in the `DefId` signature.
         for (i, ast_ty) in decl.inputs.iter().enumerate() {
             let lty = self.ty_lty(ast_ty);
-            self.ltt.unify(lty, self.pat_lty(&body.arguments[i].pat));
+            self.ltt.unify(lty, self.pat_lty(&body.params[i].pat));
             self.ltt.unify(lty, sig.inputs[i]);
         }
 
@@ -927,13 +931,13 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
     fn visit_struct_field(&mut self, field: &'hir StructField) {
         // Unify the field's type annotation with the definition type.
-        let def_id = self.tcx.hir().local_def_id_from_hir_id(field.hir_id);
+        let def_id = self.tcx.hir().local_def_id(field.hir_id);
         self.ltt.unify(self.ty_lty(&field.ty), self.def_lty(def_id));
         intravisit::walk_struct_field(self, field);
     }
 
     fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
-        let def_id = self.tcx.hir().local_def_id_from_hir_id(i.hir_id);
+        let def_id = self.tcx.hir().local_def_id(i.hir_id);
         match i.node {
             ForeignItemKind::Fn(ref decl, _, _) => {
                 let sig = self.def_sig(def_id);
