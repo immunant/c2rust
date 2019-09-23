@@ -31,7 +31,7 @@ impl<'a, T: Clone> Make<T> for &'a T {
 
 impl<S: IntoSymbol> Make<Ident> for S {
     fn make(self, _mk: &Builder) -> Ident {
-        Ident::with_empty_ctxt(self.into_symbol())
+        Ident::with_dummy_span(self.into_symbol())
     }
 }
 
@@ -940,6 +940,8 @@ impl Builder {
             span: self.span,
             is_shorthand: false,
             attrs: self.attrs.into(),
+            id: self.id,
+            is_placeholder: false,
         }
     }
 
@@ -957,20 +959,22 @@ impl Builder {
         })
     }
 
-    pub fn arm<Pa, E>(self, pats: Vec<Pa>, guard: Option<E>, body: E) -> Arm
+    pub fn arm<Pa, E>(self, pat: Pa, guard: Option<E>, body: E) -> Arm
     where
         E: Make<P<Expr>>,
         Pa: Make<P<Pat>>,
     {
-        let pats = pats.into_iter().map(|pat| pat.make(&self)).collect();
+        let pat = pat.make(&self);
         let guard = guard.map(|g| g.make(&self));
         let body = body.make(&self);
         Arm {
+            id: self.id,
             attrs: self.attrs,
-            pats,
+            pat,
             guard,
             body,
             span: DUMMY_SP,
+            is_placeholder: false,
         }
     }
 
@@ -1215,6 +1219,18 @@ impl Builder {
         P(Pat {
             id: self.id,
             node: PatKind::Ident(BindingMode::ByRef(self.mutbl), name, None),
+            span: self.span,
+        })
+    }
+
+    pub fn or_pat<Pa>(self, pats: Vec<Pa>) -> P<Pat>
+    where
+        Pa: Make<P<Pat>>,
+    {
+        let pats: Vec<P<Pat>> = pats.into_iter().map(|p| p.make(&self)).collect();
+        P(Pat {
+            id: self.id,
+            node: PatKind::Or(pats),
             span: self.span,
         })
     }
@@ -1540,7 +1556,7 @@ impl Builder {
         )
     }
 
-    pub fn fn_decl(self, inputs: Vec<Arg>, output: FunctionRetTy, c_variadic: bool) -> P<FnDecl> {
+    pub fn fn_decl(self, inputs: Vec<Param>, output: FunctionRetTy, c_variadic: bool) -> P<FnDecl> {
         P(FnDecl {
             inputs,
             output,
@@ -1651,15 +1667,14 @@ impl Builder {
         I: Make<Ident>,
     {
         let name = name.make(&self);
-        Spanned {
-            node: Variant_ {
-                ident: name,
-                attrs: self.attrs,
-                id: DUMMY_NODE_ID,
-                data: dat,
-                disr_expr: None,
-            },
+        Variant {
+            ident: name,
+            attrs: self.attrs,
+            id: DUMMY_NODE_ID,
+            data: dat,
+            disr_expr: None,
             span: self.span,
+            is_placeholder: false,
         }
     }
 
@@ -1673,15 +1688,14 @@ impl Builder {
             id: DUMMY_NODE_ID,
             value: d.make(&self),
         });
-        Spanned {
-            node: Variant_ {
-                ident: name,
-                attrs: self.attrs,
-                id: DUMMY_NODE_ID,
-                data: VariantData::Unit(self.id),
-                disr_expr: disc,
-            },
+        Variant {
+            ident: name,
+            attrs: self.attrs,
+            id: DUMMY_NODE_ID,
+            data: VariantData::Unit(self.id),
+            disr_expr: disc,
             span: self.span,
+            is_placeholder: false,
         }
     }
 
@@ -2014,6 +2028,7 @@ impl Builder {
             id: self.id,
             ty: ty,
             attrs: self.attrs,
+            is_placeholder: false,
         }
     }
 
@@ -2029,6 +2044,7 @@ impl Builder {
             id: self.id,
             ty: ty,
             attrs: self.attrs,
+            is_placeholder: false,
         }
     }
 
@@ -2072,30 +2088,31 @@ impl Builder {
         })
     }
 
-    pub fn arg<T, Pt>(self, ty: T, pat: Pt) -> Arg
+    pub fn arg<T, Pt>(self, ty: T, pat: Pt) -> Param
     where
         T: Make<P<Ty>>,
         Pt: Make<P<Pat>>,
     {
         let ty = ty.make(&self);
         let pat = pat.make(&self);
-        Arg {
+        Param {
             attrs: ThinVec::new(),
             ty: ty,
             pat: pat,
             id: self.id,
             span: DUMMY_SP,
+            is_placeholder: false,
         }
     }
 
-    pub fn self_arg<S>(self, kind: S) -> Arg
+    pub fn self_arg<S>(self, kind: S) -> Param
     where
         S: Make<SelfKind>,
     {
         let eself = dummy_spanned(kind.make(&self));
         let ident = "self".make(&self);
         let attrs = ThinVec::new();
-        Arg::from_self(attrs, eself, ident)
+        Param::from_self(attrs, eself, ident)
     }
 
     pub fn ty_param<I>(self, ident: I) -> GenericParam
@@ -2109,6 +2126,7 @@ impl Builder {
             id: self.id,
             bounds: vec![],
             kind: GenericParamKind::Type { default: None },
+            is_placeholder: false,
         }
     }
 
@@ -2185,13 +2203,11 @@ impl Builder {
     {
         let path = path.make(&self);
         let tts = tts.make(&self);
-        Spanned {
-            node: Mac_ {
-                path: path,
-                delim: delim,
-                tts: tts,
-                prior_type_ascription: None,
-            },
+        Mac {
+            path: path,
+            delim: delim,
+            tts: tts,
+            prior_type_ascription: None,
             span: self.span,
         }
     }

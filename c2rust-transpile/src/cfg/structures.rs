@@ -94,7 +94,7 @@ pub trait StructuredStatement: Sized {
     /// Make a `match` statement
     fn mk_match(
         cond: Self::E,                    // expression being matched
-        cases: Vec<(Vec<Self::P>, Self)>, // match arms
+        cases: Vec<(Self::P, Self)>, // match arms
     ) -> Self;
 
     /// Make an `if` statement
@@ -131,7 +131,7 @@ pub enum StructuredASTKind<E, P, L, S> {
         Box<StructuredAST<E, P, L, S>>,
     ),
     Goto(L),
-    Match(E, Vec<(Vec<P>, StructuredAST<E, P, L, S>)>),
+    Match(E, Vec<(P, StructuredAST<E, P, L, S>)>),
     If(
         E,
         Box<StructuredAST<E, P, L, S>>,
@@ -167,7 +167,7 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
         dummy_spanned(StructuredASTKind::Goto(to))
     }
 
-    fn mk_match(cond: Self::E, cases: Vec<(Vec<Self::P>, Self)>) -> Self {
+    fn mk_match(cond: Self::E, cases: Vec<(Self::P, Self)>) -> Self {
         dummy_spanned(StructuredASTKind::Match(cond, cases))
     }
 
@@ -296,10 +296,10 @@ fn structured_cfg_help<
                             ref expr,
                             ref cases,
                         } => {
-                            let branched_cases: Vec<(Vec<P<Pat>>, S)> = cases
+                            let branched_cases: Vec<(P<Pat>, S)> = cases
                                 .iter()
-                                .map(|&(ref pats, ref slbl)| Ok((pats.clone(), branch(slbl)?)))
-                                .collect::<Result<Vec<(Vec<P<Pat>>, S)>, TranslationError>>()?;
+                                .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
+                                .collect::<Result<Vec<(P<Pat>, S)>, TranslationError>>()?;
 
                             S::mk_match(expr.clone(), branched_cases)
                         }
@@ -500,11 +500,11 @@ impl StructureState {
 
                 let arms: Vec<Arm> = cases
                     .into_iter()
-                    .map(|(pats, stmts)| -> Arm {
+                    .map(|(pat, stmts)| -> Arm {
                         let (stmts, span) = self.into_stmt(stmts, comment_store);
 
                         let body = mk().block_expr(mk().span(span).block(stmts));
-                        mk().arm(pats, None as Option<P<Expr>>, body)
+                        mk().arm(pat, None as Option<P<Expr>>, body)
                     })
                     .collect();
 
@@ -591,14 +591,14 @@ impl StructureState {
                         };
                         let pat = mk().lit_pat(lbl_expr);
                         let body = mk().block_expr(mk().span(stmts_span).block(stmts));
-                        mk().arm(vec![pat], None as Option<P<Expr>>, body)
+                        mk().arm(pat, None as Option<P<Expr>>, body)
                     })
                     .collect();
 
                 let (then, then_span) = self.into_stmt(*then, comment_store);
 
                 arms.push(mk().arm(
-                    vec![mk().wild_pat()],
+                    mk().wild_pat(),
                     None as Option<P<Expr>>,
                     mk().block_expr(mk().span(then_span).block(then)),
                 ));

@@ -315,7 +315,7 @@ pub enum GenTerminator<Lbl> {
     /// Multi-way branch. The patterns are expected to match the type of the expression.
     Switch {
         expr: P<Expr>,
-        cases: Vec<(Vec<P<Pat>>, Lbl)>, // TODO: support ranges of expressions
+        cases: Vec<(P<Pat>, Lbl)>, // TODO: support ranges of expressions
     },
 }
 
@@ -340,9 +340,9 @@ impl<L: Serialize> Serialize for GenTerminator<L> {
                 ref cases,
             } => {
                 let mut cases_sane: Vec<(String, &L)> = vec![];
-                for &(ref ps, ref l) in cases {
-                    let pats: Vec<String> = ps.iter().map(|x| pprust::pat_to_string(x)).collect();
-                    cases_sane.push((pats.join(" | "), l));
+                for &(ref p, ref l) in cases {
+                    let pat: String = pprust::pat_to_string(p);
+                    cases_sane.push((pat, l));
                 }
 
                 let mut tv = serializer.serialize_struct_variant("Terminator", 3, "Switch", 2)?;
@@ -1847,13 +1847,9 @@ impl CfgBuilder {
                         .pop()
                         .expect("No 'SwitchCases' to pop");
 
-                    let mut cases: Vec<_> = switch_case
-                        .cases
-                        .into_iter()
-                        .map(|(p, lbl)| (vec![p], lbl))
-                        .collect();
+                    let mut cases: Vec<_> = switch_case.cases.clone();
                     cases.push((
-                        vec![mk().wild_pat()],
+                        mk().wild_pat(),
                         switch_case.default.unwrap_or(next_label),
                     ));
 
@@ -2172,13 +2168,10 @@ impl Cfg<Label, StmtOrDecl> {
                 Switch { ref cases, .. } => {
                     let cases: Vec<(String, Label)> = cases
                         .iter()
-                        .map(|&(ref pats, tgt)| -> (String, Label) {
-                            let pats: Vec<String> = pats
-                                .iter()
-                                .map(|p| pprust::pat_to_string(p.deref()))
-                                .collect();
+                        .map(|&(ref pat, tgt)| -> (String, Label) {
+                            let pat: String = pprust::pat_to_string(pat.deref());
 
-                            (pats.join(" | "), tgt)
+                            (pat, tgt)
                         })
                         .collect();
                     cases

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::ops::Index;
 use std::path::{self, PathBuf};
 use std::rc::Rc;
-use std::{char, io};
+use std::char;
 
 use dtoa;
 
@@ -15,7 +15,7 @@ use syntax::ast::*;
 use syntax::parse::lexer::comments::CommentStyle;
 use syntax::parse::token::{self, DelimToken, Nonterminal};
 use syntax::ptr::*;
-use syntax::source_map::{dummy_spanned, FilePathMapping, SourceMap};
+use syntax::source_map::{FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
 use syntax_pos::{FileName, Span, DUMMY_SP};
@@ -26,7 +26,7 @@ use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::traverse::Traversal;
 use c2rust_ast_builder::{mk, Builder, IntoSymbol};
-use c2rust_ast_printer::pprust::{self, PrintState};
+use c2rust_ast_printer::pprust::{self, Comments, PrintState};
 
 use crate::c_ast;
 use crate::c_ast::iterators::{DFExpr, SomeId};
@@ -781,111 +781,61 @@ pub fn translate(
         let pragmas = t.get_pragmas();
         let crates = t.extern_crates.borrow().clone();
 
-        // pass all converted items to the Rust pretty printer
-        let translation = to_string(|s| {
-            print_header(s, &t, t.tcfg.is_binary(main_file.as_path()))?;
+        let mut mod_items: Vec<P<Item>> = Vec::new();
 
-            let mut mod_items: Vec<P<Item>> = Vec::new();
+        // Keep track of new uses we need while building header submodules
+        let mut new_uses = ItemStore::new();
 
-            // Keep track of new uses we need while building header submodules
-            let mut new_uses = ItemStore::new();
-
-            // Header Reorganization: Submodule Item Stores
-            for (file_id, ref mut mod_item_store) in t.items.borrow_mut().iter_mut() {
-                if *file_id != t.main_file {
-                    let mut submodule = make_submodule(
-                        &t.ast_context,
-                        mod_item_store,
-                        *file_id,
-                        &mut new_uses,
-                        &t.mod_names,
-                    );
-                    let comments = t.comment_context.get_remaining_comments(*file_id);
-                    submodule.span = match t
-                        .comment_store
-                        .borrow_mut()
-                        .add_comments(&comments)
-                    {
-                        Some(pos) => submodule.span.with_hi(pos),
-                        None => submodule.span,
-                    };
-                    mod_items.push(submodule);
-                }
+        // Header Reorganization: Submodule Item Stores
+        for (file_id, ref mut mod_item_store) in t.items.borrow_mut().iter_mut() {
+            if *file_id != t.main_file {
+                let mut submodule = make_submodule(
+                    &t.ast_context,
+                    mod_item_store,
+                    *file_id,
+                    &mut new_uses,
+                    &t.mod_names,
+                );
+                let comments = t.comment_context.get_remaining_comments(*file_id);
+                submodule.span = match t
+                    .comment_store
+                    .borrow_mut()
+                    .add_comments(&comments)
+                {
+                    Some(pos) => submodule.span.with_hi(pos),
+                    None => submodule.span,
+                };
+                mod_items.push(submodule);
             }
+        }
 
-            // Main file item store
-            let (items, foreign_items, uses) = t.items.borrow_mut()[&t.main_file].drain();
+        // Main file item store
+        let (items, foreign_items, uses) = t.items.borrow_mut()[&t.main_file].drain();
 
-            // Re-order comments
-            let mut traverser = t.comment_store.into_inner().into_comment_traverser();
+        // Re-order comments
+        // FIXME: We shouldn't have to replace with an empty comment store here,
+        // that's bad design
+        let mut traverser = t.comment_store.replace(CommentStore::new()).into_comment_traverser();
 
-            // Add a comment mapping span to each node that should have a
-            // comment printed before it. The pretty printer picks up these
-            // spans and uses them to decide when to emit comments.
-            mod_items = mod_items
-                .into_iter()
-                .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
-                .collect();
-            let foreign_items: Vec<ForeignItem> = foreign_items
-                .into_iter()
-                .map(|fi| traverser.traverse_foreign_item(fi))
-                .collect();
-            let items: Vec<P<Item>> = items
-                .into_iter()
-                .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
-                .collect();
+        // Add a comment mapping span to each node that should have a
+        // comment printed before it. The pretty printer picks up these
+        // spans and uses them to decide when to emit comments.
+        mod_items = mod_items
+            .into_iter()
+            .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
+            .collect();
+        let foreign_items: Vec<ForeignItem> = foreign_items
+            .into_iter()
+            .map(|fi| traverser.traverse_foreign_item(fi))
+            .collect();
+        let items: Vec<P<Item>> = items
+            .into_iter()
+            .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
+            .collect();
 
-            let mut reordered_comment_store = traverser.into_comment_store();
-            let remaining_comments = t.comment_context.get_remaining_comments(t.main_file);
-            reordered_comment_store.add_comments(&remaining_comments);
-            s.comments()
-                .get_or_insert(vec![])
-                .extend(reordered_comment_store.into_comments());
-
-            for mod_item in mod_items {
-                s.print_item(&*mod_item)?;
-            }
-
-            // This could have been merged in with items below; however, it's more idiomatic to have
-            // imports near the top of the file than randomly scattered about. Also, there is probably
-            // no reason to have comments associated with imports so it doesn't need to go through
-            // the above comment store process
-            for use_item in uses.into_items() {
-                s.print_item(&use_item)?;
-            }
-
-            // Print new uses from submodules
-            let (_, _, new_uses) = new_uses.drain();
-            for use_item in new_uses.into_items() {
-                s.print_item(&use_item)?;
-            }
-
-            if !foreign_items.is_empty() {
-                s.print_item(&mk().abi("C").foreign_items(foreign_items))?
-            }
-
-            // Add the items accumulated
-            for x in items {
-                s.print_item(&*x)?;
-            }
-
-            s.print_remaining_comments()?;
-
-            Ok(())
-        });
-        (translation, pragmas, crates)
-    })
-}
-
-/// Same as pprust::to_string, but initializes the printer with an empty
-/// SourceMap, which is necessary to get the printer to print trailing comments
-/// on the same line.
-fn to_string<F>(f: F) -> String where
-    F: FnOnce(&mut pprust::State<'_>) -> io::Result<()>,
-{
-    let mut wr = Vec::new();
-    {
-        let ann = pprust::NoAnn;
+        let mut reordered_comment_store = traverser.into_comment_store();
+        let remaining_comments = t.comment_context.get_remaining_comments(t.main_file);
+        reordered_comment_store.add_comments(&remaining_comments);
 
         // We need a dummy SourceMap with a dummy file so that pprust can try to
         // look up source line numbers for Spans. This is needed to be able to
@@ -895,17 +845,43 @@ fn to_string<F>(f: F) -> String where
         let sm = SourceMap::new(FilePathMapping::empty());
         sm.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
-        let mut printer = pprust::State::new(
-            &sm,
-            Box::new(&mut wr),
-            &ann,
-            None,
-            false,
-        );
-        f(&mut printer).unwrap();
-        printer.s.eof().unwrap();
-    }
-    String::from_utf8(wr).unwrap()
+        let comments = Comments::new(&sm, reordered_comment_store.into_comments());
+
+        // pass all converted items to the Rust pretty printer
+        let translation = pprust::to_string_with_comments(comments, |s| {
+            print_header(s, &t, t.tcfg.is_binary(main_file.as_path()));
+
+            for mod_item in mod_items {
+                s.print_item(&*mod_item);
+            }
+
+            // This could have been merged in with items below; however, it's more idiomatic to have
+            // imports near the top of the file than randomly scattered about. Also, there is probably
+            // no reason to have comments associated with imports so it doesn't need to go through
+            // the above comment store process
+            for use_item in uses.into_items() {
+                s.print_item(&use_item);
+            }
+
+            // Print new uses from submodules
+            let (_, _, new_uses) = new_uses.drain();
+            for use_item in new_uses.into_items() {
+                s.print_item(&use_item);
+            }
+
+            if !foreign_items.is_empty() {
+                s.print_item(&mk().abi("C").foreign_items(foreign_items))
+            }
+
+            // Add the items accumulated
+            for x in items {
+                s.print_item(&*x);
+            }
+
+            s.print_remaining_comments();
+        });
+        (translation, pragmas, crates)
+    })
 }
 
 fn make_submodule(
@@ -957,10 +933,10 @@ fn make_submodule(
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
-fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) -> io::Result<()> {
+fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
     if t.tcfg.emit_modules && !is_binary {
         for crate_name in t.extern_crates.borrow().iter() {
-            s.print_item(&mk().use_simple_item(vec![*crate_name], None as Option<Ident>))?;
+            s.print_item(&mk().use_simple_item(vec![*crate_name], None as Option<Ident>));
         }
     } else {
         let pragmas = t.get_pragmas();
@@ -972,7 +948,7 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) -> io::
                 .collect::<Vec<_>>();
             let item = mk().meta_item(vec![key], MetaItemKind::List(value_attr_vec));
             for attr in mk().meta_item_attr(AttrStyle::Inner, item).as_inner_attrs() {
-                s.print_attribute(&attr)?;
+                s.print_attribute(&attr);
             }
         }
 
@@ -993,17 +969,17 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) -> io::
                 .meta_item_attr(AttrStyle::Inner, plugin_item)
                 .as_inner_attrs()
             {
-                s.print_attribute(&attr)?;
+                s.print_attribute(&attr);
             }
         }
 
         if t.tcfg.emit_no_std {
-            s.print_attribute(&mk().single_attr("no_std").as_inner_attrs()[0])?;
+            s.print_attribute(&mk().single_attr("no_std").as_inner_attrs()[0]);
         }
 
         // Add `extern crate X;` to the top of the file
         for crate_name in t.extern_crates.borrow().iter() {
-            s.print_item(&mk().extern_crate_item(*crate_name, None))?;
+            s.print_item(&mk().extern_crate_item(*crate_name, None));
         }
 
         if t.tcfg.cross_checks {
@@ -1011,26 +987,25 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) -> io::
                 &mk()
                     .single_attr("macro_use")
                     .extern_crate_item("c2rust_xcheck_derive", None),
-            )?;
+            );
             s.print_item(
                 &mk()
                     .single_attr("macro_use")
                     .extern_crate_item("c2rust_xcheck_runtime", None),
-            )?;
+            );
             // When cross-checking, always use the system allocator
             let sys_alloc_path = vec!["", "std", "alloc", "System"];
             s.print_item(&mk().single_attr("global_allocator").static_item(
                 "C2RUST_ALLOC",
                 mk().path_ty(sys_alloc_path.clone()),
                 mk().path_expr(sys_alloc_path),
-            ))?;
+            ));
         }
 
         if is_binary {
-            s.print_item(&mk().use_glob_item(vec![&t.tcfg.crate_name()]))?;
+            s.print_item(&mk().use_glob_item(vec![&t.tcfg.crate_name()]));
         }
     }
-    Ok(())
 }
 
 /// Convert a boolean expression to a c_int
@@ -1044,7 +1019,8 @@ fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
         let loc_str = format!("{}:{}", src_loc.line, src_loc.column);
         attrs.push(attr::mk_attr_outer(attr::mk_name_value_item_str(
             Ident::from_str("src_loc"),
-            dummy_spanned(loc_str.into_symbol()),
+            loc_str.into_symbol(),
+            DUMMY_SP,
         )));
     }
 }
@@ -2031,7 +2007,7 @@ impl<'c> Translation<'c> {
         self.function_context.borrow_mut().enter_new(name);
 
         self.with_scope(|| {
-            let mut args: Vec<Arg> = vec![];
+            let mut args: Vec<Param> = vec![];
 
             // handle regular (non-variadic) arguments
             for &(decl_id, ref var, typ) in arguments {

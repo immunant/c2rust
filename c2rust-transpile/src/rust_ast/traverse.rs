@@ -123,6 +123,7 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
         ExprKind::Unary(op, arg) => ExprKind::Unary(op, arg.traverse(walk)),
         ExprKind::Cast(arg, t) => ExprKind::Cast(arg.traverse(walk), t),
         ExprKind::Type(arg, t) => ExprKind::Type(arg.traverse(walk), t),
+        ExprKind::Let(pat, e) => ExprKind::Let(pat, e.traverse(walk)),
         ExprKind::If(cond, thn, els) => {
             ExprKind::If(cond.traverse(walk), thn.traverse(walk), els.traverse(walk))
         }

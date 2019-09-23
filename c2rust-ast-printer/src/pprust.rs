@@ -59,14 +59,25 @@ pub struct Comments<'a> {
 impl<'a> Comments<'a> {
     pub fn new(
         cm: &'a SourceMap,
+        comments: Vec<comments::Comment>,
+    ) -> Comments<'a> {
+        Comments {
+            cm,
+            comments,
+            current: 0,
+        }
+    }
+
+    pub fn parse(
+        cm: &'a SourceMap,
         sess: &ParseSess,
         filename: FileName,
         input: String,
     ) -> Comments<'a> {
-        // let comments = comments::gather_comments(sess, filename, input);
+        let comments = comments::gather_comments(sess, filename, input);
         Comments {
             cm,
-            comments: vec![],
+            comments,
             current: 0,
         }
     }
@@ -94,6 +105,15 @@ impl<'a> Comments<'a> {
     }
 }
 
+impl<'a> Extend<comments::Comment> for Comments<'a> {
+    fn extend<I>(&mut self, iter: I)
+        where I: IntoIterator<Item = comments::Comment>
+    {
+        self.comments.extend(iter);
+    }
+}
+    
+
 pub struct State<'a> {
     pub s: pp::Printer,
     comments: Option<Comments<'a>>,
@@ -114,7 +134,7 @@ pub fn print_crate<'a>(cm: &'a SourceMap,
                        is_expanded: bool) -> String {
     let mut s = State {
         s: pp::mk_printer(),
-        comments: Some(Comments::new(cm, sess, filename, input)),
+        comments: Some(Comments::parse(cm, sess, filename, input)),
         ann,
         is_expanded,
     };
@@ -159,6 +179,20 @@ pub fn to_string<F>(f: F) -> String where
     f(&mut printer);
     printer.s.eof()
 }
+
+pub fn to_string_with_comments<'a, F>(comments: Comments<'a>, f: F) -> String where
+    F: FnOnce(&mut State<'_>)
+{
+    let mut printer = State {
+        s: pp::mk_printer(),
+        comments: Some(comments),
+        ann: &NoAnn,
+        is_expanded: false
+    };
+    f(&mut printer);
+    printer.s.eof()
+}
+
 
 // This makes comma-separated lists look slightly nicer,
 // and also addresses a specific regression described in issue #63896.
@@ -904,7 +938,7 @@ impl<'a> State<'a> {
         self.s.word("*/")
     }
 
-    crate fn commasep_cmnt<T, F, G>(&mut self,
+    pub fn commasep_cmnt<T, F, G>(&mut self,
                                   b: Breaks,
                                   elts: &[T],
                                   mut op: F,
@@ -929,12 +963,12 @@ impl<'a> State<'a> {
         self.end();
     }
 
-    crate fn commasep_exprs(&mut self, b: Breaks,
+    pub fn commasep_exprs(&mut self, b: Breaks,
                             exprs: &[P<ast::Expr>]) {
         self.commasep_cmnt(b, exprs, |s, e| s.print_expr(e), |e| e.span)
     }
 
-    crate fn print_mod(&mut self, _mod: &ast::Mod,
+    pub fn print_mod(&mut self, _mod: &ast::Mod,
                        attrs: &[ast::Attribute]) {
         self.print_inner_attributes(attrs);
         for item in &_mod.items {
@@ -942,7 +976,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_foreign_mod(&mut self, nmod: &ast::ForeignMod,
+    pub fn print_foreign_mod(&mut self, nmod: &ast::ForeignMod,
                                attrs: &[ast::Attribute]) {
         self.print_inner_attributes(attrs);
         for item in &nmod.items {
@@ -950,14 +984,14 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_opt_lifetime(&mut self, lifetime: &Option<ast::Lifetime>) {
+    pub fn print_opt_lifetime(&mut self, lifetime: &Option<ast::Lifetime>) {
         if let Some(lt) = *lifetime {
             self.print_lifetime(lt);
             self.nbsp();
         }
     }
 
-    crate fn print_generic_arg(&mut self, generic_arg: &GenericArg) {
+    pub fn print_generic_arg(&mut self, generic_arg: &GenericArg) {
         match generic_arg {
             GenericArg::Lifetime(lt) => self.print_lifetime(*lt),
             GenericArg::Type(ty) => self.print_type(ty),
@@ -965,7 +999,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_type(&mut self, ty: &ast::Ty) {
+    pub fn print_type(&mut self, ty: &ast::Ty) {
         self.maybe_print_comment(ty.span.lo());
         self.ibox(0);
         match ty.node {
@@ -1057,7 +1091,7 @@ impl<'a> State<'a> {
         self.end();
     }
 
-    crate fn print_foreign_item(&mut self,
+    pub fn print_foreign_item(&mut self,
                               item: &ast::ForeignItem) {
         self.hardbreak_if_not_bol();
         self.maybe_print_comment(item.span.lo());
@@ -1139,7 +1173,7 @@ impl<'a> State<'a> {
     }
 
     /// Pretty-prints an item.
-    crate fn print_item(&mut self, item: &ast::Item) {
+    pub fn print_item(&mut self, item: &ast::Item) {
         self.hardbreak_if_not_bol();
         self.maybe_print_comment(item.span.lo());
         self.print_outer_attributes(&item.attrs);
@@ -1413,7 +1447,7 @@ impl<'a> State<'a> {
         self.print_trait_ref(&t.trait_ref)
     }
 
-    crate fn print_enum_def(&mut self, enum_definition: &ast::EnumDef,
+    pub fn print_enum_def(&mut self, enum_definition: &ast::EnumDef,
                           generics: &ast::Generics, ident: ast::Ident,
                           span: syntax_pos::Span,
                           visibility: &ast::Visibility) {
@@ -1425,7 +1459,7 @@ impl<'a> State<'a> {
         self.print_variants(&enum_definition.variants, span)
     }
 
-    crate fn print_variants(&mut self,
+    pub fn print_variants(&mut self,
                           variants: &[ast::Variant],
                           span: syntax_pos::Span) {
         self.bopen();
@@ -1442,7 +1476,7 @@ impl<'a> State<'a> {
         self.bclose(span)
     }
 
-    crate fn print_visibility(&mut self, vis: &ast::Visibility) {
+    pub fn print_visibility(&mut self, vis: &ast::Visibility) {
         match vis.node {
             ast::VisibilityKind::Public => self.word_nbsp("pub"),
             ast::VisibilityKind::Crate(sugar) => match sugar {
@@ -1461,13 +1495,13 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_defaultness(&mut self, defaultness: ast::Defaultness) {
+    pub fn print_defaultness(&mut self, defaultness: ast::Defaultness) {
         if let ast::Defaultness::Default = defaultness {
             self.word_nbsp("default");
         }
     }
 
-    crate fn print_struct(&mut self,
+    pub fn print_struct(&mut self,
                         struct_def: &ast::VariantData,
                         generics: &ast::Generics,
                         ident: ast::Ident,
@@ -1519,7 +1553,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_variant(&mut self, v: &ast::Variant) {
+    pub fn print_variant(&mut self, v: &ast::Variant) {
         self.head("");
         let generics = ast::Generics::default();
         self.print_struct(&v.data, &generics, v.ident, v.span, false);
@@ -1533,7 +1567,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_method_sig(&mut self,
+    pub fn print_method_sig(&mut self,
                             ident: ast::Ident,
                             generics: &ast::Generics,
                             m: &ast::MethodSig,
@@ -1546,7 +1580,7 @@ impl<'a> State<'a> {
                       vis)
     }
 
-    crate fn print_trait_item(&mut self, ti: &ast::TraitItem)
+    pub fn print_trait_item(&mut self, ti: &ast::TraitItem)
                             {
         self.ann.pre(self, AnnNode::SubItem(ti.id));
         self.hardbreak_if_not_bol();
@@ -1593,7 +1627,7 @@ impl<'a> State<'a> {
         self.ann.post(self, AnnNode::SubItem(ti.id))
     }
 
-    crate fn print_impl_item(&mut self, ii: &ast::ImplItem) {
+    pub fn print_impl_item(&mut self, ii: &ast::ImplItem) {
         self.ann.pre(self, AnnNode::SubItem(ii.id));
         self.hardbreak_if_not_bol();
         self.maybe_print_comment(ii.span.lo());
@@ -1630,7 +1664,7 @@ impl<'a> State<'a> {
         self.ann.post(self, AnnNode::SubItem(ii.id))
     }
 
-    crate fn print_stmt(&mut self, st: &ast::Stmt) {
+    pub fn print_stmt(&mut self, st: &ast::Stmt) {
         self.maybe_print_comment(st.span.lo());
         match st.node {
             ast::StmtKind::Local(ref loc) => {
@@ -1676,21 +1710,21 @@ impl<'a> State<'a> {
         self.maybe_print_trailing_comment(st.span, None)
     }
 
-    crate fn print_block(&mut self, blk: &ast::Block) {
+    pub fn print_block(&mut self, blk: &ast::Block) {
         self.print_block_with_attrs(blk, &[])
     }
 
-    crate fn print_block_unclosed_indent(&mut self, blk: &ast::Block) {
+    pub fn print_block_unclosed_indent(&mut self, blk: &ast::Block) {
         self.print_block_maybe_unclosed(blk, &[], false)
     }
 
-    crate fn print_block_with_attrs(&mut self,
+    pub fn print_block_with_attrs(&mut self,
                                   blk: &ast::Block,
                                   attrs: &[ast::Attribute]) {
         self.print_block_maybe_unclosed(blk, attrs, true)
     }
 
-    crate fn print_block_maybe_unclosed(&mut self,
+    pub fn print_block_maybe_unclosed(&mut self,
                                       blk: &ast::Block,
                                       attrs: &[ast::Attribute],
                                       close_box: bool) {
@@ -1721,7 +1755,7 @@ impl<'a> State<'a> {
     }
 
     /// Print a `let pat = scrutinee` expression.
-    crate fn print_let(&mut self, pat: &ast::Pat, scrutinee: &ast::Expr) {
+    pub fn print_let(&mut self, pat: &ast::Pat, scrutinee: &ast::Expr) {
         self.s.word("let ");
 
         self.print_pat(pat);
@@ -1766,7 +1800,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_if(&mut self, test: &ast::Expr, blk: &ast::Block,
+    pub fn print_if(&mut self, test: &ast::Expr, blk: &ast::Block,
                     elseopt: Option<&ast::Expr>) {
         self.head("if");
 
@@ -1777,7 +1811,7 @@ impl<'a> State<'a> {
         self.print_else(elseopt)
     }
 
-    crate fn print_mac(&mut self, m: &ast::Mac) {
+    pub fn print_mac(&mut self, m: &ast::Mac) {
         let delim = match m.delim {
             MacDelimiter::Parenthesis => DelimToken::Paren,
             MacDelimiter::Bracket => DelimToken::Bracket,
@@ -1800,13 +1834,13 @@ impl<'a> State<'a> {
         self.pclose()
     }
 
-    crate fn print_expr_maybe_paren(&mut self, expr: &ast::Expr, prec: i8) {
+    pub fn print_expr_maybe_paren(&mut self, expr: &ast::Expr, prec: i8) {
         self.print_expr_cond_paren(expr, expr.precedence().order() < prec)
     }
 
     /// Prints an expr using syntax that's acceptable in a condition position, such as the `cond` in
     /// `if cond { ... }`.
-    crate fn print_expr_as_cond(&mut self, expr: &ast::Expr) {
+    pub fn print_expr_as_cond(&mut self, expr: &ast::Expr) {
         self.print_expr_cond_paren(expr, Self::cond_needs_par(expr))
     }
 
@@ -1989,7 +2023,7 @@ impl<'a> State<'a> {
         self.print_expr_maybe_paren(expr, parser::PREC_PREFIX)
     }
 
-    crate fn print_expr(&mut self, expr: &ast::Expr) {
+    pub fn print_expr(&mut self, expr: &ast::Expr) {
         self.print_expr_outer_attr_style(expr, true)
     }
 
@@ -2318,7 +2352,7 @@ impl<'a> State<'a> {
         self.end();
     }
 
-    crate fn print_local_decl(&mut self, loc: &ast::Local) {
+    pub fn print_local_decl(&mut self, loc: &ast::Local) {
         self.print_pat(&loc.pat);
         if let Some(ref ty) = loc.ty {
             self.word_space(":");
@@ -2326,11 +2360,11 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_usize(&mut self, i: usize) {
+    pub fn print_usize(&mut self, i: usize) {
         self.s.word(i.to_string())
     }
 
-    crate fn print_name(&mut self, name: ast::Name) {
+    pub fn print_name(&mut self, name: ast::Name) {
         self.s.word(name.as_str().to_string());
         self.ann.post(self, AnnNode::Name(&name))
     }
@@ -2358,7 +2392,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_pat(&mut self, pat: &ast::Pat) {
+    pub fn print_pat(&mut self, pat: &ast::Pat) {
         self.maybe_print_comment(pat.span.lo());
         self.ann.pre(self, AnnNode::Pat(pat));
         /* Pat isn't normalized, but the beauty of it
@@ -2529,7 +2563,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_fn(&mut self,
+    pub fn print_fn(&mut self,
                     decl: &ast::FnDecl,
                     header: ast::FnHeader,
                     name: Option<ast::Ident>,
@@ -2546,7 +2580,7 @@ impl<'a> State<'a> {
         self.print_where_clause(&generics.where_clause)
     }
 
-    crate fn print_fn_params_and_ret(&mut self, decl: &ast::FnDecl) {
+    pub fn print_fn_params_and_ret(&mut self, decl: &ast::FnDecl) {
         self.popen();
         self.commasep(Inconsistent, &decl.inputs, |s, param| s.print_param(param, false));
         self.pclose();
@@ -2554,7 +2588,7 @@ impl<'a> State<'a> {
         self.print_fn_output(decl)
     }
 
-    crate fn print_fn_block_params(&mut self, decl: &ast::FnDecl) {
+    pub fn print_fn_block_params(&mut self, decl: &ast::FnDecl) {
         self.s.word("|");
         self.commasep(Inconsistent, &decl.inputs, |s, param| s.print_param(param, true));
         self.s.word("|");
@@ -2574,27 +2608,27 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_movability(&mut self, movability: ast::Movability) {
+    pub fn print_movability(&mut self, movability: ast::Movability) {
         match movability {
             ast::Movability::Static => self.word_space("static"),
             ast::Movability::Movable => {},
         }
     }
 
-    crate fn print_asyncness(&mut self, asyncness: ast::IsAsync) {
+    pub fn print_asyncness(&mut self, asyncness: ast::IsAsync) {
         if asyncness.is_async() {
             self.word_nbsp("async");
         }
     }
 
-    crate fn print_capture_clause(&mut self, capture_clause: ast::CaptureBy) {
+    pub fn print_capture_clause(&mut self, capture_clause: ast::CaptureBy) {
         match capture_clause {
             ast::CaptureBy::Value => self.word_space("move"),
             ast::CaptureBy::Ref => {},
         }
     }
 
-    crate fn print_type_bounds(&mut self, prefix: &'static str, bounds: &[ast::GenericBound]) {
+    pub fn print_type_bounds(&mut self, prefix: &'static str, bounds: &[ast::GenericBound]) {
         if !bounds.is_empty() {
             self.s.word(prefix);
             let mut first = true;
@@ -2621,11 +2655,11 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_lifetime(&mut self, lifetime: ast::Lifetime) {
+    pub fn print_lifetime(&mut self, lifetime: ast::Lifetime) {
         self.print_name(lifetime.ident.name)
     }
 
-    crate fn print_lifetime_bounds(
+    pub fn print_lifetime_bounds(
         &mut self, lifetime: ast::Lifetime, bounds: &ast::GenericBounds) {
         self.print_lifetime(lifetime);
         if !bounds.is_empty() {
@@ -2642,7 +2676,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_generic_params(&mut self, generic_params: &[ast::GenericParam]) {
+    pub fn print_generic_params(&mut self, generic_params: &[ast::GenericParam]) {
         if generic_params.is_empty() {
             return;
         }
@@ -2680,7 +2714,7 @@ impl<'a> State<'a> {
         self.s.word(">");
     }
 
-    crate fn print_where_clause(&mut self, where_clause: &ast::WhereClause) {
+    pub fn print_where_clause(&mut self, where_clause: &ast::WhereClause) {
         if where_clause.predicates.is_empty() {
             return;
         }
@@ -2721,7 +2755,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_use_tree(&mut self, tree: &ast::UseTree) {
+    pub fn print_use_tree(&mut self, tree: &ast::UseTree) {
         match tree.kind {
             ast::UseTreeKind::Simple(rename, ..) => {
                 self.print_path(&tree.prefix, false, 0);
@@ -2753,19 +2787,19 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_mutability(&mut self, mutbl: ast::Mutability) {
+    pub fn print_mutability(&mut self, mutbl: ast::Mutability) {
         match mutbl {
             ast::Mutability::Mutable => self.word_nbsp("mut"),
             ast::Mutability::Immutable => {},
         }
     }
 
-    crate fn print_mt(&mut self, mt: &ast::MutTy) {
+    pub fn print_mt(&mut self, mt: &ast::MutTy) {
         self.print_mutability(mt.mutbl);
         self.print_type(&mt.ty)
     }
 
-    crate fn print_param(&mut self, input: &ast::Param, is_closure: bool) {
+    pub fn print_param(&mut self, input: &ast::Param, is_closure: bool) {
         self.ibox(INDENT_UNIT);
 
         self.print_outer_attributes_inline(&input.attrs);
@@ -2793,7 +2827,7 @@ impl<'a> State<'a> {
         self.end();
     }
 
-    crate fn print_fn_output(&mut self, decl: &ast::FnDecl) {
+    pub fn print_fn_output(&mut self, decl: &ast::FnDecl) {
         if let ast::FunctionRetTy::Default(..) = decl.output {
             return;
         }
@@ -2814,7 +2848,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_ty_fn(&mut self,
+    pub fn print_ty_fn(&mut self,
                        abi: abi::Abi,
                        unsafety: ast::Unsafety,
                        decl: &ast::FnDecl,
@@ -2842,7 +2876,7 @@ impl<'a> State<'a> {
         self.end();
     }
 
-    crate fn maybe_print_trailing_comment(&mut self, span: syntax_pos::Span,
+    pub fn maybe_print_trailing_comment(&mut self, span: syntax_pos::Span,
                                         next_pos: Option<BytePos>)
     {
         if let Some(cmnts) = self.comments() {
@@ -2852,7 +2886,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_remaining_comments(&mut self) {
+    pub fn print_remaining_comments(&mut self) {
         // If there aren't any remaining comments, then we need to manually
         // make sure there is a line break at the end.
         if self.next_comment().is_none() {
@@ -2863,7 +2897,7 @@ impl<'a> State<'a> {
         }
     }
 
-    crate fn print_fn_header_info(&mut self,
+    pub fn print_fn_header_info(&mut self,
                                 header: ast::FnHeader,
                                 vis: &ast::Visibility) {
         self.s.word(visibility_qualified(vis, ""));
@@ -2884,14 +2918,14 @@ impl<'a> State<'a> {
         self.s.word("fn")
     }
 
-    crate fn print_unsafety(&mut self, s: ast::Unsafety) {
+    pub fn print_unsafety(&mut self, s: ast::Unsafety) {
         match s {
             ast::Unsafety::Normal => {},
             ast::Unsafety::Unsafe => self.word_nbsp("unsafe"),
         }
     }
 
-    crate fn print_is_auto(&mut self, s: ast::IsAuto) {
+    pub fn print_is_auto(&mut self, s: ast::IsAuto) {
         match s {
             ast::IsAuto::Yes => self.word_nbsp("auto"),
             ast::IsAuto::No => {}
