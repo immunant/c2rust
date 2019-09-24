@@ -339,12 +339,10 @@ where
             while j < new_seq.len() && is_macro_generated(new_seq[j].get_span()) {
                 j += 1;
             }
-            assert!(
-                j < new_seq.len(),
-                "impossible: ran out of items in expanded sequence"
-            );
-            CollectMacros::collect_macros(old, &new_seq[j], cx);
-            j += 1;
+            if j < new_seq.len() {
+                CollectMacros::collect_macros(old, &new_seq[j], cx);
+                j += 1;
+            }
         }
     }
 
