@@ -259,6 +259,7 @@ impl FromStr for NodeKind {
             "pat" => NodeKind::Pat,
             "ty" => NodeKind::Ty,
             "param" => NodeKind::Param,
+            "arg" => NodeKind::Param,  // arg is an alias for param
             "field" => NodeKind::Field,
 
             _ => return Err(()),
