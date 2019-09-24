@@ -26,7 +26,7 @@ extern "C" {
 pub unsafe extern "C" fn ten_mul(mut acc: &mut f64, digit: i32, r: Option<&f64>) -> i32 {
     *acc *= 10i32 as f64;
     *acc += digit as f64;
-    *acc += **r.as_ref().unwrap();
+    *acc += *r.unwrap();
     return 0i32;
 }
 
@@ -353,4 +353,49 @@ unsafe extern "C" fn chacha_keysetup2(
         | (constants[0 + 1] as u32_0) << 8i32
         | (constants[0 + 2] as u32_0) << 16i32
         | (constants[0 + 3] as u32_0) << 24i32;
+}
+
+pub type size_t = libc::c_ulong;
+pub type wchar_t = libc::c_int;
+
+#[no_mangle]
+pub unsafe extern "C" fn wmemcmp(
+    mut s1: Option<&[wchar_t]>,
+    mut s2: Option<&[wchar_t]>,
+    mut n: size_t,
+) -> libc::c_int {
+    let mut i: size_t = 0;
+    i = 0i32 as size_t;
+    while i < n {
+        if s1.unwrap()[0] != s2.unwrap()[0] {
+            return if s1.unwrap()[0] > s2.unwrap()[0] {
+                1i32
+            } else {
+                -1i32
+            };
+        }
+        s1 = Some(&s1.unwrap()[1..]);
+        s2 = Some(&s2.unwrap()[1..]);
+        i = i.wrapping_add(1)
+    }
+    return 0i32;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wmemcmp2(
+    mut s1: &[wchar_t],
+    mut s2: &[wchar_t],
+    mut n: size_t,
+) -> libc::c_int {
+    let mut i: size_t = 0;
+    i = 0i32 as size_t;
+    while i < n {
+        if s1[0] != s2[0] {
+            return if s1[0] > s2[0] { 1i32 } else { -1i32 };
+        }
+        s1 = &s1[1..];
+        s2 = &s2[1..];
+        i = i.wrapping_add(1)
+    }
+    return 0i32;
 }

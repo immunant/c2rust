@@ -312,3 +312,36 @@ unsafe extern "C" fn chacha_keysetup2(mut x: *mut chacha_ctx,
             (*constants.offset(0).offset(2) as u32_0) << 16i32 |
             (*constants.offset(0).offset(3) as u32_0) << 24i32;
 }
+
+pub type size_t = libc::c_ulong;
+pub type wchar_t = libc::c_int;
+
+#[no_mangle]
+pub unsafe extern "C" fn wmemcmp(#[slice] mut s1: *const wchar_t,
+                                 #[slice] mut s2: *const wchar_t, mut n: size_t)
+ -> libc::c_int {
+    let mut i: size_t = 0;
+    i = 0i32 as size_t;
+    while i < n {
+        if *s1 != *s2 { return if *s1 > *s2 { 1i32 } else { -1i32 } }
+        s1 = s1.offset(1isize);
+        s2 = s2.offset(1isize);
+        i = i.wrapping_add(1)
+    }
+    return 0i32;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wmemcmp2(#[nonnull] #[slice] mut s1: *const wchar_t,
+                                  #[nonnull] #[slice] mut s2: *const wchar_t, mut n: size_t)
+ -> libc::c_int {
+    let mut i: size_t = 0;
+    i = 0i32 as size_t;
+    while i < n {
+        if *s1 != *s2 { return if *s1 > *s2 { 1i32 } else { -1i32 } }
+        s1 = s1.offset(1isize);
+        s2 = s2.offset(1isize);
+        i = i.wrapping_add(1)
+    }
+    return 0i32;
+}

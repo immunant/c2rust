@@ -549,21 +549,42 @@ function Visitor:rewrite_deref_expr(expr)
     elseif unwrapped_expr:get_kind() == "Path" then
         local cfg = self:get_expr_cfg(unwrapped_expr)
 
-        -- If we're using an option, we must unwrap
-        -- Must get inner reference to mutate (or map/match)
-        if cfg and cfg:is_opt_any() then
-            local as_x = nil
+        if not cfg then return end
 
-            if cfg.extra_data.mutability == "immut" then
-                as_x = "as_ref"
-            else
-                as_x = "as_mut"
+        -- If we're using an option, we must unwrap
+        -- Must get inner reference to mutate
+        if cfg:is_opt_any() then
+            local as_x = nil
+            local is_mut = cfg.extra_data.mutability == "mut"
+
+            -- as_ref is not required for immutable refs since &T is Copy
+            if is_mut then
+                unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
             end
 
-            unwrapped_expr:to_method_call(as_x, {unwrapped_expr})
             expr:to_method_call("unwrap", {unwrapped_expr})
-            expr:to_unary("Deref", expr)
-            expr:to_unary("Deref", expr)
+
+            -- Slices need to be indexed at 0 to equate to a ptr deref
+            -- *a -> a.unwrap()[0] but thin refs can just be deref'd.
+            -- *a -> *a.unwrap()
+            if cfg:is_slice_any() then
+                local zero_expr = self.tctx:int_lit_expr(0, nil)
+                expr:to_index(expr, zero_expr)
+            else
+                -- For immut refs we skip the superflous as_ref call,
+                -- so we can also skip one of the corresponding derefs
+                if is_mut then
+                    expr:to_unary("Deref", expr)
+                end
+
+                expr:to_unary("Deref", expr)
+            end
+        -- Slices need to be indexed at 0 to equate to a ptr deref
+        -- *a -> a.unwrap()[0] but thin refs can just be deref'd.
+        -- *a -> *a.unwrap()
+        elseif cfg:is_slice_any() then
+            local zero_expr = self.tctx:int_lit_expr(0, nil)
+            expr:to_index(unwrapped_expr, zero_expr)
         end
     end
 end
