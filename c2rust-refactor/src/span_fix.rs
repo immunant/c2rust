@@ -12,7 +12,6 @@ use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::source_map::{Span, DUMMY_SP};
-use syntax_pos::hygiene::SyntaxContext;
 
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::MutVisit;
@@ -53,7 +52,7 @@ impl FixFormat {
             return false;
         }
 
-        if e.span.ctxt() == SyntaxContext::root() {
+        if !e.span.from_expansion() {
             return false;
         }
 
@@ -64,7 +63,7 @@ impl FixFormat {
 impl MutVisitor for FixFormat {
     fn visit_expr(&mut self, e: &mut P<Expr>) {
         if self.in_format
-            && e.span.ctxt() == SyntaxContext::root()
+            && !e.span.from_expansion()
             && matches!([e.node] ExprKind::AddrOf(..))
         {
             trace!("EXITING format! at {:?}", e);
