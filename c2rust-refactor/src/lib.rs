@@ -353,7 +353,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<Vec<String>> {
 
 #[cfg_attr(feature = "profile", flame)]
 pub fn lib_main(opts: Options) -> interface::Result<()> {
-    rustc_driver::init_rustc_env_logger();
+    env_logger::init();
     rustc_driver::install_ice_hook();
     info!("Begin refactoring");
 
