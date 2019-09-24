@@ -351,18 +351,12 @@ impl RefactorState {
 
     #[cfg_attr(feature = "profile", flame)]
     fn rebuild_session(&mut self) {
-        // Ensure we've dropped the resolver if we're in phase 2 or 3 since the
-        // resolver keeps a copy of the session Rc
+        // Ensure we've take the expansion result if we're in phase 2 or 3 since
+        // we need later queries to rebuild it.
         match self.cs.phase {
             Phase::Phase1 => {}
             Phase::Phase2 | Phase::Phase3 => {
-                if let Ok(expansion) = self.compiler.expansion() {
-                    if let Ok(resolver) = Lrc::try_unwrap(expansion.take().1.steal()) {
-                        resolver.into_inner().complete();
-                    } else {
-                        panic!("Could not drop resolver");
-                    }
-                }
+                let _ = self.compiler.expansion().unwrap().take();
             }
         }
 
