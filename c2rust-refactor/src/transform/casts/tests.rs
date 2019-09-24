@@ -1,4 +1,4 @@
-use super::{DoubleCastAction, SimpleTy, check_double_cast};
+use super::{check_double_cast, DoubleCastAction, SimpleTy};
 use quickcheck::{quickcheck, Arbitrary, Gen};
 use rand::Rng;
 use z3::ast::{Ast, BV};
@@ -27,7 +27,7 @@ impl Arbitrary for SimpleTy {
             11 => SimpleTy::Float64,
             12 => SimpleTy::Pointer,
             // TODO: generate some Other's
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -38,19 +38,14 @@ fn ty_bit_width(ty: SimpleTy, pw: PointerWidth) -> u32 {
         SimpleTy::Size(_) | SimpleTy::Pointer => pw.0,
         SimpleTy::Float32 => 32,
         SimpleTy::Float64 => 64,
-        SimpleTy::Other => unreachable!() // FIXME
+        SimpleTy::Other => unreachable!(), // FIXME
     };
     bw as u32
 }
 
-fn cast_bv<'bv>(
-    bv: BV<'bv>,
-    from_ty: SimpleTy,
-    to_ty: SimpleTy,
-    pw: PointerWidth
-) -> BV<'bv> {
+fn cast_bv<'bv>(bv: BV<'bv>, from_ty: SimpleTy, to_ty: SimpleTy, pw: PointerWidth) -> BV<'bv> {
     let from_width = ty_bit_width(from_ty, pw);
-    let   to_width = ty_bit_width(to_ty, pw);
+    let to_width = ty_bit_width(to_ty, pw);
     if to_width == from_width {
         bv
     } else if to_width < from_width {

@@ -1,13 +1,13 @@
-use rustc::ty::{self, TyKind, ParamEnv};
+use rustc::ty::{self, ParamEnv, TyKind};
 use syntax::ast::*;
 use syntax::ptr::P;
 
-use c2rust_ast_builder::mk;
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
-use crate::matcher::{MatchCtxt, mut_visit_match_with, replace_expr};
+use crate::matcher::{mut_visit_match_with, replace_expr, MatchCtxt};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
+use c2rust_ast_builder::mk;
 
 #[cfg(test)]
 mod tests;
@@ -56,7 +56,7 @@ impl Transform for RemoveRedundantCasts {
                             // Rewrite to `$ie as $ot`, removing the inner cast
                             *ast = mk().cast_expr(ie, ot);
                         }
-                        DoubleCastAction::KeepBoth => { }
+                        DoubleCastAction::KeepBoth => {}
                     }
                 }
 
@@ -67,8 +67,10 @@ impl Transform for RemoveRedundantCasts {
                         let new_expr = mk().lit_expr(nl);
                         let ast_const = eval_const(ast.clone(), cx);
                         let new_const = eval_const(new_expr.clone(), cx);
-                        debug!("checking {:?} == {:?}: {:?} == {:?}",
-                               *ast, new_expr, ast_const, new_const);
+                        debug!(
+                            "checking {:?} == {:?}: {:?} == {:?}",
+                            *ast, new_expr, ast_const, new_const
+                        );
                         if new_const.is_some() && new_const == ast_const {
                             *ast = new_expr;
                             return;
@@ -84,8 +86,10 @@ impl Transform for RemoveRedundantCasts {
                             let new_expr = mk().unary_expr(UnOp::Neg, mk().lit_expr(nl));
                             let ast_const = eval_const(ast.clone(), cx);
                             let new_const = eval_const(new_expr.clone(), cx);
-                            debug!("checking {:?} == {:?}: {:?} == {:?}",
-                                   *ast, new_expr, ast_const, new_const);
+                            debug!(
+                                "checking {:?} == {:?}: {:?} == {:?}",
+                                *ast, new_expr, ast_const, new_const
+                            );
                             if new_const.is_some() && new_const == ast_const {
                                 *ast = new_expr;
                                 return;
@@ -93,7 +97,7 @@ impl Transform for RemoveRedundantCasts {
                         }
                     }
                     _ => {}
-                }
+                },
 
                 // TODO: unary/binaryop op + cast, e.g., `(x as i32 + y as i32) as i8`
                 _ => {}
@@ -113,11 +117,7 @@ enum DoubleCastAction {
 }
 
 // Check and decide what to do for a double-cast, e.g., `$e as $ty1 as $ty2`
-fn check_double_cast<'tcx>(
-    e_ty: SimpleTy,
-    t1_ty: SimpleTy,
-    t2_ty: SimpleTy,
-) -> DoubleCastAction {
+fn check_double_cast<'tcx>(e_ty: SimpleTy, t1_ty: SimpleTy, t2_ty: SimpleTy) -> DoubleCastAction {
     // WARNING!!! This set of operations is verified for soundness
     // using Z3. If you make any changes, please re-run the verifier using
     // `cargo test --package c2rust-refactor`
@@ -127,17 +127,22 @@ fn check_double_cast<'tcx>(
     match (inner_cast, outer_cast) {
         // 2 consecutive sign flips or extend-truncate
         // back to the same original type
-        (SameWidth, SameWidth) |
-        (Extend(_), Truncate) if e_ty == t2_ty => DoubleCastAction::RemoveBoth,
+        (SameWidth, SameWidth) | (Extend(_), Truncate) if e_ty == t2_ty => {
+            DoubleCastAction::RemoveBoth
+        }
 
-        (Extend(_), Extend(s)) |
-        (SameWidth, Extend(s)) |
-        (SameWidth, FromPointer(s)) |
-        (SameWidth, ToPointer(s)) if s == e_ty.is_signed() => DoubleCastAction::RemoveInner,
+        (Extend(_), Extend(s))
+        | (SameWidth, Extend(s))
+        | (SameWidth, FromPointer(s))
+        | (SameWidth, ToPointer(s))
+            if s == e_ty.is_signed() =>
+        {
+            DoubleCastAction::RemoveInner
+        }
 
         (_, SameWidth) | (_, Truncate) => DoubleCastAction::RemoveInner,
 
-        _ => DoubleCastAction::KeepBoth
+        _ => DoubleCastAction::KeepBoth,
     }
 }
 
@@ -158,26 +163,22 @@ fn cast_kind(from_ty: SimpleTy, to_ty: SimpleTy) -> CastKind {
         (Int(..), Int(..)) => CastKind::SameWidth,
 
         // Into size/pointer
-        (Int(fw, fs), Size(_)) |
-        (Int(fw, fs), Pointer) if fw <= 16 => CastKind::Extend(fs),
-        (Int(fw, _), Size(_)) |
-        (Int(fw, _), Pointer) if fw >= 64 => CastKind::Truncate,
+        (Int(fw, fs), Size(_)) | (Int(fw, fs), Pointer) if fw <= 16 => CastKind::Extend(fs),
+        (Int(fw, _), Size(_)) | (Int(fw, _), Pointer) if fw >= 64 => CastKind::Truncate,
         (Int(..), Size(ts)) => CastKind::ToPointer(ts),
         (Int(..), Pointer) => CastKind::ToPointer(false),
 
         // From size/pointer
         (Size(fs), Int(tw, _)) if tw >= 64 => CastKind::Extend(fs),
         (Pointer, Int(tw, _)) if tw >= 64 => CastKind::Extend(false),
-        (Size(_), Int(tw, _)) |
-        (Pointer, Int(tw, _)) if tw <= 16 => CastKind::Truncate,
+        (Size(_), Int(tw, _)) | (Pointer, Int(tw, _)) if tw <= 16 => CastKind::Truncate,
         (Size(fs), Int(..)) => CastKind::FromPointer(fs),
         (Pointer, Int(..)) => CastKind::FromPointer(false),
 
         // Pointer-to-size and vice versa
-        (Pointer, Pointer) |
-        (Pointer, Size(_)) |
-        (Size(_), Pointer) |
-        (Size(_), Size(_)) => CastKind::SameWidth,
+        (Pointer, Pointer) | (Pointer, Size(_)) | (Size(_), Pointer) | (Size(_), Size(_)) => {
+            CastKind::SameWidth
+        }
 
         (Float32, Float32) => CastKind::SameWidth,
         (Float32, Float64) => CastKind::Extend(true),
@@ -190,7 +191,6 @@ fn cast_kind(from_ty: SimpleTy, to_ty: SimpleTy) -> CastKind {
         //(Int(fw, fs), Float64) if fw <= 52 => CastKind::Extend(fs),
         //(Int(..), Float32) => CastKind::Truncate,
         //(Int(..), Float64) => CastKind::Truncate,
-
         (_, _) => CastKind::Unknown,
     }
 }
@@ -232,9 +232,7 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
             TyKind::Float(FloatTy::F32) => Float32,
             TyKind::Float(FloatTy::F64) => Float64,
 
-            TyKind::RawPtr(_) |
-            TyKind::Ref(..) |
-            TyKind::FnPtr(_) => Pointer,
+            TyKind::RawPtr(_) | TyKind::Ref(..) | TyKind::FnPtr(_) => Pointer,
 
             _ => Other,
         }
@@ -246,57 +244,66 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: ty::Ty<'tcx>) -> Option<Lit> {
         // Very conservative approach: only convert to `isize`/`usize`
         // if the value fits in a 16-bit value
         (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::Isize))
-            if *i <= i16::max_value() as u128 => {
+            if *i <= i16::max_value() as u128 =>
+        {
             Some(mk().int_lit(*i, *int_ty))
         }
 
-        (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I8))
-            if *i <= i8::max_value() as u128 => {
+        (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I8)) if *i <= i8::max_value() as u128 => {
             Some(mk().int_lit(*i, *int_ty))
         }
 
         (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I16))
-            if *i <= i16::max_value() as u128 => {
+            if *i <= i16::max_value() as u128 =>
+        {
             Some(mk().int_lit(*i, *int_ty))
         }
 
         (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I32))
-            if *i <= i32::max_value() as u128 => {
+            if *i <= i32::max_value() as u128 =>
+        {
             Some(mk().int_lit(*i, *int_ty))
         }
 
         (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I64))
-            if *i <= i64::max_value() as u128 => {
+            if *i <= i64::max_value() as u128 =>
+        {
             Some(mk().int_lit(*i, *int_ty))
         }
 
         (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I128))
-            if *i <= i128::max_value() as u128 => {
+            if *i <= i128::max_value() as u128 =>
+        {
             Some(mk().int_lit(*i, *int_ty))
         }
 
         (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::Usize))
-            if *i <= u16::max_value() as u128 => {
+            if *i <= u16::max_value() as u128 =>
+        {
             Some(mk().int_lit(*i, *uint_ty))
         }
 
         (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::U8))
-            if *i <= u8::max_value() as u128 => {
+            if *i <= u8::max_value() as u128 =>
+        {
             Some(mk().int_lit(*i, *uint_ty))
         }
 
         (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::U16))
-            if *i <= u16::max_value() as u128 => {
+            if *i <= u16::max_value() as u128 =>
+        {
             Some(mk().int_lit(*i, *uint_ty))
         }
 
         (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::U32))
-            if *i <= u32::max_value() as u128 => {
+            if *i <= u32::max_value() as u128 =>
+        {
             Some(mk().int_lit(*i, *uint_ty))
         }
 
         (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::U64))
-            if *i <= u64::max_value() as u128 => {
+            if *i <= u64::max_value() as u128 =>
+        {
             Some(mk().int_lit(*i, *uint_ty))
         }
 
@@ -313,8 +320,8 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: ty::Ty<'tcx>) -> Option<Lit> {
             Some(mk().int_lit(fv as u128, *int_ty))
         }
 
-        (LitKind::Float(f, FloatTy::F64), TyKind::Int(ref int_ty)) |
-        (LitKind::FloatUnsuffixed(f), TyKind::Int(ref int_ty)) => {
+        (LitKind::Float(f, FloatTy::F64), TyKind::Int(ref int_ty))
+        | (LitKind::FloatUnsuffixed(f), TyKind::Int(ref int_ty)) => {
             let fv = f.as_str().parse::<f64>().ok()?;
             Some(mk().int_lit(fv as u128, *int_ty))
         }
@@ -324,8 +331,8 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: ty::Ty<'tcx>) -> Option<Lit> {
             Some(mk().int_lit(fv as u128, *uint_ty))
         }
 
-        (LitKind::Float(f, FloatTy::F64), TyKind::Uint(ref uint_ty)) |
-        (LitKind::FloatUnsuffixed(f), TyKind::Uint(ref uint_ty)) => {
+        (LitKind::Float(f, FloatTy::F64), TyKind::Uint(ref uint_ty))
+        | (LitKind::FloatUnsuffixed(f), TyKind::Uint(ref uint_ty)) => {
             let fv = f.as_str().parse::<f64>().ok()?;
             Some(mk().int_lit(fv as u128, *uint_ty))
         }
@@ -335,13 +342,13 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: ty::Ty<'tcx>) -> Option<Lit> {
             Some(mk().float_lit(fv.to_string(), float_ty))
         }
 
-        (LitKind::Float(f, FloatTy::F64), TyKind::Float(ref float_ty)) |
-        (LitKind::FloatUnsuffixed(f), TyKind::Float(ref float_ty)) => {
+        (LitKind::Float(f, FloatTy::F64), TyKind::Float(ref float_ty))
+        | (LitKind::FloatUnsuffixed(f), TyKind::Float(ref float_ty)) => {
             let fv = f.as_str().parse::<f64>().ok()?;
             Some(mk().float_lit(fv.to_string(), float_ty))
         }
 
-        _ => None
+        _ => None,
     }
 }
 
@@ -369,7 +376,7 @@ impl ConstantValue {
                 }
             }
         };
-        int_matches!{
+        int_matches! {
             Int(IntTy::Isize) => Int[i16, i128],
             Int(IntTy::I8) => Int[i8, i128],
             Int(IntTy::I16) => Int[i16, i128],
@@ -392,7 +399,7 @@ impl ConstantValue {
             (Float32(v), TyKind::Float(FloatTy::F64)) => Float64(v as f64),
             (Float64(v), TyKind::Float(FloatTy::F32)) => Float32(v as f32),
             (Float64(_), TyKind::Float(FloatTy::F64)) => self,
-            _ => unreachable!("Unexpected Ty")
+            _ => unreachable!("Unexpected Ty"),
         }
     }
 }
@@ -401,9 +408,7 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
     match e.node {
         ExprKind::Lit(ref lit) => {
             match lit.node {
-                LitKind::Int(i, LitIntType::Unsuffixed) => {
-                    Some(ConstantValue::Uint(i))
-                }
+                LitKind::Int(i, LitIntType::Unsuffixed) => Some(ConstantValue::Uint(i)),
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::Isize)) => {
                     Some(ConstantValue::Int(i as i16 as i128))
@@ -458,15 +463,14 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
                     Some(ConstantValue::Float32(fv))
                 }
 
-                LitKind::Float(f, FloatTy::F64) |
-                LitKind::FloatUnsuffixed(f) => {
+                LitKind::Float(f, FloatTy::F64) | LitKind::FloatUnsuffixed(f) => {
                     let fv = f.as_str().parse::<f64>().ok()?;
                     Some(ConstantValue::Float64(fv))
                 }
 
                 // TODO: Byte
                 // TODO: Char
-                _ => None
+                _ => None,
             }
         }
 
@@ -492,7 +496,7 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
             Some(ic.as_ty(ty_ty))
         }
 
-        _ => unreachable!("Unexpected ExprKind")
+        _ => unreachable!("Unexpected ExprKind"),
     }
 }
 
@@ -506,18 +510,34 @@ pub struct ConvertCastAsPtr;
 
 impl Transform for ConvertCastAsPtr {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        replace_expr(st, cx, krate,
+        replace_expr(
+            st,
+            cx,
+            krate,
             "typed!($expr:Expr, &[$ty:Ty]) as *const $ty",
-            "$expr.as_ptr()");
-        replace_expr(st, cx, krate,
+            "$expr.as_ptr()",
+        );
+        replace_expr(
+            st,
+            cx,
+            krate,
             "typed!($expr:Expr, &[$ty:Ty]) as *mut $ty",
-            "$expr.as_mut_ptr()");
-        replace_expr(st, cx, krate,
+            "$expr.as_mut_ptr()",
+        );
+        replace_expr(
+            st,
+            cx,
+            krate,
             "typed!($expr:Expr, &[$ty:Ty; $len]) as *const $ty",
-            "$expr.as_ptr()");
-        replace_expr(st, cx, krate,
+            "$expr.as_ptr()",
+        );
+        replace_expr(
+            st,
+            cx,
+            krate,
             "typed!($expr:Expr, &[$ty:Ty; $len]) as *mut $ty",
-            "$expr.as_mut_ptr()");
+            "$expr.as_mut_ptr()",
+        );
     }
 
     fn min_phase(&self) -> Phase {
