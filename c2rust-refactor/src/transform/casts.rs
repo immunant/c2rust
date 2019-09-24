@@ -270,7 +270,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: ty::Ty<'tcx>) -> Option<Lit> {
             Some(mk().int_lit(*i, *int_ty))
         }
 
-        (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I128)) => {
+        (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I128))
             if *i <= i128::max_value() as u128 => {
             Some(mk().int_lit(*i, *int_ty))
         }
