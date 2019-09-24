@@ -60,7 +60,41 @@ impl Transform for RemoveRedundantCasts {
                     }
                 }
 
-                // TODO: constant + cast, e.g., `0i32 as f32`
+                ExprKind::Lit(ref lit) => {
+                    // `X_ty1 as ty2` => `X_ty2`
+                    let new_lit = replace_suffix(lit, ot_ty);
+                    if let Some(nl) = new_lit {
+                        let new_expr = mk().lit_expr(nl);
+                        let ast_const = eval_const(ast.clone(), cx);
+                        let new_const = eval_const(new_expr.clone(), cx);
+                        debug!("checking {:?} == {:?}: {:?} == {:?}",
+                               *ast, new_expr, ast_const, new_const);
+                        if new_const.is_some() && new_const == ast_const {
+                            *ast = new_expr;
+                            return;
+                        }
+                    }
+                }
+
+                ExprKind::Unary(UnOp::Neg, ref expr) => match expr.node {
+                    ExprKind::Lit(ref lit) => {
+                        // `-X_ty1 as ty2` => `-X_ty2`
+                        let new_lit = replace_suffix(lit, ot_ty);
+                        if let Some(nl) = new_lit {
+                            let new_expr = mk().unary_expr(UnOp::Neg, mk().lit_expr(nl));
+                            let ast_const = eval_const(ast.clone(), cx);
+                            let new_const = eval_const(new_expr.clone(), cx);
+                            debug!("checking {:?} == {:?}: {:?} == {:?}",
+                                   *ast, new_expr, ast_const, new_const);
+                            if new_const.is_some() && new_const == ast_const {
+                                *ast = new_expr;
+                                return;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+
                 // TODO: unary/binaryop op + cast, e.g., `(x as i32 + y as i32) as i8`
                 _ => {}
             }
@@ -204,6 +238,261 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
 
             _ => Other,
         }
+    }
+}
+
+fn replace_suffix<'tcx>(lit: &Lit, ty: ty::Ty<'tcx>) -> Option<Lit> {
+    match (&lit.node, &ty.sty) {
+        // Very conservative approach: only convert to `isize`/`usize`
+        // if the value fits in a 16-bit value
+        (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::Isize))
+            if *i <= i16::max_value() as u128 => {
+            Some(mk().int_lit(*i, *int_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I8))
+            if *i <= i8::max_value() as u128 => {
+            Some(mk().int_lit(*i, *int_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I16))
+            if *i <= i16::max_value() as u128 => {
+            Some(mk().int_lit(*i, *int_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I32))
+            if *i <= i32::max_value() as u128 => {
+            Some(mk().int_lit(*i, *int_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I64))
+            if *i <= i64::max_value() as u128 => {
+            Some(mk().int_lit(*i, *int_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Int(int_ty @ IntTy::I128)) => {
+            if *i <= i128::max_value() as u128 => {
+            Some(mk().int_lit(*i, *int_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::Usize))
+            if *i <= u16::max_value() as u128 => {
+            Some(mk().int_lit(*i, *uint_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::U8))
+            if *i <= u8::max_value() as u128 => {
+            Some(mk().int_lit(*i, *uint_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::U16))
+            if *i <= u16::max_value() as u128 => {
+            Some(mk().int_lit(*i, *uint_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::U32))
+            if *i <= u32::max_value() as u128 => {
+            Some(mk().int_lit(*i, *uint_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::U64))
+            if *i <= u64::max_value() as u128 => {
+            Some(mk().int_lit(*i, *uint_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Uint(uint_ty @ UintTy::U128)) => {
+            Some(mk().int_lit(*i, *uint_ty))
+        }
+
+        (LitKind::Int(i, _), TyKind::Float(ref float_ty)) => {
+            Some(mk().float_lit(i.to_string(), float_ty))
+        }
+
+        (LitKind::Float(f, FloatTy::F32), TyKind::Int(ref int_ty)) => {
+            let fv = f.as_str().parse::<f32>().ok()?;
+            Some(mk().int_lit(fv as u128, *int_ty))
+        }
+
+        (LitKind::Float(f, FloatTy::F64), TyKind::Int(ref int_ty)) |
+        (LitKind::FloatUnsuffixed(f), TyKind::Int(ref int_ty)) => {
+            let fv = f.as_str().parse::<f64>().ok()?;
+            Some(mk().int_lit(fv as u128, *int_ty))
+        }
+
+        (LitKind::Float(f, FloatTy::F32), TyKind::Uint(ref uint_ty)) => {
+            let fv = f.as_str().parse::<f32>().ok()?;
+            Some(mk().int_lit(fv as u128, *uint_ty))
+        }
+
+        (LitKind::Float(f, FloatTy::F64), TyKind::Uint(ref uint_ty)) |
+        (LitKind::FloatUnsuffixed(f), TyKind::Uint(ref uint_ty)) => {
+            let fv = f.as_str().parse::<f64>().ok()?;
+            Some(mk().int_lit(fv as u128, *uint_ty))
+        }
+
+        (LitKind::Float(f, FloatTy::F32), TyKind::Float(ref float_ty)) => {
+            let fv = f.as_str().parse::<f32>().ok()?;
+            Some(mk().float_lit(fv.to_string(), float_ty))
+        }
+
+        (LitKind::Float(f, FloatTy::F64), TyKind::Float(ref float_ty)) |
+        (LitKind::FloatUnsuffixed(f), TyKind::Float(ref float_ty)) => {
+            let fv = f.as_str().parse::<f64>().ok()?;
+            Some(mk().float_lit(fv.to_string(), float_ty))
+        }
+
+        _ => None
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum ConstantValue {
+    Int(i128),
+    Uint(u128),
+    Float32(f32),
+    Float64(f64),
+}
+
+impl ConstantValue {
+    fn as_ty<'tcx>(self, ty: ty::Ty<'tcx>) -> Self {
+        use ConstantValue::*;
+        macro_rules! int_matches {
+            ($($ty_kind:ident($int_ty:path) => $const_ty:ident[$($as_ty:ty),*]),*) => {
+                match (self, &ty.sty) {
+                    $(
+                        (Int(v), TyKind::$ty_kind($int_ty)) => return $const_ty(v $(as $as_ty)*),
+                        (Uint(v), TyKind::$ty_kind($int_ty)) => return $const_ty(v $(as $as_ty)*),
+                        (Float32(v), TyKind::$ty_kind($int_ty)) => return $const_ty(v $(as $as_ty)*),
+                        (Float64(v), TyKind::$ty_kind($int_ty)) => return $const_ty(v $(as $as_ty)*),
+                     )*
+                    _ => {}
+                }
+            }
+        };
+        int_matches!{
+            Int(IntTy::Isize) => Int[i16, i128],
+            Int(IntTy::I8) => Int[i8, i128],
+            Int(IntTy::I16) => Int[i16, i128],
+            Int(IntTy::I32) => Int[i32, i128],
+            Int(IntTy::I64) => Int[i64, i128],
+            Int(IntTy::I128) => Int[i128],
+            Uint(UintTy::Usize) => Uint[u16, u128],
+            Uint(UintTy::U8) => Uint[u8, u128],
+            Uint(UintTy::U16) => Uint[u16, u128],
+            Uint(UintTy::U32) => Uint[u32, u128],
+            Uint(UintTy::U64) => Uint[u64, u128],
+            Uint(UintTy::U128) => Uint[u128]
+        };
+        match (self, &ty.sty) {
+            (Int(v), TyKind::Float(FloatTy::F32)) => Float32(v as f32),
+            (Int(v), TyKind::Float(FloatTy::F64)) => Float64(v as f64),
+            (Uint(v), TyKind::Float(FloatTy::F32)) => Float32(v as f32),
+            (Uint(v), TyKind::Float(FloatTy::F64)) => Float64(v as f64),
+            (Float32(_), TyKind::Float(FloatTy::F32)) => self,
+            (Float32(v), TyKind::Float(FloatTy::F64)) => Float64(v as f64),
+            (Float64(v), TyKind::Float(FloatTy::F32)) => Float32(v as f32),
+            (Float64(_), TyKind::Float(FloatTy::F64)) => self,
+            _ => unreachable!("Unexpected Ty")
+        }
+    }
+}
+
+fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
+    match e.node {
+        ExprKind::Lit(ref lit) => {
+            match lit.node {
+                LitKind::Int(i, LitIntType::Unsuffixed) => {
+                    Some(ConstantValue::Uint(i))
+                }
+
+                LitKind::Int(i, LitIntType::Signed(IntTy::Isize)) => {
+                    Some(ConstantValue::Int(i as i16 as i128))
+                }
+
+                LitKind::Int(i, LitIntType::Signed(IntTy::I8)) => {
+                    Some(ConstantValue::Int(i as i8 as i128))
+                }
+
+                LitKind::Int(i, LitIntType::Signed(IntTy::I16)) => {
+                    Some(ConstantValue::Int(i as i16 as i128))
+                }
+
+                LitKind::Int(i, LitIntType::Signed(IntTy::I32)) => {
+                    Some(ConstantValue::Int(i as i32 as i128))
+                }
+
+                LitKind::Int(i, LitIntType::Signed(IntTy::I64)) => {
+                    Some(ConstantValue::Int(i as i64 as i128))
+                }
+
+                LitKind::Int(i, LitIntType::Signed(IntTy::I128)) => {
+                    Some(ConstantValue::Int(i as i128))
+                }
+
+                LitKind::Int(i, LitIntType::Unsigned(UintTy::Usize)) => {
+                    Some(ConstantValue::Uint(i as u16 as u128))
+                }
+
+                LitKind::Int(i, LitIntType::Unsigned(UintTy::U8)) => {
+                    Some(ConstantValue::Uint(i as u8 as u128))
+                }
+
+                LitKind::Int(i, LitIntType::Unsigned(UintTy::U16)) => {
+                    Some(ConstantValue::Uint(i as u16 as u128))
+                }
+
+                LitKind::Int(i, LitIntType::Unsigned(UintTy::U32)) => {
+                    Some(ConstantValue::Uint(i as u32 as u128))
+                }
+
+                LitKind::Int(i, LitIntType::Unsigned(UintTy::U64)) => {
+                    Some(ConstantValue::Uint(i as u64 as u128))
+                }
+
+                LitKind::Int(i, LitIntType::Unsigned(UintTy::U128)) => {
+                    Some(ConstantValue::Uint(i as u128))
+                }
+
+                LitKind::Float(f, FloatTy::F32) => {
+                    let fv = f.as_str().parse::<f32>().ok()?;
+                    Some(ConstantValue::Float32(fv))
+                }
+
+                LitKind::Float(f, FloatTy::F64) |
+                LitKind::FloatUnsuffixed(f) => {
+                    let fv = f.as_str().parse::<f64>().ok()?;
+                    Some(ConstantValue::Float64(fv))
+                }
+
+                // TODO: Byte
+                // TODO: Char
+                _ => None
+            }
+        }
+
+        ExprKind::Unary(UnOp::Neg, ref ie) => {
+            let ic = eval_const(ie.clone(), cx)?;
+            use ConstantValue::*;
+            match ic {
+                // Check for overflow for Uint
+                Uint(i) if i > (i128::max_value() as u128) => None,
+                Uint(i) => Some(Int(-(i as i128))),
+
+                Int(i) => Some(Int(-i)),
+                Float32(f) => Some(Float32(-f)),
+                Float64(f) => Some(Float64(-f)),
+            }
+        }
+
+        ExprKind::Cast(ref ie, ref ty) => {
+            let tcx = cx.ty_ctxt();
+            let ty_ty = cx.adjusted_node_type(ty.id);
+            let ty_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ty_ty);
+            let ic = eval_const(ie.clone(), cx)?;
+            Some(ic.as_ty(ty_ty))
+        }
+
+        _ => unreachable!("Unexpected ExprKind")
     }
 }
 
