@@ -85,6 +85,14 @@ function ConvCfg.new(args)
     return self
 end
 
+function ConvCfg:is_mut()
+    if self.extra_data.mutability == nil then
+        return nil
+    end
+
+    return self.extra_data.mutability == "mut"
+end
+
 function ConvCfg.from_marks(marks, attrs)
     local opt = true
     local slice = false
@@ -377,20 +385,6 @@ function Visitor:visit_expr(expr, walk)
         self:rewrite_field_expr(expr)
     elseif expr_kind == "Unary" and expr:get_op() == "Deref" then
         self:rewrite_deref_expr(expr)
-    -- p.is_null() -> p.is_none() or false when not using an option
-    elseif expr:get_method_name() == "is_null" then
-        local callee = expr:get_exprs()[1]
-        local conversion_cfg = self:get_expr_cfg(callee)
-
-        if not conversion_cfg then
-            return
-        end
-
-        if conversion_cfg:is_opt_any() then
-            expr:set_method_name("is_none")
-        else
-            expr:to_bool_lit(false)
-        end
     elseif expr_kind == "Assign" then
         self:rewrite_assign_expr(expr)
     elseif expr_kind == "Call" then
@@ -414,7 +408,7 @@ function Visitor:rewrite_method_call_expr(expr)
 
         offset_expr:to_range(offset_expr, nil)
 
-        local is_mut = cfg.extra_data.mutability == "mut"
+        local is_mut = cfg:is_mut()
 
         if cfg:is_opt_any() then
             if is_mut then
@@ -434,9 +428,57 @@ function Visitor:rewrite_method_call_expr(expr)
         if var and var.kind == "static" then
             expr:to_addr_of(exprs[1], method_name == "as_mut_ptr")
         end
+    -- p.is_null() -> p.is_none() or false when not using an option
+    elseif method_name == "is_null" then
+        local callee = expr:get_exprs()[1]
+        local conversion_cfg = self:get_expr_cfg(callee)
+
+        if not conversion_cfg then
+            return
+        end
+
+        if conversion_cfg:is_opt_any() then
+            expr:set_method_name("is_none")
+        else
+            expr:to_bool_lit(false)
+        end
+    elseif method_name == "wrapping_offset_from" then
+        local lhs_cfg = self:get_expr_cfg(exprs[1])
+        local rhs_cfg = self:get_expr_cfg(exprs[2])
+
+        if lhs_cfg then
+            exprs[1] = decay_ref_to_ptr(exprs[1], lhs_cfg)
+        end
+
+        if rhs_cfg then
+            exprs[2] = decay_ref_to_ptr(exprs[2], rhs_cfg)
+        end
+
+        expr:to_method_call("wrapping_offset_from", {exprs[1], exprs[2]})
+    end
+end
+
+function decay_ref_to_ptr(expr, cfg)
+    if cfg:is_mut() then
+        expr:to_method_call("as_mut", {expr})
+    end
+
+    if cfg:is_opt_any() then
+        expr:to_method_call("unwrap", {expr})
+    end
+
+    if cfg:is_slice_any() then
+        if cfg:is_mut() then
+            expr:to_method_call("as_mut_ptr", {expr})
+        else
+            expr:to_method_call("as_ptr", {expr})
+        end
+    else
+        -- TODO
     end
 
     walk(expr)
+    return expr
 end
 
 function Visitor:rewrite_field_expr(expr)
@@ -520,7 +562,6 @@ function Visitor:rewrite_deref_expr(expr)
             -- *ptr[1] -> *ptr.as_mut().unwrap()[1] otherwise we can just unwrap
             -- *ptr[1] -> *ptr.unwrap()[1]
             if cfg:is_opt_any() then
-                -- TODO: or as_ref
                 if cfg:is_opt_box_any() or cfg.extra_data.mutability == "mut" then
                     unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
                 end
@@ -555,7 +596,7 @@ function Visitor:rewrite_deref_expr(expr)
         -- Must get inner reference to mutate
         if cfg:is_opt_any() then
             local as_x = nil
-            local is_mut = cfg.extra_data.mutability == "mut"
+            local is_mut = cfg:is_mut()
 
             -- as_ref is not required for immutable refs since &T is Copy
             if is_mut then
@@ -1095,10 +1136,12 @@ function Visitor:visit_local(locl, walk)
 
             locl:set_ty(nil)
             locl:set_init(init)
-        -- elseif init:get_kind() == "Cast" then
-        --     local rhs_cfg = self:get_expr_cfg(init:get_exprs()[1])
+        elseif init:get_kind() == "Path" then
+            local rhs_cfg = self:get_expr_cfg(init)
 
-        --     locl:set_ty(nil)
+            if rhs_cfg then
+                locl:set_ty(nil)
+            end
         end
     elseif is_null_ptr(init) then
         locl:set_ty(nil)

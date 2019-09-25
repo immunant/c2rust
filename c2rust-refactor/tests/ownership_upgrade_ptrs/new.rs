@@ -1,4 +1,4 @@
-#![feature(rustc_private, custom_attribute, param_attrs)]
+#![feature(rustc_private, custom_attribute, param_attrs, ptr_wrapping_offset_from)]
 extern crate libc;
 
 extern "C" {
@@ -362,7 +362,7 @@ pub type wchar_t = libc::c_int;
 pub unsafe extern "C" fn wmemcmp(
     mut s1: Option<&[wchar_t]>,
     mut s2: Option<&[wchar_t]>,
-    mut n: size_t,
+    n: size_t,
 ) -> libc::c_int {
     let mut i: size_t = 0;
     i = 0i32 as size_t;
@@ -385,7 +385,7 @@ pub unsafe extern "C" fn wmemcmp(
 pub unsafe extern "C" fn wmemcmp2(
     mut s1: &[wchar_t],
     mut s2: &[wchar_t],
-    mut n: size_t,
+    n: size_t,
 ) -> libc::c_int {
     let mut i: size_t = 0;
     i = 0i32 as size_t;
@@ -398,4 +398,30 @@ pub unsafe extern "C" fn wmemcmp2(
         i = i.wrapping_add(1)
     }
     return 0i32;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wcsspn(mut s: Option<&[wchar_t]>, mut set: Option<&[wchar_t]>) -> size_t {
+    #[slice]
+    let mut p = None;
+    #[slice]
+    let mut q = None;
+    p = s;
+    while 0 != p.unwrap()[0] {
+        q = set;
+        while 0 != q.unwrap()[0] {
+            if p.unwrap()[0] == q.unwrap()[0] {
+                break;
+            }
+            q = Some(&q.unwrap()[1..])
+        }
+        if 0 == q.unwrap()[0] {
+            break;
+        }
+        p = Some(&p.unwrap()[1..])
+    }
+    return p
+        .unwrap()
+        .as_ptr()
+        .wrapping_offset_from(s.unwrap().as_ptr()) as libc::c_long as size_t;
 }

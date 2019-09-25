@@ -1,4 +1,4 @@
-#![feature(rustc_private, custom_attribute, param_attrs)]
+#![feature(rustc_private, custom_attribute, param_attrs, ptr_wrapping_offset_from)]
 extern crate libc;
 
 extern "C" {
@@ -318,7 +318,7 @@ pub type wchar_t = libc::c_int;
 
 #[no_mangle]
 pub unsafe extern "C" fn wmemcmp(#[slice] mut s1: *const wchar_t,
-                                 #[slice] mut s2: *const wchar_t, mut n: size_t)
+                                 #[slice] mut s2: *const wchar_t, n: size_t)
  -> libc::c_int {
     let mut i: size_t = 0;
     i = 0i32 as size_t;
@@ -333,7 +333,7 @@ pub unsafe extern "C" fn wmemcmp(#[slice] mut s1: *const wchar_t,
 
 #[no_mangle]
 pub unsafe extern "C" fn wmemcmp2(#[nonnull] #[slice] mut s1: *const wchar_t,
-                                  #[nonnull] #[slice] mut s2: *const wchar_t, mut n: size_t)
+                                  #[nonnull] #[slice] mut s2: *const wchar_t, n: size_t)
  -> libc::c_int {
     let mut i: size_t = 0;
     i = 0i32 as size_t;
@@ -344,4 +344,21 @@ pub unsafe extern "C" fn wmemcmp2(#[nonnull] #[slice] mut s1: *const wchar_t,
         i = i.wrapping_add(1)
     }
     return 0i32;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wcsspn(#[slice] mut s: *const wchar_t,
+                                #[slice] mut set: *const wchar_t) -> size_t {
+    #[slice]
+    let mut p: *const wchar_t = 0 as *const wchar_t;
+    #[slice]
+    let mut q: *const wchar_t = 0 as *const wchar_t;
+    p = s;
+    while 0 != *p {
+        q = set;
+        while 0 != *q { if *p == *q { break ; } q = q.offset(1isize) }
+        if 0 == *q { break ; }
+        p = p.offset(1isize)
+    }
+    return p.wrapping_offset_from(s) as libc::c_long as size_t;
 }
