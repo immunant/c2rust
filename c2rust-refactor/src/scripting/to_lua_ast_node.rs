@@ -1093,11 +1093,12 @@ impl UserData for LuaAstNode<Lit> {
                 }
                 LitKind::Int(i, _suffix) => i.to_lua(lua_ctx),
                 LitKind::Bool(b) => b.to_lua(lua_ctx),
+                LitKind::Char(c) => c.to_string().to_lua(lua_ctx),
                 ref node => {
-                    return Err(Error::external(format!(
+                    Err(Error::external(format!(
                         "{:?} is not yet implemented",
                         node
-                    )));
+                    )))
                 }
             }
         });
