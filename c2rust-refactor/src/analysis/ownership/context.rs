@@ -143,7 +143,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     self.lcx
                         .label(self.tcx.type_of(did), &mut |ty| match ty.sty {
                             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
-                                let v = assign.push(ConcretePerm::Read);
+                                let v = assign.push(ConcretePerm::Move);
                                 Some(PermVar::Static(v))
                             }
                             _ => None,
