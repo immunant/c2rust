@@ -21,22 +21,61 @@ use crate::ast_manip::MutVisit;
 /// causes problems for us later on.  This folder detects nodes like `&foo` and gives them a
 /// macro-generated span to fix the problem.
 struct FixFormat {
+    ctxt: FormatCtxt,
+}
+
+#[derive(Clone)]
+struct FormatCtxt {
     /// The span of the most recent ancestor `Expr`.
     parent_span: Span,
     /// Are we currently inside (the macro-generated part of) a `format!` invocation?
     in_format: bool,
+    /// Are we currently inside the match in (the macro-generated part of) a
+    /// `format!` invocation?
+    in_match: bool,
+}
+
+impl FormatCtxt {
+    fn new(span: Span) -> Self {
+        FormatCtxt {
+            parent_span: span,
+            in_format: false,
+            in_match: false,
+        }
+    }
+
+    fn enter_span(&self, span: Span) -> Self {
+        FormatCtxt {
+            parent_span: span,
+            ..*self
+        }
+    }
+
+    fn enter_format(&self, span: Span) -> Self {
+        FormatCtxt {
+            parent_span: span,
+            in_format: true,
+            ..*self
+        }
+    }
+
+    fn enter_match(&self, span: Span) -> Self {
+        FormatCtxt {
+            parent_span: span,
+            in_match: true,
+            ..*self
+        }
+    }
 }
 
 impl FixFormat {
-    fn descend<F, R>(&mut self, in_format: bool, cur_span: Span, f: F) -> R
+    fn descend<F, R>(&mut self, new_ctxt: FormatCtxt, f: F) -> R
     where
         F: FnOnce(&mut Self) -> R,
     {
-        let old_in_format = mem::replace(&mut self.in_format, in_format);
-        let old_parent_span = mem::replace(&mut self.parent_span, cur_span);
+        let old_ctxt = mem::replace(&mut self.ctxt, new_ctxt);
         let r = f(self);
-        self.in_format = old_in_format;
-        self.parent_span = old_parent_span;
+        self.ctxt = old_ctxt;
         r
     }
 
@@ -48,40 +87,62 @@ impl FixFormat {
         // recognize it by its span: it's macro-generated, but the "macro definition" actually
         // points to the format string, which lies inside the macro invocation itself.
 
-        if !matches!([e.node] ExprKind::Match(..)) {
-            return false;
-        }
-
         if !e.span.from_expansion() {
             return false;
         }
 
-        e.span.source_callsite().contains(e.span)
+        if let ExprKind::Call(callee, _) = &e.node {
+            if let ExprKind::Path(None, path) = &callee.node {
+                let matches_fmt_args = path.segments.len() == 4 &&
+                    path.segments[1].ident.as_str() == "fmt" &&
+                    path.segments[2].ident.as_str() == "Arguments" &&
+                    (path.segments[3].ident.as_str() == "new_v1" ||
+                     path.segments[3].ident.as_str() == "new_v1_formatted");
+                return matches_fmt_args;
+            }
+        }
+
+        false
     }
 }
 
 impl MutVisitor for FixFormat {
     fn visit_expr(&mut self, e: &mut P<Expr>) {
-        if self.in_format
-            && !e.span.from_expansion()
+        if !e.span.from_expansion()
+            && self.ctxt.in_match
             && matches!([e.node] ExprKind::AddrOf(..))
         {
             trace!("EXITING format! at {:?}", e);
-            // Current node is the `&foo`.  We need to change its span.  On recursing into `foo`,
-            // we are no longer inside a `format!` invocation.
-            let new_span = self.parent_span;
-            self.descend(false, e.span, |this| {
+            // Current node is the `&foo`.  We need to change its span.  On
+            // recursing into `foo`, we are no longer inside a `format!`
+            // invocation.
+            let mac_span = self.ctxt.parent_span;
+            let leave_ctxt = FormatCtxt::new(e.span);
+            self.descend(leave_ctxt, |this| {
                 mut_visit::noop_visit_expr(e, this);
-                e.span = new_span;
+                e.span = mac_span;
             })
-        } else if !self.in_format && self.is_format_entry(&e) {
+        } else if !e.span.from_expansion()
+            && self.ctxt.in_format
+            && !self.ctxt.in_match
+        {
+            trace!("Fixing format! string at {:?}", e);
+            let mac_span = self.ctxt.parent_span;
+            let new_ctxt = self.ctxt.enter_span(mac_span);
+            self.descend(new_ctxt, |this| {
+                mut_visit::noop_visit_expr(e, this);
+                e.span = mac_span;
+            })
+        } else if self.ctxt.in_format && matches!([e.node] ExprKind::Match(..)) {
+            let new_ctxt = self.ctxt.enter_match(e.span);
+            self.descend(new_ctxt, |this| mut_visit::noop_visit_expr(e, this))
+        } else if !self.ctxt.in_format && self.is_format_entry(&e) {
             trace!("ENTERING format! at {:?}", e);
-            self.descend(true, e.span, |this| mut_visit::noop_visit_expr(e, this))
+            let new_ctxt = self.ctxt.enter_format(e.span);
+            self.descend(new_ctxt, |this| mut_visit::noop_visit_expr(e, this))
         } else {
-            let in_format = self.in_format;
-            self.descend(in_format, e.span, |this| {
-                mut_visit::noop_visit_expr(e, this)
-            })
+            let new_ctxt = self.ctxt.enter_span(e.span);
+            self.descend(new_ctxt, |this| mut_visit::noop_visit_expr(e, this))
         }
     }
 
@@ -129,8 +190,7 @@ impl MutVisitor for FixAttrs {
 #[cfg_attr(feature = "profile", flame)]
 pub fn fix_format<T: MutVisit>(node: &mut T) {
     let mut fix_format = FixFormat {
-        parent_span: DUMMY_SP,
-        in_format: false,
+        ctxt: FormatCtxt::new(DUMMY_SP),
     };
     node.visit(&mut fix_format)
 }
