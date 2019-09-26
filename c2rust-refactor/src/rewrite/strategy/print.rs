@@ -145,15 +145,7 @@ impl PrintParse for Block {
 
 impl PrintParse for Param {
     fn to_string(&self) -> String {
-        let mut s = String::new();
-        // arg_to_string does not print attributes, and parameters can now have
-        // arguments, so we need to print them manually.
-        for attr in self.attrs.iter() {
-            s.push_str(pprust::attribute_to_string(attr).as_str());
-            s.push(' ');
-        }
-        s.push_str(pprust::param_to_string(self).as_str());
-        s
+        pprust::param_to_string(self)
     }
 
     type Parsed = Param;
