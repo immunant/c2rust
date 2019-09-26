@@ -561,6 +561,11 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             |lua_ctx, this, ()| lua_serialize_marks(&*this.st.marks(), lua_ctx),
         );
 
+        methods.add_method(
+            "dump_crate",
+            |_lua_ctx, this, ()| Ok(println!("{:#?}", this.st.krate())),
+        );
+
         /// Replace matching statements using given callback
         // @function replace_stmts_with
         // @tparam string needle Statements pattern to search for, may include variable bindings
