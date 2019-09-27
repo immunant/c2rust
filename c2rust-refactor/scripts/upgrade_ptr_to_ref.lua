@@ -459,11 +459,11 @@ function Visitor:rewrite_method_call_expr(expr)
 end
 
 function decay_ref_to_ptr(expr, cfg)
-    if cfg:is_mut() then
-        expr:to_method_call("as_mut", {expr})
-    end
-
     if cfg:is_opt_any() then
+        if cfg:is_mut() then
+            expr:to_method_call("as_mut", {expr})
+        end
+
         expr:to_method_call("unwrap", {expr})
     end
 
@@ -473,8 +473,8 @@ function decay_ref_to_ptr(expr, cfg)
         else
             expr:to_method_call("as_ptr", {expr})
         end
-    else
-        -- TODO
+    elseif cfg:is_mut() and cfg:is_opt_any() then
+        expr:to_unary("Deref", expr)
     end
 
     walk(expr)
@@ -829,8 +829,13 @@ function Visitor:rewrite_call_expr(expr)
                 end
             end
 
-            -- x.unwrap() or x.as_mut().unwrap()
-            param_expr:map_first_path(function(path_expr)
+            --  x -> x[.as_mut()].unwrap().as_[mut_]ptr()
+            param_expr:map_first_path_or_deref_path(function(path_expr)
+                -- Deref exprs should already be handled by rewrite_deref_expr
+                if path_expr:get_op() == "Deref" then
+                    return path_expr
+                end
+
                 local cfg = self:get_expr_cfg(path_expr)
 
                 if not cfg then
@@ -838,27 +843,7 @@ function Visitor:rewrite_call_expr(expr)
                 end
 
                 if fn.is_foreign then
-                    -- TODO: Should base decay on mutability of param not
-                    -- the variable
-                    -- TODO: This may need tweaking for boxed locals
-                    local as_x = get_as_x(cfg.extra_data.mutability)
-                    local as_x_ptr = get_x_ptr(cfg.extra_data.mutability)
-
-                    if cfg:is_opt_any() then
-                        if as_x == "as_mut" then
-                            path_expr:to_method_call("as_mut", {path_expr})
-                        end
-
-                        path_expr:to_method_call("unwrap", {path_expr})
-
-                        if cfg:is_slice_any() then
-                            path_expr:to_method_call(as_x_ptr, {path_expr})
-                        elseif as_x == "as_mut" then
-                            path_expr:to_unary("Deref", path_expr)
-                        end
-                    elseif cfg:is_slice_any() then
-                        path_expr:to_method_call(as_x_ptr, {path_expr})
-                    end
+                    path_expr = decay_ref_to_ptr(path_expr, cfg)
                 else
                     -- TODO: Conversion to converted signatures
                 end

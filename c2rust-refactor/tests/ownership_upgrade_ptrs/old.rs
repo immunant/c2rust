@@ -20,6 +20,8 @@ extern "C" {
     #[no_mangle]
     #[ownership_constraints(le(WRITE, _0), le(_0, WRITE))]
     fn takes_ptrs(_: *mut u32, _: *const u32);
+    #[no_mangle]
+    fn takeswint(_: wint_t) -> wint_t;
 }
 
 #[no_mangle]
@@ -361,4 +363,28 @@ pub unsafe extern "C" fn wcsspn(#[slice] mut s: *const wchar_t,
         p = p.offset(1isize)
     }
     return p.wrapping_offset_from(s) as libc::c_long as size_t;
+}
+
+pub type wint_t = libc::c_uint;
+
+#[no_mangle]
+pub unsafe extern "C" fn mycasecmp(#[slice] mut s1: *const wchar_t,
+                                   #[slice] mut s2: *const wchar_t)
+ -> libc::c_int {
+    let mut d: libc::c_int = 0i32;
+    loop  {
+        #[slice]
+        let fresh0: *const wchar_t = s1;
+        s1 = s1.offset(1);
+        let c1: libc::c_int =
+            takeswint(*fresh0 as wint_t) as libc::c_int;
+        #[slice]
+        let fresh1: *const wchar_t = s2;
+        s2 = s2.offset(1);
+        let c2: libc::c_int =
+            takeswint(*fresh1 as wint_t) as libc::c_int;
+        d = c1 - c2;
+        if d != 0i32 || c2 == '\u{0}' as i32 { break ; }
+    }
+    return d;
 }

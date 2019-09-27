@@ -711,6 +711,30 @@ impl UserData for LuaAstNode<P<Expr>> {
 
             Ok(())
         });
+
+        methods.add_method("map_first_path_or_deref_path", |_lua_ctx, this, func: Function| {
+            let expr = &mut *this.borrow_mut();
+            let opt_expr = find_subexpr(expr, &|sub_expr| match sub_expr.node {
+                ExprKind::Path(..) => true,
+                ExprKind::Unary(UnOp::Deref, ref expr) => {
+                    if let ExprKind::Path(..) = expr.node {
+                        true
+                    } else {
+                        false
+                    }
+                },
+                _ => false,
+            })?;
+
+            if let Some(expr) = opt_expr {
+                let expr_clone = expr.clone();
+                let new_expr = func.call::<_, LuaAstNode<P<Expr>>>(LuaAstNode::new(expr_clone))?;
+
+                *expr = new_expr.into_inner();
+            }
+
+            Ok(())
+        });
     }
 }
 
