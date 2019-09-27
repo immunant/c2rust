@@ -467,7 +467,7 @@ impl<'a, 'lty, 'tcx> Iterator for FuncIds<'a, 'lty, 'tcx> {
     type Item = DefId;
 
     fn next(&mut self) -> Option<DefId> {
-        self.inner.next().map(|&x| x)
+        self.inner.next().copied()
     }
 }
 
@@ -479,7 +479,7 @@ impl<'a, 'lty> Iterator for VariantIds<'a, 'lty> {
     type Item = DefId;
 
     fn next(&mut self) -> Option<DefId> {
-        self.inner.next().map(|&x| x)
+        self.inner.next().copied()
     }
 }
 
@@ -491,6 +491,6 @@ impl<'a> Iterator for MonoIds<'a> {
     type Item = (DefId, usize);
 
     fn next(&mut self) -> Option<(DefId, usize)> {
-        self.inner.next().map(|&x| x)
+        self.inner.next().copied()
     }
 }

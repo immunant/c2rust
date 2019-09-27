@@ -170,7 +170,7 @@ impl RefactorState {
         node_map.init(krate.list_node_ids().into_iter());
         // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
         node_map.init(iter::once(CRATE_NODE_ID));
-        let marks = marks.unwrap_or_else(|| HashSet::new());
+        let marks = marks.unwrap_or_else(HashSet::new);
 
         // The newly loaded `krate` and reinitialized `node_map` reference none of the old
         // `parsed_nodes`.  That means we can reset the ID counter without risk of ID collisions.

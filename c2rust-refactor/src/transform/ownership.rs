@@ -481,7 +481,7 @@ fn callee_new_name(cx: &RefactorCtxt,
         let base_name = cx.ty_ctxt().def_path(dest).data
            .last().unwrap().data.get_opt_name().unwrap();
         let suffix = &ana.monos[&(dest, dest_mono_idx)].suffix;
-        if suffix.len() > 0 {
+        if !suffix.is_empty() {
             format!("{}_{}", base_name, suffix)
         } else {
             format!("{}", base_name)

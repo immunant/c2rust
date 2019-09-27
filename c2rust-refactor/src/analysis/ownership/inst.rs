@@ -36,9 +36,9 @@ impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
         let cset = build_inst_cset(cx, variant, &mono.assign);
 
         InstCtxt {
-            cx: cx,
+            cx,
             insts: &variant.insts,
-            cset: cset,
+            cset,
             inst_sel: Vec::new(),
             inst_assign: IndexVec::new(),
         }
