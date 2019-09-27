@@ -5,7 +5,7 @@ authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
 edition = "2018"
 
 [dependencies]
-mdbook = "0.2.2"
+mdbook = "0.3"
 clap = "2.32.0"
 serde_json = "1.0.33"
 regex = "1.1.0"
@@ -13,7 +13,7 @@ env_logger = "0.6.0"
 log = "0.4.6"
 lazy_static = "1.2.0"
 pulldown-cmark = "0.2"
-pulldown-cmark-to-cmark = "1.1.0"
+pulldown-cmark-to-cmark = "1.2"
 
 [[bin]]
 name = "mdbook-include_md"
