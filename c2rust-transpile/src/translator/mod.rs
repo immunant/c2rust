@@ -3433,7 +3433,14 @@ impl<'c> Translation<'c> {
                 };
                 let func = match self.ast_context[func].kind {
                     // Direct function call
-                    CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _) => {
+                    CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _)
+                        // Only a direct function call with pointer decay if the
+                        // callee is a declref
+                        if match self.ast_context[fexp].kind {
+                            CExprKind::DeclRef(..) => true,
+                            _ => false,
+                        } =>
+                    {
                         self.convert_expr(ctx.used(), fexp)?
                     }
 
