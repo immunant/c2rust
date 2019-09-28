@@ -904,10 +904,19 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
         // for a sanity check, but not doing that right now.
         (ForeignItemKind::Fn(..), ItemKind::Fn(..)) => true,
 
-        (ForeignItemKind::Static(frn_ty, frn_mutbl), ItemKind::Static(ty, mutbl, _))
-            if frn_ty.ast_equiv(&ty) =>
-        {
-            frn_mutbl == mutbl
+        (ForeignItemKind::Static(frn_ty, frn_mutbl), ItemKind::Static(ty, mutbl, _)) => {
+            if frn_ty.ast_equiv(&ty) {
+                return frn_mutbl == mutbl;
+            }
+
+            match (&frn_ty.node, &ty.node) {
+                // An extern array declaration of any length matches a concrete
+                // definition if they have the same element type
+                (TyKind::Array(frn_elem_ty, _), TyKind::Array(elem_ty, _)) => {
+                    frn_elem_ty.ast_equiv(elem_ty)
+                }
+                _ => false,
+            }
         }
 
         // If we have a definition for this type name we can assume it is
