@@ -56,9 +56,11 @@ fn register_test_analysis_ownership(reg: &mut Registry) {
 ///
 /// For example, in this code:
 ///
+/// ```ignore
 ///     fn f(x: i32, y: i32) -> i32 {
 ///         x
 ///     }
+/// ```
 ///
 /// The `i32` annotations on `x` and the return type of `f` are
 /// related, because changing these annotations to two unequal types

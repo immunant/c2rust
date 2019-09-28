@@ -59,6 +59,9 @@ impl<T: AstEquiv> AstEquiv for Spanned<T> {
 
 impl<T: AstEquiv> AstEquiv for [T] {
     fn ast_equiv(&self, other: &[T]) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
         for (l, r) in self.iter().zip(other.iter()) {
             if !l.ast_equiv(r) {
                 return false;
@@ -67,6 +70,9 @@ impl<T: AstEquiv> AstEquiv for [T] {
         true
     }
     fn unnamed_equiv(&self, other: &[T]) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
         for (l, r) in self.iter().zip(other.iter()) {
             if !l.unnamed_equiv(r) {
                 return false;

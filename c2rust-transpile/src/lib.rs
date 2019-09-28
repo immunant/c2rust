@@ -4,8 +4,6 @@
 
 extern crate colored;
 extern crate dtoa;
-extern crate rustc_data_structures;
-extern crate rustc_target;
 extern crate serde_cbor;
 extern crate syntax;
 extern crate syntax_pos;

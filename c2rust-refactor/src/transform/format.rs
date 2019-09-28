@@ -37,12 +37,16 @@ use crate::RefactorCtxt;
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     printf("hello %d\n", 123);
+/// ```
 /// 
 /// If the string `"hello %d\n"` is marked `target`, then running
 /// `convert_format_string` will replace this call with
 /// 
+/// ```ignore
 ///     printf(format_args!("hello {:}\n", 123 as i32));
+/// ```
 /// 
 /// At this point, it would be wise to replace the `printf` expression with a function that accepts
 /// the `std::fmt::Arguments` produced by `format_args!`.
@@ -205,13 +209,13 @@ fn build_format_macro(
 ///
 /// Example:
 ///
-/// ```
+/// ```ignore
 /// printf("Number: %d\n", 123);
 /// ```
 ///
 /// gets converted to:
 ///
-/// ```
+/// ```ignore
 /// print!("Number: {}\n", 123);
 /// ```
 pub struct ConvertPrintfs;

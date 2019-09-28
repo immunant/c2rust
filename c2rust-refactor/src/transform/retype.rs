@@ -20,7 +20,7 @@ use crate::ast_manip::lr_expr::{self, fold_expr_with_context, fold_exprs_with_co
 use crate::command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
 use crate::driver::{self, Phase, parse_ty, parse_expr};
 use crate::illtyped::{IlltypedFolder, fold_illtyped};
-use crate::matcher::{Bindings, MatchCtxt, Subst, mut_visit_match, mut_visit_match_with, replace_expr};
+use crate::matcher::{Bindings, MatchCtxt, Subst, mut_visit_match};
 use crate::reflect::{self, reflect_tcx_ty};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
@@ -1410,66 +1410,6 @@ fn can_coerce<'a, 'tcx>(
     }
 }
 
-/// # `remove_redundant_casts` Command
-///
-/// Usage: `remove_redundant_casts`
-///
-/// Removes all casts of the form `$e as $t` where the expression already has the `$t` type.
-pub struct RemoveRedundantCasts;
-
-impl Transform for RemoveRedundantCasts {
-    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let tcx = cx.ty_ctxt();
-        let mut mcx = MatchCtxt::new(st, cx);
-        let pat = mcx.parse_expr("$e:Expr as $t:Ty");
-        mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
-            let e = mcx.bindings.get::<_, P<Expr>>("$e").unwrap();
-            let e_ty = cx.adjusted_node_type(e.id);
-            let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
-
-            let t = mcx.bindings.get::<_, P<Ty>>("$t").unwrap();
-            let t_ty = cx.adjusted_node_type(t.id);
-            let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
-            if e_ty == t_ty {
-                *ast = e.clone();
-            }
-        })
-    }
-
-    fn min_phase(&self) -> Phase {
-        Phase::Phase3
-    }
-}
-
-/// # `convert_cast_as_ptr` Command
-///
-/// Usage: `convert_cast_as_ptr`
-///
-/// Converts all expressions like `$e as *const $t` (with mutable or const pointers)
-/// where `$e` is a slice or array into `$e.as_ptr()` calls.
-pub struct ConvertCastAsPtr;
-
-impl Transform for ConvertCastAsPtr {
-    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        replace_expr(st, cx, krate,
-            "typed!($expr:Expr, &[$ty:Ty]) as *const $ty",
-            "$expr.as_ptr()");
-        replace_expr(st, cx, krate,
-            "typed!($expr:Expr, &[$ty:Ty]) as *mut $ty",
-            "$expr.as_mut_ptr()");
-        replace_expr(st, cx, krate,
-            "typed!($expr:Expr, &[$ty:Ty; $len]) as *const $ty",
-            "$expr.as_ptr()");
-        replace_expr(st, cx, krate,
-            "typed!($expr:Expr, &[$ty:Ty; $len]) as *mut $ty",
-            "$expr.as_mut_ptr()");
-    }
-
-    fn min_phase(&self) -> Phase {
-        Phase::Phase3
-    }
-}
-
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
@@ -1501,7 +1441,4 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("type_fix_rules", |args| Box::new(TypeFixRules { rules: args.to_owned() }));
 
     reg.register("autoretype", |args| Box::new(AutoRetype::new(args)));
-
-    reg.register("remove_redundant_casts", |_| mk(RemoveRedundantCasts));
-    reg.register("convert_cast_as_ptr", |_| mk(ConvertCastAsPtr));
 }

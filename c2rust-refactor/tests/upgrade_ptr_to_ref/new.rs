@@ -264,5 +264,5 @@ unsafe extern "C" fn opt_params(p1: Option<&mut u32>, p2: Option<&u32>, p3: Opti
         return;
     }
 
-    *p1.unwrap() = *p2.unwrap() + p3.unwrap()[0];
+    **p1.as_mut().unwrap() = **p2.as_ref().unwrap() + p3.unwrap()[0];
 }

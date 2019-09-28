@@ -7,6 +7,10 @@ typedef int (*char_int_to_int_fp)(char, int);
 
 typedef int knr();
 
+struct pointer_st {
+  int (*fn)();
+};
+
 int intval(const char c) { return c; }
 int negintval(const char c) { return -c; }
 
@@ -79,8 +83,11 @@ void entry3(const unsigned sz, int buffer[const])
         knr *p11 = 1;
         knr *p12 = intval;
         knr *p13 = &intval;
+        struct pointer_st s;
+        s.fn = intval;
         buffer[i++] = p12('a');
         buffer[i++] = p13('a');
+        buffer[i++] = (*(s).fn)(('a'));
 
         buffer[i++] = p2 == intval;
         buffer[i++] = varargs_fp('a', intval);

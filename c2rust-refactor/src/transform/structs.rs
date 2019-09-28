@@ -20,15 +20,19 @@ use crate::RefactorCtxt;
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     let mut x: S = ...;
 ///     x.f = 1;
 ///     x.g = 2;
+/// ```
 /// 
 /// After running `struct_assign_to_update`:
 /// 
+/// ```ignore
 ///     let mut x: S = ...;
 ///     x = S { f: 1, ..x };
 ///     x = S { g: 2, ..x };
+/// ```
 pub struct AssignToUpdate;
 
 impl Transform for AssignToUpdate {
@@ -63,15 +67,19 @@ impl Transform for AssignToUpdate {
 /// Merge consecutive struct updates into a single update.
 /// 
 /// Example:
-/// 
+///
+/// ```ignore
 ///     let mut x: S = ...;
 ///     x = S { f: 1, ..x };
 ///     x = S { g: 2, ..x };
+/// ```
 /// 
 /// After running `struct_assign_to_update`:
 /// 
+/// ```ignore
 ///     let mut x: S = ...;
 ///     x = S { f: 1, g: 2, ..x };
+/// ```
 pub struct MergeUpdates;
 
 impl Transform for MergeUpdates {

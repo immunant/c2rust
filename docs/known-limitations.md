@@ -11,6 +11,7 @@ This document tracks things that we know the translator can't handle, as well as
 ## Unimplemented
 
   * `_Complex` type (partially blocked by Rust language)
+  * Using `long double` type in variadic functions (blocked on Rust language; see https://github.com/immunant/c2rust/issues/154)
   * Non x86/64 SIMD function/types and x86/64 SIMD function/types which have no Rust equivalent
   
 ## Unimplemented, _might_ be implementable

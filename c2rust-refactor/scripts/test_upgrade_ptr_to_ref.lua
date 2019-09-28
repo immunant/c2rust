@@ -67,7 +67,7 @@ node_id_cfgs = {
     [1535] = ConvCfg.new{"slice"},
     -- opt_params
     [1728] = ConvCfg.new{"opt_ref"},
-    [1733] = ConvCfg.new{"opt_ref"},
+    [1733] = ConvCfg.new{"opt_ref", mutability="immut"},
     [1738] = ConvCfg.new{"opt_slice"},
 }
 

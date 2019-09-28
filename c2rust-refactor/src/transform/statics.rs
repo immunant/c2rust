@@ -37,16 +37,19 @@ use crate::RefactorCtxt;
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     static mut FOO: i32 = 100;
 ///     static mut BAR: bool = true;
 /// 
 ///     unsafe fn f() -> i32 {
 ///         FOO
 ///     }
+/// ```
 /// 
 /// 
 /// After running `static_collect_to_struct Globals G`, with both statics marked:
 /// 
+/// ```ignore
 ///     struct Globals {
 ///         FOO: i32,
 ///         BAR: bool,
@@ -60,6 +63,7 @@ use crate::RefactorCtxt;
 ///     unsafe fn f() -> i32 {
 ///         G.FOO
 ///     }
+/// ```
 pub struct CollectToStruct {
     pub struct_name: String,
     pub instance_name: String,
@@ -168,7 +172,8 @@ fn build_struct_instance(struct_name: &str,
 /// that its callees do.
 /// 
 /// Example:
-/// 
+///
+/// ```ignore
 ///     static mut FOO: i32 = 100;  // FOO: target
 /// 
 ///     unsafe fn f() -> i32 {  // f: user
@@ -182,9 +187,11 @@ fn build_struct_instance(struct_name: &str,
 ///     unsafe fn h() -> i32 {
 ///         g()
 ///     }
-/// 
+/// ```
+///
 /// After running `static_to_local_ref`:
-/// 
+///
+/// ```ignore
 ///     static mut FOO: i32 = 100;
 /// 
 ///     // `f` is a `user` that references `FOO`, so it
@@ -208,6 +215,7 @@ fn build_struct_instance(struct_name: &str,
 ///         // static `FOO`.
 ///         g(&mut FOO)
 ///     }
+/// ```
 pub struct Localize;
 
 impl Transform for Localize {
@@ -379,7 +387,8 @@ impl Transform for Localize {
 /// local variable definition replicating the marked static.
 /// 
 /// Example:
-/// 
+///
+/// ```ignore
 ///     static mut FOO: i32 = 100;  // FOO: target
 /// 
 ///     unsafe fn f() -> i32 {
@@ -389,9 +398,11 @@ impl Transform for Localize {
 ///     unsafe fn g() -> i32 {
 ///         FOO + 1
 ///     }
+/// ```
 /// 
 /// After running `static_to_local`:
 /// 
+/// ```ignore
 ///     // `FOO` deleted
 /// 
 ///     // `f` gains a new local, replicating `FOO`.
@@ -405,6 +416,7 @@ impl Transform for Localize {
 ///         let FOO: i32 = 100;
 ///         FOO + 1
 ///     }
+/// ```
 struct StaticToLocal;
 
 impl Transform for StaticToLocal {

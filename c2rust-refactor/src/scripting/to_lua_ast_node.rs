@@ -222,7 +222,7 @@ impl UserData for LuaAstNode<P<Item>> {
 
         methods.add_method("visit_foreign_items", |lua_ctx, this, callback: Function| {
             visit_nodes(&**this.borrow(), |node: &ForeignItem| {
-                callback.call::<_, ()>(P(node.clone()).to_lua(lua_ctx))
+                callback.call::<_, ()>(node.clone().to_lua(lua_ctx))
                 .unwrap_or_else(|e| panic!("Lua callback failed in visit_foreign_items: {}", DisplayLuaError(e)));
             });
             Ok(())
@@ -303,8 +303,8 @@ impl UserData for LuaAstNode<P<Item>> {
 // This object is NOT thread-safe. Do not use an object of this class from a
 // thread that did not acquire it.
 // @type ForeignItemAstNode
-unsafe impl Send for LuaAstNode<P<ForeignItem>> {}
-impl UserData for LuaAstNode<P<ForeignItem>> {
+unsafe impl Send for LuaAstNode<ForeignItem> {}
+impl UserData for LuaAstNode<ForeignItem> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
             Ok(this.borrow().node.ast_name())
@@ -543,11 +543,10 @@ impl UserData for LuaAstNode<P<Expr>> {
             }
         });
 
-        methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.borrow());
-
-            Ok(())
-        });
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
 
         methods.add_method("get_method_name", |lua_ctx, this, ()| {
             if let ExprKind::MethodCall(path_seg, ..) = &this.borrow().node {
@@ -613,6 +612,19 @@ impl UserData for LuaAstNode<P<Expr>> {
             let params = exprs.iter().skip(1).map(|lan| lan.borrow().clone()).collect();
 
             this.borrow_mut().node = ExprKind::Call(func, params);
+
+            Ok(())
+        });
+
+        methods.add_method("to_addr_of", |_lua_ctx, this, (expr, mutable): (LuaAstNode<P<Expr>>, bool)| {
+            let expr = expr.borrow().clone();
+            let mutability = if mutable {
+                Mutability::Mutable
+            } else {
+                Mutability::Immutable
+            };
+
+            this.borrow_mut().node = ExprKind::AddrOf(mutability, expr);
 
             Ok(())
         });
@@ -700,11 +712,10 @@ impl UserData for LuaAstNode<P<Expr>> {
 unsafe impl Send for LuaAstNode<P<Ty>> {}
 impl UserData for LuaAstNode<P<Ty>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.borrow());
-
-            Ok(())
-        });
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
 
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
             Ok(this.borrow().node.ast_name())
@@ -982,7 +993,13 @@ impl UserData for LuaAstNode<Stmt> {
 // thread that did not acquire it.
 // @type PatAstNode
 unsafe impl Send for LuaAstNode<P<Pat>> {}
-impl UserData for LuaAstNode<P<Pat>> {}
+impl UserData for LuaAstNode<P<Pat>> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_kind", |_lua_ctx, this, ()| {
+            Ok(this.0.borrow().node.ast_name())
+        });
+    }
+}
 
 
 /// Crate AST node handle
@@ -1323,15 +1340,45 @@ impl UserData for LuaAstNode<Arg> {
             Ok(())
         });
 
+        methods.add_method("get_pat", |_lua_ctx, this, ()| {
+            Ok(LuaAstNode::new(this.borrow().pat.clone()))
+        });
+
         methods.add_method("get_pat_id", |lua_ctx, this, ()| {
             Ok(this.borrow().pat.id.to_lua(lua_ctx))
         });
 
-        methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.borrow());
+        methods.add_method("set_binding", |_lua_ctx, this, binding_str: LuaString| {
+            match &mut this.borrow_mut().pat.node {
+                PatKind::Ident(binding, ..) => {
+                    *binding = match binding_str.to_str()? {
+                        "ByRefMut" => BindingMode::ByRef(Mutability::Mutable),
+                        "ByRefImmut" => BindingMode::ByRef(Mutability::Immutable),
+                        "ByValMut" => BindingMode::ByValue(Mutability::Mutable),
+                        "ByValImmut" => BindingMode::ByValue(Mutability::Immutable),
+                        _ => panic!("Unknown binding kind"),
+                    };
+                },
+                _ => (),
+            }
+
 
             Ok(())
         });
+
+        methods.add_method("get_attrs", |_lua_ctx, this, ()| {
+            Ok(this
+               .borrow()
+               .attrs
+               .iter()
+               .map(|attr| LuaAstNode::new(attr.clone()))
+               .collect::<Vec<_>>())
+        });
+
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
     }
 }
 
@@ -1423,6 +1470,24 @@ impl UserData for LuaAstNode<ItemKind> {
             println!("{:?}", this.borrow());
 
             Ok(())
+        });
+    }
+}
+
+/// Attribute AST node handle
+//
+// This object is NOT thread-safe. Do not use an object of this class from a
+// thread that did not acquire it.
+// @type FnHeaderAstNode
+unsafe impl Send for LuaAstNode<Attribute> {}
+impl UserData for LuaAstNode<Attribute> {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("ident", |lua_ctx, this, ()| {
+            if let Some(ident) = this.borrow().ident() {
+                Ok(Some(ident.to_lua(lua_ctx)?))
+            } else {
+                Ok(None)
+            }
         });
     }
 }

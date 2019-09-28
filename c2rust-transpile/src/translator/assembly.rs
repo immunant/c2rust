@@ -30,7 +30,7 @@ impl<'c> Translation<'c> {
         self.use_feature("asm");
 
         fn push_expr(tokens: &mut Vec<TokenTree>, expr: P<Expr>) {
-            tokens.push(TokenTree::token(token::Interpolated(Lrc::new(Nonterminal::NtExpr(expr))), DUMMY_SP));
+            tokens.push(TokenTree::token(token::Interpolated(Rc::new(Nonterminal::NtExpr(expr))), DUMMY_SP));
         }
 
         let mut stmts: Vec<Stmt> = vec![];

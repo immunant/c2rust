@@ -88,7 +88,7 @@ impl Transform for RenameRegex {
 /// this pass can run on any `c2rust-transpile`d project.
 /// 
 /// Example:
-/// ```
+/// ```ignore
 /// pub mod foo {
 ///     pub struct unnamed {
 ///         a: i32
@@ -102,7 +102,7 @@ impl Transform for RenameRegex {
 /// }
 /// ```
 /// Becomes:
-/// ```
+/// ```ignore
 /// pub mod foo {
 ///     pub struct unnamed {
 ///         a: i32

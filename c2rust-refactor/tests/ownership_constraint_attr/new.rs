@@ -6,6 +6,7 @@ extern "C" {
     fn free(ptr: *mut c_void);
 }
 
+#[derive(Debug, Clone)]
 struct RefCounted {
     #[ownership_static()]
     ref_count: usize,
