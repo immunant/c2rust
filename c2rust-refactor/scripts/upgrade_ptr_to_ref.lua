@@ -752,15 +752,18 @@ function Visitor:rewrite_call_expr(expr)
     -- Though this should be expanded to support other exprs like
     -- fields
     elseif segments and segments[#segments] == "memset" then
-        first_param_expr:map_first_path(function(path_expr)
-            local cfg = self:get_expr_cfg(path_expr)
+        first_param_expr:filtermap_subexprs(
+            function(expr_kind) return expr_kind == "Path" end,
+            function(expr)
+                local cfg = self:get_expr_cfg(expr)
 
-            if cfg and cfg:is_box_any() then
-                path_expr:to_method_call("as_mut_ptr", {path_expr})
+                if cfg and cfg:is_box_any() then
+                    expr:to_method_call("as_mut_ptr", {expr})
+                end
+
+                return expr
             end
-
-            return path_expr
-        end)
+        )
 
         call_exprs[2] = first_param_expr
 
@@ -830,26 +833,30 @@ function Visitor:rewrite_call_expr(expr)
             end
 
             --  x -> x[.as_mut()].unwrap().as_[mut_]ptr()
-            param_expr:map_first_path_or_deref_path(function(path_expr)
-                -- Deref exprs should already be handled by rewrite_deref_expr
-                if path_expr:get_op() == "Deref" then
-                    return path_expr
+            param_expr:filtermap_subexprs(
+                function(expr_kind) return expr_kind == "Unary" or expr_kind == "Path" end,
+                function(expr)
+                    -- Deref exprs should already be handled by rewrite_deref_expr
+                    -- so we should skip over them (maybe only if derefing path?)
+                    if expr:get_op() == "Deref" then
+                        return expr
+                    end
+
+                    local cfg = self:get_expr_cfg(expr)
+
+                    if not cfg then
+                        return expr
+                    end
+
+                    if fn.is_foreign then
+                        expr = decay_ref_to_ptr(expr, cfg)
+                    else
+                        -- TODO: Conversion to converted signatures
+                    end
+
+                    return expr
                 end
-
-                local cfg = self:get_expr_cfg(path_expr)
-
-                if not cfg then
-                    return path_expr
-                end
-
-                if fn.is_foreign then
-                    path_expr = decay_ref_to_ptr(path_expr, cfg)
-                else
-                    -- TODO: Conversion to converted signatures
-                end
-
-                return path_expr
-            end)
+            )
 
             ::continue::
         end

@@ -477,7 +477,7 @@ impl UserData for LuaAstNode<P<Expr>> {
 
         methods.add_method("get_ident", |lua_ctx, this, ()| {
             match &this.borrow().kind {
-                ExprKind::Field(_, ident) => ident.to_lua(lua_ctx).map(|i| Some(i)),
+                ExprKind::Field(_, ident) => ident.to_lua(lua_ctx).map(Some),
                 _ => Ok(None),
             }
         });
@@ -695,43 +695,35 @@ impl UserData for LuaAstNode<P<Expr>> {
             Ok(opt_expr.map(|expr| LuaAstNode::new(expr.clone())))
         });
 
-        methods.add_method("map_first_path", |_lua_ctx, this, func: Function| {
-            let expr = &mut *this.borrow_mut();
-            let opt_expr = find_subexpr(expr, &|sub_expr| match sub_expr.kind {
-                ExprKind::Path(..) => true,
-                _ => false,
-            })?;
-
-            if let Some(expr) = opt_expr {
-                let expr_clone = expr.clone();
-                let new_expr = func.call::<_, LuaAstNode<P<Expr>>>(LuaAstNode::new(expr_clone))?;
-
-                *expr = new_expr.into_inner();
+        methods.add_method("filtermap_subexprs", |_lua_ctx, this, (filter, map): (Function, Function)| {
+            struct LuaFilterMapExpr<'lua> {
+                filter: Function<'lua>,
+                map: Function<'lua>,
             }
 
-            Ok(())
-        });
+            impl<'lua> MutVisitor for LuaFilterMapExpr<'lua> {
+                fn visit_expr(&mut self, x: &mut P<Expr>) {
+                    let is_end = self.filter
+                        .call::<_, bool>(x.node.ast_name())
+                        .expect("Failed to call filter");
 
-        methods.add_method("map_first_path_or_deref_path", |_lua_ctx, this, func: Function| {
-            let expr = &mut *this.borrow_mut();
-            let opt_expr = find_subexpr(expr, &|sub_expr| match sub_expr.node {
-                ExprKind::Path(..) => true,
-                ExprKind::Unary(UnOp::Deref, ref expr) => {
-                    if let ExprKind::Path(..) = expr.node {
-                        true
+                    if is_end {
+                        *x = self.map
+                            .call::<_, LuaAstNode<P<Expr>>>(LuaAstNode::new(x.clone()))
+                            .expect("Failed to call map")
+                            .into_inner();
                     } else {
-                        false
+                        noop_visit_expr(x, self);
                     }
-                },
-                _ => false,
-            })?;
-
-            if let Some(expr) = opt_expr {
-                let expr_clone = expr.clone();
-                let new_expr = func.call::<_, LuaAstNode<P<Expr>>>(LuaAstNode::new(expr_clone))?;
-
-                *expr = new_expr.into_inner();
+                }
             }
+
+            let mut visitor = LuaFilterMapExpr {
+                filter,
+                map,
+            };
+
+            visitor.visit_expr(&mut this.borrow_mut());
 
             Ok(())
         });
