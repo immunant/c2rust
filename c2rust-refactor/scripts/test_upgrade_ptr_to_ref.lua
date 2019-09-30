@@ -66,7 +66,7 @@ node_id_cfgs = {
     -- _category, Category, categories, bisearch_cat
     [1536] = ConvCfg.new{"slice"},
     -- opt_params
-    [1729] = ConvCfg.new{"opt_ref"},
+    [1729] = ConvCfg.new{"opt_ref", mutability="mut"},
     [1734] = ConvCfg.new{"opt_ref", mutability="immut"},
     [1739] = ConvCfg.new{"opt_slice"},
 }

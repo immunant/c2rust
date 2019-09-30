@@ -259,10 +259,10 @@ unsafe extern "C" fn bisearch_cat(
     return 4294967295 as Category;
 }
 
-unsafe extern "C" fn opt_params(p1: Option<&mut u32>, p2: Option<&u32>, p3: Option<&[u32]>) {
+unsafe extern "C" fn opt_params(mut p1: Option<&mut u32>, p2: Option<&u32>, p3: Option<&[u32]>) {
     if p1.is_none() || p2.is_none() {
         return;
     }
 
-    **p1.as_mut().unwrap() = **p2.as_ref().unwrap() + p3.unwrap()[0];
+    **p1.as_mut().unwrap() = *p2.unwrap() + p3.unwrap()[0];
 }

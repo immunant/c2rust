@@ -288,7 +288,7 @@ unsafe extern "C" fn bisearch_cat(
     return 4294967295 as Category;
 }
 
-unsafe extern "C" fn opt_params(p1: *mut u32, p2: *const u32, p3: *const u32) {
+unsafe extern "C" fn opt_params(mut p1: *mut u32, p2: *const u32, p3: *const u32) {
     if p1.is_null() || p2.is_null() {
         return;
     }

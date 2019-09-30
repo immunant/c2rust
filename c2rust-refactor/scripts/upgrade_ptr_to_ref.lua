@@ -595,11 +595,10 @@ function Visitor:rewrite_deref_expr(expr)
         -- If we're using an option, we must unwrap
         -- Must get inner reference to mutate
         if cfg:is_opt_any() then
-            local as_x = nil
             local is_mut = cfg:is_mut()
 
             -- as_ref is not required for immutable refs since &T is Copy
-            if is_mut then
+            if is_mut or cfg:is_box_any() then
                 unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
             end
 
@@ -614,7 +613,7 @@ function Visitor:rewrite_deref_expr(expr)
             else
                 -- For immut refs we skip the superflous as_ref call,
                 -- so we can also skip one of the corresponding derefs
-                if is_mut then
+                if is_mut or cfg:is_box_any() then
                     expr:to_unary("Deref", expr)
                 end
 
