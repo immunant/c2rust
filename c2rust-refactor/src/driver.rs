@@ -26,7 +26,6 @@ use std::collections::HashSet;
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::mpsc;
 use std::sync::Arc;
 use syntax::ast;
 use syntax::ast::DUMMY_NODE_ID;
@@ -337,8 +336,6 @@ struct Queries {
     dep_graph: Query<DepGraph>,
     lower_to_hir: Query<(Steal<hir_map::Forest>, ExpansionResult)>,
     prepare_outputs: Query<OutputFilenames>,
-    codegen_channel: Query<(Steal<mpsc::Sender<Box<dyn Any + Send>>>,
-                            Steal<mpsc::Receiver<Box<dyn Any + Send>>>)>,
     global_ctxt: Query<BoxedGlobalCtxt>,
     ongoing_codegen: Query<Box<dyn Any>>,
     link: Query<()>,
@@ -600,7 +597,7 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("impl ! {{ {} }}", src));
     match p.parse_item() {
-        Ok(item) => match item.expect("expected to find an item").into_inner().node {
+        Ok(item) => match item.expect("expected to find an item").into_inner().kind {
             ItemKind::Impl(_, _, _, _, _, _, items) => items,
             _ => panic!("expected to find an impl item"),
         },
@@ -614,7 +611,7 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("extern {{ {} }}", src));
     match p.parse_item() {
-        Ok(item) => match item.expect("expected to find an item").into_inner().node {
+        Ok(item) => match item.expect("expected to find an item").into_inner().kind {
             ItemKind::ForeignMod(fm) => fm.items,
             _ => panic!("expected to find a foreignmod item"),
         },

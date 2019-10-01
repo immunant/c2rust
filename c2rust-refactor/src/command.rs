@@ -325,7 +325,6 @@ impl RefactorState {
 
                 // Ensure that we've dropped any copies of the session Lrc
                 let _ = self.compiler.lower_to_hir()?.take();
-                let _ = self.compiler.codegen_channel()?.take();
 
                 r
             }
