@@ -23,7 +23,7 @@ use log::Level;
 use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::{Mutability, Node};
-use rustc::ty::{TyCtxt, TyKind, TyS};
+use rustc::ty::{TyCtxt, TyKind, TypeAndMut, TyS};
 use rustc_data_structures::indexed_vec::{Idx, IndexVec};
 use syntax::ast::IntTy;
 use syntax::source_map::Span;
@@ -189,6 +189,36 @@ fn analyze_intra<'a, 'tcx, 'lty>(
     }
 }
 
+/// Add conservative assignments for extern functions that we can't
+/// analyze. Results are written back into the first variant for each external
+/// function in the `Ctxt`.
+fn analyze_externs<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'a, 'tcx>) {
+    for (def_id, func_summ) in cx.funcs_mut() {
+        match hir_map.get_if_local(*def_id) {
+            Some(Node::ForeignItem(i)) => match i.node {
+                // We only want to consider foreign functions
+                hir::ForeignItemKind::Fn(..) => {}
+                _ => continue,
+            },
+            _ => continue,
+        }
+        for &input in func_summ.sig.inputs {
+            if let Some(p) = input.label {
+                match input.ty.sty {
+                    TyKind::Ref(_, _, Mutability::MutMutable) => {
+                        func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
+                    }
+                    TyKind::RawPtr(TypeAndMut{mutbl: Mutability::MutMutable, ..}) => {
+                        func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        func_summ.cset_provided = true;
+    }
+}
+
 /// Run the interprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
 fn analyze_inter<'lty, 'tcx>(cx: &mut Ctxt<'lty, 'tcx>) {
@@ -255,6 +285,8 @@ pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
 
     // Compute polymorphic signatures / constraint sets for each function
     analyze_intra(&mut cx, &dcx.hir_map(), dcx.ty_ctxt());
+    // Add constraints for extern functions
+    analyze_externs(&mut cx, &dcx.hir_map());
     // Inject constraints for std functions
     register_std_constraints(&mut cx, dcx.ty_ctxt());
     analyze_inter(&mut cx);
