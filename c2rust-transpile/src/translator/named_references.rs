@@ -56,7 +56,7 @@ impl<'c> Translation<'c> {
         reference.and_then(|reference| {
             /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
             fn is_lvalue(e: &Expr) -> bool {
-                match e.node {
+                match e.kind {
                     ExprKind::Path(..)
                         | ExprKind::Unary(ast::UnOp::Deref, _)
                         | ExprKind::Field(..)
@@ -67,7 +67,7 @@ impl<'c> Translation<'c> {
 
             // Check if something is a side-effect free Rust lvalue.
             fn is_simple_lvalue(e: &Expr) -> bool {
-                match e.node {
+                match e.kind {
                     ExprKind::Path(..) => true,
                     ExprKind::Unary(ast::UnOp::Deref, ref e)
                         | ExprKind::Field(ref e, _)

@@ -100,7 +100,7 @@ impl<A: Traversable + 'static> Traversable for ptr::P<A> {
 }
 
 pub fn traverse_stmt_def<W: Traversal>(walk: &mut W, mut s: Stmt) -> Stmt {
-    s.node = match s.node {
+    s.kind = match s.kind {
         StmtKind::Local(p_local) => StmtKind::Local(p_local.traverse(walk)),
         StmtKind::Item(p_item) => StmtKind::Item(p_item.traverse(walk)),
         StmtKind::Expr(p_expr) => StmtKind::Expr(p_expr.traverse(walk)),
@@ -111,7 +111,7 @@ pub fn traverse_stmt_def<W: Traversal>(walk: &mut W, mut s: Stmt) -> Stmt {
 }
 
 pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
-    e.node = match e.node {
+    e.kind = match e.kind {
         ExprKind::Box(p_expr) => ExprKind::Box(p_expr.map(|expr| walk.traverse_expr(expr))),
         ExprKind::Array(elems) => ExprKind::Array(elems.traverse(walk)),
         ExprKind::Call(func, args) => ExprKind::Call(func.traverse(walk), args.traverse(walk)),
@@ -168,7 +168,7 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
 }
 
 pub fn traverse_trait_item_def<W: Traversal>(walk: &mut W, mut ti: TraitItem) -> TraitItem {
-    ti.node = match ti.node {
+    ti.kind = match ti.kind {
         TraitItemKind::Const(ty, arg) => TraitItemKind::Const(ty, arg.traverse(walk)),
         TraitItemKind::Method(sig, block) => TraitItemKind::Method(sig, block.traverse(walk)),
         TraitItemKind::Type(bds, t) => TraitItemKind::Type(bds, t),
@@ -178,7 +178,7 @@ pub fn traverse_trait_item_def<W: Traversal>(walk: &mut W, mut ti: TraitItem) ->
 }
 
 pub fn traverse_impl_item_def<W: Traversal>(walk: &mut W, mut ii: ImplItem) -> ImplItem {
-    ii.node = match ii.node {
+    ii.kind = match ii.kind {
         ImplItemKind::Const(ty, expr) => ImplItemKind::Const(ty, expr.traverse(walk)),
         ImplItemKind::Method(sig, block) => ImplItemKind::Method(sig, block.traverse(walk)),
         ImplItemKind::TyAlias(t) => ImplItemKind::TyAlias(t),
@@ -220,7 +220,7 @@ pub fn traverse_foreign_mod_def<W: Traversal>(walk: &mut W, mut m: ForeignMod) -
 }
 
 pub fn traverse_item_def<W: Traversal>(walk: &mut W, mut i: Item) -> Item {
-    i.node = match i.node {
+    i.kind = match i.kind {
         ItemKind::Static(ty, mu, p_expr) => ItemKind::Static(ty, mu, p_expr.traverse(walk)),
         ItemKind::Const(ty, p_expr) => ItemKind::Const(ty, p_expr.traverse(walk)),
         ItemKind::Fn(f, h, g, blk) => ItemKind::Fn(f, h, g, blk.traverse(walk)),

@@ -29,14 +29,14 @@ pub fn structured_cfg(
     if cut_out_trailing_ret {
         match stmts.last().cloned() {
             Some(Stmt {
-                node: StmtKind::Expr(ref ret),
+                kind: StmtKind::Expr(ref ret),
                 ..
             })
             | Some(Stmt {
-                node: StmtKind::Semi(ref ret),
+                kind: StmtKind::Semi(ref ret),
                 ..
             }) => {
-                match ret.node {
+                match ret.kind {
                     ExprKind::Ret(None) => {
                         stmts.pop();
                     }
@@ -541,7 +541,7 @@ impl StructureState {
                     (false, false) => {
                         fn is_expr(kind: &StmtKind) -> bool {
                             match &kind {
-                                StmtKind::Expr(expr) => match &expr.node {
+                                StmtKind::Expr(expr) => match &expr.kind {
                                     ExprKind::If(..) | ExprKind::Block(..) => true,
                                     _ => false,
                                 },
@@ -552,12 +552,12 @@ impl StructureState {
                         // Do the else statemtents contain a single If, IfLet or
                         // Block expression? The pretty printer handles only
                         // these kinds of expressions for the else case.
-                        let is_els_expr = els_stmts.len() == 1 && is_expr(&els_stmts[0].node);
+                        let is_els_expr = els_stmts.len() == 1 && is_expr(&els_stmts[0].kind);
 
                         let els_branch = if is_els_expr {
                             let stmt_expr = els_stmts.swap_remove(0);
                             let stmt_expr_span = stmt_expr.span;
-                            let mut els_expr = match stmt_expr.node {
+                            let mut els_expr = match stmt_expr.kind {
                                 StmtKind::Expr(e) => e,
                                 _ => panic!("is_els_expr out of sync"),
                             };
@@ -618,13 +618,13 @@ impl StructureState {
 
                 // TODO: this is ugly but it needn't be. We are just pattern matching on particular ASTs.
                 if let Some(&Stmt {
-                    node: syntax::ast::StmtKind::Expr(ref expr),
+                    kind: syntax::ast::StmtKind::Expr(ref expr),
                     span: stmt_span,
                     ..
                 }) = body.first()
                 {
                     let span = if !stmt_span.is_dummy() { stmt_span } else { span };
-                    if let syntax::ast::ExprKind::If(ref cond, ref thn, None) = expr.node {
+                    if let syntax::ast::ExprKind::If(ref cond, ref thn, None) = expr.kind {
                         if let &syntax::ast::Block {
                             ref stmts,
                             rules: syntax::ast::BlockCheckMode::Default,
@@ -633,11 +633,11 @@ impl StructureState {
                         {
                             if stmts.len() == 1 {
                                 if let Some(&Stmt {
-                                    node: syntax::ast::StmtKind::Semi(ref expr),
+                                    kind: syntax::ast::StmtKind::Semi(ref expr),
                                     ..
                                 }) = stmts.iter().nth(0)
                                 {
-                                    if let syntax::ast::ExprKind::Break(None, None) = expr.node {
+                                    if let syntax::ast::ExprKind::Break(None, None) = expr.kind {
                                         let e = mk().while_expr(
                                             not(cond),
                                             mk().span(body_span).block(body.iter().skip(1).cloned().collect()),
@@ -678,7 +678,7 @@ impl StructureState {
 ///   * Negating something of the form `!<expr>` produces `<expr>`
 ///
 fn not(bool_expr: &P<Expr>) -> P<Expr> {
-    match bool_expr.node {
+    match bool_expr.kind {
         ExprKind::Unary(syntax::ast::UnOp::Not, ref e) => e.clone(),
         _ => mk().unary_expr("!", bool_expr.clone()),
     }

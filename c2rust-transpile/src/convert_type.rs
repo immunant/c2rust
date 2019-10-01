@@ -254,7 +254,7 @@ impl TypeConverter {
             inputs.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
         };
 
-        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output), is_variadic);
+        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output));
         return Ok(mk().unsafe_().abi("C").barefn_ty(fn_ty));
     }
 

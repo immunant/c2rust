@@ -286,8 +286,8 @@ fn int_arg_metaitem(name: &str, arg: u128) -> NestedMetaItem {
 }
 
 fn cast_int(val: P<Expr>, name: &str, need_lit_suffix: bool) -> P<Expr> {
-    let opt_literal_val = match val.node {
-        ExprKind::Lit(ref l) => match l.node {
+    let opt_literal_val = match val.kind {
+        ExprKind::Lit(ref l) => match l.kind {
             LitKind::Int(i, _) => Some(i),
             _ => None,
         },
@@ -336,7 +336,7 @@ fn unwrap_function_pointer(ptr: P<Expr>) -> P<Expr> {
 }
 
 fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>, no_std: bool) -> P<Expr> {
-    let type_args = match (&source_ty.node, &target_ty.node) {
+    let type_args = match (&source_ty.kind, &target_ty.kind) {
         (TyKind::Infer, TyKind::Infer) => Vec::new(),
         (_, TyKind::Infer) => vec![source_ty],
         _ => vec![source_ty, target_ty],
@@ -364,8 +364,8 @@ fn vec_expr(val: P<Expr>, count: P<Expr>) -> P<Expr> {
 
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> P<Block> {
     if stmts.len() == 1 {
-        if let StmtKind::Expr(ref e) = stmts[0].node {
-            if let ExprKind::Block(ref b, None) = e.node {
+        if let StmtKind::Expr(ref e) = stmts[0].kind {
+            if let ExprKind::Block(ref b, None) = e.kind {
                 return b.clone();
             }
         }
@@ -1354,7 +1354,7 @@ impl<'c> Translation<'c> {
             .borrow_mut()
             .pick_name("run_static_initializers");
         let fn_ty = FunctionRetTy::Default(DUMMY_SP);
-        let fn_decl = mk().fn_decl(vec![], fn_ty, false);
+        let fn_decl = mk().fn_decl(vec![], fn_ty);
         let fn_block = mk().block(sectioned_static_initializers);
         let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
         let fn_item = fn_attributes
@@ -2068,7 +2068,7 @@ impl<'c> Translation<'c> {
                 FunctionRetTy::Ty(ret)
             };
 
-            let decl = mk().fn_decl(args, ret, is_variadic);
+            let decl = mk().fn_decl(args, ret);
 
             if let Some(body) = body {
                 // Translating an actual function
@@ -2743,7 +2743,7 @@ impl<'c> Translation<'c> {
         lhs_type: CQualTypeId,
         rhs: P<Expr>,
     ) -> Result<P<Expr>, TranslationError> {
-        let addr_lhs = match lhs.node {
+        let addr_lhs = match lhs.kind {
             ExprKind::Unary(ast::UnOp::Deref, ref e) => {
                 if lhs_type.qualifiers.is_const {
                     let lhs_type = self.convert_type(lhs_type.ctype)?;
@@ -2777,7 +2777,7 @@ impl<'c> Translation<'c> {
         lhs: &P<Expr>,
         lhs_type: CQualTypeId,
     ) -> Result<P<Expr>, TranslationError> {
-        let addr_lhs = match lhs.node {
+        let addr_lhs = match lhs.kind {
             ExprKind::Unary(ast::UnOp::Deref, ref e) => {
                 if !lhs_type.qualifiers.is_const {
                     let lhs_type = self.convert_type(lhs_type.ctype)?;
@@ -3431,7 +3431,7 @@ impl<'c> Translation<'c> {
                     _ => {
                         let callee = self.convert_expr(ctx.used(), func)?;
                         let make_fn_ty = |ret_ty: P<Ty>| {
-                            let ret_ty = match ret_ty.node {
+                            let ret_ty = match ret_ty.kind {
                                 TyKind::Tup(ref v) if v.is_empty() => FunctionRetTy::Default(DUMMY_SP),
                                 _ => FunctionRetTy::Ty(ret_ty),
                             };
@@ -3445,7 +3445,6 @@ impl<'c> Translation<'c> {
                                         args.len()
                                     ],
                                     ret_ty,
-                                    is_variadic,
                                 )
                             )
                         };
@@ -3713,12 +3712,12 @@ impl<'c> Translation<'c> {
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         fn as_semi_break_stmt(stmt: &ast::Stmt, lbl: &cfg::Label) -> Option<Option<P<ast::Expr>>> {
             if let ast::Stmt {
-                node: ast::StmtKind::Semi(ref expr),
+                kind: ast::StmtKind::Semi(ref expr),
                 ..
             } = *stmt
             {
                 if let ast::Expr {
-                    node: ast::ExprKind::Break(Some(ref blbl), ref ret_val),
+                    kind: ast::ExprKind::Break(Some(ref blbl), ref ret_val),
                     ..
                 } = **expr
                 {
@@ -4138,7 +4137,7 @@ impl<'c> Translation<'c> {
             // we are casting to. Here, we can just remove the extraneous cast instead of generating
             // a new one.
             CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) => {
-                return val.map(|x| match x.node {
+                return val.map(|x| match x.kind {
                     ast::ExprKind::Cast(ref e, _) => e.clone(),
                     _ => panic!(format!(
                         "DeclRef {:?} of enum {:?} is not cast",
@@ -4361,8 +4360,8 @@ impl<'c> Translation<'c> {
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
-            if let ExprKind::Cast(ref arg, _) = val.node {
-                if let ExprKind::Binary(op, _, _) = arg.node {
+            if let ExprKind::Cast(ref arg, _) = val.kind {
+                if let ExprKind::Binary(op, _, _) = arg.kind {
                     match op.node {
                         BinOpKind::Or
                         | BinOpKind::And

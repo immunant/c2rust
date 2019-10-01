@@ -28,13 +28,13 @@ impl IncCleanup {
 
             let mut removed_tail_expr = false;
 
-            if let StmtKind::Expr(ref mut expr) = stmt.node {
-                match expr.node {
+            if let StmtKind::Expr(ref mut expr) = stmt.kind {
+                match expr.kind {
                     ExprKind::If(_, ref mut body, ref mut sels) => {
                         removed_tail_expr =
                             removed_tail_expr || self.remove_tail_expr(&mut body.stmts);
                         if let Some(els) = sels {
-                            if let ExprKind::Block(ref mut blk, _) = els.node {
+                            if let ExprKind::Block(ref mut blk, _) = els.kind {
                                 removed_tail_expr =
                                     removed_tail_expr || self.remove_tail_expr(&mut blk.stmts)
                             }
@@ -44,7 +44,7 @@ impl IncCleanup {
                     ExprKind::Match(_, ref mut cases) => {
                         // Block label can be removed from any arm
                         for case in cases {
-                            match case.body.node {
+                            match case.body.kind {
                                 ExprKind::Block(ref mut blk, _) => {
                                     removed_tail_expr =
                                         removed_tail_expr || self.remove_tail_expr(&mut blk.stmts)
@@ -71,7 +71,7 @@ impl IncCleanup {
 
     fn is_idempotent_tail_expr(&self, stmt: &Stmt) -> bool {
         let tail_expr = if let Stmt {
-            node: StmtKind::Semi(ref expr),
+            kind: StmtKind::Semi(ref expr),
             ..
         } = *stmt
         {
@@ -82,17 +82,17 @@ impl IncCleanup {
         match self.in_tail {
             Some(ImplicitReturnType::Main) => {
                 if let Expr {
-                    node: ExprKind::Ret(Some(ref zero)),
+                    kind: ExprKind::Ret(Some(ref zero)),
                     ..
                 } = **tail_expr
                 {
                     if let Expr {
-                        node: ExprKind::Lit(ref lit),
+                        kind: ExprKind::Lit(ref lit),
                         ..
                     } = **zero
                     {
                         if let Lit {
-                            node: LitKind::Int(0, LitIntType::Unsuffixed),
+                            kind: LitKind::Int(0, LitIntType::Unsuffixed),
                             ..
                         } = *lit
                         {
@@ -105,7 +105,7 @@ impl IncCleanup {
 
             Some(ImplicitReturnType::Void) => {
                 if let Expr {
-                    node: ExprKind::Ret(None),
+                    kind: ExprKind::Ret(None),
                     ..
                 } = **tail_expr
                 {
@@ -116,7 +116,7 @@ impl IncCleanup {
 
             _ => {
                 if let Expr {
-                    node: ExprKind::Break(Some(ref blbl), None),
+                    kind: ExprKind::Break(Some(ref blbl), None),
                     ..
                 } = **tail_expr
                 {
@@ -134,25 +134,25 @@ impl IncCleanup {
 /// removing idempotent statements.
 fn cleanup_if(stmt: Stmt) -> Stmt {
     if let Stmt {
-        node: StmtKind::Expr(ref expr),
+        kind: StmtKind::Expr(ref expr),
         ..
     } = &stmt
     {
         if let Expr {
-            node: ExprKind::If(ref cond, ref body, ref els),
+            kind: ExprKind::If(ref cond, ref body, ref els),
             ..
         } = **expr
         {
             if let Some(ref els) = els {
                 if let Expr {
-                    node: ExprKind::Block(ref blk, None),
+                    kind: ExprKind::Block(ref blk, None),
                     ..
                 } = **els
                 {
                     if blk.stmts.is_empty() {
                         return Stmt {
-                            node: StmtKind::Expr(P(Expr {
-                                node: ExprKind::If(cond.clone(), body.clone(), None),
+                            kind: StmtKind::Expr(P(Expr {
+                                kind: ExprKind::If(cond.clone(), body.clone(), None),
                                 ..(**expr).clone()
                             })),
                             ..stmt
