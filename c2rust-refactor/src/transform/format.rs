@@ -55,7 +55,7 @@ pub struct ConvertFormatArgs;
 impl Transform for ConvertFormatArgs {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            let fmt_idx = match e.node {
+            let fmt_idx = match e.kind {
                 ExprKind::Call(_, ref args) =>
                     args.iter().position(|e| st.marked(e.id, "target")),
                 _ => None,
@@ -66,7 +66,7 @@ impl Transform for ConvertFormatArgs {
             let fmt_idx = fmt_idx.unwrap();
 
 
-            let (func, args) = expect!([e.node] ExprKind::Call(ref f, ref a) => (f, a));
+            let (func, args) = expect!([e.kind] ExprKind::Call(ref f, ref a) => (f, a));
 
             // Find the expr for the format string.  This may not be exactly args[fmt_idx] - the
             // user can mark the actual string literal in case there are casts/conversions applied.
@@ -106,7 +106,7 @@ fn build_format_macro(
     let mut ep = &old_fmt_str_expr;
     let lit = loop {
         // Peel off any casts and retrieve the inner string
-        match ep.node {
+        match ep.kind {
             ExprKind::Lit(ref l) => break l,
             ExprKind::Cast(ref e, _) |
             ExprKind::Type(ref e, _) => ep = &*e,
@@ -117,7 +117,7 @@ fn build_format_macro(
             _ => panic!("unexpected format string: {:?}", old_fmt_str_expr)
         }
     };
-    let s = expect!([lit.node]
+    let s = expect!([lit.kind]
         LitKind::Str(s, _) => (&s.as_str() as &str).to_owned(),
         LitKind::ByteStr(ref b) => str::from_utf8(b).unwrap().to_owned());
 
@@ -227,7 +227,7 @@ impl Transform for ConvertPrintfs {
         let mut stderr_defs = HashSet::<DefId>::new();
         visit_nodes(krate, |fi: &ForeignItem| {
             if attr::contains_name(&fi.attrs, sym::no_mangle) {
-                match (&*fi.ident.as_str(), &fi.node) {
+                match (&*fi.ident.as_str(), &fi.kind) {
                     ("printf", ForeignItemKind::Fn(_, _)) => {
                         printf_defs.insert(cx.node_def_id(fi.id));
                     }
@@ -242,9 +242,9 @@ impl Transform for ConvertPrintfs {
             }
         });
         FlatMapNodes::visit(krate, |s: Stmt| {
-            match s.node {
+            match s.kind {
                 StmtKind::Semi(ref expr) => {
-                    if let ExprKind::Call(ref f, ref args) = expr.node {
+                    if let ExprKind::Call(ref f, ref args) = expr.kind {
                         if args.len() < 1 {
                             return smallvec![s];
                         }

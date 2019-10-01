@@ -162,7 +162,7 @@ impl Transform for LinkIncompleteTypes {
         let mut incomplete_to_name = HashMap::new();
 
         visit_nodes(krate, |i: &Item| {
-            let complete = match i.node {
+            let complete = match i.kind {
                 ItemKind::Struct(..) => true,
                 ItemKind::Union(..) => true,
                 ItemKind::Enum(..) => true,
@@ -178,7 +178,7 @@ impl Transform for LinkIncompleteTypes {
 
         // (2) Find incomplete type definitions (extern types), and index them by name.
         visit_nodes(krate, |i: &ForeignItem| {
-            let incomplete = match i.node {
+            let incomplete = match i.kind {
                 ForeignItemKind::Ty => true,
                 _ => false,
             };
@@ -270,7 +270,7 @@ impl Transform for CanonicalizeStructs {
         let mut removed_id_map = HashMap::new();
 
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            let should_remove = match i.node {
+            let should_remove = match i.kind {
                 ItemKind::Struct(..) => {
                     if let Some(&canon_def_id) = canon_ids.get(&i.ident.name) {
                         let def_id = cx.node_def_id(i.id);
@@ -297,7 +297,7 @@ impl Transform for CanonicalizeStructs {
         // (3) Remove impls for removed structs.
 
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            let should_remove = match i.node {
+            let should_remove = match i.kind {
                 ItemKind::Impl(_, _, _, _, _, ref ty, _) => {
                     if let Some(ty_def_id) = cx.try_resolve_ty(ty) {
                         removed_id_map.contains_key(&ty_def_id)

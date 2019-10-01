@@ -741,7 +741,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let rhs = rhs.borrow().clone();
             let expr = P(Expr {
                 id: DUMMY_NODE_ID,
-                node: ExprKind::Binary(dummy_spanned(op), lhs, rhs),
+                kind: ExprKind::Binary(dummy_spanned(op), lhs, rhs),
                 span: DUMMY_SP,
                 attrs: ThinVec::new(),
             });
@@ -754,7 +754,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let rhs = rhs.borrow().clone();
             let expr = P(Expr {
                 id: DUMMY_NODE_ID,
-                node: ExprKind::Assign(lhs, rhs),
+                kind: ExprKind::Assign(lhs, rhs),
                 span: DUMMY_SP,
                 attrs: ThinVec::new(),
             });
@@ -766,7 +766,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let path = syntax::ast::Path::from_ident(Ident::from_str(path.to_str()?));
             let expr = P(Expr {
                 id: DUMMY_NODE_ID,
-                node: ExprKind::Path(None, path),
+                kind: ExprKind::Path(None, path),
                 span: DUMMY_SP,
                 attrs: ThinVec::new(),
             });
@@ -778,7 +778,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let path = syntax::ast::Path::from_ident(Ident::from_str(path.to_str()?));
             let expr = P(Ty {
                 id: DUMMY_NODE_ID,
-                node: TyKind::Path(None, path),
+                kind: TyKind::Path(None, path),
                 span: DUMMY_SP,
             });
 
@@ -796,7 +796,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let mac = mk().mac(mk().path("vec"), macro_body, MacDelimiter::Bracket);
             let expr = P(Expr {
                 id: DUMMY_NODE_ID,
-                node: ExprKind::Mac(mac),
+                kind: ExprKind::Mac(mac),
                 span: DUMMY_SP,
                 attrs: ThinVec::new(),
             });
@@ -811,12 +811,12 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                     symbol: Symbol::intern(&format!("{}", int)),
                     suffix: None,
                 },
-                node: LitKind::Int(int as u128, LitIntType::Unsuffixed),
+                kind: LitKind::Int(int as u128, LitIntType::Unsuffixed),
                 span: DUMMY_SP,
             };
             let expr = P(Expr {
                 id: DUMMY_NODE_ID,
-                node: ExprKind::Lit(lit),
+                kind: ExprKind::Lit(lit),
                 span: DUMMY_SP,
                 attrs: ThinVec::new(),
             });
@@ -829,7 +829,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let ty = ty.borrow().clone();
             let expr = P(Expr {
                 id: DUMMY_NODE_ID,
-                node: ExprKind::Cast(expr, ty),
+                kind: ExprKind::Cast(expr, ty),
                 span: DUMMY_SP,
                 attrs: ThinVec::new(),
             });
@@ -849,12 +849,12 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
 
             let expr = expr.borrow();
 
-            let (ref expr, ref ident) = match &expr.node {
+            let (ref expr, ref ident) = match &expr.kind {
                 ExprKind::Field(expr, ident) => (expr, ident),
                 _ => return Ok(None)
             };
 
-            if let TyKind::Adt(def, _) = &this.cx.adjusted_node_type(expr.id).sty {
+            if let TyKind::Adt(def, _) = &this.cx.adjusted_node_type(expr.id).kind {
                 // Assuming only one variant, struct
                 let def = def.variants.iter().next().unwrap();
 

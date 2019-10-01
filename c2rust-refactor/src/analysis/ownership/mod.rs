@@ -143,19 +143,19 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
     };
 
     match n {
-        Node::Item(i) => match i.node {
+        Node::Item(i) => match i.kind {
             hir::ItemKind::Fn(..) => true,
             _ => false,
         },
-        Node::ForeignItem(i) => match i.node {
+        Node::ForeignItem(i) => match i.kind {
             hir::ForeignItemKind::Fn(..) => true,
             _ => false,
         },
-        Node::TraitItem(i) => match i.node {
+        Node::TraitItem(i) => match i.kind {
             hir::TraitItemKind::Method(..) => true,
             _ => false,
         },
-        Node::ImplItem(i) => match i.node {
+        Node::ImplItem(i) => match i.kind {
             hir::ImplItemKind::Method(..) => true,
             _ => false,
         },
@@ -198,7 +198,7 @@ fn analyze_externs<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'
             continue;
         }
         match hir_map.get_if_local(*def_id) {
-            Some(Node::ForeignItem(i)) => match i.node {
+            Some(Node::ForeignItem(i)) => match i.kind {
                 // We only want to consider foreign functions
                 hir::ForeignItemKind::Fn(..) => {}
                 _ => continue,
@@ -207,7 +207,7 @@ fn analyze_externs<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'
         }
         for &input in func_summ.sig.inputs {
             if let Some(p) = input.label {
-                match input.ty.sty {
+                match input.ty.kind {
                     TyKind::Ref(_, _, Mutability::MutMutable) => {
                         func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
                     }
@@ -231,9 +231,9 @@ fn analyze_inter<'lty, 'tcx>(cx: &mut Ctxt<'lty, 'tcx>) {
 }
 
 fn is_mut_t(ty: &TyS) -> bool {
-    if let TyKind::RawPtr(mut_ty) = ty.sty {
+    if let TyKind::RawPtr(mut_ty) = ty.kind {
         if mut_ty.mutbl == Mutability::MutMutable {
-            if let TyKind::Param(param_ty) = mut_ty.ty.sty {
+            if let TyKind::Param(param_ty) = mut_ty.ty.kind {
                 return param_ty.name.as_str() == "T";
             }
         }
@@ -257,7 +257,7 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
         // fn offset<T>(self: *mut T, _: isize) -> *mut T;
         if func_summ.sig.inputs.len() == 2 && fn_name_path == "::ptr[0]::{{impl}}[1]::offset[0]" {
             let param0_is_mut_t = is_mut_t(func_summ.sig.inputs[0].ty);
-            let param1_is_isize = if let TyKind::Int(int_ty) = func_summ.sig.inputs[1].ty.sty {
+            let param1_is_isize = if let TyKind::Int(int_ty) = func_summ.sig.inputs[1].ty.kind {
                 int_ty == IntTy::Isize
             } else {
                 false

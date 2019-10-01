@@ -60,16 +60,16 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
             return;
         };
 
-        match x.node {
+        match x.kind {
             ExprKind::Path(_, _) => {
-                expect!([hir.node] hir::ExprKind::Path(ref hp) => {
+                expect!([hir.kind] hir::ExprKind::Path(ref hp) => {
                     info!("looking at ExprKind::Path {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             }
 
             ExprKind::Struct(_, _, _) => {
-                expect!([hir.node] hir::ExprKind::Struct(ref hp, _, _) => {
+                expect!([hir.kind] hir::ExprKind::Struct(ref hp, _, _) => {
                     info!("looking at ExprKind::Struct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
@@ -90,23 +90,23 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
             return;
         };
 
-        match x.node {
+        match x.kind {
             PatKind::Struct(_, _, _) => {
-                expect!([hir.node] hir::PatKind::Struct(ref hp, _, _) => {
+                expect!([hir.kind] hir::PatKind::Struct(ref hp, _, _) => {
                     info!("looking at PatStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             }
 
             PatKind::TupleStruct(_, _) => {
-                expect!([hir.node] hir::PatKind::TupleStruct(ref hp, _, _) => {
+                expect!([hir.kind] hir::PatKind::TupleStruct(ref hp, _, _) => {
                     info!("looking at PatTupleStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             }
 
             PatKind::Path(_, _) => {
-                expect!([hir.node] hir::PatKind::Path(ref hp) => {
+                expect!([hir.kind] hir::PatKind::Path(ref hp) => {
                     info!("looking at PatPath {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
@@ -126,9 +126,9 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
             return;
         };
 
-        match x.node {
+        match x.kind {
             ast::TyKind::Path(_, _) => {
-                expect!([hir.node] hir::TyKind::Path(ref hp) => {
+                expect!([hir.kind] hir::TyKind::Path(ref hp) => {
                     info!("looking at TyPath {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
@@ -192,7 +192,7 @@ pub fn find_field_uses<T: Visit>(
 
     // Fields can only appear in exprs, so we don't need a whole Visitor impl.
     visit_nodes(target, |e: &Expr| {
-        match e.node {
+        match e.kind {
             ExprKind::Field(ref obj, ref ident) => {
                 if ident.name != field {
                     return;
@@ -200,7 +200,7 @@ pub fn find_field_uses<T: Visit>(
 
                 // Use the adjusted type to catch field accesses through autoderef.
                 let ty = cx.adjusted_node_type(obj.id);
-                let def = match_or!([ty.sty] TyKind::Adt(def, _) => def; return);
+                let def = match_or!([ty.kind] TyKind::Adt(def, _) => def; return);
                 if let Some(id) = cx.hir_map().as_local_node_id(def.did) {
                     if st.marked(id, label) {
                         st.add_mark(e.id, label);
@@ -255,7 +255,7 @@ pub fn find_arg_uses<T: Visit>(
         if let Some(def_id) = cx.opt_callee(e) {
             if let Some(node_id) = cx.hir_map().as_local_node_id(def_id) {
                 if st.marked(node_id, label) {
-                    let args = match e.node {
+                    let args = match e.kind {
                         ExprKind::Call(_, ref args) => args,
                         ExprKind::MethodCall(_, ref args) => args,
                         _ => panic!("expected Call or MethodCall"),
@@ -389,7 +389,7 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
 
     visit_nodes(&*st.krate(), |i: &Item| {
         if st.marked(i.id, label) {
-            if let ItemKind::Mod(ref m) = i.node {
+            if let ItemKind::Mod(ref m) = i.kind {
                 for i in &m.items {
                     if let VisibilityKind::Public = i.vis.node {
                         st.add_mark(i.id, label);

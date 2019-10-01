@@ -96,7 +96,7 @@ impl PrintParse for Stmt {
         // pprust::stmt_to_string appends a semicolon to Expr kind statements,
         // not just to Semi kind statements. We want to differentiate these
         // nodes.
-        match self.node {
+        match self.kind {
             StmtKind::Expr(ref expr) => pprust::expr_to_string(expr),
             _ => pprust::stmt_to_string(self),
         }
@@ -208,11 +208,11 @@ impl Splice for Expr {
             ExprPrec::Cond(min_prec) => {
                 prec.order() < min_prec || parser::contains_exterior_struct_lit(self)
             }
-            ExprPrec::Callee(min_prec) => match self.node {
+            ExprPrec::Callee(min_prec) => match self.kind {
                 ExprKind::Field(..) => true,
                 _ => prec.order() < min_prec,
             },
-            ExprPrec::LeftLess(min_prec) => match self.node {
+            ExprPrec::LeftLess(min_prec) => match self.kind {
                 ExprKind::Cast(..) | ExprKind::Type(..) => true,
                 _ => prec.order() < min_prec,
             },
@@ -757,7 +757,7 @@ fn create_file_for_module(
 
 impl RewriteAt for Item {
     fn rewrite_at(&self, old_span: Span, mut rcx: RewriteCtxtRef) -> bool {
-        if let ItemKind::Mod(module) = &self.node {
+        if let ItemKind::Mod(module) = &self.kind {
             if !module.inline {
                 // We need to print the `mod name;` in the parent and the module
                 // contents in its own file.

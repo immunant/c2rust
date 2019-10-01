@@ -29,7 +29,7 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(
     infer_args: bool,
 ) -> P<Ty> {
     use rustc::ty::TyKind::*;
-    match ty.sty {
+    match ty.kind {
         Bool => mk().ident_ty("bool"),
         Char => mk().ident_ty("char"),
         Int(ity) => mk().ident_ty(ity.ty_to_string()),
@@ -97,7 +97,7 @@ pub fn anon_const_to_expr(hir_map: &HirMap, def_id: DefId) -> P<Expr> {
 
 fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
     use rustc::hir::ExprKind::*;
-    match e.node {
+    match e.kind {
         Binary(op, ref a, ref b) => {
             let op: BinOpKind = op.node.into();
             mk().binary_expr(op, hir_expr_to_expr(a), hir_expr_to_expr(b))
@@ -164,7 +164,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
                     reflect_tcx_ty_inner(tcx, ty, true)
                 };
 
-                match ast_ty.node {
+                match ast_ty.kind {
                     TyKind::Path(ref ty_qself, ref ty_path) => {
                         qself = ty_qself.clone();
                         segments.extend(ty_path.segments.iter().rev().cloned());
@@ -324,7 +324,7 @@ fn register_test_reflect(reg: &mut Registry) {
                 MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
                     let ty = cx.node_type(e.id);
 
-                    let new_expr = if let TyKind::FnDef(def_id, ref substs) = ty.sty {
+                    let new_expr = if let TyKind::FnDef(def_id, ref substs) = ty.kind {
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) =
                             reflect_def_path_inner(cx.ty_ctxt(), def_id, Some(&substs));

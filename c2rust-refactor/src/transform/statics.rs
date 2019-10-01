@@ -79,7 +79,7 @@ impl Transform for CollectToStruct {
             let mut insert_point = None;
 
             while let Some((ident, ty, init)) = curs.advance_until_match(
-                    |i| match_or!([i.node] ItemKind::Static(ref ty, _, ref init) =>
+                    |i| match_or!([i.kind] ItemKind::Static(ref ty, _, ref init) =>
                                   Some((i.ident, ty.clone(), init.clone())); None)) {
                 if !st.marked(curs.next().id, "target") {
                     curs.advance();
@@ -235,7 +235,7 @@ impl Transform for Localize {
                 return smallvec![i];
             }
 
-            match i.node {
+            match i.kind {
                 ItemKind::Static(ref ty, mutbl, _) => {
                     let def_id = cx.node_def_id(i.id);
                     let arg_name_str = format!("{}_", i.ident.name.as_str());
@@ -345,7 +345,7 @@ impl Transform for Localize {
 
                 // Update calls to other marked functions.
                 MutVisitNodes::visit(&mut fl.block, |e: &mut P<Expr>| {
-                    if let ExprKind::Call(func, args) = &mut e.node {
+                    if let ExprKind::Call(func, args) = &mut e.kind {
                         if let Some(func_id) = cx.try_resolve_expr(&func) {
                             if let Some(func_static_ids) = fn_statics.get(&func_id) {
                                 for &static_id in func_static_ids {
@@ -359,7 +359,7 @@ impl Transform for Localize {
             } else {
                 // Update calls only.
                 MutVisitNodes::visit(&mut fl.block, |e: &mut P<Expr>| {
-                    if let ExprKind::Call(func, args) = &mut e.node {
+                    if let ExprKind::Call(func, args) = &mut e.kind {
                         if let Some(func_id) = cx.try_resolve_expr(&func) {
                             if let Some(func_static_ids) = fn_statics.get(&func_id) {
                                 for &static_id in func_static_ids {
@@ -436,7 +436,7 @@ impl Transform for StaticToLocal {
                 return smallvec![i];
             }
 
-            match i.node {
+            match i.kind {
                 ItemKind::Static(ref ty, mutbl, ref expr) => {
                     let def_id = cx.node_def_id(i.id);
                     statics.insert(def_id, StaticInfo {

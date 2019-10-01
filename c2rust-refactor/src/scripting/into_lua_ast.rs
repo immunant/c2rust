@@ -54,7 +54,7 @@ impl<'lua> IntoLuaAst<'lua> for Stmt {
         ast.set("id", self.id.as_u32())?;
         ast.set("span", LuaSpan(self.span.data()))?;
 
-        match self.node {
+        match self.kind {
             StmtKind::Local(l) => {
                 ast.set("kind", "Local")?;
                 let Local { pat, ty, init, .. } = l.into_inner();
@@ -107,10 +107,10 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
         let callee_info = ctx.cx.opt_callee_info(&self);
 
         self.and_then(|expr| {
-            match expr.node {
+            match expr.kind {
                 ExprKind::Lit(l) => {
                     ast.set("kind", "Lit")?;
-                    match l.node {
+                    match l.kind {
                         LitKind::Str(s, _) => {
                             ast.set("value", &*s.as_str())?;
                             ast.set("str_kind", "Str")?;
@@ -180,7 +180,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         _ => {
                             return Err(LuaError::external(format!(
                                 "{:?} is not yet implemented",
-                                l.node
+                                l.kind
                             )));
                         }
                     }
@@ -225,7 +225,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         .first()
                         .expect("Self param on method");
 
-                    ast.set("caller_is", match self_ty.sty {
+                    ast.set("caller_is", match self_ty.kind {
                         rustc::ty::TyKind::Ref(_, _, mutability) => {
                             match mutability {
                                 rustc::hir::Mutability::MutMutable => "ref_mut",
@@ -536,7 +536,6 @@ impl<'lua> IntoLuaAst<'lua> for P<FnDecl> {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "FnDecl")?;
-        ast.set("c_variadic", self.c_variadic)?;
 
         self.and_then(|fn_decl| {
             ast.set("return_type", match fn_decl.output {
@@ -606,7 +605,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Pat> {
         ast.set("span", LuaSpan(self.span.data()))?;
 
         self.and_then(|pat| {
-            match pat.node {
+            match pat.kind {
                 PatKind::Wild => ast.set("kind", "Wild")?,
                 PatKind::Ident(binding, ident, _sub_pattern) => {
                     ast.set("kind", "Ident")?;
@@ -631,7 +630,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Pat> {
                     ast.set("kind", "Lit")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                _ => return Err(LuaError::external(format!("unimplemented pattern type: {:?}", pat.node))),
+                _ => return Err(LuaError::external(format!("unimplemented pattern type: {:?}", pat.kind))),
             }
 
             Ok(ast)
@@ -678,7 +677,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
         ast.set("span", LuaSpan(self.span.data()))?;
 
         self.and_then(|item| {
-            match item.node {
+            match item.kind {
                 ItemKind::ExternCrate(opt_name) => {
                     ast.set("kind", "ExternCrate")?;
 
@@ -805,7 +804,7 @@ impl<'lua> IntoLuaAst<'lua> for ImplItem {
         ast.set("ident", &*self.ident.as_str())?;
         ast.set("span", LuaSpan(self.span.data()))?;
 
-        match self.node {
+        match self.kind {
             ImplItemKind::Method(sig, block) => {
                 ast.set("kind", "ImplMethod")?;
                 ast.set("decl", sig.decl.into_lua_ast(ctx, lua_ctx)?)?;
@@ -863,7 +862,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Ty> {
         ast.set("span", LuaSpan(self.span.data()))?;
 
         self.and_then(|ty| {
-            match ty.node {
+            match ty.kind {
                 TyKind::Path(_opt_qself, path) => {
                     ast.set("kind", "Path")?;
                     ast.set("path", path.into_lua_ast(ctx, lua_ctx)?)?;

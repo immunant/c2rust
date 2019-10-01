@@ -102,7 +102,7 @@ where
     PrettyLabel<L>: fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self.0.ty.sty {
+        match self.0.ty.kind {
             TyKind::Ref(_, _, m) => write!(
                 fmt,
                 "&{}{:?} {:?}",

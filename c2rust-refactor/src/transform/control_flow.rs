@@ -78,7 +78,7 @@ impl Transform for ReconstructForRange {
                 return;
             };
 
-            let incr = match mcx.bindings.get::<_, Stmt>("$incr").unwrap().node {
+            let incr = match mcx.bindings.get::<_, Stmt>("$incr").unwrap().kind {
                 StmtKind::Semi(ref e) |
                 StmtKind::Expr(ref e) => e.clone(),
                 _ => { return; }
@@ -101,14 +101,14 @@ impl Transform for ReconstructForRange {
 }
 
 fn is_one_expr(e: &Expr) -> bool {
-    match e.node {
+    match e.kind {
         ExprKind::Lit(ref l) => is_one_lit(l),
         _ => false,
     }
 }
 
 fn is_one_lit(l: &Lit) -> bool {
-    match l.node {
+    match l.kind {
         LitKind::Int(1, _) => true,
         _ => false,
     }

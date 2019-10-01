@@ -47,7 +47,7 @@ impl<'a> Visitor<'a> for PickVisitor {
         // (meaning inside the included file), then we mark the mod item itself.  This is because
         // `Mod` nodes don't have their own IDs.
         if self.node_info.is_none() {
-            if let ItemKind::Mod(ref m) = x.node {
+            if let ItemKind::Mod(ref m) = x.kind {
                 if m.inner.contains(self.target) {
                     self.node_info = Some(NodeInfo {
                         id: x.id,

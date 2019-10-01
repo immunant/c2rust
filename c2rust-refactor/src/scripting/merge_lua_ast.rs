@@ -23,7 +23,7 @@ fn dummy_expr() -> P<Expr> {
     P(Expr {
         attrs: ThinVec::new(),
         id: DUMMY_NODE_ID,
-        node: ExprKind::Err,
+        kind: ExprKind::Err,
         span: DUMMY_SP,
     })
 }
@@ -40,7 +40,7 @@ fn dummy_block() -> P<Block> {
 fn dummy_ty() -> P<Ty> {
     P(Ty {
         id: DUMMY_NODE_ID,
-        node: TyKind::Err,
+        kind: TyKind::Err,
         span: DUMMY_SP,
     })
 }
@@ -49,14 +49,13 @@ fn dummy_fn_decl() -> P<FnDecl> {
     P(FnDecl {
         inputs: Vec::new(),
         output: FunctionRetTy::Default(DUMMY_SP),
-        c_variadic: false,
     })
 }
 
 fn dummy_pat() -> P<Pat> {
     P(Pat {
         id: DUMMY_NODE_ID,
-        node: PatKind::Wild,
+        kind: PatKind::Wild,
         span: DUMMY_SP,
     })
 }
@@ -86,7 +85,7 @@ fn dummy_generic_arg() -> GenericArg {
 fn dummy_stmt() -> Stmt {
     Stmt {
         id: DUMMY_NODE_ID,
-        node: StmtKind::Expr(dummy_expr()),
+        kind: StmtKind::Expr(dummy_expr()),
         span: DUMMY_SP,
     }
 }
@@ -107,7 +106,7 @@ fn dummy_item() -> P<Item> {
         attrs: Vec::new(),
         id: DUMMY_NODE_ID,
         ident: Ident::from_str("placeholder"),
-        node: ItemKind::ExternCrate(None),
+        kind: ItemKind::ExternCrate(None),
         span: DUMMY_SP,
         tokens: None,
         vis: dummy_spanned(VisibilityKind::Public),
@@ -121,7 +120,7 @@ fn dummy_impl_item() -> ImplItem {
         generics: Generics::default(),
         id: DUMMY_NODE_ID,
         ident: Ident::from_str("placeholder"),
-        node: ImplItemKind::OpaqueTy(Vec::new()),
+        kind: ImplItemKind::OpaqueTy(Vec::new()),
         span: DUMMY_SP,
         tokens: None,
         vis: dummy_spanned(VisibilityKind::Public),
@@ -227,7 +226,7 @@ impl MergeLuaAst for Stmt {
 
         self.id = get_node_id_or_default(&table, "id")?;
         self.span = get_span_or_default(&table, "span")?;
-        self.node = match kind.to_str()? {
+        self.kind = match kind.to_str()? {
             "Local" => {
                 let mut local = dummy_local();
 
@@ -276,7 +275,6 @@ impl MergeLuaAst for P<FnDecl> {
             ty.merge_lua_ast(lua_ty).map(|_| ty)
         }).transpose()?;
 
-        self.c_variadic = table.get("c_variadic")?;
         self.output = match return_type {
             Some(ty) => FunctionRetTy::Ty(ty),
             None => FunctionRetTy::Default(DUMMY_SP),
@@ -322,7 +320,7 @@ impl MergeLuaAst for P<Pat> {
 
         self.span = get_span_or_default(&table, "span")?;
         self.id = get_node_id_or_default(&table, "id")?;
-        self.node = match kind.to_str()? {
+        self.kind = match kind.to_str()? {
             "Wild" => PatKind::Wild,
             "Ident" => {
                 let binding: LuaString = table.get("binding")?;
@@ -449,7 +447,7 @@ impl MergeLuaAst for P<Item> {
         self.span = get_span_or_default(&table, "span")?;
         self.id = get_node_id_or_default(&table, "id")?;
         self.ident.name = Symbol::intern(&table.get::<_, LuaString>("ident")?.to_str()?);
-        self.node = match kind {
+        self.kind = match kind {
             "Fn" => {
                 let lua_fn_decl = table.get("decl")?;
                 let lua_block = table.get("block")?;
@@ -574,7 +572,7 @@ impl MergeLuaAst for P<Expr> {
 
         self.span = get_span_or_default(&table, "span")?;
         self.id = get_node_id_or_default(&table, "id")?;
-        self.node = match kind {
+        self.kind = match kind {
             "Path" => {
                 let lua_segments: LuaTable = table.get("segments")?;
                 let mut path = dummy_path();
@@ -660,7 +658,7 @@ impl MergeLuaAst for P<Expr> {
 
                 ExprKind::Lit(Lit {
                     token: lit_kind.to_lit_token(),
-                    node: lit_kind,
+                    kind: lit_kind,
                     span: DUMMY_SP,
                 })
             },
@@ -1104,7 +1102,7 @@ impl MergeLuaAst for ImplItem {
         self.id = get_node_id_or_default(&table, "id")?;
 
         // TODO: Allow for inplace kind mutations
-        match &mut self.node {
+        match &mut self.kind {
             ImplItemKind::Method(sig, block) => {
                 let lua_decl: LuaTable = table.get("decl")?;
                 let lua_block: LuaTable = table.get("block")?;
@@ -1128,7 +1126,7 @@ impl MergeLuaAst for P<Ty> {
 
         self.span = get_span_or_default(&table, "span")?;
         self.id = get_node_id_or_default(&table, "id")?;
-        self.node = match kind {
+        self.kind = match kind {
             "Path" => {
                 let lua_segments: LuaTable = table.get("path")?;
                 let mut path = dummy_path();

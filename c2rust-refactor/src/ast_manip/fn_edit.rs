@@ -69,13 +69,13 @@ where
     F: FnMut(FnLike) -> SmallVec<[FnLike; 1]>,
 {
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        match i.node {
+        match i.kind {
             ItemKind::Fn(..) => {}
             _ => return mut_visit::noop_flat_map_item(i, self),
         }
 
         let i = i.into_inner();
-        unpack!([i.node] ItemKind::Fn(decl, header, generics, block));
+        unpack!([i.kind] ItemKind::Fn(decl, header, generics, block));
         let vis = i.vis;
 
         let fl = FnLike {
@@ -96,7 +96,7 @@ where
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
-                    node: ItemKind::Fn(fl.decl, header.clone(), generics.clone(), block),
+                    kind: ItemKind::Fn(fl.decl, header.clone(), generics.clone(), block),
                     attrs: fl.attrs,
                     vis: vis.clone(),
                     // Don't keep the old tokens.  The callback could have made arbitrary changes to
@@ -109,12 +109,12 @@ where
     }
 
     fn flat_map_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
-        match i.node {
+        match i.kind {
             ImplItemKind::Method(..) => {}
             _ => return mut_visit::noop_flat_map_impl_item(i, self),
         }
 
-        unpack!([i.node] ImplItemKind::Method(sig, block));
+        unpack!([i.kind] ImplItemKind::Method(sig, block));
         let vis = i.vis;
         let defaultness = i.defaultness;
         let generics = i.generics;
@@ -144,7 +144,7 @@ where
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
-                    node: ImplItemKind::Method(sig, block),
+                    kind: ImplItemKind::Method(sig, block),
                     attrs: fl.attrs,
                     generics: generics.clone(),
                     vis: vis.clone(),
@@ -157,12 +157,12 @@ where
     }
 
     fn flat_map_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> {
-        match i.node {
+        match i.kind {
             TraitItemKind::Method(..) => {}
             _ => return mut_visit::noop_flat_map_trait_item(i, self),
         }
 
-        unpack!([i.node] TraitItemKind::Method(sig, block));
+        unpack!([i.kind] TraitItemKind::Method(sig, block));
         let MethodSig { header, decl } = sig;
         let generics = i.generics;
 
@@ -187,7 +187,7 @@ where
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
-                    node: TraitItemKind::Method(sig, fl.block),
+                    kind: TraitItemKind::Method(sig, fl.block),
                     attrs: fl.attrs,
                     generics: generics.clone(),
                     tokens: None,
@@ -203,12 +203,12 @@ where
     }
 
     fn flat_map_foreign_item(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
-        match i.node {
+        match i.kind {
             ForeignItemKind::Fn(..) => {}
             _ => return mut_visit::noop_flat_map_foreign_item(i, self),
         }
 
-        unpack!([i.node] ForeignItemKind::Fn(decl, generics));
+        unpack!([i.kind] ForeignItemKind::Fn(decl, generics));
         let vis = i.vis;
 
         let fl = FnLike {
@@ -227,7 +227,7 @@ where
                 id: fl.id,
                 ident: fl.ident,
                 span: fl.span,
-                node: ForeignItemKind::Fn(fl.decl, generics.clone()),
+                kind: ForeignItemKind::Fn(fl.decl, generics.clone()),
                 attrs: fl.attrs,
                 vis: vis.clone(),
             })
@@ -274,12 +274,12 @@ where
 {
     fn visit_item(&mut self, i: &'ast Item) {
         visit::walk_item(self, i);
-        match i.node {
+        match i.kind {
             ItemKind::Fn(..) => {}
             _ => return,
         }
 
-        let (decl, block) = expect!([i.node]
+        let (decl, block) = expect!([i.kind]
                                     ItemKind::Fn(ref decl, _, _, ref block) =>
                                         (decl.clone(), block.clone()));
 
@@ -296,12 +296,12 @@ where
 
     fn visit_impl_item(&mut self, i: &'ast ImplItem) {
         visit::walk_impl_item(self, i);
-        match i.node {
+        match i.kind {
             ImplItemKind::Method(..) => {}
             _ => return,
         }
 
-        let (decl, block) = expect!([i.node]
+        let (decl, block) = expect!([i.kind]
                                     ImplItemKind::Method(ref sig, ref block) =>
                                         (sig.decl.clone(), block.clone()));
 
@@ -318,12 +318,12 @@ where
 
     fn visit_trait_item(&mut self, i: &'ast TraitItem) {
         visit::walk_trait_item(self, i);
-        match i.node {
+        match i.kind {
             TraitItemKind::Method(..) => {}
             _ => return,
         }
 
-        let (decl, block) = expect!([i.node]
+        let (decl, block) = expect!([i.kind]
                                     TraitItemKind::Method(ref sig, ref block) =>
                                         (sig.decl.clone(), block.clone()));
 
@@ -340,12 +340,12 @@ where
 
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {
         visit::walk_foreign_item(self, i);
-        match i.node {
+        match i.kind {
             ForeignItemKind::Fn(..) => {}
             _ => return,
         }
 
-        let decl = expect!([i.node]
+        let decl = expect!([i.kind]
                            ForeignItemKind::Fn(ref decl, _) => decl.clone());
 
         (self.callback)(FnLike {

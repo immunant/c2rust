@@ -123,7 +123,7 @@ fn do_annotate(st: &CommandState,
             }
 
             mut_visit::noop_flat_map_item(i.map(|mut i| {
-                match i.node {
+                match i.kind {
                     ItemKind::Static(..) | ItemKind::Const(..) => {
                         self.clean_attrs(&mut i.attrs);
                         if let Some(attr) = self.static_attr_for(i.id) {
@@ -448,7 +448,7 @@ fn do_split_variants(st: &CommandState,
 }
 
 fn rename_callee(e: &mut P<Expr>, new_name: &str) {
-    match &mut e.node {
+    match &mut e.kind {
         ExprKind::Path(_, ref mut path) => {
             // Change the last path segment.
             let seg = path.segments.last_mut().unwrap();

@@ -22,7 +22,7 @@ impl PatternSymbol for Ident {
 
 impl PatternSymbol for Lit {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             // FIXME: can this conflict with regular Err literals???
             LitKind::Err(ref sym) => Some(sym.clone()),
             _ => None
@@ -51,7 +51,7 @@ impl PatternSymbol for Path {
 
 impl PatternSymbol for Expr {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             ExprKind::Path(None, ref p) => p.pattern_symbol(),
             _ => None,
         }
@@ -60,7 +60,7 @@ impl PatternSymbol for Expr {
 
 impl PatternSymbol for Stmt {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             StmtKind::Semi(ref e) => e.pattern_symbol(),
             _ => None,
         }
@@ -69,7 +69,7 @@ impl PatternSymbol for Stmt {
 
 impl PatternSymbol for Pat {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             PatKind::Ident(BindingMode::ByValue(Mutability::Immutable), ref i, None) => {
                 i.pattern_symbol()
             }
@@ -80,7 +80,7 @@ impl PatternSymbol for Pat {
 
 impl PatternSymbol for Ty {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             TyKind::Path(None, ref p) => p.pattern_symbol(),
             _ => None,
         }
@@ -98,7 +98,7 @@ impl PatternSymbol for Mac {
 
 impl PatternSymbol for Item {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             ItemKind::Mac(ref m) => m.pattern_symbol(),
             _ => None,
         }
@@ -107,7 +107,7 @@ impl PatternSymbol for Item {
 
 impl PatternSymbol for ImplItem {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             ImplItemKind::Macro(ref m) => m.pattern_symbol(),
             _ => None,
         }
@@ -116,7 +116,7 @@ impl PatternSymbol for ImplItem {
 
 impl PatternSymbol for TraitItem {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             TraitItemKind::Macro(ref m) => m.pattern_symbol(),
             _ => None,
         }
@@ -180,7 +180,7 @@ fn split_uses_impl(
     match tree.kind {
         UseTreeKind::Simple(..) | UseTreeKind::Glob => {
             item.id = id;
-            item.node = ItemKind::Use(P(UseTree {
+            item.kind = ItemKind::Use(P(UseTree {
                 prefix: path,
                 ..tree
             }));
@@ -197,7 +197,7 @@ fn split_uses_impl(
 /// Split a use statement which may have nesting into one or more simple use
 /// statements without nesting.
 pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
-    let use_tree = expect!([&item.node] ItemKind::Use(u) => u)
+    let use_tree = expect!([&item.kind] ItemKind::Use(u) => u)
         .clone()
         .into_inner();
     let mut out = smallvec![];

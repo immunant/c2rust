@@ -43,7 +43,7 @@ impl Transform for AssignToUpdate {
         mut_visit_match(st, cx, pat, krate, |orig, mut mcx| {
             let x = mcx.bindings.get::<_, P<Expr>>("__x").unwrap().clone();
 
-            let struct_def_id = match cx.node_type(x.id).sty {
+            let struct_def_id = match cx.node_type(x.id).kind {
                 ty::TyKind::Adt(ref def, _) => def.did,
                 _ => return,
             };
@@ -107,25 +107,25 @@ impl Transform for MergeUpdates {
 }
 
 fn is_struct_update(s: &Stmt) -> bool {
-    let e = match_or!([s.node] StmtKind::Semi(ref e) => e; return false);
-    let (lhs, rhs) = match_or!([e.node] ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs);
+    let e = match_or!([s.kind] StmtKind::Semi(ref e) => e; return false);
+    let (lhs, rhs) = match_or!([e.kind] ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs);
                                return false);
-    match_or!([rhs.node] ExprKind::Struct(_, _, Some(ref base)) => lhs.ast_equiv(base);
+    match_or!([rhs.kind] ExprKind::Struct(_, _, Some(ref base)) => lhs.ast_equiv(base);
               return false)
 }
 
 fn is_struct_update_for(s: &Stmt, base1: &Expr) -> bool {
-    let e = match_or!([s.node] StmtKind::Semi(ref e) => e; return false);
-    let rhs = match_or!([e.node] ExprKind::Assign(_, ref rhs) => rhs;
+    let e = match_or!([s.kind] StmtKind::Semi(ref e) => e; return false);
+    let rhs = match_or!([e.kind] ExprKind::Assign(_, ref rhs) => rhs;
                         return false);
-    match_or!([rhs.node] ExprKind::Struct(_, _, Some(ref base)) => base1.ast_equiv(base);
+    match_or!([rhs.kind] ExprKind::Struct(_, _, Some(ref base)) => base1.ast_equiv(base);
               return false)
 }
 
 fn unpack_struct_update(s: Stmt) -> (Path, Vec<Field>, P<Expr>) {
-    let e = expect!([s.node] StmtKind::Semi(e) => e);
-    let rhs = expect!([e.into_inner().node] ExprKind::Assign(_, rhs) => rhs);
-    expect!([rhs.into_inner().node]
+    let e = expect!([s.kind] StmtKind::Semi(e) => e);
+    let rhs = expect!([e.into_inner().kind] ExprKind::Assign(_, rhs) => rhs);
+    expect!([rhs.into_inner().kind]
             ExprKind::Struct(path, fields, Some(base)) => (path, fields, base))
 }
 
@@ -198,7 +198,7 @@ impl Transform for Rename {
 }
 
 fn is_struct(i: &Item) -> bool {
-    if let ItemKind::Struct(ref vd, _) = i.node {
+    if let ItemKind::Struct(ref vd, _) = i.kind {
         if let VariantData::Struct(..) = *vd {
             return true;
         }

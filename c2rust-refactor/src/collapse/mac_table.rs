@@ -456,7 +456,7 @@ trait MaybeInvoc {
 
 impl MaybeInvoc for Expr {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ExprKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -465,7 +465,7 @@ impl MaybeInvoc for Expr {
 
 impl MaybeInvoc for Pat {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             PatKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -474,7 +474,7 @@ impl MaybeInvoc for Pat {
 
 impl MaybeInvoc for Ty {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             TyKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -483,7 +483,7 @@ impl MaybeInvoc for Ty {
 
 impl MaybeInvoc for Item {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ItemKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => {
                 if attr::contains_name(&self.attrs, Symbol::intern("derive"))
@@ -501,7 +501,7 @@ impl MaybeInvoc for Item {
 
 impl MaybeInvoc for ImplItem {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ImplItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -510,7 +510,7 @@ impl MaybeInvoc for ImplItem {
 
 impl MaybeInvoc for TraitItem {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             TraitItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -519,7 +519,7 @@ impl MaybeInvoc for TraitItem {
 
 impl MaybeInvoc for ForeignItem {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ForeignItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -528,7 +528,7 @@ impl MaybeInvoc for ForeignItem {
 
 impl MaybeInvoc for Stmt {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             StmtKind::Mac(ref mac) => Some(InvocKind::Mac(&mac.0)),
             _ => None,
         }

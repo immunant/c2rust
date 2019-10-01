@@ -123,7 +123,7 @@ struct AttrVisitor<'ast> {
 
 impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     fn visit_item(&mut self, i: &'ast ast::Item) {
-        match i.node {
+        match i.kind {
             ast::ItemKind::Fn(..) | ast::ItemKind::Static(..) | ast::ItemKind::Const(..) => {
                 if i.attrs.len() > 0 {
                     self.def_attrs.push((i.id, &i.attrs));
@@ -136,7 +136,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 
     fn visit_impl_item(&mut self, i: &'ast ast::ImplItem) {
-        match i.node {
+        match i.kind {
             ast::ImplItemKind::Method(..) | ast::ImplItemKind::Const(..) => {
                 if i.attrs.len() > 0 {
                     self.def_attrs.push((i.id, &i.attrs));
@@ -149,7 +149,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ast::ForeignItem) {
-        match i.node {
+        match i.kind {
             // TODO: Foreign statics?
             ast::ForeignItemKind::Fn(..) => {
                 if !i.attrs.is_empty() {
@@ -288,14 +288,14 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
 }
 
 fn meta_item_list(meta: &ast::MetaItem) -> Result<&[ast::NestedMetaItem], &'static str> {
-    match meta.node {
+    match meta.kind {
         ast::MetaItemKind::List(ref xs) => Ok(xs),
         _ => Err("expected MetaItemKind::List"),
     }
 }
 
 fn meta_item_word(meta: &ast::MetaItem) -> Result<(), &'static str> {
-    match meta.node {
+    match meta.kind {
         ast::MetaItemKind::Word => Ok(()),
         _ => Err("expected MetaItemKind::List"),
     }
@@ -310,7 +310,7 @@ fn nested_meta_item(nmeta: &ast::NestedMetaItem) -> Result<&ast::MetaItem, &'sta
 
 fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
     match nmeta {
-        ast::NestedMetaItem::Literal(ref lit) => match lit.node {
+        ast::NestedMetaItem::Literal(ref lit) => match lit.kind {
             ast::LitKind::Str(s, _) => Ok(s),
             _ => Err("expected str"),
         },

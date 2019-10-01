@@ -135,15 +135,15 @@ impl<A: LRExpr, B: LRExpr, C: LRExpr> LRExpr for (A, B, C) {
 
 impl LRExpr for P<Expr> {
     fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
-        self.node.fold_rvalue(lr);
+        self.kind.fold_rvalue(lr);
         lr.fold_rvalue(self)
     }
     fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
-        self.node.fold_lvalue(lr);
+        self.kind.fold_lvalue(lr);
         lr.fold_lvalue(self)
     }
     fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {
-        self.node.fold_lvalue_mut(lr);
+        self.kind.fold_lvalue_mut(lr);
         lr.fold_lvalue_mut(self)
     }
 }

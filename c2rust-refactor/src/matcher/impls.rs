@@ -83,7 +83,7 @@ impl TryMatch for Expr {
             return Ok(());
         }
 
-        if let ExprKind::Mac(ref mac) = self.node {
+        if let ExprKind::Mac(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
@@ -112,7 +112,7 @@ impl TryMatch for Pat {
             return Ok(());
         }
 
-        if let PatKind::Mac(ref mac) = self.node {
+        if let PatKind::Mac(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
@@ -139,7 +139,7 @@ impl TryMatch for Ty {
             return Ok(());
         }
 
-        if let TyKind::Mac(ref mac) = self.node {
+        if let TyKind::Mac(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(

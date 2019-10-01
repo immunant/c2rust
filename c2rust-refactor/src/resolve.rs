@@ -14,7 +14,7 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res)>
         let item = expect!([node] Node::Item(i) => i);
         let item_did = tcx.hir().local_def_id(item.hir_id);
 
-        match item.node {
+        match item.kind {
             ForeignMod(ref fm) => {
                 push_hir_foreign_mod_children(tcx, fm, children);
             }
@@ -74,7 +74,7 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res)> {
             .expect("definition not present in HIR map");
         let item = expect!([node] Node::Item(i) => i);
 
-        match item.node {
+        match item.kind {
             ExternCrate(..) => {
                 let krate = tcx
                     .extern_mod_stmt_cnum(did)

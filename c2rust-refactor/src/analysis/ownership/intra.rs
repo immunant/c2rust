@@ -189,7 +189,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             ref mut insts,
             ..
         } = *self;
-        ilcx.label(ty, &mut |ty| match ty.sty {
+        ilcx.label(ty, &mut |ty| match ty.kind {
             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                 let v = Var(*next_local_var);
                 *next_local_var += 1;
@@ -290,7 +290,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     }
 
     fn field_lty(&mut self, base_ty: ITy<'lty, 'tcx>, v: VariantIdx, f: Field) -> ITy<'lty, 'tcx> {
-        match base_ty.ty.sty {
+        match base_ty.ty.kind {
             TyKind::Adt(adt, _substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
                 let poly_ty = self.static_ty(field_def.did);
@@ -493,7 +493,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     }
 
     fn ty_fn_sig(&mut self, ty: ITy<'lty, 'tcx>) -> IFnSig<'lty, 'tcx> {
-        match ty.ty.sty {
+        match ty.ty.kind {
             TyKind::FnDef(did, _substs) => {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
                 let var_base = self.insts[idx].first_inst_var;

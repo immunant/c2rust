@@ -32,7 +32,7 @@ struct Mod { inner, #[mac_table_seq] items, #[rewrite_ignore] inline }
 
 #[rewrite_print_recover] #[rewrite_seq_item] #[rewrite_extra_strategies=item_header]
 #[nonterminal] #[extend_span]
-struct Item { ident, #[match=ignore] attrs, id, node, vis, span,
+struct Item { ident, #[match=ignore] attrs, id, kind, vis, span,
               #[match=ignore] #[rewrite_ignore] tokens }
 enum ItemKind {
     ExternCrate(name),
@@ -64,7 +64,7 @@ enum UseTreeKind {
 struct UseTree { kind, prefix, span }
 
 #[nonterminal] #[extend_span]
-struct TraitItem { id, ident, #[match=ignore] attrs, generics, node, span,
+struct TraitItem { id, ident, #[match=ignore] attrs, generics, kind, span,
                    #[match=ignore] #[rewrite_ignore] tokens }
 enum TraitItemKind {
     Const(ty, init),
@@ -74,7 +74,7 @@ enum TraitItemKind {
 }
 
 #[nonterminal] #[extend_span]
-struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, generics, node, span,
+struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, generics, kind, span,
                   #[match=ignore] #[rewrite_ignore] tokens }
 enum ImplItemKind {
     Const(ty, init),
@@ -102,7 +102,7 @@ struct MethodSig { header, decl }
 
 struct ForeignMod { abi, #[mac_table_seq] items }
 #[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal] #[extend_span]
-struct ForeignItem { ident, #[match=ignore] attrs, node, id, span, vis }
+struct ForeignItem { ident, #[match=ignore] attrs, kind, id, span, vis }
 enum ForeignItemKind {
     Fn(decl, generics),
     Static(ty, mutbl),
@@ -145,7 +145,7 @@ enum CrateSugar {
 }
 
 #[match=custom] #[rewrite_print_recover] #[mac_table_record] #[nonterminal]
-struct Ty { id, node, span }
+struct Ty { id, kind, span }
 struct MutTy {ty, mutbl}
 enum TyKind {
     Slice(ty),
@@ -182,7 +182,7 @@ enum GenericBound {
 
 struct PolyTraitRef { trait_ref, span, bound_generic_params }
 
-struct FnDecl { inputs, output, c_variadic }
+struct FnDecl { inputs, output }
 struct FnHeader { unsafety, asyncness, constness, abi }
 #[rewrite_print]
 struct Param { attrs, ty, pat, id, span, is_placeholder }
@@ -193,7 +193,7 @@ enum FunctionRetTy {
 
 
 #[match=custom] #[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal]
-struct Stmt { id, node, span }
+struct Stmt { id, kind, span }
 #[no_debug]
 enum StmtKind {
     Local(local),
@@ -208,7 +208,7 @@ struct Local { pat, ty, init, id, span, #[match=ignore] attrs }
 
 
 #[match=custom] #[rewrite_print_recover] #[extend_span] #[mac_table_record] #[nonterminal]
-struct Expr { id, node, span, #[match=ignore] attrs }
+struct Expr { id, kind, span, #[match=ignore] attrs }
 #[prec_contains_expr]
 enum ExprKind {
     Box(#[prec=PREFIX] expr),
@@ -281,7 +281,7 @@ struct Block { #[mac_table_seq] stmts, id, rules, span }
 
 
 #[match=custom] #[mac_table_record] #[nonterminal]
-struct Pat { id, node, span }
+struct Pat { id, kind, span }
 enum PatKind {
     Wild,
     Ident(mode, id, pat),
@@ -304,7 +304,7 @@ enum PatKind {
 struct FieldPat { id, ident, pat, is_shorthand, attrs, span, is_placeholder }
 
 #[match=custom]
-struct Lit { token, node, span }
+struct Lit { token, kind, span }
 
 enum LitKind {
     Str(sym, style),
@@ -455,7 +455,7 @@ struct DelimSpan { open, close }
 flag DelimToken;
 flag Token;
 
-struct MetaItem { path, node, span }
+struct MetaItem { path, kind, span }
 enum MetaItemKind {
     Word,
     List(l),

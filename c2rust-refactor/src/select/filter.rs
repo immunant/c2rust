@@ -69,15 +69,15 @@ impl<'ast> AnyNode<'ast> {
 
     pub fn mutbl(&self) -> Option<Mutability> {
         match *self {
-            AnyNode::Item(i) => match i.node {
+            AnyNode::Item(i) => match i.kind {
                 ItemKind::Static(_, mutbl, _) => Some(mutbl),
                 _ => None,
             },
-            AnyNode::ForeignItem(fi) => match fi.node {
+            AnyNode::ForeignItem(fi) => match fi.kind {
                 ForeignItemKind::Static(_, mutability) => Some(mutability),
                 _ => None,
             },
-            AnyNode::Pat(p) => match p.node {
+            AnyNode::Pat(p) => match p.kind {
                 PatKind::Ident(mode, _, _) => match mode {
                     BindingMode::ByRef(mutbl) => Some(mutbl),
                     BindingMode::ByValue(mutbl) => Some(mutbl),
@@ -94,7 +94,7 @@ impl<'ast> AnyNode<'ast> {
             AnyNode::TraitItem(i) => Some(i.ident.name),
             AnyNode::ImplItem(i) => Some(i.ident.name),
             AnyNode::ForeignItem(i) => Some(i.ident.name),
-            AnyNode::Param(a) => match a.pat.node {
+            AnyNode::Param(a) => match a.pat.kind {
                 PatKind::Ident(_, ref i, _) => Some(i.name),
                 _ => None,
             },
@@ -179,7 +179,7 @@ impl FromStr for ItemLikeKind {
 
 impl ItemLikeKind {
     pub fn from_item(i: &Item) -> ItemLikeKind {
-        match i.node {
+        match i.kind {
             ItemKind::ExternCrate(..) => ItemLikeKind::ExternCrate,
             ItemKind::Use(..) => ItemLikeKind::Use,
             ItemKind::Static(..) => ItemLikeKind::Static,
@@ -202,7 +202,7 @@ impl ItemLikeKind {
     }
 
     pub fn from_trait_item(i: &TraitItem) -> ItemLikeKind {
-        match i.node {
+        match i.kind {
             TraitItemKind::Const(..) => ItemLikeKind::Const,
             TraitItemKind::Method(..) => ItemLikeKind::Fn,
             TraitItemKind::Type(..) => ItemLikeKind::Ty,
@@ -211,7 +211,7 @@ impl ItemLikeKind {
     }
 
     pub fn from_impl_item(i: &ImplItem) -> ItemLikeKind {
-        match i.node {
+        match i.kind {
             ImplItemKind::Const(..) => ItemLikeKind::Const,
             ImplItemKind::Method(..) => ItemLikeKind::Fn,
             ImplItemKind::OpaqueTy(..) => ItemLikeKind::OpaqueTy,
@@ -221,7 +221,7 @@ impl ItemLikeKind {
     }
 
     pub fn from_foreign_item(i: &ForeignItem) -> ItemLikeKind {
-        match i.node {
+        match i.kind {
             ForeignItemKind::Fn(..) => ItemLikeKind::Fn,
             ForeignItemKind::Static(..) => ItemLikeKind::Static,
             ForeignItemKind::Ty => ItemLikeKind::Ty,
@@ -434,7 +434,7 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
         // Make sure we visit foreign function args as Param
-        if let ForeignItemKind::Fn(ref decl, _) = x.node {
+        if let ForeignItemKind::Fn(ref decl, _) = x.kind {
             for arg in &decl.inputs {
                 (self.func)(AnyNode::Param(arg));
             }

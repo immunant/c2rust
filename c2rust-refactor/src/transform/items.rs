@@ -138,7 +138,7 @@ impl Transform for RenameUnnamed {
                 renamer.is_source = true;
             }
 
-            let is_module = match i.node {
+            let is_module = match i.kind {
                 ItemKind::Mod(..) => true,
                 _ => false,
             };
@@ -182,7 +182,7 @@ impl Transform for RenameUnnamed {
             // on `c2rust-transpile`, and the reason is due to having use statements importing
             // `Item`s within submodules (also the only time the `c2rust-transpile`r uses use
             // statements).
-            match i.node {
+            match i.kind {
                 ItemKind::Mod(ref mut outer_mod) => {
 
                     // What the transpiler does is, separate items into their modules based on
@@ -195,7 +195,7 @@ impl Transform for RenameUnnamed {
                     let mut mod_to_old_idents = HashMap::new();
                     for outer_item in &outer_mod.items {
                         // populate mod_to_old_idents
-                        match outer_item.node {
+                        match outer_item.kind {
                             ItemKind::Mod(ref inner_mod) => {
                                 let mut old_idents: HashMap<Ident, Ident> = HashMap::new();
                                 // iterate through and find all occurences of `unnamed` within this
@@ -219,7 +219,7 @@ impl Transform for RenameUnnamed {
 
                     // Iterate through the items and locate use statements
                     for outer_item in &mut outer_mod.items {
-                        match outer_item.node {
+                        match outer_item.kind {
                             ItemKind::Use(ref mut ut) => {
                                 let mut old_idents = HashMap::new();
                                 for segment in &ut.prefix.segments {
@@ -351,7 +351,7 @@ impl Transform for ReplaceItems {
         // we also remove the associated `Clone` impl.
 
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            let opt_def_id = match i.node {
+            let opt_def_id = match i.kind {
                 ItemKind::Impl(_, _, _, _, _, ref ty, _) => cx.try_resolve_ty(ty),
                 _ => None,
             };
@@ -409,7 +409,7 @@ impl Transform for SetVisibility {
                 }
 
                 let was_in_trait_impl = self.in_trait_impl;
-                self.in_trait_impl = matches!([i.node]
+                self.in_trait_impl = matches!([i.kind]
                         ItemKind::Impl(_, _, _, _, Some(_), _, _));
                 let r = mut_visit::noop_flat_map_item(i, self);
                 self.in_trait_impl = was_in_trait_impl;
@@ -468,7 +468,7 @@ impl Transform for SetMutability {
             fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
-                        match i.node {
+                        match i.kind {
                             ItemKind::Static(_, ref mut mutbl, _) => *mutbl = self.mutbl,
                             _ => {},
                         }
@@ -480,7 +480,7 @@ impl Transform for SetMutability {
 
             fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
                 if self.st.marked(i.id, "target") {
-                    match i.node {
+                    match i.kind {
                         ForeignItemKind::Static(_, ref mut is_mutbl) =>
                             *is_mutbl = self.mutbl,
                         _ => {},
@@ -513,7 +513,7 @@ impl Transform for SetUnsafety {
             fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
-                        match i.node {
+                        match i.kind {
                             ItemKind::Fn(_, ref mut header, _, _) =>
                                 header.unsafety = self.unsafety,
                             ItemKind::Trait(_, ref mut unsafety, _, _, _) =>
@@ -530,7 +530,7 @@ impl Transform for SetUnsafety {
 
             fn flat_map_trait_item(&mut self, mut i: TraitItem) -> SmallVec<[TraitItem; 1]> {
                 if self.st.marked(i.id, "target") {
-                    match i.node {
+                    match i.kind {
                         TraitItemKind::Method(ref mut sig, _) =>
                             sig.header.unsafety = self.unsafety,
                         _ => {},
@@ -541,7 +541,7 @@ impl Transform for SetUnsafety {
 
             fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
                 if self.st.marked(i.id, "target") {
-                    match i.node {
+                    match i.kind {
                         ImplItemKind::Method(ref mut sig, _) =>
                             sig.header.unsafety = self.unsafety,
                         _ => {},
@@ -645,7 +645,7 @@ impl Transform for CreateItem {
 
             fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 let id = i.id;
-                if let ItemKind::Mod(m) = &mut i.node {
+                if let ItemKind::Mod(m) = &mut i.kind {
                     self.handle_mod(id, m, false);
                 }
                 mut_visit::noop_flat_map_item(i, self)
@@ -706,7 +706,7 @@ impl Transform for DeleteItems {
             }
 
             fn visit_block(&mut self, b: &mut P<Block>) {
-                b.stmts.retain(|s| match s.node {
+                b.stmts.retain(|s| match s.kind {
                     StmtKind::Item(ref i) => !self.st.marked(i.id, self.mark),
                     _ => true,
                 });

@@ -214,7 +214,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             // Only try the type_dependent_defs fallback on Path exprs.  Other expr kinds,
             // particularly MethodCall, can show up in type_dependent_defs, and we don't want to
             // wrongly treat those as path-like.
-            if let ExprKind::Path(..) = e.node {
+            if let ExprKind::Path(..) = e.kind {
                 if let Some(def) = self.try_resolve_node_type_dep(e.id) {
                     return def.opt_def_id();
                 }
@@ -236,7 +236,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         }
 
         if self.has_ty_ctxt() {
-            if let ast::TyKind::Path(..) = t.node {
+            if let ast::TyKind::Path(..) = t.kind {
                 if let Some(def) = self.try_resolve_node_type_dep(t.id) {
                     return def.opt_def_id();
                 }
@@ -282,7 +282,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         // more-or-less bad state due type errors.  We try really hard here to return `None`
         // instead of panicking when weird stuff happens.
 
-        match e.node {
+        match e.kind {
             ExprKind::Call(ref func, _) => {
                 let call_hir_id = hir_map.node_to_hir_id(e.id);
                 let func_hir_id = hir_map.node_to_hir_id(func.id);
@@ -315,7 +315,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                     // We use the adjusted type here in case an `&fn()` got auto-derefed in order
                     // to make the call.
                     if let Some(&TyKind::FnPtr(sig)) =
-                        tables.expr_ty_adjusted_opt(func_hir).map(|ty| &ty.sty)
+                        tables.expr_ty_adjusted_opt(func_hir).map(|ty| &ty.kind)
                     {
                         poly_sig = sig;
                     // No substs.  fn ptrs can't be generic over anything but late-bound
@@ -389,7 +389,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                              return None);
         let e = match_or!([node] hir::Node::Expr(e) => e;
                           return None);
-        let qpath = match_or!([e.node] hir::ExprKind::Path(ref q) => q;
+        let qpath = match_or!([e.kind] hir::ExprKind::Path(ref q) => q;
                               return None);
         let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
                              return None);
@@ -401,7 +401,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                              return None);
         let t = match_or!([node] hir::Node::Ty(t) => t;
                           return None);
-        let qpath = match_or!([t.node] hir::TyKind::Path(ref q) => q;
+        let qpath = match_or!([t.kind] hir::TyKind::Path(ref q) => q;
                               return None);
         let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
                              return None);
@@ -436,7 +436,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             .find(id)
             .unwrap_or_else(|| panic!("Couldn't find HIR node for {:?}", id));
         let hir_item = expect!([hir_node] hir::Node::Item(i) => i);
-        let path = expect!([&hir_item.node] hir::ItemKind::Use(path, _) => path);
+        let path = expect!([&hir_item.kind] hir::ItemKind::Use(path, _) => path);
         path
     }
 
@@ -447,7 +447,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         }
 
         use syntax::ast::ItemKind::*;
-        match (&item1.node, &item2.node) {
+        match (&item1.kind, &item2.kind) {
             // * Assure that these two items are in fact of the same type, just to be safe.
             (TyAlias(..), TyAlias(..)) => true,
 
@@ -479,7 +479,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             }
 
             _ => {
-                debug!("Mismatched node types: {:?}, {:?}", item1.node, item2.node);
+                debug!("Mismatched node types: {:?}, {:?}", item1.kind, item2.kind);
                 false
             }
         }
@@ -532,7 +532,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             return true;
         }
 
-        match (&ty1.sty, &ty2.sty) {
+        match (&ty1.kind, &ty2.kind) {
             (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
                 if !substs1.is_empty() || !substs2.is_empty() {
                     // TODO: handle substs?

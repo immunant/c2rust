@@ -529,7 +529,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 // NB: Don't walk, so we never run `self.new_id` on `e.id`.  matched_ids entries
                 // for macro invocations get handled by the CollapseMacros pass.
-                expect!([e.node] ExprKind::Mac(ref mut mac) => mac.tts = new_tts);
+                expect!([e.kind] ExprKind::Mac(ref mut mac) => mac.tts = new_tts);
             }
         }
         mut_visit::noop_visit_expr(e, self)
@@ -538,7 +538,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
     fn visit_pat(&mut self, p: &mut P<Pat>) {
         if let Some(invoc_id) = self.mac_table.get(p.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
-                expect!([p.node] PatKind::Mac(ref mut mac) => mac.tts = new_tts);
+                expect!([p.kind] PatKind::Mac(ref mut mac) => mac.tts = new_tts);
             }
         }
         mut_visit::noop_visit_pat(p, self)
@@ -547,7 +547,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
     fn visit_ty(&mut self, t: &mut P<Ty>) {
         if let Some(invoc_id) = self.mac_table.get(t.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
-                expect!([t.node] TyKind::Mac(ref mut mac) => mac.tts = new_tts);
+                expect!([t.kind] TyKind::Mac(ref mut mac) => mac.tts = new_tts);
             }
         }
         mut_visit::noop_visit_ty(t, self)
@@ -556,13 +556,13 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(invoc_id) = self.mac_table.get(s.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
-                unpack!([s.node] StmtKind::Mac(mac));
+                unpack!([s.kind] StmtKind::Mac(mac));
                 let mac = mac.map(|(mut mac, style, attrs)| {
                     mac.tts = new_tts;
                     (mac, style, attrs)
                 });
                 return smallvec![Stmt {
-                    node: StmtKind::Mac(mac),
+                    kind: StmtKind::Mac(mac),
                     ..s
                 }];
             }
@@ -574,7 +574,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
         if let Some(invoc_id) = self.mac_table.get(i.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 return smallvec![i.map(|mut i| {
-                    expect!([i.node] ItemKind::Mac(ref mut mac) => mac.tts = new_tts);
+                    expect!([i.kind] ItemKind::Mac(ref mut mac) => mac.tts = new_tts);
                     i
                 })];
             }
@@ -586,7 +586,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
         if let Some(invoc_id) = self.mac_table.get(ii.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut ii = ii;
-                expect!([ii.node] ImplItemKind::Macro(ref mut mac) => mac.tts = new_tts);
+                expect!([ii.kind] ImplItemKind::Macro(ref mut mac) => mac.tts = new_tts);
                 return smallvec![ii];
             }
         }
@@ -597,7 +597,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
         if let Some(invoc_id) = self.mac_table.get(ti.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut ti = ti;
-                expect!([ti.node] TraitItemKind::Macro(ref mut mac) => mac.tts = new_tts);
+                expect!([ti.kind] TraitItemKind::Macro(ref mut mac) => mac.tts = new_tts);
                 return smallvec![ti];
             }
         }
@@ -608,7 +608,7 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
         if let Some(invoc_id) = self.mac_table.get(fi.id).map(|m| m.id) {
             if let Some(new_tts) = self.new_tokens.get(&invoc_id).cloned() {
                 let mut fi = fi;
-                expect!([fi.node] ForeignItemKind::Macro(ref mut mac) => mac.tts = new_tts);
+                expect!([fi.kind] ForeignItemKind::Macro(ref mut mac) => mac.tts = new_tts);
                 return smallvec![fi];
             }
         }

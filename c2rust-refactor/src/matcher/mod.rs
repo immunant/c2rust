@@ -604,7 +604,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             };
             self.bindings = old_bnd;
 
-            target = match target.node {
+            target = match target.kind {
                 ExprKind::Cast(ref e, _) => e,
                 _ => return Err(err),
             };
