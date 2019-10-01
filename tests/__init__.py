@@ -34,9 +34,9 @@ class Test(object):
         def print_log_tail_on_fail(script_path):
             logfile = f"{script_path}.log"
             if os.path.isfile(logfile):
-                proc = subprocess.Popen(['tail', '-n', 20, logfile], stdout=subprocess.PIPE)
-                lines = proc.stdout.readlines()
-                print(lines)
+                proc = subprocess.Popen(['tail', '-n', '20', logfile], stdout=subprocess.PIPE)
+                for line in proc.stdout:
+                    print(line.decode().rstrip())
             else:
                 print("{color}Missing log file: {logf}{nocolor}".format(
                     color=Colors.WARNING,
