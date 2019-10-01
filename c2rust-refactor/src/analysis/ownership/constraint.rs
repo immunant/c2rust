@@ -459,6 +459,8 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
                 continue;
             }
 
+            debug!("Constraint {:?} <= {:?} is not satisfiable", a, b);
+
             return false;
         }
 

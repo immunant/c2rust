@@ -3,6 +3,8 @@ use std::iter;
 use std::mem;
 use std::usize;
 
+use log::Level;
+
 use rustc::hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 
@@ -97,8 +99,9 @@ impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
         let inst = &self.insts[inst_idx];
         let callee = inst.callee;
         let mono_assign = &self.cx.get_mono_summ(callee, mono_idx).assign;
-
         let callee_summ = self.cx.get_func_summ(callee);
+        // dbg!(mono_assign);
+        // dbg!(callee_summ);
         let first_var = Var(inst.first_inst_var);
         let last_var = Var(inst.first_inst_var + callee_summ.num_sig_vars);
 
@@ -183,12 +186,12 @@ pub fn build_inst_cset<'lty, 'tcx>(
 
     cset.simplify(cx.arena);
 
-    /*
-    eprintln!("  inst constraints:");
-    for &(a, b) in cset.iter() {
-        eprintln!("    {:?} <= {:?}", a, b);
+    debug!("  inst constraints:");
+    if log_enabled!(Level::Debug) {
+        for &(a, b) in cset.iter() {
+            debug!("    {:?} <= {:?}", a, b);
+        }
     }
-    */
 
     cset
 }
