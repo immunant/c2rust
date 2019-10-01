@@ -171,7 +171,7 @@ impl Make<Lit> for hir::Lit {
     fn make(self, _mk: &Builder) -> Lit {
         Lit {
             token: self.node.to_lit_token(),
-            node: self.node,
+            kind: self.node,
             span: self.span,
         }
     }
@@ -573,7 +573,7 @@ impl Builder {
         let args = args.into_iter().map(|a| a.make(&self)).collect();
         P(Expr {
             id: self.id,
-            node: ExprKind::Array(args),
+            kind: ExprKind::Array(args),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -588,7 +588,7 @@ impl Builder {
         let args = args.into_iter().map(|a| a.make(&self)).collect();
         P(Expr {
             id: self.id,
-            node: ExprKind::Call(func, args),
+            kind: ExprKind::Call(func, args),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -611,7 +611,7 @@ impl Builder {
 
         P(Expr {
             id: self.id,
-            node: ExprKind::MethodCall(seg, all_args),
+            kind: ExprKind::MethodCall(seg, all_args),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -624,7 +624,7 @@ impl Builder {
         let exprs: Vec<P<Expr>> = exprs.into_iter().map(|x| x.make(&self)).collect();
         P(Expr {
             id: self.id,
-            node: ExprKind::Tup(exprs),
+            kind: ExprKind::Tup(exprs),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -649,7 +649,7 @@ impl Builder {
 
         P(Expr {
             id: self.id,
-            node: ExprKind::Binary(op_, lhs, rhs),
+            kind: ExprKind::Binary(op_, lhs, rhs),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -664,7 +664,7 @@ impl Builder {
         let a = a.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Unary(op, a),
+            kind: ExprKind::Unary(op, a),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -677,7 +677,7 @@ impl Builder {
         let lit = lit.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Lit(lit),
+            kind: ExprKind::Lit(lit),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -692,7 +692,7 @@ impl Builder {
         let t = t.make(&self);
 
         // Workaround for a bug in libsyntax require us to emit extra parentheses
-        let cast_if = if let ExprKind::If(..) = e.node {
+        let cast_if = if let ExprKind::If(..) = e.kind {
             true
         } else {
             false
@@ -703,7 +703,7 @@ impl Builder {
 
         P(Expr {
             id: self.id,
-            node: ExprKind::Cast(e, t),
+            kind: ExprKind::Cast(e, t),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -718,7 +718,7 @@ impl Builder {
         let t = t.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Type(e, t),
+            kind: ExprKind::Type(e, t),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -731,7 +731,7 @@ impl Builder {
         let blk = blk.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Block(blk, None),
+            kind: ExprKind::Block(blk, None),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -746,7 +746,7 @@ impl Builder {
         let lbl = lbl.make(&self);
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Block(blk, Some(lbl)),
+            kind: ExprKind::Block(blk, Some(lbl)),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
@@ -761,7 +761,7 @@ impl Builder {
         let rhs = rhs.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Assign(lhs, rhs),
+            kind: ExprKind::Assign(lhs, rhs),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -778,7 +778,7 @@ impl Builder {
         let rhs = rhs.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::AssignOp(op, lhs, rhs),
+            kind: ExprKind::AssignOp(op, lhs, rhs),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -793,7 +793,7 @@ impl Builder {
         let rhs = rhs.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Index(lhs, rhs),
+            kind: ExprKind::Index(lhs, rhs),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -813,7 +813,7 @@ impl Builder {
         let path = path.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Path(qself, path),
+            kind: ExprKind::Path(qself, path),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -830,7 +830,7 @@ impl Builder {
         let n = mk().anon_const(n.make(&self));
         P(Expr {
             id: self.id,
-            node: ExprKind::Repeat(expr, n),
+            kind: ExprKind::Repeat(expr, n),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -843,7 +843,7 @@ impl Builder {
         let e = e.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Paren(e),
+            kind: ExprKind::Paren(e),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -864,7 +864,7 @@ impl Builder {
         let e = e.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::AddrOf(self.mutbl, e),
+            kind: ExprKind::AddrOf(self.mutbl, e),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -877,7 +877,7 @@ impl Builder {
         let mac = mac.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Mac(mac),
+            kind: ExprKind::Mac(mac),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -890,7 +890,7 @@ impl Builder {
         let path = path.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Struct(path, fields, None),
+            kind: ExprKind::Struct(path, fields, None),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -906,7 +906,7 @@ impl Builder {
         let base = base.map(|e| e.make(&self));
         P(Expr {
             id: self.id,
-            node: ExprKind::Struct(path, fields, base),
+            kind: ExprKind::Struct(path, fields, base),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -921,7 +921,7 @@ impl Builder {
         let field = field.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Field(val, field),
+            kind: ExprKind::Field(val, field),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -953,7 +953,7 @@ impl Builder {
         let arms = arms.into_iter().map(|arm| arm.make(&self)).collect();
         P(Expr {
             id: self.id,
-            node: ExprKind::Match(cond, arms),
+            kind: ExprKind::Match(cond, arms),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -1067,7 +1067,7 @@ impl Builder {
 
             // The else branch in libsyntax must be one of these three cases,
             // otherwise we have to manually add the block around the else expression
-            match e.node {
+            match e.kind {
                 ExprKind::If { .. } | ExprKind::Block(_, None) => e,
                 _ => mk().block_expr(mk().block(vec![mk().expr_stmt(e)])),
             }
@@ -1075,7 +1075,7 @@ impl Builder {
 
         P(Expr {
             id: self.id,
-            node: ExprKind::If(cond, then_case, else_case),
+            kind: ExprKind::If(cond, then_case, else_case),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -1095,7 +1095,7 @@ impl Builder {
 
         P(Expr {
             id: self.id,
-            node: ExprKind::While(cond, body, label),
+            kind: ExprKind::While(cond, body, label),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -1113,7 +1113,7 @@ impl Builder {
 
         P(Expr {
             id: self.id,
-            node: ExprKind::Loop(body, label),
+            kind: ExprKind::Loop(body, label),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -1135,7 +1135,7 @@ impl Builder {
 
         P(Expr {
             id: self.id,
-            node: ExprKind::ForLoop(pat, expr, body, label),
+            kind: ExprKind::ForLoop(pat, expr, body, label),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -1150,7 +1150,7 @@ impl Builder {
         let name = name.make(&self);
         P(Pat {
             id: self.id,
-            node: PatKind::Ident(BindingMode::ByValue(self.mutbl), name, None),
+            kind: PatKind::Ident(BindingMode::ByValue(self.mutbl), name, None),
             span: self.span,
         })
     }
@@ -1162,7 +1162,7 @@ impl Builder {
         let pats: Vec<P<Pat>> = pats.into_iter().map(|x| x.make(&self)).collect();
         P(Pat {
             id: self.id,
-            node: PatKind::Tuple(pats),
+            kind: PatKind::Tuple(pats),
             span: self.span,
         })
     }
@@ -1174,7 +1174,7 @@ impl Builder {
         let path = path.make(&self);
         P(Pat {
             id: self.id,
-            node: PatKind::Path(qself, path),
+            kind: PatKind::Path(qself, path),
             span: self.span,
         })
     }
@@ -1182,7 +1182,7 @@ impl Builder {
     pub fn wild_pat(self) -> P<Pat> {
         P(Pat {
             id: self.id,
-            node: PatKind::Wild,
+            kind: PatKind::Wild,
             span: self.span,
         })
     }
@@ -1194,7 +1194,7 @@ impl Builder {
         let lit = lit.make(&self);
         P(Pat {
             id: self.id,
-            node: PatKind::Lit(lit),
+            kind: PatKind::Lit(lit),
             span: self.span,
         })
     }
@@ -1206,7 +1206,7 @@ impl Builder {
         let mac = mac.make(&self);
         P(Pat {
             id: self.id,
-            node: PatKind::Mac(mac),
+            kind: PatKind::Mac(mac),
             span: self.span,
         })
     }
@@ -1218,7 +1218,7 @@ impl Builder {
         let name = name.make(&self);
         P(Pat {
             id: self.id,
-            node: PatKind::Ident(BindingMode::ByRef(self.mutbl), name, None),
+            kind: PatKind::Ident(BindingMode::ByRef(self.mutbl), name, None),
             span: self.span,
         })
     }
@@ -1230,7 +1230,7 @@ impl Builder {
         let pats: Vec<P<Pat>> = pats.into_iter().map(|p| p.make(&self)).collect();
         P(Pat {
             id: self.id,
-            node: PatKind::Or(pats),
+            kind: PatKind::Or(pats),
             span: self.span,
         })
     }
@@ -1252,7 +1252,7 @@ impl Builder {
 
         P(Ty {
             id: self.id,
-            node: TyKind::BareFn(P(barefn)),
+            kind: TyKind::BareFn(P(barefn)),
             span: self.span,
         })
     }
@@ -1266,7 +1266,7 @@ impl Builder {
         let len = mk().anon_const(len.make(&self));
         P(Ty {
             id: self.id,
-            node: TyKind::Array(ty, len),
+            kind: TyKind::Array(ty, len),
             span: self.span,
         })
     }
@@ -1278,7 +1278,7 @@ impl Builder {
         let ty = ty.make(&self);
         P(Ty {
             id: self.id,
-            node: TyKind::Slice(ty),
+            kind: TyKind::Slice(ty),
             span: self.span,
         })
     }
@@ -1290,7 +1290,7 @@ impl Builder {
         let ty = ty.make(&self);
         P(Ty {
             id: self.id,
-            node: TyKind::Ptr(MutTy {
+            kind: TyKind::Ptr(MutTy {
                 ty: ty,
                 mutbl: self.mutbl,
             }),
@@ -1305,7 +1305,7 @@ impl Builder {
         let ty = ty.make(&self);
         P(Ty {
             id: self.id,
-            node: TyKind::Rptr(
+            kind: TyKind::Rptr(
                 None,
                 MutTy {
                     ty: ty,
@@ -1325,7 +1325,7 @@ impl Builder {
         let ty = ty.make(&self);
         P(Ty {
             id: self.id,
-            node: TyKind::Rptr(
+            kind: TyKind::Rptr(
                 Some(lt),
                 MutTy {
                     ty: ty,
@@ -1339,7 +1339,7 @@ impl Builder {
     pub fn never_ty(self) -> P<Ty> {
         P(Ty {
             id: self.id,
-            node: TyKind::Never,
+            kind: TyKind::Never,
             span: self.span,
         })
     }
@@ -1351,7 +1351,7 @@ impl Builder {
         let elem_tys = elem_tys.into_iter().map(|ty| ty.make(&self)).collect();
         P(Ty {
             id: self.id,
-            node: TyKind::Tup(elem_tys),
+            kind: TyKind::Tup(elem_tys),
             span: self.span,
         })
     }
@@ -1370,7 +1370,7 @@ impl Builder {
         let path = path.make(&self);
         P(Ty {
             id: self.id,
-            node: TyKind::Path(qself, path),
+            kind: TyKind::Path(qself, path),
             span: self.span,
         })
     }
@@ -1385,7 +1385,7 @@ impl Builder {
     pub fn infer_ty(self) -> P<Ty> {
         P(Ty {
             id: self.id,
-            node: TyKind::Infer,
+            kind: TyKind::Infer,
             span: self.span,
         })
     }
@@ -1397,7 +1397,7 @@ impl Builder {
         let mac = mac.make(&self);
         P(Ty {
             id: self.id,
-            node: TyKind::Mac(mac),
+            kind: TyKind::Mac(mac),
             span: self.span,
         })
     }
@@ -1405,7 +1405,7 @@ impl Builder {
     pub fn cvar_args_ty(self) -> P<Ty> {
         P(Ty {
             id: self.id,
-            node: TyKind::CVarArgs,
+            kind: TyKind::CVarArgs,
             span: self.span,
         })
     }
@@ -1419,7 +1419,7 @@ impl Builder {
         let local = local.make(&self);
         Stmt {
             id: self.id,
-            node: StmtKind::Local(local),
+            kind: StmtKind::Local(local),
             span: self.span,
         }
     }
@@ -1431,7 +1431,7 @@ impl Builder {
         let expr = expr.make(&self);
         Stmt {
             id: self.id,
-            node: StmtKind::Expr(expr),
+            kind: StmtKind::Expr(expr),
             span: self.span,
         }
     }
@@ -1443,7 +1443,7 @@ impl Builder {
         let expr = expr.make(&self);
         Stmt {
             id: self.id,
-            node: StmtKind::Semi(expr),
+            kind: StmtKind::Semi(expr),
             span: self.span,
         }
     }
@@ -1455,7 +1455,7 @@ impl Builder {
         let item = item.make(&self);
         Stmt {
             id: self.id,
-            node: StmtKind::Item(item),
+            kind: StmtKind::Item(item),
             span: self.span,
         }
     }
@@ -1467,7 +1467,7 @@ impl Builder {
         let mac = mac.make(&self);
         Stmt {
             id: self.id,
-            node: StmtKind::Mac(P((mac, MacStmtStyle::Semicolon, ThinVec::new()))),
+            kind: StmtKind::Mac(P((mac, MacStmtStyle::Semicolon, ThinVec::new()))),
             span: self.span,
         }
     }
@@ -1480,13 +1480,13 @@ impl Builder {
         vis: Visibility,
         span: Span,
         id: NodeId,
-        node: ItemKind,
+        kind: ItemKind,
     ) -> P<Item> {
         P(Item {
             ident: name,
             attrs: attrs,
             id: id,
-            node: node,
+            kind: kind,
             vis: vis,
             span: span,
             tokens: None,
@@ -1556,11 +1556,10 @@ impl Builder {
         )
     }
 
-    pub fn fn_decl(self, inputs: Vec<Param>, output: FunctionRetTy, c_variadic: bool) -> P<FnDecl> {
+    pub fn fn_decl(self, inputs: Vec<Param>, output: FunctionRetTy) -> P<FnDecl> {
         P(FnDecl {
             inputs,
             output,
-            c_variadic,
         })
     }
 
@@ -1856,7 +1855,7 @@ impl Builder {
         generics: Generics,
         span: Span,
         id: NodeId,
-        node: ImplItemKind,
+        kind: ImplItemKind,
     ) -> ImplItem {
         ImplItem {
             id,
@@ -1865,7 +1864,7 @@ impl Builder {
             defaultness,
             attrs,
             generics,
-            node,
+            kind,
             span,
             tokens: None,
         }
@@ -1898,14 +1897,14 @@ impl Builder {
         generics: Generics,
         span: Span,
         id: NodeId,
-        node: TraitItemKind,
+        kind: TraitItemKind,
     ) -> TraitItem {
         TraitItem {
             id,
             ident,
             attrs,
             generics,
-            node,
+            kind,
             span,
             tokens: None,
         }
@@ -1935,13 +1934,13 @@ impl Builder {
         vis: Visibility,
         span: Span,
         id: NodeId,
-        node: ForeignItemKind,
+        kind: ForeignItemKind,
     ) -> ForeignItem {
         ForeignItem {
             ident: name,
             attrs: attrs,
             id: id,
-            node: node,
+            kind: kind,
             vis: vis,
             span: span,
         }
@@ -2082,7 +2081,7 @@ impl Builder {
         let value = value.map(|v| v.make(&self));
         P(Expr {
             id: DUMMY_NODE_ID,
-            node: ExprKind::Break(label, value),
+            kind: ExprKind::Break(label, value),
             span: DUMMY_SP,
             attrs: self.attrs.into(),
         })
@@ -2130,10 +2129,10 @@ impl Builder {
         }
     }
 
-    pub fn ty<T>(self, node: TyKind) -> Ty {
+    pub fn ty<T>(self, kind: TyKind) -> Ty {
         Ty {
             id: self.id,
-            node,
+            kind,
             span: self.span,
         }
     }
@@ -2171,7 +2170,7 @@ impl Builder {
         let kind = kind.make(&self);
         MetaItem {
             path: path,
-            node: kind,
+            kind: kind,
             span: DUMMY_SP,
         }
     }
@@ -2239,7 +2238,7 @@ impl Builder {
         let val = val.map(|x| x.make(&self));
         P(Expr {
             id: self.id,
-            node: ExprKind::Ret(val),
+            kind: ExprKind::Ret(val),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -2255,7 +2254,7 @@ impl Builder {
 
         P(Expr {
             id: self.id,
-            node: ExprKind::Continue(label),
+            kind: ExprKind::Continue(label),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -2271,7 +2270,7 @@ impl Builder {
 
         P(Expr {
             id: self.id,
-            node: ExprKind::Break(label, None),
+            kind: ExprKind::Break(label, None),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -2292,7 +2291,7 @@ impl Builder {
         let body = body.make(&self);
         P(Expr {
             id: self.id,
-            node: ExprKind::Closure(capture, IsAsync::NotAsync, mov, decl, body, DUMMY_SP),
+            kind: ExprKind::Closure(capture, IsAsync::NotAsync, mov, decl, body, DUMMY_SP),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -2307,7 +2306,7 @@ pub fn mk() -> Builder {
 /// argument to a less-than operator. This is a work-around for an upstream
 /// libsyntax bug.
 fn has_rightmost_cast(expr: &Expr) -> bool {
-    match &expr.node {
+    match &expr.kind {
         &ExprKind::Cast(..) => true,
         &ExprKind::Unary(_, ref arg) => has_rightmost_cast(&**arg),
         &ExprKind::Binary(_, _, ref rhs) => has_rightmost_cast(&**rhs),
