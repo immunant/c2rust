@@ -913,13 +913,6 @@ function Visitor:flat_map_item(item, walk)
 
         for _, field in ipairs(fields) do
             local field_id = field:get_id()
-            local ty = field:get_ty()
-
-            if ty:get_kind() == "Array" then
-                ty = ty:get_tys()[1]
-            end
-
-            -- local ty_id = ty:get_id()
             local cfg = self.node_id_cfgs[field_id]
             local field_hrid = self.tctx:nodeid_to_hirid(field_id)
 
