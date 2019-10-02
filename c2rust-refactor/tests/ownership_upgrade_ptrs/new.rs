@@ -5,6 +5,7 @@ extern "C" {
     #[no_mangle]
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
     #[no_mangle]
+    #[ownership_constraints(le(WRITE, _0), le(_0, WRITE))]
     fn memset(_: *mut libc::c_void, _: libc::c_int, _: libc::c_ulong);
     #[no_mangle]
     fn free(_: *mut libc::c_void);
@@ -17,6 +18,7 @@ extern "C" {
     #[no_mangle]
     fn exp(_: libc::c_double) -> libc::c_double;
     #[no_mangle]
+    #[ownership_constraints(le(WRITE, _0), le(_0, WRITE))]
     fn takes_ptrs(_: *mut u32, _: *const u32);
 }
 

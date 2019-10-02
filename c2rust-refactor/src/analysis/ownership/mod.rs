@@ -194,6 +194,9 @@ fn analyze_intra<'a, 'tcx, 'lty>(
 /// function in the `Ctxt`.
 fn analyze_externs<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'a, 'tcx>) {
     for (def_id, func_summ) in cx.funcs_mut() {
+        if func_summ.cset_provided {
+            continue;
+        }
         match hir_map.get_if_local(*def_id) {
             Some(Node::ForeignItem(i)) => match i.node {
                 // We only want to consider foreign functions
