@@ -149,7 +149,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ast::ForeignItem) {
-        match i.kind {
+        match i.node {
             // TODO: Foreign statics?
             ast::ForeignItemKind::Fn(..) => {
                 if !i.attrs.is_empty() {
