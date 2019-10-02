@@ -235,12 +235,12 @@ impl UserData for LuaAstNode<P<Item>> {
             }
         });
 
-        methods.add_method("get_field_ids", |_lua_ctx, this, ()| {
+        methods.add_method("get_fields", |_lua_ctx, this, ()| {
             if let ItemKind::Struct(variant_data, _) = &this.borrow().kind {
                 return Ok(Some(variant_data
                     .fields()
                     .iter()
-                    .map(|f| f.id.as_u32())
+                    .map(|f| LuaAstNode::new(f.clone()))
                     .collect::<Vec<_>>()
                 ));
             }
@@ -290,8 +290,31 @@ impl UserData for LuaAstNode<P<Item>> {
             Ok(())
         });
 
-        methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.borrow());
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
+
+        methods.add_method("get_trait_ref", |_lua_ctx, this, ()| {
+            if let ItemKind::Impl(_, _, _, _, opt_trait_ref, ..) = &this.borrow().node {
+                return Ok(opt_trait_ref.as_ref().map(|tr| LuaAstNode::new(tr.path.clone())));
+            }
+
+            Ok(None)
+        });
+
+        methods.add_method("clear_derives", |_lua_ctx, this, ()| {
+            let attrs = &mut this.borrow_mut().attrs;
+
+            let opt_idx = attrs.iter().position(|a| a.check_name(Symbol::intern("rustc_copy_clone_marker")));
+
+            if let Some(idx) = opt_idx {
+                dbg!(attrs.remove(idx));
+            }
+
+            use c2rust_ast_builder::mk;
+
+            attrs.push(mk().call_attr("derive", vec!["Copy"]).as_inner_attrs().remove(0));
 
             Ok(())
         });
@@ -1005,11 +1028,10 @@ impl UserData for LuaAstNode<Stmt> {
             Ok(())
         });
 
-        methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.borrow());
-
-            Ok(())
-        });
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
     }
 }
 
@@ -1443,10 +1465,17 @@ impl UserData for LuaAstNode<StructField> {
             Ok(())
         });
 
-        methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.borrow());
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
 
-            Ok(())
+        methods.add_method("get_attrs", |_lua_ctx, this, ()| {
+            Ok(this.borrow()
+                .attrs
+                .iter()
+                .map(|attr| LuaAstNode::new(attr.clone()))
+                .collect::<Vec<_>>())
         });
     }
 }
@@ -1497,11 +1526,10 @@ impl UserData for LuaAstNode<ItemKind> {
             Ok(None)
         });
 
-        methods.add_method("print", |_lua_ctx, this, ()| {
-            println!("{:?}", this.borrow());
-
-            Ok(())
-        });
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
     }
 }
 

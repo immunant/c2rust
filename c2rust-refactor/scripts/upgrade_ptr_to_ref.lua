@@ -43,9 +43,10 @@ end
 
 Struct = {}
 
-function Struct.new(lifetimes)
+function Struct.new(lifetimes, is_copy)
     self = {}
     self.lifetimes = lifetimes
+    self.is_copy = is_copy
 
     setmetatable(self, Struct)
     Struct.__index = Struct
@@ -150,8 +151,8 @@ function ConvCfg.from_marks(marks, attrs)
         end
     end
 
-    if conv_type == "" or conv_type[#conv_type] == "_" then
-        log_error("Could not build appropriate conversion cfg for: " .. tostring(arg))
+    if conv_type == "" or stringx.endswith(conv_type, "_") then
+        log_error("Could not build appropriate conversion cfg from: " .. pretty.write(marks))
         return
     end
 
@@ -907,24 +908,44 @@ function Visitor:flat_map_item(item, walk)
 
     if item_kind == "Struct" then
         local lifetimes = OrderedMap()
-        local field_ids = item:get_field_ids()
+        local fields = item:get_fields()
+        local is_copy = true
 
-        for _, field_id in ipairs(field_ids) do
-            local ref_cfg = self.node_id_cfgs[field_id]
+        for _, field in ipairs(fields) do
+            local field_id = field:get_id()
+            local ty = field:get_ty()
+
+            if ty:get_kind() == "Array" then
+                ty = ty:get_tys()[1]
+            end
+
+            -- local ty_id = ty:get_id()
+            local cfg = self.node_id_cfgs[field_id]
             local field_hrid = self.tctx:nodeid_to_hirid(field_id)
 
             self:add_field(field_hrid, Field.new(field_id))
 
-            if ref_cfg and ref_cfg.extra_data.lifetime then
-                item:add_lifetime(ref_cfg.extra_data.lifetime)
+            if cfg then
+                if cfg:is_box_any() then
+                    is_copy = false
+                end
 
-                lifetimes[ref_cfg.extra_data.lifetime] = true
+                if cfg.extra_data.lifetime then
+                    item:add_lifetime(cfg.extra_data.lifetime)
+
+                    lifetimes[cfg.extra_data.lifetime] = true
+                end
             end
+        end
+
+        if not is_copy then
+            -- TODO: Remove Copy from non Copy structs
+            -- item:clear_derives()
         end
 
         local hirid = self.tctx:nodeid_to_hirid(item:get_id())
 
-        self:add_struct(hirid, Struct.new(lifetimes))
+        self:add_struct(hirid, Struct.new(lifetimes, is_copy))
     elseif item_kind == "Fn" then
         local args = item:get_args()
         local arg_ids = {}
@@ -976,6 +997,13 @@ function Visitor:flat_map_item(item, walk)
         local hirid = self.tctx:nodeid_to_hirid(item:get_id())
 
         self:add_var(hirid, Variable.new(item:get_id(), "static"))
+    -- elseif item_kind == "Impl" then
+    --     local seg = item:get_trait_ref():get_segments()
+    --     print(seg[#seg])
+
+    --     if seg == "Copy" then
+    --         return {}
+    --     end
     end
 
     walk(item)
@@ -1029,25 +1057,25 @@ end
 function Visitor:flat_map_struct_field(field)
     local field_id = field:get_id()
     local field_ty = field:get_ty()
-    local conversion_cfg = self.node_id_cfgs[field_id]
+    local cfg = self.node_id_cfgs[field_id]
 
-    if conversion_cfg then
-        local field_ty_kind = field_ty:get_kind()
+    if not cfg then return end
 
-        -- *mut T -> Box<T>, or Box<[T]> or Option<Box<T>> or Option<Box<[T]>>
-        if field_ty_kind == "Ptr" then
-            field:set_ty(upgrade_ptr(field_ty, conversion_cfg))
-        -- [*mut T; X] -> [Box<T>; X] or [Box<[T]>; X] or [Option<Box<T>>; X]
-        -- or [Option<Box<[T]>; X]
-        elseif field_ty_kind == "Array" then
-            local inner_ty = field_ty:get_tys()[1]
+    local field_ty_kind = field_ty:get_kind()
 
-            if inner_ty:get_kind() == "Ptr" then
-                inner_ty = upgrade_ptr(inner_ty, conversion_cfg)
+    -- *mut T -> Box<T>, or Box<[T]> or Option<Box<T>> or Option<Box<[T]>>
+    if field_ty_kind == "Ptr" then
+        field:set_ty(upgrade_ptr(field_ty, cfg))
+    -- [*mut T; X] -> [Box<T>; X] or [Box<[T]>; X] or [Option<Box<T>>; X]
+    -- or [Option<Box<[T]>; X]
+    elseif field_ty_kind == "Array" then
+        local inner_ty = field_ty:get_tys()[1]
 
-                field_ty:set_tys{inner_ty}
-                field:set_ty(field_ty)
-            end
+        if inner_ty:get_kind() == "Ptr" then
+            inner_ty = upgrade_ptr(inner_ty, cfg)
+
+            field_ty:set_tys{inner_ty}
+            field:set_ty(field_ty)
         end
     end
 
@@ -1145,6 +1173,7 @@ function Visitor:visit_local(locl, walk)
     walk(locl)
 end
 
+-- The MarkConverter takes marks and processes them into ConvCfgs
 MarkConverter = {}
 
 function MarkConverter.new(marks, boxes, tctx)
@@ -1207,10 +1236,39 @@ function MarkConverter:visit_local(locl)
     self.node_id_cfgs[id] = ConvCfg.from_marks(marks, attrs)
 end
 
-MallocMarker = {}
+function MarkConverter:flat_map_item(item, walk)
+    local item_kind = item:get_kind()
+    local crate_vis = item:get_vis() == "Crate"
+
+    if item_kind == "Struct" and crate_vis then
+        local fields = item:get_fields()
+
+        for _, field in ipairs(fields) do
+            local field_id = field:get_id()
+            local field_ty = field:get_ty()
+            local ty_id = field_ty:get_id()
+
+            if field_ty:get_kind() == "Array" then
+                ty_id = field_ty:get_tys()[1]:get_id()
+            end
+
+            local marks = self.marks[ty_id] or {}
+
+            if next(marks) ~= nil then
+                self.node_id_cfgs[field_id] = ConvCfg.from_marks(marks, field:get_attrs())
+            end
+        end
+    end
+
+    walk(item)
+
+    return {item}
+end
 
 -- This visitor finds variables that are assigned
 -- a malloc or calloc and marks them as "box"
+MallocMarker = {}
+
 function MallocMarker.new(tctx)
     self = {}
     self.tctx = tctx

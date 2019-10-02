@@ -60,9 +60,10 @@ pub struct HASHHDR {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct HTAB {
+pub(crate) struct HTAB {
     pub hdr: HASHHDR,
-    pub mapp: [*mut libc::c_uint; 32],
+    #[slice]
+    pub mapp: [Option<Box<[libc::c_uint]>>; 32],
     pub nmaps: libc::c_int,
 }
 
