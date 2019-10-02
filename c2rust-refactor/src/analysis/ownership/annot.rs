@@ -148,6 +148,20 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
         visit::walk_impl_item(self, i);
     }
 
+    fn visit_foreign_item(&mut self, i: &'ast ast::ForeignItem) {
+        match i.kind {
+            // TODO: Foreign statics?
+            ast::ForeignItemKind::Fn(..) => {
+                if !i.attrs.is_empty() {
+                    self.def_attrs.push((i.id, &i.attrs));
+                }
+            }
+            _ => {}
+        }
+
+        visit::walk_foreign_item(self, i);
+    }
+
     fn visit_struct_field(&mut self, sf: &'ast ast::StructField) {
         if sf.attrs.len() > 0 {
             self.def_attrs.push((sf.id, &sf.attrs));
