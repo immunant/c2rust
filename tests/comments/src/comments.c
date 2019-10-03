@@ -49,6 +49,16 @@ int test_fn() {
     /* end of else */
   }
 
+  /* quake3 style */
+  if (x > 50)
+  {
+    x = 20;
+  } //end if
+  else if (x > 75)
+  {
+    x = 13;
+  } //end else if
+
   /* before a statement */
   return x + CONSTANT1;
 

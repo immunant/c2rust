@@ -181,7 +181,7 @@ impl CommentStore {
             return;
         }
         if let Some(comments) = self.output_comments.remove(&old) {
-            self.output_comments.get_mut(&new).unwrap().extend(comments);
+            self.output_comments.entry(new).or_insert(SmallVec::new()).extend(comments);
         }
     }
 
@@ -194,7 +194,7 @@ impl CommentStore {
             } else {
                 let new_comments = self.output_comments.remove(&span.hi())
                     .unwrap_or_else(|| panic!("Expected comments attached to the high end of span {:?}", span));
-                self.output_comments.get_mut(&span.lo()).unwrap().extend(new_comments);
+                self.output_comments.entry(span.lo()).or_insert(SmallVec::new()).extend(new_comments);
                 span.shrink_to_lo()
             }
         } else {
