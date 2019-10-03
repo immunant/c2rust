@@ -717,10 +717,7 @@ function Visitor:rewrite_assign_expr(expr)
                 expr:set_exprs{lhs, rhs}
             end
         end
-    -- lhs = rhs.offset(x) -> rhs = Some(rhs[x..])
-    -- NOTE: indexing is applied by rewrite_method_call_expr
-    -- and ptr to reference conversion handled elsewhere
-    elseif rhs:get_method_name() == "offset" or rhs:get_method_name() == "as_ptr" then
+    else
         local lhs_cfg = self:get_expr_cfg(lhs)
 
         if lhs_cfg and lhs_cfg:is_opt_any() then
@@ -743,10 +740,19 @@ function Visitor:rewrite_call_expr(expr)
     if segments and segments[#segments] == "free" and first_param_expr:get_kind() == "Cast" then
         -- REVIEW: What if there's a multi-layered cast?
         local uncasted_expr = first_param_expr:get_exprs()[1]
-        local conversion_cfg = self:get_expr_cfg(uncasted_expr)
+        local cast_ty = first_param_expr:get_ty()
+        local cfg = self:get_expr_cfg(uncasted_expr)
 
-        if conversion_cfg and conversion_cfg:is_opt_any() then
-            expr:to_method_call("take", {uncasted_expr})
+        if cfg and cfg:is_opt_any() then
+            -- If it's not also boxed, then we probably have an inner raw ptr
+            -- and should still call free on it
+            if cfg:is_box_any() then
+                expr:to_method_call("take", {uncasted_expr})
+            else
+                uncasted_expr:to_method_call("unwrap", {uncasted_expr})
+                uncasted_expr:to_cast(uncasted_expr, cast_ty)
+                expr:to_call{path_expr, uncasted_expr}
+            end
         end
     -- ip as *mut c_void -> ip.as_mut_ptr() as *mut c_void
     -- Though this should be expanded to support other exprs like

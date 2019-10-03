@@ -650,6 +650,15 @@ impl UserData for LuaAstNode<P<Expr>> {
             Ok(())
         });
 
+        methods.add_method("to_cast", |_lua_ctx, this, (expr, ty): (LuaAstNode<P<Expr>>, LuaAstNode<P<Ty>>)| {
+            let expr = expr.borrow().clone();
+            let ty = ty.borrow().clone();
+
+            this.borrow_mut().node = ExprKind::Cast(expr, ty);
+
+            Ok(())
+        });
+
         methods.add_method("to_addr_of", |_lua_ctx, this, (expr, mutable): (LuaAstNode<P<Expr>>, bool)| {
             let expr = expr.borrow().clone();
             let mutability = if mutable {
