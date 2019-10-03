@@ -13,9 +13,6 @@ def get_args():
     parser.add_argument('--verbose', dest='verbose', action='store_true',
                         default=False,
                         help='Enable verbose output')
-    parser.add_argument('--project', dest='project', action='store',
-                        type=str, default=None,
-                        help='Only test specified project')
     parser.add_argument('--stage', dest='stage', action='store',
                         type=str, default=None, choices=tests.Test.STAGES,
                         help='Only test specified stage')
@@ -26,6 +23,8 @@ def get_args():
     parser.add_argument('--ignore-requirements',
                         action='store_true',
                         help='Ignore test requirements')
+    parser.add_argument('projects', metavar='project', type=str, nargs='*',
+                        help='Project to test (defaults to all projects if none specified)')
     return parser.parse_args()
 
 
@@ -40,7 +39,7 @@ if __name__ == "__main__":
     conf = tests.Config(args)
     if args.requirements:
         print_requirements(args)
-    elif not conf.project_dirs and args.project:
+    elif not conf.project_dirs and len(args.projects) > 0:
         util.die(f"no such project: {args.project}")
     else:
         templates.autogen(conf)

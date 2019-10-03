@@ -11,8 +11,8 @@ CONF_YML: str = "conf.yml"
 class Config(object):
     def __init__(self, args):
         self.verbose = args.verbose
-        self.project = args.project  # project filter
-        self.stage = args.stage      # stage filter
+        self.projects = args.projects  # projects filter
+        self.stage = args.stage        # stage filter
         self.ignore_requirements = args.ignore_requirements
         self.project_dirs = find_project_dirs(self)
         self.project_conf = {cf: get_yaml(cf) for cf in get_conf_files(self)}
@@ -78,17 +78,20 @@ def find_project_dirs(conf: Config) -> List[str]:
     subdirs = sorted(next(os.walk(script_dir))[1])
 
     # filter out __pycache__ and anything else starting with `_`
-    subdirs = filter(lambda d: not(d.startswith("_") or d.startswith(".")),
-                     subdirs)
+    subdirs = list(filter(lambda d: not(d.startswith("_") or d.startswith(".")),
+                          subdirs))
 
-    if conf.project:  # only test named project
-        project = filter(lambda d: d == conf.project, subdirs)
-        if not project:
-            nl = ", ".join(map(lambda p: os.path.basename(p), subdirs))
-            y, nc = Colors.WARNING, Colors.NO_COLOR
-            msg = f"no such project: {y}{conf.project}{nc}. projects: {nl}."
-            die(msg)
-        subdirs = project
+    if len(conf.projects) > 0:  # only test named project
+        projects = list(filter(lambda d: d in conf.projects, subdirs))
+        if len(projects) != len(conf.projects):
+            missing_projects = filter(lambda d: d not in projects, conf.projects)
+            for project in missing_projects:
+                nl = ", ".join(map(lambda p: os.path.basename(p), subdirs))
+                y, nc = Colors.WARNING, Colors.NO_COLOR
+                msg = f"no such project: {y}{project}{nc}. available projects: {nl}."
+                print(msg, file=sys.stderr)
+            exit(errno.EINVAL)
+        subdirs = projects
 
     return [os.path.join(script_dir, s) for s in subdirs]
 
