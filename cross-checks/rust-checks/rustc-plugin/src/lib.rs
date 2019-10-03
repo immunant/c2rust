@@ -362,7 +362,7 @@ impl AstItemScope for xcfg::scopes::ScopeStack {
         external_config: &xcfg::Config,
         cx: &ExtCtxt,
     ) -> usize {
-        let (span, item_kind, item_xcfg) = match item.node {
+        let (span, item_kind, item_xcfg) = match item.kind {
             ast::ItemKind::Fn(..) => (
                 item.span,
                 Some(xcfg::scopes::ItemKind::Function),
@@ -399,7 +399,7 @@ impl AstItemScope for xcfg::scopes::ScopeStack {
             // `impl T { ... }`, then we take its name
             // from the type, not from the identifier
             let item_name_str = item.ident.name.as_str();
-            let item_name = match item.node {
+            let item_name = match item.kind {
                 ast::ItemKind::Impl(.., ref ty, _) => {
                     // FIXME: handle generics in the type
                     Cow::from(pprust::ty_to_string(ty))
@@ -510,7 +510,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
 
     // Get the cross-check block for this argument
     fn build_arg_xcheck(&self, arg: &ast::Arg) -> ast::Stmt {
-        match arg.pat.node {
+        match arg.pat.kind {
             ast::PatKind::Ident(_, ref ident, _) => {
                 // Parameter pattern is just an identifier,
                 // so we can reference it directly by name
@@ -838,7 +838,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         let span = item.span;
         let ident = item.ident;
         let mut new_attrs = vec![];
-        match item.node {
+        match item.kind {
             ast::ItemKind::Fn(ref fn_decl, _, _, ref mut block) => {
                 *block = self.build_function_xchecks(ident, fn_decl, block.clone());
             }
@@ -903,7 +903,7 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
     // Mutate functions that handle macro expansion
     fn flat_map_item(&mut self, item: P<ast::Item>) -> SmallVec<[P<ast::Item>; 1]> {
         if cfg!(feature = "expand-macros") {
-            //if let ast::ItemKind::Mac(_) = item.node {
+            //if let ast::ItemKind::Mac(_) = item.kind {
             //    return self
             //        .cx
             //        .expander()
@@ -943,7 +943,7 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
     }
 
     fn flat_map_impl_item(&mut self, item: ast::ImplItem) -> SmallVec<[ast::ImplItem; 1]> {
-        match (item.node, item.defaultness) {
+        match (item.kind, item.defaultness) {
             (ast::ImplItemKind::Method(sig, body), defaultness) => {
                 // FIXME: this is a bit hacky: we forcibly build a fake
                 // Item::Fn with the same signature and body as our method,
@@ -1005,7 +1005,7 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
 
     fn flat_map_stmt(&mut self, s: ast::Stmt) -> SmallVec<[ast::Stmt; 1]> {
         if cfg!(feature = "expand-macros") {
-            //if let ast::StmtKind::Mac(_) = s.node {
+            //if let ast::StmtKind::Mac(_) = s.kind {
             //    return self
             //        .cx
             //        .expander()
@@ -1024,14 +1024,14 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
         folded_stmt
             .into_iter()
             .flat_map(|s| {
-                let new_stmt = match s.node {
+                let new_stmt = match s.kind {
                     ast::StmtKind::Local(ref local) => {
                         let attr = find_cross_check_attr(&*local.attrs);
                         // TODO: check that the cross_check attr is "yes"
                         attr.and_then(|_| {
                             // TODO: only add cross-checks for initialized locals???
                             // (in other words, check local.init.is_some())
-                            match local.pat.node {
+                            match local.pat.kind {
                                 ast::PatKind::Ident(_, ident, _) => {
                                     let (ahasher, shasher) = self.get_hasher_pair();
                                     let ident_expr = self.cx.expr_ident(ident.span, ident);
@@ -1135,7 +1135,7 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
 
     fn visit_expr(&mut self, expr: &mut P<ast::Expr>) {
         if cfg!(feature = "expand-macros") {
-            //if let ast::ExprKind::Mac(_) = expr.node {
+            //if let ast::ExprKind::Mac(_) = expr.kind {
             //    return self
             //        .cx
             //        .expander()
@@ -1155,7 +1155,7 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
         folded_items
             .into_iter()
             .map(|folded_ni| {
-                if let ast::ForeignItemKind::Ty = folded_ni.node {
+                if let ast::ForeignItemKind::Ty = folded_ni.kind {
                     // Foreign type, implement CrossCheckHash for it
                     // This is implemented as a call to the `__c2rust_hash_T` function
                     // TODO: include ahasher/shasher into the function name
@@ -1307,7 +1307,7 @@ impl MultiItemModifier for CrossCheckExpander {
                 // If we're seeing #![cross_check] at the top of the crate or a module,
                 // create a fresh configuration and perform a folding; otherwise, just
                 // ignore this expansion and let the higher level one do everything
-                let ni = match (&i.node, span_scope) {
+                let ni = match (&i.kind, span_scope) {
                     (&ast::ItemKind::Mod(_), None) => {
                         let mut scope_stack = xcfg::scopes::ScopeStack::default();
                         // Parse the top-level attribute configuration

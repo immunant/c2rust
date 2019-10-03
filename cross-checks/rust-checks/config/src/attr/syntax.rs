@@ -17,10 +17,10 @@ pub fn get_item_args(mi: &ast::MetaItem) -> ArgList<Ident> {
                     ast::NestedMetaItem::MetaItem(ref mi) => {
                         assert!(mi.path.segments.len() == 1);
                         let kw = mi.path.segments[0].ident;
-                        match mi.node {
+                        match mi.kind {
                             ast::MetaItemKind::Word => (kw, ArgValue::Nothing),
 
-                            ast::MetaItemKind::NameValue(ref val) => match val.node {
+                            ast::MetaItemKind::NameValue(ref val) => match val.kind {
                                 ast::LitKind::Str(ref s, ast::StrStyle::Cooked) => {
                                     (kw, ArgValue::Str(String::from(&*s.as_str())))
                                 }
