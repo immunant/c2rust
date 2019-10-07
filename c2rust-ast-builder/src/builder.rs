@@ -365,16 +365,18 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId(0),
             style: AttrStyle::Outer,
-            path: key,
-            tokens: vec![
-                TokenTree::token(token::Eq, DUMMY_SP),
-                TokenTree::token(
-                    TokenKind::Literal(token::Lit::new(token::LitKind::Str, value.into_symbol(), None)),
-                    DUMMY_SP
-                )
-            ]
-            .into_iter()
-            .collect(),
+            item: AttrItem {
+                path: key,
+                tokens: vec![
+                    TokenTree::token(token::Eq, DUMMY_SP),
+                    TokenTree::token(
+                        TokenKind::Literal(token::Lit::new(token::LitKind::Str, value.into_symbol(), None)),
+                        DUMMY_SP
+                    )
+                ]
+                    .into_iter()
+                    .collect(),
+            },
             is_sugared_doc: false,
             span: DUMMY_SP,
         });
@@ -394,8 +396,10 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId(0),
             style: AttrStyle::Outer,
-            path: key,
-            tokens: TokenStream::empty(),
+            item: AttrItem {
+                path: key,
+                tokens: TokenStream::empty(),
+            },
             is_sugared_doc: false,
             span: DUMMY_SP,
         });
@@ -437,8 +441,10 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId(0),
             style: AttrStyle::Outer,
-            path: func,
-            tokens: tokens,
+            item: AttrItem {
+                path: func,
+                tokens: tokens,
+            },
             is_sugared_doc: false,
             span: DUMMY_SP,
         });
@@ -2147,8 +2153,10 @@ impl Builder {
         Attribute {
             id: AttrId(0),
             style,
-            path,
-            tokens,
+            item: AttrItem {
+                path,
+                tokens,
+            },
             is_sugared_doc: false,
             span: self.span,
         }
