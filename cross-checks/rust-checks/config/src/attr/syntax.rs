@@ -43,7 +43,7 @@ pub fn get_item_args(mi: &ast::MetaItem) -> ArgList<Ident> {
 }
 
 fn parse_xcheck_type(name: &Ident, arg: &ArgValue<Ident>) -> XCheckType {
-    match name.as_str().get() {
+    match name.as_str() {
         "default" => XCheckType::Default,
         "none" => XCheckType::None,
         "disabled" => XCheckType::Disabled,
