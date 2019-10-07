@@ -152,7 +152,7 @@ as_nonterminal_impl!(Ty, NtTy, P);
 //as_nonterminal_impl!(Ident, NtIdent);
 //as_nonterminal_impl!(Lifetime, NtLifetime);
 //as_nonterminal_impl!(Expr??, NtLiteral, P);
-as_nonterminal_impl!(MetaItem, NtMeta);
+as_nonterminal_impl!(AttrItem, NtMeta);
 as_nonterminal_impl!(Path, NtPath);
 as_nonterminal_impl!(Visibility, NtVis);
 as_nonterminal_impl!(TokenTree, NtTT);

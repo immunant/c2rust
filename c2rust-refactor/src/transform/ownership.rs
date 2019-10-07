@@ -279,8 +279,10 @@ fn make_attr(name: &str, tokens: TokenStream) -> Attribute {
     Attribute {
         id: AttrId(0),
         style: AttrStyle::Outer,
-        path: mk().path(vec![name]),
-        tokens: tokens,
+        item: AttrItem {
+            path: mk().path(vec![name]),
+            tokens: tokens,
+        },
         is_sugared_doc: false,
         span: DUMMY_SP,
     }
