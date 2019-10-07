@@ -959,7 +959,9 @@ fn make_submodule(
 /// Pretty-print the leading pragmas and extern crate declarations
 fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) -> io::Result<()> {
     if t.tcfg.emit_modules && !is_binary {
-        s.print_item(&mk().use_simple_item(vec!["libc"], None as Option<Ident>))?;
+        for crate_name in t.extern_crates.borrow().iter() {
+            s.print_item(&mk().use_simple_item(vec![*crate_name], None as Option<Ident>))?;
+        }
     } else {
         let pragmas = t.get_pragmas();
         for (key, mut values) in pragmas {
