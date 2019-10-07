@@ -340,46 +340,37 @@ enum ConstantValue {
 }
 
 impl ConstantValue {
-    fn as_ty<'tcx>(self, ty: ty::Ty<'tcx>) -> Self {
+    fn cast(self, ty: SimpleTy) -> Self {
         use ConstantValue::*;
-        macro_rules! int_matches {
-            ($($ty_kind:ident($int_ty:path) => $const_ty:ident[$($as_ty:ty),*]),*) => {
-                match (self, &ty.sty) {
+        macro_rules! match_ty {
+            ($($pat:pat => $const_ty:ident[$($as_ty:ty),*]),*) => {
+                match (self, &ty) {
                     $(
-                        (Int(v), TyKind::$ty_kind($int_ty)) => return $const_ty(v $(as $as_ty)*),
-                        (Uint(v), TyKind::$ty_kind($int_ty)) => return $const_ty(v $(as $as_ty)*),
-                        (Float32(v), TyKind::$ty_kind($int_ty)) => return $const_ty(v $(as $as_ty)*),
-                        (Float64(v), TyKind::$ty_kind($int_ty)) => return $const_ty(v $(as $as_ty)*),
+                        (Int(v), $pat) => return $const_ty(v $(as $as_ty)*),
+                        (Uint(v), $pat) => return $const_ty(v $(as $as_ty)*),
+                        (Float32(v), $pat) => return $const_ty(v $(as $as_ty)*),
+                        (Float64(v), $pat) => return $const_ty(v $(as $as_ty)*),
                      )*
-                    _ => {}
+                    _ => panic!("Unexpected SimpleTy: {:?}", ty)
                 }
             }
         };
-        int_matches! {
-            Int(IntTy::Isize) => Int[i16, i128],
-            Int(IntTy::I8) => Int[i8, i128],
-            Int(IntTy::I16) => Int[i16, i128],
-            Int(IntTy::I32) => Int[i32, i128],
-            Int(IntTy::I64) => Int[i64, i128],
-            Int(IntTy::I128) => Int[i128],
-            Uint(UintTy::Usize) => Uint[u16, u128],
-            Uint(UintTy::U8) => Uint[u8, u128],
-            Uint(UintTy::U16) => Uint[u16, u128],
-            Uint(UintTy::U32) => Uint[u32, u128],
-            Uint(UintTy::U64) => Uint[u64, u128],
-            Uint(UintTy::U128) => Uint[u128]
+        match_ty! {
+            SimpleTy::Int(8, false) => Uint[u8, u128],
+            SimpleTy::Int(16, false) => Uint[u16, u128],
+            SimpleTy::Int(32, false) => Uint[u32, u128],
+            SimpleTy::Int(64, false) => Uint[u64, u128],
+            SimpleTy::Int(128, false) => Uint[u128],
+            SimpleTy::Int(8, true) => Int[i8, i128],
+            SimpleTy::Int(16, true) => Int[i16, i128],
+            SimpleTy::Int(32, true) => Int[i32, i128],
+            SimpleTy::Int(64, true) => Int[i64, i128],
+            SimpleTy::Int(128, true) => Int[i128],
+            SimpleTy::Size(false) => Uint[usize, u128],
+            SimpleTy::Size(true) => Int[isize, i128],
+            SimpleTy::Float32 => Float32[f32],
+            SimpleTy::Float64 => Float64[f64]
         };
-        match (self, &ty.sty) {
-            (Int(v), TyKind::Float(FloatTy::F32)) => Float32(v as f32),
-            (Int(v), TyKind::Float(FloatTy::F64)) => Float64(v as f64),
-            (Uint(v), TyKind::Float(FloatTy::F32)) => Float32(v as f32),
-            (Uint(v), TyKind::Float(FloatTy::F64)) => Float64(v as f64),
-            (Float32(_), TyKind::Float(FloatTy::F32)) => self,
-            (Float32(v), TyKind::Float(FloatTy::F64)) => Float64(v as f64),
-            (Float64(v), TyKind::Float(FloatTy::F32)) => Float32(v as f32),
-            (Float64(_), TyKind::Float(FloatTy::F64)) => self,
-            _ => unreachable!("Unexpected Ty"),
-        }
     }
 }
 
@@ -472,7 +463,7 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
             let ty_ty = cx.adjusted_node_type(ty.id);
             let ty_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ty_ty);
             let ic = eval_const(ie.clone(), cx)?;
-            Some(ic.as_ty(ty_ty))
+            Some(ic.cast(SimpleTy::from(ty_ty)))
         }
 
         _ => unreachable!("Unexpected ExprKind"),
