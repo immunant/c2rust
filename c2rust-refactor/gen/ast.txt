@@ -354,7 +354,8 @@ flag RangeLimits;
 
 
 #[no_node_id] #[rewrite_print] #[rewrite_custom=SeqItem]
-struct Attribute { id, style, path, tokens, is_sugared_doc, span }
+struct Attribute { id, style, item, is_sugared_doc, span }
+struct AttrItem { path, tokens }
 flag AttrStyle;
 
 
