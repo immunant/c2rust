@@ -26,7 +26,7 @@ use arena::SyncDroplessArena;
 use log::Level;
 use rustc::hir::def_id::DefId;
 use rustc::ty::{Ty, TyCtxt, TyKind};
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::LabeledTyCtxt;

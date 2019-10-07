@@ -24,7 +24,7 @@ use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::{Mutability, Node};
 use rustc::ty::{TyCtxt, TyKind, TypeAndMut, TyS};
-use rustc_data_structures::indexed_vec::{Idx, IndexVec};
+use rustc_index::vec::{Idx, IndexVec};
 use syntax::ast::IntTy;
 use syntax::source_map::Span;
 

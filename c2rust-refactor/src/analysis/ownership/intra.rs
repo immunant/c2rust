@@ -4,7 +4,7 @@ use log::Level;
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
 use rustc::ty::{Ty, TyKind};
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 use rustc_target::abi::VariantIdx;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use arena::SyncDroplessArena;
 use rustc::hir::def_id::DefId;
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::mut_visit::{self, MutVisitor};

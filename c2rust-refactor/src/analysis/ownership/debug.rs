@@ -4,7 +4,7 @@ use std::fmt;
 
 use rustc::hir;
 use rustc::ty::TyKind;
-use rustc_data_structures::indexed_vec::Idx;
+use rustc_index::vec::Idx;
 
 use crate::analysis::labeled_ty::LabeledTy;
 

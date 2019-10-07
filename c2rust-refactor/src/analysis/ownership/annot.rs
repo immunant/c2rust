@@ -8,7 +8,7 @@ use std::str::FromStr;
 use arena::SyncDroplessArena;
 use log::Level;
 use rustc::hir::def_id::DefId;
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 use syntax::ast;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};

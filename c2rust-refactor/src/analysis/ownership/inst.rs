@@ -6,7 +6,7 @@ use std::usize;
 use log::Level;
 
 use rustc::hir::def_id::DefId;
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 
 use super::constraint::ConstraintSet;
 use super::context::{Ctxt, Instantiation, VariantSumm};
