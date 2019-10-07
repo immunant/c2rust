@@ -22,6 +22,16 @@ extern "C" {
     fn takes_ptrs(_: *mut u32, _: *const u32);
     #[no_mangle]
     fn takeswint(_: wint_t) -> wint_t;
+    #[no_mangle]
+    fn strlen(_: *const libc::c_char) -> size_t;
+    #[no_mangle]
+    fn memcpy(_: *mut libc::c_void, _: *const libc::c_void, _: size_t)
+     -> *mut libc::c_void;
+    #[no_mangle]
+    fn strdup(_: *const libc::c_char) -> *mut libc::c_char;
+    #[no_mangle]
+    fn strsep(_: *mut *mut libc::c_char, _: *const libc::c_char)
+     -> *mut libc::c_char;
 }
 
 #[no_mangle]
@@ -388,4 +398,60 @@ pub unsafe extern "C" fn mycasecmp(#[slice] mut s1: *const wchar_t,
         if d != 0i32 || c2 == '\u{0}' as i32 { break ; }
     }
     return d;
+}
+
+type error_t = libc::c_int;
+
+// TODO: argz is Option<&mut Option<Box<[libc::c_char]>>?
+pub unsafe extern "C" fn argz_create_sep(#[slice] mut string: *const libc::c_char,
+                                         mut sep: libc::c_int,
+                                         mut argz: *mut *mut libc::c_char,
+                                         mut argz_len: *mut size_t)
+ -> error_t {
+    let mut len: libc::c_int = 0i32;
+    let mut i: libc::c_int = 0i32;
+    let mut num_strings: libc::c_int = 0i32;
+    let mut delim: [libc::c_char; 2] = [0; 2];
+    let mut running: *mut libc::c_char = 0 as *mut libc::c_char;
+    let mut old_running: *mut libc::c_char = 0 as *mut libc::c_char;
+    let mut token: *mut libc::c_char = 0 as *mut libc::c_char;
+    let mut iter: *mut libc::c_char = 0 as *mut libc::c_char;
+    *argz_len = 0i32 as size_t;
+    if string.is_null() || *string.offset(0) as libc::c_int == '\u{0}' as i32
+       {
+        *argz = 0 as *mut libc::c_char;
+        return 0i32
+    }
+    delim[0] = sep as libc::c_char;
+    delim[1] = '\u{0}' as i32 as libc::c_char;
+    running = strdup(string);
+    old_running = running;
+    loop  {
+        token = strsep(&mut running, delim.as_mut_ptr());
+        if token.is_null() { break ; }
+        len = strlen(token) as libc::c_int;
+        *argz_len =
+            (*argz_len as
+                 libc::c_ulong).wrapping_add((len + 1i32) as libc::c_ulong) as
+                size_t as size_t;
+        num_strings += 1
+    }
+    *argz = malloc(*argz_len) as *mut libc::c_char;
+    if (*argz).is_null() { return 12i32 }
+    free(old_running as *mut libc::c_void);
+    running = strdup(string);
+    old_running = running;
+    iter = *argz;
+    i = 0i32;
+    while i < num_strings {
+        token = strsep(&mut running, delim.as_mut_ptr());
+        len =
+            strlen(token).wrapping_add(1i32 as libc::c_ulong) as libc::c_int;
+        memcpy(iter as *mut libc::c_void, token as *const libc::c_void,
+               len as size_t);
+        iter = iter.offset(len as isize);
+        i += 1
+    }
+    free(old_running as *mut libc::c_void);
+    return 0i32;
 }

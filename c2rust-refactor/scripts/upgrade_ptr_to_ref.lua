@@ -476,6 +476,8 @@ function decay_ref_to_ptr(expr, cfg)
         end
     elseif cfg:is_mut() and cfg:is_opt_any() then
         expr:to_unary("Deref", expr)
+    elseif cfg.extra_data.non_null_wrapped then
+        expr:to_method_call("as_ptr", {expr})
     end
 
     walk(expr)
@@ -703,9 +705,12 @@ function Visitor:rewrite_assign_expr(expr)
         end
     -- lhs = rhs -> lhs = Some(rhs)
     elseif rhs_kind == "Path" then
-        local cfg = self:get_expr_cfg(rhs)
+        local lhs_cfg = self:get_expr_cfg(lhs)
+        local rhs_cfg = self:get_expr_cfg(rhs)
 
-        if cfg and not cfg:is_opt_any() then
+        if not rhs_cfg then return end
+
+        if not rhs_cfg:is_opt_any() then
             local lhs_ty = self.tctx:get_expr_ty(lhs)
 
             -- If lhs was a ptr, and rhs isn't wrapped in some, wrap it
@@ -717,10 +722,31 @@ function Visitor:rewrite_assign_expr(expr)
                 expr:set_exprs{lhs, rhs}
             end
         end
+
+        if lhs_cfg then
+            lhs_cfg.extra_data.non_null_wrapped = rhs_cfg.extra_data.non_null_wrapped
+        end
     else
         local lhs_cfg = self:get_expr_cfg(lhs)
 
-        if lhs_cfg and lhs_cfg:is_opt_any() then
+        if not lhs_cfg then return end
+
+        if lhs_cfg:is_opt_any() then
+            if rhs_kind == "Call" then
+                local path_expr = rhs:get_exprs()[1]
+                local path = path_expr:get_path()
+
+                path:set_segments{"", "core", "ptr", "NonNull", "new"}
+                path_expr:to_path(path)
+
+                rhs:to_call{path_expr, rhs}
+                expr:set_exprs{lhs, rhs}
+
+                lhs_cfg.extra_data.non_null_wrapped = true
+
+                return
+            end
+
             local some_path_expr = self.tctx:ident_path_expr("Some")
             rhs:to_call{some_path_expr, rhs}
             expr:set_exprs{lhs, rhs}
@@ -744,12 +770,12 @@ function Visitor:rewrite_call_expr(expr)
         local cfg = self:get_expr_cfg(uncasted_expr)
 
         if cfg and cfg:is_opt_any() then
+            expr:to_method_call("take", {uncasted_expr})
+
             -- If it's not also boxed, then we probably have an inner raw ptr
             -- and should still call free on it
-            if cfg:is_box_any() then
-                expr:to_method_call("take", {uncasted_expr})
-            else
-                uncasted_expr:to_method_call("unwrap", {uncasted_expr})
+            if not cfg:is_box_any() then
+                uncasted_expr = decay_ref_to_ptr(expr, cfg)
                 uncasted_expr:to_cast(uncasted_expr, cast_ty)
                 expr:to_call{path_expr, uncasted_expr}
             end
@@ -782,6 +808,8 @@ function Visitor:rewrite_call_expr(expr)
     elseif segments and segments[#segments] ~= "Some" then
         local hirid = self.tctx:resolve_path_hirid(path_expr)
         local fn = self:get_fn(hirid)
+
+        if not fn then return end
 
         for i, param_expr in ipairs(call_exprs) do
             -- Skip function name path expr
@@ -836,6 +864,11 @@ function Visitor:rewrite_call_expr(expr)
                         goto continue
                     end
                 end
+            end
+
+            -- Avoid nested call exprs
+            if param_kind == "Call" then
+                goto continue
             end
 
             --  x -> x[.as_mut()].unwrap().as_[mut_]ptr()

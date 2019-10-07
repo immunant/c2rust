@@ -22,6 +22,14 @@ extern "C" {
     fn takes_ptrs(_: *mut u32, _: *const u32);
     #[no_mangle]
     fn takeswint(_: wint_t) -> wint_t;
+    #[no_mangle]
+    fn strlen(_: *const libc::c_char) -> size_t;
+    #[no_mangle]
+    fn memcpy(_: *mut libc::c_void, _: *const libc::c_void, _: size_t) -> *mut libc::c_void;
+    #[no_mangle]
+    fn strdup(_: *const libc::c_char) -> *mut libc::c_char;
+    #[no_mangle]
+    fn strsep(_: *mut *mut libc::c_char, _: *const libc::c_char) -> *mut libc::c_char;
 }
 
 #[no_mangle]
@@ -452,4 +460,67 @@ pub unsafe extern "C" fn mycasecmp(
         }
     }
     return d;
+}
+
+type error_t = libc::c_int;
+
+// TODO: argz is Option<&mut Option<Box<[libc::c_char]>>?
+pub unsafe extern "C" fn argz_create_sep(
+    mut string: Option<&[libc::c_char]>,
+    mut sep: libc::c_int,
+    mut argz: Option<&mut *mut libc::c_char>,
+    mut argz_len: Option<&mut size_t>,
+) -> error_t {
+    let mut len: libc::c_int = 0i32;
+    let mut i: libc::c_int = 0i32;
+    let mut num_strings: libc::c_int = 0i32;
+    let mut delim: [libc::c_char; 2] = [0; 2];
+    let mut running = None;
+    let mut old_running = None;
+    let mut token = None;
+    let mut iter = None;
+    **argz_len.as_mut().unwrap() = 0i32 as size_t;
+    if string.is_none() || string.unwrap()[0] as libc::c_int == '\u{0}' as i32 {
+        **argz.as_mut().unwrap() = 0 as *mut libc::c_char;
+        return 0i32;
+    }
+    delim[0] = sep as libc::c_char;
+    delim[1] = '\u{0}' as i32 as libc::c_char;
+    running = ::core::ptr::NonNull::new(strdup(string.unwrap().as_ptr()));
+    old_running = running;
+    loop {
+        token =
+            ::core::ptr::NonNull::new(strsep(&mut running.unwrap().as_ptr(), delim.as_mut_ptr()));
+        if token.is_none() {
+            break;
+        }
+        len = strlen(token.unwrap().as_ptr()) as libc::c_int;
+        **argz_len.as_mut().unwrap() = (**argz_len.as_mut().unwrap() as libc::c_ulong)
+            .wrapping_add((len + 1i32) as libc::c_ulong)
+            as size_t as size_t;
+        num_strings += 1
+    }
+    **argz.as_mut().unwrap() = malloc(**argz_len.as_mut().unwrap()) as *mut libc::c_char;
+    if (**argz.as_mut().unwrap()).is_null() {
+        return 12i32;
+    }
+    free(old_running.take().unwrap().as_ptr() as *mut libc::c_void);
+    running = ::core::ptr::NonNull::new(strdup(string.unwrap().as_ptr()));
+    old_running = running;
+    iter = Some(**argz.as_mut().unwrap());
+    i = 0i32;
+    while i < num_strings {
+        token =
+            ::core::ptr::NonNull::new(strsep(&mut running.unwrap().as_ptr(), delim.as_mut_ptr()));
+        len = strlen(token.unwrap().as_ptr()).wrapping_add(1i32 as libc::c_ulong) as libc::c_int;
+        memcpy(
+            iter.unwrap() as *mut libc::c_void,
+            token.unwrap().as_ptr() as *const libc::c_void,
+            len as size_t,
+        );
+        iter = Some(iter.offset(len as isize));
+        i += 1
+    }
+    free(old_running.take().unwrap().as_ptr() as *mut libc::c_void);
+    return 0i32;
 }
