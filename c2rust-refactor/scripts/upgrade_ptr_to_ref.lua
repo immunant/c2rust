@@ -459,7 +459,8 @@ function Visitor:rewrite_method_call_expr(expr)
     end
 end
 
-function decay_ref_to_ptr(expr, cfg)
+-- Extracts a raw pointer from a rewritten rust type
+function decay_ref_to_ptr(expr, cfg, for_struct_field)
     if cfg:is_opt_any() then
         if cfg:is_mut() then
             expr:to_method_call("as_mut", {expr})
@@ -474,7 +475,9 @@ function decay_ref_to_ptr(expr, cfg)
         else
             expr:to_method_call("as_ptr", {expr})
         end
-    elseif cfg:is_mut() and cfg:is_opt_any() then
+    -- If we're using the expr in a field ie (*e.as_mut().unwrap()).bar then
+    -- we can skip the deref as rust will do it automatically
+    elseif cfg:is_mut() and cfg:is_opt_any() and not for_struct_field then
         expr:to_unary("Deref", expr)
     elseif cfg.extra_data.non_null_wrapped then
         expr:to_method_call("as_ptr", {expr})
@@ -498,12 +501,9 @@ function Visitor:rewrite_field_expr(expr)
                 return
             end
 
-            -- (*foo).bar -> (*foo).as_mut().unwrap().bar
+            -- (*foo).bar -> (foo.as_mut().unwrap()).bar
             if cfg:is_opt_any() then
-                local as_x = get_as_x(cfg.extra_data.mutability)
-
-                derefed_expr:to_method_call(as_x, {derefed_expr})
-                derefed_expr:to_method_call("unwrap", {derefed_expr})
+                derefed_expr = decay_ref_to_ptr(derefed_expr, cfg, true)
             end
 
             -- (*foo).bar -> (foo).bar (can't remove parens..)
@@ -853,13 +853,27 @@ function Visitor:rewrite_call_expr(expr)
                     param_expr:to_call{some_path_expr, param_expr}
 
                     goto continue
-                -- path -> Some(path)
                 elseif param_kind == "Path" then
                     local path_cfg = self:get_expr_cfg(param_expr)
 
-                    if path_cfg and not path_cfg:is_opt_any() then
-                        local some_path_expr = self.tctx:ident_path_expr("Some")
-                        param_expr:to_call{some_path_expr, param_expr}
+                    if path_cfg then
+                        -- path -> Some(path)
+                        if not path_cfg:is_opt_any() then
+                            local some_path_expr = self.tctx:ident_path_expr("Some")
+                            param_expr:to_call{some_path_expr, param_expr}
+                        -- Decay mut ref to immut ref inside option
+                        -- foo(x) -> foo(x.as_ref().map(|r| &**r))
+                        elseif path_cfg:is_mut() and not param_cfg:is_mut() then
+                            local var_expr = self.tctx:ident_path_expr("r")
+
+                            var_expr:to_unary("Deref", var_expr)
+                            var_expr:to_unary("Deref", var_expr)
+                            var_expr:to_addr_of(var_expr, false)
+
+                            var_expr:to_closure({"r"}, var_expr)
+                            param_expr:to_method_call("as_ref", {param_expr})
+                            param_expr:to_method_call("map", {param_expr, var_expr})
+                        end
 
                         goto continue
                     end
@@ -929,7 +943,7 @@ end
 -- so we don't accidentally access old info
 -- NOTE: If this script encounters any nested functions, this will reset variables
 -- prematurely. We should push and pop a stack of variable scopes to account for this
-function Visitor:visit_fn_decl(fn_decl)
+function Visitor:clear_nonstatic_vars()
     local static_vars = {}
 
     for hirid, var in pairs(self.vars) do
@@ -979,6 +993,8 @@ function Visitor:flat_map_item(item, walk)
 
         self:add_struct(hirid, Struct.new(lifetimes, is_copy))
     elseif item_kind == "Fn" then
+        self:clear_nonstatic_vars()
+
         local args = item:get_args()
         local arg_ids = {}
 
@@ -1114,26 +1130,6 @@ function Visitor:flat_map_struct_field(field)
     return {field}
 end
 
-function get_as_x(mutability)
-    if mutability == "immut" then
-        return "as_ref"
-    elseif mutability == "mut" then
-        return "as_mut"
-    else
-        log_error("[get_as_x] Found unknown mutability: " .. tostring(mutability))
-    end
-end
-
-function get_x_ptr(mutability)
-    if mutability == "immut" then
-        return "as_ptr"
-    elseif mutability == "mut" then
-        return "as_mut_ptr"
-    else
-        log_error("[get_x_ptr] Found unknown mutability: " .. tostring(mutability))
-    end
-end
-
 function is_null_ptr(expr)
     if expr and expr:get_kind() == "Cast" then
         local cast_expr = expr:get_exprs()[1]
@@ -1179,21 +1175,19 @@ function Visitor:visit_local(locl, walk)
 
     local init = locl:get_init()
 
+    if init:get_kind() == "Path" then
+        local rhs_cfg = self:get_expr_cfg(init)
+
+        if rhs_cfg then
+            locl:set_ty(nil)
+        end
     -- let x: *mut T = 0 as *mut T; -> let mut x = None;
     -- or let mut x;
-    if cfg:is_opt_any() then
-        if is_null_ptr(init) then
-            init:to_ident_path("None")
+    elseif cfg:is_opt_any() and is_null_ptr(init) then
+        init:to_ident_path("None")
 
-            locl:set_ty(nil)
-            locl:set_init(init)
-        elseif init:get_kind() == "Path" then
-            local rhs_cfg = self:get_expr_cfg(init)
-
-            if rhs_cfg then
-                locl:set_ty(nil)
-            end
-        end
+        locl:set_ty(nil)
+        locl:set_init(init)
     elseif is_null_ptr(init) then
         locl:set_ty(nil)
         locl:set_init(nil)

@@ -455,3 +455,63 @@ pub unsafe extern "C" fn argz_create_sep(#[slice] mut string: *const libc::c_cha
     free(old_running as *mut libc::c_void);
     return 0i32;
 }
+
+unsafe extern "C" fn eisnan(#[slice] mut x: *const libc::c_ushort) -> libc::c_int {
+    let mut i: libc::c_int = 0;
+    /* NaN has maximum exponent */
+    if *x.offset((10i32 - 1i32) as isize) as libc::c_int & 0x7fffi32 !=
+           0x7fffi32 {
+        return 0i32
+    }
+    /* ... and non-zero significand field. */
+    i = 0i32;
+    while i < 10i32 - 1i32 {
+        #[slice]
+        let fresh4: *const libc::c_ushort = x;
+        x = x.offset(1);
+        if *fresh4 as libc::c_int != 0i32 { return 1i32 }
+        i += 1
+    }
+    return 0i32;
+}
+
+unsafe extern "C" fn eneg(#[slice] mut x: *mut libc::c_ushort) {
+    if eisnan(x) != 0 { return }
+    let ref mut fresh3 = *x.offset((10i32 - 1i32) as isize);
+    *fresh3 = (*fresh3 as libc::c_int ^ 0x8000i32) as libc::c_ushort;
+    /* Toggle the sign bit */
+}
+
+unsafe extern "C" fn eneg2(#[nonnull] #[slice] mut x: *mut libc::c_ushort) {
+    if eisnan(x) != 0 { return }
+    let ref mut fresh3 = *x.offset((10i32 - 1i32) as isize);
+    *fresh3 = (*fresh3 as libc::c_int ^ 0x8000i32) as libc::c_ushort;
+    /* Toggle the sign bit */
+}
+
+unsafe extern "C" fn eisnan2(#[nonnull] #[slice] mut x: *const libc::c_ushort) -> libc::c_int {
+    let mut i: libc::c_int = 0;
+    /* NaN has maximum exponent */
+    if *x.offset((10i32 - 1i32) as isize) as libc::c_int & 0x7fffi32 !=
+           0x7fffi32 {
+        return 0i32
+    }
+    /* ... and non-zero significand field. */
+    i = 0i32;
+    while i < 10i32 - 1i32 {
+        #[slice]
+        #[nonnull]
+        let fresh4: *const libc::c_ushort = x;
+        x = x.offset(1);
+        if *fresh4 as libc::c_int != 0i32 { return 1i32 }
+        i += 1
+    }
+    return 0i32;
+}
+
+unsafe extern "C" fn eneg3(#[nonnull] #[slice] mut x: *mut libc::c_ushort) {
+    if eisnan2(x) != 0 { return }
+    let ref mut fresh3 = *x.offset((10i32 - 1i32) as isize);
+    *fresh3 = (*fresh3 as libc::c_int ^ 0x8000i32) as libc::c_ushort;
+    /* Toggle the sign bit */
+}

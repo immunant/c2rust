@@ -681,6 +681,48 @@ impl UserData for LuaAstNode<P<Expr>> {
             Ok(())
         });
 
+        methods.add_method("to_closure", |_lua_ctx, this, (params, expr): (Vec<LuaString>, LuaAstNode<P<Expr>>)| {
+            use syntax::ThinVec;
+
+            let expr = expr.borrow().clone();
+            let inputs: Result<_> = params.into_iter().map(|s| Ok(Arg {
+                attrs: ThinVec::new(),
+                ty: P(Ty {
+                    id: DUMMY_NODE_ID,
+                    node: TyKind::Infer,
+                    span: DUMMY_SP,
+                }),
+                pat: P(Pat {
+                    id: DUMMY_NODE_ID,
+                    node: PatKind::Ident(
+                        BindingMode::ByValue(Mutability::Immutable),
+                        Ident::from_str(s.to_str()?),
+                        None,
+                    ),
+                    span: DUMMY_SP,
+                }),
+                id: DUMMY_NODE_ID,
+                // span: DUMMY_SP,
+                // is_placeholder: true,
+            })).collect();
+            let fn_decl = P(FnDecl {
+                inputs: inputs?,
+                output: FunctionRetTy::Default(DUMMY_SP),
+                c_variadic: false,
+            });
+
+            this.borrow_mut().node = ExprKind::Closure(
+                CaptureBy::Ref,
+                IsAsync::NotAsync,
+                Movability::Movable,
+                fn_decl,
+                expr,
+                DUMMY_SP,
+            );
+
+            Ok(())
+        });
+
         methods.add_method("to_field", |_lua_ctx, this, (expr, ident): (LuaAstNode<P<Expr>>, LuaString)| {
             let expr = expr.borrow().clone();
 
@@ -1381,6 +1423,11 @@ impl UserData for LuaAstNode<P<FnDecl>> {
                 .map(|arg| LuaAstNode::new(arg.clone()))
                 .collect::<Vec<_>>())
         });
+
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
     }
 }
 
