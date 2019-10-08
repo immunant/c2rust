@@ -23,7 +23,7 @@ RUN chmod +x /tmp/provision*.sh && /tmp/provision.sh
 
 USER $USER
 # Provision rust language and packages (should not run as root)
-ARG RUST_VER=nightly-2019-09-30
+ARG RUST_VER=nightly-2019-10-04
 RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
 
 ENV PATH="/home/${USER}/.cargo/bin:${PATH}"
