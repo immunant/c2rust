@@ -119,8 +119,7 @@ pub struct TranspilerConfig {
 
 impl TranspilerConfig {
     fn is_binary(&self, file: &Path) -> bool {
-        let fname = &file.file_stem().unwrap().to_str().map(String::from);
-        let name = get_module_name(fname).unwrap();
+        let name = get_path_module_name(file, false, true).unwrap();
         self.binaries.contains(&name)
     }
 
@@ -134,7 +133,7 @@ impl TranspilerConfig {
 /// Make sure that module name:
 /// - does not contain illegal characters,
 /// - does not clash with reserved keywords.
-fn get_module_name(filename: &Option<String>) -> Option<String> {
+fn get_module_name(filename: &Option<String>, check_reserved: bool) -> Option<String> {
     if let Some(ref name) = filename {
         // module names cannot contain periods or dashes
         let mut module = name.chars().map(|c|
@@ -145,7 +144,7 @@ fn get_module_name(filename: &Option<String>) -> Option<String> {
         ).collect();
 
         // make sure the module name does not clash with keywords
-        if RESERVED_NAMES.contains(&name.as_str()) {
+        if check_reserved && RESERVED_NAMES.contains(&name.as_str()) {
             module = format!("r#{}", module);
         }
         return Some(module);
@@ -153,6 +152,20 @@ fn get_module_name(filename: &Option<String>) -> Option<String> {
     None
 }
 
+fn get_path_module_name(file: &Path, check_reserved: bool, keep_extension: bool) -> Option<String> {
+    let is_rs = file.extension().map(|ext| ext == "rs").unwrap_or(false);
+    let fname = if is_rs {
+        file.file_stem()
+    } else {
+        file.file_name()
+    };
+    let fname = &fname.unwrap().to_str().map(String::from);
+    let mut name = get_module_name(fname, check_reserved).unwrap();
+    if keep_extension && is_rs {
+        name.push_str(".rs");
+    }
+    file.with_file_name(name).to_str().map(String::from)
+}
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
@@ -417,7 +430,11 @@ fn get_output_path(tcfg: &TranspilerConfig, input_path: &PathBuf, ancestor_path:
         // Place the source files in output_dir/src/
         let mut output_path = output_dir.clone();
         output_path.push("src");
-        output_path.push(path_buf);
+        for elem in path_buf.iter() {
+            let path = Path::new(elem);
+            let name = get_path_module_name(&path, false, true).unwrap();
+            output_path.push(name);
+        }
 
         // Create the parent directory if it doesn't exist
         let parent = output_path.parent().unwrap();

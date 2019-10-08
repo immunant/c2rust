@@ -1,6 +1,7 @@
 extern crate handlebars;
 extern crate pathdiff;
 
+use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -13,7 +14,7 @@ use serde_json::json;
 use super::TranspilerConfig;
 use crate::CrateSet;
 use crate::PragmaSet;
-use crate::get_module_name;
+use crate::get_path_module_name;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -85,8 +86,83 @@ pub fn emit_build_files(
 
 #[derive(Serialize)]
 struct Module {
-    path: String,
+    path: Option<String>,
     name: String,
+    open: bool,
+    close: bool,
+}
+
+#[derive(Debug, Default)]
+struct ModuleTree(BTreeMap<String, ModuleTree>);
+
+impl ModuleTree {
+    /// Convert the tree representation into a linear vector
+    /// and push it into `res`
+    fn linearize(&self, res: &mut Vec<Module>) {
+        for (name, child) in self.0.iter() {
+            child.linearize_internal(name, res);
+        }
+    }
+
+    fn linearize_internal(&self, name: &str, res: &mut Vec<Module>) {
+        if self.0.is_empty() {
+            res.push(Module { name: name.to_string(), path: None, open: false, close: false });
+        } else {
+            res.push(Module { name: name.to_string(), path: None, open: true, close: false });
+            self.linearize(res);
+            res.push(Module { name: name.to_string(), path: None, open: false, close: true });
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ModuleSubset {
+    Binaries,
+    Libraries,
+    //Both,
+}
+
+fn convert_module_list(
+    tcfg: &TranspilerConfig,
+    build_dir: &Path,
+    mut modules: Vec<PathBuf>,
+    module_subset: ModuleSubset,
+) -> Vec<Module> {
+    modules.retain(|m| {
+        let is_binary = tcfg.is_binary(&m);
+        if is_binary && module_subset == ModuleSubset::Libraries {
+            // Don't add binary modules to lib.rs, these are emitted to
+            // standalone, separate binary modules.
+            false
+        } else if !is_binary && module_subset == ModuleSubset::Binaries {
+            false
+        } else {
+            true
+        }
+    });
+
+    let mut res = vec![];
+    let mut module_tree = ModuleTree(BTreeMap::new());
+    for m in &modules {
+        if m.starts_with(build_dir) {
+            // The module is inside the build directory, use nested modules
+            let relpath = m.strip_prefix(build_dir)
+                .expect("Couldn't strip path prefix");
+            let mut cur = &mut module_tree;
+            for sm in relpath.iter() {
+                let path = Path::new(sm);
+                let name = get_path_module_name(&path, true, false).unwrap();
+                cur = cur.0.entry(name).or_default();
+            }
+        } else {
+            let relpath = diff_paths(m, build_dir).unwrap();
+            let path = Some(relpath.to_str().unwrap().to_string());
+            let name = get_path_module_name(m, true, false).unwrap();
+            res.push(Module { path, name, open: false, close: false });
+        }
+    }
+    module_tree.linearize(&mut res);
+    res
 }
 
 fn get_lib_rs_file_name(tcfg: &TranspilerConfig) -> &str {
@@ -122,23 +198,7 @@ fn emit_lib_rs(
         .collect::<Vec<String>>()
         .join(", ");
 
-    let modules = modules
-        .iter()
-        .filter_map(|m| {
-            if tcfg.is_binary(&m) {
-                // Don't add binary modules to lib.rs, these are emitted to
-                // standalone, separate binary modules.
-                None
-            } else {
-                let relpath = diff_paths(m, build_dir).unwrap();
-                let path = relpath.to_str().unwrap().to_string();
-                let fname = &m.file_stem().unwrap().to_str().map(String::from);
-                let name = get_module_name(fname).unwrap();
-                Some(Module { path, name })
-            }
-        })
-        .collect::<Vec<_>>();
-
+    let modules = convert_module_list(tcfg, build_dir, modules, ModuleSubset::Libraries);
     let file_name = get_lib_rs_file_name(tcfg);
     let rs_xcheck_backend = tcfg.cross_check_backend.replace("-", "_");
     let json = json!({
@@ -177,21 +237,7 @@ fn emit_cargo_toml(
     // rust_checks_path is gone because we don't want to refer to the source
     // path but instead want the cross-check libs to be installed via cargo.
 
-    let binaries = modules
-        .iter()
-        .filter_map(|m| {
-            if tcfg.is_binary(&m) {
-                let relpath = diff_paths(m, build_dir).unwrap();
-                let path = relpath.to_str().unwrap().to_string();
-                let fname = &m.file_stem().unwrap().to_str().map(String::from);
-                let name = get_module_name(fname).unwrap();
-                Some(Module { path, name })
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
+    let binaries = convert_module_list(tcfg, build_dir, modules.to_owned(), ModuleSubset::Binaries);
     let json = json!({
         "crate_name": tcfg.crate_name(),
         "crate_rust_name": tcfg.crate_name().replace('-', "_"),

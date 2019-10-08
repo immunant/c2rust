@@ -16,6 +16,13 @@ extern crate {{this}};
 {{/each}}
 
 {{#each modules~}}
+{{~#if this.path~}}
 #[path = "{{this.path}}"]
-pub mod {{this.name}};
+{{/if~}}
+{{~#unless this.close~}}
+pub mod {{this.name}}
+{{~#if this.open}} { {{~else~}};{{~/if}}
+{{~else~}}
+} // mod {{this.name}}
+{{~/unless}}
 {{/each}}
