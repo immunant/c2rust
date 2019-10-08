@@ -169,9 +169,24 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let mut clang_args: Vec<&str> = clang_args.iter().map(AsRef::as_ref).collect();
     clang_args.extend_from_slice(extra_clang_args);
 
+    // Compute the common ancestor of all input files
+    // FIXME: this is quadratic-time in the length of the ancestor path
+    let mut ancestor_path = cmds
+        .first()
+        .map(|cmd| cmd.abs_file())
+        .unwrap_or_else(PathBuf::new);
+    for cmd in &cmds[1..] {
+        let cmd_path = cmd.abs_file();
+        ancestor_path = ancestor_path
+            .ancestors()
+            .find(|a| cmd_path.starts_with(a))
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(PathBuf::new);
+    }
+
     let results = cmds
         .iter()
-        .map(|cmd| transpile_single(&tcfg, cmd.abs_file().as_path(), cc_db, extra_clang_args))
+        .map(|cmd| transpile_single(&tcfg, cmd.abs_file(), &ancestor_path, cc_db, extra_clang_args))
         .collect::<Vec<TranspileResult>>();
     let mut modules = vec![];
     let mut modules_skipped = false;
@@ -301,11 +316,12 @@ fn reorganize_definitions(build_dir: &PathBuf) -> Result<(), Error> {
 
 fn transpile_single(
     tcfg: &TranspilerConfig,
-    input_path: &Path,
+    input_path: PathBuf,
+    ancestor_path: &Path,
     cc_db: &Path,
     extra_clang_args: &[&str],
 ) -> TranspileResult {
-    let output_path = get_output_path(tcfg, input_path);
+    let output_path = get_output_path(tcfg, &input_path, ancestor_path);
     if output_path.exists() && !tcfg.overwrite_existing {
         println!("Skipping existing file {}", output_path.display());
         return (output_path, None, None);
@@ -326,7 +342,7 @@ fn transpile_single(
 
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(
-        input_path,
+        input_path.as_path(),
         cc_db,
         extra_clang_args,
         tcfg.debug_ast_exporter,
@@ -364,23 +380,23 @@ fn transpile_single(
 
     // Perform the translation
     let (translated_string, pragmas, crates) =
-        translator::translate(typed_context, &tcfg, input_path.to_path_buf());
+        translator::translate(typed_context, &tcfg, input_path);
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,
-        Err(e) => panic!("Unable to open file for writing: {}", e),
+        Err(e) => panic!("Unable to open file {} for writing: {}", output_path.display(), e),
     };
 
     match file.write_all(translated_string.as_bytes()) {
         Ok(()) => (),
-        Err(e) => panic!("Unable to write translation to file: {}", e),
+        Err(e) => panic!("Unable to write translation to file {}: {}", output_path.display(), e),
     };
 
     (output_path, Some(pragmas), Some(crates))
 }
 
-fn get_output_path(tcfg: &TranspilerConfig, input_path: &Path) -> PathBuf {
-    let mut path_buf = PathBuf::from(input_path);
+fn get_output_path(tcfg: &TranspilerConfig, input_path: &PathBuf, ancestor_path: &Path) -> PathBuf {
+    let mut path_buf = input_path.clone();
 
     // When an output file name is not explictly specified, we should convert files
     // with dashes to underscores, as they are not allowed in rust file names.
@@ -395,18 +411,22 @@ fn get_output_path(tcfg: &TranspilerConfig, input_path: &Path) -> PathBuf {
     path_buf.set_extension("rs");
 
     if let Some(output_dir) = &tcfg.output_dir {
+        let path_buf = path_buf.strip_prefix(ancestor_path)
+            .expect("Couldn't strip common ancestor path");
+
         // Place the source files in output_dir/src/
         let mut output_path = output_dir.clone();
         output_path.push("src");
-        if !output_path.exists() {
-            fs::create_dir_all(&output_path).expect(&format!(
+        output_path.push(path_buf);
+
+        // Create the parent directory if it doesn't exist
+        let parent = output_path.parent().unwrap();
+        if !parent.exists() {
+            fs::create_dir_all(&parent).expect(&format!(
                 "couldn't create source directory: {}",
-                output_path.display()
+                parent.display()
             ));
         }
-        // FIXME: replicate the subdirectory structure as well???
-        // this currently puts all the output files in the same directory
-        output_path.push(path_buf.file_name().unwrap());
         output_path
     } else {
         path_buf
