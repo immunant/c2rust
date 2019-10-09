@@ -67,7 +67,7 @@ pub struct HASHHDR {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub(crate) struct HTAB {
     pub hdr: HASHHDR,
     #[slice]

@@ -993,8 +993,7 @@ function Visitor:flat_map_item(item, walk)
         end
 
         if not is_copy then
-            -- TODO: Remove Copy from non Copy structs
-            -- item:clear_derives()
+            item:remove_copy_derive()
         end
 
         local hirid = self.tctx:nodeid_to_hirid(item:get_id())

@@ -3,6 +3,7 @@ use std::mem::swap;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
+use c2rust_ast_builder::mk;
 use rustc::hir::def::Res;
 use rustc::hir::HirId;
 use syntax::ast::*;
@@ -303,18 +304,17 @@ impl UserData for LuaAstNode<P<Item>> {
             Ok(None)
         });
 
-        methods.add_method("clear_derives", |_lua_ctx, this, ()| {
+        // TODO: This needs to be tested when the bitfields derive is present
+        methods.add_method("remove_copy_derive", |_lua_ctx, this, ()| {
             let attrs = &mut this.borrow_mut().attrs;
 
             let opt_idx = attrs.iter().position(|a| a.check_name(Symbol::intern("rustc_copy_clone_marker")));
 
             if let Some(idx) = opt_idx {
-                dbg!(attrs.remove(idx));
+                attrs.remove(idx);
             }
 
-            use c2rust_ast_builder::mk;
-
-            attrs.push(mk().call_attr("derive", vec!["Copy"]).as_inner_attrs().remove(0));
+            attrs.push(mk().call_attr("derive", vec!["Clone"]).into_attrs().remove(0));
 
             Ok(())
         });
