@@ -526,12 +526,13 @@ function Visitor:rewrite_chained_offsets(unwrapped_expr)
         local unwrapped_exprs = unwrapped_expr:get_exprs()
         unwrapped_expr = unwrapped_exprs[1]
         local method_name = unwrapped_expr:get_method_name()
+        local param_expr = strip_int_suffix(unwrapped_exprs[2])
 
         -- Accumulate offset params
         if not offset_expr then
-            offset_expr = strip_int_suffix(unwrapped_exprs[2])
+            offset_expr = param_expr
         else
-            offset_expr:to_binary("Add", strip_int_suffix(unwrapped_exprs[2]), offset_expr)
+            offset_expr:to_binary("Add", param_expr, offset_expr)
         end
 
         -- May start with conversion to pointer if an array

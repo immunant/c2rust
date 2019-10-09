@@ -106,7 +106,6 @@ pub unsafe extern "C" fn __ibitmap(mut hashp: *mut HTAB,
     return 0i32;
 }
 
-#[ownership_mono("", MOVE)]
 fn move_ptr(ptr: *mut u32) {
     free(ptr as *mut libc::c_void);
 }

@@ -117,7 +117,6 @@ pub unsafe extern "C" fn __ibitmap(
     return 0i32;
 }
 
-#[ownership_mono("", MOVE)]
 fn move_ptr(ptr: Option<Box<u32>>) {
     ptr.take();
 }
