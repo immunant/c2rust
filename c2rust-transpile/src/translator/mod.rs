@@ -3116,20 +3116,24 @@ impl<'c> Translation<'c> {
                 let mut set_unsafe = false;
                 if ctx.needs_address() {
                     if let &CDeclKind::Function { ref parameters, .. } = decl {
-                        // If we're casting a concrete function to
-                        // a K&R function pointer type, use transmute
-                        if ctx.is_static || ctx.is_const {
-                            self.use_feature("const_transmute");
-                        }
-                        if let Some(cur_file) = *self.cur_file.borrow() {
-                            self.import_type(qual_ty.ctype, cur_file);
-                        }
-                        let full_ty = self.type_converter
+                        let ty = self.convert_type(qual_ty.ctype)?;
+                        let actual_ty = self.type_converter
                             .borrow_mut()
-                            .convert_function_with_parameters(&self.ast_context, qual_ty.ctype, parameters)?;
-                        let knr_ty = self.convert_type(qual_ty.ctype)?;
-                        val = transmute_expr(full_ty, knr_ty, val, self.tcfg.emit_no_std);
-                        set_unsafe = true;
+                            .convert_knr_function(&self.ast_context, qual_ty.ctype, parameters)?;
+                        if let Some(actual_ty) = actual_ty {
+                            // If we're casting a concrete function to
+                            // a K&R function pointer type, use transmute
+                            if ctx.is_static || ctx.is_const {
+                                self.use_feature("const_transmute");
+                            }
+                            if let Some(cur_file) = *self.cur_file.borrow() {
+                                self.import_type(qual_ty.ctype, cur_file);
+                            }
+                            val = transmute_expr(actual_ty, ty, val, self.tcfg.emit_no_std);
+                            set_unsafe = true;
+                        } else {
+                            val = mk().cast_expr(val, ty);
+                        }
                     }
                 }
 

@@ -418,19 +418,15 @@ impl TypeConverter {
         }
     }
 
-    pub fn convert_function_with_parameters(
+    pub fn convert_knr_function(
         &mut self,
         ctxt: &TypedAstContext,
         ctype: CTypeId,
         params: &Vec<CParamId>
-    ) -> Result<P<Ty>, TranslationError> {
+    ) -> Result<Option<P<Ty>>, TranslationError> {
         match ctxt.index(ctype).kind {
             // ANSI/ISO C-style function
-            CTypeKind::Function(ret, ref params, is_var, is_noreturn, true) => {
-                let opt_ret = if is_noreturn { None } else { Some(ret) };
-                let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
-                Ok(fn_ty)
-            }
+            CTypeKind::Function(.., true) => Ok(None),
 
             // K&R-style function
             CTypeKind::Function(ret, ref _params, is_var, is_noreturn, false) => {
@@ -448,7 +444,7 @@ impl TypeConverter {
 
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, &params, is_var)?;
-                Ok(fn_ty)
+                Ok(Some(fn_ty))
             }
 
             _ => panic!("ctype parameter must be a function")
