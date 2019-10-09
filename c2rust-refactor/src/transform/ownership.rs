@@ -21,8 +21,9 @@ use crate::analysis::ownership::constraint::{ConstraintSet, Perm};
 use crate::command::{CommandState, Registry, DriverCommand};
 use crate::context::HirMap;
 use crate::driver::{Phase};
-use crate::type_map;
 use crate::RefactorCtxt;
+use crate::reflect::reflect_tcx_ty;
+use crate::type_map;
 use c2rust_ast_builder::{mk, IntoSymbol};
 
 pub fn register_commands(reg: &mut Registry) {
@@ -587,7 +588,6 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     let s_move = "move".into_symbol();
 
     type_map::map_types(&cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
-        // dbg!((&ast_ty, &ast_ty.id, &lty.label));
         let p = match lty.label {
             Some(x) => x,
             None => return,
@@ -607,11 +607,6 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 /// add explicit type annotations to locals which are missing them. This is because
 /// OA marks types
 fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
-    // let arena = SyncDroplessArena::default();
-
-    // use rustc::ty::TyCtxt;
-    use crate::reflect::reflect_tcx_ty;
-
     struct LocalVisitor<'a, 'tctx: 'a> {
         cx: &'a RefactorCtxt<'a, 'tctx>,
     };
