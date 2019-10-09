@@ -145,8 +145,9 @@ unsafe extern "C" fn chacha_ivsetup(mut x: Option<&mut chacha_ctx>, iv: Option<&
         | (iv.unwrap()[4 + 3] as u32) << 24i32;
 }
 
-unsafe extern "C" fn void_ptrs(a: *mut libc::c_void,b: *const libc::c_void) {
-    let c = a as *mut u32;
+unsafe extern "C" fn void_ptrs(a: *mut libc::c_void, b: *const libc::c_void) {
+    #[nonnull]
+    let c: *mut u32 = a as *mut u32;
 
     *c = *(b as *const u32);
 }

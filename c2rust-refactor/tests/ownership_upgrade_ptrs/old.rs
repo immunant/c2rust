@@ -134,7 +134,8 @@ unsafe extern "C" fn chacha_ivsetup(mut x: *mut chacha_ctx, #[slice] iv: *const 
         | (*iv.offset(4isize).offset(3isize) as u32) << 24i32;
 }
 
-unsafe extern "C" fn void_ptrs(a: *mut libc::c_void,b: *const libc::c_void) {
+unsafe extern "C" fn void_ptrs(a: *mut libc::c_void, b: *const libc::c_void) {
+    #[nonnull]
     let c = a as *mut u32;
 
     *c = *(b as *const u32);
@@ -385,12 +386,12 @@ pub unsafe extern "C" fn mycasecmp(#[slice] mut s1: *const wchar_t,
     let mut d: libc::c_int = 0i32;
     loop  {
         #[slice]
-        let fresh0: *const wchar_t = s1;
+        let fresh0 = s1;
         s1 = s1.offset(1);
         let c1: libc::c_int =
             takeswint(*fresh0 as wint_t) as libc::c_int;
         #[slice]
-        let fresh1: *const wchar_t = s2;
+        let fresh1 = s2;
         s2 = s2.offset(1);
         let c2: libc::c_int =
             takeswint(*fresh1 as wint_t) as libc::c_int;
@@ -467,7 +468,7 @@ unsafe extern "C" fn eisnan(#[slice] mut x: *const libc::c_ushort) -> libc::c_in
     i = 0i32;
     while i < 10i32 - 1i32 {
         #[slice]
-        let fresh4: *const libc::c_ushort = x;
+        let fresh4 = x;
         x = x.offset(1);
         if *fresh4 as libc::c_int != 0i32 { return 1i32 }
         i += 1
@@ -501,7 +502,7 @@ unsafe extern "C" fn eisnan2(#[nonnull] #[slice] mut x: *const libc::c_ushort) -
     while i < 10i32 - 1i32 {
         #[slice]
         #[nonnull]
-        let fresh4: *const libc::c_ushort = x;
+        let fresh4 = x;
         x = x.offset(1);
         if *fresh4 as libc::c_int != 0i32 { return 1i32 }
         i += 1

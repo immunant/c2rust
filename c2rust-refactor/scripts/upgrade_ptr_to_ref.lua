@@ -1353,6 +1353,7 @@ end
 function run_ptr_upgrades(node_id_cfgs)
     if not node_id_cfgs then
         refactor:run_command("select", {"target", "crate; desc(fn || field);"})
+        refactor:run_command("ownership_expand_local_ptr_tys", {})
         -- refactor:run_command("ownership_annotate", {"target"})
         refactor:run_command("ownership_mark_pointers", {})
         -- refactor:dump_marks()
