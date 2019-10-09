@@ -24,6 +24,7 @@ unsafe fn struct_ptr(ctx: &mut Ctx, ctx2: *mut Ctx, p: &[u8]) {
     (*ctx2).data[0] = p[3 + off];
 }
 
+#[derive(Clone)]
 struct Ptrs<'r, 's> {
     r: &'r u32,
     r2: &'r mut u32,
@@ -32,6 +33,7 @@ struct Ptrs<'r, 's> {
     boxed: Option<Box<u32>>,
 }
 
+#[derive(Clone)]
 struct SizedData {
     buf: Option<Box<[u32]>>,
     bsize: usize,
@@ -85,6 +87,7 @@ unsafe fn destroy_buf(sd: &mut SizedData) {
 
 unsafe fn explicit_lifetimes<'a, 'r, 's>(_ptrs: &'a mut Ptrs<'r, 's>) {}
 
+#[derive(Clone)]
 struct HeapItem {
     item: Box<u32>,
     opt_item: Option<Box<u32>>,
@@ -136,6 +139,7 @@ unsafe fn init_opt_item2(hi: &mut HeapItem) {
 
 use libc::{int32_t, memset, uint16_t, uint32_t};
 
+#[derive(Clone)]
 struct HTab {
     pub hdr: HashHDR,
     pub nmaps: libc::c_int,
