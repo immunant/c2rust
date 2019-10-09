@@ -398,12 +398,14 @@ impl TypeConverter {
 
             CTypeKind::Attributed(ty, _) => self.convert(ctxt, ty.ctype),
 
+            // ANSI/ISO C-style function
             CTypeKind::Function(ret, ref params, is_var, is_noreturn, true) => {
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
                 Ok(fn_ty)
             }
 
+            // K&R-style function
             CTypeKind::Function(ret, _, is_var, is_noreturn, false) => {
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, &vec![], is_var)?;
@@ -413,6 +415,43 @@ impl TypeConverter {
             CTypeKind::TypeOf(ty) => self.convert(ctxt, ty),
 
             ref t => Err(format_err!("Unsupported type {:?}", t).into()),
+        }
+    }
+
+    pub fn convert_function_with_parameters(
+        &mut self,
+        ctxt: &TypedAstContext,
+        ctype: CTypeId,
+        params: &Vec<CParamId>
+    ) -> Result<P<Ty>, TranslationError> {
+        match ctxt.index(ctype).kind {
+            // ANSI/ISO C-style function
+            CTypeKind::Function(ret, ref params, is_var, is_noreturn, true) => {
+                let opt_ret = if is_noreturn { None } else { Some(ret) };
+                let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
+                Ok(fn_ty)
+            }
+
+            // K&R-style function
+            CTypeKind::Function(ret, ref _params, is_var, is_noreturn, false) => {
+                // _params is empty here -> get params from function definition instead
+                let params = params
+                    .iter()
+                    .map(|p| {
+                        let decl = &ctxt.get_decl(p).unwrap().kind;
+                        match decl {
+                            CDeclKind::Variable { typ, ..} => *typ,
+                            _ => panic!("parameter referenced non-variable decl.")
+                        }
+                    })
+                    .collect();
+
+                let opt_ret = if is_noreturn { None } else { Some(ret) };
+                let fn_ty = self.convert_function(ctxt, opt_ret, &params, is_var)?;
+                Ok(fn_ty)
+            }
+
+            _ => panic!("ctype parameter must be a function")
         }
     }
 }
