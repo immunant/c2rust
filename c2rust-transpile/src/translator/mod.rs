@@ -3117,25 +3117,18 @@ impl<'c> Translation<'c> {
                 if ctx.needs_address() {
                     if let &CDeclKind::Function { ref parameters, .. } = decl {
                         // If we're casting a concrete function to
-                        // a K&R function pointer type, do the following:
-                        //   * cast the function itself to its corresponding
-                        //     Rust function pointer type
-                        //   * transmute that to the equivalent K&R type
-                        //     (without any parameters)
-                        if let Some(cur_file) = *self.cur_file.borrow() {
-                            self.import_type(qual_ty.ctype, cur_file);
-                        }
-                        let ty = self.type_converter
-                            .borrow_mut()
-                            .convert_function_with_parameters(&self.ast_context, qual_ty.ctype, parameters)?;
-                        val = mk().cast_expr(val, ty);
-
-                        // Now transmute it to the regular K&R type
-                        let knr_ty = self.convert_type(qual_ty.ctype)?;
+                        // a K&R function pointer type, use transmute
                         if ctx.is_static || ctx.is_const {
                             self.use_feature("const_transmute");
                         }
-                        val = transmute_expr(mk().infer_ty(), knr_ty, val, self.tcfg.emit_no_std);
+                        if let Some(cur_file) = *self.cur_file.borrow() {
+                            self.import_type(qual_ty.ctype, cur_file);
+                        }
+                        let full_ty = self.type_converter
+                            .borrow_mut()
+                            .convert_function_with_parameters(&self.ast_context, qual_ty.ctype, parameters)?;
+                        let knr_ty = self.convert_type(qual_ty.ctype)?;
+                        val = transmute_expr(full_ty, knr_ty, val, self.tcfg.emit_no_std);
                         set_unsafe = true;
                     }
                 }
