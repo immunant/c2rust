@@ -400,6 +400,7 @@ function Visitor:rewrite_method_call_expr(expr)
     local method_name = expr:get_method_name()
 
     -- x.offset(y) -> &x[y..] or Some(&x.unwrap()[y..])
+    -- or -> Some(x.unwrap().split_at_mut(y).1)
     -- Only really works for positive pointer offsets
     if method_name == "offset" then
         local offset_expr, caller = self:rewrite_chained_offsets(expr)
@@ -407,20 +408,26 @@ function Visitor:rewrite_method_call_expr(expr)
 
         if not cfg or not cfg:is_slice_any() then return end
 
-        offset_expr:to_range(offset_expr, nil)
-
         local is_mut = cfg:is_mut()
 
-        if cfg:is_opt_any() then
-            if is_mut then
-                caller:to_method_call("as_mut", {caller})
-            end
-
-            caller:to_method_call("unwrap", {caller})
+        if not is_mut then
+            offset_expr:to_range(offset_expr, nil)
         end
 
-        expr:to_index(caller, offset_expr)
-        expr:to_addr_of(expr, is_mut)
+        if cfg:is_opt_any() then
+            caller:to_method_call("unwrap", {caller})
+
+            if is_mut then
+                caller:to_method_call("split_at_mut", {caller, offset_expr})
+            end
+        end
+
+        if not is_mut then
+            expr:to_index(caller, offset_expr)
+            expr:to_addr_of(expr, is_mut)
+        else
+            expr:to_field(caller, "1")
+        end
     -- static_var.as_mut/ptr -> &[mut]static_var
     elseif method_name == "as_ptr" or method_name == "as_mut_ptr" then
         local hirid = self.tctx:resolve_path_hirid(exprs[1])

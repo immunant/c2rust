@@ -593,3 +593,25 @@ unsafe extern "C" fn eneg3(mut x: &mut [libc::c_ushort]) {
     *fresh3 = (*fresh3 as libc::c_int ^ 0x8000i32) as libc::c_ushort;
     /* Toggle the sign bit */
 }
+
+unsafe extern "C" fn eshdn1(mut x: Option<&mut [libc::c_ushort]>) {
+    let mut bits: libc::c_ushort = 0; /* point to significand area */
+    let mut i: libc::c_int = 0;
+    x = Some(x.unwrap().split_at_mut(2).1);
+    bits = 0i32 as libc::c_ushort;
+    i = 2i32;
+    while i < 10i32 + 3i32 {
+        if x.as_mut().unwrap()[0] as libc::c_int & 1i32 != 0 {
+            bits = (bits as libc::c_int | 1i32) as libc::c_ushort
+        }
+
+        x.as_mut().unwrap()[0] = (x.as_mut().unwrap()[0] as libc::c_int >> 1i32) as libc::c_ushort;
+        if bits as libc::c_int & 2i32 != 0 {
+            x.as_mut().unwrap()[0] =
+                (x.as_mut().unwrap()[0] as libc::c_int | 0x8000i32) as libc::c_ushort
+        }
+        bits = ((bits as libc::c_int) << 1i32) as libc::c_ushort;
+        x = Some(x.unwrap().split_at_mut(1).1);
+        i += 1
+    }
+}
