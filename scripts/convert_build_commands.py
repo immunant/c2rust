@@ -55,6 +55,11 @@ def convert_entries(entries, out_dir=None):
             elif arg[:2] == "-l":
                 ei.libs.append(arg[2:])
 
+            # -pthread implicitly adds -lpthread
+            elif arg == "-pthread":
+                ei.libs.append("pthread")
+                ei.new_args.append(arg)
+
             elif arg == "-L":
                 ei.lib_dirs.append(next(arg_iter))
 
