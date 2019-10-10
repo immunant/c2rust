@@ -32,7 +32,6 @@ extern "C" {
     fn strsep(_: *mut *mut libc::c_char, _: *const libc::c_char) -> *mut libc::c_char;
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn ten_mul(mut acc: &mut f64, digit: i32, r: Option<&f64>) -> i32 {
     *acc *= 10i32 as f64;
     *acc += digit as f64;
@@ -49,11 +48,11 @@ struct SizedData {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
-struct Ctx {
-    data: [u8; 10],
+pub struct Ctx {
+    pub data: [u8; 5],
 }
 
-unsafe fn struct_ptr(mut ctx: Option<&mut Ctx>, mut ctx2: Option<&mut Ctx>, p: Option<&[u8]>) {
+pub unsafe fn struct_ptr(mut ctx: Option<&mut Ctx>, mut ctx2: Option<&mut Ctx>, p: Option<&[u8]>) {
     let off = 1;
     (ctx.as_mut().unwrap()).data[0] = p.unwrap()[0 + 3];
     (ctx2.as_mut().unwrap()).data[0] = p.unwrap()[3 + off];
@@ -75,8 +74,7 @@ pub(crate) struct HTAB {
     pub nmaps: libc::c_int,
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn __ibitmap(
+pub(crate) unsafe extern "C" fn __ibitmap(
     mut hashp: Option<&mut HTAB>,
     pnum: libc::c_int,
     nbits: libc::c_int,
@@ -117,11 +115,11 @@ pub unsafe extern "C" fn __ibitmap(
     return 0i32;
 }
 
-fn move_ptr(ptr: Option<Box<u32>>) {
+unsafe fn move_ptr(mut ptr: Option<Box<u32>>) {
     ptr.take();
 }
 
-fn attrs(a: &f64, b: &[f64]) -> f64 {
+unsafe fn attrs(a: &f64, b: &[f64]) -> f64 {
     *a + b[2]
 }
 
@@ -200,7 +198,6 @@ unsafe extern "C" fn bisearch_cat(
     return 4294967295 as category;
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn _cchsh(
     x: libc::c_double,
     mut c: Option<&mut libc::c_double>,
@@ -220,7 +217,6 @@ pub unsafe extern "C" fn _cchsh(
     };
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn rand_r(mut seed: Option<&mut libc::c_uint>) -> libc::c_int {
     let mut k: libc::c_long = 0;
     let mut s: libc::c_long = **seed.as_mut().unwrap() as libc::c_long;
@@ -237,7 +233,7 @@ pub unsafe extern "C" fn rand_r(mut seed: Option<&mut libc::c_uint>) -> libc::c_
     return (s & 0x7fffffffi32 as libc::c_long) as libc::c_int;
 }
 
-fn offset_assign_is_mut(mut z: Option<&mut [u8]>) {
+unsafe fn offset_assign_is_mut(mut z: Option<&mut [u8]>) {
     z.as_mut().unwrap()[0] = 1;
     z.as_mut().unwrap()[1] = 1;
 }
@@ -289,7 +285,6 @@ static mut categories: [_category; 2129] = [_category {
     delta: 0,
 }; 2129];
 
-#[no_mangle]
 pub unsafe extern "C" fn category(ucs: libc::c_uint) -> category {
     return bisearch_cat(
         ucs,
@@ -369,7 +364,6 @@ unsafe extern "C" fn chacha_keysetup2(
 pub type size_t = libc::c_ulong;
 pub type wchar_t = libc::c_int;
 
-#[no_mangle]
 pub unsafe extern "C" fn wmemcmp(
     mut s1: Option<&[wchar_t]>,
     mut s2: Option<&[wchar_t]>,
@@ -392,7 +386,6 @@ pub unsafe extern "C" fn wmemcmp(
     return 0i32;
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn wmemcmp2(
     mut s1: &[wchar_t],
     mut s2: &[wchar_t],
@@ -411,7 +404,6 @@ pub unsafe extern "C" fn wmemcmp2(
     return 0i32;
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn wcsspn(mut s: Option<&[wchar_t]>, mut set: Option<&[wchar_t]>) -> size_t {
     #[slice]
     let mut p = None;
@@ -439,7 +431,6 @@ pub unsafe extern "C" fn wcsspn(mut s: Option<&[wchar_t]>, mut set: Option<&[wch
 
 pub type wint_t = libc::c_uint;
 
-#[no_mangle]
 pub unsafe extern "C" fn mycasecmp(
     mut s1: Option<&[wchar_t]>,
     mut s2: Option<&[wchar_t]>,
@@ -518,7 +509,7 @@ pub unsafe extern "C" fn argz_create_sep(
             token.unwrap().as_ptr() as *const libc::c_void,
             len as size_t,
         );
-        iter = Some(iter.offset(len as isize));
+        iter = Some(iter.unwrap().offset(len as isize));
         i += 1
     }
     free(old_running.take().unwrap().as_ptr() as *mut libc::c_void);

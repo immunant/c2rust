@@ -406,7 +406,17 @@ function Visitor:rewrite_method_call_expr(expr)
         local offset_expr, caller = self:rewrite_chained_offsets(expr)
         local cfg = self:get_expr_cfg(caller)
 
-        if not cfg or not cfg:is_slice_any() then return end
+        if not cfg then return end
+
+        -- Add an unwrap just so that the code is compilable even though
+        -- we're probably dealing with an option of a raw ptr (ie maybe
+        -- a multi level ptr got deref'd once)
+        if not cfg:is_slice_any() and cfg:is_opt_any() then
+            expr:to_method_call("unwrap", {caller})
+            expr:to_method_call("offset", {expr, offset_expr})
+
+            return
+        end
 
         local is_mut = cfg:is_mut()
 

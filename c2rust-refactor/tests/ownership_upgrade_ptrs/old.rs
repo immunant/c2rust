@@ -34,7 +34,6 @@ extern "C" {
      -> *mut libc::c_char;
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn ten_mul(#[nonnull] acc: *mut f64, digit: i32, r: *mut f64) -> i32 {
     *acc *= 10i32 as f64;
     *acc += digit as f64;
@@ -51,11 +50,11 @@ struct SizedData {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
-struct Ctx {
-    data: [u8; 10],
+pub struct Ctx {
+    pub data: [u8; 5],
 }
 
-unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx, #[slice] p: *const u8) {
+pub unsafe fn struct_ptr(ctx: *mut Ctx, ctx2: *mut Ctx, #[slice] p: *const u8) {
     let off = 1;
     (*ctx).data[0] = *p.offset(0isize).offset(3isize);
     (*ctx2).data[0] = *p.offset(3isize).offset(off);
@@ -77,8 +76,7 @@ pub(crate) struct HTAB {
     pub nmaps: libc::c_int,
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn __ibitmap(mut hashp: *mut HTAB,
+pub(crate) unsafe extern "C" fn __ibitmap(mut hashp: *mut HTAB,
                                    pnum: libc::c_int,
                                    nbits: libc::c_int,
                                    ndx: libc::c_int) -> libc::c_int {
@@ -106,11 +104,11 @@ pub unsafe extern "C" fn __ibitmap(mut hashp: *mut HTAB,
     return 0i32;
 }
 
-fn move_ptr(ptr: *mut u32) {
+unsafe fn move_ptr(mut ptr: *mut u32) {
     free(ptr as *mut libc::c_void);
 }
 
-fn attrs(#[nonnull] a: *const f64, #[nonnull] #[slice] b: *const f64) -> f64 {
+unsafe fn attrs(#[nonnull] a: *const f64, #[nonnull] #[slice] b: *const f64) -> f64 {
     *a + *b.offset(2)
 }
 
@@ -185,7 +183,6 @@ unsafe extern "C" fn bisearch_cat(ucs: libc::c_uint,
     return 4294967295 as category;
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn _cchsh(x: libc::c_double,
                                 c: *mut libc::c_double,
                                 s: *mut libc::c_double) {
@@ -203,7 +200,6 @@ pub unsafe extern "C" fn _cchsh(x: libc::c_double,
     };
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn rand_r(seed: *mut libc::c_uint) -> libc::c_int {
     let mut k: libc::c_long = 0;
     let mut s: libc::c_long = *seed as libc::c_long;
@@ -217,7 +213,7 @@ pub unsafe extern "C" fn rand_r(seed: *mut libc::c_uint) -> libc::c_int {
     return (s & 0x7fffffffi32 as libc::c_long) as libc::c_int;
 }
 
-fn offset_assign_is_mut(#[slice] z: *mut u8) {
+unsafe fn offset_assign_is_mut(#[slice] z: *mut u8) {
     *z.offset(0) = 1;
     *z.offset(1) = 1;
 }
@@ -257,7 +253,6 @@ unsafe fn rewritten_calls(
 
 static mut categories: [_category; 2129] = [_category{cat_first: [0; 4], delta: 0,}; 2129];
 
-#[no_mangle]
 pub unsafe extern "C" fn category(ucs: libc::c_uint) -> category {
     return bisearch_cat(ucs, categories.as_ptr(), (categories.len() - 1) as libc::c_int);
 }
@@ -329,7 +324,6 @@ unsafe extern "C" fn chacha_keysetup2(mut x: *mut chacha_ctx,
 pub type size_t = libc::c_ulong;
 pub type wchar_t = libc::c_int;
 
-#[no_mangle]
 pub unsafe extern "C" fn wmemcmp(#[slice] mut s1: *const wchar_t,
                                  #[slice] mut s2: *const wchar_t, n: size_t)
  -> libc::c_int {
@@ -344,7 +338,6 @@ pub unsafe extern "C" fn wmemcmp(#[slice] mut s1: *const wchar_t,
     return 0i32;
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn wmemcmp2(#[nonnull] #[slice] mut s1: *const wchar_t,
                                   #[nonnull] #[slice] mut s2: *const wchar_t, n: size_t)
  -> libc::c_int {
@@ -359,7 +352,6 @@ pub unsafe extern "C" fn wmemcmp2(#[nonnull] #[slice] mut s1: *const wchar_t,
     return 0i32;
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn wcsspn(#[slice] mut s: *const wchar_t,
                                 #[slice] mut set: *const wchar_t) -> size_t {
     #[slice]
@@ -378,7 +370,6 @@ pub unsafe extern "C" fn wcsspn(#[slice] mut s: *const wchar_t,
 
 pub type wint_t = libc::c_uint;
 
-#[no_mangle]
 pub unsafe extern "C" fn mycasecmp(#[slice] mut s1: *const wchar_t,
                                    #[slice] mut s2: *const wchar_t)
  -> libc::c_int {

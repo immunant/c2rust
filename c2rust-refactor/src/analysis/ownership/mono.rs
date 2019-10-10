@@ -241,20 +241,15 @@ fn find_local_assignment(
             self.assignment[cur] = p;
             self.cset.check_partial_assignment(|p| match p {
                 Perm::LocalVar(v) => {
-                    // dbg!(v);
                     /*if let Some(c) = self.out_assign[v] {
                         Some(c)
                     } else*/ if v <= cur {
                         Some(self.assignment[v])
                     } else {
-                        // dbg!(("LocalVar", v));
                         None
                     }
                 }
-                _ => {
-                    // dbg!(e);
-                    None
-                },
+                _ => None,
             })
         }
     }
