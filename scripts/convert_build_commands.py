@@ -96,13 +96,12 @@ def convert_entries(entries, out_dir=None):
     for ei in filter(lambda ei: not ei.compile_only, entry_infos):
         new_entry = ei.entry.copy()
         c_objects = [object_map[inp] for inp in ei.c_inputs]
-        all_inputs = c_objects + ei.rest_inputs # FIXME: wrong order???
-        new_entry["arguments"] = ei.new_args + all_inputs
+        new_entry["arguments"] = ei.new_args
         # Hacky solution: c2rust-tranpile needs an absolute path here,
         # so we add a path-like prefix so that the transpiler can both
         # parse it correctly and recognize it as a bencoded link command
         new_entry["file"] = "/c2rust/link/" + bencode.bencode({
-            "inputs": all_inputs,
+            "inputs": c_objects + ei.rest_inputs, # FIXME: wrong order???
             "libs": ei.libs,
             "lib_dirs": ei.lib_dirs,
             "shared_lib": 1 if ei.shared_lib else 0,
