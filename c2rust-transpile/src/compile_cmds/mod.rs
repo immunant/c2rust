@@ -55,6 +55,10 @@ fn filter_likely_unsupported(cmds: Vec<CompileCmd>) -> Vec<CompileCmd> {
 
     cmds.into_iter()
         .filter(|c| {
+            if c.file.starts_with("/c2rust/link/") {
+                return false;
+            }
+
             let key = c.file.extension().unwrap();
             !unsupported_exts.contains(key)
         })
