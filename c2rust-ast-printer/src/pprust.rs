@@ -4,7 +4,7 @@ use syntax::ast::{Attribute, MacDelimiter, GenericArg};
 use syntax::util::parser::{self, AssocOp, Fixity};
 use syntax::attr;
 use syntax::source_map::{self, SourceMap, Spanned};
-use syntax::parse::token::{self, BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{self, BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
 use syntax::parse::lexer::comments;
 use syntax::parse;
 use syntax::ptr::P;
