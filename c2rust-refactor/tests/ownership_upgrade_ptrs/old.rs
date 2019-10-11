@@ -114,7 +114,7 @@ unsafe fn attrs(#[nonnull] a: *const f64, #[nonnull] #[slice] b: *const f64) -> 
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-struct chacha_ctx {
+pub struct chacha_ctx {
     input: [u32; 16]
 }
 
@@ -264,9 +264,9 @@ static mut sigma: [libc::c_char; 16] =
     [101, 120, 112, 97, 110, 100, 32, 51, 50, 45, 98, 121, 116, 101, 32, 107];
 static mut tau: [libc::c_char; 16] =
     [101, 120, 112, 97, 110, 100, 32, 49, 54, 45, 98, 121, 116, 101, 32, 107];
-unsafe extern "C" fn chacha_keysetup(mut x: *mut chacha_ctx,
-                                     #[slice] mut k: *const u8_0, kbits: u32_0,
-                                     ivbits: u32_0) {
+pub unsafe extern "C" fn chacha_keysetup(mut x: *mut chacha_ctx,
+                                         #[slice] mut k: *const u8_0, kbits: u32_0,
+                                         ivbits: u32_0) {
     #[slice]
     let mut constants: *const libc::c_char =
         0 as *const libc::c_char; /* kbits == 128 */
@@ -292,9 +292,9 @@ unsafe extern "C" fn chacha_keysetup(mut x: *mut chacha_ctx,
             (*constants.offset(0).offset(3) as u32_0) << 24i32;
 }
 
-unsafe extern "C" fn chacha_keysetup2(mut x: *mut chacha_ctx,
-                                     #[slice] mut k: *const u8_0, kbits: u32_0,
-                                     ivbits: u32_0) {
+pub unsafe extern "C" fn chacha_keysetup2(mut x: *mut chacha_ctx,
+                                          #[slice] mut k: *const u8_0, kbits: u32_0,
+                                          ivbits: u32_0) {
     #[slice]
     #[nonnull]
     let mut constants: *const libc::c_char =
@@ -447,7 +447,7 @@ pub unsafe extern "C" fn argz_create_sep(#[slice] mut string: *const libc::c_cha
     return 0i32;
 }
 
-unsafe extern "C" fn eisnan(#[slice] mut x: *const libc::c_ushort) -> libc::c_int {
+pub unsafe extern "C" fn eisnan(#[slice] mut x: *const libc::c_ushort) -> libc::c_int {
     let mut i: libc::c_int = 0;
     /* NaN has maximum exponent */
     if *x.offset((10i32 - 1i32) as isize) as libc::c_int & 0x7fffi32 !=

@@ -125,7 +125,7 @@ unsafe fn attrs(a: &f64, b: &[f64]) -> f64 {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-struct chacha_ctx {
+pub struct chacha_ctx {
     input: [u32; 16],
 }
 
@@ -302,7 +302,7 @@ static mut sigma: [libc::c_char; 16] = [
 static mut tau: [libc::c_char; 16] = [
     101, 120, 112, 97, 110, 100, 32, 49, 54, 45, 98, 121, 116, 101, 32, 107,
 ];
-unsafe extern "C" fn chacha_keysetup(
+pub unsafe extern "C" fn chacha_keysetup(
     mut x: Option<&mut chacha_ctx>,
     mut k: Option<&[u8_0]>,
     kbits: u32_0,
@@ -331,7 +331,7 @@ unsafe extern "C" fn chacha_keysetup(
         | (constants.unwrap()[0 + 3] as u32_0) << 24i32;
 }
 
-unsafe extern "C" fn chacha_keysetup2(
+pub unsafe extern "C" fn chacha_keysetup2(
     mut x: Option<&mut chacha_ctx>,
     mut k: Option<&[u8_0]>,
     kbits: u32_0,
@@ -516,7 +516,7 @@ pub unsafe extern "C" fn argz_create_sep(
     return 0i32;
 }
 
-unsafe extern "C" fn eisnan(mut x: Option<&[libc::c_ushort]>) -> libc::c_int {
+pub unsafe extern "C" fn eisnan(mut x: Option<&[libc::c_ushort]>) -> libc::c_int {
     let mut i: libc::c_int = 0;
     /* NaN has maximum exponent */
     if x.unwrap()[(10i32 - 1i32) as usize] as libc::c_int & 0x7fffi32 != 0x7fffi32 {
