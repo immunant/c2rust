@@ -466,21 +466,21 @@ pub unsafe extern "C" fn eisnan(#[slice] mut x: *const libc::c_ushort) -> libc::
     return 0i32;
 }
 
-unsafe extern "C" fn eneg(#[slice] mut x: *mut libc::c_ushort) {
+pub unsafe extern "C" fn eneg(#[slice] mut x: *mut libc::c_ushort) {
     if eisnan(x) != 0 { return }
     let ref mut fresh3 = *x.offset((10i32 - 1i32) as isize);
     *fresh3 = (*fresh3 as libc::c_int ^ 0x8000i32) as libc::c_ushort;
     /* Toggle the sign bit */
 }
 
-unsafe extern "C" fn eneg2(#[nonnull] #[slice] mut x: *mut libc::c_ushort) {
+pub unsafe extern "C" fn eneg2(#[nonnull] #[slice] mut x: *mut libc::c_ushort) {
     if eisnan(x) != 0 { return }
     let ref mut fresh3 = *x.offset((10i32 - 1i32) as isize);
     *fresh3 = (*fresh3 as libc::c_int ^ 0x8000i32) as libc::c_ushort;
     /* Toggle the sign bit */
 }
 
-unsafe extern "C" fn eisnan2(#[nonnull] #[slice] mut x: *const libc::c_ushort) -> libc::c_int {
+pub unsafe extern "C" fn eisnan2(#[nonnull] #[slice] mut x: *const libc::c_ushort) -> libc::c_int {
     let mut i: libc::c_int = 0;
     /* NaN has maximum exponent */
     if *x.offset((10i32 - 1i32) as isize) as libc::c_int & 0x7fffi32 !=
@@ -500,14 +500,14 @@ unsafe extern "C" fn eisnan2(#[nonnull] #[slice] mut x: *const libc::c_ushort) -
     return 0i32;
 }
 
-unsafe extern "C" fn eneg3(#[nonnull] #[slice] mut x: *mut libc::c_ushort) {
+pub unsafe extern "C" fn eneg3(#[nonnull] #[slice] mut x: *mut libc::c_ushort) {
     if eisnan2(x) != 0 { return }
     let ref mut fresh3 = *x.offset((10i32 - 1i32) as isize);
     *fresh3 = (*fresh3 as libc::c_int ^ 0x8000i32) as libc::c_ushort;
     /* Toggle the sign bit */
 }
 
-unsafe extern "C" fn eshdn1(#[slice] mut x: *mut libc::c_ushort) {
+pub unsafe extern "C" fn eshdn1(#[slice] mut x: *mut libc::c_ushort) {
     let mut bits: libc::c_ushort = 0; /* point to significand area */
     let mut i: libc::c_int = 0;
     x = x.offset(2);

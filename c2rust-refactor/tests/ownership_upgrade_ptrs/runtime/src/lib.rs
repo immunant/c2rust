@@ -170,4 +170,82 @@ fn test_eisnan() {
     };
 
     assert_eq!(ret, 1);
+
+    read_data = [0; 10];
+
+    let ret = unsafe {
+        new::eisnan2(&read_data)
+    };
+
+    assert_eq!(ret, 0);
+
+    read_data[9] = 0x7fff;
+
+    let ret = unsafe {
+        new::eisnan2(&read_data)
+    };
+
+    assert_eq!(ret, 0);
+
+    read_data[8] = 1;
+
+    let ret = unsafe {
+        new::eisnan2(&read_data)
+    };
+
+    assert_eq!(ret, 1);
+}
+
+#[test]
+fn test_eneg() {
+    let mut write_data = [0; 10];
+
+    unsafe {
+        old::eneg(write_data.as_mut_ptr());
+    }
+
+    assert_eq!(write_data[9], 0x8000);
+
+    write_data = [0; 10];
+
+    unsafe {
+        new::eneg(Some(&mut write_data));
+    }
+
+    assert_eq!(write_data[9], 0x8000);
+
+    write_data = [0; 10];
+
+    unsafe {
+        new::eneg2(&mut write_data);
+    }
+
+    assert_eq!(write_data[9], 0x8000);
+
+    write_data = [0; 10];
+
+    unsafe {
+        new::eneg3(&mut write_data);
+    }
+
+    assert_eq!(write_data[9], 0x8000);
+}
+
+#[test]
+fn test_eshdn1() {
+    let mut write_data = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+    unsafe {
+        old::eshdn1(write_data.as_mut_ptr());
+    }
+
+    assert_eq!(write_data, [0, 0, 0, 32769, 1, 32770, 2, 32771, 3, 32772, 4, 32773, 5]);
+
+    write_data = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+    unsafe {
+        new::eshdn1(Some(&mut write_data));
+    }
+
+    assert_eq!(write_data, [0, 0, 0, 32769, 1, 32770, 2, 32771, 3, 32772, 4, 32773, 5]);
 }
