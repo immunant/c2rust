@@ -52,6 +52,14 @@ pub enum LinkType {
 }
 
 impl LinkType {
+    pub fn is_library(&self) -> bool {
+        match self {
+            LinkType::Exe => false,
+            LinkType::Shared => true,
+            LinkType::Static => true,
+        }
+    }
+
     pub fn as_cargo_types(&self) -> &str {
         match self {
             LinkType::Exe => "\"rlib\"",

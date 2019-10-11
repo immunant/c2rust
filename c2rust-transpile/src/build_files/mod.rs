@@ -255,6 +255,7 @@ fn emit_cargo_toml(
         "crate_name": crate_name,
         "crate_rust_name": crate_name.replace('-', "_"),
         "crate_types": link_cmd.r#type.as_cargo_types(),
+        "is_library": link_cmd.r#type.is_library(),
         "lib_rs_file": get_lib_rs_file_name(tcfg),
         "binaries": binaries,
         "cross_checks": tcfg.cross_checks,

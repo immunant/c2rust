@@ -8,10 +8,17 @@ publish = false
 edition = "2018"
 autobins = false
 
+{{#if is_library~}}
 [lib]
 name = "{{crate_rust_name}}"
 path = "{{lib_rs_file}}"
 crate-type = [{{{crate_types}}}]
+{{~else~}}
+[[bin]]
+name = "{{crate_rust_name}}"
+path = "{{lib_rs_file}}"
+{{~/if}}
+
 {{#each binaries}}
 [[bin]]
 path = "{{path}}"
