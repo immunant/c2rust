@@ -119,7 +119,7 @@ pub struct TranspilerConfig {
 
 impl TranspilerConfig {
     fn is_binary(&self, file: &Path) -> bool {
-        let name = get_path_module_name(file, false, true).unwrap();
+        let name = get_module_name(file, false, true).unwrap();
         self.binaries.contains(&name)
     }
 
@@ -130,29 +130,30 @@ impl TranspilerConfig {
     }
 }
 
-/// Make sure that module name:
-/// - does not contain illegal characters,
-/// - does not clash with reserved keywords.
-fn get_module_name(filename: &Option<String>, check_reserved: bool) -> Option<String> {
-    if let Some(ref name) = filename {
-        // module names cannot contain periods or dashes
-        let mut module = name.chars().map(|c|
-            match c {
-                '.' | '-' => '_',
-                _ => c
-            }
-        ).collect();
-
-        // make sure the module name does not clash with keywords
-        if check_reserved && RESERVED_NAMES.contains(&name.as_str()) {
-            module = format!("r#{}", module);
-        }
-        return Some(module);
-    }
-    None
+fn char_to_ident(c: char) -> char {
+    if c.is_alphanumeric() { c } else { '_' }
 }
 
-fn get_path_module_name(file: &Path, check_reserved: bool, keep_extension: bool) -> Option<String> {
+fn str_to_ident<S: AsRef<str>>(s: S) -> String {
+    s.as_ref().chars().map(char_to_ident).collect()
+}
+
+/// Make sure that name:
+/// - does not contain illegal characters,
+/// - does not clash with reserved keywords.
+fn str_to_ident_checked(filename: &Option<String>, check_reserved: bool) -> Option<String> {
+    // module names cannot contain periods or dashes
+    filename.as_ref().map(str_to_ident).map(|module| {
+        // make sure the module name does not clash with keywords
+        if check_reserved && RESERVED_NAMES.contains(&module.as_str()) {
+            format!("r#{}", module)
+        } else {
+            module
+        }
+    })
+}
+
+fn get_module_name(file: &Path, check_reserved: bool, keep_extension: bool) -> Option<String> {
     let is_rs = file.extension().map(|ext| ext == "rs").unwrap_or(false);
     let fname = if is_rs {
         file.file_stem()
@@ -160,7 +161,7 @@ fn get_path_module_name(file: &Path, check_reserved: bool, keep_extension: bool)
         file.file_name()
     };
     let fname = &fname.unwrap().to_str().map(String::from);
-    let mut name = get_module_name(fname, check_reserved).unwrap();
+    let mut name = str_to_ident_checked(fname, check_reserved).unwrap();
     if keep_extension && is_rs {
         name.push_str(".rs");
     }
@@ -172,7 +173,7 @@ fn get_path_module_name(file: &Path, check_reserved: bool, keep_extension: bool)
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
     diagnostics::init(tcfg.enabled_warnings.clone(), tcfg.log_level);
 
-    let cmds = get_compile_commands(cc_db, &tcfg.filter).expect(&format!(
+    let lcmds = get_compile_commands(cc_db, &tcfg.filter).expect(&format!(
         "Could not parse compile commands from {}",
         cc_db.to_string_lossy()
     ));
@@ -182,67 +183,91 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let mut clang_args: Vec<&str> = clang_args.iter().map(AsRef::as_ref).collect();
     clang_args.extend_from_slice(extra_clang_args);
 
-    // Compute the common ancestor of all input files
-    // FIXME: this is quadratic-time in the length of the ancestor path
-    let mut ancestor_path = cmds
-        .first()
-        .map(|cmd| cmd.abs_file())
-        .unwrap_or_else(PathBuf::new);
-    for cmd in &cmds[1..] {
-        let cmd_path = cmd.abs_file();
-        ancestor_path = ancestor_path
-            .ancestors()
-            .find(|a| cmd_path.starts_with(a))
-            .map(ToOwned::to_owned)
+    let build_dir = get_build_dir(&tcfg, cc_db);
+    for lcmd in &lcmds {
+        let cmds = &lcmd.cmd_inputs;
+        let lcmd_name = lcmd.output
+            .as_ref()
+            .map(|output| {
+                let output_path = Path::new(output);
+                output_path
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .unwrap_or_else(|| tcfg.crate_name());
+        let build_dir = build_dir.join(&lcmd_name);
+
+        // Compute the common ancestor of all input files
+        // FIXME: this is quadratic-time in the length of the ancestor path
+        let mut ancestor_path = cmds
+            .first()
+            .map(|cmd| cmd.abs_file())
             .unwrap_or_else(PathBuf::new);
-    }
+        for cmd in &cmds[1..] {
+            let cmd_path = cmd.abs_file();
+            ancestor_path = ancestor_path
+                .ancestors()
+                .find(|a| cmd_path.starts_with(a))
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(PathBuf::new);
+        }
 
-    let results = cmds
-        .iter()
-        .map(|cmd| transpile_single(&tcfg, cmd.abs_file(), &ancestor_path, cc_db, extra_clang_args))
-        .collect::<Vec<TranspileResult>>();
-    let mut modules = vec![];
-    let mut modules_skipped = false;
-    let mut pragmas = PragmaSet::new();
-    let mut crates = CrateSet::new();
-    for res in results {
-        let (module, pragma_vec, crate_set) = res;
-        modules.push(module);
+        let results = cmds
+            .iter()
+            .map(|cmd| transpile_single(&tcfg, cmd.abs_file(),
+                                        &ancestor_path,
+                                        &build_dir,
+                                        cc_db,
+                                        extra_clang_args))
+            .collect::<Vec<TranspileResult>>();
+        let mut modules = vec![];
+        let mut modules_skipped = false;
+        let mut pragmas = PragmaSet::new();
+        let mut crates = CrateSet::new();
+        for res in results {
+            let (module, pragma_vec, crate_set) = res;
+            modules.push(module);
 
-        if let Some(pv) = pragma_vec {
-            for (key, vals) in pv {
-                for val in vals {
-                    pragmas.insert((key, val));
+            if let Some(pv) = pragma_vec {
+                for (key, vals) in pv {
+                    for val in vals {
+                        pragmas.insert((key, val));
+                    }
+                }
+            } else {
+                modules_skipped = true;
+            }
+
+            if let Some(cs) = crate_set {
+                crates.extend(cs);
+            }
+        }
+        pragmas.sort();
+        crates.sort();
+
+        if tcfg.emit_build_files {
+            if modules_skipped {
+                // If we skipped a file, we may not have collected all required pragmas
+                warn!("Can't emit build files after incremental transpiler run; skipped.");
+                return;
+            }
+            let crate_file = emit_build_files(&tcfg, &lcmd_name, &build_dir,
+                                              modules, pragmas, crates,
+                                              &lcmd);
+            // We only run the reorganization refactoring if we emitted a fresh crate file
+            if crate_file.is_some() && !tcfg.disable_refactoring {
+                if tcfg.reorganize_definitions {
+                    reorganize_definitions(&build_dir).unwrap_or_else(|e| {
+                        warn!("Failed to reorganize definitions. {}", e.as_fail());
+                    })
                 }
             }
-        } else {
-            modules_skipped = true;
-        }
-
-        if let Some(cs) = crate_set {
-            crates.extend(cs);
         }
     }
-    pragmas.sort();
-    crates.sort();
-
-    if tcfg.emit_build_files {
-        if modules_skipped {
-            // If we skipped a file, we may not have collected all required pragmas
-            warn!("Can't emit build files after incremental transpiler run; skipped.");
-            return;
-        }
-        let build_dir = get_build_dir(&tcfg, cc_db);
-        let crate_file = emit_build_files(&tcfg, &build_dir, modules, pragmas, crates);
-        // We only run the reorganization refactoring if we emitted a fresh crate file
-        if crate_file.is_some() && !tcfg.disable_refactoring {
-            if tcfg.reorganize_definitions {
-                reorganize_definitions(&build_dir).unwrap_or_else(|e| {
-                    warn!("Failed to reorganize definitions. {}", e.as_fail());
-                })
-            }
-        }
-    }
+    // TODO: create top-level workspace
 }
 
 /// Ensure that clang can locate the system headers on macOS 10.14+.
@@ -331,10 +356,11 @@ fn transpile_single(
     tcfg: &TranspilerConfig,
     input_path: PathBuf,
     ancestor_path: &Path,
+    build_dir: &Path,
     cc_db: &Path,
     extra_clang_args: &[&str],
 ) -> TranspileResult {
-    let output_path = get_output_path(tcfg, &input_path, ancestor_path);
+    let output_path = get_output_path(tcfg, &input_path, ancestor_path, build_dir);
     if output_path.exists() && !tcfg.overwrite_existing {
         println!("Skipping existing file {}", output_path.display());
         return (output_path, None, None);
@@ -408,7 +434,12 @@ fn transpile_single(
     (output_path, Some(pragmas), Some(crates))
 }
 
-fn get_output_path(tcfg: &TranspilerConfig, input_path: &PathBuf, ancestor_path: &Path) -> PathBuf {
+fn get_output_path(
+    tcfg: &TranspilerConfig,
+    input_path: &PathBuf,
+    ancestor_path: &Path,
+    build_dir: &Path,
+) -> PathBuf {
     let mut path_buf = input_path.clone();
 
     // When an output file name is not explictly specified, we should convert files
@@ -423,16 +454,16 @@ fn get_output_path(tcfg: &TranspilerConfig, input_path: &PathBuf, ancestor_path:
     path_buf.set_file_name(file_name);
     path_buf.set_extension("rs");
 
-    if let Some(output_dir) = &tcfg.output_dir {
+    if tcfg.output_dir.is_some() {
         let path_buf = path_buf.strip_prefix(ancestor_path)
             .expect("Couldn't strip common ancestor path");
 
-        // Place the source files in output_dir/src/
-        let mut output_path = output_dir.clone();
+        // Place the source files in build_dir/src/
+        let mut output_path = build_dir.to_path_buf();
         output_path.push("src");
         for elem in path_buf.iter() {
             let path = Path::new(elem);
-            let name = get_path_module_name(&path, false, true).unwrap();
+            let name = get_module_name(&path, false, true).unwrap();
             output_path.push(name);
         }
 

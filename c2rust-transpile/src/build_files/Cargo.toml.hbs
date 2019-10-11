@@ -11,7 +11,7 @@ autobins = false
 [lib]
 name = "{{crate_rust_name}}"
 path = "{{lib_rs_file}}"
-crate-type = ["lib", "staticlib"]
+crate-type = [{{{crate_types}}}]
 {{#each binaries}}
 [[bin]]
 path = "{{path}}"

@@ -12,9 +12,10 @@ use self::pathdiff::diff_paths;
 use serde_json::json;
 
 use super::TranspilerConfig;
+use super::compile_cmds::LinkCmd;
 use crate::CrateSet;
 use crate::PragmaSet;
-use crate::get_path_module_name;
+use crate::get_module_name;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -62,10 +63,12 @@ pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
 /// existed already).
 pub fn emit_build_files(
     tcfg: &TranspilerConfig,
+    crate_name: &str,
     build_dir: &Path,
     modules: Vec<PathBuf>,
     pragmas: PragmaSet,
     crates: CrateSet,
+    link_cmd: &LinkCmd,
 ) -> Option<PathBuf> {
     let mut reg = Handlebars::new();
 
@@ -76,7 +79,14 @@ pub fn emit_build_files(
     reg.register_template_string("build.rs", include_str!("build.rs.hbs"))
         .unwrap();
 
-    emit_cargo_toml(tcfg, &reg, &build_dir, &modules, &crates);
+    if !build_dir.exists() {
+        fs::create_dir_all(&build_dir).expect(&format!(
+            "couldn't create build directory: {}",
+            build_dir.display()
+        ));
+    }
+
+    emit_cargo_toml(tcfg, &reg, crate_name, &build_dir, &modules, &crates, &link_cmd);
     if tcfg.translate_valist {
         emit_rust_toolchain(tcfg, &build_dir);
     }
@@ -144,21 +154,22 @@ fn convert_module_list(
     let mut res = vec![];
     let mut module_tree = ModuleTree(BTreeMap::new());
     for m in &modules {
-        if m.starts_with(build_dir) {
-            // The module is inside the build directory, use nested modules
-            let relpath = m.strip_prefix(build_dir)
-                .expect("Couldn't strip path prefix");
-            let mut cur = &mut module_tree;
-            for sm in relpath.iter() {
-                let path = Path::new(sm);
-                let name = get_path_module_name(&path, true, false).unwrap();
-                cur = cur.0.entry(name).or_default();
+        match m.strip_prefix(build_dir) {
+            Ok(relpath) => {
+                // The module is inside the build directory, use nested modules
+                let mut cur = &mut module_tree;
+                for sm in relpath.iter() {
+                    let path = Path::new(sm);
+                    let name = get_module_name(&path, true, false).unwrap();
+                    cur = cur.0.entry(name).or_default();
+                }
             }
-        } else {
-            let relpath = diff_paths(m, build_dir).unwrap();
-            let path = Some(relpath.to_str().unwrap().to_string());
-            let name = get_path_module_name(m, true, false).unwrap();
-            res.push(Module { path, name, open: false, close: false });
+            Err(_) => {
+                let relpath = diff_paths(m, build_dir).unwrap();
+                let path = Some(relpath.to_str().unwrap().to_string());
+                let name = get_module_name(m, true, false).unwrap();
+                res.push(Module { path, name, open: false, close: false });
+            }
         }
     }
     module_tree.linearize(&mut res);
@@ -230,17 +241,20 @@ fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
 fn emit_cargo_toml(
     tcfg: &TranspilerConfig,
     reg: &Handlebars,
+    crate_name: &str,
     build_dir: &Path,
     modules: &[PathBuf],
     crates: &CrateSet,
+    link_cmd: &LinkCmd,
 ) {
     // rust_checks_path is gone because we don't want to refer to the source
     // path but instead want the cross-check libs to be installed via cargo.
 
     let binaries = convert_module_list(tcfg, build_dir, modules.to_owned(), ModuleSubset::Binaries);
     let json = json!({
-        "crate_name": tcfg.crate_name(),
-        "crate_rust_name": tcfg.crate_name().replace('-', "_"),
+        "crate_name": crate_name,
+        "crate_rust_name": crate_name.replace('-', "_"),
+        "crate_types": link_cmd.r#type.as_cargo_types(),
         "lib_rs_file": get_lib_rs_file_name(tcfg),
         "binaries": binaries,
         "cross_checks": tcfg.cross_checks,

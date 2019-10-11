@@ -109,7 +109,7 @@ def convert_entries(entries, out_dir=None):
             "inputs": c_objects + ei.rest_inputs, # FIXME: wrong order???
             "libs": ei.libs,
             "lib_dirs": ei.lib_dirs,
-            "shared_lib": 1 if ei.shared_lib else 0,
+            "type": "shared" if ei.shared_lib else "exe",
             # TODO: parse and add in other linker flags
             # for now, we don't do this because rustc doesn't use them
             })
