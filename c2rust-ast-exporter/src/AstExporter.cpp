@@ -995,11 +995,7 @@ class TranslateASTVisitor final
                     // into); clang does this conversion, but rustc doesn't
                     convertedConstraint += '*';
                 }
-                // FIXME: we need the equivalent of clang's `SimplifyConstraint`
-                auto s = constraint.c_str();
-                while (*s == '=' || *s == '+' || *s == '&')
-                    s++;
-                convertedConstraint += this->Context->getTargetInfo().convertConstraint(s);
+                convertedConstraint += SimplifyConstraint(constraint);
                 outputs.push_back(convertedConstraint);
                 output_infos.push_back(std::move(info));
             }
@@ -1013,9 +1009,7 @@ class TranslateASTVisitor final
                     // See above
                     convertedConstraint += '*';
                 }
-                // FIXME: we need the equivalent of clang's `SimplifyConstraint`
-                auto s = constraint.str().c_str();
-                convertedConstraint += this->Context->getTargetInfo().convertConstraint(s);
+                convertedConstraint += SimplifyConstraint(constraint.str());
                 inputs.emplace_back(convertedConstraint);
             }
             for (unsigned i = 0, num = E->getNumClobbers(); i < num; ++i) {
@@ -1027,6 +1021,35 @@ class TranslateASTVisitor final
             cbor_encode_string_array(local, ArrayRef<std::string>(clobbers));
         });
         return true;
+    }
+
+    std::string SimplifyConstraint(const std::string &constraint) {
+        std::string res;
+        const char *p = constraint.c_str();
+        while (*p) {
+            switch (*p) {
+            case '=':
+            case '+':
+            case '*':
+                break;
+
+            case 'g':
+                res += "imr";
+                break;
+
+            case ',':
+                res += '|';
+                break;
+
+            // TODO: handle more cases
+
+            default:
+                res += this->Context->getTargetInfo().convertConstraint(p);
+                break;
+            }
+            p++;
+        }
+        return res;
     }
 
     //
