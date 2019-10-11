@@ -6,11 +6,11 @@ use syntax::attr;
 use syntax::source_map::{self, SourceMap, Spanned};
 use syntax::token::{self, BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
 use syntax::parse::lexer::comments;
-use syntax::parse;
 use syntax::ptr::P;
 use syntax::sess::ParseSess;
 use syntax::symbol::{kw, sym};
 use syntax::tokenstream::{self, TokenStream, TokenTree};
+use syntax::util::classify;
 
 use syntax_pos::{self, BytePos};
 use syntax_pos::{FileName, Span};
@@ -1695,7 +1695,7 @@ impl<'a> State<'a> {
             ast::StmtKind::Expr(ref expr) => {
                 self.space_if_not_bol();
                 self.print_expr_outer_attr_style(expr, false);
-                if syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                if classify::expr_requires_semi_to_be_stmt(expr) {
                     self.s.word(";");
                 }
             }
@@ -2013,7 +2013,7 @@ impl<'a> State<'a> {
             (&ast::ExprKind::Let { .. }, _) if !syntax_priv::needs_par_as_let_scrutinee(prec) => {
                 parser::PREC_FORCE_PAREN
             }
-            _ if !is_inline && syntax_priv::expr_requires_semi_to_be_stmt(lhs) => {
+            _ if !is_inline && classify::expr_requires_semi_to_be_stmt(lhs) => {
                 parser::PREC_FORCE_PAREN
             }
             _ => left_prec,
@@ -2094,7 +2094,7 @@ impl<'a> State<'a> {
                 self.print_literal(lit);
             }
             ast::ExprKind::Cast(ref expr, ref ty) => {
-                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                let prec = if !is_inline && !classify::expr_requires_semi_to_be_stmt(expr) {
                     parser::PREC_FORCE_PAREN
                 } else {
                     AssocOp::As.precedence() as i8
@@ -2105,7 +2105,7 @@ impl<'a> State<'a> {
                 self.print_type(ty);
             }
             ast::ExprKind::Type(ref expr, ref ty) => {
-                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                let prec = if !is_inline && !classify::expr_requires_semi_to_be_stmt(expr) {
                     parser::PREC_FORCE_PAREN
                 } else {
                     AssocOp::Colon.precedence() as i8
@@ -2206,7 +2206,7 @@ impl<'a> State<'a> {
                 self.s.word(".await");
             }
             ast::ExprKind::Assign(ref lhs, ref rhs) => {
-                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(lhs) {
+                let prec = if !is_inline && !classify::expr_requires_semi_to_be_stmt(lhs) {
                     parser::PREC_FORCE_PAREN
                 } else {
                     AssocOp::Assign.precedence() as i8
@@ -2217,7 +2217,7 @@ impl<'a> State<'a> {
                 self.print_expr_maybe_paren(rhs, prec);
             }
             ast::ExprKind::AssignOp(op, ref lhs, ref rhs) => {
-                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(lhs) {
+                let prec = if !is_inline && !classify::expr_requires_semi_to_be_stmt(lhs) {
                     parser::PREC_FORCE_PAREN
                 } else {
                     AssocOp::Assign.precedence() as i8
