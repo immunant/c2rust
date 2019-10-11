@@ -90,7 +90,7 @@ To translate C files specified in `compile_commands.json` (see below), run the `
 
 (The `c2rust refactor` tool is also available for refactoring Rust code, see [refactoring](c2rust-refactor/)).
 
-The translator requires the exact compiler commands used to build the C code. To provide this information, you will need a [standard](https://clang.llvm.org/docs/JSONCompilationDatabase.html) `compile_commands.json` file. Many build systems can automatically generate this file, as it is used by many other tools, but see [below](#generating-compile_commandsjson-files) for recommendations on how to generate this file for common build processes.
+The translator requires the exact compiler commands used to build the C code. This information is provided via a compilation database file named `compile_commands.json`. (Read more about compilation databases [here](https://clang.llvm.org/docs/JSONCompilationDatabase.html) and [here](https://sarcasm.github.io/notes/dev/compilation-database.html)). Many build systems can automatically generate this file; we show a few examples [below](#generating-compile_commandsjson-files).
 
 Once you have a `compile_commands.json` file describing the C build, translate the C code to Rust with the following command:
 
