@@ -90,7 +90,7 @@ pub fn emit_build_files(
     if tcfg.translate_valist {
         emit_rust_toolchain(tcfg, &build_dir);
     }
-    emit_build_rs(tcfg, &reg, &build_dir);
+    emit_build_rs(tcfg, &reg, &build_dir, link_cmd);
     emit_lib_rs(tcfg, &reg, &build_dir, modules, pragmas, &crates)
 }
 
@@ -185,8 +185,15 @@ fn get_lib_rs_file_name(tcfg: &TranspilerConfig) -> &str {
 }
 
 /// Emit `build.rs` to make it easier to link in native libraries
-fn emit_build_rs(tcfg: &TranspilerConfig, reg: &Handlebars, build_dir: &Path) -> Option<PathBuf> {
-    let json = json!({});
+fn emit_build_rs(
+    tcfg: &TranspilerConfig,
+    reg: &Handlebars,
+    build_dir: &Path,
+    link_cmd: &LinkCmd,
+) -> Option<PathBuf> {
+    let json = json!({
+        "libraries": link_cmd.libs,
+    });
     let output = reg.render("build.rs", &json).unwrap();
     let output_path = build_dir.join("build.rs");
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)
