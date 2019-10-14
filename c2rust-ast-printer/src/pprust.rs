@@ -6,8 +6,9 @@ use syntax::attr;
 use syntax::source_map::{self, SourceMap, Spanned};
 use syntax::parse::token::{self, BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
 use syntax::parse::lexer::comments;
-use syntax::parse::{ParseSess};
+use syntax::parse;
 use syntax::ptr::P;
+use syntax::sess::ParseSess;
 use syntax::symbol::{kw, sym};
 use syntax::tokenstream::{self, TokenStream, TokenTree};
 
