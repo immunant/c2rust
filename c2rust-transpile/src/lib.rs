@@ -56,7 +56,7 @@ use crate::c_ast::*;
 pub use crate::diagnostics::Diagnostic;
 use c2rust_ast_exporter as ast_exporter;
 
-use crate::build_files::{emit_build_files, get_build_dir};
+use crate::build_files::{emit_build_files, get_build_dir, emit_workspace_files};
 use crate::compile_cmds::get_compile_commands;
 use crate::convert_type::RESERVED_NAMES;
 pub use crate::translator::ReplaceMode;
@@ -183,6 +183,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let mut clang_args: Vec<&str> = clang_args.iter().map(AsRef::as_ref).collect();
     clang_args.extend_from_slice(extra_clang_args);
 
+    let mut workspace_members = vec![];
     let build_dir = get_build_dir(&tcfg, cc_db);
     for lcmd in &lcmds {
         let cmds = &lcmd.cmd_inputs;
@@ -266,8 +267,12 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                 }
             }
         }
+
+        workspace_members.push(lcmd_name);
     }
-    // TODO: create top-level workspace
+    if tcfg.emit_build_files {
+        emit_workspace_files(&tcfg, &build_dir, workspace_members);
+    }
 }
 
 /// Ensure that clang can locate the system headers on macOS 10.14+.

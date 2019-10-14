@@ -58,6 +58,38 @@ pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
     }
 }
 
+/// Emit the top-level `Cargo.toml` for the workspace.
+pub fn emit_workspace_files(
+    tcfg: &TranspilerConfig,
+    build_dir: &Path,
+    workspace_members: Vec<String>,
+) {
+    let mut reg = Handlebars::new();
+
+    reg.register_template_string("Cargo.toml", include_str!("Cargo.toml.workspace.hbs"))
+        .unwrap();
+
+    emit_workspace_cargo_toml(tcfg, &reg, &build_dir, workspace_members);
+    if tcfg.translate_valist {
+        emit_rust_toolchain(tcfg, &build_dir);
+    }
+}
+
+fn emit_workspace_cargo_toml(
+    tcfg: &TranspilerConfig,
+    reg: &Handlebars,
+    build_dir: &Path,
+    workspace_members: Vec<String>,
+) {
+    let json = json!({
+        "members": workspace_members,
+    });
+    let file_name = "Cargo.toml";
+    let output_path = build_dir.join(file_name);
+    let output = reg.render(file_name, &json).unwrap();
+    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
+}
+
 /// Emit `Cargo.toml` and `lib.rs` for a library or `main.rs` for a binary.
 /// Returns the path to `lib.rs` or `main.rs` (or `None` if the output file
 /// existed already).
@@ -87,9 +119,6 @@ pub fn emit_build_files(
     }
 
     emit_cargo_toml(tcfg, &reg, crate_name, &build_dir, &modules, &crates, &link_cmd);
-    if tcfg.translate_valist {
-        emit_rust_toolchain(tcfg, &build_dir);
-    }
     emit_build_rs(tcfg, &reg, &build_dir, link_cmd);
     emit_lib_rs(tcfg, &reg, &build_dir, modules, pragmas, &crates)
 }
