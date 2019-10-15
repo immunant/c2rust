@@ -184,19 +184,19 @@ fn convert_module_list(
     let mut module_tree = ModuleTree(BTreeMap::new());
     for m in &modules {
         match m.strip_prefix(build_dir) {
-            Ok(relpath) => {
+            Ok(relpath) if !tcfg.is_binary(&m) => {
                 // The module is inside the build directory, use nested modules
                 let mut cur = &mut module_tree;
                 for sm in relpath.iter() {
                     let path = Path::new(sm);
-                    let name = get_module_name(&path, true, false).unwrap();
+                    let name = get_module_name(&path, true, false, false).unwrap();
                     cur = cur.0.entry(name).or_default();
                 }
             }
-            Err(_) => {
+            _ => {
                 let relpath = diff_paths(m, build_dir).unwrap();
                 let path = Some(relpath.to_str().unwrap().to_string());
-                let name = get_module_name(m, true, false).unwrap();
+                let name = get_module_name(m, true, false, false).unwrap();
                 res.push(Module { path, name, open: false, close: false });
             }
         }

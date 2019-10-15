@@ -120,7 +120,7 @@ pub struct TranspilerConfig {
 impl TranspilerConfig {
     fn is_binary(&self, file: &Path) -> bool {
         let file = Path::new(file.file_stem().unwrap());
-        let name = get_module_name(file, false, false).unwrap();
+        let name = get_module_name(file, false, false, false).unwrap();
         self.binaries.contains(&name)
     }
 
@@ -154,7 +154,12 @@ fn str_to_ident_checked(filename: &Option<String>, check_reserved: bool) -> Opti
     })
 }
 
-fn get_module_name(file: &Path, check_reserved: bool, keep_extension: bool) -> Option<String> {
+fn get_module_name(
+    file: &Path,
+    check_reserved: bool,
+    keep_extension: bool,
+    full_path: bool
+) -> Option<String> {
     let is_rs = file.extension().map(|ext| ext == "rs").unwrap_or(false);
     let fname = if is_rs {
         file.file_stem()
@@ -166,7 +171,12 @@ fn get_module_name(file: &Path, check_reserved: bool, keep_extension: bool) -> O
     if keep_extension && is_rs {
         name.push_str(".rs");
     }
-    file.with_file_name(name).to_str().map(String::from)
+    let file = if full_path {
+        file.with_file_name(name)
+    } else {
+        Path::new(&name).to_path_buf()
+    };
+    file.to_str().map(String::from)
 }
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
@@ -469,7 +479,7 @@ fn get_output_path(
         output_path.push("src");
         for elem in path_buf.iter() {
             let path = Path::new(elem);
-            let name = get_module_name(&path, false, true).unwrap();
+            let name = get_module_name(&path, false, true, false).unwrap();
             output_path.push(name);
         }
 
