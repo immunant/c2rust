@@ -1,6 +1,6 @@
 #![feature(plugin_registrar, rustc_private)]
 
-extern crate rustc_plugin;
+extern crate rustc_driver;
 extern crate syntax;
 
 // Unused: #[macro_use]
@@ -14,7 +14,7 @@ extern crate smallvec;
 
 extern crate c2rust_xcheck_config as xcfg;
 
-use rustc_plugin::Registry;
+use rustc_driver::plugin::Registry;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -27,16 +27,17 @@ use std::path::PathBuf;
 use smallvec::SmallVec;
 
 use syntax::ast;
+use syntax::attr;
 use syntax::edition::Edition;
 use syntax::ext::base::{Annotatable, ExtCtxt, MultiItemModifier, SyntaxExtension, SyntaxExtensionKind};
-use syntax::ext::build::AstBuilder;
 use syntax::mut_visit::{self, ExpectOne, MutVisitor};
 use syntax::parse::{new_parser_from_source_str, parse_stream_from_source_str, token, ParseSess};
-use syntax::print::pprust;
 use syntax::ptr::P;
-use syntax::source_map::{FileLoader, FileName, RealFileLoader, Span, Spanned, DUMMY_SP};
+use syntax::source_map::{FileLoader, FileName, RealFileLoader, Span, DUMMY_SP};
 use syntax::symbol::{Ident, Symbol};
 use syntax::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
+
+use c2rust_ast_printer::pprust;
 
 mod default_config;
 
@@ -89,20 +90,20 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
 
     fn expr_option_some(&self, sp: Span, expr: P<ast::Expr>) -> P<ast::Expr> {
         let idents = vec![
-            self.ident_of("core"),
-            self.ident_of("option"),
-            self.ident_of("Option"),
-            self.ident_of("Some"),
+            self.ident_of("core", sp),
+            self.ident_of("option", sp),
+            self.ident_of("Option", sp),
+            self.ident_of("Some", sp),
         ];
         self.expr_call_global(sp, idents, vec![expr])
     }
 
     fn expr_option_none(&self, sp: Span) -> P<ast::Expr> {
         let idents = vec![
-            self.ident_of("core"),
-            self.ident_of("option"),
-            self.ident_of("Option"),
-            self.ident_of("None"),
+            self.ident_of("core", sp),
+            self.ident_of("option", sp),
+            self.ident_of("Option", sp),
+            self.ident_of("None", sp),
         ];
         self.expr_path(self.path_global(sp, idents))
     }
@@ -114,8 +115,8 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
         delim: ast::MacDelimiter,
         tts: TokenStream,
     ) -> P<ast::Expr> {
-        let node = ast::Mac_ { path, delim, tts };
-        self.expr(span, ast::ExprKind::Mac(Spanned { node, span }))
+        let node = ast::Mac { path, delim, tts, span, prior_type_ascription: None };
+        self.expr(span, ast::ExprKind::Mac(node))
     }
 
     fn item_mac(
@@ -126,13 +127,13 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
         tts: TokenStream,
     ) -> P<ast::Item> {
         let name = Ident::invalid();
-        let node = ast::Mac_ { path, delim, tts };
+        let node = ast::Mac { path, delim, tts, span, prior_type_ascription: None };
         let attrs = vec![];
         self.item(
             span,
             name,
             attrs,
-            ast::ItemKind::Mac(Spanned { node, span }),
+            ast::ItemKind::Mac(node),
         )
     }
 
@@ -145,12 +146,12 @@ impl<'a> AstExtBuilder for ExtCtxt<'a> {
         style: ast::MacStmtStyle,
         attrs: Vec<ast::Attribute>,
     ) -> ast::Stmt {
-        let node = ast::Mac_ { path, delim, tts };
-        let node = ast::StmtKind::Mac(P((Spanned { node, span }, style, attrs.into())));
+        let kind = ast::Mac { path, delim, tts, span, prior_type_ascription: None };
+        let kind = ast::StmtKind::Mac(P((kind, style, attrs.into())));
         ast::Stmt {
             id: ast::DUMMY_NODE_ID,
             span,
-            node,
+            kind,
         }
     }
 
@@ -257,7 +258,7 @@ impl CrossCheckBuilder for xcfg::XCheckType {
         tag_str: &str,
         ident: ast::Ident,
     ) -> ast::Stmt {
-        let invalid_ident = ast::Ident::from_str("__c2rust_invalid").gensym();
+        let invalid_ident = ast::Ident::from_str("__c2rust_invalid");
         self.build_xcheck(cx, exp, tag_str, invalid_ident, |tag, pre_hash_stmts| {
             assert!(pre_hash_stmts.is_empty());
             let name = &*ident.name.as_str();
@@ -286,16 +287,16 @@ impl CrossCheckBuilder for xcfg::XCheckType {
         let tag_path = cx.path(
             DUMMY_SP,
             vec![
-                cx.ident_of("c2rust_xcheck_runtime"),
-                cx.ident_of("xcheck"),
-                cx.ident_of(tag_str),
+                cx.ident_of("c2rust_xcheck_runtime", DUMMY_SP),
+                cx.ident_of("xcheck", DUMMY_SP),
+                cx.ident_of(tag_str, DUMMY_SP),
             ],
         );
         let tag_expr = cx.expr_path(tag_path);
         let xcheck = match *self {
             xcfg::XCheckType::Default => f(tag_expr, vec![]),
             xcfg::XCheckType::AsType(ref ty_str) => {
-                let var_ident = cx.ident_of("__c2rust_cast_val").gensym();
+                let var_ident = cx.ident_of("__c2rust_cast_val", DUMMY_SP);
                 // let __c2rust_cast_val = *$val_ref_ident as $ty;
                 let val_cast_let = {
                     let ref_expr = cx.expr_ident(DUMMY_SP, val_ref_ident.clone());
@@ -337,8 +338,8 @@ impl CrossCheckBuilder for xcfg::XCheckType {
                 )
             }
         };
-        let xcheck_path = cx.path_ident(DUMMY_SP, cx.ident_of("cross_check_iter"));
-        let xcheck_arg = cx.expr_method_call(DUMMY_SP, xcheck, cx.ident_of("into_iter"), vec![]);
+        let xcheck_path = cx.path_ident(DUMMY_SP, cx.ident_of("cross_check_iter", DUMMY_SP));
+        let xcheck_arg = cx.expr_method_call(DUMMY_SP, xcheck, cx.ident_of("into_iter", DUMMY_SP), vec![]);
         cx.stmt_mac_fn(DUMMY_SP, xcheck_path, vec![token::NtExpr(xcheck_arg)])
     }
 }
@@ -509,7 +510,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
     }
 
     // Get the cross-check block for this argument
-    fn build_arg_xcheck(&self, arg: &ast::Arg) -> ast::Stmt {
+    fn build_arg_xcheck(&self, arg: &ast::Param) -> ast::Stmt {
         match arg.pat.kind {
             ast::PatKind::Ident(_, ref ident, _) => {
                 // Parameter pattern is just an identifier,
@@ -522,7 +523,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     .get(&arg_idx)
                     .unwrap_or(&self.config().inherited.all_args);
                 // FIXME: no gensym()???
-                let val_ref_ident = self.cx.ident_of("__c2rust_val_ref").gensym();
+                let val_ref_ident = self.cx.ident_of("__c2rust_val_ref", DUMMY_SP);
                 arg_xcheck_cfg.build_xcheck(
                     self.cx,
                     self.expander,
@@ -534,7 +535,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                         let (ahasher, shasher) = self.get_hasher_pair();
                         let mac_path = self
                             .cx
-                            .path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_emit_xcheck"));
+                            .path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_emit_xcheck", DUMMY_SP));
                         let mut mac_args = vec![
                             token::NtExpr(tag),
                             token::NtIdent(ident.clone(), false),
@@ -589,19 +590,18 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         let args = map
             .into_iter()
             .map(|(arg, val)| {
-                let arg_name = self.cx.name_of(arg);
+                let arg_name = self.cx.ident_of(arg, sp);
                 match val {
-                    AttrValue::Nothing => self.cx.meta_list_item_word(sp, arg_name),
+                    AttrValue::Nothing => attr::mk_nested_word_item(arg_name),
                     AttrValue::Str(s) => {
                         let arg_lit = ast::LitKind::Str(Symbol::intern(&s), ast::StrStyle::Cooked);
-                        let arg_mi = self.cx.meta_name_value(sp, arg_name, arg_lit);
+                        let arg_mi = attr::mk_name_value_item(arg_name, arg_lit, sp);
                         ast::NestedMetaItem::MetaItem(arg_mi)
                     }
                 }
             })
             .collect();
-        self.cx
-            .meta_list(sp, self.cx.name_of("cross_check_hash"), args)
+        attr::mk_list_item(self.cx.ident_of("cross_check_hash", sp), args)
     }
 
     fn build_extra_xchecks(&self, extra_xchecks: &[xcfg::ExtraXCheck]) -> Vec<ast::Stmt> {
@@ -622,10 +622,10 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     xcfg::XCheckTag::FunctionArg => "FUNCTION_ARG_TAG",
                     xcfg::XCheckTag::FunctionReturn => "FUNCTION_RETURN_TAG",
                 };
-                let tag_ident = self.cx.ident_of(tag_str);
+                let tag_ident = self.cx.ident_of(tag_str, DUMMY_SP);
                 let mac_path = self
                     .cx
-                    .path_ident(DUMMY_SP, self.cx.ident_of("cross_check_raw"));
+                    .path_ident(DUMMY_SP, self.cx.ident_of("cross_check_raw", DUMMY_SP));
                 self.cx.stmt_mac_fn(
                     DUMMY_SP,
                     mac_path,
@@ -691,7 +691,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             let body_lambda_call = self.cx.expr_call(body_span, body_lambda, vec![]);
             // FIXME: should this be gensym()???
             // Without it, xchecks can access it, which may be desirable
-            let result_ident = self.cx.ident_of("__c2rust_fn_result");
+            let result_ident = self.cx.ident_of("__c2rust_fn_result", DUMMY_SP);
             let result_let = self
                 .cx
                 .stmt_let(body_span, false, result_ident, body_lambda_call);
@@ -705,7 +705,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
             );
             new_stmts.push(exit_xcheck);
 
-            let val_ref_ident = self.cx.ident_of("__c2rust_val_ref").gensym();
+            let val_ref_ident = self.cx.ident_of("__c2rust_val_ref", DUMMY_SP);
             let result_xcheck = cfg.inherited.ret.build_xcheck(
                 self.cx,
                 self.expander,
@@ -717,7 +717,7 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     let (ahasher, shasher) = self.get_hasher_pair();
                     let mac_path = self
                         .cx
-                        .path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_emit_xcheck"));
+                        .path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_emit_xcheck", DUMMY_SP));
                     let mut mac_args = vec![
                         token::NtExpr(tag),
                         token::NtIdent(result_ident, false),
@@ -755,15 +755,15 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
         let custom_hash_format = &self.config().struct_config().custom_hash_format;
         let mac_path = self
             .cx
-            .path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_impl_union_hash"));
+            .path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_impl_union_hash", DUMMY_SP));
         let mut mac_args = vec![token::NtIdent(union_ident, false)];
         if let Some(ref custom_hash) = *custom_hash_opt {
             // User provided a custom hash function, pass it to the macro
             match custom_hash_format {
                 None | Some(xcfg::CustomHashFormat::Function) => {
                     let (ahasher, shasher) = self.get_hasher_pair();
-                    let hash_fn_ident = self.cx.ident_of(custom_hash);
-                    mac_args.push(token::NtIdent(self.cx.ident_of("Function"), false));
+                    let hash_fn_ident = self.cx.ident_of(custom_hash, DUMMY_SP);
+                    mac_args.push(token::NtIdent(self.cx.ident_of("Function", DUMMY_SP), false));
                     mac_args.push(token::NtIdent(hash_fn_ident, false));
                     mac_args.push(token::NtTy(ahasher));
                     mac_args.push(token::NtTy(shasher));
@@ -778,18 +778,18 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                     let expr = p
                         .parse_expr()
                         .expect(&format!("failed to parse expr: '{}'", custom_hash));
-                    mac_args.push(token::NtIdent(self.cx.ident_of("Expression"), false));
+                    mac_args.push(token::NtIdent(self.cx.ident_of("Expression", DUMMY_SP), false));
                     mac_args.push(token::NtExpr(expr));
                 }
                 Some(xcfg::CustomHashFormat::Extern) => {
-                    let hash_fn_ident = self.cx.ident_of(custom_hash);
-                    mac_args.push(token::NtIdent(self.cx.ident_of("Extern"), false));
+                    let hash_fn_ident = self.cx.ident_of(custom_hash, DUMMY_SP);
+                    mac_args.push(token::NtIdent(self.cx.ident_of("Extern", DUMMY_SP), false));
                     mac_args.push(token::NtIdent(hash_fn_ident, false));
                 }
             }
         } else {
             // TODO: emit warning
-            mac_args.push(token::NtIdent(self.cx.ident_of("Default"), false));
+            mac_args.push(token::NtIdent(self.cx.ident_of("Default", DUMMY_SP), false));
         };
         self.cx.item_mac_fn(DUMMY_SP, mac_path, mac_args)
     }
@@ -856,17 +856,17 @@ impl<'a, 'cx, 'exp> CrossChecker<'a, 'cx, 'exp> {
                 // to every structure definition
                 if self.config().inherited.enabled {
                     let xcheck_hash_derive_attr = {
-                        let xch_sym = self.cx.name_of("CrossCheckHash");
-                        let xch = self.cx.meta_list_item_word(span, xch_sym);
-                        let attr = self.cx.meta_list(span, Symbol::intern("derive"), vec![xch]);
-                        self.cx.attribute(span, attr)
+                        let xch_ident = self.cx.ident_of("CrossCheckHash", span);
+                        let xch = attr::mk_nested_word_item(xch_ident);
+                        let attr = attr::mk_list_item(Ident::from_str("derive"), vec![xch]);
+                        self.cx.attribute(attr)
                     };
                     new_attrs.push(xcheck_hash_derive_attr);
 
                     let attr_args = self.build_hash_attr_args();
                     if !attr_args.is_empty() {
                         let attr_args = self.convert_hash_attr_map(span, attr_args);
-                        let xcheck_hash_attr = self.cx.attribute(span, attr_args);
+                        let xcheck_hash_attr = self.cx.attribute(attr_args);
                         new_attrs.push(xcheck_hash_attr);
                     }
                     #[cfg(feature = "c-hash-functions")]
@@ -955,7 +955,7 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
                     vis: item.vis,
                     span: item.span,
                     tokens: item.tokens,
-                    node: ast::ItemKind::Fn(sig.decl, sig.header, item.generics, body),
+                    kind: ast::ItemKind::Fn(sig.decl, sig.header, item.generics, body),
                 };
                 let folded_flat_items = self.flat_map_item(P(fake_item));
                 folded_flat_items
@@ -965,19 +965,19 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
                             ident,
                             attrs,
                             id,
-                            node,
+                            kind,
                             vis,
                             span,
                             tokens,
                         } = ffi.into_inner();
-                        let (sig, generics, body) = match node {
+                        let (sig, generics, body) = match kind {
                             ast::ItemKind::Fn(decl, header, generics, body) => {
                                 let sig = ast::MethodSig { header, decl };
                                 (sig, generics, body)
                             }
                             n => panic!("unexpected folded item node: {:?}", n),
                         };
-                        let node = ast::ImplItemKind::Method(sig, body);
+                        let kind = ast::ImplItemKind::Method(sig, body);
                         ast::ImplItem {
                             ident,
                             attrs,
@@ -987,14 +987,14 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
                             tokens,
                             defaultness,
                             generics,
-                            node,
+                            kind,
                         }
                     })
                     .collect()
             }
-            (node, defaultness) => {
+            (kind, defaultness) => {
                 let item = ast::ImplItem {
-                    node,
+                    kind,
                     defaultness,
                     ..item
                 };
@@ -1037,10 +1037,10 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
                                     let ident_expr = self.cx.expr_ident(ident.span, ident);
                                     let mac_path = self.cx.path_ident(
                                         DUMMY_SP,
-                                        self.cx.ident_of("cross_check_value"),
+                                        self.cx.ident_of("cross_check_value", DUMMY_SP),
                                     );
                                     let mac_args = vec![
-                                        token::NtIdent(self.cx.ident_of("UNKNOWN_TAG"), false),
+                                        token::NtIdent(self.cx.ident_of("UNKNOWN_TAG", DUMMY_SP), false),
                                         token::NtExpr(ident_expr),
                                         token::NtTy(ahasher),
                                         token::NtTy(shasher),
@@ -1068,69 +1068,73 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
         self.field_idx_stack.pop();
     }
 
-    fn visit_struct_field(&mut self, sf: &mut ast::StructField) {
-        mut_visit::noop_visit_struct_field(sf, self);
+    fn flat_map_struct_field(&mut self, sf: ast::StructField) -> SmallVec<[ast::StructField; 1]> {
+        mut_visit::noop_flat_map_struct_field(sf, self)
+            .into_iter()
+            .map(|mut sf| {
+                // Get the name of the field; the compiler should give us the name
+                // if the field is in a Struct. If it's in a Tuple, we use
+                // the field index, which we need to compute ourselves from field_idx_stack.
+                let sf_name = sf
+                    .ident
+                    .map(|ident| xcfg::FieldIndex::Str(ident.name.to_string()))
+                    .unwrap_or_else(|| {
+                        // We use field_idx_stack to keep track of the index/name
+                        // of the fields inside a VariantData
+                        let idx = self.field_idx_stack.last_mut().unwrap();
+                        let res = xcfg::FieldIndex::Int(*idx);
+                        *idx += 1;
+                        res
+                    });
 
-        // Get the name of the field; the compiler should give us the name
-        // if the field is in a Struct. If it's in a Tuple, we use
-        // the field index, which we need to compute ourselves from field_idx_stack.
-        let sf_name = sf
-            .ident
-            .map(|ident| xcfg::FieldIndex::Str(ident.name.to_string()))
-            .unwrap_or_else(|| {
-                // We use field_idx_stack to keep track of the index/name
-                // of the fields inside a VariantData
-                let idx = self.field_idx_stack.last_mut().unwrap();
-                let res = xcfg::FieldIndex::Int(*idx);
-                *idx += 1;
-                res
-            });
+                let sf_attr_xcheck = self.parse_field_attr(&sf.attrs);
+                let sf_xcfg_xcheck = self.config().struct_config().fields.get(&sf_name);
+                let sf_xcheck = sf_xcfg_xcheck.or_else(|| sf_attr_xcheck.as_ref());
+                let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
+                    match *sf_xcheck {
+                        xcfg::XCheckType::Default => None,
 
-        let sf_attr_xcheck = self.parse_field_attr(&sf.attrs);
-        let sf_xcfg_xcheck = self.config().struct_config().fields.get(&sf_name);
-        let sf_xcheck = sf_xcfg_xcheck.or_else(|| sf_attr_xcheck.as_ref());
-        let hash_attr = sf_xcheck.and_then(|sf_xcheck| {
-            match *sf_xcheck {
-                xcfg::XCheckType::Default => None,
+                        xcfg::XCheckType::AsType(ref ty) => {
+                            let mut attrs = AttrMap::new();
+                            attrs.insert("as_type", AttrValue::Str(ty.clone()));
+                            let attr_args = self.convert_hash_attr_map(sf.span, attrs);
+                            Some(self.cx.attribute(attr_args))
+                        }
 
-                xcfg::XCheckType::AsType(ref ty) => {
-                    let mut attrs = AttrMap::new();
-                    attrs.insert("as_type", AttrValue::Str(ty.clone()));
-                    let attr_args = self.convert_hash_attr_map(sf.span, attrs);
-                    Some(self.cx.attribute(sf.span, attr_args))
-                }
+                        xcfg::XCheckType::None | xcfg::XCheckType::Disabled => {
+                            let mut attrs = AttrMap::new();
+                            attrs.insert("none", AttrValue::Nothing);
+                            let attr_args = self.convert_hash_attr_map(sf.span, attrs);
+                            Some(self.cx.attribute(attr_args))
+                        }
 
-                xcfg::XCheckType::None | xcfg::XCheckType::Disabled => {
-                    let mut attrs = AttrMap::new();
-                    attrs.insert("none", AttrValue::Nothing);
-                    let attr_args = self.convert_hash_attr_map(sf.span, attrs);
-                    Some(self.cx.attribute(sf.span, attr_args))
-                }
+                        xcfg::XCheckType::Djb2(_) => unimplemented!(),
 
-                xcfg::XCheckType::Djb2(_) => unimplemented!(),
+                        xcfg::XCheckType::Fixed(id) => {
+                            // FIXME: we're passing the id in as a string because
+                            // that's how derive-macros parses it
+                            let mut attrs = AttrMap::new();
+                            let sid = format!("{}", id);
+                            attrs.insert("fixed", AttrValue::Str(sid));
+                            let attr_args = self.convert_hash_attr_map(sf.span, attrs);
+                            Some(self.cx.attribute(attr_args))
+                        }
 
-                xcfg::XCheckType::Fixed(id) => {
-                    // FIXME: we're passing the id in as a string because
-                    // that's how derive-macros parses it
-                    let mut attrs = AttrMap::new();
-                    let sid = format!("{}", id);
-                    attrs.insert("fixed", AttrValue::Str(sid));
-                    let attr_args = self.convert_hash_attr_map(sf.span, attrs);
-                    Some(self.cx.attribute(sf.span, attr_args))
-                }
+                        xcfg::XCheckType::Custom(ref s) => {
+                            let mut attrs = AttrMap::new();
+                            attrs.insert("custom", AttrValue::Str(s.clone()));
+                            let attr_args = self.convert_hash_attr_map(sf.span, attrs);
+                            Some(self.cx.attribute(attr_args))
+                        }
+                    }
+                });
 
-                xcfg::XCheckType::Custom(ref s) => {
-                    let mut attrs = AttrMap::new();
-                    attrs.insert("custom", AttrValue::Str(s.clone()));
-                    let attr_args = self.convert_hash_attr_map(sf.span, attrs);
-                    Some(self.cx.attribute(sf.span, attr_args))
-                }
-            }
-        });
-
-        // Remove #[cross_check] from attributes, then append #[cross_check_hash]
-        sf.attrs.retain(|attr| !attr.check_name(Symbol::intern("cross_check")));
-        sf.attrs.extend(hash_attr.into_iter());
+                // Remove #[cross_check] from attributes, then append #[cross_check_hash]
+                sf.attrs.retain(|attr| !attr.check_name(Symbol::intern("cross_check")));
+                sf.attrs.extend(hash_attr.into_iter());
+                sf
+            })
+            .collect()
     }
 
     fn visit_expr(&mut self, expr: &mut P<ast::Expr>) {
@@ -1165,10 +1169,10 @@ impl<'a, 'cx, 'exp> MutVisitor for CrossChecker<'a, 'cx, 'exp> {
                     let ty_name = folded_ni.ident;
                     let ty_suffix = &"struct"; // FIXME
                     let hash_fn_name = format!("__c2rust_hash_{}_{}", ty_name, ty_suffix);
-                    let hash_fn_ident = self.cx.ident_of(&hash_fn_name);
+                    let hash_fn_ident = self.cx.ident_of(&hash_fn_name, DUMMY_SP);
                     let mac_path = self
                         .cx
-                        .path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_import_extern_hash"));
+                        .path_ident(DUMMY_SP, self.cx.ident_of("__c2rust_import_extern_hash", DUMMY_SP));
                     let mac_args = vec![
                         token::NtIdent(ty_name, false),
                         token::NtIdent(hash_fn_ident, false),
@@ -1258,10 +1262,7 @@ impl CrossCheckExpander {
     fn find_span_scope(&self, sp: Span) -> Option<xcfg::scopes::ScopeConfig> {
         let macro_scopes = self.macro_scopes.borrow();
         macro_scopes.get(&sp).cloned().or_else(|| {
-            sp.ctxt()
-                .outer()
-                .expn_info()
-                .and_then(|ei| self.find_span_scope(ei.call_site))
+            sp.parent().and_then(|sp| self.find_span_scope(sp))
         })
     }
 

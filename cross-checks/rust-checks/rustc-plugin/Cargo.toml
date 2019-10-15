@@ -21,6 +21,7 @@ c-hash-functions = []
 matches = "0.1"
 serde = "1.0"
 serde_yaml = "0.7"
+c2rust-ast-printer = { path = "../../../c2rust-ast-printer", version = "0.11.0" }
 
 [dependencies.c2rust-xcheck-config]
 path = "../config"

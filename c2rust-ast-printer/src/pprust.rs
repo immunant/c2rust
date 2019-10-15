@@ -357,7 +357,7 @@ fn token_to_string_ext(token: &Token, convert_dollar_crate: bool) -> String {
     token_kind_to_string_ext(&token.kind, convert_dollar_crate)
 }
 
-crate fn nonterminal_to_string(nt: &Nonterminal) -> String {
+pub fn nonterminal_to_string(nt: &Nonterminal) -> String {
     match *nt {
         token::NtExpr(ref e)        => expr_to_string(e),
         token::NtMeta(ref e)        => attr_item_to_string(e),

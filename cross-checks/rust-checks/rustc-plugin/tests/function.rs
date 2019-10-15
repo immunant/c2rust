@@ -1,4 +1,4 @@
-#![feature(plugin, custom_attribute)]
+#![feature(plugin, custom_attribute, custom_inner_attributes)]
 #![plugin(c2rust_xcheck_plugin)]
 #![cross_check(none)]
 
