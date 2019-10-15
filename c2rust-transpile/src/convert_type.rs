@@ -451,6 +451,11 @@ impl TypeConverter {
             CTypeKind::Decayed(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
             CTypeKind::Paren(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
 
+            CTypeKind::Typedef(decl) => match &ctxt.index(decl).kind {
+                CDeclKind::Typedef { typ, .. } => self.convert_knr_function(ctxt, typ.ctype, params),
+                _ => panic!("Typedef decl did not point to a typedef"),
+            }
+
             ref kind @ _ => panic!("ctype parameter must be a function instead of {:?}", kind)
         }
     }
