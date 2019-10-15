@@ -157,6 +157,12 @@ pub enum RustcArgSource {
     Cargo(CargoTarget),
 }
 
+#[derive(Clone, Debug)]
+struct RustcArgs {
+    args: Vec<String>,
+    cwd: Option<PathBuf>,
+}
+
 pub struct Options {
     pub rewrite_modes: Vec<file_io::OutputMode>,
     pub commands: Vec<Command>,
@@ -215,11 +221,14 @@ fn get_rustc_executable(path: &Path) -> String {
 }
 
 #[cfg_attr(feature = "profile", flame)]
-fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<Vec<String>> {
+fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<RustcArgs> {
     match src {
         RustcArgSource::CmdLine(mut args) => {
-            let mut rustc_args = vec![get_rustc_executable(Path::new("rustc"))];
-            rustc_args.append(&mut args);
+            let mut rustc_args = RustcArgs {
+                args: vec![get_rustc_executable(Path::new("rustc"))],
+                cwd: None,
+            };
+            rustc_args.args.append(&mut args);
             vec![rustc_args]
         }
         RustcArgSource::Cargo(target) => get_rustc_cargo_args(target),
@@ -227,7 +236,7 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<Vec<String>> {
 }
 
 #[cfg_attr(feature = "profile", flame)]
-fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<Vec<String>> {
+fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
     use cargo::core::manifest::TargetKind;
     use cargo::core::{maybe_allow_nightly_features, PackageId, Target, Workspace, Verbosity};
@@ -254,7 +263,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<Vec<String>> {
         default: DefaultExecutor,
         target_pkg: PackageId,
         target_type: CargoTarget,
-        pkg_args: Mutex<Vec<Vec<String>>>,
+        pkg_args: Mutex<Vec<RustcArgs>>,
     }
 
     impl LoggingExecutor {
@@ -280,7 +289,9 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<Vec<String>> {
                 .map(|os| os.to_str().unwrap().to_owned())
                 .collect();
             let mut g = self.pkg_args.lock().unwrap();
-            g.push(args);
+
+            let cwd = cmd.get_cwd().map(Path::to_path_buf);
+            g.push(RustcArgs { args, cwd });
 
             true
         }
@@ -344,7 +355,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<Vec<String>> {
 
     for args in &mut arg_vec {
         let rustc = config.rustc(Some(&ws)).unwrap();
-        args.insert(0, get_rustc_executable(&rustc.path));
+        args.args.insert(0, get_rustc_executable(&rustc.path));
         info!("cargo-provided rustc args = {:?}", args);
     }
 
@@ -377,12 +388,17 @@ fn main_impl(opts: Options) -> interface::Result<()> {
             marks.insert((NodeId::from_usize(m.id), label));
         }
 
+        if let Some(ref cwd) = rustc_args.cwd {
+            env::set_current_dir(cwd)
+                .expect("Error changing current directory");
+        }
+
         // TODO: interface::run_compiler() here and create a RefactorState with the
         // callback. RefactorState should know how to reset the compiler when needed
         // and can handle querying the compiler.
 
         if opts.cursors.len() > 0 {
-            let config = driver::create_config(&rustc_args);
+            let config = driver::create_config(&rustc_args.args);
             driver::run_compiler(config, None, |compiler| {
                 let expanded_crate = compiler.expansion().unwrap().take().0;
                 for c in &opts.cursors {
@@ -436,7 +452,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
 
         plugin::load_plugins(&opts.plugin_dirs, &opts.plugins, &mut cmd_reg);
 
-        let config = driver::create_config(&rustc_args);
+        let config = driver::create_config(&rustc_args.args);
 
         if opts.commands.len() == 1 && opts.commands[0].name == "interact" {
             interact::interact_command(&opts.commands[0].args, config, cmd_reg);
