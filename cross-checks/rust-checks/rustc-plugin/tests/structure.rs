@@ -26,9 +26,10 @@ macro_rules! test_struct {
     ([$($attrs:meta),*]
      {$([$($field_attrs:meta),*] $field:ident : $field_ty:ty = $field_val:expr),*}
      [$(($ahasher:path, $shasher:path, $val:expr)),*]) => {
-        #[cross_check(yes, $($attrs),*)]
+        #[derive(CrossCheckHash)]
+        #[cross_check_hash($($attrs),*)]
         struct TestStruct {
-            $(#[cross_check($($field_attrs),*)] $field: $field_ty),*
+            $(#[cross_check_hash($($field_attrs),*)] $field: $field_ty),*
         };
         let ts = TestStruct { $($field: $field_val),* };
         $({
@@ -101,7 +102,7 @@ fn test_skip_field() {
 #[test]
 fn test_fixed_hash() {
     test_struct!([]
-                 { [fixed=0x0f0f0f0f0f0f0f0f] x: u64 = 0x12345678 }
+                 { [fixed="0x0f0f0f0f0f0f0f0f"] x: u64 = 0x12345678 }
                  [(SimpleHasher, SimpleHasher, 1u64)]);
 }
 
