@@ -119,7 +119,8 @@ pub struct TranspilerConfig {
 
 impl TranspilerConfig {
     fn is_binary(&self, file: &Path) -> bool {
-        let name = get_module_name(file, false, true).unwrap();
+        let file = Path::new(file.file_stem().unwrap());
+        let name = get_module_name(file, false, false).unwrap();
         self.binaries.contains(&name)
     }
 
