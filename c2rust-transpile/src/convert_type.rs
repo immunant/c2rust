@@ -447,7 +447,11 @@ impl TypeConverter {
                 Ok(Some(fn_ty))
             }
 
-            _ => panic!("ctype parameter must be a function")
+            CTypeKind::Elaborated(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
+            CTypeKind::Decayed(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
+            CTypeKind::Paren(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
+
+            ref kind @ _ => panic!("ctype parameter must be a function instead of {:?}", kind)
         }
     }
 }
