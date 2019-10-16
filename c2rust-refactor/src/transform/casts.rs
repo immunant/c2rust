@@ -134,6 +134,16 @@ fn check_double_cast<'tcx>(e_ty: SimpleTy, t1_ty: SimpleTy, t2_ty: SimpleTy) -> 
     let inner_cast = cast_kind(e_ty, t1_ty);
     let outer_cast = cast_kind(t1_ty, t2_ty);
     match (inner_cast, outer_cast) {
+        (Required, _) | (_, Required) => DoubleCastAction::KeepBoth,
+
+        // `x as *const T1 as *const T2` can be rewritten as
+        // `x as *const T2` instead, but we can't remove both casts
+        // if `t2_ty` is a pointer, since `e_ty` might have been
+        // something else so we need a non-pointer-to-pointer cast
+        (SameWidth, SameWidth) if t2_ty == SimpleTy::Pointer => {
+            DoubleCastAction::RemoveInner
+        }
+
         // 2 consecutive sign flips or extend-truncate
         // back to the same original type
         (SameWidth, SameWidth) | (Extend(_), Truncate) if e_ty == t2_ty => {
@@ -161,6 +171,7 @@ enum CastKind {
     SameWidth,
     FromPointer(bool),
     ToPointer(bool),
+    Required,
     Unknown,
 }
 
@@ -185,11 +196,12 @@ fn cast_kind(from_ty: SimpleTy, to_ty: SimpleTy) -> CastKind {
         (Pointer, Int(..)) => CastKind::FromPointer(false),
 
         // Pointer-to-size and vice versa
-        // FIXME: (Pointer, Pointer) |
-        // FIXME: (Pointer, Size(_)) | (Size(_), Pointer) |
-        (Size(_), Size(_)) => {
+        (Pointer, Pointer) | (Pointer, Size(_)) | (Size(_), Pointer) | (Size(_), Size(_)) => {
             CastKind::SameWidth
         }
+
+        // We need to keep all `&x as *const T` and `&[T; N] as *const T` casts
+        (Ref, Pointer) | (Array, Pointer) => CastKind::Required,
 
         (Float32, Float32) => CastKind::SameWidth,
         (Float32, Float64) => CastKind::Extend(true),
@@ -215,6 +227,8 @@ enum SimpleTy {
     Float32,
     Float64,
     Pointer,
+    Ref,
+    Array,
     Other,
 }
 
@@ -285,7 +299,11 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
             TyKind::Float(FloatTy::F32) => Float32,
             TyKind::Float(FloatTy::F64) => Float64,
 
-            // FIXME: TyKind::Ref(..) |
+            TyKind::Ref(_, ty, _mutbl) => match ty.kind {
+                TyKind::Array(..) => Array,
+                _ => Ref,
+            }
+
             TyKind::RawPtr(_) | TyKind::FnPtr(_) => Pointer,
 
             _ => Other,
