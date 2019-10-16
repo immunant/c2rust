@@ -38,6 +38,7 @@ impl Transform for RemoveRedundantCasts {
                 return;
             }
 
+            let oe_mk = mk().id(oe.id).span(oe.span);
             match oe.kind {
                 ExprKind::Cast(ref ie, ref it) => {
                     // Found a double cast
@@ -54,7 +55,7 @@ impl Transform for RemoveRedundantCasts {
                         }
                         DoubleCastAction::RemoveInner => {
                             // Rewrite to `$ie as $ot`, removing the inner cast
-                            *ast = mk().cast_expr(ie, ot);
+                            *ast = oe_mk.cast_expr(ie, ot);
                         }
                         DoubleCastAction::KeepBoth => {}
                     }
@@ -64,7 +65,7 @@ impl Transform for RemoveRedundantCasts {
                     // `X_ty1 as ty2` => `X_ty2`
                     let new_lit = replace_suffix(lit, SimpleTy::from(ot_ty));
                     if let Some(nl) = new_lit {
-                        let new_expr = mk().lit_expr(nl);
+                        let new_expr = oe_mk.lit_expr(nl);
                         let ast_const = eval_const(ast.clone(), cx);
                         let new_const = eval_const(new_expr.clone(), cx);
                         debug!(
@@ -83,7 +84,8 @@ impl Transform for RemoveRedundantCasts {
                         // `-X_ty1 as ty2` => `-X_ty2`
                         let new_lit = replace_suffix(lit, SimpleTy::from(ot_ty));
                         if let Some(nl) = new_lit {
-                            let new_expr = mk().unary_expr(UnOp::Neg, mk().lit_expr(nl));
+                            let expr_mk = mk().id(expr.id).span(expr.span);
+                            let new_expr = oe_mk.unary_expr(UnOp::Neg, expr_mk.lit_expr(nl));
                             let ast_const = eval_const(ast.clone(), cx);
                             let new_const = eval_const(new_expr.clone(), cx);
                             debug!(
@@ -282,41 +284,42 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
 }
 
 fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
+    let lit_mk = mk().span(lit.span);
     match (&lit.kind, &ty) {
         // Very conservative approach: only convert to `isize`/`usize`
         // if the value fits in a 16-bit value
         (LitKind::Int(i, _), SimpleTy::Size(true)) if *i <= i16::max_value() as u128 => {
-            Some(mk().int_lit(*i, IntTy::Isize))
+            Some(lit_mk.int_lit(*i, IntTy::Isize))
         }
 
         (LitKind::Int(i, _), SimpleTy::Size(false)) if *i <= u16::max_value() as u128 => {
-            Some(mk().int_lit(*i, UintTy::Usize))
+            Some(lit_mk.int_lit(*i, UintTy::Usize))
         }
 
         (LitKind::Int(i, _), SimpleTy::Int(..)) if *i <= ty.max_int_value() => {
-            Some(mk().int_lit(*i, ty.ast_lit_int_type()))
+            Some(lit_mk.int_lit(*i, ty.ast_lit_int_type()))
         }
 
         (LitKind::Int(i, _), SimpleTy::Float32)
         | (LitKind::Int(i, _), SimpleTy::Float64) => {
-            Some(mk().float_lit(i.to_string(), ty.ast_float_ty()))
+            Some(lit_mk.float_lit(i.to_string(), ty.ast_float_ty()))
         }
 
         (LitKind::Float(f, FloatTy::F32), SimpleTy::Int(..)) => {
             let fv = f.as_str().parse::<f32>().ok()?;
-            Some(mk().int_lit(fv as u128, ty.ast_lit_int_type()))
+            Some(lit_mk.int_lit(fv as u128, ty.ast_lit_int_type()))
         }
 
         (LitKind::Float(f, FloatTy::F64), SimpleTy::Int(..))
         | (LitKind::FloatUnsuffixed(f), SimpleTy::Int(..)) => {
             let fv = f.as_str().parse::<f64>().ok()?;
-            Some(mk().int_lit(fv as u128, ty.ast_lit_int_type()))
+            Some(lit_mk.int_lit(fv as u128, ty.ast_lit_int_type()))
         }
 
         (LitKind::Float(f, FloatTy::F32), SimpleTy::Float32)
         | (LitKind::Float(f, FloatTy::F32), SimpleTy::Float64) => {
             let fv = f.as_str().parse::<f32>().ok()?;
-            Some(mk().float_lit(fv.to_string(), ty.ast_float_ty()))
+            Some(lit_mk.float_lit(fv.to_string(), ty.ast_float_ty()))
         }
 
         (LitKind::Float(f, FloatTy::F64), SimpleTy::Float32)
@@ -324,7 +327,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         | (LitKind::FloatUnsuffixed(f), SimpleTy::Float32)
         | (LitKind::FloatUnsuffixed(f), SimpleTy::Float64) => {
             let fv = f.as_str().parse::<f64>().ok()?;
-            Some(mk().float_lit(fv.to_string(), ty.ast_float_ty()))
+            Some(lit_mk.float_lit(fv.to_string(), ty.ast_float_ty()))
         }
 
         _ => None,
