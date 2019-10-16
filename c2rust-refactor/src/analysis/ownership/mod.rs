@@ -265,9 +265,6 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
             let ret_is_mut_t = is_mut_t(func_summ.sig.output.ty);
             if param0_is_mut_t && param1_is_isize && ret_is_mut_t {
                 func_summ.cset_provided = true;
-                func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(0)));
-                func_summ.sig_cset.add(Perm::write(), Perm::SigVar(Var(1)));
-                // REVIEW: Not sure if this last one is correct or necessary.
                 func_summ.sig_cset.add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
             }
         }
