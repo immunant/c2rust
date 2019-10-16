@@ -1,5 +1,6 @@
 use rustc::ty::{self, ParamEnv, TyKind};
 use syntax::ast::*;
+use syntax::parse::token;
 use syntax::ptr::P;
 
 use crate::command::{CommandState, Registry};
@@ -292,20 +293,41 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
 }
 
 fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
+    let mk_int = |i, ty| {
+        // We need to build the new `Lit` ourselves instead of
+        // calling `mk().int_lit()`, so we can reuse
+        // the original `symbol` from `token::Lit`
+        let new_suffix = match ty {
+            LitIntType::Signed(ty) => Some(ty.to_symbol()),
+            LitIntType::Unsigned(ty) => Some(ty.to_symbol()),
+            LitIntType::Unsuffixed => None
+        };
+        let new_lit = Lit {
+            node: LitKind::Int(i, ty),
+            span: lit.span,
+            token: token::Lit {
+                kind: token::LitKind::Integer,
+                symbol: lit.token.symbol.clone(),
+                suffix: new_suffix,
+            },
+        };
+        Some(new_lit)
+    };
+
     let lit_mk = mk().span(lit.span);
     match (&lit.kind, &ty) {
         // Very conservative approach: only convert to `isize`/`usize`
         // if the value fits in a 16-bit value
         (LitKind::Int(i, _), SimpleTy::Size(true)) if *i <= i16::max_value() as u128 => {
-            Some(lit_mk.int_lit(*i, IntTy::Isize))
+            mk_int(*i, LitIntType::Signed(IntTy::Isize))
         }
 
         (LitKind::Int(i, _), SimpleTy::Size(false)) if *i <= u16::max_value() as u128 => {
-            Some(lit_mk.int_lit(*i, UintTy::Usize))
+            mk_int(*i, LitIntType::Unsigned(UintTy::Usize))
         }
 
         (LitKind::Int(i, _), SimpleTy::Int(..)) if *i <= ty.max_int_value() => {
-            Some(lit_mk.int_lit(*i, ty.ast_lit_int_type()))
+            mk_int(*i, ty.ast_lit_int_type())
         }
 
         (LitKind::Int(i, _), SimpleTy::Float32)
