@@ -476,7 +476,10 @@ def do_recover_children_match(d):
                     yield '    rcx.replace_expr_prec(old);'
 
         yield '  },'
-    yield '  _ => panic!("new and reparsed ASTs don\'t match"),'
+    if 'no_debug' in d.attrs:
+        yield '  _ => panic!("new and reparsed ASTs don\'t match"),'
+    else:
+        yield '  _ => panic!("new and reparsed ASTs don\'t match: {:?} != {:?}", reparsed, new),'
     yield '}'
 
 @linewise
