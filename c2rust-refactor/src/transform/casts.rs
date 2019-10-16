@@ -184,7 +184,8 @@ fn cast_kind(from_ty: SimpleTy, to_ty: SimpleTy) -> CastKind {
 
         // Pointer-to-size and vice versa
         // FIXME: (Pointer, Pointer) |
-        (Pointer, Size(_)) | (Size(_), Pointer) | (Size(_), Size(_)) => {
+        // FIXME: (Pointer, Size(_)) | (Size(_), Pointer) |
+        (Size(_), Size(_)) => {
             CastKind::SameWidth
         }
 
