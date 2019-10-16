@@ -358,7 +358,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             },
             Rvalue::Discriminant(ref _lv) => unimplemented!(),
             Rvalue::Aggregate(ref kind, ref ops) => match **kind {
-                AggregateKind::Array(ty) => {
+                AggregateKind::Array(_elem_ty) => {
                     let array_ty = self.local_ty(ty);
                     for op in ops {
                         let (op_ty, op_perm) = self.operand_lty(op);
