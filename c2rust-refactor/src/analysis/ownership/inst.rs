@@ -61,7 +61,8 @@ impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
 
         let ok = self.do_solve(0);
         if !ok {
-            panic!("found no solution");
+            warn!("found no solution for call to {:?}", self.insts);
+            return vec![];
         }
 
         let inst_sel = mem::replace(&mut self.inst_sel, Vec::new());
