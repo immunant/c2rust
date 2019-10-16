@@ -479,7 +479,7 @@ def do_recover_children_match(d):
     if 'no_debug' in d.attrs:
         yield '  _ => panic!("new and reparsed ASTs don\'t match"),'
     else:
-        yield '  _ => panic!("new and reparsed ASTs don\'t match: {:?} != {:?}", reparsed, new),'
+        yield '  _ => panic!("new and reparsed ASTs don\'t match: {:?} != {:?}", new, reparsed),'
     yield '}'
 
 @linewise
