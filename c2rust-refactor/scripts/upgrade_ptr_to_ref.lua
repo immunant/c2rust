@@ -1170,7 +1170,7 @@ function Visitor:flat_map_struct_field(field)
     local field_ty = field:get_ty()
     local cfg = self.node_id_cfgs[field_id]
 
-    if not cfg then return end
+    if not cfg then return {field} end
 
     local field_ty_kind = field_ty:get_kind()
 
@@ -1283,29 +1283,32 @@ function MarkConverter.new(marks, boxes, tctx)
     return self
 end
 
-function MarkConverter:flat_map_param(arg)
-    local arg_id = arg:get_id()
-    local arg_ty = arg:get_ty()
-    local arg_ty_id = arg_ty:get_id()
-    local marks = self.marks[arg_ty_id] or {}
+function MarkConverter:flat_map_param(param)
+    local param_id = param:get_id()
+    local param_ty = param:get_ty()
+    local param_ty_id = param_ty:get_id()
+    local marks = self.marks[param_ty_id] or {}
 
-    -- Skip over args likely from extern fns
-    if arg:get_pat():get_kind() == "Wild" then
-        return {arg}
+    -- Skip over params likely from extern fns
+    if param:get_pat():get_kind() == "Wild" then
+        return {param}
     end
 
     -- Skip over pointers to void
-    if is_void_ptr(arg_ty) then
-        return {arg}
+    if is_void_ptr(param_ty) then
+        return {param}
     end
 
     -- Skip if there are no marks
-    if next(marks) == nil then return end
+    if next(marks) == nil then
+        return {param}
+    end
 
-    local attrs = arg:get_attrs()
+    local attrs = param:get_attrs()
 
     -- TODO: Box support
-    self.node_id_cfgs[arg_id] = ConvCfg.from_marks(marks, attrs)
+    self.node_id_cfgs[param_id] = ConvCfg.from_marks(marks, attrs)
+    return {param}
 end
 
 function MarkConverter:visit_local(locl)
