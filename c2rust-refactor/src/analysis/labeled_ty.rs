@@ -96,7 +96,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
     ) -> LabeledTy<'lty, 'tcx, L> {
         use rustc::ty::TyKind::*;
         let label = f(ty);
-        match ty.sty {
+        match ty.kind {
             // Types with no arguments
             Bool | Char | Int(_) | Uint(_) | Float(_) | Str | Foreign(_) | Never => {
                 self.mk(ty, &[], label)
@@ -181,7 +181,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         lty: LabeledTy<'lty, 'tcx, L>,
         substs: &[LabeledTy<'lty, 'tcx, L>],
     ) -> LabeledTy<'lty, 'tcx, L> {
-        match lty.ty.sty {
+        match lty.ty.kind {
             TyKind::Param(ref tp) => substs[tp.index as usize],
             _ => self.mk(
                 lty.ty,
@@ -238,7 +238,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
 
 impl<'lty, 'tcx, L: fmt::Debug> type_map::Type for LabeledTy<'lty, 'tcx, L> {
     fn sty(&self) -> &TyKind {
-        &self.ty.sty
+        &self.ty.kind
     }
 
     fn num_args(&self) -> usize {

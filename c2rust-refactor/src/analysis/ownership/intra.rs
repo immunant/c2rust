@@ -4,7 +4,7 @@ use log::Level;
 use rustc::hir::def_id::DefId;
 use rustc::mir::*;
 use rustc::ty::{Ty, TyKind};
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 use rustc_target::abi::VariantIdx;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -189,7 +189,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             ref mut insts,
             ..
         } = *self;
-        ilcx.label(ty, &mut |ty| match ty.sty {
+        ilcx.label(ty, &mut |ty| match ty.kind {
             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                 let v = Var(*next_local_var);
                 *next_local_var += 1;
@@ -235,56 +235,62 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         &mut self,
         lv: &Place<'tcx>,
     ) -> (ITy<'lty, 'tcx>, Perm<'lty>, Option<VariantIdx>) {
-        match lv {
-            Place::Base(PlaceBase::Local(l)) => (self.local_var_ty(*l), Perm::move_(), None),
+        if !lv.projection.is_empty() {
+            let mut projection = lv.projection.iter().cloned().collect::<Vec<_>>();
+            let last_elem = projection.pop().unwrap();
+            let parent = Place {
+                base: lv.base.clone(),
+                projection: projection.into_boxed_slice(),
+            };
+            let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&parent);
 
-            Place::Base(PlaceBase::Static(ref s)) => match s.kind {
-                StaticKind::Static(def_id) => (self.static_ty(def_id), Perm::move_(), None),
-                StaticKind::Promoted(ref _p) => {
-                    // TODO: test this
-                    let pty = lv.ty(self.mir, self.cx.tcx);
-                    let ty = pty.ty;
-                    (self.local_ty(ty), Perm::read(), None)
-                }
-            },
+            // Sanity check
+            match last_elem {
+                ProjectionElem::Field(..) => {}
+                _ => assert!(base_variant.is_none(), "expected non-Downcast result"),
+            }
 
-            Place::Projection(box p) => {
-                let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&p.base);
-
-                // Sanity check
-                match p.elem {
-                    ProjectionElem::Field(..) => {}
-                    _ => assert!(base_variant.is_none(), "expected non-Downcast result"),
-                }
-
-                match p.elem {
-                    // Access permissions for a deref are the minimum of all pointers along the
-                    // path to the value.
-                    ProjectionElem::Deref => (
-                        base_ty.args[0],
-                        self.cx.min_perm(base_perm, base_ty.label.perm()),
-                        None,
+            match last_elem {
+                // Access permissions for a deref are the minimum of all pointers along the
+                // path to the value.
+                ProjectionElem::Deref => (
+                    base_ty.args[0],
+                    self.cx.min_perm(base_perm, base_ty.label.perm()),
+                    None,
+                ),
+                ProjectionElem::Field(f, _) => (
+                    self.field_lty(
+                        base_ty,
+                        base_variant.unwrap_or(VariantIdx::from_usize(0)),
+                        f,
                     ),
-                    ProjectionElem::Field(f, _) => (
-                        self.field_lty(
-                            base_ty,
-                            base_variant.unwrap_or(VariantIdx::from_usize(0)),
-                            f,
-                        ),
-                        base_perm,
-                        None,
-                    ),
-                    ProjectionElem::Index(ref _index_op) => (base_ty.args[0], base_perm, None),
-                    ProjectionElem::ConstantIndex { .. } => unimplemented!(),
-                    ProjectionElem::Subslice { .. } => unimplemented!(),
-                    ProjectionElem::Downcast(_, variant) => (base_ty, base_perm, Some(variant)),
-                }
+                    base_perm,
+                    None,
+                ),
+                ProjectionElem::Index(ref _index_op) => (base_ty.args[0], base_perm, None),
+                ProjectionElem::ConstantIndex { .. } => unimplemented!(),
+                ProjectionElem::Subslice { .. } => unimplemented!(),
+                ProjectionElem::Downcast(_, variant) => (base_ty, base_perm, Some(variant)),
+            }
+        } else {
+            match lv.base {
+                PlaceBase::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
+
+                PlaceBase::Static(ref s) => match s.kind {
+                    StaticKind::Static => (self.static_ty(s.def_id), Perm::move_(), None),
+                    StaticKind::Promoted(ref _p, _) => {
+                        // TODO: test this
+                        let pty = lv.ty(self.mir, self.cx.tcx);
+                        let ty = pty.ty;
+                        (self.local_ty(ty), Perm::read(), None)
+                    }
+                },
             }
         }
     }
 
     fn field_lty(&mut self, base_ty: ITy<'lty, 'tcx>, v: VariantIdx, f: Field) -> ITy<'lty, 'tcx> {
-        match base_ty.ty.sty {
+        match base_ty.ty.kind {
             TyKind::Adt(adt, _substs) => {
                 let field_def = &adt.variants[v].fields[f.index()];
                 let poly_ty = self.static_ty(field_def.did);
@@ -401,8 +407,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             Operand::Copy(ref lv) => self.place_lty(lv),
             Operand::Move(ref lv) => self.place_lty(lv),
             Operand::Constant(ref c) => {
-                debug!("CONSTANT {:?}: type = {:?}", c, c.ty);
-                let lty = self.local_ty(c.ty);
+                debug!("CONSTANT {:?}: type = {:?}", c, c.literal.ty);
+                let lty = self.local_ty(c.literal.ty);
                 if let Label::FnDef(inst_idx) = lty.label {
                     self.insts[inst_idx].span = Some(c.span);
                 }
@@ -487,7 +493,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     }
 
     fn ty_fn_sig(&mut self, ty: ITy<'lty, 'tcx>) -> IFnSig<'lty, 'tcx> {
-        match ty.ty.sty {
+        match ty.ty.kind {
             TyKind::FnDef(did, _substs) => {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
                 let var_base = self.insts[idx].first_inst_var;
@@ -532,7 +538,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         for (idx, s) in bb.statements.iter().enumerate() {
             self.enter_stmt(idx);
             match s.kind {
-                StatementKind::Assign(ref lv, ref rv) => {
+                StatementKind::Assign(box(ref lv, ref rv)) => {
                     let (lv_ty, lv_perm) = self.place_lty(lv);
                     let (rv_ty, rv_perm) = self.rvalue_lty(rv);
                     self.propagate(lv_ty, rv_ty, rv_perm);

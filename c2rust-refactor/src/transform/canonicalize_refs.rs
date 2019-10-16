@@ -15,8 +15,8 @@ struct CanonicalizeRefs;
 impl Transform for CanonicalizeRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
-            let hir_expr = cx.hir_map().expect_expr(expr.id);
             let hir_id = cx.hir_map().node_to_hir_id(expr.id);
+            let hir_expr = cx.hir_map().expect_expr(hir_id);
             let parent = cx.hir_map().get_parent_did(hir_id);
             let tables = cx.ty_ctxt().typeck_tables_of(parent);
             for adjustment in tables.expr_adjustments(hir_expr) {
@@ -49,7 +49,7 @@ struct RemoveUnnecessaryRefs;
 impl Transform for RemoveUnnecessaryRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, _cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
-            match &mut expr.node {
+            match &mut expr.kind {
                 ExprKind::MethodCall(_path, args) => {
                     let (receiver, rest) = args.split_first_mut().unwrap();
                     remove_reborrow(receiver);
@@ -75,14 +75,14 @@ impl Transform for RemoveUnnecessaryRefs {
 }
 
 fn remove_ref(expr: &mut P<Expr>) {
-    match &expr.node {
+    match &expr.kind {
         ExprKind::AddrOf(_, inner) => *expr = inner.clone(),
         _ => {}
     }
 }
 
 fn remove_all_derefs(expr: &mut P<Expr>) {
-    match &expr.node {
+    match &expr.kind {
         ExprKind::Unary(UnOp::Deref, inner) => {
             *expr = inner.clone();
             remove_all_derefs(expr);
@@ -92,8 +92,8 @@ fn remove_all_derefs(expr: &mut P<Expr>) {
 }
 
 fn remove_reborrow(expr: &mut P<Expr>) {
-    if let ExprKind::AddrOf(_, ref subexpr) = expr.node {
-        if let ExprKind::Unary(UnOp::Deref, ref subexpr) = subexpr.node {
+    if let ExprKind::AddrOf(_, ref subexpr) = expr.kind {
+        if let ExprKind::Unary(UnOp::Deref, ref subexpr) = subexpr.kind {
             *expr = subexpr.clone();
             remove_reborrow(expr);
         }

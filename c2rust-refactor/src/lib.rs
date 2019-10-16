@@ -27,6 +27,7 @@ extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_incremental;
+extern crate rustc_index;
 extern crate rustc_interface;
 extern crate rustc_lint;
 extern crate rustc_metadata;
@@ -365,6 +366,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
 #[cfg_attr(feature = "profile", flame)]
 pub fn lib_main(opts: Options) -> interface::Result<()> {
     env_logger::init();
+    rustc_driver::install_ice_hook();
     info!("Begin refactoring");
 
     // Make sure we compile with the toolchain version that the refactoring tool
@@ -373,7 +375,7 @@ pub fn lib_main(opts: Options) -> interface::Result<()> {
         env::set_var("RUSTUP_TOOLCHAIN", toolchain_ver);
     }
 
-    rustc_driver::report_ices_to_stderr_if_any(move || main_impl(opts)).and_then(|x| x)
+    rustc_driver::catch_fatal_errors(move || main_impl(opts)).and_then(|x| x)
 }
 
 fn main_impl(opts: Options) -> interface::Result<()> {

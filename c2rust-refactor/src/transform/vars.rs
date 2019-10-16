@@ -63,7 +63,7 @@ impl Transform for SinkLets {
 
         let mut locals: HashMap<HirId, LocalInfo> = HashMap::new();
         visit_nodes(krate, |l: &Local| {
-            if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
+            if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.kind {
                 if l.init.is_none() || !expr_has_side_effects(cx, l.init.as_ref().unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
                     locals.insert(hir_id, LocalInfo {
@@ -206,7 +206,7 @@ impl Transform for SinkLets {
 
         MutVisitNodes::visit(krate, |b: &mut P<Block>| {
             b.stmts.retain(|s| {
-                match s.node {
+                match s.kind {
                     StmtKind::Local(ref l) => !remove_local_ids.contains(&l.id),
                     _ => true,
                 }
@@ -221,7 +221,7 @@ impl Transform for SinkLets {
 
 
 fn expr_has_side_effects(cx: &RefactorCtxt, e: &P<Expr>) -> bool {
-    match e.node {
+    match e.kind {
         // Literals never have side effects
         ExprKind::Lit(_) => false,
         ExprKind::Array(ref elems) => elems.iter().any(|e| expr_has_side_effects(cx, e)),
@@ -249,7 +249,7 @@ fn expr_has_side_effects(cx: &RefactorCtxt, e: &P<Expr>) -> bool {
 
 
 fn is_uninit_call(cx: &RefactorCtxt, e: &Expr) -> bool {
-    let func = match_or!([e.node] ExprKind::Call(ref func, _) => func; return false);
+    let func = match_or!([e.kind] ExprKind::Call(ref func, _) => func; return false);
     let def_id = cx.resolve_expr(func);
     if def_id.krate == LOCAL_CRATE {
         return false;
@@ -279,7 +279,7 @@ impl Transform for FoldLetAssign {
 
         let mut locals: HashMap<HirId, P<Local>> = HashMap::new();
         visit_nodes(krate, |l: &Local| {
-            if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.node {
+            if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.kind {
                 if l.init.is_none() || !expr_has_side_effects(cx, l.init.as_ref().unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
                     locals.insert(hir_id, P(l.clone()));
@@ -351,7 +351,7 @@ impl Transform for FoldLetAssign {
         fold_blocks(krate, |curs| {
             while !curs.eof() {
                 // Is it a local declaration?  If so, mark it.
-                let mark_did = match curs.next().node {
+                let mark_did = match curs.next().kind {
                     StmtKind::Local(ref l) => {
                         if let Some(&did) = local_node_def.get(&l.id) {
                             Some(did)
@@ -366,9 +366,9 @@ impl Transform for FoldLetAssign {
                 }
 
                 // Is it an assignment to a local?
-                let assign_info = match curs.next().node {
+                let assign_info = match curs.next().kind {
                     StmtKind::Semi(ref e) => {
-                        match e.node {
+                        match e.kind {
                             ExprKind::Assign(ref lhs, ref rhs) => {
                                 if let Some(hir_id) = cx.try_resolve_expr_to_hid(&lhs) {
                                     if local_pos.contains_key(&hir_id) {
@@ -442,7 +442,7 @@ impl Transform for UninitToDefault {
 
             let init = l.init.as_ref().unwrap().clone();
             let ty = cx.node_type(init.id);
-            let new_init_lit = match ty.sty {
+            let new_init_lit = match ty.kind {
                 TyKind::Bool => mk().bool_lit(false),
                 TyKind::Char => mk().char_lit('\0'),
                 TyKind::Int(ity) => mk().int_lit(0, ity),

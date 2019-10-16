@@ -24,6 +24,7 @@ indexmap = { version = "1.0.1", features = ["serde-1"] }
 c2rust-ast-builder = { version = "0.11.0", path = "../c2rust-ast-builder" }
 libc = "0.2"
 c2rust-ast-exporter = { version = "0.11.0", path = "../c2rust-ast-exporter" }
+c2rust-ast-printer = { version = "0.11.0", path = "../c2rust-ast-printer" }
 handlebars = "1.1.0"
 itertools = "0.8"
 pathdiff = "0.1.0"

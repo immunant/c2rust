@@ -104,7 +104,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
 
         // Some Expr nodes contain an optional label, which we need to handle here,
         // since `visit_label` takes the inner `Label` instead of `Option<Label>`
-        match e.node {
+        match e.kind {
             ExprKind::While(_, _, ref mut label) |
             ExprKind::ForLoop(_, _, _, ref mut label) |
             ExprKind::Loop(_, ref mut label) |

@@ -106,7 +106,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             Some(x) => x,
             None => return,
         };
-        if let ty::TyKind::Error = ty.sty {
+        if let ty::TyKind::Error = ty.kind {
             return;
         }
 
@@ -117,7 +117,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
 
         let id = e.id;
 
-        match &mut e.node {
+        match &mut e.kind {
             ExprKind::Box(content) => {
                 illtyped |= self.ensure(content, ty.boxed_ty());
             }
@@ -132,7 +132,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 illtyped |= self.ensure(elem, expected_elem_ty);
             }
             ExprKind::Tup(elems) => {
-                let elem_tys = expect!([ty.sty] ty::TyKind::Tuple(elem_tys) => elem_tys);
+                let elem_tys = expect!([ty.kind] ty::TyKind::Tuple(elem_tys) => elem_tys);
                 for (elem, elem_ty) in elems.iter_mut().zip(elem_tys.types()) {
                     illtyped |= self.ensure(elem, elem_ty);
                 }
@@ -140,10 +140,8 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             ExprKind::Call(_callee, args) => {
                 if let Some(fn_sig) = opt_fn_sig {
                     for (i, arg) in args.iter_mut().enumerate() {
-                        if !fn_sig.c_variadic || i < fn_sig.inputs().len() - 1 {
-                            if let Some(&ty) = fn_sig.inputs().get(i) {
-                                illtyped |= self.ensure(arg, ty);
-                            }
+                        if let Some(&ty) = fn_sig.inputs().get(i) {
+                            illtyped |= self.ensure(arg, ty);
                         }
                     }
                 }
@@ -209,25 +207,18 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 // TODO: do something clever with tr + fl
                 illtyped |= self.ensure(cond, tcx.mk_bool());
             }
-            ExprKind::IfLet(pats, expr, _tr, _fl) => {
-                if let Some(pat_ty) = self.cx.opt_node_type(pats[0].id) {
+            ExprKind::Let(pat, expr) => {
+                if let Some(pat_ty) = self.cx.opt_node_type(pat.id) {
                     illtyped |= self.ensure(expr, pat_ty);
                 }
-                // TODO: do something clever with tr + fl
-                // TODO: handle discrepancies between different pattern tys
             }
             ExprKind::While(cond, _body, _opt_label) => {
                 illtyped |= self.ensure(cond, tcx.mk_bool());
             }
-            ExprKind::WhileLet(pats, expr, _body, _opt_label) => {
-                if let Some(pat_ty) = self.cx.opt_node_type(pats[0].id) {
-                    illtyped |= self.ensure(expr, pat_ty);
-                }
-            }
             ExprKind::Match(expr, arms) => {
                 if let Some(pat_ty) = arms
                     .get(0)
-                    .and_then(|arm| self.cx.opt_node_type(arm.pats[0].id))
+                    .and_then(|arm| self.cx.opt_node_type(arm.pat.id))
                 {
                     illtyped |= self.ensure(expr, pat_ty);
                 }
@@ -270,16 +261,16 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
         let mut items = mut_visit::noop_flat_map_item(i, self);
         for i in items.iter_mut() {
             let id = i.id;
-            match &mut i.node {
+            match &mut i.kind {
                 ItemKind::Static(_ty, _mutbl, expr) => {
                     let did = self.cx.node_def_id(id);
                     let expected_ty = self.cx.ty_ctxt().type_of(did);
                     info!("STATIC: expected ty {:?}, expr {:?}", expected_ty, expr);
 
                     let tcx = self.cx.ty_ctxt();
-                    let node_id = tcx.hir().as_local_node_id(did).unwrap();
+                    let node_id = tcx.hir().as_local_hir_id(did).unwrap();
                     match tcx.hir().get(node_id) {
-                        hir::Node::Item(item) => match item.node {
+                        hir::Node::Item(item) => match item.kind {
                             hir::ItemKind::Static(ref t, ..) => info!("  - ty hir = {:?}", t),
                             _ => {}
                         },
@@ -311,7 +302,7 @@ fn handle_struct<'tcx, F>(
 ) where
     F: FnMut(&mut P<Expr>, ty::Ty<'tcx>),
 {
-    let (adt_def, substs) = match ty.sty {
+    let (adt_def, substs) = match ty.kind {
         ty::TyKind::Adt(a, s) => (a, s),
         _ => return,
     };
@@ -334,7 +325,7 @@ fn resolve_struct_path(cx: &RefactorCtxt, id: NodeId) -> Option<Res> {
     let node = match_or!([cx.hir_map().find(id)] Some(x) => x; return None);
     let expr = match_or!([node] hir::Node::Expr(e) => e; return None);
     let qpath: &hir::QPath =
-        match_or!([expr.node] hir::ExprKind::Struct(ref q, ..) => q; return None);
+        match_or!([expr.kind] hir::ExprKind::Struct(ref q, ..) => q; return None);
     let path = match_or!([qpath] hir::QPath::Resolved(_, ref path) => path; return None);
     Some(path.res)
 }

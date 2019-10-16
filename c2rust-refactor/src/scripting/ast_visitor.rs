@@ -380,13 +380,14 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
         }
     }
 
-    fn visit_arg(&mut self, m: &mut Arg) {
-        let visit_method: Option<LuaFunction> = self.visitor.get("visit_arg")
+    fn flat_map_param(&mut self, m: Param) -> SmallVec<[Param; 1]> {
+        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_param")
             .expect("Could not get lua visitor function");
         if let Some(method) = visit_method {
-            self.call_visit(method, m);
+            let new_params = self.call_flat_map(method, m);
+            new_params.into_iter().map(|p| p.into_inner()).collect()
         } else {
-            mut_visit::noop_visit_arg(m, self)
+            mut_visit::noop_flat_map_param(m, self)
         }
     }
 
@@ -456,14 +457,15 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
         mut_visit::noop_visit_fn_decl(m, self)
     }
 
-    fn visit_struct_field(&mut self, m: &mut StructField) {
-        let visit_method: Option<LuaFunction> = self.visitor.get("visit_struct_field")
+    fn flat_map_struct_field(&mut self, m: StructField) -> SmallVec<[StructField; 1]> {
+        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_struct_field")
             .expect("Could not get lua visitor function");
         if let Some(method) = visit_method {
-            self.call_visit(method, m);
+            let new_fields = self.call_flat_map(method, m);
+            new_fields.into_iter().map(|f| f.into_inner()).collect()
+        } else {
+            mut_visit::noop_flat_map_struct_field(m, self)
         }
-
-        mut_visit::noop_visit_struct_field(m, self)
     }
 
     fn visit_item_kind(&mut self, m: &mut ItemKind) {

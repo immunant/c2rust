@@ -12,6 +12,7 @@ use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::mem;
+use std::ops::Deref;
 use std::sync::Arc;
 use syntax::ast::{Crate, NodeId, CRATE_NODE_ID};
 use syntax::ast::{Expr, Item, Pat, Stmt, Ty};
@@ -105,12 +106,10 @@ fn parse_extras(compiler: &interface::Compiler) -> Vec<Comment> {
     let mut comments = vec![];
     for file in compiler.source_map().files().iter() {
         if let Some(src) = &file.src {
-            let mut reader = src.as_bytes();
-
             let mut new_comments = gather_comments(
                 &compiler.session().parse_sess,
                 file.name.clone(),
-                &mut reader,
+                src.deref().clone(),
             );
 
             // gather_comments_and_literals starts positions at 0 each time, so
@@ -326,7 +325,6 @@ impl RefactorState {
 
                 // Ensure that we've dropped any copies of the session Lrc
                 let _ = self.compiler.lower_to_hir()?.take();
-                let _ = self.compiler.codegen_channel()?.take();
 
                 r
             }
@@ -352,18 +350,12 @@ impl RefactorState {
 
     #[cfg_attr(feature = "profile", flame)]
     fn rebuild_session(&mut self) {
-        // Ensure we've dropped the resolver if we're in phase 2 or 3 since the
-        // resolver keeps a copy of the session Rc
+        // Ensure we've take the expansion result if we're in phase 2 or 3 since
+        // we need later queries to rebuild it.
         match self.cs.phase {
             Phase::Phase1 => {}
             Phase::Phase2 | Phase::Phase3 => {
-                if let Ok(expansion) = self.compiler.expansion() {
-                    if let Ok(resolver) = Lrc::try_unwrap(expansion.take().1) {
-                        resolver.map(|x| x.into_inner().complete());
-                    } else {
-                        panic!("Could not drop resolver");
-                    }
-                }
+                let _ = self.compiler.expansion().unwrap().take();
             }
         }
 

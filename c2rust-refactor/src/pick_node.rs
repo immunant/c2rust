@@ -47,7 +47,7 @@ impl<'a> Visitor<'a> for PickVisitor {
         // (meaning inside the included file), then we mark the mod item itself.  This is because
         // `Mod` nodes don't have their own IDs.
         if self.node_info.is_none() {
-            if let ItemKind::Mod(ref m) = x.node {
+            if let ItemKind::Mod(ref m) = x.kind {
                 if m.inner.contains(self.target) {
                     self.node_info = Some(NodeInfo {
                         id: x.id,
@@ -153,7 +153,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     fn visit_fn(&mut self, fk: FnKind<'a>, fd: &'a FnDecl, s: Span, _id: NodeId) {
         visit::walk_fn(self, fk, fd, s);
 
-        if self.node_info.is_none() && self.kind.contains(NodeKind::Arg) {
+        if self.node_info.is_none() && self.kind.contains(NodeKind::Param) {
             for arg in &fd.inputs {
                 if arg.ty.span.contains(self.target)
                     || arg.pat.span.contains(self.target)
@@ -204,7 +204,7 @@ pub enum NodeKind {
     Expr,
     Pat,
     Ty,
-    Arg,
+    Param,
     Field,
 }
 
@@ -237,7 +237,7 @@ impl NodeKind {
             NodeKind::Expr => "expr",
             NodeKind::Pat => "pat",
             NodeKind::Ty => "ty",
-            NodeKind::Arg => "arg",
+            NodeKind::Param => "param",
             NodeKind::Field => "field",
         }
     }
@@ -258,7 +258,8 @@ impl FromStr for NodeKind {
             "expr" => NodeKind::Expr,
             "pat" => NodeKind::Pat,
             "ty" => NodeKind::Ty,
-            "arg" => NodeKind::Arg,
+            "param" => NodeKind::Param,
+            "arg" => NodeKind::Param,  // arg is an alias for param
             "field" => NodeKind::Field,
 
             _ => return Err(()),
@@ -273,7 +274,7 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
     let mut v = PickVisitor {
         node_info: None,
         kind: kind,
-        target: Span::new(pos, pos, SyntaxContext::empty()),
+        target: Span::new(pos, pos, SyntaxContext::root()),
     };
     krate.visit(&mut v);
 

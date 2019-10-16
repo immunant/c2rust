@@ -30,12 +30,12 @@ impl Transform for ByteStrToStr {
                 return;
             }
 
-            match &mut e.node {
+            match &mut e.kind {
                 ExprKind::Lit(l) => {
-                    match l.node {
+                    match l.kind {
                         LitKind::ByteStr(ref bs) => {
                             let s = String::from_utf8((**bs).clone()).unwrap();
-                            l.node = LitKind::Str(Symbol::intern(&s), StrStyle::Cooked);
+                            l.kind = LitKind::Str(Symbol::intern(&s), StrStyle::Cooked);
                             l.token.kind = token::LitKind::Str;
                         }
                         _ => {}
@@ -74,9 +74,9 @@ impl Transform for RemoveNullTerminator {
                 return;
             }
 
-            match &mut e.node {
+            match &mut e.kind {
                 ExprKind::Lit(l) => {
-                    match &mut l.node {
+                    match &mut l.kind {
                         LitKind::ByteStr(bs) => {
                             if bs.last() == Some(&0) {
                                 Lrc::get_mut(bs).unwrap().pop();

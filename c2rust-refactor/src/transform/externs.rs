@@ -111,7 +111,7 @@ impl Transform for CanonicalizeExterns {
             let old_ty = cx.def_type(old_did);
             let new_ty = cx.def_type(new_did);
 
-            if !matches!([old_ty.sty] TyKind::FnDef(..)) {
+            if !matches!([old_ty.kind] TyKind::FnDef(..)) {
                 // Non-fn items are easy to handle.
                 if old_ty != new_ty {
                     ty_replace_map.insert((old_did, TyLoc::Whole), (old_ty, new_ty));
@@ -200,20 +200,20 @@ impl Transform for CanonicalizeExterns {
 
             // TODO: handle assignments to replaced extern statics
 
-            let callee_old_did = match e.node {
+            let callee_old_did = match e.kind {
                 ExprKind::Call(ref f, _) => path_ids.get(&f.id),
                 _ => None,
             };
             if let Some(&old_did) = callee_old_did {
                 // This expr is a call to a rewritten extern fn.  Add casts around args and around
                 // the whole expression, as directed by `ty_replace_map`.
-                let arg_count = expect!([e.node] ExprKind::Call(_, ref a) => a.len());
+                let arg_count = expect!([e.kind] ExprKind::Call(_, ref a) => a.len());
                 info!("rewriting call - e = {:?}", e);
 
                 for i in 0 .. arg_count {
                     let k = (old_did, TyLoc::Arg(i));
                     if let Some(&(_old_ty, new_ty)) = ty_replace_map.get(&k) {
-                        expect!([e.node] ExprKind::Call(_, ref mut args) => {
+                        expect!([e.kind] ExprKind::Call(_, ref mut args) => {
                             // The new fn requires `new_ty`, where the old one needed `old_ty`.
                             let ty_ast = reflect::reflect_tcx_ty(tcx, new_ty);
                             let new_arg = mk().cast_expr(&args[i], ty_ast);

@@ -1,10 +1,10 @@
 use rlua::UserData;
 use rlua::prelude::{LuaContext, LuaError, LuaResult, LuaTable};
 use syntax::ast::{
-    Arg, Arm, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, FunctionRetTy, FnDecl,
-    FloatTy, Guard, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitKind, Local, Mod,
-    Movability, Mutability::*, Pat, PatKind, RangeLimits, Stmt, StmtKind, LitIntType, Ty, TyKind,
-    Unsafety, BareFnTy, UnsafeSource, BlockCheckMode, Path, Field, PathSegment, GenericArgs,
+    Arm, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, FunctionRetTy, FnDecl,
+    FloatTy, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitKind, Local, Mod,
+    Movability, Mutability::*, Param, Pat, PatKind, RangeLimits, Stmt, StmtKind, LitIntType, Ty,
+    TyKind, Unsafety, BareFnTy, UnsafeSource, BlockCheckMode, Path, Field, PathSegment, GenericArgs,
     GenericArg, AsmDialect, Constness, UseTree, UseTreeKind,
 };
 use syntax::ext::hygiene::SyntaxContext;
@@ -54,7 +54,7 @@ impl<'lua> IntoLuaAst<'lua> for Stmt {
         ast.set("id", self.id.as_u32())?;
         ast.set("span", LuaSpan(self.span.data()))?;
 
-        match self.node {
+        match self.kind {
             StmtKind::Local(l) => {
                 ast.set("kind", "Local")?;
                 let Local { pat, ty, init, .. } = l.into_inner();
@@ -107,12 +107,12 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
         let callee_info = ctx.cx.opt_callee_info(&self);
 
         self.and_then(|expr| {
-            match expr.node {
+            match expr.kind {
                 ExprKind::Lit(l) => {
                     ast.set("kind", "Lit")?;
-                    match l.node {
+                    match l.kind {
                         LitKind::Str(s, _) => {
-                            ast.set("value", s.as_str().get())?;
+                            ast.set("value", &*s.as_str())?;
                             ast.set("str_kind", "Str")?;
                         },
                         LitKind::Int(i, suffix) => {
@@ -180,7 +180,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         _ => {
                             return Err(LuaError::external(format!(
                                 "{:?} is not yet implemented",
-                                l.node
+                                l.kind
                             )));
                         }
                     }
@@ -225,7 +225,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         .first()
                         .expect("Self param on method");
 
-                    ast.set("caller_is", match self_ty.sty {
+                    ast.set("caller_is", match self_ty.kind {
                         rustc::ty::TyKind::Ref(_, _, mutability) => {
                             match mutability {
                                 rustc::hir::Mutability::MutMutable => "ref_mut",
@@ -273,16 +273,9 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         ast.set("else", els.into_lua_ast(ctx, lua_ctx)?)?;
                     }
                 },
-                ExprKind::IfLet(_, expr, then, opt_else) => {
-                    ast.set("kind", "IfLet")?;
+                ExprKind::Let(_, expr) => {
+                    ast.set("kind", "Let")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
-                    ast.set("then", then.into_lua_ast(ctx, lua_ctx)?)?;
-
-                    if let Some(els) = opt_else {
-                        ast.set("else", els.into_lua_ast(ctx, lua_ctx)?)?;
-                    }
-
-                    // TODO: Flesh out further
                 },
                 ExprKind::While(cond, block, opt_label) => {
                     ast.set("kind", "While")?;
@@ -290,16 +283,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
 
                     if let Some(label) = opt_label {
-                        ast.set("label", label.ident.name.as_str().get())?;
-                    }
-                },
-                ExprKind::WhileLet(_pats, expr, block, opt_label) => {
-                    ast.set("kind", "WhileLet")?;
-                    ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
-                    ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
-
-                    if let Some(label) = opt_label {
-                        ast.set("label", label.ident.name.as_str().get())?;
+                        ast.set("label", &*label.ident.name.as_str())?;
                     }
                 },
                 ExprKind::ForLoop(pat, expr, block, opt_label) => {
@@ -309,7 +293,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("pat", pat.into_lua_ast(ctx, lua_ctx)?)?;
 
                     if let Some(label) = opt_label {
-                        ast.set("label", label.ident.name.as_str().get())?;
+                        ast.set("label", &*label.ident.name.as_str())?;
                     }
                 },
                 ExprKind::Loop(block, opt_label) => {
@@ -317,7 +301,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
 
                     if let Some(label) = opt_label {
-                        ast.set("label", label.ident.name.as_str().get())?;
+                        ast.set("label", &*label.ident.name.as_str())?;
                     }
                 },
                 ExprKind::Match(expr, arms) => {
@@ -348,7 +332,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
 
                     if let Some(label) = opt_label {
-                        ast.set("label", label.ident.name.as_str().get())?;
+                        ast.set("label", &*label.ident.name.as_str())?;
                     }
                 },
                 ExprKind::Async(..) => {
@@ -377,7 +361,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                 ExprKind::Field(expr, name) => {
                     ast.set("kind", "Field")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
-                    ast.set("name", name.as_str().get())?;
+                    ast.set("name", &*name.as_str())?;
                 },
                 ExprKind::Index(indexed, index) => {
                     ast.set("kind", "Index")?;
@@ -421,14 +405,14 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     }
 
                     if let Some(label) = opt_label {
-                        ast.set("label", label.ident.name.as_str().get())?;
+                        ast.set("label", &*label.ident.name.as_str())?;
                     }
                 },
                 ExprKind::Continue(opt_label) => {
                     ast.set("kind", "Continue")?;
 
                     if let Some(label) = opt_label {
-                        ast.set("label", label.ident.name.as_str().get())?;
+                        ast.set("label", &*label.ident.name.as_str())?;
                     }
                 },
                 ExprKind::Ret(opt_val) => {
@@ -446,7 +430,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                             let input = lua_ctx.create_table()?;
                             let sym = sym.as_str();
 
-                            input.set("symbol", sym.get())?;
+                            input.set("symbol", &*sym)?;
                             input.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
 
                             Ok(input)
@@ -462,7 +446,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         .collect();
 
                     ast.set("kind", "InlineAsm")?;
-                    ast.set("asm", inline_asm.asm.as_str().get())?;
+                    ast.set("asm", &*inline_asm.asm.as_str())?;
                     ast.set("inputs", lua_ctx.create_sequence_from(inputs?.into_iter())?)?;
                     ast.set("outputs", lua_ctx.create_sequence_from(outputs?.into_iter())?)?;
                     ast.set("clobbers", lua_ctx.create_sequence_from(clobbers.into_iter())?)?;
@@ -472,11 +456,10 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                         AsmDialect::Att => "Att",
                         AsmDialect::Intel => "Intel",
                     })?;
-                    ast.set("ctxt", LuaSyntaxContext(inline_asm.ctxt))?;
                 },
                 ExprKind::Mac(mac) => {
                     ast.set("kind", "Mac")?;
-                    ast.set("path", mac.node.path.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("path", mac.path.into_lua_ast(ctx, lua_ctx)?)?;
                     // TODO: Flesh out further
                 },
                 ExprKind::Struct(path, fields, opt_expr) => {
@@ -534,7 +517,7 @@ impl<'lua> IntoLuaAst<'lua> for FnLike {
             FnKind::Foreign => "Foreign",
         })?;
         ast.set("id", self.id.as_u32())?;
-        ast.set("ident", self.ident.as_str().get())?;
+        ast.set("ident", &*self.ident.as_str())?;
         ast.set("decl", self.decl.into_lua_ast(ctx, lua_ctx)?)?;
         ast.set("span", LuaSpan(self.span.data()))?;
 
@@ -553,7 +536,6 @@ impl<'lua> IntoLuaAst<'lua> for P<FnDecl> {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "FnDecl")?;
-        ast.set("c_variadic", self.c_variadic)?;
 
         self.and_then(|fn_decl| {
             ast.set("return_type", match fn_decl.output {
@@ -575,11 +557,11 @@ impl<'lua> IntoLuaAst<'lua> for P<FnDecl> {
     }
 }
 
-impl<'lua> IntoLuaAst<'lua> for Arg {
+impl<'lua> IntoLuaAst<'lua> for Param {
     fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
         let ast = lua_ctx.create_table()?;
 
-        ast.set("type", "Arg")?;
+        ast.set("type", "Param")?;
         ast.set("id", self.id.as_u32())?;
         ast.set("pat", self.pat.into_lua_ast(ctx, lua_ctx)?)?;
         ast.set("ty", self.ty.into_lua_ast(ctx, lua_ctx)?)?;
@@ -623,7 +605,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Pat> {
         ast.set("span", LuaSpan(self.span.data()))?;
 
         self.and_then(|pat| {
-            match pat.node {
+            match pat.kind {
                 PatKind::Wild => ast.set("kind", "Wild")?,
                 PatKind::Ident(binding, ident, _sub_pattern) => {
                     ast.set("kind", "Ident")?;
@@ -633,9 +615,9 @@ impl<'lua> IntoLuaAst<'lua> for P<Pat> {
                         BindingMode::ByValue(Immutable) => "ByValueImmutable",
                         BindingMode::ByValue(Mutable) => "ByValueMutable",
                     })?;
-                    ast.set("ident", ident.as_str().get())?;
+                    ast.set("ident", &*ident.as_str())?;
                 },
-                PatKind::Tuple(patterns, fragment_pos) => {
+                PatKind::Tuple(patterns) => {
                     let pats = patterns
                         .into_iter()
                         .map(|pat| pat.into_lua_ast(ctx, lua_ctx))
@@ -643,13 +625,12 @@ impl<'lua> IntoLuaAst<'lua> for P<Pat> {
 
                     ast.set("kind", "Tuple")?;
                     ast.set("pats", lua_ctx.create_sequence_from(pats?.into_iter())?)?;
-                    ast.set("fragment_pos", fragment_pos)?;
                 },
                 PatKind::Lit(expr) => {
                     ast.set("kind", "Lit")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                _ => return Err(LuaError::external(format!("unimplemented pattern type: {:?}", pat.node))),
+                _ => return Err(LuaError::external(format!("unimplemented pattern type: {:?}", pat.kind))),
             }
 
             Ok(ast)
@@ -692,16 +673,16 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
 
         ast.set("type", "Item")?;
         ast.set("id", self.id.as_u32())?;
-        ast.set("ident", self.ident.name.as_str().get())?;
+        ast.set("ident", &*self.ident.name.as_str())?;
         ast.set("span", LuaSpan(self.span.data()))?;
 
         self.and_then(|item| {
-            match item.node {
+            match item.kind {
                 ItemKind::ExternCrate(opt_name) => {
                     ast.set("kind", "ExternCrate")?;
 
                     if let Some(name) = opt_name {
-                        ast.set("name", name.as_str().get())?;
+                        ast.set("name", &*name.as_str())?;
                     }
                 },
                 ItemKind::Mod(module) => {
@@ -754,7 +735,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
                 },
                 ItemKind::Mac(mac) => {
                     ast.set("kind", "Mac")?;
-                    ast.set("path", mac.node.path.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("path", mac.path.into_lua_ast(ctx, lua_ctx)?)?;
 
                     // TODO: More fields
                 },
@@ -763,8 +744,8 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
 
                     // TODO: More fields
                 },
-                ItemKind::Ty(ty, _generics) => {
-                    ast.set("kind", "Ty")?;
+                ItemKind::TyAlias(ty, _generics) => {
+                    ast.set("kind", "TyAlias")?;
                     ast.set("ty", ty.into_lua_ast(ctx, lua_ctx)?)?;
 
                     // TODO: More fields
@@ -784,8 +765,8 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
 
                     // TODO: More fields
                 },
-                ItemKind::Existential(..) => {
-                    ast.set("kind", "Existential")?;
+                ItemKind::OpaqueTy(..) => {
+                    ast.set("kind", "OpaqueTy")?;
 
                     // TODO: More fields
                 },
@@ -820,10 +801,10 @@ impl<'lua> IntoLuaAst<'lua> for ImplItem {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "ImplItem")?;
-        ast.set("ident", self.ident.as_str().get())?;
+        ast.set("ident", &*self.ident.as_str())?;
         ast.set("span", LuaSpan(self.span.data()))?;
 
-        match self.node {
+        match self.kind {
             ImplItemKind::Method(sig, block) => {
                 ast.set("kind", "ImplMethod")?;
                 ast.set("decl", sig.decl.into_lua_ast(ctx, lua_ctx)?)?;
@@ -856,19 +837,14 @@ impl<'lua> IntoLuaAst<'lua> for InlineAsmOutput {
 impl<'lua> IntoLuaAst<'lua> for Arm {
     fn into_lua_ast(self, ctx: &TransformCtxt, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaTable<'lua>> {
         let ast = lua_ctx.create_table()?;
-        let pats = self.pats
-            .into_iter()
-            .map(|pat| pat.into_lua_ast(ctx, lua_ctx))
-            .collect::<LuaResult<Vec<_>>>();
+        let pat = self.pat.into_lua_ast(ctx, lua_ctx)?;
 
         ast.set("type", "Arm")?;
         ast.set("body", self.body.into_lua_ast(ctx, lua_ctx)?)?;
-        ast.set("pats", lua_ctx.create_sequence_from(pats?.into_iter())?)?;
+        ast.set("pat", pat)?;
 
         if let Some(guard) = self.guard {
-            ast.set("guard", match guard {
-                Guard::If(expr) => expr.into_lua_ast(ctx, lua_ctx)?,
-            })?;
+            ast.set("guard", guard.into_lua_ast(ctx, lua_ctx)?)?;
         }
 
         // TODO: More fields
@@ -886,7 +862,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Ty> {
         ast.set("span", LuaSpan(self.span.data()))?;
 
         self.and_then(|ty| {
-            match ty.node {
+            match ty.kind {
                 TyKind::Path(_opt_qself, path) => {
                     ast.set("kind", "Path")?;
                     ast.set("path", path.into_lua_ast(ctx, lua_ctx)?)?;
@@ -927,7 +903,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Ty> {
                     })?;
 
                     if let Some(lifetime) = opt_lifetime {
-                        ast.set("lifetime", lifetime.ident.as_str().get())?;
+                        ast.set("lifetime", &*lifetime.ident.as_str())?;
                     }
                 },
                 TyKind::Typeof(anon_const) => {
@@ -968,7 +944,7 @@ impl<'lua> IntoLuaAst<'lua> for Field {
         let ast = lua_ctx.create_table()?;
 
         ast.set("type", "Field")?;
-        ast.set("ident", self.ident.as_str().get())?;
+        ast.set("ident", &*self.ident.as_str())?;
         ast.set("expr", self.expr.into_lua_ast(ctx, lua_ctx)?)?;
         ast.set("is_shorthand", self.is_shorthand)?;
         ast.set("span", LuaSpan(self.span.data()))?;
@@ -996,7 +972,7 @@ impl<'lua> IntoLuaAst<'lua> for PathSegment {
 
         ast.set("type", "PathSegment")?;
         ast.set("id", self.id.as_u32())?;
-        ast.set("ident", self.ident.as_str().get())?;
+        ast.set("ident", &*self.ident.as_str())?;
 
         if let Some(generics) = self.args {
             generics.and_then(|generics| {
@@ -1068,7 +1044,7 @@ impl<'lua> IntoLuaAst<'lua> for UseTree {
                 ast.set("kind", "Simple")?;
 
                 if let Some(ident) = opt_ident {
-                    ast.set("ident", ident.name.as_str().get())?;
+                    ast.set("ident", &*ident.name.as_str())?;
                 }
             },
             UseTreeKind::Nested(use_trees) => {

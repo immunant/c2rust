@@ -207,8 +207,8 @@ fn record_qualifier_rewrite(old_span: Span, new_span: Span, mut rcx: RewriteCtxt
 }
 
 fn rewrite_arg_list_with_tokens(
-    old: &[Arg],
-    new: &[Arg],
+    old: &[Param],
+    new: &[Param],
     args_tokens: TokenStream,
     args_span: Span,
     rcx: RewriteCtxtRef,
@@ -285,7 +285,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         ident: ref ident1,
         attrs: ref attrs1,
         id: ref id1,
-        node: ref node1,
+        kind: ref kind1,
         vis: ref vis1,
         span: ref span1,
         tokens: ref tokens1,
@@ -294,7 +294,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         ident: ref ident2,
         attrs: ref attrs2,
         id: ref id2,
-        node: ref node2,
+        kind: ref kind2,
         vis: ref vis2,
         span: ref span2,
         tokens: ref _tokens2,
@@ -306,7 +306,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         return false;
     }
 
-    match (node1, node2) {
+    match (kind1, kind2) {
         (
             &ItemKind::Fn(ref decl1, ref header1, ref generics1, ref block1),
             &ItemKind::Fn(ref decl2, ref header2, ref generics2, ref block2),
@@ -314,12 +314,10 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             let FnDecl {
                 inputs: inputs1,
                 output: output1,
-                c_variadic: variadic1,
             } = decl1 as &_;
             let FnDecl {
                 inputs: inputs2,
                 output: output2,
-                c_variadic: variadic2,
             } = decl2 as &_;
 
             let (old_args_tokens, old_args_span) =
@@ -340,7 +338,6 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
                 rewrite_arg_list_with_tokens(
                     inputs1, inputs2, old_args_tokens.into(), old_args_span, rcx.borrow()) &&
                 Rewrite::rewrite(output1, output2, rcx.borrow()) &&
-                Rewrite::rewrite(variadic1, variadic2, rcx.borrow()) &&
                 true;
             if !ok {
                 return false;
@@ -387,7 +384,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             // Generic case, for items of the form "<vis> <struct/enum/etc> <ident>".
             let ok = Rewrite::rewrite(attrs1, attrs2, rcx.borrow())
                 && Rewrite::rewrite(id1, id2, rcx.borrow())
-                && Rewrite::rewrite(node1, node2, rcx.borrow())
+                && Rewrite::rewrite(kind1, kind2, rcx.borrow())
                 && Rewrite::rewrite(span1, span2, rcx.borrow())
                 && true;
             if !ok {

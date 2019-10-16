@@ -226,7 +226,7 @@ function upgrade_ptr(ptr_ty, conversion_cfg)
     return pointee_ty
 end
 
-function Visitor:visit_arg(arg)
+function Visitor:flat_map_param(arg)
     local arg_id = arg:get_id()
     local conversion_cfg = self.node_id_cfgs[arg_id]
 
@@ -245,6 +245,8 @@ function Visitor:visit_arg(arg)
             arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
         end
     end
+
+    return {arg}
 end
 
 function Visitor:add_var(hirid, var)
@@ -844,7 +846,7 @@ function Visitor:flat_map_stmt(stmt, walk)
     return {stmt}
 end
 
-function Visitor:visit_struct_field(field)
+function Visitor:flat_map_struct_field(field)
     local field_id = field:get_id()
     local field_ty = field:get_ty()
     local conversion_cfg = self.node_id_cfgs[field_id]
@@ -868,6 +870,8 @@ function Visitor:visit_struct_field(field)
             end
         end
     end
+
+    return {field}
 end
 
 function get_as_x(mutability)
@@ -971,7 +975,7 @@ function MarkConverter.new(marks)
     return self
 end
 
-function MarkConverter:visit_arg(arg)
+function MarkConverter:flat_map_param(arg)
     local arg_id = arg:get_id()
     local arg_ty = arg:get_ty()
     local arg_ty_id = arg_ty:get_id()
@@ -979,12 +983,12 @@ function MarkConverter:visit_arg(arg)
 
     -- Skip over args likely from extern fns
     if arg:get_pat():get_kind() == "Wild" then
-        return
+        return {arg}
     end
 
     -- Skip over pointers to void
     if is_void_ptr(arg_ty) then
-        return
+        return {arg}
     end
 
     local attrs = arg:get_attrs()
@@ -1041,6 +1045,8 @@ function MarkConverter:visit_arg(arg)
 
         self.node_id_cfgs[arg_id] = ConvCfg.new{conv_type, mutability=mutability, binding=binding}
     end
+
+    return {arg}
 end
 
 function infer_node_id_cfgs(ctx)

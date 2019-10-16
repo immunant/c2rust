@@ -562,16 +562,16 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                     let mut merged_goto: IndexMap<Label, Vec<P<Pat>>> = IndexMap::new();
                     let mut merged_exit: IndexMap<Label, Vec<P<Pat>>> = IndexMap::new();
 
-                    for &(ref pats, ref lbl) in cases {
+                    for &(ref pat, ref lbl) in cases {
                         match lbl {
                             &StructureLabel::GoTo(lbl) => merged_goto
                                 .entry(lbl)
                                 .or_insert(vec![])
-                                .extend(pats.clone()),
+                                .push(pat.clone()),
                             &StructureLabel::ExitTo(lbl) => merged_exit
                                 .entry(lbl)
                                 .or_insert(vec![])
-                                .extend(pats.clone()),
+                                .push(pat.clone()),
                             _ => panic!("simplify_structure: Nested precondition violated"),
                         }
                     }
@@ -584,11 +584,17 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                         match lbl {
                             &StructureLabel::GoTo(lbl) => match merged_goto.remove(&lbl) {
                                 None => {}
-                                Some(pats) => cases_new.push((pats, StructureLabel::GoTo(lbl))),
+                                Some(pats) => {
+                                    let pat = if pats.len() == 1 { pats[0].clone() } else { mk().or_pat(pats) };
+                                    cases_new.push((pat, StructureLabel::GoTo(lbl)))
+                                }
                             },
                             &StructureLabel::ExitTo(lbl) => match merged_exit.remove(&lbl) {
                                 None => {}
-                                Some(pats) => cases_new.push((pats, StructureLabel::ExitTo(lbl))),
+                                Some(pats) => {
+                                    let pat = if pats.len() == 1 { pats[0].clone() } else { mk().or_pat(pats) };
+                                    cases_new.push((pat, StructureLabel::ExitTo(lbl)))
+                                }
                             },
                             _ => panic!("simplify_structure: Nested precondition violated"),
                         };

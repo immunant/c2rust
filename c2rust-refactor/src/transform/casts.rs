@@ -38,7 +38,7 @@ impl Transform for RemoveRedundantCasts {
                 return;
             }
 
-            match oe.node {
+            match oe.kind {
                 ExprKind::Cast(ref ie, ref it) => {
                     // Found a double cast
                     let ie_ty = cx.adjusted_node_type(ie.id);
@@ -78,7 +78,7 @@ impl Transform for RemoveRedundantCasts {
                     }
                 }
 
-                ExprKind::Unary(UnOp::Neg, ref expr) => match expr.node {
+                ExprKind::Unary(UnOp::Neg, ref expr) => match expr.kind {
                     ExprKind::Lit(ref lit) => {
                         // `-X_ty1 as ty2` => `-X_ty2`
                         let new_lit = replace_suffix(lit, SimpleTy::from(ot_ty));
@@ -264,7 +264,7 @@ impl SimpleTy {
 impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
     fn from(ty: ty::Ty<'tcx>) -> Self {
         use SimpleTy::*;
-        match ty.sty {
+        match ty.kind {
             TyKind::Int(IntTy::Isize) => Size(true),
             TyKind::Uint(UintTy::Usize) => Size(false),
 
@@ -282,7 +282,7 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
 }
 
 fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
-    match (&lit.node, &ty) {
+    match (&lit.kind, &ty) {
         // Very conservative approach: only convert to `isize`/`usize`
         // if the value fits in a 16-bit value
         (LitKind::Int(i, _), SimpleTy::Size(true)) if *i <= i16::max_value() as u128 => {
@@ -375,9 +375,9 @@ impl ConstantValue {
 }
 
 fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
-    match e.node {
+    match e.kind {
         ExprKind::Lit(ref lit) => {
-            match lit.node {
+            match lit.kind {
                 LitKind::Int(i, LitIntType::Unsuffixed) => Some(ConstantValue::Uint(i)),
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::Isize)) => {

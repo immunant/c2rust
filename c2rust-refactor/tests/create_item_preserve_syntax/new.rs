@@ -1,7 +1,6 @@
 mod test {
     fn before() {}
-    fn f() {
-        /* syntax preserved */
+    fn f() { /* syntax preserved */
     }
     fn after() {}
 }

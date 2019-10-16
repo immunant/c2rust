@@ -128,7 +128,7 @@ impl SeqItem for Attribute {
     }
 }
 
-impl SeqItem for Arg {
+impl SeqItem for Param {
     fn seq_item_id(&self) -> SeqItemId {
         SeqItemId::Node(self.id)
     }
@@ -437,9 +437,7 @@ pub fn binop_right_prec(op: &BinOp) -> ExprPrec {
 /// Note that this does not require the source text to exist in a real (non-virtual) file - there
 /// just has to be text somewhere in the `SourceMap`.
 pub fn is_rewritable(sp: Span) -> bool {
-    sp != DUMMY_SP &&
-    // If it has a non-default SyntaxContext, it was generated as part of a macro expansion.
-    sp.ctxt() == SyntaxContext::empty()
+    sp != DUMMY_SP && !sp.from_expansion()
 }
 
 pub fn describe(sess: &Session, span: Span) -> String {

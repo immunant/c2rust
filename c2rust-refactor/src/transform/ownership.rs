@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use arena::SyncDroplessArena;
 use rustc::hir::def_id::DefId;
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::mut_visit::{self, MutVisitor};
@@ -74,19 +74,19 @@ fn do_annotate(st: &CommandState,
 
     impl<'lty, 'a, 'tcx> AnnotateFolder<'a, 'tcx> {
         fn static_attr_for(&self, id: NodeId) -> Option<Attribute> {
-            self.hir_map.opt_local_def_id(id)
+            self.hir_map.opt_local_def_id_from_node_id(id)
                 .and_then(|def_id| self.ana.statics.get(&def_id))
                 .and_then(|&ty| build_static_attr(ty))
         }
 
         fn constraints_attr_for(&self, id: NodeId) -> Option<Attribute> {
-            self.hir_map.opt_local_def_id(id)
+            self.hir_map.opt_local_def_id_from_node_id(id)
                 .and_then(|def_id| self.ana.funcs.get(&def_id))
                 .map(|fr| build_constraints_attr(&fr.cset))
         }
 
         fn push_mono_attrs_for(&self, id: NodeId, dest: &mut Vec<Attribute>) {
-            if let Some((def_id, (fr, vr))) = self.hir_map.opt_local_def_id(id)
+            if let Some((def_id, (fr, vr))) = self.hir_map.opt_local_def_id_from_node_id(id)
                     .map(|def_id| (def_id, self.ana.fn_results(def_id))) {
                 if fr.num_sig_vars == 0 {
                     return;
@@ -123,7 +123,7 @@ fn do_annotate(st: &CommandState,
             }
 
             mut_visit::noop_flat_map_item(i.map(|mut i| {
-                match i.node {
+                match i.kind {
                     ItemKind::Static(..) | ItemKind::Const(..) => {
                         self.clean_attrs(&mut i.attrs);
                         if let Some(attr) = self.static_attr_for(i.id) {
@@ -154,9 +154,9 @@ fn do_annotate(st: &CommandState,
             mut_visit::noop_flat_map_impl_item(i, self)
         }
 
-        fn visit_struct_field(&mut self, sf: &mut StructField) {
+        fn flat_map_struct_field(&mut self, mut sf: StructField) -> SmallVec<[StructField; 1]> {
             if !self.st.marked(sf.id, self.label) {
-                return mut_visit::noop_visit_struct_field(sf, self);
+                return mut_visit::noop_flat_map_struct_field(sf, self);
             }
 
             self.clean_attrs(&mut sf.attrs);
@@ -164,7 +164,7 @@ fn do_annotate(st: &CommandState,
                 sf.attrs.push(attr);
             }
 
-            mut_visit::noop_visit_struct_field(sf, self)
+            mut_visit::noop_flat_map_struct_field(sf, self)
         }
     }
 
@@ -279,8 +279,10 @@ fn make_attr(name: &str, tokens: TokenStream) -> Attribute {
     Attribute {
         id: AttrId(0),
         style: AttrStyle::Outer,
-        path: mk().path(vec![name]),
-        tokens: tokens,
+        item: AttrItem {
+            path: mk().path(vec![name]),
+            tokens: tokens,
+        },
         is_sugared_doc: false,
         span: DUMMY_SP,
     }
@@ -331,7 +333,7 @@ fn do_split_variants(st: &CommandState,
             }
             debug!("looking at {:?}", fl.ident);
 
-            let def_id = match_or!([cx.hir_map().opt_local_def_id(fl.id)]
+            let def_id = match_or!([cx.hir_map().opt_local_def_id_from_node_id(fl.id)]
                                    Some(x) => x; return smallvec![fl]);
             if !ana.variants.contains_key(&def_id) {
                 return smallvec![fl];
@@ -448,7 +450,7 @@ fn do_split_variants(st: &CommandState,
 }
 
 fn rename_callee(e: &mut P<Expr>, new_name: &str) {
-    match &mut e.node {
+    match &mut e.kind {
         ExprKind::Path(_, ref mut path) => {
             // Change the last path segment.
             let seg = path.segments.last_mut().unwrap();

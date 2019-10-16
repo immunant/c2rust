@@ -46,24 +46,24 @@ enum FieldType {
 fn contains_block(expr_kind: &ExprKind) -> bool {
     match expr_kind {
         ExprKind::Block(..) => true,
-        ExprKind::Assign(lhs, rhs) => contains_block(&lhs.node) || contains_block(&rhs.node),
-        ExprKind::AssignOp(_, lhs, rhs) => contains_block(&lhs.node) || contains_block(&rhs.node),
-        ExprKind::Binary(_, lhs, rhs) => contains_block(&lhs.node) || contains_block(&rhs.node),
-        ExprKind::Unary(_, e) => contains_block(&e.node),
-        ExprKind::MethodCall(_, exprs) => exprs.iter().map(|e| contains_block(&e.node)).any(|b| b),
-        ExprKind::Cast(e, _) => contains_block(&e.node),
+        ExprKind::Assign(lhs, rhs) => contains_block(&lhs.kind) || contains_block(&rhs.kind),
+        ExprKind::AssignOp(_, lhs, rhs) => contains_block(&lhs.kind) || contains_block(&rhs.kind),
+        ExprKind::Binary(_, lhs, rhs) => contains_block(&lhs.kind) || contains_block(&rhs.kind),
+        ExprKind::Unary(_, e) => contains_block(&e.kind),
+        ExprKind::MethodCall(_, exprs) => exprs.iter().map(|e| contains_block(&e.kind)).any(|b| b),
+        ExprKind::Cast(e, _) => contains_block(&e.kind),
         _ => false,
     }
 }
 
 fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
-    let node = LitKind::Str(Symbol::intern(rhs), StrStyle::Cooked);
-    let token = node.to_lit_token();
+    let kind = LitKind::Str(Symbol::intern(rhs), StrStyle::Cooked);
+    let token = kind.to_lit_token();
     let meta_item = mk().meta_item(
         vec![lhs],
         MetaItemKind::NameValue(Lit {
             token,
-            node,
+            kind,
             span: DUMMY_SP,
         }),
     );
@@ -306,7 +306,7 @@ impl<'a> Translation<'a> {
                     );
                     let mut field = mk();
                     let field_attrs = attrs.iter().map(|attr| {
-                        let ty_str = match &attr.1.node {
+                        let ty_str = match &attr.1.kind {
                             TyKind::Path(_, path) => format!("{}", path),
                             _ => unreachable!("Found type other than path"),
                         };
@@ -705,7 +705,7 @@ impl<'a> Translation<'a> {
             // If there's just one statement we should be able to be able to fit it into one line without issue
             // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
             // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
-            match param_expr.node {
+            match param_expr.kind {
                 ExprKind::Block(ref block, _) => {
                     let last = block.stmts.len() - 1;
 
@@ -717,7 +717,7 @@ impl<'a> Translation<'a> {
                         stmts.push(stmt.clone());
                     }
 
-                    let last_expr = match block.stmts[last].node {
+                    let last_expr = match block.stmts[last].kind {
                         StmtKind::Expr(ref expr) => expr.clone(),
                         _ => return Err(TranslationError::generic("Expected Expr StmtKind")),
                     };
@@ -725,7 +725,7 @@ impl<'a> Translation<'a> {
 
                     stmts.push(mk().expr_stmt(method_call));
                 }
-                _ if contains_block(&param_expr.node) => {
+                _ if contains_block(&param_expr.kind) => {
                     let name = self.renamer.borrow_mut().pick_name("rhs");
                     let name_ident = mk().mutbl().ident_pat(name.clone());
                     let temporary_stmt =

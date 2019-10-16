@@ -26,7 +26,7 @@ use arena::SyncDroplessArena;
 use log::Level;
 use rustc::hir::def_id::DefId;
 use rustc::ty::{Ty, TyCtxt, TyKind};
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::LabeledTyCtxt;
@@ -141,7 +141,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
             Entry::Vacant(e) => {
                 *e.insert(
                     self.lcx
-                        .label(self.tcx.type_of(did), &mut |ty| match ty.sty {
+                        .label(self.tcx.type_of(did), &mut |ty| match ty.kind {
                             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                                 let v = assign.push(ConcretePerm::Move);
                                 Some(PermVar::Static(v))
@@ -172,7 +172,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                 let mut counter = 0;
 
                 let l_sig = {
-                    let mut f = |ty: Ty<'tcx>| match ty.sty {
+                    let mut f = |ty: Ty<'tcx>| match ty.kind {
                         TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                             let v = Var(counter);
                             counter += 1;

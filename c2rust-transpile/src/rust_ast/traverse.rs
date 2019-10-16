@@ -32,10 +32,6 @@ pub trait Traversal: Sized {
         traverse_arm_def(self, a)
     }
 
-    fn traverse_guard(&mut self, g: Guard) -> Guard {
-        traverse_guard_def(self, g)
-    }
-
     fn traverse_field(&mut self, f: Field) -> Field {
         traverse_field_def(self, f)
     }
@@ -79,7 +75,6 @@ traversable_impl!(ImplItem, traverse_impl_item);
 traversable_impl!(Block, traverse_block);
 traversable_impl!(Local, traverse_local);
 traversable_impl!(Arm, traverse_arm);
-traversable_impl!(Guard, traverse_guard);
 traversable_impl!(Field, traverse_field);
 traversable_impl!(Mod, traverse_mod);
 traversable_impl!(ForeignMod, traverse_foreign_mod);
@@ -105,7 +100,7 @@ impl<A: Traversable + 'static> Traversable for ptr::P<A> {
 }
 
 pub fn traverse_stmt_def<W: Traversal>(walk: &mut W, mut s: Stmt) -> Stmt {
-    s.node = match s.node {
+    s.kind = match s.kind {
         StmtKind::Local(p_local) => StmtKind::Local(p_local.traverse(walk)),
         StmtKind::Item(p_item) => StmtKind::Item(p_item.traverse(walk)),
         StmtKind::Expr(p_expr) => StmtKind::Expr(p_expr.traverse(walk)),
@@ -116,7 +111,7 @@ pub fn traverse_stmt_def<W: Traversal>(walk: &mut W, mut s: Stmt) -> Stmt {
 }
 
 pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
-    e.node = match e.node {
+    e.kind = match e.kind {
         ExprKind::Box(p_expr) => ExprKind::Box(p_expr.map(|expr| walk.traverse_expr(expr))),
         ExprKind::Array(elems) => ExprKind::Array(elems.traverse(walk)),
         ExprKind::Call(func, args) => ExprKind::Call(func.traverse(walk), args.traverse(walk)),
@@ -128,20 +123,12 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
         ExprKind::Unary(op, arg) => ExprKind::Unary(op, arg.traverse(walk)),
         ExprKind::Cast(arg, t) => ExprKind::Cast(arg.traverse(walk), t),
         ExprKind::Type(arg, t) => ExprKind::Type(arg.traverse(walk), t),
+        ExprKind::Let(pat, e) => ExprKind::Let(pat, e.traverse(walk)),
         ExprKind::If(cond, thn, els) => {
             ExprKind::If(cond.traverse(walk), thn.traverse(walk), els.traverse(walk))
         }
-        ExprKind::IfLet(pats, cond, thn, els) => ExprKind::IfLet(
-            pats,
-            cond.traverse(walk),
-            thn.traverse(walk),
-            els.traverse(walk),
-        ),
         ExprKind::While(cond, block, lbl) => {
             ExprKind::While(cond.traverse(walk), block.traverse(walk), lbl)
-        }
-        ExprKind::WhileLet(pats, cond, block, lbl) => {
-            ExprKind::WhileLet(pats, cond.traverse(walk), block.traverse(walk), lbl)
         }
         ExprKind::ForLoop(pat, cond, block, lbl) => {
             ExprKind::ForLoop(pat, cond.traverse(walk), block.traverse(walk), lbl)
@@ -175,13 +162,13 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
         ExprKind::Async(cap, nod, block) => ExprKind::Async(cap, nod, block.traverse(walk)),
         ExprKind::TryBlock(blk) => ExprKind::TryBlock(blk.traverse(walk)),
         ExprKind::Err => unimplemented!(),
-        ExprKind::Await(_, _) => unimplemented!(),
+        ExprKind::Await(_) => unimplemented!(),
     };
     e
 }
 
 pub fn traverse_trait_item_def<W: Traversal>(walk: &mut W, mut ti: TraitItem) -> TraitItem {
-    ti.node = match ti.node {
+    ti.kind = match ti.kind {
         TraitItemKind::Const(ty, arg) => TraitItemKind::Const(ty, arg.traverse(walk)),
         TraitItemKind::Method(sig, block) => TraitItemKind::Method(sig, block.traverse(walk)),
         TraitItemKind::Type(bds, t) => TraitItemKind::Type(bds, t),
@@ -191,12 +178,12 @@ pub fn traverse_trait_item_def<W: Traversal>(walk: &mut W, mut ti: TraitItem) ->
 }
 
 pub fn traverse_impl_item_def<W: Traversal>(walk: &mut W, mut ii: ImplItem) -> ImplItem {
-    ii.node = match ii.node {
+    ii.kind = match ii.kind {
         ImplItemKind::Const(ty, expr) => ImplItemKind::Const(ty, expr.traverse(walk)),
         ImplItemKind::Method(sig, block) => ImplItemKind::Method(sig, block.traverse(walk)),
-        ImplItemKind::Type(t) => ImplItemKind::Type(t),
+        ImplItemKind::TyAlias(t) => ImplItemKind::TyAlias(t),
         ImplItemKind::Macro(mac) => ImplItemKind::Macro(mac),
-        ImplItemKind::Existential(bnds) => ImplItemKind::Existential(bnds),
+        ImplItemKind::OpaqueTy(bnds) => ImplItemKind::OpaqueTy(bnds),
     };
     ii
 }
@@ -217,12 +204,6 @@ pub fn traverse_arm_def<W: Traversal>(walk: &mut W, mut a: Arm) -> Arm {
     a
 }
 
-pub fn traverse_guard_def<W: Traversal>(walk: &mut W, a: Guard) -> Guard {
-    match a {
-        Guard::If(e) => Guard::If(e.traverse(walk)),
-    }
-}
-
 pub fn traverse_field_def<W: Traversal>(walk: &mut W, mut f: Field) -> Field {
     f.expr = f.expr.traverse(walk);
     f
@@ -239,7 +220,7 @@ pub fn traverse_foreign_mod_def<W: Traversal>(walk: &mut W, mut m: ForeignMod) -
 }
 
 pub fn traverse_item_def<W: Traversal>(walk: &mut W, mut i: Item) -> Item {
-    i.node = match i.node {
+    i.kind = match i.kind {
         ItemKind::Static(ty, mu, p_expr) => ItemKind::Static(ty, mu, p_expr.traverse(walk)),
         ItemKind::Const(ty, p_expr) => ItemKind::Const(ty, p_expr.traverse(walk)),
         ItemKind::Fn(f, h, g, blk) => ItemKind::Fn(f, h, g, blk.traverse(walk)),
@@ -252,14 +233,14 @@ pub fn traverse_item_def<W: Traversal>(walk: &mut W, mut i: Item) -> Item {
         ItemKind::Use(u) => ItemKind::Use(u),
         ItemKind::ExternCrate(u) => ItemKind::ExternCrate(u),
         ItemKind::GlobalAsm(u) => ItemKind::GlobalAsm(u),
-        ItemKind::Ty(l, r) => ItemKind::Ty(l, r),
+        ItemKind::TyAlias(l, r) => ItemKind::TyAlias(l, r),
         ItemKind::Enum(l, r) => ItemKind::Enum(l, r),
         ItemKind::Struct(l, r) => ItemKind::Struct(l, r),
         ItemKind::Union(l, r) => ItemKind::Union(l, r),
         ItemKind::TraitAlias(l, r) => ItemKind::TraitAlias(l, r),
         ItemKind::Mac(m) => ItemKind::Mac(m),
         ItemKind::MacroDef(m) => ItemKind::MacroDef(m),
-        ItemKind::Existential(genbnds, gens) => ItemKind::Existential(genbnds, gens),
+        ItemKind::OpaqueTy(genbnds, gens) => ItemKind::OpaqueTy(genbnds, gens),
     };
     i
 }

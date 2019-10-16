@@ -152,7 +152,7 @@ as_nonterminal_impl!(Ty, NtTy, P);
 //as_nonterminal_impl!(Ident, NtIdent);
 //as_nonterminal_impl!(Lifetime, NtLifetime);
 //as_nonterminal_impl!(Expr??, NtLiteral, P);
-as_nonterminal_impl!(MetaItem, NtMeta);
+as_nonterminal_impl!(AttrItem, NtMeta);
 as_nonterminal_impl!(Path, NtPath);
 as_nonterminal_impl!(Visibility, NtVis);
 as_nonterminal_impl!(TokenTree, NtTT);
@@ -186,7 +186,7 @@ fn check_nonterminal<T>(old: &T, new: &T, cx: &mut Ctxt) -> bool
 where
     T: GetSpan + AsNonterminal,
 {
-    let empty_ctxt = old.get_span().ctxt() == SyntaxContext::empty();
+    let empty_ctxt = !old.get_span().from_expansion();
     if empty_ctxt {
         cx.record(old.get_span(), new.as_nonterminal());
     }

@@ -32,7 +32,7 @@ struct Mod { inner, #[mac_table_seq] items, #[rewrite_ignore] inline }
 
 #[rewrite_print_recover] #[rewrite_seq_item] #[rewrite_extra_strategies=item_header]
 #[nonterminal] #[extend_span]
-struct Item { ident, #[match=ignore] attrs, id, node, vis, span,
+struct Item { ident, #[match=ignore] attrs, id, kind, vis, span,
               #[match=ignore] #[rewrite_ignore] tokens }
 enum ItemKind {
     ExternCrate(name),
@@ -43,16 +43,16 @@ enum ItemKind {
     Mod(module),
     ForeignMod(fm),
     GlobalAsm(asm),
-    Ty(ty, generics),
-    Existential(bounds, generics),
+    TyAlias(ty, generics),
+    OpaqueTy(bounds, generics),
     Enum(def, generics),
     Struct(vd, generics),
     Union(vd, generics),
     Trait(is_auto, unsafety, generics, bounds, #[mac_table_seq] items),
+    TraitAlias(generics, bounds),
     Impl(unsafety, polarity, generics, defaultness, trait_ref, ty, #[mac_table_seq] items),
     Mac(mac),
     MacroDef(tts),
-    TraitAlias(generics,bounds),
 }
 
 enum UseTreeKind {
@@ -64,7 +64,7 @@ enum UseTreeKind {
 struct UseTree { kind, prefix, span }
 
 #[nonterminal] #[extend_span]
-struct TraitItem { id, ident, #[match=ignore] attrs, generics, node, span,
+struct TraitItem { id, ident, #[match=ignore] attrs, generics, kind, span,
                    #[match=ignore] #[rewrite_ignore] tokens }
 enum TraitItemKind {
     Const(ty, init),
@@ -74,13 +74,13 @@ enum TraitItemKind {
 }
 
 #[nonterminal] #[extend_span]
-struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, generics, node, span,
+struct ImplItem { id, ident, vis, defaultness, #[match=ignore] attrs, generics, kind, span,
                   #[match=ignore] #[rewrite_ignore] tokens }
 enum ImplItemKind {
     Const(ty, init),
     Method(sig, body),
-    Type(ty),
-    Existential(bounds),
+    TyAlias(ty),
+    OpaqueTy(bounds),
     Macro(mac),
 }
 
@@ -88,7 +88,7 @@ struct TraitRef { path, ref_id }
 
 struct EnumDef { variants }
 #[extend_span]
-struct Variant_ { ident, #[match=ignore] attrs, id, data, disr_expr }
+struct Variant { ident, #[match=ignore] attrs, id, data, disr_expr, span, is_placeholder }
 enum VariantData {
     Struct(fields, id),
     Tuple(fields, id),
@@ -96,13 +96,13 @@ enum VariantData {
 }
 
 #[extend_span]
-struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs }
+struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs, is_placeholder }
 
 struct MethodSig { header, decl }
 
 struct ForeignMod { abi, #[mac_table_seq] items }
 #[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal] #[extend_span]
-struct ForeignItem { ident, #[match=ignore] attrs, node, id, span, vis }
+struct ForeignItem { ident, #[match=ignore] attrs, kind, id, span, vis }
 enum ForeignItemKind {
     Fn(decl, generics),
     Static(ty, mutbl),
@@ -113,7 +113,7 @@ enum ForeignItemKind {
 
 struct Generics { params, where_clause, span }
 #[extend_span]
-struct GenericParam { id, ident, attrs, bounds, kind }
+struct GenericParam { id, ident, attrs, bounds, kind, is_placeholder }
 enum GenericParamKind {
     Lifetime,
     Type { default },
@@ -145,7 +145,7 @@ enum CrateSugar {
 }
 
 #[match=custom] #[rewrite_print_recover] #[mac_table_record] #[nonterminal]
-struct Ty { id, node, span }
+struct Ty { id, kind, span }
 struct MutTy {ty, mutbl}
 enum TyKind {
     Slice(ty),
@@ -182,10 +182,10 @@ enum GenericBound {
 
 struct PolyTraitRef { trait_ref, span, bound_generic_params }
 
-struct FnDecl { inputs, output, c_variadic }
+struct FnDecl { inputs, output }
 struct FnHeader { unsafety, asyncness, constness, abi }
 #[rewrite_print]
-struct Arg { attrs, ty, pat, id }
+struct Param { attrs, ty, pat, id, span, is_placeholder }
 enum FunctionRetTy {
     Default(sp),
     Ty(ty),
@@ -193,7 +193,7 @@ enum FunctionRetTy {
 
 
 #[match=custom] #[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal]
-struct Stmt { id, node, span }
+struct Stmt { id, kind, span }
 #[no_debug]
 enum StmtKind {
     Local(local),
@@ -208,7 +208,7 @@ struct Local { pat, ty, init, id, span, #[match=ignore] attrs }
 
 
 #[match=custom] #[rewrite_print_recover] #[extend_span] #[mac_table_record] #[nonterminal]
-struct Expr { id, node, span, #[match=ignore] attrs }
+struct Expr { id, kind, span, #[match=ignore] attrs }
 #[prec_contains_expr]
 enum ExprKind {
     Box(#[prec=PREFIX] expr),
@@ -221,17 +221,16 @@ enum ExprKind {
     Lit(lit),
     Cast(#[prec=As] expr, ty),
     Type(#[prec=Colon] expr, ty),
+    Let(pats, #[prec_special=Cond] expr),
     If(#[prec_special=Cond] cond, then_body, else_body),
-    IfLet(pat, #[prec_special=Cond] expr, then_body, else_body),
     While(#[prec_special=Cond] cond, body, label),
-    WhileLet(pat, #[prec_special=Cond] expr, body, label),
     ForLoop(pat, #[prec_special=Cond] iter, body, label),
     Loop(body, label),
     Match(#[prec_special=Cond] target, arms),
     Closure(cap, is_async, mov, decl, body, span),
     Block(body, label),
     Async(cap, id, block),
-    Await(origin, expr),
+    Await(expr),
     TryBlock(body),
     Assign(#[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
     AssignOp(op, #[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
@@ -274,39 +273,38 @@ enum UnOp {
 #[match=eq]
 flag BinOpKind;
 #[extend_span]
-struct Field { ident, expr, span, is_shorthand, attrs }
+struct Field { id, ident, expr, span, is_shorthand, attrs, is_placeholder }
 #[extend_span]
-struct Arm { attrs, pats, guard, body, span }
-enum Guard {
-    If(expr),
-}
+struct Arm { id, attrs, pat, guard, body, span, is_placeholder }
 #[match=custom] #[rewrite_print_recover] #[nonterminal]
 struct Block { #[mac_table_seq] stmts, id, rules, span }
 
 
 #[match=custom] #[mac_table_record] #[nonterminal]
-struct Pat { id, node, span }
+struct Pat { id, kind, span }
 enum PatKind {
     Wild,
     Ident(mode, id, pat),
     Struct(path, fields, dotdot),
-    TupleStruct(path, fields, dotdot),
+    TupleStruct(path, fields),
+    Or(paths),
     Path(qself, path),
-    Tuple(pats, dotdot),
+    Tuple(pats),
     Box(pat),
     Ref(pat, mutbl),
     Lit(expr),
     Range(lo, hi, end),
-    Slice(start, mid, end),
+    Slice(pats),
+    Rest,
     Paren(pat),
     #[mac_table_record] Mac(mac),
 }
 
 #[extend_span]
-struct FieldPat { ident, pat, is_shorthand, attrs }
+struct FieldPat { id, ident, pat, is_shorthand, attrs, span, is_placeholder }
 
 #[match=custom]
-struct Lit { token, node, span }
+struct Lit { token, kind, span }
 
 enum LitKind {
     Str(sym, style),
@@ -342,7 +340,6 @@ enum RangeSyntax {
 }
 flag BindingMode;
 flag CaptureBy;
-flag AwaitOrigin;
 enum BlockCheckMode {
     Default,
     Unsafe(source),
@@ -357,7 +354,8 @@ flag RangeLimits;
 
 
 #[no_node_id] #[rewrite_print] #[rewrite_custom=SeqItem]
-struct Attribute { id, style, path, tokens, is_sugared_doc, span }
+struct Attribute { id, style, item, is_sugared_doc, span }
+struct AttrItem { path, tokens }
 flag AttrStyle;
 
 
@@ -384,7 +382,7 @@ enum AssocTyConstraintKind {
 }
 
 
-struct Mac_ { path, delim, tts }
+struct Mac { path, delim, tts, span, prior_type_ascription }
 flag MacStmtStyle;
 #[equiv_mode=ignore]
 flag TokenStream;
@@ -393,9 +391,9 @@ struct MacroDef { tokens, legacy }
 
 struct InlineAsm {
 asm, asm_str_style, outputs, inputs, clobbers,
-volatile, alignstack, dialect, ctxt
+volatile, alignstack, dialect
 }
-struct GlobalAsm { asm, ctxt }
+struct GlobalAsm { asm }
 struct InlineAsmOutput { constraint, expr, is_rw, is_indirect }
 
 #[match=custom] struct Label { ident }
@@ -458,7 +456,7 @@ struct DelimSpan { open, close }
 flag DelimToken;
 flag Token;
 
-struct MetaItem { path, node, span }
+struct MetaItem { path, kind, span }
 enum MetaItemKind {
     Word,
     List(l),

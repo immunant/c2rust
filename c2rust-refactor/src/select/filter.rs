@@ -23,7 +23,7 @@ pub enum AnyNode<'ast> {
     Expr(&'ast Expr),
     Pat(&'ast Pat),
     Ty(&'ast Ty),
-    Arg(&'ast Arg),
+    Param(&'ast Param),
     Field(&'ast StructField),
 }
 
@@ -38,7 +38,7 @@ impl<'ast> AnyNode<'ast> {
             AnyNode::Expr(_) => NodeKind::Expr,
             AnyNode::Pat(_) => NodeKind::Pat,
             AnyNode::Ty(_) => NodeKind::Ty,
-            AnyNode::Arg(_) => NodeKind::Arg,
+            AnyNode::Param(_) => NodeKind::Param,
             AnyNode::Field(_) => NodeKind::Field,
         }
     }
@@ -53,7 +53,7 @@ impl<'ast> AnyNode<'ast> {
             AnyNode::Expr(x) => x.id,
             AnyNode::Pat(x) => x.id,
             AnyNode::Ty(x) => x.id,
-            AnyNode::Arg(x) => x.id,
+            AnyNode::Param(x) => x.id,
             AnyNode::Field(x) => x.id,
         }
     }
@@ -69,15 +69,15 @@ impl<'ast> AnyNode<'ast> {
 
     pub fn mutbl(&self) -> Option<Mutability> {
         match *self {
-            AnyNode::Item(i) => match i.node {
+            AnyNode::Item(i) => match i.kind {
                 ItemKind::Static(_, mutbl, _) => Some(mutbl),
                 _ => None,
             },
-            AnyNode::ForeignItem(fi) => match fi.node {
+            AnyNode::ForeignItem(fi) => match fi.kind {
                 ForeignItemKind::Static(_, mutability) => Some(mutability),
                 _ => None,
             },
-            AnyNode::Pat(p) => match p.node {
+            AnyNode::Pat(p) => match p.kind {
                 PatKind::Ident(mode, _, _) => match mode {
                     BindingMode::ByRef(mutbl) => Some(mutbl),
                     BindingMode::ByValue(mutbl) => Some(mutbl),
@@ -94,7 +94,7 @@ impl<'ast> AnyNode<'ast> {
             AnyNode::TraitItem(i) => Some(i.ident.name),
             AnyNode::ImplItem(i) => Some(i.ident.name),
             AnyNode::ForeignItem(i) => Some(i.ident.name),
-            AnyNode::Arg(a) => match a.pat.node {
+            AnyNode::Param(a) => match a.pat.kind {
                 PatKind::Ident(_, ref i, _) => Some(i.name),
                 _ => None,
             },
@@ -137,7 +137,7 @@ pub enum ItemLikeKind {
     ForeignMod,
     GlobalAsm,
     Ty,
-    Existential,
+    OpaqueTy,
     Enum,
     Struct,
     Union,
@@ -162,7 +162,7 @@ impl FromStr for ItemLikeKind {
             "foreign_mod" => Ok(ItemLikeKind::ForeignMod),
             "global_asm" => Ok(ItemLikeKind::GlobalAsm),
             "ty" => Ok(ItemLikeKind::Ty),
-            "existential" => Ok(ItemLikeKind::Existential),
+            "opaquety" => Ok(ItemLikeKind::OpaqueTy),
             "enum" => Ok(ItemLikeKind::Enum),
             "struct" => Ok(ItemLikeKind::Struct),
             "union" => Ok(ItemLikeKind::Union),
@@ -179,7 +179,7 @@ impl FromStr for ItemLikeKind {
 
 impl ItemLikeKind {
     pub fn from_item(i: &Item) -> ItemLikeKind {
-        match i.node {
+        match i.kind {
             ItemKind::ExternCrate(..) => ItemLikeKind::ExternCrate,
             ItemKind::Use(..) => ItemLikeKind::Use,
             ItemKind::Static(..) => ItemLikeKind::Static,
@@ -188,8 +188,8 @@ impl ItemLikeKind {
             ItemKind::Mod(..) => ItemLikeKind::Mod,
             ItemKind::ForeignMod(..) => ItemLikeKind::ForeignMod,
             ItemKind::GlobalAsm(..) => ItemLikeKind::GlobalAsm,
-            ItemKind::Ty(..) => ItemLikeKind::Ty,
-            ItemKind::Existential(..) => ItemLikeKind::Existential,
+            ItemKind::OpaqueTy(..) => ItemLikeKind::OpaqueTy,
+            ItemKind::TyAlias(..) => ItemLikeKind::Ty,
             ItemKind::Enum(..) => ItemLikeKind::Enum,
             ItemKind::Struct(..) => ItemLikeKind::Struct,
             ItemKind::Union(..) => ItemLikeKind::Union,
@@ -202,7 +202,7 @@ impl ItemLikeKind {
     }
 
     pub fn from_trait_item(i: &TraitItem) -> ItemLikeKind {
-        match i.node {
+        match i.kind {
             TraitItemKind::Const(..) => ItemLikeKind::Const,
             TraitItemKind::Method(..) => ItemLikeKind::Fn,
             TraitItemKind::Type(..) => ItemLikeKind::Ty,
@@ -211,17 +211,17 @@ impl ItemLikeKind {
     }
 
     pub fn from_impl_item(i: &ImplItem) -> ItemLikeKind {
-        match i.node {
+        match i.kind {
             ImplItemKind::Const(..) => ItemLikeKind::Const,
             ImplItemKind::Method(..) => ItemLikeKind::Fn,
-            ImplItemKind::Type(..) => ItemLikeKind::Ty,
-            ImplItemKind::Existential(..) => ItemLikeKind::Existential,
+            ImplItemKind::OpaqueTy(..) => ItemLikeKind::OpaqueTy,
+            ImplItemKind::TyAlias(..) => ItemLikeKind::Ty,
             ImplItemKind::Macro(..) => ItemLikeKind::Mac,
         }
     }
 
     pub fn from_foreign_item(i: &ForeignItem) -> ItemLikeKind {
-        match i.node {
+        match i.kind {
             ForeignItemKind::Fn(..) => ItemLikeKind::Fn,
             ForeignItemKind::Static(..) => ItemLikeKind::Static,
             ForeignItemKind::Ty => ItemLikeKind::Ty,
@@ -248,7 +248,7 @@ pub fn matches_filter(
             if !reflect::can_reflect_path(cx, node.id()) {
                 return false;
             }
-            let def_id = match cx.hir_map().opt_local_def_id(node.id()) {
+            let def_id = match cx.hir_map().opt_local_def_id_from_node_id(node.id()) {
                 Some(id) => id,
                 None => return false,
             };
@@ -378,7 +378,7 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for ChildVisitor<F> {
 
     fn visit_fn(&mut self, _: FnKind<'ast>, fd: &'ast FnDecl, _: Span, _: NodeId) {
         for arg in &fd.inputs {
-            (self.func)(AnyNode::Arg(arg));
+            (self.func)(AnyNode::Param(arg));
         }
         match fd.output {
             FunctionRetTy::Default(_) => {}
@@ -404,7 +404,7 @@ pub fn iter_children<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
         AnyNode::Expr(x) => visit::walk_expr(&mut v, x),
         AnyNode::Pat(x) => visit::walk_pat(&mut v, x),
         AnyNode::Ty(x) => visit::walk_ty(&mut v, x),
-        AnyNode::Arg(x) => {
+        AnyNode::Param(x) => {
             v.visit_pat(&x.pat);
             v.visit_ty(&x.ty);
         }
@@ -433,10 +433,10 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
     }
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
-        // Make sure we visit foreign function args as Arg
-        if let ForeignItemKind::Fn(ref decl, _) = x.node {
+        // Make sure we visit foreign function args as Param
+        if let ForeignItemKind::Fn(ref decl, _) = x.kind {
             for arg in &decl.inputs {
-                (self.func)(AnyNode::Arg(arg));
+                (self.func)(AnyNode::Param(arg));
             }
         }
         (self.func)(AnyNode::ForeignItem(x));
@@ -465,7 +465,7 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
 
     fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
         for arg in &fd.inputs {
-            (self.func)(AnyNode::Arg(arg));
+            (self.func)(AnyNode::Param(arg));
         }
         // `walk` call handles the return type.
         visit::walk_fn(self, kind, fd, span);
@@ -488,7 +488,7 @@ pub fn iter_descendants<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
         AnyNode::Expr(x) => visit::walk_expr(&mut v, x),
         AnyNode::Pat(x) => visit::walk_pat(&mut v, x),
         AnyNode::Ty(x) => visit::walk_ty(&mut v, x),
-        AnyNode::Arg(x) => {
+        AnyNode::Param(x) => {
             v.visit_pat(&x.pat);
             v.visit_ty(&x.ty);
         }

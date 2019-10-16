@@ -29,8 +29,8 @@ impl Transform for CharLits {
 
         mut_visit_match_with(mcx, pattern.clone(), krate, |e, mcx| {
             let field: &P<Expr> = mcx.bindings.get::<_, P<Expr>>("__number").unwrap();
-            if let ExprKind::Lit(ref l) = field.node {
-                if let LitKind::Int(i, _) = l.node {
+            if let ExprKind::Lit(ref l) = field.kind {
+                if let LitKind::Int(i, _) = l.kind {
                     if i < 256 {
                         let mut bnd = Bindings::new();
                         bnd.add("__number", mk().lit_expr(mk().char_lit(i as u8 as char)));

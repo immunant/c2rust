@@ -27,9 +27,9 @@ where
 
     pub fn alter_pat_path(&mut self, p: &mut P<Pat>, hir: &hir::Pat) {
         let id = p.id;
-        match hir.node {
+        match hir.kind {
             hir::PatKind::Struct(ref qpath, _, _) => {
-                unpack!([&mut p.node] PatKind::Struct(path, _fields, _dotdot));
+                unpack!([&mut p.kind] PatKind::Struct(path, _fields, _dotdot));
                 let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(
                     new_qself.is_none(),
@@ -39,7 +39,7 @@ where
             }
 
             hir::PatKind::TupleStruct(ref qpath, _, _) => {
-                unpack!([&mut p.node] PatKind::TupleStruct(path, _fields, _dotdot_pos));
+                unpack!([&mut p.kind] PatKind::TupleStruct(path, _fields));
                 let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(
                     new_qself.is_none(),
@@ -49,7 +49,7 @@ where
             }
 
             hir::PatKind::Path(ref qpath) => {
-                let (qself, path) = match &mut p.node {
+                let (qself, path) = match &mut p.kind {
                     PatKind::Ident(BindingMode::ByValue(Mutability::Immutable), ident, None) => {
                         (None, Path::from_ident(*ident))
                     }
@@ -62,13 +62,13 @@ where
                 // PatKind::Path.  The parser treats `None` as an Ident, so if we emit Paths
                 // instead, we run into "new and reparsed ASTs don't match" during rewriting.
                 if new_qself.is_none() && new_path.segments.len() == 1 {
-                    p.node = PatKind::Ident(
+                    p.kind = PatKind::Ident(
                         BindingMode::ByValue(Mutability::Immutable),
                         new_path.segments[0].ident,
                         None,
                     );
                 } else {
-                    p.node = PatKind::Path(new_qself, new_path);
+                    p.kind = PatKind::Path(new_qself, new_path);
                 };
             }
 
@@ -78,24 +78,24 @@ where
 
     pub fn alter_expr_path(&mut self, e: &mut P<Expr>, hir: &hir::Expr) {
         let id = e.id;
-        match hir.node {
+        match hir.kind {
             hir::ExprKind::Path(ref qpath) => {
-                unpack!([&mut e.node] ExprKind::Path(qself, path));
+                unpack!([&mut e.kind] ExprKind::Path(qself, path));
                 let (new_qself, new_path) =
                     self.handle_qpath(id, qself.clone(), path.clone(), qpath);
-                e.node = ExprKind::Path(new_qself, new_path);
+                e.kind = ExprKind::Path(new_qself, new_path);
             }
 
             hir::ExprKind::Struct(ref qpath, _, _) => {
                 // Bail out early if it's not really a path type in the original AST.
-                match e.node {
+                match e.kind {
                     // Technically still a struct expression, but the struct to use is referenced
                     // via lang item, not by name.
                     ExprKind::Range(_, _, _) => return,
                     _ => {}
                 }
 
-                unpack!([&mut e.node] ExprKind::Struct(path, _fields, _base));
+                unpack!([&mut e.kind] ExprKind::Struct(path, _fields, _base));
                 let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(
                     new_qself.is_none(),
@@ -110,15 +110,15 @@ where
 
     pub fn alter_ty_path(&mut self, t: &mut P<Ty>, hir: &hir::Ty) {
         let id = t.id;
-        match hir.node {
+        match hir.kind {
             hir::TyKind::Path(ref qpath) => {
                 // Bail out early if it's not really a path type in the original AST.
-                match t.node {
+                match t.kind {
                     TyKind::ImplicitSelf => return,
                     _ => {}
                 }
 
-                unpack!([&mut t.node] TyKind::Path(qself, path));
+                unpack!([&mut t.kind] TyKind::Path(qself, path));
                 let (new_qself, new_path) =
                     self.handle_qpath(id, qself.clone(), path.clone(), qpath);
                 *qself = new_qself;
@@ -134,8 +134,8 @@ where
         // need to handle these we can look up HIR nodes with the other
         // NodeIds in Simple().
         let id = item.id;
-        unpack!([&mut item.node] ItemKind::Use(tree));
-        if let hir::ItemKind::Use(ref hir_path, _) = hir.node {
+        unpack!([&mut item.kind] ItemKind::Use(tree));
+        if let hir::ItemKind::Use(ref hir_path, _) = hir.kind {
             debug!("{:?}", hir_path);
             let (_, new_path) = (self.callback)(id, None, tree.prefix.clone(), &hir_path.res);
             tree.prefix = new_path;
@@ -178,7 +178,7 @@ where
         path: Path,
         hir_ty: &hir::Ty,
     ) -> (Option<QSelf>, Path) {
-        match hir_ty.node {
+        match hir_ty.kind {
             hir::TyKind::Path(ref qpath) => self.handle_qpath(id, qself, path, qpath),
 
             _ => (qself, path),
@@ -242,7 +242,7 @@ where
     }
 
     fn flat_map_item(&mut self, item: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        let mut v = match item.node {
+        let mut v = match item.kind {
             ItemKind::Use(..) => {
                 // We split nested uses into simple uses to make path rewriting
                 // of use statements simpler.

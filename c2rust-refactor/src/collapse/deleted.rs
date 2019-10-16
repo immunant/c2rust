@@ -78,7 +78,7 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
 
 impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
     fn visit_item(&mut self, x: &'ast Item) {
-        match x.node {
+        match x.kind {
             ItemKind::Mod(ref m) => self.handle_seq(x.id, &m.items),
             ItemKind::ForeignMod(ref fm) => self.handle_seq(x.id, &fm.items),
             ItemKind::Trait(_, _, _, _, ref items) => self.handle_seq(x.id, items),
@@ -219,7 +219,7 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
 
     fn flat_map_item(&mut self, x: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let x = x.map(|mut x| {
-            match x.node {
+            match x.kind {
                 ItemKind::Mod(ref mut m) => self.restore_seq(x.id, &mut m.items),
                 ItemKind::ForeignMod(ref mut fm) => self.restore_seq(x.id, &mut fm.items),
                 ItemKind::Trait(_, _, _, _, ref mut items) => self.restore_seq(x.id, items),

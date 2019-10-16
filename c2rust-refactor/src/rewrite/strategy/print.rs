@@ -22,14 +22,15 @@ use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::lexer::comments::CommentStyle;
 use syntax::parse::token::{DelimToken, Nonterminal, Token, TokenKind};
 use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::print::pprust::{self, PrintState};
 use syntax::ptr::P;
-use syntax::source_map::{BytePos, DUMMY_SP, FileName, SourceFile, Span, Spanned, dummy_spanned};
+use syntax::source_map::{BytePos, FileName, SourceFile, Span, Spanned};
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::util::parser;
 use syntax::ThinVec;
+use syntax_pos::DUMMY_SP;
 
+use c2rust_ast_printer::pprust::{self, PrintState};
 use crate::ast_manip::NodeTable;
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::{AstDeref, GetSpan, MaybeGetNodeId};
@@ -95,7 +96,7 @@ impl PrintParse for Stmt {
         // pprust::stmt_to_string appends a semicolon to Expr kind statements,
         // not just to Semi kind statements. We want to differentiate these
         // nodes.
-        match self.node {
+        match self.kind {
             StmtKind::Expr(ref expr) => pprust::expr_to_string(expr),
             _ => pprust::stmt_to_string(self),
         }
@@ -142,20 +143,12 @@ impl PrintParse for Block {
     }
 }
 
-impl PrintParse for Arg {
+impl PrintParse for Param {
     fn to_string(&self) -> String {
-        let mut s = String::new();
-        // arg_to_string does not print attributes, and parameters can now have
-        // arguments, so we need to print them manually.
-        for attr in self.attrs.iter() {
-            s.push_str(pprust::attribute_to_string(attr).as_str());
-            s.push(' ');
-        }
-        s.push_str(pprust::arg_to_string(self).as_str());
-        s
+        pprust::param_to_string(self)
     }
 
-    type Parsed = Arg;
+    type Parsed = Param;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
         driver::parse_arg(sess, src)
     }
@@ -163,7 +156,7 @@ impl PrintParse for Arg {
 
 impl PrintParse for Attribute {
     fn to_string(&self) -> String {
-        pprust::attr_to_string(self)
+        pprust::attribute_to_string(self)
     }
 
     type Parsed = Attribute;
@@ -176,7 +169,7 @@ impl PrintParse for Attribute {
                     // Expand the `span` to include the trailing \n.  Otherwise multiple spliced
                     // doc comments will run together into a single line.
                     let span = p.token.span.with_hi(p.token.span.hi() + BytePos(1));
-                    let attr = attr::mk_sugared_doc_attr(attr::mk_attr_id(), s, span);
+                    let attr = attr::mk_sugared_doc_attr(s, span);
                     p.bump();
                     return Ok(attr);
                 }
@@ -215,11 +208,11 @@ impl Splice for Expr {
             ExprPrec::Cond(min_prec) => {
                 prec.order() < min_prec || parser::contains_exterior_struct_lit(self)
             }
-            ExprPrec::Callee(min_prec) => match self.node {
+            ExprPrec::Callee(min_prec) => match self.kind {
                 ExprKind::Field(..) => true,
                 _ => prec.order() < min_prec,
             },
-            ExprPrec::LeftLess(min_prec) => match self.node {
+            ExprPrec::LeftLess(min_prec) => match self.kind {
                 ExprKind::Cast(..) | ExprKind::Type(..) => true,
                 _ => prec.order() < min_prec,
             },
@@ -269,7 +262,7 @@ impl Splice for Block {
     }
 }
 
-impl Splice for Arg {
+impl Splice for Param {
     fn splice_span(&self) -> Span {
         self.pat.span.to(self.ty.span)
     }
@@ -732,19 +725,14 @@ fn create_file_for_module(
                         // Add a #[path = "..."] attribute
                         let path_item = attr::mk_name_value_item_str(
                             Ident::from_str("path"),
-                            dummy_spanned(
-                                Symbol::intern(&format!(
-                                    "src{}{}",
-                                    path::MAIN_SEPARATOR,
-                                    mod_file_name,
-                                )),
-                            ),
-                        );
-                        path_attr = Some(attr::mk_attr_outer(
+                            Symbol::intern(&format!(
+                                "src{}{}",
+                                path::MAIN_SEPARATOR,
+                                mod_file_name,
+                            )),
                             DUMMY_SP,
-                            attr::mk_attr_id(),
-                            path_item,
-                        ));
+                        );
+                        path_attr = Some(attr::mk_attr_outer(path_item));
                     }
                 } else {
                     if path.file_name().unwrap() == "mod.rs" {
@@ -769,7 +757,7 @@ fn create_file_for_module(
 
 impl RewriteAt for Item {
     fn rewrite_at(&self, old_span: Span, mut rcx: RewriteCtxtRef) -> bool {
-        if let ItemKind::Mod(module) = &self.node {
+        if let ItemKind::Mod(module) = &self.kind {
             if !module.inline {
                 // We need to print the `mod name;` in the parent and the module
                 // contents in its own file.
@@ -785,7 +773,7 @@ impl RewriteAt for Item {
                     if let Some(attr) = path_attr {
                         item.attrs.push(attr);
                     }
-                    Span::new(sf.start_pos, sf.end_pos, SyntaxContext::empty())
+                    Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root())
                 } else {
                     module.inner
                 };

@@ -4,7 +4,7 @@ use std::fmt;
 
 use rustc::hir;
 use rustc::ty::TyKind;
-use rustc_data_structures::indexed_vec::Idx;
+use rustc_index::vec::Idx;
 
 use crate::analysis::labeled_ty::LabeledTy;
 
@@ -102,7 +102,7 @@ where
     PrettyLabel<L>: fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self.0.ty.sty {
+        match self.0.ty.kind {
             TyKind::Ref(_, _, m) => write!(
                 fmt,
                 "&{}{:?} {:?}",

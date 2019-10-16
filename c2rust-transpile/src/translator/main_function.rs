@@ -25,7 +25,7 @@ impl<'c> Translation<'c> {
                 ))?,
             };
 
-            let decl = mk().fn_decl(vec![], FunctionRetTy::Default(DUMMY_SP), false);
+            let decl = mk().fn_decl(vec![], FunctionRetTy::Default(DUMMY_SP));
 
             let main_fn_name = self
                 .renamer
