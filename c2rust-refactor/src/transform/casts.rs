@@ -34,7 +34,7 @@ impl Transform for RemoveRedundantCasts {
             let ot = mcx.bindings.get::<_, P<Ty>>("$ot").unwrap();
             let ot_ty = cx.node_type(ot.id);
             let ot_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ot_ty);
-            debug!("checking cast: {:?}, types: {:?} as {:?}",
+            debug!("checking cast: {:?}, types: {:?} => {:?}",
                    ast, oe_ty, ot_ty);
             if oe_ty == ot_ty {
                 debug!("no-op cast");
@@ -52,6 +52,7 @@ impl Transform for RemoveRedundantCasts {
                     let it_ty = cx.node_type(it.id);
                     let it_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), it_ty);
                     assert!(it_ty != ot_ty);
+                    debug!("inner cast: {:?} => {:?}", ie_ty, it_ty);
 
                     match check_double_cast(ie_ty.into(), it_ty.into(), ot_ty.into()) {
                         DoubleCastAction::RemoveBoth => {
