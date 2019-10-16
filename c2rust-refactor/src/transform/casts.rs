@@ -41,7 +41,7 @@ impl Transform for RemoveRedundantCasts {
                 return;
             }
 
-            let oe_mk = mk().id(oe.id).span(oe.span);
+            let ast_mk = mk().id(ast.id).span(ast.span);
             match oe.kind {
                 ExprKind::Cast(ref ie, ref it) => {
                     // Found a double cast
@@ -60,7 +60,7 @@ impl Transform for RemoveRedundantCasts {
                         DoubleCastAction::RemoveInner => {
                             // Rewrite to `$ie as $ot`, removing the inner cast
                             debug!("redundant cast => removing inner");
-                            *ast = oe_mk.cast_expr(ie, ot);
+                            *ast = ast_mk.cast_expr(ie, ot);
                         }
                         DoubleCastAction::KeepBoth => {}
                     }
@@ -70,7 +70,7 @@ impl Transform for RemoveRedundantCasts {
                     // `X_ty1 as ty2` => `X_ty2`
                     let new_lit = replace_suffix(lit, SimpleTy::from(ot_ty));
                     if let Some(nl) = new_lit {
-                        let new_expr = oe_mk.lit_expr(nl);
+                        let new_expr = ast_mk.lit_expr(nl);
                         let ast_const = eval_const(ast.clone(), cx);
                         let new_const = eval_const(new_expr.clone(), cx);
                         debug!(
@@ -90,7 +90,7 @@ impl Transform for RemoveRedundantCasts {
                         let new_lit = replace_suffix(lit, SimpleTy::from(ot_ty));
                         if let Some(nl) = new_lit {
                             let expr_mk = mk().id(expr.id).span(expr.span);
-                            let new_expr = oe_mk.unary_expr(UnOp::Neg, expr_mk.lit_expr(nl));
+                            let new_expr = ast_mk.unary_expr(UnOp::Neg, expr_mk.lit_expr(nl));
                             let ast_const = eval_const(ast.clone(), cx);
                             let new_const = eval_const(new_expr.clone(), cx);
                             debug!(
