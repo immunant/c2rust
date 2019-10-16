@@ -223,6 +223,10 @@ function ConvCfg:is_byteswap()
     return self.conv_type == "byteswap"
 end
 
+function ConvCfg:is_local_mut_slice_offset()
+    return self.conv_type == "local_mut_slice_offset"
+end
+
 function ConvCfg:is_array()
     return self.conv_type == "array"
 end
@@ -403,7 +407,7 @@ function Visitor:rewrite_method_call_expr(expr)
     -- or -> Some(x.unwrap().split_at_mut(y).1)
     -- Only really works for positive pointer offsets
     if method_name == "offset" then
-        local offset_expr, caller = self:rewrite_chained_offsets(expr)
+        local offset_expr, caller = rewrite_chained_offsets(expr)
         local cfg = self:get_expr_cfg(caller)
 
         if not cfg then return end
@@ -529,7 +533,7 @@ function Visitor:rewrite_field_expr(expr)
     end
 end
 
-function Visitor:rewrite_chained_offsets(unwrapped_expr)
+function rewrite_chained_offsets(unwrapped_expr)
     local offset_expr = nil
 
     while true do
@@ -566,7 +570,7 @@ function Visitor:rewrite_deref_expr(expr)
     -- *p.offset(x).offset(y) -> p[x + y] (pointer) or
     -- *p.as_mut_ptr().offset(x).offset(y) -> p[x + y] (array)
     if unwrapped_expr:get_method_name() == "offset" then
-        local offset_expr, unwrapped_expr = self:rewrite_chained_offsets(unwrapped_expr)
+        local offset_expr, unwrapped_expr = rewrite_chained_offsets(unwrapped_expr)
 
         -- Should be left with a path or field, otherwise bail
         local cfg = self:get_expr_cfg(unwrapped_expr)
@@ -1088,7 +1092,6 @@ function Visitor:flat_map_foreign_item(foreign_item)
 end
 
 function Visitor:flat_map_stmt(stmt, walk)
-    local stmt_kind = stmt:get_kind()
     local cfg = self.node_id_cfgs[stmt:get_id()]
 
     if not cfg then
@@ -1098,6 +1101,49 @@ function Visitor:flat_map_stmt(stmt, walk)
 
     if cfg:is_del() then
         return {}
+    elseif cfg:is_local_mut_slice_offset() then
+        local stmt_kind = stmt:get_kind()
+
+        if stmt_kind == "Semi" then
+            local expr = stmt:get_node()
+
+            if expr:get_kind() == "Assign" then
+                local exprs = expr:get_exprs()
+                local new_lhs = self.tctx:ident_path_expr(cfg.extra_data[1])
+                local tup0 = self.tctx:ident_path_expr("tup")
+                local tup1 = self.tctx:ident_path_expr("tup")
+                local locl_cfg = self.node_id_cfgs[cfg.extra_data[2]]
+                local offset_expr, _ = rewrite_chained_offsets(exprs[2])
+                local init = nil
+
+                if locl_cfg:is_opt_any() then
+                    init = self.tctx:method_call_expr("unwrap", {exprs[1]})
+                end
+
+                init = self.tctx:method_call_expr("split_at_mut", {init or exprs[1], offset_expr})
+
+                local locl = self.tctx:ident_local("tup", nil, init, "ByValImmut")
+
+                tup0:to_field(tup0, "0")
+                tup1:to_field(tup1, "1")
+
+                if locl_cfg:is_opt_any() then
+                    local some_path_expr = self.tctx:ident_path_expr("Some")
+                    tup0:to_call{some_path_expr, tup0}
+                end
+
+                local assign_expr = self.tctx:assign_expr(new_lhs, tup0)
+                local assign_expr2 = self.tctx:assign_expr(exprs[1], tup1)
+                local stmts = {
+                    locl:to_stmt(),
+                    assign_expr:to_stmt(true),
+                    assign_expr2:to_stmt(true),
+                }
+
+                expr:to_block(stmts, nil, true)
+                stmt:to_expr(expr, false)
+            end
+        end
     elseif cfg:is_byteswap() and stmt:get_kind() == "Semi" then
         local expr = stmt:get_node()
         local lhs_id = cfg.extra_data[1]
@@ -1110,7 +1156,7 @@ function Visitor:flat_map_stmt(stmt, walk)
 
             local assign_expr = self.tctx:assign_expr(lhs, rhs)
 
-            stmt:to_semi(assign_expr)
+            stmt:to_expr(assign_expr, true)
         end
     end
 
@@ -1206,6 +1252,11 @@ function Visitor:visit_local(locl, walk)
         locl:set_ty(nil)
         locl:set_init(init)
     elseif is_null_ptr(init) then
+        locl:set_ty(nil)
+        locl:set_init(nil)
+    end
+
+    if cfg.extra_data.clear_init_and_ty then
         locl:set_ty(nil)
         locl:set_init(nil)
     end
@@ -1306,6 +1357,74 @@ function MarkConverter:flat_map_item(item, walk)
     walk(item)
 
     return {item}
+end
+
+function path_to_last_segment(path)
+    if not path then return end
+    local segments = path:get_segments()
+    return segments[#segments]
+end
+
+-- TODO: Rename to CfgBuilder?
+function MarkConverter:flat_map_stmt(stmt, walk)
+    local stmt_kind = stmt:get_kind()
+
+    if stmt_kind == "Local" then
+        local locl = stmt:get_node()
+        local init = locl:get_init()
+
+        if init and init:get_kind() == "Path" then
+            local local_ty_id = locl:get_ty():get_id()
+            local marks = self.marks[local_ty_id]
+            local is_mut = false
+
+            for _, mark in ipairs(marks) do
+                if mark == "mut" then
+                    is_mut = true
+                end
+            end
+
+            if is_mut then
+                local pat = locl:get_pat()
+
+                self.lhs_ident = pat:get_ident()
+                self.rhs_ident = path_to_last_segment(init:get_path())
+                self.local_stmt_id = stmt:get_id()
+                self.local_id = local_id
+
+                walk(stmt)
+                return {stmt}
+            end
+        end
+    elseif stmt_kind == "Semi" and self.local_stmt_id then
+        local expr = stmt:get_node()
+        local exprs = expr:get_exprs()
+
+        if expr:get_kind() == "Assign" and exprs[1]:get_kind() == "Path" then
+            local lhs = exprs[1]
+            local rhs = exprs[2]
+            local lhs_path = path_to_last_segment(lhs:get_path())
+            local offset_expr, caller = rewrite_chained_offsets(rhs)
+            local caller_path = path_to_last_segment(caller:get_path())
+            local local_cfg = self.node_id_cfgs[self.local_id]
+
+            local_cfg.extra_data.clear_init_and_ty = true
+
+            if lhs_path == self.rhs_ident and caller_path == self.rhs_ident then
+                self.node_id_cfgs[self.local_stmt_id] = ConvCfg.new{"local_mut_slice_offset"}
+                self.node_id_cfgs[stmt:get_id()] = ConvCfg.new{"local_mut_slice_offset", self.lhs_ident, self.local_id}
+            end
+        end
+    end
+
+    -- Clear
+    self.lhs_ident = nil
+    self.rhs_ident = nil
+    self.local_stmt_id = nil
+    self.local_id = nil
+
+    walk(stmt)
+    return {stmt}
 end
 
 -- This visitor finds variables that are assigned

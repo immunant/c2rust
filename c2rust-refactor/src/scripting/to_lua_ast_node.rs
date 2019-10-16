@@ -168,7 +168,7 @@ impl<T> LuaAstNode<T>
     where T: WalkAst
 {
     pub fn walk<V: MutVisitor>(&self, visitor: &mut V) {
-        self.0.borrow_mut().walk(visitor);
+        self.borrow_mut().walk(visitor);
     }
 }
 
@@ -182,7 +182,7 @@ unsafe impl Send for LuaAstNode<P<Item>> {}
 impl UserData for LuaAstNode<P<Item>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().kind.ast_name())
+            Ok(this.borrow().kind.ast_name())
         });
 
         methods.add_method("get_id", |lua_ctx, this, ()| {
@@ -407,6 +407,11 @@ impl UserData for LuaAstNode<Path> {
 
             Ok(())
         });
+
+        methods.add_meta_method(
+            MetaMethod::ToString,
+            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
     }
 }
 
@@ -539,7 +544,7 @@ impl UserData for LuaAstNode<P<Expr>> {
             match &mut this.borrow_mut().kind {
                 ExprKind::Field(expr, _)
                 | ExprKind::Unary(_, expr) => *expr = exprs[0].borrow().clone(),
-                ExprKind::MethodCall(_, exprs) => *exprs = exprs.iter().map(|e| e.clone()).collect(),
+                ExprKind::MethodCall(_, exprs) => *exprs = exprs.to_vec(),
                 ExprKind::Call(func, params) => {
                     *func = exprs[0].borrow().clone();
                     *params = exprs.iter().skip(1).map(|e| e.borrow().clone()).collect()
@@ -573,7 +578,7 @@ impl UserData for LuaAstNode<P<Expr>> {
 
         methods.add_method("get_method_name", |lua_ctx, this, ()| {
             if let ExprKind::MethodCall(path_seg, ..) = &this.borrow().kind {
-                return path_seg.ident.as_str().to_lua(lua_ctx).map(|s| Some(s))
+                return path_seg.ident.as_str().to_lua(lua_ctx).map(Some)
             }
 
             Ok(None)
@@ -670,6 +675,46 @@ impl UserData for LuaAstNode<P<Expr>> {
             this.borrow_mut().kind = ExprKind::AddrOf(mutability, expr);
 
             Ok(())
+        });
+
+        methods.add_method(
+            "to_block",
+            |_lua_ctx, this, (stmts, label, is_safe): (Vec<LuaAstNode<Stmt>>, Option<LuaString>, bool)|
+        {
+            let label = match label {
+                Some(s) => Some(Label { ident: Ident::from_str(s.to_str()?) }),
+                None => None,
+            };
+            let rules = if is_safe {
+                BlockCheckMode::Default
+            } else {
+                BlockCheckMode::Unsafe(UnsafeSource::UserProvided)
+            };
+            let stmts = stmts.into_iter().map(|s| s.into_inner()).collect();
+            let block = Block {
+                stmts,
+                id: DUMMY_NODE_ID,
+                rules,
+                span: DUMMY_SP,
+            };
+
+            this.borrow_mut().node = ExprKind::Block(P(block), label);
+
+            Ok(())
+        });
+
+        methods.add_method("to_stmt", |_lua_ctx, this, is_semi: bool| {
+            let node = if is_semi {
+                StmtKind::Semi(this.borrow().clone())
+            } else {
+                StmtKind::Expr(this.borrow().clone())
+            };
+
+            Ok(LuaAstNode::new(Stmt {
+                id: DUMMY_NODE_ID,
+                node,
+                span: DUMMY_SP,
+            }))
         });
 
         methods.add_method("to_method_call", |_lua_ctx, this, (segment, exprs): (LuaString, Vec<LuaAstNode<P<Expr>>>)| {
@@ -1067,14 +1112,18 @@ impl UserData for LuaAstNode<Stmt> {
                 StmtKind::Expr(e) | StmtKind::Semi(e) => e.to_lua(lua_ctx),
                 StmtKind::Local(l) => l.to_lua(lua_ctx),
                 StmtKind::Item(i) => i.to_lua(lua_ctx),
-                StmtKind::Mac(_) => Err(Error::external(format!("Mac stmts aren't implemented yet"))),
+                StmtKind::Mac(_) => Err(Error::external(String::from("Mac stmts aren't implemented yet"))),
             }
         });
 
-        methods.add_method("to_semi", |_lua_ctx, this, semi: LuaAstNode<P<Expr>>| {
-            let semi = semi.borrow().clone();
+        methods.add_method("to_expr", |_lua_ctx, this, (expr, is_semi): (LuaAstNode<P<Expr>>, bool)| {
+            let expr = expr.borrow().clone();
 
-            this.borrow_mut().kind = StmtKind::Semi(semi);
+            this.borrow_mut().kind = if is_semi {
+                StmtKind::Semi(expr)
+            } else {
+                StmtKind::Expr(expr)
+            };
 
             Ok(())
         });
@@ -1096,7 +1145,7 @@ unsafe impl Send for LuaAstNode<P<Pat>> {}
 impl UserData for LuaAstNode<P<Pat>> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().kind.ast_name())
+            Ok(this.borrow().kind.ast_name())
         });
     }
 }
@@ -1148,6 +1197,10 @@ impl UserData for LuaAstNode<P<Local>> {
             Ok(())
         });
 
+        methods.add_method("get_pat", |_lua_ctx, this, ()| {
+            Ok(LuaAstNode::new(this.borrow().pat.clone()))
+        });
+
         methods.add_method("get_pat_id", |lua_ctx, this, ()| {
             Ok(this.borrow().pat.id.to_lua(lua_ctx))
         });
@@ -1158,6 +1211,16 @@ impl UserData for LuaAstNode<P<Local>> {
                 .iter()
                 .map(|attr| LuaAstNode::new(attr.clone()))
                 .collect::<Vec<_>>())
+        });
+
+        methods.add_method("to_stmt", |_lua_ctx, this, ()| {
+            let node = StmtKind::Local(this.borrow().clone());
+
+            Ok(LuaAstNode::new(Stmt {
+                id: DUMMY_NODE_ID,
+                span: DUMMY_SP,
+                node,
+            }))
         });
     }
 }
@@ -1172,7 +1235,7 @@ unsafe impl Send for LuaAstNode<Lit> {}
 impl UserData for LuaAstNode<Lit> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.0.borrow().kind.ast_name())
+            Ok(this.borrow().kind.ast_name())
         });
 
         methods.add_method("get_value", |lua_ctx, this, ()| {

@@ -11,8 +11,8 @@ use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
 use syntax::ThinVec;
 use syntax::ast::{
-    self, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, MacDelimiter, NodeId,
-    Ty, TyKind,
+    self, BindingMode, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, Local, MacDelimiter,
+    Mutability, NodeId, Pat, PathSegment, PatKind, Ty, TyKind,
 };
 use syntax::mut_visit::MutVisitor;
 use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
@@ -43,6 +43,9 @@ use into_lua_ast::IntoLuaAst;
 use merge_lua_ast::MergeLuaAst;
 use to_lua_ast_node::LuaAstNode;
 use to_lua_ast_node::{LuaHirId, ToLuaExt, ToLuaScoped};
+
+type LuaExpr = LuaAstNode<P<Expr>>;
+type LuaTy = LuaAstNode<P<Ty>>;
 
 /// Refactoring module
 // @module Refactor
@@ -574,7 +577,7 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
         if trees.len() == 1 {
             let mut use_tree = trees.pop().unwrap();
             if let Some(ident) = ident {
-                use_tree.prefix.segments.insert(0, ast::PathSegment::from_ident(ident));
+                use_tree.prefix.segments.insert(0, PathSegment::from_ident(ident));
             }
             return Ok(use_tree);
         }
@@ -628,7 +631,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
 
         methods.add_method(
             "resolve_path_hirid",
-            |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
+            |_lua_ctx, this, expr: LuaExpr| {
                 Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(LuaHirId))
             },
         );
@@ -820,6 +823,19 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             Ok(LuaAstNode::new(expr))
         });
 
+        methods.add_method("method_call_expr", |_lua_ctx, _this, (segment, exprs): (LuaString, Vec<LuaExpr>)| {
+            let segment = PathSegment::from_ident(Ident::from_str(segment.to_str()?));
+            let exprs = exprs.iter().map(|e| e.borrow().clone()).collect();
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                node: ExprKind::MethodCall(segment, exprs),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
         methods.add_method("ident_path_expr", |_lua_ctx, _this, path: LuaString| {
             let path = syntax::ast::Path::from_ident(Ident::from_str(path.to_str()?));
             let expr = P(Expr {
@@ -843,7 +859,37 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             Ok(LuaAstNode::new(expr))
         });
 
-        methods.add_method("vec_mac_init_num", |_lua_ctx, _this, (init, num): (LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
+        methods.add_method(
+            "ident_local",
+            |_lua_ctx, _this, (ident, ty, init, binding): (LuaString, Option<LuaTy>, Option<LuaExpr>, LuaString)|
+        {
+            let binding = match binding.to_str()? {
+                "ByRefMut" => BindingMode::ByRef(Mutability::Mutable),
+                "ByRefImmut" => BindingMode::ByRef(Mutability::Immutable),
+                "ByValMut" => BindingMode::ByValue(Mutability::Mutable),
+                "ByValImmut" => BindingMode::ByValue(Mutability::Immutable),
+                e => panic!("Unknown local binding: {}", e),
+            };
+            let ty = ty.map(|ty| ty.borrow().clone());
+            let init = init.map(|e| e.borrow().clone());
+            let pat = P(Pat {
+                id: DUMMY_NODE_ID,
+                span: DUMMY_SP,
+                node: PatKind::Ident(binding, Ident::from_str(ident.to_str()?), None),
+            });
+            let local = Local {
+                id: DUMMY_NODE_ID,
+                span: DUMMY_SP,
+                ty,
+                init,
+                pat,
+                attrs: ThinVec::new(),
+            };
+
+            Ok(LuaAstNode::new(P(local)))
+        });
+
+        methods.add_method("vec_mac_init_num", |_lua_ctx, _this, (init, num): (LuaExpr, LuaExpr)| {
             let init = Rc::new(Nonterminal::NtExpr(init.borrow().clone()));
             let num = Rc::new(Nonterminal::NtExpr(num.borrow().clone()));
             let macro_body = vec![
@@ -882,7 +928,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             Ok(LuaAstNode::new(expr))
         });
 
-        methods.add_method("cast_expr", |_lua_ctx, _this, (expr, ty): (LuaAstNode<P<Expr>>, LuaAstNode<P<Ty>>)| {
+        methods.add_method("cast_expr", |_lua_ctx, _this, (expr, ty): (LuaExpr, LuaTy)| {
             let expr = expr.borrow().clone();
             let ty = ty.borrow().clone();
             let expr = P(Expr {
