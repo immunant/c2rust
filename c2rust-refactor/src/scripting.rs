@@ -124,7 +124,7 @@ fn lua_serialize_marks<'lua>(
         let set: Option<LuaTable> = tbl.get(node_id.as_usize())?;
         let set = set.unwrap_or(lua_ctx.create_table()?);
 
-        set.set(sym.as_str().get(), true)?;
+        set.set(&*sym.as_str(), true)?;
         tbl.set(node_id.as_usize(), set)?;
     }
 
@@ -828,7 +828,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let exprs = exprs.iter().map(|e| e.borrow().clone()).collect();
             let expr = P(Expr {
                 id: DUMMY_NODE_ID,
-                node: ExprKind::MethodCall(segment, exprs),
+                kind: ExprKind::MethodCall(segment, exprs),
                 span: DUMMY_SP,
                 attrs: ThinVec::new(),
             });
@@ -875,7 +875,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let pat = P(Pat {
                 id: DUMMY_NODE_ID,
                 span: DUMMY_SP,
-                node: PatKind::Ident(binding, Ident::from_str(ident.to_str()?), None),
+                kind: PatKind::Ident(binding, Ident::from_str(ident.to_str()?), None),
             });
             let local = Local {
                 id: DUMMY_NODE_ID,

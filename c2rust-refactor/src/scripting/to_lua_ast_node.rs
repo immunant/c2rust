@@ -297,7 +297,7 @@ impl UserData for LuaAstNode<P<Item>> {
         );
 
         methods.add_method("get_trait_ref", |_lua_ctx, this, ()| {
-            if let ItemKind::Impl(_, _, _, _, opt_trait_ref, ..) = &this.borrow().node {
+            if let ItemKind::Impl(_, _, _, _, opt_trait_ref, ..) = &this.borrow().kind {
                 return Ok(opt_trait_ref.as_ref().map(|tr| LuaAstNode::new(tr.path.clone())));
             }
 
@@ -615,7 +615,7 @@ impl UserData for LuaAstNode<P<Expr>> {
             let opt_lhs_expr = lhs.map(|e| e.borrow().clone());
             let opt_rhs_expr = rhs.map(|e| e.borrow().clone());
 
-            this.borrow_mut().node = ExprKind::Range(opt_lhs_expr, opt_rhs_expr, RangeLimits::HalfOpen);
+            this.borrow_mut().kind = ExprKind::Range(opt_lhs_expr, opt_rhs_expr, RangeLimits::HalfOpen);
 
             Ok(())
         });
@@ -659,7 +659,7 @@ impl UserData for LuaAstNode<P<Expr>> {
             let expr = expr.borrow().clone();
             let ty = ty.borrow().clone();
 
-            this.borrow_mut().node = ExprKind::Cast(expr, ty);
+            this.borrow_mut().kind = ExprKind::Cast(expr, ty);
 
             Ok(())
         });
@@ -698,13 +698,13 @@ impl UserData for LuaAstNode<P<Expr>> {
                 span: DUMMY_SP,
             };
 
-            this.borrow_mut().node = ExprKind::Block(P(block), label);
+            this.borrow_mut().kind = ExprKind::Block(P(block), label);
 
             Ok(())
         });
 
         methods.add_method("to_stmt", |_lua_ctx, this, is_semi: bool| {
-            let node = if is_semi {
+            let kind = if is_semi {
                 StmtKind::Semi(this.borrow().clone())
             } else {
                 StmtKind::Expr(this.borrow().clone())
@@ -712,7 +712,7 @@ impl UserData for LuaAstNode<P<Expr>> {
 
             Ok(LuaAstNode::new(Stmt {
                 id: DUMMY_NODE_ID,
-                node,
+                kind,
                 span: DUMMY_SP,
             }))
         });
@@ -730,16 +730,16 @@ impl UserData for LuaAstNode<P<Expr>> {
             use syntax::ThinVec;
 
             let expr = expr.borrow().clone();
-            let inputs: Result<_> = params.into_iter().map(|s| Ok(Arg {
+            let inputs: Result<_> = params.into_iter().map(|s| Ok(Param {
                 attrs: ThinVec::new(),
                 ty: P(Ty {
                     id: DUMMY_NODE_ID,
-                    node: TyKind::Infer,
+                    kind: TyKind::Infer,
                     span: DUMMY_SP,
                 }),
                 pat: P(Pat {
                     id: DUMMY_NODE_ID,
-                    node: PatKind::Ident(
+                    kind: PatKind::Ident(
                         BindingMode::ByValue(Mutability::Immutable),
                         Ident::from_str(s.to_str()?),
                         None,
@@ -747,16 +747,15 @@ impl UserData for LuaAstNode<P<Expr>> {
                     span: DUMMY_SP,
                 }),
                 id: DUMMY_NODE_ID,
-                // span: DUMMY_SP,
-                // is_placeholder: true,
+                span: DUMMY_SP,
+                is_placeholder: true,
             })).collect();
             let fn_decl = P(FnDecl {
                 inputs: inputs?,
                 output: FunctionRetTy::Default(DUMMY_SP),
-                c_variadic: false,
             });
 
-            this.borrow_mut().node = ExprKind::Closure(
+            this.borrow_mut().kind = ExprKind::Closure(
                 CaptureBy::Ref,
                 IsAsync::NotAsync,
                 Movability::Movable,
@@ -823,7 +822,7 @@ impl UserData for LuaAstNode<P<Expr>> {
             impl<'lua> MutVisitor for LuaFilterMapExpr<'lua> {
                 fn visit_expr(&mut self, x: &mut P<Expr>) {
                     let is_end = self.filter
-                        .call::<_, bool>(x.node.ast_name())
+                        .call::<_, bool>(x.kind.ast_name())
                         .expect("Failed to call filter");
 
                     if is_end {
@@ -1214,12 +1213,12 @@ impl UserData for LuaAstNode<P<Local>> {
         });
 
         methods.add_method("to_stmt", |_lua_ctx, this, ()| {
-            let node = StmtKind::Local(this.borrow().clone());
+            let kind = StmtKind::Local(this.borrow().clone());
 
             Ok(LuaAstNode::new(Stmt {
                 id: DUMMY_NODE_ID,
                 span: DUMMY_SP,
-                node,
+                kind,
             }))
         });
     }

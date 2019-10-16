@@ -623,7 +623,7 @@ fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
             let ty = reflect_tcx_ty(self.cx.ty_ctxt(), rty);
 
             // Assign ty if a raw ptr
-            if let TyKind::Ptr(_) = ty.node {
+            if let TyKind::Ptr(_) = ty.kind {
                 local.ty = Some(ty);
             }
 
