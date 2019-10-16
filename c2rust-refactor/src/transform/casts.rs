@@ -27,13 +27,16 @@ impl Transform for RemoveRedundantCasts {
         let pat = mcx.parse_expr("$oe:Expr as $ot:Ty");
         mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             let oe = mcx.bindings.get::<_, P<Expr>>("$oe").unwrap();
-            let oe_ty = cx.adjusted_node_type(oe.id);
+            let oe_ty = cx.node_type(oe.id);
             let oe_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), oe_ty);
 
             let ot = mcx.bindings.get::<_, P<Ty>>("$ot").unwrap();
-            let ot_ty = cx.adjusted_node_type(ot.id);
+            let ot_ty = cx.node_type(ot.id);
             let ot_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ot_ty);
+            debug!("checking cast: {:?}, types: {:?} as {:?}",
+                   ast, oe_ty, ot_ty);
             if oe_ty == ot_ty {
+                debug!("no-op cast");
                 *ast = oe.clone();
                 return;
             }
@@ -42,19 +45,21 @@ impl Transform for RemoveRedundantCasts {
             match oe.kind {
                 ExprKind::Cast(ref ie, ref it) => {
                     // Found a double cast
-                    let ie_ty = cx.adjusted_node_type(ie.id);
+                    let ie_ty = cx.node_type(ie.id);
                     let ie_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ie_ty);
 
-                    let it_ty = cx.adjusted_node_type(it.id);
+                    let it_ty = cx.node_type(it.id);
                     let it_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), it_ty);
                     assert!(it_ty != ot_ty);
 
                     match check_double_cast(ie_ty.into(), it_ty.into(), ot_ty.into()) {
                         DoubleCastAction::RemoveBoth => {
+                            debug!("redundant cast => removing both");
                             *ast = ie.clone();
                         }
                         DoubleCastAction::RemoveInner => {
                             // Rewrite to `$ie as $ot`, removing the inner cast
+                            debug!("redundant cast => removing inner");
                             *ast = oe_mk.cast_expr(ie, ot);
                         }
                         DoubleCastAction::KeepBoth => {}
@@ -463,7 +468,7 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
 
         ExprKind::Cast(ref ie, ref ty) => {
             let tcx = cx.ty_ctxt();
-            let ty_ty = cx.adjusted_node_type(ty.id);
+            let ty_ty = cx.node_type(ty.id);
             let ty_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ty_ty);
             let ic = eval_const(ie.clone(), cx)?;
             Some(ic.cast(SimpleTy::from(ty_ty)))
