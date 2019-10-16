@@ -282,7 +282,8 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
             TyKind::Float(FloatTy::F32) => Float32,
             TyKind::Float(FloatTy::F64) => Float64,
 
-            TyKind::RawPtr(_) | TyKind::Ref(..) | TyKind::FnPtr(_) => Pointer,
+            // FIXME: TyKind::Ref(..) |
+            TyKind::RawPtr(_) | TyKind::FnPtr(_) => Pointer,
 
             _ => Other,
         }
