@@ -303,7 +303,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
             LitIntType::Unsuffixed => None
         };
         let new_lit = Lit {
-            node: LitKind::Int(i, ty),
+            kind: LitKind::Int(i, ty),
             span: lit.span,
             token: token::Lit {
                 kind: token::LitKind::Integer,
