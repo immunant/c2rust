@@ -291,10 +291,9 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                         })
                     }
                 }
+                workspace_members.push(lcmd_name);
             }
         }
-
-        workspace_members.push(lcmd_name);
     }
     if tcfg.emit_build_files {
         emit_build_files(&tcfg, &build_dir, top_level_ccfg, Some(workspace_members));
