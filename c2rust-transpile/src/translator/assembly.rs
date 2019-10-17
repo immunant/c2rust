@@ -43,7 +43,7 @@ impl<'c> Translation<'c> {
         // Outputs and Inputs
         for &(list, is_output) in &[(outputs, true), (inputs, false)] {
             first = true;
-            tokens.push( TokenTree::token(token::Colon, DUMMY_SP)); // Always emitted, even if list is empty
+            tokens.push(TokenTree::token(token::Colon, DUMMY_SP)); // Always emitted, even if list is empty
 
             for &AsmOperand {
                 ref constraints,
@@ -53,7 +53,7 @@ impl<'c> Translation<'c> {
                 if first {
                     first = false
                 } else {
-                    tokens.push( TokenTree::token(token::Comma, DUMMY_SP))
+                    tokens.push(TokenTree::token(token::Comma, DUMMY_SP))
                 }
 
                 let mut result = self.convert_expr(ctx.used(), expression)?;
@@ -79,7 +79,7 @@ impl<'c> Translation<'c> {
 
         // Clobbers
         first = true;
-        tokens.push( TokenTree::token(token::Colon, DUMMY_SP));
+        tokens.push(TokenTree::token(token::Colon, DUMMY_SP));
         for clobber in clobbers {
             if first {
                 first = false
@@ -91,7 +91,7 @@ impl<'c> Translation<'c> {
 
         // Options
         if is_volatile {
-            tokens.push( TokenTree::token(token::Colon, DUMMY_SP));
+            tokens.push(TokenTree::token(token::Colon, DUMMY_SP));
             push_expr(&mut tokens, mk().lit_expr(mk().str_lit("volatile")));
         }
 
