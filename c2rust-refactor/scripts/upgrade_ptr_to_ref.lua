@@ -1390,7 +1390,8 @@ function CfgBuilder:flat_map_stmt(stmt, walk)
             -- Ideally we'd just check if the marking for this local's ty id
             -- is mut. However, the variable may possibly be marked as immutable
             -- if it is only read from (despite containing a mutable ref)
-            -- so instead we look up the mutability from the cfg of the rhs
+            -- so instead we look up the mutability from the cfg of the rhs.
+            -- This may be the same issue as GH #163
             local hir_id = self.tctx:resolve_path_hirid(init)
             local node_pat_id = self.tctx:hirid_to_nodeid(hir_id)
             local node_id = self.pat_to_var_id[node_pat_id]

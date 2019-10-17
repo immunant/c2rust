@@ -606,22 +606,13 @@ pub unsafe extern "C" fn eshdn1(mut x: Option<&mut [libc::c_ushort]>) {
     }
 }
 
-unsafe extern "C" fn emovz(
-    mut a: Option<&mut [libc::c_ushort]>,
-    mut b: Option<&mut [libc::c_ushort]>,
-) {
+unsafe extern "C" fn emovz(mut a: Option<&[libc::c_ushort]>, mut b: Option<&mut [libc::c_ushort]>) {
     let mut i: libc::c_int = 0;
     i = 0i32;
     while i < 10i32 + 3i32 - 1i32 {
         #[slice]
-        let fresh26;
-
-        {
-            let tup = a.unwrap().split_at_mut(1);
-            fresh26 = Some(tup.0);
-
-            a = Some(tup.1);
-        }
+        let fresh26 = a;
+        a = Some(&a.unwrap()[1..]);
         #[slice]
         let fresh27;
 
