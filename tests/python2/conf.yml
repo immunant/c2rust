@@ -22,4 +22,3 @@ transpile:
 cargo:
   autogen: true
   rustflags: "-C link-args=-Wl,-export-dynamic"
-  xfail: true
