@@ -56,7 +56,7 @@ use crate::c_ast::*;
 pub use crate::diagnostics::Diagnostic;
 use c2rust_ast_exporter as ast_exporter;
 
-use crate::build_files::{emit_build_files, get_build_dir, emit_workspace_files};
+use crate::build_files::{emit_build_files, get_build_dir, CrateConfig};
 use crate::compile_cmds::get_compile_commands;
 use crate::convert_type::RESERVED_NAMES;
 pub use crate::translator::ReplaceMode;
@@ -194,6 +194,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     let mut clang_args: Vec<&str> = clang_args.iter().map(AsRef::as_ref).collect();
     clang_args.extend_from_slice(extra_clang_args);
 
+    let mut top_level_ccfg = None;
     let mut workspace_members = vec![];
     let build_dir = get_build_dir(&tcfg, cc_db);
     for lcmd in &lcmds {
@@ -210,7 +211,11 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                     .to_owned()
             })
             .unwrap_or_else(|| tcfg.crate_name());
-        let build_dir = build_dir.join(&lcmd_name);
+        let build_dir = if lcmd.top_level {
+            build_dir.to_path_buf()
+        } else {
+            build_dir.join(&lcmd_name)
+        };
 
         // Compute the common ancestor of all input files
         // FIXME: this is quadratic-time in the length of the ancestor path
@@ -266,15 +271,25 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                 warn!("Can't emit build files after incremental transpiler run; skipped.");
                 return;
             }
-            let crate_file = emit_build_files(&tcfg, &lcmd_name, &build_dir,
-                                              modules, pragmas, crates,
-                                              &lcmd);
-            // We only run the reorganization refactoring if we emitted a fresh crate file
-            if crate_file.is_some() && !tcfg.disable_refactoring {
-                if tcfg.reorganize_definitions {
-                    reorganize_definitions(&build_dir).unwrap_or_else(|e| {
-                        warn!("Failed to reorganize definitions. {}", e.as_fail());
-                    })
+
+            let ccfg = CrateConfig {
+                crate_name: lcmd_name.clone(),
+                modules,
+                pragmas,
+                crates,
+                link_cmd: lcmd
+            };
+            if lcmd.top_level {
+                top_level_ccfg = Some(ccfg);
+            } else {
+                let crate_file = emit_build_files(&tcfg, &build_dir, Some(ccfg), None);
+                // We only run the reorganization refactoring if we emitted a fresh crate file
+                if crate_file.is_some() && !tcfg.disable_refactoring {
+                    if tcfg.reorganize_definitions {
+                        reorganize_definitions(&build_dir).unwrap_or_else(|e| {
+                            warn!("Failed to reorganize definitions. {}", e.as_fail());
+                        })
+                    }
                 }
             }
         }
@@ -282,7 +297,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         workspace_members.push(lcmd_name);
     }
     if tcfg.emit_build_files {
-        emit_workspace_files(&tcfg, &build_dir, workspace_members);
+        emit_build_files(&tcfg, &build_dir, top_level_ccfg, Some(workspace_members));
     }
 }
 

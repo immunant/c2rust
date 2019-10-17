@@ -85,6 +85,8 @@ pub struct LinkCmd {
     /// Input files in `CompileCmd` form
     #[serde(default)]
     pub cmd_inputs: Vec<Rc<CompileCmd>>,
+    #[serde(default)]
+    pub top_level: bool,
 }
 
 /// Convert a linear vector of `CompileCmd`s into a DAG of `LinkCmd`s and `CompileCmd`s
@@ -133,6 +135,7 @@ fn build_link_commands(mut v: Vec<Rc<CompileCmd>>) -> Result<Vec<LinkCmd>, Error
             lib_dirs: vec![],
             r#type: LinkType::Static,
             cmd_inputs: v,
+            top_level: true,
         };
         res.push(lcmd);
     }

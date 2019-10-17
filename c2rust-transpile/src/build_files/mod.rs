@@ -58,49 +58,22 @@ pub fn get_build_dir(tcfg: &TranspilerConfig, cc_db: &Path) -> PathBuf {
     }
 }
 
-/// Emit the top-level `Cargo.toml` for the workspace.
-pub fn emit_workspace_files(
-    tcfg: &TranspilerConfig,
-    build_dir: &Path,
-    workspace_members: Vec<String>,
-) {
-    let mut reg = Handlebars::new();
-
-    reg.register_template_string("Cargo.toml", include_str!("Cargo.toml.workspace.hbs"))
-        .unwrap();
-
-    emit_workspace_cargo_toml(tcfg, &reg, &build_dir, workspace_members);
-    if tcfg.translate_valist {
-        emit_rust_toolchain(tcfg, &build_dir);
-    }
-}
-
-fn emit_workspace_cargo_toml(
-    tcfg: &TranspilerConfig,
-    reg: &Handlebars,
-    build_dir: &Path,
-    workspace_members: Vec<String>,
-) {
-    let json = json!({
-        "members": workspace_members,
-    });
-    let file_name = "Cargo.toml";
-    let output_path = build_dir.join(file_name);
-    let output = reg.render(file_name, &json).unwrap();
-    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
+pub struct CrateConfig<'lcmd> {
+    pub crate_name: String,
+    pub modules: Vec<PathBuf>,
+    pub pragmas: PragmaSet,
+    pub crates: CrateSet,
+    pub link_cmd: &'lcmd LinkCmd,
 }
 
 /// Emit `Cargo.toml` and `lib.rs` for a library or `main.rs` for a binary.
 /// Returns the path to `lib.rs` or `main.rs` (or `None` if the output file
 /// existed already).
-pub fn emit_build_files(
+pub fn emit_build_files<'lcmd>(
     tcfg: &TranspilerConfig,
-    crate_name: &str,
     build_dir: &Path,
-    modules: Vec<PathBuf>,
-    pragmas: PragmaSet,
-    crates: CrateSet,
-    link_cmd: &LinkCmd,
+    crate_cfg: Option<CrateConfig<'lcmd>>,
+    workspace_members: Option<Vec<String>>,
 ) -> Option<PathBuf> {
     let mut reg = Handlebars::new();
 
@@ -118,9 +91,14 @@ pub fn emit_build_files(
         ));
     }
 
-    emit_cargo_toml(tcfg, &reg, crate_name, &build_dir, &modules, &crates, &link_cmd);
-    emit_build_rs(tcfg, &reg, &build_dir, link_cmd);
-    emit_lib_rs(tcfg, &reg, &build_dir, modules, pragmas, &crates)
+    emit_cargo_toml(tcfg, &reg, &build_dir, &crate_cfg, workspace_members);
+    if tcfg.translate_valist {
+        emit_rust_toolchain(tcfg, &build_dir);
+    }
+    crate_cfg.and_then(|ccfg| {
+        emit_build_rs(tcfg, &reg, &build_dir, ccfg.link_cmd);
+        emit_lib_rs(tcfg, &reg, &build_dir, ccfg.modules, ccfg.pragmas, &ccfg.crates)
+    })
 }
 
 #[derive(Serialize)]
@@ -274,32 +252,44 @@ fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
 }
 
-fn emit_cargo_toml(
+fn emit_cargo_toml<'lcmd>(
     tcfg: &TranspilerConfig,
     reg: &Handlebars,
-    crate_name: &str,
     build_dir: &Path,
-    modules: &[PathBuf],
-    crates: &CrateSet,
-    link_cmd: &LinkCmd,
+    crate_cfg: &Option<CrateConfig<'lcmd>>,
+    workspace_members: Option<Vec<String>>,
 ) {
     // rust_checks_path is gone because we don't want to refer to the source
     // path but instead want the cross-check libs to be installed via cargo.
-
-    let binaries = convert_module_list(tcfg, build_dir, modules.to_owned(), ModuleSubset::Binaries);
-    let json = json!({
-        "crate_name": crate_name,
-        "crate_rust_name": crate_name.replace('-', "_"),
-        "crate_types": link_cmd.r#type.as_cargo_types(),
-        "is_library": link_cmd.r#type.is_library(),
-        "lib_rs_file": get_lib_rs_file_name(tcfg),
-        "binaries": binaries,
-        "cross_checks": tcfg.cross_checks,
-        "cross_check_backend": tcfg.cross_check_backend,
-        "c2rust_bitfields": crates.contains("c2rust_bitfields"),
-        "f128": crates.contains("f128"),
-        "num_traits": crates.contains("num_traits"),
+    let mut json = json!({
+        "is_workspace": workspace_members.is_some(),
+        "is_crate": crate_cfg.is_some(),
+        "workspace_members": workspace_members.unwrap_or_default(),
     });
+    if let Some(ccfg) = crate_cfg {
+        let binaries = convert_module_list(tcfg, build_dir, ccfg.modules.to_owned(), ModuleSubset::Binaries);
+        let crate_json = json!({
+            "crate_name": ccfg.crate_name,
+            "crate_rust_name": ccfg.crate_name.replace('-', "_"),
+            "crate_types": ccfg.link_cmd.r#type.as_cargo_types(),
+            "is_library": ccfg.link_cmd.r#type.is_library(),
+            "lib_rs_file": get_lib_rs_file_name(tcfg),
+            "binaries": binaries,
+            "cross_checks": tcfg.cross_checks,
+            "cross_check_backend": tcfg.cross_check_backend,
+            "c2rust_bitfields": ccfg.crates.contains("c2rust_bitfields"),
+            "f128": ccfg.crates.contains("f128"),
+            "num_traits": ccfg.crates.contains("num_traits"),
+        });
+        json.as_object_mut()
+            .unwrap()
+            .extend(crate_json
+                    .as_object()
+                    .cloned() // FIXME: we need to clone it because there's no `into_object`
+                    .unwrap()
+                    .into_iter());
+    }
+
     let file_name = "Cargo.toml";
     let output_path = build_dir.join(file_name);
     let output = reg.render(file_name, &json).unwrap();
