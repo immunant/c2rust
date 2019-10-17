@@ -12,11 +12,19 @@ RUN apt-get update -qq && \
     autoconf \
     bison \
     build-essential \
+    libbz2-dev \
+    libdb-dev \
+    libexpat1-dev \
     libgdbm-dev \
     liblzma-dev \
+    libncurses5-dev \
+    libpcre3-dev \
     libreadline-dev \
+    libtool \
+    libsqlite3-dev \
     mdm \
     rcs \
     ruby \
     tcl-dev \
-    tk-dev
+    tk-dev \
+    zlib1g-dev
