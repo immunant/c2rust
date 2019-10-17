@@ -1981,7 +1981,8 @@ impl<'a> State<'a> {
     fn print_expr_binary(&mut self,
                          op: ast::BinOp,
                          lhs: &ast::Expr,
-                         rhs: &ast::Expr) {
+                         rhs: &ast::Expr,
+                         is_inline: bool) {
         let assoc_op = AssocOp::from_ast_binop(op.node);
         let prec = assoc_op.precedence() as i8;
         let fixity = assoc_op.fixity();
@@ -2007,6 +2008,9 @@ impl<'a> State<'a> {
             //   parens are required since the parser would interpret `let a = b < c` as
             //   `let a = (b < c)`. To achieve this, we force parens.
             (&ast::ExprKind::Let { .. }, _) if !syntax_priv::needs_par_as_let_scrutinee(prec) => {
+                parser::PREC_FORCE_PAREN
+            }
+            _ if !is_inline && syntax_priv::expr_requires_semi_to_be_stmt(lhs) => {
                 parser::PREC_FORCE_PAREN
             }
             _ => left_prec,
@@ -2075,7 +2079,7 @@ impl<'a> State<'a> {
                 self.print_expr_method_call(segment, &args[..]);
             }
             ast::ExprKind::Binary(op, ref lhs, ref rhs) => {
-                self.print_expr_binary(op, lhs, rhs);
+                self.print_expr_binary(op, lhs, rhs, is_inline);
             }
             ast::ExprKind::Unary(op, ref expr) => {
                 self.print_expr_unary(op, expr);
@@ -2087,14 +2091,22 @@ impl<'a> State<'a> {
                 self.print_literal(lit);
             }
             ast::ExprKind::Cast(ref expr, ref ty) => {
-                let prec = AssocOp::As.precedence() as i8;
+                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                    parser::PREC_FORCE_PAREN
+                } else {
+                    AssocOp::As.precedence() as i8
+                };
                 self.print_expr_maybe_paren(expr, prec);
                 self.s.space();
                 self.word_space("as");
                 self.print_type(ty);
             }
             ast::ExprKind::Type(ref expr, ref ty) => {
-                let prec = AssocOp::Colon.precedence() as i8;
+                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                    parser::PREC_FORCE_PAREN
+                } else {
+                    AssocOp::Colon.precedence() as i8
+                };
                 self.print_expr_maybe_paren(expr, prec);
                 self.word_space(":");
                 self.print_type(ty);
@@ -2191,14 +2203,22 @@ impl<'a> State<'a> {
                 self.s.word(".await");
             }
             ast::ExprKind::Assign(ref lhs, ref rhs) => {
-                let prec = AssocOp::Assign.precedence() as i8;
+                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                    parser::PREC_FORCE_PAREN
+                } else {
+                    AssocOp::Assign.precedence() as i8
+                };
                 self.print_expr_maybe_paren(lhs, prec + 1);
                 self.s.space();
                 self.word_space("=");
                 self.print_expr_maybe_paren(rhs, prec);
             }
             ast::ExprKind::AssignOp(op, ref lhs, ref rhs) => {
-                let prec = AssocOp::Assign.precedence() as i8;
+                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                    parser::PREC_FORCE_PAREN
+                } else {
+                    AssocOp::Assign.precedence() as i8
+                };
                 self.print_expr_maybe_paren(lhs, prec + 1);
                 self.s.space();
                 self.s.word(op.node.to_string());

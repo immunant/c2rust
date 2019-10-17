@@ -697,16 +697,6 @@ impl Builder {
         let mut e = e.make(&self);
         let t = t.make(&self);
 
-        // Workaround for a bug in libsyntax require us to emit extra parentheses
-        let cast_if = if let ExprKind::If(..) = e.kind {
-            true
-        } else {
-            false
-        };
-        if cast_if {
-            e = mk().paren_expr(e);
-        }
-
         P(Expr {
             id: self.id,
             kind: ExprKind::Cast(e, t),
