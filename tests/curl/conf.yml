@@ -4,6 +4,3 @@ transpile:
 
 cargo:
   autogen: true
-
-  # blocked on https://github.com/rust-lang/rust/pull/61126
-  xfail: true
