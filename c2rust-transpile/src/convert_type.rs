@@ -450,6 +450,7 @@ impl TypeConverter {
             CTypeKind::Elaborated(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
             CTypeKind::Decayed(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
             CTypeKind::Paren(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
+            CTypeKind::TypeOf(ty) => self.convert_knr_function(ctxt, ty, params),
 
             CTypeKind::Typedef(decl) => match &ctxt.index(decl).kind {
                 CDeclKind::Typedef { typ, .. } => self.convert_knr_function(ctxt, typ.ctype, params),
