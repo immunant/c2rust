@@ -694,7 +694,7 @@ impl Builder {
         E: Make<P<Expr>>,
         T: Make<P<Ty>>,
     {
-        let mut e = e.make(&self);
+        let e = e.make(&self);
         let t = t.make(&self);
 
         P(Expr {
