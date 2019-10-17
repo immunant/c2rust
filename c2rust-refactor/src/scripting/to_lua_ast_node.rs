@@ -1147,6 +1147,10 @@ impl UserData for LuaAstNode<P<Pat>> {
             Ok(this.borrow().kind.ast_name())
         });
 
+        methods.add_method("get_id", |lua_ctx, this, ()| {
+            Ok(this.borrow().id.to_lua(lua_ctx))
+        });
+
         methods.add_method("get_ident", |lua_ctx, this, ()| {
             if let PatKind::Ident(_, ident, _) = this.borrow().kind {
                 ident.to_lua(lua_ctx).map(Some)

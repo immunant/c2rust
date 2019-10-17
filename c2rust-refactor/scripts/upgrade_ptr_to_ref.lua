@@ -1271,23 +1271,23 @@ function is_empty(tbl)
     return next(tbl) == nil
 end
 
--- The MarkConverter takes marks and processes them into ConvCfgs
-MarkConverter = {}
+CfgBuilder = {}
 
-function MarkConverter.new(marks, boxes, tctx)
+function CfgBuilder.new(marks, boxes, tctx)
     self = {}
     self.marks = marks
     self.node_id_cfgs = {}
     self.boxes = boxes
     self.tctx = tctx
+    self.pat_to_var_id = {}
 
-    setmetatable(self, MarkConverter)
-    MarkConverter.__index = MarkConverter
+    setmetatable(self, CfgBuilder)
+    CfgBuilder.__index = CfgBuilder
 
     return self
 end
 
-function MarkConverter:flat_map_param(param)
+function CfgBuilder:flat_map_param(param)
     local param_id = param:get_id()
     local param_ty = param:get_ty()
     local param_ty_id = param_ty:get_id()
@@ -1310,12 +1310,14 @@ function MarkConverter:flat_map_param(param)
 
     local attrs = param:get_attrs()
 
+    self.pat_to_var_id[param:get_pat():get_id()] = param_id
+
     -- TODO: Box support
     self.node_id_cfgs[param_id] = ConvCfg.from_marks(marks, attrs)
     return {param}
 end
 
-function MarkConverter:visit_local(locl)
+function CfgBuilder:visit_local(locl)
     local ty = locl:get_ty()
 
     -- Locals with no type annotation are skipped
@@ -1334,10 +1336,11 @@ function MarkConverter:visit_local(locl)
     -- Skip if there are no marks
     if is_empty(marks) then return end
 
+    self.pat_to_var_id[locl:get_pat():get_id()] = id
     self.node_id_cfgs[id] = ConvCfg.from_marks(marks, attrs)
 end
 
-function MarkConverter:flat_map_item(item, walk)
+function CfgBuilder:flat_map_item(item, walk)
     local item_kind = item:get_kind()
     local crate_vis = item:get_vis() == "Crate"
 
@@ -1372,20 +1375,28 @@ function path_to_last_segment(path)
     return segments[#segments]
 end
 
--- TODO: Rename to CfgBuilder?
-function MarkConverter:flat_map_stmt(stmt, walk)
+function CfgBuilder:flat_map_stmt(stmt, walk)
     local stmt_kind = stmt:get_kind()
 
+    -- Here we look for a particular multi-stmt pattern:
+    -- let fresh = a;
+    -- a = a.offset(x);
+    -- where a is a mutable slice
     if stmt_kind == "Local" then
         local locl = stmt:get_node()
         local init = locl:get_init()
 
         if init and init:get_kind() == "Path" then
-            local local_ty_id = locl:get_ty():get_id()
-            local marks = self.marks[local_ty_id]
-            local is_mut = false
+            -- Ideally we'd just check if the marking for this local's ty id
+            -- is mut. However, the variable may possibly be marked as immutable
+            -- if it is only read from (despite containing a mutable ref)
+            -- so instead we look up the mutability from the cfg of the rhs
+            local hir_id = self.tctx:resolve_path_hirid(init)
+            local node_pat_id = self.tctx:hirid_to_nodeid(hir_id)
+            local node_id = self.pat_to_var_id[node_pat_id]
+            local init_cfg = self.node_id_cfgs[node_id]
 
-            if marks["mut"] then
+            if init_cfg:is_mut() and init_cfg:is_slice_any() then
                 local pat = locl:get_pat()
 
                 self.lhs_ident = pat:get_ident()
@@ -1482,7 +1493,7 @@ function infer_node_id_cfgs(tctx)
 
     tctx:visit_crate_new(malloc_marker)
 
-    local converter = MarkConverter.new(marks, malloc_marker.boxes, tctx)
+    local converter = CfgBuilder.new(marks, malloc_marker.boxes, tctx)
     tctx:visit_crate_new(converter)
     return converter.node_id_cfgs
 end

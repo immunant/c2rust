@@ -636,7 +636,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             },
         );
 
-        methods.add_method("resolve_ty_hirid", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
+        methods.add_method("resolve_ty_hirid", |_lua_ctx, this, ty: LuaTy| {
             let def_id = match this.cx.try_resolve_ty(&ty.borrow()) {
                 Some(id) => id,
                 None => return Ok(None),
@@ -644,6 +644,13 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
 
            Ok(this.cx.hir_map().as_local_hir_id(def_id).map(LuaHirId))
         });
+
+        methods.add_method(
+            "hirid_to_nodeid",
+            |_lua_ctx, this, id: LuaHirId| {
+                Ok(this.cx.hir_map().hir_to_node_id(id.0).as_usize())
+            },
+        );
 
         methods.add_method(
             "nodeid_to_hirid",

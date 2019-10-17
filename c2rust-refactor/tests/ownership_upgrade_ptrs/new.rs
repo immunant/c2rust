@@ -605,3 +605,57 @@ pub unsafe extern "C" fn eshdn1(mut x: Option<&mut [libc::c_ushort]>) {
         i += 1
     }
 }
+
+unsafe extern "C" fn emovz(
+    mut a: Option<&mut [libc::c_ushort]>,
+    mut b: Option<&mut [libc::c_ushort]>,
+) {
+    let mut i: libc::c_int = 0;
+    i = 0i32;
+    while i < 10i32 + 3i32 - 1i32 {
+        #[slice]
+        let fresh26;
+
+        {
+            let tup = a.unwrap().split_at_mut(1);
+            fresh26 = Some(tup.0);
+
+            a = Some(tup.1);
+        }
+        #[slice]
+        let fresh27;
+
+        {
+            let tup = b.unwrap().split_at_mut(1);
+            fresh27 = Some(tup.0);
+
+            b = Some(tup.1);
+        }
+
+        fresh27.unwrap()[0] = fresh26.unwrap()[0];
+        i += 1
+    }
+    /* clear low guard word */
+
+    b.as_mut().unwrap()[0] = 0i32 as libc::c_ushort;
+}
+
+unsafe extern "C" fn eshdn8(mut x: Option<&mut [libc::c_ushort]>) {
+    let mut newbyt: libc::c_ushort = 0;
+    let mut oldbyt: libc::c_ushort = 0;
+    let mut i: libc::c_int = 0;
+    x = Some(x.unwrap().split_at_mut(2).1);
+    oldbyt = 0i32 as libc::c_ushort;
+    i = 2i32;
+    while i < 10i32 + 3i32 {
+        newbyt = ((x.as_mut().unwrap()[0] as libc::c_int) << 8i32) as libc::c_ushort;
+
+        x.as_mut().unwrap()[0] = (x.as_mut().unwrap()[0] as libc::c_int >> 8i32) as libc::c_ushort;
+
+        x.as_mut().unwrap()[0] =
+            (x.as_mut().unwrap()[0] as libc::c_int | oldbyt as libc::c_int) as libc::c_ushort;
+        oldbyt = newbyt;
+        x = Some(x.unwrap().split_at_mut(1).1);
+        i += 1
+    }
+}
