@@ -3095,7 +3095,7 @@ impl<'c> Translation<'c> {
                         let ty = self.convert_type(qual_ty.ctype)?;
                         let actual_ty = self.type_converter
                             .borrow_mut()
-                            .convert_knr_function(&self.ast_context, qual_ty.ctype, parameters)?;
+                            .knr_function_type_with_parameters(&self.ast_context, qual_ty.ctype, parameters)?;
                         if let Some(actual_ty) = actual_ty {
                             // If we're casting a concrete function to
                             // a K&R function pointer type, use transmute

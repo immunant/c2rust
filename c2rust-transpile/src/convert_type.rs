@@ -418,7 +418,9 @@ impl TypeConverter {
         }
     }
 
-    pub fn convert_knr_function(
+    /// Add the given parameters to a K&R function pointer type,
+    /// returning a full signature or `None` if the function isn't K&R.
+    pub fn knr_function_type_with_parameters(
         &mut self,
         ctxt: &TypedAstContext,
         ctype: CTypeId,
@@ -447,13 +449,13 @@ impl TypeConverter {
                 Ok(Some(fn_ty))
             }
 
-            CTypeKind::Elaborated(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
-            CTypeKind::Decayed(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
-            CTypeKind::Paren(ref ctype) => self.convert_knr_function(ctxt, *ctype, params),
-            CTypeKind::TypeOf(ty) => self.convert_knr_function(ctxt, ty, params),
+            CTypeKind::Elaborated(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
+            CTypeKind::Decayed(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
+            CTypeKind::Paren(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
+            CTypeKind::TypeOf(ty) => self.knr_function_type_with_parameters(ctxt, ty, params),
 
             CTypeKind::Typedef(decl) => match &ctxt.index(decl).kind {
-                CDeclKind::Typedef { typ, .. } => self.convert_knr_function(ctxt, typ.ctype, params),
+                CDeclKind::Typedef { typ, .. } => self.knr_function_type_with_parameters(ctxt, typ.ctype, params),
                 _ => panic!("Typedef decl did not point to a typedef"),
             }
 
