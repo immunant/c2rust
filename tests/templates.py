@@ -19,7 +19,7 @@ RUST_BACKTRACE=1 c2rust transpile \
      2>&1 | tee `basename "$0"`.log
 
 if [[ -f "$SCRIPT_DIR/build.rs" ]]; then
-    cp "$SCRIPT_DIR/build.rs" "$SCRIPT_DIR/repo/repo"
+    cp "$SCRIPT_DIR/build.rs" "$SCRIPT_DIR/repo"
 fi
 
 if [[ -n "$C2RUST_DIR" ]]; then
