@@ -979,7 +979,7 @@ class TranslateASTVisitor final
             std::vector<std::string> outputs, inputs, clobbers;
             std::vector<TargetInfo::ConstraintInfo> output_infos;
             for (unsigned i = 0, num = E->getNumOutputs(); i < num; ++i) {
-                auto constraint = E->getOutputConstraint(i).str();
+                auto constraint = E->getOutputConstraint(i);
                 std::string convertedConstraint;
                 TargetInfo::ConstraintInfo info(constraint, E->getOutputName(i));
                 this->Context->getTargetInfo().validateOutputConstraint(info);
@@ -995,7 +995,7 @@ class TranslateASTVisitor final
                     // into); clang does this conversion, but rustc doesn't
                     convertedConstraint += '*';
                 }
-                convertedConstraint += SimplifyConstraint(constraint);
+                convertedConstraint += SimplifyConstraint(constraint.str());
                 outputs.push_back(convertedConstraint);
                 output_infos.push_back(std::move(info));
             }
