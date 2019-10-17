@@ -140,12 +140,23 @@ impl<'c> Translation<'c> {
             };
 
             let have_fn_ptr = fn_ptr_ty.is_some();
-            let ty = fn_ptr_ty.unwrap_or_else(||self.convert_type(ty.ctype).unwrap());
+            let mut arg_ty = fn_ptr_ty.unwrap_or_else(||self.convert_type(ty.ctype).unwrap());
+
+            let mut real_arg_ty = None;
+            if self.ast_context.get_pointee_qual_type(ty.ctype)
+                .map_or(false, |ty| self.ast_context.is_forward_declared_type(ty.ctype))
+            {
+                real_arg_ty = Some(arg_ty.clone());
+                arg_ty = mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_void"]));
+            }
 
             val.and_then(|val| {
                 let path = mk()
-                    .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![ty]));
-                let val = mk().method_call_expr(val, path, vec![] as Vec<P<Expr>>);
+                    .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![arg_ty]));
+                let mut val = mk().method_call_expr(val, path, vec![] as Vec<P<Expr>>);
+                if let Some(ty) = real_arg_ty {
+                    val = mk().cast_expr(val, ty);
+                }
 
                 if ctx.is_unused() {
                     Ok(WithStmts::new(
