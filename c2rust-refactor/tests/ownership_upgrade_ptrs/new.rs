@@ -631,6 +631,53 @@ unsafe extern "C" fn emovz(mut a: Option<&[libc::c_ushort]>, mut b: Option<&mut 
     b.as_mut().unwrap()[0] = 0i32 as libc::c_ushort;
 }
 
+unsafe extern "C" fn emovz2(mut a: &[libc::c_ushort], mut b: &mut [libc::c_ushort]) {
+    let mut i: libc::c_int = 0;
+    i = 0i32;
+    while i < 10i32 + 3i32 - 1i32 {
+        #[slice]
+        let fresh26 = Some(a);
+        a = &a[1..];
+        #[slice]
+        let fresh27;
+
+        {
+            let tup = b.split_at_mut(1);
+            fresh27 = Some(tup.0);
+            b = tup.1;
+        }
+
+        fresh27.unwrap()[0] = fresh26.unwrap()[0];
+        i += 1
+    }
+    /* clear low guard word */
+    b[0] = 0i32 as libc::c_ushort;
+}
+
+unsafe extern "C" fn emovz3(mut a: &[libc::c_ushort], mut b: &mut [libc::c_ushort]) {
+    let mut i: libc::c_int = 0;
+    i = 0i32;
+    while i < 10i32 + 3i32 - 1i32 {
+        #[slice]
+        #[nonnull]
+        let fresh26 = a;
+        a = &a[1..];
+        #[nonnull]
+        #[slice]
+        let fresh27;
+
+        {
+            let tup = b.split_at_mut(1);
+            fresh27 = tup.0;
+            b = tup.1;
+        }
+        fresh27[0] = fresh26[0];
+        i += 1
+    }
+    /* clear low guard word */
+    b[0] = 0i32 as libc::c_ushort;
+}
+
 unsafe extern "C" fn eshdn8(mut x: Option<&mut [libc::c_ushort]>) {
     let mut newbyt: libc::c_ushort = 0;
     let mut oldbyt: libc::c_ushort = 0;

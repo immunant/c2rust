@@ -1114,9 +1114,10 @@ function Visitor:flat_map_stmt(stmt, walk)
                 local tup1 = self.tctx:ident_path_expr("tup")
                 local locl_cfg = self.node_id_cfgs[cfg.extra_data[2]]
                 local offset_expr, _ = rewrite_chained_offsets(exprs[2])
+                local offset_caller_cfg = self:get_expr_cfg(exprs[1])
                 local init = nil
 
-                if locl_cfg:is_opt_any() then
+                if offset_caller_cfg:is_opt_any() then
                     init = self.tctx:method_call_expr("unwrap", {exprs[1]})
                 end
 
@@ -1242,6 +1243,12 @@ function Visitor:visit_local(locl, walk)
         local rhs_cfg = self:get_expr_cfg(init)
 
         if rhs_cfg then
+            if cfg:is_opt_any() and not rhs_cfg:is_opt_any() then
+                local some_path_expr = self.tctx:ident_path_expr("Some")
+                init:to_call{some_path_expr, init}
+                locl:set_init(init)
+            end
+
             locl:set_ty(nil)
         end
     -- let x: *mut T = 0 as *mut T; -> let mut x = None;

@@ -545,6 +545,44 @@ unsafe extern "C" fn emovz(#[slice] mut a: *mut libc::c_ushort,
     *b = 0i32 as libc::c_ushort;
 }
 
+unsafe extern "C" fn emovz2(#[slice] #[nonnull] mut a: *mut libc::c_ushort,
+                            #[slice] #[nonnull] mut b: *mut libc::c_ushort) {
+    let mut i: libc::c_int = 0;
+    i = 0i32;
+    while i < 10i32 + 3i32 - 1i32 {
+        #[slice]
+        let fresh26 = a;
+        a = a.offset(1);
+        #[slice]
+        let fresh27 = b;
+        b = b.offset(1);
+        *fresh27 = *fresh26;
+        i += 1
+    }
+    /* clear low guard word */
+    *b = 0i32 as libc::c_ushort;
+}
+
+unsafe extern "C" fn emovz3(#[slice] #[nonnull] mut a: *mut libc::c_ushort,
+                            #[slice] #[nonnull] mut b: *mut libc::c_ushort) {
+    let mut i: libc::c_int = 0;
+    i = 0i32;
+    while i < 10i32 + 3i32 - 1i32 {
+        #[slice]
+        #[nonnull]
+        let fresh26 = a;
+        a = a.offset(1);
+        #[nonnull]
+        #[slice]
+        let fresh27 = b;
+        b = b.offset(1);
+        *fresh27 = *fresh26;
+        i += 1
+    }
+    /* clear low guard word */
+    *b = 0i32 as libc::c_ushort;
+}
+
 unsafe extern "C" fn eshdn8(#[slice] mut x: *mut libc::c_ushort) {
     let mut newbyt: libc::c_ushort = 0;
     let mut oldbyt: libc::c_ushort = 0;
