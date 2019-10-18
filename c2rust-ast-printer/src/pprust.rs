@@ -2203,7 +2203,7 @@ impl<'a> State<'a> {
                 self.s.word(".await");
             }
             ast::ExprKind::Assign(ref lhs, ref rhs) => {
-                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(lhs) {
                     parser::PREC_FORCE_PAREN
                 } else {
                     AssocOp::Assign.precedence() as i8
@@ -2214,7 +2214,7 @@ impl<'a> State<'a> {
                 self.print_expr_maybe_paren(rhs, prec);
             }
             ast::ExprKind::AssignOp(op, ref lhs, ref rhs) => {
-                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(lhs) {
                     parser::PREC_FORCE_PAREN
                 } else {
                     AssocOp::Assign.precedence() as i8
