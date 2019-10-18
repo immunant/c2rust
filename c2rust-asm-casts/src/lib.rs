@@ -137,6 +137,8 @@ mod tests {
         test_combo!(i32, [u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, *const u8, *mut u8]);
         test_combo!(i64, [u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, *const u8, *mut u8]);
         test_combo!(isize, [u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, *const u8, *mut u8]);
+        test_combo!(*const u8, [u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, *const u8, *mut u8]);
+        test_combo!(*mut u8, [u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, *const u8, *mut u8]);
         test_combo!(*const u16, [u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, *const u8, *mut u8]);
         test_combo!(*mut u16, [u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, *const u8, *mut u8]);
     }
