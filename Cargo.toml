@@ -9,6 +9,7 @@ members = [
     "manual/preprocessors",
     "c2rust-bitfields",
     "c2rust-macros",
+    "c2rust-asm-casts",
 ]
 exclude = [
     "cross-checks/pointer-tracer",

@@ -34,6 +34,8 @@ name = "{{name}}"
 [dependencies]
 {{~#if c2rust_bitfields}}
 c2rust-bitfields = "0.3"{{/if}}
+{{~#if c2rust_asm_casts}}
+c2rust-asm-casts = "0.1"{{/if}}
 {{~#if f128}}
 f128 = "0.2"{{/if}}
 {{~#if num_traits}}

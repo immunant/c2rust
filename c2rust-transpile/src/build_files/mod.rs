@@ -278,6 +278,7 @@ fn emit_cargo_toml<'lcmd>(
             "cross_checks": tcfg.cross_checks,
             "cross_check_backend": tcfg.cross_check_backend,
             "c2rust_bitfields": ccfg.crates.contains("c2rust_bitfields"),
+            "c2rust_asm_casts": ccfg.crates.contains("c2rust_asm_casts"),
             "f128": ccfg.crates.contains("f128"),
             "num_traits": ccfg.crates.contains("num_traits"),
         });
