@@ -1,4 +1,5 @@
-#![feature(ptr_wrapping_offset_from, custom_attribute, param_attrs)]
+#![feature(ptr_wrapping_offset_from, custom_attribute)]
+#![allow(unused_attributes, dead_code, unused_mut, non_upper_case_globals, unused_assignments, non_camel_case_types)]
 
 #[path = "../../old.rs"]
 mod old;
@@ -248,4 +249,44 @@ fn test_eshdn1() {
     }
 
     assert_eq!(write_data, [0, 0, 0, 32769, 1, 32770, 2, 32771, 3, 32772, 4, 32773, 5]);
+}
+
+#[test]
+fn test_emovz() {
+    let mut buff1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+    let mut buff2 = [1; 13];
+
+    unsafe {
+        old::emovz(buff1.as_mut_ptr(), buff2.as_mut_ptr());
+    }
+
+    assert_eq!(buff1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    assert_eq!(buff2, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0]);
+
+    buff2 = buff1;
+
+    unsafe {
+        new::emovz(Some(&buff1), Some(&mut buff2));
+    }
+
+    assert_eq!(buff1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    assert_eq!(buff2, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0]);
+
+    buff2 = buff1;
+
+    unsafe {
+        new::emovz2(&buff1, &mut buff2);
+    }
+
+    assert_eq!(buff1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    assert_eq!(buff2, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0]);
+
+    buff2 = buff1;
+
+    unsafe {
+        new::emovz3(&buff1, &mut buff2);
+    }
+
+    assert_eq!(buff1, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    assert_eq!(buff2, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0]);
 }

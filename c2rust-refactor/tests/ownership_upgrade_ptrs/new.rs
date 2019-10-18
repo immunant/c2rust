@@ -306,7 +306,7 @@ pub unsafe extern "C" fn chacha_keysetup(
     mut x: Option<&mut chacha_ctx>,
     mut k: Option<&[u8_0]>,
     kbits: u32_0,
-    ivbits: u32_0,
+    _ivbits: u32_0,
 ) {
     #[slice]
     let mut constants = None; /* kbits == 128 */
@@ -335,7 +335,7 @@ pub unsafe extern "C" fn chacha_keysetup2(
     mut x: Option<&mut chacha_ctx>,
     mut k: Option<&[u8_0]>,
     kbits: u32_0,
-    ivbits: u32_0,
+    _ivbits: u32_0,
 ) {
     #[slice]
     #[nonnull]
@@ -606,7 +606,10 @@ pub unsafe extern "C" fn eshdn1(mut x: Option<&mut [libc::c_ushort]>) {
     }
 }
 
-unsafe extern "C" fn emovz(mut a: Option<&[libc::c_ushort]>, mut b: Option<&mut [libc::c_ushort]>) {
+pub unsafe extern "C" fn emovz(
+    mut a: Option<&[libc::c_ushort]>,
+    mut b: Option<&mut [libc::c_ushort]>,
+) {
     let mut i: libc::c_int = 0;
     i = 0i32;
     while i < 10i32 + 3i32 - 1i32 {
@@ -631,7 +634,7 @@ unsafe extern "C" fn emovz(mut a: Option<&[libc::c_ushort]>, mut b: Option<&mut 
     b.as_mut().unwrap()[0] = 0i32 as libc::c_ushort;
 }
 
-unsafe extern "C" fn emovz2(mut a: &[libc::c_ushort], mut b: &mut [libc::c_ushort]) {
+pub unsafe extern "C" fn emovz2(mut a: &[libc::c_ushort], mut b: &mut [libc::c_ushort]) {
     let mut i: libc::c_int = 0;
     i = 0i32;
     while i < 10i32 + 3i32 - 1i32 {
@@ -654,7 +657,7 @@ unsafe extern "C" fn emovz2(mut a: &[libc::c_ushort], mut b: &mut [libc::c_ushor
     b[0] = 0i32 as libc::c_ushort;
 }
 
-unsafe extern "C" fn emovz3(mut a: &[libc::c_ushort], mut b: &mut [libc::c_ushort]) {
+pub unsafe extern "C" fn emovz3(mut a: &[libc::c_ushort], mut b: &mut [libc::c_ushort]) {
     let mut i: libc::c_int = 0;
     i = 0i32;
     while i < 10i32 + 3i32 - 1i32 {
