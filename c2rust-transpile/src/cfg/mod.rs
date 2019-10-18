@@ -713,12 +713,12 @@ impl<Lbl: Copy + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
         let mut actual_rewrites: IndexMap<Lbl, Lbl> = IndexMap::new();
 
         while let Some((from, to)) = proposed_rewrites.iter().map(|(f, t)| (*f, *t)).next() {
-            proposed_rewrites.remove(&from);
+            proposed_rewrites.swap_remove(&from);
             let mut from_any: IndexSet<Lbl> = indexset![from];
 
             // Try to apply more rewrites from `proposed_rewrites`
             let mut to_intermediate: Lbl = to;
-            while let Some(to_new) = proposed_rewrites.remove(&to_intermediate) {
+            while let Some(to_new) = proposed_rewrites.swap_remove(&to_intermediate) {
                 from_any.insert(to_intermediate);
                 to_intermediate = to_new;
             }
@@ -1016,7 +1016,7 @@ impl DeclStmtStore {
     /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
     /// want to move just a declaration to a larger scope.
     pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
-        let DeclStmtInfo { decl, assign, .. } = self.store.remove(&decl_id).ok_or(format_err!(
+        let DeclStmtInfo { decl, assign, .. } = self.store.swap_remove(&decl_id).ok_or(format_err!(
             "Cannot find information on declaration 1 {:?}",
             decl_id
         ))?;
@@ -1040,7 +1040,7 @@ impl DeclStmtStore {
     /// initially attached to). Used when you've moved a declaration but now you need to also run the
     /// initializer.
     pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
-        let DeclStmtInfo { decl, assign, .. } = self.store.remove(&decl_id).ok_or(format_err!(
+        let DeclStmtInfo { decl, assign, .. } = self.store.swap_remove(&decl_id).ok_or(format_err!(
             "Cannot find information on declaration 2 {:?}",
             decl_id
         ))?;
@@ -1068,7 +1068,7 @@ impl DeclStmtStore {
     ) -> Result<Vec<Stmt>, TranslationError> {
         let DeclStmtInfo {
             decl_and_assign, ..
-        } = self.store.remove(&decl_id).ok_or(format_err!(
+        } = self.store.swap_remove(&decl_id).ok_or(format_err!(
             "Cannot find information on declaration 3 {:?}",
             decl_id
         ))?;

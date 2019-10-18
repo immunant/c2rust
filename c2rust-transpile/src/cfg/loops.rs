@@ -44,16 +44,16 @@ pub fn match_loop_body(
             .collect();
 
         for following in to_move {
-            let bb = if let Some(bb) = follow_blocks.remove(&following) {
+            let bb = if let Some(bb) = follow_blocks.swap_remove(&following) {
                 bb
             } else {
                 continue;
             };
             something_happened = true;
 
-            desired_body.remove(&following);
+            desired_body.swap_remove(&following);
 
-            follow_entries.remove(&following);
+            follow_entries.swap_remove(&following);
             follow_entries.extend(&bb.successors());
             follow_entries.retain(|e| !body_blocks.contains_key(e));
             body_blocks.insert(following, bb);
@@ -97,7 +97,7 @@ pub fn heuristic_loop_body(
                 }
 
                 // Otherwise, move it into the loop
-                let bb = if let Some(bb) = follow_blocks.remove(&following) {
+                let bb = if let Some(bb) = follow_blocks.swap_remove(&following) {
                     bb
                 } else {
                     break;
@@ -105,7 +105,7 @@ pub fn heuristic_loop_body(
                 let succs = bb.successors();
 
                 body_blocks.insert(following, bb);
-                follow_entries.remove(&following);
+                follow_entries.swap_remove(&following);
                 follow_entries.extend(&succs);
 
                 // If it has more than one successor, don't try following the successor
