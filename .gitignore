@@ -14,6 +14,7 @@
 **/Cargo.lock
 !/Cargo.lock
 .python-version
+.clangd
 # ignore Clion build dirs
 /cmake-build-debug
 /cmake-build-release
