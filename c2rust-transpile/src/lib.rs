@@ -283,20 +283,16 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                 top_level_ccfg = Some(ccfg);
             } else {
                 let crate_file = emit_build_files(&tcfg, &build_dir, Some(ccfg), None);
-                // We only run the reorganization refactoring if we emitted a fresh crate file
-                if crate_file.is_some() && !tcfg.disable_refactoring {
-                    if tcfg.reorganize_definitions {
-                        reorganize_definitions(&build_dir).unwrap_or_else(|e| {
-                            warn!("Failed to reorganize definitions. {}", e.as_fail());
-                        })
-                    }
-                }
+                reorganize_definitions(&tcfg, &build_dir, crate_file)
+                    .map_err(|e| warn!("Reorganizing definitions failed: {}", e));
                 workspace_members.push(lcmd_name);
             }
         }
     }
     if tcfg.emit_build_files {
-        emit_build_files(&tcfg, &build_dir, top_level_ccfg, Some(workspace_members));
+        let crate_file = emit_build_files(&tcfg, &build_dir, top_level_ccfg, Some(workspace_members));
+        reorganize_definitions(&tcfg, &build_dir, crate_file)
+            .map_err(|e| warn!("Reorganizing definitions failed: {}", e));
     }
 }
 
@@ -368,7 +364,16 @@ fn invoke_refactor(build_dir: &PathBuf) -> Result<(), Error> {
     }
 }
 
-fn reorganize_definitions(build_dir: &PathBuf) -> Result<(), Error> {
+fn reorganize_definitions(
+    tcfg: &TranspilerConfig,
+    build_dir: &PathBuf,
+    crate_file: Option<PathBuf>,
+) -> Result<(), Error> {
+    // We only run the reorganization refactoring if we emitted a fresh crate file
+    if crate_file.is_none() || tcfg.disable_refactoring || !tcfg.reorganize_definitions {
+        return Ok(());
+    }
+
     invoke_refactor(build_dir)?;
     // fix the formatting of the output of `c2rust-refactor`
     let status = process::Command::new("cargo")
