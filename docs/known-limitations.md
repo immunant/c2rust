@@ -3,7 +3,7 @@ This document tracks things that we know the translator can't handle, as well as
 
 
 ## Partially implemented, experimental
-  * variadic function definitions and macros that operate on `va_list`s (`va_copy` support blocked on https://github.com/rust-lang/rust/pull/59625)
+  * variadic function definitions and macros that operate on `va_list`s
   * preserving comments
   * GNU inline assembly
   * `long double` type (Linux only)
