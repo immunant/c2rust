@@ -4545,7 +4545,13 @@ impl<'c> Translation<'c> {
             | IncompleteArray(ctype)
             | ConstantArray(ctype, _)
             | Elaborated(ctype)
-            | Pointer(CQualTypeId { ctype, .. }) => {
+            | Pointer(CQualTypeId { ctype, .. })
+            | Attributed(CQualTypeId { ctype, .. }, _)
+            | VariableArray(ctype, _)
+            | Reference(CQualTypeId { ctype, ..})
+            | BlockPointer(CQualTypeId { ctype, .. })
+            | TypeOf(ctype)
+            | Complex(ctype) => {
                 self.import_type(ctype, decl_file_id)
             }
             Enum(decl_id) | Typedef(decl_id) | Union(decl_id) | Struct(decl_id) => {
@@ -4594,7 +4600,7 @@ impl<'c> Translation<'c> {
 
                 self.add_lib_import(decl_file_id, type_name, true);
             }
-            ref e => unimplemented!("{:?}", e),
+            TypeOfExpr(_) | BuiltinFn => {}
         }
     }
 
