@@ -284,7 +284,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             } else {
                 let crate_file = emit_build_files(&tcfg, &build_dir, Some(ccfg), None);
                 reorganize_definitions(&tcfg, &build_dir, crate_file)
-                    .map_err(|e| warn!("Reorganizing definitions failed: {}", e));
+                    .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
                 workspace_members.push(lcmd_name);
             }
         }
@@ -292,7 +292,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     if tcfg.emit_build_files {
         let crate_file = emit_build_files(&tcfg, &build_dir, top_level_ccfg, Some(workspace_members));
         reorganize_definitions(&tcfg, &build_dir, crate_file)
-            .map_err(|e| warn!("Reorganizing definitions failed: {}", e));
+            .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
     }
 }
 
