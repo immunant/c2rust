@@ -201,14 +201,14 @@ pub fn get_compile_commands(
         v
     };
 
-    let mut v = build_link_commands(v)?; 
+    let mut lcmds = build_link_commands(v)?;
 
-    for cmd in &mut v {
-        let v = std::mem::replace(&mut cmd.cmd_inputs, vec![]);
-        let v = filter_likely_unsupported(v);
-        let v = filter_duplicate_cmds(v);
-        cmd.cmd_inputs = v;
+    for lcmd in &mut lcmds {
+        let inputs = std::mem::replace(&mut lcmd.cmd_inputs, vec![]);
+        let inputs = filter_likely_unsupported(inputs);
+        let inputs = filter_duplicate_cmds(inputs);
+        lcmd.cmd_inputs = inputs;
     }
 
-    Ok(v)
+    Ok(lcmds)
 }
