@@ -122,8 +122,19 @@ where
     }
 
     fn record_fn_decl(&mut self, sig: S::Signature, decl: &FnDecl) {
-        assert!(sig.num_inputs() == decl.inputs.len());
+        let is_variadic = decl.c_variadic();
+
+        if is_variadic {
+            assert_eq!(sig.num_inputs(), decl.inputs.len() - 1);
+        } else {
+            assert_eq!(sig.num_inputs(), decl.inputs.len());
+        }
+
         for (i, arg) in decl.inputs.iter().enumerate() {
+            if is_variadic && i == decl.inputs.len() - 1 {
+                continue;
+            }
+
             self.record_ty(sig.input(i), &arg.ty);
         }
         self.record_function_ret_ty(sig.output(), &decl.output);
