@@ -53,6 +53,8 @@ struct ModuleInfo {
     ident: Ident,
     id: NodeId,
 
+    path: Vec<PathSegment>,
+
     /// Is this module a newly created module (or an existing module)?
     new: bool,
 
@@ -94,9 +96,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     /// Iterate through the Crate and enumerate potentential destination modules.
     fn find_destination_modules(&mut self, krate: &Crate) {
         visit_nodes(krate, |i: &Item| {
-            if let ItemKind::Mod(_) = &i.kind {
-                if !has_source_header(&i.attrs) && !is_std(&i.attrs) {
-                    self.modules.insert(i.ident, ModuleInfo::from_item(i));
+            if let ItemKind::Mod(m) = &i.kind {
+                if !has_source_header(&i.attrs) && !is_std(&i.attrs) &&
+                    m.items.iter().any(|child| {
+                        if let ItemKind::Mod(_) = child.kind { false } else { true}
+                    })
+                {
+                    self.modules.insert(i.ident, ModuleInfo::from_item(i, self.cx));
                 }
             }
         });
@@ -177,11 +183,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         // for all of its items.
                         if let ItemKind::ForeignMod(m) = &item.kind {
                             for foreign_item in &m.items {
-                                let dest_path = mk().path(vec![
-                                    kw::Crate,
-                                    dest_module_ident.name,
-                                    foreign_item.ident.name,
-                                ]);
+                                let mut path_segments = dest_module_info.path.clone();
+                                path_segments.push(mk().path_segment(foreign_item.ident.name));
+                                let dest_path = mk().path(path_segments);
                                 self.path_mapping.insert(
                                     self.cx.node_def_id(foreign_item.id),
                                     (dest_path, dest_module_id),
@@ -189,14 +193,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             }
                         }
 
-                        // WARNING: this assumes that the destination module is
-                        // a simple path in the crate root and it is flat,
-                        // i.e. has no submodules which contain target items.
-                        let dest_path = mk().path(vec![
-                            kw::Crate,
-                            dest_module_ident.name,
-                            new_ident.name,
-                        ]);
+                        let mut path_segments = dest_module_info.path.clone();
+                        path_segments.push(mk().path_segment(new_ident.name));
+                        let dest_path = mk().path(path_segments);
                         self.path_mapping
                             .insert(self.cx.node_def_id(item.id), (dest_path, dest_module_id));
 
@@ -391,6 +390,10 @@ impl ModuleInfo {
         Self {
             ident,
             id,
+            path: vec![
+                mk().path_segment(kw::Crate),
+                mk().path_segment(ident.name),
+            ],
             new: true,
             has_main: false,
             header_lines: HashMap::new(),
@@ -398,10 +401,12 @@ impl ModuleInfo {
     }
 
     /// Create a ModuleInfo from a module `Item`
-    fn from_item(item: &Item) -> Self {
+    fn from_item(item: &Item, cx: &RefactorCtxt) -> Self {
         let module = expect!([&item.kind] ItemKind::Mod(m) => m);
         let mut has_main = false;
         let mut header_lines: HashMap<Ident, usize> = HashMap::new();
+        let def_id = cx.node_def_id(item.id);
+        let path = cx.def_path(def_id);
         for i in &module.items {
             match &i.kind {
                 ItemKind::Fn(..) => {
@@ -421,6 +426,7 @@ impl ModuleInfo {
         Self {
             ident: item.ident,
             id: item.id,
+            path: path.segments,
             new: false,
             has_main,
             header_lines,
