@@ -978,9 +978,9 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
         }
 
         // Add `extern crate X;` to the top of the file
-        for crate_name in t.extern_crates.borrow().iter() {
-            s.print_item(&mk().extern_crate_item(*crate_name, None));
-        }
+        // for crate_name in t.extern_crates.borrow().iter() {
+        //     s.print_item(&mk().extern_crate_item(*crate_name, None));
+        // }
 
         if t.tcfg.cross_checks {
             s.print_item(
