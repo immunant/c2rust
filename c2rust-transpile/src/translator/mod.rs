@@ -4482,6 +4482,7 @@ impl<'c> Translation<'c> {
             return;
         }
 
+        // TODO: get rid of this, not compatible with nested modules
         let mut module_path = vec!["super".into()];
 
         // If the decl does not live in the main module add the path to the sibling submodule
@@ -4514,6 +4515,7 @@ impl<'c> Translation<'c> {
             return;
         }
 
+        // TODO: get rid of this, not compatible with nested modules
         let module_path = vec!["super".into()];
 
         let mut module_items = self.items.borrow_mut();
@@ -4533,10 +4535,10 @@ impl<'c> Translation<'c> {
         match self.ast_context[ctype].kind {
             Void | Char | SChar | UChar | Short | UShort | Int | UInt | Long | ULong | LongLong
             | ULongLong | Int128 | UInt128 | Half | Float | Double => {
-                self.add_lib_import(decl_file_id, "libc", false);
+                // self.add_lib_import(decl_file_id, "libc", false);
             }
             LongDouble => {
-                self.add_lib_import(decl_file_id, "f128", false);
+                // self.add_lib_import(decl_file_id, "f128", false);
             }
             // Bool uses the bool type, so no dependency on libc
             Bool => {}
