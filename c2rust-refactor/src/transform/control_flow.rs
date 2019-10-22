@@ -65,8 +65,8 @@ impl Transform for ReconstructForRange {
 
         let range_one_excl = mcx.parse_stmts("$'label: for $i in $start .. $end { $body; }");
         let range_one_incl = mcx.parse_stmts("$'label: for $i in $start ..= $end { $body; }");
-        let range_step_excl = mcx.parse_stmts("$'label: for $i in ($start .. $end).step_by($step) { $body; }");
-        let range_step_incl = mcx.parse_stmts("$'label: for $i in ($start ..= $end).step_by($step) { $body; }");
+        let range_step_excl = mcx.parse_stmts("$'label: for $i in ($start .. $end).step_by($step as usize) { $body; }");
+        let range_step_incl = mcx.parse_stmts("$'label: for $i in ($start ..= $end).step_by($step as usize) { $body; }");
 
         mut_visit_match_with(mcx, pat, krate, |orig, mut mcx| {
             let cond = mcx.bindings.get::<_, P<Expr>>("$cond").unwrap().clone();

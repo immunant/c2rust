@@ -2,22 +2,23 @@ refactor:transform(
    function(transform)
       return transform:match(
          function(mcx)
-            pat = mcx:parse_stmts([[
+            local pat = mcx:parse_stmts([[
 $i:Ident = $start:Expr;
 $'label:?Ident: while $cond:Expr {
     $body:MultiStmt;
     $incr:Stmt;
 }]])
-            lt_cond = mcx:parse_expr("$i < $end:Expr")
-            le_cond = mcx:parse_expr("$i <= $end:Expr")
+            local lt_cond = mcx:parse_expr("$i < $end:Expr")
+            local le_cond = mcx:parse_expr("$i <= $end:Expr")
 
-            i_plus_eq = mcx:parse_expr("$i += $step:Expr")
-            i_eq_plus = mcx:parse_expr("$i = $i + $step:Expr")
+            local i_plus_eq = mcx:parse_expr("$i += $step:Expr")
+            local i_eq_plus = mcx:parse_expr("$i = $i + $step:Expr")
 
-            range_one_excl = mcx:parse_stmts("$'label: for $i in $start .. $end { $body; }")
-            range_one_incl = mcx:parse_stmts("$'label: for $i in $start ..= $end { $body; }")
-            range_step_excl = mcx:parse_stmts("$'label: for $i in ($start .. $end).step_by($step) { $body; }")
-            range_step_incl = mcx:parse_stmts("$'label: for $i in ($start ..= $end).step_by($step) { $body; }")
+            local range_one_excl = mcx:parse_stmts("$'label: for $i in $start .. $end { $body; }")
+            local range_one_incl = mcx:parse_stmts("$'label: for $i in $start ..= $end { $body; }")
+            local range_step_excl = mcx:parse_stmts("$'label: for $i in ($start .. $end).step_by($step as usize) { $body; }")
+            local range_step_incl = mcx:parse_stmts("$'label: for $i in ($start ..= $end).step_by($step as usize) { $body; }")
+
 
             mcx:fold_with(
                pat,
@@ -30,8 +31,6 @@ $'label:?Ident: while $cond:Expr {
                   else
                      return orig
                   end
-
-                  print("parsed cond")
 
                   incr = mcx:get_stmt("$incr")
                   incr_kind = incr:get_kind()
@@ -47,7 +46,6 @@ $'label:?Ident: while $cond:Expr {
                      return orig
                   end
 
-                  print("parsed incr")
 
                   step = mcx:get_expr("$step")
                   if (step:get_kind() == "Lit" and
@@ -65,7 +63,6 @@ $'label:?Ident: while $cond:Expr {
                      end
                   end
 
-                  print("substituting")
                   return mcx:subst(repl_step)
                end
             )
@@ -74,4 +71,3 @@ $'label:?Ident: while $cond:Expr {
    end
 )
 refactor:save_crate()
-print("finished")
