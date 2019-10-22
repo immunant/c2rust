@@ -1111,6 +1111,14 @@ impl<'c> Translation<'c> {
         }
     }
 
+    pub fn cur_file(&self) -> FileId {
+        if let Some(cur_file) = *self.cur_file.borrow() {
+            cur_file
+        } else {
+            self.main_file
+        }
+    }
+
     /// Called when translation makes use of a language feature that will require a feature-gate.
     pub fn use_feature(&self, feature: &'static str) {
         self.features.borrow_mut().insert(feature);
@@ -4504,27 +4512,6 @@ impl<'c> Translation<'c> {
             .add_use(module_path, ident_name);
     }
 
-    fn add_lib_import(&self, decl_file_id: FileId, ident_name: &str, re_export: bool) {
-        let attrs = if re_export {
-            mk().pub_()
-        } else {
-            mk()
-        };
-
-        if decl_file_id == self.main_file {
-            return;
-        }
-
-        // TODO: get rid of this, not compatible with nested modules
-        let module_path = vec!["super".into()];
-
-        let mut module_items = self.items.borrow_mut();
-        module_items
-            .entry(decl_file_id)
-            .or_insert(ItemStore::new())
-            .add_use_with_attr(module_path, ident_name, attrs);
-    }
-
     fn import_type(
         &self,
         ctype: CTypeId,
@@ -4533,13 +4520,9 @@ impl<'c> Translation<'c> {
         use self::CTypeKind::*;
 
         match self.ast_context[ctype].kind {
+            // libc can be accessed from anywhere as of Rust 2019 by full path
             Void | Char | SChar | UChar | Short | UShort | Int | UInt | Long | ULong | LongLong
-            | ULongLong | Int128 | UInt128 | Half | Float | Double => {
-                // self.add_lib_import(decl_file_id, "libc", false);
-            }
-            LongDouble => {
-                // self.add_lib_import(decl_file_id, "f128", false);
-            }
+            | ULongLong | Int128 | UInt128 | Half | Float | Double | LongDouble => {}
             // Bool uses the bool type, so no dependency on libc
             Bool => {}
             Paren(ctype)
@@ -4584,23 +4567,8 @@ impl<'c> Translation<'c> {
                     self.import_type(param_id.ctype, decl_file_id);
                 }
             }
-            Vector(CQualTypeId { ctype, .. }, len) => {
-                // Since vector imports are global, we can find the correct type name in the parent scope
-                let type_name = match (&self.ast_context[ctype].kind, len) {
-                    (CTypeKind::Float, 4) => "__m128",
-                    (CTypeKind::Float, 8) => "__m256",
-                    (CTypeKind::Double, 2) => "__m128d",
-                    (CTypeKind::Double, 4) => "__m256d",
-                    (CTypeKind::LongLong, 4) => "__m256i",
-                    (CTypeKind::LongLong, 2)
-                    | (CTypeKind::Char, 16)
-                    | (CTypeKind::Int, 4)
-                    | (CTypeKind::Short, 8) => "__m128i",
-                    (CTypeKind::LongLong, 1) | (CTypeKind::Int, 2) => "__m64",
-                    (kind, len) => unimplemented!("Unknown vector type: {:?} x {}", kind, len),
-                };
-
-                self.add_lib_import(decl_file_id, type_name, true);
+            Vector(..) => {
+                // Handled in `import_simd_typedef`
             }
             TypeOfExpr(_) | BuiltinFn => {}
         }
@@ -4627,11 +4595,7 @@ impl<'c> Translation<'c> {
                     }
                 }
             }
-            CDeclKind::EnumConstant { .. } => {}
-            // REVIEW: Enums can only be integer types? So libc is likely always required?
-            CDeclKind::Enum { .. } => {
-                self.add_lib_import(decl_file_id, "libc", false);
-            }
+            CDeclKind::EnumConstant { .. } | CDeclKind::Enum { .. } => {}
 
             CDeclKind::Variable {
                 has_static_duration: true,

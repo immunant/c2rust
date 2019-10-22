@@ -80,7 +80,7 @@ impl<'c> Translation<'c> {
                     self.use_feature("stdsimd");
                 }
 
-                let item_store = &mut self.items.borrow_mut()[&self.main_file];
+                let item_store = &mut self.items.borrow_mut()[&self.cur_file()];
 
                 let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
                 let x86_64_attr = mk()
