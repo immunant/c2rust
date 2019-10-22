@@ -310,11 +310,8 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
             target: &Target,
             mode: CompileMode,
         ) -> CargoResult<()> {
-            if self.maybe_record_cmd(&cmd, &id, target) {
-                Ok(())
-            } else {
-                self.default.exec(cmd, id, target, mode)
-            }
+            self.maybe_record_cmd(&cmd, &id, target);
+            self.default.exec(cmd, id, target, mode)
         }
 
         fn exec_json(
@@ -326,12 +323,9 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
             handle_stdout: &mut dyn FnMut(&str) -> CargoResult<()>,
             handle_stderr: &mut dyn FnMut(&str) -> CargoResult<()>,
         ) -> CargoResult<()> {
-            if self.maybe_record_cmd(&cmd, &id, target) {
-                Ok(())
-            } else {
-                self.default
-                    .exec_json(cmd, id, target, mode, handle_stdout, handle_stderr)
-            }
+            self.maybe_record_cmd(&cmd, &id, target);
+            self.default
+                .exec_json(cmd, id, target, mode, handle_stdout, handle_stderr)
         }
 
         fn force_rebuild(&self, unit: &Unit) -> bool {
