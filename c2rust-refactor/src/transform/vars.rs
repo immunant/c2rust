@@ -365,15 +365,6 @@ impl Transform for FoldLetAssign {
                     local_pos.insert(did, curs.mark());
                 }
 
-                // Does it access some locals?
-                if let Some(locals) = stmt_locals.get(&curs.next().id) {
-                    for &hir_id in locals {
-                        // This local is being accessed before its first recognized assignment.
-                        // That means we can't fold the `let` with the later assignment.
-                        local_pos.remove(&hir_id);
-                    }
-                }
-
                 // Is it an assignment to a local?
                 let assign_info = match curs.next().kind {
                     StmtKind::Semi(ref e) => {
@@ -409,6 +400,15 @@ impl Transform for FoldLetAssign {
                     curs.seek(local_mark);
                     curs.remove();
                     curs.seek(here);
+                }
+
+                // Does it access some locals?
+                if let Some(locals) = stmt_locals.get(&curs.next().id) {
+                    for &hir_id in locals {
+                        // This local is being accessed before its first recognized assignment.
+                        // That means we can't fold the `let` with the later assignment.
+                        local_pos.remove(&hir_id);
+                    }
                 }
 
 
