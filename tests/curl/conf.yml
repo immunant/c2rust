@@ -4,3 +4,4 @@ transpile:
 
 cargo:
   autogen: true
+  xfail: true # needs dependencies provisioned in CI
