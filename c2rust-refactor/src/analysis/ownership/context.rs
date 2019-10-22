@@ -190,6 +190,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     FnSig {
                         inputs: lcx.label_slice(sig.skip_binder().inputs(), &mut f),
                         output: lcx.label(sig.skip_binder().output(), &mut f),
+                        is_variadic: sig.skip_binder().c_variadic,
                     }
                 };
 

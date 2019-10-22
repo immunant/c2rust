@@ -553,6 +553,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
                 ownership::FnSig {
                     inputs: lcx.relabel_slice(fr.sig.inputs, &mut f),
                     output: lcx.relabel(fr.sig.output, &mut f),
+                    is_variadic: fr.sig.is_variadic,
                 }
             };
 

@@ -114,6 +114,7 @@ type LFnSig<'lty, 'tcx> = FnSig<'lty, 'tcx, Option<PermVar>>;
 pub struct FnSig<'lty, 'tcx, L: 'lty> {
     pub inputs: &'lty [LabeledTy<'lty, 'tcx, L>],
     pub output: LabeledTy<'lty, 'tcx, L>,
+    pub is_variadic: bool,
 }
 
 /// One of the concrete permission values, READ, WRITE, or MOVE.
@@ -470,6 +471,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 FnSig {
                     inputs: var_lcx.relabel_slice(func.sig.inputs, &mut f),
                     output: var_lcx.relabel(func.sig.output, &mut f),
+                    is_variadic: func.sig.is_variadic,
                 }
             };
 

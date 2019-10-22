@@ -122,7 +122,12 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             let lty = if l.index() == 0 {
                 sig.output
             } else if l.index() - 1 < self.mir.arg_count {
-                sig.inputs[l.index() - 1]
+                // Skip the variadic param
+                if l.index() == self.mir.arg_count && sig.is_variadic {
+                    self.ilcx.label(decl.ty, &mut |_| Label::None)
+                } else {
+                    sig.inputs[l.index() - 1]
+                }
             } else {
                 self.local_ty(decl.ty)
             };
@@ -157,6 +162,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         FnSig {
             inputs: self.ilcx.relabel_slice(sig.inputs, &mut f),
             output: self.ilcx.relabel(sig.output, &mut f),
+            is_variadic: sig.is_variadic,
         }
     }
 
@@ -187,10 +193,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
 
         // ITy -> LTy
         let mut f = |&l: &Label<'lty>| match l {
-            Label::Ptr(p) => p.as_var().into_iter().filter(|pv| match pv {
+            Label::Ptr(p) => p.as_var().into_iter().find(|pv| match pv {
                 PermVar::Local(_) => true,
                 _ => false,
-            }).next(),
+            }),
             _ => None,
         };
 
@@ -262,7 +268,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         lv: &Place<'tcx>,
     ) -> (ITy<'lty, 'tcx>, Perm<'lty>, Option<VariantIdx>) {
         if !lv.projection.is_empty() {
-            let mut projection = lv.projection.iter().cloned().collect::<Vec<_>>();
+            let mut projection = lv.projection.to_vec();
             let last_elem = projection.pop().unwrap();
             let parent = Place {
                 base: lv.base.clone(),
@@ -548,12 +554,14 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 FnSig {
                     inputs: self.ilcx.subst_slice(poly_inputs, ty.args),
                     output: self.ilcx.subst(poly_output, ty.args),
+                    is_variadic: sig.is_variadic,
                 }
             }
 
-            TyKind::FnPtr(_) => FnSig {
+            TyKind::FnPtr(ty_sig) => FnSig {
                 inputs: &ty.args[..ty.args.len() - 1],
                 output: ty.args[ty.args.len() - 1],
+                is_variadic: ty_sig.skip_binder().c_variadic,
             },
 
             TyKind::Closure(_, _) => unimplemented!(),
