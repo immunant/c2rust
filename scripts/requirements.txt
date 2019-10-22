@@ -1,3 +1,4 @@
+bencode-python3
 cbor
 colorlog
 mako
