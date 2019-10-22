@@ -28,7 +28,7 @@ use crate::ast_manip::fn_edit::{mut_visit_fns, FnLike};
 use crate::command::{self, CommandState, RefactorState};
 use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
-use crate::matcher::{mut_visit_match_with, MatchCtxt, Pattern, Subst, TryMatch};
+use crate::matcher::{self, mut_visit_match_with, MatchCtxt, Pattern, Subst, TryMatch};
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::reflect::reflect_tcx_ty;
 use crate::RefactorCtxt;
@@ -319,6 +319,20 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
         Ok(res)
     }
 
+    fn find_first<'lua, P, T>(&mut self, pat: &LuaAstNode<P>, target: &mut T) -> LuaResult<bool>
+        where P: Pattern<P> + Clone,
+              LuaAstNode<P>: 'static + UserData,
+              T: MutVisit,
+    {
+        // let target = match target.borrow::<LuaAstNode<T>>() {
+        //     Ok(t) => t,
+        //     Err(_) => return Ok(false), // target was not the same type of node as pat
+        // };
+        let res = matcher::find_first_with(self.mcx.clone(), pat.borrow().clone(), target).is_some();
+        // TODO: Return the matcher error to Lua instead of a bool
+        Ok(res)
+    }
+
     fn subst<'lua, T>(&self, node: &LuaAstNode<T>, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaValue<'lua>>
         where T: Subst + Clone + ToLuaExt,
     {
@@ -415,6 +429,14 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
             this.mcx.bindings.get::<_, ast::Stmt>(pattern).unwrap().clone().to_lua(lua_ctx)
         });
 
+        /// Get matched binding for a multistmt variable
+        // @function get_multistmt
+        // @tparam string pattern Statement variable pattern
+        // @treturn LuaAstNode Statement matched by this binding
+        methods.add_method_mut("get_multistmt", |lua_ctx, this, pattern: String| {
+            this.mcx.bindings.get::<_, Vec<ast::Stmt>>(pattern).unwrap().clone().to_lua(lua_ctx)
+        });
+
         /// Attempt to match `target` against `pat`, updating bindings if matched.
         // @function try_match
         // @tparam LuaAstNode pat AST (potentially with variable bindings) to match with
@@ -424,6 +446,22 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
             "try_match",
             |_lua_ctx, this, (pat, target): (AnyUserData, AnyUserData)| {
                 dispatch!(this.try_match, pat, (target), {P<ast::Expr>})
+            },
+        );
+
+        /// Attempt to find `target` inside `pat`, updating bindings if matched.
+        // @function find_first
+        // @tparam LuaAstNode pat AST (potentially with variable bindings) to find
+        // @tparam LuaAstNode target AST to match inside
+        // @treturn bool true if target was found
+        methods.add_method_mut(
+            "find_first",
+            |_lua_ctx, this, (pat, target): (AnyUserData, AnyUserData)| {
+                if let Ok(t) = target.borrow::<LuaAstNode<Vec<ast::Stmt>>>() {
+                    dispatch!(this.find_first, pat, (&mut *t.borrow_mut()), {P<ast::Expr>})
+                } else {
+                    Err(LuaError::external("Only MultiStmt targets are supported for now"))
+                }
             },
         );
 

@@ -1,3 +1,5 @@
+require 'pl'
+
 refactor:transform(
    function(transform)
       return transform:match(
@@ -19,6 +21,13 @@ $'label:?Ident: while $cond:Expr {
             local range_step_excl = mcx:parse_stmts("$'label: for $i in ($start .. $end).step_by($step as usize) { $body; }")
             local range_step_incl = mcx:parse_stmts("$'label: for $i in ($start ..= $end).step_by($step as usize) { $body; }")
 
+            local assign_ops = {"=", "+=", "-=", "*=", "/=", "%=", "^=", "&=", "|=", "<<=", ">>="}
+            local assign_stmts = tablex.map(
+               function(op)
+                  return mcx:parse_expr("$i " .. op .. " $e:Expr")
+               end,
+               assign_ops
+            )
 
             mcx:fold_with(
                pat,
@@ -46,6 +55,12 @@ $'label:?Ident: while $cond:Expr {
                      return orig
                   end
 
+                  body = mcx:get_multistmt("$body")
+                  for _,stmt in ipairs(assign_stmts) do
+                     if mcx:find_first(stmt, body) then
+                        return orig
+                     end
+                  end
 
                   step = mcx:get_expr("$step")
                   if (step:get_kind() == "Lit" and
