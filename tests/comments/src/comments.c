@@ -1,4 +1,4 @@
-//! translate_const_macros, reorganize_definitions
+//! translate_const_macros, reorganize_definitions, emit_build_files
 /* top level doc comment
  * second line
  */
