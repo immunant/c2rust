@@ -372,7 +372,11 @@ impl Transform for FoldLetAssign {
                             ExprKind::Assign(ref lhs, ref rhs) => {
                                 if let Some(hir_id) = cx.try_resolve_expr_to_hid(&lhs) {
                                     if local_pos.contains_key(&hir_id) {
-                                        Some((hir_id, rhs.clone()))
+                                        if is_self_ref(cx, hir_id, rhs) {
+                                            None
+                                        } else {
+                                            Some((hir_id, rhs.clone()))
+                                        }
                                     } else {
                                         None
                                     }
@@ -420,6 +424,18 @@ impl Transform for FoldLetAssign {
     fn min_phase(&self) -> Phase {
         Phase::Phase3
     }
+}
+
+fn is_self_ref(cx: &RefactorCtxt, lhs: HirId, rhs: &Expr) -> bool {
+    let mut is_self_ref = false;
+    visit_nodes(rhs, |e: &Expr| {
+        if let Some(hir_id) = cx.try_resolve_expr_to_hid(&e) {
+            if hir_id == lhs {
+                is_self_ref = true;
+            }
+        }
+    });
+    is_self_ref
 }
 
 
