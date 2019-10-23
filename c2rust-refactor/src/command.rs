@@ -11,8 +11,10 @@ use rustc_metadata::cstore::CStore;
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::iter;
+use std::io::Write;
 use std::mem;
 use std::ops::Deref;
+use std::process;
 use std::sync::Arc;
 use syntax::ast::{Crate, NodeId, CRATE_NODE_ID};
 use syntax::ast::{Expr, Item, Pat, Stmt, Ty};
@@ -89,6 +91,9 @@ pub struct RefactorState {
     /// Mapping from `krate` IDs to `disk_krate` IDs
     node_map: NodeMap,
 
+    /// Commands run so far
+    commands: Vec<String>,
+
     /// Mutable state available to a driver command
     cs: CommandState,
 }
@@ -151,6 +156,8 @@ impl RefactorState {
 
             node_map,
 
+            commands: vec![],
+
             cs,
         }
     }
@@ -181,6 +188,10 @@ impl RefactorState {
 
     pub fn source_map(&self) -> &SourceMap {
         self.compiler.source_map()
+    }
+
+    pub fn drain_commands(&mut self) -> Vec<String> {
+        mem::replace(&mut self.commands, vec![])
     }
 
     /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
@@ -423,6 +434,10 @@ impl RefactorState {
             .map(|s| s.as_ref().to_owned())
             .collect::<Vec<_>>();
         info!("running command: {} {:?}", cmd_name, args);
+        self.commands.push(args.iter().fold(cmd_name.to_string(), |mut s, arg| {
+            s.push_str(arg);
+            s
+        }));
 
         let mut cmd = self.cmd_reg.get_command(cmd_name, &args)?;
         profile_start!(format!("Command {}", cmd_name));
@@ -712,9 +727,57 @@ where
 /// part of the operation won't actually change the original source files, and the
 /// "read" part will revert the crate to its original form.
 fn register_commit(reg: &mut Registry) {
-    reg.register("commit", |_args| {
-        Box::new(FuncCommand(|rs: &mut RefactorState| {
+    reg.register("commit", |args| {
+        let git_commit = match args.get(0) {
+            Some(arg) if arg == "git" => true,
+            _ => false,
+        };
+        Box::new(FuncCommand(move |rs: &mut RefactorState| {
+            let clean = if git_commit {
+                let result = process::Command::new("git")
+                    .arg("status")
+                    .arg("--porcelain")
+                    .arg("--ignore-submodules=dirty")
+                    .output()
+                    .expect("Could not get git status");
+                result.stdout.is_empty() && result.stderr.is_empty()
+            } else {
+                false
+            };
+
             rs.save_crate();
+
+            let mut commands = rs.drain_commands();
+            let _ = commands.pop(); // remove commit command
+            if git_commit && !commands.is_empty() {
+                let commit_msg = format!(
+                    "refactor {} {}",
+                    rs.config.input_path.as_ref().map_or(String::new(), |s| s.display().to_string()),
+                    commands.join("\n"),
+                );
+                if !clean {
+                    warn!("Working tree is dirty, not committing");
+                } else {
+                    let mut git = process::Command::new("git")
+                        .arg("commit")
+                        .arg("--all")
+                        .arg("--file=-") // read commit message from stdin
+                        .stdin(process::Stdio::piped())
+                        .spawn()
+                        .expect("Could not execute git commit");
+                    git
+                        .stdin
+                        .as_mut()
+                        .expect("failed to open stdin")
+                        .write_all(commit_msg.as_bytes())
+                        .expect("could not write commit message");
+                    let status = git.wait().expect("Git did not terminate successfully");
+                    if !status.success() {
+                        warn!("Git commit was unsuccessful");
+                    }
+                }
+            }
+
             rs.load_crate();
             rs.clear_marks();
         }))
