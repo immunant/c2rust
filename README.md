@@ -44,9 +44,9 @@ C2Rust requires LLVM 6, 7, or 8 with its corresponding clang compiler and librar
         brew install llvm python3 cmake openssl
 
 
-Finally, a rust installation with [Rustup](https://rustup.rs/) is required on all platforms. You will also need to install `rustfmt`:
+Finally, a rust installation with [Rustup](https://rustup.rs/) is required on all platforms. You will also need to install `rustfmt` (the corresponding toolchain must be installed already):
 
-    rustup component add rustfmt
+    rustup component add --toolchain nightly-2019-10-04 rustfmt
 
 
 ### Installing from crates.io
