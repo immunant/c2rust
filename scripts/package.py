@@ -120,7 +120,9 @@ class Driver:
 
             # Since we are not doing a dry run, make sure all relevant crates
             # package cleanly before we push any.
-            self.package()
+            # Unfortunately it seems we can't package without pushing
+            # dependencies first, unless we set up a custom cargo repo.
+            # self.package()
 
         self._in_crates(self._publish)
 
