@@ -568,7 +568,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
             // VTy -> PTy
             let mut map_fn = |opt_var: &Option<Var>| -> Option<ConcretePerm> {
-                opt_var.map(|var| f.local_assign[var])
+                opt_var.map(|var| f.local_assign.get(var).copied()).flatten()
             };
 
             let lcx = LabeledTyCtxt::new(self.ana.arena());

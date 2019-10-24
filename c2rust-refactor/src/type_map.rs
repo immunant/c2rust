@@ -74,6 +74,7 @@ where
             (&TyKind::Array(ref elem, _), &Array(..)) => self.record_ty(ty.arg(0), elem),
             (&TyKind::Ptr(ref mty), &RawPtr(..)) => self.record_ty(ty.arg(0), &mty.ty),
             (&TyKind::Rptr(_, ref mty), &Ref(..)) => self.record_ty(ty.arg(0), &mty.ty),
+            (&TyKind::Ptr(ref mty), &Ref(..)) => self.record_ty(ty.arg(0), &mty.ty),
             (&TyKind::BareFn(ref fn_ty), &FnPtr(..)) => {
                 assert!(ty.num_args() == fn_ty.decl.inputs.len() + 1);
                 for (i, arg) in fn_ty.decl.inputs.iter().enumerate() {
@@ -350,9 +351,9 @@ pub fn map_types<'a, 'tcx, S, F>(
     F: FnMut(&mut S, &Ty, S::Type),
 {
     let mut v = TypeMapVisitor {
-        hir_map: hir_map,
-        source: source,
-        callback: callback,
+        hir_map,
+        source,
+        callback,
     };
     visit::walk_crate(&mut v, krate);
 }
