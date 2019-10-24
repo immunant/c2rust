@@ -198,10 +198,10 @@ dependencies = [
 
 [[package]]
 name = "c2rust"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
- "c2rust-refactor 0.12.0",
- "c2rust-transpile 0.12.0",
+ "c2rust-refactor 0.13.0",
+ "c2rust-transpile 0.13.0",
  "chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -217,11 +217,11 @@ version = "0.1.0"
 
 [[package]]
 name = "c2rust-ast-builder"
-version = "0.11.0"
+version = "0.13.0"
 
 [[package]]
 name = "c2rust-ast-exporter"
-version = "0.11.0"
+version = "0.13.0"
 dependencies = [
  "bindgen 0.51.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "clang-sys 0.28.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -235,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-ast-printer"
-version = "0.11.0"
+version = "0.13.0"
 dependencies = [
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -282,10 +282,10 @@ dependencies = [
 
 [[package]]
 name = "c2rust-refactor"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
- "c2rust-ast-builder 0.11.0",
- "c2rust-ast-printer 0.11.0",
+ "c2rust-ast-builder 0.13.0",
+ "c2rust-ast-printer 0.13.0",
  "c2rust-macros 0.11.0",
  "cargo 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -309,11 +309,11 @@ dependencies = [
 
 [[package]]
 name = "c2rust-transpile"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
- "c2rust-ast-builder 0.11.0",
- "c2rust-ast-exporter 0.11.0",
- "c2rust-ast-printer 0.11.0",
+ "c2rust-ast-builder 0.13.0",
+ "c2rust-ast-exporter 0.13.0",
+ "c2rust-ast-printer 0.13.0",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "colored 1.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "dtoa 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
