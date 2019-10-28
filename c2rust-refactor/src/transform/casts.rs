@@ -36,11 +36,6 @@ impl Transform for RemoveRedundantCasts {
             let ot_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ot_ty);
             debug!("checking cast: {:?}, types: {:?} => {:?}",
                    ast, oe_ty, ot_ty);
-            if oe_ty == ot_ty {
-                debug!("no-op cast");
-                *ast = oe.clone();
-                return;
-            }
 
             let ast_mk = mk().id(ast.id).span(ast.span);
             match oe.kind {
@@ -51,18 +46,19 @@ impl Transform for RemoveRedundantCasts {
 
                     let it_ty = cx.node_type(it.id);
                     let it_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), it_ty);
-                    assert!(it_ty != ot_ty);
                     debug!("inner cast: {:?} => {:?}", ie_ty, it_ty);
 
                     match check_double_cast(ie_ty.into(), it_ty.into(), ot_ty.into()) {
                         DoubleCastAction::RemoveBoth => {
                             debug!("redundant cast => removing both");
                             *ast = ie.clone();
+                            return;
                         }
                         DoubleCastAction::RemoveInner => {
                             // Rewrite to `$ie as $ot`, removing the inner cast
                             debug!("redundant cast => removing inner");
                             *ast = ast_mk.cast_expr(ie, ot);
+                            return;
                         }
                         DoubleCastAction::KeepBoth => {}
                     }
@@ -84,6 +80,11 @@ impl Transform for RemoveRedundantCasts {
                             return;
                         }
                     }
+                    if lit.kind.is_unsuffixed() {
+                        // If we're casting an unsuffixed literal to a type,
+                        // we need to keep the cast, otherwise we get type errors
+                        return;
+                    }
                 }
 
                 ExprKind::Unary(UnOp::Neg, ref expr) => match expr.kind {
@@ -104,12 +105,21 @@ impl Transform for RemoveRedundantCasts {
                                 return;
                             }
                         }
+                        if lit.kind.is_unsuffixed() {
+                            // See comment above on unsuffixed literals
+                            return;
+                        }
                     }
                     _ => {}
                 },
 
                 // TODO: unary/binaryop op + cast, e.g., `(x as i32 + y as i32) as i8`
                 _ => {}
+            }
+            if oe_ty == ot_ty {
+                debug!("no-op cast");
+                *ast = oe.clone();
+                return;
             }
         })
     }
