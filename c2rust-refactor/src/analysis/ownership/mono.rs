@@ -197,13 +197,9 @@ fn find_input_assignment(
     }
 }
 
-fn find_local_assignment(
-    summ: &FuncSumm,
-    // out_assign: &IndexVec<Var, Option<ConcretePerm>>,
-) -> Option<IndexVec<Var, ConcretePerm>> {
+fn find_local_assignment(summ: &FuncSumm) -> Option<IndexVec<Var, ConcretePerm>> {
     struct State<'lty> {
         max: Var,
-        // out_assign: &'lty IndexVec<Var, Option<ConcretePerm>>,
         cset: &'lty ConstraintSet<'lty>,
         assignment: IndexVec<Var, ConcretePerm>,
     }
@@ -215,13 +211,6 @@ fn find_local_assignment(
             }
 
             let next = cur.next();
-            // if let Some(p) = self.out_assign[cur] {
-            //     let ok = self.try_assign(cur, p);
-            //     if !ok {
-            //         return false;
-            //     }
-            //     return self.walk_vars(next);
-            // }
 
             for &p in &[ConcretePerm::Read, ConcretePerm::Write, ConcretePerm::Move] {
                 let ok = self.try_assign(cur, p);
@@ -241,9 +230,7 @@ fn find_local_assignment(
             self.assignment[cur] = p;
             self.cset.check_partial_assignment(|p| match p {
                 Perm::LocalVar(v) => {
-                    /*if let Some(c) = self.out_assign[v] {
-                        Some(c)
-                    } else*/ if v <= cur {
+                    if v <= cur {
                         Some(self.assignment[v])
                     } else {
                         None
@@ -256,7 +243,6 @@ fn find_local_assignment(
 
     let mut s = State {
         max: Var(summ.locals.len() as u32),
-        // out_assign: out_assign,
         cset: &summ.sig_cset,
         assignment: IndexVec::from_elem_n(ConcretePerm::Read, summ.locals.len()),
     };
