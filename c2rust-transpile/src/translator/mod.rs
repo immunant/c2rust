@@ -3134,7 +3134,7 @@ impl<'c> Translation<'c> {
 
             CExprKind::OffsetOf(ty, ref kind) => match kind {
                 OffsetOfKind::Constant(val) => {
-                    Ok(WithStmts::new_val(self.mk_int_lit(ty, *val, IntBase::Dec)))
+                    Ok(WithStmts::new_val(self.mk_int_lit(ty, *val, IntBase::Dec)?))
                 }
                 OffsetOfKind::Variable(qty, field_id, expr_id) => {
                     self.extern_crates.borrow_mut().insert("memoffset");

@@ -7,25 +7,15 @@ use std::iter;
 
 impl<'c> Translation<'c> {
     /// Generate an integer literal corresponding to the given type, value, and base.
-    pub fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> P<Expr> {
-        // Note that C doesn't have anything smaller than integer literals
-        let (intty, suffix) = match self.ast_context.resolve_type(ty.ctype).kind {
-            CTypeKind::Int => (LitIntType::Signed(IntTy::I32), "i32"),
-            CTypeKind::Long => (LitIntType::Signed(IntTy::I64), "i64"),
-            CTypeKind::LongLong => (LitIntType::Signed(IntTy::I64), "i64"),
-            CTypeKind::UInt => (LitIntType::Unsigned(UintTy::U32), "u32"),
-            CTypeKind::ULong => (LitIntType::Unsigned(UintTy::U64), "u64"),
-            CTypeKind::ULongLong => (LitIntType::Unsigned(UintTy::U64), "u64"),
-            _ => (LitIntType::Unsuffixed, ""),
-        };
-
+    pub fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> Result<P<Expr>, TranslationError> {
         let lit = match base {
-            IntBase::Dec => mk().int_lit(val.into(), intty),
-            IntBase::Hex => mk().float_unsuffixed_lit(format!("0x{:x}{}", val, suffix)),
-            IntBase::Oct => mk().float_unsuffixed_lit(format!("0o{:o}{}", val, suffix)),
+            IntBase::Dec => mk().int_lit(val.into(), LitIntType::Unsuffixed),
+            IntBase::Hex => mk().float_unsuffixed_lit(format!("0x{:x}", val)),
+            IntBase::Oct => mk().float_unsuffixed_lit(format!("0o{:o}", val)),
         };
 
-        mk().lit_expr(lit)
+        let target_ty = self.convert_type(ty.ctype)?;
+        Ok(mk().cast_expr(mk().lit_expr(lit), target_ty))
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum
@@ -87,7 +77,7 @@ impl<'c> Translation<'c> {
         kind: &CLiteral,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         match *kind {
-            CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base))),
+            CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base)?)),
 
             CLiteral::Character(val) => {
                 let val = val as u32;
