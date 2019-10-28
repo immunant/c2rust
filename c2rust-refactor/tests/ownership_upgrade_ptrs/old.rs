@@ -1,4 +1,4 @@
-#![feature(rustc_private, custom_attribute, param_attrs, ptr_wrapping_offset_from)]
+#![feature(rustc_private, custom_attribute, param_attrs, ptr_wrapping_offset_from, c_variadic)]
 extern crate libc;
 
 extern "C" {
@@ -32,6 +32,14 @@ extern "C" {
     #[no_mangle]
     fn strsep(_: *mut *mut libc::c_char, _: *const libc::c_char)
      -> *mut libc::c_char;
+    #[no_mangle]
+    fn __chk_fail() -> !;
+    #[no_mangle]
+    fn vsprintf(_: *mut libc::c_char, _: *const libc::c_char,
+                _: ::std::ffi::VaList) -> libc::c_int;
+    #[no_mangle]
+    fn vsnprintf(_: *mut libc::c_char, _: size_t, _: *const libc::c_char,
+                 _: ::std::ffi::VaList) -> libc::c_int;
 }
 
 pub unsafe extern "C" fn ten_mul(#[nonnull] acc: *mut f64, digit: i32, r: *mut f64) -> i32 {
@@ -598,4 +606,21 @@ unsafe extern "C" fn eshdn8(#[slice] mut x: *mut libc::c_ushort) {
         x = x.offset(1);
         i += 1
     };
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn __vsprintf_chk(mut buf: *mut libc::c_char,
+                                        mut flags: libc::c_int,
+                                        mut slen: size_t,
+                                        mut fmt: *const libc::c_char,
+                                        mut ap: ::std::ffi::VaList)
+ -> libc::c_int {
+    let mut rv: libc::c_int = 0;
+    if slen > 2147483647i32 as size_t {
+        rv = vsprintf(buf, fmt, ap.as_va_list())
+    } else {
+        rv = vsnprintf(buf, slen, fmt, ap.as_va_list());
+        if rv >= 0i32 && rv as size_t >= slen { __chk_fail(); }
+    }
+    return rv;
 }

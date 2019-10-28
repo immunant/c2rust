@@ -1,4 +1,10 @@
-#![feature(rustc_private, custom_attribute, param_attrs, ptr_wrapping_offset_from)]
+#![feature(
+    rustc_private,
+    custom_attribute,
+    param_attrs,
+    ptr_wrapping_offset_from,
+    c_variadic
+)]
 extern crate libc;
 
 extern "C" {
@@ -30,6 +36,18 @@ extern "C" {
     fn strdup(_: *const libc::c_char) -> *mut libc::c_char;
     #[no_mangle]
     fn strsep(_: *mut *mut libc::c_char, _: *const libc::c_char) -> *mut libc::c_char;
+    #[no_mangle]
+    fn __chk_fail() -> !;
+    #[no_mangle]
+    fn vsprintf(_: *mut libc::c_char, _: *const libc::c_char, _: ::std::ffi::VaList)
+        -> libc::c_int;
+    #[no_mangle]
+    fn vsnprintf(
+        _: *mut libc::c_char,
+        _: size_t,
+        _: *const libc::c_char,
+        _: ::std::ffi::VaList,
+    ) -> libc::c_int;
 }
 
 pub unsafe extern "C" fn ten_mul(mut acc: &mut f64, digit: i32, r: Option<&f64>) -> i32 {
@@ -699,4 +717,24 @@ unsafe extern "C" fn eshdn8(mut x: Option<&mut [libc::c_ushort]>) {
         x = Some(x.unwrap().split_at_mut(1).1);
         i += 1
     }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn __vsprintf_chk(
+    mut buf: Option<Box<libc::c_char>>,
+    mut flags: libc::c_int,
+    mut slen: size_t,
+    mut fmt: Option<&libc::c_char>,
+    mut ap: ::std::ffi::VaList,
+) -> libc::c_int {
+    let mut rv: libc::c_int = 0;
+    if slen > 2147483647i32 as size_t {
+        rv = vsprintf(&mut *buf.unwrap(), fmt.unwrap(), ap.as_va_list())
+    } else {
+        rv = vsnprintf(&mut *buf.unwrap(), slen, fmt.unwrap(), ap.as_va_list());
+        if rv >= 0i32 && rv as size_t >= slen {
+            __chk_fail();
+        }
+    }
+    return rv;
 }

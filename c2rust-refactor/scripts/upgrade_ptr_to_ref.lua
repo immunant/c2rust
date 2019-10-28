@@ -132,6 +132,10 @@ function ConvCfg.from_marks(marks, attrs)
         if slice then
             conv_type = conv_type .. "_slice"
         end
+
+        -- REVIEW: If a ptr is box or move, does it ever make sense
+        -- for it to be immut?
+        mutability = "mut"
     elseif ref then
         mutability = "immut"
 
@@ -483,14 +487,18 @@ end
 -- Extracts a raw pointer from a rewritten rust type
 function decay_ref_to_ptr(expr, cfg, for_struct_field)
     if cfg:is_opt_any() then
-        if cfg:is_mut() then
+        if cfg:is_mut() and not cfg:is_box_any() then
             expr:to_method_call("as_mut", {expr})
         end
 
         expr:to_method_call("unwrap", {expr})
     end
 
-    if cfg:is_slice_any() then
+    if cfg:is_box_any() and not cfg:is_slice_any() then
+        -- TODO: Might need to downcast mutable ref to immutable one?
+        expr:to_unary("Deref", expr)
+        expr:to_addr_of(expr, cfg:is_mut())
+    elseif cfg:is_slice_any() then
         if cfg:is_mut() then
             expr:to_method_call("as_mut_ptr", {expr})
         else
@@ -848,14 +856,17 @@ function Visitor:rewrite_call_expr(expr)
 
                 if #exprs == 1 and path_expr:get_kind() == "Path" then
                     local method_name = param_expr:get_method_name()
+                    local path_cfg = self:get_expr_cfg(path_expr)
 
-                    if method_name == "as_ptr" then
+                    -- If we're looking at an array then we likely don't want
+                    -- a reference to the array type but a raw pointer
+                    if method_name == "as_ptr" and path_cfg and not path_cfg:is_array() then
                         param_expr:to_addr_of(path_expr, false)
-                    elseif method_name == "as_mut_ptr" then
+                    elseif method_name == "as_mut_ptr" and path_cfg and not path_cfg:is_array() then
                         param_expr:to_addr_of(path_expr, true)
                     end
 
-                    if param_cfg:is_opt_any() then
+                    if param_cfg:is_opt_any() and not fn.is_foreign then
                         local some_path_expr = self.tctx:ident_path_expr("Some")
                         param_expr:to_call{some_path_expr, param_expr}
                     end
@@ -870,7 +881,7 @@ function Visitor:rewrite_call_expr(expr)
                     param_expr:to_ident_path("None")
                     goto continue
                 -- &T -> Some(&T)
-                elseif param_kind == "AddrOf" then
+                elseif param_kind == "AddrOf" and not fn.is_foreign then
                     local some_path_expr = self.tctx:ident_path_expr("Some")
                     param_expr:to_call{some_path_expr, param_expr}
 
@@ -880,11 +891,15 @@ function Visitor:rewrite_call_expr(expr)
 
                     if path_cfg then
                         -- path -> Some(path)
-                        if not path_cfg:is_opt_any() then
+                        if not path_cfg:is_opt_any() and not fn.is_foreign then
                             local some_path_expr = self.tctx:ident_path_expr("Some")
                             param_expr:to_call{some_path_expr, param_expr}
+                            goto continue
                         -- Decay mut ref to immut ref inside option
                         -- foo(x) -> foo(x.as_ref().map(|r| &**r))
+                        elseif path_cfg:is_box_any() then
+                            param_expr = decay_ref_to_ptr(param_expr, param_cfg)
+                            goto continue
                         elseif path_cfg:is_mut() and not param_cfg:is_mut() then
                             local var_expr = self.tctx:ident_path_expr("r")
 
@@ -895,9 +910,8 @@ function Visitor:rewrite_call_expr(expr)
                             var_expr:to_closure({"r"}, var_expr)
                             param_expr:to_method_call("as_ref", {param_expr})
                             param_expr:to_method_call("map", {param_expr, var_expr})
+                            goto continue
                         end
-
-                        goto continue
                     end
                 end
             end
@@ -1084,8 +1098,15 @@ function Visitor:flat_map_foreign_item(foreign_item)
     if foreign_item:get_kind() == "Fn" then
         local fn_id = foreign_item:get_id()
         local hirid = self.tctx:nodeid_to_hirid(fn_id)
+        local arg_ids = {}
 
-        self:add_fn(hirid, Fn.new(fn_id, true, {}))
+        for i, arg in ipairs(foreign_item:get_args()) do
+            local arg_id = arg:get_id()
+
+            table.insert(arg_ids, arg_id)
+        end
+
+        self:add_fn(hirid, Fn.new(fn_id, true, arg_ids))
     end
 
     return {foreign_item}
@@ -1300,11 +1321,6 @@ function CfgBuilder:flat_map_param(param)
     local param_ty_id = param_ty:get_id()
     local marks = self.marks[param_ty_id] or {}
 
-    -- Skip over params likely from extern fns
-    if param:get_pat():get_kind() == "Wild" then
-        return {param}
-    end
-
     -- Skip over pointers to void
     if is_void_ptr(param_ty) then
         return {param}
@@ -1319,7 +1335,6 @@ function CfgBuilder:flat_map_param(param)
 
     self.pat_to_var_id[param:get_pat():get_id()] = param_id
 
-    -- TODO: Box support
     self.node_id_cfgs[param_id] = ConvCfg.from_marks(marks, attrs)
     return {param}
 end
@@ -1340,10 +1355,21 @@ function CfgBuilder:visit_local(locl)
         marks["box"] = true
     end
 
-    -- Skip if there are no marks
-    if is_empty(marks) then return end
+    local pat_id = locl:get_pat():get_id()
 
-    self.pat_to_var_id[locl:get_pat():get_id()] = id
+    -- Skip if there are no marks
+    if is_empty(marks) then
+        -- However, it's still useful to build a basic cfg for arrays as we might
+        -- take pointers/references into them
+        if ty:get_kind() == "Array" then
+            self.pat_to_var_id[pat_id] = id
+            self.node_id_cfgs[id] = ConvCfg.new{"array"}
+        end
+
+        return
+    end
+
+    self.pat_to_var_id[pat_id] = id
     self.node_id_cfgs[id] = ConvCfg.from_marks(marks, attrs)
 end
 
@@ -1400,11 +1426,9 @@ function CfgBuilder:flat_map_stmt(stmt, walk)
             -- so instead we look up the mutability from the cfg of the rhs.
             -- This may be the same issue as GH #163
             local hir_id = self.tctx:resolve_path_hirid(init)
-            if hir_id then
-                local node_pat_id = self.tctx:hirid_to_nodeid(hir_id)
-                local node_id = self.pat_to_var_id[node_pat_id]
-                local init_cfg = self.node_id_cfgs[node_id]
-            end
+            local node_pat_id = self.tctx:hirid_to_nodeid(hir_id)
+            local node_id = self.pat_to_var_id[node_pat_id]
+            local init_cfg = self.node_id_cfgs[node_id]
 
             if init_cfg and init_cfg:is_mut() and init_cfg:is_slice_any() then
                 local pat = locl:get_pat()

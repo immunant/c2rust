@@ -345,6 +345,19 @@ impl UserData for LuaAstNode<ForeignItem> {
             this.borrow_mut().ident = Ident::from_str(ident.to_str()?);
             Ok(())
         });
+
+        methods.add_method("get_args", |_lua_ctx, this, ()| {
+            if let ForeignItemKind::Fn(decl, ..) = &this.borrow().kind {
+                return Ok(Some(decl
+                    .inputs
+                    .iter()
+                    .map(|a| LuaAstNode::new(a.clone()))
+                    .collect::<Vec<_>>()
+                ));
+            }
+
+            Ok(None)
+        });
     }
 }
 
@@ -555,6 +568,7 @@ impl UserData for LuaAstNode<P<Expr>> {
                     *rhs = exprs[1].borrow().clone();
                 },
                 ExprKind::Cast(expr, _) => *expr = exprs[0].borrow().clone(),
+                ExprKind::AddrOf(_, expr) => *expr = exprs[0].borrow().clone(),
                 e => unimplemented!("LuaAstNode<P<Expr>>:set_exprs() for {}", e.ast_name()),
             }
 
