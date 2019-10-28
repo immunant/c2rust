@@ -94,6 +94,17 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> FoldIlltyped<'a, 'tcx, F> {
         }
         false
     }
+
+    /// Attempt to ensure that the last statement in a block
+    /// (if it's a `StmtKind::Expr`) has the expected type.
+    fn ensure_block(&mut self, block: &mut P<Block>, expected_ty: ty::Ty<'tcx>) -> bool {
+        let last_stmt_kind = block.stmts.last_mut().map(|stmt| &mut stmt.kind);
+        if let Some(StmtKind::Expr(ref mut e)) = last_stmt_kind {
+            self.ensure(e, expected_ty)
+        } else {
+            false
+        }
+    }
 }
 
 impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F> {
@@ -179,8 +190,15 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     }
                 }
             }
-            ExprKind::Unary(_binop, _ohs) => {
-                // TODO: need cases for deref, neg/not, and a check for overloads
+            ExprKind::Unary(unop, ohs) => {
+                // TODO: need case for deref, and a check for overloads
+                use syntax::ast::UnOp::*;
+                match unop {
+                    Not | Neg => {
+                        illtyped |= self.ensure(ohs, ty);
+                    }
+                    Deref => {} // TODO
+                }
             }
             ExprKind::Lit(_l) => {} // TODO
             ExprKind::Cast(_sub_e, _target) => {
@@ -224,8 +242,9 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 }
                 // TODO: self.ensure arm bodies match ty
             }
-            ExprKind::Block(_blk, _opt_label) => {
-                // TODO: self.ensure last expr matches ty
+            ExprKind::Block(blk, _opt_label) => {
+                // TODO: check returns from opt_label
+                illtyped |= self.ensure_block(blk, ty);
             }
             ExprKind::Assign(el, er) => {
                 let lhs_ty = self.cx.node_type(el.id);
@@ -248,6 +267,8 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     illtyped |= self.ensure(e, ty)
                 });
             }
+
+            // TODO: handle ExprKind::Paren???
 
             _ => {}
         };
