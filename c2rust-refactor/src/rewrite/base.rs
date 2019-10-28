@@ -412,7 +412,7 @@ pub fn binop_left_prec(op: &BinOp) -> ExprPrec {
     };
 
     match assoc_op {
-        AssocOp::Less | AssocOp::LessEqual => ExprPrec::LeftLess(prec),
+        AssocOp::Less | AssocOp::LessEqual | AssocOp::ShiftLeft => ExprPrec::LeftLess(prec),
         _ => ExprPrec::Normal(prec),
     }
 }
