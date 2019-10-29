@@ -286,6 +286,10 @@ impl<'c> Translation<'c> {
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
             }
+            CTypeKind::Char => {
+                let id = ids.first().unwrap();
+                self.convert_expr(ctx.used(), *id)
+            }
             ref t => Err(format_err!("Init list not implemented for {:?}", t).into()),
         }
     }
