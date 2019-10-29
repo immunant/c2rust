@@ -78,6 +78,7 @@ fn generate_bindings() -> Result<(), &'static str> {
         .rustified_enum("ASTEntryTag")
         .rustified_enum("TypeTag")
         .rustified_enum("StringTypeTag")
+        .rustified_enum("BuiltinVaListKind")
         // Tell bindgen we are processing c++
         .clang_arg("-xc++")
         // Finish the builder and generate the bindings.

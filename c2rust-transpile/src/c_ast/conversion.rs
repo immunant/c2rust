@@ -455,6 +455,8 @@ impl ConversionContext {
 
             self.visit_node(untyped_context, node_id, new_id, expected_ty)
         }
+
+        self.typed_context.va_list_kind = untyped_context.va_list_kind;
     }
 
     /// Visit one node.

@@ -7,10 +7,14 @@ void call_printf(void) {
     printf("%d, %f\n", 10, 1.5);
 }
 
+void my_vprintf(const char *format, va_list ap) {
+  vprintf(format, ap);
+}
+
 void call_vprintf(const char *format, ...) {
   va_list ap;
   va_start(ap, format);
-  vprintf(format, ap);
+  my_vprintf(format, ap);
   va_end(ap);
 }
 

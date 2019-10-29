@@ -148,4 +148,47 @@ enum StringTypeTag {
     TagUTF16,
     TagUTF32,
 };
+
+// From clang/Basic/TargetInfo.h
+/// The different kinds of __builtin_va_list types defined by
+/// the target implementation.
+enum BuiltinVaListKind {
+    /// typedef char* __builtin_va_list;
+    CharPtrBuiltinVaList = 0,
+
+    /// typedef void* __builtin_va_list;
+    VoidPtrBuiltinVaList,
+
+    /// __builtin_va_list as defined by the AArch64 ABI
+    /// http://infocenter.arm.com/help/topic/com.arm.doc.ihi0055a/IHI0055A_aapcs64.pdf
+    AArch64ABIBuiltinVaList,
+
+    /// __builtin_va_list as defined by the PNaCl ABI:
+    /// http://www.chromium.org/nativeclient/pnacl/bitcode-abi#TOC-Machine-Types
+    PNaClABIBuiltinVaList,
+
+    /// __builtin_va_list as defined by the Power ABI:
+    /// https://www.power.org
+    ///        /resources/downloads/Power-Arch-32-bit-ABI-supp-1.0-Embedded.pdf
+    PowerABIBuiltinVaList,
+
+    /// __builtin_va_list as defined by the x86-64 ABI:
+    /// http://refspecs.linuxbase.org/elf/x86_64-abi-0.21.pdf
+    X86_64ABIBuiltinVaList,
+
+    /// __builtin_va_list as defined by ARM AAPCS ABI
+    /// http://infocenter.arm.com
+    //        /help/topic/com.arm.doc.ihi0042d/IHI0042D_aapcs.pdf
+    AAPCSABIBuiltinVaList,
+
+    // typedef struct __va_list_tag
+    //   {
+    //     long __gpr;
+    //     long __fpr;
+    //     void *__overflow_arg_area;
+    //     void *__reg_save_area;
+    //   } va_list[1];
+    SystemZBuiltinVaList
+};
+
 #endif /* ast_tags_h */

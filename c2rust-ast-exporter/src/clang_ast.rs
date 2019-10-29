@@ -115,6 +115,7 @@ pub struct AstContext {
     pub top_nodes: Vec<u64>,
     pub comments: Vec<CommentNode>,
     pub files: Vec<SrcFile>,
+    pub va_list_kind: BuiltinVaListKind,
 }
 
 pub fn expect_opt_str(val: &Value) -> Option<Option<&str>> {
@@ -145,17 +146,26 @@ fn import_type_tag(tag: u64) -> TypeTag {
     }
 }
 
+fn import_va_list_kind(tag: u64) -> BuiltinVaListKind {
+    unsafe {
+        return std::mem::transmute::<u32, BuiltinVaListKind>(tag as u32);
+    }
+}
+
 pub fn process(items: Value) -> error::Result<AstContext> {
     let mut asts: HashMap<u64, AstNode> = HashMap::new();
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
     let mut comments: Vec<CommentNode> = vec![];
 
-    let (all_nodes, top_nodes, files, raw_comments): (
+    let (all_nodes, top_nodes, files, raw_comments, va_list_kind): (
         Vec<Vec<Value>>,
         Vec<u64>,
         Vec<(String, Option<(u64, u64, u64)>)>,
         Vec<(u64, u64, u64, ByteBuf)>,
+        u64,
     ) = from_value(items)?;
+
+    let va_list_kind = import_va_list_kind(va_list_kind);
 
     for (fileid, line, column, bytes) in raw_comments {
         comments.push(CommentNode {
@@ -236,5 +246,6 @@ pub fn process(items: Value) -> error::Result<AstContext> {
         type_nodes: types,
         comments,
         files,
+        va_list_kind,
     })
 }

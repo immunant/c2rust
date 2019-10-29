@@ -230,7 +230,7 @@ impl<'c> Translation<'c> {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some(va_id) = self.match_vastart(args[0]) {
                         if let Some(_) = self.ast_context.get_decl(&va_id) {
-                            let dst = self.convert_expr(ctx.used(), args[0])?;
+                            let dst = self.convert_expr(ctx.expect_valistimpl().used(), args[0])?;
                             let fn_ctx = self.function_context.borrow();
                             let src = fn_ctx.get_va_list_arg_name();
 
@@ -249,8 +249,8 @@ impl<'c> Translation<'c> {
             "__builtin_va_copy" => {
                  if ctx.is_unused() && args.len() == 2 {
                      if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
-                         let dst = self.convert_expr(ctx.used(), args[0])?;
-                         let src = self.convert_expr(ctx.used(), args[1])?;
+                         let dst = self.convert_expr(ctx.expect_valistimpl().used(), args[0])?;
+                         let src = self.convert_expr(ctx.expect_valistimpl().used(), args[1])?;
 
                          let call_expr = mk().method_call_expr(src.to_expr(), "clone", vec![] as Vec<P<Expr>>);
                          let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);

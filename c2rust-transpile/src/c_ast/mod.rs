@@ -8,7 +8,7 @@ use std::mem;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
 
-pub use c2rust_ast_exporter::clang_ast::{SrcFile, SrcLoc, SrcSpan};
+pub use c2rust_ast_exporter::clang_ast::{SrcFile, SrcLoc, SrcSpan, BuiltinVaListKind};
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub struct CTypeId(pub u64);
@@ -74,6 +74,8 @@ pub struct TypedAstContext {
     // The key is the typedef decl being squashed away,
     // and the value is the decl id to the corresponding structure
     pub prenamed_decls: IndexMap<CDeclId, CDeclId>,
+
+    pub va_list_kind: BuiltinVaListKind,
 }
 
 /// Comments associated with a typed AST context
@@ -117,6 +119,8 @@ impl<T> Located<T> {
 }
 
 impl TypedAstContext {
+    // TODO: build the TypedAstContext during initialization, rather than
+    // building an empty one and filling it later.
     pub fn new(clang_files: &[SrcFile]) -> TypedAstContext {
         let mut files: Vec<SrcFile> = vec![];
         let mut file_map: Vec<FileId> = vec![];
@@ -161,6 +165,7 @@ impl TypedAstContext {
 
             comments: vec![],
             prenamed_decls: IndexMap::new(),
+            va_list_kind: BuiltinVaListKind::CharPtrBuiltinVaList,
         }
     }
 
@@ -294,7 +299,7 @@ impl TypedAstContext {
 
     /// Predicate for types that are used to implement C's `va_list`.
     /// FIXME: can we get rid of this method and use `is_builtin_va_list` instead?
-    pub fn is_va_list(&self, typ: CTypeId) -> bool {
+    pub fn is_va_list_struct(&self, typ: CTypeId) -> bool {
         // detect `va_list`s based on typedef (should work across implementations)
 //        if self.is_builtin_va_list(typ) {
 //            return true;
@@ -306,7 +311,7 @@ impl TypedAstContext {
             CTypeKind::Struct(record_id) => {
                 let r#struct = &self[record_id];
                 if let CDeclKind::Struct { name: Some(ref nam), .. } = r#struct.kind {
-                    return nam == "__va_list_tag"
+                    return nam == "__va_list_tag" || nam == "__va_list"
                 } else {
                     false
                 }
@@ -320,13 +325,24 @@ impl TypedAstContext {
     }
 
     /// Predicate for pointers to types that are used to implement C's `va_list`.
-    pub fn is_pointer_to_va_list(&self, typ: CTypeId) -> bool {
-        let resolved_ctype = self.resolve_type(typ);
-        match resolved_ctype.kind {
-            CTypeKind::Pointer(p) => {
-                self.is_va_list(p.ctype)
-            },
-            _ => false
+    pub fn is_va_list(&self, typ: CTypeId) -> bool {
+        match self.va_list_kind {
+            BuiltinVaListKind::CharPtrBuiltinVaList | BuiltinVaListKind::VoidPtrBuiltinVaList
+            | BuiltinVaListKind::X86_64ABIBuiltinVaList => {
+                match self.resolve_type(typ).kind {
+                    CTypeKind::Pointer(CQualTypeId { ctype, .. })
+                    | CTypeKind::ConstantArray(ctype, _) => {
+                        self.is_va_list_struct(ctype)
+                    }
+                    _ => false,
+                }
+            }
+
+            BuiltinVaListKind::AArch64ABIBuiltinVaList => {
+                self.is_va_list_struct(typ)
+            }
+
+            kind => unimplemented!("va_list type {:?} not yet implemented", kind),
         }
     }
 

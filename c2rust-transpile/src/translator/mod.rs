@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::mem;
 use std::ops::Index;
 use std::path::{self, PathBuf};
 use std::rc::Rc;
@@ -116,6 +117,10 @@ pub struct ExprContext {
     // address in function pointer literals.
     needs_address: bool,
 
+    /// Set to false if we should decay VaListImpl to VaList or true if we are
+    /// expect a VaListImpl in this context.
+    expecting_valistimpl: bool,
+
     ternary_needs_parens: bool,
     expanding_macro: Option<CDeclId>,
 }
@@ -175,6 +180,13 @@ impl ExprContext {
     pub fn set_needs_address(self, needs_address: bool) -> Self {
         ExprContext {
             needs_address,
+            ..self
+        }
+    }
+
+    pub fn expect_valistimpl(self) -> Self {
+        ExprContext {
+            expecting_valistimpl: true,
             ..self
         }
     }
@@ -494,6 +506,7 @@ pub fn translate(
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
+        expecting_valistimpl: false,
         ternary_needs_parens: false,
         expanding_macro: None,
     };
@@ -1266,7 +1279,13 @@ impl<'c> Translation<'c> {
                         return true;
                     }
                 }
-                CExprKind::ImplicitCast(_, _, PointerToIntegral, _, _) => return true,
+
+                // PointerToIntegral is no longer allowed, const-eval throws an
+                // error: "pointer-to-integer cast" needs an rfc before being
+                // allowed inside constants
+                CExprKind::ImplicitCast(_, _, PointerToIntegral, _, _)
+                | CExprKind::ExplicitCast(_, _, PointerToIntegral, _, _) => return true,
+
                 CExprKind::Binary(typ, op, _, _, _, _) => {
                     let problematic_op = match op {
                         Add | Subtract | Multiply | Divide | Modulus => true,
@@ -1742,7 +1761,17 @@ impl<'c> Translation<'c> {
                     return Ok(ConvertedDecl::NoItem);
                 }
 
+                // We can't typedef to std::ffi::VaList, since the typedef won't
+                // have explicit lifetime params which VaList
+                // requires. Temporarily disable translation of valist to Rust
+                // native VaList.
+                let translate_valist = mem::replace(
+                    &mut self.type_converter.borrow_mut().translate_valist,
+                    false,
+                );
                 let ty = self.convert_type(typ.ctype)?;
+                self.type_converter.borrow_mut().translate_valist = translate_valist;
+
                 Ok(ConvertedDecl::Item(
                     mk().span(s).pub_().type_item(new_name, ty),
                 ))
@@ -2456,7 +2485,7 @@ impl<'c> Translation<'c> {
                     .insert(decl_id, &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
 
-                if  self.ast_context.is_va_list(typ.ctype) {
+                if self.ast_context.is_va_list(typ.ctype) {
                     // translate `va_list` variables to `VaListImpl`s and omit the initializer.
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
                     let ty = {
@@ -3095,6 +3124,12 @@ impl<'c> Translation<'c> {
                     val = mk().cast_expr(val, ty);
                 }
 
+                // Most references to the va_list should refer to the VaList
+                // type, not VaListImpl
+                if !ctx.expecting_valistimpl && self.ast_context.is_va_list(qual_ty.ctype) {
+                    val = mk().method_call_expr(val, "as_va_list", Vec::<P<Expr>>::new());
+                }
+
                 // If we are referring to a function and need its address, we
                 // need to cast it to fn() to ensure that it has a real address.
                 let mut set_unsafe = false;
@@ -3507,38 +3542,7 @@ impl<'c> Translation<'c> {
                     // We want to decay refs only when function is variadic
                     ctx.decay_ref = DecayRef::from(is_variadic);
 
-                    let mut args = self.convert_exprs(ctx.used(), args)?;
-
-                    // the C variadics feature requires us to call `as_va_list` on a `VaListImpl`
-                    // when calling a function expecting to receive an object that is binary
-                    // compatible with C's `va_list`.
-                    if let Some(CTypeKind::Function(_, params, _, _, _)) = fn_ty {
-                        // look for parameters of type `va_list`
-                        let positions: Vec<usize> = params
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(pos, param)| {
-                                if self.ast_context.is_pointer_to_va_list(param.ctype) {
-                                    Some(pos)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-
-                        // ... call `as_va_list` for such parameters
-                        if !positions.is_empty() {
-                            args = args.map(|mut val| {
-                                for pos in positions {
-                                    val[pos] = mk().method_call_expr(
-                                        val[pos].clone(),
-                                        "as_va_list",
-                                        Vec::<P<Expr>>::new());
-                                }
-                                val
-                            });
-                        }
-                    }
+                    let args = self.convert_exprs(ctx.used(), args)?;
 
                     let res: Result<_, TranslationError> = Ok(
                         args.map(|args| mk().call_expr(func, args))
@@ -3974,18 +3978,19 @@ impl<'c> Translation<'c> {
             }
 
             CastKind::ArrayToPointerDecay => {
+                // Because va_list is sometimes defined as a single-element
+                // array in order for it to allocate memory as a local variable
+                // and to be a pointer as a function argument we would get
+                // spurious casts when trying to treat it like a VaList which
+                // has reference semantics.
+                if self.ast_context.is_va_list(ty.ctype) {
+                    return Ok(val)
+                }
+
                 let pointee = match self.ast_context.resolve_type(ty.ctype).kind {
                     CTypeKind::Pointer(pointee) => pointee,
                     _ => panic!("Dereferencing a non-pointer"),
                 };
-
-                // Because va_list is defined as a single-element array in order for it to allocate
-                // memory as a local variable and to be a pointer as a function argument we would
-                // get spurious casts when trying to treat it like a VaList which has reference
-                // semantics.
-                if self.ast_context.is_va_list(pointee.ctype) {
-                    return Ok(val)
-                }
 
                 let is_const = pointee.qualifiers.is_const;
 

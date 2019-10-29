@@ -302,12 +302,6 @@ impl TypeConverter {
 
             _ => {}
         }
-        if self.translate_valist && ctxt.is_va_list(qtype.ctype) {
-            let std_or_core = if self.emit_no_std { "core" } else { "std" };
-            let path = vec!["", std_or_core, "ffi", "VaList"];
-            let ty = mk().path_ty(path);
-            return Ok(ty);
-        }
 
         let child_ty = self.convert(ctxt, qtype.ctype)?;
         let mutbl = if qtype.qualifiers.is_const {
@@ -325,6 +319,13 @@ impl TypeConverter {
         ctxt: &TypedAstContext,
         ctype: CTypeId,
     ) -> Result<P<Ty>, TranslationError> {
+        if self.translate_valist && ctxt.is_va_list(ctype) {
+            let std_or_core = if self.emit_no_std { "core" } else { "std" };
+            let path = vec!["", std_or_core, "ffi", "VaList"];
+            let ty = mk().path_ty(path);
+            return Ok(ty);
+        }
+
         match ctxt.index(ctype).kind {
             CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
             CTypeKind::Bool => Ok(mk().path_ty(mk().path(vec!["bool"]))),
