@@ -28,11 +28,11 @@ C2Rust requires LLVM 6, 7, or 8 with its corresponding clang compiler and librar
 
 - **Ubuntu 16.04, 18.04 & 18.10:**
 
-        apt install build-essential llvm-6.0 clang-6.0 libclang-6.0-dev cmake libssl-dev pkg-config
+        apt install build-essential llvm-6.0 clang-6.0 libclang-6.0-dev cmake libssl-dev pkg-config python3
 
 - **Arch Linux:**
 
-        pacman -S base-devel llvm clang cmake openssl
+        pacman -S base-devel llvm clang cmake openssl python
         
 - **NixOS / nix:**
 
