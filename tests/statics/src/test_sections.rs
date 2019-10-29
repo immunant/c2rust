@@ -43,14 +43,14 @@ pub fn test_sectioned_used_static() {
 
         let pos = lines
             .iter()
-            .position(|&x| x == "static mut rust_used_static4: libc::c_int = 1i32;")
+            .position(|&x| x == "static mut rust_used_static4: libc::c_int = 1 as libc::c_int;")
             .expect("Did not find expected static string in source");
         // The ordering of these attributes is not stable between LLVM versions
         assert!((lines[pos-1] == "#[used]" && lines[pos-2] == "#[link_section = \"barz\"]") ||
                 (lines[pos-2] == "#[used]" && lines[pos-1] == "#[link_section = \"barz\"]"));
 
         // This static is pub, but we want to ensure it has attributes applied
-        assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: libc::c_int = 1i32;"));
+        assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: libc::c_int = 1 as libc::c_int;"));
         assert!(src.contains("#[no_mangle]\n    #[link_name = \"no_attrs\"]\n    static mut rust_aliased_static: libc::c_int;"))
     }
 }
