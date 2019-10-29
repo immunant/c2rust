@@ -75,7 +75,7 @@ function set_used(var)
     var.used = true
 end
 
-function Visitor:visit_expr(expr)
+function Visitor:visit_expr(expr, walk)
     debug("Visiting Expr: " .. expr.kind)
     if is_simple_expr_path(expr) then
         self:find_variable(expr.segments[1].ident, set_used)
@@ -114,6 +114,8 @@ function Visitor:visit_expr(expr)
             self:find_variable(expr.args[1].segments[1].ident, set_by_value_mutable)
         end
     end
+
+    walk(expr)
 
     return true
 end

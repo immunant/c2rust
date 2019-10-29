@@ -396,9 +396,9 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
             .expect("Could not get lua visitor function");
         if let Some(method) = visit_method {
             self.call_visit(method, m);
+        } else {
+            mut_visit::noop_visit_expr(m, self)
         }
-
-        mut_visit::noop_visit_expr(m, self)
     }
 
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
@@ -442,9 +442,9 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
             .expect("Could not get lua visitor function");
         if let Some(method) = visit_method {
             self.call_visit(method, m);
+        } else {
+            mut_visit::noop_visit_fn_header(m, self)
         }
-
-        mut_visit::noop_visit_fn_header(m, self)
     }
 
     fn visit_fn_decl(&mut self, m: &mut P<FnDecl>) {
@@ -452,9 +452,9 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
             .expect("Could not get lua visitor function");
         if let Some(method) = visit_method {
             self.call_visit(method, m);
+        } else {
+            mut_visit::noop_visit_fn_decl(m, self)
         }
-
-        mut_visit::noop_visit_fn_decl(m, self)
     }
 
     fn flat_map_struct_field(&mut self, m: StructField) -> SmallVec<[StructField; 1]> {
@@ -473,9 +473,9 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
             .expect("Could not get lua visitor function");
         if let Some(method) = visit_method {
             self.call_visit(method, m);
+        } else {
+            mut_visit::noop_visit_item_kind(m, self)
         }
-
-        mut_visit::noop_visit_item_kind(m, self)
     }
 
     fn visit_ty(&mut self, m: &mut P<Ty>) {
@@ -483,9 +483,9 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
             .expect("Could not get lua visitor function");
         if let Some(method) = visit_method {
             self.call_visit(method, m);
+        } else {
+            mut_visit::noop_visit_ty(m, self)
         }
-
-        mut_visit::noop_visit_ty(m, self)
     }
 
     fn visit_local(&mut self, m: &mut P<Local>) {
@@ -493,9 +493,9 @@ impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
             .expect("Could not get lua visitor function");
         if let Some(method) = visit_method {
             self.call_visit(method, m);
+        } else {
+            mut_visit::noop_visit_local(m, self)
         }
-
-        mut_visit::noop_visit_local(m, self)
     }
 
     fn visit_mac(&mut self, mac: &mut Mac) {

@@ -26,7 +26,7 @@ function Expr.new(kind)
     return self
 end
 
-function Visitor:visit_expr(expr)
+function Visitor:visit_expr(expr, walk)
     debug("Visiting Expr: " .. expr.kind)
     if expr.kind == "Binary" then
         tmp = expr.lhs
@@ -41,6 +41,8 @@ function Visitor:visit_expr(expr)
         expr.value.lhs.value = 10
         expr.value.rhs = ret_expr
     end
+
+    walk(expr)
 
     return true
 end

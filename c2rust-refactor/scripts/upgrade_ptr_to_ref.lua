@@ -305,7 +305,7 @@ function Visitor:get_struct(hirid)
     return self.structs[hirid_str]
 end
 
-function Visitor:visit_expr(expr)
+function Visitor:visit_expr(expr, walk)
     local expr_kind = expr:get_kind()
 
     if expr_kind == "Field" then
@@ -331,6 +331,8 @@ function Visitor:visit_expr(expr)
     elseif expr_kind == "Call" then
         self:rewrite_call_expr(expr)
     end
+
+    walk(expr)
 end
 
 function Visitor:rewrite_field_expr(expr)
@@ -722,8 +724,10 @@ end
 -- so we don't accidentally access old info
 -- NOTE: If this script encounters any nested functions, this will reset variables
 -- prematurely. We should push and pop a stack of variable scopes to account for this
-function Visitor:visit_fn_decl(fn_decl)
+function Visitor:visit_fn_decl(fn_decl, walk)
     self.vars = {}
+
+    walk(fn_decl)
 end
 
 function Visitor:flat_map_item(item, walk)
@@ -931,7 +935,7 @@ function is_void_ptr(ty)
     return false
 end
 
-function Visitor:visit_local(locl)
+function Visitor:visit_local(locl, walk)
     local local_id = locl:get_id()
     local conversion_cfg = self.node_id_cfgs[local_id]
 
@@ -960,6 +964,8 @@ function Visitor:visit_local(locl)
 
         self:add_var(pat_hirid, Variable.new(local_id, true))
     end
+
+    walk(locl)
 end
 
 MarkConverter = {}
