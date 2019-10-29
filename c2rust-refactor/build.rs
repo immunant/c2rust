@@ -11,7 +11,7 @@ fn process_ast(mode: &str, dest: &Path) {
         .arg(mode)
         .arg(dest)
         .spawn()
-        .expect("failed to run process_ast.py. Make sure python3 is in your path.");
+        .expect("failed to run process_ast.py. Make sure python3 is in your PATH.");
 
     let ret = p.wait().expect("failed to wait on process_ast.py");
 
