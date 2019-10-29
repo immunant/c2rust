@@ -28,7 +28,7 @@ use crate::ast_manip::fn_edit::{mut_visit_fns, FnLike};
 use crate::command::{self, CommandState, RefactorState};
 use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
-use crate::matcher::{self, mut_visit_match_with, MatchCtxt, Pattern, Subst, TryMatch};
+use crate::matcher::{self, mut_visit_match_with, replace_expr, MatchCtxt, Pattern, Subst, TryMatch};
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::reflect::reflect_tcx_ty;
 use crate::RefactorCtxt;
@@ -642,6 +642,20 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                 let node_id = NodeId::from_usize(id as usize);
 
                 Ok(Some(LuaHirId(this.cx.hir_map().node_to_hir_id(node_id))))
+            },
+        );
+
+        /// Replace matching expressions using given replacements
+        // @function replace_expr_with
+        // @tparam string needle Expression pattern to search for, may include variable bindings
+        // @tparam string haystack Expression to replace needle with
+        methods.add_method(
+            "replace_expr",
+            |_lua_ctx, this, (needle, haystack): (String, String)| {
+                this.st.map_krate(|krate| {
+                    replace_expr(this.st, this.cx, krate, &needle, &haystack);
+                    Ok(())
+                })
             },
         );
 

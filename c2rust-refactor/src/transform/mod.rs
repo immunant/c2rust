@@ -69,5 +69,4 @@ transform_modules! {
     structs,
     test,
     vars,
-    wrapping_arith,
 }
