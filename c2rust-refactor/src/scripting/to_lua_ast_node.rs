@@ -700,6 +700,12 @@ impl UserData for LuaAstNode<P<Expr>> {
 
             Ok(())
         });
+
+        methods.add_method("print", |_lua_ctx, this, ()| {
+            println!("{:?}", this.borrow());
+
+            Ok(())
+        });
     }
 }
 
