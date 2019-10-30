@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-asm-casts"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
 edition = "2018"
 license = "BSD-3-Clause"
