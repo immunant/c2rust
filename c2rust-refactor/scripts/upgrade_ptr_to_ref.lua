@@ -94,7 +94,7 @@ function ConvCfg:is_mut()
     return self.extra_data.mutability == "mut"
 end
 
-function ConvCfg.from_marks(marks, attrs)
+function ConvCfg.from_marks_and_attrs(marks, attrs)
     local opt = true
     local slice = false
     local mutability = nil
@@ -242,13 +242,13 @@ function Visitor.new(tctx, node_id_cfgs)
     self.tctx = tctx
     -- NodeId -> ConvCfg
     self.node_id_cfgs = node_id_cfgs
-    -- PatHrId [except statics] -> Variable
+    -- PatHirId [except statics] -> Variable
     self.vars = {}
-    -- HrId -> Field
+    -- HirId -> Field
     self.fields = {}
-    -- HrId -> Struct
+    -- HirId -> Struct
     self.structs = {}
-    -- HrId -> Fn
+    -- HirId -> Fn
     self.fns = {}
 
     setmetatable(self, Visitor)
@@ -1302,9 +1302,9 @@ function is_empty(tbl)
     return next(tbl) == nil
 end
 
-CfgBuilder = {}
+ConfigBuilder = {}
 
-function CfgBuilder.new(marks, boxes, tctx)
+function ConfigBuilder.new(marks, boxes, tctx)
     self = {}
     self.marks = marks
     self.node_id_cfgs = {}
@@ -1312,13 +1312,13 @@ function CfgBuilder.new(marks, boxes, tctx)
     self.tctx = tctx
     self.pat_to_var_id = {}
 
-    setmetatable(self, CfgBuilder)
-    CfgBuilder.__index = CfgBuilder
+    setmetatable(self, ConfigBuilder)
+    ConfigBuilder.__index = ConfigBuilder
 
     return self
 end
 
-function CfgBuilder:flat_map_param(param)
+function ConfigBuilder:flat_map_param(param)
     local param_id = param:get_id()
     local param_ty = param:get_ty()
     local param_ty_id = param_ty:get_id()
@@ -1337,12 +1337,12 @@ function CfgBuilder:flat_map_param(param)
     local attrs = param:get_attrs()
 
     self.pat_to_var_id[param:get_pat():get_id()] = param_id
+    self.node_id_cfgs[param_id] = ConvCfg.from_marks_and_attrs(marks, attrs)
 
-    self.node_id_cfgs[param_id] = ConvCfg.from_marks(marks, attrs)
     return {param}
 end
 
-function CfgBuilder:visit_local(locl, walk)
+function ConfigBuilder:visit_local(locl, walk)
     local ty = locl:get_ty()
 
     -- Locals with no type annotation are skipped
@@ -1374,11 +1374,11 @@ function CfgBuilder:visit_local(locl, walk)
     end
 
     self.pat_to_var_id[pat_id] = id
-    self.node_id_cfgs[id] = ConvCfg.from_marks(marks, attrs)
+    self.node_id_cfgs[id] = ConvCfg.from_marks_and_attrs(marks, attrs)
     walk(locl)
 end
 
-function CfgBuilder:flat_map_item(item, walk)
+function ConfigBuilder:flat_map_item(item, walk)
     local item_kind = item:get_kind()
     local crate_vis = item:get_vis() == "Crate"
 
@@ -1397,7 +1397,7 @@ function CfgBuilder:flat_map_item(item, walk)
             local marks = self.marks[ty_id] or {}
 
             if not is_empty(marks) then
-                self.node_id_cfgs[field_id] = ConvCfg.from_marks(marks, field:get_attrs())
+                self.node_id_cfgs[field_id] = ConvCfg.from_marks_and_attrs(marks, field:get_attrs())
             end
         end
     end
@@ -1413,7 +1413,7 @@ function path_to_last_segment(path)
     return segments[#segments]
 end
 
-function CfgBuilder:flat_map_stmt(stmt, walk)
+function ConfigBuilder:flat_map_stmt(stmt, walk)
     local stmt_kind = stmt:get_kind()
 
     -- Here we look for a particular multi-stmt pattern:
@@ -1533,7 +1533,7 @@ function infer_node_id_cfgs(tctx)
 
     tctx:visit_crate_new(malloc_marker)
 
-    local converter = CfgBuilder.new(marks, malloc_marker.boxes, tctx)
+    local converter = ConfigBuilder.new(marks, malloc_marker.boxes, tctx)
     tctx:visit_crate_new(converter)
     return converter.node_id_cfgs
 end
