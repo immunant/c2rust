@@ -401,6 +401,8 @@ function Visitor:visit_expr(expr, walk)
     elseif expr_kind == "MethodCall" then
         self:rewrite_method_call_expr(expr)
     end
+
+    walk(expr)
 end
 
 function Visitor:rewrite_method_call_expr(expr)
@@ -512,7 +514,6 @@ function decay_ref_to_ptr(expr, cfg, for_struct_field)
         expr:to_method_call("as_ptr", {expr})
     end
 
-    walk(expr)
     return expr
 end
 
@@ -989,7 +990,6 @@ function Visitor:clear_nonstatic_vars()
     end
 
     self.vars = static_vars
-    walk(fn_decl)
 end
 
 function Visitor:flat_map_item(item, walk)
@@ -1256,7 +1256,10 @@ function Visitor:visit_local(locl, walk)
     local local_id = locl:get_id()
     local cfg = self.node_id_cfgs[local_id]
 
-    if not cfg then return end
+    if not cfg then
+        walk(locl)
+        return
+    end
 
     local init = locl:get_init()
 
@@ -1339,7 +1342,7 @@ function CfgBuilder:flat_map_param(param)
     return {param}
 end
 
-function CfgBuilder:visit_local(locl)
+function CfgBuilder:visit_local(locl, walk)
     local ty = locl:get_ty()
 
     -- Locals with no type annotation are skipped
@@ -1366,11 +1369,13 @@ function CfgBuilder:visit_local(locl)
             self.node_id_cfgs[id] = ConvCfg.new{"array"}
         end
 
+        walk(locl)
         return
     end
 
     self.pat_to_var_id[pat_id] = id
     self.node_id_cfgs[id] = ConvCfg.from_marks(marks, attrs)
+    walk(locl)
 end
 
 function CfgBuilder:flat_map_item(item, walk)
@@ -1488,7 +1493,7 @@ function MallocMarker.new(tctx)
     return self
 end
 
-function MallocMarker:visit_expr(expr)
+function MallocMarker:visit_expr(expr, walk)
     local expr_kind = expr:get_kind()
 
     -- Mark types as "box" for malloc/calloc
@@ -1518,6 +1523,7 @@ function MallocMarker:visit_expr(expr)
         end
     end
 
+    walk(expr)
     return {arg}
 end
 
