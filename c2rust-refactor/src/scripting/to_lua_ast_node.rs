@@ -496,7 +496,9 @@ impl UserData for LuaAstNode<P<Expr>> {
                 | ExprKind::Field(expr, _)
                 | ExprKind::Unary(_, expr) => Ok(vec![LuaAstNode::new(expr.clone())]),
                 ExprKind::MethodCall(_, exprs) => Ok(exprs.iter().map(|e| LuaAstNode::new(e.clone())).collect()),
-                ExprKind::Assign(lhs, rhs) => Ok(vec![LuaAstNode::new(lhs.clone()), LuaAstNode::new(rhs.clone())]),
+                ExprKind::Assign(lhs, rhs)
+                | ExprKind::AssignOp(_, lhs, rhs)
+                | ExprKind::Binary(_, lhs, rhs) => Ok(vec![LuaAstNode::new(lhs.clone()), LuaAstNode::new(rhs.clone())]),
                 ExprKind::Call(func, params) => {
                     let mut exprs = Vec::with_capacity(params.len() + 1);
 
@@ -522,6 +524,7 @@ impl UserData for LuaAstNode<P<Expr>> {
                     *params = exprs.iter().skip(1).map(|e| e.borrow().clone()).collect()
                 },
                 ExprKind::Assign(lhs, rhs)
+                | ExprKind::AssignOp(_, lhs, rhs)
                 | ExprKind::Binary(_, lhs, rhs) => {
                     *lhs = exprs[0].borrow().clone();
                     *rhs = exprs[1].borrow().clone();
@@ -536,9 +539,8 @@ impl UserData for LuaAstNode<P<Expr>> {
         methods.add_method("get_op", |_lua_ctx, this, ()| {
             match &this.borrow().kind {
                 ExprKind::Unary(op, _) => Ok(Some(op.ast_name())),
-                // TODO: BinOp needs AstName impl
-                // ExprKind::Binary(op, ..) |
-                // ExprKind::AssignOp(op, ..) => Ok(op.ast_name()),
+                ExprKind::Binary(op, ..) |
+                ExprKind::AssignOp(op, ..) => Ok(Some(op.ast_name())),
                 _ => Ok(None),
             }
         });

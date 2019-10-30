@@ -270,8 +270,27 @@ enum UnOp {
     Not,
     Neg,
 }
-#[match=eq]
-flag BinOpKind;
+enum BinOpKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    And,
+    Or,
+    BitXor,
+    BitAnd,
+    BitOr,
+    Shl,
+    Shr,
+    Eq,
+    Lt,
+    Le,
+    Ne,
+    Ge,
+    Gt,
+}
+
 #[extend_span]
 struct Field { id, ident, expr, span, is_shorthand, attrs, is_placeholder }
 #[extend_span]
