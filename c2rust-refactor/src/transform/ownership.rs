@@ -604,9 +604,13 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     });
 }
 
+/// # `ownership_expand_local_ptr_tys` Command
+///
+/// Usage: `ownership_expand_local_ptr_tys`
+///
 /// Ownership analysis now supports locals and therefore it may be necessary to
 /// add explicit type annotations to locals which are missing them. This is because
-/// OA marks types
+/// ownership analysis marks types
 fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
     struct LocalVisitor<'a, 'tctx: 'a> {
         cx: &'a RefactorCtxt<'a, 'tctx>,

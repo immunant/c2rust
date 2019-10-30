@@ -197,6 +197,7 @@ fn find_input_assignment(
     }
 }
 
+/// Determines permissions to be assigned to local, non param, variables.
 fn find_local_assignment(summ: &FuncSumm) -> Option<IndexVec<Var, ConcretePerm>> {
     struct State<'lty> {
         max: Var,
@@ -255,6 +256,7 @@ fn find_local_assignment(summ: &FuncSumm) -> Option<IndexVec<Var, ConcretePerm>>
     }
 }
 
+/// Determines permissions to be assigned to param, return, and local variables.
 pub fn get_mono_sigs(summ: &FuncSumm) -> (Vec<IndexVec<Var, ConcretePerm>>, IndexVec<Var, ConcretePerm>) {
     let is_out = infer_outputs(&summ);
     let is_bounded = upper_bounded_vars(&summ);

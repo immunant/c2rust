@@ -68,9 +68,9 @@ function Fn.new(node_id, is_foreign, arg_ids)
     return self
 end
 
-ConvCfg = {}
+ConvConfig = {}
 
-function ConvCfg.new(args)
+function ConvConfig.new(args)
     self = {}
     self.conv_type = args[1]
 
@@ -80,13 +80,13 @@ function ConvCfg.new(args)
 
     self.extra_data = args
 
-    setmetatable(self, ConvCfg)
-    ConvCfg.__index = ConvCfg
+    setmetatable(self, ConvConfig)
+    ConvConfig.__index = ConvConfig
 
     return self
 end
 
-function ConvCfg:is_mut()
+function ConvConfig:is_mut()
     if self.extra_data.mutability == nil then
         return nil
     end
@@ -94,7 +94,7 @@ function ConvCfg:is_mut()
     return self.extra_data.mutability == "mut"
 end
 
-function ConvCfg.from_marks_and_attrs(marks, attrs)
+function ConvConfig.from_marks_and_attrs(marks, attrs)
     local opt = true
     local slice = false
     local mutability = nil
@@ -160,78 +160,78 @@ function ConvCfg.from_marks_and_attrs(marks, attrs)
         return
     end
 
-    return ConvCfg.new{conv_type, mutability=mutability, binding=binding}
+    return ConvConfig.new{conv_type, mutability=mutability, binding=binding}
 end
 
-function ConvCfg:is_slice()
+function ConvConfig:is_slice()
     return self.conv_type == "slice"
 end
 
-function ConvCfg:is_ref()
+function ConvConfig:is_ref()
     return self.conv_type == "ref"
 end
 
-function ConvCfg:is_ref_any()
+function ConvConfig:is_ref_any()
     return self:is_ref() or self:is_opt_ref()
 end
 
-function ConvCfg:is_ref_or_slice()
+function ConvConfig:is_ref_or_slice()
     return self:is_ref() or self:is_slice()
 end
 
-function ConvCfg:is_opt_ref()
+function ConvConfig:is_opt_ref()
     return self.conv_type == "opt_ref"
 end
 
-function ConvCfg:is_opt_slice()
+function ConvConfig:is_opt_slice()
     return self.conv_type == "opt_slice"
 end
 
-function ConvCfg:is_opt_any()
+function ConvConfig:is_opt_any()
     return self:is_opt_box_any() or self:is_opt_ref() or self:is_opt_slice()
 end
 
-function ConvCfg:is_opt_box()
+function ConvConfig:is_opt_box()
     return self.conv_type == "opt_box"
 end
 
-function ConvCfg:is_opt_box_slice()
+function ConvConfig:is_opt_box_slice()
     return self.conv_type == "opt_box_slice"
 end
 
-function ConvCfg:is_opt_box_any()
+function ConvConfig:is_opt_box_any()
     return self:is_opt_box() or self:is_opt_box_slice()
 end
 
-function ConvCfg:is_slice_any()
+function ConvConfig:is_slice_any()
     return self:is_slice() or self:is_opt_box_slice() or self:is_box_slice() or self:is_opt_slice()
 end
 
-function ConvCfg:is_box_slice()
+function ConvConfig:is_box_slice()
     return self.conv_type == "box_slice"
 end
 
-function ConvCfg:is_box()
+function ConvConfig:is_box()
     return self.conv_type == "box"
 end
 
-function ConvCfg:is_box_any()
+function ConvConfig:is_box_any()
     return self:is_opt_box_any() or self:is_box_slice() or self:is_box()
 end
 
-function ConvCfg:is_del()
+function ConvConfig:is_del()
     return self.conv_type == "del"
 end
 
-function ConvCfg:is_byteswap()
+function ConvConfig:is_byteswap()
     return self.conv_type == "byteswap"
 end
 
-function ConvCfg:is_local_mut_slice_offset()
+function ConvConfig:is_local_mut_slice_offset()
     return self.conv_type == "local_mut_slice_offset"
 end
 
-function ConvCfg:is_array()
+function ConvConfig:is_array()
     return self.conv_type == "array"
 end
 
@@ -240,7 +240,7 @@ Visitor = {}
 function Visitor.new(tctx, node_id_cfgs)
     self = {}
     self.tctx = tctx
-    -- NodeId -> ConvCfg
+    -- NodeId -> ConvConfig
     self.node_id_cfgs = node_id_cfgs
     -- PatHirId [except statics] -> Variable
     self.vars = {}
@@ -1120,8 +1120,32 @@ function Visitor:flat_map_stmt(stmt, walk)
         return {stmt}
     end
 
+    -- A stmt may be marked for deletion
     if cfg:is_del() then
         return {}
+    -- Here we look for a particular multi-stmt pattern:
+    --
+    -- let fresh = a;
+    -- a = a.offset(x);
+    --
+    -- where "a" is a mutable slice ref. In particular, we're just looking for the
+    -- offset assignment here (locals handeled elsewhere). We rewrite it to:
+    --
+    -- {
+    --     let tup = a[.unwrap()].split_at_mut(x);
+    --     fresh = [Some(]tup.0[)];
+    --     a = Some(tup.1);
+    -- }
+    --
+    -- We rewrite the new stmts into a new block to try and avoid "tup" from possibly
+    -- shadowing a prior variable. Rust doesn't yet have great tuple support, so this has
+    -- to be done over multiple lines. Ideally you could do something like in python:
+    -- (fresh, a) = a.unwrap().split_at_mut(x) but this doesn't work today.
+    --
+    -- This rewrite is only necessary when "a" is a mutable slice since they are not Copy.
+    -- A caveat is that this doesn't work with negative offsets and even with a positive
+    -- offset it may not be the correct usage 100% of the time but seems to work >99% of
+    -- the time and avoids a borrowing error that would otherwise occur.
     elseif cfg:is_local_mut_slice_offset() then
         local stmt_kind = stmt:get_kind()
 
@@ -1302,6 +1326,9 @@ function is_empty(tbl)
     return next(tbl) == nil
 end
 
+-- ConfigBuilder is an AST visitor which creates conversion configs (ConvConfig).
+-- This is done primarily based on ownership analysis markings, but also takes
+-- in MallocMarker's malloc analysis "boxes" as supplemental info.
 ConfigBuilder = {}
 
 function ConfigBuilder.new(marks, boxes, tctx)
@@ -1337,7 +1364,7 @@ function ConfigBuilder:flat_map_param(param)
     local attrs = param:get_attrs()
 
     self.pat_to_var_id[param:get_pat():get_id()] = param_id
-    self.node_id_cfgs[param_id] = ConvCfg.from_marks_and_attrs(marks, attrs)
+    self.node_id_cfgs[param_id] = ConvConfig.from_marks_and_attrs(marks, attrs)
 
     return {param}
 end
@@ -1366,7 +1393,7 @@ function ConfigBuilder:visit_local(locl, walk)
         -- take pointers/references into them
         if ty:get_kind() == "Array" then
             self.pat_to_var_id[pat_id] = id
-            self.node_id_cfgs[id] = ConvCfg.new{"array"}
+            self.node_id_cfgs[id] = ConvConfig.new{"array"}
         end
 
         walk(locl)
@@ -1374,7 +1401,7 @@ function ConfigBuilder:visit_local(locl, walk)
     end
 
     self.pat_to_var_id[pat_id] = id
-    self.node_id_cfgs[id] = ConvCfg.from_marks_and_attrs(marks, attrs)
+    self.node_id_cfgs[id] = ConvConfig.from_marks_and_attrs(marks, attrs)
     walk(locl)
 end
 
@@ -1397,7 +1424,7 @@ function ConfigBuilder:flat_map_item(item, walk)
             local marks = self.marks[ty_id] or {}
 
             if not is_empty(marks) then
-                self.node_id_cfgs[field_id] = ConvCfg.from_marks_and_attrs(marks, field:get_attrs())
+                self.node_id_cfgs[field_id] = ConvConfig.from_marks_and_attrs(marks, field:get_attrs())
             end
         end
     end
@@ -1428,7 +1455,7 @@ function ConfigBuilder:flat_map_stmt(stmt, walk)
             -- Ideally we'd just check if the marking for this local's ty id
             -- is mut. However, the variable may possibly be marked as immutable
             -- if it is only read from (despite containing a mutable ref)
-            -- so instead we look up the mutability from the cfg of the rhs.
+            -- so instead we look up the mutability from the config of the rhs.
             -- This may be the same issue as GH #163
             local hir_id = self.tctx:resolve_path_hirid(init)
             local node_pat_id = self.tctx:hirid_to_nodeid(hir_id)
@@ -1462,8 +1489,8 @@ function ConfigBuilder:flat_map_stmt(stmt, walk)
             local_cfg.extra_data.clear_init_and_ty = true
 
             if lhs_path == self.rhs_ident and caller_path == self.rhs_ident then
-                self.node_id_cfgs[self.local_stmt_id] = ConvCfg.new{"local_mut_slice_offset"}
-                self.node_id_cfgs[stmt:get_id()] = ConvCfg.new{"local_mut_slice_offset", self.lhs_ident, self.local_id}
+                self.node_id_cfgs[self.local_stmt_id] = ConvConfig.new{"local_mut_slice_offset"}
+                self.node_id_cfgs[stmt:get_id()] = ConvConfig.new{"local_mut_slice_offset", self.lhs_ident, self.local_id}
             end
         end
     end
@@ -1527,7 +1554,7 @@ function MallocMarker:visit_expr(expr, walk)
     return {arg}
 end
 
-function infer_node_id_cfgs(tctx)
+function infer_node_id_configs(tctx)
     local marks = tctx:get_marks()
     local malloc_marker = MallocMarker.new(tctx)
 
@@ -1550,7 +1577,7 @@ function run_ptr_upgrades(node_id_cfgs)
     refactor:transform(
         function(transform_ctx)
             if not node_id_cfgs then
-                node_id_cfgs = infer_node_id_cfgs(transform_ctx)
+                node_id_cfgs = infer_node_id_configs(transform_ctx)
                 -- pretty.dump(node_id_cfgs)
             end
             return transform_ctx:visit_crate_new(Visitor.new(transform_ctx, node_id_cfgs))
