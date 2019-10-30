@@ -22,7 +22,6 @@ use crate::command::{CommandState, Registry, DriverCommand};
 use crate::context::HirMap;
 use crate::driver::{Phase};
 use crate::RefactorCtxt;
-use crate::reflect::reflect_tcx_ty;
 use crate::type_map;
 use c2rust_ast_builder::{mk, IntoSymbol};
 
@@ -46,12 +45,6 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("ownership_mark_pointers", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             do_mark_pointers(st, cx);
-        }))
-    });
-
-    reg.register("ownership_expand_local_ptr_tys", |_args| {
-        Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
-            expand_local_ptr_tys(st, cx);
         }))
     });
 }
@@ -602,39 +595,4 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
         st.add_mark(ast_ty.id, label);
     });
-}
-
-/// # `ownership_expand_local_ptr_tys` Command
-///
-/// Usage: `ownership_expand_local_ptr_tys`
-///
-/// Ownership analysis now supports locals and therefore it may be necessary to
-/// add explicit type annotations to locals which are missing them. This is because
-/// ownership analysis marks types
-fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
-    struct LocalVisitor<'a, 'tctx: 'a> {
-        cx: &'a RefactorCtxt<'a, 'tctx>,
-    };
-
-    impl<'a, 'tctx> MutVisitor for LocalVisitor<'a, 'tctx> {
-        fn visit_local(&mut self, local: &mut P<Local>) {
-            // If it already has a ty, skip
-            if local.ty.is_some() {
-                return mut_visit::noop_visit_local(local, self);
-            }
-
-            // Get the type
-            let rty = self.cx.node_type(local.id);
-            let ty = reflect_tcx_ty(self.cx.ty_ctxt(), rty);
-
-            // Assign ty if a raw ptr
-            if let TyKind::Ptr(_) = ty.kind {
-                local.ty = Some(ty);
-            }
-
-            mut_visit::noop_visit_local(local, self)
-        }
-    }
-
-    st.map_krate(|krate| { krate.visit(&mut LocalVisitor { cx }) });
 }

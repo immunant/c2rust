@@ -6,7 +6,7 @@ use rustc::mir::*;
 use rustc::ty::{Ty, TyKind};
 use rustc_index::vec::IndexVec;
 use rustc_target::abi::VariantIdx;
-use syntax::source_map::Span;
+use syntax::source_map::{DUMMY_SP, Spanned};
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
@@ -60,7 +60,9 @@ pub struct IntraCtxt<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
     stmt_idx: usize,
 
     cset: ConstraintSet<'lty>,
-    local_tys: IndexVec<Local, (Option<Span>, ITy<'lty, 'tcx>)>,
+    /// A collection of local variable types. The pattern span will later
+    /// be used to map them in the marking phase
+    local_tys: IndexVec<Local, Spanned<ITy<'lty, 'tcx>>>,
     next_local_var: u32,
 
     /// List of function instantiation sites.
@@ -132,15 +134,18 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 self.local_ty(decl.ty)
             };
 
-            let opt_span = decl.is_user_variable.as_ref().map(|ccc| match ccc {
+            let span = decl.is_user_variable.as_ref().map(|ccc| match ccc {
                 ClearCrossCrate::Clear => None,
                 ClearCrossCrate::Set(binding) => Some(binding),
             }).flatten().map(|binding| match binding {
-                BindingForm::Var(var) => Some(var.pat_span),
-                _ => None,
-            }).flatten();
+                BindingForm::Var(var) => var.pat_span,
+                _ => DUMMY_SP,
+            }).unwrap_or(DUMMY_SP);
 
-            self.local_tys.push((opt_span, lty));
+            self.local_tys.push(Spanned {
+                node: lty,
+                span,
+            });
         }
 
         // Pick up any preset constraints for this variant.
@@ -203,7 +208,13 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         let relabeled_locals = self.local_tys
             .raw
             .iter()
-            .filter_map(|(opt_span, ity)| opt_span.map(|s| (s, self.cx.lcx.relabel(ity, &mut f))))
+            .filter_map(|spanned_ity| {
+                if spanned_ity.span == DUMMY_SP {
+                    None
+                } else {
+                    Some((spanned_ity.span, self.cx.lcx.relabel(spanned_ity.node, &mut f)))
+                }
+            })
             .collect();
 
         let (func, var) = self.cx.variant_summ(self.def_id);
@@ -248,7 +259,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     }
 
     fn local_var_ty(&mut self, l: Local) -> ITy<'lty, 'tcx> {
-        self.local_tys[l].1
+        self.local_tys[l].node
     }
 
     fn static_ty(&mut self, def_id: DefId) -> ITy<'lty, 'tcx> {
