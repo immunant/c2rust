@@ -46,3 +46,20 @@ U64 test_zstd() {
   ZSTD_STATIC_ASSERT(ZSTD_WINDOWLOG_MAX <= 31);
   return ZSTD_WINDOWLOG_MAX;
 }
+
+#define inc(ptr) ({\
+  (*ptr)++;\
+  *ptr;\
+})
+
+// Ensure the macro generated stmt expr block is codegen'd
+int stmt_expr_inc(void) {
+  int a = 0;
+  int* b = &a;
+
+  // unused
+  inc(b);
+
+  // used
+  return inc(b);
+}

@@ -2,7 +2,7 @@ extern crate libc;
 
 use define::{TEST_CONST1, TEST_CONST2, TEST_PARENS, rust_reference_define};
 use define::{ZSTD_WINDOWLOG_MAX_32, ZSTD_WINDOWLOG_MAX_64, rust_test_zstd};
-use define::{rust_fns};
+use define::{rust_fns, rust_stmt_expr_inc};
 use self::libc::{c_int, c_uint, c_ulong};
 
 #[link(name = "test")]
@@ -18,6 +18,12 @@ pub fn test_define() {
 
 pub fn test_zstd_define() {
     let max = unsafe { rust_test_zstd() } as i32;
-    
+
     assert!(max == ZSTD_WINDOWLOG_MAX_32 || max == ZSTD_WINDOWLOG_MAX_64);
+}
+
+pub fn test_macro_stmt_expr() {
+    let ret = unsafe { rust_stmt_expr_inc() };
+
+    assert_eq!(ret, 2);
 }
