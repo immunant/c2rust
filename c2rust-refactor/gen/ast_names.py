@@ -39,7 +39,7 @@ def find_kind_field(s):
                 (s.name, len(marked_fields)))
 
     for f in s.fields:
-        if f.name == 'node':
+        if f.name == 'kind':
             return f.name
 
     return None

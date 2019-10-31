@@ -337,6 +337,7 @@ enum LitKind {
     Err(sym),
 }
 
+#[no_kind]
 struct TokenLit { kind, symbol, suffix }
 
 flag TokenLitKind;
