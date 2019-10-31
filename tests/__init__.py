@@ -131,6 +131,7 @@ class Test(object):
     def __call__(self, conf: Config):
         self.ensure_submodule_checkout()
 
+        stages = Test.STAGES.keys()
         if len(conf.stages) > 0:
             # Check that all stages are valid
             for stage in conf.stages:
@@ -141,24 +142,16 @@ class Test(object):
                     y, nc = Colors.WARNING, Colors.NO_COLOR
                     die(f"invalid stages: {y}{requested_stages}{nc}. valid stages: {stages}")
 
-            # All stages are valid
-            for stage in conf.stages:
-                # run single stage
-                for script in Test.STAGES[stage]:
-                    if script in self.scripts:
-                        xfail = self.is_stage_xfail(stage, script, conf)
-                        self.run_script(stage, script, conf.verbose, xfail)
-                        break
-                    # ignore missing stages here
-        else:  # run all stages
-            for (stage, scripts) in Test.STAGES.items():
-                for script in scripts:
-                    if script in self.scripts:
-                        xfail = self.is_stage_xfail(stage, script, conf)
-                        cont = self.run_script(stage, script, conf.verbose, xfail)
-                        if not cont:
-                            return  # XFAIL
-                        break  # found script for stage; skip alternatives
+            stages = conf.stages
+
+        for stage in stages:
+            for script in Test.STAGES[stage]:
+                if script in self.scripts:
+                    xfail = self.is_stage_xfail(stage, script, conf)
+                    cont = self.run_script(stage, script, conf.verbose, xfail)
+                    if not cont:
+                        return  # XFAIL
+                    break  # found script for stage; skip alternatives
 
 
 def run_tests(conf):
