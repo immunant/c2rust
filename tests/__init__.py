@@ -78,7 +78,7 @@ class Test(object):
                     color=Colors.WARNING,
                     nocolor=Colors.NO_COLOR)
                 )
-                exit(1)
+            exit(1)
         except Exception:  # noqa
             if not verbose:
                 outcome = "XFAIL" if xfail else "FAIL"
