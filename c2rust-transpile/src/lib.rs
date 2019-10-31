@@ -64,7 +64,7 @@ use std::prelude::v1::Vec;
 
 type PragmaVec = Vec<(&'static str, Vec<&'static str>)>;
 type PragmaSet = indexmap::IndexSet<(&'static str, &'static str)>;
-type CrateSet = indexmap::IndexSet<&'static str>;
+type CrateSet = indexmap::IndexSet<ExternCrate>;
 type TranspileResult = (PathBuf, Option<PragmaVec>, Option<CrateSet>);
 
 /// Configuration settings for the translation process
@@ -128,6 +128,48 @@ impl TranspilerConfig {
         self.output_dir.as_ref().and_then(
             |x| x.file_name().map(|x| x.to_string_lossy().into_owned())
         ).unwrap_or_else(|| "c2rust".into())
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ExternCrate {
+    C2RustBitfields,
+    C2RustAsmCasts,
+    F128,
+    NumTraits,
+    Memoffset,
+    Libc,
+}
+
+#[derive(Serialize)]
+struct ExternCrateDetails {
+    name: &'static str,
+    ident: String,
+    macro_use: bool,
+    version: &'static str,
+}
+
+impl ExternCrateDetails {
+    fn new(name: &'static str, version: &'static str, macro_use: bool) -> Self {
+        Self {
+            name,
+            ident: name.replace("-", "_"),
+            macro_use,
+            version,
+        }
+    }
+}
+
+impl From<ExternCrate> for ExternCrateDetails {
+    fn from(extern_crate: ExternCrate) -> Self {
+        match extern_crate {
+            ExternCrate::C2RustBitfields => Self::new("c2rust-bitfields", "0.3", true),
+            ExternCrate::C2RustAsmCasts => Self::new("c2rust-asm-casts", "0.1", true),
+            ExternCrate::F128 => Self::new("f128", "0.2", false),
+            ExternCrate::NumTraits => Self::new("num-traits", "0.2", true),
+            ExternCrate::Memoffset => Self::new("memoffset", "0.5", true),
+            ExternCrate::Libc => Self::new("libc", "0.2", false),
+        }
     }
 }
 

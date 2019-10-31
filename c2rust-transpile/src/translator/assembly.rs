@@ -119,11 +119,7 @@ impl<'c> Translation<'c> {
                         result = mk().ident_expr(&inner_name);
                         operand_renames.insert(operand_idx, (output_name, inner_name));
                     } else {
-                        self.extern_crates.borrow_mut().insert("c2rust_asm_casts");
-
-                        // Import the trait at the top level
-                        let item_store = &mut self.items.borrow_mut()[&self.main_file];
-                        item_store.add_use(vec!["c2rust_asm_casts".into()], "AsmCastTrait");
+                        self.use_crate(ExternCrate::C2RustAsmCasts);
 
                         let (output_name, inner_name) = operand_renames
                             .get(&tied_operand)

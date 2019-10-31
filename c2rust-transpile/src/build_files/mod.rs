@@ -16,6 +16,7 @@ use super::compile_cmds::LinkCmd;
 use crate::CrateSet;
 use crate::PragmaSet;
 use crate::get_module_name;
+use crate::ExternCrateDetails;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -183,6 +184,10 @@ fn convert_module_list(
     res
 }
 
+fn convert_dependencies_list(crates: CrateSet) -> Vec<ExternCrateDetails> {
+    crates.into_iter().map(|dep| dep.into()).collect()
+}
+
 fn get_lib_rs_file_name(tcfg: &TranspilerConfig) -> &str {
     if tcfg.output_dir.is_some() {
         "lib.rs"
@@ -224,6 +229,7 @@ fn emit_lib_rs(
         .join(", ");
 
     let modules = convert_module_list(tcfg, build_dir, modules, ModuleSubset::Libraries);
+    let crates = convert_dependencies_list(crates.clone());
     let file_name = get_lib_rs_file_name(tcfg);
     let rs_xcheck_backend = tcfg.cross_check_backend.replace("-", "_");
     let json = json!({
@@ -268,6 +274,7 @@ fn emit_cargo_toml<'lcmd>(
     });
     if let Some(ccfg) = crate_cfg {
         let binaries = convert_module_list(tcfg, build_dir, ccfg.modules.to_owned(), ModuleSubset::Binaries);
+        let dependencies = convert_dependencies_list(ccfg.crates.clone());
         let crate_json = json!({
             "crate_name": ccfg.crate_name,
             "crate_rust_name": ccfg.crate_name.replace('-', "_"),
@@ -277,10 +284,7 @@ fn emit_cargo_toml<'lcmd>(
             "binaries": binaries,
             "cross_checks": tcfg.cross_checks,
             "cross_check_backend": tcfg.cross_check_backend,
-            "c2rust_bitfields": ccfg.crates.contains("c2rust_bitfields"),
-            "c2rust_asm_casts": ccfg.crates.contains("c2rust_asm_casts"),
-            "f128": ccfg.crates.contains("f128"),
-            "num_traits": ccfg.crates.contains("num_traits"),
+            "dependencies": dependencies,
         });
         json.as_object_mut()
             .unwrap()

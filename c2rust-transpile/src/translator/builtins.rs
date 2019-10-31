@@ -72,7 +72,7 @@ impl<'c> Translation<'c> {
                 "NAN",
             ]))),
             "__builtin_nanl" => {
-                self.extern_crates.borrow_mut().insert("f128");
+                self.use_crate(ExternCrate::F128);
 
                 Ok(WithStmts::new_val(mk().path_expr(vec![
                     "f128",

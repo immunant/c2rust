@@ -148,7 +148,7 @@ class RustFileBuilder:
         buffer += '\n'
 
         for crate in self.extern_crates:
-            buffer += "extern crate {};\n".format(crate)
+            buffer += "#[macro_use] extern crate {};\n".format(crate)
 
         buffer += '\n'
 

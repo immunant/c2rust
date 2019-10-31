@@ -114,7 +114,7 @@ impl<'c> Translation<'c> {
                 };
                 let val = match self.ast_context.resolve_type(ty.ctype).kind {
                     CTypeKind::LongDouble => {
-                        self.extern_crates.borrow_mut().insert("f128");
+                        self.use_crate(ExternCrate::F128);
 
                         let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
                         let args = vec![mk().ident_expr(str)];

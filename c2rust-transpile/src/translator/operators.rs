@@ -196,7 +196,7 @@ impl<'c> Translation<'c> {
 
             // We can't simply as-cast into a non primitive like f128
             let lhs = if *resolved_computed_kind == CTypeKind::LongDouble {
-                self.extern_crates.borrow_mut().insert("f128");
+                self.use_crate(ExternCrate::F128);
 
                 let fn_path = mk().path_expr(vec!["f128", "f128", "from"]);
                 let args = vec![read];
@@ -783,7 +783,7 @@ impl<'c> Translation<'c> {
             // CTypeKind::Half |
             CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
             CTypeKind::LongDouble => {
-                self.extern_crates.borrow_mut().insert("f128");
+                self.use_crate(ExternCrate::F128);
 
                 let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
                 let args = vec![mk().ident_expr("1.")];
@@ -841,7 +841,7 @@ impl<'c> Translation<'c> {
                     // CTypeKind::Half |
                     CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
                     CTypeKind::LongDouble => {
-                        self.extern_crates.borrow_mut().insert("f128");
+                        self.use_crate(ExternCrate::F128);
 
                         let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
                         let args = vec![mk().ident_expr("1.")];

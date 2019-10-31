@@ -36,7 +36,7 @@ use crate::cfg;
 use crate::convert_type::TypeConverter;
 use crate::renamer::Renamer;
 use crate::with_stmts::WithStmts;
-use crate::TranspilerConfig;
+use crate::{ExternCrate, ExternCrateDetails, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
 
 mod assembly;
@@ -249,7 +249,7 @@ pub struct Translation<'c> {
     // Accumulated outputs
     pub features: RefCell<IndexSet<&'static str>>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
-    extern_crates: RefCell<IndexSet<&'static str>>,
+    extern_crates: RefCell<CrateSet>,
 
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
@@ -515,11 +515,7 @@ pub fn translate(
         t.use_feature("custom_attribute");
     }
 
-    if tcfg.emit_no_std {
-        t.extern_crates.borrow_mut().insert("core");
-    }
-
-    t.extern_crates.borrow_mut().insert("libc");
+    t.use_crate(ExternCrate::Libc);
 
     // Sort the top-level declarations by file and source location so that we
     // preserve the ordering of all declarations in each file.
@@ -948,8 +944,11 @@ fn make_submodule(
 /// Pretty-print the leading pragmas and extern crate declarations
 fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
     if t.tcfg.emit_modules && !is_binary {
-        for crate_name in t.extern_crates.borrow().iter() {
-            s.print_item(&mk().use_simple_item(vec![*crate_name], None as Option<Ident>));
+        for c in t.extern_crates.borrow().iter() {
+            s.print_item(&mk().use_simple_item(
+                vec![String::new(), ExternCrateDetails::from(*c).ident],
+                None as Option<Ident>,
+            ));
         }
     } else {
         let pragmas = t.get_pragmas();
@@ -990,32 +989,39 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
             s.print_attribute(&mk().single_attr("no_std").as_inner_attrs()[0]);
         }
 
-        // Add `extern crate X;` to the top of the file
-        // for crate_name in t.extern_crates.borrow().iter() {
-        //     s.print_item(&mk().extern_crate_item(*crate_name, None));
-        // }
-
-        if t.tcfg.cross_checks {
-            s.print_item(
-                &mk()
-                    .single_attr("macro_use")
-                    .extern_crate_item("c2rust_xcheck_derive", None),
-            );
-            s.print_item(
-                &mk()
-                    .single_attr("macro_use")
-                    .extern_crate_item("c2rust_xcheck_runtime", None),
-            );
-            // When cross-checking, always use the system allocator
-            let sys_alloc_path = vec!["", "std", "alloc", "System"];
-            s.print_item(&mk().single_attr("global_allocator").static_item(
-                "C2RUST_ALLOC",
-                mk().path_ty(sys_alloc_path.clone()),
-                mk().path_expr(sys_alloc_path),
-            ));
-        }
-
         if is_binary {
+            // Add `extern crate X;` to the top of the file
+            for extern_crate in t.extern_crates.borrow().iter() {
+                let extern_crate = ExternCrateDetails::from(*extern_crate);
+                if extern_crate.macro_use {
+                    s.print_item(
+                        &mk()
+                            .single_attr("macro_use")
+                            .extern_crate_item(extern_crate.ident.clone(), None),
+                    );
+                }
+            }
+
+            if t.tcfg.cross_checks {
+                s.print_item(
+                    &mk()
+                        .single_attr("macro_use")
+                        .extern_crate_item("c2rust_xcheck_derive", None),
+                );
+                s.print_item(
+                    &mk()
+                        .single_attr("macro_use")
+                        .extern_crate_item("c2rust_xcheck_runtime", None),
+                );
+                // When cross-checking, always use the system allocator
+                let sys_alloc_path = vec!["", "std", "alloc", "System"];
+                s.print_item(&mk().single_attr("global_allocator").static_item(
+                    "C2RUST_ALLOC",
+                    mk().path_ty(sys_alloc_path.clone()),
+                    mk().path_expr(sys_alloc_path),
+                ));
+            }
+
             s.print_item(&mk().use_glob_item(vec![&t.tcfg.crate_name()]));
         }
     }
@@ -1122,6 +1128,10 @@ impl<'c> Translation<'c> {
             extern_crates: RefCell::new(IndexSet::new()),
             cur_file: RefCell::new(None),
         }
+    }
+
+    fn use_crate(&self, extern_crate: ExternCrate) {
+        self.extern_crates.borrow_mut().insert(extern_crate);
     }
 
     pub fn cur_file(&self) -> FileId {
@@ -1498,10 +1508,7 @@ impl<'c> Translation<'c> {
                     });
                 if has_bitfields {
                     derives.push("BitfieldStruct");
-                    self.extern_crates.borrow_mut().insert("c2rust_bitfields");
-
-                    let item_store = &mut self.items.borrow_mut()[&self.main_file];
-                    item_store.add_use(vec!["c2rust_bitfields".into()], "BitfieldStruct");
+                    self.use_crate(ExternCrate::C2RustBitfields);
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
@@ -3172,8 +3179,7 @@ impl<'c> Translation<'c> {
                     Ok(WithStmts::new_val(self.mk_int_lit(ty, *val, IntBase::Dec)?))
                 }
                 OffsetOfKind::Variable(qty, field_id, expr_id) => {
-                    self.extern_crates.borrow_mut().insert("memoffset");
-                    self.items.borrow_mut()[&self.main_file].add_use(vec!["memoffset".into()], "offset_of");
+                    self.use_crate(ExternCrate::Memoffset);
 
                     // Struct Type
                     let decl_id = {
@@ -3953,7 +3959,7 @@ impl<'c> Translation<'c> {
 
                 let source_ty = self.convert_type(source_ty_ctype_id)?;
                 if let CTypeKind::LongDouble = target_ty_ctype {
-                    self.extern_crates.borrow_mut().insert("f128");
+                    self.use_crate(ExternCrate::F128);
 
                     let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
                     Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
@@ -4113,8 +4119,7 @@ impl<'c> Translation<'c> {
         val: WithStmts<P<Expr>>,
         target_ty_ctype: &CTypeKind,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        self.extern_crates.borrow_mut().insert("num_traits");
-        self.items.borrow_mut()[&self.main_file].add_use(vec!["num_traits".into()], "ToPrimitive");
+        self.use_crate(ExternCrate::NumTraits);
 
         let to_method_name = match target_ty_ctype {
             CTypeKind::Float => "to_f32",
