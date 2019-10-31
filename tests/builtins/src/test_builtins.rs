@@ -3,8 +3,8 @@ extern crate libc;
 
 use atomics::{rust_atomics_entry, rust_new_atomics};
 use mem_x_fns::rust_mem_x;
-use math::{rust_ffs, rust_ffsl, rust_ffsll};
-use self::libc::{c_int, c_uint, c_char, c_long, c_longlong};
+use math::{rust_ffs, rust_ffsl, rust_ffsll, rust_isfinite, rust_isnan, rust_isinf_sign};
+use self::libc::{c_int, c_uint, c_char, c_long, c_longlong, c_double};
 
 #[link(name = "test")]
 extern "C" {
@@ -20,6 +20,12 @@ extern "C" {
     fn ffsl(_: c_long) -> c_int;
     #[no_mangle]
     fn ffsll(_: c_longlong) -> c_int;
+    #[no_mangle]
+    fn isfinite(_: c_double) -> c_int;
+    #[no_mangle]
+    fn isnan(_: c_double) -> c_int;
+    #[no_mangle]
+    fn isinf_sign(_: c_double) -> c_int;
 }
 
 const BUFFER_SIZE: usize = 1024;
@@ -98,5 +104,53 @@ pub fn test_ffs() {
         };
 
         assert_eq!(ffsll_ret, rust_ffsll_ret);
+    }
+}
+
+pub fn test_clang9_intrinsics() {
+    let pinf = 1.0/0.0;
+    let ninf = -1.0/0.0;
+    let fin = 1.0;
+
+    // isfinite
+    for i in &[pinf, fin] {
+        let isfinite_ret = unsafe {
+            isfinite(*i)
+        };
+
+        let rust_isfinite_ret = unsafe {
+            rust_isfinite(*i)
+        };
+
+        assert_eq!(isfinite_ret, rust_isfinite_ret);
+    }
+
+    // isnan
+    let nan = 0.0/0.0;
+    let an = 1.0;
+
+    for i in &[nan, an] {
+        let isnan_ret = unsafe {
+            isnan(*i)
+        };
+
+        let rust_isnan_ret = unsafe {
+            rust_isnan(*i)
+        };
+
+        assert_eq!(isnan_ret, rust_isnan_ret);
+    }
+
+    // isinf_sign
+    for i in &[pinf, ninf, fin] {
+        let isinf_sign_ret = unsafe {
+            isinf_sign(*i)
+        };
+
+        let rust_isinf_sign_ret = unsafe {
+            rust_isinf_sign(*i)
+        };
+
+        assert_eq!(isinf_sign_ret, rust_isinf_sign_ret);
     }
 }

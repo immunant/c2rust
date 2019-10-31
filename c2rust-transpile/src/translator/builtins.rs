@@ -133,6 +133,34 @@ impl<'c> Translation<'c> {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![] as Vec<P<Expr>>)))
             }
+            "__builtin_isfinite" | "__builtin_isnan" => {
+                let val = self.convert_expr(ctx.used(), args[0])?;
+
+                let seg = match builtin_name {
+                    "__builtin_isfinite" => "is_finite",
+                    "__builtin_isnan" => "is_nan",
+                    _ => panic!(),
+                };
+                Ok(val.map(|x| {
+                    let call = mk().method_call_expr(x, seg, vec![] as Vec<P<Expr>>);
+                    mk().cast_expr(call, mk().path_ty(vec!["i32"]))
+                }))
+            }
+            "__builtin_isinf_sign" => {
+                // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
+                let val = self.convert_expr(ctx.used(), args[0])?;
+                Ok(val.map(|x| {
+                    let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![] as Vec<P<Expr>>);
+                    let one = mk().lit_expr(mk().int_lit(1, ""));
+                    let minus_one = mk().unary_expr(UnOp::Neg, mk().lit_expr(mk().int_lit(1, "")));
+                    let one_block = mk().block(vec![mk().expr_stmt(one)]);
+                    let inner_ifte = mk().ifte_expr(inner_cond, one_block, Some(minus_one));
+                    let zero = mk().lit_expr(mk().int_lit(0, ""));
+                    let outer_cond = mk().method_call_expr(x, "is_infinite", vec![] as Vec<P<Expr>>);
+                    let inner_ifte_block = mk().block(vec![mk().expr_stmt(inner_ifte)]);
+                    mk().ifte_expr(outer_cond, inner_ifte_block, Some(zero))
+                }))
+            }
             "__builtin_flt_rounds" => {
                 // LLVM simply lowers this to the constant one which means
                 // that floats are rounded to the nearest number.
