@@ -3,9 +3,9 @@ use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
 use crate::transform::Transform;
-use rustc::hir::{HirId, Node};
 use rustc::hir::def::{Namespace, PerNS};
 use rustc::hir::def_id::DefId;
+use rustc::hir::{HirId, Node};
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::attr::{self, HasAttrs};
@@ -14,14 +14,14 @@ use syntax::ptr::P;
 use syntax::symbol::{kw, Symbol};
 use syntax_pos::BytePos;
 
-use c2rust_ast_builder::mk;
-use c2rust_ast_printer::pprust::{foreign_item_to_string, item_to_string};
-use crate::ast_manip::util::{join_visibility, is_relative_path, namespace, split_uses};
-use crate::ast_manip::{AstEquiv, FlatMapNodes, visit_nodes};
+use crate::ast_manip::util::{is_relative_path, join_visibility, namespace, split_uses};
+use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes};
 use crate::command::{CommandState, Registry};
-use crate::driver::{Phase};
+use crate::driver::Phase;
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::RefactorCtxt;
+use c2rust_ast_builder::mk;
+use c2rust_ast_printer::pprust::{foreign_item_to_string, item_to_string};
 
 /// # `reoganize_definitions` Command
 ///
@@ -62,7 +62,7 @@ struct ModuleInfo {
     has_main: bool,
 
     /// Mapping from header ident to the line it was included into this module
-    header_lines: HashMap<Ident, usize>
+    header_lines: HashMap<Ident, usize>,
 }
 
 impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
@@ -97,12 +97,18 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     fn find_destination_modules(&mut self, krate: &Crate) {
         visit_nodes(krate, |i: &Item| {
             if let ItemKind::Mod(m) = &i.kind {
-                if !has_source_header(&i.attrs) && !is_std(&i.attrs) &&
-                    m.items.iter().any(|child| {
-                        if let ItemKind::Mod(_) = child.kind { false } else { true}
+                if !has_source_header(&i.attrs)
+                    && !is_std(&i.attrs)
+                    && m.items.iter().any(|child| {
+                        if let ItemKind::Mod(_) = child.kind {
+                            false
+                        } else {
+                            true
+                        }
                     })
                 {
-                    self.modules.insert(i.ident, ModuleInfo::from_item(i, self.cx));
+                    self.modules
+                        .insert(i.ident, ModuleInfo::from_item(i, self.cx));
                 }
             }
         });
@@ -116,26 +122,24 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         }
 
         // Try to find an existing module to put this item in
-        let dest_module = self
-            .modules
-            .values()
-            .find(|dest_module_info| {
-                if dest_module_info.has_main { return false; }
-                // TODO: This is a simple naive heuristic,
-                // and should be improved upon.
-                parent_module
-                    .ident
-                    .as_str()
-                    .contains(&*dest_module_info.ident.as_str())
-            });
+        let dest_module = self.modules.values().find(|dest_module_info| {
+            if dest_module_info.has_main {
+                return false;
+            }
+            // TODO: This is a simple naive heuristic,
+            // and should be improved upon.
+            parent_module
+                .ident
+                .as_str()
+                .contains(&*dest_module_info.ident.as_str())
+        });
         let dest_module = match dest_module {
             Some(m) => m,
             None => {
                 // We didn't find an existing module, just put it in a new module for
                 // that header.
                 let new_node_id = self.st.next_node_id();
-                self
-                    .modules
+                self.modules
                     .entry(parent_module.ident)
                     .or_insert_with(|| ModuleInfo::new(parent_module.ident, new_node_id))
             }
@@ -161,9 +165,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         let dest_module_info = &self.modules[&dest_module_ident];
 
                         // Move the item to the `module_items` mapping.
-                        let items = module_items
-                            .entry(dest_module_id)
-                            .or_insert_with(|| ModuleDefines::new(self.cx, dest_module_info.clone()));
+                        let items = module_items.entry(dest_module_id).or_insert_with(|| {
+                            ModuleDefines::new(self.cx, dest_module_info.clone())
+                        });
                         let header_info = HeaderInfo::new(header_item.ident, include_line);
                         let new_ident = match items.insert(item.clone(), Some(header_info)) {
                             // We moved the item, potentially renaming (if unnamed)
@@ -262,11 +266,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
         // Remove src_loc attributes
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
-            item.attrs.retain(|attr| !attr.check_name(Symbol::intern("src_loc")));
+            item.attrs
+                .retain(|attr| !attr.check_name(Symbol::intern("src_loc")));
             smallvec![item]
         });
         FlatMapNodes::visit(krate, |mut item: ForeignItem| {
-            item.attrs.retain(|attr| !attr.check_name(Symbol::intern("src_loc")));
+            item.attrs
+                .retain(|attr| !attr.check_name(Symbol::intern("src_loc")));
             smallvec![item]
         });
     }
@@ -298,7 +304,6 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
         mod_item
     }
-
 
     /// Update paths to moved items and remove redundant imports.
     fn update_paths(&self, krate: &mut Crate) {
@@ -381,7 +386,10 @@ struct HeaderInfo {
 
 impl HeaderInfo {
     fn new(ident: Ident, include_line: usize) -> Self {
-        Self { ident, include_line }
+        Self {
+            ident,
+            include_line,
+        }
     }
 }
 
@@ -390,10 +398,7 @@ impl ModuleInfo {
         Self {
             ident,
             id,
-            path: vec![
-                mk().path_segment(kw::Crate),
-                mk().path_segment(ident.name),
-            ],
+            path: vec![mk().path_segment(kw::Crate), mk().path_segment(ident.name)],
             new: true,
             has_main: false,
             header_lines: HashMap::new(),
@@ -417,7 +422,10 @@ impl ModuleInfo {
                 ItemKind::Mod(..) => {
                     let (_path, line) = parse_source_header(&i.attrs).unwrap();
                     if header_lines.insert(i.ident, line).is_some() {
-                        panic!("Conflicting headers in the same module with name: {}", i.ident);
+                        panic!(
+                            "Conflicting headers in the same module with name: {}",
+                            i.ident
+                        );
                     }
                 }
                 _ => {}
@@ -443,11 +451,12 @@ struct MovedDecl {
 
 impl MovedDecl {
     fn new<T>(decl: T, parent_header: Option<HeaderInfo>) -> Self
-        where T: Into<DeclKind>
+    where
+        T: Into<DeclKind>,
     {
         let kind: DeclKind = decl.into();
-        let loc: Option<SrcLoc> = attr::find_by_name(kind.attrs(), Symbol::intern("src_loc"))
-            .map(|l| l.into());
+        let loc: Option<SrcLoc> =
+            attr::find_by_name(kind.attrs(), Symbol::intern("src_loc")).map(|l| l.into());
 
         Self {
             kind,
@@ -476,7 +485,7 @@ impl HasAttrs for DeclKind {
             DeclKind::Item(i) => i.visit_attrs(f),
             DeclKind::ForeignItem(i, _) => i.visit_attrs(f),
         }
-    }        
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -492,14 +501,15 @@ impl From<&Attribute> for SrcLoc {
             .expect("Expected a value for src_loc attribute")
             .as_str();
         let mut iter = value_str.split(':');
-        let line: usize = iter.next().and_then(|x| x.parse().ok())
+        let line: usize = iter
+            .next()
+            .and_then(|x| x.parse().ok())
             .expect("Expected a line number in src_loc attribute");
-        let col: usize = iter.next().and_then(|x| x.parse().ok())
+        let col: usize = iter
+            .next()
+            .and_then(|x| x.parse().ok())
             .expect("Expected an column number in src_loc attribute");
-        Self {
-            line,
-            col,
-        }
+        Self { line, col }
     }
 }
 
@@ -528,7 +538,11 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
 
     /// Add an item into the module. If it has a name conflict with an existing
     /// item, choose the definition item over any declarations.
-    pub fn insert(&mut self, item: P<Item>, parent_header: Option<HeaderInfo>) -> Result<Option<Ident>, String> {
+    pub fn insert(
+        &mut self,
+        item: P<Item>,
+        parent_header: Option<HeaderInfo>,
+    ) -> Result<Option<Ident>, String> {
         match &item.kind {
             // We have to disambiguate anonymous items by contents,
             // since we don't have a proper Ident.
@@ -540,7 +554,9 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                     let use_tree = expect!([&u.kind] ItemKind::Use(u) => u);
                     let path = self.cx.resolve_use_id(u.id);
                     let ns = namespace(&path.res).expect("Could not identify def namespace");
-                    if let Err(e) = self.insert_ident(ns, use_tree.ident(), u, parent_header.clone()) {
+                    if let Err(e) =
+                        self.insert_ident(ns, use_tree.ident(), u, parent_header.clone())
+                    {
                         return Err(e);
                     }
                     if let Some(def_id) = self.cx.hir_map().as_local_hir_id(path.res.def_id()) {
@@ -564,9 +580,9 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
             // We collect all ForeignItems and later filter out any idents
             // defined in ident_map after processing the whole list of items.
             ItemKind::ForeignMod(f) => {
-                f.items
-                    .iter()
-                    .for_each(|item| self.insert_foreign(item.clone(), f.abi, parent_header.clone()));
+                f.items.iter().for_each(|item| {
+                    self.insert_foreign(item.clone(), f.abi, parent_header.clone())
+                });
                 Ok(None)
             }
 
@@ -615,7 +631,9 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
             for existing_decl in self.unnamed_items[ns].iter_mut() {
                 match &existing_decl.kind {
                     DeclKind::Item(existing_item) => match &existing_item.kind {
-                        ItemKind::TyAlias(..) | ItemKind::Struct(..) | ItemKind::Union(..)
+                        ItemKind::TyAlias(..)
+                        | ItemKind::Struct(..)
+                        | ItemKind::Union(..)
                         | ItemKind::Enum(..) => {
                             // Does the new item match the existing item, except
                             // for unnamed names?
@@ -631,7 +649,8 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                                 // This item is equivalent to an existing foreign item,
                                 // modulo visibility.
                                 let existing_ident = existing_foreign.ident.clone();
-                                new.vis.node = join_visibility(&existing_foreign.vis.node, &new.vis.node);
+                                new.vis.node =
+                                    join_visibility(&existing_foreign.vis.node, &new.vis.node);
                                 *existing_decl = MovedDecl::new(new, parent_header);
                                 return Ok(existing_ident);
                             }
@@ -688,7 +707,8 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         // not replace it.
                         let path = self.cx.resolve_use_id(new.id);
                         if let Some(did) = path.res.opt_def_id() {
-                            if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
+                            if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did)
+                            {
                                 existing_foreign.vis.node =
                                     join_visibility(&existing_foreign.vis.node, &new.vis.node);
                                 return Ok(ident);
@@ -747,7 +767,8 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                         // attempting to insert.
                         let path = self.cx.resolve_use_id(existing_item.id);
                         if let Some(did) = path.res.opt_def_id() {
-                            if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did) {
+                            if let Some(Node::ForeignItem(_)) = self.cx.hir_map().get_if_local(did)
+                            {
                                 *existing_decl = MovedDecl::new((new, abi), parent_header);
                                 return;
                             }
@@ -831,36 +852,34 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
         // their line number in that header. Items not in any header are sorted
         // by their line number in the source file. Items without a src_loc
         // (newly inserted items) are sorted before items with src_locs.
-        all_items.sort_by(|a, b| {
-            match (&a.parent_header, &b.parent_header) {
-                (Some(header_a), Some(header_b)) => {
-                    if header_a.ident == header_b.ident {
-                        header_a.include_line.cmp(&header_b.include_line)
+        all_items.sort_by(|a, b| match (&a.parent_header, &b.parent_header) {
+            (Some(header_a), Some(header_b)) => {
+                if header_a.ident == header_b.ident {
+                    header_a.include_line.cmp(&header_b.include_line)
+                } else {
+                    let line_a = info.header_lines.get(&header_a.ident).unwrap_or(&0);
+                    let line_b = info.header_lines.get(&header_b.ident).unwrap_or(&0);
+                    if line_a == line_b {
+                        header_a.ident.as_str().cmp(&header_b.ident.as_str())
                     } else {
-                        let line_a = info.header_lines.get(&header_a.ident).unwrap_or(&0);
-                        let line_b = info.header_lines.get(&header_b.ident).unwrap_or(&0);
-                        if line_a == line_b {
-                            header_a.ident.as_str().cmp(&header_b.ident.as_str())
-                        } else {
-                            line_a.cmp(line_b)
-                        }
+                        line_a.cmp(line_b)
                     }
                 }
-                (Some(header_a), None) => {
-                    let line_a = info.header_lines.get(&header_a.ident).unwrap_or(&0);
-                    let line_b = b.loc.as_ref().map_or(0, |l| l.line);
-                    line_a.cmp(&line_b)
-                }
-                (None, Some(header_b)) => {
-                    let line_a = a.loc.as_ref().map_or(0, |l| l.line);
-                    let line_b = info.header_lines.get(&header_b.ident).unwrap_or(&0);
-                    line_a.cmp(line_b)
-                }
-                _ => {
-                    let line_a = a.loc.as_ref().map_or(0, |l| l.line);
-                    let line_b = b.loc.as_ref().map_or(0, |l| l.line);
-                    line_a.cmp(&line_b)
-                }
+            }
+            (Some(header_a), None) => {
+                let line_a = info.header_lines.get(&header_a.ident).unwrap_or(&0);
+                let line_b = b.loc.as_ref().map_or(0, |l| l.line);
+                line_a.cmp(&line_b)
+            }
+            (None, Some(header_b)) => {
+                let line_a = a.loc.as_ref().map_or(0, |l| l.line);
+                let line_b = info.header_lines.get(&header_b.ident).unwrap_or(&0);
+                line_a.cmp(line_b)
+            }
+            _ => {
+                let line_a = a.loc.as_ref().map_or(0, |l| l.line);
+                let line_b = b.loc.as_ref().map_or(0, |l| l.line);
+                line_a.cmp(&line_b)
             }
         });
 
@@ -880,7 +899,10 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                 }
                 DeclKind::ForeignItem(fi, abi) => {
                     if last_foreign_item_mod != cur_mod_name && cur_mod_name.is_some() {
-                        st.add_comment(fi.id, make_header_comment(last_foreign_item_mod, cur_mod_name));
+                        st.add_comment(
+                            fi.id,
+                            make_header_comment(last_foreign_item_mod, cur_mod_name),
+                        );
                         last_foreign_item_mod = cur_mod_name;
                     }
                     foreign_items.entry(abi).or_default().push(fi);
@@ -943,17 +965,21 @@ fn has_source_header(attrs: &Vec<Attribute>) -> bool {
 
 /// Check if the `Item` has the `#[header_src = "/some/path"]` attribute
 fn parse_source_header(attrs: &Vec<Attribute>) -> Option<(String, usize)> {
-    attr::find_by_name(attrs, Symbol::intern("header_src"))
-        .map(|attr| {
-            let value_str = attr.value_str()
-                .expect("Expected a value for header_src attribute")
-                .as_str();
-            let mut iter = value_str.split(':');
-            let path = iter.next().expect("Expected a path in header_src attribute");
-            let line: usize = iter.next().and_then(|line| line.parse().ok())
-                .expect("Expected an include line number in header_src attribute");
-            (path.to_string(), line)
-        })
+    attr::find_by_name(attrs, Symbol::intern("header_src")).map(|attr| {
+        let value_str = attr
+            .value_str()
+            .expect("Expected a value for header_src attribute")
+            .as_str();
+        let mut iter = value_str.split(':');
+        let path = iter
+            .next()
+            .expect("Expected a path in header_src attribute");
+        let line: usize = iter
+            .next()
+            .and_then(|line| line.parse().ok())
+            .expect("Expected an include line number in header_src attribute");
+        (path.to_string(), line)
+    })
 }
 
 /// A complementary check to `has_source_header`. Checks if the header source
