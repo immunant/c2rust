@@ -794,9 +794,14 @@ function Visitor:rewrite_call_expr(expr)
     local segments = path and path:get_segments()
 
     -- In case free is called from another module check the last segment
-    if segments and segments[#segments] == "free" and first_param_expr:get_kind() == "Cast" then
+    if segments and segments[#segments] == "free" then
+        local uncasted_expr = first_param_expr
+
         -- REVIEW: What if there's a multi-layered cast?
-        local uncasted_expr = first_param_expr:get_exprs()[1]
+        if first_param_expr:get_kind() == "Cast" then
+            uncasted_expr = first_param_expr:get_exprs()[1]
+        end
+
         local cast_ty = first_param_expr:get_ty()
         local cfg = self:get_expr_cfg(uncasted_expr)
 
