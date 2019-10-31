@@ -132,7 +132,7 @@ class Test(object):
         self.ensure_submodule_checkout()
 
         stages = Test.STAGES.keys()
-        if len(conf.stages) > 0:
+        if conf.stages:
             # Check that all stages are valid
             for stage in conf.stages:
                 if stage not in Test.STAGES:
