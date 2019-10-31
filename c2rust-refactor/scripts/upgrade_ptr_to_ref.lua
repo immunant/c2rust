@@ -872,7 +872,7 @@ function Visitor:rewrite_call_expr(expr)
                         param_expr:to_addr_of(path_expr, true)
                     end
 
-                    if param_cfg:is_opt_any() and not fn.is_foreign then
+                    if param_cfg:is_opt_any() then
                         local some_path_expr = self.tctx:ident_path_expr("Some")
                         param_expr:to_call{some_path_expr, param_expr}
                     end
@@ -887,7 +887,7 @@ function Visitor:rewrite_call_expr(expr)
                     param_expr:to_ident_path("None")
                     goto continue
                 -- &T -> Some(&T)
-                elseif param_kind == "AddrOf" and not fn.is_foreign then
+                elseif param_kind == "AddrOf" then
                     local some_path_expr = self.tctx:ident_path_expr("Some")
                     param_expr:to_call{some_path_expr, param_expr}
 
@@ -897,7 +897,7 @@ function Visitor:rewrite_call_expr(expr)
 
                     if path_cfg then
                         -- path -> Some(path)
-                        if not path_cfg:is_opt_any() and not fn.is_foreign then
+                        if not path_cfg:is_opt_any() then
                             local some_path_expr = self.tctx:ident_path_expr("Some")
                             param_expr:to_call{some_path_expr, param_expr}
                             goto continue
@@ -937,16 +937,17 @@ function Visitor:rewrite_call_expr(expr)
                         return expr
                     end
 
-                    local cfg = self:get_expr_cfg(expr)
+                    local path_cfg = self:get_expr_cfg(expr)
 
-                    if not cfg then
+                    if not path_cfg then
                         return expr
                     end
 
-                    if fn.is_foreign then
-                        expr = decay_ref_to_ptr(expr, cfg)
-                    else
-                        -- TODO: Conversion to converted signatures
+                    -- If we have a config for this path expr, we assume it has been rewritten
+                    -- and if we don't have a config for the param itself, we assume it has not
+                    -- been rewritten, meaning we must decay it
+                    if not param_cfg then
+                        expr = decay_ref_to_ptr(expr, path_cfg)
                     end
 
                     return expr
@@ -1355,6 +1356,11 @@ function ConfigBuilder:flat_map_param(param)
     local param_ty = param:get_ty()
     local param_ty_id = param_ty:get_id()
     local marks = self.marks[param_ty_id] or {}
+
+    -- Skip over params likely from extern fns
+    if param:get_pat():get_kind() == "Wild" then
+        return {param}
+    end
 
     -- Skip over pointers to void
     if is_void_ptr(param_ty) then
