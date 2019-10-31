@@ -28,7 +28,7 @@ class Test(object):
 
     def run_script(self, stage, script, verbose=False, xfail=False) -> bool:
         """
-        Returns true iff subsequent tests should run
+        Returns true iff subsequent test stages should run
         """
 
         def print_log_tail_on_fail(script_path):
@@ -56,6 +56,8 @@ class Test(object):
                 script=relpath)
             print(line, end="", flush=True)
 
+        success = False
+
         # noinspection PyBroadException
         try:
             os.chdir(self.dir)
@@ -71,7 +73,7 @@ class Test(object):
                 color = Colors.WARNING if xfail else Colors.OKGREEN
                 msg = "OK_XFAIL" if xfail else "OK"
                 print(f"{fill} {color}{msg}{Colors.NO_COLOR}")
-            return True
+            success = True
         except KeyboardInterrupt:
             if not verbose:
                 print(": {color}INTERRUPT{nocolor}".format(
@@ -89,12 +91,9 @@ class Test(object):
                     nocolor=Colors.NO_COLOR)
                 )
                 print_log_tail_on_fail(script_path)
-            if not xfail:
-                exit(1)
-            else:
-                return False
         finally:
             os.chdir(prev_dir)
+            return success
 
     def ensure_submodule_checkout(self):
         # make sure the `repo` directory exists and is not empty
@@ -129,6 +128,10 @@ class Test(object):
         return xfail
 
     def __call__(self, conf: Config):
+        """Returns true if test was successful or expected to fail, false on unexpected
+        failure
+        """
+
         self.ensure_submodule_checkout()
 
         stages = Test.STAGES.keys()
@@ -150,8 +153,9 @@ class Test(object):
                     xfail = self.is_stage_xfail(stage, script, conf)
                     cont = self.run_script(stage, script, conf.verbose, xfail)
                     if not cont:
-                        return  # XFAIL
+                        return xfail
                     break  # found script for stage; skip alternatives
+        return True
 
 
 def run_tests(conf):
@@ -160,5 +164,9 @@ def run_tests(conf):
 
     tests = [Test(td) for td in conf.project_dirs]
 
+    failure = False
     for tt in tests:
-        tt(conf)
+        failure |= not tt(conf)
+
+    if failure:
+        exit(1)
