@@ -5,6 +5,7 @@ use rustc::hir::def_id::DefId;
 use rustc::hir::map as hir_map;
 use rustc::hir::{self, Node, HirId};
 use rustc::session::Session;
+use rustc::session::config::CrateType;
 use rustc::ty::subst::InternalSubsts;
 use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_metadata::cstore::CStore;
@@ -546,6 +547,11 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
             _ => false,
         }
+    }
+
+    /// Are we refactoring an executable crate?
+    pub fn is_executable(&self) -> bool {
+        self.sess.crate_types.borrow().contains(&CrateType::Executable)
     }
 }
 

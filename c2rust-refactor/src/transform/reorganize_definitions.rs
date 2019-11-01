@@ -67,16 +67,10 @@ struct ModuleInfo {
 
 impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     fn new(st: &'a CommandState, cx: &'a RefactorCtxt<'a, 'tcx>) -> Self {
-        let mut modules = HashMap::new();
-        let stdlib_ident = Ident::from_str("stdlib");
-        modules.insert(
-            stdlib_ident,
-            ModuleInfo::new(stdlib_ident, st.next_node_id()),
-        );
         Reorganizer {
             st,
             cx,
-            modules,
+            modules: HashMap::new(),
             path_mapping: HashMap::new(),
         }
     }
@@ -112,6 +106,11 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 }
             }
         });
+
+        // Create a new module for standard library headers
+        let stdlib_ident = Ident::from_str("stdlib");
+        self.modules.entry(stdlib_ident)
+            .or_insert(ModuleInfo::new(stdlib_ident, self.st.next_node_id()));
     }
 
     /// Pick a destination module for a header item
@@ -236,18 +235,22 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         });
 
         let mut need_pub_defs = HashSet::<HirId>::new();
+        // Put new modules for executables inline, because we can't really put
+        // them into the source tree where the library sources are since they
+        // will conflict.
+        let inline = self.cx.is_executable();
         for mod_info in self.modules.values() {
             if mod_info.new {
                 if let Some(new_defines) = module_items.remove(&mod_info.id) {
                     need_pub_defs.extend(&new_defines.imports);
                     let new_items = new_defines.into_items(self.st);
                     let mut new_mod = mk().mod_(new_items);
-                    new_mod.inline = false;
+                    new_mod.inline = inline;
                     let new_mod_item = mk()
                         .pub_()
                         .id(mod_info.id)
                         .mod_item(mod_info.ident, new_mod);
-                    krate.module.items.push(new_mod_item);
+                    krate.module.items.insert(0, new_mod_item);
                 }
             }
         }
