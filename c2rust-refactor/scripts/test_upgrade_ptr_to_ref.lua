@@ -35,40 +35,40 @@ node_id_cfgs = {
     [422] = ConvConfig.new{"ref"},
     [428] = ConvConfig.new{"opt_box"},
     -- HTab
-    [528] = ConvConfig.new{"opt_box_slice"},
+    [1758] = ConvConfig.new{"opt_box_slice"},
     -- HashHDR
-    [539] = ConvConfig.new{"array"},
-    [548] = ConvConfig.new{"array"},
+    [1830] = ConvConfig.new{"array"},
+    [1839] = ConvConfig.new{"array"},
     -- bm
-    [555] = ConvConfig.new{"ref"},
-    [579] = ConvConfig.new{"box_slice"},
+    [536] = ConvConfig.new{"ref"},
+    [560] = ConvConfig.new{"box_slice", mutability="mut"},
     -- byteswap
-    [789] = ConvConfig.new{"ref"},
-    [794] = ConvConfig.new{"ref"},
-    [1909] = ConvConfig.new{"byteswap", 810, 828},
-    [1910] = ConvConfig.new{"del"},
-    [1911] = ConvConfig.new{"del"},
-    [1912] = ConvConfig.new{"del"},
-    [1901] = ConvConfig.new{"del"},
-    [1902] = ConvConfig.new{"byteswap", 1034, 1062},
-    [1903] = ConvConfig.new{"del"},
-    [1904] = ConvConfig.new{"del"},
-    [1905] = ConvConfig.new{"del"},
-    [1906] = ConvConfig.new{"byteswap", 1262, 1290},
+    [768] = ConvConfig.new{"ref"},
+    [773] = ConvConfig.new{"ref"},
+    [2064] = ConvConfig.new{"byteswap", 789, 807},
+    [2065] = ConvConfig.new{"del"},
+    [2066] = ConvConfig.new{"del"},
+    [2067] = ConvConfig.new{"del"},
+    [2056] = ConvConfig.new{"del"},
+    [2057] = ConvConfig.new{"byteswap", 1013, 1041},
+    [2058] = ConvConfig.new{"del"},
+    [2059] = ConvConfig.new{"del"},
+    [2060] = ConvConfig.new{"del"},
+    [2061] = ConvConfig.new{"byteswap", 1241, 1269},
     -- byteswap2
-    [1311] = ConvConfig.new{"ref"},
-    [1317] = ConvConfig.new{"box"}, -- FIXME: not a box
-    [1917] = ConvConfig.new{"del"},
-    [1918] = ConvConfig.new{"del"},
-    [1919] = ConvConfig.new{"del"},
-    [1920] = ConvConfig.new{"byteswap", 1420, 1420},
-    [1921] = ConvConfig.new{"del"},
+    [1290] = ConvConfig.new{"ref"},
+    [1296] = ConvConfig.new{"box"}, -- FIXME: not a box
+    [2072] = ConvConfig.new{"del"},
+    [2073] = ConvConfig.new{"del"},
+    [2074] = ConvConfig.new{"del"},
+    [2075] = ConvConfig.new{"byteswap", 1399, 1399},
+    [2076] = ConvConfig.new{"del"},
     -- _category, Category, categories, bisearch_cat
-    [1536] = ConvConfig.new{"slice"},
+    [1515] = ConvConfig.new{"slice"},
     -- opt_params
-    [1729] = ConvConfig.new{"opt_ref", mutability="mut"},
-    [1734] = ConvConfig.new{"opt_ref", mutability="immut"},
-    [1739] = ConvConfig.new{"opt_slice"},
+    [1708] = ConvConfig.new{"opt_ref", mutability="mut"},
+    [1713] = ConvConfig.new{"opt_ref", mutability="immut"},
+    [1718] = ConvConfig.new{"opt_slice"},
 }
 
 run_ptr_upgrades(node_id_cfgs)

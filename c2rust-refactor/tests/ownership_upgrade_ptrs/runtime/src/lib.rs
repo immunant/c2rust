@@ -1,4 +1,4 @@
-#![feature(ptr_wrapping_offset_from, custom_attribute)]
+#![feature(ptr_wrapping_offset_from, custom_attribute, c_variadic)]
 
 #[allow(unused_attributes, dead_code, unused_mut, non_upper_case_globals, unused_assignments, non_camel_case_types)]
 #[path = "../../old.rs"]

@@ -133,6 +133,50 @@ pub(crate) unsafe extern "C" fn __ibitmap(
     return 0i32;
 }
 
+pub(crate) unsafe extern "C" fn __ibitmap2(
+    mut hashp: Option<&mut HTAB>,
+    pnum: libc::c_int,
+    nbits: libc::c_int,
+    ndx: libc::c_int,
+) -> libc::c_int {
+    #[slice]
+    let mut ip = None;
+    let mut clearbytes: libc::c_int = 0;
+    let mut clearints: libc::c_int = 0;
+    ip = Some(
+        vec![
+            0;
+            hashp.as_mut().unwrap().hdr.bsize as libc::c_ulong as usize
+                / ::core::mem::size_of::<libc::c_uint>()
+        ]
+        .into_boxed_slice(),
+    );
+    if ip.is_none() {
+        return 1i32;
+    }
+    (hashp.as_mut().unwrap()).nmaps += 1;
+    clearints = (nbits - 1i32 >> 5i32) + 1i32;
+    clearbytes = clearints << 2i32;
+    memset(
+        ip.as_mut().unwrap().as_mut_ptr() as *mut libc::c_char as *mut libc::c_void,
+        0i32,
+        clearbytes as libc::c_ulong,
+    );
+    memset(
+        (ip.as_mut().unwrap().as_mut_ptr() as *mut libc::c_char).offset(clearbytes as isize)
+             as *mut libc::c_void,
+        0xffi32,
+        ((hashp.as_mut().unwrap()).hdr.bsize - clearbytes) as libc::c_ulong,
+    );
+    ip.as_mut().unwrap()[(clearints - 1i32) as usize] =
+        0xffffffffu32 << (nbits & (1i32 << 5i32) - 1i32);
+    let ref mut fresh2 = ip.as_mut().unwrap()[(0i32 / 32i32) as usize];
+    *fresh2 |= (1i32 << 0i32 % 32i32) as libc::c_uint;
+    (hashp.as_mut().unwrap()).hdr.bitmaps[ndx as usize] = pnum as libc::c_ushort;
+    (hashp.as_mut().unwrap()).mapp[ndx as usize] = ip;
+    return 0i32;
+}
+
 unsafe fn move_ptr(mut ptr: Option<Box<u32>>) {
     ptr.take();
 }
@@ -719,7 +763,6 @@ unsafe extern "C" fn eshdn8(mut x: Option<&mut [libc::c_ushort]>) {
     }
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn __vsprintf_chk(
     mut buf: Option<Box<libc::c_char>>,
     mut flags: libc::c_int,

@@ -128,19 +128,26 @@ unsafe fn init_opt_item2(hi: *mut HeapItem) {
     (*hi).opt_item = ptr;
 }
 
-use libc::{int32_t, memset, uint16_t, uint32_t};
+use libc::{int32_t, uint16_t, uint32_t};
 
+#[derive(Copy, Clone)]
 struct HTab {
     pub hdr: HashHDR,
     pub nmaps: libc::c_int,
     pub mapp: [*mut uint32_t; 32],
 }
 
+#[derive(Copy, Clone)]
 struct HashHDR {
     pub bsize: int32_t,
     pub bitmaps: [uint16_t; 32],
     pub magic: int32_t,
     pub spares: [int32_t; 32],
+}
+
+extern "C" {
+    #[no_mangle]
+    fn memset(_: *mut libc::c_void, _: libc::c_int, _: libc::c_ulong);
 }
 
 unsafe fn bm(
@@ -165,12 +172,12 @@ unsafe fn bm(
     memset(
         ip as *mut libc::c_char as *mut libc::c_void,
         0i32,
-        clearbytes as usize,
+        clearbytes as _,
     );
     memset(
         (ip as *mut libc::c_char).offset(clearbytes as isize) as *mut libc::c_void,
         0xffi32,
-        ((*hashp).hdr.bsize - clearbytes) as usize,
+        ((*hashp).hdr.bsize - clearbytes) as _,
     );
     *ip.offset((clearints - 1i32) as isize) = 0xffffffffu32 << (nbits & (1i32 << 5i32) - 1i32);
     let ref mut fresh2 = *ip.offset((0i32 / 32i32) as isize);

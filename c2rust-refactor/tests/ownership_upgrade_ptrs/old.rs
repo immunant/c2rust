@@ -85,11 +85,38 @@ pub(crate) struct HTAB {
 }
 
 pub(crate) unsafe extern "C" fn __ibitmap(mut hashp: *mut HTAB,
-                                   pnum: libc::c_int,
-                                   nbits: libc::c_int,
-                                   ndx: libc::c_int) -> libc::c_int {
+                                           pnum: libc::c_int,
+                                           nbits: libc::c_int,
+                                           ndx: libc::c_int) -> libc::c_int {
     #[slice]
     #[nonnull]
+    let mut ip: *mut libc::c_uint = 0 as *mut libc::c_uint;
+    let mut clearbytes: libc::c_int = 0;
+    let mut clearints: libc::c_int = 0;
+    ip = malloc((*hashp).hdr.bsize as libc::c_ulong) as *mut libc::c_uint;
+    if ip.is_null() { return 1i32 }
+    (*hashp).nmaps += 1;
+    clearints = (nbits - 1i32 >> 5i32) + 1i32;
+    clearbytes = clearints << 2i32;
+    memset(ip as *mut libc::c_char as *mut libc::c_void, 0i32,
+           clearbytes as libc::c_ulong);
+    memset((ip as *mut libc::c_char).offset(clearbytes as isize) as
+               *mut libc::c_void, 0xffi32,
+           ((*hashp).hdr.bsize - clearbytes) as libc::c_ulong);
+    *ip.offset((clearints - 1i32) as isize) =
+        0xffffffffu32 << (nbits & (1i32 << 5i32) - 1i32);
+    let ref mut fresh2 = *ip.offset((0i32 / 32i32) as isize);
+    *fresh2 |= (1i32 << 0i32 % 32i32) as libc::c_uint;
+    (*hashp).hdr.bitmaps[ndx as usize] = pnum as libc::c_ushort;
+    (*hashp).mapp[ndx as usize] = ip;
+    return 0i32;
+}
+
+pub(crate) unsafe extern "C" fn __ibitmap2(mut hashp: *mut HTAB,
+                                           pnum: libc::c_int,
+                                           nbits: libc::c_int,
+                                           ndx: libc::c_int) -> libc::c_int {
+    #[slice]
     let mut ip: *mut libc::c_uint = 0 as *mut libc::c_uint;
     let mut clearbytes: libc::c_int = 0;
     let mut clearints: libc::c_int = 0;
@@ -608,7 +635,6 @@ unsafe extern "C" fn eshdn8(#[slice] mut x: *mut libc::c_ushort) {
     };
 }
 
-#[no_mangle]
 pub unsafe extern "C" fn __vsprintf_chk(mut buf: *mut libc::c_char,
                                         mut flags: libc::c_int,
                                         mut slen: size_t,

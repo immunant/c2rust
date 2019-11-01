@@ -308,27 +308,27 @@ function upgrade_ptr(ptr_ty, conversion_cfg)
     return pointee_ty
 end
 
-function Visitor:flat_map_param(arg)
-    local arg_id = arg:get_id()
-    local conversion_cfg = self.node_id_cfgs[arg_id]
+function Visitor:flat_map_param(param)
+    local param_id = param:get_id()
+    local conv_config = self.node_id_cfgs[param_id]
 
-    if conversion_cfg then
-        local arg_ty = arg:get_ty()
+    if not conv_config then return {param} end
 
-        if conversion_cfg.extra_data.binding then
-            arg:set_binding(conversion_cfg.extra_data.binding)
-        end
+    local param_ty = param:get_ty()
 
-        if arg_ty:get_kind() == "Ptr" then
-            local arg_pat_hrid = self.tctx:nodeid_to_hirid(arg:get_pat_id())
-
-            self:add_var(arg_pat_hrid, Variable.new(arg_id, "param"))
-
-            arg:set_ty(upgrade_ptr(arg_ty, conversion_cfg))
-        end
+    if conv_config.extra_data.binding then
+        param:set_binding(conv_config.extra_data.binding)
     end
 
-    return {arg}
+    if param_ty:get_kind() == "Ptr" then
+        local param_pat_hrid = self.tctx:nodeid_to_hirid(param:get_pat_id())
+
+        self:add_var(param_pat_hrid, Variable.new(param_id, "param"))
+
+        param:set_ty(upgrade_ptr(param_ty, conv_config))
+    end
+
+    return {param}
 end
 
 function Visitor:add_var(hirid, var)
@@ -489,8 +489,15 @@ end
 -- Extracts a raw pointer from a rewritten rust type
 function decay_ref_to_ptr(expr, cfg, for_struct_field)
     if cfg:is_opt_any() then
-        if cfg:is_mut() and not cfg:is_box_any() then
-            expr:to_method_call("as_mut", {expr})
+        if cfg:is_mut() then
+            -- The reasoning here is that for (boxed) slices you need as_mut to call
+            -- as_mut_ptr, but for non slices you can skip this since you can
+            -- get a reference directly to the data "&mut data" and decay that. This
+            -- might be possible with slices via 0-indexing but the intention
+            -- seems a little less clear than using the builtin "as_mut_ptr()"
+            if not (cfg:is_box_any() and not cfg:is_slice_any()) then
+                expr:to_method_call("as_mut", {expr})
+            end
         end
 
         expr:to_method_call("unwrap", {expr})
@@ -816,26 +823,6 @@ function Visitor:rewrite_call_expr(expr)
                 expr:to_call{path_expr, uncasted_expr}
             end
         end
-    -- ip as *mut c_void -> ip.as_mut_ptr() as *mut c_void
-    -- Though this should be expanded to support other exprs like
-    -- fields
-    elseif segments and segments[#segments] == "memset" then
-        first_param_expr:filtermap_subexprs(
-            function(expr_kind) return expr_kind == "Path" end,
-            function(expr)
-                local cfg = self:get_expr_cfg(expr)
-
-                if cfg and cfg:is_box_any() then
-                    expr:to_method_call("as_mut_ptr", {expr})
-                end
-
-                return expr
-            end
-        )
-
-        call_exprs[2] = first_param_expr
-
-        expr:set_exprs(call_exprs)
     -- Skip; handled elsewhere by local conversion
     elseif segments and segments[#segments] == "malloc" then
     -- Generic function call param conversions
