@@ -9,3 +9,5 @@ transpile:
   binary: fullbench # zstdcli
   cflags: -Qunused-arguments
 
+cargo:
+  autogen: true

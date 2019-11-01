@@ -8,3 +8,6 @@ requirements:
 transpile:
   autogen: true
   binary: lua
+
+cargo:
+  autogen: true
