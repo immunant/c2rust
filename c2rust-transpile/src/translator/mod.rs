@@ -241,6 +241,11 @@ impl FunContext {
     }
 }
 
+#[derive(Clone)]
+struct MacroExpansion {
+    ty: CTypeId,
+}
+
 pub struct Translation<'c> {
     // Translation environment
     pub ast_context: TypedAstContext,
@@ -257,7 +262,7 @@ pub struct Translation<'c> {
     zero_inits: RefCell<IndexMap<CDeclId, WithStmts<P<Expr>>>>,
     function_context: RefCell<FunContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
-    macro_types: RefCell<IndexMap<CDeclId, CTypeId>>,
+    macro_expansions: RefCell<IndexMap<CDeclId, Option<MacroExpansion>>>,
 
     // Comment support
     pub comment_context: CommentContext, // Incoming comments
@@ -1117,7 +1122,7 @@ impl<'c> Translation<'c> {
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FunContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
-            macro_types: RefCell::new(IndexMap::new()),
+            macro_expansions: RefCell::new(IndexMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             spans: HashMap::new(),
@@ -1963,7 +1968,10 @@ impl<'c> Translation<'c> {
 
                 match maybe_replacement {
                     Ok((replacement, ty)) => {
-                        self.macro_types.borrow_mut().insert(decl_id, ty);
+                        trace!("  to {:?}", replacement);
+
+                        let expansion = MacroExpansion {ty};
+                        self.macro_expansions.borrow_mut().insert(decl_id, Some(expansion));
                         let ty = self.convert_type(ty)?;
 
                         Ok(ConvertedDecl::Item(mk().span(s).pub_().const_item(
@@ -1973,6 +1981,7 @@ impl<'c> Translation<'c> {
                         )))
                     }
                     Err(e) => {
+                        self.macro_expansions.borrow_mut().insert(decl_id, None);
                         info!("Could not expand macro {}: {}", name, e);
                         Ok(ConvertedDecl::NoItem)
                     }
@@ -3688,10 +3697,24 @@ impl<'c> Translation<'c> {
                 trace!("  found macro expansion: {:?}", macro_id);
                 // Ensure that we've converted this macro and that it has a
                 // valid definition
-                if let ConvertedDecl::NoItem = self.convert_decl(ctx, *macro_id)? {
-                    return Ok(None);
-                }
-                let macro_ty = self.macro_types.borrow()[macro_id];
+                let expansion = self.macro_expansions.borrow().get(macro_id).cloned();
+                let macro_ty = match expansion {
+                    // expansion exists
+                    Some(Some(expansion)) => expansion.ty,
+
+                    // expansion wasn't possible
+                    Some(None) => return Ok(None),
+
+                    // We haven't tried to expand it yet
+                    None => {
+                        self.convert_decl(ctx, *macro_id)?;
+                        if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
+                            expansion.ty
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+                };
                 let rustname = self
                     .renamer
                     .borrow_mut()
@@ -4637,8 +4660,8 @@ impl<'c> Translation<'c> {
             } => self.import_type(typ, decl_file_id),
 
             CDeclKind::MacroObject { .. } => {
-                if let Some(macro_ty) = self.macro_types.borrow().get(&decl_id) {
-                    self.import_type(*macro_ty, decl_file_id)
+                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(&decl_id) {
+                    self.import_type(expansion.ty, decl_file_id)
                 }
             }
 
