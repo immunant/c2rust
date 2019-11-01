@@ -21,8 +21,8 @@ use crate::analysis::ownership::constraint::{ConstraintSet, Perm};
 use crate::command::{CommandState, Registry, DriverCommand};
 use crate::context::HirMap;
 use crate::driver::{Phase};
-use crate::type_map;
 use crate::RefactorCtxt;
+use crate::type_map;
 use c2rust_ast_builder::{mk, IntoSymbol};
 
 pub fn register_commands(reg: &mut Registry) {
@@ -271,7 +271,7 @@ fn parens(ts: Vec<TokenTree>) -> TokenTree {
     TokenTree::Delimited(
         DelimSpan::dummy(),
         DelimToken::Paren,
-        ts.into_iter().collect::<TokenStream>().into(),
+        ts.into_iter().collect::<TokenStream>(),
     )
 }
 
@@ -356,7 +356,7 @@ fn do_split_variants(st: &CommandState,
                 let mr = &ana.monos[&(vr.func_id, mono_idx)];
                 let mut fl = fl.clone();
 
-                if mr.suffix.len() > 0 {
+                if !mr.suffix.is_empty() {
                     fl.ident = mk().ident(format!("{}_{}", fl.ident.name, mr.suffix));
                 }
 
@@ -481,7 +481,7 @@ fn callee_new_name(cx: &RefactorCtxt,
         let base_name = cx.ty_ctxt().def_path(dest).data
            .last().unwrap().data.get_opt_name().unwrap();
         let suffix = &ana.monos[&(dest, dest_mono_idx)].suffix;
-        if suffix.len() > 0 {
+        if !suffix.is_empty() {
             format!("{}_{}", base_name, suffix)
         } else {
             format!("{}", base_name)
@@ -507,6 +507,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
     struct AnalysisTypeSource<'lty, 'tcx: 'lty> {
         ana: &'lty ownership::AnalysisResult<'lty, 'tcx>,
+        hir_map: HirMap<'lty, 'tcx>,
     }
 
     impl<'lty, 'tcx> type_map::TypeSource for AnalysisTypeSource<'lty, 'tcx> {
@@ -545,10 +546,27 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
                 ownership::FnSig {
                     inputs: lcx.relabel_slice(fr.sig.inputs, &mut f),
                     output: lcx.relabel(fr.sig.output, &mut f),
+                    is_variadic: fr.sig.is_variadic,
                 }
             };
 
             Some(sig)
+        }
+
+        fn pat_type(&mut self, p: &Pat) -> Option<Self::Type> {
+            let hir_id = self.hir_map.opt_node_to_hir_id(p.id)?;
+            let fn_def_id = self.hir_map.get_parent_did(hir_id);
+            let f = self.ana.funcs.get(&fn_def_id)?;
+            let local_var = f.locals.get(&p.span)?;
+
+            // VTy -> PTy
+            let mut map_fn = |opt_var: &Option<Var>| -> Option<ConcretePerm> {
+                opt_var.map(|var| f.local_assign.get(var).copied()).flatten()
+            };
+
+            let lcx = LabeledTyCtxt::new(self.ana.arena());
+
+            Some(lcx.relabel(local_var, &mut map_fn))
         }
 
         fn closure_sig(&mut self, _did: DefId) -> Option<Self::Signature> { None }
@@ -556,11 +574,12 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
     let source = AnalysisTypeSource {
         ana: &ana,
+        hir_map: cx.hir_map(),
     };
 
     let s_ref = "ref".into_symbol();
     let s_mut = "mut".into_symbol();
-    let s_box = "box".into_symbol();
+    let s_move = "move".into_symbol();
 
     type_map::map_types(&cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
         let p = match lty.label {
@@ -571,7 +590,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
         let label = match p {
             ConcretePerm::Read => s_ref,
             ConcretePerm::Write => s_mut,
-            ConcretePerm::Move => s_box,
+            ConcretePerm::Move => s_move,
         };
 
         st.add_mark(ast_ty.id, label);

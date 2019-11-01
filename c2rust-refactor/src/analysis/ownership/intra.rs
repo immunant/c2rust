@@ -6,6 +6,7 @@ use rustc::mir::*;
 use rustc::ty::{Ty, TyKind};
 use rustc_index::vec::IndexVec;
 use rustc_target::abi::VariantIdx;
+use syntax::source_map::{DUMMY_SP, Spanned};
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
@@ -59,7 +60,9 @@ pub struct IntraCtxt<'c, 'lty, 'a: 'lty, 'tcx: 'a> {
     stmt_idx: usize,
 
     cset: ConstraintSet<'lty>,
-    local_tys: IndexVec<Local, ITy<'lty, 'tcx>>,
+    /// A collection of local variable types. The pattern span will later
+    /// be used to map them in the marking phase
+    local_tys: IndexVec<Local, Spanned<ITy<'lty, 'tcx>>>,
     next_local_var: u32,
 
     /// List of function instantiation sites.
@@ -87,11 +90,11 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     ) -> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         let ilcx = LabeledTyCtxt::new(cx.arena);
         IntraCtxt {
-            cx: cx,
-            ilcx: ilcx,
+            cx,
+            ilcx,
 
-            def_id: def_id,
-            mir: mir,
+            def_id,
+            mir,
             bbid: START_BLOCK,
             stmt_idx: !0,
 
@@ -121,11 +124,28 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             let lty = if l.index() == 0 {
                 sig.output
             } else if l.index() - 1 < self.mir.arg_count {
-                sig.inputs[l.index() - 1]
+                // Skip the variadic param
+                if l.index() == self.mir.arg_count && sig.is_variadic {
+                    self.ilcx.label(decl.ty, &mut |_| Label::None)
+                } else {
+                    sig.inputs[l.index() - 1]
+                }
             } else {
                 self.local_ty(decl.ty)
             };
-            self.local_tys.push(lty);
+
+            let span = decl.is_user_variable.as_ref().map(|ccc| match ccc {
+                ClearCrossCrate::Clear => None,
+                ClearCrossCrate::Set(binding) => Some(binding),
+            }).flatten().map(|binding| match binding {
+                BindingForm::Var(var) => var.pat_span,
+                _ => DUMMY_SP,
+            }).unwrap_or(DUMMY_SP);
+
+            self.local_tys.push(Spanned {
+                node: lty,
+                span,
+            });
         }
 
         // Pick up any preset constraints for this variant.
@@ -147,6 +167,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         FnSig {
             inputs: self.ilcx.relabel_slice(sig.inputs, &mut f),
             output: self.ilcx.relabel(sig.output, &mut f),
+            is_variadic: sig.is_variadic,
         }
     }
 
@@ -154,7 +175,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         debug!("  original constraints:");
         if log_enabled!(Level::Debug) {
             for &(a, b) in self.cset.iter() {
-            debug!("    {:?} <= {:?}", a, b);
+                debug!("    {:?} <= {:?}", a, b);
             }
         }
 
@@ -175,9 +196,31 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             }
         }
 
-        let (_func, var) = self.cx.variant_summ(self.def_id);
+        // ITy -> LTy
+        let mut f = |&l: &Label<'lty>| match l {
+            Label::Ptr(p) => p.as_var().into_iter().find(|pv| match pv {
+                PermVar::Local(_) => true,
+                _ => false,
+            }),
+            _ => None,
+        };
+
+        let relabeled_locals = self.local_tys
+            .raw
+            .iter()
+            .filter_map(|spanned_ity| {
+                if spanned_ity.span == DUMMY_SP {
+                    None
+                } else {
+                    Some((spanned_ity.span, self.cx.lcx.relabel(spanned_ity.node, &mut f)))
+                }
+            })
+            .collect();
+
+        let (func, var) = self.cx.variant_summ(self.def_id);
         var.inst_cset = self.cset;
         var.insts = self.insts;
+        func.locals = relabeled_locals;
     }
 
     fn local_ty(&mut self, ty: Ty<'tcx>) -> ITy<'lty, 'tcx> {
@@ -216,7 +259,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     }
 
     fn local_var_ty(&mut self, l: Local) -> ITy<'lty, 'tcx> {
-        self.local_tys[l]
+        self.local_tys[l].node
     }
 
     fn static_ty(&mut self, def_id: DefId) -> ITy<'lty, 'tcx> {
@@ -236,7 +279,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         lv: &Place<'tcx>,
     ) -> (ITy<'lty, 'tcx>, Perm<'lty>, Option<VariantIdx>) {
         if !lv.projection.is_empty() {
-            let mut projection = lv.projection.iter().cloned().collect::<Vec<_>>();
+            let mut projection = lv.projection.to_vec();
             let last_elem = projection.pop().unwrap();
             let parent = Place {
                 base: lv.base.clone(),
@@ -517,12 +560,14 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 FnSig {
                     inputs: self.ilcx.subst_slice(poly_inputs, ty.args),
                     output: self.ilcx.subst(poly_output, ty.args),
+                    is_variadic: sig.is_variadic,
                 }
             }
 
-            TyKind::FnPtr(_) => FnSig {
+            TyKind::FnPtr(ty_sig) => FnSig {
                 inputs: &ty.args[..ty.args.len() - 1],
                 output: ty.args[ty.args.len() - 1],
+                is_variadic: ty_sig.skip_binder().c_variadic,
             },
 
             TyKind::Closure(_, _) => unimplemented!(),

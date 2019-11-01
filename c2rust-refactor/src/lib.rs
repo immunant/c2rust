@@ -5,6 +5,7 @@
     box_patterns,
     generator_trait,
     vec_remove_item,
+    option_flattening,
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 
@@ -338,7 +339,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
 
     let exec = Arc::new(LoggingExecutor {
         default: DefaultExecutor,
-        target_pkg: ws.current().unwrap().package_id().clone(),
+        target_pkg: ws.current().unwrap().package_id(),
         target_type,
         pkg_args: Mutex::new(vec![]),
     });
@@ -393,7 +394,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
         // callback. RefactorState should know how to reset the compiler when needed
         // and can handle querying the compiler.
 
-        if opts.cursors.len() > 0 {
+        if !opts.cursors.is_empty() {
             let config = driver::create_config(&rustc_args.args);
             driver::run_compiler(config, None, |compiler| {
                 let expanded_crate = compiler.expansion().unwrap().take().0;
@@ -459,8 +460,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
                 config,
                 cmd_reg,
                 opts.rewrite_modes.clone(),
-            )
-                .expect("Error loading user script");
+            ).expect("Error loading user script");
         } else {
             let file_io = Arc::new(file_io::RealFileIO::new(opts.rewrite_modes.clone()));
             driver::run_refactoring(config, cmd_reg, file_io, marks, |mut state| {

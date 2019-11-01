@@ -2193,6 +2193,10 @@ impl Builder {
             .collect::<Vec<Attribute>>()
     }
 
+    pub fn into_attrs(self) -> Vec<Attribute> {
+        self.attrs
+    }
+
     pub fn mac<Pa, Ts>(self, path: Pa, tts: Ts, delim: MacDelimiter) -> Mac
     where
         Pa: Make<Path>,

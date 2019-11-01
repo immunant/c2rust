@@ -181,14 +181,17 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         lty: LabeledTy<'lty, 'tcx, L>,
         substs: &[LabeledTy<'lty, 'tcx, L>],
     ) -> LabeledTy<'lty, 'tcx, L> {
-        match lty.ty.kind {
-            TyKind::Param(ref tp) => substs[tp.index as usize],
-            _ => self.mk(
-                lty.ty,
-                self.subst_slice(lty.args, substs),
-                lty.label.clone(),
-            ),
+        if let TyKind::Param(ref ty) = lty.ty.kind {
+            if let Some(p) = substs.get(ty.index as usize) {
+                return p;
+            }
         }
+
+        self.mk(
+            lty.ty,
+            self.subst_slice(lty.args, substs),
+            lty.label.clone(),
+        )
     }
 
     /// Substitute arguments in multiple labeled types.

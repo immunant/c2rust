@@ -36,9 +36,9 @@ impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
         let cset = build_inst_cset(cx, variant, &mono.assign);
 
         InstCtxt {
-            cx: cx,
+            cx,
             insts: &variant.insts,
-            cset: cset,
+            cset,
             inst_sel: Vec::new(),
             inst_assign: IndexVec::new(),
         }
@@ -101,8 +101,6 @@ impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
         let callee = inst.callee;
         let mono_assign = &self.cx.get_mono_summ(callee, mono_idx).assign;
         let callee_summ = self.cx.get_func_summ(callee);
-        // dbg!(mono_assign);
-        // dbg!(callee_summ);
         let first_var = Var(inst.first_inst_var);
         let last_var = Var(inst.first_inst_var + callee_summ.num_sig_vars);
 

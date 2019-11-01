@@ -55,7 +55,7 @@ pub struct InterCtxt<'c, 'lty, 'tcx> {
 impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
     pub fn new(cx: &'c mut Ctxt<'lty, 'tcx>) -> InterCtxt<'c, 'lty, 'tcx> {
         InterCtxt {
-            cx: cx,
+            cx,
             complete_cset: HashMap::new(),
             work_list: WorkList::new(),
             rev_deps: HashMap::new(),

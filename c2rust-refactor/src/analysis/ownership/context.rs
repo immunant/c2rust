@@ -44,6 +44,9 @@ pub struct FuncSumm<'lty, 'tcx> {
     pub sig: LFnSig<'lty, 'tcx>,
     pub num_sig_vars: u32,
 
+    /// Mapping of local pat spans to LTys
+    pub locals: HashMap<Span, LTy<'lty, 'tcx>>,
+
     /// Constraints over signature variables only.
     ///
     /// Populated by `inter`.  May be initialized early by `annot` if an `#[ownership_constraints]`
@@ -58,6 +61,9 @@ pub struct FuncSumm<'lty, 'tcx> {
 
     pub variant_ids: Vec<DefId>,
     pub num_monos: usize,
+
+    /// Assignment of concrete permissions to local vars
+    pub local_assign: IndexVec<Var, ConcretePerm>,
 }
 
 #[derive(Debug)]
@@ -184,6 +190,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     FnSig {
                         inputs: lcx.label_slice(sig.skip_binder().inputs(), &mut f),
                         output: lcx.label(sig.skip_binder().output(), &mut f),
+                        is_variadic: sig.skip_binder().c_variadic,
                     }
                 };
 
@@ -209,9 +216,10 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     sig_cset: cset,
                     cset_provided: provided,
                     monos_provided: false,
-
+                    locals: HashMap::new(),
                     variant_ids: vec![did],
                     num_monos: 0,
+                    local_assign: IndexVec::new(),
                 })
             }
 
@@ -460,7 +468,7 @@ impl<'a, 'lty, 'tcx> Iterator for FuncIds<'a, 'lty, 'tcx> {
     type Item = DefId;
 
     fn next(&mut self) -> Option<DefId> {
-        self.inner.next().map(|&x| x)
+        self.inner.next().copied()
     }
 }
 
@@ -472,7 +480,7 @@ impl<'a, 'lty> Iterator for VariantIds<'a, 'lty> {
     type Item = DefId;
 
     fn next(&mut self) -> Option<DefId> {
-        self.inner.next().map(|&x| x)
+        self.inner.next().copied()
     }
 }
 
@@ -484,6 +492,6 @@ impl<'a> Iterator for MonoIds<'a> {
     type Item = (DefId, usize);
 
     fn next(&mut self) -> Option<(DefId, usize)> {
-        self.inner.next().map(|&x| x)
+        self.inner.next().copied()
     }
 }

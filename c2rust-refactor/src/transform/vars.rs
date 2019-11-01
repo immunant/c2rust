@@ -5,25 +5,27 @@ use rustc::hir::def_id::LOCAL_CRATE;
 use rustc::hir::HirId;
 use rustc::ty::{TyKind, ParamEnv};
 use syntax::ast::*;
+use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::visit::{self, Visitor};
 
 use c2rust_ast_builder::mk;
-use crate::ast_manip::{MutVisitNodes, fold_blocks, visit_nodes};
-use crate::command::{CommandState, Registry};
+use crate::ast_manip::{MutVisit, MutVisitNodes, fold_blocks, visit_nodes};
+use crate::command::{CommandState, DriverCommand, Registry};
 use crate::driver::{Phase};
 use crate::matcher::{MatchCtxt, Subst, mut_visit_match_with, replace_stmts};
+use crate::reflect::reflect_tcx_ty;
 use crate::transform::Transform;
 use rustc::middle::cstore::CrateStore;
 use crate::RefactorCtxt;
 
 
 /// # `let_x_uninitialized` Command
-/// 
+///
 /// Obsolete - the translator now does this automatically.
-/// 
+///
 /// Usage: `let_x_uninitialized`
-/// 
+///
 /// For each local variable that is uninitialized (`let x;`), add
 /// `mem::uninitialized()` as an initializer expression.
 pub struct LetXUninitialized;
@@ -41,12 +43,12 @@ impl Transform for LetXUninitialized {
 
 
 /// # `sink_lets` Command
-/// 
+///
 /// Usage: `sink_lets`
-/// 
+///
 /// For each local variable with a trivial initializer, move the local's
 /// declaration to the innermost block containing all its uses.
-/// 
+///
 /// "Trivial" is currently defined as no initializer (`let x;`) or an initializer
 /// without any side effects.  This transform requires trivial assignments to avoid
 /// reordering side effects.
@@ -199,7 +201,7 @@ impl Transform for SinkLets {
         // Note that we don't check for locals that we failed to place.  The only way we can fail
         // to place a local is if it is never used anywhere.  Otherwise we would, at worst, place
         // it back in its original block.  The result is that this pass has the additional effect
-        // of removing unused locals.  
+        // of removing unused locals.
         let remove_local_ids = locals.iter()
             .map(|(_, info)| info.old_node_id)
             .collect::<HashSet<_>>();
@@ -266,9 +268,9 @@ fn is_uninit_call(cx: &RefactorCtxt, e: &Expr) -> bool {
 
 
 /// # `fold_let_assign` Command
-/// 
+///
 /// Usage: `fold_let_assign`
-/// 
+///
 /// Fold together `let`s with no initializer or a trivial one, and subsequent assignments.
 /// For example, replace `let x; x = 10;` with `let x = 10;`.
 pub struct FoldLetAssign;
@@ -440,11 +442,11 @@ fn is_self_ref(cx: &RefactorCtxt, lhs: HirId, rhs: &Expr) -> bool {
 
 
 /// # `uninit_to_default` Command
-/// 
+///
 /// Obsolete - works around translator problems that no longer exist.
-/// 
+///
 /// Usage: `uninit_to_default`
-/// 
+///
 /// In local variable initializers, replace `mem::uninitialized()` with an
 /// appropriate default value of the variable's type.
 pub struct UninitToDefault;
@@ -510,6 +512,40 @@ impl Transform for RemoveRedundantLetTypes {
     }
 }
 
+/// # `expand_local_ptr_tys` Command
+///
+/// Usage: `expand_local_ptr_tys`
+///
+/// Ownership analysis now supports locals and therefore it may be necessary to
+/// add explicit type annotations to locals which are missing them. This is because
+/// ownership analysis marks types
+fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
+    struct LocalVisitor<'a, 'tctx: 'a> {
+        cx: &'a RefactorCtxt<'a, 'tctx>,
+    };
+
+    impl<'a, 'tctx> MutVisitor for LocalVisitor<'a, 'tctx> {
+        fn visit_local(&mut self, local: &mut P<Local>) {
+            // If it already has a ty, skip
+            if local.ty.is_some() {
+                return mut_visit::noop_visit_local(local, self);
+            }
+
+            // Get the type
+            let rty = self.cx.node_type(local.id);
+            let ty = reflect_tcx_ty(self.cx.ty_ctxt(), rty);
+
+            // Assign ty if a raw ptr
+            if let syntax::ast::TyKind::Ptr(_) = ty.kind {
+                local.ty = Some(ty);
+            }
+
+            mut_visit::noop_visit_local(local, self)
+        }
+    }
+
+    st.map_krate(|krate| { krate.visit(&mut LocalVisitor { cx }) });
+}
 
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
@@ -519,4 +555,9 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("fold_let_assign", |_args| mk(FoldLetAssign));
     reg.register("uninit_to_default", |_args| mk(UninitToDefault));
     reg.register("remove_redundant_let_types", |_args| mk(RemoveRedundantLetTypes));
+    reg.register("expand_local_ptr_tys", |_args| {
+        Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
+            expand_local_ptr_tys(st, cx);
+        }))
+    });
 }

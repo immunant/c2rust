@@ -11,8 +11,8 @@ use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
 use syntax::ThinVec;
 use syntax::ast::{
-    self, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, MacDelimiter, NodeId,
-    Ty, TyKind,
+    self, BindingMode, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, Local, MacDelimiter,
+    Mutability, NodeId, Pat, PathSegment, PatKind, Ty, TyKind,
 };
 use syntax::mut_visit::MutVisitor;
 use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
@@ -93,8 +93,14 @@ pub fn run_lua_file(
 
                     Ok(())
                 })?;
+                let log_warn = scope.create_function(|_lua_ctx, string: LuaString| {
+                    warn!("{}", string.to_str()?);
+
+                    Ok(())
+                })?;
 
                 lua_ctx.globals().set("log_error", log_error)?;
+                lua_ctx.globals().set("log_warn", log_warn)?;
                 lua_ctx.load(&script).exec()
             })
         })
@@ -112,11 +118,11 @@ fn lua_serialize_marks<'lua>(
     let tbl = lua_ctx.create_table()?;
 
     for (node_id, sym) in marks.iter() {
-        let list: Option<LuaTable> = tbl.get(node_id.as_usize())?;
-        let list = list.unwrap_or(lua_ctx.create_table()?);
+        let set: Option<LuaTable> = tbl.get(node_id.as_usize())?;
+        let set = set.unwrap_or(lua_ctx.create_table()?);
 
-        list.set(list.len()? + 1, &*sym.as_str())?;
-        tbl.set(node_id.as_usize(), list)?;
+        set.set(&*sym.as_str(), true)?;
+        tbl.set(node_id.as_usize(), set)?;
     }
 
     Ok(tbl)
@@ -146,7 +152,7 @@ impl UserData for RefactorState {
         methods.add_method_mut(
             "run_command",
             |_lua_ctx, this, (name, args): (String, Vec<String>)| {
-                this.run(&name, &args).map_err(|e| LuaError::external(e))
+                this.run(&name, &args).map_err(LuaError::external)
             },
         );
 
@@ -172,7 +178,7 @@ impl UserData for RefactorState {
 
         methods.add_method(
             "get_marks",
-            |lua_ctx, this, ()| lua_serialize_marks(&*&this.marks(), lua_ctx),
+            |lua_ctx, this, ()| lua_serialize_marks(&*this.marks(), lua_ctx),
         );
 
         /// Run a custom refactoring transformation
@@ -568,7 +574,7 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
         if trees.len() == 1 {
             let mut use_tree = trees.pop().unwrap();
             if let Some(ident) = ident {
-                use_tree.prefix.segments.insert(0, ast::PathSegment::from_ident(ident));
+                use_tree.prefix.segments.insert(0, PathSegment::from_ident(ident));
             }
             return Ok(use_tree);
         }
@@ -623,7 +629,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         methods.add_method(
             "resolve_path_hirid",
             |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
-                Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(|id| LuaHirId(id)))
+                Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(LuaHirId))
             },
         );
 
@@ -633,15 +639,22 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                 None => return Ok(None),
             };
 
-           Ok(this.cx.hir_map().as_local_hir_id(def_id).map(|id| LuaHirId(id)))
+           Ok(this.cx.hir_map().as_local_hir_id(def_id).map(LuaHirId))
         });
+
+        methods.add_method(
+            "hirid_to_nodeid",
+            |_lua_ctx, this, id: LuaHirId| {
+                Ok(this.cx.hir_map().hir_to_node_id(id.0).as_usize())
+            },
+        );
 
         methods.add_method(
             "nodeid_to_hirid",
             |_lua_ctx, this, id: i64| {
                 let node_id = NodeId::from_usize(id as usize);
 
-                Ok(Some(LuaHirId(this.cx.hir_map().node_to_hir_id(node_id))))
+                Ok(LuaHirId(this.cx.hir_map().node_to_hir_id(node_id)))
             },
         );
 
@@ -814,6 +827,22 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             Ok(LuaAstNode::new(expr))
         });
 
+        methods.add_method(
+            "method_call_expr",
+            |_lua_ctx, _this, (segment, exprs): (LuaString, Vec<LuaAstNode<P<Expr>>>)|
+        {
+            let segment = PathSegment::from_ident(Ident::from_str(segment.to_str()?));
+            let exprs = exprs.iter().map(|e| e.borrow().clone()).collect();
+            let expr = P(Expr {
+                id: DUMMY_NODE_ID,
+                kind: ExprKind::MethodCall(segment, exprs),
+                span: DUMMY_SP,
+                attrs: ThinVec::new(),
+            });
+
+            Ok(LuaAstNode::new(expr))
+        });
+
         methods.add_method("ident_path_expr", |_lua_ctx, _this, path: LuaString| {
             let path = syntax::ast::Path::from_ident(Ident::from_str(path.to_str()?));
             let expr = P(Expr {
@@ -835,6 +864,36 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             });
 
             Ok(LuaAstNode::new(expr))
+        });
+
+        methods.add_method(
+            "ident_local",
+            |_lua_ctx, _this, (ident, ty, init, binding): (LuaString, Option<LuaAstNode<P<Ty>>>, Option<LuaAstNode<P<Expr>>>, LuaString)|
+        {
+            let binding = match binding.to_str()? {
+                "ByRefMut" => BindingMode::ByRef(Mutability::Mutable),
+                "ByRefImmut" => BindingMode::ByRef(Mutability::Immutable),
+                "ByValMut" => BindingMode::ByValue(Mutability::Mutable),
+                "ByValImmut" => BindingMode::ByValue(Mutability::Immutable),
+                e => panic!("Unknown local binding: {}", e),
+            };
+            let ty = ty.map(|ty| ty.borrow().clone());
+            let init = init.map(|e| e.borrow().clone());
+            let pat = P(Pat {
+                id: DUMMY_NODE_ID,
+                span: DUMMY_SP,
+                kind: PatKind::Ident(binding, Ident::from_str(ident.to_str()?), None),
+            });
+            let local = Local {
+                id: DUMMY_NODE_ID,
+                span: DUMMY_SP,
+                ty,
+                init,
+                pat,
+                attrs: ThinVec::new(),
+            };
+
+            Ok(LuaAstNode::new(P(local)))
         });
 
         methods.add_method("vec_mac_init_num", |_lua_ctx, _this, (init, num): (LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
@@ -914,7 +973,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                     if field.ident == **ident {
                         let hir_id = this.cx.hir_map().as_local_hir_id(field.did);
 
-                        return Ok(hir_id.map(|id| LuaHirId(id)));
+                        return Ok(hir_id.map(LuaHirId));
                     }
                 }
             };
