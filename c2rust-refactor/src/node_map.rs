@@ -34,14 +34,14 @@ impl NodeMap {
 
     pub fn commit(&mut self) {
         let mut new_id_map = HashMap::new();
-        debug!("committing edges");
+        trace!("committing edges");
         for (id2, id3) in mem::replace(&mut self.pending_edges, BTreeSet::new()) {
             if id2 == DUMMY_NODE_ID || id3 == DUMMY_NODE_ID {
                 continue;
             }
 
             if let Some(&id1) = self.id_map.get(&id2) {
-                debug!("  {:?} -> {:?} -> {:?}", id3, id2, id1);
+                trace!("  {:?} -> {:?} -> {:?}", id3, id2, id1);
                 match new_id_map.entry(id3) {
                     Entry::Vacant(e) => {
                         e.insert(id1);
@@ -65,7 +65,7 @@ impl NodeMap {
                     }
                 }
             } else {
-                debug!("  {:?} -> {:?} -> NOT FOUND", id3, id2);
+                trace!("  {:?} -> {:?} -> NOT FOUND", id3, id2);
             }
         }
 
@@ -113,12 +113,12 @@ impl NodeMap {
             let hi = (old_id, NodeId::MAX);
             let mut empty = true;
             for &(_, new_id) in self.pending_edges.range((Included(&lo), Included(&hi))) {
-                debug!("  {:?}: {:?} -> {:?}", label, old_id, new_id);
+                trace!("  {:?}: {:?} -> {:?}", label, old_id, new_id);
                 new_marks.insert((new_id, label));
                 empty = false;
             }
             if empty {
-                debug!("  {:?}: {:?} -> DROPPED", label, old_id);
+                trace!("  {:?}: {:?} -> DROPPED", label, old_id);
             }
         }
         *marks = new_marks;
