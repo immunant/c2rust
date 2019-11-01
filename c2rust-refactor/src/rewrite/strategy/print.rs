@@ -764,7 +764,7 @@ impl RewriteAt for Item {
 
                 let mut item = self.clone();
 
-                let old_span = rewind_span_over_whitespace(old_span, &rcx);
+                // let old_span = rewind_span_over_whitespace(old_span, &rcx);
 
                 // Where should the module contents be printed?
                 let inner_span = if !is_rewritable(module.inner) {
