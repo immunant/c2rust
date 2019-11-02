@@ -42,7 +42,7 @@ use ast_visitor::{LuaAstVisitor, LuaAstVisitorNew};
 use into_lua_ast::IntoLuaAst;
 use merge_lua_ast::MergeLuaAst;
 use to_lua_ast_node::LuaAstNode;
-use to_lua_ast_node::{LuaHirId, ToLuaExt, ToLuaScoped};
+use to_lua_ast_node::{LuaHirId, ToLuaExt, ToLuaScoped, ToLuaAstNode};
 
 /// Refactoring module
 // @module Refactor
@@ -345,7 +345,7 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
         node.borrow()
             .clone()
             .subst(self.transform.st, self.transform.cx, &self.mcx.bindings)
-            .to_lua(lua_ctx)
+            .to_lua_ext(lua_ctx)
     }
 }
 
@@ -360,7 +360,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @treturn LuaAstNode The parsed statements
         methods.add_method_mut("parse_stmts", |lua_ctx, this, pat: String| {
             let stmts = this.mcx.parse_stmts(&pat);
-            stmts.to_lua(lua_ctx)
+            stmts.to_lua_ast_node(lua_ctx)
         });
 
         /// Parse an expression and add it to this MatchCtxt
@@ -369,7 +369,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @treturn LuaAstNode The parsed expression
         methods.add_method_mut("parse_expr", |lua_ctx, this, pat: String| {
             let expr = this.mcx.parse_expr(&pat);
-            expr.to_lua(lua_ctx)
+            expr.to_lua_ext(lua_ctx)
         });
 
         /// Find matches of `pattern` and rewrite using `callback`
@@ -400,7 +400,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
                 .get::<_, ast::Lit>(pattern)
                 .unwrap()
                 .clone()
-                .to_lua(lua_ctx)
+                .to_lua_ext(lua_ctx)
         });
 
         /// Get matched binding for an expression variable
@@ -412,7 +412,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
                 .get::<_, P<ast::Expr>>(pattern)
                 .unwrap()
                 .clone()
-                .to_lua(lua_ctx)
+                .to_lua_ext(lua_ctx)
         });
 
         /// Get matched binding for a type variable
@@ -424,7 +424,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
                 .get::<_, P<ast::Ty>>(pattern)
                 .unwrap()
                 .clone()
-                .to_lua(lua_ctx)
+                .to_lua_ext(lua_ctx)
         });
 
         /// Get matched binding for a statement variable
@@ -432,7 +432,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @tparam string pattern Statement variable pattern
         // @treturn LuaAstNode Statement matched by this binding
         methods.add_method_mut("get_stmt", |lua_ctx, this, pattern: String| {
-            this.mcx.bindings.get::<_, ast::Stmt>(pattern).unwrap().clone().to_lua(lua_ctx)
+            this.mcx.bindings.get::<_, ast::Stmt>(pattern).to_lua_ext(lua_ctx)
         });
 
         /// Get matched binding for a multistmt variable
@@ -440,7 +440,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @tparam string pattern Statement variable pattern
         // @treturn LuaAstNode Statement matched by this binding
         methods.add_method_mut("get_multistmt", |lua_ctx, this, pattern: String| {
-            this.mcx.bindings.get::<_, Vec<ast::Stmt>>(pattern).unwrap().clone().to_lua(lua_ctx)
+            this.mcx.bindings.get::<_, Vec<ast::Stmt>>(pattern).to_lua_ext(lua_ctx)
         });
 
         /// Attempt to match `target` against `pat`, updating bindings if matched.
@@ -511,7 +511,7 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
                         let path = path.to_lua_scoped(lua_ctx, scope).unwrap();
                         let def = def.to_lua_scoped(lua_ctx, scope).unwrap();
                         callback.call((
-                            id.to_lua(lua_ctx).unwrap(),
+                            id.to_lua_ext(lua_ctx).unwrap(),
                             qself,
                             path,
                             def,
@@ -788,11 +788,11 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             let use_tree = this.create_use_tree(lua_ctx, tree, None)?;
             let mut builder = mk();
             if pub_vis { builder = builder.pub_(); }
-            Ok(builder.use_item(use_tree).to_lua(lua_ctx))
+            Ok(builder.use_item(use_tree).to_lua_ext(lua_ctx))
         });
 
         methods.add_method("get_use_def", |lua_ctx, this, id: u32| {
-            this.cx.resolve_use_id(ast::NodeId::from_u32(id)).res.to_lua(lua_ctx)
+            this.cx.resolve_use_id(ast::NodeId::from_u32(id)).res.to_lua_ext(lua_ctx)
         });
 
         methods.add_method("binary_expr", |_lua_ctx, _this, (op, lhs, rhs): (LuaString, LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {

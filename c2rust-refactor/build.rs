@@ -32,6 +32,7 @@ fn main() {
     process_ast("mac_table", &out_dir.join("mac_table_gen.inc.rs"));
     process_ast("nt_match", &out_dir.join("nt_match_gen.inc.rs"));
     process_ast("ast_names", &out_dir.join("ast_names_gen.inc.rs"));
+    process_ast("lua_ast_node", &out_dir.join("lua_ast_node_gen.inc.rs"));
 
     process_ast(
         "rewrite_rewrite",

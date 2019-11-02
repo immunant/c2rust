@@ -1,18 +1,23 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::mem::swap;
 use std::ops::DerefMut;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use c2rust_ast_builder::mk;
 use rustc::hir::def::Res;
 use rustc::hir::HirId;
+use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::mut_visit::*;
+use syntax::parse::token::{DelimToken, Nonterminal, Token};
 use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::source_map::{DUMMY_SP, dummy_spanned};
+use syntax::source_map::{DUMMY_SP, Spanned, dummy_spanned};
 use syntax::symbol::{Symbol, sym};
-use syntax_pos::Span;
+use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use syntax::ThinVec;
+use syntax_pos::{Span, SyntaxContext};
 
 use rlua::{Context, Error, Function, MetaMethod, Result, Scope, ToLua, UserData, UserDataMethods, Value};
 use rlua::prelude::LuaString;
@@ -101,18 +106,195 @@ where
 }
 
 pub(crate) trait ToLuaExt {
-    fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>>;
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>>;
+}
+
+pub(crate) trait ToLuaAstNode {
+    fn to_lua_ast_node<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>>;
 }
 
 pub(crate) trait ToLuaScoped {
     fn to_lua_scoped<'lua, 'scope>(self, lua: Context<'lua>, scope: &Scope<'lua, 'scope>) -> Result<Value<'lua>>;
 }
 
+// Marker trait for types that are safe to always pass to Lua as `LuaAstNode`s.
+// For now, everything implements it except for `Vec<Stmt>`. This lets
+// us send `Vec<Stmt>` values as Lua tables using `to_lua_ext` and
+// as `LuaAstNode`s using `to_lua_ast_node`
+pub(crate) trait LuaAstNodeSafe {}
+
 impl<T> ToLuaExt for T
+    where T: Sized + ToLuaAstNode,
+          LuaAstNode<T>: 'static + UserData + Send + LuaAstNodeSafe,
+{
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.to_lua_ast_node(lua)
+    }
+}
+
+impl<T> ToLuaExt for &T
+    where T: Sized + ToLuaExt + Clone,
+{
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        (*self).clone().to_lua_ext(lua)
+    }
+}
+
+impl<T> ToLuaExt for Rc<T>
+    where T: Sized + ToLuaExt + Clone,
+{
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        (*self).clone().to_lua_ext(lua)
+    }
+}
+
+impl<T> ToLuaExt for RefCell<T>
+    where T: Sized + ToLuaExt,
+{
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.into_inner().to_lua_ext(lua)
+    }
+}
+
+impl<T> ToLuaExt for Option<T>
+    where T: Sized + ToLuaExt,
+{
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        if let Some(x) = self {
+            x.to_lua_ext(lua)
+        } else {
+            Ok(Value::Nil)
+        }
+    }
+}
+
+impl<T> ToLuaExt for Vec<T>
+    where T: Sized + ToLuaExt,
+{
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        let vec = self.into_iter()
+            .map(|x| x.to_lua_ext(lua))
+            .collect::<Result<Vec<_>>>()?;
+        vec.to_lua(lua)
+    }
+}
+
+impl<T> ToLuaExt for ThinVec<T>
+    where T: Sized + ToLuaExt,
+{
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        let v: Vec<T> = self.into();
+        v.to_lua_ext(lua)
+    }
+}
+
+impl<A, B> ToLuaExt for (A, B)
+    where A: Sized + ToLuaExt,
+          B: Sized + ToLuaExt,
+{
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        let (a, b) = self;
+        vec![a.to_lua_ext(lua)?, b.to_lua_ext(lua)?].to_lua(lua)
+    }
+}
+
+impl<A, B, C> ToLuaExt for (A, B, C)
+    where A: Sized + ToLuaExt,
+          B: Sized + ToLuaExt,
+          C: Sized + ToLuaExt,
+{
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        let (a, b, c) = self;
+        vec![a.to_lua_ext(lua)?, b.to_lua_ext(lua)?, c.to_lua_ext(lua)?].to_lua(lua)
+    }
+}
+
+impl<A, B, C> ToLuaExt for P<(A, B, C)>
+    where A: 'static + Sized + ToLuaExt,
+          B: 'static + Sized + ToLuaExt,
+          C: 'static + Sized + ToLuaExt,
+{
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        let (a, b, c) = self.into_inner();
+        vec![a.to_lua_ext(lua)?, b.to_lua_ext(lua)?, c.to_lua_ext(lua)?].to_lua(lua)
+    }
+}
+
+
+// Manual `ToLuaExt` implementation for leaf types
+impl ToLuaExt for bool {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.to_lua(lua)
+    }
+}
+
+impl ToLuaExt for u8 {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.to_lua(lua)
+    }
+}
+
+impl ToLuaExt for u16 {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.to_lua(lua)
+    }
+}
+
+impl ToLuaExt for u128 {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.to_lua(lua)
+    }
+}
+
+impl ToLuaExt for usize {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.to_lua(lua)
+    }
+}
+
+impl ToLuaExt for char {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.to_string().to_lua(lua)
+    }
+}
+
+impl ToLuaExt for NodeId {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.as_u32().to_lua(lua)
+    }
+}
+
+impl ToLuaExt for Ident {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.as_str().to_lua(lua)
+    }
+}
+
+impl ToLuaExt for Symbol {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.as_str().to_lua(lua)
+    }
+}
+
+impl ToLuaExt for AttrId {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.0.to_lua(lua)
+    }
+}
+
+impl ToLuaExt for Abi {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        self.name().to_lua(lua)
+    }
+}
+
+
+// The other Lua traits
+impl<T> ToLuaAstNode for T
     where T: Sized,
           LuaAstNode<T>: 'static + UserData + Send,
 {
-    fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+    fn to_lua_ast_node<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
         lua.create_userdata(LuaAstNode::new(self))?.to_lua(lua)
     }
 }
@@ -127,7 +309,7 @@ impl<T> ToLuaScoped for T
 }
 
 /// Holds a rustc AST node that can be passed back and forth to Lua as a scoped,
-/// static userdata. Implement UserData for LuaAstNode<T> to support an AST node
+/// static userdata. Implement AddMoreMethods for LuaAstNode<T> to support an AST node
 /// T.
 #[derive(Clone)]
 pub(crate) struct LuaAstNode<T> (Arc<RefCell<T>>);
@@ -172,27 +354,36 @@ impl<T> LuaAstNode<T>
     }
 }
 
-/// Item AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
-// @type ItemAstNode
-unsafe impl Send for LuaAstNode<P<Item>> {}
-#[allow(unused_doc_comments)]
-impl UserData for LuaAstNode<P<Item>> {
+pub(crate) trait AddMoreMethods: UserData {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M);
+}
+
+impl<T: UserData> AddMoreMethods for T {
+    default fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(_methods: &mut M) {}
+}
+
+include!(concat!(env!("OUT_DIR"), "/lua_ast_node_gen.inc.rs"));
+
+unsafe impl<T> Send for LuaAstNode<Spanned<T>> {}
+impl<T> LuaAstNodeSafe for LuaAstNode<Spanned<T>> {}
+impl<T> UserData for LuaAstNode<Spanned<T>>
+    where T: ToLuaExt + Clone,
+{
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.borrow().kind.ast_name())
+        methods.add_method("get_node", |lua_ctx, this, ()| {
+          Ok(this.borrow().node.clone().to_lua_ext(lua_ctx))
         });
-
-        methods.add_method("get_id", |lua_ctx, this, ()| {
-            this.borrow().id.to_lua(lua_ctx)
+        methods.add_method("get_span", |lua_ctx, this, ()| {
+          Ok(this.borrow().span.clone().to_lua_ext(lua_ctx))
         });
+    }
+}
 
-        methods.add_method("get_ident", |lua_ctx, this, ()| {
-            this.borrow().ident.to_lua(lua_ctx)
-        });
-
+/// Item AST node handle
+// @type ItemAstNode
+#[allow(unused_doc_comments)]
+impl AddMoreMethods for LuaAstNode<P<Item>> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("set_ident", |_lua_ctx, this, ident: LuaString| {
             this.borrow_mut().ident = Ident::from_str(ident.to_str()?);
             Ok(())
@@ -207,7 +398,7 @@ impl UserData for LuaAstNode<P<Item>> {
         // @tparam function(LuaAstNode) callback Function to call when visiting each statement
         methods.add_method("visit_stmts", |lua_ctx, this, callback: Function| {
             visit_nodes(&**this.borrow(), |node: &Stmt| {
-                callback.call::<_, ()>(node.clone().to_lua(lua_ctx))
+                callback.call::<_, ()>(node.clone().to_lua_ext(lua_ctx))
                 .unwrap_or_else(|e| panic!("Lua callback failed in visit_stmts: {}", DisplayLuaError(e)));
             });
             Ok(())
@@ -215,7 +406,7 @@ impl UserData for LuaAstNode<P<Item>> {
 
         methods.add_method("visit_items", |lua_ctx, this, callback: Function| {
             visit_nodes(&**this.borrow(), |node: &Item| {
-                callback.call::<_, ()>(P(node.clone()).to_lua(lua_ctx))
+                callback.call::<_, ()>(P(node.clone()).to_lua_ext(lua_ctx))
                 .unwrap_or_else(|e| panic!("Lua callback failed in visit_items: {}", DisplayLuaError(e)));
             });
             Ok(())
@@ -223,7 +414,7 @@ impl UserData for LuaAstNode<P<Item>> {
 
         methods.add_method("visit_foreign_items", |lua_ctx, this, callback: Function| {
             visit_nodes(&**this.borrow(), |node: &ForeignItem| {
-                callback.call::<_, ()>(node.clone().to_lua(lua_ctx))
+                callback.call::<_, ()>(node.clone().to_lua_ext(lua_ctx))
                 .unwrap_or_else(|e| panic!("Lua callback failed in visit_foreign_items: {}", DisplayLuaError(e)));
             });
             Ok(())
@@ -231,7 +422,7 @@ impl UserData for LuaAstNode<P<Item>> {
 
         methods.add_method("get_node", |lua_ctx, this, ()| {
             match this.borrow().kind.clone() {
-                ItemKind::Use(e) => Ok(e.to_lua(lua_ctx)),
+                ItemKind::Use(e) => Ok(e.to_lua_ext(lua_ctx)),
                 node => Err(Error::external(format!("Item node {:?} not implemented yet", node))),
             }
         });
@@ -322,25 +513,9 @@ impl UserData for LuaAstNode<P<Item>> {
 }
 
 /// ForeignItem AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type ForeignItemAstNode
-unsafe impl Send for LuaAstNode<ForeignItem> {}
-impl UserData for LuaAstNode<ForeignItem> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.borrow().kind.ast_name())
-        });
-
-        methods.add_method("get_id", |lua_ctx, this, ()| {
-            this.borrow().id.to_lua(lua_ctx)
-        });
-
-        methods.add_method("get_ident", |lua_ctx, this, ()| {
-            this.borrow().ident.to_lua(lua_ctx)
-        });
-
+impl AddMoreMethods for LuaAstNode<ForeignItem> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("set_ident", |_lua_ctx, this, ident: LuaString| {
             this.borrow_mut().ident = Ident::from_str(ident.to_str()?);
             Ok(())
@@ -364,20 +539,13 @@ impl UserData for LuaAstNode<ForeignItem> {
 /// QSelf AST node handle
 //
 // @type QSelfAstNode
-impl UserData for LuaAstNode<QSelf> {}
+impl AddMoreMethods for LuaAstNode<QSelf> {}
 
 
 /// Path AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type PathAstNode
-unsafe impl Send for LuaAstNode<Path> {}
-impl UserData for LuaAstNode<Path> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_span", |lua_ctx, this, ()| {
-            this.borrow().span.to_lua(lua_ctx)
-        });
+impl AddMoreMethods for LuaAstNode<P<Path>> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("has_generic_args", |_lua_ctx, this, ()| {
             Ok(this.borrow().segments.iter().any(|s| s.args.is_some()))
         });
@@ -385,7 +553,7 @@ impl UserData for LuaAstNode<Path> {
             this.borrow()
                 .segments
                 .iter()
-                .map(|s| s.ident.to_lua(lua_ctx))
+                .map(|s| s.ident.to_lua_ext(lua_ctx))
                 .collect::<Result<Vec<_>>>()
         });
         methods.add_method("set_segments", |_lua_ctx, this, new_segments: Vec<LuaString>| {
@@ -428,11 +596,8 @@ impl UserData for LuaAstNode<Path> {
     }
 }
 
-impl UserData for LuaAstNode<PathSegment> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_ident", |lua_ctx, this, ()| {
-            this.borrow().ident.to_lua(lua_ctx)
-        });
+impl AddMoreMethods for LuaAstNode<PathSegment> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(_methods: &mut M) {
     }
 }
 
@@ -443,6 +608,7 @@ impl UserData for LuaAstNode<PathSegment> {
 // thread that did not acquire it.
 // @type DefAstNode
 unsafe impl Send for LuaAstNode<Res> {}
+impl LuaAstNodeSafe for LuaAstNode<Res> {}
 impl UserData for LuaAstNode<Res> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_namespace", |_lua_ctx, this, ()| {
@@ -451,57 +617,33 @@ impl UserData for LuaAstNode<Res> {
     }
 }
 
-
-impl ToLuaExt for NodeId {
-    fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
-        self.as_u32().to_lua(lua)
-    }
-}
-
-impl ToLuaExt for Ident {
-    fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
-        self.as_str().to_lua(lua)
-    }
-}
-
+#[derive(Clone)]
 struct SpanData(syntax_pos::SpanData);
 
 impl UserData for SpanData {}
 
 impl ToLuaExt for Span {
-    fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
-        lua.create_userdata(SpanData(self.data())).unwrap().to_lua(lua)
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+        lua.create_userdata(SpanData(self.data()))?.to_lua(lua)
     }
 }
 
 
 /// Expr AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type ExprAstNode
-unsafe impl Send for LuaAstNode<P<Expr>> {}
-impl UserData for LuaAstNode<P<Expr>> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.borrow().kind.ast_name())
-        });
-
+impl AddMoreMethods for LuaAstNode<P<Expr>> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_node", |lua_ctx, this, ()| {
             match this.borrow().kind.clone() {
-                ExprKind::Lit(x) => x.to_lua(lua_ctx),
+                ExprKind::Lit(x) => x.to_lua_ext(lua_ctx),
                 node => Err(Error::external(format!("Expr node {:?} not implemented yet", node))),
             }
         });
 
-        methods.add_method("get_id", |lua_ctx, this, ()| {
-            Ok(this.borrow().id.to_lua(lua_ctx))
-        });
-
-        methods.add_method("get_ty", |_lua_ctx, this, ()| {
+        methods.add_method("get_ty", |lua_ctx, this, ()| {
             match &this.borrow().kind {
                 ExprKind::Cast(_, ty)
-                | ExprKind::Type(_, ty) => Ok(LuaAstNode::new(ty.clone())),
+                | ExprKind::Type(_, ty) => ty.to_lua_ext(lua_ctx),
                 e => unimplemented!("LuaAstNode<P<Expr>>:get_ty() for {}", e.ast_name()),
             }
         });
@@ -518,7 +660,7 @@ impl UserData for LuaAstNode<P<Expr>> {
 
         methods.add_method("get_ident", |lua_ctx, this, ()| {
             match &this.borrow().kind {
-                ExprKind::Field(_, ident) => ident.to_lua(lua_ctx).map(Some),
+                ExprKind::Field(_, ident) => ident.to_lua_ext(lua_ctx).map(Some),
                 _ => Ok(None),
             }
         });
@@ -531,28 +673,28 @@ impl UserData for LuaAstNode<P<Expr>> {
             }
         });
 
-        methods.add_method("get_exprs", |_lua_ctx, this, ()| {
+        methods.add_method("get_exprs", |lua_ctx, this, ()| {
             match &this.borrow().kind {
                 ExprKind::Cast(expr, _)
                 | ExprKind::Field(expr, _)
-                | ExprKind::Unary(_, expr) => Ok(vec![LuaAstNode::new(expr.clone())]),
-                ExprKind::MethodCall(_, exprs) => Ok(exprs.iter().map(|e| LuaAstNode::new(e.clone())).collect()),
+                | ExprKind::Unary(_, expr) => vec![expr.clone()],
+                ExprKind::MethodCall(_, exprs) => exprs.clone(),
                 ExprKind::Assign(lhs, rhs)
                 | ExprKind::AssignOp(_, lhs, rhs)
-                | ExprKind::Binary(_, lhs, rhs) => Ok(vec![LuaAstNode::new(lhs.clone()), LuaAstNode::new(rhs.clone())]),
+                | ExprKind::Binary(_, lhs, rhs) => vec![lhs.clone(), rhs.clone()],
                 ExprKind::Call(func, params) => {
                     let mut exprs = Vec::with_capacity(params.len() + 1);
 
-                    exprs.push(LuaAstNode::new(func.clone()));
+                    exprs.push(func.clone());
 
                     for param in params {
-                        exprs.push(LuaAstNode::new(param.clone()));
+                        exprs.push(param.clone());
                     }
 
-                    Ok(exprs)
+                    exprs
                 },
-                _ => Ok(Vec::new()),
-            }
+                _ => Vec::new(),
+            }.to_lua_ext(lua_ctx)
         });
 
         methods.add_method("set_exprs", |_lua_ctx, this, exprs: Vec<LuaAstNode<P<Expr>>>| {
@@ -743,8 +885,6 @@ impl UserData for LuaAstNode<P<Expr>> {
         });
 
         methods.add_method("to_closure", |_lua_ctx, this, (params, expr): (Vec<LuaString>, LuaAstNode<P<Expr>>)| {
-            use syntax::ThinVec;
-
             let expr = expr.borrow().clone();
             let inputs: Result<_> = params.into_iter().map(|s| Ok(Param {
                 attrs: ThinVec::new(),
@@ -821,12 +961,12 @@ impl UserData for LuaAstNode<P<Expr>> {
             Ok(())
         });
 
-        methods.add_method("find_subexpr", |_lua_ctx, this, id: u32| {
+        methods.add_method("find_subexpr", |lua_ctx, this, id: u32| {
             let expr = &mut *this.borrow_mut();
             let node_id = NodeId::from_u32(id);
             let opt_expr = find_subexpr(expr, &|sub_expr| sub_expr.id == node_id)?;
 
-            Ok(opt_expr.map(|expr| LuaAstNode::new(expr.clone())))
+            opt_expr.cloned().to_lua_ext(lua_ctx)
         });
 
         methods.add_method("filtermap_subexprs", |_lua_ctx, this, (filter, map): (Function, Function)| {
@@ -866,33 +1006,21 @@ impl UserData for LuaAstNode<P<Expr>> {
 
 
 /// Ty AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type TyAstNode
-unsafe impl Send for LuaAstNode<P<Ty>> {}
-impl UserData for LuaAstNode<P<Ty>> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+impl AddMoreMethods for LuaAstNode<P<Ty>> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(
             MetaMethod::ToString,
             |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
         );
 
-        methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.borrow().kind.ast_name())
-        });
-
-        methods.add_method("get_id", |_lua_ctx, this, ()| {
-            Ok(this.borrow().id.to_lua(_lua_ctx))
-        });
-
-        methods.add_method("get_tys", |_lua_ctx, this, ()| {
+        methods.add_method("get_tys", |lua_ctx, this, ()| {
             match &this.borrow().kind {
                 TyKind::Slice(ty)
                 | TyKind::Array(ty, _) => {
-                    Ok(Some(vec![LuaAstNode::new(ty.clone())]))
+                    vec![ty.clone()].to_lua_ext(lua_ctx)
                 },
-                | TyKind::Tup(tys) => Ok(Some(tys.iter().map(|t| LuaAstNode::new(t.clone())).collect())),
+                | TyKind::Tup(tys) => tys.clone().to_lua_ext(lua_ctx),
                 e => unimplemented!("LuaAstNode<P<Ty>>:get_tys() for {}", e.ast_name()),
             }
         });
@@ -1075,19 +1203,10 @@ impl UserData for LuaAstNode<P<Ty>> {
 unsafe impl Send for LuaAstNode<Vec<Stmt>> {}
 impl UserData for LuaAstNode<Vec<Stmt>> {}
 
-
 /// MutTy AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type MutTyAstNode
-unsafe impl Send for LuaAstNode<MutTy> {}
-impl UserData for LuaAstNode<MutTy> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_ty", |_lua_ctx, this, ()| {
-            Ok(LuaAstNode::new(this.borrow().ty.clone()))
-        });
-
+impl AddMoreMethods for LuaAstNode<MutTy> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
             this.borrow_mut().ty = ty.borrow().clone();
 
@@ -1107,26 +1226,14 @@ impl UserData for LuaAstNode<MutTy> {
 }
 
 /// Stmt AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type StmtAstNode
-unsafe impl Send for LuaAstNode<Stmt> {}
-impl UserData for LuaAstNode<Stmt> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.borrow().kind.ast_name())
-        });
-
-        methods.add_method("get_id", |lua_ctx, this, ()| {
-            this.borrow().id.to_lua(lua_ctx)
-        });
-
+impl AddMoreMethods for LuaAstNode<Stmt> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_node", |lua_ctx, this, ()| {
             match this.borrow().kind.clone() {
-                StmtKind::Expr(e) | StmtKind::Semi(e) => e.to_lua(lua_ctx),
-                StmtKind::Local(l) => l.to_lua(lua_ctx),
-                StmtKind::Item(i) => i.to_lua(lua_ctx),
+                StmtKind::Expr(e) | StmtKind::Semi(e) => e.to_lua_ext(lua_ctx),
+                StmtKind::Local(l) => l.to_lua_ext(lua_ctx),
+                StmtKind::Item(i) => i.to_lua_ext(lua_ctx),
                 StmtKind::Mac(_) => Err(Error::external(String::from("Mac stmts aren't implemented yet"))),
             }
         });
@@ -1152,24 +1259,12 @@ impl UserData for LuaAstNode<Stmt> {
 
 
 /// Pat AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type PatAstNode
-unsafe impl Send for LuaAstNode<P<Pat>> {}
-impl UserData for LuaAstNode<P<Pat>> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.borrow().kind.ast_name())
-        });
-
-        methods.add_method("get_id", |lua_ctx, this, ()| {
-            Ok(this.borrow().id.to_lua(lua_ctx))
-        });
-
+impl AddMoreMethods for LuaAstNode<P<Pat>> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_ident", |lua_ctx, this, ()| {
             if let PatKind::Ident(_, ident, _) = this.borrow().kind {
-                ident.to_lua(lua_ctx).map(Some)
+                ident.to_lua_ext(lua_ctx).map(Some)
             } else {
                 Ok(None)
             }
@@ -1184,43 +1279,23 @@ impl UserData for LuaAstNode<P<Pat>> {
 
 
 /// Crate AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type CrateAstNode
-unsafe impl Send for LuaAstNode<Crate> {}
-impl UserData for LuaAstNode<Crate> {}
+impl AddMoreMethods for LuaAstNode<Crate> {}
 
 
 /// Local AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type LocalAstNode
-unsafe impl Send for LuaAstNode<P<Local>> {}
-impl UserData for LuaAstNode<P<Local>> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+impl AddMoreMethods for LuaAstNode<P<Local>> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(
             MetaMethod::ToString,
             |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
         );
 
-        methods.add_method("get_id", |lua_ctx, this, ()| {
-            this.borrow().id.to_lua(lua_ctx)
-        });
-
-        methods.add_method("get_ty", |_lua_ctx, this, ()| {
-            Ok(this.borrow().ty.as_ref().map(|ty| LuaAstNode::new(ty.clone())))
-        });
-
         methods.add_method("set_ty", |_lua_ctx, this, ty: Option<LuaAstNode<P<Ty>>>| {
             this.borrow_mut().ty = ty.map(|ty| ty.borrow().clone());
 
             Ok(())
-        });
-
-        methods.add_method("get_init", |_lua_ctx, this, ()| {
-            Ok(this.borrow().init.as_ref().map(|init| LuaAstNode::new(init.clone())))
         });
 
         methods.add_method("set_init", |_lua_ctx, this, init: Option<LuaAstNode<P<Expr>>>| {
@@ -1234,7 +1309,7 @@ impl UserData for LuaAstNode<P<Local>> {
         });
 
         methods.add_method("get_pat_id", |lua_ctx, this, ()| {
-            Ok(this.borrow().pat.id.to_lua(lua_ctx))
+            Ok(this.borrow().pat.id.to_lua_ext(lua_ctx))
         });
 
         methods.add_method("get_attrs", |_lua_ctx, this, ()| {
@@ -1259,13 +1334,9 @@ impl UserData for LuaAstNode<P<Local>> {
 
 
 /// Lit AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type LitAstNode
-unsafe impl Send for LuaAstNode<Lit> {}
-impl UserData for LuaAstNode<Lit> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+impl AddMoreMethods for LuaAstNode<Lit> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
             Ok(this.borrow().kind.ast_name())
         });
@@ -1275,9 +1346,9 @@ impl UserData for LuaAstNode<Lit> {
                 LitKind::Str(s, _) => {
                     s.to_string().to_lua(lua_ctx)
                 }
-                LitKind::Int(i, _suffix) => i.to_lua(lua_ctx),
-                LitKind::Bool(b) => b.to_lua(lua_ctx),
-                LitKind::Char(c) => c.to_string().to_lua(lua_ctx),
+                LitKind::Int(i, _suffix) => i.to_lua_ext(lua_ctx),
+                LitKind::Bool(b) => b.to_lua_ext(lua_ctx),
+                LitKind::Char(c) => c.to_lua_ext(lua_ctx),
                 ref node => {
                     Err(Error::external(format!(
                         "{:?} is not yet implemented",
@@ -1379,13 +1450,9 @@ impl UserData for LuaAstNode<Lit> {
 
 
 /// Mod AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type ModAstNode
-unsafe impl Send for LuaAstNode<Mod> {}
-impl UserData for LuaAstNode<Mod> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+impl AddMoreMethods for LuaAstNode<Mod> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("num_items", |_lua_ctx, this, ()| {
             Ok(this.borrow().items.len())
         });
@@ -1395,19 +1462,11 @@ impl UserData for LuaAstNode<Mod> {
             Ok(())
         });
 
-        methods.add_method("get_items", |lua_ctx, this, ()| {
-            this.borrow()
-                .items
-                .iter()
-                .map(|item| item.clone().to_lua(lua_ctx))
-                .collect::<Result<Vec<_>>>()
-        });
-
         methods.add_method_mut("drain_items", |lua_ctx, this, ()| {
             this.borrow_mut()
                 .items
                 .drain(..)
-                .map(|item| item.to_lua(lua_ctx))
+                .map(|item| item.to_lua_ext(lua_ctx))
                 .collect::<Result<Vec<_>>>()
         });
     }
@@ -1415,21 +1474,9 @@ impl UserData for LuaAstNode<Mod> {
 
 
 /// UseTree AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type UseTreeAstNode
-unsafe impl Send for LuaAstNode<P<UseTree>> {}
-impl UserData for LuaAstNode<P<UseTree>> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.borrow().kind.ast_name())
-        });
-
-        methods.add_method("get_prefix", |lua_ctx, this, ()| {
-            this.borrow().prefix.clone().to_lua(lua_ctx)
-        });
-
+impl AddMoreMethods for LuaAstNode<P<UseTree>> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_rename", |_lua_ctx, this, ()| {
             match this.borrow().kind {
                 UseTreeKind::Simple(Some(rename), _, _) => Ok(Some(rename.to_string())),
@@ -1442,7 +1489,7 @@ impl UserData for LuaAstNode<P<UseTree>> {
                 UseTreeKind::Nested(trees) => Ok(Some(
                     trees.clone()
                         .into_iter()
-                        .map(|(tree, id)| Ok(vec![P(tree).to_lua(lua_ctx)?, id.to_lua(lua_ctx)?]))
+                        .map(|(tree, id)| Ok(vec![P(tree).to_lua_ext(lua_ctx)?, id.to_lua_ext(lua_ctx)?]))
                         .collect::<Result<Vec<_>>>()?
                 )),
                 _ => Ok(None),
@@ -1452,25 +1499,21 @@ impl UserData for LuaAstNode<P<UseTree>> {
 }
 
 impl ToLuaExt for AstNode {
-    fn to_lua<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
+    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
         match self {
-            AstNode::Crate(x) => x.to_lua(lua),
-            AstNode::Expr(x) => x.to_lua(lua),
-            AstNode::Pat(x) => x.to_lua(lua),
-            AstNode::Ty(x) => x.to_lua(lua),
-            AstNode::Stmts(x) => x.to_lua(lua),
-            AstNode::Stmt(x) => x.to_lua(lua),
-            AstNode::Item(x) => x.to_lua(lua),
+            AstNode::Crate(x) => x.to_lua_ext(lua),
+            AstNode::Expr(x) => x.to_lua_ext(lua),
+            AstNode::Pat(x) => x.to_lua_ext(lua),
+            AstNode::Ty(x) => x.to_lua_ext(lua),
+            AstNode::Stmts(x) => x.to_lua_ext(lua),
+            AstNode::Stmt(x) => x.to_lua_ext(lua),
+            AstNode::Item(x) => x.to_lua_ext(lua),
         }
     }
 }
 
 /// FnLike AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type FnLikeAstNode
-unsafe impl Send for LuaAstNode<P<FnLike>> {}
 impl UserData for LuaAstNode<FnLike> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
@@ -1478,21 +1521,21 @@ impl UserData for LuaAstNode<FnLike> {
         });
 
         methods.add_method("get_id", |lua_ctx, this, ()| {
-            this.borrow().id.to_lua(lua_ctx)
+            this.borrow().id.to_lua_ext(lua_ctx)
         });
 
         methods.add_method("get_ident", |lua_ctx, this, ()| {
-            this.borrow().ident.to_lua(lua_ctx)
+            this.borrow().ident.to_lua_ext(lua_ctx)
         });
 
         methods.add_method("has_block", |lua_ctx, this, ()| {
-            this.borrow().block.is_some().to_lua(lua_ctx)
+            this.borrow().block.is_some().to_lua_ext(lua_ctx)
         });
     }
 }
 
 impl ToLuaExt for FnKind {
-    fn to_lua<'lua>(self, ctx: Context<'lua>) -> Result<Value<'lua>> {
+    fn to_lua_ext<'lua>(self, ctx: Context<'lua>) -> Result<Value<'lua>> {
         match self {
             FnKind::Normal => "Normal",
             FnKind::ImplMethod => "ImplMethod",
@@ -1503,20 +1546,11 @@ impl ToLuaExt for FnKind {
 }
 
 /// FnDecl AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type FnDeclAstNode
-unsafe impl Send for LuaAstNode<P<FnDecl>> {}
-impl UserData for LuaAstNode<P<FnDecl>> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+impl AddMoreMethods for LuaAstNode<P<FnDecl>> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_args", |_lua_ctx, this, ()| {
-            Ok(this
-                .borrow()
-                .inputs
-                .iter()
-                .map(|arg| LuaAstNode::new(arg.clone()))
-                .collect::<Vec<_>>())
+            this.borrow().inputs.clone().to_lua_ext(_lua_ctx)
         });
 
         methods.add_meta_method(
@@ -1527,33 +1561,17 @@ impl UserData for LuaAstNode<P<FnDecl>> {
 }
 
 /// Param AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type ParamAstNode
-unsafe impl Send for LuaAstNode<Param> {}
-impl UserData for LuaAstNode<Param> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_id", |lua_ctx, this, ()| {
-            this.borrow().id.to_lua(lua_ctx)
-        });
-
-        methods.add_method("get_ty", |_lua_ctx, this, ()| {
-            Ok(LuaAstNode::new(this.borrow().ty.clone()))
-        });
-
+impl AddMoreMethods for LuaAstNode<Param> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
             this.borrow_mut().ty = ty.borrow().clone();
 
             Ok(())
         });
 
-        methods.add_method("get_pat", |_lua_ctx, this, ()| {
-            Ok(LuaAstNode::new(this.borrow().pat.clone()))
-        });
-
         methods.add_method("get_pat_id", |lua_ctx, this, ()| {
-            Ok(this.borrow().pat.id.to_lua(lua_ctx))
+            Ok(this.borrow().pat.id.to_lua_ext(lua_ctx))
         });
 
         methods.add_method("set_binding", |_lua_ctx, this, binding_str: LuaString| {
@@ -1570,14 +1588,14 @@ impl UserData for LuaAstNode<Param> {
             Ok(())
         });
 
-        methods.add_method("get_attrs", |_lua_ctx, this, ()| {
-            Ok(this
-               .borrow()
-               .attrs
-               .iter()
-               .map(|attr| LuaAstNode::new(attr.clone()))
-               .collect::<Vec<_>>())
-        });
+        //methods.add_method("get_attrs", |_lua_ctx, this, ()| {
+        //    Ok(this
+        //       .borrow()
+        //       .attrs
+        //       .iter()
+        //       .map(|attr| LuaAstNode::new(attr.clone()))
+        //       .collect::<Vec<_>>())
+        //});
 
         methods.add_meta_method(
             MetaMethod::ToString,
@@ -1587,29 +1605,13 @@ impl UserData for LuaAstNode<Param> {
 }
 
 /// FnHeader AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type FnHeaderAstNode
-unsafe impl Send for LuaAstNode<FnHeader> {}
-impl UserData for LuaAstNode<FnHeader> {}
+impl AddMoreMethods for LuaAstNode<FnHeader> {}
 
 /// StructField AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type StructFieldAstNode
-unsafe impl Send for LuaAstNode<StructField> {}
-impl UserData for LuaAstNode<StructField> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_id", |lua_ctx, this, ()| {
-            this.borrow().id.to_lua(lua_ctx)
-        });
-
-        methods.add_method("get_ty", |_lua_ctx, this, ()| {
-            Ok(LuaAstNode::new(this.borrow().ty.clone()))
-        });
-
+impl AddMoreMethods for LuaAstNode<StructField> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
             this.borrow_mut().ty = ty.borrow().clone();
 
@@ -1632,17 +1634,9 @@ impl UserData for LuaAstNode<StructField> {
 }
 
 /// ItemKind AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type ItemKindAstNode
-unsafe impl Send for LuaAstNode<ItemKind> {}
-impl UserData for LuaAstNode<ItemKind> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("get_kind", |_lua_ctx, this, ()| {
-            Ok(this.borrow().ast_name())
-        });
-
+impl AddMoreMethods for LuaAstNode<ItemKind> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("add_lifetime", |_lua_ctx, this, string: LuaString| {
             let lt_str = string.to_str()?;
 
@@ -1685,13 +1679,9 @@ impl UserData for LuaAstNode<ItemKind> {
 }
 
 /// Attribute AST node handle
-//
-// This object is NOT thread-safe. Do not use an object of this class from a
-// thread that did not acquire it.
 // @type FnHeaderAstNode
-unsafe impl Send for LuaAstNode<Attribute> {}
-impl UserData for LuaAstNode<Attribute> {
-    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+impl AddMoreMethods for LuaAstNode<Attribute> {
+    fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(
             MetaMethod::ToString,
             |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
@@ -1699,7 +1689,7 @@ impl UserData for LuaAstNode<Attribute> {
 
         methods.add_method("ident", |lua_ctx, this, ()| {
             if let Some(ident) = this.borrow().ident() {
-                Ok(Some(ident.to_lua(lua_ctx)?))
+                Ok(Some(ident.to_lua_ext(lua_ctx)?))
             } else {
                 Ok(None)
             }

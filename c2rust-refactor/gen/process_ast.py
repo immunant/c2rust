@@ -252,6 +252,9 @@ if __name__ == '__main__':
     elif mode == 'ast_names':
         import ast_names
         text = ast_names.generate(decls)
+    elif mode == 'lua_ast_node':
+        import lua_ast_node
+        text = lua_ast_node.generate(decls)
     else:
         raise ValueError('unknown mode: %r' % mode)
 
