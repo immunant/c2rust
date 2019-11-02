@@ -27,10 +27,10 @@ def do_enum_variants(s, match_pat):
     yield '      match %s {' % match_pat
     for v in s.variants:
         fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
-        yield '        %s => Ok([' % fpat
+        yield '        %s => ([' % fpat
         for f in v.fields:
             yield '          %s.clone().to_lua_ext(_lua_ctx)?,' % f.name
-        yield '        ].to_vec() as Vec<Value>),'
+        yield '        ].to_vec() as Vec<Value>).to_lua(_lua_ctx),'
     yield '      }'
     yield '    });'
 
