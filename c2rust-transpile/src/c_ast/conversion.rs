@@ -167,6 +167,7 @@ fn parse_attributes(attributes: &[Value]) -> IndexSet<Attribute> {
     let mut attrs = IndexSet::new();
     let mut expect_section_value = false;
     let mut expect_alias_value = false;
+    let mut expect_visibility_value = false;
 
     for attr in attributes {
         let attr_str = attr
@@ -190,7 +191,8 @@ fn parse_attributes(attributes: &[Value]) -> IndexSet<Attribute> {
             }
             "used" => {
                 attrs.insert(Attribute::Used);
-            }
+            },
+            "visibility" => expect_visibility_value = true,
             "section" => expect_section_value = true,
             s if expect_section_value => {
                 attrs.insert(Attribute::Section(s.into()));
@@ -201,6 +203,11 @@ fn parse_attributes(attributes: &[Value]) -> IndexSet<Attribute> {
                 attrs.insert(Attribute::Alias(s.into()));
 
                 expect_alias_value = false;
+            }
+            s if expect_visibility_value => {
+                attrs.insert(Attribute::Visibility(s.into()));
+
+                expect_visibility_value = false;
             }
             _ => {}
         }

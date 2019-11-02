@@ -1566,6 +1566,8 @@ pub enum Attribute {
     Section(String),
     /// __attribute__((used, __used__))
     Used,
+    /// __attribute((visibility("hidden")))
+    Visibility(String),
 }
 
 impl CTypeKind {
