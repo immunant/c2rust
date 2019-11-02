@@ -1,4 +1,5 @@
 use std::cell::{Ref, RefCell, RefMut};
+use std::fmt::Debug;
 use std::mem::swap;
 use std::ops::DerefMut;
 use std::rc::Rc;
@@ -367,7 +368,7 @@ include!(concat!(env!("OUT_DIR"), "/lua_ast_node_gen.inc.rs"));
 unsafe impl<T> Send for LuaAstNode<Spanned<T>> {}
 impl<T> LuaAstNodeSafe for LuaAstNode<Spanned<T>> {}
 impl<T> UserData for LuaAstNode<Spanned<T>>
-    where T: ToLuaExt + Clone,
+    where T: ToLuaExt + Clone + Debug,
 {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_node", |lua_ctx, this, ()| {
@@ -376,6 +377,10 @@ impl<T> UserData for LuaAstNode<Spanned<T>>
         methods.add_method("get_span", |lua_ctx, this, ()| {
           Ok(this.borrow().span.clone().to_lua_ext(lua_ctx))
         });
+        methods.add_meta_method(
+          MetaMethod::ToString,
+          |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
     }
 }
 
