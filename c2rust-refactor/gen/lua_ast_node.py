@@ -72,6 +72,12 @@ def do_one_impl(s, kind_map, boxed):
         box_prefix = '&**' if boxed else '&*'
         yield do_enum_variants(s, box_prefix + 'this.borrow()')
 
+    if 'no_debug' not in s.attrs:
+        yield '    methods.add_meta_method('
+        yield '      MetaMethod::ToString,'
+        yield '      |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),'
+        yield '    );'
+
     yield '    <Self as AddMoreMethods>::add_more_methods(methods);'
     yield '  }'
     yield '}'

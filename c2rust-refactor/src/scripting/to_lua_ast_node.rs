@@ -482,11 +482,6 @@ impl AddMoreMethods for LuaAstNode<P<Item>> {
             Ok(())
         });
 
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
-
         methods.add_method("get_trait_ref", |_lua_ctx, this, ()| {
             if let ItemKind::Impl(_, _, _, _, opt_trait_ref, ..) = &this.borrow().kind {
                 return Ok(opt_trait_ref.as_ref().map(|tr| LuaAstNode::new(tr.path.clone())));
@@ -588,11 +583,6 @@ impl AddMoreMethods for LuaAstNode<P<Path>> {
 
             Ok(())
         });
-
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
     }
 }
 
@@ -728,11 +718,6 @@ impl AddMoreMethods for LuaAstNode<P<Expr>> {
                 _ => Ok(None),
             }
         });
-
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
 
         methods.add_method("get_method_name", |lua_ctx, this, ()| {
             if let ExprKind::MethodCall(path_seg, ..) = &this.borrow().kind {
@@ -1009,11 +994,6 @@ impl AddMoreMethods for LuaAstNode<P<Expr>> {
 // @type TyAstNode
 impl AddMoreMethods for LuaAstNode<P<Ty>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
-
         methods.add_method("get_tys", |lua_ctx, this, ()| {
             match &this.borrow().kind {
                 TyKind::Slice(ty)
@@ -1249,11 +1229,6 @@ impl AddMoreMethods for LuaAstNode<Stmt> {
 
             Ok(())
         });
-
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
     }
 }
 
@@ -1269,11 +1244,6 @@ impl AddMoreMethods for LuaAstNode<P<Pat>> {
                 Ok(None)
             }
         });
-
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
     }
 }
 
@@ -1287,11 +1257,6 @@ impl AddMoreMethods for LuaAstNode<Crate> {}
 // @type LocalAstNode
 impl AddMoreMethods for LuaAstNode<P<Local>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
-
         methods.add_method("set_ty", |_lua_ctx, this, ty: Option<LuaAstNode<P<Ty>>>| {
             this.borrow_mut().ty = ty.map(|ty| ty.borrow().clone());
 
@@ -1552,11 +1517,6 @@ impl AddMoreMethods for LuaAstNode<P<FnDecl>> {
         methods.add_method("get_args", |_lua_ctx, this, ()| {
             this.borrow().inputs.clone().to_lua_ext(_lua_ctx)
         });
-
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
     }
 }
 
@@ -1596,11 +1556,6 @@ impl AddMoreMethods for LuaAstNode<Param> {
         //       .map(|attr| LuaAstNode::new(attr.clone()))
         //       .collect::<Vec<_>>())
         //});
-
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
     }
 }
 
@@ -1617,11 +1572,6 @@ impl AddMoreMethods for LuaAstNode<StructField> {
 
             Ok(())
         });
-
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
 
         methods.add_method("get_attrs", |_lua_ctx, this, ()| {
             Ok(this.borrow()
@@ -1670,11 +1620,6 @@ impl AddMoreMethods for LuaAstNode<ItemKind> {
 
             Ok(None)
         });
-
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
     }
 }
 
@@ -1682,11 +1627,6 @@ impl AddMoreMethods for LuaAstNode<ItemKind> {
 // @type FnHeaderAstNode
 impl AddMoreMethods for LuaAstNode<Attribute> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_meta_method(
-            MetaMethod::ToString,
-            |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
-        );
-
         methods.add_method("ident", |lua_ctx, this, ()| {
             if let Some(ident) = this.borrow().ident() {
                 Ok(Some(ident.to_lua_ext(lua_ctx)?))
