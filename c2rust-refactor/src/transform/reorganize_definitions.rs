@@ -935,9 +935,9 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
         // for a sanity check, but not doing that right now.
         (ForeignItemKind::Fn(..), ItemKind::Fn(..)) => true,
 
-        (ForeignItemKind::Static(frn_ty, frn_mutbl), ItemKind::Static(ty, mutbl, _)) => {
+        (ForeignItemKind::Static(frn_ty, _frn_mutbl), ItemKind::Static(ty, _mutbl, _)) => {
             if frn_ty.ast_equiv(&ty) {
-                return frn_mutbl == mutbl;
+                return true;
             }
 
             match (&frn_ty.kind, &ty.kind) {
