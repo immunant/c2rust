@@ -5,6 +5,12 @@ Attributes:
 - `#[fold_kind=FooKind]`: Folds the kind enum with the given name
   into the current structure.
 
+- `#[boxed]`: marks nodes that are wrapper in `P<T>` smart pointers,
+  e.g., `P<Expr>` or `P<Ty>`.
+
+- `#[boxed=both]`: marks nodes that are used both boxed and unboxed,
+  e.g., `UseTree`.
+
 - `#[to_lua_custom]`: implements `ToLuaExt` and `UserData` separately.
 '''
 
