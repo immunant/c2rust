@@ -263,18 +263,19 @@ impl TypeConverter {
         ctxt: &TypedAstContext,
         qtype: CQualTypeId,
     ) -> Result<P<Ty>, TranslationError> {
+        let mutbl = if qtype.qualifiers.is_const {
+            Mutability::Immutable
+        } else {
+            Mutability::Mutable
+        };
+
         match ctxt.resolve_type(qtype.ctype).kind {
             // While void converts to () in function returns, it converts to c_void
             // in the case of pointers.
             CTypeKind::Void => {
-                let mutbl = if qtype.qualifiers.is_const {
-                    Mutability::Immutable
-                } else {
-                    Mutability::Mutable
-                };
-                return Ok(mk()
+                Ok(mk()
                     .set_mutbl(mutbl)
-                    .ptr_ty(mk().path_ty(vec!["libc", "c_void"])));
+                    .ptr_ty(mk().path_ty(vec!["libc", "c_void"])))
             }
 
             CTypeKind::VariableArray(mut elt, _len) => {
@@ -282,34 +283,22 @@ impl TypeConverter {
                     elt = elt_
                 }
                 let child_ty = self.convert(ctxt, elt)?;
-                let mutbl = if qtype.qualifiers.is_const {
-                    Mutability::Immutable
-                } else {
-                    Mutability::Mutable
-                };
-                return Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty));
+                Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
             }
 
             // Function pointers are translated to Option applied to the function type
             // in order to support NULL function pointers natively
-            CTypeKind::Function(ret, ref params, is_var, is_noreturn, _has_proto) => {
-                let opt_ret = if is_noreturn { None } else { Some(ret) };
-                let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
+            CTypeKind::Function(..) => {
+                let fn_ty = self.convert(ctxt, qtype.ctype)?;
                 let param = mk().angle_bracketed_args(vec![fn_ty]);
-                let optn_ty = mk().path_ty(vec![mk().path_segment_with_args("Option", param)]);
-                return Ok(optn_ty);
+                Ok(mk().path_ty(vec![mk().path_segment_with_args("Option", param)]))
             }
 
-            _ => {}
+            _ => {
+                let child_ty = self.convert(ctxt, qtype.ctype)?;
+                Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
+            }
         }
-
-        let child_ty = self.convert(ctxt, qtype.ctype)?;
-        let mutbl = if qtype.qualifiers.is_const {
-            Mutability::Immutable
-        } else {
-            Mutability::Mutable
-        };
-        Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
     }
 
     /// Convert a `C` type to a `Rust` one. For the moment, these are expected to have compatible
