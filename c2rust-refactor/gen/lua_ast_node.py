@@ -34,7 +34,7 @@ def do_enum_variants(s, match_pat):
     for v in s.variants:
         for idx, f in enumerate(v.fields):
             fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
-            yield '        (%s, %d) => %s.clone().to_lua_ext(_lua_ctx),' % (fpat, idx, f.name)
+            yield '        (%s, %d) => %s.clone().to_lua_ext(_lua_ctx),' % (fpat, (idx + 1), f.name)
     yield '        _ => Ok(Value::Nil)' # FIXME
     yield '      }'
     yield '    });'
