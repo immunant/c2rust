@@ -24,7 +24,7 @@ def do_enum_variants(s, match_pat):
         yield '        %s => Ok([' % fpat
         for f in v.fields:
             yield '          %s.clone().to_lua_ext(_lua_ctx)?,' % f.name
-        yield '        ].iter().cloned().collect::<Vec<Value>>()),'
+        yield '        ].to_vec() as Vec<Value>),'
     yield '      }'
     yield '    });'
 
