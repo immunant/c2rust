@@ -340,12 +340,13 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
     }
 
     fn subst<'lua, T>(&self, node: &LuaAstNode<T>, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaValue<'lua>>
-        where T: Subst + Clone + ToLuaExt,
+        where T: Subst + Clone + ToLuaAstNode,
     {
+        // FIXME: use `ToLuaExt` here sometimes???
         node.borrow()
             .clone()
             .subst(self.transform.st, self.transform.cx, &self.mcx.bindings)
-            .to_lua_ext(lua_ctx)
+            .to_lua_ast_node(lua_ctx)
     }
 }
 
@@ -379,6 +380,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         methods.add_method_mut(
             "fold_with",
             |lua_ctx, this, (needle, callback): (AnyUserData, LuaFunction)| {
+                // FIXME: use `FromLuaExt` when it's implemented
                 this.transform.st.map_krate(|krate| {
                     dispatch!(
                         this.fold_with,
@@ -440,7 +442,10 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @tparam string pattern Statement variable pattern
         // @treturn LuaAstNode Statement matched by this binding
         methods.add_method_mut("get_multistmt", |lua_ctx, this, pattern: String| {
-            this.mcx.bindings.get::<_, Vec<ast::Stmt>>(pattern).to_lua_ext(lua_ctx)
+            this.mcx.bindings.get::<_, Vec<ast::Stmt>>(pattern)
+                .cloned()
+                .map(|v| v.to_lua_ast_node(lua_ctx))
+                .unwrap_or(Ok(LuaValue::Nil))
         });
 
         /// Attempt to match `target` against `pat`, updating bindings if matched.
@@ -455,7 +460,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
             },
         );
 
-        /// Attempt to find `target` inside `pat`, updating bindings if matched.
+        /// Attempt to find `pat` inside `target`, updating bindings if matched.
         // @function find_first
         // @tparam LuaAstNode pat AST (potentially with variable bindings) to find
         // @tparam LuaAstNode target AST to match inside
@@ -463,6 +468,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         methods.add_method_mut(
             "find_first",
             |_lua_ctx, this, (pat, target): (AnyUserData, AnyUserData)| {
+                // FIXME: use `FromLuaExt` when it's implemented
                 if let Ok(t) = target.borrow::<LuaAstNode<Vec<ast::Stmt>>>() {
                     dispatch!(this.find_first, pat, (&mut *t.borrow_mut()), {P<ast::Expr>})
                 } else {
@@ -476,6 +482,7 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @tparam LuaAstNode replacement New AST node to replace the currently matched AST. May include variable bindings if these bindings were matched by the search pattern.
         // @treturn LuaAstNode New AST node with variable bindings replaced by their matched values
         methods.add_method_mut("subst", |lua_ctx, this, replacement: AnyUserData| {
+            // FIXME: use `FromLuaExt` when it's implemented
             dispatch!(this.subst, replacement, (lua_ctx), {P<ast::Expr>, Vec<ast::Stmt>, ast::Stmt})
         });
     }
