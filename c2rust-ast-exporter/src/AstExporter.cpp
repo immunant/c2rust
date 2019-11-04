@@ -1836,6 +1836,7 @@ class TranslateASTVisitor final
         auto recordAlignment = 0;
         auto byteSize = 0;
 
+        auto loc = D->getLocation();
         std::vector<void *> childIds;
         if (def) {
             for (auto x : def->fields()) {
@@ -1844,8 +1845,7 @@ class TranslateASTVisitor final
             // Since the RecordDecl D isn't the complete definition,
             // the actual location should be given. This should handle opaque
             // types.
-            auto loc = def->getLocation();
-            D->setLocation(loc);
+            loc = def->getLocation();
 
             const ASTRecordLayout &layout =
                 this->Context->getASTRecordLayout(def);
@@ -1856,7 +1856,7 @@ class TranslateASTVisitor final
         auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
 
         encode_entry(
-            D, tag, childIds, QualType(),
+            D, tag, loc, childIds, QualType(),
             [D, def, recordAlignment, byteSize](CborEncoder *local) {
                 // 1. Encode name or null
                 auto name = D->getNameAsString();
