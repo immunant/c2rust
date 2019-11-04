@@ -58,9 +58,10 @@ pub unsafe extern "C" fn ten_mul(mut acc: &mut f64, digit: i32, r: Option<&f64>)
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 struct SizedData {
-    buf: *mut u32,
+    #[slice]
+    buf: Option<Box<[u32]>>,
     bsize: usize,
 }
 

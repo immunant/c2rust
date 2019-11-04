@@ -1405,9 +1405,10 @@ end
 
 function ConfigBuilder:flat_map_item(item, walk)
     local item_kind = item:get_kind()
-    local crate_vis = item:get_vis() == "Crate"
+    local vis = item:get_vis()
+    local pub_or_crate_vis = vis == "Crate" or vis == "Inherited"
 
-    if item_kind == "Struct" and crate_vis then
+    if item_kind == "Struct" and pub_or_crate_vis then
         local fields = item:get_fields()
 
         for _, field in ipairs(fields) do

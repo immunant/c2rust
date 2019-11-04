@@ -52,6 +52,7 @@ pub unsafe extern "C" fn ten_mul(#[nonnull] acc: *mut f64, digit: i32, r: *mut f
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct SizedData {
+    #[slice]
     buf: *mut u32,
     bsize: usize,
 }
@@ -85,9 +86,9 @@ pub(crate) struct HTAB {
 }
 
 pub(crate) unsafe extern "C" fn __ibitmap(mut hashp: *mut HTAB,
-                                           pnum: libc::c_int,
-                                           nbits: libc::c_int,
-                                           ndx: libc::c_int) -> libc::c_int {
+                                          pnum: libc::c_int,
+                                          nbits: libc::c_int,
+                                          ndx: libc::c_int) -> libc::c_int {
     #[slice]
     #[nonnull]
     let mut ip: *mut libc::c_uint = 0 as *mut libc::c_uint;
