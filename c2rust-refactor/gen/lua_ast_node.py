@@ -58,12 +58,15 @@ def do_one_impl(s, kind_map, boxed):
     if isinstance(s, Struct):
         # FIXME: handle tuple struct
         kind_field = find_kind_field(s)
+        if kind_field is not None:
+            yield '    methods.add_method("get_%s", |_lua_ctx, this, ()| {' % kind_field
+            yield '      Ok(this.borrow().%s.ast_name())' % kind_field
+            yield '    });'
+
         for f in s.fields:
-            yield '    methods.add_method("get_%s", |_lua_ctx, this, ()| {' % f.name
-            if f.name == kind_field:
-                yield '      Ok(this.borrow().%s.ast_name())' % f.name
-            else:
-                yield '      this.borrow().%s.clone().to_lua_ext(_lua_ctx)' % f.name
+            func_name = ("get_%s_node" if f.name == kind_field else "get_%s") % f.name
+            yield '    methods.add_method("%s", |_lua_ctx, this, ()| {' % func_name
+            yield '      this.borrow().%s.clone().to_lua_ext(_lua_ctx)' % f.name
             yield '    });'
 
         if 'fold_kind' in s.attrs:
