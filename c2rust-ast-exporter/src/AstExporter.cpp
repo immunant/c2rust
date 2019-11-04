@@ -1699,9 +1699,9 @@ class TranslateASTVisitor final
                             auto aa = def->getAttr<AliasAttr>();
                             cbor_encode_text_stringz(
                                 &attr_info, aa->getAliasee().str().c_str());
-                        } else if (attr->getKind() == attr::Kind::Visibility) {
-                            auto va = def->getAttr<VisibilityAttr>();
-                            const char *vis = VisibilityAttr::ConvertVisibilityTypeToStr(va->getVisibility());
+                        } else if (attr->getKind() == attr::Kind::TypeVisibility) {
+                            auto va = def->getAttr<TypeVisibilityAttr>();
+                            const char *vis = TypeVisibilityAttr::ConvertVisibilityTypeToStr(va->getVisibility());
                             cbor_encode_text_stringz(&attr_info, vis);
                         }
                     }
