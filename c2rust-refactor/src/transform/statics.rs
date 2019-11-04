@@ -18,15 +18,15 @@ use crate::RefactorCtxt;
 
 
 /// # `static_collect_to_struct` Command
-/// 
+///
 /// Usage: `static_collect_to_struct STRUCT VAR`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Collect marked statics into a single static struct.
-/// 
+///
 /// Specifically:
-/// 
+///
 ///  1. Find all statics marked `target`.  For each one, record its name, type, and
 ///     initializer expression, then delete it.
 ///  2. Generate a new struct definition named `STRUCT`.  For each marked static,
@@ -34,32 +34,32 @@ use crate::RefactorCtxt;
 ///  3. Generate a new `static mut` named `VAR` whose type is `STRUCT`.  Initialize
 ///     it using the initializer expressions for the marked statics.
 ///  4. For each marked static `foo`, replace uses of `foo` with `VAR.foo`.
-/// 
+///
 /// Example:
-/// 
+///
 /// ```ignore
 ///     static mut FOO: i32 = 100;
 ///     static mut BAR: bool = true;
-/// 
+///
 ///     unsafe fn f() -> i32 {
 ///         FOO
 ///     }
 /// ```
-/// 
-/// 
+///
+///
 /// After running `static_collect_to_struct Globals G`, with both statics marked:
-/// 
+///
 /// ```ignore
 ///     struct Globals {
 ///         FOO: i32,
 ///         BAR: bool,
 ///     }
-/// 
+///
 ///     static mut G: Globals = Globals {
 ///         FOO: 100,
 ///         BAR: true,
 ///     };
-/// 
+///
 ///     unsafe fn f() -> i32 {
 ///         G.FOO
 ///     }
@@ -157,11 +157,11 @@ fn build_struct_instance(struct_name: &str,
 
 
 /// # `static_to_local_ref` Command
-/// 
+///
 /// Usage: `static_to_local_ref`
-/// 
+///
 /// Marks: `target`, `user`
-/// 
+///
 /// For each function marked `user`, replace uses of statics marked `target` with
 /// uses of newly-introduced reference arguments.  Afterward, no `user` function
 /// directly accesses any `target` static.  At call sites of `user` functions, a
@@ -170,20 +170,20 @@ fn build_struct_instance(struct_name: &str,
 /// argument is passed through.  Note this sometimes results in functions gaining
 /// arguments corresponding to statics that the function itself does not use, but
 /// that its callees do.
-/// 
+///
 /// Example:
 ///
 /// ```ignore
 ///     static mut FOO: i32 = 100;  // FOO: target
-/// 
+///
 ///     unsafe fn f() -> i32 {  // f: user
 ///         FOO
 ///     }
-/// 
+///
 ///     unsafe fn g() -> i32 {  // g: user
 ///         f()
 ///     }
-/// 
+///
 ///     unsafe fn h() -> i32 {
 ///         g()
 ///     }
@@ -193,14 +193,14 @@ fn build_struct_instance(struct_name: &str,
 ///
 /// ```ignore
 ///     static mut FOO: i32 = 100;
-/// 
+///
 ///     // `f` is a `user` that references `FOO`, so it
 ///     // gains a new argument `FOO_`.
 ///     unsafe fn f(FOO_: &mut i32) -> i32 {
 ///         // References to `FOO` are replaced with `*FOO_`
 ///         *FOO_
 ///     }
-/// 
+///
 ///     // `g` is a `user` that references `FOO` indirectly,
 ///     // via fellow `user` `f`.
 ///     unsafe fn g(FOO_: &mut i32) -> i32 {
@@ -208,7 +208,7 @@ fn build_struct_instance(struct_name: &str,
 ///         // when calling `f`.
 ///         f(FOO_)
 ///     }
-/// 
+///
 ///     // `h` is not a `user`, so its signature is unchanged.
 ///     unsafe fn h() -> i32 {
 ///         // `h` passes in a reference to the original
@@ -241,7 +241,7 @@ impl Transform for Localize {
                     let arg_name_str = format!("{}_", i.ident.name.as_str());
                     let arg_name = (&arg_name_str as &str).into_symbol();
                     statics.insert(def_id, StaticInfo {
-                        name: i.ident.clone(),
+                        name: i.ident,
                         arg_name: arg_name,
                         ty: ty.clone(),
                         mutbl: mutbl,
@@ -282,12 +282,12 @@ impl Transform for Localize {
             static_refs: HashSet<DefId>,
         }
 
-        let fn_ids = fn_refs.keys().map(|&x| x).collect::<HashSet<_>>();
+        let fn_ids = fn_refs.keys().copied().collect::<HashSet<_>>();
         let mut fns = fn_refs.into_iter().map(|(k, v)| {
             let fn_refs = v.iter().filter(|id| fn_ids.contains(id))
-                .map(|&x| x).collect();
+                .copied().collect();
             let static_refs = v.iter().filter(|id| statics.contains_key(id))
-                .map(|&x| x).collect();
+                .copied().collect();
             (k, FnInfo { fn_refs, static_refs })
         }).collect::<HashMap<_, _>>();
 
@@ -319,7 +319,7 @@ impl Transform for Localize {
         // (3) Do the actual rewrite.  Update calls to marked functions, passing any statics they
         // require as arguments.  Add arguments to marked functions' signatures, corresponding to
         // the statics they reference.  Replace uses of statics in the bodies of marked functions
-        // with the corresponding parameter. 
+        // with the corresponding parameter.
 
         mut_visit_fns(krate, |fl| {
             let fn_def_id = cx.node_def_id(fl.id);
@@ -378,39 +378,39 @@ impl Transform for Localize {
 
 
 /// # `static_to_local` Command
-/// 
+///
 /// Usage: `static_to_local`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Delete each static marked `target`.  For each function that uses a marked static, insert a new
 /// local variable definition replicating the marked static.
-/// 
+///
 /// Example:
 ///
 /// ```ignore
 ///     static mut FOO: i32 = 100;  // FOO: target
-/// 
+///
 ///     unsafe fn f() -> i32 {
 ///         FOO
 ///     }
-/// 
+///
 ///     unsafe fn g() -> i32 {
 ///         FOO + 1
 ///     }
 /// ```
-/// 
+///
 /// After running `static_to_local`:
-/// 
+///
 /// ```ignore
 ///     // `FOO` deleted
-/// 
+///
 ///     // `f` gains a new local, replicating `FOO`.
 ///     unsafe fn f() -> i32 {
 ///         let FOO: i32 = 100;
 ///         FOO
 ///     }
-/// 
+///
 ///     // If multiple functions use `FOO`, each one gets its own copy.
 ///     unsafe fn g() -> i32 {
 ///         let FOO: i32 = 100;
@@ -440,7 +440,7 @@ impl Transform for StaticToLocal {
                 ItemKind::Static(ref ty, mutbl, ref expr) => {
                     let def_id = cx.node_def_id(i.id);
                     statics.insert(def_id, StaticInfo {
-                        name: i.ident.clone(),
+                        name: i.ident,
                         ty: ty.clone(),
                         mutbl: mutbl,
                         expr: expr.clone(),
@@ -471,7 +471,7 @@ impl Transform for StaticToLocal {
                 (qself, path)
             });
 
-            if refs.len() == 0 {
+            if refs.is_empty() {
                 return;
             }
 

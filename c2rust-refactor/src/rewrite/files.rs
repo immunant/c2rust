@@ -106,7 +106,7 @@ fn rewrite_range(
             TextAdjust::Parenthesize => callback("("),
         }
 
-        if rw.rewrites.len() == 0 {
+        if rw.rewrites.is_empty() {
             emit_chunk(cm, rw.new_span.lo(), rw.new_span.hi(), |s| callback(s));
         } else {
             rewrite_range(

@@ -362,8 +362,8 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
             },
 
             TokenTree::Delimited(sp, delim, tts) => {
-                let dts = rewrite_token_stream(tts.into(), bt);
-                TokenTree::Delimited(sp, delim, dts.into())
+                let dts = rewrite_token_stream(tts, bt);
+                TokenTree::Delimited(sp, delim, dts)
             }
 
             tt @ _ => tt,

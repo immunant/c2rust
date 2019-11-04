@@ -205,7 +205,7 @@ impl<'lty, 'tcx> ExprPatVisitor<'lty, 'tcx> {
         for (&local_id, &ty) in tables.node_types().iter() {
             let id = HirId {
                 owner: def_id.index,
-                local_id: local_id,
+                local_id,
             };
             self.unadjusted.insert(id, self.ltt.label(ty));
 
@@ -332,7 +332,7 @@ fn label_tys<'lty, 'a: 'lty, 'tcx: 'a>(
     krate: &ast::Crate,
 ) -> HashMap<HirId, LTy<'lty, 'tcx>> {
     let mut ty_nodes = HashMap::new();
-    let source = LabelTysSource { tcx: cx.ty_ctxt(), ltt: ltt };
+    let source = LabelTysSource { tcx: cx.ty_ctxt(), ltt };
     type_map::map_types(&cx.hir_map(), source, krate, |_, ast_ty, lty| {
         // Note that AST `Ty` nodes don't have `HirId`s, so we index everything by the old `NodeId`
         // instead.

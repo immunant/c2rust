@@ -22,17 +22,17 @@ use crate::RefactorCtxt;
 
 
 /// # `func_to_method` Command
-/// 
+///
 /// Usage: `func_to_method`
-/// 
+///
 /// Marks: `target`, `dest`
-/// 
+///
 /// Turn functions marked `target` into static methods (no `self`) in the `impl`
 /// block marked `dest`.
 /// Turn functions that have an argument marked `target` into methods, replacing
 /// the named argument with `self`.
 /// Rewrite all uses of marked functions to call the new method versions.
-/// 
+///
 /// Marked arguments of type `T`, `&T`, and `&mut T` (where `T` is the `Self` type
 /// of the `dest` `impl`) will be converted to `self`, `&self`, and `&mut self`
 /// respectively.
@@ -114,7 +114,7 @@ impl Transform for ToMethod {
         let fn_ref_info = fns.iter().map(|f| {
             (cx.node_def_id(f.item.id),
              FnRefInfo {
-                 ident: f.item.ident.clone(),
+                 ident: f.item.ident,
                  arg_idx: f.arg_idx,
              })
         }).collect::<HashMap<_, _>>();
@@ -150,7 +150,7 @@ impl Transform for ToMethod {
                         TyKind::Ref(_, ty, _) if ty == self_ty => {
                             match arg.ty.kind {
                                 ast::TyKind::Rptr(ref lt, ref mty) =>
-                                    Some(SelfKind::Region(lt.clone(), mty.mutbl)),
+                                    Some(SelfKind::Region(*lt, mty.mutbl)),
                                 _ => None,
                             }
                         },
@@ -210,7 +210,7 @@ impl Transform for ToMethod {
                     };
                     ImplItem {
                         id: DUMMY_NODE_ID,
-                        ident: f.item.ident.clone(),
+                        ident: f.item.ident,
                         vis: f.item.vis.clone(),
                         defaultness: Defaultness::Final,
                         attrs: f.item.attrs.clone(),
@@ -270,9 +270,9 @@ impl Transform for ToMethod {
 
 
 /// # `fix_unused_unsafe` Command
-/// 
+///
 /// Usage: `fix_unused_unsafe`
-/// 
+///
 /// Find unused `unsafe` blocks and turn them into ordinary blocks.
 pub struct FixUnusedUnsafe;
 
@@ -300,11 +300,11 @@ impl Transform for FixUnusedUnsafe {
 
 
 /// # `sink_unsafe` Command
-/// 
+///
 /// Usage: `sink_unsafe`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For functions marked `target`, convert `unsafe fn f() { ... }` into `fn () {
 /// unsafe { ... } }`.  Useful once unsafe argument handling has been eliminated
 /// from the function.
@@ -365,51 +365,51 @@ impl Transform for SinkUnsafe {
 
 
 /// # `wrap_extern` Command
-/// 
+///
 /// Usage: `wrap_extern`
-/// 
+///
 /// Marks: `target`, `dest`
-/// 
+///
 /// For each foreign function marked `target`, generate a wrapper function in the
 /// module marked `dest`, and rewrite all uses of the function to call the wrapper
 /// instead.
-/// 
-/// 
+///
+///
 /// Example:
-/// 
+///
 /// ```ignore
 ///     extern "C" {
 ///         fn foo(x: i32) -> i32;
 ///     }
-/// 
+///
 ///     mod wrappers {
 ///         // empty
 ///     }
-/// 
+///
 ///     fn main() {
 ///         let x = unsafe { foo(123) };
 ///     }
 /// ```
-/// 
+///
 /// After transformation, with `fn foo` marked `target` and `mod wrappers` marked
 /// `dest`:
-/// 
+///
 /// ```ignore
 ///     extern "C" {
 ///         fn foo(x: i32) -> i32;
 ///     }
-/// 
+///
 ///     mod wrappers {
 ///         unsafe fn foo(x: i32) -> i32 {
 ///             ::foo(x)
 ///         }
 ///     }
-/// 
+///
 ///     fn main() {
 ///         let x = unsafe { ::wrappers::foo(123) };
 ///     }
 /// ```
-/// 
+///
 /// Note that this also replaces the function in expressions that take its address,
 /// which may cause problem as the wrapper function has a different type that the
 /// original (it lacks the `extern "C"` ABI qualifier).
@@ -437,7 +437,7 @@ impl Transform for WrapExtern {
                     fns.push(FuncInfo {
                         id: fi.id,
                         def_id: cx.node_def_id(fi.id),
-                        ident: fi.ident.clone(),
+                        ident: fi.ident,
                         decl: decl.clone(),
                     });
                 },
@@ -541,18 +541,18 @@ impl Transform for WrapExtern {
 
 
 /// # `wrap_api` Command
-/// 
+///
 /// Usage: `wrap_api`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For each function `foo` marked `target`:
-/// 
+///
 ///  1. Reset the function's ABI to `"Rust"` (the default)
 ///  2. Remove any `#[no_mangle]` or `#[export_name]` attributes
 ///  3. Generate a new wrapper function called `foo_wrapper` with `foo`'s old ABI
 ///     and an `#[export_name="foo"]` attribute.
-/// 
+///
 /// Calls to `foo` are left unchanged.  The result is that callers from C use the
 /// wrapper function, while internal calls use `foo` directly, and the signature of
 /// `foo` can be changed freely without affecting external callers.
@@ -702,34 +702,34 @@ impl Transform for WrapApi {
 
 
 /// # `abstract` Command
-/// 
+///
 /// Usage: `abstract SIG PAT [BODY]`
-/// 
+///
 /// Replace all instances of `pat` with calls to a new function whose name and signature is given
 /// by `sig`.  Example:
-/// 
+///
 /// Input:
-/// 
+///
 /// ```ignore
 ///     1 + 2
 /// ```
-/// 
+///
 /// After running `abstract 'add(x: u32, y: u32) -> u32' 'x + y'`:
-/// 
+///
 /// ```ignore
 ///     add(1, 2)
-/// 
+///
 ///     // Elsewhere:
 ///     fn add(x: u32, y: u32) -> u32 { x + y }
 /// ```
-/// 
+///
 /// All type and value parameter names in `sig` act as bindings when matching `pat`.  The captured
 /// exprs and types are passed as parameters when building the new call expression.  The body of
 /// the function is `body`, if provided, otherwise `pat` itself.
-/// 
+///
 /// Non-ident patterns in `sig` are not supported.  It is also an error for any type parameter's
 /// name to collide with any value parameter.
-/// 
+///
 /// If matching with `pat` fails to capture expressions for any of the value parameters of `sig`,
 /// it is an error.  If it fails to capture for a type parameter, the parameter is filled in with
 /// `_` (infer).

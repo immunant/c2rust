@@ -13,21 +13,21 @@ use crate::RefactorCtxt;
 
 
 /// # `struct_assign_to_update` Command
-/// 
+///
 /// Usage: `struct_assign_to_update`
-/// 
+///
 /// Replace all struct field assignments with functional update expressions.
-/// 
+///
 /// Example:
-/// 
+///
 /// ```ignore
 ///     let mut x: S = ...;
 ///     x.f = 1;
 ///     x.g = 2;
 /// ```
-/// 
+///
 /// After running `struct_assign_to_update`:
-/// 
+///
 /// ```ignore
 ///     let mut x: S = ...;
 ///     x = S { f: 1, ..x };
@@ -61,11 +61,11 @@ impl Transform for AssignToUpdate {
 
 
 /// # `struct_merge_updates` Command
-/// 
+///
 /// Usage: `struct_merge_updates`
-/// 
+///
 /// Merge consecutive struct updates into a single update.
-/// 
+///
 /// Example:
 ///
 /// ```ignore
@@ -73,9 +73,9 @@ impl Transform for AssignToUpdate {
 ///     x = S { f: 1, ..x };
 ///     x = S { g: 2, ..x };
 /// ```
-/// 
+///
 /// After running `struct_assign_to_update`:
-/// 
+///
 /// ```ignore
 ///     let mut x: S = ...;
 ///     x = S { f: 1, g: 2, ..x };
@@ -138,13 +138,13 @@ fn build_struct_update(path: Path, fields: Vec<Field>, base: P<Expr>) -> Stmt {
 
 
 /// # `rename_struct` Command
-/// 
+///
 /// Obsolete - use `rename_items_regex` instead.
-/// 
+///
 /// Usage: `rename_struct NAME`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Rename the struct marked `target` to `NAME`.  Only supports renaming a single
 /// struct at a time.
 pub struct Rename(pub String);
@@ -169,7 +169,7 @@ impl Transform for Rename {
 
             smallvec![i.map(|i| {
                 Item {
-                    ident: new_ident.clone(),
+                    ident: new_ident,
                     .. i
                 }
             })]

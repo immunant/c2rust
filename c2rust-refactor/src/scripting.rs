@@ -325,7 +325,7 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
         Ok(res)
     }
 
-    fn find_first<'lua, P, T>(&mut self, pat: &LuaAstNode<P>, target: &mut T) -> LuaResult<bool>
+    fn find_first<P, T>(&mut self, pat: &LuaAstNode<P>, target: &mut T) -> LuaResult<bool>
         where P: Pattern<P> + Clone,
               LuaAstNode<P>: 'static + UserData,
               T: MutVisit,
@@ -763,7 +763,6 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
                             Ok(()) => (),
                             Err(e) => {
                                 result = Err(e);
-                                return;
                             }
                         };
                     });

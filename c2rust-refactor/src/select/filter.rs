@@ -394,7 +394,7 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for ChildVisitor<F> {
 }
 
 pub fn iter_children<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
-    let mut v = ChildVisitor { func: func };
+    let mut v = ChildVisitor { func };
     match node {
         AnyNode::Item(x) => visit::walk_item(&mut v, x),
         AnyNode::TraitItem(x) => visit::walk_trait_item(&mut v, x),
@@ -478,7 +478,7 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
 }
 
 pub fn iter_descendants<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
-    let mut v = DescendantVisitor { func: func };
+    let mut v = DescendantVisitor { func };
     match node {
         AnyNode::Item(x) => visit::walk_item(&mut v, x),
         AnyNode::TraitItem(x) => visit::walk_trait_item(&mut v, x),

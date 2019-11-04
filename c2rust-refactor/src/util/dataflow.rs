@@ -70,10 +70,10 @@ where
             let cur_val = &mut *data[&cur].get();
 
             let ctxt = Ctxt {
-                rev_deps: rev_deps,
-                data: data,
+                rev_deps,
+                data,
                 _marker0: PhantomData,
-                cur: cur,
+                cur,
             };
 
             (ctxt, cur_val)
@@ -107,8 +107,8 @@ where
 {
     let rev_deps = DepMap::new();
 
-    let mut pending = data.keys().map(|x| x.clone()).collect::<HashSet<_>>();
-    while pending.len() > 0 {
+    let mut pending = data.keys().cloned().collect::<HashSet<_>>();
+    while !pending.is_empty() {
         let cur = pending.iter().next().unwrap().clone();
         pending.remove(&cur);
         info!("DF: update {:?}", cur);

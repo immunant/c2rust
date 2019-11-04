@@ -111,8 +111,8 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         MatchCtxt {
             bindings: Bindings::new(),
             types: BindingTypes::new(),
-            st: st,
-            cx: cx,
+            st,
+            cx,
             debug: false,
         }
     }
@@ -267,7 +267,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         // starts with "__", then it's a valid pattern for any binding type.
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(bindings::Type::Ident)) => {
-                let ok = self.bindings.try_add(sym, Some(target.clone()));
+                let ok = self.bindings.try_add(sym, Some(*target));
                 let res = if ok {
                     Ok(true)
                 } else {
@@ -480,7 +480,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            tts.clone().into(),
+            tts.clone(),
             None,
             false,
             false,
@@ -510,7 +510,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     ) -> Result<()> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            tts.clone().into(),
+            tts.clone(),
             None,
             false,
             false,
@@ -590,7 +590,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     where
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, P<Expr>>,
     {
-        let ts: TokenStream = tts.clone().into();
+        let ts: TokenStream = tts.clone();
         let pattern = driver::run_parser_tts(self.cx.session(), ts.into_trees().collect(), func);
 
         let mut target = target;
@@ -799,7 +799,7 @@ where
     F: FnMut(&mut Vec<Stmt>, MatchCtxt<'a, 'tcx>),
 {
     fn visit_block(&mut self, b: &mut P<Block>) {
-        assert!(self.pattern.len() > 0);
+        assert!(!self.pattern.is_empty());
 
         mut_visit::noop_visit_block(b, self);
 
@@ -822,7 +822,7 @@ where
             } else {
                 // If the pattern starts with a glob, then trying to match it at `i + 1` will fail
                 // just the same as at `i`.
-                if self.pattern.len() > 0 && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0]) {
+                if !self.pattern.is_empty() && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0]) {
                     break;
                 } else {
                     i += 1;
@@ -838,13 +838,13 @@ where
 }
 
 pub fn match_multi_stmt(mcx: &mut MatchCtxt, pattern: &[Stmt], target: &[Stmt]) -> Option<usize> {
-    if pattern.len() == 0 {
+    if pattern.is_empty() {
         return Some(0);
     }
 
     if is_multi_stmt_glob(mcx, &pattern[0]) {
         let name = pattern[0].pattern_symbol().unwrap();
-        for i in (0..target.len() + 1).rev() {
+        for i in (0..=target.len()).rev() {
             let orig_mcx = mcx.clone();
             if let Some(consumed) = match_multi_stmt(mcx, &pattern[1..], &target[i..]) {
                 let ok = mcx.bindings.try_add(name, target[..i].to_owned());
@@ -905,8 +905,8 @@ impl Pattern<Vec<Stmt>> for Vec<Stmt> {
     {
         let mut f = MultiStmtPatternFolder {
             pattern: self,
-            init_mcx: init_mcx,
-            callback: callback,
+            init_mcx,
+            callback,
         };
         target.visit(&mut f)
     }

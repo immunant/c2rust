@@ -167,7 +167,7 @@ impl<A: Rewrite, B: Rewrite> MaybeRewriteSeq for (A, B) {}
 pub fn rewrite_seq_unsupported<T: Rewrite>(old: &[T], new: &[T], mut rcx: RewriteCtxtRef) -> bool {
     if old.len() != new.len() {
         // Give up - hope to recover at a higher level
-        return false;
+        false
     } else {
         for i in 0..old.len() {
             if !Rewrite::rewrite(&old[i], &new[i], rcx.borrow()) {
@@ -191,7 +191,7 @@ where
     T: SeqItem + print::RewriteAt + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite + Debug,
     R: AstDeref<Target = T>,
 {
-    if old.len() == 0 && new.len() != 0 && !is_rewritable(outer_span) {
+    if old.is_empty() && !new.is_empty() && !is_rewritable(outer_span) {
         // We can't handle this case because it provides us with no span information about the
         // `old` side.  We need at least one span so we know where to splice in any new items.
         return false;

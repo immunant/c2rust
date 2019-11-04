@@ -98,8 +98,8 @@ where
 {
     pub fn new(inner: SyncSender<U>, convert: F) -> WrapSender<T, U, F> {
         WrapSender {
-            inner: inner,
-            convert: convert,
+            inner,
+            convert,
             _marker: PhantomData,
         }
     }

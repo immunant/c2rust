@@ -336,7 +336,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
                 Rewrite::rewrite(block1, block2, rcx.borrow()) &&
                 // FnDecl parts
                 rewrite_arg_list_with_tokens(
-                    inputs1, inputs2, old_args_tokens.into(), old_args_span, rcx.borrow()) &&
+                    inputs1, inputs2, old_args_tokens, old_args_span, rcx.borrow()) &&
                 Rewrite::rewrite(output1, output2, rcx.borrow()) &&
                 true;
             if !ok {

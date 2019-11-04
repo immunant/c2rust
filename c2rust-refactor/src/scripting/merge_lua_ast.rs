@@ -150,7 +150,7 @@ fn dummy_arm() -> Arm {
 fn get_node_id_or_default(table: &LuaTable<'_>, field_name: &str) -> LuaResult<NodeId> {
     let opt_id: Option<u32> = table.get(field_name)?;
 
-    Ok(opt_id.map(|id| NodeId::from_u32(id)).unwrap_or(DUMMY_NODE_ID))
+    Ok(opt_id.map(NodeId::from_u32).unwrap_or(DUMMY_NODE_ID))
 }
 
 fn get_span_or_default(table: &LuaTable<'_>, field_name: &str) -> LuaResult<Span> {

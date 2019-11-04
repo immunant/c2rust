@@ -82,7 +82,7 @@ impl<'lty, 'tcx> Perm<'lty> {
                         all.push(p);
                     }
                 }
-                let all = if all.len() == 0 {
+                let all = if all.is_empty() {
                     &[] as &[_]
                 } else {
                     arena.alloc_slice(&all)
@@ -98,7 +98,7 @@ impl<'lty, 'tcx> Perm<'lty> {
                     let mut all = Vec::with_capacity(ps.len() + 1);
                     all.extend(ps.iter().cloned());
                     all.push(p);
-                    let all = if all.len() == 0 {
+                    let all = if all.is_empty() {
                         &[] as &[_]
                     } else {
                         arena.alloc_slice(&all)
@@ -472,7 +472,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
         let to_visit = self.less.iter().cloned().collect();
         EditConstraintSet {
             cset: self,
-            to_visit: to_visit,
+            to_visit,
         }
     }
 
@@ -581,7 +581,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
                 _ => continue,
             };
 
-            if ps.len() == 0 {
+            if ps.is_empty() {
                 // Should never happen, but just in case...
                 edit.remove(a, b);
                 continue;

@@ -20,11 +20,11 @@ use crate::RefactorCtxt;
 
 
 /// # `rename_items_regex` Command
-/// 
+///
 /// Usage: `rename_items_regex PAT REPL [FILTER]`
-/// 
+///
 /// Marks: reads `FILTER`
-/// 
+///
 /// Replace `PAT` (a regular expression) with `REPL` in all item names.  If `FILTER` is provided,
 /// only items bearing the `FILTER` mark will be renamed.
 pub struct RenameRegex {
@@ -69,7 +69,7 @@ impl Transform for RenameRegex {
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
             if let Some(hir_id) = cx.res_to_hir_id(def) {
                 if let Some(new_ident) = new_idents.get(&hir_id) {
-                    path.segments.last_mut().unwrap().ident = new_ident.clone();
+                    path.segments.last_mut().unwrap().ident = *new_ident;
                 }
             }
             (qself, path)
@@ -78,15 +78,15 @@ impl Transform for RenameRegex {
 }
 
 /// # `rename_unnamed` Command
-/// 
+///
 /// Usage: `rename_unnamed`
-/// 
+///
 /// Renames all `Ident`s that have `unnamed` throughout the `Crate`, so the `Crate` can
 /// have a completely unique naming scheme for Anonymous Types.
 /// This command should be ran after transpiling using `c2rust-transpile`, and
 /// is also mainly to be used when doing the `reorganize_definition` pass; although
 /// this pass can run on any `c2rust-transpile`d project.
-/// 
+///
 /// Example:
 /// ```ignore
 /// pub mod foo {
@@ -94,7 +94,7 @@ impl Transform for RenameRegex {
 ///         a: i32
 ///     }
 /// }
-/// 
+///
 /// pub mod bar {
 ///     pub struct unnamed {
 ///         b: usize
@@ -108,7 +108,7 @@ impl Transform for RenameRegex {
 ///         a: i32
 ///     }
 /// }
-/// 
+///
 /// pub mod bar {
 ///     pub struct unnamed_1 {
 ///         b: usize
@@ -164,7 +164,7 @@ impl Transform for RenameUnnamed {
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
             if let Some(hir_id) = cx.res_to_hir_id(def) {
                 if let Some(new_ident) = renamer.new_idents.get(&hir_id) {
-                    path.segments.last_mut().unwrap().ident = new_ident.clone();
+                    path.segments.last_mut().unwrap().ident = *new_ident;
                 }
             }
             (qself, path)
@@ -281,11 +281,11 @@ impl Transform for RenameUnnamed {
 
 
 /// # `replace_items` Command
-/// 
+///
 /// Usage: `replace_items`
-/// 
+///
 /// Marks: `target`, `repl`
-/// 
+///
 /// Replace all uses of items marked `target` with reference to the item marked
 /// `repl`, then remove all `target` items.
 pub struct ReplaceItems;
@@ -372,14 +372,14 @@ impl Transform for ReplaceItems {
 
 
 /// # `set_visibility` Command
-/// 
+///
 /// Usage: `set_visibility VIS`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Set the visibility of all items marked `target` to `VIS`.  `VIS` is a Rust
 /// visibility qualifier such as `pub`, `pub(crate)`, or the empty string.
-/// 
+///
 /// Doesn't handle struct field visibility, for now.
 pub struct SetVisibility {
     vis_str: String,
@@ -444,11 +444,11 @@ impl Transform for SetVisibility {
 
 
 /// # `set_mutability` Command
-/// 
+///
 /// Usage: `set_mutability MUT`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Set the mutability of all items marked `target` to `MUT`.  `MUT` is either
 /// `imm` or `mut`.  This command only affects `static` items (including extern statics).
 pub struct SetMutability {
@@ -557,15 +557,15 @@ impl Transform for SetUnsafety {
 
 
 /// # `create_item` Command
-/// 
+///
 /// Usage: `create_item ITEMS <inside/after> [MARK]`
-/// 
+///
 /// Marks: `MARK`/`target`
-/// 
+///
 /// Parse `ITEMS` as item definitions, and insert the parsed items either `inside` (as the first
 /// child) or `after` (as a sibling) of the AST node bearing `MARK` (default: `target`).  Supports
 /// adding items to both `mod`s and blocks.
-/// 
+///
 /// Note that other itemlikes, such as impl and trait items, are not handled by this command.
 pub struct CreateItem {
     header: String,
@@ -681,11 +681,11 @@ impl Transform for CreateItem {
 
 
 /// # `delete_items` Command
-/// 
+///
 /// Usage: `delete_items`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Delete all items marked `target` from the AST.  This handles items in both `mod`s and blocks,
 /// but doesn't handle other itemlikes.
 pub struct DeleteItems;

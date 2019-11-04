@@ -24,7 +24,7 @@ impl PatternSymbol for Lit {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match self.kind {
             // FIXME: can this conflict with regular Err literals???
-            LitKind::Err(ref sym) => Some(sym.clone()),
+            LitKind::Err(ref sym) => Some(*sym),
             _ => None
         }
     }

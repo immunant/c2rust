@@ -83,7 +83,7 @@ where
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl,
             block: Some(block),
             attrs: i.attrs,
         };
@@ -96,7 +96,7 @@ where
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
-                    kind: ItemKind::Fn(fl.decl, header.clone(), generics.clone(), block),
+                    kind: ItemKind::Fn(fl.decl, header, generics.clone(), block),
                     attrs: fl.attrs,
                     vis: vis.clone(),
                     // Don't keep the old tokens.  The callback could have made arbitrary changes to
@@ -125,7 +125,7 @@ where
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl,
             block: Some(block),
             attrs: i.attrs,
         };
@@ -134,7 +134,7 @@ where
         fls.into_iter()
             .map(|fl| {
                 let sig = MethodSig {
-                    header: header.clone(),
+                    header,
                     decl: fl.decl,
                 };
                 let block = fl
@@ -148,7 +148,7 @@ where
                     attrs: fl.attrs,
                     generics: generics.clone(),
                     vis: vis.clone(),
-                    defaultness: defaultness,
+                    defaultness,
                     tokens: None,
                 }
             })
@@ -171,8 +171,8 @@ where
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl: decl,
-            block: block,
+            decl,
+            block,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
@@ -180,7 +180,7 @@ where
         fls.into_iter()
             .map(|fl| {
                 let sig = MethodSig {
-                    header: header.clone(),
+                    header,
                     decl: fl.decl,
                 };
                 TraitItem {
@@ -216,7 +216,7 @@ where
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl,
             block: None,
             attrs: i.attrs,
         };
@@ -256,7 +256,7 @@ where
     T: MutVisit,
     F: FnMut(FnLike) -> SmallVec<[FnLike; 1]>,
 {
-    let mut f = FnFolder { callback: callback };
+    let mut f = FnFolder { callback };
     target.visit(&mut f)
 }
 
@@ -286,9 +286,9 @@ where
         (self.callback)(FnLike {
             kind: FnKind::Normal,
             id: i.id,
-            ident: i.ident.clone(),
+            ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl,
             block: Some(block),
             attrs: i.attrs.clone(),
         });
@@ -308,9 +308,9 @@ where
         (self.callback)(FnLike {
             kind: FnKind::ImplMethod,
             id: i.id,
-            ident: i.ident.clone(),
+            ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl,
             block: Some(block),
             attrs: i.attrs.clone(),
         });
@@ -330,10 +330,10 @@ where
         (self.callback)(FnLike {
             kind: FnKind::TraitMethod,
             id: i.id,
-            ident: i.ident.clone(),
+            ident: i.ident,
             span: i.span,
-            decl: decl,
-            block: block,
+            decl,
+            block,
             attrs: i.attrs.clone(),
         });
     }
@@ -351,9 +351,9 @@ where
         (self.callback)(FnLike {
             kind: FnKind::Foreign,
             id: i.id,
-            ident: i.ident.clone(),
+            ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl,
             block: None,
             attrs: i.attrs.clone(),
         });
@@ -367,6 +367,6 @@ where
     T: Visit,
     F: FnMut(FnLike),
 {
-    let mut f = FnVisitor { callback: callback };
+    let mut f = FnVisitor { callback };
     target.visit(&mut f)
 }

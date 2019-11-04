@@ -526,7 +526,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                     VariantResult {
                         func_id: def_id,
                         index: idx,
-                        func_refs: func_refs,
+                        func_refs,
                     },
                 );
             }
@@ -542,7 +542,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 suffixes.push(String::new());
             } else {
                 /// Default suffixes corresponding to the three concrete permissions.
-                static SUFFIX_BASE: [&'static str; 3] = ["", "mut", "take"];
+                static SUFFIX_BASE: [&str; 3] = ["", "mut", "take"];
                 // If more than one mono tries to use the same default suffix, we need to append a
                 // number to disambiguate.
                 let mut suffix_count = [0, 0, 0];

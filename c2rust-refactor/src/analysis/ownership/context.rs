@@ -128,9 +128,9 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
         arena: &'lty SyncDroplessArena,
     ) -> Ctxt<'lty, 'tcx> {
         Ctxt {
-            tcx: tcx,
+            tcx,
             lcx: LabeledTyCtxt::new(&arena),
-            arena: arena,
+            arena,
 
             static_summ: HashMap::new(),
             static_assign: IndexVec::new(),

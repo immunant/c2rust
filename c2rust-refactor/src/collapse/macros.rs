@@ -502,9 +502,9 @@ fn convert_token_rewrites(
                 .get_invoc(invoc_id)
                 .expect("recorded token rewrites for nonexistent invocation?");
             if let InvocKind::Mac(mac) = invoc {
-                let old_tts: TokenStream = mac.tts.clone().into();
+                let old_tts: TokenStream = mac.tts.clone();
                 let new_tts = rewrite_tokens(invoc_id, old_tts.into_trees(), &mut rewrite_map);
-                Some((invoc_id, new_tts.into()))
+                Some((invoc_id, new_tts))
             } else {
                 None
             }
@@ -644,7 +644,7 @@ pub fn collapse_macros(krate: &mut Crate, mac_table: &MacTable) -> Vec<(NodeId, 
         debug!(
             "new tokens for {:?} = {:?}",
             k,
-            ::syntax::print::pprust::tts_to_string(v.clone().into())
+            ::syntax::print::pprust::tts_to_string(v.clone())
         );
     }
 

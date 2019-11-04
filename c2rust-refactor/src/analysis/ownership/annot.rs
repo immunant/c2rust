@@ -71,7 +71,7 @@ pub fn handle_marks<'a, 'tcx, 'lty>(
     let mut fixed_vars = Vec::new();
     {
         let source = LTySource {
-            cx: cx,
+            cx,
             last_sig_did: None,
         };
 
@@ -125,7 +125,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     fn visit_item(&mut self, i: &'ast ast::Item) {
         match i.kind {
             ast::ItemKind::Fn(..) | ast::ItemKind::Static(..) | ast::ItemKind::Const(..) => {
-                if i.attrs.len() > 0 {
+                if !i.attrs.is_empty() {
                     self.def_attrs.push((i.id, &i.attrs));
                 }
             }
@@ -138,7 +138,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     fn visit_impl_item(&mut self, i: &'ast ast::ImplItem) {
         match i.kind {
             ast::ImplItemKind::Method(..) | ast::ImplItemKind::Const(..) => {
-                if i.attrs.len() > 0 {
+                if !i.attrs.is_empty() {
                     self.def_attrs.push((i.id, &i.attrs));
                 }
             }
@@ -163,7 +163,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 
     fn visit_struct_field(&mut self, sf: &'ast ast::StructField) {
-        if sf.attrs.len() > 0 {
+        if !sf.attrs.is_empty() {
             self.def_attrs.push((sf.id, &sf.attrs));
         }
 
@@ -171,7 +171,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 }
 
-pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
+pub fn handle_attrs<'a, 'tcx, 'lty>(
     cx: &mut Ctxt<'lty, 'tcx>,
     st: &CommandState,
     dcx: &RefactorCtxt<'a, 'tcx>,
@@ -318,7 +318,7 @@ fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
     }
 }
 
-fn parse_ownership_constraints<'lty, 'tcx>(
+fn parse_ownership_constraints<'lty>(
     meta: &ast::MetaItem,
     arena: &'lty SyncDroplessArena,
 ) -> Result<ConstraintSet<'lty>, &'static str> {
@@ -344,13 +344,13 @@ fn parse_ownership_constraints<'lty, 'tcx>(
     Ok(cset)
 }
 
-fn parse_perm<'lty, 'tcx>(
+fn parse_perm<'lty>(
     meta: &ast::MetaItem,
     arena: &'lty SyncDroplessArena,
 ) -> Result<Perm<'lty>, &'static str> {
     if meta.check_name(Symbol::intern("min")) {
         let args = meta_item_list(meta)?;
-        if args.len() == 0 {
+        if args.is_empty() {
             return Err("`min` requires at least one argument");
         }
 
@@ -374,7 +374,7 @@ fn parse_perm<'lty, 'tcx>(
             _ => {}
         }
 
-        if !name.starts_with("_") {
+        if !name.starts_with('_') {
             return Err("invalid permission variable");
         }
         let idx = FromStr::from_str(&name[1..]).map_err(|_| "invalid permission variable")?;

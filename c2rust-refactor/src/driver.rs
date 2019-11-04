@@ -203,7 +203,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 /// infer a sysroot.  Rustc's own sysroot detection (filesearch::get_or_default_sysroot) uses
 /// env::current_exe, which will point to c2rust-refactor, not rustc.
 fn maybe_set_sysroot(mut sopts: SessionOptions, args: &[String]) -> SessionOptions {
-    if sopts.maybe_sysroot.is_none() && args.len() > 0 {
+    if sopts.maybe_sysroot.is_none() && !args.is_empty() {
         let p = Path::new(&args[0]);
         if p.is_absolute() {
             if let Some(sysroot) = p.parent().and_then(|p| p.parent()) {

@@ -145,12 +145,12 @@ pub fn matching_children(
 ) -> HashSet<NodeId> {
     let in_old = sel.contains(&CRATE_NODE_ID);
     let mut v = ChildMatchVisitor {
-        st: st,
-        cx: cx,
+        st,
+        cx,
         old: sel,
         new: HashSet::new(),
-        in_old: in_old,
-        filt: filt,
+        in_old,
+        filt,
     };
     visit::walk_crate(&mut v, krate);
     v.new
@@ -294,12 +294,12 @@ pub fn matching_descendants(
 ) -> HashSet<NodeId> {
     let in_old = sel.contains(&CRATE_NODE_ID);
     let mut v = DescMatchVisitor {
-        st: st,
-        cx: cx,
+        st,
+        cx,
         old: sel,
         new: HashSet::new(),
-        in_old: in_old,
-        filt: filt,
+        in_old,
+        filt,
     };
     visit::walk_crate(&mut v, krate);
     v.new
@@ -422,11 +422,11 @@ pub fn filter(
     filt: &Filter,
 ) -> HashSet<NodeId> {
     let mut v = FilterVisitor {
-        st: st,
-        cx: cx,
+        st,
+        cx,
         old: sel,
         new: HashSet::new(),
-        filt: filt,
+        filt,
     };
     visit::walk_crate(&mut v, krate);
     v.new

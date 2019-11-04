@@ -166,13 +166,13 @@ as_nonterminal_impl!(ForeignItem, NtForeignItem);
 
 impl AsNonterminal for Ident {
     fn as_nonterminal(&self) -> Nonterminal {
-        Nonterminal::NtIdent(self.clone(), false)
+        Nonterminal::NtIdent(*self, false)
     }
 }
 
 impl AsNonterminal for Lifetime {
     fn as_nonterminal(&self) -> Nonterminal {
-        Nonterminal::NtLifetime(self.ident.clone())
+        Nonterminal::NtLifetime(self.ident)
     }
 }
 

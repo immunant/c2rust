@@ -178,7 +178,7 @@ impl Transform for SinkLets {
                 placed_locals.insert(id);
             }
 
-            if place_here.len() > 0 {
+            if !place_here.is_empty() {
                 local_placement.insert(b.id, place_here);
             }
         });

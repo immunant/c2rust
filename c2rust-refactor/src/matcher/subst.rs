@@ -43,11 +43,11 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
         if let Some(l) = ol {
             let ps = l.ident.pattern_symbol();
             if let Some(i) = ps.and_then(|sym| self.bindings.get::<_, Ident>(sym)) {
-                l.ident = i.clone();
+                l.ident = *i;
             } else {
                 let i = ps.and_then(|sym| self.bindings.get_opt::<_, Ident>(sym));
                 match i {
-                    Some(Some(i)) => l.ident = i.clone(),
+                    Some(Some(i)) => l.ident = *i,
                     Some(None) => {
                         *ol = None;
                         return;
@@ -70,7 +70,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
 
         if let Some(sym) = i.pattern_symbol() {
             if let Some(binding) = self.bindings.get::<_, Ident>(sym) {
-                *i = binding.clone();
+                *i = *binding;
             } else if let Some(ty) = self.bindings.get::<_, P<Ty>>(sym) {
                 panic!(
                     "binding {:?} (of type {:?}) has wrong type for hole",

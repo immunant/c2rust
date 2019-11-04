@@ -150,8 +150,8 @@ pub fn find_mark_uses<T: Visit>(target: &T, st: &CommandState, cx: &RefactorCtxt
         .collect::<Vec<_>>();
 
     let mut v = MarkUseVisitor {
-        st: st,
-        cx: cx,
+        st,
+        cx,
         label: label.into_symbol(),
     };
     target.visit(&mut v);
@@ -410,7 +410,7 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
 ///
 /// Logs the ID and label of every mark, at level `info`.
 fn print_marks(st: &CommandState) {
-    let mut marks = st.marks().iter().map(|&x| x).collect::<Vec<_>>();
+    let mut marks = st.marks().iter().copied().collect::<Vec<_>>();
     marks.sort();
 
     for (id, label) in marks {

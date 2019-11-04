@@ -26,15 +26,15 @@ use crate::transform::Transform;
 use crate::RefactorCtxt;
 
 /// # `retype_argument` Command
-/// 
+///
 /// Usage: `retype_argument NEW_TY WRAP UNWRAP`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For each argument marked `target`, change the type of the argument to `NEW_TY`,
 /// and use `WRAP` and `UNWRAP` to convert values to and from the original type of
 /// the argument at call sites and within the function body.
-/// 
+///
 /// `WRAP` should contain an expression placeholder `__old`, and should convert
 /// `__old` from the argument's original type to `NEW_TY`.
 /// `UNWRAP` should contain an expression placeholder `__new`, and should perform
@@ -71,7 +71,7 @@ impl Transform for RetypeArgument {
                 }
             }
 
-            if changed_args.len() == 0 {
+            if changed_args.is_empty() {
                 return;
             }
 
@@ -121,15 +121,15 @@ impl Transform for RetypeArgument {
 
 
 /// # `retype_return` Command
-/// 
+///
 /// Usage: `retype_return NEW_TY WRAP UNWRAP`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For each function marked `target`, change the return type of the function to
 /// `NEW_TY`, and use `WRAP` and `UNWRAP` to convert values to and from the
 /// original type of the argument at call sites and within the function body.
-/// 
+///
 /// `WRAP` should contain an expression placeholder `__old`, and should convert
 /// `__old` from the function's original return type to `NEW_TY`.
 /// `UNWRAP` should contain an expression placeholder `__new`, and should perform
@@ -191,17 +191,17 @@ impl Transform for RetypeReturn {
 
 
 /// # `retype_static` Command
-/// 
+///
 /// Usage: `retype_static NEW_TY REV_CONV_ASSIGN CONV_RVAL CONV_LVAL [CONV_LVAL_MUT]`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For each static marked `target`, change the type of the static to `NEW_TY`,
 /// using the remaining arguments (which are all all expression templates) to
 /// convert between the old and new types at the definition and use sites.
-/// 
+///
 /// The expression arguments are used as follows:
-/// 
+///
 ///  * `REV_CONV_ASSIGN`: In direct assignments to the static and in its
 ///    initializer expression, the original assigned value is wrapped (as `__old`)
 ///    in `REV_CONV_ASSIGN` to produce a value of type `NEW_TY`.
@@ -328,7 +328,7 @@ impl Transform for RetypeStatic {
 
 /// Rewrite types in the crate to types that are transmute-compatible with the original.
 /// Automatically inserts `transmute` calls as needed to make the types line up after rewriting.
-/// 
+///
 /// This function currently handles only direct function calls.  Creation and use of function
 /// pointers is not handled correctly yet.
 pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate, retype: F)
@@ -560,11 +560,11 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
 
 
 /// # `bitcast_retype` Command
-/// 
+///
 /// Usage: `bitcast_retype PAT REPL`
-/// 
+///
 /// Marks: may read marks depending on `PAT`
-/// 
+///
 /// For every type in the crate matching `PAT`, change the type to `REPL`.  `PAT`
 /// and `REPL` are types, and can use placeholders in the manner of `rewrite_ty`.
 /// For each definitions whose type has changed, it also inserts `mem::transmute`
@@ -603,19 +603,19 @@ impl Transform for BitcastRetype {
 
 
 /// # `type_fix_rules` Command
-/// 
+///
 /// Usage: `type_fix_rules RULE...`
-/// 
+///
 /// Attempts to fix type errors in the crate using the provided rules.  Each rule
 /// has the form `"ectx, actual_ty, expected_ty => cast_expr"`.
-/// 
+///
 ///  - `ectx` is one of `rval`, `lval`, `lval_mut`, or `*`, and determines in what kinds of
 ///    expression contexts the rule applies.
 ///  - `actual_ty` is a pattern to be matched against the (reflected) actual expression type.
 ///  - `expected_ty` is a pattern to be matched against the (reflected) expected expression
 ///    type.
 ///  - `cast_expr` is a template for generating a cast expression.
-/// 
+///
 /// For expressions in context `ectx`, whose actual type matches `actual_ty` and whose
 /// expected type matches `expected_ty` (and where actual != expected), the expr is substituted
 /// into `cast_expr` to replace the original expr with one of the expected type.  During
@@ -745,11 +745,11 @@ impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
 
 
 /// # `autoretype` Command
-/// 
+///
 /// Usage: `autoretype 'A: T'...`
-/// 
+///
 /// Marks: `A`... (specified in command)
-/// 
+///
 /// Change the type of nodes with mark `A` to the new type `T`, propagating
 /// changes and inserting casts when possible to satisfy type checking. Multiple
 /// simultaneous retypings can be specified in this command as separate

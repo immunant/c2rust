@@ -336,7 +336,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
             span: lit.span,
             token: token::Lit {
                 kind: token::LitKind::Integer,
-                symbol: lit.token.symbol.clone(),
+                symbol: lit.token.symbol,
                 suffix: new_suffix,
             },
         };

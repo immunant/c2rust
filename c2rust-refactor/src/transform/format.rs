@@ -19,35 +19,35 @@ use crate::RefactorCtxt;
 
 
 /// # `convert_format_args` Command
-/// 
+///
 /// Usage: `convert_format_args`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For each function call, if one of its argument expressions is marked `target`,
 /// then parse that argument as a `printf` format string, with the subsequent arguments as the
 /// format args.  Replace both the format string and the args with an invocation of the Rust
 /// `format_args!` macro.
-/// 
+///
 /// This transformation applies casts to the remaining arguments to account for differences in
 /// argument conversion behavior between C-style and Rust-style string formatting.  However, it
 /// does not attempt to convert the `format_args!` output into something compatible with the
 /// original C function.  This results in a type error, so this pass should usually be followed up
 /// by an additional rewrite to change the function being called.
-/// 
+///
 /// Example:
-/// 
+///
 /// ```ignore
 ///     printf("hello %d\n", 123);
 /// ```
-/// 
+///
 /// If the string `"hello %d\n"` is marked `target`, then running
 /// `convert_format_string` will replace this call with
-/// 
+///
 /// ```ignore
 ///     printf(format_args!("hello {:}\n", 123 as i32));
 /// ```
-/// 
+///
 /// At this point, it would be wise to replace the `printf` expression with a function that accepts
 /// the `std::fmt::Arguments` produced by `format_args!`.
 pub struct ConvertFormatArgs;
@@ -153,10 +153,10 @@ fn build_format_macro(
         },
     }).parse();
 
-    while new_s.ends_with("\0") {
+    while new_s.ends_with('\0') {
         new_s.pop();
     }
-    let macro_name = if new_s.ends_with("\n") && ln_macro_name.is_some() {
+    let macro_name = if new_s.ends_with('\n') && ln_macro_name.is_some() {
         // Format string ends with "\n", call println!/eprintln! versions instead
         new_s.pop();
         ln_macro_name.unwrap()
@@ -494,7 +494,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
 
             if b'1' <= self.peek() && self.peek() <= b'9' || self.peek() == b'*'{
                 conv.width = Some(self.parse_amount());
-            } 
+            }
             if self.eat(b'.') {
                 conv.prec = Some(self.parse_amount());
             }

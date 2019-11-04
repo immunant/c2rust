@@ -26,8 +26,8 @@ struct WorkerState {
 impl WorkerState {
     fn new(to_client: SyncSender<ToClient>, to_main: Sender<ToServer>) -> WorkerState {
         WorkerState {
-            to_client: to_client,
-            to_main: to_main,
+            to_client,
+            to_main,
 
             pending_files: HashMap::new(),
         }

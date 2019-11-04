@@ -651,7 +651,7 @@ impl<'a, 'tcx> ModuleDefines<'a, 'tcx> {
                             if foreign_equiv(&existing_foreign, &new) {
                                 // This item is equivalent to an existing foreign item,
                                 // modulo visibility.
-                                let existing_ident = existing_foreign.ident.clone();
+                                let existing_ident = existing_foreign.ident;
                                 new.vis.node =
                                     join_visibility(&existing_foreign.vis.node, &new.vis.node);
                                 *existing_decl = MovedDecl::new(new, parent_header);
@@ -962,12 +962,12 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
 }
 
 /// Check if the `Item` has the `#[header_src = "/some/path"]` attribute
-fn has_source_header(attrs: &Vec<Attribute>) -> bool {
+fn has_source_header(attrs: &[Attribute]) -> bool {
     attr::contains_name(attrs, Symbol::intern("header_src"))
 }
 
 /// Check if the `Item` has the `#[header_src = "/some/path"]` attribute
-fn parse_source_header(attrs: &Vec<Attribute>) -> Option<(String, usize)> {
+fn parse_source_header(attrs: &[Attribute]) -> Option<(String, usize)> {
     attr::find_by_name(attrs, Symbol::intern("header_src")).map(|attr| {
         let value_str = attr
             .value_str()
@@ -989,7 +989,7 @@ fn parse_source_header(attrs: &Vec<Attribute>) -> Option<(String, usize)> {
 /// path contains `/usr/include`
 // TODO: In macOS mojave the system headers aren't in `/usr/include` anymore,
 // so this needs to be updated.
-fn is_std(attrs: &Vec<Attribute>) -> bool {
+fn is_std(attrs: &[Attribute]) -> bool {
     attrs.into_iter().any(|attr| {
         if let Some(value_str) = attr.value_str() {
             return value_str.as_str().contains("/usr/include");

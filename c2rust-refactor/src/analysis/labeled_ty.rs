@@ -59,14 +59,14 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
     /// built the underlying `Ty`s to be labeled.
     pub fn new(arena: &'lty SyncDroplessArena) -> LabeledTyCtxt<'lty, L> {
         LabeledTyCtxt {
-            arena: arena,
+            arena,
             _marker: PhantomData,
         }
     }
 
     /// Manually construct a slice in the context's arena.
     pub fn mk_slice(&self, ltys: &[LabeledTy<'lty, 'tcx, L>]) -> &'lty [LabeledTy<'lty, 'tcx, L>] {
-        if ltys.len() == 0 {
+        if ltys.is_empty() {
             return &[];
         }
         self.arena.alloc_slice(ltys)
@@ -81,9 +81,9 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         label: L,
     ) -> LabeledTy<'lty, 'tcx, L> {
         self.arena.alloc(LabeledTyS {
-            ty: ty,
-            args: args,
-            label: label,
+            ty,
+            args,
+            label,
         })
     }
 

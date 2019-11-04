@@ -11,14 +11,14 @@ use crate::RefactorCtxt;
 
 
 /// # `bytestr_to_str` Command
-/// 
+///
 /// Usage: `bytestr_to_str`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Convert bytestring literal expressions marked `target` to string literal
 /// expressions.
-/// 
+///
 /// Note the mark must be placed on the expression, as it is currently difficult to
 /// mark a literal node.
 pub struct ByteStrToStr;
@@ -49,20 +49,20 @@ impl Transform for ByteStrToStr {
 
 
 /// # `remove_null_terminator` Command
-/// 
+///
 /// Usage: `remove_null_terminator`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Remove a trailing `\0` character from marked string and bytestring literal
 /// expressions.
-/// 
+///
 /// Note the mark must be placed on the expression, as it is currently difficult to
 /// mark a literal node.
 pub struct RemoveNullTerminator;
 
 fn strip_null(s: &mut Symbol) {
-    assert!(s.as_str().ends_with("\0"));
+    assert!(s.as_str().ends_with('\0'));
     let end = s.as_str().len() - 1;
     *s = Symbol::intern(&s.as_str()[..end]);
 }
@@ -84,7 +84,7 @@ impl Transform for RemoveNullTerminator {
                             }
                         }
                         LitKind::Str(ref mut s, _style) => {
-                            if s.as_str().ends_with("\0") {
+                            if s.as_str().ends_with('\0') {
                                 strip_null(s);
                             }
                         }

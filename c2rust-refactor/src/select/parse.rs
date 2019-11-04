@@ -33,12 +33,12 @@ impl<'a> Stream<'a> {
     fn new(sess: &'a ParseSess, toks: Vec<TokenTree>) -> Stream<'a> {
         Stream {
             toks: toks.into_iter(),
-            sess: sess,
+            sess,
         }
     }
 
     fn eof(&self) -> bool {
-        self.toks.as_slice().len() == 0
+        self.toks.as_slice().is_empty()
     }
 
     fn peek(&self) -> Option<&TokenTree> {
@@ -99,7 +99,7 @@ impl<'a> Stream<'a> {
                 if delim != DelimToken::Paren {
                     fail!("expected parens, but got {:?}", delim);
                 }
-                Ok(tts.into())
+                Ok(tts)
             }
             TokenTree::Token(tok) => fail!("expected parens, but got {:?}", tok),
         }

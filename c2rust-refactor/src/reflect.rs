@@ -182,7 +182,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
             }
 
             DefPathData::ValueNs(name) => {
-                if segments.len() == 0 {
+                if segments.is_empty() {
                     if name.as_str() != "" {
                         segments.push(mk().path_segment(name));
                     }
@@ -242,7 +242,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
                         })
                         .count();
                     if let Some(substs) = opt_substs {
-                        if substs.len() > 0 {
+                        if !substs.is_empty() {
                             assert!(substs.len() >= num_params);
                             let start = substs.len() - num_params;
                             let tys = substs[start..]

@@ -273,7 +273,7 @@ impl FromStr for NodeKind {
 pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo> {
     let mut v = PickVisitor {
         node_info: None,
-        kind: kind,
+        kind,
         target: Span::new(pos, pos, SyntaxContext::root()),
     };
     krate.visit(&mut v);

@@ -270,7 +270,7 @@ where
     F: FnMut(Option<QSelf>, Path, &Res) -> (Option<QSelf>, Path),
 {
     let mut f = ResolvedPathFolder {
-        cx: cx,
+        cx,
         callback: |_, q, p, d| callback(q, p, d),
     };
     target.visit(&mut f)
@@ -284,8 +284,8 @@ where
     F: FnMut(NodeId, Option<QSelf>, Path, &Res) -> (Option<QSelf>, Path),
 {
     let mut f = ResolvedPathFolder {
-        cx: cx,
-        callback: callback,
+        cx,
+        callback,
     };
     target.visit(&mut f)
 }

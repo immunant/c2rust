@@ -54,7 +54,7 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
     }
 
     fn visit_block(&mut self, b: &mut P<Block>) {
-        if b.stmts.len() == 0 {
+        if b.stmts.is_empty() {
             return;
         }
 
@@ -140,8 +140,8 @@ where
     F: FnMut(&mut P<Expr>),
 {
     let mut f = OutputFolder {
-        callback: callback,
-        trailing: trailing,
+        callback,
+        trailing,
     };
     target.visit(&mut f)
 }

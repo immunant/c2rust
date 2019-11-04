@@ -22,7 +22,7 @@ impl CollectCfgAttrs {
             .filter(|attr| attr.check_name(sym::cfg_attr))
             .cloned()
             .collect::<Vec<_>>();
-        if attrs.len() > 0 {
+        if !attrs.is_empty() {
             self.node_attrs.insert(x.get_node_id(), attrs);
         }
     }

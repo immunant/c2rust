@@ -187,7 +187,7 @@ pub fn fold_expr_with_context<F>(e: &mut P<Expr>, start: Context, callback: F)
 where
     F: FnMut(&mut P<Expr>, Context),
 {
-    let mut lr = Rewrites { callback: callback };
+    let mut lr = Rewrites { callback };
     match start {
         Context::Rvalue => e.fold_rvalue(&mut lr),
         Context::Lvalue => e.fold_lvalue(&mut lr),
@@ -239,7 +239,7 @@ where
     F: FnMut(&mut P<Expr>),
 {
     let mut f = TopExprFolder {
-        callback: callback,
+        callback,
         in_expr: false,
     };
     x.visit(&mut f)

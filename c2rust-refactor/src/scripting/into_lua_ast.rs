@@ -148,7 +148,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                             let string = symbol.as_str().to_string();
                             let float = string
                                 .parse::<f64>()
-                                .map_err(|e| LuaError::external(e))?;
+                                .map_err(LuaError::external)?;
 
                             ast.set("value", float)?;
                             ast.set("num_kind", "Float")?;
@@ -162,7 +162,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                                 FloatTy::F32 => {
                                     let float = string
                                         .parse::<f32>()
-                                        .map_err(|e| LuaError::external(e))?;
+                                        .map_err(LuaError::external)?;
 
                                     ast.set("value", float)?;
                                     ast.set("suffix", "f32")?;
@@ -170,7 +170,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                                 FloatTy::F64 => {
                                     let float = string
                                         .parse::<f64>()
-                                        .map_err(|e| LuaError::external(e))?;
+                                        .map_err(LuaError::external)?;
 
                                     ast.set("value", float)?;
                                     ast.set("suffix", "f64")?;
