@@ -1799,14 +1799,10 @@ class TranslateASTVisitor final
                         cbor_encode_text_stringz(&attr_info,
                                                  attr->getSpelling());
 
-                        if (attr->getKind() == attr::Kind::Section) {
-                            auto sa = def->getAttr<SectionAttr>();
-
+                        if (auto *sa = dyn_cast<SectionAttr>(attr)) {
                             cbor_encode_text_stringz(
                                 &attr_info, sa->getName().str().c_str());
-                        } else if (attr->getKind() == attr::Kind::Alias) {
-                            auto aa = def->getAttr<AliasAttr>();
-
+                        } else if (auto *aa = dyn_cast<AliasAttr>(attr)) {
                             cbor_encode_text_stringz(
                                 &attr_info, aa->getAliasee().str().c_str());
                         }
