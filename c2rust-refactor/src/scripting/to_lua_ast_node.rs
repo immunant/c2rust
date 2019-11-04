@@ -394,10 +394,6 @@ impl AddMoreMethods for LuaAstNode<P<Item>> {
             Ok(())
         });
 
-        methods.add_method("get_vis", |_lua_ctx, this, ()| {
-            Ok(this.borrow().vis.ast_name())
-        });
-
         /// Visit statements
         // @function visit_stmts
         // @tparam function(LuaAstNode) callback Function to call when visiting each statement
@@ -548,13 +544,6 @@ impl AddMoreMethods for LuaAstNode<P<Path>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("has_generic_args", |_lua_ctx, this, ()| {
             Ok(this.borrow().segments.iter().any(|s| s.args.is_some()))
-        });
-        methods.add_method("get_segments", |lua_ctx, this, ()| {
-            this.borrow()
-                .segments
-                .iter()
-                .map(|s| s.ident.to_lua_ext(lua_ctx))
-                .collect::<Result<Vec<_>>>()
         });
         methods.add_method("set_segments", |_lua_ctx, this, new_segments: Vec<LuaString>| {
             let has_generic_args = this.borrow().segments.iter().any(|s| s.args.is_some());

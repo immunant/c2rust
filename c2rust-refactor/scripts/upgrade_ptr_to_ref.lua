@@ -1405,7 +1405,7 @@ end
 
 function ConfigBuilder:flat_map_item(item, walk)
     local item_kind = item:get_kind()
-    local vis = item:get_vis()
+    local vis = item:get_vis():get_node():get_kind()
     local priv_or_crate_vis = vis == "Crate" or vis == "Inherited"
 
     if item_kind == "Struct" and priv_or_crate_vis then
