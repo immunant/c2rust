@@ -1457,7 +1457,10 @@ function ConfigBuilder:flat_map_stmt(stmt, walk)
             -- so instead we look up the mutability from the config of the rhs.
             -- This may be the same issue as GH #163
             local hir_id = self.tctx:resolve_path_hirid(init)
-            local node_pat_id = self.tctx:hirid_to_nodeid(hir_id)
+            local node_pat_id
+            if hir_id then
+                node_pat_id = self.tctx:hirid_to_nodeid(hir_id)
+            end
             local node_id = self.pat_to_var_id[node_pat_id]
             local init_cfg = self.node_id_cfgs[node_id]
 
