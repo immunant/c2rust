@@ -792,7 +792,6 @@ function Visitor:rewrite_assign_expr(expr)
     end
 end
 
--- free(foo.bar as *mut libc::c_void) -> foo.bar.take()
 function Visitor:rewrite_call_expr(expr)
     local call_exprs = expr:get_exprs()
     local path_expr = call_exprs[1]
@@ -800,6 +799,7 @@ function Visitor:rewrite_call_expr(expr)
     local path = path_expr:get_path()
     local segment_idents = path and tablex.map_named_method("get_ident", path:get_segments())
 
+    -- free(foo.bar as *mut libc::c_void) -> foo.bar.take()
     -- In case free is called from another module check the last segment
     if segment_idents and segment_idents[#segment_idents] == "free" then
         local uncasted_expr = first_param_expr
@@ -812,15 +812,20 @@ function Visitor:rewrite_call_expr(expr)
         local cast_ty = first_param_expr:get_ty()
         local cfg = self:get_expr_cfg(uncasted_expr)
 
-        if cfg and cfg:is_opt_any() then
-            expr:to_method_call("take", {uncasted_expr})
+        if cfg then
+            if cfg:is_opt_any() then
+                expr:to_method_call("take", {uncasted_expr})
 
-            -- If it's not also boxed, then we probably have an inner raw ptr
-            -- and should still call free on it
-            if not cfg:is_box_any() then
-                uncasted_expr = decay_ref_to_ptr(expr, cfg)
-                uncasted_expr:to_cast(uncasted_expr, cast_ty)
-                expr:to_call{path_expr, uncasted_expr}
+                -- If it's not also boxed, then we probably have an inner raw ptr
+                -- and should still call free on it
+                if not cfg:is_box_any() then
+                    uncasted_expr = decay_ref_to_ptr(expr, cfg)
+                    uncasted_expr:to_cast(uncasted_expr, cast_ty)
+                    expr:to_call{path_expr, uncasted_expr}
+                end
+            else
+                local drop = self.tctx:ident_path_expr("drop")
+                expr:to_call{drop, uncasted_expr}
             end
         end
     -- Skip; handled elsewhere by local conversion
