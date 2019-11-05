@@ -619,7 +619,7 @@ function Visitor:rewrite_deref_expr(expr)
             local cast_expr = offset_expr:get_exprs()[1]
             local cast_ty = offset_expr:get_ty()
 
-            if cast_ty:get_kind() == "Path" and cast_ty:get_path():get_segments()[1] == "isize" then
+            if cast_ty:get_kind() == "Path" and cast_ty:get_path():get_segments()[1]:get_ident() == "isize" then
                 cast_ty:to_simple_path("usize")
 
                 offset_expr:set_ty(cast_ty)
@@ -693,7 +693,7 @@ function Visitor:rewrite_assign_expr(expr)
             local conversion_cfg = var and self.node_id_cfgs[var.id]
 
             -- In case malloc is called from another module check the last segment
-            if conversion_cfg and segments[#segments] == "malloc" then
+            if conversion_cfg and segments[#segments]:get_ident() == "malloc" then
                 local mut_ty = cast_ty:get_mut_ty()
                 local pointee_ty = mut_ty:get_ty()
                 local new_rhs = nil
@@ -801,7 +801,7 @@ function Visitor:rewrite_call_expr(expr)
     local segments = path and path:get_segments()
 
     -- In case free is called from another module check the last segment
-    if segments and segments[#segments] == "free" then
+    if segments and segments[#segments]:get_ident() == "free" then
         local uncasted_expr = first_param_expr
 
         -- REVIEW: What if there's a multi-layered cast?
@@ -824,11 +824,11 @@ function Visitor:rewrite_call_expr(expr)
             end
         end
     -- Skip; handled elsewhere by local conversion
-    elseif segments and segments[#segments] == "malloc" then
+    elseif segments and segments[#segments]:get_ident() == "malloc" then
     -- Generic function call param conversions
     -- NOTE: Some(x) counts as a function call on x, so we skip Some
     -- so as to not recurse when we generate that expr
-    elseif segments and segments[#segments] ~= "Some" then
+    elseif segments and segments[#segments]:get_ident() ~= "Some" then
         local hirid = self.tctx:resolve_path_hirid(path_expr)
         local fn = self:get_fn(hirid)
 
@@ -1258,7 +1258,7 @@ function is_void_ptr(ty)
         if path then
             local segments = path:get_segments()
 
-            if segments[#segments] == "c_void" then
+            if segments[#segments]:get_ident() == "c_void" then
                 return true
             end
         end
@@ -1465,7 +1465,7 @@ function ConfigBuilder:flat_map_stmt(stmt, walk)
                 local pat = locl:get_pat()
 
                 self.lhs_ident = pat:get_ident()
-                self.rhs_ident = path_to_last_segment(init:get_path())
+                self.rhs_ident = path_to_last_segment(init:get_path()):get_ident()
                 self.local_stmt_id = stmt:get_id()
                 self.local_id = locl:get_id()
 
@@ -1480,9 +1480,9 @@ function ConfigBuilder:flat_map_stmt(stmt, walk)
         if expr:get_kind() == "Assign" and exprs[1]:get_kind() == "Path" then
             local lhs = exprs[1]
             local rhs = exprs[2]
-            local lhs_path = path_to_last_segment(lhs:get_path())
+            local lhs_path = path_to_last_segment(lhs:get_path()):get_ident()
             local offset_expr, caller = rewrite_chained_offsets(rhs)
-            local caller_path = path_to_last_segment(caller:get_path())
+            local caller_path = path_to_last_segment(caller:get_path()):get_ident()
             local local_cfg = self.node_id_cfgs[self.local_id]
 
             local_cfg.extra_data.clear_init_and_ty = true
@@ -1541,7 +1541,7 @@ function MallocMarker:visit_expr(expr, walk)
                 local segments = path:get_segments()
 
                 -- In case malloc is called from another module check the last segment
-                if segments[#segments] == "malloc" or segments[#segments] == "calloc" then
+                if segments[#segments]:get_ident() == "malloc" or segments[#segments]:get_ident() == "calloc" then
                     -- TODO: Non path support. IE Field
                     self.boxes[tostring(hirid)] = true
                 end
