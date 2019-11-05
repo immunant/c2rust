@@ -540,7 +540,7 @@ impl AddMoreMethods for LuaAstNode<QSelf> {}
 
 /// Path AST node handle
 // @type PathAstNode
-impl AddMoreMethods for LuaAstNode<P<Path>> {
+impl AddMoreMethods for LuaAstNode<Path> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("has_generic_args", |_lua_ctx, this, ()| {
             Ok(this.borrow().segments.iter().any(|s| s.args.is_some()))
@@ -579,6 +579,9 @@ impl AddMoreMethods for LuaAstNode<P<Path>> {
         });
     }
 }
+// FIXME: implement the above for `P<Path>`; it's non-trivial
+// because `UserDataMethods` is bound to `LuaAstNode<Path>`,
+// but we need to implement it for `LuaAstNode<P<Path>>`
 
 impl AddMoreMethods for LuaAstNode<PathSegment> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(_methods: &mut M) {
