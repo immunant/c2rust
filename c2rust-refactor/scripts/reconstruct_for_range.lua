@@ -42,7 +42,7 @@ $'label:?Ident: while $cond:Expr {
                   end
 
                   incr = mcx:get_stmt("$incr")
-                  incr_kind = incr:get_kind()
+                  incr_kind = incr:kind_name()
                   if (incr_kind == "Semi" or
                       incr_kind == "Expr") then
                      incr = incr:get_node()
@@ -63,7 +63,7 @@ $'label:?Ident: while $cond:Expr {
                   end
 
                   step = mcx:get_expr("$step")
-                  if (step:get_kind() == "Lit" and
+                  if (step:kind_name() == "Lit" and
                       step:get_node():get_value() == 1) then
                      if range_excl then
                         repl_step = range_one_excl

@@ -83,24 +83,24 @@ def do_one_impl(s, kind_map, boxed):
     if isinstance(s, Struct):
         # FIXME: handle tuple struct
         kind_field = find_kind_field(s)
-        if kind_field is not None:
-            yield '    methods.add_method("get_%s", |_lua_ctx, this, ()| {' % kind_field
-            yield '      Ok(this.borrow().%s.ast_name())' % kind_field
-            yield '    });'
-
         for f in s.fields:
-            func_name = ("get_%s_node" if f.name == kind_field else "get_%s") % f.name
-            yield '    methods.add_method("%s", |_lua_ctx, this, ()| {' % func_name
+            yield '    methods.add_method("get_%s", |_lua_ctx, this, ()| {' % f.name
             yield '      this.borrow().%s.clone().to_lua_ext(_lua_ctx)' % f.name
             yield '    });'
 
         if 'fold_kind' in s.attrs:
+            assert kind_field is not None
+            # Emit a getter for the folded kind's name
+            yield '    methods.add_method("%s_name", |_lua_ctx, this, ()| {' % kind_field
+            yield '      Ok(this.borrow().%s.ast_name())' % kind_field
+            yield '    });'
+
             kind_name = s.attrs['fold_kind']
             kind_decl = kind_map[kind_name]
             yield do_enum_variants(kind_decl, '&this.borrow().%s' % kind_field)
 
     elif isinstance(s, Enum):
-        yield '    methods.add_method("get_kind", |_lua_ctx, this, ()| {'
+        yield '    methods.add_method("kind_name", |_lua_ctx, this, ()| {'
         yield '      Ok(this.borrow().ast_name())'
         yield '    });'
         box_prefix = '&**' if boxed else '&*'

@@ -29,7 +29,7 @@ function Field.new(node_id)
 end
 
 function strip_int_suffix(expr)
-    if expr:get_kind() == "Lit" then
+    if expr:kind_name() == "Lit" then
         local lit = expr:get_node()
 
         if lit then
@@ -320,7 +320,7 @@ function Visitor:flat_map_param(param)
         param:set_binding(conv_config.extra_data.binding)
     end
 
-    if param_ty:get_kind() == "Ptr" then
+    if param_ty:kind_name() == "Ptr" then
         local param_pat_hrid = self.tctx:nodeid_to_hirid(param:get_pat_id())
 
         self:add_var(param_pat_hrid, Variable.new(param_id, "param"))
@@ -388,7 +388,7 @@ function Visitor:get_struct(hirid)
 end
 
 function Visitor:visit_expr(expr, walk)
-    local expr_kind = expr:get_kind()
+    local expr_kind = expr:kind_name()
 
     if expr_kind == "Field" then
         self:rewrite_field_expr(expr)
@@ -438,7 +438,7 @@ function Visitor:rewrite_method_call_expr(expr)
             caller:to_method_call("unwrap", {caller})
 
             if is_mut then
-                if offset_expr:get_kind() == "Cast" then
+                if offset_expr:kind_name() == "Cast" then
                     local usize_ty = self.tctx:ident_path_ty("usize")
                     local inner_expr = offset_expr:get_exprs()[1]
                     offset_expr = self.tctx:cast_expr(inner_expr, usize_ty)
@@ -533,10 +533,10 @@ end
 function Visitor:rewrite_field_expr(expr)
     local field_expr = expr:get_exprs()[1]
 
-    if field_expr:get_kind() == "Unary" and field_expr:get_op() == "Deref" then
+    if field_expr:kind_name() == "Unary" and field_expr:get_op() == "Deref" then
         local derefed_expr = field_expr:get_exprs()[1]
 
-        if derefed_expr:get_kind() == "Path" then
+        if derefed_expr:kind_name() == "Path" then
             local cfg = self:get_expr_cfg(derefed_expr)
 
             -- This is a path we're expecting to modify
@@ -621,11 +621,11 @@ function Visitor:rewrite_deref_expr(expr)
 
         -- A cast to isize may have been applied by translator for offset(x)
         -- We should convert it to usize for the index
-        if offset_expr:get_kind() == "Cast" then
+        if offset_expr:kind_name() == "Cast" then
             local cast_expr = offset_expr:get_exprs()[1]
             local cast_ty = offset_expr:get_ty()
 
-            if cast_ty:get_kind() == "Path" and cast_ty:get_path():get_segments()[1]:get_ident():get_name() == "isize" then
+            if cast_ty:kind_name() == "Path" and cast_ty:get_path():get_segments()[1]:get_ident():get_name() == "isize" then
                 cast_ty:to_simple_path("usize")
 
                 offset_expr:set_ty(cast_ty)
@@ -634,7 +634,7 @@ function Visitor:rewrite_deref_expr(expr)
 
         expr:to_index(unwrapped_expr, offset_expr)
     -- *ptr = 1 -> **ptr.as_mut().unwrap() = 1
-    elseif unwrapped_expr:get_kind() == "Path" then
+    elseif unwrapped_expr:kind_name() == "Path" then
         local cfg = self:get_expr_cfg(unwrapped_expr)
 
         if not cfg then return end
@@ -685,7 +685,7 @@ function Visitor:rewrite_assign_expr(expr)
     local exprs = expr:get_exprs()
     local lhs = exprs[1]
     local rhs = exprs[2]
-    local rhs_kind = rhs:get_kind()
+    local rhs_kind = rhs:kind_name()
     local hirid = self.tctx:resolve_path_hirid(lhs)
     local var = self:get_var(hirid)
 
@@ -695,7 +695,7 @@ function Visitor:rewrite_assign_expr(expr)
 
         -- p = malloc(X) as *mut T -> p = Some(vec![0; X / size_of<T>].into_boxed_slice())
         -- or p = vec![0; X / size_of<T>].into_boxed_slice()
-        if cast_ty:get_kind() == "Ptr" and cast_expr:get_kind() == "Call" then
+        if cast_ty:kind_name() == "Ptr" and cast_expr:kind_name() == "Call" then
             local call_exprs = cast_expr:get_exprs()
             local path_expr = call_exprs[1]
             local param_expr = call_exprs[2]
@@ -764,7 +764,7 @@ function Visitor:rewrite_assign_expr(expr)
 
             -- If lhs was a ptr, and rhs isn't wrapped in some, wrap it
             -- TODO: Validate rhs needs to be wrapped
-            if lhs_ty:get_kind() == "Ptr" then
+            if lhs_ty:kind_name() == "Ptr" then
                 local some_path_expr = self.tctx:ident_path_expr("Some")
 
                 rhs:to_call{some_path_expr, rhs}
@@ -816,7 +816,7 @@ function Visitor:rewrite_call_expr(expr)
         local uncasted_expr = first_param_expr
 
         -- REVIEW: What if there's a multi-layered cast?
-        if first_param_expr:get_kind() == "Cast" then
+        if first_param_expr:kind_name() == "Cast" then
             uncasted_expr = first_param_expr:get_exprs()[1]
         end
 
@@ -855,7 +855,7 @@ function Visitor:rewrite_call_expr(expr)
             if i == 1 then goto continue end
 
             local param_cfg = self:get_param_cfg(fn, i - 1)
-            local param_kind = param_expr:get_kind()
+            local param_kind = param_expr:kind_name()
 
             -- static.as_ptr/as_mut_ptr() -> &static/&mut static
             -- &static/&mut static -> Option<&static/&mut static>
@@ -863,7 +863,7 @@ function Visitor:rewrite_call_expr(expr)
                 local exprs = param_expr:get_exprs()
                 local path_expr = exprs[1]
 
-                if #exprs == 1 and path_expr:get_kind() == "Path" then
+                if #exprs == 1 and path_expr:kind_name() == "Path" then
                     local method_name = param_expr:get_method_name()
                     local path_cfg = self:get_expr_cfg(path_expr)
 
@@ -973,7 +973,7 @@ function Visitor:get_expr_cfg(expr)
     if var then
         node_id = var.id
     -- Otherwise check the field map
-    elseif expr:get_kind() == "Field" then
+    elseif expr:kind_name() == "Field" then
         hirid = self.tctx:get_field_expr_hirid(expr)
         local field = self:get_field(hirid)
 
@@ -1002,7 +1002,7 @@ function Visitor:clear_nonstatic_vars()
 end
 
 function Visitor:flat_map_item(item, walk)
-    local item_kind = item:get_kind()
+    local item_kind = item:kind_name()
 
     if item_kind == "Struct" then
         local lifetimes = OrderedMap()
@@ -1057,7 +1057,7 @@ function Visitor:flat_map_item(item, walk)
             -- Grab lifetimes from the argument type
             -- REVIEW: Maybe this shouldn't map but just traverse?
             arg_ty:map_ptr_root(function(path_ty)
-                if path_ty:get_kind() ~= "Path" then
+                if path_ty:kind_name() ~= "Path" then
                     return path_ty
                 end
 
@@ -1104,7 +1104,7 @@ function Visitor:flat_map_item(item, walk)
 end
 
 function Visitor:flat_map_foreign_item(foreign_item)
-    if foreign_item:get_kind() == "Fn" then
+    if foreign_item:kind_name() == "Fn" then
         local fn_id = foreign_item:get_id()
         local hirid = self.tctx:nodeid_to_hirid(fn_id)
         local arg_ids = {}
@@ -1156,12 +1156,12 @@ function Visitor:flat_map_stmt(stmt, walk)
     -- offset it may not be the correct usage 100% of the time but seems to work >99% of
     -- the time and avoids a borrowing error that would otherwise occur.
     elseif cfg:is_local_mut_slice_offset() then
-        local stmt_kind = stmt:get_kind()
+        local stmt_kind = stmt:kind_name()
 
         if stmt_kind == "Semi" then
             local expr = stmt:get_node()
 
-            if expr:get_kind() == "Assign" then
+            if expr:kind_name() == "Assign" then
                 local exprs = expr:get_exprs()
                 local new_lhs = self.tctx:ident_path_expr(cfg.extra_data[1])
                 local tup0 = self.tctx:ident_path_expr("tup")
@@ -1199,7 +1199,7 @@ function Visitor:flat_map_stmt(stmt, walk)
                 stmt:to_expr(expr, false)
             end
         end
-    elseif cfg:is_byteswap() and stmt:get_kind() == "Semi" then
+    elseif cfg:is_byteswap() and stmt:kind_name() == "Semi" then
         local expr = stmt:get_node()
         local lhs_id = cfg.extra_data[1]
         local rhs_id = cfg.extra_data[2]
@@ -1227,7 +1227,7 @@ function Visitor:flat_map_struct_field(field)
 
     if not cfg then return {field} end
 
-    local field_ty_kind = field_ty:get_kind()
+    local field_ty_kind = field_ty:kind_name()
 
     -- *mut T -> Box<T>, or Box<[T]> or Option<Box<T>> or Option<Box<[T]>>
     if field_ty_kind == "Ptr" then
@@ -1237,7 +1237,7 @@ function Visitor:flat_map_struct_field(field)
     elseif field_ty_kind == "Array" then
         local inner_ty = field_ty:get_tys()[1]
 
-        if inner_ty:get_kind() == "Ptr" then
+        if inner_ty:kind_name() == "Ptr" then
             inner_ty = upgrade_ptr(inner_ty, cfg)
 
             field_ty:set_tys{inner_ty}
@@ -1249,14 +1249,14 @@ function Visitor:flat_map_struct_field(field)
 end
 
 function is_null_ptr(expr)
-    if expr and expr:get_kind() == "Cast" then
+    if expr and expr:kind_name() == "Cast" then
         local cast_expr = expr:get_exprs()[1]
         local cast_ty = expr:get_ty()
 
-        if cast_expr:get_kind() == "Lit" then
+        if cast_expr:kind_name() == "Lit" then
             local lit = cast_expr:get_node()
 
-            if lit and lit:get_value() == 0 and cast_ty:get_kind() == "Ptr" then
+            if lit and lit:get_value() == 0 and cast_ty:kind_name() == "Ptr" then
                 return true
             end
         end
@@ -1266,7 +1266,7 @@ function is_null_ptr(expr)
 end
 
 function is_void_ptr(ty)
-    if ty:get_kind() == "Ptr" then
+    if ty:kind_name() == "Ptr" then
         local mut_ty = ty:get_mut_ty()
         local pointee_ty = mut_ty:get_ty()
         local path = pointee_ty:get_path()
@@ -1296,7 +1296,7 @@ function Visitor:visit_local(locl, walk)
 
     local init = locl:get_init()
 
-    if init:get_kind() == "Path" then
+    if init:kind_name() == "Path" then
         local rhs_cfg = self:get_expr_cfg(init)
 
         if rhs_cfg then
@@ -1361,7 +1361,7 @@ function ConfigBuilder:flat_map_param(param)
     local marks = self.marks[param_ty_id] or {}
 
     -- Skip over params likely from extern fns
-    if param:get_pat():get_kind() == "Wild" then
+    if param:get_pat():kind_name() == "Wild" then
         return {param}
     end
 
@@ -1405,7 +1405,7 @@ function ConfigBuilder:visit_local(locl, walk)
     if is_empty(marks) then
         -- However, it's still useful to build a basic cfg for arrays as we might
         -- take pointers/references into them
-        if ty:get_kind() == "Array" then
+        if ty:kind_name() == "Array" then
             self.pat_to_var_id[pat_id] = id
             self.node_id_cfgs[id] = ConvConfig.new{"array"}
         end
@@ -1420,8 +1420,8 @@ function ConfigBuilder:visit_local(locl, walk)
 end
 
 function ConfigBuilder:flat_map_item(item, walk)
-    local item_kind = item:get_kind()
-    local vis = item:get_vis():get_node():get_kind()
+    local item_kind = item:kind_name()
+    local vis = item:get_vis():get_node():kind_name()
     local priv_or_crate_vis = vis == "Crate" or vis == "Inherited"
 
     if item_kind == "Struct" and priv_or_crate_vis then
@@ -1432,7 +1432,7 @@ function ConfigBuilder:flat_map_item(item, walk)
             local field_ty = field:get_ty()
             local ty_id = field_ty:get_id()
 
-            if field_ty:get_kind() == "Array" then
+            if field_ty:kind_name() == "Array" then
                 ty_id = field_ty:get_tys()[1]:get_id()
             end
 
@@ -1456,7 +1456,7 @@ function path_to_last_segment(path)
 end
 
 function ConfigBuilder:flat_map_stmt(stmt, walk)
-    local stmt_kind = stmt:get_kind()
+    local stmt_kind = stmt:kind_name()
 
     -- Here we look for a particular multi-stmt pattern:
     -- let fresh = a;
@@ -1466,7 +1466,7 @@ function ConfigBuilder:flat_map_stmt(stmt, walk)
         local locl = stmt:get_node()
         local init = locl:get_init()
 
-        if init and init:get_kind() == "Path" then
+        if init and init:kind_name() == "Path" then
             -- Ideally we'd just check if the marking for this local's ty id
             -- is mut. However, the variable may possibly be marked as immutable
             -- if it is only read from (despite containing a mutable ref)
@@ -1496,7 +1496,7 @@ function ConfigBuilder:flat_map_stmt(stmt, walk)
         local expr = stmt:get_node()
         local exprs = expr:get_exprs()
 
-        if expr:get_kind() == "Assign" and exprs[1]:get_kind() == "Path" then
+        if expr:kind_name() == "Assign" and exprs[1]:kind_name() == "Path" then
             local lhs = exprs[1]
             local rhs = exprs[2]
             local lhs_path = path_to_last_segment(lhs:get_path()):get_ident():get_name()
@@ -1539,21 +1539,21 @@ function MallocMarker.new(tctx)
 end
 
 function MallocMarker:visit_expr(expr, walk)
-    local expr_kind = expr:get_kind()
+    local expr_kind = expr:kind_name()
 
     -- Mark types as "box" for malloc/calloc
     if expr_kind == "Assign" then
         local exprs = expr:get_exprs()
         local lhs = exprs[1]
         local rhs = exprs[2]
-        local rhs_kind = rhs:get_kind()
+        local rhs_kind = rhs:kind_name()
         local hirid = self.tctx:resolve_path_hirid(lhs)
 
         if rhs_kind == "Cast" then
             local cast_expr = rhs:get_exprs()[1]
             local cast_ty = rhs:get_ty()
 
-            if cast_ty:get_kind() == "Ptr" and cast_expr:get_kind() == "Call" then
+            if cast_ty:kind_name() == "Ptr" and cast_expr:kind_name() == "Call" then
                 local call_exprs = cast_expr:get_exprs()
                 local path_expr = call_exprs[1]
                 local path = path_expr:get_path()
