@@ -438,6 +438,12 @@ function Visitor:rewrite_method_call_expr(expr)
             caller:to_method_call("unwrap", {caller})
 
             if is_mut then
+                if offset_expr:get_kind() == "Cast" then
+                    local usize_ty = self.tctx:ident_path_ty("usize")
+                    local inner_expr = offset_expr:get_exprs()[1]
+                    offset_expr = self.tctx:cast_expr(inner_expr, usize_ty)
+                end
+
                 caller:to_method_call("split_at_mut", {caller, offset_expr})
             end
         end
@@ -823,7 +829,7 @@ function Visitor:rewrite_call_expr(expr)
                     uncasted_expr:to_cast(uncasted_expr, cast_ty)
                     expr:to_call{path_expr, uncasted_expr}
                 end
-            else
+            elseif cfg:is_box_any() then
                 local drop = self.tctx:ident_path_expr("drop")
                 expr:to_call{drop, uncasted_expr}
             end
