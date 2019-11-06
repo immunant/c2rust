@@ -265,12 +265,6 @@ impl ToLuaExt for NodeId {
     }
 }
 
-impl ToLuaExt for Ident {
-    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
-        self.as_str().to_lua(lua)
-    }
-}
-
 impl ToLuaExt for Symbol {
     fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
         self.as_str().to_lua(lua)

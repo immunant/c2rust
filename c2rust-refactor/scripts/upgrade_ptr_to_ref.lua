@@ -106,7 +106,7 @@ function ConvConfig.from_marks_and_attrs(marks, attrs)
     local box = marks["box"]
 
     for _, attr in ipairs(attrs) do
-        local attr_ident = attr:ident()
+        local attr_ident = attr:ident():get_name()
 
         if attr_ident == "nonnull" then
             opt = false
@@ -619,7 +619,7 @@ function Visitor:rewrite_deref_expr(expr)
             local cast_expr = offset_expr:get_exprs()[1]
             local cast_ty = offset_expr:get_ty()
 
-            if cast_ty:get_kind() == "Path" and cast_ty:get_path():get_segments()[1]:get_ident() == "isize" then
+            if cast_ty:get_kind() == "Path" and cast_ty:get_path():get_segments()[1]:get_ident():get_name() == "isize" then
                 cast_ty:to_simple_path("usize")
 
                 offset_expr:set_ty(cast_ty)
@@ -693,7 +693,7 @@ function Visitor:rewrite_assign_expr(expr)
             local conversion_cfg = var and self.node_id_cfgs[var.id]
 
             -- In case malloc is called from another module check the last segment
-            if conversion_cfg and segment_idents[#segment_idents] == "malloc" then
+            if conversion_cfg and segment_idents[#segment_idents]:get_name() == "malloc" then
                 local mut_ty = cast_ty:get_mut_ty()
                 local pointee_ty = mut_ty:get_ty()
                 local new_rhs = nil
@@ -801,7 +801,7 @@ function Visitor:rewrite_call_expr(expr)
 
     -- free(foo.bar as *mut libc::c_void) -> foo.bar.take()
     -- In case free is called from another module check the last segment
-    if segment_idents and segment_idents[#segment_idents] == "free" then
+    if segment_idents and segment_idents[#segment_idents]:get_name() == "free" then
         local uncasted_expr = first_param_expr
 
         -- REVIEW: What if there's a multi-layered cast?
@@ -829,11 +829,11 @@ function Visitor:rewrite_call_expr(expr)
             end
         end
     -- Skip; handled elsewhere by local conversion
-    elseif segment_idents and segment_idents[#segment_idents] == "malloc" then
+    elseif segment_idents and segment_idents[#segment_idents]:get_name() == "malloc" then
     -- Generic function call param conversions
     -- NOTE: Some(x) counts as a function call on x, so we skip Some
     -- so as to not recurse when we generate that expr
-    elseif segment_idents and segment_idents[#segment_idents] ~= "Some" then
+    elseif segment_idents and segment_idents[#segment_idents]:get_name() ~= "Some" then
         local hirid = self.tctx:resolve_path_hirid(path_expr)
         local fn = self:get_fn(hirid)
 
@@ -1263,7 +1263,7 @@ function is_void_ptr(ty)
         if path then
             local segments = path:get_segments()
 
-            if segments[#segments]:get_ident() == "c_void" then
+            if segments[#segments]:get_ident():get_name() == "c_void" then
                 return true
             end
         end
@@ -1472,8 +1472,8 @@ function ConfigBuilder:flat_map_stmt(stmt, walk)
             if init_cfg and init_cfg:is_mut() and init_cfg:is_slice_any() then
                 local pat = locl:get_pat()
 
-                self.lhs_ident = pat:get_ident()
-                self.rhs_ident = path_to_last_segment(init:get_path()):get_ident()
+                self.lhs_ident = pat:get_ident():get_name()
+                self.rhs_ident = path_to_last_segment(init:get_path()):get_ident():get_name()
                 self.local_stmt_id = stmt:get_id()
                 self.local_id = locl:get_id()
 
@@ -1488,9 +1488,9 @@ function ConfigBuilder:flat_map_stmt(stmt, walk)
         if expr:get_kind() == "Assign" and exprs[1]:get_kind() == "Path" then
             local lhs = exprs[1]
             local rhs = exprs[2]
-            local lhs_path = path_to_last_segment(lhs:get_path()):get_ident()
+            local lhs_path = path_to_last_segment(lhs:get_path()):get_ident():get_name()
             local offset_expr, caller = rewrite_chained_offsets(rhs)
-            local caller_path = path_to_last_segment(caller:get_path()):get_ident()
+            local caller_path = path_to_last_segment(caller:get_path()):get_ident():get_name()
             local local_cfg = self.node_id_cfgs[self.local_id]
 
             local_cfg.extra_data.clear_init_and_ty = true
@@ -1549,7 +1549,7 @@ function MallocMarker:visit_expr(expr, walk)
                 local segment_idents = tablex.map_named_method("get_ident", path:get_segments())
 
                 -- In case malloc is called from another module check the last segment
-                if segment_idents[#segment_idents] == "malloc" or segment_idents[#segment_idents] == "calloc" then
+                if segment_idents[#segment_idents]:get_name() == "malloc" or segment_idents[#segment_idents]:get_name() == "calloc" then
                     -- TODO: Non path support. IE Field
                     self.boxes[tostring(hirid)] = true
                 end

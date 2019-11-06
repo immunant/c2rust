@@ -453,7 +453,7 @@ struct AnonConst {
     value,
 }
 
-#[match=custom] #[equiv_mode=custom] #[to_lua_custom] struct Ident { name, span }
+#[match=custom] #[equiv_mode=custom] struct Ident { name, span }
 #[match=eq] #[to_lua_custom] flag Name;
 #[equiv_mode=ignore] #[match=eq] flag SyntaxContext;
 
