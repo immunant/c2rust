@@ -23,15 +23,21 @@ from util import *
 @linewise
 def do_enum_variants(s, match_pat):
     # Emit `children`
-    yield '    methods.add_method("children", |_lua_ctx, this, ()| {'
+    yield '    methods.add_method("children", |lua_ctx, this, ()| {'
+    yield '      let table = lua_ctx.create_table()?;'
     yield '      match %s {' % match_pat
     for v in s.variants:
         fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
-        yield '        %s => ([' % fpat
-        for f in v.fields:
-            yield '          %s.clone().to_lua_ext(_lua_ctx)?,' % f.name
-        yield '        ].to_vec() as Vec<Value>).to_lua(_lua_ctx),'
-    yield '      }'
+        yield '        %s => {' % fpat
+        if v.is_tuple:
+            for i, f in enumerate(v.fields):
+                yield '          table.set(%d, %s.clone().to_lua_ext(lua_ctx)?)?;' % (i + 1, f.name)
+        else:
+            for f in v.fields:
+                yield '          table.set("%s", %s.clone().to_lua_ext(lua_ctx)?)?;' % (f.name, f.name)
+        yield '        }'
+    yield '      };'
+    yield '      Ok(Value::Table(table))'
     yield '    });'
 
     # Emit `nth_child`
