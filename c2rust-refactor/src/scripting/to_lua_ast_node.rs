@@ -314,7 +314,7 @@ pub(crate) trait FromLuaTable: Sized {
 
 impl<T> FromLuaExt for T
     where T: 'static + Sized + Clone + FromLuaTable,
-          LuaAstNode<T>: UserData,
+          LuaAstNode<T>: UserData + LuaAstNodeSafe,
 {
     fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
         match value {
@@ -616,7 +616,7 @@ impl<T> UserData for LuaAstNode<Spanned<T>>
 
 impl<T> FromLuaTable for Spanned<T>
     where T: 'static + Clone + FromLuaTable,
-          LuaAstNode<T>: UserData,
+          LuaAstNode<T>: UserData + LuaAstNodeSafe,
 {
   fn from_lua_table<'lua>(table: LuaTable<'lua>, lua_ctx: Context<'lua>) -> Result<Self> {
     Ok(Spanned::<T> {
@@ -1428,6 +1428,15 @@ impl AddMoreMethods for LuaAstNode<P<Ty>> {
 
 unsafe impl Send for LuaAstNode<Vec<Stmt>> {}
 impl UserData for LuaAstNode<Vec<Stmt>> {}
+
+impl FromLuaTable for Vec<Stmt> {
+    fn from_lua_table<'lua>(table: LuaTable<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let v: Vec<Value> = FromLua::from_lua(Value::Table(table), lua)?;
+        v.into_iter()
+            .map(|v| FromLuaExt::from_lua_ext(v, lua))
+            .collect::<Result<Vec<_>>>()
+    }
+}
 
 /// MutTy AST node handle
 // @type MutTyAstNode

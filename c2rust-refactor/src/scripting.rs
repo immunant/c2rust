@@ -42,7 +42,7 @@ use ast_visitor::{LuaAstVisitor, LuaAstVisitorNew};
 use into_lua_ast::IntoLuaAst;
 use merge_lua_ast::MergeLuaAst;
 use to_lua_ast_node::LuaAstNode;
-use to_lua_ast_node::{LuaHirId, ToLuaExt, ToLuaScoped, ToLuaAstNode};
+use to_lua_ast_node::{FromLuaAstNode, FromLuaTable, LuaHirId, ToLuaExt, ToLuaScoped, ToLuaAstNode};
 
 /// Refactoring module
 // @module Refactor
@@ -214,8 +214,8 @@ impl UserData for RefactorState {
     }
 }
 
-// Dispatch to a monomorphized method taking a LuaAstNode<T> as the first parameter.
-// The macro take the `object.method` to dispatch to, the AnyUserData node to
+// Dispatch to a monomorphized method taking a LuaValue as the first parameter.
+// The macro take the `object.method` to dispatch to, the LuaValue node to
 // dispatch on, a tuple containing additional args, and a list of AST node types
 // that should be accepted in braces.
 // example: dispatch!(this.fold_with, node, (args...), {P<ast::Expr>, P<ast::Ty>, Vec<ast::Stmt>})
@@ -223,13 +223,15 @@ macro_rules! dispatch {
     (
         $this: ident.$method: ident,
         $node: ident,
+        $lua_ctx: ident,
         $params: tt,
         {$($tys: ty),+}
         $(,)*
     ) => {
         $(
-            if let Ok($node) = $node.borrow::<LuaAstNode<$tys>>() {
-                dispatch!(@call $this.$method(&*$node, $params))
+            // FIXME: this calls `clone` for every candidate type
+            if let Ok($node) = <LuaAstNode<$tys> as FromLuaAstNode>::from_lua_ast_node($node.clone(), $lua_ctx) {
+                dispatch!(@call $this.$method(&$node, $params))
             } else
         )*
             {
@@ -245,8 +247,9 @@ macro_rules! dispatch {
         $(,)*
     ) => {
         $(
-            if let Ok($node) = $node.borrow::<LuaAstNode<$tys>>() {
-                dispatch!(@call $this.$method<$generic>(&*$node, $params))
+            // FIXME: this calls `clone` for every candidate type
+            if let Ok($node) = <LuaAstNode<$tys> as FromLuaAstNode>::from_lua_ast_node($node.clone(), $lua_ctx) {
+                dispatch!(@call $this.$method<$generic>(&$node, $params))
             } else
         )*
             {
@@ -312,11 +315,16 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
         })
     }
 
-    fn try_match<'lua, T>(&mut self, pat: &LuaAstNode<T>, target: AnyUserData<'lua>) -> LuaResult<bool>
-        where T: TryMatch,
+    fn try_match<'lua, T>(
+        &mut self,
+        pat: &LuaAstNode<T>,
+        target: LuaValue<'lua>,
+        lua_ctx: LuaContext<'lua>,
+    ) -> LuaResult<bool>
+        where T: TryMatch + FromLuaTable + Clone,
               LuaAstNode<T>: 'static + UserData,
     {
-        let target = match target.borrow::<LuaAstNode<T>>() {
+        let target: LuaAstNode<T> = match FromLuaAstNode::from_lua_ast_node(target, lua_ctx) {
             Ok(t) => t,
             Err(_) => return Ok(false), // target was not the same type of node as pat
         };
@@ -379,12 +387,12 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @tparam function(LuaAstNode,MatchCtxt) callback Function called for each match. Takes the matching node and a new @{MatchCtxt} for that match.
         methods.add_method_mut(
             "fold_with",
-            |lua_ctx, this, (needle, callback): (AnyUserData, LuaFunction)| {
-                // FIXME: use `FromLuaExt` when it's implemented
+            |lua_ctx, this, (needle, callback): (LuaValue, LuaFunction)| {
                 this.transform.st.map_krate(|krate| {
                     dispatch!(
                         this.fold_with,
                         needle,
+                        lua_ctx,
                         (krate, callback, lua_ctx),
                         {P<ast::Expr>, P<ast::Ty>, Vec<ast::Stmt>},
                     )
@@ -455,8 +463,8 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @treturn bool true if match was successful
         methods.add_method_mut(
             "try_match",
-            |_lua_ctx, this, (pat, target): (AnyUserData, AnyUserData)| {
-                dispatch!(this.try_match, pat, (target), {P<ast::Expr>})
+            |lua_ctx, this, (pat, target): (LuaValue, LuaValue)| {
+                dispatch!(this.try_match, pat, lua_ctx, (target, lua_ctx), {P<ast::Expr>})
             },
         );
 
@@ -467,10 +475,10 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @treturn bool true if target was found
         methods.add_method_mut(
             "find_first",
-            |_lua_ctx, this, (pat, target): (AnyUserData, AnyUserData)| {
+            |lua_ctx, this, (pat, target): (LuaValue, AnyUserData)| {
                 // FIXME: use `FromLuaExt` when it's implemented
                 if let Ok(t) = target.borrow::<LuaAstNode<Vec<ast::Stmt>>>() {
-                    dispatch!(this.find_first, pat, (&mut *t.borrow_mut()), {P<ast::Expr>})
+                    dispatch!(this.find_first, pat, lua_ctx, (&mut *t.borrow_mut()), {P<ast::Expr>})
                 } else {
                     Err(LuaError::external("Only MultiStmt targets are supported for now"))
                 }
@@ -481,9 +489,8 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @function subst
         // @tparam LuaAstNode replacement New AST node to replace the currently matched AST. May include variable bindings if these bindings were matched by the search pattern.
         // @treturn LuaAstNode New AST node with variable bindings replaced by their matched values
-        methods.add_method_mut("subst", |lua_ctx, this, replacement: AnyUserData| {
-            // FIXME: use `FromLuaExt` when it's implemented
-            dispatch!(this.subst, replacement, (lua_ctx), {P<ast::Expr>, Vec<ast::Stmt>, ast::Stmt})
+        methods.add_method_mut("subst", |lua_ctx, this, replacement: LuaValue| {
+            dispatch!(this.subst, replacement, lua_ctx, (lua_ctx), {P<ast::Expr>, Vec<ast::Stmt>, ast::Stmt})
         });
     }
 }
@@ -783,8 +790,8 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         // @function visit_paths
         // @tparam LuaAstNode node AST node to visit. Valid node types: {P<Item>}.
         // @tparam function(NodeId, QSelf, Path, Def) callback Function called for each path. Can modify QSelf and/or Path to rewrite the path.
-        methods.add_method("visit_paths", |lua_ctx, this, (node, callback): (AnyUserData<'lua>, LuaFunction<'lua>)| {
-            dispatch!(this.fold_paths, node, (callback, lua_ctx), {P<ast::Item>})
+        methods.add_method("visit_paths", |lua_ctx, this, (node, callback): (LuaValue<'lua>, LuaFunction<'lua>)| {
+            dispatch!(this.fold_paths, node, lua_ctx, (callback, lua_ctx), {P<ast::Item>})
         });
 
         /// Create a new use item
