@@ -658,6 +658,11 @@ function Visitor:rewrite_deref_expr(expr)
                 local zero_expr = self.tctx:int_lit_expr(0, nil)
                 expr:to_index(expr, zero_expr)
             else
+                -- *ptr.unwrap().as_ptr() = 1;
+                if cfg.extra_data.non_null_wrapped then
+                    expr:to_method_call("as_ptr", {expr})
+                end
+
                 -- For immut refs we skip the superflous as_ref call,
                 -- so we can also skip one of the corresponding derefs
                 if is_mut or cfg:is_box_any() then

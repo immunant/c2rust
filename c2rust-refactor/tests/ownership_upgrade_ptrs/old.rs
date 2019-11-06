@@ -40,6 +40,8 @@ extern "C" {
     #[no_mangle]
     fn vsnprintf(_: *mut libc::c_char, _: size_t, _: *const libc::c_char,
                  _: ::std::ffi::VaList) -> libc::c_int;
+    #[no_mangle]
+    fn get_ptr() -> *mut u32;
 }
 
 pub unsafe extern "C" fn ten_mul(#[nonnull] acc: *mut f64, digit: i32, r: *mut f64) -> i32 {
@@ -650,4 +652,13 @@ pub unsafe extern "C" fn __vsprintf_chk(mut buf: *mut libc::c_char,
         if rv >= 0i32 && rv as size_t >= slen { __chk_fail(); }
     }
     return rv;
+}
+
+unsafe fn non_null_type() {
+    let mut ptr = 0 as *mut u32;
+
+    ptr = get_ptr();
+
+    *ptr = 1;
+    *ptr;
 }

@@ -48,6 +48,8 @@ extern "C" {
         _: *const libc::c_char,
         _: ::std::ffi::VaList,
     ) -> libc::c_int;
+    #[no_mangle]
+    fn get_ptr() -> *mut u32;
 }
 
 pub unsafe extern "C" fn ten_mul(mut acc: &mut f64, digit: i32, r: Option<&f64>) -> i32 {
@@ -781,4 +783,13 @@ pub unsafe extern "C" fn __vsprintf_chk(
         }
     }
     return rv;
+}
+
+unsafe fn non_null_type() {
+    let mut ptr = None;
+
+    ptr = ::core::ptr::NonNull::new(get_ptr());
+
+    *ptr.unwrap().as_ptr() = 1;
+    *ptr.unwrap().as_ptr();
 }
