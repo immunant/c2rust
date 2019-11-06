@@ -40,14 +40,33 @@ def do_enum_variants(s, match_pat):
     yield '      Ok(Value::Table(table))'
     yield '    });'
 
-    # Emit `nth_child`
-    yield '    methods.add_method("nth_child", |_lua_ctx, this, idx: usize| {'
-    yield '      match (%s, idx) {' % match_pat
+    # Emit `child`
+    yield '    methods.add_method("child", |lua_ctx, this, idx: Value| {'
+    # Emit integer indices first
+    yield '      match idx {'
+    yield '        Value::Integer(idx) => match (%s, idx) {' % match_pat
     for v in s.variants:
+        if not v.is_tuple:
+            continue
         for idx, f in enumerate(v.fields):
             fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
-            yield '        (%s, %d) => %s.clone().to_lua_ext(_lua_ctx),' % (fpat, (idx + 1), f.name)
-    yield '        _ => Ok(Value::Nil)' # FIXME
+            yield '           (%s, %d) => %s.clone().to_lua_ext(lua_ctx),' % (fpat, (idx + 1), f.name)
+    yield '           _ => Ok(Value::Nil)'
+    yield '        }'
+
+    # Emit string indices (for non-tuple variants)
+    yield '        Value::String(idx) => match (%s, idx.to_str()?) {' % match_pat
+    for v in s.variants:
+        if v.is_tuple:
+            continue
+        for f in v.fields:
+            fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
+            yield '          (%s, "%s") => %s.clone().to_lua_ext(lua_ctx),' % (fpat, f.name, f.name)
+    yield '          _ => Ok(Value::Nil)'
+    yield '        }'
+
+    # Otherwise, just return a `nil`
+    yield '        _ => Ok(Value::Nil)'
     yield '      }'
     yield '    });'
 
