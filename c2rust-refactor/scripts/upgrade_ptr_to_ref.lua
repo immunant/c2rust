@@ -689,11 +689,11 @@ function Visitor:rewrite_assign_expr(expr)
             local path_expr = call_exprs[1]
             local param_expr = call_exprs[2]
             local path = path_expr:get_path()
-            local segment_idents = tablex.map_named_method("get_ident", path:get_segments())
+            local segment_idents = tablex.map(function(x) return x:get_ident():get_name() end, path:get_segments())
             local conversion_cfg = var and self.node_id_cfgs[var.id]
 
             -- In case malloc is called from another module check the last segment
-            if conversion_cfg and segment_idents[#segment_idents]:get_name() == "malloc" then
+            if conversion_cfg and segment_idents[#segment_idents] == "malloc" then
                 local mut_ty = cast_ty:get_mut_ty()
                 local pointee_ty = mut_ty:get_ty()
                 local new_rhs = nil
@@ -797,11 +797,11 @@ function Visitor:rewrite_call_expr(expr)
     local path_expr = call_exprs[1]
     local first_param_expr = call_exprs[2]
     local path = path_expr:get_path()
-    local segment_idents = path and tablex.map_named_method("get_ident", path:get_segments())
+    local segment_idents = path and tablex.map(function(x) return x:get_ident():get_name() end, path:get_segments())
 
     -- free(foo.bar as *mut libc::c_void) -> foo.bar.take()
     -- In case free is called from another module check the last segment
-    if segment_idents and segment_idents[#segment_idents]:get_name() == "free" then
+    if segment_idents and segment_idents[#segment_idents] == "free" then
         local uncasted_expr = first_param_expr
 
         -- REVIEW: What if there's a multi-layered cast?
@@ -829,11 +829,11 @@ function Visitor:rewrite_call_expr(expr)
             end
         end
     -- Skip; handled elsewhere by local conversion
-    elseif segment_idents and segment_idents[#segment_idents]:get_name() == "malloc" then
+    elseif segment_idents and segment_idents[#segment_idents] == "malloc" then
     -- Generic function call param conversions
     -- NOTE: Some(x) counts as a function call on x, so we skip Some
     -- so as to not recurse when we generate that expr
-    elseif segment_idents and segment_idents[#segment_idents]:get_name() ~= "Some" then
+    elseif segment_idents and segment_idents[#segment_idents] ~= "Some" then
         local hirid = self.tctx:resolve_path_hirid(path_expr)
         local fn = self:get_fn(hirid)
 
@@ -1546,10 +1546,10 @@ function MallocMarker:visit_expr(expr, walk)
                 local call_exprs = cast_expr:get_exprs()
                 local path_expr = call_exprs[1]
                 local path = path_expr:get_path()
-                local segment_idents = tablex.map_named_method("get_ident", path:get_segments())
+                local segment_idents = tablex.map(function(x) return x:get_ident():get_name() end, path:get_segments())
 
                 -- In case malloc is called from another module check the last segment
-                if segment_idents[#segment_idents]:get_name() == "malloc" or segment_idents[#segment_idents]:get_name() == "calloc" then
+                if segment_idents[#segment_idents] == "malloc" or segment_idents[#segment_idents] == "calloc" then
                     -- TODO: Non path support. IE Field
                     self.boxes[tostring(hirid)] = true
                 end
