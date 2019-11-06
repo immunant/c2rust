@@ -584,6 +584,15 @@ impl<T: UserData> AddMoreMethods for T {
     default fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(_methods: &mut M) {}
 }
 
+// Helper functions for lua_ast_node_gen.inc.rs
+fn from_lua_kind_error<T>(expected: &'static str, actual: &str) -> Result<T> {
+    Err(Error::FromLuaConversionError {
+        from: "Table",
+        to: expected,
+        message: Some(format!("expected kind {}, got {}", expected, actual)),
+    })
+}
+
 include!(concat!(env!("OUT_DIR"), "/lua_ast_node_gen.inc.rs"));
 
 unsafe impl<T> Send for LuaAstNode<Spanned<T>> {}
