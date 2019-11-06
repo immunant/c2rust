@@ -98,7 +98,7 @@ def do_one_impl(s, kind_map, boxed):
     yield '}'
 
     yield 'impl FromLuaTable for %s {' % type_name
-    yield "  fn from_lua_table<'lua>(_table: LuaTable<'lua>, _lua_ctx: Context<'lua>) -> Result<Self> {"
+    yield '  fn from_lua_table<\'lua>(_table: LuaTable<\'lua>, _lua_ctx: Context<\'lua>) -> Result<Self> {'
     yield '    let _kind: &str = &_table.get::<_, String>(1)?;'
     if isinstance(s, Struct):
         yield '    if _kind == "%s" {' % s.name
