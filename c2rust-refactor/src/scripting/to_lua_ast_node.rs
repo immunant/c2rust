@@ -8,7 +8,7 @@ use std::sync::Arc;
 use c2rust_ast_builder::mk;
 use rustc::hir::def::Res;
 use rustc::hir::HirId;
-use rustc_target::spec::abi::Abi;
+use rustc_target::spec::abi::{Abi, lookup as lookup_abi};
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::mut_visit::*;
@@ -20,8 +20,8 @@ use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
 use syntax_pos::{Span, SyntaxContext};
 
-use rlua::{Context, Error, Function, MetaMethod, Result, Scope, ToLua, UserData, UserDataMethods, Value};
-use rlua::prelude::LuaString;
+use rlua::{AnyUserData, Context, Error, FromLua, Function, MetaMethod, Result, Scope, ToLua, UserData, UserDataMethods, Value};
+use rlua::prelude::{LuaString, LuaTable};
 
 use crate::ast_manip::{util, visit_nodes, AstName, AstNode, WalkAst};
 use crate::ast_manip::fn_edit::{FnLike, FnKind};
@@ -146,14 +146,6 @@ impl<T> ToLuaExt for Rc<T>
 {
     fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
         (*self).clone().to_lua_ext(lua)
-    }
-}
-
-impl<T> ToLuaExt for RefCell<T>
-    where T: Sized + ToLuaExt,
-{
-    fn to_lua_ext<'lua>(self, lua: Context<'lua>) -> Result<Value<'lua>> {
-        self.into_inner().to_lua_ext(lua)
     }
 }
 
@@ -303,6 +295,241 @@ impl<T> ToLuaScoped for T
     }
 }
 
+
+// FromLua traits
+/// Converts from a Lua `Value` directly into an AST node of type `T`.
+pub(crate) trait FromLuaExt: Sized {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self>;
+}
+
+/// Converts from a Lua `Value` into a `LuaAstNode<T>` object.
+pub(crate) trait FromLuaAstNode: Sized {
+    fn from_lua_ast_node<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self>;
+}
+
+/// Internal trait that converts a Lua `Table` into an AST node.
+pub(crate) trait FromLuaTable: Sized {
+    fn from_lua_table<'lua>(table: LuaTable<'lua>, lua: Context<'lua>) -> Result<Self>;
+}
+
+impl<T> FromLuaExt for T
+    where T: 'static + Sized + Clone + FromLuaTable,
+          LuaAstNode<T>: UserData,
+{
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        match value {
+            Value::UserData(ud) => {
+                let node = &*ud.borrow::<LuaAstNode<T>>()?;
+                let node = node.borrow().clone();
+                Ok(node)
+            }
+            Value::Table(t) => FromLuaTable::from_lua_table(t, lua),
+            _ => Err(Error::UserDataTypeMismatch)
+        }
+    }
+}
+
+impl<T> FromLuaAstNode for LuaAstNode<T>
+    where T: 'static + Sized + FromLuaTable,
+          LuaAstNode<T>: UserData + Clone,
+{
+    fn from_lua_ast_node<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        match value {
+            Value::UserData(ud) => {
+                let node = &*ud.borrow::<LuaAstNode<T>>()?;
+                Ok(node.clone())
+            }
+            Value::Table(t) => {
+                let node = FromLuaTable::from_lua_table(t, lua)?;
+                Ok(LuaAstNode::new(node))
+            }
+            _ => Err(Error::UserDataTypeMismatch)
+        }
+    }
+}
+
+impl<T> FromLuaExt for Rc<T>
+    where T: FromLuaExt,
+{
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let x: T = FromLuaExt::from_lua_ext(value, lua)?;
+        Ok(Rc::new(x))
+    }
+}
+
+impl<T> FromLuaExt for Option<T>
+    where T: FromLuaExt,
+{
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        if let Value::Nil = value {
+            Ok(None)
+        } else {
+            FromLuaExt::from_lua_ext(value, lua).map(Some)
+        }
+    }
+}
+
+impl<T> FromLuaExt for Vec<T>
+    where T: FromLuaExt,
+{
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let v: Vec<Value> = FromLua::from_lua(value, lua)?;
+        v.into_iter()
+            .map(|v| FromLuaExt::from_lua_ext(v, lua))
+            .collect::<Result<Vec<_>>>()
+    }
+}
+
+impl<T> FromLuaExt for ThinVec<T>
+    where T: FromLuaExt,
+{
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        if let Value::Nil = value {
+            return Ok(ThinVec::new());
+        }
+        let v: Vec<T> = FromLuaExt::from_lua_ext(value, lua)?;
+        Ok(v.into())
+    }
+}
+
+impl<A, B> FromLuaExt for (A, B)
+    where A: FromLuaExt,
+          B: FromLuaExt,
+{
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let err_fn = || Error::FromLuaConversionError {
+            from: "Value",
+            to: "Tuple",
+            message: Some(format!("tuple table must have at least 2 elements")),
+        };
+
+        let mut v: Vec<Value> = FromLua::from_lua(value, lua)?;
+        let b = v.pop().ok_or_else(err_fn)?;
+        let a = v.pop().ok_or_else(err_fn)?;
+        Ok((FromLuaExt::from_lua_ext(a, lua)?,
+            FromLuaExt::from_lua_ext(b, lua)?,
+        ))
+    }
+}
+
+impl<A, B, C> FromLuaExt for (A, B, C)
+    where A: FromLuaExt,
+          B: FromLuaExt,
+          C: FromLuaExt,
+{
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let err_fn = || Error::FromLuaConversionError {
+            from: "Value",
+            to: "Tuple",
+            message: Some(format!("tuple table must have at least 3 elements")),
+        };
+
+        let mut v: Vec<Value> = FromLua::from_lua(value, lua)?;
+        let c = v.pop().ok_or_else(err_fn)?;
+        let b = v.pop().ok_or_else(err_fn)?;
+        let a = v.pop().ok_or_else(err_fn)?;
+        Ok((FromLuaExt::from_lua_ext(a, lua)?,
+            FromLuaExt::from_lua_ext(b, lua)?,
+            FromLuaExt::from_lua_ext(c, lua)?,
+        ))
+    }
+}
+
+impl<A, B, C> FromLuaExt for P<(A, B, C)>
+    where A: 'static + FromLuaExt,
+          B: 'static + FromLuaExt,
+          C: 'static + FromLuaExt,
+{
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let err_fn = || Error::FromLuaConversionError {
+            from: "Value",
+            to: "Tuple",
+            message: Some(format!("tuple table must have at least 3 elements")),
+        };
+
+        let mut v: Vec<Value> = FromLua::from_lua(value, lua)?;
+        let c = v.pop().ok_or_else(err_fn)?;
+        let b = v.pop().ok_or_else(err_fn)?;
+        let a = v.pop().ok_or_else(err_fn)?;
+        Ok(P((FromLuaExt::from_lua_ext(a, lua)?,
+              FromLuaExt::from_lua_ext(b, lua)?,
+              FromLuaExt::from_lua_ext(c, lua)?,
+        )))
+    }
+}
+
+impl FromLuaExt for bool {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        FromLua::from_lua(value, lua)
+    }
+}
+
+impl FromLuaExt for u8 {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        FromLua::from_lua(value, lua)
+    }
+}
+
+impl FromLuaExt for u16 {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        FromLua::from_lua(value, lua)
+    }
+}
+
+impl FromLuaExt for u128 {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        FromLua::from_lua(value, lua)
+    }
+}
+
+impl FromLuaExt for usize {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        FromLua::from_lua(value, lua)
+    }
+}
+
+impl FromLuaExt for char {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let s: String = FromLua::from_lua(value, lua)?;
+        s.chars().next().ok_or_else(|| Error::FromLuaConversionError {
+            from: "String",
+            to: "char",
+            message: Some(format!("invalid single-character string: {}", s)),
+        })
+    }
+}
+
+impl FromLuaExt for NodeId {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        Ok(NodeId::from_u32_const(FromLua::from_lua(value, lua)?))
+    }
+}
+
+impl FromLuaExt for Symbol {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let s: String = FromLua::from_lua(value, lua)?;
+        Ok(Symbol::intern(&s))
+    }
+}
+
+impl FromLuaExt for AttrId {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let id: usize = FromLua::from_lua(value, lua)?;
+        Ok(AttrId(id))
+    }
+}
+
+impl FromLuaExt for Abi {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let abi: String = FromLua::from_lua(value, lua)?;
+        lookup_abi(&abi).ok_or_else(|| Error::FromLuaConversionError {
+            from: "String",
+            to: "Abi",
+            message: Some(format!("unknown ABI: {}", abi)),
+        })
+    }
+}
+
 /// Holds a rustc AST node that can be passed back and forth to Lua as a scoped,
 /// static userdata. Implement AddMoreMethods for LuaAstNode<T> to support an AST node
 /// T.
@@ -376,6 +603,18 @@ impl<T> UserData for LuaAstNode<Spanned<T>>
           |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
         );
     }
+}
+
+impl<T> FromLuaTable for Spanned<T>
+    where T: 'static + Clone + FromLuaTable,
+          LuaAstNode<T>: UserData,
+{
+  fn from_lua_table<'lua>(table: LuaTable<'lua>, lua_ctx: Context<'lua>) -> Result<Self> {
+    Ok(Spanned::<T> {
+      node: FromLuaExt::from_lua_ext(table.get::<_, Value>("node")?, lua_ctx)?,
+      span: FromLuaExt::from_lua_ext(table.get::<_, Value>("span")?, lua_ctx)?,
+    })
+  }
 }
 
 /// Item AST node handle
@@ -609,6 +848,13 @@ impl ToLuaExt for Span {
     }
 }
 
+impl FromLuaExt for Span {
+    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
+        let ud: AnyUserData = FromLua::from_lua(value, lua)?;
+        let sd = ud.borrow::<SpanData>()?;
+        Ok(sd.0.with_ctxt(sd.0.ctxt))
+    }
+}
 
 /// Expr AST node handle
 // @type ExprAstNode

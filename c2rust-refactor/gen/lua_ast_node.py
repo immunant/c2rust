@@ -91,6 +91,46 @@ def do_one_impl(s, kind_map, boxed):
     yield '  }'
     yield '}'
 
+    yield 'impl FromLuaTable for %s {' % type_name
+    yield "  fn from_lua_table<'lua>(_table: LuaTable<'lua>, _lua_ctx: Context<'lua>) -> Result<Self> {"
+    if isinstance(s, Struct):
+        yield '    Ok(%s%s {' % ('P(' if boxed else '', s.name)
+        for f in s.fields:
+            yield '      %s: FromLuaExt::from_lua_ext(_table.get::<_, Value>("%s")?, _lua_ctx)?,' % (f.name, f.name)
+            # TODO: kind folding???
+
+        yield '    }%s)' % (')' if boxed else '')
+
+    elif isinstance(s, Enum):
+        yield '    match _table.get::<_, String>(1)?.as_ref() {'
+        for v in s.variants:
+            delim_open, delim_close = ('', '') if len(v.fields) == 0 else (
+                ('(', ')') if v.is_tuple else ('{', '}'))
+
+            box_open, box_close = ('P(', ')') if boxed else ('', '')
+            yield '      "%s" => Ok(%s%s::%s%s' % (v.name, box_open, s.name, v.name, delim_open)
+            if v.is_tuple:
+                for i, f in enumerate(v.fields):
+                    yield '        FromLuaExt::from_lua_ext(_table.get::<_, Value>(%d)?, _lua_ctx)?,' % (i + 2)
+            else:
+                for f in v.fields:
+                    yield '        %s: FromLuaExt::from_lua_ext(_table.get::<_, Value>("%s")?, _lua_ctx)?,' % (f.name, f.name)
+            yield '      %s%s),' % (delim_close, box_close)
+
+        yield '      k @ _ => Err(Error::FromLuaConversionError {'
+        yield '        from: "Table",'
+        yield '        to: "%s",' % s.name
+        yield '        message: Some(format!("unknown kind: {}", k))'
+        yield '      })'
+        yield '    }'
+
+    else:
+        # TODO: add a message
+        yield '    Err(Error::FromLuaConversionError { from: "Table", to: "%s", message: None })' % s.name
+
+    yield '  }'
+    yield '}'
+
 @linewise
 def do_impl(s, kind_map):
     if 'boxed' in s.attrs:
