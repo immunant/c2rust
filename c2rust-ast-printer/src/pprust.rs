@@ -1577,7 +1577,7 @@ impl<'a> State<'a> {
     pub fn print_method_sig(&mut self,
                             ident: ast::Ident,
                             generics: &ast::Generics,
-                            m: &ast::MethodSig,
+                            m: &ast::FnSig,
                             vis: &ast::Visibility)
                             {
         self.print_fn(&m.decl,
