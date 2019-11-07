@@ -362,7 +362,7 @@ enum PatKind {
 #[extend_span]
 struct FieldPat { id, ident, pat, is_shorthand, attrs, span, is_placeholder }
 
-#[match=custom]
+#[match=custom] #[fold_kind=LitKind]
 struct Lit { token, kind, span }
 
 enum LitKind {
@@ -582,10 +582,8 @@ enum DelimToken {
     NoDelim,
 }
 
-struct Token {
-    kind,
-    span,
-}
+#[fold_kind=TokenKind]
+struct Token { kind, span }
 
 enum TokenKind {
     Eq,
