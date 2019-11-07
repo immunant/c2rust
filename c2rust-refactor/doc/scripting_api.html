@@ -2241,6 +2241,22 @@
 	<td class="name" nowrap><a href="#Lit:set_span">Lit:set_span (value)</a></td>
 	<td class="summary">Set the "span" field of the current node to a new value</td>
 	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Lit:kind_name">Lit:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Lit:children">Lit:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Lit:child">Lit:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Lit:replace_child">Lit:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
 </table>
 <h2><a href="#Class_LitKind">Class LitKind </a></h2>
 <table class="function_list">
@@ -3263,6 +3279,22 @@
 	<tr>
 	<td class="name" nowrap><a href="#Token:set_span">Token:set_span (value)</a></td>
 	<td class="summary">Set the "span" field of the current node to a new value</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Token:kind_name">Token:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Token:children">Token:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Token:child">Token:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Token:replace_child">Token:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
 	</tr>
 </table>
 <h2><a href="#Class_TokenKind">Class TokenKind </a></h2>
@@ -13815,6 +13847,95 @@
 
 
 </dd>
+    <dt>
+    <a name = "Lit:kind_name"></a>
+    <strong>Lit:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Lit:children"></a>
+    <strong>Lit:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Lit:child"></a>
+    <strong>Lit:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Lit:replace_child"></a>
+    <strong>Lit:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
 </dl>
     <h2 class="section-header has-description"><a name="Class_LitKind"></a>Class LitKind </h2>
 
@@ -18903,6 +19024,95 @@
 
 
 </dd>
+    <dt>
+    <a name = "Token:kind_name"></a>
+    <strong>Token:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Token:children"></a>
+    <strong>Token:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Token:child"></a>
+    <strong>Token:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Token:replace_child"></a>
+    <strong>Token:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
 </dl>
     <h2 class="section-header has-description"><a name="Class_TokenKind"></a>Class TokenKind </h2>
 
@@ -19520,7 +19730,7 @@
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2019-11-07 13:59:45 </i>
+<i style="float:right;">Last updated 2019-11-07 15:16:48 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
