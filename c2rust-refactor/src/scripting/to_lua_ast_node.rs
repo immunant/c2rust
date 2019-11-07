@@ -634,8 +634,6 @@ impl<T> FromLuaTable for Spanned<T>
   }
 }
 
-/// Item AST node handle
-// @type ItemAstNode
 #[allow(unused_doc_comments)]
 impl AddMoreMethods for LuaAstNode<P<Item>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
@@ -753,8 +751,6 @@ impl AddMoreMethods for LuaAstNode<P<Item>> {
     }
 }
 
-/// ForeignItem AST node handle
-// @type ForeignItemAstNode
 impl AddMoreMethods for LuaAstNode<ForeignItem> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_args", |_lua_ctx, this, ()| {
@@ -772,14 +768,9 @@ impl AddMoreMethods for LuaAstNode<ForeignItem> {
     }
 }
 
-/// QSelf AST node handle
-//
-// @type QSelfAstNode
 impl AddMoreMethods for LuaAstNode<QSelf> {}
 
 
-/// Path AST node handle
-// @type PathAstNode
 impl AddMoreMethods for LuaAstNode<Path> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("has_generic_args", |_lua_ctx, this, ()| {
@@ -863,8 +854,6 @@ impl FromLuaExt for Span {
     }
 }
 
-/// Expr AST node handle
-// @type ExprAstNode
 impl AddMoreMethods for LuaAstNode<P<Expr>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_node", |lua_ctx, this, ()| {
@@ -1234,8 +1223,6 @@ impl AddMoreMethods for LuaAstNode<P<Expr>> {
 }
 
 
-/// Ty AST node handle
-// @type TyAstNode
 impl AddMoreMethods for LuaAstNode<P<Ty>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_tys", |lua_ctx, this, ()| {
@@ -1436,8 +1423,6 @@ impl FromLuaTable for Vec<Stmt> {
     }
 }
 
-/// MutTy AST node handle
-// @type MutTyAstNode
 impl AddMoreMethods for LuaAstNode<MutTy> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
@@ -1458,8 +1443,6 @@ impl AddMoreMethods for LuaAstNode<MutTy> {
     }
 }
 
-/// Stmt AST node handle
-// @type StmtAstNode
 impl AddMoreMethods for LuaAstNode<Stmt> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_node", |lua_ctx, this, ()| {
@@ -1486,8 +1469,6 @@ impl AddMoreMethods for LuaAstNode<Stmt> {
 }
 
 
-/// Pat AST node handle
-// @type PatAstNode
 impl AddMoreMethods for LuaAstNode<P<Pat>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_ident", |lua_ctx, this, ()| {
@@ -1501,13 +1482,9 @@ impl AddMoreMethods for LuaAstNode<P<Pat>> {
 }
 
 
-/// Crate AST node handle
-// @type CrateAstNode
 impl AddMoreMethods for LuaAstNode<Crate> {}
 
 
-/// Local AST node handle
-// @type LocalAstNode
 impl AddMoreMethods for LuaAstNode<P<Local>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("set_ty", |_lua_ctx, this, ty: Option<LuaAstNode<P<Ty>>>| {
@@ -1551,8 +1528,6 @@ impl AddMoreMethods for LuaAstNode<P<Local>> {
 }
 
 
-/// Lit AST node handle
-// @type LitAstNode
 impl AddMoreMethods for LuaAstNode<Lit> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
@@ -1667,8 +1642,6 @@ impl AddMoreMethods for LuaAstNode<Lit> {
 }
 
 
-/// Mod AST node handle
-// @type ModAstNode
 impl AddMoreMethods for LuaAstNode<Mod> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("num_items", |_lua_ctx, this, ()| {
@@ -1691,8 +1664,6 @@ impl AddMoreMethods for LuaAstNode<Mod> {
 }
 
 
-/// UseTree AST node handle
-// @type UseTreeAstNode
 impl AddMoreMethods for LuaAstNode<P<UseTree>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_rename", |_lua_ctx, this, ()| {
@@ -1730,8 +1701,6 @@ impl ToLuaExt for AstNode {
     }
 }
 
-/// FnLike AST node handle
-// @type FnLikeAstNode
 impl UserData for LuaAstNode<FnLike> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_kind", |_lua_ctx, this, ()| {
@@ -1763,8 +1732,6 @@ impl ToLuaExt for FnKind {
     }
 }
 
-/// FnDecl AST node handle
-// @type FnDeclAstNode
 impl AddMoreMethods for LuaAstNode<P<FnDecl>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_args", |_lua_ctx, this, ()| {
@@ -1773,8 +1740,6 @@ impl AddMoreMethods for LuaAstNode<P<FnDecl>> {
     }
 }
 
-/// Param AST node handle
-// @type ParamAstNode
 impl AddMoreMethods for LuaAstNode<Param> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
@@ -1812,12 +1777,8 @@ impl AddMoreMethods for LuaAstNode<Param> {
     }
 }
 
-/// FnHeader AST node handle
-// @type FnHeaderAstNode
 impl AddMoreMethods for LuaAstNode<FnHeader> {}
 
-/// StructField AST node handle
-// @type StructFieldAstNode
 impl AddMoreMethods for LuaAstNode<StructField> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
@@ -1836,8 +1797,6 @@ impl AddMoreMethods for LuaAstNode<StructField> {
     }
 }
 
-/// ItemKind AST node handle
-// @type ItemKindAstNode
 impl AddMoreMethods for LuaAstNode<ItemKind> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("add_lifetime", |_lua_ctx, this, string: LuaString| {
@@ -1876,8 +1835,6 @@ impl AddMoreMethods for LuaAstNode<ItemKind> {
     }
 }
 
-/// Attribute AST node handle
-// @type FnHeaderAstNode
 impl AddMoreMethods for LuaAstNode<Attribute> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("ident", |lua_ctx, this, ()| {

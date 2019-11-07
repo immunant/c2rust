@@ -57,8 +57,12 @@ def do_child_method(s, match_pat, method_name, args, default_value, bind_mode, o
 
 
 @linewise
-def do_enum_variants(s, match_pats):
+def do_enum_variants(s, match_pats, emit_ldoc):
     # Emit `children`
+    if emit_ldoc:
+        yield '    /// Return the children of the current node'
+        yield '    // @function children'
+        yield '    // @treturn Vec<LuaAstNode> array containing the children'
     yield '    methods.add_method("children", |lua_ctx, this, ()| {'
     yield '      let table = lua_ctx.create_table()?;'
     yield '      match %s {' % match_pats[0]
@@ -77,19 +81,27 @@ def do_enum_variants(s, match_pats):
     yield '    });'
 
     # Emit `child`
+    if emit_ldoc:
+        yield '    /// Return a copy of the given child'
+        yield '    // @function child'
+        yield '    // @param idx the index of the child. Can be an integer or a string'
+        yield '    // @treturn LuaAstNode the child'
     yield do_child_method(s, match_pats[0], 'child',
         [], 'Ok(Value::Nil)', 'ref ',
         lambda field: '%s.clone().to_lua_ext(lua_ctx),' % field.name)
 
     # Emit `replace_child`
+    if emit_ldoc:
+        yield '    /// Replace a child of the current node with a new value'
+        yield '    // @function replace_child'
+        yield '    // @param idx the index of the child. Can be an integer or a string'
+        yield '    // @param value the replacement value. Can be a LuaAstNode or a direct Lua representation'
     yield do_child_method(s, match_pats[1], 'replace_child',
         [('value', 'Value')], 'Ok(())', 'ref mut ',
         lambda field: '{ *%s = FromLuaExt::from_lua_ext(value, lua_ctx)?; Ok(()) }' % field.name)
 
 @linewise
-def do_one_impl(s, kind_map, boxed):
-    # This object is NOT thread-safe. Do not use an object of this class from a
-    # thread that did not acquire it.
+def do_one_impl(s, kind_map, boxed, emit_ldoc):
     type_name = 'P<%s>' % s.name if boxed else s.name
     yield 'unsafe impl Send for LuaAstNode<%s> {}' % type_name
     yield 'impl LuaAstNodeSafe for LuaAstNode<%s> {}' % type_name
@@ -100,9 +112,17 @@ def do_one_impl(s, kind_map, boxed):
         # FIXME: handle tuple struct
         kind_field = find_kind_field(s)
         for f in s.fields:
+            if emit_ldoc:
+                yield '    /// Return the "%s" field of the current node' % f.name
+                yield '    // @function get_%s' % f.name
+                yield '    // @treturn LuaAstNode the field'
             yield '    methods.add_method("get_%s", |lua_ctx, this, ()| {' % f.name
             yield '      this.borrow().%s.clone().to_lua_ext(lua_ctx)' % f.name
             yield '    });'
+            if emit_ldoc:
+                yield '    /// Set the "%s" field of the current node to a new value' % f.name
+                yield '    // @function set_%s' % f.name
+                yield '    // @param value the replacement value. Can be a LuaAstNode or a direct Lua representation'
             yield '    methods.add_method("set_%s", |lua_ctx, this, (value,)| {' % f.name
             yield '      this.borrow_mut().%s = FromLuaExt::from_lua_ext(value, lua_ctx)?;' % f.name
             yield '      Ok(())'
@@ -111,6 +131,10 @@ def do_one_impl(s, kind_map, boxed):
         if 'fold_kind' in s.attrs:
             assert kind_field is not None
             # Emit a getter for the folded kind's name
+            if emit_ldoc:
+                yield '    /// Return the kind of the current node as a string'
+                yield '    // @function %s_name' % kind_field
+                yield '    // @treturn string string representation of the kind'
             yield '    methods.add_method("%s_name", |_lua_ctx, this, ()| {' % kind_field
             yield '      Ok(this.borrow().%s.ast_name())' % kind_field
             yield '    });'
@@ -119,9 +143,13 @@ def do_one_impl(s, kind_map, boxed):
             kind_decl = kind_map[kind_name]
             match_pats = ('&this.borrow().%s' % kind_field,
                           '&mut this.borrow_mut().%s' % kind_field)
-            yield do_enum_variants(kind_decl, match_pats)
+            yield do_enum_variants(kind_decl, match_pats, emit_ldoc)
 
     elif isinstance(s, Enum):
+        if emit_ldoc:
+            yield '    /// Return the kind of the current node as a string'
+            yield '    // @function kind_name'
+            yield '    // @treturn string string representation of the kind'
         yield '    methods.add_method("kind_name", |_lua_ctx, this, ()| {'
         yield '      Ok(this.borrow().ast_name())'
         yield '    });'
@@ -129,7 +157,7 @@ def do_one_impl(s, kind_map, boxed):
         mut_box_prefix = '&mut **' if boxed else '&mut *'
         match_pats = (imm_box_prefix + 'this.borrow()',
                       mut_box_prefix + 'this.borrow_mut()')
-        yield do_enum_variants(s, match_pats)
+        yield do_enum_variants(s, match_pats, emit_ldoc)
 
     if 'no_debug' not in s.attrs:
         yield '    methods.add_meta_method('
@@ -184,15 +212,24 @@ def do_one_impl(s, kind_map, boxed):
 
 @linewise
 def do_impl(s, kind_map):
+    yield '/// %s AST node handle' % s.name
+    yield '// This object is NOT thread-safe. Do not use an object of this class from a'
+    yield '// thread that did not acquire it.'
+    yield '// @type %s' % s.name
     if 'boxed' in s.attrs:
-        yield do_one_impl(s, kind_map, True)
+        yield do_one_impl(s, kind_map, True, True)
     if 'boxed' not in s.attrs or s.attrs['boxed'] == 'both':
-        yield do_one_impl(s, kind_map, False)
+        # Don't emit the ldoc tags a second time if we already did it above
+        emit_ldoc = s.attrs.get('boxed') != 'both'
+        yield do_one_impl(s, kind_map, False, emit_ldoc)
 
 @linewise
 def generate(decls):
     yield '// AUTOMATICALLY GENERATED - DO NOT EDIT'
     yield '// Produced %s by process_ast.py' % (datetime.now(),)
+    yield ''
+    yield '/// Refactoring module'
+    yield '// @module Refactor'
     yield ''
 
     kind_map = {}
