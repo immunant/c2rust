@@ -793,3 +793,13 @@ unsafe fn non_null_type() {
     *ptr.unwrap().as_ptr() = 1;
     *ptr.unwrap().as_ptr();
 }
+
+fn rewritten(p: Option<&[u32]>, q: Option<&[u32]>) {}
+
+fn array_ref() {
+    let mut p: [u32; 4] = [0; 4];
+    let mut q: [u32; 4] = [0; 4];
+
+    rewritten(Some(&p), Some(&q));
+    rewritten(Some(&p), Some(&q));
+}

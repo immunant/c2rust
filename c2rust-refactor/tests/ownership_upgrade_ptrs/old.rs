@@ -662,3 +662,13 @@ unsafe fn non_null_type() {
     *ptr = 1;
     *ptr;
 }
+
+fn rewritten(#[slice] p: *const u32, #[slice] q: *const u32) {}
+
+fn array_ref() {
+    let mut p: [u32; 4] = [0; 4];
+    let mut q: [u32; 4] = [0; 4];
+
+    rewritten(p.as_ptr(), q.as_mut_ptr());
+    rewritten(p.as_mut_ptr(), q.as_mut_ptr());
+}

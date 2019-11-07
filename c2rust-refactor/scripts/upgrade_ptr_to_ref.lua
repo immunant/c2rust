@@ -857,8 +857,8 @@ function Visitor:rewrite_call_expr(expr)
             local param_cfg = self:get_param_cfg(fn, i - 1)
             local param_kind = param_expr:kind_name()
 
-            -- static.as_ptr/as_mut_ptr() -> &static/&mut static
-            -- &static/&mut static -> Option<&static/&mut static>
+            -- array.as_ptr/as_mut_ptr() -> &array/&mut array
+            -- &array/&mut array -> Option<&array/&mut array>
             if param_cfg and param_kind == "MethodCall" then
                 local exprs = param_expr:get_exprs()
                 local path_expr = exprs[1]
@@ -869,10 +869,10 @@ function Visitor:rewrite_call_expr(expr)
 
                     -- If we're looking at an array then we likely don't want
                     -- a reference to the array type but a raw pointer
-                    if method_name == "as_ptr" and path_cfg and not path_cfg:is_array() then
-                        param_expr:to_addr_of(path_expr, false)
-                    elseif method_name == "as_mut_ptr" and path_cfg and not path_cfg:is_array() then
-                        param_expr:to_addr_of(path_expr, true)
+                    if method_name == "as_ptr" and path_cfg then
+                        param_expr:to_addr_of(path_expr, param_cfg.extra_data.immutable)
+                    elseif method_name == "as_mut_ptr" and path_cfg then
+                        param_expr:to_addr_of(path_expr, param_cfg.extra_data.immutable)
                     end
 
                     if param_cfg:is_opt_any() then
