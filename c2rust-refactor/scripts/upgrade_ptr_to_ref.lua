@@ -430,6 +430,12 @@ function Visitor:rewrite_method_call_expr(expr)
 
         local is_mut = cfg:is_mut()
 
+        if offset_expr:kind_name() == "Cast" then
+            local usize_ty = self.tctx:ident_path_ty("usize")
+            local inner_expr = offset_expr:get_exprs()[1]
+            offset_expr = self.tctx:cast_expr(inner_expr, usize_ty)
+        end
+
         if not is_mut then
             offset_expr:to_range(offset_expr, nil)
         end
@@ -438,12 +444,6 @@ function Visitor:rewrite_method_call_expr(expr)
             caller:to_method_call("unwrap", {caller})
 
             if is_mut then
-                if offset_expr:kind_name() == "Cast" then
-                    local usize_ty = self.tctx:ident_path_ty("usize")
-                    local inner_expr = offset_expr:get_exprs()[1]
-                    offset_expr = self.tctx:cast_expr(inner_expr, usize_ty)
-                end
-
                 caller:to_method_call("split_at_mut", {caller, offset_expr})
             end
         end
@@ -658,7 +658,7 @@ function Visitor:rewrite_deref_expr(expr)
                 local zero_expr = self.tctx:int_lit_expr(0, nil)
                 expr:to_index(expr, zero_expr)
             else
-                -- *ptr.unwrap().as_ptr() = 1;
+                -- *ptr.as_ptr() = 1; where ptr is std::ptr::NonNull
                 if cfg.extra_data.non_null_wrapped then
                     expr:to_method_call("as_ptr", {expr})
                 end
