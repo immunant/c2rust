@@ -598,14 +598,22 @@ include!(concat!(env!("OUT_DIR"), "/lua_ast_node_gen.inc.rs"));
 unsafe impl<T> Send for LuaAstNode<Spanned<T>> {}
 impl<T> LuaAstNodeSafe for LuaAstNode<Spanned<T>> {}
 impl<T> UserData for LuaAstNode<Spanned<T>>
-    where T: ToLuaExt + Clone + Debug,
+    where T: ToLuaExt + FromLuaExt + Clone + Debug,
 {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method("get_node", |lua_ctx, this, ()| {
           Ok(this.borrow().node.clone().to_lua_ext(lua_ctx))
         });
+        methods.add_method("set_node", |lua_ctx, this, (value,)| {
+          this.borrow_mut().node = FromLuaExt::from_lua_ext(value, lua_ctx)?;
+          Ok(())
+        });
         methods.add_method("get_span", |lua_ctx, this, ()| {
           Ok(this.borrow().span.clone().to_lua_ext(lua_ctx))
+        });
+        methods.add_method("set_span", |lua_ctx, this, (value,)| {
+          this.borrow_mut().span = FromLuaExt::from_lua_ext(value, lua_ctx)?;
+          Ok(())
         });
         methods.add_meta_method(
           MetaMethod::ToString,
