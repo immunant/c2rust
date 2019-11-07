@@ -4,7 +4,7 @@ use std::convert::TryInto;
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::ext::hygiene::SyntaxContext;
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
+use syntax::parse::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
 use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};

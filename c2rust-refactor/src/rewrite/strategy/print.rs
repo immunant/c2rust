@@ -20,7 +20,7 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::ext::hygiene::SyntaxContext;
 use syntax::parse::lexer::comments::CommentStyle;
-use syntax::parse::token::{DelimToken, Nonterminal, Token, TokenKind};
+use syntax::parse::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
 use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::{BytePos, FileName, SourceFile, Span, Spanned};

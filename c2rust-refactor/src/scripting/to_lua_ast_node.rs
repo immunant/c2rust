@@ -12,7 +12,7 @@ use rustc_target::spec::abi::{Abi, lookup as lookup_abi};
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::mut_visit::*;
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
+use syntax::parse::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
 use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{DUMMY_SP, Spanned, dummy_spanned};
 use syntax::symbol::{Symbol, sym};

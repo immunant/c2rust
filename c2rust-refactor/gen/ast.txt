@@ -131,7 +131,11 @@ enum WherePredicate {
 struct WhereBoundPredicate { span, bounded_ty, bounds, bound_generic_params }
 struct WhereRegionPredicate { span, lifetime, bounds }
 struct WhereEqPredicate { id, span, lhs_ty, rhs_ty }
-flag TraitBoundModifier;
+
+enum TraitBoundModifier {
+    None,
+    Maybe,
+}
 
 #[match=ignore]
 enum VisibilityKind {
@@ -175,8 +179,34 @@ enum TraitObjectSyntax {
     None,
 }
 
-flag LitIntType;
-flag FloatTy;
+enum LitIntType {
+    Signed(ty),
+    Unsigned(ty),
+    Unsuffixed,
+}
+
+enum IntTy {
+    Isize,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+}
+
+enum UintTy {
+    Usize,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+}
+
+enum FloatTy {
+    F32,
+    F64,
+}
 
 #[boxed]
 struct BareFnTy { unsafety, abi, decl, generic_params }
@@ -363,13 +393,37 @@ enum TokenLitKind {
     Err,
 }
 
-flag Defaultness;
-flag Constness;
-flag ImplPolarity;
-flag IsAuto;
-flag Unsafety;
+enum Defaultness {
+    Default,
+    Final,
+}
+
+enum Constness {
+    Const,
+    NotConst,
+}
+
+enum ImplPolarity {
+    Positive,
+    Negative,
+}
+
+enum IsAuto {
+    Yes,
+    No,
+}
+
+enum Unsafety {
+    Unsafe,
+    Normal,
+}
+
 #[to_lua_custom] flag Abi;
-#[match=eq] flag Mutability;
+enum Mutability {
+    Mutable,
+    Immutable,
+}
+
 enum RangeEnd {
     Included(syntax),
     Excluded,
@@ -378,8 +432,14 @@ enum RangeSyntax {
     DotDotDot,
     DotDotEq,
 }
-flag BindingMode;
-flag CaptureBy;
+enum BindingMode {
+    ByRef(mutbl),
+    ByValue(mutbl),
+}
+enum CaptureBy {
+    Value,
+    Ref,
+}
 enum BlockCheckMode {
     Default,
     Unsafe(source),
@@ -388,15 +448,27 @@ enum UnsafeSource {
     CompilerGenerated,
     UserProvided,
 }
-flag StrStyle;
-flag AsmDialect;
-flag RangeLimits;
+enum StrStyle {
+    Cooked,
+    Raw(n),
+}
+enum AsmDialect {
+    Att,
+    Intel,
+}
+enum RangeLimits {
+    HalfOpen,
+    Closed,
+}
 
 
 #[no_node_id] #[rewrite_print] #[rewrite_custom=SeqItem]
 struct Attribute { id, style, item, is_sugared_doc, span }
 struct AttrItem { path, tokens }
-flag AttrStyle;
+enum AttrStyle {
+    Outer,
+    Inner,
+}
 
 
 #[match=custom] #[nonterminal] #[boxed=both]
@@ -425,7 +497,11 @@ enum AssocTyConstraintKind {
 
 
 struct Mac { path, delim, tts, span, prior_type_ascription }
-flag MacStmtStyle;
+enum MacStmtStyle {
+    Semicolon,
+    Braces,
+    NoBraces,
+}
 #[equiv_mode=ignore]
 flag TokenStream;
 struct MacroDef { tokens, legacy }
@@ -499,8 +575,74 @@ enum TokenTree {
 
 struct DelimSpan { open, close }
 
-flag DelimToken;
-flag Token;
+enum DelimToken {
+    Paren,
+    Bracket,
+    Brace,
+    NoDelim,
+}
+
+struct Token {
+    kind,
+    span,
+}
+
+enum TokenKind {
+    Eq,
+    Lt,
+    Le,
+    EqEq,
+    Ne,
+    Ge,
+    Gt,
+    AndAnd,
+    OrOr,
+    Not,
+    Tilde,
+    BinOp(op),
+    BinOpEq(op),
+    At,
+    Dot,
+    DotDot,
+    DotDotDot,
+    DotDotEq,
+    Comma,
+    Semi,
+    Colon,
+    ModSep,
+    RArrow,
+    LArrow,
+    FatArrow,
+    Pound,
+    Dollar,
+    Question,
+    SingleQuote,
+    OpenDelim(delim),
+    CloseDelim(delim),
+    Literal(lit),
+    Ident(s, is_raw),
+    Lifetime(s),
+    Interpolated(nt),
+    DocComment(s),
+    Whitespace,
+    Comment,
+    Shebang(s),
+    Unknown(s),
+    Eof,
+}
+
+enum BinOpToken {
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Caret,
+    And,
+    Or,
+    Shl,
+    Shr,
+}
 
 #[fold_kind=MetaItemKind]
 struct MetaItem { path, kind, span }
