@@ -83,6 +83,12 @@ pub fn run_lua_file(
 
             lua_ctx.globals().set("package", package)?;
 
+            // Add common rustc AST constants to Lua globals
+            lua_ctx.globals().set("DUMMY_NODE_ID",
+                                  DUMMY_NODE_ID.to_lua_ext(lua_ctx)?)?;
+            lua_ctx.globals().set("DUMMY_SP",
+                                  DUMMY_SP.to_lua_ext(lua_ctx)?)?;
+
             // Load the script into the created scope
             lua_ctx.scope(|scope| {
                 let refactor = scope.create_nonstatic_userdata(state)?;
