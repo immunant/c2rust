@@ -41,29 +41,31 @@ def do_enum_variants(s, match_pat):
     yield '    });'
 
     # Emit `child`
-    yield '    methods.add_method("child", |lua_ctx, this, (idx,)| {'
-    # Emit integer indices first
+    yield '    methods.add_method("child", |lua_ctx, this, (idx,): (Value,)| {'
     yield '      match idx {'
-    yield '        Value::Integer(idx) => match (%s, idx) {' % match_pat
-    for v in s.variants:
-        if not v.is_tuple:
-            continue
-        for idx, f in enumerate(v.fields):
-            fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
-            yield '           (%s, %d) => %s.clone().to_lua_ext(lua_ctx),' % (fpat, (idx + 1), f.name)
-    yield '           _ => Ok(Value::Nil)'
-    yield '        }'
+    # Emit integer indices first (but only if there are any tuple variants)
+    if any(v.is_tuple and len(v.fields) > 0 for v in s.variants):
+        yield '        Value::Integer(idx) => match (%s, idx) {' % match_pat
+        for v in s.variants:
+            if not v.is_tuple:
+                continue
+            for idx, f in enumerate(v.fields):
+                fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
+                yield '           (%s, %d) => %s.clone().to_lua_ext(lua_ctx),' % (fpat, (idx + 1), f.name)
+        yield '           _ => Ok(Value::Nil)'
+        yield '        }'
 
     # Emit string indices (for non-tuple variants)
-    yield '        Value::String(idx) => match (%s, idx.to_str()?) {' % match_pat
-    for v in s.variants:
-        if v.is_tuple:
-            continue
-        for f in v.fields:
-            fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
-            yield '          (%s, "%s") => %s.clone().to_lua_ext(lua_ctx),' % (fpat, f.name, f.name)
-    yield '          _ => Ok(Value::Nil)'
-    yield '        }'
+    if any(not v.is_tuple and len(v.fields) > 0 for v in s.variants):
+        yield '        Value::String(idx) => match (%s, idx.to_str()?) {' % match_pat
+        for v in s.variants:
+            if v.is_tuple:
+                continue
+            for f in v.fields:
+                fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
+                yield '          (%s, "%s") => %s.clone().to_lua_ext(lua_ctx),' % (fpat, f.name, f.name)
+        yield '          _ => Ok(Value::Nil)'
+        yield '        }'
 
     # Otherwise, just return a `nil`
     yield '        _ => Ok(Value::Nil)'
