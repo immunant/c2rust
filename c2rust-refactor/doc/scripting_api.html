@@ -62,12 +62,17 @@
 <li><a href="#Class_WhereBoundPredicate">Class WhereBoundPredicate </a></li>
 <li><a href="#Class_WhereRegionPredicate">Class WhereRegionPredicate </a></li>
 <li><a href="#Class_WhereEqPredicate">Class WhereEqPredicate </a></li>
+<li><a href="#Class_TraitBoundModifier">Class TraitBoundModifier </a></li>
 <li><a href="#Class_VisibilityKind">Class VisibilityKind </a></li>
 <li><a href="#Class_CrateSugar">Class CrateSugar </a></li>
 <li><a href="#Class_Ty">Class Ty </a></li>
 <li><a href="#Class_MutTy">Class MutTy </a></li>
 <li><a href="#Class_TyKind">Class TyKind </a></li>
 <li><a href="#Class_TraitObjectSyntax">Class TraitObjectSyntax </a></li>
+<li><a href="#Class_LitIntType">Class LitIntType </a></li>
+<li><a href="#Class_IntTy">Class IntTy </a></li>
+<li><a href="#Class_UintTy">Class UintTy </a></li>
+<li><a href="#Class_FloatTy">Class FloatTy </a></li>
 <li><a href="#Class_BareFnTy">Class BareFnTy </a></li>
 <li><a href="#Class_Lifetime">Class Lifetime </a></li>
 <li><a href="#Class_GenericBound">Class GenericBound </a></li>
@@ -95,12 +100,24 @@
 <li><a href="#Class_LitKind">Class LitKind </a></li>
 <li><a href="#Class_TokenLit">Class TokenLit </a></li>
 <li><a href="#Class_TokenLitKind">Class TokenLitKind </a></li>
+<li><a href="#Class_Defaultness">Class Defaultness </a></li>
+<li><a href="#Class_Constness">Class Constness </a></li>
+<li><a href="#Class_ImplPolarity">Class ImplPolarity </a></li>
+<li><a href="#Class_IsAuto">Class IsAuto </a></li>
+<li><a href="#Class_Unsafety">Class Unsafety </a></li>
+<li><a href="#Class_Mutability">Class Mutability </a></li>
 <li><a href="#Class_RangeEnd">Class RangeEnd </a></li>
 <li><a href="#Class_RangeSyntax">Class RangeSyntax </a></li>
+<li><a href="#Class_BindingMode">Class BindingMode </a></li>
+<li><a href="#Class_CaptureBy">Class CaptureBy </a></li>
 <li><a href="#Class_BlockCheckMode">Class BlockCheckMode </a></li>
 <li><a href="#Class_UnsafeSource">Class UnsafeSource </a></li>
+<li><a href="#Class_StrStyle">Class StrStyle </a></li>
+<li><a href="#Class_AsmDialect">Class AsmDialect </a></li>
+<li><a href="#Class_RangeLimits">Class RangeLimits </a></li>
 <li><a href="#Class_Attribute">Class Attribute </a></li>
 <li><a href="#Class_AttrItem">Class AttrItem </a></li>
+<li><a href="#Class_AttrStyle">Class AttrStyle </a></li>
 <li><a href="#Class_Path">Class Path </a></li>
 <li><a href="#Class_PathSegment">Class PathSegment </a></li>
 <li><a href="#Class_GenericArgs">Class GenericArgs </a></li>
@@ -111,6 +128,7 @@
 <li><a href="#Class_AssocTyConstraint">Class AssocTyConstraint </a></li>
 <li><a href="#Class_AssocTyConstraintKind">Class AssocTyConstraintKind </a></li>
 <li><a href="#Class_Mac">Class Mac </a></li>
+<li><a href="#Class_MacStmtStyle">Class MacStmtStyle </a></li>
 <li><a href="#Class_MacroDef">Class MacroDef </a></li>
 <li><a href="#Class_InlineAsm">Class InlineAsm </a></li>
 <li><a href="#Class_GlobalAsm">Class GlobalAsm </a></li>
@@ -122,6 +140,10 @@
 <li><a href="#Class_Nonterminal">Class Nonterminal </a></li>
 <li><a href="#Class_TokenTree">Class TokenTree </a></li>
 <li><a href="#Class_DelimSpan">Class DelimSpan </a></li>
+<li><a href="#Class_DelimToken">Class DelimToken </a></li>
+<li><a href="#Class_Token">Class Token </a></li>
+<li><a href="#Class_TokenKind">Class TokenKind </a></li>
+<li><a href="#Class_BinOpToken">Class BinOpToken </a></li>
 <li><a href="#Class_MetaItem">Class MetaItem </a></li>
 <li><a href="#Class_MetaItemKind">Class MetaItemKind </a></li>
 <li><a href="#Class_NestedMetaItem">Class NestedMetaItem </a></li>
@@ -1203,6 +1225,25 @@
 	<td class="summary">Set the "rhs_ty" field of the current node to a new value</td>
 	</tr>
 </table>
+<h2><a href="#Class_TraitBoundModifier">Class TraitBoundModifier </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#TraitBoundModifier:kind_name">TraitBoundModifier:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TraitBoundModifier:children">TraitBoundModifier:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TraitBoundModifier:child">TraitBoundModifier:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TraitBoundModifier:replace_child">TraitBoundModifier:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
 <h2><a href="#Class_VisibilityKind">Class VisibilityKind </a></h2>
 <table class="function_list">
 	<tr>
@@ -1338,6 +1379,82 @@
 	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#TraitObjectSyntax:replace_child">TraitObjectSyntax:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_LitIntType">Class LitIntType </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#LitIntType:kind_name">LitIntType:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#LitIntType:children">LitIntType:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#LitIntType:child">LitIntType:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#LitIntType:replace_child">LitIntType:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_IntTy">Class IntTy </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#IntTy:kind_name">IntTy:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#IntTy:children">IntTy:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#IntTy:child">IntTy:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#IntTy:replace_child">IntTy:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_UintTy">Class UintTy </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#UintTy:kind_name">UintTy:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#UintTy:children">UintTy:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#UintTy:child">UintTy:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#UintTy:replace_child">UintTy:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_FloatTy">Class FloatTy </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#FloatTy:kind_name">FloatTy:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#FloatTy:children">FloatTy:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#FloatTy:child">FloatTy:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#FloatTy:replace_child">FloatTy:replace_child (idx, value)</a></td>
 	<td class="summary">Replace a child of the current node with a new value</td>
 	</tr>
 </table>
@@ -2206,6 +2323,120 @@
 	<td class="summary">Replace a child of the current node with a new value</td>
 	</tr>
 </table>
+<h2><a href="#Class_Defaultness">Class Defaultness </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Defaultness:kind_name">Defaultness:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Defaultness:children">Defaultness:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Defaultness:child">Defaultness:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Defaultness:replace_child">Defaultness:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_Constness">Class Constness </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Constness:kind_name">Constness:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Constness:children">Constness:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Constness:child">Constness:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Constness:replace_child">Constness:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_ImplPolarity">Class ImplPolarity </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#ImplPolarity:kind_name">ImplPolarity:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#ImplPolarity:children">ImplPolarity:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#ImplPolarity:child">ImplPolarity:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#ImplPolarity:replace_child">ImplPolarity:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_IsAuto">Class IsAuto </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#IsAuto:kind_name">IsAuto:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#IsAuto:children">IsAuto:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#IsAuto:child">IsAuto:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#IsAuto:replace_child">IsAuto:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_Unsafety">Class Unsafety </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Unsafety:kind_name">Unsafety:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Unsafety:children">Unsafety:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Unsafety:child">Unsafety:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Unsafety:replace_child">Unsafety:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_Mutability">Class Mutability </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Mutability:kind_name">Mutability:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Mutability:children">Mutability:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Mutability:child">Mutability:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Mutability:replace_child">Mutability:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
 <h2><a href="#Class_RangeEnd">Class RangeEnd </a></h2>
 <table class="function_list">
 	<tr>
@@ -2244,6 +2475,44 @@
 	<td class="summary">Replace a child of the current node with a new value</td>
 	</tr>
 </table>
+<h2><a href="#Class_BindingMode">Class BindingMode </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#BindingMode:kind_name">BindingMode:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#BindingMode:children">BindingMode:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#BindingMode:child">BindingMode:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#BindingMode:replace_child">BindingMode:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_CaptureBy">Class CaptureBy </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#CaptureBy:kind_name">CaptureBy:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#CaptureBy:children">CaptureBy:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#CaptureBy:child">CaptureBy:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#CaptureBy:replace_child">CaptureBy:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
 <h2><a href="#Class_BlockCheckMode">Class BlockCheckMode </a></h2>
 <table class="function_list">
 	<tr>
@@ -2279,6 +2548,63 @@
 	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#UnsafeSource:replace_child">UnsafeSource:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_StrStyle">Class StrStyle </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#StrStyle:kind_name">StrStyle:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#StrStyle:children">StrStyle:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#StrStyle:child">StrStyle:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#StrStyle:replace_child">StrStyle:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_AsmDialect">Class AsmDialect </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#AsmDialect:kind_name">AsmDialect:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#AsmDialect:children">AsmDialect:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#AsmDialect:child">AsmDialect:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#AsmDialect:replace_child">AsmDialect:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_RangeLimits">Class RangeLimits </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#RangeLimits:kind_name">RangeLimits:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#RangeLimits:children">RangeLimits:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#RangeLimits:child">RangeLimits:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#RangeLimits:replace_child">RangeLimits:replace_child (idx, value)</a></td>
 	<td class="summary">Replace a child of the current node with a new value</td>
 	</tr>
 </table>
@@ -2342,6 +2668,25 @@
 	<tr>
 	<td class="name" nowrap><a href="#AttrItem:set_tokens">AttrItem:set_tokens (value)</a></td>
 	<td class="summary">Set the "tokens" field of the current node to a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_AttrStyle">Class AttrStyle </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#AttrStyle:kind_name">AttrStyle:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#AttrStyle:children">AttrStyle:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#AttrStyle:child">AttrStyle:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#AttrStyle:replace_child">AttrStyle:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
 	</tr>
 </table>
 <h2><a href="#Class_Path">Class Path </a></h2>
@@ -2606,6 +2951,25 @@
 	<td class="summary">Set the "prior<em>type</em>ascription" field of the current node to a new value</td>
 	</tr>
 </table>
+<h2><a href="#Class_MacStmtStyle">Class MacStmtStyle </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#MacStmtStyle:kind_name">MacStmtStyle:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#MacStmtStyle:children">MacStmtStyle:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#MacStmtStyle:child">MacStmtStyle:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#MacStmtStyle:replace_child">MacStmtStyle:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
 <h2><a href="#Class_MacroDef">Class MacroDef </a></h2>
 <table class="function_list">
 	<tr>
@@ -2861,6 +3225,82 @@
 	<tr>
 	<td class="name" nowrap><a href="#DelimSpan:set_close">DelimSpan:set_close (value)</a></td>
 	<td class="summary">Set the "close" field of the current node to a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_DelimToken">Class DelimToken </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#DelimToken:kind_name">DelimToken:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#DelimToken:children">DelimToken:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#DelimToken:child">DelimToken:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#DelimToken:replace_child">DelimToken:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_Token">Class Token </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#Token:get_kind">Token:get_kind ()</a></td>
+	<td class="summary">Return the "kind" field of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Token:set_kind">Token:set_kind (value)</a></td>
+	<td class="summary">Set the "kind" field of the current node to a new value</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Token:get_span">Token:get_span ()</a></td>
+	<td class="summary">Return the "span" field of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#Token:set_span">Token:set_span (value)</a></td>
+	<td class="summary">Set the "span" field of the current node to a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_TokenKind">Class TokenKind </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#TokenKind:kind_name">TokenKind:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TokenKind:children">TokenKind:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TokenKind:child">TokenKind:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#TokenKind:replace_child">TokenKind:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
+	</tr>
+</table>
+<h2><a href="#Class_BinOpToken">Class BinOpToken </a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#BinOpToken:kind_name">BinOpToken:kind_name ()</a></td>
+	<td class="summary">Return the kind of the current node as a string</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#BinOpToken:children">BinOpToken:children ()</a></td>
+	<td class="summary">Return the children of the current node</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#BinOpToken:child">BinOpToken:child (idx)</a></td>
+	<td class="summary">Return a copy of the given child</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#BinOpToken:replace_child">BinOpToken:replace_child (idx, value)</a></td>
+	<td class="summary">Replace a child of the current node with a new value</td>
 	</tr>
 </table>
 <h2><a href="#Class_MetaItem">Class MetaItem </a></h2>
@@ -8303,6 +8743,104 @@
 
 </dd>
 </dl>
+    <h2 class="section-header has-description"><a name="Class_TraitBoundModifier"></a>Class TraitBoundModifier </h2>
+
+          <div class="section-description">
+          TraitBoundModifier AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "TraitBoundModifier:kind_name"></a>
+    <strong>TraitBoundModifier:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TraitBoundModifier:children"></a>
+    <strong>TraitBoundModifier:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TraitBoundModifier:child"></a>
+    <strong>TraitBoundModifier:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TraitBoundModifier:replace_child"></a>
+    <strong>TraitBoundModifier:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
     <h2 class="section-header has-description"><a name="Class_VisibilityKind"></a>Class VisibilityKind </h2>
 
           <div class="section-description">
@@ -8981,6 +9519,398 @@
     <dt>
     <a name = "TraitObjectSyntax:replace_child"></a>
     <strong>TraitObjectSyntax:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_LitIntType"></a>Class LitIntType </h2>
+
+          <div class="section-description">
+          LitIntType AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "LitIntType:kind_name"></a>
+    <strong>LitIntType:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "LitIntType:children"></a>
+    <strong>LitIntType:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "LitIntType:child"></a>
+    <strong>LitIntType:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "LitIntType:replace_child"></a>
+    <strong>LitIntType:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_IntTy"></a>Class IntTy </h2>
+
+          <div class="section-description">
+          IntTy AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "IntTy:kind_name"></a>
+    <strong>IntTy:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "IntTy:children"></a>
+    <strong>IntTy:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "IntTy:child"></a>
+    <strong>IntTy:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "IntTy:replace_child"></a>
+    <strong>IntTy:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_UintTy"></a>Class UintTy </h2>
+
+          <div class="section-description">
+          UintTy AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "UintTy:kind_name"></a>
+    <strong>UintTy:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "UintTy:children"></a>
+    <strong>UintTy:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "UintTy:child"></a>
+    <strong>UintTy:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "UintTy:replace_child"></a>
+    <strong>UintTy:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_FloatTy"></a>Class FloatTy </h2>
+
+          <div class="section-description">
+          FloatTy AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "FloatTy:kind_name"></a>
+    <strong>FloatTy:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "FloatTy:children"></a>
+    <strong>FloatTy:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "FloatTy:child"></a>
+    <strong>FloatTy:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "FloatTy:replace_child"></a>
+    <strong>FloatTy:replace_child (idx, value)</strong>
     </dt>
     <dd>
     Replace a child of the current node with a new value
@@ -13300,6 +14230,594 @@
 
 </dd>
 </dl>
+    <h2 class="section-header has-description"><a name="Class_Defaultness"></a>Class Defaultness </h2>
+
+          <div class="section-description">
+          Defaultness AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "Defaultness:kind_name"></a>
+    <strong>Defaultness:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Defaultness:children"></a>
+    <strong>Defaultness:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Defaultness:child"></a>
+    <strong>Defaultness:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Defaultness:replace_child"></a>
+    <strong>Defaultness:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_Constness"></a>Class Constness </h2>
+
+          <div class="section-description">
+          Constness AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "Constness:kind_name"></a>
+    <strong>Constness:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Constness:children"></a>
+    <strong>Constness:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Constness:child"></a>
+    <strong>Constness:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Constness:replace_child"></a>
+    <strong>Constness:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_ImplPolarity"></a>Class ImplPolarity </h2>
+
+          <div class="section-description">
+          ImplPolarity AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "ImplPolarity:kind_name"></a>
+    <strong>ImplPolarity:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "ImplPolarity:children"></a>
+    <strong>ImplPolarity:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "ImplPolarity:child"></a>
+    <strong>ImplPolarity:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "ImplPolarity:replace_child"></a>
+    <strong>ImplPolarity:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_IsAuto"></a>Class IsAuto </h2>
+
+          <div class="section-description">
+          IsAuto AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "IsAuto:kind_name"></a>
+    <strong>IsAuto:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "IsAuto:children"></a>
+    <strong>IsAuto:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "IsAuto:child"></a>
+    <strong>IsAuto:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "IsAuto:replace_child"></a>
+    <strong>IsAuto:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_Unsafety"></a>Class Unsafety </h2>
+
+          <div class="section-description">
+          Unsafety AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "Unsafety:kind_name"></a>
+    <strong>Unsafety:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Unsafety:children"></a>
+    <strong>Unsafety:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Unsafety:child"></a>
+    <strong>Unsafety:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Unsafety:replace_child"></a>
+    <strong>Unsafety:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_Mutability"></a>Class Mutability </h2>
+
+          <div class="section-description">
+          Mutability AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "Mutability:kind_name"></a>
+    <strong>Mutability:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Mutability:children"></a>
+    <strong>Mutability:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Mutability:child"></a>
+    <strong>Mutability:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Mutability:replace_child"></a>
+    <strong>Mutability:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
     <h2 class="section-header has-description"><a name="Class_RangeEnd"></a>Class RangeEnd </h2>
 
           <div class="section-description">
@@ -13496,6 +15014,202 @@
 
 </dd>
 </dl>
+    <h2 class="section-header has-description"><a name="Class_BindingMode"></a>Class BindingMode </h2>
+
+          <div class="section-description">
+          BindingMode AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "BindingMode:kind_name"></a>
+    <strong>BindingMode:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "BindingMode:children"></a>
+    <strong>BindingMode:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "BindingMode:child"></a>
+    <strong>BindingMode:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "BindingMode:replace_child"></a>
+    <strong>BindingMode:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_CaptureBy"></a>Class CaptureBy </h2>
+
+          <div class="section-description">
+          CaptureBy AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "CaptureBy:kind_name"></a>
+    <strong>CaptureBy:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "CaptureBy:children"></a>
+    <strong>CaptureBy:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "CaptureBy:child"></a>
+    <strong>CaptureBy:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "CaptureBy:replace_child"></a>
+    <strong>CaptureBy:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
     <h2 class="section-header has-description"><a name="Class_BlockCheckMode"></a>Class BlockCheckMode </h2>
 
           <div class="section-description">
@@ -13671,6 +15385,300 @@
     <dt>
     <a name = "UnsafeSource:replace_child"></a>
     <strong>UnsafeSource:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_StrStyle"></a>Class StrStyle </h2>
+
+          <div class="section-description">
+          StrStyle AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "StrStyle:kind_name"></a>
+    <strong>StrStyle:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "StrStyle:children"></a>
+    <strong>StrStyle:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "StrStyle:child"></a>
+    <strong>StrStyle:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "StrStyle:replace_child"></a>
+    <strong>StrStyle:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_AsmDialect"></a>Class AsmDialect </h2>
+
+          <div class="section-description">
+          AsmDialect AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "AsmDialect:kind_name"></a>
+    <strong>AsmDialect:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "AsmDialect:children"></a>
+    <strong>AsmDialect:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "AsmDialect:child"></a>
+    <strong>AsmDialect:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "AsmDialect:replace_child"></a>
+    <strong>AsmDialect:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_RangeLimits"></a>Class RangeLimits </h2>
+
+          <div class="section-description">
+          RangeLimits AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "RangeLimits:kind_name"></a>
+    <strong>RangeLimits:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "RangeLimits:children"></a>
+    <strong>RangeLimits:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "RangeLimits:child"></a>
+    <strong>RangeLimits:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "RangeLimits:replace_child"></a>
+    <strong>RangeLimits:replace_child (idx, value)</strong>
     </dt>
     <dd>
     Replace a child of the current node with a new value
@@ -13979,6 +15987,104 @@
 
     <h3>Parameters:</h3>
     <ul>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_AttrStyle"></a>Class AttrStyle </h2>
+
+          <div class="section-description">
+          AttrStyle AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "AttrStyle:kind_name"></a>
+    <strong>AttrStyle:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "AttrStyle:children"></a>
+    <strong>AttrStyle:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "AttrStyle:child"></a>
+    <strong>AttrStyle:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "AttrStyle:replace_child"></a>
+    <strong>AttrStyle:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
         <li><span class="parameter">value</span>
          the replacement value. Can be a LuaAstNode or a direct Lua representation
         </li>
@@ -15267,6 +17373,104 @@
 
 </dd>
 </dl>
+    <h2 class="section-header has-description"><a name="Class_MacStmtStyle"></a>Class MacStmtStyle </h2>
+
+          <div class="section-description">
+          MacStmtStyle AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "MacStmtStyle:kind_name"></a>
+    <strong>MacStmtStyle:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "MacStmtStyle:children"></a>
+    <strong>MacStmtStyle:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "MacStmtStyle:child"></a>
+    <strong>MacStmtStyle:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "MacStmtStyle:replace_child"></a>
+    <strong>MacStmtStyle:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
     <h2 class="section-header has-description"><a name="Class_MacroDef"></a>Class MacroDef </h2>
 
           <div class="section-description">
@@ -16513,6 +18717,389 @@
 
 </dd>
 </dl>
+    <h2 class="section-header has-description"><a name="Class_DelimToken"></a>Class DelimToken </h2>
+
+          <div class="section-description">
+          DelimToken AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "DelimToken:kind_name"></a>
+    <strong>DelimToken:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "DelimToken:children"></a>
+    <strong>DelimToken:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "DelimToken:child"></a>
+    <strong>DelimToken:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "DelimToken:replace_child"></a>
+    <strong>DelimToken:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_Token"></a>Class Token </h2>
+
+          <div class="section-description">
+          Token AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "Token:get_kind"></a>
+    <strong>Token:get_kind ()</strong>
+    </dt>
+    <dd>
+    Return the "kind" field of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the field
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Token:set_kind"></a>
+    <strong>Token:set_kind (value)</strong>
+    </dt>
+    <dd>
+    Set the "kind" field of the current node to a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Token:get_span"></a>
+    <strong>Token:get_span ()</strong>
+    </dt>
+    <dd>
+    Return the "span" field of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the field
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "Token:set_span"></a>
+    <strong>Token:set_span (value)</strong>
+    </dt>
+    <dd>
+    Set the "span" field of the current node to a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_TokenKind"></a>Class TokenKind </h2>
+
+          <div class="section-description">
+          TokenKind AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "TokenKind:kind_name"></a>
+    <strong>TokenKind:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TokenKind:children"></a>
+    <strong>TokenKind:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TokenKind:child"></a>
+    <strong>TokenKind:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "TokenKind:replace_child"></a>
+    <strong>TokenKind:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
+    <h2 class="section-header has-description"><a name="Class_BinOpToken"></a>Class BinOpToken </h2>
+
+          <div class="section-description">
+          BinOpToken AST node handle
+ This object is NOT thread-safe.  Do not use an object of this class from a
+ thread that did not acquire it.
+          </div>
+    <dl class="function">
+    <dt>
+    <a name = "BinOpToken:kind_name"></a>
+    <strong>BinOpToken:kind_name ()</strong>
+    </dt>
+    <dd>
+    Return the kind of the current node as a string
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><a class="type" href="https://www.lua.org/manual/5.3/manual.html#6.4">string</a></span>
+        string representation of the kind
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "BinOpToken:children"></a>
+    <strong>BinOpToken:children ()</strong>
+    </dt>
+    <dd>
+    Return the children of the current node
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">Vec<LuaAstNode></span></span>
+        array containing the children
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "BinOpToken:child"></a>
+    <strong>BinOpToken:child (idx)</strong>
+    </dt>
+    <dd>
+    Return a copy of the given child
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+           <span class="types"><span class="type">LuaAstNode</span></span>
+        the child
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "BinOpToken:replace_child"></a>
+    <strong>BinOpToken:replace_child (idx, value)</strong>
+    </dt>
+    <dd>
+    Replace a child of the current node with a new value
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">idx</span>
+         the index of the child. Can be an integer or a string
+        </li>
+        <li><span class="parameter">value</span>
+         the replacement value. Can be a LuaAstNode or a direct Lua representation
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+</dl>
     <h2 class="section-header has-description"><a name="Class_MetaItem"></a>Class MetaItem </h2>
 
           <div class="section-description">
@@ -16933,7 +19520,7 @@
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2019-11-06 20:01:53 </i>
+<i style="float:right;">Last updated 2019-11-07 13:59:45 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
