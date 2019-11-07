@@ -21,11 +21,47 @@ from ast import *
 from util import *
 
 @linewise
-def do_enum_variants(s, match_pat):
+def do_child_method(s, match_pat, method_name, args, default_value, bind_mode, out_fn):
+    arg_names = ', '.join(name for name, ty in args)
+    arg_types = ', '.join(ty for name, ty in args)
+    yield '    methods.add_method("%s", |lua_ctx, this, (idx, %s): (Value, %s)| {' % (method_name, arg_names, arg_types)
+    yield '      match idx {'
+    # Emit integer indices first (but only if there are any tuple variants)
+    if any(v.is_tuple and len(v.fields) > 0 for v in s.variants):
+        yield '        Value::Integer(idx) => match (%s, idx) {' % match_pat
+        for v in s.variants:
+            if not v.is_tuple:
+                continue
+            for idx, f in enumerate(v.fields):
+                fpat = struct_pattern(v, '%s::%s' % (s.name, v.name), bind_mode=bind_mode)
+                yield '           (%s, %d) => %s' % (fpat, (idx + 1), out_fn(f))
+        yield '           _ => %s' % default_value
+        yield '        }'
+
+    # Emit string indices (for non-tuple variants)
+    if any(not v.is_tuple and len(v.fields) > 0 for v in s.variants):
+        yield '        Value::String(idx) => match (%s, idx.to_str()?) {' % match_pat
+        for v in s.variants:
+            if v.is_tuple:
+                continue
+            for f in v.fields:
+                fpat = struct_pattern(v, '%s::%s' % (s.name, v.name), bind_mode=bind_mode)
+                yield '          (%s, "%s") => %s' % (fpat, f.name, out_fn(f))
+        yield '          _ => %s' % default_value
+        yield '        }'
+
+    # Otherwise, just return the default value
+    yield '        _ => %s' % default_value
+    yield '      }'
+    yield '    });'
+
+
+@linewise
+def do_enum_variants(s, match_pats):
     # Emit `children`
     yield '    methods.add_method("children", |lua_ctx, this, ()| {'
     yield '      let table = lua_ctx.create_table()?;'
-    yield '      match %s {' % match_pat
+    yield '      match %s {' % match_pats[0]
     for v in s.variants:
         fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
         yield '        %s => {' % fpat
@@ -41,36 +77,14 @@ def do_enum_variants(s, match_pat):
     yield '    });'
 
     # Emit `child`
-    yield '    methods.add_method("child", |lua_ctx, this, (idx,): (Value,)| {'
-    yield '      match idx {'
-    # Emit integer indices first (but only if there are any tuple variants)
-    if any(v.is_tuple and len(v.fields) > 0 for v in s.variants):
-        yield '        Value::Integer(idx) => match (%s, idx) {' % match_pat
-        for v in s.variants:
-            if not v.is_tuple:
-                continue
-            for idx, f in enumerate(v.fields):
-                fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
-                yield '           (%s, %d) => %s.clone().to_lua_ext(lua_ctx),' % (fpat, (idx + 1), f.name)
-        yield '           _ => Ok(Value::Nil)'
-        yield '        }'
+    yield do_child_method(s, match_pats[0], 'child',
+        [], 'Ok(Value::Nil)', 'ref ',
+        lambda field: '%s.clone().to_lua_ext(lua_ctx),' % field.name)
 
-    # Emit string indices (for non-tuple variants)
-    if any(not v.is_tuple and len(v.fields) > 0 for v in s.variants):
-        yield '        Value::String(idx) => match (%s, idx.to_str()?) {' % match_pat
-        for v in s.variants:
-            if v.is_tuple:
-                continue
-            for f in v.fields:
-                fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
-                yield '          (%s, "%s") => %s.clone().to_lua_ext(lua_ctx),' % (fpat, f.name, f.name)
-        yield '          _ => Ok(Value::Nil)'
-        yield '        }'
-
-    # Otherwise, just return a `nil`
-    yield '        _ => Ok(Value::Nil)'
-    yield '      }'
-    yield '    });'
+    # Emit `replace_child`
+    yield do_child_method(s, match_pats[1], 'replace_child',
+        [('value', 'Value')], 'Ok(())', 'ref mut ',
+        lambda field: '{ *%s = FromLuaExt::from_lua_ext(value, lua_ctx)?; Ok(()) }' % field.name)
 
 @linewise
 def do_one_impl(s, kind_map, boxed):
@@ -103,14 +117,19 @@ def do_one_impl(s, kind_map, boxed):
 
             kind_name = s.attrs['fold_kind']
             kind_decl = kind_map[kind_name]
-            yield do_enum_variants(kind_decl, '&this.borrow().%s' % kind_field)
+            match_pats = ('&this.borrow().%s' % kind_field,
+                          '&mut this.borrow_mut().%s' % kind_field)
+            yield do_enum_variants(kind_decl, match_pats)
 
     elif isinstance(s, Enum):
         yield '    methods.add_method("kind_name", |_lua_ctx, this, ()| {'
         yield '      Ok(this.borrow().ast_name())'
         yield '    });'
-        box_prefix = '&**' if boxed else '&*'
-        yield do_enum_variants(s, box_prefix + 'this.borrow()')
+        imm_box_prefix = '&**' if boxed else '&*'
+        mut_box_prefix = '&mut **' if boxed else '&mut *'
+        match_pats = (imm_box_prefix + 'this.borrow()',
+                      mut_box_prefix + 'this.borrow_mut()')
+        yield do_enum_variants(s, match_pats)
 
     if 'no_debug' not in s.attrs:
         yield '    methods.add_meta_method('
