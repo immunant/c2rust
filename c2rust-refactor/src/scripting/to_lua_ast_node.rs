@@ -631,11 +631,6 @@ impl<T> FromLuaTable for Spanned<T>
 #[allow(unused_doc_comments)]
 impl AddMoreMethods for LuaAstNode<P<Item>> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("set_ident", |_lua_ctx, this, ident: LuaString| {
-            this.borrow_mut().ident = Ident::from_str(ident.to_str()?);
-            Ok(())
-        });
-
         /// Visit statements
         // @function visit_stmts
         // @tparam function(LuaAstNode) callback Function to call when visiting each statement
@@ -754,11 +749,6 @@ impl AddMoreMethods for LuaAstNode<P<Item>> {
 // @type ForeignItemAstNode
 impl AddMoreMethods for LuaAstNode<ForeignItem> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("set_ident", |_lua_ctx, this, ident: LuaString| {
-            this.borrow_mut().ident = Ident::from_str(ident.to_str()?);
-            Ok(())
-        });
-
         methods.add_method("get_args", |_lua_ctx, this, ()| {
             if let ForeignItemKind::Fn(decl, ..) = &this.borrow().kind {
                 return Ok(Some(decl

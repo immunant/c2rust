@@ -41,7 +41,7 @@ def do_enum_variants(s, match_pat):
     yield '    });'
 
     # Emit `child`
-    yield '    methods.add_method("child", |lua_ctx, this, idx: Value| {'
+    yield '    methods.add_method("child", |lua_ctx, this, (idx,)| {'
     # Emit integer indices first
     yield '      match idx {'
     yield '        Value::Integer(idx) => match (%s, idx) {' % match_pat
@@ -84,8 +84,12 @@ def do_one_impl(s, kind_map, boxed):
         # FIXME: handle tuple struct
         kind_field = find_kind_field(s)
         for f in s.fields:
-            yield '    methods.add_method("get_%s", |_lua_ctx, this, ()| {' % f.name
-            yield '      this.borrow().%s.clone().to_lua_ext(_lua_ctx)' % f.name
+            yield '    methods.add_method("get_%s", |lua_ctx, this, ()| {' % f.name
+            yield '      this.borrow().%s.clone().to_lua_ext(lua_ctx)' % f.name
+            yield '    });'
+            yield '    methods.add_method("set_%s", |lua_ctx, this, (value,)| {' % f.name
+            yield '      this.borrow_mut().%s = FromLuaExt::from_lua_ext(value, lua_ctx)?;' % f.name
+            yield '      Ok(())'
             yield '    });'
 
         if 'fold_kind' in s.attrs:
