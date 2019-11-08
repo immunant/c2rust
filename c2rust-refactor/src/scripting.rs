@@ -200,7 +200,7 @@ impl UserData for RefactorState {
             this.transform_crate(phase, |st, cx| {
                 enter_transform(st, cx, |transform| {
                     let res: LuaResult<()> = lua_ctx.scope(|scope| {
-                        let transform_data = scope.create_nonstatic_userdata(transform.clone())?;
+                        let transform_data = scope.create_nonstatic_userdata(transform)?;
                         callback.call(transform_data)?;
                         Ok(())
                     });
