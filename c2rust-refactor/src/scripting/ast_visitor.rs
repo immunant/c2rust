@@ -6,7 +6,7 @@ use syntax::ptr::P;
 use rlua::prelude::{LuaContext, LuaFunction, LuaResult, LuaTable, LuaUserData};
 
 use crate::ast_manip::{WalkAst};
-use super::{DisplayLuaError, TransformCtxt};
+use super::DisplayLuaError;
 use super::to_lua_ast_node::{LuaAstNode};
 
 macro_rules! call_lua_visitor_method {
@@ -323,15 +323,14 @@ impl<'lua> LuaAstVisitor<'lua> {
 }
 
 
-pub(crate) struct LuaAstVisitorNew<'lua, 'a, 'tcx> {
+pub(crate) struct LuaAstVisitorNew<'lua> {
     visitor: LuaTable<'lua>,
     lua_ctx: LuaContext<'lua>,
-    _ctx: TransformCtxt<'a, 'tcx>,
 }
 
-impl<'lua, 'a, 'tcx> LuaAstVisitorNew<'lua, 'a, 'tcx> {
-    pub fn new(ctx: TransformCtxt<'a, 'tcx>, lua_ctx: LuaContext<'lua>, visitor: LuaTable<'lua>) -> Self {
-        LuaAstVisitorNew { _ctx: ctx, lua_ctx, visitor }
+impl<'lua> LuaAstVisitorNew<'lua> {
+    pub fn new(lua_ctx: LuaContext<'lua>, visitor: LuaTable<'lua>) -> Self {
+        LuaAstVisitorNew { lua_ctx, visitor }
     }
 
     fn call_visit<T>(&mut self, method: LuaFunction<'lua>, param: &mut T)
@@ -369,7 +368,7 @@ impl<'lua, 'a, 'tcx> LuaAstVisitorNew<'lua, 'a, 'tcx> {
     }
 }
 
-impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
+impl<'lua> MutVisitor for LuaAstVisitorNew<'lua> {
     fn visit_mod(&mut self, m: &mut Mod) {
         let visit_method: Option<LuaFunction> = self.visitor.get("visit_mod")
             .expect("Could not get lua visitor function");

@@ -745,7 +745,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             "visit_crate_new",
             |lua_ctx, this, visitor_obj: LuaTable| {
                 this.st.map_krate(|krate: &mut ast::Crate| {
-                    let mut visitor = LuaAstVisitorNew::new(this.clone(), lua_ctx, visitor_obj);
+                    let mut visitor = LuaAstVisitorNew::new(lua_ctx, visitor_obj);
 
                     visitor.visit_crate(krate);
                     Ok(())
