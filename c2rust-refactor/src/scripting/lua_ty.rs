@@ -66,6 +66,8 @@ impl LuaUserData for LuaTy {
             Ok(format!("kind:{:?} flags:{}", ty.kind, ty.flags.bits()))
         });
 
+        /// Return the kind of this type
+        // @treturn string the kind as a string
         methods.add_method("kind_name", |_lua_ctx, this, ()| {
             let ty: ty::Ty = this.into();
             macro_rules! match_kinds {
