@@ -79,25 +79,20 @@ impl LuaUserData for LuaTy {
         methods.add_method("kind_name", |_lua_ctx, this, ()| {
             let ty: ty::Ty = this.into();
             macro_rules! match_kinds {
-                [Unit: $($kind:ident),*] => {
+                {[$($unit_kind:ident),*], [$($tuple_kind:ident),*]} => {
                     match ty.kind {
-                        $(ty::TyKind::$kind => return Ok(stringify!($kind)),)*
-                        _ => {}
-                    };
-                };
-                [Tuple: $($kind:ident),*] => {
-                    match ty.kind {
-                        $(ty::TyKind::$kind(..) => return Ok(stringify!($kind)),)*
-                        _ => {}
-                    };
+                        $(ty::TyKind::$unit_kind => Ok(stringify!($unit_kind)),)*
+                        $(ty::TyKind::$tuple_kind(..) => Ok(stringify!($kind)),)*
+                    }
                 }
             };
-            match_kinds![Unit: Bool, Char, Str, Never, Error];
-            match_kinds![Tuple: Int, Uint, Float, Adt, Foreign, Array, Slice, RawPtr,
-                                Ref, FnDef, FnPtr, Dynamic, Closure, Generator,
-                                GeneratorWitness, Tuple, Projection, UnnormalizedProjection,
-                                Opaque, Param, Bound, Placeholder, Infer];
-            unimplemented!("Unimplemented TyKind: {:?}", ty.kind);
+            match_kinds!{
+                [Bool, Char, Str, Never, Error],
+                [Int, Uint, Float, Adt, Foreign, Array, Slice, RawPtr,
+                 Ref, FnDef, FnPtr, Dynamic, Closure, Generator,
+                 GeneratorWitness, Tuple, Projection, UnnormalizedProjection,
+                 Opaque, Param, Bound, Placeholder, Infer]
+            }
         });
 
         // TODO: more accessors
