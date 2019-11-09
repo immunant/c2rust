@@ -7,7 +7,7 @@ use rustc::session::config::Options as SessionOptions;
 use rustc::session::config::{Input, OutputFilenames};
 use rustc::session::{self, DiagnosticOutput, Session};
 use rustc::ty::steal::Steal;
-use rustc::ty::{self, GlobalCtxt, Resolutions, TyCtxt};
+use rustc::ty::{self, GlobalCtxt, Resolutions};
 use rustc::util::common::ErrorReported;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
 use rustc_data_structures::declare_box_region_type;
@@ -47,7 +47,7 @@ use syntax_pos::{FileName, Span, DUMMY_SP};
 use syntax_pos::edition::Edition;
 
 use crate::ast_manip::remove_paren;
-use crate::command::{RefactorState, Registry};
+use crate::command::{GenerationalTyCtxt, RefactorState, Registry};
 use crate::file_io::{ArcFileIO, FileIO};
 // TODO: don't forget to call span_fix after parsing
 // use crate::span_fix;
@@ -84,7 +84,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         sess: &'a Session,
         cstore: &'a CStore,
         map: &'a hir_map::Map<'tcx>,
-        tcx: TyCtxt<'tcx>,
+        tcx: GenerationalTyCtxt<'tcx>,
     ) -> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, cstore, Some(map), Some(tcx))
     }

@@ -15,6 +15,7 @@ use syntax::ast::{
 use syntax::ptr::P;
 
 use crate::ast_manip::AstEquiv;
+use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
 use crate::reflect;
 use c2rust_ast_builder::mk;
 
@@ -27,7 +28,7 @@ pub struct RefactorCtxt<'a, 'tcx: 'a> {
     cstore: &'a CStore,
 
     map: Option<HirMap<'a, 'tcx>>,
-    tcx: Option<TyCtxt<'tcx>>,
+    tcx: Option<GenerationalTyCtxt<'tcx>>,
 }
 
 impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
@@ -35,7 +36,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         sess: &'a Session,
         cstore: &'a CStore,
         map: Option<&'a hir_map::Map<'tcx>>,
-        tcx: Option<TyCtxt<'tcx>>,
+        tcx: Option<GenerationalTyCtxt<'tcx>>,
     ) -> Self {
         let map = map.map(|map| HirMap::new(sess, map));
         Self {
@@ -84,7 +85,17 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     #[inline]
     pub fn ty_ctxt(&self) -> TyCtxt<'tcx> {
         self.tcx
+            .as_ref()
             .expect("ty ctxt is not available in this context (requires phase 3)")
+            .ty_ctxt()
+    }
+
+    #[inline]
+    pub fn tcx_gen(&self) -> TyCtxtGeneration {
+        self.tcx
+            .as_ref()
+            .expect("ty ctxt is not available in this context (requires phase 3)")
+            .tcx_gen()
     }
 
     #[inline]

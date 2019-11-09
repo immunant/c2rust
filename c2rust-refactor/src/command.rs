@@ -3,6 +3,7 @@
 use rustc::hir;
 use rustc::hir::def_id::LOCAL_CRATE;
 use rustc::session::{self, DiagnosticOutput, Session};
+use rustc::ty::TyCtxt;
 use rustc_data_structures::sync::Lrc;
 use rustc_interface::interface;
 use rustc_interface::util;
@@ -16,6 +17,7 @@ use std::mem;
 use std::ops::Deref;
 use std::process;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use syntax::ast::{Crate, NodeId, CRATE_NODE_ID};
 use syntax::ast::{Expr, Item, Pat, Stmt, Ty};
 use syntax::ext::base::NamedSyntaxExtension;
@@ -73,6 +75,21 @@ struct PluginInfo {
     _attributes: Vec<(String, AttributeType)>,
 }
 
+pub type TyCtxtGeneration = Arc<AtomicUsize>;
+
+#[derive(Clone)]
+pub struct GenerationalTyCtxt<'tcx>(TyCtxt<'tcx>, TyCtxtGeneration);
+
+impl<'tcx> GenerationalTyCtxt<'tcx> {
+    pub fn ty_ctxt(&self) -> TyCtxt<'tcx> {
+        self.0
+    }
+
+    pub fn tcx_gen(&self) -> TyCtxtGeneration {
+        Arc::clone(&self.1)
+    }
+}
+
 /// Stores the overall state of the refactoring process, which can be read and updated by
 /// `Command`s.
 pub struct RefactorState {
@@ -96,6 +113,9 @@ pub struct RefactorState {
 
     /// Mutable state available to a driver command
     cs: CommandState,
+
+    /// Generation number for TyCtxt references
+    tcx_gen: TyCtxtGeneration,
 }
 
 #[cfg_attr(feature = "profile", flame)]
@@ -159,6 +179,8 @@ impl RefactorState {
             commands: vec![],
 
             cs,
+
+            tcx_gen: Arc::new(AtomicUsize::new(1)),
         }
     }
 
@@ -323,16 +345,21 @@ impl RefactorState {
                 profile_start!("Compiler Phase 3");
                 let r = self.compiler.global_ctxt()?.take().enter(|tcx| {
                     let _result = tcx.analysis(LOCAL_CRATE);
+                    let tcx_gen = TyCtxtGeneration::clone(&self.tcx_gen);
                     let cx = RefactorCtxt::new_phase_3(
                         self.compiler.session(),
                         self.compiler.cstore(),
                         tcx.hir(),
-                        tcx,
+                        GenerationalTyCtxt(tcx, tcx_gen),
                     );
                     profile_end!("Compiler Phase 3");
 
                     f(&self.cs, &cx)
                 });
+
+                // Increment the `TyCtxt` generation number, so all the
+                // existing `LuaTy` values are invalidated
+                self.tcx_gen.fetch_add(1, Ordering::Relaxed);
 
                 // Ensure that we've dropped any copies of the session Lrc
                 let _ = self.compiler.lower_to_hir()?.take();

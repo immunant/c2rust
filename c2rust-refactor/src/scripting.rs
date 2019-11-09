@@ -36,13 +36,15 @@ use crate::RefactorCtxt;
 pub mod ast_visitor;
 pub mod into_lua_ast;
 pub mod merge_lua_ast;
+mod lua_ty;
 mod to_lua_ast_node;
 
 use ast_visitor::{LuaAstVisitor, LuaAstVisitorNew};
+use lua_ty::LuaTy;
 use into_lua_ast::IntoLuaAst;
 use merge_lua_ast::MergeLuaAst;
 use to_lua_ast_node::LuaAstNode;
-use to_lua_ast_node::{FromLuaAstNode, FromLuaTable, LuaHirId, ToLuaExt, ToLuaScoped, ToLuaAstNode};
+use to_lua_ast_node::{FromLuaAstNode, FromLuaExt, FromLuaTable, LuaHirId, ToLuaExt, ToLuaScoped, ToLuaAstNode};
 
 /// Refactoring module
 // @module Refactor
@@ -999,5 +1001,17 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
 
             Ok(None)
         });
+
+        /// Get the node type of the node with the given id
+        // @tparam int node_id the NodeId
+        // @treturn LuaTy the type of that node (or nil)
+        methods.add_method("get_node_type", |lua_ctx, this, (node_id,): (LuaValue,)| {
+            let node_id: NodeId = FromLuaExt::from_lua_ext(node_id, lua_ctx)?;
+            this.cx
+                .opt_node_type(node_id)
+                .map(|ty| LuaTy::from_ty(ty, this.cx))
+                .map(|lua_ty| lua_ctx.create_userdata(lua_ty))
+                .transpose()
+        })
     }
 }
