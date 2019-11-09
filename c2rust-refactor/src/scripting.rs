@@ -1003,6 +1003,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         });
 
         /// Get the node type of the node with the given id
+        // @function get_node_type
         // @tparam int node_id the NodeId
         // @treturn LuaTy the type of that node (or nil)
         methods.add_method("get_node_type", |lua_ctx, this, (node_id,): (LuaValue,)| {

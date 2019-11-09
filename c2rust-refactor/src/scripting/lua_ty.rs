@@ -7,6 +7,12 @@ use rlua::prelude::{LuaMetaMethod, LuaUserData, LuaUserDataMethods};
 use crate::command::TyCtxtGeneration;
 use crate::context::RefactorCtxt;
 
+/// Refactoring module
+// @module Refactor
+
+/// Lua encoding of a `Ty<'tcx>` type.
+// @type LuaTy
+
 /// Lua encoding of a `Ty<'tcx>` type.
 /// Each `Ty<'tcx>` is actually a reference to a `TyS<'tcx>` object
 /// which lives inside the `all_arenas` object in the `BoxedGlobalCtxt`
@@ -67,6 +73,7 @@ impl LuaUserData for LuaTy {
         });
 
         /// Return the kind of this type
+        // @function kind_name
         // @treturn string the kind as a string
         methods.add_method("kind_name", |_lua_ctx, this, ()| {
             let ty: ty::Ty = this.into();
