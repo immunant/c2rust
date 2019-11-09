@@ -117,6 +117,7 @@ impl<'c> Translation<'c> {
             | "__v2du"
             | "__v8hu"
             | "__v16qu"
+            | "__v32qu"
             | "__v4df"
             | "__v8sf"
             | "__v4di"
@@ -131,6 +132,7 @@ impl<'c> Translation<'c> {
             | "__v4df_aligned"
             | "__v4di_aligned"
             | "__v16qs"
+            | "__v32qs"
             | "__v8su"
             | "__v16hu"
             | "__mm_loadh_pi_v2f32"
@@ -480,7 +482,8 @@ impl<'c> Translation<'c> {
                     // vector param, not two, despite the following type match), so it's
                     // okay to provide a dummy here
                     Call(..) => expr_id,
-                    _ => unreachable!("Found cast other than explicit cast"),
+                    ImplicitCast(_, expr_id, _, _, _) => *expr_id,
+                    e => unreachable!("Found unexpected AST element: {:?}", e),
                 };
 
                 match &self.ast_context.resolve_type(ctype).kind {

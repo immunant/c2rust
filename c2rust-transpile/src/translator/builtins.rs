@@ -342,6 +342,15 @@ impl<'c> Translation<'c> {
             "__builtin_ia32_pshuflw256" => {
                 self.convert_simd_builtin(ctx, "_mm256_shufflelo_epi16", args)
             }
+            "__builtin_ia32_palignr128" => {
+                self.convert_simd_builtin(ctx, "_mm_alignr_epi8", args)
+            }
+            "__builtin_ia32_palignr256" => {
+                self.convert_simd_builtin(ctx, "_mm256_alignr_epi8", args)
+            }
+            "__builtin_ia32_permti256" => {
+                self.convert_simd_builtin(ctx, "_mm256_permute2x128_si256", args)
+            }
             "__builtin_ia32_vec_ext_v4si" => {
                 self.convert_simd_builtin(ctx, "_mm_extract_epi32", args)
             }
