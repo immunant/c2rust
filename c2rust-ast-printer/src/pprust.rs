@@ -1049,7 +1049,7 @@ impl<'a> State<'a> {
                 self.pclose();
             }
             ast::TyKind::BareFn(ref f) => {
-                self.print_ty_fn(f.abi,
+                self.print_ty_fn(f.ext,
                                  f.unsafety,
                                  &f.decl,
                                  None,
@@ -1268,7 +1268,9 @@ impl<'a> State<'a> {
             }
             ast::ItemKind::ForeignMod(ref nmod) => {
                 self.head("extern");
-                self.print_abi(nmod.abi);
+                if let Some(abi) = nmod.abi {
+                    self.print_abi(abi);
+                }
                 self.bopen();
                 self.print_foreign_mod(nmod, &item.attrs);
                 self.bclose(item.span);
@@ -2866,7 +2868,7 @@ impl<'a> State<'a> {
     }
 
     pub fn print_ty_fn(&mut self,
-                       abi: ast::Abi,
+                       ext: ast::Extern,
                        unsafety: ast::Unsafety,
                        decl: &ast::FnDecl,
                        name: Option<ast::Ident>,
@@ -2886,7 +2888,7 @@ impl<'a> State<'a> {
             span: syntax_pos::DUMMY_SP,
         };
         self.print_fn(decl,
-                      ast::FnHeader { unsafety, abi, ..ast::FnHeader::default() },
+                      ast::FnHeader { unsafety, ext, ..ast::FnHeader::default() },
                       name,
                       &generics,
                       &source_map::dummy_spanned(ast::VisibilityKind::Inherited));
@@ -2927,9 +2929,15 @@ impl<'a> State<'a> {
         self.print_asyncness(header.asyncness.node);
         self.print_unsafety(header.unsafety);
 
-        if header.abi.symbol != Abi::Rust {
-            self.word_nbsp("extern");
-            self.print_abi(header.abi);
+        match header.ext {
+            ast::Extern::None => {}
+            ast::Extern::Implicit => {
+                self.word_nbsp("extern");
+            }
+            ast::Extern::Explicit(abi) => {
+                self.word_nbsp("extern");
+                self.print_abi(abi);
+            }
         }
 
         self.s.word("fn")
