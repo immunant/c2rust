@@ -65,6 +65,7 @@ impl<'a> From<&LuaTy> for ty::Ty<'a> {
     }
 }
 
+#[allow(unused_doc_comments)]
 impl LuaUserData for LuaTy {
     fn add_methods<'lua, M: LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(LuaMetaMethod::ToString, |_lua_ctx, this, ()| {
