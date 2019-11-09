@@ -501,7 +501,7 @@ impl FromLuaExt for char {
 
 impl FromLuaExt for NodeId {
     fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
-        Ok(NodeId::from_u32_const(FromLua::from_lua(value, lua)?))
+        Ok(NodeId::from_u32(FromLua::from_lua(value, lua)?))
     }
 }
 
