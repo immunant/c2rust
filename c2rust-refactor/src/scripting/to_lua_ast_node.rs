@@ -400,7 +400,7 @@ impl<A, B> FromLuaExt for (A, B)
         let err_fn = || Error::FromLuaConversionError {
             from: "Value",
             to: "Tuple",
-            message: Some(format!("tuple table must have at least 2 elements")),
+            message: Some("tuple table must have at least 2 elements".to_string()),
         };
 
         let mut v: Vec<Value> = FromLua::from_lua(value, lua)?;
@@ -421,7 +421,7 @@ impl<A, B, C> FromLuaExt for (A, B, C)
         let err_fn = || Error::FromLuaConversionError {
             from: "Value",
             to: "Tuple",
-            message: Some(format!("tuple table must have at least 3 elements")),
+            message: Some("tuple table must have at least 3 elements".to_string()),
         };
 
         let mut v: Vec<Value> = FromLua::from_lua(value, lua)?;
@@ -444,7 +444,7 @@ impl<A, B, C> FromLuaExt for P<(A, B, C)>
         let err_fn = || Error::FromLuaConversionError {
             from: "Value",
             to: "Tuple",
-            message: Some(format!("tuple table must have at least 3 elements")),
+            message: Some("tuple table must have at least 3 elements".to_string()),
         };
 
         let mut v: Vec<Value> = FromLua::from_lua(value, lua)?;
