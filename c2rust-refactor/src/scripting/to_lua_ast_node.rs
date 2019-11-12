@@ -1784,12 +1784,6 @@ impl AddMoreMethods for LuaAstNode<P<FnDecl>> {
 
 impl AddMoreMethods for LuaAstNode<Param> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
-            this.borrow_mut().ty = ty.borrow().clone();
-
-            Ok(())
-        });
-
         methods.add_method("get_pat_id", |lua_ctx, this, ()| {
             Ok(this.borrow().pat.id.to_lua_ext(lua_ctx))
         });
@@ -1823,12 +1817,6 @@ impl AddMoreMethods for LuaAstNode<FnHeader> {}
 
 impl AddMoreMethods for LuaAstNode<StructField> {
     fn add_more_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("set_ty", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
-            this.borrow_mut().ty = ty.borrow().clone();
-
-            Ok(())
-        });
-
         methods.add_method("get_attrs", |_lua_ctx, this, ()| {
             Ok(this.borrow()
                 .attrs
