@@ -870,9 +870,9 @@ function Visitor:rewrite_call_expr(expr)
                     -- If we're looking at an array then we likely don't want
                     -- a reference to the array type but a raw pointer
                     if method_name == "as_ptr" and path_cfg then
-                        param_expr:to_addr_of(path_expr, param_cfg.extra_data.immutable)
+                        param_expr:to_addr_of(path_expr, param_cfg:is_mut())
                     elseif method_name == "as_mut_ptr" and path_cfg then
-                        param_expr:to_addr_of(path_expr, param_cfg.extra_data.immutable)
+                        param_expr:to_addr_of(path_expr, param_cfg:is_mut())
                     end
 
                     if param_cfg:is_opt_any() then
@@ -1503,6 +1503,12 @@ function ConfigBuilder:flat_map_stmt(stmt, walk)
             local offset_expr, caller = rewrite_chained_offsets(rhs)
             local caller_path = path_to_last_segment(caller:get_path()):get_ident():get_name()
             local local_cfg = self.node_id_cfgs[self.local_id]
+
+            -- Work around for https://github.com/immunant/c2rust/issues/198
+            if not local_cfg then
+                walk(stmt)
+                return {stmt}
+            end
 
             local_cfg.extra_data.clear_init_and_ty = true
 
