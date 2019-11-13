@@ -50,6 +50,10 @@ extern "C" {
     ) -> libc::c_int;
     #[no_mangle]
     fn get_ptr() -> *mut u32;
+    #[no_mangle]
+    type _reent;
+    #[no_mangle]
+    static mut _impure_ptr: *mut _reent;
 }
 
 pub unsafe extern "C" fn ten_mul(mut acc: &mut f64, digit: i32, r: Option<&f64>) -> i32 {
@@ -802,4 +806,8 @@ fn array_ref() {
 
     rewritten(Some(&p), Some(&q));
     rewritten(Some(&p), Some(&q));
+}
+
+unsafe extern "C" fn decay_binary(ptr: Option<&_reent>) {
+    if ptr.unwrap() as *const _ != _impure_ptr {}
 }

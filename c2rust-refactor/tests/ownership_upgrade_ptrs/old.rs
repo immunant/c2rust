@@ -42,6 +42,10 @@ extern "C" {
                  _: ::std::ffi::VaList) -> libc::c_int;
     #[no_mangle]
     fn get_ptr() -> *mut u32;
+    #[no_mangle]
+    type _reent;
+    #[no_mangle]
+    static mut _impure_ptr: *mut _reent;
 }
 
 pub unsafe extern "C" fn ten_mul(#[nonnull] acc: *mut f64, digit: i32, r: *mut f64) -> i32 {
@@ -671,4 +675,10 @@ fn array_ref() {
 
     rewritten(p.as_ptr(), q.as_mut_ptr());
     rewritten(p.as_mut_ptr(), q.as_mut_ptr());
+}
+
+unsafe extern "C" fn decay_binary(ptr: *mut _reent) {
+    if ptr != _impure_ptr {
+
+    }
 }

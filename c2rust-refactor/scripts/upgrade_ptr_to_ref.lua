@@ -400,9 +400,28 @@ function Visitor:visit_expr(expr, walk)
         self:rewrite_call_expr(expr)
     elseif expr_kind == "MethodCall" then
         self:rewrite_method_call_expr(expr)
+    elseif expr_kind == "Binary" then
+        self:rewrite_binary_expr(expr)
     end
 
     walk(expr)
+end
+
+function Visitor:rewrite_binary_expr(expr)
+    local lhs = expr:child(2)
+    local rhs = expr:child(3)
+    local lhs_config = self:get_expr_cfg(lhs)
+    local rhs_config = self:get_expr_cfg(rhs)
+
+    -- If lhs is rewritten but rhs isn't, decay lhs to ptr
+    if lhs_config and not rhs_config then
+        lhs = decay_ref_to_ptr(lhs, lhs_config, true)
+        expr:replace_child(2, lhs)
+    -- If rhs is rewritten but lhs isn't, decay rhs to ptr
+    elseif rhs_config and not lhs_config then
+        rhs = decay_ref_to_ptr(rhs, rhs_config, true)
+        expr:replace_child(3, rhs)
+    end
 end
 
 function Visitor:rewrite_method_call_expr(expr)
@@ -493,7 +512,7 @@ function Visitor:rewrite_method_call_expr(expr)
 end
 
 -- Extracts a raw pointer from a rewritten rust type
-function decay_ref_to_ptr(expr, cfg, for_struct_field)
+function decay_ref_to_ptr(expr, cfg, explicit_cast, for_struct_field)
     if cfg:is_opt_any() then
         if cfg:is_mut() then
             -- The reasoning here is that for (boxed) slices you need as_mut to call
@@ -527,6 +546,38 @@ function decay_ref_to_ptr(expr, cfg, for_struct_field)
         expr:to_method_call("as_ptr", {expr})
     end
 
+    if explicit_cast then
+        local mutbl
+
+        if cfg:is_mut() then
+            mutbl = "Mutable"
+        else
+            mutbl = "Immutable"
+        end
+
+        local inferred_ty = {
+            "Ty",
+            id=DUMMY_NODE_ID,
+            span=DUMMY_SP,
+            kind={"Infer"},
+        }
+        local inferred_ptr_ty = {
+            "Ty",
+            id=DUMMY_NODE_ID,
+            span=DUMMY_SP,
+            kind={
+                "Ptr",
+                {
+                    "MutTy",
+                    ty=inferred_ty,
+                    mutbl={mutbl},
+                }
+            }
+        }
+
+        expr:to_cast(expr, inferred_ptr_ty)
+    end
+
     return expr
 end
 
@@ -540,13 +591,11 @@ function Visitor:rewrite_field_expr(expr)
             local cfg = self:get_expr_cfg(derefed_expr)
 
             -- This is a path we're expecting to modify
-            if not cfg then
-                return
-            end
+            if not cfg then return end
 
             -- (*foo).bar -> (foo.as_mut().unwrap()).bar
             if cfg:is_opt_any() then
-                derefed_expr = decay_ref_to_ptr(derefed_expr, cfg, true)
+                derefed_expr = decay_ref_to_ptr(derefed_expr, cfg, false, true)
             end
 
             -- (*foo).bar -> (foo).bar (can't remove parens..)
