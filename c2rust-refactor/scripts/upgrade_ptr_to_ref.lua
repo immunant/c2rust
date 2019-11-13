@@ -235,6 +235,18 @@ function ConvConfig:is_array()
     return self.conv_type == "array"
 end
 
+Ty = {}
+
+function Ty.new(kind)
+    self = {}
+    self[1] = "Ty"
+    self.id = DUMMY_NODE_ID
+    self.span = DUMMY_SP
+    self.kind = kind
+
+    return self
+end
+
 Visitor = {}
 
 function Visitor.new(tctx, node_id_cfgs)
@@ -555,24 +567,14 @@ function decay_ref_to_ptr(expr, cfg, explicit_cast, for_struct_field)
             mutbl = "Immutable"
         end
 
-        local inferred_ty = {
-            "Ty",
-            id=DUMMY_NODE_ID,
-            span=DUMMY_SP,
-            kind={"Infer"},
-        }
-        local inferred_ptr_ty = {
-            "Ty",
-            id=DUMMY_NODE_ID,
-            span=DUMMY_SP,
-            kind={
-                "Ptr",
-                {
-                    "MutTy",
-                    ty=inferred_ty,
-                    mutbl={mutbl},
-                }
-            }
+        local inferred_ty = Ty.new{"Infer"}
+        local inferred_ptr_ty = Ty.new{
+            "Ptr",
+            {
+                "MutTy",
+                ty=inferred_ty,
+                mutbl={mutbl},
+            },
         }
 
         expr:to_cast(expr, inferred_ptr_ty)
