@@ -861,9 +861,11 @@ function Visitor:rewrite_call_expr(expr)
     local path = path_expr:get_path()
     local segment_idents = path and tablex.map(function(x) return x:get_ident():get_name() end, path:get_segments())
 
+    if not segment_idents then return end
+
     -- free(foo.bar as *mut libc::c_void) -> foo.bar.take()
     -- In case free is called from another module check the last segment
-    if segment_idents and segment_idents[#segment_idents] == "free" then
+    if segment_idents[#segment_idents] == "free" then
         local uncasted_expr = first_param_expr
 
         -- REVIEW: What if there's a multi-layered cast?
@@ -891,11 +893,11 @@ function Visitor:rewrite_call_expr(expr)
             end
         end
     -- Skip; handled elsewhere by local conversion
-    elseif segment_idents and segment_idents[#segment_idents] == "malloc" then
+    elseif segment_idents[#segment_idents] == "malloc" then
     -- Generic function call param conversions
     -- NOTE: Some(x) counts as a function call on x, so we skip Some
     -- so as to not recurse when we generate that expr
-    elseif segment_idents and segment_idents[#segment_idents] ~= "Some" then
+    elseif segment_idents[#segment_idents] ~= "Some" then
         local hirid = self.tctx:resolve_path_hirid(path_expr)
         local fn = self:get_fn(hirid)
 
@@ -957,7 +959,7 @@ function Visitor:rewrite_call_expr(expr)
                             goto continue
                         -- Decay mut ref to immut ref inside option
                         -- foo(x) -> foo(x.as_ref().map(|r| &**r))
-                        elseif path_cfg:is_box_any() then
+                        elseif path_cfg:is_box_any() and not param_cfg:is_box_any() then
                             param_expr = decay_ref_to_ptr(param_expr, param_cfg)
                             goto continue
                         elseif path_cfg:is_mut() and not param_cfg:is_mut() then

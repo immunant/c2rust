@@ -1,4 +1,4 @@
-#![feature(rustc_private, custom_attribute, param_attrs, ptr_wrapping_offset_from, c_variadic)]
+#![feature(rustc_private, custom_attribute, param_attrs, ptr_wrapping_offset_from, c_variadic, extern_types)]
 extern crate libc;
 
 extern "C" {
@@ -681,4 +681,9 @@ unsafe extern "C" fn decay_binary(ptr: *mut _reent) {
     if ptr != _impure_ptr {
 
     }
+}
+
+#[ownership_constraints(le(MOVE, _0))]
+unsafe extern "C" fn box_to_box(ptr: *mut _reent) {
+    box_to_box(ptr)
 }

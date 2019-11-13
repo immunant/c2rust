@@ -3,7 +3,8 @@
     custom_attribute,
     param_attrs,
     ptr_wrapping_offset_from,
-    c_variadic
+    c_variadic,
+    extern_types
 )]
 extern crate libc;
 
@@ -810,4 +811,9 @@ fn array_ref() {
 
 unsafe extern "C" fn decay_binary(ptr: Option<&_reent>) {
     if ptr.unwrap() as *const _ != _impure_ptr {}
+}
+
+#[ownership_constraints(le(MOVE, _0))]
+unsafe extern "C" fn box_to_box(ptr: Option<Box<_reent>>) {
+    box_to_box(ptr)
 }
