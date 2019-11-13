@@ -171,7 +171,8 @@ def do_one_impl(s, kind_map, boxed, emit_ldoc):
 
     yield 'impl FromLuaTable for %s {' % type_name
     yield '  fn from_lua_table<\'lua>(_table: LuaTable<\'lua>, _lua_ctx: Context<\'lua>) -> Result<Self> {'
-    yield '    let _kind: &str = &_table.get::<_, String>(1)?;'
+    yield '    let _kind = _table.get::<_, LuaString>(1)?;'
+    yield '    let _kind = _kind.to_str()?;'
     if isinstance(s, Struct):
         yield '    if _kind == "%s" {' % s.name
         yield '      Ok(%s%s {' % ('P(' if boxed else '', s.name)
