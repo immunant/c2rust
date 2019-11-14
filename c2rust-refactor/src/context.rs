@@ -455,7 +455,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Compare two items for internal structural equivalence, ignoring field names.
     pub fn structural_eq(&self, item1: &Item, item2: &Item) -> bool {
-        if item1.ast_equiv(item2) {
+        if item1.unnamed_equiv(item2) {
             return true;
         }
 
