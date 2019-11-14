@@ -23,6 +23,7 @@ RUN apt-get update -qq && \
     libtool \
     libsqlite3-dev \
     mdm \
+    python2.7 \
     rcs \
     ruby \
     tcl-dev \
