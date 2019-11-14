@@ -2,7 +2,7 @@ requirements:
   ubuntu: # for ubuntu hosts
     apt:
       packages:
-        - python2
+        - python2.7
 
 transpile:
   autogen: true
