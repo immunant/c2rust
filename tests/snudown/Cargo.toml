@@ -1,0 +1,21 @@
+[workspace]
+members = [
+]
+
+[package]
+name = "snudown"
+authors = ["C2Rust"]
+version = "0.0.0"
+publish = false
+edition = "2018"
+autobins = false
+
+[lib]
+name = "snudown"
+path = "lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2"
+
+

@@ -1,13 +1,11 @@
 requirements:
-  ubuntu:
+  ubuntu: # for ubuntu hosts
     apt:
       packages:
-        - libreadline-dev
-        - rcs # used in makefile
+        - python2
 
 transpile:
   autogen: true
-  binary: lua
 
 cargo:
   autogen: true

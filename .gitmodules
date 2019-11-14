@@ -29,3 +29,6 @@
 [submodule "tests/redis/repo"]
 	path = tests/redis/repo
 	url = https://github.com/antirez/redis.git
+[submodule "tests/snudown/repo"]
+	path = tests/snudown/repo
+	url = https://github.com/reddit/snudown.git
