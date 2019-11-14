@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use rustc::hir::def::{DefKind, Res};
+use rustc::hir::def::{DefKind, Namespace, Res};
 use rustc::hir::def_id::DefId;
 use rustc::hir::map as hir_map;
 use rustc::hir::{self, Node, HirId};
@@ -10,12 +10,13 @@ use rustc::ty::subst::InternalSubsts;
 use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_metadata::cstore::CStore;
 use syntax::ast::{
-    self, Expr, ExprKind, FnDecl, FunctionRetTy, Item, NodeId, Path, QSelf, DUMMY_NODE_ID,
+    self, Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FunctionRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
 };
 use syntax::ptr::P;
 
 use crate::ast_manip::AstEquiv;
 use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
+use crate::ast_manip::util::namespace;
 use crate::reflect;
 use c2rust_ast_builder::mk;
 
@@ -563,6 +564,37 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     /// Are we refactoring an executable crate?
     pub fn is_executable(&self) -> bool {
         self.sess.crate_types.borrow().contains(&CrateType::Executable)
+    }
+
+    pub fn item_namespace(&self, item: &Item) -> Option<Namespace> {
+        match &item.kind {
+            ItemKind::Use(tree) => {
+                // Nested uses should be already split apart
+                if let UseTreeKind::Nested(..) = &tree.kind {
+                    None
+                } else {
+                    let path = self.resolve_use_id(item.id);
+                    namespace(&path.res)
+                }
+            }
+
+            // Extern headers cannot contain impls
+            ItemKind::Impl(..) => None,
+
+            ItemKind::ForeignMod(_) => None,
+
+            ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => Some(Namespace::ValueNS),
+
+            _ => Some(Namespace::TypeNS),
+        }
+    }
+
+    pub fn foreign_item_namespace(&self, item: &ForeignItem) -> Option<Namespace> {
+        match &item.kind {
+            ForeignItemKind::Fn(..) | ForeignItemKind::Static(..) => Some(Namespace::ValueNS),
+            ForeignItemKind::Ty => Some(Namespace::TypeNS),
+            ForeignItemKind::Macro(..) => None,
+        }
     }
 }
 
