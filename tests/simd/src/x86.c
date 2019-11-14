@@ -17,8 +17,9 @@ typedef struct {
     __m64 l;
     __m128i m;
 #ifdef __AVX2__
-    __m256i n;
+    __m256i n, p, q;
 #endif
+    __m128i r;
 } ShuffleVectors;
 
 typedef struct {
@@ -78,7 +79,10 @@ ShuffleVectors call_all(void) {
         _mm_shuffle_epi8(f, f),
 #ifdef __AVX2__
         _mm256_shuffle_epi8(g, g),
+        _mm256_alignr_epi8(g, g, 2),
+        _mm256_permute2x128_si256(g, g, 42),
 #endif
+        _mm_alignr_epi8(f, f, 2)
     };
 
     return sv;
@@ -103,6 +107,9 @@ ShuffleVectors call_all_used(void) {
     __m64 l;
     __m128i m;
     __m256i n;
+    __m256i p;
+    __m256i q;
+    __m128i r;
 
     // Actual Builtin:
     a = _mm_shuffle_pi16(cc, _MM_SHUFFLE(0, 1, 2, 3));
@@ -127,7 +134,10 @@ ShuffleVectors call_all_used(void) {
     m = _mm_shuffle_epi8(ff, ff);
 #ifdef __AVX2__
     n = _mm256_shuffle_epi8(gg, gg);
+    p = _mm256_alignr_epi8(gg, gg, 2);
+    q = _mm256_permute2x128_si256(gg, gg, 42);
 #endif
+    r = _mm_alignr_epi8(ff, ff, 2);
 
     ShuffleVectors sv = {
         a, b, c, d, e, f, g, h, o,
@@ -138,8 +148,9 @@ ShuffleVectors call_all_used(void) {
         l, m,
 
 #ifdef __AVX2__
-        n,
+        n, p, q,
 #endif
+        r,
     };
 
     return sv;
