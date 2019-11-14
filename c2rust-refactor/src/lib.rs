@@ -6,6 +6,7 @@
     generator_trait,
     vec_remove_item,
     option_flattening,
+    drain_filter,
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 
