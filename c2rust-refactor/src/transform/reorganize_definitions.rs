@@ -412,14 +412,20 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             debug!("Folding path {:?} (def: {:?})", path, def);
             if let Some(def_id) = def.opt_def_id() {
                 if let Some((new_path, mod_id)) = self.path_mapping.get(&def_id) {
-                    let insert_result = remapped_path_nodes.insert(id, *mod_id);
-                    assert_eq!(insert_result, None);
+                    let inserted = remapped_path_nodes.insert(id, *mod_id).is_none();
+                    assert!(inserted);
                     debug!("  -> {:?}", new_path);
                     return (qself, new_path.clone());
                 } else if is_relative_path(&path) {
                     // Canonicalize a new path from the crate root. Will rewrite
                     // any relative paths that we may have moved into absolute
                     // paths.
+                    if let Some(hir_id) = self.cx.hir_map().as_local_hir_id(def_id) {
+                        let mod_hir_id = self.cx.hir_map().get_module_parent_node(hir_id);
+                        let mod_id = self.cx.hir_map().hir_to_node_id(mod_hir_id);
+                        let inserted = remapped_path_nodes.insert(id, mod_id).is_none();
+                        assert!(inserted);
+                    }
                     return self.cx.def_qpath(def_id);
                 }
             }
