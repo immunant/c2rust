@@ -20,9 +20,12 @@ c2rust transpile \
     -- {{cflags}} ${EXTRA_CFLAGS:--w} \
      2>&1 | tee `basename "$0"`.log
 
-if [[ -f "$SCRIPT_DIR/build.rs" ]]; then
-    cp "$SCRIPT_DIR/build.rs" "$SCRIPT_DIR/repo"
-fi
+for build_file in build.rs Cargo.toml
+do
+    if [[ -f "$SCRIPT_DIR/$build_file" ]]; then
+        cp "$SCRIPT_DIR/$build_file" "$SCRIPT_DIR/repo/"
+    fi
+done
 
 if [[ -n "$C2RUST_DIR" ]]; then
     sed --in-place --regexp-extended "s|c2rust-bitfields = \"([0-9.]+)\"|c2rust-bitfields = { version = \"\1\", path = \"$C2RUST_DIR/c2rust-bitfields\" }|" "$SCRIPT_DIR/repo/Cargo.toml"
