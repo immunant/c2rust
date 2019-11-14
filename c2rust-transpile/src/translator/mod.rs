@@ -1147,6 +1147,16 @@ impl<'c> Translation<'c> {
         }
     }
 
+    fn with_cur_file_item_store<F, T>(&self, f: F) -> T
+        where F: FnOnce(&mut ItemStore) -> T
+    {
+        let mut item_stores = self.items.borrow_mut();
+        let item_store = item_stores
+            .entry(self.cur_file())
+            .or_insert_with(ItemStore::new);
+        f(item_store)
+    }
+
     /// Called when translation makes use of a language feature that will require a feature-gate.
     pub fn use_feature(&self, feature: &'static str) {
         self.features.borrow_mut().insert(feature);

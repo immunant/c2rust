@@ -122,8 +122,9 @@ impl<'c> Translation<'c> {
                         self.use_crate(ExternCrate::C2RustAsmCasts);
 
                         // Import the trait into scope
-                        let item_store = &mut self.items.borrow_mut()[&self.cur_file()];
-                        item_store.add_use(vec!["c2rust_asm_casts".into()], "AsmCastTrait");
+                        self.with_cur_file_item_store(|item_store| {
+                            item_store.add_use(vec!["c2rust_asm_casts".into()], "AsmCastTrait");
+                        });
 
                         let (output_name, inner_name) = operand_renames
                             .get(&tied_operand)

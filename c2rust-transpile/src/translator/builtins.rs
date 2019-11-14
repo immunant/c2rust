@@ -83,7 +83,9 @@ impl<'c> Translation<'c> {
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
                 // Long doubles require the Float trait from num_traits to call this method
                 if builtin_name == "__builtin_signbitl" {
-                    self.items.borrow_mut()[&self.main_file].add_use(vec!["num_traits".into()], "Float");
+                    self.with_cur_file_item_store(|item_store| {
+                        item_store.add_use(vec!["num_traits".into()], "Float");
+                    });
                 }
 
                 let val = self.convert_expr(ctx.used(), args[0])?;
