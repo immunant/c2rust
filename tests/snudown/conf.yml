@@ -1,0 +1,11 @@
+requirements:
+  ubuntu: # for ubuntu hosts
+    apt:
+      packages:
+        - python2
+
+transpile:
+  autogen: true
+
+cargo:
+  autogen: true
