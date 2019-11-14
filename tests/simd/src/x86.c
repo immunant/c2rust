@@ -79,8 +79,8 @@ ShuffleVectors call_all(void) {
         _mm_shuffle_epi8(f, f),
 #ifdef __AVX2__
         _mm256_shuffle_epi8(g, g),
-        _mm256_shuffle_epi8(g, g),
-        _mm256_shuffle_epi8(g, g),
+        _mm256_alignr_epi8(g, g, 2),
+        _mm256_permute2x128_si256(g, g, 42),
 #endif
         _mm_alignr_epi8(f, f, 2)
     };
