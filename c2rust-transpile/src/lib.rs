@@ -422,11 +422,10 @@ fn reorganize_definitions(
         .args(&["fmt"])
         .current_dir(build_dir)
         .status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format_err!("cargo fmt failed"))
+    if !status.success() {
+        warn!("cargo fmt failed, code may not be well-formatted");
     }
+    Ok(())
 }
 
 fn transpile_single(
