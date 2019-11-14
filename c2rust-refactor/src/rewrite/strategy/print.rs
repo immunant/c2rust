@@ -801,9 +801,9 @@ impl RewriteAt for Item {
 
                 // Extend span to cover comments before and after items
                 let first_node = reparsed.first().unwrap();
-                let first_span = extend_span_comments(&first_node.get_node_id(), first_node.span, &rcx);
+                let first_span = extend_span_comments(&first_node.get_node_id(), first_node.splice_span(), &rcx);
                 let last_node = reparsed.last().unwrap();
-                let last_span = extend_span_comments(&last_node.get_node_id(), last_node.span, &rcx);
+                let last_span = extend_span_comments(&last_node.get_node_id(), last_node.splice_span(), &rcx);
                 let reparsed_span = first_span.with_hi(last_span.hi());
 
                 describe_rewrite(inner_span, reparsed_span, &rcx);
