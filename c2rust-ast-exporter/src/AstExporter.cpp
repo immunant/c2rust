@@ -1013,8 +1013,10 @@ class TranslateASTVisitor final
                 inputs.emplace_back(convertedConstraint);
             }
             for (unsigned i = 0, num = E->getNumClobbers(); i < num; ++i) {
-                auto constraint = E->getClobber(i);
-                clobbers.emplace_back(constraint);
+                auto clobber = E->getClobber(i);
+                if (clobber != "memory" && clobber != "cc")
+                    clobber = Context->getTargetInfo().getNormalizedGCCRegisterName(clobber);
+                clobbers.emplace_back(clobber);
             }
             cbor_encode_string_array(local, ArrayRef<std::string>(inputs));
             cbor_encode_string_array(local, ArrayRef<std::string>(outputs));
