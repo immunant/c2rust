@@ -24,6 +24,7 @@ RUN apt-get update -qq && \
     libsqlite3-dev \
     mdm \
     python2.7 \
+    python-setuptools \
     rcs \
     ruby \
     tcl-dev \
