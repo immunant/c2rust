@@ -28,7 +28,6 @@ RUN apt-get update -qq && \
     librtmp-dev \
     libsqlite3-dev \
     libtool \
-    libsqlite3-dev \
     mdm \
     python2.7 \
     python-setuptools \
