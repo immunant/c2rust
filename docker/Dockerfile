@@ -14,12 +14,19 @@ RUN apt-get update -qq && \
     build-essential \
     libbz2-dev \
     libdb-dev \
+    libbrotli-dev \
     libexpat1-dev \
     libgdbm-dev \
+    libidn2-dev \
+    libldap2-dev \
     liblzma-dev \
     libncurses5-dev \
+    libnghttp2-dev \
     libpcre3-dev \
+    libpsl-dev \
     libreadline-dev \
+    librtmp-dev \
+    libsqlite3-dev \
     libtool \
     libsqlite3-dev \
     mdm \

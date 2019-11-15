@@ -1,7 +1,17 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+        - libbrotli-dev
+        - libidn2-dev
+        - libldap2-dev
+        - libnghttp2-dev
+        - libpsl-dev
+        - librtmp-dev
+
 transpile:
   autogen: true
   binary: tool_main
 
 cargo:
   autogen: true
-  xfail: true # needs dependencies provisioned in CI
