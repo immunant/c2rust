@@ -267,7 +267,7 @@ impl Transform for Localize {
 
             let mut refs = HashSet::new();
             fold_resolved_paths(&mut fl.block, cx, |qself, path, def| {
-                if let Some(def_id) = def.opt_def_id() {
+                if let Some(def_id) = def[0].opt_def_id() {
                     refs.insert(def_id);
                 }
                 (qself, path)
@@ -461,7 +461,7 @@ impl Transform for StaticToLocal {
             let mut ref_ids = HashSet::new();
             let mut refs = Vec::new();
             fold_resolved_paths(&mut fl.block, cx, |qself, path, def| {
-                if let Some(def_id) = def.opt_def_id() {
+                if let Some(def_id) = def[0].opt_def_id() {
                     if ref_ids.insert(def_id) {
                         if let Some(info) = statics.get(&def_id) {
                             refs.push(info);

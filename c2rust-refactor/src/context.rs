@@ -453,6 +453,17 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         path
     }
 
+    /// Attempt to resolve a `Use` item id to the `hir::Path` of the imported
+    /// item. The given item _must_ be a `Use`.
+    pub fn try_resolve_use_id(&self, id: NodeId) -> Option<&hir::ptr::P<hir::Path>> {
+        let hir_node = self
+            .hir_map()
+            .find(id)?;
+        let hir_item = expect!([hir_node] hir::Node::Item(i) => i);
+        let path = expect!([&hir_item.kind] hir::ItemKind::Use(path, _) => path);
+        Some(path)
+    }
+
     /// Compare two items for internal structural equivalence, ignoring field names.
     pub fn structural_eq(&self, item1: &Item, item2: &Item) -> bool {
         if item1.unnamed_equiv(item2) {
@@ -573,7 +584,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                 if let UseTreeKind::Nested(..) = &tree.kind {
                     None
                 } else {
-                    let path = self.resolve_use_id(item.id);
+                    let path = self.try_resolve_use_id(item.id)?;
                     namespace(&path.res)
                 }
             }

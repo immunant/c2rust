@@ -67,7 +67,7 @@ impl Transform for RenameRegex {
         // (2) Rewrite paths referring to renamed defs
 
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
-            if let Some(hir_id) = cx.res_to_hir_id(def) {
+            if let Some(hir_id) = cx.res_to_hir_id(&def[0]) {
                 if let Some(new_ident) = new_idents.get(&hir_id) {
                     path.segments.last_mut().unwrap().ident = *new_ident;
                 }
@@ -162,7 +162,7 @@ impl Transform for RenameUnnamed {
 
         // 2. Update types to match the new renamed Anonymous Types
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
-            if let Some(hir_id) = cx.res_to_hir_id(def) {
+            if let Some(hir_id) = cx.res_to_hir_id(&def[0]) {
                 if let Some(new_ident) = renamer.new_idents.get(&hir_id) {
                     path.segments.last_mut().unwrap().ident = *new_ident;
                 }
@@ -340,7 +340,7 @@ impl Transform for ReplaceItems {
         // (2) Rewrite references to `target` items to refer to `repl` instead.
 
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            match def.opt_def_id() {
+            match def[0].opt_def_id() {
                 Some(def_id) if target_ids.contains(&def_id) =>
                     (None, cx.def_path(repl_id)),
                 _ => (qself, path),

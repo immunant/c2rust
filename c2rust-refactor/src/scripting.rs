@@ -526,17 +526,17 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
               LuaAstNode<T>: 'static + UserData + Clone,
     {
         node.map(|node| {
-            fold_resolved_paths_with_id(node, self.cx, |id, qself, path, def| {
+            fold_resolved_paths_with_id(node, self.cx, |id, qself, path, defs| {
                 let (qself, path): (Option<LuaAstNode<ast::QSelf>>, LuaAstNode<ast::Path>) = lua_ctx
                     .scope(|scope| {
                         let qself = qself.map(|q| q.to_lua_scoped(lua_ctx, scope).unwrap());
                         let path = path.to_lua_scoped(lua_ctx, scope).unwrap();
-                        let def = def.to_lua_scoped(lua_ctx, scope).unwrap();
+                        let defs: Vec<_> = defs.into_iter().map(|def| def.to_lua_scoped(lua_ctx, scope).unwrap()).collect();
                         callback.call((
                             id.to_lua_ext(lua_ctx).unwrap(),
                             qself,
                             path,
-                            def,
+                            defs,
                         ))
                     })
                     .unwrap_or_else(|e| panic!("Lua callback failed in visit_paths: {}", DisplayLuaError(e)));

@@ -175,7 +175,7 @@ impl Transform for ToMethod {
             // don't have a Def for locals any more, and thus no def_id. We need
             // to fix this in path_edit.rs
             fold_resolved_paths(&mut f.block, cx, |qself, path, def| {
-                match cx.res_to_hir_id(&def) {
+                match cx.res_to_hir_id(&def[0]) {
                     Some(hir_id) =>
                         if hir_id == arg_hir_id {
                             assert!(qself.is_none());
@@ -522,7 +522,7 @@ impl Transform for WrapExtern {
         // (3) Rewrite call sites to use the new wrappers.
         let ident_map = fns.iter().map(|f| (f.def_id, f.ident)).collect::<HashMap<_, _>>();
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            match def.opt_def_id() {
+            match def[0].opt_def_id() {
                 Some(def_id) if ident_map.contains_key(&def_id) => {
                     let ident = ident_map.get(&def_id).unwrap();
                     let mut new_path = dest_path.clone();
@@ -685,7 +685,7 @@ impl Transform for WrapApi {
             if callees.contains(&id) || q.is_some() {
                 return (q, p);
             }
-            let hir_id = match_or!([cx.res_to_hir_id(d)] Some(x) => x; return (q, p));
+            let hir_id = match_or!([cx.res_to_hir_id(&d[0])] Some(x) => x; return (q, p));
             let name = match_or!([wrapper_map.get(&hir_id)] Some(x) => x; return (q, p));
 
             let mut new_path = p.clone();

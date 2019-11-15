@@ -183,7 +183,7 @@ impl Transform for Rename {
             .expect("found no struct to rename");
 
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
-            if let Some(def_id) = def.opt_def_id() {
+            if let Some(def_id) = def[0].opt_def_id() {
                 if def_id == target_def_id {
                     path.segments.last_mut().unwrap().ident = new_ident;
                 }

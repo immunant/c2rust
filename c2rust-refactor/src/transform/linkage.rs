@@ -84,7 +84,7 @@ impl Transform for LinkFuncs {
 
         // (3) Adjust references to extern fns to refer to the `#[no_mangle]` definition instead.
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            if let Some(def_id) = def.opt_def_id() {
+            if let Some(def_id) = def[0].opt_def_id() {
                 if let Some(&symbol) = extern_def_to_symbol.get(&def_id) {
                     if let Some(&real_def_id) = symbol_to_def.get(&symbol) {
                         return (None, cx.def_path(real_def_id));
@@ -191,7 +191,7 @@ impl Transform for LinkIncompleteTypes {
 
         // (3) Replace references to incomplete types with references to same-named complete types.
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            if let Some(&name) = def.opt_def_id().as_ref().and_then(|x| incomplete_to_name.get(x)) {
+            if let Some(&name) = def[0].opt_def_id().as_ref().and_then(|x| incomplete_to_name.get(x)) {
                 if let Some(complete_def_ids) = name_to_complete.get(&name) {
                     // Arbitrarily choose the first complete definition, if there's more than one.
                     // A separate transform will canonicalize references to complete types.
@@ -318,7 +318,7 @@ impl Transform for CanonicalizeStructs {
         // (4) Rewrite references to removed structs.
 
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            if let Some(&canon_def_id) = def.opt_def_id().as_ref()
+            if let Some(&canon_def_id) = def[0].opt_def_id().as_ref()
                 .and_then(|x| removed_id_map.get(&x)) {
                 (None, cx.def_path(canon_def_id))
             } else {

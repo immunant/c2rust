@@ -133,7 +133,7 @@ impl Transform for GeneralizeItems {
             .expect("must provide a replacement type argument or mark");
 
         fold_resolved_paths_with_id(krate, cx, |path_id, qself, mut path, def| {
-            match def.opt_def_id() {
+            match def[0].opt_def_id() {
                 Some(def_id) if item_def_ids.contains(&def_id) => (),
                 _ => return (qself, path),
             };

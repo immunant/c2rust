@@ -178,7 +178,7 @@ impl Transform for CanonicalizeExterns {
         // previously referenced by that path.
         let mut path_ids = HashMap::new();
         fold_resolved_paths_with_id(krate, cx, |id, qself, path, def| {
-            let old_did = match_or!([def.opt_def_id()] Some(x) => x; return (qself, path));
+            let old_did = match_or!([def[0].opt_def_id()] Some(x) => x; return (qself, path));
             let new_did = match_or!([replace_map.get(&old_did)] Some(&x) => x;
                                     return (qself, path));
             path_ids.insert(id, old_did);
