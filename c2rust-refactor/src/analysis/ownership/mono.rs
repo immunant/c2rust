@@ -242,10 +242,21 @@ fn find_local_assignment(summ: &FuncSumm) -> Option<IndexVec<Var, ConcretePerm>>
         }
     }
 
+    // summ.locals doesn't include unspanned vars, so by finding the largest spanned var
+    // we often save some space at the end of the IndexVec
+    let max_spanned_local_var = summ.locals
+        .values()
+        .filter_map(|ty| match ty.label {
+            Some(PermVar::Local(l)) => Some(l),
+            _ => None
+        })
+        .max()
+        .unwrap_or(Var(0));
+
     let mut s = State {
-        max: Var(summ.locals.len() as u32),
+        max: max_spanned_local_var,
         cset: &summ.sig_cset,
-        assignment: IndexVec::from_elem_n(ConcretePerm::Read, summ.locals.len()),
+        assignment: IndexVec::from_elem_n(ConcretePerm::Read, max_spanned_local_var.0 as usize + 1),
     };
     let ok = s.walk_vars(Var(0));
 
