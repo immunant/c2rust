@@ -46,6 +46,23 @@ class Test(object):
 
         prev_dir = os.getcwd()
         script_path = os.path.join(self.dir, script)
+
+        if not os.path.isfile(script_path):
+            print("{color}Missing script: {script}{nocolor}".format(
+                    color=Colors.FAIL,
+                    script=script_path,
+                    nocolor=Colors.NO_COLOR)
+                )
+            return False
+
+        if not os.access(script_path, os.X_OK):
+            print("{color}Script is not executable: {script}{nocolor}".format(
+                    color=Colors.FAIL,
+                    script=script_path,
+                    nocolor=Colors.NO_COLOR)
+                )
+            return False
+
         if not verbose:
             relpath = os.path.relpath(script_path, prev_dir)
             line = "{blue}{name}{nc}: {stage}({script})".format(
