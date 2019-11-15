@@ -242,6 +242,12 @@ void simd_fn_codegen(__m128i i, __m128d d, __m128 y) {
     x = _mm_cmpistro(i, i, 2);
     x = _mm_cmpistrs(i, i, 2);
     x = _mm_cmpistrz(i, i, 2);
+    i = _mm_aeskeygenassist_si128(i, 2);
+    i = _mm_aesimc_si128(i);
+    i = _mm_aesenc_si128(i, i);
+    i = _mm_aesenclast_si128(i, i);
+    i = _mm_aesdec_si128(i, i);
+    i = _mm_aesdeclast_si128(i, i);
 
 #if __clang_major__ >= 7
     // LLVM < 7 uses an internal-only definition of _mm_extract_epi32 that we

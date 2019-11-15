@@ -324,6 +324,24 @@ impl<'c> Translation<'c> {
             }
 
             // SIMD builtins:
+            "__builtin_ia32_aeskeygenassist128" => {
+                self.convert_simd_builtin(ctx, "_mm_aeskeygenassist_si128", args)
+            }
+            "__builtin_ia32_aesimc128" => {
+                self.convert_simd_builtin(ctx, "_mm_aesimc_si128", args)
+            }
+            "__builtin_ia32_aesenc128" => {
+                self.convert_simd_builtin(ctx, "_mm_aesenc_si128", args)
+            }
+            "__builtin_ia32_aesenclast128" => {
+                self.convert_simd_builtin(ctx, "_mm_aesenclast_si128", args)
+            }
+            "__builtin_ia32_aesdec128" => {
+                self.convert_simd_builtin(ctx, "_mm_aesdec_si128", args)
+            }
+            "__builtin_ia32_aesdeclast128" => {
+                self.convert_simd_builtin(ctx, "_mm_aesdeclast_si128", args)
+            }
             "__builtin_ia32_pshufw" => self.convert_simd_builtin(ctx, "_mm_shuffle_pi16", args),
             "__builtin_ia32_shufps" => self.convert_simd_builtin(ctx, "_mm_shuffle_ps", args),
             "__builtin_ia32_shufpd" => self.convert_simd_builtin(ctx, "_mm_shuffle_pd", args),
