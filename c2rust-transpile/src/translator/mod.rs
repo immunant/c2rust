@@ -1690,6 +1690,9 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(enum_id)
                     .expect("Enums should already be renamed");
+                if let Some(cur_file) = *self.cur_file.borrow() {
+                    self.add_import(cur_file, enum_id, &enum_name);
+                }
                 let ty = mk().path_ty(mk().path(vec![enum_name]));
                 let val = match value {
                     ConstIntExpr::I(value) => signed_int_expr(value),
