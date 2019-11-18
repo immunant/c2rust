@@ -42,7 +42,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0" )" && pwd)"
 # Do a release build in case the C code contains signed integer overflows
 # that trap in a debug build.
 (cd "$SCRIPT_DIR/repo" \
-    && RUSTFLAGS="-Awarnings {{extra_rustflags}}" cargo ${TOOLCHAIN} build --release 2>&1 | tee ../`basename "$0"`.log)
+    && RUSTFLAGS="-Awarnings {{extra_rustflags}}" nice -n 19 cargo ${TOOLCHAIN} build --release 2>&1 | tee ../`basename "$0"`.log)
 
 """
 
