@@ -397,6 +397,7 @@ impl<'c> Translation<'c> {
             "__builtin_ia32_vec_set_v2di" => {
                 self.convert_simd_builtin(ctx, "_mm_insert_epi64", args)
             }
+            "__builtin_ia32_vec_ext_v8si" => self.convert_simd_builtin(ctx, "_mm256_extract_epi32", args),
             "__builtin_ia32_mpsadbw128" => self.convert_simd_builtin(ctx, "_mm_mpsadbw_epu8", args),
             "__builtin_ia32_pcmpistrm128" => self.convert_simd_builtin(ctx, "_mm_cmpistrm", args),
             "__builtin_ia32_pcmpistri128" => self.convert_simd_builtin(ctx, "_mm_cmpistri", args),

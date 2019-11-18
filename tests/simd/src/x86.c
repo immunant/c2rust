@@ -198,7 +198,7 @@ __m256d static_uninit_m256d;
 __m128i static_uninit_m128i;
 __m256i static_uninit_m256i;
 
-void simd_fn_codegen(__m128i i, __m128d d, __m128 y) {
+void simd_fn_codegen(__m128i i, __m128d d, __m128 y, __m256i m256i) {
     int x;
     x = _mm_testz_si128(i, i);
     y = _mm_round_ps(y, 3);
@@ -248,6 +248,7 @@ void simd_fn_codegen(__m128i i, __m128d d, __m128 y) {
     i = _mm_aesenclast_si128(i, i);
     i = _mm_aesdec_si128(i, i);
     i = _mm_aesdeclast_si128(i, i);
+    _mm256_extract_epi32(m256i, 2);
 
 #if __clang_major__ >= 7
     // LLVM < 7 uses an internal-only definition of _mm_extract_epi32 that we
