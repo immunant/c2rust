@@ -156,14 +156,16 @@ def configure_and_build_llvm(args) -> None:
         # relative to LLVM_INSTALL/bin, which MUST exist for the relative
         # reference to be valid. To force this, we also install llvm-config,
         # since we are building and using it for other purposes.
+        nice = get_cmd_or_die("nice")
         ninja = get_cmd_or_die("ninja")
-        ninja_args = ['c2rust-ast-exporter', 'clangAstExporter',
-                      'llvm-config',
-                      'install-clang-headers',
-                      'FileCheck', 'count', 'not']
+        nice_args = ['-n', '19', str(ninja),
+                     'c2rust-ast-exporter', 'clangAstExporter',
+                     'llvm-config',
+                     'install-clang-headers',
+                     'FileCheck', 'count', 'not']
         if args.with_clang:
-            ninja_args.append('clang')
-        invoke(ninja, *ninja_args)
+            nice_args.append('clang')
+        invoke(nice, *nice_args)
 
         # Make sure install/bin exists so that we can create a relative path
         # using it in AstExporter.cpp
@@ -196,12 +198,13 @@ def need_cargo_clean(args) -> bool:
 
 
 def build_transpiler(args):
+    nice = get_cmd_or_die("nice")
     cargo = get_cmd_or_die("cargo")
 
     if need_cargo_clean(args):
         invoke(cargo, "clean")
 
-    build_flags = ["build", "--features", "llvm-static"]
+    build_flags = ["-n", "19", str(cargo), "build", "--features", "llvm-static"]
 
     if not args.debug:
         build_flags.append("--release")
@@ -242,7 +245,7 @@ def build_transpiler(args):
                           LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs,
                           C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
-            invoke(cargo, *build_flags)
+            invoke(nice, *build_flags)
 
 
 def _parse_args():
