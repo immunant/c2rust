@@ -11,7 +11,7 @@ transpile:
   autogen: true
   binary: ruby
 #  cflags: "-O0"
-  xfail: true
 
 cargo:
   autogen: true
+  xfail: true
