@@ -76,6 +76,7 @@ class Config:
     LLVM_ARCHIVE_URLS = [
         'http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz',
+        'http://releases.llvm.org/{ver}/compiler-rt-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
     ]
     # See http://releases.llvm.org/download.html#7.0.0

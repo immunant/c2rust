@@ -125,10 +125,9 @@ def configure_and_build_llvm(args) -> None:
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
                      # required to build LLVM 8 on Debian Jessie
                      "-DLLVM_TEMPORARILY_ALLOW_OLD_TOOLCHAIN=1",
+                     "-DLLVM_TARGETS_TO_BUILD=host",  # speed up build
                      ast_ext_dir]
 
-            if on_x86():  # speed up builds on x86 hosts
-                cargs.append("-DLLVM_TARGETS_TO_BUILD=X86")
             invoke(cmake[cargs])
 
             # NOTE: we only generate Xcode project files for IDE support
@@ -161,7 +160,7 @@ def configure_and_build_llvm(args) -> None:
         nice_args = ['-n', '19', str(ninja),
                      'c2rust-ast-exporter', 'clangAstExporter',
                      'llvm-config',
-                     'install-clang-headers',
+                     'install-clang-headers', 'install-compiler-rt-headers',
                      'FileCheck', 'count', 'not']
         if args.with_clang:
             nice_args.append('clang')
