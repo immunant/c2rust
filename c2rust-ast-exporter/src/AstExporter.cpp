@@ -1774,8 +1774,10 @@ class TranslateASTVisitor final
             abort();
         }
 
+        auto loc = is_defn ? def->getLocation() : VD->getLocation();
+
         encode_entry(
-            VD, TagVarDecl, def->getLocation(), childIds, T,
+            VD, TagVarDecl, loc, childIds, T,
             [VD, is_defn, def, is_externally_visible](CborEncoder *array) {
                 auto name = VD->getNameAsString();
                 cbor_encode_string(array, name);

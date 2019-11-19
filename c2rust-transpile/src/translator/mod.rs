@@ -4299,6 +4299,10 @@ impl<'c> Translation<'c> {
         type_id: CTypeId,
         is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+        if let Some(file_id) = self.cur_file.borrow().as_ref() {
+            self.import_type(type_id, *file_id);
+        }
+
         // Look up the decl in the cache and return what we find (if we find anything)
         if let Some(init) = self.zero_inits.borrow().get(&decl_id) {
             return Ok(init.clone());
@@ -4573,7 +4577,8 @@ impl<'c> Translation<'c> {
     ) {
         use self::CTypeKind::*;
 
-        match self.ast_context[ctype].kind {
+        let type_kind = &self.ast_context[ctype].kind;
+        match type_kind {
             // libc can be accessed from anywhere as of Rust 2019 by full path
             Void | Char | SChar | UChar | Short | UShort | Int | UInt | Long | ULong | LongLong
             | ULongLong | Int128 | UInt128 | Half | Float | Double | LongDouble => {}
@@ -4591,7 +4596,7 @@ impl<'c> Translation<'c> {
             | BlockPointer(CQualTypeId { ctype, .. })
             | TypeOf(ctype)
             | Complex(ctype) => {
-                self.import_type(ctype, decl_file_id)
+                self.import_type(*ctype, decl_file_id)
             }
             Enum(decl_id) | Typedef(decl_id) | Union(decl_id) | Struct(decl_id) => {
                 let mut decl_id = decl_id.clone();
@@ -4609,11 +4614,11 @@ impl<'c> Translation<'c> {
             }
             Function(CQualTypeId { ctype, .. }, ref params, ..) => {
                 // Return Type
-                let type_kind = &self.ast_context[ctype].kind;
+                let type_kind = &self.ast_context[*ctype].kind;
 
                 // Rust doesn't use void for return type, so skip
                 if *type_kind != Void {
-                    self.import_type(ctype, decl_file_id);
+                    self.import_type(*ctype, decl_file_id);
                 }
 
                 // Param Types
