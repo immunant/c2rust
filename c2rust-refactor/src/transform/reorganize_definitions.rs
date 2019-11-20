@@ -1211,7 +1211,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         if foreign_equiv(&existing_foreign, &item) {
                             return ContainsDecl::Equivalent(existing_decl);
                         } else {
-                            return ContainsDecl::Equivalent(existing_decl);
+                            return ContainsDecl::Conflicting(existing_decl);
                         }
                     }
                 }
