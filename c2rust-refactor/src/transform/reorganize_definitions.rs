@@ -72,6 +72,9 @@ struct ModuleInfo {
 
     /// Mapping from header ident to the line it was included into this module
     header_lines: HashMap<Ident, usize>,
+
+    /// Set of headers included by this module (as full paths)
+    headers: HashSet<String>,
 }
 
 impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
@@ -123,6 +126,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             Some(info) => self.stdlib_id = info.id,
             None => {
                 self.stdlib_id = self.st.next_node_id();
+                // TODO: this builds a `ModuleInfo` with an empty `headers`,
+                // which is fine because that doesn't ever get checked below
+                // in `find_destination_id` if `is_std() == true`; if that ever
+                // changes, we need to fix it here
                 self.modules.entry(self.stdlib_id)
                     .or_insert(ModuleInfo::new(stdlib_ident, self.stdlib_id));
             }
@@ -143,6 +150,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }
             // TODO: This is a simple naive heuristic,
             // and should be improved upon.
+            if !dest_module_info.headers.contains(&declaration.parent_header.path) {
+                return false;
+            }
             declaration.parent_header
                 .ident
                 .as_str()
@@ -156,7 +166,11 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 let new_node_id = self.st.next_node_id();
                 self.modules
                     .entry(new_node_id)
-                    .or_insert_with(|| ModuleInfo::new(declaration.parent_header.ident, new_node_id))
+                    .or_insert_with(|| {
+                        let mut mi = ModuleInfo::new(declaration.parent_header.ident, new_node_id);
+                        mi.headers.insert(declaration.parent_header.path.clone());
+                        mi
+                    })
             }
         };
 
@@ -638,6 +652,7 @@ impl ModuleInfo {
             new: true,
             has_main: false,
             header_lines: HashMap::new(),
+            headers: HashSet::new(),
         }
     }
 
@@ -646,6 +661,7 @@ impl ModuleInfo {
         let module = expect!([&item.kind] ItemKind::Mod(m) => m);
         let mut has_main = false;
         let mut header_lines: HashMap<Ident, usize> = HashMap::new();
+        let mut headers = HashSet::new();
         let def_id = cx.node_def_id(item.id);
         let path = cx.def_path(def_id);
         for i in &module.items {
@@ -656,7 +672,8 @@ impl ModuleInfo {
                     }
                 }
                 ItemKind::Mod(..) => {
-                    let (_path, line) = parse_source_header(&i.attrs).unwrap();
+                    let (path, line) = parse_source_header(&i.attrs).unwrap();
+                    headers.insert(path);
                     if header_lines.insert(i.ident, line).is_some() {
                         panic!(
                             "Conflicting headers in the same module with name: {}",
@@ -674,6 +691,7 @@ impl ModuleInfo {
             new: false,
             has_main,
             header_lines,
+            headers,
         }
     }
 }
