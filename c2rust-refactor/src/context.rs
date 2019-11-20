@@ -474,7 +474,14 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         use syntax::ast::ItemKind::*;
         match (&item1.kind, &item2.kind) {
             // * Assure that these two items are in fact of the same type, just to be safe.
-            (TyAlias(..), TyAlias(..)) => true,
+            (TyAlias(ty1, g1), TyAlias(ty2, g2)) => {
+                if g1.params.is_empty() && g2.params.is_empty() {
+                    self.structural_eq_ast_tys(ty1, ty2)
+                } else {
+                    // FIXME: handle generics (we don't need to for now)
+                    false
+                }
+            }
 
             (Const(..), Const(..)) => true,
 
