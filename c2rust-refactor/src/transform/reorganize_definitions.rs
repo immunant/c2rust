@@ -189,9 +189,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 self.modules
                     .entry(new_node_id)
                     .or_insert_with(|| {
-                        let mut mi = ModuleInfo::new(declaration.parent_header.ident, new_node_id);
-                        mi.headers.insert(declaration.parent_header.path.clone());
-                        mi
+                        let mut mod_info = ModuleInfo::new(declaration.parent_header.ident, new_node_id);
+                        mod_info.headers.insert(declaration.parent_header.path.clone());
+                        mod_info
                     })
             }
         };
