@@ -7,7 +7,7 @@ use std::mem;
 use crate::transform::Transform;
 use rustc::hir::def::{Namespace, PerNS};
 use rustc::hir::def_id::DefId;
-use rustc::hir::{Node};
+use rustc::hir::{self, Node};
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::attr::{self, HasAttrs};
@@ -27,6 +27,8 @@ use crate::RefactorCtxt;
 use crate::util::Lone;
 use c2rust_ast_builder::mk;
 use c2rust_ast_printer::pprust::{item_to_string, foreign_item_to_string};
+
+use super::externs;
 
 /// # `reoganize_definitions` Command
 ///
@@ -52,7 +54,19 @@ pub struct Reorganizer<'a, 'tcx: 'a> {
 
     // Mapping from replaced item DefId to the path of its replacement and the
     // replacements parent module NodeId
-    path_mapping: HashMap<DefId, (Path, NodeId)>,
+    path_mapping: HashMap<DefId, Replacement>,
+}
+
+#[derive(Clone)]
+struct Replacement {
+    /// Path to replacement item
+    path: Path,
+
+    /// NodeId of replacement's parent module
+    parent: NodeId,
+
+    /// DefId of replacement if available
+    def: Option<DefId>,
 }
 
 /// A ModuleInfo captures all information about a module that is needed to
@@ -263,7 +277,14 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 let mod_id = self.cx.hir_map().hir_to_node_id(mod_hir_id);
                 decl_ids.into_iter()
                     .for_each(|decl_id| {
-                        self.path_mapping.insert(decl_id, (dest_path.clone(), mod_id));
+                        self.path_mapping.insert(
+                            decl_id,
+                            Replacement {
+                                path: dest_path.clone(),
+                                parent: mod_id,
+                                def: Some(def_id),
+                            }
+                        );
                     });
             }
         });
@@ -296,7 +317,14 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 let mut path_segments = dest_module_info.path.clone();
                 path_segments.push(mk().path_segment(ident.name));
                 let dest_path = mk().path(path_segments);
-                self.path_mapping.insert(item.def_id, (dest_path, dest_module_id));
+                self.path_mapping.insert(
+                    item.def_id,
+                    Replacement {
+                        path: dest_path,
+                        parent: dest_module_id,
+                        def: None, // hasn't changed
+                    },
+                );
 
                 // Move the item to the `module_items` mapping.
                 module_items.entry(dest_module_id).or_default().push(item);
@@ -307,16 +335,23 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         unnamed_items.map(|items| {
             for item in items.into_iter() {
                 let ident = item.ident();
-                let (dest_module_id, _dest_module_ident) = self.find_destination_id(&item);
+                let (parent, _dest_module_ident) = self.find_destination_id(&item);
 
-                let dest_module_info = &self.modules[&dest_module_id];
+                let dest_module_info = &self.modules[&parent];
                 let mut path_segments = dest_module_info.path.clone();
                 path_segments.push(mk().path_segment(ident.name));
-                let dest_path = mk().path(path_segments);
-                self.path_mapping.insert(item.def_id, (dest_path, dest_module_id));
+                let path = mk().path(path_segments);
+                self.path_mapping.insert(
+                    item.def_id,
+                    Replacement {
+                        path,
+                        parent,
+                        def: None,
+                    },
+                );
 
                 // Move the item to the `module_items` mapping.
-                module_items.entry(dest_module_id).or_default().push(item);
+                module_items.entry(parent).or_default().push(item);
             }
         });
 
@@ -403,15 +438,6 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             smallvec![item]
         });
 
-        // FlatMapNodes::visit(krate, |item: P<Item>| {
-        //     let new_item = if let ItemKind::Mod(..) = item.kind {
-        //         self.move_into_module(&mut declarations, item)
-        //     } else {
-        //         item
-        //     };
-        //     smallvec![new_item]
-        // });
-
         // Put new modules for executables inline, because we can't really put
         // them into the source tree where the library sources are since they
         // will conflict.
@@ -431,18 +457,6 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }
         }
 
-        // FlatMapNodes::visit(krate, |mut item: P<Item>| {
-        //     if let Some(hir_id) = self.cx.hir_map().opt_node_to_hir_id(item.id) {
-        //         if need_pub_defs.contains(&hir_id) {
-        //             match item.vis.node.clone() {
-        //                 VisibilityKind::Public | VisibilityKind::Crate(_) => {}
-        //                 _ => item.vis.node = VisibilityKind::Crate(CrateSugar::PubCrate),
-        //             }
-        //         }
-        //     }
-        //     smallvec![item]
-        // });
-
         // Remove src_loc attributes
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
             item.attrs
@@ -459,8 +473,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     /// Update paths to moved items and remove redundant imports.
     fn update_paths(&self, krate: &mut Crate) {
         // Maps NodeId of an AST element with an updated path to the NodeId of
-        // the module it's target is now located in.
-        let mut remapped_path_nodes = HashMap::new();
+        // the module its target is now located in and the DefId of the original
+        // target.
+        let mut remapped_paths = HashMap::new();
 
         // Mapping from use node id to resolutions in other namespaces. We need
         // this so we can add extra uses if we move a type from a header but
@@ -474,11 +489,11 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 multi_namespace_uses.insert(id, (path.clone(), def_ids));
             }
             if let Some(def_id) = defs[0].opt_def_id() {
-                if let Some((new_path, mod_id)) = self.path_mapping.get(&def_id) {
-                    let inserted = remapped_path_nodes.insert(id, *mod_id).is_none();
+                if let Some(replacement) = self.path_mapping.get(&def_id) {
+                    let inserted = remapped_paths.insert(id, (replacement.parent, def_id)).is_none();
                     assert!(inserted);
-                    debug!("  -> {:?}", new_path);
-                    return (qself, new_path.clone());
+                    debug!("  -> {:?}", replacement.path);
+                    return (qself, replacement.path.clone());
                 } else if is_relative_path(&path) {
                     // Canonicalize a new path from the crate root. Will rewrite
                     // any relative paths that we may have moved into absolute
@@ -486,7 +501,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     if let Some(hir_id) = self.cx.hir_map().as_local_hir_id(def_id) {
                         let mod_hir_id = self.cx.hir_map().get_module_parent_node(hir_id);
                         let mod_id = self.cx.hir_map().hir_to_node_id(mod_hir_id);
-                        let inserted = remapped_path_nodes.insert(id, mod_id).is_none();
+                        let inserted = remapped_paths.insert(id, (mod_id, def_id)).is_none();
                         assert!(inserted);
                     }
                     return self.cx.def_qpath(def_id);
@@ -494,6 +509,50 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }
             (qself, path)
         });
+
+        // Mapping from old DefId to new DefId
+        let replacement_map = self.path_mapping.iter().filter_map(|(old_def, replacement)| {
+            match self.cx.hir_map().get_if_local(*old_def) {
+                Some(Node::ForeignItem(_)) => {}
+                Some(Node::Item(item)) => match item.kind {
+                    hir::ItemKind::Static(..) | hir::ItemKind::Const(..) | hir::ItemKind::Fn(..)
+                    | hir::ItemKind::Union(..) | hir::ItemKind::Enum(..)
+                    | hir::ItemKind::TyAlias(..) => {}
+                    _ => return None,
+                },
+                _ => return None,
+            }
+            replacement.def.map(|new_def| (*old_def, new_def))
+        }).collect();
+        // Mapping from user path expr NodeId to old DefId
+        let path_ids = remapped_paths.iter().map(|(user, (_parent, def))| (*user, *def)).collect();
+        externs::fix_users(krate, &replacement_map, &path_ids, self.cx);
+
+        // MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
+        //     let callee = match self.cx.opt_callee(&e) {
+        //         Some(callee) => callee,
+        //         None => return,
+        //     };
+        //     let replacement = match self.path_mapping.get(&callee) {
+        //         Some(r) => r,
+        //         None => return,
+        //     };
+        //     if let Some(def_id) = replacement.def {
+        //         let orig_fn_sig = self.cx.ty_ctxt().fn_sig(callee);
+        //         let replacement_fn_sig = self.cx.ty_ctxt().fn_sig(def_id);
+        //         let args: &mut [P<Expr>] = match e.kind {
+        //             ExprKind::Call(_, ref mut args) => args,
+        //             ExprKind::MethodCall(_, ref mut args) => args,
+        //             _ => panic!("expected Call or MethodCall"),
+        //         };
+
+        //         for (new_arg_ty, orig_arg_ty) in replacement_fn_sig.inputs().zip(orig_fn_sig.inputs()) {
+        //             if new_arg_ty.ast_equiv(orig_arg_ty) {
+        //                 continue;
+        //             }
+        //         }
+        //     }
+        // });
 
         // Remove use statements that now refer to their self module.
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
@@ -505,11 +564,11 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     if let ItemKind::Use(_) = &item.kind {
                         if let Some((path, def_ids)) = multi_namespace_uses.get(&item.id) {
                             for def_id in def_ids {
-                                let other_mod_id = remapped_path_nodes[&item.id];
-                                if let Some((new_path, mod_id)) = self.path_mapping.get(&def_id) {
-                                    if other_mod_id != *mod_id {
+                                let (other_mod_id, _) = remapped_paths[&item.id];
+                                if let Some(Replacement {path, parent, ..}) = self.path_mapping.get(&def_id) {
+                                    if other_mod_id != *parent {
                                         items.push(mk().use_simple_item(
-                                            new_path,
+                                            path,
                                             None as Option<Ident>,
                                         ));
                                     }
@@ -522,7 +581,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                         let mod_id = self.cx.hir_map().hir_to_node_id(mod_hir_id);
                                         if other_mod_id != mod_id {
                                             let new_node_id = self.st.next_node_id();
-                                            let inserted = remapped_path_nodes.insert(new_node_id, mod_id).is_none();
+                                            let inserted = remapped_paths.insert(new_node_id, (mod_id, *def_id)).is_none();
                                             assert!(inserted);
                                             items.push(mk().id(new_node_id).use_simple_item(
                                                 self.cx.def_path(*def_id),
@@ -554,7 +613,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             // `fold_resolved_paths_with_id` splits nested uses
                             // into Simple uses when it remaps a path.
                             _ => {
-                                if let Some(mod_def_id) = remapped_path_nodes.get(&item.id) {
+                                if let Some((mod_def_id, _)) = remapped_paths.get(&item.id) {
                                     if *mod_def_id == mod_id {
                                         return false;
                                     }
@@ -570,17 +629,17 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                 .try_resolve_use_id(item.id)
                                 .and_then(|def| def.res.opt_def_id())
                             {
-                                if let Some((_, mod_id)) = self.path_mapping.get(&def_id) {
+                                if let Some(Replacement {parent, ..}) = self.path_mapping.get(&def_id) {
                                     for ns in &[Namespace::ValueNS, Namespace::TypeNS] {
                                         if let Some(target_mod) = uses[*ns].get(&u.ident()) {
-                                            if target_mod == mod_id {
+                                            if target_mod == parent {
                                                 return false;
                                             } else if *ns == namespace {
                                                 panic!(
                                                     "Conflicting imports of {:?} from {:?} and {:?}",
                                                     u.ident(),
                                                     target_mod,
-                                                    mod_id,
+                                                    *parent,
                                                 );
                                             }
                                         }
@@ -595,8 +654,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     .try_resolve_use_id(item.id)
                                     .and_then(|def| def.res.opt_def_id())
                                 {
-                                    let mod_id = if let Some((_, mod_id)) = self.path_mapping.get(&def_id) {
-                                        *mod_id
+                                    let mod_id = if let Some(Replacement {parent, ..}) = self.path_mapping.get(&def_id) {
+                                        *parent
                                     } else {
                                         if let Some(hir_id) = self.cx.hir_map().as_local_hir_id(def_id) {
                                             let mod_hir_id = self.cx.hir_map().get_module_parent_node(hir_id);
