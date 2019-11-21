@@ -930,10 +930,10 @@ impl<'c> Translation<'c> {
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
-                let arg = self.convert_expr(ctx.used().set_needs_address(true), arg)?;
+                let arg_expr = self.convert_expr(ctx.used().set_needs_address(true), arg)?;
 
                 if self.ast_context.is_function_pointer(ctype) {
-                    Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
+                    Ok(arg_expr.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
                 } else {
                     let pointee_ty = self.ast_context.get_pointee_qual_type(ctype)
                         .ok_or_else(|| TranslationError::generic(
@@ -946,7 +946,7 @@ impl<'c> Translation<'c> {
                         Mutability::Mutable
                     };
 
-                    arg.result_map(|a| {
+                    arg_expr.result_map(|a| {
                         let mut addr_of_arg: P<Expr>;
 
                         if ctx.is_static {
@@ -964,6 +964,33 @@ impl<'c> Translation<'c> {
                                 addr_of_arg = mk().cast_expr(addr_of_arg, ty_);
                             }
                         } else {
+                            if ctx.decay_ref.is_yes() {
+                                // For arrays we can coerce to slice and call
+                                // as_ptr() to get a pointer without casting
+                                if let Some((_, expr_ty)) = self.ast_context
+                                    .resolve_expr_type_id(arg)
+                                {
+                                    let expr_ty = self.ast_context.resolve_type(expr_ty);
+                                    match expr_ty.kind {
+                                        CTypeKind::IncompleteArray(_) |
+                                        CTypeKind::ConstantArray(_, _) => {
+                                            let method = if mutbl == Mutability::Immutable {
+                                                "as_ptr"
+                                            } else {
+                                                "as_mut_ptr"
+                                            };
+                                            let call = mk().method_call_expr(
+                                                a,
+                                                method,
+                                                vec![] as Vec<P<Expr>>,
+                                            );
+                                            return Ok(call);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+
                             // Normal case is allowed to use &mut if needed
                             addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
 
