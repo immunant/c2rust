@@ -33,6 +33,8 @@ pub mod bar {
     }
     //test2
     use libc;
+
+    #[no_mangle]
     static mut Bar: crate::bar::bar_t = unsafe {
         crate::bar::bar_t {
             alloc: 0 as *mut libc::c_char,

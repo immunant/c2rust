@@ -39,6 +39,8 @@ pub mod bar {
     }
 
     use bar_h::bar_t;
+
+    #[no_mangle]
     static mut Bar: bar_t = unsafe {
         bar_t {
             alloc: 0 as *mut libc::c_char,

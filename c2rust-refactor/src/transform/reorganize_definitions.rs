@@ -88,6 +88,9 @@ struct ModuleInfo {
 
     /// Set of headers included by this module (as full paths)
     headers: HashSet<String>,
+
+    /// Set of item idents defined in this module, per namespace
+    items: PerNS<HashSet<Ident>>,
 }
 
 impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
@@ -109,6 +112,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         let mut header_decls = self.remove_header_items(krate);
 
         self.match_defs(&mut header_decls, krate);
+        self.update_module_info_items(krate);
 
         self.move_items(header_decls, krate);
 
@@ -166,6 +170,11 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             if !dest_module_info.headers.contains(&declaration.parent_header.path) {
                 return false;
             }
+
+            if dest_module_info.items[declaration.namespace].contains(&declaration.ident()) {
+                return false;
+            }
+
             declaration.parent_header
                 .ident
                 .as_str()
@@ -317,6 +326,33 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             }
                         );
                     });
+            }
+        });
+    }
+
+    /// Update items set in ModuleInfos with current remaining items in that
+    /// module so that we don't override an existing item
+    fn update_module_info_items(&mut self, krate: &Crate) {
+        visit_nodes(krate, |item: &Item| {
+            if let ItemKind::Mod(module) = &item.kind {
+                if let Some(info) = self.modules.get_mut(&item.id) {
+                    for item in &module.items {
+                        if let ItemKind::ForeignMod(m) = &item.kind {
+                            for item in &m.items {
+                                let ns = match &item.kind {
+                                    ForeignItemKind::Fn(..) | ForeignItemKind::Static(..) => Namespace::ValueNS,
+                                    ForeignItemKind::Ty => Namespace::TypeNS,
+                                    ForeignItemKind::Macro(..) => unimplemented!(),
+                                };
+                                info.items[ns].insert(item.ident);
+                            }
+                        } else {
+                            if let Some(namespace) = self.cx.item_namespace(item) {
+                                info.items[namespace].insert(item.ident);
+                            }
+                        }
+                    }
+                }
             }
         });
     }
@@ -743,6 +779,7 @@ impl ModuleInfo {
             has_main: false,
             header_lines: HashMap::new(),
             headers: HashSet::new(),
+            items: PerNS::default(),
         }
     }
 
@@ -782,6 +819,7 @@ impl ModuleInfo {
             has_main,
             header_lines,
             headers,
+            items: PerNS::default(),
         }
     }
 }
