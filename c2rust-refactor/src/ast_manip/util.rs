@@ -6,6 +6,7 @@ use syntax::ptr::P;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::symbol::{kw, Symbol};
 use syntax::tokenstream::TokenStream;
+use syntax_pos::sym;
 
 use super::AstEquiv;
 
@@ -261,4 +262,11 @@ pub fn join_visibility(vis1: &VisibilityKind, vis2: &VisibilityKind) -> Visibili
         (Inherited, Restricted { .. }) => vis2.clone(),
         _ => Inherited,
     }
+}
+
+// Is this item exported from the library?
+pub fn is_exported(item: &Item) -> bool {
+    item.attrs.iter().find(|attr| {
+        attr.path == sym::no_mangle || attr.path == sym::export_name
+    }).is_some()
 }

@@ -17,9 +17,8 @@ use syntax::symbol::{kw, Symbol};
 use syntax::util::map_in_place::MapInPlace;
 use syntax_pos::BytePos;
 
-use crate::ast_manip::util::{is_relative_path, join_visibility, split_uses};
+use crate::ast_manip::util::{is_relative_path, join_visibility, split_uses, is_exported};
 use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes};
-use crate::ast_manip::fn_edit::visit_fns;
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -198,30 +197,54 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         krate: &mut Crate,
     ) -> HeaderDeclarations<'a, 'tcx> {
 
-        /// Find any references to local identifiers in function bodies that we
-        /// are keeping in the header. We need to keep use statements that
-        /// define these identifiers.
-        fn find_needed_idents(item: &Item) -> HashSet<Ident> {
-            let mut needed_idents = HashSet::new();
-            visit_fns(item, |function| {
-                if let Some(body) = function.block {
-                    visit_nodes(&*body, |expr: &Expr| {
-                        if let ExprKind::Path(_, path) = &expr.kind {
-                            if path.segments.len() == 1 {
-                                needed_idents.insert(path.segments[0].ident);
+        // Decide which items we should keep in the header. This is currently
+        // all functions, static globals, and any uses they reference.
+        fn keep_items(module: &Mod) -> HashSet<NodeId> {
+            let mut keep_items = HashSet::new();
+            let mut used_idents = HashSet::new();
+            for item in &module.items {
+                match &item.kind {
+                    ItemKind::Fn(_, _, _, body) => {
+                        keep_items.insert(item.id);
+                        visit_nodes(&**body, |expr: &Expr| {
+                            if let ExprKind::Path(_, path) = &expr.kind {
+                                if path.segments.len() == 1 {
+                                    used_idents.insert(path.segments[0].ident);
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
+
+                    ItemKind::Static(_, _, init) if !is_exported(item) => {
+                        keep_items.insert(item.id);
+                        visit_nodes(&**init, |expr: &Expr| {
+                            if let ExprKind::Path(_, path) = &expr.kind {
+                                if path.segments.len() == 1 {
+                                    used_idents.insert(path.segments[0].ident);
+                                }
+                            }
+                        });
+                    }
+
+                    _ => {}
                 }
-            });
-            needed_idents
+            }
+
+            // This assume the complex uses have been split apart already
+            for item in &module.items {
+                if let ItemKind::Use(tree) = &item.kind {
+                    if used_idents.contains(&tree.ident()) {
+                        keep_items.insert(item.id);
+                    }
+                }
+            }
+            keep_items
         }
 
         let mut declarations = HeaderDeclarations::new(self.cx);
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
             if let Some((path, include_line)) = parse_source_header(&item.attrs) {
                 let header_item = item.clone();
-                let needed_idents = find_needed_idents(&item);
                 if let ItemKind::Mod(module) = &mut item.kind {
                     // Split complex uses before iterating over the items
                     module.items.flat_map_in_place(|item| {
@@ -231,18 +254,23 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         }
                     });
 
-                    module.items.retain(|item| {
-                        let header_info = HeaderInfo::new(header_item.ident, path.clone(), include_line);
-                        match &item.kind {
-                            ItemKind::Use(tree) if needed_idents.contains(&tree.ident()) => true,
+                    let needed_items = keep_items(&module);
 
-                            _ => match declarations.insert_item(item.clone(), header_info) {
-                                Ok(inserted) => !inserted,
-                                Err(e) => {
-                                    warn!("{}", e);
-                                    true
-                                }
-                            },
+                    module.items.retain(|item| {
+                        if needed_items.contains(&item.id) {
+                            return true;
+                        }
+                        let header_info = HeaderInfo::new(
+                            header_item.ident,
+                            path.clone(),
+                            include_line,
+                        );
+                        match declarations.insert_item(item.clone(), header_info) {
+                            Ok(inserted) => !inserted,
+                            Err(e) => {
+                                warn!("{}", e);
+                                true
+                            }
                         }
                     });
 
@@ -268,6 +296,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     /// available
     fn match_defs(&mut self, declarations: &mut HeaderDeclarations, krate: &Crate) {
         visit_nodes(krate, |item: &Item| {
+            if !is_exported(item) {
+                return;
+            }
             let decl_ids = declarations.remove_matching_defs(&item);
             if !decl_ids.is_empty() {
                 let def_id = self.cx.node_def_id(item.id);
