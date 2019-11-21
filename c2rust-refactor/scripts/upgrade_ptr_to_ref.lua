@@ -1407,35 +1407,6 @@ function ConfigBuilder.new(marks, boxes, tctx)
     return self
 end
 
-function ConfigBuilder:flat_map_param(param)
-    local param_id = param:get_id()
-    local param_ty = param:get_ty()
-    local param_ty_id = param_ty:get_id()
-    local marks = self.marks[param_ty_id] or {}
-
-    -- Skip over params likely from extern fns
-    if param:get_pat():kind_name() == "Wild" then
-        return {param}
-    end
-
-    -- Skip over pointers to void
-    if is_void_ptr(param_ty) then
-        return {param}
-    end
-
-    -- Skip if there are no marks
-    if is_empty(marks) then
-        return {param}
-    end
-
-    local attrs = param:get_attrs()
-
-    self.pat_to_var_id[param:get_pat():get_id()] = param_id
-    self.node_id_cfgs[param_id] = ConvConfig.from_marks_and_attrs(marks, attrs)
-
-    return {param}
-end
-
 function ConfigBuilder:visit_local(locl, walk)
     local ty = locl:get_ty()
 
@@ -1494,6 +1465,35 @@ function ConfigBuilder:flat_map_item(item, walk)
             if not is_empty(marks) then
                 self.node_id_cfgs[field_id] = ConvConfig.from_marks_and_attrs(marks, field:get_attrs())
             end
+        end
+    -- We don't visit params directly because then we could be looking at foreign params unknowingly
+    -- which we don't want
+    elseif item_kind == "Fn" then
+        local decl = item:child(1)
+        local params = decl:get_inputs()
+
+        for _, param in ipairs(params) do
+            local param_id = param:get_id()
+            local param_ty = param:get_ty()
+            local param_ty_id = param_ty:get_id()
+            local marks = self.marks[param_ty_id] or {}
+
+            -- Skip over pointers to void
+            if is_void_ptr(param_ty) then
+                goto continue
+            end
+
+            -- Skip if there are no marks
+            if is_empty(marks) then
+                goto continue
+            end
+
+            local attrs = param:get_attrs()
+
+            self.pat_to_var_id[param:get_pat():get_id()] = param_id
+            self.node_id_cfgs[param_id] = ConvConfig.from_marks_and_attrs(marks, attrs)
+
+            ::continue::
         end
     end
 
