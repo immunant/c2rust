@@ -89,6 +89,12 @@ def autogen_transpile(conf_file, yaml: Dict):
                     cflags = " ".join(cflags)
                 params["cflags"] = cflags
 
+            tflags = transpile.get("tflags")
+            if tflags:
+                if isinstance(tflags, List):
+                    tflags = " ".join(tflags)
+                params["tflags"] = tflags
+
 
             out_path = os.path.join(
                 os.path.dirname(conf_file),
