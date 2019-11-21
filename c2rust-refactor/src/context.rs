@@ -533,6 +533,15 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             }
 
             _ => {
+                if self.item_namespace(item1) == Some(Namespace::TypeNS) &&
+                    self.item_namespace(item2) == Some(Namespace::TypeNS)
+                {
+                    match (self.opt_node_type(item1.id), self.opt_node_type(item2.id)) {
+                        (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
+                        _ => {}
+                    }
+                }
+
                 // Fall back on AST equivalence for other items
                 item1.unnamed_equiv(item2)
             }
