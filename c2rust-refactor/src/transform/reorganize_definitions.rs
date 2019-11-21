@@ -544,13 +544,36 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             if let Some(declarations) = module_items.remove(&mod_info.id) {
                 let new_items = declarations.into_items(self.st, mod_info);
                 if !new_items.is_empty() {
-                    let mut new_mod = mk().mod_(new_items);
-                    new_mod.inline = inline;
-                    let new_mod_item = mk()
-                        .pub_()
-                        .id(mod_info.id)
-                        .mod_item(mod_info.unique_ident, new_mod);
-                    krate.module.items.insert(0, new_mod_item);
+                    #[inline]
+                    fn match_mod_item(item: &mut P<Item>, ident: Ident) -> Option<&mut Mod> {
+                        if item.ident == ident {
+                            match item.kind {
+                                ItemKind::Mod(ref mut m) => Some(m),
+                                _ => None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+
+                    if let Some(existing_mod) = krate
+                        .module
+                        .items
+                        .iter_mut()
+                        .find_map(|item| match_mod_item(item, mod_info.unique_ident))
+                    {
+                        // FIXME: we should also check if items overlap
+                        existing_mod.items.extend(new_items.into_iter());
+                    } else {
+                        let mut new_mod = mk().mod_(new_items);
+                        new_mod.inline = inline;
+                        let new_mod_item = mk()
+                            .pub_()
+                            .id(mod_info.id)
+                            .mod_item(mod_info.unique_ident, new_mod);
+
+                        krate.module.items.insert(0, new_mod_item);
+                    }
                 }
             }
         }
