@@ -111,6 +111,9 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     /// Get the `ty::Ty` computed for a node.
     pub fn node_type(&self, id: NodeId) -> Ty<'tcx> {
         let hir_id = self.hir_map().node_to_hir_id(id);
+        if let Some(def_id) = self.hir_map().opt_local_def_id(hir_id) {
+            return self.def_type(def_id);
+        }
         let parent = self.hir_map().get_parent_did(hir_id);
         let tables = self.ty_ctxt().typeck_tables_of(parent);
         tables.node_type(hir_id)
@@ -118,6 +121,9 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     pub fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
         let hir_id = self.hir_map().opt_node_to_hir_id(id)?;
+        if let Some(def_id) = self.hir_map().opt_local_def_id(hir_id) {
+            return Some(self.def_type(def_id));
+        }
         let parent_node = self.hir_map().get_parent_item(hir_id);
         let parent = self.hir_map().opt_local_def_id(parent_node)?;
         if !self.ty_ctxt().has_typeck_tables(parent) {
@@ -137,6 +143,9 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     pub fn opt_adjusted_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
         let hir_id = self.hir_map().node_to_hir_id(id);
+        if let Some(def_id) = self.hir_map().opt_local_def_id(hir_id) {
+            return Some(self.def_type(def_id));
+        }
         let parent_node = self.hir_map().get_parent_item(hir_id);
         let parent = self.hir_map().opt_local_def_id(parent_node)?;
         if !self.ty_ctxt().has_typeck_tables(parent) {
@@ -467,30 +476,43 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Compare two items for internal structural equivalence, ignoring field names.
     pub fn structural_eq(&self, item1: &Item, item2: &Item) -> bool {
-        if item1.unnamed_equiv(item2) {
-            return true;
-        }
-
         use syntax::ast::ItemKind::*;
         match (&item1.kind, &item2.kind) {
             // * Assure that these two items are in fact of the same type, just to be safe.
             (TyAlias(ty1, g1), TyAlias(ty2, g2)) => {
-                if g1.params.is_empty() && g2.params.is_empty() {
-                    self.structural_eq_ast_tys(ty1, ty2)
-                } else {
-                    // FIXME: handle generics (we don't need to for now)
-                    false
+                match (self.opt_node_type(item1.id), self.opt_node_type(item2.id)) {
+                    (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
+                    _ => {
+                        if g1.params.is_empty() && g2.params.is_empty() {
+                            self.structural_eq_ast_tys(ty1, ty2)
+                        } else {
+                            // FIXME: handle generics (we don't need to for now)
+                            false
+                        }
+                    }
                 }
             }
 
-            (Const(..), Const(..)) => true,
+            (Const(ty1, expr1), Const(ty2, expr2)) => {
+                match (self.opt_node_type(item1.id), self.opt_node_type(item2.id)) {
+                    (Some(ty1), Some(ty2)) => {
+                        self.structural_eq_tys(ty1, ty2) && expr1.unnamed_equiv(expr2)
+                    }
+                    _ => self.structural_eq_ast_tys(ty1, ty2) && expr1.unnamed_equiv(expr2),
+                }
+            }
 
             (Use(_), Use(_)) => panic!("We should have already handled the use statement case"),
 
             (Struct(variant1, _), Struct(variant2, _))
             | (Union(variant1, _), Union(variant2, _)) => {
-                let mut fields = variant1.fields().iter().zip(variant2.fields().iter());
-                fields.all(|(field1, field2)| self.structural_eq_ast_tys(&field1.ty, &field2.ty))
+                match (self.opt_node_type(item1.id), self.opt_node_type(item2.id)) {
+                    (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
+                    _ => {
+                        let mut fields = variant1.fields().iter().zip(variant2.fields().iter());
+                        fields.all(|(field1, field2)| self.structural_eq_ast_tys(&field1.ty, &field2.ty))
+                    }
+                }
             }
 
             (Enum(enum1, _), Enum(enum2, _)) => {
@@ -511,8 +533,8 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             }
 
             _ => {
-                // debug!("Mismatched node types: {:?}, {:?}", item1.kind, item2.kind);
-                false
+                // Fall back on AST equivalence for other items
+                item1.unnamed_equiv(item2)
             }
         }
     }
@@ -542,13 +564,13 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Compare two AST types for structural equivalence, ignoring names.
     fn structural_eq_ast_tys(&self, ty1: &ast::Ty, ty2: &ast::Ty) -> bool {
-        if ty1.ast_equiv(ty2) {
-            return true;
+        match (self.opt_node_type(ty1.id), self.opt_node_type(ty2.id)) {
+            (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
+            _ => {}
         }
-
         match (self.try_resolve_ty(ty1), self.try_resolve_ty(ty1)) {
             (Some(did1), Some(did2)) => self.structural_eq_defs(did1, did2),
-            _ => false,
+            _ => ty1.unnamed_equiv(ty2),
         }
     }
 
