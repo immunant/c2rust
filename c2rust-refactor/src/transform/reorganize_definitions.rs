@@ -197,10 +197,14 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 return false;
             }
 
-            declaration.parent_header
-                .ident
-                .as_str()
-                .contains(&*dest_module_info.orig_ident.as_str())
+            let header_ident = declaration.parent_header.ident.as_str();
+            let module_ident = dest_module_info.orig_ident.as_str();
+            if header_ident.len() >= module_ident.len() {
+                let (base, ext) = header_ident.split_at(module_ident.len());
+                base == module_ident && (ext.is_empty() || ext == "_h")
+            } else {
+                false
+            }
         });
         let dest_module = match dest_module {
             Some(m) => m,
