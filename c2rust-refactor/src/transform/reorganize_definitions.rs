@@ -251,10 +251,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     ItemKind::Static(_, _, init) if !is_exported(item) => {
                         keep_items.insert(item.id);
                         visit_nodes(&**init, |expr: &Expr| {
-                            if let ExprKind::Path(_, path) = &expr.kind {
-                                if path.segments.len() == 1 {
-                                    used_idents.insert(path.segments[0].ident);
+                            match &expr.kind {
+                                ExprKind::Path(_, path) | ExprKind::Struct(path, _, _) => {
+                                    if path.segments.len() == 1 {
+                                        used_idents.insert(path.segments[0].ident);
+                                    }
                                 }
+                                _ => {}
                             }
                         });
                     }
