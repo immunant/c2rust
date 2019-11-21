@@ -154,10 +154,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     }
 
     /// Pick a destination module for a header item
-    fn find_destination_id(&mut self, declaration: &MovedDecl) -> (NodeId, Ident) {
+    fn find_destination_id(&mut self, declaration: &MovedDecl) -> NodeId {
         if declaration.parent_header.is_std() {
             let mod_info = self.modules.get(&self.stdlib_id).unwrap();
-            return (mod_info.id, mod_info.ident);
+            return mod_info.id;
         }
 
         // Try to find an existing module to put this item in
@@ -196,7 +196,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }
         };
 
-        (dest_module.id, dest_module.ident)
+        dest_module.id
     }
 
     /// Drop all header modules, storing their items into the `module_items`
@@ -378,7 +378,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     debug!("{:?}", items);
                 }
                 let item = items.lone();
-                let (dest_module_id, _dest_module_ident) = self.find_destination_id(&item);
+                let dest_module_id = self.find_destination_id(&item);
 
                 let dest_module_info = &self.modules[&dest_module_id];
                 let mut path_segments = dest_module_info.path.clone();
@@ -402,7 +402,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         unnamed_items.map(|items| {
             for item in items.into_iter() {
                 let ident = item.ident();
-                let (parent, _dest_module_ident) = self.find_destination_id(&item);
+                let parent = self.find_destination_id(&item);
 
                 let dest_module_info = &self.modules[&parent];
                 let mut path_segments = dest_module_info.path.clone();
