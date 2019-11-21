@@ -1,7 +1,7 @@
 use derive_more::From;
 use indexmap::IndexMap;
 use smallvec::SmallVec;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::mem;
 
 use crate::transform::Transform;
@@ -54,6 +54,9 @@ pub struct Reorganizer<'a, 'tcx: 'a> {
     // Mapping from replaced item DefId to the path of its replacement and the
     // replacements parent module NodeId
     path_mapping: HashMap<DefId, Replacement>,
+
+    // Counter used by `unique_ident`
+    ident_counter: HashMap<Ident, usize>,
 }
 
 #[derive(Clone)]
@@ -72,7 +75,8 @@ struct Replacement {
 /// determine which module a header declaration should be moved into.
 #[derive(Clone)]
 struct ModuleInfo {
-    ident: Ident,
+    orig_ident: Ident,
+    unique_ident: Ident,
     id: NodeId,
 
     path: Vec<PathSegment>,
@@ -101,6 +105,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             modules: HashMap::new(),
             path_mapping: HashMap::new(),
             stdlib_id: DUMMY_NODE_ID,
+            ident_counter: HashMap::new(),
         }
     }
 
@@ -117,6 +122,22 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         self.move_items(header_decls, krate);
 
         self.update_paths(krate)
+    }
+
+    /// Return a new unique identifier with the given prefix
+    fn unique_ident(&mut self, ident: Ident) -> Ident {
+        match self.ident_counter.entry(ident) {
+            Entry::Vacant(e) => {
+                e.insert(0);
+                ident
+            }
+            Entry::Occupied(mut e) => {
+                let ev = e.get_mut();
+                let res = format!("{}_{}", ident.as_str(), *ev);
+                *ev += 1;
+                Ident::from_str(&res)
+            }
+        }
     }
 
     /// Iterate through the Crate and enumerate potentential destination modules.
@@ -139,16 +160,17 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
         // Create a new module for standard library headers
         let stdlib_ident = Ident::from_str("stdlib");
-        match self.modules.values().find(|mod_info| mod_info.ident == stdlib_ident) {
+        match self.modules.values().find(|mod_info| mod_info.orig_ident == stdlib_ident) {
             Some(info) => self.stdlib_id = info.id,
             None => {
                 self.stdlib_id = self.st.next_node_id();
+                let unique_ident = self.unique_ident(stdlib_ident);
                 // TODO: this builds a `ModuleInfo` with an empty `headers`,
                 // which is fine because that doesn't ever get checked below
                 // in `find_destination_id` if `is_std() == true`; if that ever
                 // changes, we need to fix it here
                 self.modules.entry(self.stdlib_id)
-                    .or_insert(ModuleInfo::new(stdlib_ident, self.stdlib_id));
+                    .or_insert(ModuleInfo::new(stdlib_ident, unique_ident, self.stdlib_id));
             }
         }
     }
@@ -178,7 +200,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             declaration.parent_header
                 .ident
                 .as_str()
-                .contains(&*dest_module_info.ident.as_str())
+                .contains(&*dest_module_info.orig_ident.as_str())
         });
         let dest_module = match dest_module {
             Some(m) => m,
@@ -186,10 +208,12 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 // We didn't find an existing module, just put it in a new module for
                 // that header.
                 let new_node_id = self.st.next_node_id();
+                let orig_ident = declaration.parent_header.ident;
+                let unique_ident = self.unique_ident(orig_ident);
                 self.modules
                     .entry(new_node_id)
                     .or_insert_with(|| {
-                        let mut mod_info = ModuleInfo::new(declaration.parent_header.ident, new_node_id);
+                        let mut mod_info = ModuleInfo::new(orig_ident, unique_ident, new_node_id);
                         mod_info.headers.insert(declaration.parent_header.path.clone());
                         mod_info
                     })
@@ -518,7 +542,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     let new_mod_item = mk()
                         .pub_()
                         .id(mod_info.id)
-                        .mod_item(mod_info.ident, new_mod);
+                        .mod_item(mod_info.unique_ident, new_mod);
                     krate.module.items.insert(0, new_mod_item);
                 }
             }
@@ -770,11 +794,12 @@ impl HeaderInfo {
 }
 
 impl ModuleInfo {
-    fn new(ident: Ident, id: NodeId) -> Self {
+    fn new(orig_ident: Ident, unique_ident: Ident, id: NodeId) -> Self {
         Self {
-            ident,
+            orig_ident,
+            unique_ident,
             id,
-            path: vec![mk().path_segment(kw::Crate), mk().path_segment(ident.name)],
+            path: vec![mk().path_segment(kw::Crate), mk().path_segment(unique_ident.name)],
             new: true,
             has_main: false,
             header_lines: HashMap::new(),
@@ -812,7 +837,8 @@ impl ModuleInfo {
             }
         }
         Self {
-            ident: item.ident,
+            orig_ident: item.ident,
+            unique_ident: item.ident,
             id: item.id,
             path: path.segments,
             new: false,
