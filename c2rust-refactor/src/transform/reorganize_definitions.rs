@@ -676,33 +676,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         }).collect();
         // Mapping from user path expr NodeId to old DefId
         let path_ids = remapped_paths.iter().map(|(user, (_parent, def))| (*user, *def)).collect();
+
+        // Cast updated values back to their original type if needed
         externs::fix_users(krate, &replacement_map, &path_ids, self.cx);
-
-        // MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-        //     let callee = match self.cx.opt_callee(&e) {
-        //         Some(callee) => callee,
-        //         None => return,
-        //     };
-        //     let replacement = match self.path_mapping.get(&callee) {
-        //         Some(r) => r,
-        //         None => return,
-        //     };
-        //     if let Some(def_id) = replacement.def {
-        //         let orig_fn_sig = self.cx.ty_ctxt().fn_sig(callee);
-        //         let replacement_fn_sig = self.cx.ty_ctxt().fn_sig(def_id);
-        //         let args: &mut [P<Expr>] = match e.kind {
-        //             ExprKind::Call(_, ref mut args) => args,
-        //             ExprKind::MethodCall(_, ref mut args) => args,
-        //             _ => panic!("expected Call or MethodCall"),
-        //         };
-
-        //         for (new_arg_ty, orig_arg_ty) in replacement_fn_sig.inputs().zip(orig_fn_sig.inputs()) {
-        //             if new_arg_ty.ast_equiv(orig_arg_ty) {
-        //                 continue;
-        //             }
-        //         }
-        //     }
-        // });
 
         // Remove use statements that now refer to their self module.
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
