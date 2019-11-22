@@ -8,6 +8,7 @@ use crate::transform::Transform;
 use rustc::hir::def::{Namespace, PerNS};
 use rustc::hir::def_id::DefId;
 use rustc::hir::{self, Node};
+use rustc::ty::{self, ParamEnv};
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
 use syntax::attr::{self, HasAttrs};
@@ -18,7 +19,7 @@ use syntax::util::map_in_place::MapInPlace;
 use syntax_pos::BytePos;
 
 use crate::ast_manip::util::{is_relative_path, join_visibility, split_uses, is_exported};
-use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes};
+use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -593,6 +594,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
     /// Update paths to moved items and remove redundant imports.
     fn update_paths(&self, krate: &mut Crate) {
+        let tcx = self.cx.ty_ctxt();
+
         // Maps NodeId of an AST element with an updated path to the NodeId of
         // the module its target is now located in and the DefId of the original
         // target.
@@ -629,6 +632,32 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 }
             }
             (qself, path)
+        });
+
+        // Fix casts of the following format:
+        // &global as *const [T; 0]
+        // where global is now [T; n] where n > 0, not [T; 0]
+        MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
+            let cast_id = e.id;
+            let (val, ty) = match_or!([&mut e.kind] ExprKind::Cast(val, ty) => (val, ty); return);
+            let val = match_or!([&val.kind] ExprKind::AddrOf(_mutbl, val) => val; return);
+            let old_def_id = match_or!([self.cx.try_resolve_expr(&val)] Some(id) => id; return);
+            let replacement = match_or!([self.path_mapping.get(&old_def_id)] Some(x) => x; return);
+            let new_def_id = match_or!([replacement.def] Some(id) => id; return);
+            let val_ty = self.cx.def_type(new_def_id);
+            let val_len = match_or!([val_ty.kind] ty::TyKind::Array(_ty, n) => n; return);
+            let cast_ty = match_or!([self.cx.opt_node_type(cast_id)] Some(ty) => ty; return);
+            let cast_ty = match_or!([cast_ty.kind] ty::TyKind::RawPtr(ty) => ty; return);
+            let cast_ty = cast_ty.ty;
+            let cast_len = match_or!([cast_ty.kind] ty::TyKind::Array(_ty, n) => n; return);
+            if let Some(0) = cast_len.try_eval_usize(tcx, ParamEnv::empty()) {
+                if let Some(val_len) = val_len.try_eval_usize(tcx, ParamEnv::empty()) {
+                    let ty = match_or!([&mut ty.kind] TyKind::Ptr(ty) => ty; return);
+                    let cast_len = match_or!([&mut ty.ty.kind] TyKind::Array(_ty, n) => n; return);
+                    let lit = mk().lit_expr(mk().int_lit(val_len as u128, LitIntType::Unsuffixed));
+                    *cast_len = mk().anon_const(lit);
+                }
+            }
         });
 
         // Mapping from old DefId to new DefId
