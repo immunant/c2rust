@@ -264,9 +264,18 @@ pub fn join_visibility(vis1: &VisibilityKind, vis2: &VisibilityKind) -> Visibili
     }
 }
 
-// Is this item exported from the library?
+/// Is this item visible outside its translation unit?
 pub fn is_exported(item: &Item) -> bool {
-    item.attrs.iter().find(|attr| {
-        attr.path == sym::no_mangle || attr.path == sym::export_name
-    }).is_some()
+    match &item.kind {
+        // Values are only visible outside their translation unit if marked with
+        // no mangle or an explicit symbol name
+        ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
+            item.attrs.iter().find(|attr| {
+                attr.path == sym::no_mangle || attr.path == sym::export_name
+            }).is_some()
+        }
+
+        // Types are visible if pub
+        _ => item.vis.node.is_pub(),
+    }
 }

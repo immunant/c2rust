@@ -1048,10 +1048,16 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         if let Some(items) = self.idents[ns].get_mut(&item.ident) {
             items.retain(|decl| {
                 match &decl.kind {
-                    DeclKind::Item(decl) => if cx.structural_eq(&decl, item) {
-                        matches.push(cx.node_def_id(decl.id));
-                        return false;
-                    },
+                    DeclKind::Item(decl) => {
+                        // Don't match use statements
+                        if let ItemKind::Use(_) = decl.kind {
+                            return true;
+                        }
+                        if cx.structural_eq(&decl, item) {
+                            matches.push(cx.node_def_id(decl.id));
+                            return false;
+                        }
+                    }
 
                     DeclKind::ForeignItem(foreign, _) => {
                         if foreign_equiv(&foreign, item) {
