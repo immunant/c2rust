@@ -958,19 +958,30 @@ function Visitor:rewrite_call_expr(expr)
                             param_expr:to_call{some_path_expr, param_expr}
                             goto continue
                         -- Decay mut ref to immut ref inside option
-                        -- foo(x) -> foo(x.as_ref().map(|r| &**r))
-                        elseif path_cfg:is_box_any() and not param_cfg:is_box_any() then
+                        elseif path_cfg:is_box_any() and not param_cfg:is_box_any() and
+                            not path_cfg:is_opt_any() and not param_cfg:is_opt_any() then
+
                             param_expr = decay_ref_to_ptr(param_expr, param_cfg)
                             goto continue
-                        elseif path_cfg:is_mut() and not param_cfg:is_mut() then
+                        -- foo(x) -> foo(x.as_ref().map(|r| &**r)) iff both path and param
+                        -- aren't boxes (REVIEW: maybe should check that they're opt too?)
+                        elseif not (path_cfg:is_box_any() and param_cfg:is_box_any()) then
                             local var_expr = self.tctx:ident_path_expr("r")
 
                             var_expr:to_unary("Deref", var_expr)
                             var_expr:to_unary("Deref", var_expr)
-                            var_expr:to_addr_of(var_expr, false)
+                            var_expr:to_addr_of(var_expr, param_cfg:is_mut())
 
                             var_expr:to_closure({"r"}, var_expr)
-                            param_expr:to_method_call("as_ref", {param_expr})
+
+                            if path_cfg:is_mut() then
+                                if not param_cfg:is_mut() then
+                                    param_expr:to_method_call("as_ref", {param_expr})
+                                else
+                                    param_expr:to_method_call("as_mut", {param_expr})
+                                end
+                            end
+
                             param_expr:to_method_call("map", {param_expr, var_expr})
                             goto continue
                         end
@@ -998,6 +1009,7 @@ function Visitor:rewrite_call_expr(expr)
                     if not path_cfg then
                         return expr
                     end
+
 
                     -- If we have a config for this path expr, we assume it has been rewritten
                     -- and if we don't have a config for the param itself, we assume it has not

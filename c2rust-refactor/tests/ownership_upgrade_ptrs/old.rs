@@ -687,3 +687,11 @@ unsafe extern "C" fn decay_binary(ptr: *mut _reent) {
 unsafe extern "C" fn box_to_box(ptr: *mut _reent) {
     box_to_box(ptr)
 }
+
+#[ownership_constraints(le(WRITE, _0), le(WRITE, _0))]
+unsafe extern "C" fn takes_refs(_r: *mut _reent, _r2: *const _reent) {}
+
+#[ownership_constraints(le(MOVE, _0), le(MOVE, _1))]
+unsafe extern "C" fn opt_box_to_opt_ref(mut box1: *mut _reent, box2: *mut _reent) {
+    takes_refs(box1, box2);
+}

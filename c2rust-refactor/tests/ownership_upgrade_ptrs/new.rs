@@ -817,3 +817,11 @@ unsafe extern "C" fn decay_binary(ptr: Option<&_reent>) {
 unsafe extern "C" fn box_to_box(ptr: Option<Box<_reent>>) {
     box_to_box(ptr)
 }
+
+#[ownership_constraints(le(WRITE, _0), le(WRITE, _0))]
+unsafe extern "C" fn takes_refs(mut _r: Option<&mut _reent>, _r2: Option<&_reent>) {}
+
+#[ownership_constraints(le(MOVE, _0), le(MOVE, _1))]
+unsafe extern "C" fn opt_box_to_opt_ref(mut box1: Option<Box<_reent>>, box2: Option<Box<_reent>>) {
+    takes_refs(box1.as_mut().map(|r| &mut **r), box2.as_ref().map(|r| &**r));
+}
