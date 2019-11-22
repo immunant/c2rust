@@ -524,7 +524,7 @@ function Visitor:rewrite_method_call_expr(expr)
 end
 
 -- Extracts a raw pointer from a rewritten rust type
-function decay_ref_to_ptr(expr, cfg, explicit_cast, for_struct_field)
+function decay_ref_to_ptr(expr, cfg, explicit_cast, for_struct_field, ptr_ty)
     if cfg:is_opt_any() then
         if cfg:is_mut() then
             -- The reasoning here is that for (boxed) slices you need as_mut to call
@@ -541,9 +541,18 @@ function decay_ref_to_ptr(expr, cfg, explicit_cast, for_struct_field)
     end
 
     if cfg:is_box_any() and not cfg:is_slice_any() then
-        -- TODO: Might need to downcast mutable ref to immutable one?
+        local is_mut
+
+        -- If supplied with the ptr type, use its mutability
+        -- otherwise the cfg is an ok, but less ideal, fallback
+        if ptr_ty then
+            is_mut = tostring(ptr_ty:child(1):get_mutbl()) == "Mutable"
+        else
+            is_mut = cfg:is_mut()
+        end
+
         expr:to_unary("Deref", expr)
-        expr:to_addr_of(expr, cfg:is_mut())
+        expr:to_addr_of(expr, is_mut)
     elseif cfg:is_slice_any() then
         if cfg:is_mut() then
             expr:to_method_call("as_mut_ptr", {expr})
@@ -971,7 +980,6 @@ function Visitor:rewrite_call_expr(expr)
                             var_expr:to_unary("Deref", var_expr)
                             var_expr:to_unary("Deref", var_expr)
                             var_expr:to_addr_of(var_expr, param_cfg:is_mut())
-
                             var_expr:to_closure({"r"}, var_expr)
 
                             if path_cfg:is_mut() then
@@ -980,6 +988,8 @@ function Visitor:rewrite_call_expr(expr)
                                 else
                                     param_expr:to_method_call("as_mut", {param_expr})
                                 end
+                            else
+                                param_expr:to_method_call("as_ref", {param_expr})
                             end
 
                             param_expr:to_method_call("map", {param_expr, var_expr})
@@ -1010,12 +1020,13 @@ function Visitor:rewrite_call_expr(expr)
                         return expr
                     end
 
-
                     -- If we have a config for this path expr, we assume it has been rewritten
                     -- and if we don't have a config for the param itself, we assume it has not
-                    -- been rewritten, meaning we must decay it
+                    -- been rewritten, meaning we must decay it. Foreign functions are a common
+                    -- case for not having a param_cfg.
                     if not param_cfg then
-                        expr = decay_ref_to_ptr(expr, path_cfg)
+                        local ptr_ty = self.tctx:get_expr_ty(expr)
+                        expr = decay_ref_to_ptr(expr, path_cfg, false, false, ptr_ty)
                     end
 
                     return expr
