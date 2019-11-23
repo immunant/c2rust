@@ -371,6 +371,11 @@ pub fn lib_main(opts: Options) -> interface::Result<()> {
         env::set_var("RUSTUP_TOOLCHAIN", toolchain_ver);
     }
 
+    // Shut the compiler up while refactoring
+    let mut rustflags = env::var_os("RUSTFLAGS").unwrap_or_default();
+    rustflags.push(" -Awarnings");
+    env::set_var("RUSTFLAGS", rustflags);
+
     rustc_driver::catch_fatal_errors(move || main_impl(opts)).and_then(|x| x)
 }
 
