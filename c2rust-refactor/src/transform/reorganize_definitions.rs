@@ -306,13 +306,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             path.clone(),
                             include_line,
                         );
-                        match declarations.insert_item(item.clone(), header_info) {
-                            Ok(inserted) => !inserted,
-                            Err(e) => {
-                                warn!("{}", e);
-                                true
-                            }
-                        }
+                        let inserted = declarations.insert_item(item.clone(), header_info);
+                        // Keep the item if we are not collapsing it
+                        !inserted
                     });
 
                     if module.items.is_empty() {
@@ -399,34 +395,26 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // Move named items into module_items
         idents.map(|idents| {
             for (ident, items) in idents.into_iter() {
-                if items.is_empty() {
-                    continue;
+                for item in items {
+                    let dest_module_id = self.find_destination_id(&item);
+
+                    let dest_module_info = self.modules.get_mut(&dest_module_id).unwrap();
+                    dest_module_info.items[item.namespace].insert(ident);
+                    let mut path_segments = dest_module_info.path.clone();
+                    path_segments.push(mk().path_segment(ident.name));
+                    let dest_path = mk().path(path_segments);
+                    self.path_mapping.insert(
+                        item.def_id,
+                        Replacement {
+                            path: dest_path,
+                            parent: dest_module_id,
+                            def: None, // hasn't changed
+                        },
+                    );
+
+                    // Move the item to the `module_items` mapping.
+                    module_items.entry(dest_module_id).or_default().push(item);
                 }
-
-                // Assuming we don't have conflicting items, need to handle that
-                // later.
-                // TODO handle conflicting items
-                if items.len() > 1 {
-                    debug!("{:?}", items);
-                }
-                let item = items.lone();
-                let dest_module_id = self.find_destination_id(&item);
-
-                let dest_module_info = &self.modules[&dest_module_id];
-                let mut path_segments = dest_module_info.path.clone();
-                path_segments.push(mk().path_segment(ident.name));
-                let dest_path = mk().path(path_segments);
-                self.path_mapping.insert(
-                    item.def_id,
-                    Replacement {
-                        path: dest_path,
-                        parent: dest_module_id,
-                        def: None, // hasn't changed
-                    },
-                );
-
-                // Move the item to the `module_items` mapping.
-                module_items.entry(dest_module_id).or_default().push(item);
             }
         });
 
@@ -495,13 +483,6 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                         ContainsDecl::NotContained => true,
                                         ContainsDecl::Equivalent(_) => false,
                                         ContainsDecl::Definition(_) => false,
-                                        ContainsDecl::Conflicting(existing) => {
-                                            panic!(
-                                                "Conflicting items:\n{:#?}\n\n{:#?}",
-                                                existing,
-                                                item,
-                                            );
-                                        }
                                         ContainsDecl::Use(_) => true,
                                     }
                                 });
@@ -513,13 +494,6 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                         ContainsDecl::NotContained => false,
                                         ContainsDecl::Equivalent(_) => true,
                                         ContainsDecl::Definition(_) => true,
-                                        ContainsDecl::Conflicting(existing) => {
-                                            panic!(
-                                                "Conflicting items:\n{:#?}\n\n{:#?}",
-                                                existing,
-                                                item,
-                                            );
-                                        }
                                         ContainsDecl::Use(_) => false,
                                     }
                                 } else {
@@ -1084,7 +1058,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         &mut self,
         mut item: P<Item>,
         parent_header: HeaderInfo,
-    ) -> Result<bool, String> {
+    ) -> bool {
         let namespace = self.cx.item_namespace(&item);
         let new_def_id = self.cx.node_def_id(item.id);
         let ident = if let ItemKind::Use(tree) = &item.kind {
@@ -1100,24 +1074,24 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             // ident_map.
             ItemKind::Use(tree) if is_nested(tree) => {
                 for u in split_uses(item).into_iter() {
-                    self.insert_item(u, parent_header.clone())?;
+                    self.insert_item(u, parent_header.clone());
                 }
-                Ok(true)
+                true
             }
 
             // Keep function definitions, if any
-            ItemKind::Fn(..) => Ok(false),
+            ItemKind::Fn(..) => false,
 
             // Don't keep impl blocks, these are expanded from macros anyway
-            ItemKind::Impl(..) => Ok(true),
+            ItemKind::Impl(..) => true,
 
             // We collect all ForeignItems and later filter out any idents
             // defined in ident_map after processing the whole list of items.
             ItemKind::ForeignMod(f) => {
                 for item in f.items.iter() {
-                    self.insert_foreign_item(item.clone(), f.abi, parent_header.clone())?;
+                    self.insert_foreign_item(item.clone(), f.abi, parent_header.clone());
                 }
-                Ok(true)
+                true
             }
 
             // We disambiguate named items by their names and check that
@@ -1162,20 +1136,11 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     ContainsDecl::Equivalent(existing) => {
                         Some((new_def_id, existing.def_id))
                     }
-
-                    ContainsDecl::Conflicting(existing) => {
-                        return Err(format!(
-                            "An item already exists for {:?} but it doesn't match the new item\nOld item: {}\nNew item: {}",
-                            ident,
-                            existing.to_string(),
-                            item_to_string(&item),
-                        ));
-                    }
                 };
                 if let Some((old, new)) = def_id_mapping {
                     self.matching_defs.insert(old, new);
                 }
-                Ok(true)
+                true
             }
         }
     }
@@ -1185,7 +1150,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         item: ForeignItem,
         abi: Abi,
         parent_header: HeaderInfo,
-    ) -> Result<(), String> {
+    ) {
         let new_def_id = self.cx.node_def_id(item.id);
         let ident = item.ident;
         let namespace = self.cx.foreign_item_namespace(&item).unwrap();
@@ -1215,21 +1180,11 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                 Some((new_def_id, existing.def_id))
             }
 
-            ContainsDecl::Conflicting(existing) => {
-                return Err(format!(
-                    "A foreign item already exists for {:?} but it doesn't match the new item\nOld item: {}\nNew item: {}",
-                    ident,
-                    existing.to_string(),
-                    foreign_item_to_string(&item),
-                ))
-            }
-
             ContainsDecl::Use(..) => panic!("Foreign items cannot be use statements"),
         };
         if let Some((old, new)) = def_id_mapping {
             self.matching_defs.insert(old, new);
         }
-        Ok(())
     }
 
     /// Finalize and return a de-duplicated Vec of items
@@ -1263,13 +1218,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             .type_ns
             .into_iter()
             .chain(unnamed_items.value_ns.into_iter())
-            .chain(idents.type_ns.into_iter().map(|(_, v)| {
-                if v.len() > 1 {
-                    debug!("{:?}", v);
-                }
-                // TODO handle dups?
-                v.lone()
-            }))
+            .chain(idents.type_ns.into_iter().map(|(_, v)| v.lone()))
             .chain(idents.value_ns.into_iter().map(|(_, v)| v.lone()))
             .collect::<Vec<_>>();
 
@@ -1384,8 +1333,6 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         _ => {
                             if self.cx.structural_eq(&item, &existing_item) {
                                 return ContainsDecl::Equivalent(existing_decl);
-                            } else {
-                                return ContainsDecl::Conflicting(existing_decl);
                             }
                         }
                     }
@@ -1406,8 +1353,6 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         }
                         if foreign_equiv(&existing_foreign, &item) {
                             return ContainsDecl::Equivalent(existing_decl);
-                        } else {
-                            return ContainsDecl::Conflicting(existing_decl);
                         }
                     }
                 }
@@ -1444,14 +1389,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                                 }
                             }
                             return ContainsDecl::Equivalent(existing_decl);
-                        } else {
-                            return ContainsDecl::Conflicting(existing_decl);
                         }
                     }
 
                     DeclKind::ForeignItem(existing_foreign, existing_abi) => {
                         if *existing_abi != abi {
-                            return ContainsDecl::Conflicting(existing_decl);
+                            continue;
                         }
                         let matches_existing = match (&existing_foreign.kind, &item.kind) {
                             (ForeignItemKind::Fn(decl1, _), ForeignItemKind::Fn(decl2, _)) => {
@@ -1462,8 +1405,6 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         };
                         if matches_existing {
                             return ContainsDecl::Equivalent(existing_decl);
-                        } else {
-                            return ContainsDecl::Conflicting(existing_decl);
                         }
                     }
                 }
@@ -1483,9 +1424,6 @@ enum ContainsDecl<'a> {
 
     /// The module contains a definition that can replace the given item.
     Definition(&'a mut MovedDecl),
-
-    /// The module contains a definition that conflicts with the given item.
-    Conflicting(&'a mut MovedDecl),
 
     /// The module contains a use of the given item.
     Use(&'a mut MovedDecl),
