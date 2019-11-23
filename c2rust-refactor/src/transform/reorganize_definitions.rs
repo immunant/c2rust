@@ -1039,7 +1039,8 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
     fn remove_matching_defs(&mut self, item: &Item) -> Vec<DefId> {
         let ns = match item.kind {
             // Can't match these items
-            ItemKind::Use(..) | ItemKind::Impl(..) | ItemKind::ForeignMod(..) => return vec![],
+            ItemKind::Use(..) | ItemKind::Impl(..) | ItemKind::ForeignMod(..)
+            | ItemKind::Mod(..) => return vec![],
 
             // Values
             ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => Namespace::ValueNS,
