@@ -1,6 +1,7 @@
 transpile:
   autogen: true
   binary: runtest
+  tflags: --reorganize-definitions
 
 cargo:
   autogen: true

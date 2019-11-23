@@ -11,6 +11,7 @@ requirements:
 
 transpile:
   autogen: true
+  tflags: --reorganize-definitions
   binary: tool_main
 
 cargo:

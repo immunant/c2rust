@@ -8,6 +8,7 @@ transpile:
   autogen: true
   binary: fullbench # zstdcli
   cflags: -Qunused-arguments
+  tflags: --reorganize-definitions
 
 cargo:
   autogen: true

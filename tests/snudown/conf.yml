@@ -6,6 +6,7 @@ requirements:
 
 transpile:
   autogen: true
+  tflags: --reorganize-definitions
 
 cargo:
   autogen: true
