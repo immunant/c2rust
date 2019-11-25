@@ -20,7 +20,7 @@ use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
 use syntax_pos::{Span, SyntaxContext};
 
-use rlua::{AnyUserData, Context, Error, FromLua, Function, MetaMethod, Result, Scope, ToLua, UserData, UserDataMethods, Value};
+use rlua::{Context, Error, FromLua, Function, MetaMethod, Result, Scope, ToLua, UserData, UserDataMethods, Value};
 use rlua::prelude::{LuaString, LuaTable};
 
 use crate::ast_manip::{util, visit_nodes, AstName, AstNode, WalkAst};
@@ -364,6 +364,9 @@ impl<T> FromLuaAstNode for LuaAstNode<T>
             }),
 
             _ => Err(Error::FromLuaConversionError {
+                // FIXME: we should get this from `value.type_name()`,
+                // but that method is currently private, see
+                // https://github.com/kyren/rlua/issues/58
                 from: "Value",
                 to: std::any::type_name::<T>(),
                 message: None,
@@ -524,8 +527,18 @@ impl FromLuaExt for char {
 }
 
 impl FromLuaExt for NodeId {
-    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
-        Ok(NodeId::from_u32(FromLua::from_lua(value, lua)?))
+    fn from_lua_ext<'lua>(value: Value<'lua>, _lua: Context<'lua>) -> Result<Self> {
+        match value {
+            Value::Integer(x) => Ok(NodeId::from_u32(x as u32)),
+
+            Value::Nil => Ok(DUMMY_NODE_ID),
+
+            _ => Err(Error::FromLuaConversionError {
+                from: "Value",
+                to: "NodeId",
+                message: None,
+            })
+        }
     }
 }
 
@@ -877,10 +890,21 @@ impl ToLuaExt for Span {
 }
 
 impl FromLuaExt for Span {
-    fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
-        let ud: AnyUserData = FromLua::from_lua(value, lua)?;
-        let sd = ud.borrow::<SpanData>()?;
-        Ok(sd.0.with_ctxt(sd.0.ctxt))
+    fn from_lua_ext<'lua>(value: Value<'lua>, _lua: Context<'lua>) -> Result<Self> {
+        match value {
+            Value::UserData(ud) => {
+                let sd = ud.borrow::<SpanData>()?;
+                Ok(sd.0.with_ctxt(sd.0.ctxt))
+            }
+
+            Value::Nil => Ok(DUMMY_SP),
+
+            _ => Err(Error::FromLuaConversionError {
+                from: "Value",
+                to: "Span",
+                message: None,
+            })
+        }
     }
 }
 
