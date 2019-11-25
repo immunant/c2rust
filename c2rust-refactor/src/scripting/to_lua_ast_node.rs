@@ -323,8 +323,20 @@ impl<T> FromLuaExt for T
                 let node = node.borrow().clone();
                 Ok(node)
             }
+
             Value::Table(t) => FromLuaTable::from_lua_table(t, lua),
-            _ => Err(Error::UserDataTypeMismatch)
+
+            Value::Nil => Err(Error::FromLuaConversionError {
+                from: "Nil",
+                to: std::any::type_name::<T>(),
+                message: None,
+            }),
+
+            _ => Err(Error::FromLuaConversionError {
+                from: "Value",
+                to: std::any::type_name::<T>(),
+                message: None,
+            })
         }
     }
 }
@@ -339,11 +351,23 @@ impl<T> FromLuaAstNode for LuaAstNode<T>
                 let node = &*ud.borrow::<LuaAstNode<T>>()?;
                 Ok(node.clone())
             }
+
             Value::Table(t) => {
                 let node = FromLuaTable::from_lua_table(t, lua)?;
                 Ok(LuaAstNode::new(node))
             }
-            _ => Err(Error::UserDataTypeMismatch)
+
+            Value::Nil => Err(Error::FromLuaConversionError {
+                from: "Nil",
+                to: std::any::type_name::<T>(),
+                message: None,
+            }),
+
+            _ => Err(Error::FromLuaConversionError {
+                from: "Value",
+                to: std::any::type_name::<T>(),
+                message: None,
+            })
         }
     }
 }
