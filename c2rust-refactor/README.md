@@ -17,8 +17,8 @@ automatically-generated Rust code.
 
 Flags for `c2rust refactor` are described by `c2rust refactor --help`.
 
-See [the command documentation](commands.html) for a list of commands,
-including complete usage and descriptions. 
+See [the command documentation (online manual)](https://c2rust.com/manual/c2rust-refactor/commands.html)
+for a list of commands, including complete usage and descriptions. 
 Multiple commands can be separated by an argument consisting of a single
 semicolon, as in `c2rust refactor cmd1 arg1 \; cmd2 arg2`.
 (Note the semicolon needs to be escaped to prevent it from being interpreted by
@@ -49,8 +49,8 @@ by a command is described in the command's documentation; by default, most
 commands that use marks operate on `target`.
 
 The most flexible way of marking nodes is by using the
-[`select`](commands.html#select) command.  See the command
-documentation and `src/select/mod.rs` for details.  Note that marks are not
-preserved across `c2rust refactor` invocations, so you usually want to run
-`select` followed by the command of interest using the `;` separator mentioned
-above.
+[`select`](https://c2rust.com/manual/c2rust-refactor/commands.html#select)
+command.  See the command documentation and `src/select/mod.rs` for details.
+Note that marks are not preserved across `c2rust refactor` invocations, so you
+usually want to run `select` followed by the command of interest using the `;`
+separator mentioned above.
