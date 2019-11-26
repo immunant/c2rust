@@ -5,7 +5,8 @@ require "pl"
 Variable = {}
 
 function Variable.new(node_id, kind)
-    self = {}
+    local self = {}
+
     self.id = node_id
     self.kind = kind
     self.shadowed = false
@@ -19,7 +20,8 @@ end
 Field = {}
 
 function Field.new(node_id)
-    self = {}
+    local self = {}
+
     self.id = node_id
 
     setmetatable(self, Field)
@@ -44,7 +46,8 @@ end
 Struct = {}
 
 function Struct.new(lifetimes, is_copy)
-    self = {}
+    local self = {}
+
     self.lifetimes = lifetimes
     self.is_copy = is_copy
 
@@ -57,7 +60,8 @@ end
 Fn = {}
 
 function Fn.new(node_id, is_foreign, arg_ids)
-    self = {}
+    local self = {}
+
     self.id = node_id
     self.is_foreign = is_foreign
     self.arg_ids = arg_ids
@@ -71,7 +75,8 @@ end
 ConvConfig = {}
 
 function ConvConfig.new(args)
-    self = {}
+    local self = {}
+
     self.conv_type = args[1]
 
     for i, arg in ipairs(args) do
@@ -238,11 +243,15 @@ end
 Ty = {}
 
 function Ty.new(kind)
-    self = {}
+    local self = {}
+
     self[1] = "Ty"
     self.id = DUMMY_NODE_ID
     self.span = DUMMY_SP
     self.kind = kind
+
+    setmetatable(self, Ty)
+    Ty.__index = Ty
 
     return self
 end
@@ -250,7 +259,8 @@ end
 Visitor = {}
 
 function Visitor.new(tctx, node_id_cfgs)
-    self = {}
+    local self = {}
+
     self.tctx = tctx
     -- NodeId -> ConvConfig
     self.node_id_cfgs = node_id_cfgs
@@ -1417,7 +1427,8 @@ end
 ConfigBuilder = {}
 
 function ConfigBuilder.new(marks, boxes, tctx)
-    self = {}
+    local self = {}
+
     self.marks = marks
     self.node_id_cfgs = {}
     self.boxes = boxes
@@ -1610,7 +1621,8 @@ end
 MallocMarker = {}
 
 function MallocMarker.new(tctx)
-    self = {}
+    local self = {}
+
     self.tctx = tctx
     self.boxes = {}
 
