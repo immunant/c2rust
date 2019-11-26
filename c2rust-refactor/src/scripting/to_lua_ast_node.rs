@@ -664,7 +664,8 @@ fn from_lua_prepend_field<T>(field: &'static str, res: Result<T>) -> Result<T> {
             Err(Error::FromLuaConversionError {
                 from,
                 to,
-                message: Some(format!("error in field '{}'", field)),
+                message: Some(format!("field '{}' in '{}'", field,
+                                      std::any::type_name::<T>())),
             })
         }
 
@@ -672,7 +673,8 @@ fn from_lua_prepend_field<T>(field: &'static str, res: Result<T>) -> Result<T> {
             Err(Error::FromLuaConversionError {
                 from,
                 to,
-                message: Some(format!("error in field '{}': {}", field, msg)),
+                message: Some(format!("field '{}' in '{}': {}", field,
+                                      std::any::type_name::<T>(), msg)),
             })
         }
 
