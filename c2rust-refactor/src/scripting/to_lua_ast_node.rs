@@ -658,6 +658,28 @@ fn from_lua_kind_error<T>(expected: &'static str, actual: &str) -> Result<T> {
     })
 }
 
+fn from_lua_prepend_field<T>(field: &'static str, res: Result<T>) -> Result<T> {
+    match res {
+        Err(Error::FromLuaConversionError { from, to, message: None }) => {
+            Err(Error::FromLuaConversionError {
+                from,
+                to,
+                message: Some(format!("error in field '{}'", field)),
+            })
+        }
+
+        Err(Error::FromLuaConversionError { from, to, message: Some(msg) }) => {
+            Err(Error::FromLuaConversionError {
+                from,
+                to,
+                message: Some(format!("error in field '{}': {}", field, msg)),
+            })
+        }
+
+        _ => res
+    }
+}
+
 include!(concat!(env!("OUT_DIR"), "/lua_ast_node_gen.inc.rs"));
 
 unsafe impl<T> Send for LuaAstNode<Spanned<T>> {}

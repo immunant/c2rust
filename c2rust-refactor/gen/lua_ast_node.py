@@ -177,7 +177,7 @@ def do_one_impl(s, kind_map, boxed, emit_ldoc):
         yield '    if _kind == "%s" {' % s.name
         yield '      Ok(%s%s {' % ('P(' if boxed else '', s.name)
         for f in s.fields:
-            yield '        %s: FromLuaExt::from_lua_ext(_table.get::<_, Value>("%s")?, _lua_ctx)?,' % (f.name, f.name)
+            yield '        %s: from_lua_prepend_field("%s", FromLuaExt::from_lua_ext(_table.get::<_, Value>("%s")?, _lua_ctx))?,' % (f.name, f.name, f.name)
             # TODO: kind folding???
 
         yield '      }%s)' % (')' if boxed else '')
