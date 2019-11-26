@@ -143,6 +143,9 @@ impl fmt::Display for DisplayLuaError {
         match &self.0 {
             LuaError::SyntaxError{message, ..} => write!(f, "Syntax error while parsing lua: {}", message),
             LuaError::RuntimeError(e) => write!(f, "Runtime error during lua execution: {}", e),
+            LuaError::CallbackError { traceback, cause } => {
+                write!(f, "Callback error: {}, traceback: {}", cause, traceback)
+            }
             e => e.fmt(f),
         }
     }
