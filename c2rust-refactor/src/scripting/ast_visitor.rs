@@ -346,7 +346,7 @@ impl<'lua> LuaAstVisitorNew<'lua> {
                 Ok(())
             });
             method.call((visitor, (param, walk)))
-                .unwrap_or_else(|e| panic!("Lua visit function failed: {:?}", e))
+                .unwrap_or_else(|e| panic!("Lua visit function failed: {:}", DisplayLuaError(e)))
         });
         *param = node.into_inner();
     }
