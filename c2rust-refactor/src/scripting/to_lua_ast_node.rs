@@ -333,6 +333,9 @@ impl<T> FromLuaExt for T
             }),
 
             _ => Err(Error::FromLuaConversionError {
+                // FIXME: we should get this from `value.type_name()`,
+                // but that method is currently private, see
+                // https://github.com/kyren/rlua/issues/58
                 from: "Value",
                 to: std::any::type_name::<T>(),
                 message: None,
@@ -364,9 +367,6 @@ impl<T> FromLuaAstNode for LuaAstNode<T>
             }),
 
             _ => Err(Error::FromLuaConversionError {
-                // FIXME: we should get this from `value.type_name()`,
-                // but that method is currently private, see
-                // https://github.com/kyren/rlua/issues/58
                 from: "Value",
                 to: std::any::type_name::<T>(),
                 message: None,
