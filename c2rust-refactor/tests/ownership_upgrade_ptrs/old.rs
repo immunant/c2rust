@@ -695,3 +695,8 @@ unsafe extern "C" fn takes_refs(_r: *mut _reent, _r2: *const _reent) {}
 unsafe extern "C" fn opt_box_to_opt_ref(mut box1: *mut _reent, box2: *mut _reent) {
     takes_refs(box1, box2);
 }
+
+#[ownership_constraints(le(MOVE, _0), le(MOVE, _1))]
+unsafe extern "C" fn opt_box_to_ptr(mut box1: *mut u32, mut box2: *mut u32) {
+    takes_ptrs(box1, box2);
+}

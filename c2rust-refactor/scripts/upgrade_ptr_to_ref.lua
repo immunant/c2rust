@@ -256,6 +256,90 @@ function Ty.new(kind)
     return self
 end
 
+Expr = {}
+
+function Expr.new(kind, attrs)
+    local self = {}
+
+    self[1] = "Expr"
+    self.id = DUMMY_NODE_ID
+    self.span = DUMMY_SP
+    self.kind = kind
+    self.attrs = attrs or {}
+
+    setmetatable(self, Expr)
+    Expr.__index = Expr
+
+    return self
+end
+
+Pat = {}
+
+function Pat.new(kind)
+    local self = {}
+
+    self[1] = "Pat"
+    self.id = DUMMY_NODE_ID
+    self.span = DUMMY_SP
+    self.kind = kind
+
+    setmetatable(self, Pat)
+    Pat.__index = Pat
+
+    return self
+end
+
+Ident = {}
+
+function Ident.new(name)
+    local self = {}
+
+    self[1] = "Ident"
+    self.name = name
+    self.span = DUMMY_SP
+
+    setmetatable(self, Ident)
+    Ident.__index = Ident
+
+    return self
+end
+
+PathSegment = {}
+
+function PathSegment.new(ident, args)
+    local self = {}
+
+    self[1] = "PathSegment"
+    self.ident = Ident.new(ident)
+    self.args = args
+    self.id = DUMMY_NODE_ID
+
+    setmetatable(self, PathSegment)
+    PathSegment.__index = PathSegment
+
+    return self
+end
+
+Path = {}
+
+function Path.new(segments)
+    local self = {}
+    local path_segments = {}
+
+    for _, segment in ipairs(segments) do
+        table.insert(path_segments, PathSegment.new(segment))
+    end
+
+    self[1] = "Path"
+    self.span = DUMMY_SP
+    self.segments = path_segments
+
+    setmetatable(self, Path)
+    Path.__index = Path
+
+    return self
+end
+
 Visitor = {}
 
 function Visitor.new(tctx, node_id_cfgs)
@@ -437,11 +521,11 @@ function Visitor:rewrite_binary_expr(expr)
 
     -- If lhs is rewritten but rhs isn't, decay lhs to ptr
     if lhs_config and not rhs_config then
-        lhs = decay_ref_to_ptr(lhs, lhs_config, true)
+        lhs = decay_ref_to_ptr(lhs, lhs_config)
         expr:replace_child(2, lhs)
     -- If rhs is rewritten but lhs isn't, decay rhs to ptr
     elseif rhs_config and not lhs_config then
-        rhs = decay_ref_to_ptr(rhs, rhs_config, true)
+        rhs = decay_ref_to_ptr(rhs, rhs_config)
         expr:replace_child(3, rhs)
     end
 end
@@ -534,33 +618,139 @@ function Visitor:rewrite_method_call_expr(expr)
 end
 
 -- Extracts a raw pointer from a rewritten rust type
-function decay_ref_to_ptr(expr, cfg, explicit_cast, for_struct_field, ptr_ty)
+function decay_ref_to_ptr(expr, cfg, for_struct_field, ptr_ty)
+    local is_mut
+
+    -- If supplied with the ptr type, use its mutability
+    -- otherwise the cfg is an ok, but less ideal, fallback
+    if ptr_ty and not cfg:is_array() then
+        is_mut = tostring(ptr_ty:child(1):get_mutbl()) == "Mutable"
+    else
+        is_mut = cfg:is_mut()
+    end
+
+    -- There are a couple cases:
+    -- 1) Option<NonNull<T>> -> opt.map(|r| r.as_ptr()).unwrap_or(0 as *const/mut _)
+    -- 2) Option<Box<T>> -> opt.map(|r| &[mut] **r as *const/mut _).unwrap_or(0 as *const/mut _)
+    -- where T may be a slice or non slice. (For the slice case, .as_[mut_]ptr is used)
     if cfg:is_opt_any() then
-        if cfg:is_mut() then
-            -- The reasoning here is that for (boxed) slices you need as_mut to call
-            -- as_mut_ptr, but for non slices you can skip this since you can
-            -- get a reference directly to the data "&mut data" and decay that. This
-            -- might be possible with slices via 0-indexing but the intention
-            -- seems a little less clear than using the builtin "as_mut_ptr()"
-            if not (cfg:is_box_any() and not cfg:is_slice_any()) then
+        local closure_expr
+        local mutbl = is_mut and "Mutable" or "Immutable"
+        local as_ptr = is_mut and "as_mut_ptr" or "as_ptr"
+        local unwrap_or_expr = Expr.new{
+            "Cast",
+            Expr.new{
+                "Lit",
+                {
+                    "Lit",
+                    token={"TokenLit", kind="Integer", symbol="0", suffix=nil},
+                    kind={"Int", 0, "Unsuffixed"},
+                    span=DUMMY_SP,
+                }
+            },
+            Ty.new{"Ptr", {"MutTy", ty=Ty.new{"Infer"}, mutbl=mutbl}},
+        }
+
+        if cfg:is_slice_any() or cfg.extra_data.non_null_wrapped then
+            -- core::ptr::NonNull doesn't have an as_mut_ptr
+            if cfg.extra_data.non_null_wrapped then
+                as_ptr = "as_ptr"
+            end
+
+            closure_expr = Expr.new{
+                "MethodCall",
+                PathSegment.new(as_ptr),
+                {
+                    Expr.new{
+                        "Path",
+                        nil,
+                        Path.new{"r"},
+                    }
+                },
+            }
+
+            if not is_mut and cfg.extra_data.non_null_wrapped then
+                closure_expr = Expr.new{
+                    "Cast",
+                    closure_expr,
+                    Ty.new{"Ptr", {"MutTy", ty=Ty.new{"Infer"}, mutbl="Immutable"}},
+                }
+            end
+        else
+            closure_expr = Expr.new{
+                "Cast",
+                Expr.new{
+                    "AddrOf",
+                    mutbl,
+                    Expr.new{
+                        "Unary",
+                        "Deref",
+                        Expr.new{
+                            "Unary",
+                            "Deref",
+                            Expr.new{
+                                "Path",
+                                nil,
+                                Path.new{"r"},
+                            }
+                        }
+                    },
+                },
+                Ty.new{"Ptr", {"MutTy", ty=Ty.new{"Infer"}, mutbl=mutbl}},
+            }
+        end
+
+        local closure = Expr.new{
+            "Closure",
+            "Ref",
+            "NotAsync",
+            "Movable",
+            {
+                "FnDecl",
+                inputs={
+                    {
+                        "Param",
+                        attrs={},
+                        ty=Ty.new{"Infer"},
+                        pat=Pat.new{
+                            "Ident",
+                            {
+                                "ByValue",
+                                "Immutable",
+                            },
+                            Ident.new("r"),
+                            nil,
+                        },
+                        is_placeholder=false,
+                    },
+                },
+                output={"Default", DUMMY_SP},
+            },
+            closure_expr,
+            DUMMY_SP,
+        }
+
+        if not cfg.extra_data.non_null_wrapped then
+            if cfg:is_mut() then
                 expr:to_method_call("as_mut", {expr})
+            else
+                expr:to_method_call("as_ref", {expr})
             end
         end
 
-        expr:to_method_call("unwrap", {expr})
+        expr:to_method_call("map", {expr, closure})
+        expr:to_method_call(
+            "unwrap_or",
+            {
+                expr,
+                unwrap_or_expr,
+            }
+        )
+
+        return expr
     end
 
     if cfg:is_box_any() and not cfg:is_slice_any() then
-        local is_mut
-
-        -- If supplied with the ptr type, use its mutability
-        -- otherwise the cfg is an ok, but less ideal, fallback
-        if ptr_ty then
-            is_mut = tostring(ptr_ty:child(1):get_mutbl()) == "Mutable"
-        else
-            is_mut = cfg:is_mut()
-        end
-
         expr:to_unary("Deref", expr)
         expr:to_addr_of(expr, is_mut)
     elseif cfg:is_slice_any() then
@@ -575,28 +765,6 @@ function decay_ref_to_ptr(expr, cfg, explicit_cast, for_struct_field, ptr_ty)
         expr:to_unary("Deref", expr)
     elseif cfg.extra_data.non_null_wrapped then
         expr:to_method_call("as_ptr", {expr})
-    end
-
-    if explicit_cast then
-        local mutbl
-
-        if cfg:is_mut() then
-            mutbl = "Mutable"
-        else
-            mutbl = "Immutable"
-        end
-
-        local inferred_ty = Ty.new{"Infer"}
-        local inferred_ptr_ty = Ty.new{
-            "Ptr",
-            {
-                "MutTy",
-                ty=inferred_ty,
-                mutbl={mutbl},
-            },
-        }
-
-        expr:to_cast(expr, inferred_ptr_ty)
     end
 
     return expr
@@ -616,7 +784,11 @@ function Visitor:rewrite_field_expr(expr)
 
             -- (*foo).bar -> (foo.as_mut().unwrap()).bar
             if cfg:is_opt_any() then
-                derefed_expr = decay_ref_to_ptr(derefed_expr, cfg, false, true)
+                if cfg:is_mut() then
+                    derefed_expr:to_method_call("as_mut", {derefed_expr})
+                end
+
+                derefed_expr:to_method_call("unwrap", {derefed_expr})
             end
 
             -- (*foo).bar -> (foo).bar (can't remove parens..)
@@ -1036,7 +1208,7 @@ function Visitor:rewrite_call_expr(expr)
                     -- case for not having a param_cfg.
                     if not param_cfg then
                         local ptr_ty = self.tctx:get_expr_ty(expr)
-                        expr = decay_ref_to_ptr(expr, path_cfg, false, false, ptr_ty)
+                        expr = decay_ref_to_ptr(expr, path_cfg, false, ptr_ty)
                     end
 
                     return expr

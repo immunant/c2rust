@@ -166,13 +166,14 @@ pub(crate) unsafe extern "C" fn __ibitmap2(
     clearints = (nbits - 1i32 >> 5i32) + 1i32;
     clearbytes = clearints << 2i32;
     memset(
-        ip.as_mut().unwrap().as_mut_ptr() as *mut libc::c_char as *mut libc::c_void,
+        ip.as_mut().map(|r| r.as_mut_ptr()).unwrap_or(0 as *mut _) as *mut libc::c_char
+            as *mut libc::c_void,
         0i32,
         clearbytes as libc::c_ulong,
     );
     memset(
-        (ip.as_mut().unwrap().as_mut_ptr() as *mut libc::c_char).offset(clearbytes as isize)
-             as *mut libc::c_void,
+        (ip.as_mut().map(|r| r.as_mut_ptr()).unwrap_or(0 as *mut _) as *mut libc::c_char)
+            .offset(clearbytes as isize) as *mut libc::c_void,
         0xffi32,
         ((hashp.as_mut().unwrap()).hdr.bsize - clearbytes) as libc::c_ulong,
     );
@@ -323,8 +324,18 @@ unsafe fn decay_calls(
     *nnmp = 1;
     nnms[0] = 1;
 
-    takes_ptrs(*mp.as_mut().unwrap(), cp.unwrap());
-    takes_ptrs(ms.as_mut().unwrap().as_mut_ptr(), cs.unwrap().as_ptr());
+    takes_ptrs(
+        mp.as_mut()
+            .map(|r| &mut **r as *mut _)
+            .unwrap_or(0 as *mut _),
+        cp.as_ref()
+            .map(|r| &**r as *const _)
+            .unwrap_or(0 as *const _),
+    );
+    takes_ptrs(
+        ms.as_mut().map(|r| r.as_mut_ptr()).unwrap_or(0 as *mut _),
+        cs.as_ref().map(|r| r.as_ptr()).unwrap_or(0 as *const _),
+    );
     takes_ptrs(nnmp, nncp);
     takes_ptrs(nnms.as_mut_ptr(), nncs.as_ptr());
 }
@@ -494,9 +505,11 @@ pub unsafe extern "C" fn wcsspn(mut s: Option<&[wchar_t]>, mut set: Option<&[wch
         p = Some(&p.unwrap()[1..])
     }
     return p
-        .unwrap()
-        .as_ptr()
-        .wrapping_offset_from(s.unwrap().as_ptr()) as libc::c_long as size_t;
+        .as_ref()
+        .map(|r| r.as_ptr())
+        .unwrap_or(0 as *const _)
+        .wrapping_offset_from(s.as_ref().map(|r| r.as_ptr()).unwrap_or(0 as *const _))
+        as libc::c_long as size_t;
 }
 
 pub type wint_t = libc::c_uint;
@@ -547,15 +560,19 @@ pub unsafe extern "C" fn argz_create_sep(
     }
     delim[0] = sep as libc::c_char;
     delim[1] = '\u{0}' as i32 as libc::c_char;
-    running = ::core::ptr::NonNull::new(strdup(string.unwrap().as_ptr()));
+    running = ::core::ptr::NonNull::new(strdup(
+        string.as_ref().map(|r| r.as_ptr()).unwrap_or(0 as *const _),
+    ));
     old_running = running;
     loop {
-        token =
-            ::core::ptr::NonNull::new(strsep(&mut running.unwrap().as_ptr(), delim.as_mut_ptr()));
+        token = ::core::ptr::NonNull::new(strsep(
+            &mut running.map(|r| r.as_ptr()).unwrap_or(0 as *mut _),
+            delim.as_mut_ptr(),
+        ));
         if token.is_none() {
             break;
         }
-        len = strlen(token.unwrap().as_ptr()) as libc::c_int;
+        len = strlen(token.map(|r| r.as_ptr()).unwrap_or(0 as *mut _)) as libc::c_int;
         **argz_len.as_mut().unwrap() = (**argz_len.as_mut().unwrap() as libc::c_ulong)
             .wrapping_add((len + 1i32) as libc::c_ulong)
             as size_t as size_t;
@@ -565,24 +582,41 @@ pub unsafe extern "C" fn argz_create_sep(
     if (**argz.as_mut().unwrap()).is_null() {
         return 12i32;
     }
-    free(old_running.take().unwrap().as_ptr() as *mut libc::c_void);
-    running = ::core::ptr::NonNull::new(strdup(string.unwrap().as_ptr()));
+    free(
+        old_running
+            .take()
+            .map(|r| r.as_ptr() as *const _)
+            .unwrap_or(0 as *const _) as *mut libc::c_void,
+    );
+    running = ::core::ptr::NonNull::new(strdup(
+        string.as_ref().map(|r| r.as_ptr()).unwrap_or(0 as *const _),
+    ));
     old_running = running;
     iter = Some(**argz.as_mut().unwrap());
     i = 0i32;
     while i < num_strings {
-        token =
-            ::core::ptr::NonNull::new(strsep(&mut running.unwrap().as_ptr(), delim.as_mut_ptr()));
-        len = strlen(token.unwrap().as_ptr()).wrapping_add(1i32 as libc::c_ulong) as libc::c_int;
+        token = ::core::ptr::NonNull::new(strsep(
+            &mut running.map(|r| r.as_ptr()).unwrap_or(0 as *mut _),
+            delim.as_mut_ptr(),
+        ));
+        len = strlen(token.map(|r| r.as_ptr()).unwrap_or(0 as *mut _))
+            .wrapping_add(1i32 as libc::c_ulong) as libc::c_int;
         memcpy(
-            iter.unwrap() as *mut libc::c_void,
-            token.unwrap().as_ptr() as *const libc::c_void,
+            iter.as_ref()
+                .map(|r| &mut **r as *mut _)
+                .unwrap_or(0 as *mut _) as *mut libc::c_void,
+            token.map(|r| r.as_ptr()).unwrap_or(0 as *mut _) as *const libc::c_void,
             len as size_t,
         );
         iter = Some(iter.unwrap().offset(len as isize));
         i += 1
     }
-    free(old_running.take().unwrap().as_ptr() as *mut libc::c_void);
+    free(
+        old_running
+            .take()
+            .map(|r| r.as_ptr() as *const _)
+            .unwrap_or(0 as *const _) as *mut libc::c_void,
+    );
     return 0i32;
 }
 
@@ -780,9 +814,26 @@ pub unsafe extern "C" fn __vsprintf_chk(
 ) -> libc::c_int {
     let mut rv: libc::c_int = 0;
     if slen > 2147483647i32 as size_t {
-        rv = vsprintf(&mut *buf.unwrap(), fmt.unwrap(), ap.as_va_list())
+        rv = vsprintf(
+            buf.as_mut()
+                .map(|r| &mut **r as *mut _)
+                .unwrap_or(0 as *mut _),
+            fmt.as_ref()
+                .map(|r| &**r as *const _)
+                .unwrap_or(0 as *const _),
+            ap.as_va_list(),
+        )
     } else {
-        rv = vsnprintf(&mut *buf.unwrap(), slen, fmt.unwrap(), ap.as_va_list());
+        rv = vsnprintf(
+            buf.as_mut()
+                .map(|r| &mut **r as *mut _)
+                .unwrap_or(0 as *mut _),
+            slen,
+            fmt.as_ref()
+                .map(|r| &**r as *const _)
+                .unwrap_or(0 as *const _),
+            ap.as_va_list(),
+        );
         if rv >= 0i32 && rv as size_t >= slen {
             __chk_fail();
         }
@@ -810,7 +861,12 @@ fn array_ref() {
 }
 
 unsafe extern "C" fn decay_binary(ptr: Option<&_reent>) {
-    if ptr.unwrap() as *const _ != _impure_ptr {}
+    if ptr
+        .as_ref()
+        .map(|r| &**r as *const _)
+        .unwrap_or(0 as *const _)
+        != _impure_ptr
+    {}
 }
 
 #[ownership_constraints(le(MOVE, _0))]
@@ -824,4 +880,16 @@ unsafe extern "C" fn takes_refs(mut _r: Option<&mut _reent>, _r2: Option<&_reent
 #[ownership_constraints(le(MOVE, _0), le(MOVE, _1))]
 unsafe extern "C" fn opt_box_to_opt_ref(mut box1: Option<Box<_reent>>, box2: Option<Box<_reent>>) {
     takes_refs(box1.as_mut().map(|r| &mut **r), box2.as_ref().map(|r| &**r));
+}
+
+#[ownership_constraints(le(MOVE, _0), le(MOVE, _1))]
+unsafe extern "C" fn opt_box_to_ptr(mut box1: Option<Box<u32>>, mut box2: Option<Box<u32>>) {
+    takes_ptrs(
+        box1.as_mut()
+            .map(|r| &mut **r as *mut _)
+            .unwrap_or(0 as *mut _),
+        box2.as_mut()
+            .map(|r| &mut **r as *mut _)
+            .unwrap_or(0 as *mut _),
+    );
 }
