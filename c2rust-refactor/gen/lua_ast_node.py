@@ -211,6 +211,21 @@ def do_one_impl(s, kind_map, boxed, emit_ldoc):
     yield '  }'
     yield '}'
 
+    # FromLuaString implementation for enums
+    if isinstance(s, Enum):
+        yield 'impl TryFromString for %s {' % type_name
+        yield '  fn try_from_string<\'lua>(_str: &str) -> Option<Self> {'
+        yield '    match _str {'
+        for v in s.variants:
+            if len(v.fields) == 0:
+                fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
+                yield '      "%s" => Some(%s),' % (v.name, fpat)
+        yield '      _ => None'
+        yield '    }'
+        yield '  }'
+        yield '}'
+
+
 @linewise
 def do_impl(s, kind_map):
     yield '/// %s AST node handle' % s.name

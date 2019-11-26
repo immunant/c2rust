@@ -312,8 +312,20 @@ pub(crate) trait FromLuaTable: Sized {
     fn from_lua_table<'lua>(table: LuaTable<'lua>, lua: Context<'lua>) -> Result<Self>;
 }
 
+/// Internal trait that tries to convert a string into an enum object.
+pub(crate) trait TryFromString: Sized {
+    fn try_from_string(s: &str) -> Option<Self>;
+}
+
+/// Default implementation for `TryFromString`. Most things don't convert.
+impl<T> TryFromString for T {
+    default fn try_from_string(_str: &str) -> Option<Self> {
+        None
+    }
+}
+
 impl<T> FromLuaExt for T
-    where T: 'static + Sized + Clone + FromLuaTable,
+    where T: 'static + Sized + Clone + FromLuaTable + TryFromString,
           LuaAstNode<T>: UserData + LuaAstNodeSafe,
 {
     fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
@@ -325,6 +337,14 @@ impl<T> FromLuaExt for T
             }
 
             Value::Table(t) => FromLuaTable::from_lua_table(t, lua),
+
+            Value::String(s) => TryFromString::try_from_string(s.to_str()?).ok_or_else(|| {
+                Error::FromLuaConversionError {
+                    from: "String",
+                    to: std::any::type_name::<T>(),
+                    message: None,
+                }
+            }),
 
             Value::Nil => Err(Error::FromLuaConversionError {
                 from: "Nil",
@@ -345,7 +365,7 @@ impl<T> FromLuaExt for T
 }
 
 impl<T> FromLuaAstNode for LuaAstNode<T>
-    where T: 'static + Sized + FromLuaTable,
+    where T: 'static + Sized + FromLuaTable + TryFromString,
           LuaAstNode<T>: UserData + Clone,
 {
     fn from_lua_ast_node<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
@@ -359,6 +379,14 @@ impl<T> FromLuaAstNode for LuaAstNode<T>
                 let node = FromLuaTable::from_lua_table(t, lua)?;
                 Ok(LuaAstNode::new(node))
             }
+
+            Value::String(s) => TryFromString::try_from_string(s.to_str()?).ok_or_else(|| {
+                Error::FromLuaConversionError {
+                    from: "String",
+                    to: std::any::type_name::<T>(),
+                    message: None,
+                }
+            }).map(LuaAstNode::new),
 
             Value::Nil => Err(Error::FromLuaConversionError {
                 from: "Nil",
