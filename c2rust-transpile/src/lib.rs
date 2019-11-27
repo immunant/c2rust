@@ -238,6 +238,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 
     let mut top_level_ccfg = None;
     let mut workspace_members = vec![];
+    let mut num_transpiled_files = 0;
     let build_dir = get_build_dir(&tcfg, cc_db);
     for lcmd in &lcmds {
         let cmds = &lcmd.cmd_inputs;
@@ -265,13 +266,15 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             .first()
             .map(|cmd| cmd.abs_file())
             .unwrap_or_else(PathBuf::new);
-        for cmd in &cmds[1..] {
-            let cmd_path = cmd.abs_file();
-            ancestor_path = ancestor_path
-                .ancestors()
-                .find(|a| cmd_path.starts_with(a))
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(PathBuf::new);
+        if cmds.len() > 1 {
+            for cmd in &cmds[1..] {
+                let cmd_path = cmd.abs_file();
+                ancestor_path = ancestor_path
+                    .ancestors()
+                    .find(|a| cmd_path.starts_with(a))
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(PathBuf::new);
+            }
         }
 
         let results = cmds
@@ -282,6 +285,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                                         cc_db,
                                         extra_clang_args))
             .collect::<Vec<TranspileResult>>();
+        num_transpiled_files += results.len();
         let mut modules = vec![];
         let mut modules_skipped = false;
         let mut pragmas = PragmaSet::new();
@@ -331,6 +335,12 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             }
         }
     }
+
+    if num_transpiled_files == 0 {
+        warn!("No C files found in compile_commands.json; nothing to do.");
+        return;
+    }
+
     if tcfg.emit_build_files {
         let crate_file = emit_build_files(&tcfg, &build_dir, top_level_ccfg, Some(workspace_members));
         reorganize_definitions(&tcfg, &build_dir, crate_file)
