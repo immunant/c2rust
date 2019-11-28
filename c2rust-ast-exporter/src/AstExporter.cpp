@@ -25,6 +25,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/Version.h"
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/LangStandard.h"
 #include "clang/Tooling/Tooling.h"
 
 #include "AstExporter.hpp"
@@ -2425,6 +2426,10 @@ class TranslateAction : public clang::ASTFrontendAction {
     virtual std::unique_ptr<clang::ASTConsumer>
     CreateASTConsumer(clang::CompilerInstance &Compiler,
                       llvm::StringRef InFile) {
+        if(this->getCurrentFileKind().getLanguage() != InputKind::Language::C) {
+            return nullptr;
+        }
+
         return std::unique_ptr<clang::ASTConsumer>(
             new TranslateConsumer(outputs, InFile, Compiler.getPreprocessor()));
     }

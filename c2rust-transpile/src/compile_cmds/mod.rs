@@ -143,25 +143,6 @@ fn build_link_commands(mut v: Vec<Rc<CompileCmd>>) -> Result<Vec<LinkCmd>, Error
     Ok(res)
 }
 
-///GNU GCC treats all of the following extensions as C++
-const CPP_EXTS: [&str; 7] = ["C", "cc", "cpp", "CPP", "c++", "cp", "cxx"];
-const ASM_EXTS: [&str; 3] = ["S", "s", "asm"];
-
-/// The compile commmands database may contain C++ and assembly files
-/// that we are unable to process. Detect and filter out such entries.
-fn filter_likely_unsupported(cmds: Vec<Rc<CompileCmd>>) -> Vec<Rc<CompileCmd>> {
-    let mut unsupported_exts: HashSet<&OsStr> = HashSet::new();
-    unsupported_exts.extend(CPP_EXTS.iter().map(OsStr::new));
-    unsupported_exts.extend(ASM_EXTS.iter().map(OsStr::new));
-
-    cmds.into_iter()
-        .filter(|c| {
-            let key = c.file.extension().unwrap();
-            !unsupported_exts.contains(key)
-        })
-        .collect::<Vec<Rc<CompileCmd>>>()
-}
-
 /// some build scripts repeatedly compile the same input file with different
 /// command line flags thus creating multiple outputs. We remove any duplicates
 /// in the order we see them and warn the user.
@@ -205,7 +186,6 @@ pub fn get_compile_commands(
 
     for lcmd in &mut lcmds {
         let inputs = std::mem::replace(&mut lcmd.cmd_inputs, vec![]);
-        let inputs = filter_likely_unsupported(inputs);
         let inputs = filter_duplicate_cmds(inputs);
         lcmd.cmd_inputs = inputs;
     }

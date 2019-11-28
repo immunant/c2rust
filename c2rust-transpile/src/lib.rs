@@ -285,7 +285,6 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                                         cc_db,
                                         extra_clang_args))
             .collect::<Vec<TranspileResult>>();
-        num_transpiled_files += results.len();
         let mut modules = vec![];
         let mut modules_skipped = false;
         let mut pragmas = PragmaSet::new();
@@ -295,6 +294,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             modules.push(module);
 
             if let Some(pv) = pragma_vec {
+                num_transpiled_files += 1;
                 for (key, vals) in pv {
                     for val in vals {
                         pragmas.insert((key, val));
@@ -448,17 +448,17 @@ fn transpile_single(
 ) -> TranspileResult {
     let output_path = get_output_path(tcfg, &input_path, ancestor_path, build_dir);
     if output_path.exists() && !tcfg.overwrite_existing {
-        println!("Skipping existing file {}", output_path.display());
+        warn!("Skipping existing file {}", output_path.display());
         return (output_path, None, None);
     }
 
     let file = input_path.file_name().unwrap().to_str().unwrap();
-    println!("Transpiling {}", file);
     if !input_path.exists() {
         warn!(
             "Input C file {} does not exist, skipping!",
             input_path.display()
         );
+        return (output_path, None, None);
     }
 
     if tcfg.verbose {
@@ -472,12 +472,17 @@ fn transpile_single(
         extra_clang_args,
         tcfg.debug_ast_exporter,
     ) {
-        Err(e) => {
-            eprintln!("Error: {:}", e);
-            process::exit(1);
+        Err(_) => {
+            warn!(
+                "Could not parse {}; is it well-formed C?",
+                input_path.display()
+            );
+            return (output_path, None, None);
         }
         Ok(cxt) => cxt,
     };
+
+    println!("Transpiling {}", file);
 
     if tcfg.dump_untyped_context {
         println!("CBOR Clang AST");
