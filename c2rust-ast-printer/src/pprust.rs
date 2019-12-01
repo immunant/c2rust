@@ -1,6 +1,6 @@
 use syntax::ast::{self, BlockCheckMode, PatKind, RangeEnd, RangeSyntax};
 use syntax::ast::{SelfKind, GenericBound, TraitBoundModifier};
-use syntax::ast::{Attribute, MacDelimiter, GenericArg};
+use syntax::ast::{Attribute, MacDelimiter, GenericArg, MacArgs};
 use syntax::util::parser::{self, AssocOp, Fixity};
 use syntax::util::comments;
 use syntax::source_map::{self, SourceMap, Spanned};
@@ -672,17 +672,22 @@ pub trait PrintState<'a>: std::ops::Deref<Target = pp::Printer> + std::ops::Dere
 
     fn print_attr_item(&mut self, item: &ast::AttrItem, span: Span) {
         self.ibox(0);
-        match item.tokens.trees().next() {
-            Some(TokenTree::Delimited(_, delim, tts)) => {
-                self.print_mac_common(
-                    Some(MacHeader::Path(&item.path)), false, None, delim, tts, true, span
-                );
-            }
-            tree => {
+        match &item.args {
+            MacArgs::Delimited(_, delim, tokens) => self.print_mac_common(
+                Some(MacHeader::Path(&item.path)),
+                false,
+                None,
+                delim.to_token(),
+                tokens.clone(),
+                true,
+                span,
+            ),
+            MacArgs::Empty | MacArgs::Eq(..) => {
                 self.print_path(&item.path, false, 0);
-                if tree.is_some() {
+                if let MacArgs::Eq(_, tokens) = &item.args {
                     self.space();
-                    self.print_tts(item.tokens.clone(), true);
+                    self.word_space("=");
+                    self.print_tts(tokens.clone(), true);
                 }
             }
         }
