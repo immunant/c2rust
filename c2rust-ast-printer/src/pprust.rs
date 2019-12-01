@@ -1413,8 +1413,8 @@ impl<'a> State<'a> {
                     Some(MacHeader::Keyword(kw)),
                     has_bang,
                     Some(item.ident),
-                    DelimToken::Brace,
-                    macro_def.stream(),
+                    macro_def.body.delim(),
+                    macro_def.body.inner_tokens(),
                     true,
                     item.span,
                 );
