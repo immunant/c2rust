@@ -1265,7 +1265,7 @@ impl<'a> State<'a> {
             ast::ItemKind::ForeignMod(ref nmod) => {
                 self.head("extern");
                 if let Some(abi) = nmod.abi {
-                    self.print_literal(&abi.as_lit());
+                    self.print_literal(&syntax_priv::as_lit(&abi));
                     self.nbsp();
                 }
                 self.bopen();
@@ -2940,7 +2940,7 @@ impl<'a> State<'a> {
             }
             ast::Extern::Explicit(abi) => {
                 self.word_nbsp("extern");
-                self.print_literal(&abi.as_lit());
+                self.print_literal(&syntax_priv::as_lit(&abi));
                 self.nbsp();
             }
         }

@@ -1,6 +1,7 @@
 //! Crate-local helpers from libsyntax needed for the pretty-printer
 
-use syntax::ast;
+use syntax::ast::{Lit, LitKind, StrLit, StrStyle};
+use syntax::token;
 use syntax::util::parser::{AssocOp};
 
 // From libsyntax/src/util/parser.rs
@@ -17,4 +18,18 @@ crate fn prec_let_scrutinee_needs_par() -> usize {
 /// Can we print this as `let _ = a OP b`?
 crate fn needs_par_as_let_scrutinee(order: i8) -> bool {
     order <= prec_let_scrutinee_needs_par() as i8
+}
+
+
+// From libsyntax/ast.rs
+crate fn as_lit(lit: &StrLit) -> Lit {
+    let token_kind = match lit.style {
+        StrStyle::Cooked => token::Str,
+        StrStyle::Raw(n) => token::StrRaw(n),
+    };
+    Lit {
+        token: token::Lit::new(token_kind, lit.symbol, lit.suffix),
+        span: lit.span,
+        kind: LitKind::Str(lit.symbol_unescaped, lit.style),
+    }
 }
