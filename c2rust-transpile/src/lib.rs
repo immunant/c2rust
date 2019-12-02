@@ -472,9 +472,10 @@ fn transpile_single(
         extra_clang_args,
         tcfg.debug_ast_exporter,
     ) {
-        Err(_) => {
+        Err(e) => {
             warn!(
-                "Could not parse {}; is it well-formed C?",
+                "Error: {}. Skipping {}; is it well-formed C?",
+                e,
                 input_path.display()
             );
             return (output_path, None, None);
