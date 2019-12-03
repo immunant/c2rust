@@ -951,8 +951,12 @@ function Visitor:rewrite_assign_expr(expr)
             local path_expr = call_exprs[1]
             local param_expr = call_exprs[2]
             local path = path_expr:get_path()
-            local segment_idents = tablex.map(function(x) return x:get_ident():get_name() end, path:get_segments())
+            local segment_idents = {}
             local conversion_cfg = var and self.node_id_cfgs[var.id]
+
+            if path then
+                segment_idents = tablex.map(function(x) return x:get_ident():get_name() end, path:get_segments())
+            end
 
             -- In case malloc is called from another module check the last segment
             if conversion_cfg and segment_idents[#segment_idents] == "malloc" then
@@ -1853,7 +1857,11 @@ function MallocMarker:visit_expr(expr, walk)
                 local call_exprs = cast_expr:get_exprs()
                 local path_expr = call_exprs[1]
                 local path = path_expr:get_path()
-                local segment_idents = tablex.map(function(x) return x:get_ident():get_name() end, path:get_segments())
+                local segment_idents = {}
+
+                if path then
+                    segment_idents = tablex.map(function(x) return x:get_ident():get_name() end, path:get_segments())
+                end
 
                 -- In case malloc is called from another module check the last segment
                 if segment_idents[#segment_idents] == "malloc" or segment_idents[#segment_idents] == "calloc" then
