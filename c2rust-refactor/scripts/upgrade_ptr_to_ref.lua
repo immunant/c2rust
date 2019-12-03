@@ -1611,6 +1611,16 @@ function Visitor:visit_local(locl, walk)
         locl:set_init(nil)
     end
 
+    local ty = locl:get_ty()
+
+    -- If we're not looking at a pointer (ie an array) and we haven't removed
+    -- the explicit type, then we likely failed to rewrite the local (ie a pointer
+    -- cast)
+    if ty ~= nil and ty:kind_name() == "Ptr" then
+        cfg.extra_data.failed_rewrite = true
+        log_error("Failed to rewrite local: " .. tostring(locl))
+    end
+
     local pat_hirid = self.tctx:nodeid_to_hirid(locl:get_pat_id())
 
     self:add_var(pat_hirid, Variable.new(local_id, "local"))
