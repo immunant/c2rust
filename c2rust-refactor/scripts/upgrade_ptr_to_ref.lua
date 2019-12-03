@@ -168,6 +168,10 @@ function ConvConfig.from_marks_and_attrs(marks, attrs)
     return ConvConfig.new{conv_type, mutability=mutability, binding=binding}
 end
 
+function ConvConfig:failed_rewrite()
+    return self.extra_data.failed_rewrite
+end
+
 function ConvConfig:is_slice()
     return self.conv_type == "slice"
 end
@@ -543,7 +547,7 @@ function Visitor:rewrite_method_call_expr(expr)
         local offset_expr, caller = rewrite_chained_offsets(expr)
         local cfg = self:get_expr_cfg(caller)
 
-        if not cfg then return end
+        if not cfg or cfg:failed_rewrite() then return end
 
         -- Add an unwrap just so that the code is compilable even though
         -- we're probably dealing with an option of a raw ptr (ie maybe
@@ -789,7 +793,7 @@ function Visitor:rewrite_field_expr(expr)
             local cfg = self:get_expr_cfg(derefed_expr)
 
             -- This is a path we're expecting to modify
-            if not cfg then return end
+            if not cfg or cfg:failed_rewrite() then return end
 
             -- (*foo).bar -> (foo.as_mut().unwrap()).bar
             if cfg:is_opt_any() then
@@ -888,7 +892,7 @@ function Visitor:rewrite_deref_expr(expr)
     elseif unwrapped_expr:kind_name() == "Path" then
         local cfg = self:get_expr_cfg(unwrapped_expr)
 
-        if not cfg then return end
+        if not cfg or cfg:failed_rewrite() then return end
 
         -- If we're using an option, we must unwrap
         -- Must get inner reference to mutate
