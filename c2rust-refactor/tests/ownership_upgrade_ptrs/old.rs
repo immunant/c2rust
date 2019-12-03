@@ -665,6 +665,7 @@ unsafe fn non_null_type() {
 
     *ptr = 1;
     *ptr;
+    takes_ptrs(ptr, 0 as *const _);
 }
 
 fn rewritten(#[slice] p: *const u32, #[slice] q: *const u32) {}
@@ -699,4 +700,18 @@ unsafe extern "C" fn opt_box_to_opt_ref(mut box1: *mut _reent, box2: *mut _reent
 #[ownership_constraints(le(MOVE, _0), le(MOVE, _1))]
 unsafe extern "C" fn opt_box_to_ptr(mut box1: *mut u32, mut box2: *mut u32) {
     takes_ptrs(box1, box2);
+}
+
+unsafe fn array_ref2() {
+    let mut q: [u32; 4] = [0; 4];
+    let r: [u32; 4] = [0; 4];
+
+    #[nonnull]
+    #[slice]
+    let mut s = q.as_mut_ptr();
+    #[nonnull]
+    #[slice]
+    let mut t = r.as_ptr();
+
+    *s.offset(0) = *t.offset(1);
 }

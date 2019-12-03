@@ -356,6 +356,8 @@ function Visitor.new(tctx, node_id_cfgs)
     self.structs = {}
     -- HirId -> Fn
     self.fns = {}
+    -- Expr NodeId -> Arg NodeId
+    self.call_param_expr_to_arg_id = {}
 
     setmetatable(self, Visitor)
     Visitor.__index = Visitor
@@ -582,21 +584,28 @@ function Visitor:rewrite_method_call_expr(expr)
     -- static_var.as_mut/ptr -> &[mut]static_var
     elseif method_name == "as_ptr" or method_name == "as_mut_ptr" then
         local hirid = self.tctx:resolve_path_hirid(exprs[1])
-        local var = hirid and self:get_var(hirid)
+        local config = self:get_expr_cfg(exprs[1])
+        local arg_id = self.call_param_expr_to_arg_id[expr:get_id()]
+        local param_cfg = self.node_id_cfgs[arg_id]
 
-        if var and var.kind == "static" then
+        -- There's a special case where we don't want to rewrite this way
+        -- when it needs to be decayed to a raw ptr. Here we check that either
+        -- we have a config for the param `param_cfg`, meaning it's expected to
+        -- not be raw, or if we don't have an `arg_id` then the special case
+        -- isn't applicable by viture of not being a call param
+        if config and config:is_array() and (param_cfg or not arg_id) then
             expr:to_addr_of(exprs[1], method_name == "as_mut_ptr")
         end
     -- p.is_null() -> p.is_none() or false when not using an option
     elseif method_name == "is_null" then
         local callee = expr:get_exprs()[1]
-        local conversion_cfg = self:get_expr_cfg(callee)
+        local config = self:get_expr_cfg(callee)
 
-        if not conversion_cfg then
+        if not config then
             return
         end
 
-        if conversion_cfg:is_opt_any() then
+        if config:is_opt_any() then
             expr:set_method_name("is_none")
         else
             expr:to_bool_lit(false)
@@ -1053,6 +1062,19 @@ function Visitor:rewrite_call_expr(expr)
     local segment_idents = path and tablex.map(function(x) return x:get_ident():get_name() end, path:get_segments())
 
     if not segment_idents then return end
+
+    -- Bookkeeping of call param exprs to arg_id
+    local fn
+
+    for i, param_expr in ipairs(expr:get_exprs()) do
+        if i == 1 then
+            local hirid = self.tctx:resolve_path_hirid(param_expr)
+
+            fn = self:get_fn(hirid)
+        elseif fn then
+            self.call_param_expr_to_arg_id[param_expr:get_id()] = fn.arg_ids[i - 1]
+        end
+    end
 
     -- free(foo.bar as *mut libc::c_void) -> foo.bar.take()
     -- In case free is called from another module check the last segment
@@ -1576,6 +1598,8 @@ function Visitor:visit_local(locl, walk)
     elseif is_null_ptr(init) then
         locl:set_ty(nil)
         locl:set_init(nil)
+    elseif init:get_method_name() == "as_mut_ptr" or init:get_method_name() == "as_ptr" then
+        locl:set_ty(nil)
     end
 
     if cfg.extra_data.clear_init_and_ty then
@@ -1700,6 +1724,12 @@ function ConfigBuilder:flat_map_item(item, walk)
             self.node_id_cfgs[param_id] = ConvConfig.from_marks_and_attrs(marks, attrs)
 
             ::continue::
+        end
+    elseif item_kind == "Static" then
+        local ty = item:get_kind():child(1)
+
+        if ty:kind_name() == "Array" then
+            self.node_id_cfgs[item:get_id()] = ConvConfig.new{"array"}
         end
     end
 

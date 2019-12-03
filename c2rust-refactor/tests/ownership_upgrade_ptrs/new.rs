@@ -848,6 +848,10 @@ unsafe fn non_null_type() {
 
     *ptr.unwrap().as_ptr() = 1;
     *ptr.unwrap().as_ptr();
+    takes_ptrs(
+        ptr.map(|r| r.as_ptr()).unwrap_or(0 as *mut _),
+        0 as *const _,
+    );
 }
 
 fn rewritten(p: Option<&[u32]>, q: Option<&[u32]>) {}
@@ -892,4 +896,18 @@ unsafe extern "C" fn opt_box_to_ptr(mut box1: Option<Box<u32>>, mut box2: Option
             .map(|r| &mut **r as *mut _)
             .unwrap_or(0 as *mut _),
     );
+}
+
+unsafe fn array_ref2() {
+    let mut q: [u32; 4] = [0; 4];
+    let r: [u32; 4] = [0; 4];
+
+    #[nonnull]
+    #[slice]
+    let mut s = &mut q;
+    #[nonnull]
+    #[slice]
+    let mut t = &r;
+
+    s[0] = t[1];
 }
