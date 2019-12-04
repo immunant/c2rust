@@ -73,6 +73,17 @@ class Test(object):
                 script=relpath)
             print(line, end="", flush=True)
 
+        # if we already have `compile_commands.json`, skip the build stages
+        if stage in ["autogen", "configure", "make"]:
+            compile_commands = os.path.join(self.dir, "compile_commands.json")
+            compile_commands_present = os.path.isfile(compile_commands)
+            if compile_commands_present:
+                fill = (75 - len(line)) * "."
+                color = Colors.OKBLUE
+                msg = "OK_CACHED"
+                print(f"{fill} {color}{msg}{Colors.NO_COLOR}")
+                return True
+
         success = False
 
         # noinspection PyBroadException
@@ -164,18 +175,7 @@ class Test(object):
 
             stages = conf.stages
 
-        compile_commands = os.path.join(self.dir, "compile_commands.json")
-        compile_commands_present = os.path.isfile(compile_commands)
-        compile_commands_stages = ["autogen", "configure", "make"]
-
         for stage in stages:
-            # already generated compile_commands.json -> skip the first three stages
-            if compile_commands_present and stage in compile_commands_stages:
-                blue = Colors.OKBLUE
-                nocol = Colors.NO_COLOR
-                info(f"compile_commands.json found; skipping stage {blue}{stage}{nocol}")
-                continue
-            
             for script in Test.STAGES[stage]:
                 if script in self.scripts:
                     xfail = self.is_stage_xfail(stage, script, conf)
