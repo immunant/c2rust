@@ -852,6 +852,12 @@ unsafe fn non_null_type() {
         ptr.map(|r| r.as_ptr()).unwrap_or(0 as *mut _),
         0 as *const _,
     );
+
+    if *ptr.unwrap().as_ptr() as libc::c_int == ':' as i32
+        && *ptr.unwrap().as_ptr().offset(1) as libc::c_int == ':' as i32
+    {
+        ptr = ::core::ptr::NonNull::new(ptr.unwrap().as_ptr().offset(1))
+    }
 }
 
 fn rewritten(p: Option<&[u32]>, q: Option<&[u32]>) {}

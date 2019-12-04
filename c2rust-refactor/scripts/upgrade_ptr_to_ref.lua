@@ -172,6 +172,10 @@ function ConvConfig:failed_rewrite()
     return self.extra_data.failed_rewrite
 end
 
+function ConvConfig:non_null_wrapped()
+    return self.extra_data.non_null_wrapped
+end
+
 function ConvConfig:is_slice()
     return self.conv_type == "slice"
 end
@@ -549,6 +553,20 @@ function Visitor:rewrite_method_call_expr(expr)
 
         if not cfg or cfg:failed_rewrite() then return end
 
+        -- TODO: Refactor this into the below check?
+        if cfg:non_null_wrapped() then
+            local path_segment = caller:child(1)
+            local ident = path_segment and tostring(path_segment:get_ident())
+
+            if ident == "as_ptr#0" then return end
+
+            expr:to_method_call("unwrap", {caller})
+            expr:to_method_call("as_ptr", {expr})
+            expr:to_method_call("offset", {expr, offset_expr})
+
+            return
+        end
+
         -- Add an unwrap just so that the code is compilable even though
         -- we're probably dealing with an option of a raw ptr (ie maybe
         -- a multi level ptr got deref'd once)
@@ -571,7 +589,7 @@ function Visitor:rewrite_method_call_expr(expr)
             offset_expr:to_range(offset_expr, nil)
         end
 
-        if cfg:is_opt_any() then
+        if cfg:is_opt_any() and not cfg:non_null_wrapped() then
             caller:to_method_call("unwrap", {caller})
 
             if is_mut then
@@ -579,11 +597,13 @@ function Visitor:rewrite_method_call_expr(expr)
             end
         end
 
-        if not is_mut then
-            expr:to_index(caller, offset_expr)
-            expr:to_addr_of(expr, is_mut)
-        else
-            expr:to_field(caller, "1")
+        if not cfg:non_null_wrapped() then
+            if not is_mut then
+                expr:to_index(caller, offset_expr)
+                expr:to_addr_of(expr, is_mut)
+            else
+                expr:to_field(caller, "1")
+            end
         end
     -- static_var.as_mut/ptr -> &[mut]static_var
     elseif method_name == "as_ptr" or method_name == "as_mut_ptr" then
@@ -869,6 +889,14 @@ function Visitor:rewrite_deref_expr(expr)
                 end
                 unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
             end
+        -- Here we just need to insert "as_ptr" on the NonNull variable, and let it proceed as it was
+        elseif cfg.extra_data.non_null_wrapped then
+            unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
+            unwrapped_expr:to_method_call("as_ptr", {unwrapped_expr})
+            unwrapped_expr:to_method_call("offset", {unwrapped_expr, offset_expr})
+            expr:to_unary("Deref", unwrapped_expr)
+
+            return
         else
             log_error("Found offset method applied to a reference: " .. tostring(expr))
             return
@@ -1043,9 +1071,18 @@ function Visitor:rewrite_assign_expr(expr)
             if rhs_kind == "Call" then
                 local path_expr = rhs:get_exprs()[1]
                 local path = path_expr:get_path()
+                local rhs_ty = self.tctx:get_expr_ty(rhs)
+                local mut_ty = rhs_ty:child(1)
 
                 path:set_segments{"", "core", "ptr", "NonNull", "new"}
                 path_expr:to_path(path)
+
+                -- NonNull takes a mut ptr, so we have to const -> mut cast..
+                -- Not sure if there's a better way to handle this
+                if tostring(mut_ty:get_mutbl()) == "Immutable" then
+                    mut_ty:set_mutbl("Mutable")
+                    rhs:to_cast(rhs, Ty.new{"Ptr", mut_ty})
+                end
 
                 rhs:to_call{path_expr, rhs}
                 expr:set_exprs{lhs, rhs}
@@ -1055,8 +1092,16 @@ function Visitor:rewrite_assign_expr(expr)
                 return
             end
 
-            local some_path_expr = self.tctx:ident_path_expr("Some")
-            rhs:to_call{some_path_expr, rhs}
+            if lhs_cfg:non_null_wrapped() and rhs_kind ~= "Path" then
+                local path = Path.new{"", "core", "ptr", "NonNull", "new"}
+                local path_expr = Expr.new{"Path", nil, path}
+
+                rhs = Expr.new{"Call", path_expr, {rhs}}
+            else
+                local some_path_expr = Expr.new{"Path", nil, Path.new{"Some"}}
+                rhs:to_call{some_path_expr, rhs}
+            end
+
             expr:set_exprs{lhs, rhs}
         end
     end

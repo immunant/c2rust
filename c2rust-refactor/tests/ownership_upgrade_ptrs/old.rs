@@ -666,6 +666,10 @@ unsafe fn non_null_type() {
     *ptr = 1;
     *ptr;
     takes_ptrs(ptr, 0 as *const _);
+
+    if *ptr as libc::c_int == ':' as i32 && *ptr.offset(1) as libc::c_int == ':' as i32 {
+        ptr = ptr.offset(1)
+    }
 }
 
 fn rewritten(#[slice] p: *const u32, #[slice] q: *const u32) {}
