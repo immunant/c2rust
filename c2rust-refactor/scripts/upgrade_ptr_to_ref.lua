@@ -1031,7 +1031,7 @@ function Visitor:rewrite_assign_expr(expr)
             end
         end
 
-        if lhs_cfg then
+        if lhs_cfg and not lhs_cfg.extra_data.non_null_wrapped then
             lhs_cfg.extra_data.non_null_wrapped = rhs_cfg.extra_data.non_null_wrapped
         end
     else
