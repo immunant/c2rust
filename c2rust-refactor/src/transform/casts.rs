@@ -2,6 +2,7 @@ use rustc::ty::{self, ParamEnv, TyKind};
 use syntax::ast::*;
 use syntax::parse::token;
 use syntax::ptr::P;
+use syntax_pos::Symbol;
 
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
@@ -343,6 +344,20 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         Some(new_lit)
     };
 
+    let mk_float = |fs: String, ty| {
+        let fsym = Symbol::intern(&fs);
+        let is_int = fs.parse::<u128>().is_ok();
+        Some(Lit {
+            kind: LitKind::Float(fsym, ty),
+            span: lit.span,
+            token: token::Lit {
+                kind: if is_int { token::LitKind::Integer } else { token::LitKind::Float },
+                symbol: fsym,
+                suffix: Some(Symbol::intern(&ty.to_string())),
+            }
+        })
+    };
+
     let lit_mk = mk().span(lit.span);
     match (&lit.kind, &ty) {
         // Very conservative approach: only convert to `isize`/`usize`
@@ -361,7 +376,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
 
         (LitKind::Int(i, _), SimpleTy::Float32)
         | (LitKind::Int(i, _), SimpleTy::Float64) => {
-            Some(lit_mk.float_lit(format!("{}.0", i), ty.ast_float_ty()))
+            mk_float(i.to_string(), ty.ast_float_ty())
         }
 
         (LitKind::Float(f, FloatTy::F32), SimpleTy::Int(..)) => {
@@ -378,10 +393,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         (LitKind::Float(f, FloatTy::F32), SimpleTy::Float32)
         | (LitKind::Float(f, FloatTy::F32), SimpleTy::Float64) => {
             let fv = f.as_str().parse::<f32>().ok()?;
-            // We need to print the debug version of the float here because
-            // the regular one doesn't print the decimal for whole integers,
-            // e.g., it prints "3" instead of "3.0", and we really need it
-            Some(lit_mk.float_lit(format!("{:?}", fv), ty.ast_float_ty()))
+            mk_float(fv.to_string(), ty.ast_float_ty())
         }
 
         (LitKind::Float(f, FloatTy::F64), SimpleTy::Float32)
@@ -389,7 +401,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         | (LitKind::FloatUnsuffixed(f), SimpleTy::Float32)
         | (LitKind::FloatUnsuffixed(f), SimpleTy::Float64) => {
             let fv = f.as_str().parse::<f64>().ok()?;
-            Some(lit_mk.float_lit(format!("{:?}", fv), ty.ast_float_ty()))
+            mk_float(fv.to_string(), ty.ast_float_ty())
         }
 
         _ => None,
