@@ -2,33 +2,43 @@
 	path = tests/lua/repo
 	url = https://github.com/immunant/lua.git
 	branch = c2rust
+	ignore = all
 [submodule "zstd"]
 	path = tests/zstd/repo
 	url = https://github.com/facebook/zstd
 	branch = dev
+	ignore = all
 [submodule "ruby"]
 	path = tests/ruby/repo
 	url = https://github.com/ruby/ruby
 	branch = ruby_2_6
+	ignore = all
 [submodule "python2"]
 	path = tests/python2/repo
 	url = https://github.com/python/cpython.git
 	branch = 2.7
+	ignore = all
 [submodule "json-c"]
 	path = tests/json-c/repo
 	url = https://github.com/json-c/json-c.git
+	ignore = all
 [submodule "tests/curl/repo"]
 	path = tests/curl/repo
 	url = https://github.com/curl/curl.git
+	ignore = all
 [submodule "tests/nginx/repo"]
 	path = tests/nginx/repo
 	url = https://github.com/nginx/nginx.git
+	ignore = all
 [submodule "tests/libxml2/repo"]
 	path = tests/libxml2/repo
 	url = https://github.com/GNOME/libxml2.git
+	ignore = all
 [submodule "tests/redis/repo"]
 	path = tests/redis/repo
 	url = https://github.com/antirez/redis.git
+	ignore = all
 [submodule "tests/snudown/repo"]
 	path = tests/snudown/repo
 	url = ssh://git@github.com/reddit/snudown.git
+	ignore = all
