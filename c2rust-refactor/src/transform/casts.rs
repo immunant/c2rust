@@ -361,7 +361,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
 
         (LitKind::Int(i, _), SimpleTy::Float32)
         | (LitKind::Int(i, _), SimpleTy::Float64) => {
-            Some(lit_mk.float_lit(i.to_string(), ty.ast_float_ty()))
+            Some(lit_mk.float_lit(format!("{}.0", i), ty.ast_float_ty()))
         }
 
         (LitKind::Float(f, FloatTy::F32), SimpleTy::Int(..)) => {
@@ -378,7 +378,10 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         (LitKind::Float(f, FloatTy::F32), SimpleTy::Float32)
         | (LitKind::Float(f, FloatTy::F32), SimpleTy::Float64) => {
             let fv = f.as_str().parse::<f32>().ok()?;
-            Some(lit_mk.float_lit(fv.to_string(), ty.ast_float_ty()))
+            // We need to print the debug version of the float here because
+            // the regular one doesn't print the decimal for whole integers,
+            // e.g., it prints "3" instead of "3.0", and we really need it
+            Some(lit_mk.float_lit(format!("{:?}", fv), ty.ast_float_ty()))
         }
 
         (LitKind::Float(f, FloatTy::F64), SimpleTy::Float32)
@@ -386,7 +389,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         | (LitKind::FloatUnsuffixed(f), SimpleTy::Float32)
         | (LitKind::FloatUnsuffixed(f), SimpleTy::Float64) => {
             let fv = f.as_str().parse::<f64>().ok()?;
-            Some(lit_mk.float_lit(fv.to_string(), ty.ast_float_ty()))
+            Some(lit_mk.float_lit(format!("{:?}", fv), ty.ast_float_ty()))
         }
 
         _ => None,
