@@ -43,6 +43,8 @@ extern "C" {
     #[no_mangle]
     fn get_ptr() -> *mut u32;
     #[no_mangle]
+    fn get_struct_ptr() -> *mut Ctx;
+    #[no_mangle]
     type _reent;
     #[no_mangle]
     static mut _impure_ptr: *mut _reent;
@@ -660,8 +662,10 @@ pub unsafe extern "C" fn __vsprintf_chk(mut buf: *mut libc::c_char,
 
 unsafe fn non_null_type() {
     let mut ptr = 0 as *mut u32;
+    let mut sptr = 0 as *mut Ctx;
 
     ptr = get_ptr();
+    sptr = get_struct_ptr();
 
     *ptr = 1;
     *ptr;
@@ -670,6 +674,8 @@ unsafe fn non_null_type() {
     if *ptr as libc::c_int == ':' as i32 && *ptr.offset(1) as libc::c_int == ':' as i32 {
         ptr = ptr.offset(1)
     }
+
+    (*sptr).data[0] = 1;
 }
 
 fn rewritten(#[slice] p: *const u32, #[slice] q: *const u32) {}

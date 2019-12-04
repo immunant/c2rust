@@ -52,6 +52,8 @@ extern "C" {
     #[no_mangle]
     fn get_ptr() -> *mut u32;
     #[no_mangle]
+    fn get_struct_ptr() -> *mut Ctx;
+    #[no_mangle]
     type _reent;
     #[no_mangle]
     static mut _impure_ptr: *mut _reent;
@@ -843,8 +845,10 @@ pub unsafe extern "C" fn __vsprintf_chk(
 
 unsafe fn non_null_type() {
     let mut ptr = None;
+    let mut sptr = None;
 
     ptr = ::core::ptr::NonNull::new(get_ptr());
+    sptr = ::core::ptr::NonNull::new(get_struct_ptr());
 
     *ptr.unwrap().as_ptr() = 1;
     *ptr.unwrap().as_ptr();
@@ -858,6 +862,8 @@ unsafe fn non_null_type() {
     {
         ptr = ::core::ptr::NonNull::new(ptr.unwrap().as_ptr().offset(1))
     }
+
+    (*sptr.unwrap().as_ptr()).data[0] = 1;
 }
 
 fn rewritten(p: Option<&[u32]>, q: Option<&[u32]>) {}

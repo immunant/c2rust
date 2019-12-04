@@ -684,9 +684,9 @@ function decay_ref_to_ptr(expr, cfg, for_struct_field, ptr_ty)
             Ty.new{"Ptr", {"MutTy", ty=Ty.new{"Infer"}, mutbl=mutbl}},
         }
 
-        if cfg:is_slice_any() or cfg.extra_data.non_null_wrapped then
+        if cfg:is_slice_any() or cfg:non_null_wrapped() then
             -- core::ptr::NonNull doesn't have an as_mut_ptr
-            if cfg.extra_data.non_null_wrapped then
+            if cfg:non_null_wrapped() then
                 as_ptr = "as_ptr"
             end
 
@@ -702,7 +702,7 @@ function decay_ref_to_ptr(expr, cfg, for_struct_field, ptr_ty)
                 },
             }
 
-            if not is_mut and cfg.extra_data.non_null_wrapped then
+            if not is_mut and cfg:non_null_wrapped() then
                 closure_expr = Expr.new{
                     "Cast",
                     closure_expr,
@@ -822,6 +822,11 @@ function Visitor:rewrite_field_expr(expr)
                 end
 
                 derefed_expr:to_method_call("unwrap", {derefed_expr})
+
+                if cfg:non_null_wrapped() then
+                    derefed_expr:to_method_call("as_ptr", {derefed_expr})
+                    derefed_expr:to_unary("Deref", derefed_expr)
+                end
             end
 
             -- (*foo).bar -> (foo).bar (can't remove parens..)
@@ -884,13 +889,13 @@ function Visitor:rewrite_deref_expr(expr)
             -- *ptr[1] -> *ptr.as_mut().unwrap()[1] otherwise we can just unwrap
             -- *ptr[1] -> *ptr.unwrap()[1]
             if cfg:is_opt_any() then
-                if cfg:is_opt_box_any() or cfg.extra_data.mutability == "mut" then
+                if cfg:is_opt_box_any() or cfg:is_mut() then
                     unwrapped_expr:to_method_call("as_mut", {unwrapped_expr})
                 end
                 unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
             end
-        -- Here we just need to insert "as_ptr" on the NonNull variable, and let it proceed as it was
-        elseif cfg.extra_data.non_null_wrapped then
+            -- Here we just need to insert "as_ptr" on the NonNull variable, and let it proceed as it was
+        elseif cfg:non_null_wrapped() then
             unwrapped_expr:to_method_call("unwrap", {unwrapped_expr})
             unwrapped_expr:to_method_call("as_ptr", {unwrapped_expr})
             unwrapped_expr:to_method_call("offset", {unwrapped_expr, offset_expr})
@@ -942,7 +947,7 @@ function Visitor:rewrite_deref_expr(expr)
                 expr:to_index(expr, zero_expr)
             else
                 -- *ptr.as_ptr() = 1; where ptr is std::ptr::NonNull
-                if cfg.extra_data.non_null_wrapped then
+                if cfg:non_null_wrapped() then
                     expr:to_method_call("as_ptr", {expr})
                 end
 
@@ -1059,8 +1064,8 @@ function Visitor:rewrite_assign_expr(expr)
             end
         end
 
-        if lhs_cfg and not lhs_cfg.extra_data.non_null_wrapped then
-            lhs_cfg.extra_data.non_null_wrapped = rhs_cfg.extra_data.non_null_wrapped
+        if lhs_cfg and not lhs_cfg:non_null_wrapped() then
+            lhs_cfg.extra_data.non_null_wrapped = rhs_cfg:non_null_wrapped()
         end
     else
         local lhs_cfg = self:get_expr_cfg(lhs)
