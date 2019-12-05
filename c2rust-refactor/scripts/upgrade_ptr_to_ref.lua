@@ -1658,17 +1658,22 @@ function Visitor:visit_local(locl, walk)
         locl:set_init(nil)
     -- Here we need an explicit type to coerce array ref to slice ref
     elseif init:get_method_name() == "as_mut_ptr" or init:get_method_name() == "as_ptr" then
-        local mut_ty = locl:get_ty():child(1)
-        local slice = Ty.new{"Slice", mut_ty:get_ty()}
-        local mutbl = "Immutable"
+        local caller = init:child(2)[1]
+        local cfg = self:get_expr_cfg(caller)
 
-        if cfg:is_mut() then
-            mutbl = "Mutable"
+        if cfg then
+            local mut_ty = locl:get_ty():child(1)
+            local slice = Ty.new{"Slice", mut_ty:get_ty()}
+            local mutbl = "Immutable"
+
+            if cfg:is_mut() then
+                mutbl = "Mutable"
+            end
+
+            local slice_ref = Ty.new{"Rptr", nil, {"MutTy", ty=slice, mutbl=mutbl}}
+
+            locl:set_ty(slice_ref)
         end
-
-        local slice_ref = Ty.new{"Rptr", nil, {"MutTy", ty=slice, mutbl=mutbl}}
-
-        locl:set_ty(slice_ref)
     end
 
     if cfg.extra_data.clear_init_and_ty then
