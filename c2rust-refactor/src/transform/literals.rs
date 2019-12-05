@@ -360,12 +360,30 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
                 // if so, then unify with the type of the field
             }
 
-            ExprKind::Index(ref _e, ref _idx) => {
-                // TODO: unify `idx` with `usize`,
-                // after checking with rustc that that's the correct type
-
+            ExprKind::Index(ref e, ref idx) => {
                 // FIXME: we should unify with the inner type of the aggregate,
                 // but that's too complicated right now
+                self.visit_expr(e);
+
+                // We unify `idx` with `usize`, but only after making sure
+                // that it's the expected type; we do this in a hacky way:
+                // we assume that if the type of the expression was inferred
+                // to `usize` with suffixes, then it will stay the same without
+                // them; this should generally be true, since the expected type
+                // is inferred from the parameter of `Index`/`IndexMut`
+                let mut idx_source = LitTySource::None;
+                if let Some(idx_ty) = self.cx.opt_node_type(idx.id) {
+                    match idx_ty.kind {
+                        ty::TyKind::Int(IntTy::Isize) |
+                        ty::TyKind::Uint(UintTy::Usize) => {
+                            idx_source = LitTySource::from_ty(idx_ty);
+                        }
+                        _ => {}
+                    }
+                }
+
+                let idx_key = self.new_key(idx_source);
+                self.visit_expr_unify(idx, idx_key);
             }
 
             ExprKind::Range(ref start, ref end, _) => {
