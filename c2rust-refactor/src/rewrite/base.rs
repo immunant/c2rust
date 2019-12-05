@@ -488,7 +488,12 @@ pub fn extend_span_comments_strict(id: &NodeId, mut span: Span, rcx: &RewriteCtx
         None => return Ok(span),
     };
 
-    // debug!("Extending span comments for {:?} for comments: {:?}", span, comments);
+    debug!(
+        "Extending span comments for {:?} ({:?}) for comments: {:?}",
+        span,
+        id,
+        comments.iter().map(|comment| comment.lines.clone()).collect::<Vec<_>>(),
+    );
 
     let mut before = vec![];
     let mut after = vec![];

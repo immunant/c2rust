@@ -17,14 +17,6 @@ pub use syntax::util::comments::{Comment, CommentStyle};
 #[derive(Default)]
 pub struct CommentMap(HashMap<NodeId, Vec<Comment>>);
 
-impl Extend<(NodeId, Vec<Comment>)> for CommentMap {
-    fn extend<I>(&mut self, iter: I)
-        where I: IntoIterator<Item = (NodeId, Vec<Comment>)>
-    {
-        self.0.extend(iter);
-    }
-}
-
 impl CommentMap {
     pub fn insert(&mut self, id: NodeId, comment: Comment) {
         let comment = Comment {

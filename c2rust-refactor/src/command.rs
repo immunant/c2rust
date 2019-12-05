@@ -25,7 +25,7 @@ use syntax::visit::Visitor;
 
 use crate::ast_manip::map_ast_into;
 use crate::ast_manip::number_nodes::{
-    number_nodes_with, reset_node_ids, NodeIdCounter,
+    number_nodes, number_nodes_with, reset_node_ids, NodeIdCounter,
 };
 use crate::ast_manip::{remove_paren, ListNodeIds, MutVisit, Visit};
 use crate::ast_manip::{collect_comments, gather_comments, Comment, CommentMap};
@@ -296,18 +296,24 @@ impl RefactorState {
             profile_start!("Replace compiler crate");
             let parse = queries.parse()?;
 
-            disk_state.get_or_insert_with(|| DiskState::new(
-                parse.peek().clone(),
-                source_map,
-                session,
-                node_map,
-            ));
+            let disk_state = disk_state.get_or_insert_with(|| {
+                let mut krate = parse.peek().clone();
+                remove_paren(&mut krate);
+                number_nodes(&mut krate);
+
+                DiskState::new(
+                    krate,
+                    source_map,
+                    session,
+                    node_map,
+                )
+            });
 
             // The newly loaded `krate` and reinitialized `node_map` reference
             // none of the old `parsed_nodes`.  That means we can reset the ID
             // counter without risk of ID collisions.
             let mut cs = CommandState::new(
-                krate.take().unwrap_or_else(|| parse.peek().clone()),
+                krate.take().unwrap_or_else(|| disk_state.orig_krate.clone()),
                 Phase::Phase1,
                 marks.clone(),
                 ParsedNodes::default(),
@@ -410,8 +416,7 @@ impl RefactorState {
                 }
             };
 
-            node_map
-                .init(cs.new_parsed_node_ids.get_mut().drain(..));
+            node_map.init(cs.new_parsed_node_ids.get_mut().drain(..));
 
             if let Some(collapse_info) = collapse_info {
                 collapse_info.collapse(node_map, &cs);
@@ -419,7 +424,7 @@ impl RefactorState {
 
             for (node, comment) in cs.new_comments.get_mut().drain(..) {
                 if let Some(node) = node_map.get(&node) {
-                    disk_state.as_mut().unwrap().comment_map.insert(*node, comment);
+                    disk_state.comment_map.insert(*node, comment);
                 } else {
                     warn!("Could not create comment: {:?}", comment.lines);
                 }
