@@ -618,7 +618,7 @@ function Visitor:rewrite_method_call_expr(expr)
         -- not be raw, or if we don't have an `arg_id` then the special case
         -- isn't applicable by viture of not being a call param
         if config and config:is_array() and (param_cfg or not arg_id) then
-            expr:to_addr_of(exprs[1], method_name == "as_mut_ptr")
+            expr:to_addr_of(exprs[1], config:is_mut())
         end
     -- p.is_null() -> p.is_none() or false when not using an option
     elseif method_name == "is_null" then

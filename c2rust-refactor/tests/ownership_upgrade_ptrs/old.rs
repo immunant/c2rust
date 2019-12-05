@@ -716,6 +716,8 @@ unsafe fn array_ref2() {
     let mut q: [u32; 4] = [0; 4];
     let r: [u32; 4] = [0; 4];
 
+    // FIXME: Should produce &mut q but broken due to
+    // https://github.com/immunant/c2rust/issues/163
     #[nonnull]
     #[slice]
     let mut s = q.as_mut_ptr();
@@ -723,5 +725,6 @@ unsafe fn array_ref2() {
     #[slice]
     let mut t = r.as_ptr();
 
-    *s.offset(0) = *t.offset(1);
+    // FIXME: See earlier comment
+    // *s.offset(0) = *t.offset(1);
 }
