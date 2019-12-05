@@ -2,8 +2,8 @@
 #![feature(extern_types)]
 #![feature(asm)]
 #![feature(ptr_wrapping_offset_from)]
-#![feature(custom_attribute)]
 #![feature(rustc_private)]
+#![register_tool(c2rust)]
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
@@ -20,7 +20,7 @@ type outside = i32;
 pub mod bar {
     use libc;
 
-    #[header_src = "/home/user/some/workspace/foobar/bar.h:5"]
+    #[c2rust::header_src = "/home/user/some/workspace/foobar/bar.h:5"]
     pub mod bar_h {
         // Test relative paths
         use super::super::outside;

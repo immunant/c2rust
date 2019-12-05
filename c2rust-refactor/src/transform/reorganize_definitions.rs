@@ -19,7 +19,7 @@ use syntax::util::map_in_place::MapInPlace;
 use syntax_pos::BytePos;
 use smallvec::smallvec;
 
-use crate::ast_manip::util::{is_relative_path, join_visibility, split_uses, is_exported};
+use crate::ast_manip::util::{is_relative_path, join_visibility, split_uses, is_exported, is_c2rust_attr};
 use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
@@ -560,12 +560,12 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // Remove src_loc attributes
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
             item.attrs
-                .retain(|attr| !attr.check_name(Symbol::intern("src_loc")));
+                .retain(|attr| !is_c2rust_attr(attr, "src_loc"));
             smallvec![item]
         });
         FlatMapNodes::visit(krate, |mut item: ForeignItem| {
             item.attrs
-                .retain(|attr| !attr.check_name(Symbol::intern("src_loc")));
+                .retain(|attr| !is_c2rust_attr(attr, "src_loc"));
             smallvec![item]
         });
     }
@@ -1486,12 +1486,12 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
 
 /// Check if the `Item` has the `#[header_src = "/some/path"]` attribute
 fn has_source_header(attrs: &[Attribute]) -> bool {
-    attr::contains_name(attrs, Symbol::intern("header_src"))
+    attrs.iter().any(|attr| is_c2rust_attr(attr, "header_src"))
 }
 
 /// Check if the `Item` has the `#[header_src = "/some/path"]` attribute
 fn parse_source_header(attrs: &[Attribute]) -> Option<(String, usize)> {
-    attr::find_by_name(attrs, Symbol::intern("header_src")).map(|attr| {
+    attrs.iter().find(|a| is_c2rust_attr(a, "header_src")).map(|attr| {
         let value_str = attr
             .value_str()
             .expect("Expected a value for header_src attribute")

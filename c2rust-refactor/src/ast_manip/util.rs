@@ -125,6 +125,16 @@ impl PatternSymbol for TraitItem {
     }
 }
 
+pub fn is_c2rust_attr(attr: &Attribute, name: &str) -> bool {
+    if let AttrKind::Normal(item) = &attr.kind {
+        item.path.segments.len() == 2
+            && item.path.segments[0].ident.as_str() == "c2rust"
+            && item.path.segments[1].ident.as_str() == name
+    } else {
+        false
+    }
+}
+
 /// Get the text of a span, and pass it to a callback.  Returns `false` if the span text isn't
 /// available.
 pub fn with_span_text<F: FnOnce(&str)>(cm: &SourceMap, span: Span, callback: F) -> bool {

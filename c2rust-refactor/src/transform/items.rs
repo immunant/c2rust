@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use regex::Regex;
 use rustc::hir::HirId;
 use rustc_parse::parser::FollowedByType;
-use syntax::attr;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::mut_visit::{self, MutVisitor};
@@ -125,7 +124,6 @@ impl Transform for RenameUnnamed {
             items_to_change: HashSet<NodeId>,
             new_idents: HashMap<HirId, Ident>,
             new_to_old: HashMap<Ident, Ident>,
-            is_source: bool,
         }
         let mut renamer: Renamer = Default::default();
         let mut counter: usize = 0;
@@ -135,10 +133,6 @@ impl Transform for RenameUnnamed {
 
         // 1. Rename Anonymous types to the unique Ident
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            if attr::contains_name(&i.attrs, Symbol::intern("header_src")) && !renamer.is_source {
-                renamer.is_source = true;
-            }
-
             let is_module = match i.kind {
                 ItemKind::Mod(..) => true,
                 _ => false,

@@ -423,10 +423,10 @@ impl Builder {
 
     pub fn str_attr<K, V>(self, key: K, value: V) -> Self
     where
-        K: Make<PathSegment>,
+        K: Make<Path>,
         V: IntoSymbol,
     {
-        let key = vec![key].make(&self);
+        let key = key.make(&self);
 
         let mut attrs = self.attrs;
         attrs.push(Attribute {

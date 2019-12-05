@@ -643,7 +643,7 @@ impl Transform for WrapApi {
             let wrapper_name = format!("{}_wrapper", symbol.as_str());
             let wrapper =
                 mk().vis(i.vis.clone()).unsafe_().extern_(old_ext)
-                        .str_attr(sym::export_name, symbol).fn_item(
+                        .str_attr(vec![sym::export_name], symbol).fn_item(
                     &wrapper_name,
                     wrapper_decl,
                     mk().block(vec![

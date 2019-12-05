@@ -516,10 +516,6 @@ pub fn translate(
         expanding_macro: None,
     };
 
-    if t.tcfg.reorganize_definitions {
-        t.use_feature("custom_attribute");
-    }
-
     t.use_crate(ExternCrate::Libc);
 
     // Sort the top-level declarations by file and source location so that we
@@ -942,7 +938,10 @@ fn make_submodule(
         |path| path.to_str().expect("Found invalid unicode"),
     );
     mk().vis("pub")
-        .str_attr("header_src", format!("{}:{}", file_path_str, include_line_number))
+        .str_attr(
+            vec!["c2rust", "header_src"],
+            format!("{}:{}", file_path_str, include_line_number),
+        )
         .mod_item(mod_name, mk().mod_(items))
 }
 
@@ -1040,10 +1039,9 @@ fn bool_to_int(val: P<Expr>) -> P<Expr> {
 fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
     if let Some(src_loc) = src_loc.as_ref() {
         let loc_str = format!("{}:{}", src_loc.line, src_loc.column);
-        attrs.push(attr::mk_attr_outer(attr::mk_name_value_item_str(
-            Ident::from_str("src_loc"),
+        attrs.push(attr::mk_attr_outer(mk().meta_item(
+            vec!["c2rust", "src_loc"],
             loc_str.into_symbol(),
-            DUMMY_SP,
         )));
     }
 }
@@ -1178,9 +1176,12 @@ impl<'c> Translation<'c> {
             ],
         )];
         if self.tcfg.cross_checks {
-            features.append(&mut vec!["plugin", "custom_attribute"]);
+            features.append(&mut vec!["plugin"]);
             pragmas.push(("cross_check", vec!["yes"]));
         }
+
+        features.push("register_tool");
+        pragmas.push(("register_tool", vec!["c2rust"]));
 
         if !features.is_empty() {
             pragmas.push(("feature", features));
