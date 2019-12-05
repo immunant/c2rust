@@ -179,6 +179,19 @@ impl Transform for RemoveLiteralSuffixes {
                             // remove the suffix on the current one, then we should do that
                             uv.unif.unify_var_value(*key, LitTySource::Actual(ty))
                                 .expect("failed to unify");
+
+                            // Special case: if `ty` is `i32` or `f64`,
+                            // then we can remove the suffix, since those
+                            // are the default inference types
+                            match ty.kind {
+                                ty::TyKind::Int(IntTy::I32) |
+                                ty::TyKind::Float(FloatTy::F64) => {
+                                    if let Some(new_lit) = remove_suffix(&lit) {
+                                        *lit = new_lit;
+                                    }
+                                }
+                                _ => {}
+                            }
                         }
 
                         LitTySource::None => {}
