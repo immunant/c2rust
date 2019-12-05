@@ -488,7 +488,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
                     }
                 }
 
-                // state.save_crate();
+                state.save_crate();
             });
         }
     }
