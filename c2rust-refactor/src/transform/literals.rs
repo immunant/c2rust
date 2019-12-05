@@ -216,6 +216,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     }
 
     fn visit_expr_unify(&mut self, ex: &Expr, key: LitTyKey<'tcx>) {
+        let tcx = self.cx.ty_ctxt();
         match ex.kind {
             // TODO: handle Box<T> for unifiable inner types
 
@@ -280,7 +281,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
 
             ExprKind::Lit(ref lit) => {
                 if ex.id != DUMMY_NODE_ID && lit.kind.is_suffixed() {
-                    let source = LitTySource::from_lit_expr(ex, self.cx.ty_ctxt());
+                    let source = LitTySource::from_lit_expr(ex, tcx);
                     let lit_key = self.new_key(source);
                     self.unif.unify_var_var(key, lit_key)
                         .expect("Actual(to unify");
@@ -377,9 +378,33 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
                 }
             }
 
-            // TODO: handle `Path` by keeping our own table of locals
-            // for now, resolve path and check if it's not a generic
-            //
+            ExprKind::Path(..) => {
+                visit::walk_expr(self, ex);
+                // Try to resolve this path to a local variable
+                if let Some(res) = self.cx.try_resolve_expr_hir(ex) {
+                    match res {
+                        Res::Local(id) => {
+                            // This is a local variable that may have a type,
+                            // try to get that type and unify it
+                            let pid = tcx.hir().get_parent_node(id);
+                            let node = match_or!([tcx.hir().find(pid)]
+                                                 Some(x) => x; return);
+                            let l = match_or!([node] hir::Node::Local(l) => l; return);
+                            let lty = match_or!([l.ty] Some(ref lty) => lty; return);
+                            let source = LitTySource::from_hir_ty(lty, tcx);
+                            self.unif.unify_var_value(key, source)
+                                .expect("failed to unify");
+                        }
+
+                        Res::Def(_, _did) | Res::SelfCtor(_did) => {
+                            // TODO: this is a static, const or external
+                        }
+
+                        _ => {}
+                    }
+                }
+            }
+
             // TODO: handle `AddrOf` by keeping track of pointers
             //
             // TODO: unify `Break` with return values
