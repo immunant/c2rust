@@ -5,10 +5,10 @@ use std::rc::Rc;
 use std::str;
 use syntax::ast::*;
 use syntax::attr::mk_attr_inner;
-use syntax::token::{self, DelimToken, TokenKind, Token};
+use syntax::token::{self, TokenKind, Token};
 use syntax::ptr::P;
 use syntax::source_map::{dummy_spanned, Span, Spanned, DUMMY_SP};
-use syntax::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
+use syntax::tokenstream::{DelimSpan, TokenStream, TokenStreamBuilder, TokenTree};
 use syntax::ThinVec;
 
 use into_symbol::IntoSymbol;
@@ -434,15 +434,14 @@ impl Builder {
             style: AttrStyle::Outer,
             kind: AttrKind::Normal(AttrItem {
                 path: key,
-                tokens: vec![
-                    TokenTree::token(token::Eq, DUMMY_SP),
-                    TokenTree::token(
+                args: MacArgs::Eq(
+                    DUMMY_SP,
+                    vec![TokenTree::token(
                         TokenKind::Literal(token::Lit::new(token::LitKind::Str, value.into_symbol(), None)),
                         DUMMY_SP
-                    )
-                ]
-                    .into_iter()
-                    .collect(),
+                    )].into_iter()
+                        .collect(),
+                ),
             }),
             span: DUMMY_SP,
         });
@@ -464,7 +463,7 @@ impl Builder {
             style: AttrStyle::Outer,
             kind: AttrKind::Normal(AttrItem {
                 path: key,
-                tokens: TokenStream::default(),
+                args: MacArgs::Empty,
             }),
             span: DUMMY_SP,
         });
@@ -481,26 +480,28 @@ impl Builder {
     {
         let func: Path = vec![func].make(&self);
 
-        let tokens: TokenStream = {
-            let mut builder = TokenStreamBuilder::new();
-            builder.push(TokenTree::token(TokenKind::OpenDelim(DelimToken::Paren), DUMMY_SP));
+        let args = MacArgs::Delimited(
+            DelimSpan::dummy(),
+            MacDelimiter::Parenthesis,
+            {
+                let mut builder = TokenStreamBuilder::new();
 
-            let mut is_first = true;
-            for argument in arguments {
-                if is_first {
-                    is_first = false;
-                } else {
-                    builder.push(TokenTree::token(TokenKind::Comma, DUMMY_SP));
+                let mut is_first = true;
+                for argument in arguments {
+                    if is_first {
+                        is_first = false;
+                    } else {
+                        builder.push(TokenTree::token(TokenKind::Comma, DUMMY_SP));
+                    }
+
+                    let argument: Ident = argument.make(&self);
+                    let token_kind = TokenKind::Ident(argument.name, argument.is_raw_guess());
+                    builder.push(TokenTree::token(token_kind, DUMMY_SP));
                 }
 
-                let argument: Ident = argument.make(&self);
-                let token_kind = TokenKind::Ident(argument.name, argument.is_raw_guess());
-                builder.push(TokenTree::token(token_kind, DUMMY_SP));
-            }
-
-            builder.push(TokenTree::token(TokenKind::CloseDelim(DelimToken::Paren), DUMMY_SP));
-            builder.build()
-        };
+                builder.build()
+            },
+        );
 
         let mut attrs = self.attrs;
         attrs.push(Attribute {
@@ -508,7 +509,7 @@ impl Builder {
             style: AttrStyle::Outer,
             kind: AttrKind::Normal(AttrItem {
                 path: func,
-                tokens: tokens,
+                args,
             }),
             span: DUMMY_SP,
         });
@@ -2181,19 +2182,19 @@ impl Builder {
         }
     }
 
-    pub fn attribute<Pa, Ts>(self, style: AttrStyle, path: Pa, tokens: Ts) -> Attribute
+    pub fn attribute<Pa, Ma>(self, style: AttrStyle, path: Pa, args: Ma) -> Attribute
     where
         Pa: Make<Path>,
-        Ts: Make<TokenStream>,
+        Ma: Make<MacArgs>,
     {
         let path = path.make(&self);
-        let tokens = tokens.make(&self).into();
+        let args = args.make(&self).into();
         Attribute {
             id: AttrId(0),
             style,
             kind: AttrKind::Normal(AttrItem {
                 path,
-                tokens,
+                args,
             }),
             span: self.span,
         }
@@ -2244,19 +2245,17 @@ impl Builder {
         self.attrs
     }
 
-    pub fn mac<Pa, Ts>(self, path: Pa, tts: Ts, delim: MacDelimiter) -> Mac
+    pub fn mac<Pa, Ma>(self, path: Pa, args: Ma) -> Mac
     where
         Pa: Make<Path>,
-        Ts: Make<TokenStream>,
+        Ma: Make<P<MacArgs>>,
     {
         let path = path.make(&self);
-        let tts = tts.make(&self);
+        let args = args.make(&self);
         Mac {
             path: path,
-            delim: delim,
-            tts: tts,
+            args: args,
             prior_type_ascription: None,
-            span: self.span,
         }
     }
 
