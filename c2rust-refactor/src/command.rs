@@ -124,6 +124,14 @@ pub struct RefactorState {
     /// New nodes parsed by commands
     parsed_nodes: ParsedNodes,
 
+    /// Counter for assigning fresh `NodeId`s to newly parsed nodes (among others).
+    ///
+    /// It's important that this counter is preserved across `transform_crate` calls.  Parsed
+    /// nodes' IDs stick around after the originating `transform_crate` ends: they remain in
+    /// `parsed_nodes`, and they can be referenced by `node_map` as "old" IDs.  Preserving this
+    /// counter ensures that every parsed node has a distinct `NodeId`.
+    node_id_counter: NodeIdCounter,
+
     /// Commands run so far
     commands: Vec<String>,
 
@@ -214,6 +222,8 @@ impl RefactorState {
 
             parsed_nodes: ParsedNodes::default(),
 
+            node_id_counter: NodeIdCounter::new(FRESH_NODE_ID_START),
+
             tcx_gen: Arc::new(AtomicUsize::new(1)),
         }
     }
@@ -240,6 +250,7 @@ impl RefactorState {
         self.marks.clear();
         self.node_map = NodeMap::new();
         self.parsed_nodes = ParsedNodes::default();
+        self.node_id_counter = NodeIdCounter::new(FRESH_NODE_ID_START);
     }
 
     /// Save the crate to disk, by writing out the new source text produced by rewriting.
@@ -290,12 +301,14 @@ impl RefactorState {
         let node_map = &mut self.node_map;
         let tcx_gen = &self.tcx_gen;
         let krate = &mut self.krate;
+        let node_id_counter = &mut self.node_id_counter;
 
         self.compiler.enter(|queries| {
             // Replace current parse query results
             profile_start!("Replace compiler crate");
             let parse = queries.parse()?;
 
+            // Initialize initial parsed crate if not previously parsed
             let disk_state = disk_state.get_or_insert_with(|| {
                 let mut krate = parse.peek().clone();
                 remove_paren(&mut krate);
@@ -317,7 +330,7 @@ impl RefactorState {
                 Phase::Phase1,
                 marks.clone(),
                 ParsedNodes::default(),
-                NodeIdCounter::new(FRESH_NODE_ID_START),
+                node_id_counter.clone(),
             );
 
             let unexpanded = cs.krate().clone();
@@ -433,6 +446,7 @@ impl RefactorState {
             *marks = cs.marks.into_inner();
             parsed_nodes.append(cs.parsed_nodes.into_inner());
             *krate = Some(cs.krate.into_inner());
+            *node_id_counter = cs.node_id_counter;
 
             Ok(r)
         })

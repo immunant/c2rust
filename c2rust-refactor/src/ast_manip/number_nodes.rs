@@ -4,6 +4,7 @@ use syntax::mut_visit::{self, MutVisitor};
 
 use crate::ast_manip::MutVisit;
 
+#[derive(Clone)]
 pub struct NodeIdCounter(Cell<u32>);
 
 impl NodeIdCounter {
