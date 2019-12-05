@@ -912,17 +912,18 @@ unsafe extern "C" fn opt_box_to_ptr(mut box1: Option<Box<u32>>, mut box2: Option
 
 unsafe fn array_ref2() {
     let mut q: [u32; 4] = [0; 4];
+
     let r: [u32; 4] = [0; 4];
 
-    // FIXME: Should produce &mut q but broken due to
-    // https://github.com/immunant/c2rust/issues/163
     #[nonnull]
     #[slice]
-    let mut s = &q;
+    let mut s: &[u32] = &q;
     #[nonnull]
     #[slice]
-    let mut t = &r;
+    let mut t: &[u32] = &r;
 
-    // FIXME: See earlier comment
-    // *s.offset(0) = *t.offset(1);
+    #[slice]
+    #[nonnull]
+    let fresh = t;
+    t = &t[1..];
 }

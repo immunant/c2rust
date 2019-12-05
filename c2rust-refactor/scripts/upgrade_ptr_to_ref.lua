@@ -605,7 +605,7 @@ function Visitor:rewrite_method_call_expr(expr)
                 expr:to_field(caller, "1")
             end
         end
-    -- static_var.as_mut/ptr -> &[mut]static_var
+    -- var.as_mut/ptr -> &[mut]var
     elseif method_name == "as_ptr" or method_name == "as_mut_ptr" then
         local hirid = self.tctx:resolve_path_hirid(exprs[1])
         local config = self:get_expr_cfg(exprs[1])
@@ -1656,8 +1656,19 @@ function Visitor:visit_local(locl, walk)
     elseif is_null_ptr(init) then
         locl:set_ty(nil)
         locl:set_init(nil)
+    -- Here we need an explicit type to coerce array ref to slice ref
     elseif init:get_method_name() == "as_mut_ptr" or init:get_method_name() == "as_ptr" then
-        locl:set_ty(nil)
+        local mut_ty = locl:get_ty():child(1)
+        local slice = Ty.new{"Slice", mut_ty:get_ty()}
+        local mutbl = "Immutable"
+
+        if cfg:is_mut() then
+            mutbl = "Mutable"
+        end
+
+        local slice_ref = Ty.new{"Rptr", nil, {"MutTy", ty=slice, mutbl=mutbl}}
+
+        locl:set_ty(slice_ref)
     end
 
     if cfg.extra_data.clear_init_and_ty then

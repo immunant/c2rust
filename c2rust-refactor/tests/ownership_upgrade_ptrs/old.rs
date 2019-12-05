@@ -727,4 +727,9 @@ unsafe fn array_ref2() {
 
     // FIXME: See earlier comment
     // *s.offset(0) = *t.offset(1);
+
+    #[slice]
+    #[nonnull]
+    let fresh = t;
+    t = t.offset(1);
 }
