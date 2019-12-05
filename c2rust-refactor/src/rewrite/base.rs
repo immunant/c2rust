@@ -335,7 +335,7 @@ where
                 rcx.record(TextRewrite::new(old_span, DUMMY_SP));
                 i += 1;
 
-                if i == old.len() && !has_trailing_comma {
+                if i > 1 && i == old.len() && !has_trailing_comma {
                     comma_before = false;
                 }
             }

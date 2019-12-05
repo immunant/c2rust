@@ -302,10 +302,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         return false;
     }
 
-    let src2: String = <Item as PrintParse>::to_string(new);
-    let reparsed = Item::parse(rcx.session(), &src2);
-
-    match (kind1, &reparsed.kind) {
+    match (kind1, kind2) {
         (
             &ItemKind::Fn(ref sig1, ref generics1, ref block1),
             &ItemKind::Fn(ref sig2, ref generics2, ref block2),
@@ -337,6 +334,9 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
 
             // Now try to splice changes to vis, constness, unsafety, abi, and ident.  We use the
             // parser to find spans for all the old stuff.
+            let src2: String = <Item as PrintParse>::to_string(new);
+            let reparsed = Item::parse(rcx.session(), &src2);
+            unpack!([&reparsed.kind] ItemKind::Fn(reparsed_sig, _generics, _block));
 
             // The first two go in a specific order.  If multiple qualifiers are added (for
             // example, both `unsafe` and `extern`), we need to add them in the right order.
@@ -346,7 +346,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             }
 
             if sig1.header.constness.node != sig2.header.constness.node {
-                record_qualifier_rewrite(sig1.header.constness.span, sig2.header.constness.span, rcx.borrow());
+                record_qualifier_rewrite(sig1.header.constness.span, reparsed_sig.header.constness.span, rcx.borrow());
             }
 
             if ident1 != ident2 {
@@ -366,6 +366,9 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             if !ok {
                 return false;
             }
+
+            let src2: String = <Item as PrintParse>::to_string(new);
+            let reparsed = Item::parse(rcx.session(), &src2);
 
             if !vis1.node.ast_equiv(&vis2.node) {
                 record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
