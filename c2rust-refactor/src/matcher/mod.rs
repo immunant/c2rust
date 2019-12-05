@@ -41,7 +41,7 @@ use rustc::session::Session;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, Pat, Path, Stmt, Ty};
+use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
 use rustc_parse::parser::{Parser, PathStyle};
 use syntax::token::{TokenKind};
@@ -476,14 +476,14 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     // util.rs.
 
     /// Handle the `marked!(...)` matching form.
-    pub fn do_marked<T, F>(&mut self, tts: &TokenStream, func: F, target: &T) -> Result<()>
+    pub fn do_marked<T, F>(&mut self, args: &MacArgs, func: F, target: &T) -> Result<()>
     where
         T: TryMatch + GetNodeId,
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T>,
     {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            tts.clone(),
+            args.inner_tokens().clone(),
             None,
             false,
             false,
@@ -510,13 +510,13 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     /// Core implementation of the `def!(...)` matching form.
     fn do_def_impl(
         &mut self,
-        tts: &TokenStream,
+        args: &MacArgs,
         style: PathStyle,
         opt_def_id: Option<DefId>,
     ) -> Result<()> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            tts.clone(),
+            args.inner_tokens(),
             None,
             false,
             false,
@@ -544,26 +544,26 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     /// Handle the `def!(...)` matching form for exprs.
-    pub fn do_def_expr(&mut self, tts: &TokenStream, target: &Expr) -> Result<()> {
+    pub fn do_def_expr(&mut self, args: &MacArgs, target: &Expr) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_expr(target);
-        self.do_def_impl(tts, PathStyle::Expr, opt_def_id)
+        self.do_def_impl(args, PathStyle::Expr, opt_def_id)
     }
 
     /// Handle the `def!(...)` matching form for exprs.
-    pub fn do_def_ty(&mut self, tts: &TokenStream, target: &Ty) -> Result<()> {
+    pub fn do_def_ty(&mut self, args: &MacArgs, target: &Ty) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_ty(target);
-        self.do_def_impl(tts, PathStyle::Type, opt_def_id)
+        self.do_def_impl(args, PathStyle::Type, opt_def_id)
     }
 
     /// Handle the `typed!(...)` matching form.
-    pub fn do_typed<T, F>(&mut self, tts: &TokenStream, func: F, target: &T) -> Result<()>
+    pub fn do_typed<T, F>(&mut self, args: &MacArgs, func: F, target: &T) -> Result<()>
     where
         T: TryMatch + GetNodeId,
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T>,
     {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            tts.clone().into(),
+            args.inner_tokens(),
             None,
             false,
             false,
@@ -592,11 +592,11 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         self.try_match(&pattern, target)
     }
 
-    pub fn do_cast<F>(&mut self, tts: &TokenStream, func: F, target: &Expr) -> Result<()>
+    pub fn do_cast<F>(&mut self, args: &MacArgs, func: F, target: &Expr) -> Result<()>
     where
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, P<Expr>>,
     {
-        let ts: TokenStream = tts.clone();
+        let ts: TokenStream = args.inner_tokens();
         let pattern = driver::run_parser_tts(self.cx.session(), ts.into_trees().collect(), func);
 
         let mut target = target;

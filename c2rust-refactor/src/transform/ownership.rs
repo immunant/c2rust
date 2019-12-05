@@ -185,8 +185,8 @@ fn build_static_attr(ty: PTy) -> Option<Attribute> {
             args.push(perm_token(p));
         }
     });
-    let tokens = parens(args).into();
-    Some(make_attr("ownership_static", tokens))
+    let args = delimited(args).into();
+    Some(make_attr("ownership_static", args))
 }
 
 fn build_constraints_attr(cset: &ConstraintSet) -> Attribute {
@@ -225,8 +225,7 @@ fn build_constraints_attr(cset: &ConstraintSet) -> Attribute {
         args.push(parens(le_args));
     }
 
-    let tokens = parens(args).into();
-    make_attr("ownership_constraints", tokens)
+    make_attr("ownership_constraints", delimited(args))
 }
 
 fn build_mono_attr(suffix: &str, assign: &IndexVec<Var, ConcretePerm>) -> Attribute {
@@ -238,8 +237,7 @@ fn build_mono_attr(suffix: &str, assign: &IndexVec<Var, ConcretePerm>) -> Attrib
         args.push(perm_token(p));
     }
 
-    let tokens = parens(args).into();
-    make_attr("ownership_mono", tokens)
+    make_attr("ownership_mono", delimited(args))
 }
 
 fn perm_token(p: ConcretePerm) -> TokenTree {
@@ -275,21 +273,28 @@ fn parens(ts: Vec<TokenTree>) -> TokenTree {
     )
 }
 
-fn make_attr(name: &str, tokens: TokenStream) -> Attribute {
+fn delimited(ts: Vec<TokenTree>) -> MacArgs {
+    MacArgs::Delimited(
+        DelimSpan::dummy(),
+        MacDelimiter::Parenthesis,
+        ts.into_iter().collect::<TokenStream>(),
+    )
+}
+
+fn make_attr(name: &str, args: MacArgs) -> Attribute {
     Attribute {
         id: AttrId(0),
         style: AttrStyle::Outer,
         kind: AttrKind::Normal(AttrItem {
             path: mk().path(vec![name]),
-            tokens: tokens,
+            args: args,
         }),
         span: DUMMY_SP,
     }
 }
 
 fn build_variant_attr(group: &str) -> Attribute {
-    let tokens = parens(vec![str_token(group)]).into();
-    make_attr("ownership_variant_of", tokens)
+    make_attr("ownership_variant_of", delimited(vec![str_token(group)]))
 }
 
 

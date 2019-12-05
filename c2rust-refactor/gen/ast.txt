@@ -483,7 +483,7 @@ enum AttrKind {
     Normal(item),
     DocComment(symbol),
 }
-struct AttrItem { path, tokens }
+struct AttrItem { path, args }
 enum AttrStyle {
     Outer,
     Inner,
@@ -515,7 +515,7 @@ enum AssocTyConstraintKind {
 }
 
 
-struct Mac { path, delim, tts, span, prior_type_ascription }
+struct Mac { path, args, prior_type_ascription }
 enum MacStmtStyle {
     Semicolon,
     Braces,
@@ -523,7 +523,14 @@ enum MacStmtStyle {
 }
 #[equiv_mode=ignore]
 flag TokenStream;
-struct MacroDef { tokens, legacy }
+struct MacroDef { body, legacy }
+
+#[boxed=both]
+enum MacArgs {
+    Empty,
+    Delimited(span, delim, tokens),
+    Eq(span, tokens),
+}
 
 #[boxed]
 struct InlineAsm {

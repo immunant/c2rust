@@ -5,7 +5,6 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::symbol::{kw, Symbol};
-use syntax::tokenstream::TokenStream;
 use syntax_pos::sym;
 use smallvec::smallvec;
 
@@ -91,10 +90,10 @@ impl PatternSymbol for Ty {
 
 impl PatternSymbol for Mac {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        if self.tts != TokenStream::default() {
-            return None;
+        match &*self.args {
+            MacArgs::Empty => self.path.pattern_symbol(),
+            _ => None,
         }
-        self.path.pattern_symbol()
     }
 }
 
