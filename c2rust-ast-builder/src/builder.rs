@@ -2256,7 +2256,7 @@ impl Builder {
         }
     }
 
-    pub fn mac_call<Pa, Ts>(self, func: Pa, arguments: Ts) -> Mac
+    pub fn mac<Pa, Ts>(self, func: Pa, arguments: Ts, delim: MacDelimiter) -> Mac
     where
         Pa: Make<Path>,
         Ts: Make<TokenStream>,
@@ -2265,7 +2265,7 @@ impl Builder {
 
         let args = MacArgs::Delimited(
             DelimSpan::dummy(),
-            MacDelimiter::Parenthesis,
+            delim,
             arguments.make(&self),
         );
 

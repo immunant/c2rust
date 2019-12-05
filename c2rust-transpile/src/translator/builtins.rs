@@ -594,9 +594,10 @@ impl<'c> Translation<'c> {
 
             "__builtin_unreachable" => {
                 Ok(WithStmts::new(
-                    vec![mk().semi_stmt(mk().mac_expr(mk().mac_call(
+                    vec![mk().semi_stmt(mk().mac_expr(mk().mac(
                         vec!["unreachable"],
                         vec![],
+                        MacDelimiter::Parenthesis,
                     )))],
                     self.panic_or_err("unreachable stub"),
                 ))
