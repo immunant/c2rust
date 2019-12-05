@@ -234,10 +234,12 @@ impl RefactorState {
     /// rewriting with the previous `orig_crate` any more.
     #[cfg_attr(feature = "profile", flame)]
     pub fn load_crate(&mut self) {
+        self.compiler = driver::make_compiler(&self.config, self.file_io.clone());
         self.disk_state = None;
         self.krate = None;
-        self.transform_crate(Phase::Phase1, |_, _| {})
-            .unwrap_or_else(|e| panic!("Could not load crate: {:?}", e));
+        self.marks.clear();
+        self.node_map = NodeMap::new();
+        self.parsed_nodes = ParsedNodes::default();
     }
 
     /// Save the crate to disk, by writing out the new source text produced by rewriting.
