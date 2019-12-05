@@ -141,7 +141,7 @@ impl<'c> Translation<'c> {
                         mk().local_stmt(P(mk().local(
                             mk().ident_pat("var"),
                             Some(mk().path_ty(vec!["String"])),
-                            Some(mk().mac_expr(mk().mac(
+                            Some(mk().mac_expr(mk().mac_call(
                                 vec!["format"],
                                 vec![
                                     token::Interpolated(Rc::new(Nonterminal::NtExpr(mk().lit_expr("{}={}")))),
@@ -152,7 +152,6 @@ impl<'c> Translation<'c> {
                                 ].into_iter()
                                     .map(|tk| TokenTree::token(tk, DUMMY_SP))
                                     .collect::<TokenStream>(),
-                                MacDelimiter::Parenthesis,
                             )))
                         ))),
                         mk().semi_stmt(mk().method_call_expr(

@@ -180,10 +180,9 @@ impl<'c> Translation<'c> {
             push_expr(&mut tokens, mk().lit_expr("volatile"));
         }
 
-        let mac = mk().mac(
+        let mac = mk().mac_call(
             vec!["asm"],
             tokens.into_iter().collect::<TokenStream>(),
-            MacDelimiter::Parenthesis,
         );
         let mac = mk().mac_expr(mac);
         let mac = mk().span(span).expr_stmt(mac);

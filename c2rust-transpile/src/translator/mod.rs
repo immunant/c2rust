@@ -1204,8 +1204,8 @@ impl<'c> Translation<'c> {
         let macro_msg = vec![TokenTree::token(token::Interpolated(Rc::new(Nonterminal::NtExpr(
             mk().lit_expr(msg)))), DUMMY_SP)]
         .into_iter()
-        .collect::<TokenStream>();
-        mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
+            .collect::<TokenStream>();
+        mk().mac_expr(mk().mac_call(vec![macro_name], macro_msg))
     }
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
@@ -3243,7 +3243,7 @@ impl<'c> Translation<'c> {
                         TokenTree::token(token::CloseDelim(DelimToken::Bracket), DUMMY_SP),
                     ];
                     let path = mk().path("offset_of");
-                    let mac = mk().mac_expr(mk().mac(path, macro_body, MacDelimiter::Parenthesis));
+                    let mac = mk().mac_expr(mk().mac_call(path, macro_body));
 
                     // Cast type
                     let cast_ty = self.convert_type(ty.ctype)?;

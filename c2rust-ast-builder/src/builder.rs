@@ -322,7 +322,6 @@ impl Make<FnSig> for P<FnDecl> {
     }
 }
 
-
 #[derive(Clone, Debug)]
 pub struct Builder {
     // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
@@ -2245,16 +2244,34 @@ impl Builder {
         self.attrs
     }
 
-    pub fn mac<Pa, Ma>(self, path: Pa, args: Ma) -> Mac
+    pub fn empty_mac<Pa>(self, path: Pa) -> Mac
     where
         Pa: Make<Path>,
-        Ma: Make<P<MacArgs>>,
     {
         let path = path.make(&self);
-        let args = args.make(&self);
         Mac {
             path: path,
-            args: args,
+            args: P(MacArgs::Empty),
+            prior_type_ascription: None,
+        }
+    }
+
+    pub fn mac_call<Pa, Ts>(self, func: Pa, arguments: Ts) -> Mac
+    where
+        Pa: Make<Path>,
+        Ts: Make<TokenStream>,
+    {
+        let func: Path = func.make(&self);
+
+        let args = MacArgs::Delimited(
+            DelimSpan::dummy(),
+            MacDelimiter::Parenthesis,
+            arguments.make(&self),
+        );
+
+        Mac {
+            path: func,
+            args: P(args),
             prior_type_ascription: None,
         }
     }
