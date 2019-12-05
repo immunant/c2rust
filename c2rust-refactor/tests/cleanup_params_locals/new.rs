@@ -36,9 +36,9 @@ fn used_in_local(p1: i32, mut p2: i32) {
 
 unsafe fn ptrs(p1: *mut u32, mut p2: u32, p3: *mut u32, p4: *mut Foo, p5: Option<fn() -> bool>) {
     *p1.offset(0) += 1;
-    *p3 += 1;
+    (*p3) += 1;
     (*p4).0 = 1;
-    while !p5.unwrap()() {}
+    while !(p5.unwrap()()) {}
     asm!("cpuid" : "={ax}" (p2))
 }
 
