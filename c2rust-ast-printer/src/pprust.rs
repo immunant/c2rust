@@ -673,15 +673,23 @@ pub trait PrintState<'a>: std::ops::Deref<Target = pp::Printer> + std::ops::Dere
     fn print_attr_item(&mut self, item: &ast::AttrItem, span: Span) {
         self.ibox(0);
         match &item.args {
-            MacArgs::Delimited(_, delim, tokens) => self.print_mac_common(
-                Some(MacHeader::Path(&item.path)),
-                false,
-                None,
-                delim.to_token(),
-                tokens.clone(),
-                true,
-                span,
-            ),
+            MacArgs::Delimited(_, delim, tokens) => {
+                let delim = match delim {
+                    MacDelimiter::Parenthesis => DelimToken::Paren,
+                    MacDelimiter::Bracket => DelimToken::Bracket,
+                    MacDelimiter::Brace => DelimToken::Brace,
+                };
+
+                self.print_mac_common(
+                    Some(MacHeader::Path(&item.path)),
+                    false,
+                    None,
+                    delim,
+                    tokens.clone(),
+                    true,
+                    span,
+                )
+            }
             MacArgs::Empty | MacArgs::Eq(..) => {
                 self.print_path(&item.path, false, 0);
                 if let MacArgs::Eq(_, tokens) = &item.args {
