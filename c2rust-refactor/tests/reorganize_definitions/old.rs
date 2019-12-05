@@ -53,7 +53,7 @@ pub mod bar {
 pub mod foo {
     use libc;
 
-    #[header_src = "/home/user/some/workspace/foobar/bar.h:5"]
+    #[c2rust::header_src = "/home/user/some/workspace/foobar/bar.h:5"]
     pub mod bar_h {
         // Test relative paths
         use super::super::outside;

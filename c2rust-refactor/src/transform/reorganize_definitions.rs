@@ -837,7 +837,8 @@ impl ModuleInfo {
                     }
                 }
                 ItemKind::Mod(..) => {
-                    let (path, line) = parse_source_header(&i.attrs).unwrap();
+                    let (path, line) = parse_source_header(&i.attrs)
+                        .unwrap_or_else(|| panic!("Could not parse source header for item: {:?}", i));
                     headers.insert(path);
                     if header_lines.insert(i.ident, line).is_some() {
                         panic!(
