@@ -1,11 +1,12 @@
 #![feature(
     rustc_private,
-    custom_attribute,
     param_attrs,
     ptr_wrapping_offset_from,
     c_variadic,
     extern_types
 )]
+#![register_tool(c2rust)]
+
 extern crate libc;
 
 extern "C" {
@@ -57,7 +58,7 @@ extern "C" {
     static mut _impure_ptr: *mut _reent;
 }
 
-pub unsafe extern "C" fn ten_mul(mut acc: &mut f64, digit: i32, r: Option<&f64>) -> i32 {
+pub unsafe extern "C" fn ten_mul(#[nonnull] mut acc: &mut f64, digit: i32, r: Option<&f64>) -> i32 {
     *acc *= 10i32 as f64;
     *acc += digit as f64;
     *acc += *r.unwrap();
@@ -78,7 +79,11 @@ pub struct Ctx {
     pub data: [u8; 5],
 }
 
-pub unsafe fn struct_ptr(mut ctx: Option<&mut Ctx>, mut ctx2: Option<&mut Ctx>, p: Option<&[u8]>) {
+pub unsafe fn struct_ptr(
+    mut ctx: Option<&mut Ctx>,
+    mut ctx2: Option<&mut Ctx>,
+    #[slice] p: Option<&[u8]>,
+) {
     let off = 1;
     (ctx.as_mut().unwrap()).data[0] = p.unwrap()[0 + 3];
     (ctx2.as_mut().unwrap()).data[0] = p.unwrap()[3 + off];
@@ -190,7 +195,12 @@ unsafe fn move_ptr(mut ptr: Option<Box<u32>>) {
     ptr.take();
 }
 
-unsafe fn attrs(a: &f64, b: &[f64]) -> f64 {
+unsafe fn attrs(
+    #[nonnull] a: &f64,
+    #[nonnull]
+    #[slice]
+    b: &[f64],
+) -> f64 {
     *a + b[2]
 }
 
@@ -200,7 +210,7 @@ pub struct chacha_ctx {
     input: [u32; 16],
 }
 
-unsafe extern "C" fn chacha_ivsetup(mut x: Option<&mut chacha_ctx>, iv: Option<&[u8]>) {
+unsafe extern "C" fn chacha_ivsetup(mut x: Option<&mut chacha_ctx>, #[slice] iv: Option<&[u8]>) {
     (x.as_mut().unwrap()).input[12usize] = 0;
     (x.as_mut().unwrap()).input[13usize] = 0;
     (x.as_mut().unwrap()).input[14usize] = iv.unwrap()[0 + 0] as u32
@@ -241,7 +251,7 @@ pub type category = libc::c_uint;
 
 unsafe extern "C" fn bisearch_cat(
     ucs: libc::c_uint,
-    table: Option<&[_category]>,
+    #[slice] table: Option<&[_category]>,
     mut max: libc::c_int,
 ) -> category {
     let mut min: libc::c_int = 0i32;
@@ -304,7 +314,7 @@ pub unsafe extern "C" fn rand_r(mut seed: Option<&mut libc::c_uint>) -> libc::c_
     return (s & 0x7fffffffi32 as libc::c_long) as libc::c_int;
 }
 
-unsafe fn offset_assign_is_mut(mut z: Option<&mut [u8]>) {
+unsafe fn offset_assign_is_mut(#[slice] mut z: Option<&mut [u8]>) {
     z.as_mut().unwrap()[0] = 1;
     z.as_mut().unwrap()[1] = 1;
 }
@@ -312,11 +322,15 @@ unsafe fn offset_assign_is_mut(mut z: Option<&mut [u8]>) {
 unsafe fn decay_calls(
     cp: Option<&u32>,
     mut mp: Option<&mut u32>,
-    cs: Option<&[u32]>,
-    mut ms: Option<&mut [u32]>,
-    nncp: &u32,
-    mut nnmp: &mut u32,
+    #[slice] cs: Option<&[u32]>,
+    #[slice] mut ms: Option<&mut [u32]>,
+    #[nonnull] nncp: &u32,
+    #[nonnull] mut nnmp: &mut u32,
+    #[nonnull]
+    #[slice]
     nncs: &[u32],
+    #[nonnull]
+    #[slice]
     mut nnms: &mut [u32],
 ) {
     **mp.as_mut().unwrap() = 1;
@@ -341,11 +355,17 @@ unsafe fn decay_calls(
 }
 
 unsafe fn rewritten_calls(
-    nncp: &u32,
-    mut nnmp: &mut u32,
-    mut nnmp2: &mut u32,
+    #[nonnull] nncp: &u32,
+    #[nonnull] mut nnmp: &mut u32,
+    #[nonnull] mut nnmp2: &mut u32,
+    #[nonnull]
+    #[slice]
     nncs: &[u32],
+    #[nonnull]
+    #[slice]
     mut nnms: &mut [u32],
+    #[nonnull]
+    #[slice]
     mut nnms2: &mut [u32],
 ) {
     decay_calls(None, None, None, None, nncp, nnmp, nncs, nnms);
@@ -385,7 +405,7 @@ static mut tau: [libc::c_char; 16] = [
 ];
 pub unsafe extern "C" fn chacha_keysetup(
     mut x: Option<&mut chacha_ctx>,
-    mut k: Option<&[u8_0]>,
+    #[slice] mut k: Option<&[u8_0]>,
     kbits: u32_0,
     _ivbits: u32_0,
 ) {
@@ -414,7 +434,7 @@ pub unsafe extern "C" fn chacha_keysetup(
 
 pub unsafe extern "C" fn chacha_keysetup2(
     mut x: Option<&mut chacha_ctx>,
-    mut k: Option<&[u8_0]>,
+    #[slice] mut k: Option<&[u8_0]>,
     kbits: u32_0,
     _ivbits: u32_0,
 ) {
@@ -446,8 +466,8 @@ pub type size_t = libc::c_ulong;
 pub type wchar_t = libc::c_int;
 
 pub unsafe extern "C" fn wmemcmp(
-    mut s1: Option<&[wchar_t]>,
-    mut s2: Option<&[wchar_t]>,
+    #[slice] mut s1: Option<&[wchar_t]>,
+    #[slice] mut s2: Option<&[wchar_t]>,
     n: size_t,
 ) -> libc::c_int {
     let mut i: size_t = 0;
@@ -468,7 +488,11 @@ pub unsafe extern "C" fn wmemcmp(
 }
 
 pub unsafe extern "C" fn wmemcmp2(
+    #[nonnull]
+    #[slice]
     mut s1: &[wchar_t],
+    #[nonnull]
+    #[slice]
     mut s2: &[wchar_t],
     n: size_t,
 ) -> libc::c_int {
@@ -485,7 +509,10 @@ pub unsafe extern "C" fn wmemcmp2(
     return 0i32;
 }
 
-pub unsafe extern "C" fn wcsspn(mut s: Option<&[wchar_t]>, mut set: Option<&[wchar_t]>) -> size_t {
+pub unsafe extern "C" fn wcsspn(
+    #[slice] mut s: Option<&[wchar_t]>,
+    #[slice] mut set: Option<&[wchar_t]>,
+) -> size_t {
     #[slice]
     let mut p = None;
     #[slice]
@@ -515,8 +542,8 @@ pub unsafe extern "C" fn wcsspn(mut s: Option<&[wchar_t]>, mut set: Option<&[wch
 pub type wint_t = libc::c_uint;
 
 pub unsafe extern "C" fn mycasecmp(
-    mut s1: Option<&[wchar_t]>,
-    mut s2: Option<&[wchar_t]>,
+    #[slice] mut s1: Option<&[wchar_t]>,
+    #[slice] mut s2: Option<&[wchar_t]>,
 ) -> libc::c_int {
     let mut d: libc::c_int = 0i32;
     loop {
@@ -540,7 +567,7 @@ type error_t = libc::c_int;
 
 // TODO: argz is Option<&mut Option<Box<[libc::c_char]>>?
 pub unsafe extern "C" fn argz_create_sep(
-    mut string: Option<&[libc::c_char]>,
+    #[slice] mut string: Option<&[libc::c_char]>,
     mut sep: libc::c_int,
     mut argz: Option<&mut *mut libc::c_char>,
     mut argz_len: Option<&mut size_t>,
@@ -620,7 +647,7 @@ pub unsafe extern "C" fn argz_create_sep(
     return 0i32;
 }
 
-pub unsafe extern "C" fn eisnan(mut x: Option<&[libc::c_ushort]>) -> libc::c_int {
+pub unsafe extern "C" fn eisnan(#[slice] mut x: Option<&[libc::c_ushort]>) -> libc::c_int {
     let mut i: libc::c_int = 0;
     /* NaN has maximum exponent */
     if x.unwrap()[(10i32 - 1i32) as usize] as libc::c_int & 0x7fffi32 != 0x7fffi32 {
@@ -640,7 +667,7 @@ pub unsafe extern "C" fn eisnan(mut x: Option<&[libc::c_ushort]>) -> libc::c_int
     return 0i32;
 }
 
-pub unsafe extern "C" fn eneg(mut x: Option<&mut [libc::c_ushort]>) {
+pub unsafe extern "C" fn eneg(#[slice] mut x: Option<&mut [libc::c_ushort]>) {
     if eisnan(x.as_ref().map(|r| &**r)) != 0 {
         return;
     }
@@ -649,7 +676,11 @@ pub unsafe extern "C" fn eneg(mut x: Option<&mut [libc::c_ushort]>) {
     /* Toggle the sign bit */
 }
 
-pub unsafe extern "C" fn eneg2(mut x: &mut [libc::c_ushort]) {
+pub unsafe extern "C" fn eneg2(
+    #[nonnull]
+    #[slice]
+    mut x: &mut [libc::c_ushort],
+) {
     if eisnan(Some(x)) != 0 {
         return;
     }
@@ -658,7 +689,11 @@ pub unsafe extern "C" fn eneg2(mut x: &mut [libc::c_ushort]) {
     /* Toggle the sign bit */
 }
 
-pub unsafe extern "C" fn eisnan2(mut x: &[libc::c_ushort]) -> libc::c_int {
+pub unsafe extern "C" fn eisnan2(
+    #[nonnull]
+    #[slice]
+    mut x: &[libc::c_ushort],
+) -> libc::c_int {
     let mut i: libc::c_int = 0;
     /* NaN has maximum exponent */
     if x[(10i32 - 1i32) as usize] as libc::c_int & 0x7fffi32 != 0x7fffi32 {
@@ -679,7 +714,11 @@ pub unsafe extern "C" fn eisnan2(mut x: &[libc::c_ushort]) -> libc::c_int {
     return 0i32;
 }
 
-pub unsafe extern "C" fn eneg3(mut x: &mut [libc::c_ushort]) {
+pub unsafe extern "C" fn eneg3(
+    #[nonnull]
+    #[slice]
+    mut x: &mut [libc::c_ushort],
+) {
     if eisnan2(x) != 0 {
         return;
     }
@@ -688,7 +727,7 @@ pub unsafe extern "C" fn eneg3(mut x: &mut [libc::c_ushort]) {
     /* Toggle the sign bit */
 }
 
-pub unsafe extern "C" fn eshdn1(mut x: Option<&mut [libc::c_ushort]>) {
+pub unsafe extern "C" fn eshdn1(#[slice] mut x: Option<&mut [libc::c_ushort]>) {
     let mut bits: libc::c_ushort = 0; /* point to significand area */
     let mut i: libc::c_int = 0;
     x = Some(x.unwrap().split_at_mut(2).1);
@@ -711,8 +750,8 @@ pub unsafe extern "C" fn eshdn1(mut x: Option<&mut [libc::c_ushort]>) {
 }
 
 pub unsafe extern "C" fn emovz(
-    mut a: Option<&[libc::c_ushort]>,
-    mut b: Option<&mut [libc::c_ushort]>,
+    #[slice] mut a: Option<&[libc::c_ushort]>,
+    #[slice] mut b: Option<&mut [libc::c_ushort]>,
 ) {
     let mut i: libc::c_int = 0;
     i = 0i32;
@@ -738,7 +777,14 @@ pub unsafe extern "C" fn emovz(
     b.as_mut().unwrap()[0] = 0i32 as libc::c_ushort;
 }
 
-pub unsafe extern "C" fn emovz2(mut a: &[libc::c_ushort], mut b: &mut [libc::c_ushort]) {
+pub unsafe extern "C" fn emovz2(
+    #[slice]
+    #[nonnull]
+    mut a: &[libc::c_ushort],
+    #[slice]
+    #[nonnull]
+    mut b: &mut [libc::c_ushort],
+) {
     let mut i: libc::c_int = 0;
     i = 0i32;
     while i < 10i32 + 3i32 - 1i32 {
@@ -761,7 +807,14 @@ pub unsafe extern "C" fn emovz2(mut a: &[libc::c_ushort], mut b: &mut [libc::c_u
     b[0] = 0i32 as libc::c_ushort;
 }
 
-pub unsafe extern "C" fn emovz3(mut a: &[libc::c_ushort], mut b: &mut [libc::c_ushort]) {
+pub unsafe extern "C" fn emovz3(
+    #[slice]
+    #[nonnull]
+    mut a: &[libc::c_ushort],
+    #[slice]
+    #[nonnull]
+    mut b: &mut [libc::c_ushort],
+) {
     let mut i: libc::c_int = 0;
     i = 0i32;
     while i < 10i32 + 3i32 - 1i32 {
@@ -785,7 +838,7 @@ pub unsafe extern "C" fn emovz3(mut a: &[libc::c_ushort], mut b: &mut [libc::c_u
     b[0] = 0i32 as libc::c_ushort;
 }
 
-unsafe extern "C" fn eshdn8(mut x: Option<&mut [libc::c_ushort]>) {
+unsafe extern "C" fn eshdn8(#[slice] mut x: Option<&mut [libc::c_ushort]>) {
     let mut newbyt: libc::c_ushort = 0;
     let mut oldbyt: libc::c_ushort = 0;
     let mut i: libc::c_int = 0;
@@ -850,7 +903,7 @@ unsafe fn non_null_type() {
     *ptr.unwrap().as_ptr();
 }
 
-fn rewritten(p: Option<&[u32]>, q: Option<&[u32]>) {}
+fn rewritten(#[slice] p: Option<&[u32]>, #[slice] q: Option<&[u32]>) {}
 
 fn array_ref() {
     let mut p: [u32; 4] = [0; 4];

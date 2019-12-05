@@ -681,6 +681,7 @@ function decay_ref_to_ptr(expr, cfg, for_struct_field, ptr_ty)
                 "Cast",
                 Expr.new{
                     "AddrOf",
+                    "Ref",
                     mutbl,
                     Expr.new{
                         "Unary",
@@ -1675,7 +1676,8 @@ function ConfigBuilder:flat_map_item(item, walk)
     -- We don't visit params directly because then we could be looking at foreign params unknowingly
     -- which we don't want
     elseif item_kind == "Fn" then
-        local decl = item:child(1)
+        local fn_sig = item:child(1)
+        local decl = fn_sig:get_decl()
         local params = decl:get_inputs()
 
         for _, param in ipairs(params) do
