@@ -322,6 +322,19 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
     }
 }
 
+/// Returns the correct `LitKind` for the given `Symbol` encoding of an integer.
+/// We need this because the rustc lexer reads integer-like floats, e.g.,
+/// `3f64` as literals with `LitKind::Integer` and then later converts them
+/// to AST `LitKind::Float`s in `from_lit_token`. The rewriter crashes if we
+/// don't do exactly the same thing.
+pub(crate) fn sym_token_kind(sym: Symbol) -> token::LitKind {
+    if sym.as_str().parse::<u128>().is_ok() {
+        token::LitKind::Integer
+    } else {
+        token::LitKind::Float
+    }
+}
+
 fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
     let mk_int = |i, ty| {
         // We need to build the new `Lit` ourselves instead of
@@ -346,12 +359,11 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
 
     let mk_float = |fs: String, ty| {
         let fsym = Symbol::intern(&fs);
-        let is_int = fs.parse::<u128>().is_ok();
         Some(Lit {
             kind: LitKind::Float(fsym, ty),
             span: lit.span,
             token: token::Lit {
-                kind: if is_int { token::LitKind::Integer } else { token::LitKind::Float },
+                kind: sym_token_kind(fsym),
                 symbol: fsym,
                 suffix: Some(Symbol::intern(&ty.to_string())),
             }
