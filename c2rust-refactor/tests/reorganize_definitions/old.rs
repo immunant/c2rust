@@ -14,7 +14,7 @@
 
 extern crate libc;
 
-#[src_loc = "15:0"]
+#[c2rust::src_loc = "15:0"]
 type outside = i32;
 
 pub mod bar {
@@ -28,7 +28,7 @@ pub mod bar {
         // Comment on bar_t
         #[derive(Copy, Clone)]
         #[repr(C)]
-        #[src_loc = "10:0"]
+        #[c2rust::src_loc = "10:0"]
         pub struct bar_t {
             //test1
             pub alloc: *mut libc::c_char,
@@ -61,7 +61,7 @@ pub mod foo {
         // Comment on bar_t
         #[derive(Copy, Clone)]
         #[repr(C)]
-        #[src_loc = "10:0"]
+        #[c2rust::src_loc = "10:0"]
         pub struct bar_t {
             //test2
             pub alloc: *mut libc::c_char,
