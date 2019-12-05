@@ -167,15 +167,15 @@ impl UserData for RefactorState {
             },
         );
 
-        // methods.add_method_mut(
-        //     "save_crate",
-        //     |_lua_ctx, this, ()| Ok(this.save_crate()),
-        // );
+        methods.add_method_mut(
+            "save_crate",
+            |_lua_ctx, this, ()| Ok(this.save_crate()),
+        );
 
-        // methods.add_method_mut(
-        //     "load_crate",
-        //     |_lua_ctx, this, ()| Ok(this.load_crate()),
-        // );
+        methods.add_method_mut(
+            "load_crate",
+            |_lua_ctx, this, ()| Ok(this.load_crate()),
+        );
 
         methods.add_method(
             "dump_marks",
