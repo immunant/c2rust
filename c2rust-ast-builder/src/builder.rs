@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::str;
 use syntax::ast::*;
 use syntax::attr::mk_attr_inner;
-use syntax::parse::token::{self, DelimToken, TokenKind, Token};
+use syntax::token::{self, DelimToken, TokenKind, Token};
 use syntax::ptr::P;
 use syntax::source_map::{dummy_spanned, Span, Spanned, DUMMY_SP};
 use syntax::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
@@ -72,21 +72,24 @@ impl<'a> Make<Abi> for &'a str {
     }
 }
 
+impl<'a> Make<Extern> for &'a str {
+    fn make(self, mk: &Builder) -> Extern {
+        Extern::from_abi(Some(mk.clone().str_lit(self)))
+    }
+}
+
+impl<'a> Make<Extern> for Abi {
+    fn make(self, mk: &Builder) -> Extern {
+        Extern::from_abi(Some(mk.clone().str_lit(self.name())))
+    }
+}
+
 impl<'a> Make<Mutability> for &'a str {
     fn make(self, _mk: &Builder) -> Mutability {
         match self {
             "" | "imm" | "immut" | "immutable" => Mutability::Immutable,
             "mut" | "mutable" => Mutability::Mutable,
             _ => panic!("unrecognized string for Mutability: {:?}", self),
-        }
-    }
-}
-
-impl<'a> Make<Mutability> for hir::Mutability {
-    fn make(self, _mk: &Builder) -> Mutability {
-        match self {
-            hir::Mutability::MutMutable => Mutability::Mutable,
-            hir::Mutability::MutImmutable => Mutability::Immutable,
         }
     }
 }
@@ -250,11 +253,75 @@ impl Make<NestedMetaItem> for Lit {
     }
 }
 
-impl Make<MetaItemKind> for Lit {
-    fn make(self, _mk: &Builder) -> MetaItemKind {
-        MetaItemKind::NameValue(self)
+impl<L: Make<Lit>> Make<MetaItemKind> for L {
+    fn make(self, mk: &Builder) -> MetaItemKind {
+        MetaItemKind::NameValue(self.make(mk))
     }
 }
+
+impl<'a, S> Make<Lit> for S
+    where S: IntoSymbol
+{
+    fn make(self, mk: &Builder) -> Lit
+    {
+        let s = self.into_symbol();
+        Lit::from_lit_kind(
+            LitKind::Str(s, StrStyle::Cooked),
+            mk.span
+        )
+    }
+}
+
+impl Make<Lit> for Vec<u8> {
+    fn make(self, mk: &Builder) -> Lit {
+        Lit::from_lit_kind(
+            LitKind::ByteStr(Rc::new(self)),
+            mk.span
+        )
+    }
+}
+
+impl Make<Lit> for u8 {
+    fn make(self, mk: &Builder) -> Lit {
+        Lit::from_lit_kind(
+            LitKind::Byte(self),
+            mk.span
+        )
+    }
+}
+
+impl Make<Lit> for char {
+    fn make(self, mk: &Builder) -> Lit {
+        Lit::from_lit_kind(
+            LitKind::Char(self),
+            mk.span
+        )
+    }
+}
+
+impl Make<Lit> for u128 {
+    fn make(self, mk: &Builder) -> Lit {
+        Lit::from_lit_kind(
+            LitKind::Int(self, LitIntType::Unsuffixed),
+            mk.span
+        )
+    }
+}
+
+impl Make<FnSig> for P<FnDecl> {
+    fn make(self, mk: &Builder) -> FnSig {
+        FnSig {
+            header: FnHeader {
+                unsafety: mk.unsafety,
+                asyncness: dummy_spanned(IsAsync::NotAsync),
+                constness: dummy_spanned(mk.constness),
+                ext: mk.ext,
+            },
+            decl: self,
+        }
+    }
+}
+
 
 #[derive(Clone, Debug)]
 pub struct Builder {
@@ -266,7 +333,7 @@ pub struct Builder {
     generics: Generics,
     unsafety: Unsafety,
     constness: Constness,
-    abi: Abi,
+    ext: Extern,
     attrs: Vec<Attribute>,
     span: Span,
     id: NodeId,
@@ -281,7 +348,7 @@ impl Builder {
             generics: Generics::default(),
             unsafety: Unsafety::Normal,
             constness: Constness::NotConst,
-            abi: Abi::Rust,
+            ext: Extern::None,
             attrs: Vec::new(),
             span: DUMMY_SP,
             id: DUMMY_NODE_ID,
@@ -335,9 +402,9 @@ impl Builder {
         self.constness(Constness::Const)
     }
 
-    pub fn abi<A: Make<Abi>>(self, abi: A) -> Self {
-        let abi = abi.make(&self);
-        Builder { abi: abi, ..self }
+    pub fn extern_<A: Make<Extern>>(self, ext: A) -> Self {
+        let ext = ext.make(&self);
+        Builder { ext: ext, ..self }
     }
 
     pub fn span<S: Make<Span>>(self, span: S) -> Self {
@@ -365,7 +432,7 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId(0),
             style: AttrStyle::Outer,
-            item: AttrItem {
+            kind: AttrKind::Normal(AttrItem {
                 path: key,
                 tokens: vec![
                     TokenTree::token(token::Eq, DUMMY_SP),
@@ -376,8 +443,7 @@ impl Builder {
                 ]
                     .into_iter()
                     .collect(),
-            },
-            is_sugared_doc: false,
+            }),
             span: DUMMY_SP,
         });
         Builder {
@@ -396,11 +462,10 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId(0),
             style: AttrStyle::Outer,
-            item: AttrItem {
+            kind: AttrKind::Normal(AttrItem {
                 path: key,
-                tokens: TokenStream::empty(),
-            },
-            is_sugared_doc: false,
+                tokens: TokenStream::default(),
+            }),
             span: DUMMY_SP,
         });
         Builder {
@@ -441,11 +506,10 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId(0),
             style: AttrStyle::Outer,
-            item: AttrItem {
+            kind: AttrKind::Normal(AttrItem {
                 path: func,
                 tokens: tokens,
-            },
-            is_sugared_doc: false,
+            }),
             span: DUMMY_SP,
         });
         Builder {
@@ -860,7 +924,7 @@ impl Builder {
         let e = e.make(&self);
         P(Expr {
             id: self.id,
-            kind: ExprKind::AddrOf(self.mutbl, e),
+            kind: ExprKind::AddrOf(BorrowKind::Ref, self.mutbl, e),
             span: self.span,
             attrs: self.attrs.into(),
         })
@@ -976,36 +1040,18 @@ impl Builder {
 
     // Literals
 
-    pub fn bytestr_lit(self, s: Vec<u8>) -> Lit {
-        Lit::from_lit_kind(
-            LitKind::ByteStr(Rc::new(s)),
-            self.span
-        )
-    }
-
-    pub fn str_lit<S>(self, s: S) -> Lit
+    pub fn str_lit<S>(self, s: S) -> StrLit
     where
         S: IntoSymbol,
     {
-        let s = s.into_symbol();
-        Lit::from_lit_kind(
-            LitKind::Str(s, StrStyle::Cooked),
-            self.span
-        )
-    }
-
-    pub fn byte_lit(self, b: u8) -> Lit {
-        Lit::from_lit_kind(
-            LitKind::Byte(b),
-            self.span
-        )
-    }
-
-    pub fn char_lit(self, c: char) -> Lit {
-        Lit::from_lit_kind(
-            LitKind::Char(c),
-            self.span
-        )
+        let symbol = s.into_symbol();
+        StrLit {
+            style: StrStyle::Cooked,
+            suffix: None,
+            span: self.span,
+            symbol_unescaped: symbol.clone(),
+            symbol,
+        }
     }
 
     pub fn int_lit<T>(self, i: u128, ty: T) -> Lit
@@ -1027,7 +1073,7 @@ impl Builder {
         let s = s.into_symbol();
         let ty = ty.make(&self);
         Lit::from_lit_kind(
-            LitKind::Float(s, ty),
+            LitKind::Float(s, LitFloatType::Suffixed(ty)),
             self.span
         )
     }
@@ -1038,7 +1084,7 @@ impl Builder {
     {
         let s = s.into_symbol();
         Lit::from_lit_kind(
-            LitKind::FloatUnsuffixed(s),
+            LitKind::Float(s, LitFloatType::Unsuffixed),
             self.span
         )
     }
@@ -1241,7 +1287,7 @@ impl Builder {
 
         let barefn = BareFnTy {
             unsafety: self.unsafety,
-            abi: self.abi,
+            ext: self.ext,
             generic_params: vec![],
             decl,
         };
@@ -1527,28 +1573,22 @@ impl Builder {
         )
     }
 
-    pub fn fn_item<I, D, B>(self, name: I, decl: D, block: B) -> P<Item>
+    pub fn fn_item<I, S, B>(self, name: I, sig: S, block: B) -> P<Item>
     where
         I: Make<Ident>,
-        D: Make<P<FnDecl>>,
+        S: Make<FnSig>,
         B: Make<P<Block>>,
     {
         let name = name.make(&self);
-        let decl = decl.make(&self);
+        let sig = sig.make(&self);
         let block = block.make(&self);
-        let header = FnHeader {
-            unsafety: self.unsafety,
-            asyncness: dummy_spanned(IsAsync::NotAsync),
-            constness: dummy_spanned(self.constness),
-            abi: self.abi,
-        };
         Self::item(
             name,
             self.attrs,
             self.vis,
             self.span,
             self.id,
-            ItemKind::Fn(decl, header, self.generics, block),
+            ItemKind::Fn(sig, self.generics, block),
         )
     }
 
@@ -1669,6 +1709,7 @@ impl Builder {
             data: dat,
             disr_expr: None,
             span: self.span,
+            vis: self.vis,
             is_placeholder: false,
         }
     }
@@ -1690,6 +1731,7 @@ impl Builder {
             data: VariantData::Unit(self.id),
             disr_expr: disc,
             span: self.span,
+            vis: self.vis,
             is_placeholder: false,
         }
     }
@@ -1827,7 +1869,10 @@ impl Builder {
 
     pub fn foreign_items(self, items: Vec<ForeignItem>) -> P<Item> {
         let fgn_mod = ForeignMod {
-            abi: self.abi,
+            abi: match self.ext {
+                Extern::None | Extern::Implicit => None,
+                Extern::Explicit(s) => Some(s),
+            },
             items,
         };
         Self::item(
@@ -1892,6 +1937,7 @@ impl Builder {
         attrs: Vec<Attribute>,
         generics: Generics,
         span: Span,
+        vis: Visibility,
         id: NodeId,
         kind: TraitItemKind,
     ) -> TraitItem {
@@ -1902,6 +1948,7 @@ impl Builder {
             generics,
             kind,
             span,
+            vis,
             tokens: None,
         }
     }
@@ -1917,6 +1964,7 @@ impl Builder {
             self.attrs,
             self.generics,
             self.span,
+            self.vis,
             self.id,
             kind,
         )
@@ -2143,11 +2191,10 @@ impl Builder {
         Attribute {
             id: AttrId(0),
             style,
-            item: AttrItem {
+            kind: AttrKind::Normal(AttrItem {
                 path,
                 tokens,
-            },
-            is_sugared_doc: false,
+            }),
             span: self.span,
         }
     }

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
-use syntax::parse::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{Span, Spanned, SyntaxContext};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;

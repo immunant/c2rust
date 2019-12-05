@@ -15,8 +15,8 @@
 //! `[T]` implementation.
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
-use syntax::parse::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{Span, SyntaxContext};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
@@ -488,7 +488,7 @@ pub fn extend_span_comments_strict(id: &NodeId, mut span: Span, rcx: &RewriteCtx
         None => return Ok(span),
     };
 
-    debug!("Extending span comments for {:?} for comments: {:?}", span, comments);
+    // debug!("Extending span comments for {:?} for comments: {:?}", span, comments);
 
     let mut before = vec![];
     let mut after = vec![];

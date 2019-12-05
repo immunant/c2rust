@@ -228,7 +228,7 @@ impl<'lty, 'a, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'lty, 'hir> {
         let body_id = match item.kind {
             ItemKind::Static(_, _, body_id) => body_id,
             ItemKind::Const(_, body_id) => body_id,
-            ItemKind::Fn(_, _, _, body_id) => body_id,
+            ItemKind::Fn(_, _, body_id) => body_id,
             _ => return,
         };
         self.handle_body(body_id);
@@ -739,7 +739,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 }
             }
 
-            ExprKind::AddrOf(_, ref e) => {
+            ExprKind::AddrOf(_, _, ref e) => {
                 self.ltt.unify(rty.args[0], self.expr_lty(e));
             }
 
@@ -821,6 +821,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                         self.ltt.unify(rty, prev_ty);
                     }
                     Adjust::Pointer(PointerCast::Unsize) => {} // TODO
+                    Adjust::Pointer(PointerCast::ArrayToPointer) => {} // TODO
                 }
 
                 prev_ty = rty;

@@ -12,11 +12,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use syntax::ast::*;
 use syntax::attr;
 use syntax::mut_visit::{self, MutVisitor};
-use syntax::parse::token::{Nonterminal, Token, TokenKind};
+use syntax::token::{Nonterminal, Token, TokenKind};
 use syntax::ptr::P;
 use syntax::source_map::{BytePos, Span};
 use syntax::tokenstream::{self, TokenStream, TokenTree};
 use syntax_pos::sym;
+use smallvec::smallvec;
 
 use super::mac_table::{InvocId, InvocKind, MacTable};
 use super::nt_match::{self, NtMatch};

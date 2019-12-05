@@ -220,7 +220,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 //     illtyped |= self.ensure_cast(sub_e, ty);
                 // }
             }
-            ExprKind::AddrOf(_m, _ohs) => {} // TODO
+            ExprKind::AddrOf(_, _m, _ohs) => {} // TODO
             ExprKind::If(cond, _tr, _fl) => {
                 // TODO: do something clever with tr + fl
                 illtyped |= self.ensure(cond, tcx.mk_bool());

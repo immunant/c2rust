@@ -13,8 +13,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use syntax::attr;
 use syntax::ast::*;
-use syntax::parse::lexer::comments::CommentStyle;
-use syntax::parse::token::{self, DelimToken, Nonterminal};
+use syntax::util::comments::CommentStyle;
+use syntax::token::{self, DelimToken, Nonterminal};
 use syntax::ptr::*;
 use syntax::source_map::{FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
@@ -348,7 +348,7 @@ fn pointer_offset(
 /// Given an expression with type Option<fn(...)->...>, unwrap
 /// the Option and return the function.
 fn unwrap_function_pointer(ptr: P<Expr>) -> P<Expr> {
-    let err_msg = mk().lit_expr(mk().str_lit("non-null function pointer"));
+    let err_msg = mk().lit_expr("non-null function pointer");
     mk().method_call_expr(ptr, "expect", vec![err_msg])
 }
 
@@ -884,7 +884,7 @@ pub fn translate(
             }
 
             if !foreign_items.is_empty() {
-                s.print_item(&mk().abi("C").foreign_items(foreign_items))
+                s.print_item(&mk().extern_("C").foreign_items(foreign_items))
             }
 
             // Add the items accumulated
@@ -934,7 +934,7 @@ fn make_submodule(
     }
 
     if !foreign_items.is_empty() {
-        items.push(mk().abi("C").foreign_items(foreign_items));
+        items.push(mk().extern_("C").foreign_items(foreign_items));
     }
 
     let file_path_str = file_path.map_or(
@@ -972,8 +972,7 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
         if t.tcfg.cross_checks {
             let mut xcheck_plugin_args: Vec<NestedMetaItem> = vec![];
             for config_file in &t.tcfg.cross_check_configs {
-                let file_lit = mk().str_lit(config_file);
-                let file_item = mk().meta_item(vec!["config_file"], file_lit);
+                let file_item = mk().meta_item(vec!["config_file"], config_file);
                 xcheck_plugin_args.push(mk().nested_meta_item(file_item));
             }
             let xcheck_plugin_item = mk().meta_item(
@@ -1202,7 +1201,7 @@ impl<'c> Translation<'c> {
     fn panic_or_err_helper(&self, msg: &str, panic: bool) -> P<Expr> {
         let macro_name = if panic { "panic" } else { "compile_error" };
         let macro_msg = vec![TokenTree::token(token::Interpolated(Rc::new(Nonterminal::NtExpr(
-            mk().lit_expr(mk().str_lit(msg))))), DUMMY_SP)]
+            mk().lit_expr(msg)))), DUMMY_SP)]
         .into_iter()
         .collect::<TokenStream>();
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
@@ -1411,8 +1410,8 @@ impl<'c> Translation<'c> {
         let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
         let fn_item = fn_attributes
             .unsafe_()
-            .abi("C")
-            .fn_item(&fn_name, &fn_decl, fn_block);
+            .extern_("C")
+            .fn_item(&fn_name, fn_decl.clone(), fn_block);
 
         let static_attributes = mk()
             .single_attr("used")
@@ -1433,7 +1432,7 @@ impl<'c> Translation<'c> {
             );
         let static_array_size = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
         let static_ty = mk().array_ty(
-            mk().unsafe_().abi("C").barefn_ty(fn_decl),
+            mk().unsafe_().extern_("C").barefn_ty(fn_decl),
             static_array_size,
         );
         let static_val = mk().array_expr(vec![mk().path_expr(vec![fn_name])]);
@@ -1929,7 +1928,7 @@ impl<'c> Translation<'c> {
                 };
 
                 let static_def = if is_externally_visible {
-                    mk_linkage(false, new_name, ident).pub_().abi("C")
+                    mk_linkage(false, new_name, ident).pub_().extern_("C")
                 } else if self.cur_file.borrow().is_some() {
                     mk().pub_()
                 } else {
@@ -2176,16 +2175,16 @@ impl<'c> Translation<'c> {
                     // but strings have to do for now
                     self.mk_cross_check(mk(), vec!["entry(djb2=\"main\")", "exit(djb2=\"main\")"])
                 } else if is_global && !is_inline {
-                    mk_linkage(false, new_name, name).abi("C").pub_()
+                    mk_linkage(false, new_name, name).extern_("C").pub_()
                 } else if is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
                     // c99 extern inline functions should be pub, but not gnu_inline attributed
                     // extern inlines, which become subject to their gnu89 visibility (private)
 
-                    mk_linkage(false, new_name, name).abi("C").pub_()
+                    mk_linkage(false, new_name, name).extern_("C").pub_()
                 } else if self.cur_file.borrow().is_some() {
-                    mk().abi("C").pub_()
+                    mk().extern_("C").pub_()
                 } else {
-                    mk().abi("C")
+                    mk().extern_("C")
                 };
 
                 for attr in attrs {
@@ -2620,7 +2619,7 @@ impl<'c> Translation<'c> {
                 } else {
                     let items = match self.convert_decl(ctx, decl_id)? {
                         ConvertedDecl::Item(item) => vec![item],
-                        ConvertedDecl::ForeignItem(item) => vec![mk().abi("C").foreign_items(vec![item])],
+                        ConvertedDecl::ForeignItem(item) => vec![mk().extern_("C").foreign_items(vec![item])],
                         ConvertedDecl::Items(items) => items,
                         ConvertedDecl::NoItem => return Ok(cfg::DeclStmtInfo::empty()),
                     };
@@ -4051,7 +4050,7 @@ impl<'c> Translation<'c> {
 
                         let mut bytes = bytes.to_owned();
                         bytes.push(0);
-                        let byte_literal = mk().lit_expr(mk().bytestr_lit(bytes));
+                        let byte_literal = mk().lit_expr(bytes);
                         let val =
                             mk().cast_expr(byte_literal, mk().ptr_ty(mk().path_ty(vec!["u8"])));
                         let val = mk().cast_expr(val, target_ty);

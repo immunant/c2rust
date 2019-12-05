@@ -53,7 +53,7 @@ use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use std::collections::BTreeMap;
 use syntax::ast::*;
-use syntax::parse::lexer::comments;
+use syntax::util::comments;
 use syntax_pos::{BytePos, Span};
 
 pub struct CommentStore {

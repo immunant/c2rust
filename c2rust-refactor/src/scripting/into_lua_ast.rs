@@ -1,13 +1,13 @@
 use rlua::UserData;
 use rlua::prelude::{LuaContext, LuaError, LuaResult, LuaTable};
 use syntax::ast::{
-    Arm, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, FunctionRetTy, FnDecl,
-    FloatTy, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitKind, Local, Mod,
+    Arm, BindingMode, Block, CaptureBy, Crate, Expr, ExprKind, Extern, FunctionRetTy, FnDecl,
+    FloatTy, ImplItem, ImplItemKind, InlineAsmOutput, Item, ItemKind, LitFloatType, LitKind, Local, Mod,
     Movability, Mutability::*, Param, Pat, PatKind, RangeLimits, Stmt, StmtKind, LitIntType, Ty,
     TyKind, Unsafety, BareFnTy, UnsafeSource, BlockCheckMode, Path, Field, PathSegment, GenericArgs,
     GenericArg, AsmDialect, Constness, UseTree, UseTreeKind,
 };
-use syntax::ext::hygiene::SyntaxContext;
+use syntax_pos::hygiene::SyntaxContext;
 use syntax::ptr::P;
 use syntax_pos::SpanData;
 
@@ -124,10 +124,10 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
 
                             match suffix {
                                 LitIntType::Signed(int_ty) => {
-                                    ast.set("suffix", int_ty.ty_to_string())?;
+                                    ast.set("suffix", int_ty.name().to_string())?;
                                 },
                                 LitIntType::Unsigned(uint_ty) => {
-                                    ast.set("suffix", uint_ty.ty_to_string())?;
+                                    ast.set("suffix", uint_ty.name().to_string())?;
                                 },
                                 LitIntType::Unsuffixed => (),
                             }
@@ -144,22 +144,13 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                             ast.set("value", &*char_str)?;
                             ast.set("str_kind", "Char")?;
                         },
-                        LitKind::FloatUnsuffixed(symbol) => {
-                            let string = symbol.as_str().to_string();
-                            let float = string
-                                .parse::<f64>()
-                                .map_err(LuaError::external)?;
-
-                            ast.set("value", float)?;
-                            ast.set("num_kind", "Float")?;
-                        },
                         LitKind::Float(symbol, suffix) => {
                             ast.set("num_kind", "Float")?;
 
                             let string = symbol.as_str().to_string();
 
                             match suffix {
-                                FloatTy::F32 => {
+                                LitFloatType::Suffixed(FloatTy::F32) => {
                                     let float = string
                                         .parse::<f32>()
                                         .map_err(LuaError::external)?;
@@ -167,7 +158,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                                     ast.set("value", float)?;
                                     ast.set("suffix", "f32")?;
                                 },
-                                FloatTy::F64 => {
+                                LitFloatType::Unsuffixed | LitFloatType::Suffixed(FloatTy::F64) => {
                                     let float = string
                                         .parse::<f64>()
                                         .map_err(LuaError::external)?;
@@ -228,8 +219,8 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("caller_is", match self_ty.kind {
                         rustc::ty::TyKind::Ref(_, _, mutability) => {
                             match mutability {
-                                rustc::hir::Mutability::MutMutable => "ref_mut",
-                                rustc::hir::Mutability::MutImmutable => "ref",
+                                rustc::hir::Mutability::Mutable => "ref_mut",
+                                rustc::hir::Mutability::Immutable => "ref",
                             }
                         },
                         _ => "owned",
@@ -389,7 +380,7 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                     ast.set("segments", path.into_lua_ast(ctx, lua_ctx)?)?;
                     // TODO: Flesh out further
                 },
-                ExprKind::AddrOf(mutability, expr) => {
+                ExprKind::AddrOf(_, mutability, expr) => {
                     ast.set("kind", "AddrOf")?;
                     ast.set("expr", expr.into_lua_ast(ctx, lua_ctx)?)?;
                     ast.set("mutability", match mutability {
@@ -693,19 +684,23 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
                     ast.set("kind", "Use")?;
                     ast.set("tree", use_tree.into_inner().into_lua_ast(ctx, lua_ctx)?)?;
                 },
-                ItemKind::Fn(decl, header, _generics, block) => {
+                ItemKind::Fn(sig, _generics, block) => {
                     ast.set("kind", "Fn")?;
-                    ast.set("decl", decl.into_lua_ast(ctx, lua_ctx)?)?;
+                    ast.set("decl", sig.decl.into_lua_ast(ctx, lua_ctx)?)?;
                     ast.set("block", block.into_lua_ast(ctx, lua_ctx)?)?;
-                    ast.set("unsafety", match header.unsafety {
+                    ast.set("unsafety", match sig.header.unsafety {
                         Unsafety::Unsafe => "Unsafe",
                         Unsafety::Normal => "Normal",
                     })?;
-                    ast.set("is_const", match header.constness.node {
+                    ast.set("is_const", match sig.header.constness.node {
                         Constness::Const => true,
                         Constness::NotConst => false,
                     })?;
-                    ast.set("abi", header.abi.name())?;
+                    ast.set("ext", match sig.header.ext {
+                        Extern::None => None,
+                        Extern::Implicit => Some(String::new()),
+                        Extern::Explicit(s) => Some(s.symbol.to_string()),
+                    })?;
                 },
                 ItemKind::Struct(_variant_data, _generics) => {
                     ast.set("kind", "Struct")?;
@@ -762,11 +757,6 @@ impl<'lua> IntoLuaAst<'lua> for P<Item> {
                 },
                 ItemKind::GlobalAsm(..) => {
                     ast.set("kind", "GlobalAsm")?;
-
-                    // TODO: More fields
-                },
-                ItemKind::OpaqueTy(..) => {
-                    ast.set("kind", "OpaqueTy")?;
 
                     // TODO: More fields
                 },
@@ -877,14 +867,18 @@ impl<'lua> IntoLuaAst<'lua> for P<Ty> {
                     })?;
                 },
                 TyKind::BareFn(bare_fn) => {
-                    let BareFnTy {unsafety, abi, decl, ..} = bare_fn.into_inner();
+                    let BareFnTy {unsafety, ext, decl, ..} = bare_fn.into_inner();
 
                     ast.set("kind", "BareFn")?;
                     ast.set("unsafety", match unsafety {
                         Unsafety::Unsafe => "Unsafe",
                         Unsafety::Normal => "Normal",
                     })?;
-                    ast.set("abi", abi.name())?;
+                    ast.set("ext", match ext {
+                        Extern::None => None,
+                        Extern::Implicit => Some(String::new()),
+                        Extern::Explicit(s) => Some(s.symbol.to_string()),
+                    })?;
                     ast.set("decl", decl.into_lua_ast(ctx, lua_ctx)?)?;
 
                     // TODO: GenericParams

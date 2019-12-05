@@ -43,9 +43,9 @@ use std::cmp;
 use std::result;
 use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
-use syntax::parse::parser::{Parser, PathStyle};
-use syntax::parse::token::TokenKind;
-use syntax::parse::{self, PResult};
+use rustc_parse::parser::{Parser, PathStyle};
+use syntax::token::{TokenKind};
+use rustc_errors::PResult;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::TokenStream;
@@ -73,6 +73,9 @@ pub enum Error {
     VariantMismatch,
     LengthMismatch,
     SymbolMismatch,
+
+    /// Parse error while parsing pattern
+    InvalidParse,
 
     // For nonlinear patterns, it's possible that the 2nd+ occurrence of the variable in the
     // pattern matches a different ident/expr/stmt than the 1st occurrence.
@@ -489,7 +492,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let pattern = func(&mut p).unwrap();
 
         let label = if p.eat(&TokenKind::Comma) {
-            p.parse_ident().unwrap().name
+            match p.token.kind {
+                TokenKind::Ident(name, _) => name,
+                _ => return Err(Error::InvalidParse),
+            }
         } else {
             "target".into_symbol()
         };
@@ -613,14 +619,14 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 }
 
 fn make_bindings_parser<'a>(sess: &'a Session, src: &str) -> (Parser<'a>, BindingTypes) {
-    let ts = parse::parse_stream_from_source_str(
+    let ts = rustc_parse::parse_stream_from_source_str(
         FileName::anon_source_code(src),
         src.to_owned(),
         &sess.parse_sess,
         None,
     );
     let (ts, bt) = parse_bindings(ts);
-    (parse::stream_to_parser(&sess.parse_sess, ts, None), bt)
+    (rustc_parse::stream_to_parser(&sess.parse_sess, ts, None), bt)
 }
 
 pub trait TryMatch {

@@ -76,7 +76,7 @@ impl Transform for RemoveUnnecessaryRefs {
 
 fn remove_ref(expr: &mut P<Expr>) {
     match &expr.kind {
-        ExprKind::AddrOf(_, inner) => *expr = inner.clone(),
+        ExprKind::AddrOf(_, _, inner) => *expr = inner.clone(),
         _ => {}
     }
 }
@@ -92,7 +92,7 @@ fn remove_all_derefs(expr: &mut P<Expr>) {
 }
 
 fn remove_reborrow(expr: &mut P<Expr>) {
-    if let ExprKind::AddrOf(_, ref subexpr) = expr.kind {
+    if let ExprKind::AddrOf(_, _, ref subexpr) = expr.kind {
         if let ExprKind::Unary(UnOp::Deref, ref subexpr) = subexpr.kind {
             *expr = subexpr.clone();
             remove_reborrow(expr);

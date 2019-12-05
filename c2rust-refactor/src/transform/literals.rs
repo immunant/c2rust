@@ -1,6 +1,6 @@
 use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
-use syntax::parse::token;
+use syntax::token;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 

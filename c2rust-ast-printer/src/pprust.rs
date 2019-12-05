@@ -3,17 +3,14 @@ use syntax::ast::{SelfKind, GenericBound, TraitBoundModifier};
 use syntax::ast::{Attribute, MacDelimiter, GenericArg};
 use syntax::util::parser::{self, AssocOp, Fixity};
 use syntax::util::comments;
-use syntax::attr;
 use syntax::source_map::{self, SourceMap, Spanned};
 use syntax::token::{self, BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
 use syntax::ptr::P;
-use syntax::sess::ParseSess;
-use syntax::symbol::{kw, sym};
+use syntax::symbol::kw;
 use syntax::tokenstream::{self, TokenStream, TokenTree};
 use syntax::util::classify;
 
-use syntax_pos::{self, BytePos};
-use syntax_pos::{FileName, Span};
+use syntax_pos::{self, BytePos, Span};
 
 use std::borrow::Cow;
 
@@ -68,19 +65,19 @@ impl<'a> Comments<'a> {
         }
     }
 
-    pub fn parse(
-        cm: &'a SourceMap,
-        sess: &ParseSess,
-        filename: FileName,
-        input: String,
-    ) -> Comments<'a> {
-        let comments = comments::gather_comments(sess, filename, input);
-        Comments {
-            cm,
-            comments,
-            current: 0,
-        }
-    }
+    // pub fn parse(
+    //     cm: &'a SourceMap,
+    //     sess: &ParseSess,
+    //     filename: FileName,
+    //     input: String,
+    // ) -> Comments<'a> {
+    //     let comments = comments::gather_comments(sess, filename, input);
+    //     Comments {
+    //         cm,
+    //         comments,
+    //         current: 0,
+    //     }
+    // }
 
     pub fn next(&self) -> Option<comments::Comment> {
         self.comments.get(self.current).cloned()
@@ -125,47 +122,47 @@ crate const INDENT_UNIT: usize = 4;
 
 /// Requires you to pass an input filename and reader so that
 /// it can scan the input text for comments to copy forward.
-pub fn print_crate<'a>(cm: &'a SourceMap,
-                       sess: &ParseSess,
-                       krate: &ast::Crate,
-                       filename: FileName,
-                       input: String,
-                       ann: &'a dyn PpAnn,
-                       is_expanded: bool) -> String {
-    let mut s = State {
-        s: pp::mk_printer(),
-        comments: Some(Comments::parse(cm, sess, filename, input)),
-        ann,
-        is_expanded,
-    };
+// pub fn print_crate<'a>(cm: &'a SourceMap,
+//                        sess: &ParseSess,
+//                        krate: &ast::Crate,
+//                        filename: FileName,
+//                        input: String,
+//                        ann: &'a dyn PpAnn,
+//                        is_expanded: bool) -> String {
+//     let mut s = State {
+//         s: pp::mk_printer(),
+//         comments: Some(Comments::parse(cm, sess, filename, input)),
+//         ann,
+//         is_expanded,
+//     };
 
-    if is_expanded && sess.injected_crate_name.try_get().is_some() {
-        // We need to print `#![no_std]` (and its feature gate) so that
-        // compiling pretty-printed source won't inject libstd again.
-        // However, we don't want these attributes in the AST because
-        // of the feature gate, so we fake them up here.
+//     if is_expanded && sess.injected_crate_name.try_get().is_some() {
+//         // We need to print `#![no_std]` (and its feature gate) so that
+//         // compiling pretty-printed source won't inject libstd again.
+//         // However, we don't want these attributes in the AST because
+//         // of the feature gate, so we fake them up here.
 
-        // `#![feature(prelude_import)]`
-        let pi_nested = attr::mk_nested_word_item(ast::Ident::with_dummy_span(sym::prelude_import));
-        let list = attr::mk_list_item(ast::Ident::with_dummy_span(sym::feature), vec![pi_nested]);
-        let fake_attr = attr::mk_attr_inner(list);
-        s.print_attribute(&fake_attr);
+//         // `#![feature(prelude_import)]`
+//         let pi_nested = attr::mk_nested_word_item(ast::Ident::with_dummy_span(sym::prelude_import));
+//         let list = attr::mk_list_item(ast::Ident::with_dummy_span(sym::feature), vec![pi_nested]);
+//         let fake_attr = attr::mk_attr_inner(list);
+//         s.print_attribute(&fake_attr);
 
-        // Currently, in Rust 2018 we don't have `extern crate std;` at the crate
-        // root, so this is not needed, and actually breaks things.
-        if sess.edition == syntax_pos::edition::Edition::Edition2015 {
-            // `#![no_std]`
-            let no_std_meta = attr::mk_word_item(ast::Ident::with_dummy_span(sym::no_std));
-            let fake_attr = attr::mk_attr_inner(no_std_meta);
-            s.print_attribute(&fake_attr);
-        }
-    }
+//         // Currently, in Rust 2018 we don't have `extern crate std;` at the crate
+//         // root, so this is not needed, and actually breaks things.
+//         if sess.edition == syntax_pos::edition::Edition::Edition2015 {
+//             // `#![no_std]`
+//             let no_std_meta = attr::mk_word_item(ast::Ident::with_dummy_span(sym::no_std));
+//             let fake_attr = attr::mk_attr_inner(no_std_meta);
+//             s.print_attribute(&fake_attr);
+//         }
+//     }
 
-    s.print_mod(&krate.module, &krate.attrs);
-    s.print_remaining_comments();
-    s.ann.post(&mut s, AnnNode::Crate(krate));
-    s.s.eof()
-}
+//     s.print_mod(&krate.module, &krate.attrs);
+//     s.print_remaining_comments();
+//     s.ann.post(&mut s, AnnNode::Crate(krate));
+//     s.s.eof()
+// }
 
 pub fn to_string<F>(f: F) -> String where
     F: FnOnce(&mut State<'_>),

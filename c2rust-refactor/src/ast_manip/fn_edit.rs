@@ -6,6 +6,7 @@ use syntax::ptr::P;
 use syntax::util::map_in_place::MapInPlace;
 use syntax::visit::{self, Visitor};
 use syntax_pos::Span;
+use smallvec::smallvec;
 
 use crate::ast_manip::{AstName, GetNodeId, GetSpan, MutVisit, Visit};
 
@@ -75,7 +76,7 @@ where
         }
 
         let i = i.into_inner();
-        unpack!([i.kind] ItemKind::Fn(decl, header, generics, block));
+        unpack!([i.kind] ItemKind::Fn(fn_sig, generics, block));
         let vis = i.vis;
 
         let fl = FnLike {
@@ -83,7 +84,7 @@ where
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl,
+            decl: fn_sig.decl.clone(),
             block: Some(block),
             attrs: i.attrs,
         };
@@ -96,7 +97,14 @@ where
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
-                    kind: ItemKind::Fn(fl.decl, header, generics.clone(), block),
+                    kind: ItemKind::Fn(
+                        FnSig {
+                            decl: fl.decl,
+                            header: fn_sig.header,
+                        },
+                        generics.clone(),
+                        block,
+                    ),
                     attrs: fl.attrs,
                     vis: vis.clone(),
                     // Don't keep the old tokens.  The callback could have made arbitrary changes to
@@ -118,7 +126,7 @@ where
         let vis = i.vis;
         let defaultness = i.defaultness;
         let generics = i.generics;
-        let MethodSig { header, decl } = sig;
+        let FnSig { header, decl } = sig;
 
         let fl = FnLike {
             kind: FnKind::ImplMethod,
@@ -133,7 +141,7 @@ where
 
         fls.into_iter()
             .map(|fl| {
-                let sig = MethodSig {
+                let sig = FnSig {
                     header,
                     decl: fl.decl,
                 };
@@ -163,8 +171,9 @@ where
         }
 
         unpack!([i.kind] TraitItemKind::Method(sig, block));
-        let MethodSig { header, decl } = sig;
+        let FnSig { header, decl } = sig;
         let generics = i.generics;
+        let vis = i.vis;
 
         let fl = FnLike {
             kind: FnKind::TraitMethod,
@@ -179,7 +188,7 @@ where
 
         fls.into_iter()
             .map(|fl| {
-                let sig = MethodSig {
+                let sig = FnSig {
                     header,
                     decl: fl.decl,
                 };
@@ -187,6 +196,7 @@ where
                     id: fl.id,
                     ident: fl.ident,
                     span: fl.span,
+                    vis: vis.clone(),
                     kind: TraitItemKind::Method(sig, fl.block),
                     attrs: fl.attrs,
                     generics: generics.clone(),
@@ -279,16 +289,16 @@ where
             _ => return,
         }
 
-        let (decl, block) = expect!([i.kind]
-                                    ItemKind::Fn(ref decl, _, _, ref block) =>
-                                        (decl.clone(), block.clone()));
+        let (sig, block) = expect!([i.kind]
+                                    ItemKind::Fn(ref sig, _, ref block) =>
+                                        (sig.clone(), block.clone()));
 
         (self.callback)(FnLike {
             kind: FnKind::Normal,
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl,
+            decl: sig.decl,
             block: Some(block),
             attrs: i.attrs.clone(),
         });

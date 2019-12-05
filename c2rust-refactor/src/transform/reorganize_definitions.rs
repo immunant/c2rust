@@ -9,14 +9,15 @@ use rustc::hir::def::{Namespace, PerNS};
 use rustc::hir::def_id::DefId;
 use rustc::hir::{self, Node};
 use rustc::ty::{self, ParamEnv};
-use rustc_target::spec::abi::Abi;
+use rustc_target::spec::abi::{self, Abi};
 use syntax::ast::*;
 use syntax::attr::{self, HasAttrs};
-use syntax::parse::lexer::comments::{Comment, CommentStyle};
+use syntax::util::comments::{Comment, CommentStyle};
 use syntax::ptr::P;
 use syntax::symbol::{kw, Symbol};
 use syntax::util::map_in_place::MapInPlace;
 use syntax_pos::BytePos;
+use smallvec::smallvec;
 
 use crate::ast_manip::util::{is_relative_path, join_visibility, split_uses, is_exported};
 use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisitNodes};
@@ -202,7 +203,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             let module_ident = dest_module_info.orig_ident.as_str();
             if header_ident.len() >= module_ident.len() {
                 let (base, ext) = header_ident.split_at(module_ident.len());
-                base == module_ident && (ext.is_empty() || ext == "_h")
+                base == &*module_ident && (ext.is_empty() || ext == "_h")
             } else {
                 false
             }
@@ -242,7 +243,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             let mut used_idents = HashSet::new();
             for item in &module.items {
                 match &item.kind {
-                    ItemKind::Fn(_, _, _, body) => {
+                    ItemKind::Fn(_, _, body) => {
                         keep_items.insert(item.id);
                         visit_nodes(&**body, |expr: &Expr| {
                             if let ExprKind::Path(_, path) = &expr.kind {
@@ -477,7 +478,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     module.items
                         .drain_filter(|item| {
                             if let ItemKind::ForeignMod(m) = &mut item.kind {
-                                let abi = m.abi;
+                                let abi = m
+                                    .abi
+                                    .and_then(|abi| abi::lookup(&abi.symbol.as_str()))
+                                    .unwrap_or(Abi::Rust);
                                 m.items.retain(|item| {
                                     match declarations.find_foreign_item(item, abi) {
                                         ContainsDecl::NotContained => true,
@@ -614,7 +618,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             let cast_id = e.id;
             let (val, ty) = match_or!([&mut e.kind] ExprKind::Cast(val, ty) => (val, ty); return);
-            let val = match_or!([&val.kind] ExprKind::AddrOf(_mutbl, val) => val; return);
+            let val = match_or!([&val.kind] ExprKind::AddrOf(_, _mutbl, val) => val; return);
             let old_def_id = match_or!([self.cx.try_resolve_expr(&val)] Some(id) => id; return);
             let replacement = match_or!([self.path_mapping.get(&old_def_id)] Some(x) => x; return);
             let new_def_id = match_or!([replacement.def] Some(id) => id; return);
@@ -1089,7 +1093,11 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             // defined in ident_map after processing the whole list of items.
             ItemKind::ForeignMod(f) => {
                 for item in f.items.iter() {
-                    self.insert_foreign_item(item.clone(), f.abi, parent_header.clone());
+                    let abi = f
+                        .abi
+                        .and_then(|abi| abi::lookup(&abi.symbol.as_str()))
+                        .unwrap_or(Abi::Rust);
+                    self.insert_foreign_item(item.clone(), abi, parent_header.clone());
                 }
                 true
             }
@@ -1157,7 +1165,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         let unnamed = ident.as_str().contains("C2RustUnnamed");
         let def_id_mapping = match self.find_foreign_item(&item, abi) {
             ContainsDecl::NotContained => {
-                let new_item = MovedDecl::new((item.clone(), abi), new_def_id, namespace, parent_header.clone());
+                let new_item = MovedDecl::new(
+                    (item.clone(), abi),
+                    new_def_id,
+                    namespace,
+                    parent_header.clone(),
+                );
                 if unnamed {
                     self.unnamed_items[namespace].push(new_item);
                 } else {
@@ -1171,7 +1184,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
 
             ContainsDecl::Definition(existing) => {
                 let existing_def_id = existing.def_id;
-                *existing = MovedDecl::new((item.clone(), abi), new_def_id, namespace, parent_header.clone());
+                *existing = MovedDecl::new(
+                    (item.clone(), abi),
+                    new_def_id,
+                    namespace,
+                    parent_header.clone(),
+                );
                 Some((existing_def_id, new_def_id))
             }
 
@@ -1265,7 +1283,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
 
         let foreign_mods = foreign_items
             .into_iter()
-            .map(|(abi, items)| mk().abi(abi).foreign_items(items));
+            .map(|(abi, items)| mk().extern_(abi).foreign_items(items));
 
         foreign_mods
             .chain(items.into_iter())

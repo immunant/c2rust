@@ -2,7 +2,7 @@
 use rustc_data_structures::sync::Lrc;
 use std::collections::HashMap;
 use syntax::ast::*;
-use syntax::parse::token::{Nonterminal, Token, TokenKind};
+use syntax::token::{Nonterminal, Token, TokenKind};
 use syntax::source_map::Span;
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::visit::{self, Visitor};
@@ -46,7 +46,7 @@ pub fn match_nonterminal_ids(node_map: &mut NodeMap, mac_table: &MacTable) {
 /// Get the span of the inner node of a nonterminal token.  Note we only need to handle nonterminal
 /// kinds that have both spans and NodeIds.
 fn nt_span(nt: &Nonterminal) -> Option<Span> {
-    use syntax::parse::token::Nonterminal::*;
+    use syntax::token::Nonterminal::*;
     Some(match nt {
         NtItem(ref i) => i.span,
         NtBlock(ref b) => b.span,

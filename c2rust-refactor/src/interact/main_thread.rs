@@ -189,7 +189,7 @@ impl InteractState {
 
             RunCommand { name, args } => {
                 info!("running command {} with args {:?}", name, args);
-                self.state.load_crate();
+                // self.state.load_crate();
                 match self.state.run(&name, &args) {
                     Ok(_) => {}
                     Err(e) => {
@@ -197,7 +197,7 @@ impl InteractState {
                         panic!("Invalid command.");
                     }
                 }
-                self.state.save_crate();
+                // self.state.save_crate();
             }
 
             // Other messages are handled by the worker thread

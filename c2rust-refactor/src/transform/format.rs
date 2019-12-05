@@ -7,9 +7,10 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
-use syntax::parse::token::{Token, TokenKind, Nonterminal};
+use syntax::token::{Token, TokenKind, Nonterminal};
 use syntax::tokenstream::TokenTree;
 use syntax_pos::{sym, Span};
+use smallvec::smallvec;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
@@ -164,7 +165,7 @@ fn build_format_macro(
         macro_name
     };
 
-    let new_fmt_str_expr = mk().span(old_fmt_str_expr.span).lit_expr(mk().str_lit(&new_s));
+    let new_fmt_str_expr = mk().span(old_fmt_str_expr.span).lit_expr(&new_s);
 
     info!("old fmt str expr: {:?}", old_fmt_str_expr);
     info!("new fmt str expr: {:?}", new_fmt_str_expr);

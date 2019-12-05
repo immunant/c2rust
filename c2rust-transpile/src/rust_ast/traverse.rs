@@ -147,7 +147,7 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, mut e: Expr) -> Expr {
         ExprKind::Index(lhs, rhs) => ExprKind::Index(lhs.traverse(walk), rhs.traverse(walk)),
         ExprKind::Range(lhs, rhs, l) => ExprKind::Range(lhs.traverse(walk), rhs.traverse(walk), l),
         ExprKind::Path(qself, p) => ExprKind::Path(qself, p),
-        ExprKind::AddrOf(m, expr) => ExprKind::AddrOf(m, expr.traverse(walk)),
+        ExprKind::AddrOf(borrow, m, expr) => ExprKind::AddrOf(borrow, m, expr.traverse(walk)),
         ExprKind::Break(lbl, arg) => ExprKind::Break(lbl, arg.traverse(walk)),
         ExprKind::Continue(lbl) => ExprKind::Continue(lbl),
         ExprKind::Ret(expr) => ExprKind::Ret(expr.traverse(walk)),
@@ -183,7 +183,6 @@ pub fn traverse_impl_item_def<W: Traversal>(walk: &mut W, mut ii: ImplItem) -> I
         ImplItemKind::Method(sig, block) => ImplItemKind::Method(sig, block.traverse(walk)),
         ImplItemKind::TyAlias(t) => ImplItemKind::TyAlias(t),
         ImplItemKind::Macro(mac) => ImplItemKind::Macro(mac),
-        ImplItemKind::OpaqueTy(bnds) => ImplItemKind::OpaqueTy(bnds),
     };
     ii
 }
@@ -223,7 +222,7 @@ pub fn traverse_item_def<W: Traversal>(walk: &mut W, mut i: Item) -> Item {
     i.kind = match i.kind {
         ItemKind::Static(ty, mu, p_expr) => ItemKind::Static(ty, mu, p_expr.traverse(walk)),
         ItemKind::Const(ty, p_expr) => ItemKind::Const(ty, p_expr.traverse(walk)),
-        ItemKind::Fn(f, h, g, blk) => ItemKind::Fn(f, h, g, blk.traverse(walk)),
+        ItemKind::Fn(f, g, blk) => ItemKind::Fn(f, g, blk.traverse(walk)),
         ItemKind::Mod(m) => ItemKind::Mod(m.traverse(walk)),
         ItemKind::ForeignMod(fm) => ItemKind::ForeignMod(fm.traverse(walk)),
         ItemKind::Trait(a, u, gen, bds, tis) => ItemKind::Trait(a, u, gen, bds, tis.traverse(walk)),
@@ -240,7 +239,6 @@ pub fn traverse_item_def<W: Traversal>(walk: &mut W, mut i: Item) -> Item {
         ItemKind::TraitAlias(l, r) => ItemKind::TraitAlias(l, r),
         ItemKind::Mac(m) => ItemKind::Mac(m),
         ItemKind::MacroDef(m) => ItemKind::MacroDef(m),
-        ItemKind::OpaqueTy(genbnds, gens) => ItemKind::OpaqueTy(genbnds, gens),
     };
     i
 }

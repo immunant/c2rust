@@ -7,11 +7,11 @@ use rustc_index::vec::IndexVec;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::mut_visit::{self, MutVisitor};
-use syntax::parse::token::{self, Token, TokenKind, DelimToken};
+use syntax::token::{self, Token, TokenKind, DelimToken};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream, DelimSpan};
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use crate::ast_manip::{MutVisitNodes, MutVisit};
 use crate::ast_manip::fn_edit::flat_map_fns;
@@ -106,7 +106,7 @@ fn do_annotate(st: &CommandState,
 
         fn clean_attrs(&self, attrs: &mut Vec<Attribute>) {
             attrs.retain(|a| {
-                match &a.path.to_string() as &str {
+                match &*a.name_or_empty().as_str() {
                     "ownership_mono" |
                     "ownership_constraints" |
                     "ownership_static" => false,
@@ -279,11 +279,10 @@ fn make_attr(name: &str, tokens: TokenStream) -> Attribute {
     Attribute {
         id: AttrId(0),
         style: AttrStyle::Outer,
-        item: AttrItem {
+        kind: AttrKind::Normal(AttrItem {
             path: mk().path(vec![name]),
             tokens: tokens,
-        },
-        is_sugared_doc: false,
+        }),
         span: DUMMY_SP,
     }
 }

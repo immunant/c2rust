@@ -16,7 +16,6 @@ use crate::driver::{Phase};
 use crate::matcher::{MatchCtxt, Subst, mut_visit_match_with, replace_stmts};
 use crate::reflect::reflect_tcx_ty;
 use crate::transform::Transform;
-use rustc::middle::cstore::CrateStore;
 use crate::RefactorCtxt;
 
 
@@ -256,8 +255,8 @@ fn is_uninit_call(cx: &RefactorCtxt, e: &Expr) -> bool {
     if def_id.krate == LOCAL_CRATE {
         return false;
     }
-    let crate_name = cx.cstore().crate_name_untracked(def_id.krate);
-    let path = cx.cstore().def_path(def_id);
+    let crate_name = cx.ty_ctxt().crate_name(def_id.krate);
+    let path = cx.ty_ctxt().def_path(def_id);
 
     (crate_name.as_str() == "std" || crate_name.as_str() == "core") &&
     path.data.len() == 2 &&
@@ -460,15 +459,14 @@ impl Transform for UninitToDefault {
 
             let init = l.init.as_ref().unwrap().clone();
             let ty = cx.node_type(init.id);
-            let new_init_lit = match ty.kind {
-                TyKind::Bool => mk().bool_lit(false),
-                TyKind::Char => mk().char_lit('\0'),
-                TyKind::Int(ity) => mk().int_lit(0, ity),
-                TyKind::Uint(uty) => mk().int_lit(0, uty),
-                TyKind::Float(fty) => mk().float_lit("0", fty),
+            l.init = Some(match ty.kind {
+                TyKind::Bool => mk().lit_expr(mk().bool_lit(false)),
+                TyKind::Char => mk().lit_expr('\0'),
+                TyKind::Int(ity) => mk().lit_expr(mk().int_lit(0, ity)),
+                TyKind::Uint(uty) => mk().lit_expr(mk().int_lit(0, uty)),
+                TyKind::Float(fty) => mk().lit_expr(mk().float_lit("0", fty)),
                 _ => return,
-            };
-            l.init = Some(mk().lit_expr(new_init_lit));
+            });
         })
     }
 
