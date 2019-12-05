@@ -158,13 +158,20 @@ impl<'lua> IntoLuaAst<'lua> for P<Expr> {
                                     ast.set("value", float)?;
                                     ast.set("suffix", "f32")?;
                                 },
-                                LitFloatType::Unsuffixed | LitFloatType::Suffixed(FloatTy::F64) => {
+                                LitFloatType::Suffixed(FloatTy::F64) => {
                                     let float = string
                                         .parse::<f64>()
                                         .map_err(LuaError::external)?;
 
                                     ast.set("value", float)?;
                                     ast.set("suffix", "f64")?;
+                                },
+                                LitFloatType::Unsuffixed => {
+                                    let float = string
+                                        .parse::<f64>()
+                                        .map_err(LuaError::external)?;
+
+                                    ast.set("value", float)?;
                                 },
                             };
                         },
