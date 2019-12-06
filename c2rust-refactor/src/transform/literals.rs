@@ -382,7 +382,7 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
                 self.visit_expr(e);
                 self.visit_ident(ident);
                 if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
-                    if let ty::TyKind::Adt(def, _) = struct_ty.kind {
+                    if let Some(def) = struct_ty.ty_adt_def() {
                         for field in def.all_fields() {
                             if field.ident == ident {
                                 let hir_id = tcx.hir().as_local_hir_id(field.did);
@@ -419,12 +419,8 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
                 // is inferred from the parameter of `Index`/`IndexMut`
                 let mut idx_source = LitTySource::None;
                 if let Some(idx_ty) = self.cx.opt_node_type(idx.id) {
-                    match idx_ty.kind {
-                        ty::TyKind::Int(IntTy::Isize) |
-                        ty::TyKind::Uint(UintTy::Usize) => {
-                            idx_source = LitTySource::from_ty(idx_ty);
-                        }
-                        _ => {}
+                    if idx_ty.is_ptr_sized_integral() {
+                        idx_source = LitTySource::from_ty(idx_ty);
                     }
                 }
 
@@ -654,12 +650,10 @@ impl<'tcx> LitTySource<'tcx> {
     }
 
     fn from_ty(ty: ty::Ty<'tcx>) -> Self {
-        match ty.kind {
-            ty::TyKind::Int(_) |
-            ty::TyKind::Uint(_) |
-            ty::TyKind::Float(_) => LitTySource::Actual(ty),
-
-            _ => LitTySource::None
+        if ty.is_machine() {
+            LitTySource::Actual(ty)
+        } else {
+            LitTySource::None
         }
     }
 
