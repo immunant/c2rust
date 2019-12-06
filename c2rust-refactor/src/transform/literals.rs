@@ -378,9 +378,32 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
                 }
             }
 
-            ExprKind::Field(ref _e, ref _ident) => {
-                // TODO: check if structure is not generic
-                // if so, then unify with the type of the field
+            ExprKind::Field(ref e, ident) => {
+                self.visit_expr(e);
+                self.visit_ident(ident);
+                if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
+                    if let ty::TyKind::Adt(def, _) = struct_ty.kind {
+                        for field in def.all_fields() {
+                            if field.ident == ident {
+                                let hir_id = tcx.hir().as_local_hir_id(field.did);
+                                let field_source = if let Some(hir_id) = hir_id {
+                                    // Field is defined in our crate, look it up
+                                    match tcx.hir().get(hir_id) {
+                                        hir::Node::Field(field) =>
+                                            LitTySource::from_hir_ty(&field.ty, tcx),
+                                        _ => LitTySource::None
+                                    }
+                                } else {
+                                    // Field is defined in another crate
+                                    LitTySource::from_ty(tcx.type_of(field.did))
+                                };
+                                self.unif.unify_var_value(key, field_source)
+                                    .expect("failed to unify")
+                            }
+                        }
+                    }
+                    // TODO: handle tuples
+                }
             }
 
             ExprKind::Index(ref e, ref idx) => {
