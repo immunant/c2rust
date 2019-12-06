@@ -332,9 +332,19 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
 
             // TODO: unify loops
 
-            ExprKind::Match(ref _e, ref _arms) => {
-                // TODO: unify match result with arm results
-                // TODO: unify expression with arm patterns
+            ExprKind::Match(ref e, ref arms) => {
+                let pat_key = self.new_key(LitTySource::None);
+                self.visit_expr_unify(e, pat_key);
+                for arm in arms {
+                    self.visit_pat_unify(&arm.pat, pat_key);
+                    if let Some(ref guard) = arm.guard {
+                        self.visit_expr(guard);
+                    }
+                    self.visit_expr_unify(&arm.body, key);
+                    for attr in &arm.attrs {
+                        self.visit_attribute(attr);
+                    }
+                }
             }
 
             // TODO: handle `Closure`
@@ -467,10 +477,32 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
         }
     }
 
-    // TODO: handle `Pat`
-    //
-    // TODO: handle `Arm`
-    //
+    fn visit_pat_unify(&mut self, p: &Pat, key: LitTyKey<'tcx>) {
+        match p.kind {
+            PatKind::Or(ref pats) => {
+                for pat in pats {
+                    self.visit_pat_unify(pat, key);
+                }
+            }
+
+            PatKind::Lit(ref e) => {
+                self.visit_expr_unify(e, key);
+            }
+
+            PatKind::Range(ref start, ref end, _) => {
+                let inner_key = self.new_key(LitTySource::None);
+                self.visit_expr_unify(start, inner_key);
+                self.visit_expr_unify(end, inner_key);
+            }
+
+            PatKind::Paren(ref pat) => self.visit_pat_unify(pat, key),
+
+            // TODO: handle more pattern types once we have hierarchical keys
+
+            _ => visit::walk_pat(self, p)
+        }
+    }
+
     // TODO: handle `Field`
     //
     // TODO: handle `AnonConst`
@@ -512,6 +544,15 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'tcx> {
 
             _ => visit::walk_item(self, i)
         }
+    }
+
+    fn visit_arm(&mut self, _arm: &'ast Arm) {
+        panic!("Arm nodes should be handled in visit_expr_unify");
+    }
+
+    fn visit_pat(&mut self, p: &'ast Pat) {
+        let key = self.new_key(LitTySource::None);
+        self.visit_pat_unify(p, key);
     }
 }
 
