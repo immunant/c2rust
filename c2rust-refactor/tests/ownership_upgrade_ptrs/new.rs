@@ -53,6 +53,8 @@ extern "C" {
     #[no_mangle]
     fn get_ptr() -> *mut u32;
     #[no_mangle]
+    fn get_struct_ptr() -> *mut Ctx;
+    #[no_mangle]
     type _reent;
     #[no_mangle]
     static mut _impure_ptr: *mut _reent;
@@ -896,11 +898,25 @@ pub unsafe extern "C" fn __vsprintf_chk(
 
 unsafe fn non_null_type() {
     let mut ptr = None;
+    let mut sptr = None;
 
     ptr = ::core::ptr::NonNull::new(get_ptr());
+    sptr = ::core::ptr::NonNull::new(get_struct_ptr());
 
     *ptr.unwrap().as_ptr() = 1;
     *ptr.unwrap().as_ptr();
+    takes_ptrs(
+        ptr.map(|r| r.as_ptr()).unwrap_or(0 as *mut _),
+        0 as *const _,
+    );
+
+    if *ptr.unwrap().as_ptr() as libc::c_int == ':' as i32
+        && *ptr.unwrap().as_ptr().offset(1) as libc::c_int == ':' as i32
+    {
+        ptr = ::core::ptr::NonNull::new(ptr.unwrap().as_ptr().offset(1))
+    }
+
+    (*sptr.unwrap().as_ptr()).data[0] = 1;
 }
 
 fn rewritten(#[slice] p: Option<&[u32]>, #[slice] q: Option<&[u32]>) {}
@@ -945,4 +961,22 @@ unsafe extern "C" fn opt_box_to_ptr(mut box1: Option<Box<u32>>, mut box2: Option
             .map(|r| &mut **r as *mut _)
             .unwrap_or(0 as *mut _),
     );
+}
+
+unsafe fn array_ref2() {
+    let mut q: [u32; 4] = [0; 4];
+
+    let r: [u32; 4] = [0; 4];
+
+    #[nonnull]
+    #[slice]
+    let mut s: &[u32] = &q;
+    #[nonnull]
+    #[slice]
+    let mut t: &[u32] = &r;
+
+    #[slice]
+    #[nonnull]
+    let fresh = t;
+    t = &t[1..];
 }

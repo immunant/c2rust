@@ -65,7 +65,7 @@ use std::prelude::v1::Vec;
 type PragmaVec = Vec<(&'static str, Vec<&'static str>)>;
 type PragmaSet = indexmap::IndexSet<(&'static str, &'static str)>;
 type CrateSet = indexmap::IndexSet<ExternCrate>;
-type TranspileResult = (PathBuf, Option<PragmaVec>, Option<CrateSet>);
+type TranspileResult = Result<(PathBuf, PragmaVec, CrateSet), ()>;
 
 /// Configuration settings for the translation process
 #[derive(Debug)]
@@ -285,27 +285,26 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                                         cc_db,
                                         extra_clang_args))
             .collect::<Vec<TranspileResult>>();
-        num_transpiled_files += results.len();
         let mut modules = vec![];
         let mut modules_skipped = false;
         let mut pragmas = PragmaSet::new();
         let mut crates = CrateSet::new();
         for res in results {
-            let (module, pragma_vec, crate_set) = res;
-            modules.push(module);
+            match res {
+                Ok((module, pragma_vec, crate_set)) => {
+                    modules.push(module);
+                    crates.extend(crate_set);
 
-            if let Some(pv) = pragma_vec {
-                for (key, vals) in pv {
-                    for val in vals {
-                        pragmas.insert((key, val));
+                    num_transpiled_files += 1;
+                    for (key, vals) in pragma_vec {
+                        for val in vals {
+                            pragmas.insert((key, val));
+                        }
                     }
+                },
+                Err(_) => {
+                    modules_skipped = true;
                 }
-            } else {
-                modules_skipped = true;
-            }
-
-            if let Some(cs) = crate_set {
-                crates.extend(cs);
             }
         }
         pragmas.sort();
@@ -448,17 +447,17 @@ fn transpile_single(
 ) -> TranspileResult {
     let output_path = get_output_path(tcfg, &input_path, ancestor_path, build_dir);
     if output_path.exists() && !tcfg.overwrite_existing {
-        println!("Skipping existing file {}", output_path.display());
-        return (output_path, None, None);
+        warn!("Skipping existing file {}", output_path.display());
+        return Err(());
     }
 
     let file = input_path.file_name().unwrap().to_str().unwrap();
-    println!("Transpiling {}", file);
     if !input_path.exists() {
         warn!(
             "Input C file {} does not exist, skipping!",
             input_path.display()
         );
+        return Err(());
     }
 
     if tcfg.verbose {
@@ -473,11 +472,17 @@ fn transpile_single(
         tcfg.debug_ast_exporter,
     ) {
         Err(e) => {
-            eprintln!("Error: {:}", e);
-            process::exit(1);
+            warn!(
+                "Error: {}. Skipping {}; is it well-formed C?",
+                e,
+                input_path.display()
+            );
+            return Err(());
         }
         Ok(cxt) => cxt,
     };
+
+    println!("Transpiling {}", file);
 
     if tcfg.dump_untyped_context {
         println!("CBOR Clang AST");
@@ -517,7 +522,7 @@ fn transpile_single(
         Err(e) => panic!("Unable to write translation to file {}: {}", output_path.display(), e),
     };
 
-    (output_path, Some(pragmas), Some(crates))
+    Ok((output_path, pragmas, crates))
 }
 
 fn get_output_path(

@@ -14,6 +14,7 @@ extern crate syntax_ext;
 extern crate syntax_pos;
 #[macro_use]
 extern crate smallvec;
+extern crate arena;
 extern crate rustc;
 extern crate rustc_codegen_utils;
 extern crate rustc_data_structures;
@@ -29,15 +30,7 @@ extern crate rustc_parse;
 extern crate rustc_privacy;
 extern crate rustc_resolve;
 extern crate rustc_target;
-
-extern crate arena;
-extern crate cargo;
-extern crate clap;
-extern crate diff;
-extern crate ena;
-extern crate env_logger;
-extern crate indexmap;
-extern crate libc;
+extern crate rustc_typeck;
 #[macro_use]
 extern crate json;
 #[macro_use]
