@@ -686,8 +686,22 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             ExprKind::Unary(ref op, ref e) => match op {
                 UnOp::Not | UnOp::Neg => self.visit_expr_unify(e, kt),
-                // TODO: handle `Deref` using the key tree
-                _ => self.visit_expr(e)
+                UnOp::Deref => {
+                    // We're doing this one inside-out: the inner
+                    // expression unifies with the outer key tree,
+                    // and the outer expression unifies with the child
+                    let ptr_key_tree = self.expr_ty_to_key_tree(e);
+                    self.visit_expr_unify(e, ptr_key_tree);
+                    if let Some(e_ty) = self.cx.opt_node_type(e.id) {
+                        if e_ty.builtin_deref(true).is_some() {
+                            assert!(ptr_key_tree.get().children().len() == 1);
+                            let inner_key_tree = ptr_key_tree.get().children()[0];
+                            self.unify_key_trees(kt, inner_key_tree);
+                        } else {
+                            // TODO: handle other types that implement `Deref`
+                        }
+                    }
+                }
             }
 
             ExprKind::Lit(ref lit) => {
@@ -850,8 +864,12 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // TODO: handle TypeRelative paths
             }
 
-            // TODO: handle `AddrOf` by keeping track of pointers
-            //
+            ExprKind::AddrOf(_, ref e) => {
+                assert!(kt.get().children().len() == 1);
+                let inner_key_tree = kt.get().children()[0];
+                self.visit_expr_unify(e, inner_key_tree);
+            }
+
             // TODO: unify `Break` with return values
             //
             // TODO: unify `Ret` with function return type
