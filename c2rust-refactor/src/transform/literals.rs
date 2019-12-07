@@ -818,8 +818,20 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             ExprKind::Index(ref e, ref idx) => {
                 let e_key_tree = self.expr_ty_to_key_tree(e);
-                //TMP TODO: unify with the expr type, if it's an array/slice/`str`
                 self.visit_expr_unify(e, e_key_tree);
+
+                // If the lhs type is array/slice/`str`, we can unify the result
+                // of the `ExprKind::Index` with the inner type of the base
+                if let Some(e_ty) = self.cx.opt_node_type(e.id) {
+                    use ty::TyKind::*;
+                    if let Array(..) | Slice(_) | Str = e_ty.kind {
+                        assert!(e_key_tree.get().children().len() == 1);
+                        let inner_key_tree = e_key_tree.get().children()[0];
+                        self.unify_key_trees(kt, inner_key_tree);
+                    } else {
+                        // TODO: check for `Index`/`IndexMut`
+                    }
+                }
 
                 // We unify `idx` with `usize`, but only after making sure
                 // that it's the expected type; we do this in a hacky way:
