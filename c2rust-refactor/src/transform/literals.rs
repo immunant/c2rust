@@ -453,14 +453,35 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             // TODO: handle `Variant`???
             //
-            // TODO: handle `ForeignTy`
-            //
             // TODO: handle `Fn`
-            //
-            // TODO: handle `Const`
-            //
-            // TODO: handle `Static`
-            //
+
+            DefKind::Const => {
+                let item = match_or!([tcx.hir().get(hir_id)]
+                                     hir::Node::Item(item) => item;
+                                     panic!("expected Item node"));
+                let ty = match_or!([item.kind]
+                                   hir::ItemKind::Const(ref ty, _) => ty;
+                                   panic!("expected ItemKind::Const, got {:?}", item));
+                new_node.set(self.hir_ty_to_key_tree(ty).get());
+            }
+
+            DefKind::Static => {
+                let ty = match tcx.hir().get(hir_id) {
+                    hir::Node::Item(ref item) => {
+                        match_or!([item.kind]
+                                  hir::ItemKind::Static(ref ty, ..) => ty;
+                                  panic!("expected ItemKind::Static, got {:?}", item))
+                    }
+                    hir::Node::ForeignItem(ref item) => {
+                        match_or!([item.kind]
+                                  hir::ForeignItemKind::Static(ref ty, ..) => ty;
+                                  panic!("expected ForeignItemKind::Static, got {:?}", item))
+                    }
+                    n @ _ => panic!("expected Item/ForeignItem, got {:?}", n)
+                };
+                new_node.set(self.hir_ty_to_key_tree(ty).get());
+            }
+
             // TODO: handle `Method`???
 
             _ => {}
