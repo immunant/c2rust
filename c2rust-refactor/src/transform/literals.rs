@@ -410,16 +410,22 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
         let key_tree = match def_kind {
             DefKind::TyAlias => {
-                // TODO: check generics
-                let item = match_or!([tcx.hir().get(hir_id)]
-                                     hir::Node::Item(item) => item;
-                                     return self.new_none_leaf());
-                // TODO: handle `ImplItem`
-                let (ty, _) =
-                    match_or!([item.kind]
-                              hir::ItemKind::TyAlias(ref ty, ref generics) => (ty, generics);
-                              return self.new_none_leaf());
-                // TODO: check generics
+                let ty = match tcx.hir().get(hir_id) {
+                    hir::Node::Item(item) => {
+                        let (ty, _) =
+                            match_or!([item.kind]
+                                      hir::ItemKind::TyAlias(ref ty, ref generics) => (ty, generics);
+                                      return self.new_none_leaf());
+                        // TODO: check generics
+                        ty
+                    }
+                    hir::Node::ImplItem(item) => {
+                        match_or!([item.kind]
+                                  hir::ImplItemKind::TyAlias(ref ty) => ty;
+                                  return self.new_none_leaf())
+                    }
+                    _ => return self.new_none_leaf()
+                };
                 self.hir_ty_to_key_tree(ty)
             }
 
