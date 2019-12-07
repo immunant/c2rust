@@ -414,7 +414,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             DefKind::TyAlias => {
                 let item = match_or!([tcx.hir().get(hir_id)]
                                      hir::Node::Item(item) => item;
-                                     panic!("expected Item"));
+                                     panic!("expected Item node"));
                 let (ty, _) =
                     match_or!([item.kind]
                               hir::ItemKind::TyAlias(ref ty, ref generics) => (ty, generics);
@@ -426,7 +426,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             DefKind::Struct | DefKind::Union | DefKind::Enum => {
                 let item = match_or!([tcx.hir().get(hir_id)]
                                      hir::Node::Item(item) => item;
-                                     return new_node);
+                                     panic!("expected Item node"));
                 let ch = match item.kind {
                     hir::ItemKind::Struct(ref def, _) |
                     hir::ItemKind::Union(ref def, _) => {
