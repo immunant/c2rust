@@ -408,33 +408,72 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             return key_tree;
         };
 
-        let key_tree = match def_kind {
+        let new_node = self.new_none_leaf();
+        self.def_id_key_tree_cache.insert(did, new_node);
+        match def_kind {
             DefKind::TyAlias => {
                 let ty = match tcx.hir().get(hir_id) {
                     hir::Node::Item(item) => {
                         let (ty, _) =
                             match_or!([item.kind]
                                       hir::ItemKind::TyAlias(ref ty, ref generics) => (ty, generics);
-                                      return self.new_none_leaf());
+                                      return new_node);
                         // TODO: check generics
                         ty
                     }
                     hir::Node::ImplItem(item) => {
                         match_or!([item.kind]
                                   hir::ImplItemKind::TyAlias(ref ty) => ty;
-                                  return self.new_none_leaf())
+                                  return new_node)
                     }
-                    _ => return self.new_none_leaf()
+                    _ => return new_node
                 };
-                self.hir_ty_to_key_tree(ty)
+                new_node.set(self.hir_ty_to_key_tree(ty).get());
             }
 
-            //TMP TODO: Struct, Enum, Union
+            DefKind::Struct | DefKind::Union | DefKind::Enum => {
+                let item = match_or!([tcx.hir().get(hir_id)]
+                                     hir::Node::Item(item) => item;
+                                     return new_node);
+                let ch = match item.kind {
+                    hir::ItemKind::Struct(ref def, _) |
+                    hir::ItemKind::Union(ref def, _) => {
+                        def.fields()
+                            .iter()
+                            .map(|field| self.hir_ty_to_key_tree(&field.ty))
+                            .collect::<Vec<_>>()
+                    }
 
-            _ => self.new_none_leaf()
+                    hir::ItemKind::Enum(ref def, _) => {
+                        // FIXME: I think this matches the `ty::Ty` order,
+                        // but should double-check somehow
+                        def.variants
+                            .iter()
+                            .flat_map(|v| v.data.fields())
+                            .map(|field| self.hir_ty_to_key_tree(&field.ty))
+                            .collect::<Vec<_>>()
+                    }
+
+                    _ => panic!("expected Struct/Union/Enum, got {:?}", item)
+                };
+                self.replace_with_node(new_node, &ch);
+            }
+
+            // TODO: handle `Variant`???
+            //
+            // TODO: handle `ForeignTy`
+            //
+            // TODO: handle `Fn`
+            //
+            // TODO: handle `Const`
+            //
+            // TODO: handle `Static`
+            //
+            // TODO: handle `Method`???
+
+            _ => {}
         };
-        self.def_id_key_tree_cache.insert(did, key_tree);
-        key_tree
+        new_node
     }
 
     fn ty_to_key_tree(&mut self, ty: ty::Ty<'tcx>, allow_mach: bool) -> LitTyKeyTree<'kt, 'tcx> {
