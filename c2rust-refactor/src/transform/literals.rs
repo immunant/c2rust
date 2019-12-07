@@ -322,11 +322,10 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     /// Directly convert a `hir::Ty` to a `LitTyKeyTree`
     fn hir_ty_to_key_tree(&mut self, ty: &hir::Ty) -> LitTyKeyTree<'kt, 'tcx> {
         match ty.kind {
-            hir::TyKind::Path(hir::QPath::Resolved(None, ref path)) => {
+            hir::TyKind::Path(hir::QPath::Resolved(_, ref path)) => {
                 self.hir_path_to_key_tree(path)
             }
             // TODO: handle TypeRelative paths
-            // TODO: handle fully-qualified paths
 
             hir::TyKind::Slice(ref ty) |
             hir::TyKind::Array(ref ty, _) |
@@ -366,8 +365,21 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             // TODO: handle `SelfTy`???
-            //
-            // TODO: handle `Local`
+
+            Res::Local(id) => {
+                // This is a local variable that may have a type,
+                // try to get that type and unify it
+                let pid = tcx.hir().get_parent_node(id);
+                let node = match_or!([tcx.hir().find(pid)]
+                                     Some(x) => x;
+                                     return self.new_none_leaf());
+                let l = match_or!([node] hir::Node::Local(l) => l;
+                                  return self.new_none_leaf());
+                let lty = match_or!([l.ty] Some(ref lty) => lty;
+                                    return self.new_none_leaf());
+                self.hir_ty_to_key_tree(lty)
+            }
+            // TODO: handle `SelfCtor`
 
             _ => self.new_none_leaf()
         }
@@ -741,28 +753,16 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             ExprKind::Path(..) => {
                 visit::walk_expr(self, ex);
-                // Try to resolve this path to a local variable
-                if let Some(res) = self.cx.try_resolve_expr_hir(ex) {
-                    match res {
-                        Res::Local(id) => {
-                            // This is a local variable that may have a type,
-                            // try to get that type and unify it
-                            let pid = tcx.hir().get_parent_node(id);
-                            let node = match_or!([tcx.hir().find(pid)]
-                                                 Some(x) => x; return);
-                            let l = match_or!([node] hir::Node::Local(l) => l; return);
-                            let lty = match_or!([l.ty] Some(ref lty) => lty; return);
-                            let local_key_tree = self.hir_ty_to_key_tree(lty);
-                            self.unify_key_trees(kt, local_key_tree);
-                        }
-
-                        Res::Def(_, _did) | Res::SelfCtor(_did) => {
-                            // TODO: this is a static, const or external
-                        }
-
-                        _ => {}
-                    }
+                let node = self.cx.hir_map().find(ex.id).unwrap();
+				let e = match_or!([node] hir::Node::Expr(e) => e;
+                                  panic!("expected Expr, got {:?}", node));
+				let qpath = match_or!([e.kind] hir::ExprKind::Path(ref q) => q;
+                                      panic!("expected ExprKind::Path, got {:?}", e.kind));
+                if let hir::QPath::Resolved(_, ref path) = qpath {
+                    let path_key_tree = self.hir_path_to_key_tree(path);
+                    self.unify_key_trees(kt, path_key_tree);
                 }
+                // TODO: handle TypeRelative paths
             }
 
             // TODO: handle `AddrOf` by keeping track of pointers
