@@ -948,7 +948,6 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
 impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
     fn visit_expr(&mut self, ex: &'ast Expr) {
-        // TODO: approximate structure
         let key_tree = self.expr_ty_to_key_tree(ex);
         self.visit_expr_unify(ex, key_tree);
     }
