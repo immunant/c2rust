@@ -412,22 +412,14 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         self.def_id_key_tree_cache.insert(did, new_node);
         match def_kind {
             DefKind::TyAlias => {
-                let ty = match tcx.hir().get(hir_id) {
-                    hir::Node::Item(item) => {
-                        let (ty, _) =
-                            match_or!([item.kind]
-                                      hir::ItemKind::TyAlias(ref ty, ref generics) => (ty, generics);
-                                      return new_node);
-                        // TODO: check generics
-                        ty
-                    }
-                    hir::Node::ImplItem(item) => {
-                        match_or!([item.kind]
-                                  hir::ImplItemKind::TyAlias(ref ty) => ty;
-                                  return new_node)
-                    }
-                    _ => return new_node
-                };
+                let item = match_or!([tcx.hir().get(hir_id)]
+                                     hir::Node::Item(item) => item;
+                                     panic!("expected Item"));
+                let (ty, _) =
+                    match_or!([item.kind]
+                              hir::ItemKind::TyAlias(ref ty, ref generics) => (ty, generics);
+                              panic!("expected TyAlias, got {:?}", item));
+                // TODO: check generics
                 new_node.set(self.hir_ty_to_key_tree(ty).get());
             }
 
