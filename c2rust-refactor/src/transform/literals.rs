@@ -788,31 +788,30 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             ExprKind::Field(ref e, ident) => {
-                //TMP TODO: build the key_tree for the expr, then unify
-                //the element for the current field with `kt`
-                self.visit_expr(e);
+                let inner_key_tree = self.expr_ty_to_key_tree(e);
+                self.visit_expr_unify(e, inner_key_tree);
                 self.visit_ident(ident);
                 if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
-                    if let Some(def) = struct_ty.ty_adt_def() {
-                        for field in def.all_fields() {
-                            if field.ident == ident {
-                                let hir_id = tcx.hir().as_local_hir_id(field.did);
-                                let field_key_tree = if let Some(hir_id) = hir_id {
-                                    // Field is defined in our crate, look it up
-                                    match tcx.hir().get(hir_id) {
-                                        hir::Node::Field(field) =>
-                                            self.hir_ty_to_key_tree(&field.ty),
-                                        _ => self.new_none_leaf()
-                                    }
-                                } else {
-                                    // Field is defined in another crate
-                                    self.ty_to_key_tree(tcx.type_of(field.did), true)
-                                };
-                                self.unify_key_trees(kt, field_key_tree);
+                    let ch = inner_key_tree.get().children();
+                    match struct_ty.kind {
+                        ty::TyKind::Adt(def, _) => {
+                            let fields = &def.non_enum_variant().fields;
+                            assert!(ch.len() == fields.len());
+
+                            let idx = fields
+                                .iter()
+                                .position(|field| field.ident == ident)
+                                .unwrap();
+                            self.unify_key_trees(kt, ch[idx]);
+                        }
+                        ty::TyKind::Tuple(ref tys) => {
+                            assert!(ch.len() == tys.len());
+                            if let Ok(idx) = ident.as_str().parse::<usize>() {
+                                self.unify_key_trees(kt, ch[idx]);
                             }
                         }
+                        _ => panic!("expected Adt/Tuple, got {:?}", struct_ty)
                     }
-                    // TODO: handle tuples; pretty easy with the key trees
                 }
             }
 
