@@ -154,6 +154,7 @@ impl Transform for RemoveLiteralSuffixes {
             arena: &arena,
             unif: ut::UnificationTable::new(),
             lit_nodes: HashMap::new(),
+            hir_id_key_tree_cache: HashMap::new(),
             def_id_key_tree_cache: HashMap::new(),
             ty_key_tree_cache: HashMap::new(),
         };
@@ -219,6 +220,7 @@ struct UnifyVisitor<'a, 'kt, 'tcx: 'a + 'kt> {
     arena: &'kt SyncDroplessArena,
     unif: ut::UnificationTable<ut::InPlace<LitTyKey<'tcx>>>,
     lit_nodes: HashMap<NodeId, LitTyKey<'tcx>>,
+    hir_id_key_tree_cache: HashMap<hir::HirId, LitTyKeyTree<'kt, 'tcx>>,
     def_id_key_tree_cache: HashMap<hir::def_id::DefId, LitTyKeyTree<'kt, 'tcx>>,
     ty_key_tree_cache: HashMap<(ty::Ty<'tcx>, bool), LitTyKeyTree<'kt, 'tcx>>,
 }
@@ -321,6 +323,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
     /// Directly convert a `hir::Ty` to a `LitTyKeyTree`
     fn hir_ty_to_key_tree(&mut self, ty: &hir::Ty) -> LitTyKeyTree<'kt, 'tcx> {
+        // TODO: use the HirId cache???
         match ty.kind {
             hir::TyKind::Path(hir::QPath::Resolved(_, ref path)) => {
                 self.hir_path_to_key_tree(path)
@@ -347,6 +350,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     }
 
     fn hir_path_to_key_tree(&mut self, path: &hir::Path) -> LitTyKeyTree<'kt, 'tcx> {
+        // TODO: use the HirId cache???
         let tcx = self.cx.ty_ctxt();
         match path.res {
             Res::Def(def_kind, did) => {
@@ -370,14 +374,24 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // This is a local variable that may have a type,
                 // try to get that type and unify it
                 let pid = tcx.hir().get_parent_node(id);
+                if let Some(key_tree) = self.hir_id_key_tree_cache.get(&pid) {
+                    return key_tree;
+                }
+                let new_node = self.new_none_leaf();
+                self.hir_id_key_tree_cache.insert(pid, new_node);
+
                 let node = match_or!([tcx.hir().find(pid)]
                                      Some(x) => x;
-                                     return self.new_none_leaf());
+                                     return new_node);
                 let l = match_or!([node] hir::Node::Local(l) => l;
-                                  return self.new_none_leaf());
+                                  return new_node);
                 let lty = match_or!([l.ty] Some(ref lty) => lty;
-                                    return self.new_none_leaf());
-                self.hir_ty_to_key_tree(lty)
+                                    return new_node);
+                new_node.set(self.hir_ty_to_key_tree(lty).get());
+                // FIXME: this local reference might be a sub-binding,
+                // and not the entire local; in that case, we need
+                // to split up the key tree
+                new_node
             }
             // TODO: handle `SelfCtor`
 
