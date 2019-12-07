@@ -452,8 +452,35 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             // TODO: handle `Variant`???
-            //
-            // TODO: handle `Fn`
+
+            DefKind::Fn => {
+                let decl = match tcx.hir().get(hir_id) {
+                    hir::Node::Item(ref item) => {
+                        match_or!([item.kind]
+                                  hir::ItemKind::Fn(ref decl, ..) => decl;
+                                  panic!("expected ItemKind::Fn, got {:?}", item))
+                    }
+                    hir::Node::ForeignItem(ref item) => {
+                        match_or!([item.kind]
+                                  hir::ForeignItemKind::Fn(ref decl, ..) => decl;
+                                  panic!("expected ForeignItemKind::Fn, got {:?}", item))
+                    }
+                    n @ _ => panic!("expected Item/ForeignItem, got {:?}", n)
+                };
+
+                let output_key_tree = match decl.output {
+                    hir::FunctionRetTy::DefaultReturn(_) => self.new_none_leaf(),
+                    hir::FunctionRetTy::Return(ref ty) => self.hir_ty_to_key_tree(ty),
+                };
+
+                let ch = decl.inputs
+                    .iter()
+                    .map(|ty| self.hir_ty_to_key_tree(ty))
+                    .chain(std::iter::once(output_key_tree))
+                    .collect::<Vec<_>>();
+
+                self.replace_with_node(new_node, &ch);
+            }
 
             DefKind::Const => {
                 let item = match_or!([tcx.hir().get(hir_id)]
