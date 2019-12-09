@@ -226,9 +226,9 @@ where
                 }
             }
 
-            ItemKind::Fn(ref decl, _, _, _) => {
+            ItemKind::Fn(ref ast_sig, _, _) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
-                    self.record_fn_decl(sig, decl);
+                    self.record_fn_decl(sig, &ast_sig.decl);
                 }
             }
 

@@ -53,9 +53,8 @@ function NodeIdFinder:flat_map_item(item, walk)
         local fn = fn_desc[ident]
 
         if fn then
-            local fn_decl = item:child(1)
-            -- local fn_sig = item_kind:child(1)
-            -- local fn_decl = fn_sig:get_decl()
+            local fn_sig = item_kind:child(1)
+            local fn_decl = fn_sig:get_decl()
             local params = fn_decl:get_inputs()
 
             for _, param in ipairs(params) do
@@ -68,7 +67,7 @@ function NodeIdFinder:flat_map_item(item, walk)
                 end
             end
 
-            local block = item_kind:child(4)
+            local block = item_kind:child(3)
             local stmts = block:get_stmts()
             local i = 1
 
@@ -182,16 +181,16 @@ node_descriptions = {
                 destp = ConvConfig.new{"ref"},
             },
             stmt = {
-                [2] = ConvConfig.new{"byteswap", 789, 807},
+                [2] = ConvConfig.new{"byteswap", 790, 808},
                 [3] = ConvConfig.new{"del"},
                 [4] = ConvConfig.new{"del"},
                 [5] = ConvConfig.new{"del"},
                 [7] = ConvConfig.new{"del"},
-                [8] = ConvConfig.new{"byteswap", 1013, 1041},
+                [8] = ConvConfig.new{"byteswap", 1014, 1042},
                 [9] = ConvConfig.new{"del"},
                 [10] = ConvConfig.new{"del"},
                 [11] = ConvConfig.new{"del"},
-                [12] = ConvConfig.new{"byteswap", 1241, 1269},
+                [12] = ConvConfig.new{"byteswap", 1242, 1270},
             },
         },
         byteswap2 = {
@@ -205,7 +204,7 @@ node_descriptions = {
                 [3] = ConvConfig.new{"del"},
                 [4] = ConvConfig.new{"del"},
                 [5] = ConvConfig.new{"del"},
-                [6] = ConvConfig.new{"byteswap", 1399, 1399},
+                [6] = ConvConfig.new{"byteswap", 1400, 1400},
                 [7] = ConvConfig.new{"del"},
             },
         },
@@ -247,6 +246,7 @@ node_descriptions = {
 
 refactor:transform(
     function(transform_ctx)
+        -- transform_ctx:dump_crate()
         return transform_ctx:visit_crate_new(NodeIdFinder.new(transform_ctx, node_descriptions))
     end
 )

@@ -1,6 +1,7 @@
 //! Crate-local helpers from libsyntax needed for the pretty-printer
 
-use syntax::ast;
+use syntax::ast::{Lit, LitKind, StrLit, StrStyle};
+use syntax::token;
 use syntax::util::parser::{AssocOp};
 
 // From libsyntax/src/util/parser.rs
@@ -20,24 +21,15 @@ crate fn needs_par_as_let_scrutinee(order: i8) -> bool {
 }
 
 
-// From libsyntax/src/parse/classify.rs
-
-/// Does this expression require a semicolon to be treated
-/// as a statement? The negation of this: 'can this expression
-/// be used as a statement without a semicolon' -- is used
-/// as an early-bail-out in the parser so that, for instance,
-///     if true {...} else {...}
-///      |x| 5
-/// isn't parsed as (if true {...} else {...} | x) | 5
-pub fn expr_requires_semi_to_be_stmt(e: &ast::Expr) -> bool {
-    match e.kind {
-        ast::ExprKind::If(..) |
-        ast::ExprKind::Match(..) |
-        ast::ExprKind::Block(..) |
-        ast::ExprKind::While(..) |
-        ast::ExprKind::Loop(..) |
-        ast::ExprKind::ForLoop(..) |
-        ast::ExprKind::TryBlock(..) => false,
-        _ => true,
+// From libsyntax/ast.rs
+crate fn as_lit(lit: &StrLit) -> Lit {
+    let token_kind = match lit.style {
+        StrStyle::Cooked => token::Str,
+        StrStyle::Raw(n) => token::StrRaw(n),
+    };
+    Lit {
+        token: token::Lit::new(token_kind, lit.symbol, lit.suffix),
+        span: lit.span,
+        kind: LitKind::Str(lit.symbol_unescaped, lit.style),
     }
 }

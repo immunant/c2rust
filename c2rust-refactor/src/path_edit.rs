@@ -6,6 +6,7 @@ use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::util::map_in_place::MapInPlace;
+use smallvec::smallvec;
 
 use crate::ast_manip::util::split_uses;
 use crate::ast_manip::MutVisit;

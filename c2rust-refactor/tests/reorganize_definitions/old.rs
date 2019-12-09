@@ -2,8 +2,8 @@
 #![feature(extern_types)]
 #![feature(asm)]
 #![feature(ptr_wrapping_offset_from)]
-#![feature(custom_attribute)]
 #![feature(rustc_private)]
+#![register_tool(c2rust)]
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
@@ -14,13 +14,13 @@
 
 extern crate libc;
 
-#[src_loc = "15:0"]
+#[c2rust::src_loc = "15:0"]
 type outside = i32;
 
 pub mod bar {
     use libc;
 
-    #[header_src = "/home/user/some/workspace/foobar/bar.h:5"]
+    #[c2rust::header_src = "/home/user/some/workspace/foobar/bar.h:5"]
     pub mod bar_h {
         // Test relative paths
         use super::super::outside;
@@ -28,7 +28,7 @@ pub mod bar {
         // Comment on bar_t
         #[derive(Copy, Clone)]
         #[repr(C)]
-        #[src_loc = "10:0"]
+        #[c2rust::src_loc = "10:0"]
         pub struct bar_t {
             //test1
             pub alloc: *mut libc::c_char,
@@ -53,7 +53,7 @@ pub mod bar {
 pub mod foo {
     use libc;
 
-    #[header_src = "/home/user/some/workspace/foobar/bar.h:5"]
+    #[c2rust::header_src = "/home/user/some/workspace/foobar/bar.h:5"]
     pub mod bar_h {
         // Test relative paths
         use super::super::outside;
@@ -61,7 +61,7 @@ pub mod foo {
         // Comment on bar_t
         #[derive(Copy, Clone)]
         #[repr(C)]
-        #[src_loc = "10:0"]
+        #[c2rust::src_loc = "10:0"]
         pub struct bar_t {
             //test2
             pub alloc: *mut libc::c_char,

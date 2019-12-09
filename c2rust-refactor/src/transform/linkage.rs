@@ -5,6 +5,7 @@ use syntax::attr;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax_pos::sym;
+use smallvec::smallvec;
 
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
 use crate::ast_manip::fn_edit::{visit_fns, FnKind};

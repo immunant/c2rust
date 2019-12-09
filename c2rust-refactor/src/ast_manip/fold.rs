@@ -1,13 +1,13 @@
 //! `MutVisit` trait for AST types that can be modified.
 use syntax::ast::*;
 use syntax::mut_visit::*;
-use syntax::parse::token::{self, Token};
+use syntax::token::{self, Token};
 use syntax::ptr::P;
 use syntax::source_map::Span;
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::util::map_in_place::MapInPlace;
 
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use crate::util::Lone;
 use c2rust_macros::gen_visitor_impls;

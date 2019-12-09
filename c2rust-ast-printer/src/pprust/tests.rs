@@ -34,12 +34,7 @@ fn test_fun_to_string() {
         assert_eq!(
             fun_to_string(
                 &decl,
-                ast::FnHeader {
-                    unsafety: ast::Unsafety::Normal,
-                    constness: source_map::dummy_spanned(ast::Constness::NotConst),
-                    asyncness: source_map::dummy_spanned(ast::IsAsync::NotAsync),
-                    abi: Abi::Rust,
-                },
+                ast::FnHeader::default(),
                 abba_ident,
                 &generics
             ),
@@ -55,6 +50,7 @@ fn test_variant_to_string() {
 
         let var = ast::Variant {
             ident,
+            vis: source_map::respan(syntax_pos::DUMMY_SP, ast::VisibilityKind::Inherited),
             attrs: Vec::new(),
             id: ast::DUMMY_NODE_ID,
             data: ast::VariantData::Unit(ast::DUMMY_NODE_ID),

@@ -18,10 +18,10 @@ use std::path;
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::ext::hygiene::SyntaxContext;
-use syntax::parse::lexer::comments::CommentStyle;
-use syntax::parse::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax_pos::hygiene::SyntaxContext;
+use syntax::util::comments::CommentStyle;
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::{BytePos, FileName, SourceFile, Span, Spanned};
 use syntax::symbol::Symbol;
@@ -169,7 +169,7 @@ impl PrintParse for Attribute {
                     // Expand the `span` to include the trailing \n.  Otherwise multiple spliced
                     // doc comments will run together into a single line.
                     let span = p.token.span.with_hi(p.token.span.hi() + BytePos(1));
-                    let attr = attr::mk_sugared_doc_attr(s, span);
+                    let attr = attr::mk_doc_comment(AttrStyle::Outer, s, span);
                     p.bump();
                     return Ok(attr);
                 }

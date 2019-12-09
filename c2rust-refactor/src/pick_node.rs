@@ -5,7 +5,7 @@ use rustc::session::Session;
 use std::path::PathBuf;
 use std::str::FromStr;
 use syntax::ast::*;
-use syntax::ext::hygiene::SyntaxContext;
+use syntax_pos::hygiene::SyntaxContext;
 use syntax::source_map::{BytePos, Span};
 use syntax::visit::{self, FnKind, Visitor};
 use syntax_pos::FileName;

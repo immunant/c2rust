@@ -5,6 +5,7 @@ use std::fmt::Display;
 use syntax::ast::*;
 use syntax::mut_visit::MutVisitor;
 use syntax::ptr::P;
+use smallvec::smallvec;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{FlatMapNodes, MutVisit, visit_nodes};

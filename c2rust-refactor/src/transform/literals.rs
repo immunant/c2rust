@@ -4,7 +4,7 @@ use rustc::{hir, ty};
 use rustc::hir::def::{Res, DefKind};
 use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
-use syntax::parse::token;
+use syntax::token;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
@@ -130,7 +130,7 @@ fn remove_suffix(lit: &Lit) -> Option<Lit> {
         LitKind::Float(sym, _) => match sym_token_kind(sym) {
             token::LitKind::Float => Some(Lit {
                 token: token::Lit { suffix: None, ..lit.token },
-                kind: LitKind::FloatUnsuffixed(sym),
+                kind: LitKind::Float(sym, LitFloatType::Unsuffixed),
                 span: lit.span,
             }),
 
@@ -457,7 +457,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let decl = match tcx.hir().get(hir_id) {
                     hir::Node::Item(ref item) => {
                         match_or!([item.kind]
-                                  hir::ItemKind::Fn(ref decl, ..) => decl;
+                                  hir::ItemKind::Fn(ref sig, ..) => &sig.decl;
                                   panic!("expected ItemKind::Fn, got {:?}", item))
                     }
                     hir::Node::ForeignItem(ref item) => {
@@ -875,7 +875,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // TODO: handle TypeRelative paths
             }
 
-            ExprKind::AddrOf(_, ref e) => {
+            ExprKind::AddrOf(_, _, ref e) => {
                 assert!(kt.get().children().len() == 1);
                 let inner_key_tree = kt.get().children()[0];
                 self.visit_expr_unify(e, inner_key_tree);
@@ -1058,7 +1058,7 @@ impl<'tcx> LitTySource<'tcx> {
             LitKind::Int(_, LitIntType::Unsigned(uint_ty)) =>
                 LitTySource::Suffix(tcx.mk_mach_uint(uint_ty)),
 
-            LitKind::Float(_, float_ty) =>
+            LitKind::Float(_, LitFloatType::Suffixed(float_ty)) =>
                 LitTySource::Suffix(tcx.mk_mach_float(float_ty)),
 
             _ => LitTySource::None

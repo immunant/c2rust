@@ -1,5 +1,3 @@
-//! feature_custom_attribute
-
 extern crate libc;
 
 use modules::rust_modules;

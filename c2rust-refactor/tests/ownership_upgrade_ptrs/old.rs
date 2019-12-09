@@ -1,4 +1,6 @@
-#![feature(rustc_private, custom_attribute, param_attrs, ptr_wrapping_offset_from, c_variadic, extern_types)]
+#![feature(rustc_private, param_attrs, ptr_wrapping_offset_from, c_variadic, extern_types)]
+#![register_tool(c2rust)]
+
 extern crate libc;
 
 extern "C" {

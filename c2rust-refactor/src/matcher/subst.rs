@@ -22,6 +22,7 @@ use syntax::ast::Mac;
 use syntax::ast::{Expr, ExprKind, Ident, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
+use smallvec::smallvec;
 
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{AstNode, MutVisit};

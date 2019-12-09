@@ -255,7 +255,7 @@ impl TypeConverter {
         };
 
         let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output));
-        return Ok(mk().unsafe_().abi("C").barefn_ty(fn_ty));
+        return Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty));
     }
 
     pub fn convert_pointer(
