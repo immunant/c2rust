@@ -426,9 +426,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         self.def_id_key_tree_cache.insert(did, new_node);
         match def_kind {
             DefKind::TyAlias => {
-                let item = match_or!([tcx.hir().get(hir_id)]
-                                     hir::Node::Item(item) => item;
-                                     panic!("expected Item node"));
+                let item = tcx.hir().expect_item(hir_id);
                 let (ty, _) =
                     match_or!([item.kind]
                               hir::ItemKind::TyAlias(ref ty, ref generics) => (ty, generics);
@@ -438,9 +436,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             DefKind::Struct | DefKind::Union | DefKind::Enum => {
-                let item = match_or!([tcx.hir().get(hir_id)]
-                                     hir::Node::Item(item) => item;
-                                     panic!("expected Item node"));
+                let item = tcx.hir().expect_item(hir_id);
                 let ch = match item.kind {
                     hir::ItemKind::Struct(ref def, _) |
                     hir::ItemKind::Union(ref def, _) => {
@@ -497,9 +493,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             DefKind::Const => {
-                let item = match_or!([tcx.hir().get(hir_id)]
-                                     hir::Node::Item(item) => item;
-                                     panic!("expected Item node"));
+                let item = tcx.hir().expect_item(hir_id);
                 let ty = match_or!([item.kind]
                                    hir::ItemKind::Const(ref ty, _) => ty;
                                    panic!("expected ItemKind::Const, got {:?}", item));
