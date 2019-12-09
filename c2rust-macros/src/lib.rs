@@ -8,7 +8,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::parse_macro_input;
 use syn::visit::Visit;
-use syn::{ArgCaptured, Block, FnArg, Ident, Pat, TraitItemMethod, Type, TypeReference};
+use syn::{Block, FnArg, Ident, Pat, TraitItemMethod, Type, TypeReference};
 
 #[derive(Default)]
 struct VisitorImpls {
@@ -154,15 +154,15 @@ impl<'ast> Visit<'ast> for VisitorImpls {
     fn visit_trait_item_method(&mut self, m: &TraitItemMethod) {
         let method_name = &m.sig.ident;
         let method_noop = m.default.as_ref().unwrap();
-        match &m.sig.decl.inputs[1] {
-            FnArg::Captured(ArgCaptured { pat, ty, .. }) => match ty {
+        match &m.sig.inputs[1] {
+            FnArg::Typed(pat_ty) => match &*pat_ty.ty {
                 Type::Reference(TypeReference {
                     mutability: Some(_),
                     elem,
                     ..
-                }) => self.generate_visit(method_name, &pat, &elem, method_noop),
+                }) => self.generate_visit(method_name, &pat_ty.pat, &elem, method_noop),
 
-                _ => self.generate_flat_map(method_name, &pat, &ty, method_noop),
+                ty => self.generate_flat_map(method_name, &pat_ty.pat, &ty, method_noop),
             },
 
             _ => {}
