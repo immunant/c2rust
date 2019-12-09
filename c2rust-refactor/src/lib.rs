@@ -6,6 +6,8 @@
     generator_trait,
     vec_remove_item,
     drain_filter,
+    label_break_value,
+    slice_patterns,
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 

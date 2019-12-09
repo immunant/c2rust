@@ -1,3 +1,4 @@
+use arena::SyncDroplessArena;
 use ena::unify as ut;
 use rustc::{hir, ty};
 use rustc::hir::def::{Res, DefKind};
@@ -7,8 +8,10 @@ use syntax::token;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
+use syntax_pos::Span;
 
-use std::collections::HashMap;
+use std::cell::Cell;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 
 use crate::ast_manip::MutVisitNodes;
@@ -145,10 +148,14 @@ fn remove_suffix(lit: &Lit) -> Option<Lit> {
 
 impl Transform for RemoveLiteralSuffixes {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
+        let arena = SyncDroplessArena::default();
         let mut uv = UnifyVisitor {
             cx,
+            arena: &arena,
             unif: ut::UnificationTable::new(),
             lit_nodes: HashMap::new(),
+            def_id_key_tree_cache: HashMap::new(),
+            ty_key_tree_cache: HashMap::new(),
         };
         visit::walk_crate(&mut uv, &krate);
 
@@ -207,77 +214,467 @@ impl Transform for RemoveLiteralSuffixes {
     }
 }
 
-struct UnifyVisitor<'a, 'tcx: 'a> {
+struct UnifyVisitor<'a, 'kt, 'tcx: 'a + 'kt> {
     cx: &'a RefactorCtxt<'a, 'tcx>,
+    arena: &'kt SyncDroplessArena,
     unif: ut::UnificationTable<ut::InPlace<LitTyKey<'tcx>>>,
     lit_nodes: HashMap<NodeId, LitTyKey<'tcx>>,
+    def_id_key_tree_cache: HashMap<hir::def_id::DefId, LitTyKeyTree<'kt, 'tcx>>,
+    ty_key_tree_cache: HashMap<(ty::Ty<'tcx>, bool), LitTyKeyTree<'kt, 'tcx>>,
 }
 
-impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
-    fn new_key(&mut self, source: LitTySource<'tcx>) -> LitTyKey<'tcx> {
-        self.unif.new_key(source)
+impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
+    fn new_leaf(&mut self, source: LitTySource<'tcx>) -> LitTyKeyTree<'kt, 'tcx> {
+        let key = self.unif.new_key(source);
+        self.arena.alloc(Cell::new(LitTyKeyNode::Leaf(key)))
+    }
+
+    fn new_none_leaf(&mut self) -> LitTyKeyTree<'kt, 'tcx> {
+        self.new_leaf(LitTySource::None)
+    }
+
+    fn new_node(&mut self, kts: &[LitTyKeyTree<'kt, 'tcx>]) -> LitTyKeyTree<'kt, 'tcx> {
+        let kt_slice = if kts.is_empty() {
+            // `alloc_slice` panics if we pass it an empty slice
+            &[][..]
+        } else {
+            self.arena.alloc_slice(kts)
+        };
+        self.arena.alloc(Cell::new(LitTyKeyNode::Node(kt_slice)))
+    }
+
+    /// Replaces an existing node with a `Leaf`.
+    fn replace_with_leaf(
+        &mut self,
+        leaf: LitTyKeyTree<'kt, 'tcx>,
+        source: LitTySource<'tcx>,
+    ) {
+        let key = self.unif.new_key(source);
+        leaf.set(LitTyKeyNode::Leaf(key));
+    }
+
+    /// Replaces an existing node with a `Node`.
+    fn replace_with_node(
+        &mut self,
+        leaf: LitTyKeyTree<'kt, 'tcx>,
+        kts: &[LitTyKeyTree<'kt, 'tcx>]
+    ) {
+        let kt_slice = if kts.is_empty() {
+            // `alloc_slice` panics if we pass it an empty slice
+            &[][..]
+        } else {
+            self.arena.alloc_slice(kts)
+        };
+        leaf.set(LitTyKeyNode::Node(kt_slice));
+    }
+
+    fn unify_key_trees_internal(
+        &mut self,
+        kt1: LitTyKeyTree<'kt, 'tcx>,
+        kt2: LitTyKeyTree<'kt, 'tcx>,
+        seen: &mut HashSet<(usize, usize)>,
+    ) {
+        // Prevent infinite recursion
+        let hash_key = (kt1 as *const _ as usize,
+                        kt2 as *const _ as usize);
+        if seen.contains(&hash_key) {
+            return;
+        }
+        seen.insert(hash_key);
+
+        match (kt1.get(), kt2.get()) {
+            (LitTyKeyNode::Node(ref ch1),
+             LitTyKeyNode::Node(ref ch2)) if ch1.len() == ch2.len() => {
+                for (ch1_kt, ch2_kt) in ch1.iter().zip(ch2.iter()) {
+                    self.unify_key_trees_internal(ch1_kt, ch2_kt, seen);
+                }
+            }
+
+            (LitTyKeyNode::Leaf(l1), LitTyKeyNode::Leaf(l2)) => {
+                self.unif.unify_var_var(l1, l2).expect("failed to unify");
+            }
+
+            // FIXME
+            // (kt1 @ _, kt2 @ _) => panic!("mismatched key trees: {:?} != {:?}", kt1, kt2)
+            _ => {}
+        }
+    }
+
+    fn unify_key_trees(
+        &mut self,
+        kt1: LitTyKeyTree<'kt, 'tcx>,
+        kt2: LitTyKeyTree<'kt, 'tcx>,
+    ) {
+        let mut seen = HashSet::new();
+        self.unify_key_trees_internal(kt1, kt2, &mut seen);
     }
 
     /// Directly convert an `ast::Ty` to a `ty::Ty`, without any type inference
     /// or going through the typeck tables.
-    fn ast_ty_to_source(&self, ty: &Ty) -> LitTySource<'tcx> {
+    fn ast_ty_to_key_tree(&mut self, ty: &Ty) -> LitTyKeyTree<'kt, 'tcx> {
         let node = match_or!([self.cx.hir_map().find(ty.id)] Some(x) => x;
-                             return LitTySource::None);
+                             return self.new_none_leaf());
         let t = match_or!([node] hir::Node::Ty(t) => t;
-                          return LitTySource::None);
-        LitTySource::from_hir_ty(t, self.cx.ty_ctxt())
+                          return self.new_none_leaf());
+        self.hir_ty_to_key_tree(t)
     }
 
-    fn visit_expr_unify(&mut self, ex: &Expr, key: LitTyKey<'tcx>) {
+    /// Directly convert a `hir::Ty` to a `LitTyKeyTree`
+    fn hir_ty_to_key_tree(&mut self, ty: &hir::Ty) -> LitTyKeyTree<'kt, 'tcx> {
+        match ty.kind {
+            hir::TyKind::Path(hir::QPath::Resolved(_, ref path)) => {
+                self.hir_path_to_key_tree(path)
+            }
+            // TODO: handle TypeRelative paths
+
+            hir::TyKind::Slice(ref ty) |
+            hir::TyKind::Array(ref ty, _) |
+            hir::TyKind::Ptr(hir::MutTy { ref ty, .. }) |
+            hir::TyKind::Rptr(_, hir::MutTy { ref ty, .. }) => {
+                let ty_kt = self.hir_ty_to_key_tree(ty);
+                self.new_node(&[ty_kt])
+            }
+
+            hir::TyKind::Tup(ref elems) => {
+                let ch = elems.iter()
+                    .map(|ty| self.hir_ty_to_key_tree(ty))
+                    .collect::<Vec<_>>();
+                self.new_node(&ch)
+            }
+
+            _ => self.new_none_leaf()
+        }
+    }
+
+    fn hir_path_to_key_tree(&mut self, path: &hir::Path) -> LitTyKeyTree<'kt, 'tcx> {
+        let tcx = self.cx.ty_ctxt();
+        match path.res {
+            Res::Def(def_kind, did) => {
+                self.def_id_to_key_tree(def_kind, did, path.span)
+            }
+
+            Res::PrimTy(prim_ty) => {
+                let source = match prim_ty {
+                    // TODO: check generics
+                    hir::Int(it) => LitTySource::Actual(tcx.mk_mach_int(it)),
+                    hir::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(uit)),
+                    hir::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ft)),
+                    _ => LitTySource::None
+                };
+                self.new_leaf(source)
+            }
+
+            // TODO: handle `SelfTy`???
+
+            Res::Local(id) => {
+                // This is a local variable that may have a type,
+                // try to get that type and unify it
+                let pid = tcx.hir().get_parent_node(id);
+                let node = match_or!([tcx.hir().find(pid)]
+                                     Some(x) => x;
+                                     return self.new_none_leaf());
+                let l = match_or!([node] hir::Node::Local(l) => l;
+                                  return self.new_none_leaf());
+                let lty = match_or!([l.ty] Some(ref lty) => lty;
+                                    return self.new_none_leaf());
+                self.hir_ty_to_key_tree(lty)
+            }
+            // TODO: handle `SelfCtor`
+
+            _ => self.new_none_leaf()
+        }
+    }
+
+    fn def_id_to_key_tree(
+        &mut self,
+        def_kind: DefKind,
+        did: hir::def_id::DefId,
+        sp: Span,
+    ) -> LitTyKeyTree<'kt, 'tcx> {
+        if let Some(key_tree) = self.def_id_key_tree_cache.get(&did) {
+            return key_tree;
+        }
+
+        let tcx = self.cx.ty_ctxt();
+        let hir_id = if let Some(hir_id) = tcx.hir().as_local_hir_id(did) {
+            hir_id
+        } else {
+            // The type is from outside the local crate,
+            // which we don't touch, so we can just get it from rustc
+            // FIXME: is this always correct, and do we always want to do it???
+            let ty = tcx.at(sp).type_of(did);
+            let key_tree = self.ty_to_key_tree(ty, true);
+            self.def_id_key_tree_cache.insert(did, key_tree);
+            return key_tree;
+        };
+
+        let new_node = self.new_none_leaf();
+        self.def_id_key_tree_cache.insert(did, new_node);
+        match def_kind {
+            DefKind::TyAlias => {
+                let item = match_or!([tcx.hir().get(hir_id)]
+                                     hir::Node::Item(item) => item;
+                                     panic!("expected Item node"));
+                let (ty, _) =
+                    match_or!([item.kind]
+                              hir::ItemKind::TyAlias(ref ty, ref generics) => (ty, generics);
+                              panic!("expected TyAlias, got {:?}", item));
+                // TODO: check generics
+                new_node.set(self.hir_ty_to_key_tree(ty).get());
+            }
+
+            DefKind::Struct | DefKind::Union | DefKind::Enum => {
+                let item = match_or!([tcx.hir().get(hir_id)]
+                                     hir::Node::Item(item) => item;
+                                     panic!("expected Item node"));
+                let ch = match item.kind {
+                    hir::ItemKind::Struct(ref def, _) |
+                    hir::ItemKind::Union(ref def, _) => {
+                        def.fields()
+                            .iter()
+                            .map(|field| self.hir_ty_to_key_tree(&field.ty))
+                            .collect::<Vec<_>>()
+                    }
+
+                    hir::ItemKind::Enum(ref def, _) => {
+                        // FIXME: I think this matches the `ty::Ty` order,
+                        // but should double-check somehow
+                        def.variants
+                            .iter()
+                            .flat_map(|v| v.data.fields())
+                            .map(|field| self.hir_ty_to_key_tree(&field.ty))
+                            .collect::<Vec<_>>()
+                    }
+
+                    _ => panic!("expected Struct/Union/Enum, got {:?}", item)
+                };
+                self.replace_with_node(new_node, &ch);
+            }
+
+            // TODO: handle `Variant`???
+
+            DefKind::Fn => {
+                let decl = match tcx.hir().get(hir_id) {
+                    hir::Node::Item(ref item) => {
+                        match_or!([item.kind]
+                                  hir::ItemKind::Fn(ref sig, ..) => &sig.decl;
+                                  panic!("expected ItemKind::Fn, got {:?}", item))
+                    }
+                    hir::Node::ForeignItem(ref item) => {
+                        match_or!([item.kind]
+                                  hir::ForeignItemKind::Fn(ref decl, ..) => decl;
+                                  panic!("expected ForeignItemKind::Fn, got {:?}", item))
+                    }
+                    n @ _ => panic!("expected Item/ForeignItem, got {:?}", n)
+                };
+
+                let output_key_tree = match decl.output {
+                    hir::FunctionRetTy::DefaultReturn(_) => self.new_none_leaf(),
+                    hir::FunctionRetTy::Return(ref ty) => self.hir_ty_to_key_tree(ty),
+                };
+
+                let ch = decl.inputs
+                    .iter()
+                    .map(|ty| self.hir_ty_to_key_tree(ty))
+                    .chain(std::iter::once(output_key_tree))
+                    .collect::<Vec<_>>();
+
+                self.replace_with_node(new_node, &ch);
+            }
+
+            DefKind::Const => {
+                let item = match_or!([tcx.hir().get(hir_id)]
+                                     hir::Node::Item(item) => item;
+                                     panic!("expected Item node"));
+                let ty = match_or!([item.kind]
+                                   hir::ItemKind::Const(ref ty, _) => ty;
+                                   panic!("expected ItemKind::Const, got {:?}", item));
+                new_node.set(self.hir_ty_to_key_tree(ty).get());
+            }
+
+            DefKind::Static => {
+                let ty = match tcx.hir().get(hir_id) {
+                    hir::Node::Item(ref item) => {
+                        match_or!([item.kind]
+                                  hir::ItemKind::Static(ref ty, ..) => ty;
+                                  panic!("expected ItemKind::Static, got {:?}", item))
+                    }
+                    hir::Node::ForeignItem(ref item) => {
+                        match_or!([item.kind]
+                                  hir::ForeignItemKind::Static(ref ty, ..) => ty;
+                                  panic!("expected ForeignItemKind::Static, got {:?}", item))
+                    }
+                    n @ _ => panic!("expected Item/ForeignItem, got {:?}", n)
+                };
+                new_node.set(self.hir_ty_to_key_tree(ty).get());
+            }
+
+            // TODO: handle `Method`???
+
+            _ => {}
+        };
+        new_node
+    }
+
+    fn ty_to_key_tree(&mut self, ty: ty::Ty<'tcx>, allow_mach: bool) -> LitTyKeyTree<'kt, 'tcx> {
+        // We memoize the result both to improve performance and
+        // eliminate infinite recursion
+        let hash_key = (ty, allow_mach);
+        if let Some(kt) = self.ty_key_tree_cache.get(&hash_key) {
+            return kt;
+        }
+        let new_node = self.new_none_leaf();
+        self.ty_key_tree_cache.insert(hash_key, new_node);
+
+        let tcx = self.cx.ty_ctxt();
+        let mut fn_sig_to_key_tree = |fn_sig: ty::PolyFnSig<'tcx>, sig_mach: bool| {
+            let ch = fn_sig
+                .skip_binder()
+                .inputs_and_output
+                .iter()
+                .map(|ty| self.ty_to_key_tree(ty, sig_mach))
+                .collect::<Vec<_>>();
+            self.replace_with_node(new_node, &ch);
+        };
+
+        match ty.kind {
+            ty::TyKind::Int(_) |
+            ty::TyKind::Uint(_) |
+            ty::TyKind::Float(_) if allow_mach => {
+                self.replace_with_leaf(new_node, LitTySource::Actual(ty));
+            }
+
+            ty::TyKind::Adt(ref adt_ref, ref substs)
+            if adt_ref.is_box() || adt_ref.is_rc() || adt_ref.is_arc() => {
+                // Ignore the actual structure for these types, and just
+                // use the inner type as the single child
+                let inner_ty = substs.type_at(0);
+                let ty_kt = self.ty_to_key_tree(inner_ty, allow_mach);
+                self.replace_with_node(new_node, &[ty_kt]);
+            }
+
+            ty::TyKind::Adt(ref adt_def, ref substs) => {
+                let ch = adt_def.all_fields()
+                    .map(|field| self.ty_to_key_tree(field.ty(tcx, substs), allow_mach))
+                    .collect::<Vec<_>>();
+                self.replace_with_node(new_node, &ch);
+            }
+
+            ty::TyKind::Str => {
+                let u8_ty = tcx.mk_mach_uint(UintTy::U8);
+                let u8_kt = self.ty_to_key_tree(u8_ty, true);
+                self.replace_with_node(new_node, &[u8_kt]);
+            }
+
+            ty::TyKind::Array(ty, _) |
+            ty::TyKind::Slice(ty) |
+            ty::TyKind::RawPtr(ty::TypeAndMut { ty, .. }) |
+            ty::TyKind::Ref(_, ty, _) => {
+                let ty_kt = self.ty_to_key_tree(ty, allow_mach);
+                self.replace_with_node(new_node, &[ty_kt]);
+            }
+
+            ty::TyKind::FnDef(def_id, _) => {
+                // Since we're using the original signature
+                // and not performing any substitutions,
+                // it's safe to include the machine types
+                fn_sig_to_key_tree(tcx.fn_sig(def_id), true);
+            }
+            ty::TyKind::FnPtr(fn_sig) => {
+                fn_sig_to_key_tree(fn_sig, allow_mach);
+            }
+
+            // TODO: Closure
+
+            ty::TyKind::Tuple(ref elems) => {
+                let ch = elems.types()
+                    .map(|ty| self.ty_to_key_tree(ty, allow_mach))
+                    .collect::<Vec<_>>();
+                self.replace_with_node(new_node, &ch);
+            }
+
+            // All the others are irrelevant
+            _ => {}
+        }
+        new_node
+    }
+
+    fn expr_ty_to_key_tree(&mut self, ex: &Expr) -> LitTyKeyTree<'kt, 'tcx> {
+        if let Some(ty) = self.cx.opt_node_type(ex.id) {
+            self.ty_to_key_tree(ty, false)
+        } else {
+            self.new_none_leaf()
+        }
+    }
+
+    fn visit_expr_unify(&mut self, ex: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
         let tcx = self.cx.ty_ctxt();
         match ex.kind {
-            // TODO: handle Box<T> for unifiable inner types
+            ExprKind::Box(ref e) => {
+                assert!(kt.get().children().len() == 1);
+                let inner_key_tree = kt.get().children()[0];
+                self.visit_expr_unify(e, inner_key_tree);
+            }
 
             ExprKind::Array(ref exprs) => {
-                let inner_key = self.new_key(LitTySource::None);
+                assert!(kt.get().children().len() == 1);
+                let inner_key_tree = kt.get().children()[0];
                 for e in exprs {
-                    self.visit_expr_unify(e, inner_key);
+                    self.visit_expr_unify(e, inner_key_tree);
                 }
-                // TODO: also unify `inner_key` by peeling a layer off `key`
             }
 
             ExprKind::Call(ref callee, ref args) => {
-                self.visit_expr(callee);
+                let callee_key_tree = self.expr_ty_to_key_tree(callee);
+                self.visit_expr_unify(callee, callee_key_tree);
                 // TODO: check if generic
-                for _arg in args {
-                    // TODO: get argument type
-                    // TODO: unify argument with expression
+                if let &[ref input_key_trees @ .., output_key_tree] = callee_key_tree.get().children() {
+                    for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
+                        self.visit_expr_unify(arg_expr, arg_key_tree);
+                    }
+                    self.unify_key_trees(kt, output_key_tree);
+                } else {
+                    panic!("invalid key tree for call: {:?}", ex);
                 }
-                // TODO: unify with callee return type
             }
 
-            ExprKind::MethodCall(ref _segment, ref _args) => {
-                // TODO: same as `Call`
+            ExprKind::MethodCall(ref segment, ref args) => {
+                self.visit_path_segment(ex.span, segment);
+                // FIXME: we have to skip the `self` argument,
+                // since literals without suffixes are sometimes invalid,
+                // e.g., `1.wrapping_add(2)`
+                for arg in args.iter().skip(1) {
+                    self.visit_expr(arg);
+                    // TODO: unify arguments and return type, just like in `Call`
+                }
             }
 
-            // TODO: handle `Tup`; for that, we'd need to keep track
-            // of nested types inside `TyKind::Tup` and unify them,
-            // in a similar way to `LabeledTy` from `analysis::labeled_ty`
+            ExprKind::Tup(ref exprs) => {
+                assert!(kt.get().children().len() == exprs.len());
+                for (ch, ch_kt) in exprs.iter().zip(kt.get().children().iter()) {
+                    self.visit_expr_unify(ch, ch_kt);
+                }
+            }
 
             ExprKind::Binary(ref op, ref lhs, ref rhs) => {
                 // FIXME: handle overloads
                 use BinOpKind::*;
                 match op.node {
                     Add | Sub | Mul | Div | Rem | BitXor | BitAnd | BitOr => {
-                        self.visit_expr_unify(lhs, key);
-                        self.visit_expr_unify(rhs, key);
+                        self.visit_expr_unify(lhs, kt);
+                        self.visit_expr_unify(rhs, kt);
                     }
 
                     Shl | Shr => {
-                        self.visit_expr_unify(lhs, key);
+                        self.visit_expr_unify(lhs, kt);
                         self.visit_expr(rhs);
                     }
 
                     Eq | Ne | Lt | Le | Gt | Ge => {
                         // Unify the lhs and rhs with each other, but not with the result
-                        let inner_key = self.new_key(LitTySource::None);
-                        self.visit_expr_unify(lhs, inner_key);
-                        self.visit_expr_unify(rhs, inner_key);
+                        let inner_key_tree = self.expr_ty_to_key_tree(lhs);
+                        self.visit_expr_unify(lhs, inner_key_tree);
+                        self.visit_expr_unify(rhs, inner_key_tree);
                     }
 
                     And | Or => {
@@ -288,35 +685,47 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
             }
 
             ExprKind::Unary(ref op, ref e) => match op {
-                UnOp::Not | UnOp::Neg => self.visit_expr_unify(e, key),
-                _ => self.visit_expr(e)
+                UnOp::Not | UnOp::Neg => self.visit_expr_unify(e, kt),
+                UnOp::Deref => {
+                    // We're doing this one inside-out: the inner
+                    // expression unifies with the outer key tree,
+                    // and the outer expression unifies with the child
+                    let ptr_key_tree = self.expr_ty_to_key_tree(e);
+                    self.visit_expr_unify(e, ptr_key_tree);
+                    if let Some(e_ty) = self.cx.opt_node_type(e.id) {
+                        if e_ty.builtin_deref(true).is_some() {
+                            assert!(ptr_key_tree.get().children().len() == 1);
+                            let inner_key_tree = ptr_key_tree.get().children()[0];
+                            self.unify_key_trees(kt, inner_key_tree);
+                        } else {
+                            // TODO: handle other types that implement `Deref`
+                        }
+                    }
+                }
             }
 
             ExprKind::Lit(ref lit) => {
                 if ex.id != DUMMY_NODE_ID && lit.kind.is_suffixed() {
                     let source = LitTySource::from_lit_expr(ex, tcx);
-                    let lit_key = self.new_key(source);
-                    self.unif.unify_var_var(key, lit_key)
-                        .expect("Actual(to unify");
-                    self.lit_nodes.insert(ex.id, lit_key);
+                    let lit_key_tree = self.new_leaf(source);
+                    self.unify_key_trees(kt, lit_key_tree);
+                    self.lit_nodes.insert(ex.id, lit_key_tree.get().as_key());
                 }
             }
 
             ExprKind::Cast(ref e, ref ty) => {
-                let source = self.ast_ty_to_source(ty);
-                self.unif.unify_var_value(key, source)
-                    .expect("failed to unify");
+                let ty_key_tree = self.ast_ty_to_key_tree(ty);
+                self.unify_key_trees(kt, ty_key_tree);
 
                 self.visit_expr(e);
                 self.visit_ty(ty);
             }
 
             ExprKind::Type(ref e, ref ty) => {
-                let source = self.ast_ty_to_source(ty);
-                self.unif.unify_var_value(key, source)
-                    .expect("failed to unify");
+                let ty_key_tree = self.ast_ty_to_key_tree(ty);
+                self.unify_key_trees(kt, ty_key_tree);
 
-                self.visit_expr_unify(e, key);
+                self.visit_expr_unify(e, kt);
                 self.visit_ty(ty);
             }
 
@@ -324,23 +733,23 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
 
             ExprKind::If(ref cond, ref block, ref r#else) => {
                 self.visit_expr(cond);
-                self.visit_block_unify(block, key);
+                self.visit_block_unify(block, kt);
                 if let Some(r#else) = r#else {
-                    self.visit_expr_unify(r#else, key);
+                    self.visit_expr_unify(r#else, kt);
                 }
             }
 
             // TODO: unify loops
 
             ExprKind::Match(ref e, ref arms) => {
-                let pat_key = self.new_key(LitTySource::None);
-                self.visit_expr_unify(e, pat_key);
+                let pat_key_tree = self.expr_ty_to_key_tree(e);
+                self.visit_expr_unify(e, pat_key_tree);
                 for arm in arms {
-                    self.visit_pat_unify(&arm.pat, pat_key);
+                    self.visit_pat_unify(&arm.pat, pat_key_tree);
                     if let Some(ref guard) = arm.guard {
                         self.visit_expr(guard);
                     }
-                    self.visit_expr_unify(&arm.body, key);
+                    self.visit_expr_unify(&arm.body, kt);
                     for attr in &arm.attrs {
                         self.visit_attribute(attr);
                     }
@@ -350,15 +759,15 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
             // TODO: handle `Closure`
 
             ExprKind::Block(ref block, _) => {
-                self.visit_block_unify(block, key);
+                self.visit_block_unify(block, kt);
             }
 
             // TODO: handle `Async`/`Await`
 
             ExprKind::Assign(ref lhs, ref rhs) => {
-                let inner_key = self.new_key(LitTySource::None);
-                self.visit_expr_unify(lhs, inner_key);
-                self.visit_expr_unify(rhs, inner_key);
+                let inner_key_tree = self.expr_ty_to_key_tree(lhs);
+                self.visit_expr_unify(lhs, inner_key_tree);
+                self.visit_expr_unify(rhs, inner_key_tree);
             }
 
             ExprKind::AssignOp(ref op, ref lhs, ref rhs) => {
@@ -366,9 +775,9 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
                 use BinOpKind::*;
                 match op.node {
                     Add | Sub | Mul | Div | Rem | BitXor | BitAnd | BitOr => {
-                        let inner_key = self.new_key(LitTySource::None);
-                        self.visit_expr_unify(lhs, inner_key);
-                        self.visit_expr_unify(rhs, inner_key);
+                        let inner_key_tree = self.expr_ty_to_key_tree(lhs);
+                        self.visit_expr_unify(lhs, inner_key_tree);
+                        self.visit_expr_unify(rhs, inner_key_tree);
                     }
 
                     _ => {
@@ -378,15 +787,50 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
                 }
             }
 
-            ExprKind::Field(ref _e, ref _ident) => {
-                // TODO: check if structure is not generic
-                // if so, then unify with the type of the field
+            ExprKind::Field(ref e, ident) => {
+                let inner_key_tree = self.expr_ty_to_key_tree(e);
+                self.visit_expr_unify(e, inner_key_tree);
+                self.visit_ident(ident);
+                if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
+                    let ch = inner_key_tree.get().children();
+                    match struct_ty.kind {
+                        ty::TyKind::Adt(def, _) => {
+                            let fields = &def.non_enum_variant().fields;
+                            assert!(ch.len() == fields.len());
+
+                            let idx = fields
+                                .iter()
+                                .position(|field| field.ident == ident)
+                                .unwrap();
+                            self.unify_key_trees(kt, ch[idx]);
+                        }
+                        ty::TyKind::Tuple(ref tys) => {
+                            assert!(ch.len() == tys.len());
+                            if let Ok(idx) = ident.as_str().parse::<usize>() {
+                                self.unify_key_trees(kt, ch[idx]);
+                            }
+                        }
+                        _ => panic!("expected Adt/Tuple, got {:?}", struct_ty)
+                    }
+                }
             }
 
             ExprKind::Index(ref e, ref idx) => {
-                // FIXME: we should unify with the inner type of the aggregate,
-                // but that's too complicated right now
-                self.visit_expr(e);
+                let e_key_tree = self.expr_ty_to_key_tree(e);
+                self.visit_expr_unify(e, e_key_tree);
+
+                // If the lhs type is array/slice/`str`, we can unify the result
+                // of the `ExprKind::Index` with the inner type of the base
+                if let Some(e_ty) = self.cx.opt_node_type(e.id) {
+                    use ty::TyKind::*;
+                    if let Array(..) | Slice(_) | Str = e_ty.kind {
+                        assert!(e_key_tree.get().children().len() == 1);
+                        let inner_key_tree = e_key_tree.get().children()[0];
+                        self.unify_key_trees(kt, inner_key_tree);
+                    } else {
+                        // TODO: check for `Index`/`IndexMut`
+                    }
+                }
 
                 // We unify `idx` with `usize`, but only after making sure
                 // that it's the expected type; we do this in a hacky way:
@@ -394,69 +838,62 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
                 // to `usize` with suffixes, then it will stay the same without
                 // them; this should generally be true, since the expected type
                 // is inferred from the parameter of `Index`/`IndexMut`
-                let mut idx_source = LitTySource::None;
-                if let Some(idx_ty) = self.cx.opt_node_type(idx.id) {
-                    match idx_ty.kind {
-                        ty::TyKind::Int(IntTy::Isize) |
-                        ty::TyKind::Uint(UintTy::Usize) => {
-                            idx_source = LitTySource::from_ty(idx_ty);
+                let idx_key_tree = 'block: {
+                    if let Some(idx_ty) = self.cx.opt_node_type(idx.id) {
+                        if idx_ty.is_ptr_sized_integral() {
+                            break 'block self.ty_to_key_tree(idx_ty, true);
                         }
-                        _ => {}
                     }
-                }
-
-                let idx_key = self.new_key(idx_source);
-                self.visit_expr_unify(idx, idx_key);
+                    self.new_none_leaf()
+                };
+                self.visit_expr_unify(idx, idx_key_tree);
             }
 
             ExprKind::Range(ref start, ref end, _) => {
-                let inner_key = self.new_key(LitTySource::None);
-                if let Some(start) = start {
-                    self.visit_expr_unify(start, inner_key);
-                }
-                if let Some(end) = end {
-                    self.visit_expr_unify(end, inner_key);
+                match (start, end) {
+                    (Some(start), Some(end)) => {
+                        let inner_key_tree = self.expr_ty_to_key_tree(start);
+                        self.visit_expr_unify(start, inner_key_tree);
+                        self.visit_expr_unify(end, inner_key_tree);
+                    }
+                    (Some(e), None) | (None, Some(e)) => self.visit_expr(e),
+                    (None, None) => {}
                 }
             }
 
             ExprKind::Path(..) => {
                 visit::walk_expr(self, ex);
-                // Try to resolve this path to a local variable
-                if let Some(res) = self.cx.try_resolve_expr_hir(ex) {
-                    match res {
-                        Res::Local(id) => {
-                            // This is a local variable that may have a type,
-                            // try to get that type and unify it
-                            let pid = tcx.hir().get_parent_node(id);
-                            let node = match_or!([tcx.hir().find(pid)]
-                                                 Some(x) => x; return);
-                            let l = match_or!([node] hir::Node::Local(l) => l; return);
-                            let lty = match_or!([l.ty] Some(ref lty) => lty; return);
-                            let source = LitTySource::from_hir_ty(lty, tcx);
-                            self.unif.unify_var_value(key, source)
-                                .expect("failed to unify");
-                        }
-
-                        Res::Def(_, _did) | Res::SelfCtor(_did) => {
-                            // TODO: this is a static, const or external
-                        }
-
-                        _ => {}
-                    }
+                let node = self.cx.hir_map().find(ex.id).unwrap();
+				let e = match_or!([node] hir::Node::Expr(e) => e;
+                                  panic!("expected Expr, got {:?}", node));
+				let qpath = match_or!([e.kind] hir::ExprKind::Path(ref q) => q;
+                                      panic!("expected ExprKind::Path, got {:?}", e.kind));
+                if let hir::QPath::Resolved(_, ref path) = qpath {
+                    let path_key_tree = self.hir_path_to_key_tree(path);
+                    self.unify_key_trees(kt, path_key_tree);
                 }
+                // TODO: handle TypeRelative paths
             }
 
-            // TODO: handle `AddrOf` by keeping track of pointers
-            //
+            ExprKind::AddrOf(_, _, ref e) => {
+                assert!(kt.get().children().len() == 1);
+                let inner_key_tree = kt.get().children()[0];
+                self.visit_expr_unify(e, inner_key_tree);
+            }
+
             // TODO: unify `Break` with return values
             //
             // TODO: unify `Ret` with function return type
             //
             // TODO: unify non-generic `Struct`
 
-            // TODO: handle `Repeat` by handling aggregates
+            ExprKind::Repeat(ref e, _) => {
+                assert!(kt.get().children().len() == 1);
+                let inner_key_tree = kt.get().children()[0];
+                self.visit_expr_unify(e, inner_key_tree);
+            }
 
-            ExprKind::Paren(ref e) => self.visit_expr_unify(e, key),
+            ExprKind::Paren(ref e) => self.visit_expr_unify(e, kt),
 
             // TODO: handle `Try`
             //
@@ -466,36 +903,37 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
         }
     }
 
-    fn visit_block_unify(&mut self, b: &Block, key: LitTyKey<'tcx>) {
+    fn visit_block_unify(&mut self, b: &Block, kt: LitTyKeyTree<'kt, 'tcx>) {
         if let Some((last, stmts)) = b.stmts.split_last() {
             for stmt in stmts {
                 self.visit_stmt(stmt);
             }
             if let StmtKind::Expr(ref e) = last.kind {
-                self.visit_expr_unify(e, key);
+                self.visit_expr_unify(e, kt);
             }
         }
     }
 
-    fn visit_pat_unify(&mut self, p: &Pat, key: LitTyKey<'tcx>) {
+    fn visit_pat_unify(&mut self, p: &Pat, kt: LitTyKeyTree<'kt, 'tcx>) {
         match p.kind {
             PatKind::Or(ref pats) => {
                 for pat in pats {
-                    self.visit_pat_unify(pat, key);
+                    self.visit_pat_unify(pat, kt);
                 }
             }
 
             PatKind::Lit(ref e) => {
-                self.visit_expr_unify(e, key);
+                self.visit_expr_unify(e, kt);
             }
 
             PatKind::Range(ref start, ref end, _) => {
-                let inner_key = self.new_key(LitTySource::None);
-                self.visit_expr_unify(start, inner_key);
-                self.visit_expr_unify(end, inner_key);
+                // TODO: approximate???
+                let inner_key_tree = self.expr_ty_to_key_tree(start);
+                self.visit_expr_unify(start, inner_key_tree);
+                self.visit_expr_unify(end, inner_key_tree);
             }
 
-            PatKind::Paren(ref pat) => self.visit_pat_unify(pat, key),
+            PatKind::Paren(ref pat) => self.visit_pat_unify(pat, kt),
 
             // TODO: handle more pattern types once we have hierarchical keys
 
@@ -508,10 +946,10 @@ impl<'a, 'tcx> UnifyVisitor<'a, 'tcx> {
     // TODO: handle `AnonConst`
 }
 
-impl<'ast, 'a, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'tcx> {
+impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
     fn visit_expr(&mut self, ex: &'ast Expr) {
-        let key = self.new_key(LitTySource::None);
-        self.visit_expr_unify(ex, key);
+        let key_tree = self.expr_ty_to_key_tree(ex);
+        self.visit_expr_unify(ex, key_tree);
     }
 
     fn visit_local(&mut self, l: &'ast Local) {
@@ -519,16 +957,16 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'tcx> {
             self.visit_attribute(attr);
         }
         self.visit_pat(&l.pat);
-
-        let source = if let Some(ref ty) = l.ty {
+        if let Some(ref ty) = l.ty {
             self.visit_ty(ty);
-            self.ast_ty_to_source(ty)
-        } else {
-            LitTySource::None
-        };
+        }
         if let Some(ref init) = l.init {
-            let key = self.new_key(source);
-            self.visit_expr_unify(init, key);
+            let key_tree = if let Some(ref ty) = l.ty {
+                self.ast_ty_to_key_tree(ty)
+            } else {
+                self.expr_ty_to_key_tree(init)
+            };
+            self.visit_expr_unify(init, key_tree);
         }
     }
 
@@ -536,10 +974,9 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'tcx> {
         match i.kind {
             ItemKind::Static(ref ty, _, ref init) |
             ItemKind::Const(ref ty, ref init) => {
-                let source = self.ast_ty_to_source(ty);
-                let key = self.new_key(source);
+                let key_tree = self.ast_ty_to_key_tree(ty);
                 self.visit_ty(ty);
-                self.visit_expr_unify(init, key);
+                self.visit_expr_unify(init, key_tree);
             }
 
             _ => visit::walk_item(self, i)
@@ -551,8 +988,33 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'tcx> {
     }
 
     fn visit_pat(&mut self, p: &'ast Pat) {
-        let key = self.new_key(LitTySource::None);
-        self.visit_pat_unify(p, key);
+        // TODO: approximate structure
+        let key_tree = self.new_none_leaf();
+        self.visit_pat_unify(p, key_tree);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum LitTyKeyNode<'kt, 'tcx: 'kt> {
+    Node(&'kt [LitTyKeyTree<'kt, 'tcx>]),
+    Leaf(LitTyKey<'tcx>),
+}
+
+type LitTyKeyTree<'kt, 'tcx> = &'kt Cell<LitTyKeyNode<'kt, 'tcx>>;
+
+impl<'kt, 'tcx: 'kt> LitTyKeyNode<'kt, 'tcx> {
+    fn as_key(&self) -> LitTyKey<'tcx> {
+        match self {
+            Self::Leaf(key) => *key,
+            Self::Node(ch) => panic!("expected leaf, found node: {:?}", ch)
+        }
+    }
+
+    fn children(&self) -> &'kt [LitTyKeyTree<'kt, 'tcx>] {
+        match self {
+            Self::Node(ch) => ch,
+            Self::Leaf(key) => panic!("expected node, found leaf: {:?}", key)
+        }
     }
 }
 
@@ -584,62 +1046,6 @@ enum LitTySource<'tcx> {
 }
 
 impl<'tcx> LitTySource<'tcx> {
-    /// Directly convert a `hir::Ty` to `ty::Ty`
-    fn from_hir_ty(ty: &hir::Ty, tcx: ty::TyCtxt<'tcx>) -> LitTySource<'tcx> {
-        let path = match_or!([ty.kind]
-                             hir::TyKind::Path(hir::QPath::Resolved(None, ref path)) => path;
-                             return LitTySource::None);
-        // TODO: handle TypeRelative paths
-        // TODO: handle fully-qualified paths
-        match path.res {
-            Res::Def(DefKind::TyAlias, did) => {
-                // TODO: check generics
-                let hir_id = if let Some(hir_id) = tcx.hir().as_local_hir_id(did) {
-                    hir_id
-                } else {
-                    // The type is from outside the local crate,
-                    // which we don't touch, so we can just get it from rustc
-                    // FIXME: is this always correct, and do we always want to do it???
-                    let ty = tcx.at(path.span).type_of(did);
-                    return LitTySource::from_ty(ty);
-                };
-
-                let item = match_or!([tcx.hir().get(hir_id)]
-                                     hir::Node::Item(item) => item;
-                                     return LitTySource::None);
-                // TODO: handle `ImplItem`
-                let (ty, _) =
-                    match_or!([item.kind]
-                              hir::ItemKind::TyAlias(ref ty, ref generics) => (ty, generics);
-                              return LitTySource::None);
-                // TODO: check generics
-                Self::from_hir_ty(ty, tcx)
-            }
-
-            Res::PrimTy(prim_ty) => match prim_ty {
-                // TODO: check generics
-                hir::Int(it) => LitTySource::Actual(tcx.mk_mach_int(it)),
-                hir::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(uit)),
-                hir::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ft)),
-                _ => LitTySource::None
-            }
-
-            // TODO: when we have a tree-of-sources, handle them here
-
-            _ => LitTySource::None
-        }
-    }
-
-    fn from_ty(ty: ty::Ty<'tcx>) -> Self {
-        match ty.kind {
-            ty::TyKind::Int(_) |
-            ty::TyKind::Uint(_) |
-            ty::TyKind::Float(_) => LitTySource::Actual(ty),
-
-            _ => LitTySource::None
-        }
-    }
-
     fn from_lit_expr(e: &Expr, tcx: ty::TyCtxt<'tcx>) -> Self {
         let lit = match e.kind {
             ExprKind::Lit(ref lit) => lit,
