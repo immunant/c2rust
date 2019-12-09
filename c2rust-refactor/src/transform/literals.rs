@@ -809,13 +809,9 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     let ch = inner_key_tree.get().children();
                     match struct_ty.kind {
                         ty::TyKind::Adt(def, _) => {
-                            let fields = &def.non_enum_variant().fields;
-                            assert!(ch.len() == fields.len());
-
-                            let idx = fields
-                                .iter()
-                                .position(|field| field.ident == ident)
-                                .unwrap();
+                            let v = &def.non_enum_variant();
+                            assert!(ch.len() == v.fields.len());
+                            let idx = tcx.find_field_index(ident, v).unwrap();
                             self.unify_key_trees(kt, ch[idx]);
                         }
                         ty::TyKind::Tuple(ref tys) => {
