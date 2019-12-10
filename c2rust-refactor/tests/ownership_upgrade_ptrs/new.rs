@@ -631,7 +631,7 @@ pub unsafe extern "C" fn argz_create_sep(
         len = strlen(token.map(|r| r.as_ptr()).unwrap_or(0 as *mut _))
             .wrapping_add(1i32 as libc::c_ulong) as libc::c_int;
         memcpy(
-            iter.as_ref()
+            iter.as_mut()
                 .map(|r| &mut **r as *mut _)
                 .unwrap_or(0 as *mut _) as *mut libc::c_void,
             token.map(|r| r.as_ptr()).unwrap_or(0 as *mut _) as *const libc::c_void,
