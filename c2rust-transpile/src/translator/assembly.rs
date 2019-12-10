@@ -39,7 +39,7 @@ impl<'c> Translation<'c> {
         let mut first;
 
         // Assembly template
-        push_expr(&mut tokens, mk().lit_expr(mk().str_lit(asm)));
+        push_expr(&mut tokens, mk().lit_expr(asm));
 
         let mut tied_operands = HashMap::new();
         for (input_idx, &AsmOperand {
@@ -157,7 +157,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                push_expr(&mut tokens, mk().lit_expr(mk().str_lit(constraints)));
+                push_expr(&mut tokens, mk().lit_expr(constraints));
                 push_expr(&mut tokens, mk().paren_expr(result));
             }
         }
@@ -171,13 +171,13 @@ impl<'c> Translation<'c> {
             } else {
                 tokens.push(TokenTree::token(token::Comma, DUMMY_SP))
             }
-            push_expr(&mut tokens, mk().lit_expr(mk().str_lit(clobber)));
+            push_expr(&mut tokens, mk().lit_expr(clobber));
         }
 
         // Options
         if is_volatile {
             tokens.push(TokenTree::token(token::Colon, DUMMY_SP));
-            push_expr(&mut tokens, mk().lit_expr(mk().str_lit("volatile")));
+            push_expr(&mut tokens, mk().lit_expr("volatile"));
         }
 
         let mac = mk().mac(

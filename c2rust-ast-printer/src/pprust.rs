@@ -1,19 +1,16 @@
 use syntax::ast::{self, BlockCheckMode, PatKind, RangeEnd, RangeSyntax};
 use syntax::ast::{SelfKind, GenericBound, TraitBoundModifier};
-use syntax::ast::{Attribute, MacDelimiter, GenericArg};
+use syntax::ast::{Attribute, MacDelimiter, GenericArg, MacArgs};
 use syntax::util::parser::{self, AssocOp, Fixity};
-use syntax::attr;
+use syntax::util::comments;
 use syntax::source_map::{self, SourceMap, Spanned};
-use syntax::parse::token::{self, BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::parse::lexer::comments;
-use syntax::parse::{ParseSess};
+use syntax::token::{self, BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
 use syntax::ptr::P;
-use syntax::symbol::{kw, sym};
+use syntax::symbol::kw;
 use syntax::tokenstream::{self, TokenStream, TokenTree};
+use syntax::util::classify;
 
-use rustc_target::spec::abi::{self, Abi};
-use syntax_pos::{self, BytePos};
-use syntax_pos::{FileName, Span};
+use syntax_pos::{self, BytePos, Span};
 
 use std::borrow::Cow;
 
@@ -68,19 +65,19 @@ impl<'a> Comments<'a> {
         }
     }
 
-    pub fn parse(
-        cm: &'a SourceMap,
-        sess: &ParseSess,
-        filename: FileName,
-        input: String,
-    ) -> Comments<'a> {
-        let comments = comments::gather_comments(sess, filename, input);
-        Comments {
-            cm,
-            comments,
-            current: 0,
-        }
-    }
+    // pub fn parse(
+    //     cm: &'a SourceMap,
+    //     sess: &ParseSess,
+    //     filename: FileName,
+    //     input: String,
+    // ) -> Comments<'a> {
+    //     let comments = comments::gather_comments(sess, filename, input);
+    //     Comments {
+    //         cm,
+    //         comments,
+    //         current: 0,
+    //     }
+    // }
 
     pub fn next(&self) -> Option<comments::Comment> {
         self.comments.get(self.current).cloned()
@@ -125,47 +122,47 @@ crate const INDENT_UNIT: usize = 4;
 
 /// Requires you to pass an input filename and reader so that
 /// it can scan the input text for comments to copy forward.
-pub fn print_crate<'a>(cm: &'a SourceMap,
-                       sess: &ParseSess,
-                       krate: &ast::Crate,
-                       filename: FileName,
-                       input: String,
-                       ann: &'a dyn PpAnn,
-                       is_expanded: bool) -> String {
-    let mut s = State {
-        s: pp::mk_printer(),
-        comments: Some(Comments::parse(cm, sess, filename, input)),
-        ann,
-        is_expanded,
-    };
+// pub fn print_crate<'a>(cm: &'a SourceMap,
+//                        sess: &ParseSess,
+//                        krate: &ast::Crate,
+//                        filename: FileName,
+//                        input: String,
+//                        ann: &'a dyn PpAnn,
+//                        is_expanded: bool) -> String {
+//     let mut s = State {
+//         s: pp::mk_printer(),
+//         comments: Some(Comments::parse(cm, sess, filename, input)),
+//         ann,
+//         is_expanded,
+//     };
 
-    if is_expanded && sess.injected_crate_name.try_get().is_some() {
-        // We need to print `#![no_std]` (and its feature gate) so that
-        // compiling pretty-printed source won't inject libstd again.
-        // However, we don't want these attributes in the AST because
-        // of the feature gate, so we fake them up here.
+//     if is_expanded && sess.injected_crate_name.try_get().is_some() {
+//         // We need to print `#![no_std]` (and its feature gate) so that
+//         // compiling pretty-printed source won't inject libstd again.
+//         // However, we don't want these attributes in the AST because
+//         // of the feature gate, so we fake them up here.
 
-        // `#![feature(prelude_import)]`
-        let pi_nested = attr::mk_nested_word_item(ast::Ident::with_dummy_span(sym::prelude_import));
-        let list = attr::mk_list_item(ast::Ident::with_dummy_span(sym::feature), vec![pi_nested]);
-        let fake_attr = attr::mk_attr_inner(list);
-        s.print_attribute(&fake_attr);
+//         // `#![feature(prelude_import)]`
+//         let pi_nested = attr::mk_nested_word_item(ast::Ident::with_dummy_span(sym::prelude_import));
+//         let list = attr::mk_list_item(ast::Ident::with_dummy_span(sym::feature), vec![pi_nested]);
+//         let fake_attr = attr::mk_attr_inner(list);
+//         s.print_attribute(&fake_attr);
 
-        // Currently, in Rust 2018 we don't have `extern crate std;` at the crate
-        // root, so this is not needed, and actually breaks things.
-        if sess.edition == syntax_pos::edition::Edition::Edition2015 {
-            // `#![no_std]`
-            let no_std_meta = attr::mk_word_item(ast::Ident::with_dummy_span(sym::no_std));
-            let fake_attr = attr::mk_attr_inner(no_std_meta);
-            s.print_attribute(&fake_attr);
-        }
-    }
+//         // Currently, in Rust 2018 we don't have `extern crate std;` at the crate
+//         // root, so this is not needed, and actually breaks things.
+//         if sess.edition == syntax_pos::edition::Edition::Edition2015 {
+//             // `#![no_std]`
+//             let no_std_meta = attr::mk_word_item(ast::Ident::with_dummy_span(sym::no_std));
+//             let fake_attr = attr::mk_attr_inner(no_std_meta);
+//             s.print_attribute(&fake_attr);
+//         }
+//     }
 
-    s.print_mod(&krate.module, &krate.attrs);
-    s.print_remaining_comments();
-    s.ann.post(&mut s, AnnNode::Crate(krate));
-    s.s.eof()
-}
+//     s.print_mod(&krate.module, &krate.attrs);
+//     s.print_remaining_comments();
+//     s.ann.post(&mut s, AnnNode::Crate(krate));
+//     s.s.eof()
+// }
 
 pub fn to_string<F>(f: F) -> String where
     F: FnOnce(&mut State<'_>),
@@ -657,32 +654,48 @@ pub trait PrintState<'a>: std::ops::Deref<Target = pp::Printer> + std::ops::Dere
             self.hardbreak_if_not_bol();
         }
         self.maybe_print_comment(attr.span.lo());
-        if attr.is_sugared_doc {
-            self.word(attr.value_str().unwrap().as_str().to_string());
-            self.hardbreak()
-        } else {
-            match attr.style {
-                ast::AttrStyle::Inner => self.word("#!["),
-                ast::AttrStyle::Outer => self.word("#["),
+        match attr.kind {
+            ast::AttrKind::Normal(ref item) => {
+                match attr.style {
+                    ast::AttrStyle::Inner => self.word("#!["),
+                    ast::AttrStyle::Outer => self.word("#["),
+                }
+                self.print_attr_item(&item, attr.span);
+                self.word("]");
             }
-            self.print_attr_item(&attr.item, attr.span);
-            self.word("]");
+            ast::AttrKind::DocComment(comment) => {
+                self.word(comment.to_string());
+                self.hardbreak()
+            }
         }
     }
 
     fn print_attr_item(&mut self, item: &ast::AttrItem, span: Span) {
         self.ibox(0);
-        match item.tokens.trees().next() {
-            Some(TokenTree::Delimited(_, delim, tts)) => {
+        match &item.args {
+            MacArgs::Delimited(_, delim, tokens) => {
+                let delim = match delim {
+                    MacDelimiter::Parenthesis => DelimToken::Paren,
+                    MacDelimiter::Bracket => DelimToken::Bracket,
+                    MacDelimiter::Brace => DelimToken::Brace,
+                };
+
                 self.print_mac_common(
-                    Some(MacHeader::Path(&item.path)), false, None, delim, tts, true, span
-                );
+                    Some(MacHeader::Path(&item.path)),
+                    false,
+                    None,
+                    delim,
+                    tokens.clone(),
+                    true,
+                    span,
+                )
             }
-            tree => {
+            MacArgs::Empty | MacArgs::Eq(..) => {
                 self.print_path(&item.path, false, 0);
-                if tree.is_some() {
+                if let MacArgs::Eq(_, tokens) = &item.args {
                     self.space();
-                    self.print_tts(item.tokens.clone(), true);
+                    self.word_space("=");
+                    self.print_tts(tokens.clone(), true);
                 }
             }
         }
@@ -972,9 +985,12 @@ impl<'a> State<'a> {
         self.commasep_cmnt(b, exprs, |s, e| s.print_expr(e), |e| e.span)
     }
 
-    pub fn print_mod(&mut self, _mod: &ast::Mod,
-                       attrs: &[ast::Attribute]) {
-        self.print_inner_attributes(attrs);
+    pub fn print_mod(
+        &mut self,
+        _mod: &ast::Mod,
+        attrs: &[ast::Attribute],
+    ) {
+       self.print_inner_attributes(attrs);
         for item in &_mod.items {
             self.print_item(item);
         }
@@ -1014,16 +1030,12 @@ impl<'a> State<'a> {
             }
             ast::TyKind::Ptr(ref mt) => {
                 self.s.word("*");
-                match mt.mutbl {
-                    ast::Mutability::Mutable => self.word_nbsp("mut"),
-                    ast::Mutability::Immutable => self.word_nbsp("const"),
-                }
-                self.print_type(&mt.ty);
+                self.print_mt(mt, true);
             }
             ast::TyKind::Rptr(ref lifetime, ref mt) => {
                 self.s.word("&");
                 self.print_opt_lifetime(lifetime);
-                self.print_mt(mt);
+                self.print_mt(mt, false);
             }
             ast::TyKind::Never => {
                 self.s.word("!");
@@ -1043,7 +1055,7 @@ impl<'a> State<'a> {
                 self.pclose();
             }
             ast::TyKind::BareFn(ref f) => {
-                self.print_ty_fn(f.abi,
+                self.print_ty_fn(f.ext,
                                  f.unsafety,
                                  &f.decl,
                                  None,
@@ -1131,9 +1143,8 @@ impl<'a> State<'a> {
             }
             ast::ForeignItemKind::Macro(ref m) => {
                 self.print_mac(m);
-                match m.delim {
-                    MacDelimiter::Brace => {},
-                    _ => self.s.word(";")
+                if m.args.need_semicolon() {
+                    self.s.word(";");
                 }
             }
         }
@@ -1232,11 +1243,11 @@ impl<'a> State<'a> {
                 self.s.word(";");
                 self.end(); // end the outer cbox
             }
-            ast::ItemKind::Fn(ref decl, header, ref param_names, ref body) => {
+            ast::ItemKind::Fn(ref sig, ref param_names, ref body) => {
                 self.head("");
                 self.print_fn(
-                    decl,
-                    header,
+                    &sig.decl,
+                    sig.header,
                     Some(item.ident),
                     param_names,
                     &item.vis
@@ -1262,14 +1273,17 @@ impl<'a> State<'a> {
             }
             ast::ItemKind::ForeignMod(ref nmod) => {
                 self.head("extern");
-                self.word_nbsp(nmod.abi.to_string());
+                if let Some(abi) = nmod.abi {
+                    self.print_literal(&syntax_priv::as_lit(&abi));
+                    self.nbsp();
+                }
                 self.bopen();
                 self.print_foreign_mod(nmod, &item.attrs);
                 self.bclose(item.span);
             }
             ast::ItemKind::GlobalAsm(ref ga) => {
                 self.head(visibility_qualified(&item.vis, "global_asm!"));
-                self.s.word(ga.asm.as_str().to_string());
+                self.s.word(ga.asm.to_string());
                 self.end();
             }
             ast::ItemKind::TyAlias(ref ty, ref generics) => {
@@ -1282,19 +1296,6 @@ impl<'a> State<'a> {
                 self.s.space();
                 self.word_space("=");
                 self.print_type(ty);
-                self.s.word(";");
-                self.end(); // end the outer ibox
-            }
-            ast::ItemKind::OpaqueTy(ref bounds, ref generics) => {
-                self.head(visibility_qualified(&item.vis, "type"));
-                self.print_ident(item.ident);
-                self.word_space("= impl");
-                self.print_generic_params(&generics.params);
-                self.end(); // end the inner ibox
-
-                self.print_where_clause(&generics.where_clause);
-                self.s.space();
-                self.print_type_bounds(":", bounds);
                 self.s.word(";");
                 self.end(); // end the outer ibox
             }
@@ -1405,9 +1406,8 @@ impl<'a> State<'a> {
             }
             ast::ItemKind::Mac(ref mac) => {
                 self.print_mac(mac);
-                match mac.delim {
-                    MacDelimiter::Brace => {}
-                    _ => self.s.word(";"),
+                if mac.args.need_semicolon() {
+                    self.s.word(";");
                 }
             }
             ast::ItemKind::MacroDef(ref macro_def) => {
@@ -1421,8 +1421,8 @@ impl<'a> State<'a> {
                     Some(MacHeader::Keyword(kw)),
                     has_bang,
                     Some(item.ident),
-                    DelimToken::Brace,
-                    macro_def.stream(),
+                    macro_def.body.delim(),
+                    macro_def.body.inner_tokens(),
                     true,
                     item.span,
                 );
@@ -1574,7 +1574,7 @@ impl<'a> State<'a> {
     pub fn print_method_sig(&mut self,
                             ident: ast::Ident,
                             generics: &ast::Generics,
-                            m: &ast::MethodSig,
+                            m: &ast::FnSig,
                             vis: &ast::Visibility)
                             {
         self.print_fn(&m.decl,
@@ -1622,9 +1622,8 @@ impl<'a> State<'a> {
             }
             ast::TraitItemKind::Macro(ref mac) => {
                 self.print_mac(mac);
-                match mac.delim {
-                    MacDelimiter::Brace => {}
-                    _ => self.s.word(";"),
+                if mac.args.need_semicolon() {
+                    self.s.word(";");
                 }
             }
         }
@@ -1650,18 +1649,10 @@ impl<'a> State<'a> {
             ast::ImplItemKind::TyAlias(ref ty) => {
                 self.print_associated_type(ii.ident, None, Some(ty));
             }
-            ast::ImplItemKind::OpaqueTy(ref bounds) => {
-                self.word_space("type");
-                self.print_ident(ii.ident);
-                self.word_space("= impl");
-                self.print_type_bounds(":", bounds);
-                self.s.word(";");
-            }
             ast::ImplItemKind::Macro(ref mac) => {
                 self.print_mac(mac);
-                match mac.delim {
-                    MacDelimiter::Brace => {}
-                    _ => self.s.word(";"),
+                if mac.args.need_semicolon() {
+                    self.s.word(";");
                 }
             }
         }
@@ -1692,7 +1683,7 @@ impl<'a> State<'a> {
             ast::StmtKind::Expr(ref expr) => {
                 self.space_if_not_bol();
                 self.print_expr_outer_attr_style(expr, false);
-                if syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                if classify::expr_requires_semi_to_be_stmt(expr) {
                     self.s.word(";");
                 }
             }
@@ -1822,19 +1813,14 @@ impl<'a> State<'a> {
     }
 
     pub fn print_mac(&mut self, m: &ast::Mac) {
-        let delim = match m.delim {
-            MacDelimiter::Parenthesis => DelimToken::Paren,
-            MacDelimiter::Bracket => DelimToken::Bracket,
-            MacDelimiter::Brace => DelimToken::Brace,
-        };
         self.print_mac_common(
             Some(MacHeader::Path(&m.path)),
             true,
             None,
-            delim,
-            m.stream(),
+            m.args.delim(),
+            m.args.inner_tokens(),
             true,
-            m.span,
+            m.span(),
         );
     }
 
@@ -2010,7 +1996,7 @@ impl<'a> State<'a> {
             (&ast::ExprKind::Let { .. }, _) if !syntax_priv::needs_par_as_let_scrutinee(prec) => {
                 parser::PREC_FORCE_PAREN
             }
-            _ if !is_inline && syntax_priv::expr_requires_semi_to_be_stmt(lhs) => {
+            _ if !is_inline && classify::expr_requires_semi_to_be_stmt(lhs) => {
                 parser::PREC_FORCE_PAREN
             }
             _ => left_prec,
@@ -2030,10 +2016,17 @@ impl<'a> State<'a> {
     }
 
     fn print_expr_addr_of(&mut self,
+                          kind: ast::BorrowKind,
                           mutability: ast::Mutability,
                           expr: &ast::Expr) {
         self.s.word("&");
-        self.print_mutability(mutability);
+        match kind {
+            ast::BorrowKind::Ref => self.print_mutability(mutability, false),
+            ast::BorrowKind::Raw => {
+                self.word_nbsp("raw");
+                self.print_mutability(mutability, true);
+            }
+        }
         self.print_expr_maybe_paren(expr, parser::PREC_PREFIX)
     }
 
@@ -2084,14 +2077,14 @@ impl<'a> State<'a> {
             ast::ExprKind::Unary(op, ref expr) => {
                 self.print_expr_unary(op, expr);
             }
-            ast::ExprKind::AddrOf(m, ref expr) => {
-                self.print_expr_addr_of(m, expr);
+            ast::ExprKind::AddrOf(k, m, ref expr) => {
+                self.print_expr_addr_of(k, m, expr);
             }
             ast::ExprKind::Lit(ref lit) => {
                 self.print_literal(lit);
             }
             ast::ExprKind::Cast(ref expr, ref ty) => {
-                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                let prec = if !is_inline && !classify::expr_requires_semi_to_be_stmt(expr) {
                     parser::PREC_FORCE_PAREN
                 } else {
                     AssocOp::As.precedence() as i8
@@ -2102,7 +2095,7 @@ impl<'a> State<'a> {
                 self.print_type(ty);
             }
             ast::ExprKind::Type(ref expr, ref ty) => {
-                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(expr) {
+                let prec = if !is_inline && !classify::expr_requires_semi_to_be_stmt(expr) {
                     parser::PREC_FORCE_PAREN
                 } else {
                     AssocOp::Colon.precedence() as i8
@@ -2203,7 +2196,7 @@ impl<'a> State<'a> {
                 self.s.word(".await");
             }
             ast::ExprKind::Assign(ref lhs, ref rhs) => {
-                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(lhs) {
+                let prec = if !is_inline && !classify::expr_requires_semi_to_be_stmt(lhs) {
                     parser::PREC_FORCE_PAREN
                 } else {
                     AssocOp::Assign.precedence() as i8
@@ -2214,7 +2207,7 @@ impl<'a> State<'a> {
                 self.print_expr_maybe_paren(rhs, prec);
             }
             ast::ExprKind::AssignOp(op, ref lhs, ref rhs) => {
-                let prec = if !is_inline && !syntax_priv::expr_requires_semi_to_be_stmt(lhs) {
+                let prec = if !is_inline && !classify::expr_requires_semi_to_be_stmt(lhs) {
                     parser::PREC_FORCE_PAREN
                 } else {
                     AssocOp::Assign.precedence() as i8
@@ -2395,7 +2388,7 @@ impl<'a> State<'a> {
     }
 
     pub fn print_name(&mut self, name: ast::Name) {
-        self.s.word(name.as_str().to_string());
+        self.s.word(name.to_string());
         self.ann.post(self, AnnNode::Name(&name))
     }
 
@@ -2433,7 +2426,7 @@ impl<'a> State<'a> {
                 match binding_mode {
                     ast::BindingMode::ByRef(mutbl) => {
                         self.word_nbsp("ref");
-                        self.print_mutability(mutbl);
+                        self.print_mutability(mutbl, false);
                     }
                     ast::BindingMode::ByValue(ast::Mutability::Immutable) => {}
                     ast::BindingMode::ByValue(ast::Mutability::Mutable) => {
@@ -2442,7 +2435,8 @@ impl<'a> State<'a> {
                 }
                 self.print_ident(ident);
                 if let Some(ref p) = *sub {
-                    self.s.word("@");
+                    self.s.space();
+                    self.s.word_space("@");
                     self.print_pat(p);
                 }
             }
@@ -2575,17 +2569,17 @@ impl<'a> State<'a> {
     fn print_explicit_self(&mut self, explicit_self: &ast::ExplicitSelf) {
         match explicit_self.node {
             SelfKind::Value(m) => {
-                self.print_mutability(m);
+                self.print_mutability(m, false);
                 self.s.word("self")
             }
             SelfKind::Region(ref lt, m) => {
                 self.s.word("&");
                 self.print_opt_lifetime(lt);
-                self.print_mutability(m);
+                self.print_mutability(m, false);
                 self.s.word("self")
             }
             SelfKind::Explicit(ref typ, m) => {
-                self.print_mutability(m);
+                self.print_mutability(m, false);
                 self.s.word("self");
                 self.word_space(":");
                 self.print_type(typ)
@@ -2817,15 +2811,15 @@ impl<'a> State<'a> {
         }
     }
 
-    pub fn print_mutability(&mut self, mutbl: ast::Mutability) {
+    pub fn print_mutability(&mut self, mutbl: ast::Mutability, print_const: bool) {
         match mutbl {
             ast::Mutability::Mutable => self.word_nbsp("mut"),
-            ast::Mutability::Immutable => {},
+            ast::Mutability::Immutable => if print_const { self.word_nbsp("const"); },
         }
     }
 
-    pub fn print_mt(&mut self, mt: &ast::MutTy) {
-        self.print_mutability(mt.mutbl);
+    pub fn print_mt(&mut self, mt: &ast::MutTy, print_const: bool) {
+        self.print_mutability(mt.mutbl, print_const);
         self.print_type(&mt.ty)
     }
 
@@ -2879,7 +2873,7 @@ impl<'a> State<'a> {
     }
 
     pub fn print_ty_fn(&mut self,
-                       abi: abi::Abi,
+                       ext: ast::Extern,
                        unsafety: ast::Unsafety,
                        decl: &ast::FnDecl,
                        name: Option<ast::Ident>,
@@ -2899,7 +2893,7 @@ impl<'a> State<'a> {
             span: syntax_pos::DUMMY_SP,
         };
         self.print_fn(decl,
-                      ast::FnHeader { unsafety, abi, ..ast::FnHeader::default() },
+                      ast::FnHeader { unsafety, ext, ..ast::FnHeader::default() },
                       name,
                       &generics,
                       &source_map::dummy_spanned(ast::VisibilityKind::Inherited));
@@ -2940,9 +2934,16 @@ impl<'a> State<'a> {
         self.print_asyncness(header.asyncness.node);
         self.print_unsafety(header.unsafety);
 
-        if header.abi != Abi::Rust {
-            self.word_nbsp("extern");
-            self.word_nbsp(header.abi.to_string());
+        match header.ext {
+            ast::Extern::None => {}
+            ast::Extern::Implicit => {
+                self.word_nbsp("extern");
+            }
+            ast::Extern::Explicit(abi) => {
+                self.word_nbsp("extern");
+                self.print_literal(&syntax_priv::as_lit(&abi));
+                self.nbsp();
+            }
         }
 
         self.s.word("fn")

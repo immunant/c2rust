@@ -4,7 +4,7 @@ use std::convert::{TryFrom, TryInto};
 
 use derive_more::{From, TryInto};
 use syntax::ast::{Expr, Ident, Item, Lit, Pat, Path, Stmt, Ty};
-use syntax::parse::token::{Token, TokenKind, LitKind as TokenLitKind};
+use syntax::token::{Token, TokenKind, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::DUMMY_SP;
 use syntax::symbol::Symbol;

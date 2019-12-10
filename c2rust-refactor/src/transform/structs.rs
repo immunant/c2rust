@@ -2,6 +2,8 @@ use rustc::ty;
 use syntax::ast::*;
 use syntax::ptr::P;
 
+use smallvec::smallvec;
+
 use crate::ast_manip::{fold_blocks, FlatMapNodes, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};

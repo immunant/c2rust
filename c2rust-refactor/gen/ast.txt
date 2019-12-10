@@ -39,12 +39,11 @@ enum ItemKind {
     Use(vp),
     Static(ty, mutbl, init),
     Const(ty, init),
-    Fn(decl, header, generics, block),
+    Fn(sig, generics, block),
     Mod(module),
     ForeignMod(fm),
     GlobalAsm(asm),
     TyAlias(ty, generics),
-    OpaqueTy(bounds, generics),
     Enum(def, generics),
     Struct(vd, generics),
     Union(vd, generics),
@@ -53,6 +52,12 @@ enum ItemKind {
     Impl(unsafety, polarity, generics, defaultness, trait_ref, ty, #[mac_table_seq] items),
     Mac(mac),
     MacroDef(tts),
+}
+
+enum Extern {
+    None,
+    Implicit,
+    Explicit(s),
 }
 
 enum UseTreeKind {
@@ -65,7 +70,7 @@ enum UseTreeKind {
 struct UseTree { kind, prefix, span }
 
 #[nonterminal] #[extend_span] #[fold_kind=TraitItemKind]
-struct TraitItem { id, ident, #[match=ignore] attrs, generics, kind, span,
+struct TraitItem { id, ident, #[match=ignore] attrs, vis, generics, kind, span,
                    #[match=ignore] #[rewrite_ignore] tokens }
 enum TraitItemKind {
     Const(ty, init),
@@ -81,7 +86,6 @@ enum ImplItemKind {
     Const(ty, init),
     Method(sig, body),
     TyAlias(ty),
-    OpaqueTy(bounds),
     Macro(mac),
 }
 
@@ -89,7 +93,7 @@ struct TraitRef { path, ref_id }
 
 struct EnumDef { variants }
 #[extend_span]
-struct Variant { ident, #[match=ignore] attrs, id, data, disr_expr, span, is_placeholder }
+struct Variant { ident, #[match=ignore] attrs, id, data, disr_expr, vis, span, is_placeholder }
 enum VariantData {
     Struct(fields, id),
     Tuple(fields, id),
@@ -98,8 +102,6 @@ enum VariantData {
 
 #[extend_span]
 struct StructField { span, ident, vis, id, ty, #[match=ignore] attrs, is_placeholder }
-
-struct MethodSig { header, decl }
 
 struct ForeignMod { abi, #[mac_table_seq] items }
 #[rewrite_print_recover] #[rewrite_seq_item] #[nonterminal] #[extend_span]
@@ -209,7 +211,7 @@ enum FloatTy {
 }
 
 #[boxed]
-struct BareFnTy { unsafety, abi, decl, generic_params }
+struct BareFnTy { unsafety, ext, decl, generic_params }
 struct Lifetime { id, ident }
 enum GenericBound {
     Trait(poly_trait_ref, modifier),
@@ -218,9 +220,11 @@ enum GenericBound {
 
 struct PolyTraitRef { trait_ref, span, bound_generic_params }
 
+struct FnSig { header, decl }
+
 #[boxed]
 struct FnDecl { inputs, output }
-struct FnHeader { unsafety, asyncness, constness, abi }
+struct FnHeader { unsafety, asyncness, constness, ext }
 #[rewrite_print]
 struct Param { attrs, ty, pat, id, span, is_placeholder }
 enum FunctionRetTy {
@@ -281,7 +285,7 @@ enum ExprKind {
     // parenthesized.  (`LOr` is the lowest-precedence binop.)
     Range(#[prec=LOr] lo, #[prec=LOr] hi, limits),
     Path(qself, path),
-    AddrOf(mutbl, #[lvalue_kind=mutbl] #[prec=PREFIX] expr),
+    AddrOf(borrowkind, mutbl, #[lvalue_kind=mutbl] #[prec=PREFIX] expr),
     Break(label, #[prec=JUMP] expr),
     Continue(label),
     Ret(#[prec=JUMP] expr),
@@ -365,6 +369,8 @@ struct FieldPat { id, ident, pat, is_shorthand, attrs, span, is_placeholder }
 #[match=custom] #[fold_kind=LitKind]
 struct Lit { token, kind, span }
 
+struct StrLit { style, symbol, suffix, span, symbol_unescaped }
+
 enum LitKind {
     Str(sym, style),
     ByteStr(bytes),
@@ -372,9 +378,13 @@ enum LitKind {
     Char(x),
     Int(x, ty),
     Float(sym, ty),
-    FloatUnsuffixed(sym),
     Bool(x),
     Err(sym),
+}
+
+enum LitFloatType {
+    Suffixed(ty),
+    Unsuffixed,
 }
 
 #[fold_kind=TokenLitKind]
@@ -424,6 +434,11 @@ enum Mutability {
     Immutable,
 }
 
+enum BorrowKind {
+    Ref,
+    Raw,
+}
+
 enum RangeEnd {
     Included(syntax),
     Excluded,
@@ -463,8 +478,12 @@ enum RangeLimits {
 
 
 #[no_node_id] #[rewrite_print] #[rewrite_custom=SeqItem]
-struct Attribute { id, style, item, is_sugared_doc, span }
-struct AttrItem { path, tokens }
+struct Attribute { id, style, kind, span }
+enum AttrKind {
+    Normal(item),
+    DocComment(symbol),
+}
+struct AttrItem { path, args }
 enum AttrStyle {
     Outer,
     Inner,
@@ -496,7 +515,7 @@ enum AssocTyConstraintKind {
 }
 
 
-struct Mac { path, delim, tts, span, prior_type_ascription }
+struct Mac { path, args, prior_type_ascription }
 enum MacStmtStyle {
     Semicolon,
     Braces,
@@ -504,7 +523,14 @@ enum MacStmtStyle {
 }
 #[equiv_mode=ignore]
 flag TokenStream;
-struct MacroDef { tokens, legacy }
+struct MacroDef { body, legacy }
+
+#[boxed=both]
+enum MacArgs {
+    Empty,
+    Delimited(span, delim, tokens),
+    Eq(span, tokens),
+}
 
 #[boxed]
 struct InlineAsm {

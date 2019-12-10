@@ -83,11 +83,11 @@ impl Label {
         self.hash(&mut s);
         let as_num = s.finish();
 
-        mk().lit_expr(mk().int_lit(as_num as u128, ""))
+        mk().lit_expr(as_num as u128)
     }
 
     fn to_string_expr(&self) -> P<Expr> {
-        mk().lit_expr(mk().str_lit(self.debug_print()))
+        mk().lit_expr(self.debug_print())
     }
 }
 

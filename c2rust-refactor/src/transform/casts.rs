@@ -1,6 +1,6 @@
 use rustc::ty::{self, ParamEnv, TyKind};
 use syntax::ast::*;
-use syntax::parse::token;
+use syntax::token;
 use syntax::ptr::P;
 use syntax_pos::Symbol;
 
@@ -341,8 +341,8 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         // calling `mk().int_lit()`, so we can reuse
         // the original `symbol` from `token::Lit`
         let new_suffix = match ty {
-            LitIntType::Signed(ty) => Some(ty.to_symbol()),
-            LitIntType::Unsigned(ty) => Some(ty.to_symbol()),
+            LitIntType::Signed(ty) => Some(ty.name()),
+            LitIntType::Unsigned(ty) => Some(ty.name()),
             LitIntType::Unsuffixed => None
         };
         let new_lit = Lit {
@@ -357,15 +357,15 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         Some(new_lit)
     };
 
-    let mk_float = |fs: String, ty| {
+    let mk_float = |fs: String, ty: FloatTy| {
         let fsym = Symbol::intern(&fs);
         Some(Lit {
-            kind: LitKind::Float(fsym, ty),
+            kind: LitKind::Float(fsym, LitFloatType::Suffixed(ty)),
             span: lit.span,
             token: token::Lit {
                 kind: sym_token_kind(fsym),
                 symbol: fsym,
-                suffix: Some(Symbol::intern(&ty.to_string())),
+                suffix: Some(Symbol::intern(ty.name_str())),
             }
         })
     };
@@ -391,27 +391,27 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
             mk_float(i.to_string(), ty.ast_float_ty())
         }
 
-        (LitKind::Float(f, FloatTy::F32), SimpleTy::Int(..)) => {
+        (LitKind::Float(f, LitFloatType::Suffixed(FloatTy::F32)), SimpleTy::Int(..)) => {
             let fv = f.as_str().parse::<f32>().ok()?;
             Some(lit_mk.int_lit(fv as u128, ty.ast_lit_int_type()))
         }
 
-        (LitKind::Float(f, FloatTy::F64), SimpleTy::Int(..))
-        | (LitKind::FloatUnsuffixed(f), SimpleTy::Int(..)) => {
+        (LitKind::Float(f, LitFloatType::Suffixed(FloatTy::F64)), SimpleTy::Int(..))
+        | (LitKind::Float(f, LitFloatType::Unsuffixed), SimpleTy::Int(..)) => {
             let fv = f.as_str().parse::<f64>().ok()?;
             Some(lit_mk.int_lit(fv as u128, ty.ast_lit_int_type()))
         }
 
-        (LitKind::Float(f, FloatTy::F32), SimpleTy::Float32)
-        | (LitKind::Float(f, FloatTy::F32), SimpleTy::Float64) => {
+        (LitKind::Float(f, LitFloatType::Suffixed(FloatTy::F32)), SimpleTy::Float32)
+        | (LitKind::Float(f, LitFloatType::Suffixed(FloatTy::F32)), SimpleTy::Float64) => {
             let fv = f.as_str().parse::<f32>().ok()?;
             mk_float(fv.to_string(), ty.ast_float_ty())
         }
 
-        (LitKind::Float(f, FloatTy::F64), SimpleTy::Float32)
-        | (LitKind::Float(f, FloatTy::F64), SimpleTy::Float64)
-        | (LitKind::FloatUnsuffixed(f), SimpleTy::Float32)
-        | (LitKind::FloatUnsuffixed(f), SimpleTy::Float64) => {
+        (LitKind::Float(f, LitFloatType::Suffixed(FloatTy::F64)), SimpleTy::Float32)
+        | (LitKind::Float(f, LitFloatType::Suffixed(FloatTy::F64)), SimpleTy::Float64)
+        | (LitKind::Float(f, LitFloatType::Unsuffixed), SimpleTy::Float32)
+        | (LitKind::Float(f, LitFloatType::Unsuffixed), SimpleTy::Float64) => {
             let fv = f.as_str().parse::<f64>().ok()?;
             mk_float(fv.to_string(), ty.ast_float_ty())
         }
@@ -517,12 +517,13 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
                     Some(ConstantValue::Uint(i as u128))
                 }
 
-                LitKind::Float(f, FloatTy::F32) => {
+                LitKind::Float(f, LitFloatType::Suffixed(FloatTy::F32)) => {
                     let fv = f.as_str().parse::<f32>().ok()?;
                     Some(ConstantValue::Float32(fv))
                 }
 
-                LitKind::Float(f, FloatTy::F64) | LitKind::FloatUnsuffixed(f) => {
+                LitKind::Float(f, LitFloatType::Suffixed(FloatTy::F64))
+                | LitKind::Float(f, LitFloatType::Unsuffixed) => {
                     let fv = f.as_str().parse::<f64>().ok()?;
                     Some(ConstantValue::Float64(fv))
                 }

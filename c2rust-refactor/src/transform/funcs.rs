@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use rustc::hir::def_id::DefId;
 use rustc::ty::TyKind;
-use rustc_target::spec::abi::Abi;
 use syntax::ast;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax_pos::sym;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use c2rust_ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules, visit_nodes, MutVisit};
@@ -70,8 +69,7 @@ impl Transform for ToMethod {
         struct FnInfo {
             item: P<Item>,
 
-            decl: P<FnDecl>,
-            header: FnHeader,
+            sig: FnSig,
             generics: Generics,
             block: P<Block>,
 
@@ -84,8 +82,8 @@ impl Transform for ToMethod {
         fold_modules(krate, |curs| {
             while let Some(arg_idx) = curs.advance_until_match(|i| {
                 // Find the argument under the cursor.
-                let decl = match_or!([i.kind] ItemKind::Fn(ref decl, ..) => decl; return None);
-                for (idx, arg) in decl.inputs.iter().enumerate() {
+                let sig = match_or!([i.kind] ItemKind::Fn(ref sig, ..) => sig; return None);
+                for (idx, arg) in sig.decl.inputs.iter().enumerate() {
                     if st.marked(arg.id, "target") {
                         return Some(Some(idx));
                     }
@@ -97,10 +95,10 @@ impl Transform for ToMethod {
             }) {
                 let i = curs.remove();
                 unpack!([i.kind.clone()]
-                        ItemKind::Fn(decl, header, generics, block));
+                        ItemKind::Fn(sig, generics, block));
                 fns.push(FnInfo {
                     item: i,
-                    decl, header, generics, block,
+                    sig, generics, block,
                     arg_idx,
                 });
             }
@@ -124,7 +122,7 @@ impl Transform for ToMethod {
         for f in &mut fns {
             // Functions that are being turned into static methods don't need any changes.
             let arg_idx = match_or!([f.arg_idx] Some(x) => x; continue);
-            let mut inputs = f.decl.inputs.clone();
+            let mut inputs = f.sig.decl.inputs.clone();
 
             // Remove the marked arg and inspect it.
             let arg = inputs.remove(arg_idx);
@@ -167,7 +165,7 @@ impl Transform for ToMethod {
             inputs.insert(0, mk().self_arg(self_kind));
 
             // Update `decl`
-            f.decl = f.decl.clone().map(|fd| FnDecl { inputs: inputs, .. fd });
+            f.sig.decl = f.sig.decl.clone().map(|fd| FnDecl { inputs: inputs, .. fd });
 
             // Rewrite references to the marked argument within the function body.
 
@@ -204,10 +202,6 @@ impl Transform for ToMethod {
                 let mut items = items;
                 let fns = fns.take().unwrap();
                 items.extend(fns.into_iter().map(|f| {
-                    let sig = MethodSig {
-                        header: f.header,
-                        decl: f.decl,
-                    };
                     ImplItem {
                         id: DUMMY_NODE_ID,
                         ident: f.item.ident,
@@ -215,7 +209,7 @@ impl Transform for ToMethod {
                         defaultness: Defaultness::Final,
                         attrs: f.item.attrs.clone(),
                         generics: f.generics,
-                        kind: ImplItemKind::Method(sig, f.block),
+                        kind: ImplItemKind::Method(f.sig, f.block),
                         span: f.item.span,
                         tokens: None,
                     }
@@ -319,8 +313,8 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
         let i = if self.st.marked(i.id, "target") {
             i.map(|mut i| {
                 match i.kind {
-                    ItemKind::Fn(_, ref mut header, _, ref mut block) => {
-                        sink_unsafe(&mut header.unsafety, block);
+                    ItemKind::Fn(ref mut sig, _, ref mut block) => {
+                        sink_unsafe(&mut sig.header.unsafety, block);
                     },
                     _ => {},
                 }
@@ -337,7 +331,7 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
     fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if self.st.marked(i.id, "target") {
             match i.kind {
-                ImplItemKind::Method(MethodSig { ref mut header, .. }, ref mut block) => {
+                ImplItemKind::Method(FnSig { ref mut header, .. }, ref mut block) => {
                     sink_unsafe(&mut header.unsafety, block);
                 },
                 _ => {},
@@ -573,8 +567,8 @@ impl Transform for WrapApi {
                 return smallvec![i];
             }
 
-            let (decl, old_abi) = expect!([i.kind]
-                ItemKind::Fn(ref decl, ref header, _, _) => (decl.clone(), header.abi));
+            let (decl, old_ext) = expect!([i.kind]
+                ItemKind::Fn(ref sig, _, _) => (sig.decl.clone(), sig.header.ext));
 
             // Get the exported symbol name of the function
             let symbol =
@@ -590,12 +584,12 @@ impl Transform for WrapApi {
             // Remove export-related attrs from the original function, and set it to Abi::Rust.
             let i = i.map(|mut i| {
                 i.attrs.retain(|attr| {
-                    attr.path != sym::no_mangle &&
-                    attr.path != sym::export_name
+                    let attr = attr.name_or_empty();
+                    attr != sym::no_mangle && attr != sym::export_name
                 });
 
                 match i.kind {
-                    ItemKind::Fn(_, ref mut header, _, _) => header.abi = Abi::Rust,
+                    ItemKind::Fn(ref mut sig, _, _) => sig.header.ext = Extern::None,
                     _ => unreachable!(),
                 }
 
@@ -648,8 +642,8 @@ impl Transform for WrapApi {
 
             let wrapper_name = format!("{}_wrapper", symbol.as_str());
             let wrapper =
-                mk().vis(i.vis.clone()).unsafe_().abi(old_abi)
-                        .str_attr(sym::export_name, symbol).fn_item(
+                mk().vis(i.vis.clone()).unsafe_().extern_(old_ext)
+                        .str_attr(vec![sym::export_name], symbol).fn_item(
                     &wrapper_name,
                     wrapper_decl,
                     mk().block(vec![
@@ -754,7 +748,7 @@ impl Transform for Abstract {
         let mut type_args = Vec::new();
         {
             let (decl, generics) = expect!([func.kind]
-                    ItemKind::Fn(ref decl, _, ref gen, _) => (decl, gen));
+                    ItemKind::Fn(ref sig, ref gen, _) => (&sig.decl, gen));
             for arg in &decl.inputs {
                 let name = expect!([arg.pat.kind] PatKind::Ident(_, ident, _) => ident);
                 value_args.push(name);

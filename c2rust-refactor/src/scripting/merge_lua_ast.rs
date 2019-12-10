@@ -1,10 +1,9 @@
 use rlua::prelude::{LuaError, LuaResult, LuaString, LuaTable, LuaValue};
-use rustc_target::spec::abi::Abi;
 use syntax::ast::{
-    BindingMode, Block, Crate, Expr, ExprKind, FloatTy, FnDecl, ImplItem, ImplItemKind,
-    Item, ItemKind, Lit, LitKind, Local, Mod, Mutability::*, NodeId, Param, Pat, PatKind, Path, PathSegment,
+    BindingMode, Block, BorrowKind, Crate, Expr, ExprKind, Extern, FloatTy, FnDecl, FnSig, ImplItem, ImplItemKind,
+    Item, ItemKind, Lit, LitFloatType, LitKind, Local, Mod, Mutability::*, NodeId, Param, Pat, PatKind, Path, PathSegment,
     Stmt, StmtKind, UintTy, IntTy, LitIntType, Ident, DUMMY_NODE_ID, BinOpKind, UnOp, BlockCheckMode,
-    Label, StrStyle, TyKind, Ty, MutTy, Unsafety, FunctionRetTy, BareFnTy, UnsafeSource::*, Field,
+    Label, StrLit, StrStyle, TyKind, Ty, MutTy, Unsafety, FunctionRetTy, BareFnTy, UnsafeSource::*, Field,
     AnonConst, Lifetime, AngleBracketedArgs, GenericArgs, GenericArg, VisibilityKind, InlineAsm,
     AsmDialect, InlineAsmOutput, Constness, FnHeader, Generics, IsAsync, ImplPolarity, Defaultness,
     UseTree, UseTreeKind, Arm
@@ -120,7 +119,7 @@ fn dummy_impl_item() -> ImplItem {
         generics: Generics::default(),
         id: DUMMY_NODE_ID,
         ident: Ident::from_str("placeholder"),
-        kind: ImplItemKind::OpaqueTy(Vec::new()),
+        kind: ImplItemKind::TyAlias(dummy_ty()),
         span: DUMMY_SP,
         tokens: None,
         vis: dummy_spanned(VisibilityKind::Public),
@@ -462,14 +461,21 @@ impl MergeLuaAst for P<Item> {
                     true => dummy_spanned(Constness::Const),
                     false => dummy_spanned(Constness::NotConst),
                 };
-                let abi = match table.get::<_, LuaString>("abi")?.to_str()? {
-                    "Cdecl" => Abi::Cdecl,
-                    "C" => Abi::C,
-                    "Rust" => Abi::Rust,
-                    e => unimplemented!("Abi: {}", e),
+                let ext = match table.get::<_, Option<LuaString>>("ext")? {
+                    Some(ext) => match ext.to_str()? {
+                        "" => Extern::Implicit,
+                        s => Extern::Explicit(StrLit {
+                            style: StrStyle::Cooked,
+                            symbol: Symbol::intern(s),
+                            suffix: None,
+                            span: DUMMY_SP,
+                            symbol_unescaped: Symbol::intern(s),
+                        }),
+                    }
+                    None => Extern::None,
                 };
                 let fn_header = FnHeader {
-                    abi,
+                    ext,
                     asyncness: dummy_spanned(IsAsync::NotAsync), // TODO
                     constness,
                     unsafety,
@@ -478,8 +484,12 @@ impl MergeLuaAst for P<Item> {
 
                 block.merge_lua_ast(lua_block)?;
                 decl.merge_lua_ast(lua_fn_decl)?;
+                let sig = FnSig {
+                    decl,
+                    header: fn_header,
+                };
 
-                ItemKind::Fn(decl, fn_header, generics, block)
+                ItemKind::Fn(sig, generics, block)
             },
             "Impl" => {
                 let lua_items: LuaTable = table.get("items")?;
@@ -608,9 +618,9 @@ impl MergeLuaAst for P<Expr> {
                             let sym = Symbol::intern(&string);
 
                             match suffix {
-                                None => LitKind::FloatUnsuffixed(sym),
-                                Some("f32") => LitKind::Float(sym, FloatTy::F32),
-                                Some("f64") => LitKind::Float(sym, FloatTy::F64),
+                                None => LitKind::Float(sym, LitFloatType::Unsuffixed),
+                                Some("f32") => LitKind::Float(sym, LitFloatType::Suffixed(FloatTy::F32)),
+                                Some("f64") => LitKind::Float(sym, LitFloatType::Suffixed(FloatTy::F64)),
                                 Some(e) => unreachable!("Unknown float suffix: {}{}", num, e),
                             }
                         }
@@ -832,7 +842,7 @@ impl MergeLuaAst for P<Expr> {
                     e => panic!("Found unknown addrof mutability: {}", e),
                 };
 
-                ExprKind::AddrOf(mutability, expr)
+                ExprKind::AddrOf(BorrowKind::Ref, mutability, expr)
             },
             "Block" => {
                 let lua_block = table.get("block")?;
@@ -1170,18 +1180,24 @@ impl MergeLuaAst for P<Ty> {
                     "Normal" => Unsafety::Normal,
                     e => panic!("Found unknown unsafety: {}", e),
                 };
-                let abi = match table.get::<_, LuaString>("abi")?.to_str()? {
-                    "Cdecl" => Abi::Cdecl,
-                    "C" => Abi::C,
-                    "Rust" => Abi::Rust,
-                    e => unimplemented!("Abi: {}", e),
+                let ext = match table.get::<_, Option<LuaString>>("ext")? {
+                    Some(ext) => match ext.to_str()? {
+                        "" => Extern::Implicit,
+                        s => Extern::Explicit(StrLit {
+                            style: StrStyle::Cooked,
+                            symbol: Symbol::intern(s),
+                            suffix: None,
+                            span: DUMMY_SP,
+                            symbol_unescaped: Symbol::intern(s),
+                        }),
+                    }
+                    None => Extern::None,
                 };
-
                 decl.merge_lua_ast(lua_decl)?;
 
                 let bare_fn = BareFnTy {
                     unsafety,
-                    abi,
+                    ext,
                     generic_params: Vec::new(), // TODO
                     decl,
                 };

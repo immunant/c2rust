@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use rustc::hir;
+use syntax::ast::Mutability;
 use rustc::ty::TyKind;
 use rustc_index::vec::Idx;
 
@@ -106,14 +106,14 @@ where
             TyKind::Ref(_, _, m) => write!(
                 fmt,
                 "&{}{:?} {:?}",
-                if m == hir::MutImmutable { "" } else { "mut " },
+                if m == Mutability::Immutable { "" } else { "mut " },
                 PrettyLabel(self.0.label),
                 Pretty(self.0.args[0])
             ),
             TyKind::RawPtr(mty) => write!(
                 fmt,
                 "*{} {:?} {:?}",
-                if mty.mutbl == hir::MutImmutable {
+                if mty.mutbl == Mutability::Immutable {
                     "const"
                 } else {
                     "mut"

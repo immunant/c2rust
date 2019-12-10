@@ -5,26 +5,18 @@
     box_patterns,
     generator_trait,
     vec_remove_item,
-    option_flattening,
     drain_filter,
     label_break_value,
     slice_patterns,
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 
+extern crate syntax;
+extern crate syntax_ext;
+extern crate syntax_pos;
+#[macro_use]
+extern crate smallvec;
 extern crate arena;
-extern crate cargo;
-extern crate clap;
-extern crate diff;
-extern crate ena;
-extern crate env_logger;
-extern crate indexmap;
-extern crate libc;
-#[macro_use]
-extern crate json;
-#[macro_use]
-extern crate log;
-extern crate regex;
 extern crate rustc;
 extern crate rustc_codegen_utils;
 extern crate rustc_data_structures;
@@ -33,18 +25,20 @@ extern crate rustc_errors;
 extern crate rustc_incremental;
 extern crate rustc_index;
 extern crate rustc_interface;
+extern crate rustc_lexer;
 extern crate rustc_lint;
 extern crate rustc_metadata;
+extern crate rustc_parse;
 extern crate rustc_privacy;
 extern crate rustc_resolve;
 extern crate rustc_target;
 extern crate rustc_typeck;
 #[macro_use]
-extern crate smallvec;
+extern crate json;
+#[macro_use]
+extern crate log;
+extern crate regex;
 extern crate c2rust_ast_builder;
-extern crate syntax;
-extern crate syntax_ext;
-extern crate syntax_pos;
 
 #[cfg(feature = "profile")]
 extern crate flame;
@@ -394,43 +388,45 @@ fn main_impl(opts: Options) -> interface::Result<()> {
         if !opts.cursors.is_empty() {
             let config = driver::create_config(&rustc_args.args);
             driver::run_compiler(config, None, |compiler| {
-                let expanded_crate = compiler.expansion().unwrap().take().0;
-                for c in &opts.cursors {
-                    let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any), |s| {
-                        pick_node::NodeKind::from_str(&s)
-                    });
-                    let kind = match kind_result {
-                        Ok(k) => k,
-                        Err(_) => {
-                            info!("Bad cursor kind: {:?}", c.kind.as_ref().unwrap());
-                            continue;
-                        }
-                    };
+                compiler.enter(|queries| {
+                    let expanded_crate = queries.expansion().unwrap().take().0;
+                    for c in &opts.cursors {
+                        let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any), |s| {
+                            pick_node::NodeKind::from_str(&s)
+                        });
+                        let kind = match kind_result {
+                            Ok(k) => k,
+                            Err(_) => {
+                                info!("Bad cursor kind: {:?}", c.kind.as_ref().unwrap());
+                                continue;
+                            }
+                        };
 
-                    let id = match pick_node::pick_node_at_loc(
-                        &expanded_crate,
-                        compiler.session(),
-                        kind,
-                        &c.file,
-                        c.line,
-                        c.col,
-                    ) {
-                        Some(info) => info.id,
-                        None => {
-                            info!(
-                                "Failed to find {:?} at {}:{}:{}",
-                                kind, c.file, c.line, c.col
-                            );
-                            continue;
-                        }
-                    };
+                        let id = match pick_node::pick_node_at_loc(
+                            &expanded_crate,
+                            compiler.session(),
+                            kind,
+                            &c.file,
+                            c.line,
+                            c.col,
+                        ) {
+                            Some(info) => info.id,
+                            None => {
+                                info!(
+                                    "Failed to find {:?} at {}:{}:{}",
+                                    kind, c.file, c.line, c.col
+                                );
+                                continue;
+                            }
+                        };
 
-                    let label = c.label.as_ref().map_or("target", |s| s).into_symbol();
+                        let label = c.label.as_ref().map_or("target", |s| s).into_symbol();
 
-                    info!("label {:?} as {:?}", id, label);
+                        info!("label {:?} as {:?}", id, label);
 
-                    marks.insert((id, label));
-                }
+                        marks.insert((id, label));
+                    }
+                })
             });
         }
 

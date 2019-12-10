@@ -134,10 +134,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 self.local_ty(decl.ty)
             };
 
-            let span = decl.is_user_variable.as_ref().map(|ccc| match ccc {
-                ClearCrossCrate::Clear => None,
-                ClearCrossCrate::Set(binding) => Some(binding),
-            }).flatten().map(|binding| match binding {
+            let span = match &decl.local_info {
+                LocalInfo::User(ClearCrossCrate::Set(binding)) => Some(binding),
+                _ => None,
+            }.map(|binding| match binding {
                 BindingForm::Var(var) => var.pat_span,
                 _ => DUMMY_SP,
             }).unwrap_or(DUMMY_SP);
@@ -283,7 +283,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             let last_elem = projection.pop().unwrap();
             let parent = Place {
                 base: lv.base.clone(),
-                projection: projection.into_boxed_slice(),
+                projection: self.cx.tcx.intern_place_elems(&projection),
             };
             let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&parent);
 
