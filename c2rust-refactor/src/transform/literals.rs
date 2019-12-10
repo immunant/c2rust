@@ -296,9 +296,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             (LitTyKeyNode::Empty, _) | (_, LitTyKeyNode::Empty) => {}
 
-            // FIXME
-            // (kt1 @ _, kt2 @ _) => panic!("mismatched key trees: {:?} != {:?}", kt1, kt2)
-            _ => {}
+            (kt1 @ _, kt2 @ _) => panic!("mismatched key trees: {:?} != {:?}", kt1, kt2)
         }
     }
 
@@ -510,8 +508,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         if let Some(ty) = self.cx.opt_node_type(ex.id) {
             self.ty_to_key_tree(ty, false)
         } else {
-            // FIXME: should we leave this as an empty node???
-            self.new_leaf(LitTySource::Unknown)
+            self.new_empty_node()
         }
     }
 
@@ -780,7 +777,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                             break 'block self.ty_to_key_tree(idx_ty, true);
                         }
                     }
-                    self.new_leaf(LitTySource::Unknown)
+                    self.expr_ty_to_key_tree(idx)
                 };
                 self.visit_expr_unify(idx, idx_key_tree);
             }
