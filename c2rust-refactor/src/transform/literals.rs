@@ -296,7 +296,9 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             (LitTyKeyNode::Empty, _) | (_, LitTyKeyNode::Empty) => {}
 
-            (kt1 @ _, kt2 @ _) => panic!("mismatched key trees: {:?} != {:?}", kt1, kt2)
+            // FIXME
+            // (kt1 @ _, kt2 @ _) => panic!("mismatched key trees: {:?} != {:?}", kt1, kt2)
+            _ => {}
         }
     }
 
@@ -366,7 +368,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.new_leaf(source)
             }
 
-            // TODO: handle `SelfTy`???
+            // We don't want to unify with `Self`
+            Res::SelfTy(..) => self.new_empty_node(),
 
             Res::Local(id) => {
                 // This is a local variable that may have a type,
@@ -542,13 +545,27 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             ExprKind::MethodCall(ref segment, ref args) => {
+                let hir_id = tcx.hir().node_to_hir_id(ex.id);
+                let parent = tcx.hir().get_parent_item(hir_id);
+                let body = tcx.hir().body_owned_by(parent);
+                let tables = tcx.body_tables(body);
+                let did = tables.type_dependent_def_id(hir_id).unwrap();
+                let callee_key_tree = self.def_id_to_key_tree(did, ex.span);
+
+                // Hacky fix for the way rustc gives us method types:
+                // we don't get the parametric `Self` as the type of
+                // the `self` argument, instead we get the actual type,
+                // and we can't unify with that since it can break stuff
+                callee_key_tree.get().children()[0].set(LitTyKeyNode::Empty);
+
                 self.visit_path_segment(ex.span, segment);
-                // FIXME: we have to skip the `self` argument,
-                // since literals without suffixes are sometimes invalid,
-                // e.g., `1.wrapping_add(2)`
-                for arg in args.iter().skip(1) {
-                    self.visit_expr(arg);
-                    // TODO: unify arguments and return type, just like in `Call`
+                if let &[ref input_key_trees @ .., output_key_tree] = callee_key_tree.get().children() {
+                    for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
+                        self.visit_expr_unify(arg_expr, arg_key_tree);
+                    }
+                    self.unify_key_trees(kt, output_key_tree);
+                } else {
+                    panic!("invalid key tree for call: {:?}", ex);
                 }
             }
 
