@@ -6,7 +6,7 @@
 [azure]: https://dev.azure.com/immunant/c2rust/_build/latest?definitionId=1&branchName=master
 [Latest Version]: https://img.shields.io/crates/v/c2rust.svg
 [crates.io]: https://crates.io/crates/c2rust
-[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2019--10--04-lightgrey.svg "Rustc nightly-2019-10-04"
+[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2019--12--05-lightgrey.svg "Rustc nightly-2019-12-05"
 
 C2Rust helps you migrate C99-compliant code to Rust. The [translator](c2rust-transpile) (or transpiler) produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to preserve functionality; test suites should continue to pass after translation. Generating safe and idiomatic Rust code from C ultimately requires manual effort. However, we are building a scriptable [refactoring tool](c2rust-refactor) that reduces the tedium of doing so. You can also [cross-check](cross-checks) the translated code against the original ([tutorial](docs/cross-check-tutorial.md)).
 
@@ -77,7 +77,7 @@ If you have trouble with building and installing, or want to build from the late
 If you'd like to check our recently developed features or you urgently require a bugfixed version of c2rust
 you can install it directly from Git:
 
-    cargo +nightly-2019-10-04 install --git https://github.com/immunant/c2rust.git c2rust
+    cargo +nightly-2019-12-05 install --git https://github.com/immunant/c2rust.git c2rust
    
 Please note that the master branch is under constant development and you may expirience issues or crashes.
 

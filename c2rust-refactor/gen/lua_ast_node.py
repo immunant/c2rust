@@ -219,6 +219,8 @@ def do_one_impl(s, kind_map, boxed, emit_ldoc):
         for v in s.variants:
             if len(v.fields) == 0:
                 fpat = struct_pattern(v, '%s::%s' % (s.name, v.name))
+                if boxed:
+                    fpat = 'P(%s)' % fpat
                 yield '      "%s" => Some(%s),' % (v.name, fpat)
         yield '      _ => None'
         yield '    }'

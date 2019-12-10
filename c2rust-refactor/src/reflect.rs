@@ -32,9 +32,9 @@ fn reflect_tcx_ty_inner<'a, 'gcx, 'tcx>(
     match ty.kind {
         Bool => mk().ident_ty("bool"),
         Char => mk().ident_ty("char"),
-        Int(ity) => mk().ident_ty(ity.ty_to_string()),
-        Uint(uty) => mk().ident_ty(uty.ty_to_string()),
-        Float(fty) => mk().ident_ty(fty.ty_to_string()),
+        Int(ity) => mk().ident_ty(ity.name()),
+        Uint(uty) => mk().ident_ty(uty.name()),
+        Float(fty) => mk().ident_ty(fty.name()),
         Adt(def, substs) => {
             if infer_args {
                 let (qself, path) = reflect_def_path(tcx, def.did);
@@ -195,8 +195,7 @@ fn reflect_def_path_inner<'a, 'gcx, 'tcx>(
                 }
             }
 
-            DefPathData::TypeNs(name)
-            | DefPathData::GlobalMetaData(name) => {
+            DefPathData::TypeNs(name) => {
                 if name.as_str() != "" {
                     segments.push(mk().path_segment(name));
                 }

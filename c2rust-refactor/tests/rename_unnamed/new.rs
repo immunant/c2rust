@@ -1,7 +1,7 @@
 #![feature(extern_types)]
 #![feature(asm)]
 #![feature(ptr_wrapping_offset_from)]
-#![feature(custom_attribute)]
+#![register_tool(c2rust)]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]

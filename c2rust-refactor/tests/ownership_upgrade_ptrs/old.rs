@@ -1,4 +1,6 @@
-#![feature(rustc_private, custom_attribute, param_attrs, ptr_wrapping_offset_from, c_variadic, extern_types)]
+#![feature(rustc_private, param_attrs, ptr_wrapping_offset_from, c_variadic, extern_types)]
+#![register_tool(c2rust)]
+
 extern crate libc;
 
 extern "C" {
@@ -42,6 +44,8 @@ extern "C" {
                  _: ::std::ffi::VaList) -> libc::c_int;
     #[no_mangle]
     fn get_ptr() -> *mut u32;
+    #[no_mangle]
+    fn get_struct_ptr() -> *mut Ctx;
     #[no_mangle]
     type _reent;
     #[no_mangle]
@@ -660,12 +664,20 @@ pub unsafe extern "C" fn __vsprintf_chk(mut buf: *mut libc::c_char,
 
 unsafe fn non_null_type() {
     let mut ptr = 0 as *mut u32;
+    let mut sptr = 0 as *mut Ctx;
 
     ptr = get_ptr();
+    sptr = get_struct_ptr();
 
     *ptr = 1;
     *ptr;
     takes_ptrs(ptr, 0 as *const _);
+
+    if *ptr as libc::c_int == ':' as i32 && *ptr.offset(1) as libc::c_int == ':' as i32 {
+        ptr = ptr.offset(1)
+    }
+
+    (*sptr).data[0] = 1;
 }
 
 fn rewritten(#[slice] p: *const u32, #[slice] q: *const u32) {}
@@ -706,6 +718,8 @@ unsafe fn array_ref2() {
     let mut q: [u32; 4] = [0; 4];
     let r: [u32; 4] = [0; 4];
 
+    // FIXME: Should produce &mut q but broken due to
+    // https://github.com/immunant/c2rust/issues/163
     #[nonnull]
     #[slice]
     let mut s = q.as_mut_ptr();
@@ -713,5 +727,11 @@ unsafe fn array_ref2() {
     #[slice]
     let mut t = r.as_ptr();
 
-    *s.offset(0) = *t.offset(1);
+    // FIXME: See earlier comment
+    // *s.offset(0) = *t.offset(1);
+
+    #[slice]
+    #[nonnull]
+    let fresh = t;
+    t = t.offset(1);
 }

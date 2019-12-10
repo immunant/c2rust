@@ -221,7 +221,7 @@ pub fn handle_attrs<'a, 'tcx, 'lty>(
 
         for attr in attrs {
             let meta = match_or!([attr.meta()] Some(x) => x; continue);
-            match &meta.path.to_string() as &str {
+            match &*attr.name_or_empty().as_str() {
                 "ownership_constraints" => {
                     let cset = parse_ownership_constraints(&meta, cx.arena).unwrap_or_else(|e| {
                         panic!("bad #[ownership_constraints] for {:?}: {}", def_id, e)
@@ -366,8 +366,8 @@ fn parse_perm<'lty>(
     } else {
         meta_item_word(meta)?;
 
-        let name = meta.path.to_string();
-        match &name as &str {
+        let name = meta.name_or_empty().as_str();
+        match &*name {
             "READ" => return Ok(Perm::read()),
             "WRITE" => return Ok(Perm::write()),
             "MOVE" => return Ok(Perm::move_()),
@@ -385,8 +385,7 @@ fn parse_perm<'lty>(
 fn parse_concrete(meta: &ast::MetaItem) -> Result<ConcretePerm, &'static str> {
     meta_item_word(meta)?;
 
-    let name = meta.path.to_string();
-    match &name as &str {
+    match &*meta.name_or_empty().as_str() {
         "READ" => Ok(ConcretePerm::Read),
         "WRITE" => Ok(ConcretePerm::Write),
         "MOVE" => Ok(ConcretePerm::Move),

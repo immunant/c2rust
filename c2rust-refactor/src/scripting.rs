@@ -15,7 +15,7 @@ use syntax::ast::{
     Mutability, NodeId, Pat, PathSegment, PatKind, Ty, TyKind,
 };
 use syntax::mut_visit::MutVisitor;
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
 use syntax::ptr::P;
 use syntax::source_map::dummy_spanned;
 use syntax::symbol::Symbol;

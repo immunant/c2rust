@@ -2,13 +2,13 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
 use rustc::hir::HirId;
-use syntax::attr;
+use rustc_parse::parser::FollowedByType;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use c2rust_ast_builder::{mk, Make, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisit, AstEquiv};
@@ -124,7 +124,6 @@ impl Transform for RenameUnnamed {
             items_to_change: HashSet<NodeId>,
             new_idents: HashMap<HirId, Ident>,
             new_to_old: HashMap<Ident, Ident>,
-            is_source: bool,
         }
         let mut renamer: Renamer = Default::default();
         let mut counter: usize = 0;
@@ -134,10 +133,6 @@ impl Transform for RenameUnnamed {
 
         // 1. Rename Anonymous types to the unique Ident
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            if attr::contains_name(&i.attrs, Symbol::intern("header_src")) && !renamer.is_source {
-                renamer.is_source = true;
-            }
-
             let is_module = match i.kind {
                 ItemKind::Mod(..) => true,
                 _ => false,
@@ -285,7 +280,7 @@ pub struct SetVisibility {
 impl Transform for SetVisibility {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let vis = driver::run_parser(cx.session(), &self.vis_str,
-                                     |p| p.parse_visibility(false));
+                                     |p| p.parse_visibility(FollowedByType::No));
 
         struct SetVisFolder<'a> {
             st: &'a CommandState,
@@ -411,8 +406,8 @@ impl Transform for SetUnsafety {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
                         match i.kind {
-                            ItemKind::Fn(_, ref mut header, _, _) =>
-                                header.unsafety = self.unsafety,
+                            ItemKind::Fn(ref mut sig, _, _) =>
+                                sig.header.unsafety = self.unsafety,
                             ItemKind::Trait(_, ref mut unsafety, _, _, _) =>
                                 *unsafety = self.unsafety,
                             ItemKind::Impl(ref mut unsafety, _, _, _, _, _, _) =>

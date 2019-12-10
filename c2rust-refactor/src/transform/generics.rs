@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
+use smallvec::smallvec;
 
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
@@ -111,7 +112,7 @@ impl Transform for GeneralizeItems {
             smallvec![i.map(|mut i| {
                 {
                     let gen = match i.kind {
-                        ItemKind::Fn(_, _, ref mut gen, _) => gen,
+                        ItemKind::Fn(_, ref mut gen, _) => gen,
                         ItemKind::Enum(_, ref mut gen) => gen,
                         ItemKind::Struct(_, ref mut gen) => gen,
                         ItemKind::Union(_, ref mut gen) => gen,

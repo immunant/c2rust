@@ -5,8 +5,8 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::symbol::{kw, Symbol};
-use syntax::tokenstream::TokenStream;
 use syntax_pos::sym;
+use smallvec::smallvec;
 
 use super::AstEquiv;
 
@@ -90,10 +90,10 @@ impl PatternSymbol for Ty {
 
 impl PatternSymbol for Mac {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        if self.tts != TokenStream::empty() {
-            return None;
+        match &*self.args {
+            MacArgs::Empty => self.path.pattern_symbol(),
+            _ => None,
         }
-        self.path.pattern_symbol()
     }
 }
 
@@ -121,6 +121,16 @@ impl PatternSymbol for TraitItem {
             TraitItemKind::Macro(ref m) => m.pattern_symbol(),
             _ => None,
         }
+    }
+}
+
+pub fn is_c2rust_attr(attr: &Attribute, name: &str) -> bool {
+    if let AttrKind::Normal(item) = &attr.kind {
+        item.path.segments.len() == 2
+            && item.path.segments[0].ident.as_str() == "c2rust"
+            && item.path.segments[1].ident.as_str() == name
+    } else {
+        false
     }
 }
 
@@ -271,7 +281,7 @@ pub fn is_exported(item: &Item) -> bool {
         // no mangle or an explicit symbol name
         ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
             item.attrs.iter().find(|attr| {
-                attr.path == sym::no_mangle || attr.path == sym::export_name
+                attr.has_name(sym::no_mangle) || attr.has_name(sym::export_name)
             }).is_some()
         }
 

@@ -194,7 +194,7 @@ impl Transform for CanonicalizeExterns {
                 // Get the actual linker symbol for this extern item, considering both the item's
                 // name and its attributes.  This is distinct from the `ast::symbol::Symbol`
                 // produced by `module_children`, which is simply the name of the item.
-                let sym = tcx.symbol_name(inst).name.as_symbol();
+                let sym = tcx.symbol_name(inst).name;
                 symbol_map.insert(sym, did);
             }
         }
@@ -220,7 +220,7 @@ impl Transform for CanonicalizeExterns {
             }
 
             let inst = Instance::new(did, tcx.intern_substs(&[]));
-            let sym = tcx.symbol_name(inst).name.as_symbol();
+            let sym = tcx.symbol_name(inst).name;
             if let Some(&repl_did) = symbol_map.get(&sym) {
                 replace_map.insert(did, repl_did);
             }

@@ -188,7 +188,6 @@ impl ItemLikeKind {
             ItemKind::Mod(..) => ItemLikeKind::Mod,
             ItemKind::ForeignMod(..) => ItemLikeKind::ForeignMod,
             ItemKind::GlobalAsm(..) => ItemLikeKind::GlobalAsm,
-            ItemKind::OpaqueTy(..) => ItemLikeKind::OpaqueTy,
             ItemKind::TyAlias(..) => ItemLikeKind::Ty,
             ItemKind::Enum(..) => ItemLikeKind::Enum,
             ItemKind::Struct(..) => ItemLikeKind::Struct,
@@ -214,7 +213,6 @@ impl ItemLikeKind {
         match i.kind {
             ImplItemKind::Const(..) => ItemLikeKind::Const,
             ImplItemKind::Method(..) => ItemLikeKind::Fn,
-            ImplItemKind::OpaqueTy(..) => ItemLikeKind::OpaqueTy,
             ImplItemKind::TyAlias(..) => ItemLikeKind::Ty,
             ImplItemKind::Macro(..) => ItemLikeKind::Mac,
         }

@@ -1,4 +1,6 @@
-#![feature(custom_attribute, attr_literals)]
+#![feature(attr_literals)]
+#![register_tool(c2rust)]
+
 use std::mem;
 use std::os::raw::c_void;
 use std::ptr;

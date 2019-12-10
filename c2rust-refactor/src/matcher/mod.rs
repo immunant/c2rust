@@ -41,11 +41,11 @@ use rustc::session::Session;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, Pat, Path, Stmt, Ty};
+use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
-use syntax::parse::parser::{Parser, PathStyle};
-use syntax::parse::token::TokenKind;
-use syntax::parse::{self, PResult};
+use rustc_parse::parser::{Parser, PathStyle};
+use syntax::token::{TokenKind};
+use rustc_errors::PResult;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::TokenStream;
@@ -73,6 +73,9 @@ pub enum Error {
     VariantMismatch,
     LengthMismatch,
     SymbolMismatch,
+
+    /// Parse error while parsing pattern
+    InvalidParse,
 
     // For nonlinear patterns, it's possible that the 2nd+ occurrence of the variable in the
     // pattern matches a different ident/expr/stmt than the 1st occurrence.
@@ -473,14 +476,14 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     // util.rs.
 
     /// Handle the `marked!(...)` matching form.
-    pub fn do_marked<T, F>(&mut self, tts: &TokenStream, func: F, target: &T) -> Result<()>
+    pub fn do_marked<T, F>(&mut self, args: &MacArgs, func: F, target: &T) -> Result<()>
     where
         T: TryMatch + GetNodeId,
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T>,
     {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            tts.clone(),
+            args.inner_tokens().clone(),
             None,
             false,
             false,
@@ -489,7 +492,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let pattern = func(&mut p).unwrap();
 
         let label = if p.eat(&TokenKind::Comma) {
-            p.parse_ident().unwrap().name
+            match p.token.kind {
+                TokenKind::Ident(name, _) => name,
+                _ => return Err(Error::InvalidParse),
+            }
         } else {
             "target".into_symbol()
         };
@@ -504,13 +510,13 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     /// Core implementation of the `def!(...)` matching form.
     fn do_def_impl(
         &mut self,
-        tts: &TokenStream,
+        args: &MacArgs,
         style: PathStyle,
         opt_def_id: Option<DefId>,
     ) -> Result<()> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            tts.clone(),
+            args.inner_tokens(),
             None,
             false,
             false,
@@ -538,26 +544,26 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     /// Handle the `def!(...)` matching form for exprs.
-    pub fn do_def_expr(&mut self, tts: &TokenStream, target: &Expr) -> Result<()> {
+    pub fn do_def_expr(&mut self, args: &MacArgs, target: &Expr) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_expr(target);
-        self.do_def_impl(tts, PathStyle::Expr, opt_def_id)
+        self.do_def_impl(args, PathStyle::Expr, opt_def_id)
     }
 
     /// Handle the `def!(...)` matching form for exprs.
-    pub fn do_def_ty(&mut self, tts: &TokenStream, target: &Ty) -> Result<()> {
+    pub fn do_def_ty(&mut self, args: &MacArgs, target: &Ty) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_ty(target);
-        self.do_def_impl(tts, PathStyle::Type, opt_def_id)
+        self.do_def_impl(args, PathStyle::Type, opt_def_id)
     }
 
     /// Handle the `typed!(...)` matching form.
-    pub fn do_typed<T, F>(&mut self, tts: &TokenStream, func: F, target: &T) -> Result<()>
+    pub fn do_typed<T, F>(&mut self, args: &MacArgs, func: F, target: &T) -> Result<()>
     where
         T: TryMatch + GetNodeId,
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T>,
     {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            tts.clone().into(),
+            args.inner_tokens(),
             None,
             false,
             false,
@@ -586,11 +592,11 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         self.try_match(&pattern, target)
     }
 
-    pub fn do_cast<F>(&mut self, tts: &TokenStream, func: F, target: &Expr) -> Result<()>
+    pub fn do_cast<F>(&mut self, args: &MacArgs, func: F, target: &Expr) -> Result<()>
     where
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, P<Expr>>,
     {
-        let ts: TokenStream = tts.clone();
+        let ts: TokenStream = args.inner_tokens();
         let pattern = driver::run_parser_tts(self.cx.session(), ts.into_trees().collect(), func);
 
         let mut target = target;
@@ -613,14 +619,14 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 }
 
 fn make_bindings_parser<'a>(sess: &'a Session, src: &str) -> (Parser<'a>, BindingTypes) {
-    let ts = parse::parse_stream_from_source_str(
+    let ts = rustc_parse::parse_stream_from_source_str(
         FileName::anon_source_code(src),
         src.to_owned(),
         &sess.parse_sess,
         None,
     );
     let (ts, bt) = parse_bindings(ts);
-    (parse::stream_to_parser(&sess.parse_sess, ts, None), bt)
+    (rustc_parse::stream_to_parser(&sess.parse_sess, ts, None), bt)
 }
 
 pub trait TryMatch {

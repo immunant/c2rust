@@ -83,8 +83,7 @@ impl<'c> Translation<'c> {
                 let val = val as u32;
                 let expr = match char::from_u32(val) {
                     Some(c) => {
-                        let lit = mk().char_lit(c);
-                        let expr = mk().lit_expr(lit);
+                        let expr = mk().lit_expr(c);
                         let i32_type = mk().path_ty(vec!["i32"]);
                         mk().cast_expr(expr, i32_type)
                     }
@@ -180,7 +179,7 @@ impl<'c> Translation<'c> {
                         Mutability::Mutable
                     };
                     let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
-                    let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
+                    let byte_literal = mk().lit_expr(val);
                     if ctx.is_const { self.use_feature("const_transmute"); }
                     let pointer =
                         transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);

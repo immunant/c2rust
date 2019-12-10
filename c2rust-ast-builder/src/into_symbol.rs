@@ -1,4 +1,4 @@
-use syntax::symbol::{InternedString, Symbol};
+use syntax::symbol::Symbol;
 
 /// Conversion of string-like values into interned `Symbol`s.
 pub trait IntoSymbol {
@@ -26,11 +26,5 @@ impl IntoSymbol for String {
 impl<'a> IntoSymbol for &'a String {
     fn into_symbol(self) -> Symbol {
         <&str as IntoSymbol>::into_symbol(self)
-    }
-}
-
-impl IntoSymbol for InternedString {
-    fn into_symbol(self) -> Symbol {
-        self.as_symbol()
     }
 }

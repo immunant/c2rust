@@ -12,8 +12,8 @@ use rustc_target::spec::abi::{Abi, lookup as lookup_abi};
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::mut_visit::*;
-use syntax::parse::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{DUMMY_SP, Spanned, dummy_spanned};
 use syntax::symbol::{Symbol, sym};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
@@ -49,7 +49,7 @@ where
         | ExprKind::Closure(_, _, _, _, expr, _)
         | ExprKind::Await(expr)
         | ExprKind::Field(expr, _)
-        | ExprKind::AddrOf(_, expr)
+        | ExprKind::AddrOf(_, _, expr)
         | ExprKind::Repeat(expr, _)
         | ExprKind::Paren(expr)
         | ExprKind::Try(expr) => {
@@ -774,12 +774,13 @@ impl AddMoreMethods for LuaAstNode<P<Item>> {
         });
 
         methods.add_method("get_arg_ids", |_lua_ctx, this, ()| {
-            if let ItemKind::Fn(decl, ..) = &this.borrow().kind {
-                return Ok(Some(decl
-                    .inputs
-                    .iter()
-                    .map(|a| a.id.as_u32())
-                    .collect::<Vec<_>>()
+            if let ItemKind::Fn(sig, ..) = &this.borrow().kind {
+                return Ok(Some(sig
+                               .decl
+                               .inputs
+                               .iter()
+                               .map(|a| a.id.as_u32())
+                               .collect::<Vec<_>>()
                 ));
             }
 
@@ -787,8 +788,8 @@ impl AddMoreMethods for LuaAstNode<P<Item>> {
         });
 
         methods.add_method("get_args", |_lua_ctx, this, ()| {
-            if let ItemKind::Fn(decl, ..) = &this.borrow().kind {
-                return Ok(Some(decl
+            if let ItemKind::Fn(sig, ..) = &this.borrow().kind {
+                return Ok(Some(sig.decl
                     .inputs
                     .iter()
                     .map(|a| LuaAstNode::new(a.clone()))
@@ -800,8 +801,8 @@ impl AddMoreMethods for LuaAstNode<P<Item>> {
         });
 
         methods.add_method("set_args", |lua_ctx, this, args: Vec<Value>| {
-            if let ItemKind::Fn(decl, ..) = &mut this.borrow_mut().kind {
-                decl.inputs = args.into_iter()
+            if let ItemKind::Fn(sig, ..) = &mut this.borrow_mut().kind {
+                sig.decl.inputs = args.into_iter()
                     .map(|a| FromLuaExt::from_lua_ext(a, lua_ctx))
                     .collect::<Result<Vec<_>>>()?;
             }
@@ -1043,7 +1044,7 @@ impl AddMoreMethods for LuaAstNode<P<Expr>> {
                 ExprKind::Field(expr, _)
                 | ExprKind::Unary(_, expr)
                 | ExprKind::Cast(expr, _)
-                | ExprKind::AddrOf(_, expr) => *expr = get_iter_next(&mut exprs)??,
+                | ExprKind::AddrOf(_, _, expr) => *expr = get_iter_next(&mut exprs)??,
 
                 ExprKind::MethodCall(_, old_exprs) => {
                     let mut exprs = exprs.collect::<Result<Vec<_>>>()?;
@@ -1174,7 +1175,7 @@ impl AddMoreMethods for LuaAstNode<P<Expr>> {
                 Mutability::Immutable
             };
 
-            this.borrow_mut().kind = ExprKind::AddrOf(mutability, expr);
+            this.borrow_mut().kind = ExprKind::AddrOf(BorrowKind::Ref, mutability, expr);
 
             Ok(())
         });
@@ -1712,7 +1713,7 @@ impl AddMoreMethods for LuaAstNode<Lit> {
                             };
 
                             let int_sym = Symbol::intern(&int.to_string());
-                            lit.kind = LitKind::Float(int_sym, float_ty);
+                            lit.kind = LitKind::Float(int_sym, LitFloatType::Suffixed(float_ty));
                             lit.token = TokenLit {
                                 kind: TokenLitKind::Float,
                                 symbol: int_sym,
@@ -1951,8 +1952,8 @@ impl AddMoreMethods for LuaAstNode<ItemKind> {
         });
 
         methods.add_method("get_arg_ids", |_lua_ctx, this, ()| {
-            if let ItemKind::Fn(decl, ..) = &*this.borrow() {
-                return Ok(Some(decl
+            if let ItemKind::Fn(sig, ..) = &*this.borrow() {
+                return Ok(Some(sig.decl
                     .inputs
                     .iter()
                     .map(|a| a.id.as_u32())
@@ -2008,7 +2009,7 @@ fn add_item_lifetime(item_kind: &mut ItemKind, lt_name: &str) {
     };
 
     if let ItemKind::Struct(_, generics)
-            | ItemKind::Fn(_, _, generics, _) = item_kind {
+            | ItemKind::Fn(_, generics, _) = item_kind {
         let diff = |p: &GenericParam| {
             if let GenericParamKind::Lifetime = p.kind {
                 p.ident == generic_param.ident

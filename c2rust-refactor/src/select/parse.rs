@@ -4,10 +4,9 @@ use std::mem;
 use std::str::FromStr;
 use std::vec;
 use syntax::ast::Path;
-use syntax::parse;
-use syntax::parse::parser::{Parser, PathStyle};
-use syntax::parse::token::{DelimToken, Lit, LitKind, Token, TokenKind};
-use syntax::parse::ParseSess;
+use rustc_parse::parser::{Parser, PathStyle};
+use syntax::token::{DelimToken, Lit, LitKind, Token, TokenKind};
+use syntax::sess::ParseSess;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax_pos::FileName;
@@ -441,7 +440,7 @@ impl<'a> Stream<'a> {
 
 pub fn parse(sess: &Session, src: &str) -> Vec<SelectOp> {
     debug!("src = {:?}", src);
-    let ts = parse::parse_stream_from_source_str(
+    let ts = rustc_parse::parse_stream_from_source_str(
         FileName::macro_expansion_source_code(src),
         src.to_string(),
         &sess.parse_sess,

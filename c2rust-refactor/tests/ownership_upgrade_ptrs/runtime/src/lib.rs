@@ -1,4 +1,8 @@
-#![feature(ptr_wrapping_offset_from, custom_attribute, c_variadic, extern_types)]
+#![feature(ptr_wrapping_offset_from, c_variadic, extern_types, register_tool, register_attr)]
+#![register_tool(c2rust)]
+#![register_attr(nonnull)]
+#![register_attr(slice)]
+#![register_attr(ownership_constraints)]
 
 #[allow(unused_attributes, dead_code, unused_mut, non_upper_case_globals, unused_assignments, non_camel_case_types)]
 #[path = "../../old.rs"]

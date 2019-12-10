@@ -358,9 +358,10 @@ class TestDirectory:
             "stdsimd",
             "const_transmute",
             "nll",
-            "custom_attribute",
             "linkage",
+            "register_tool",
         ])
+        rust_file_builder.add_pragma("register_tool", ["c2rust"])
 
         # .c -> .rs
         for c_file in self.c_files:

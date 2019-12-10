@@ -7,11 +7,11 @@ use rustc_index::vec::IndexVec;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::mut_visit::{self, MutVisitor};
-use syntax::parse::token::{self, Token, TokenKind, DelimToken};
+use syntax::token::{self, Token, TokenKind, DelimToken};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{TokenTree, TokenStream, DelimSpan};
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use crate::ast_manip::{MutVisitNodes, MutVisit};
 use crate::ast_manip::fn_edit::flat_map_fns;
@@ -106,7 +106,7 @@ fn do_annotate(st: &CommandState,
 
         fn clean_attrs(&self, attrs: &mut Vec<Attribute>) {
             attrs.retain(|a| {
-                match &a.path.to_string() as &str {
+                match &*a.name_or_empty().as_str() {
                     "ownership_mono" |
                     "ownership_constraints" |
                     "ownership_static" => false,
@@ -185,8 +185,8 @@ fn build_static_attr(ty: PTy) -> Option<Attribute> {
             args.push(perm_token(p));
         }
     });
-    let tokens = parens(args).into();
-    Some(make_attr("ownership_static", tokens))
+    let args = delimited(args).into();
+    Some(make_attr("ownership_static", args))
 }
 
 fn build_constraints_attr(cset: &ConstraintSet) -> Attribute {
@@ -225,8 +225,7 @@ fn build_constraints_attr(cset: &ConstraintSet) -> Attribute {
         args.push(parens(le_args));
     }
 
-    let tokens = parens(args).into();
-    make_attr("ownership_constraints", tokens)
+    make_attr("ownership_constraints", delimited(args))
 }
 
 fn build_mono_attr(suffix: &str, assign: &IndexVec<Var, ConcretePerm>) -> Attribute {
@@ -238,8 +237,7 @@ fn build_mono_attr(suffix: &str, assign: &IndexVec<Var, ConcretePerm>) -> Attrib
         args.push(perm_token(p));
     }
 
-    let tokens = parens(args).into();
-    make_attr("ownership_mono", tokens)
+    make_attr("ownership_mono", delimited(args))
 }
 
 fn perm_token(p: ConcretePerm) -> TokenTree {
@@ -275,22 +273,28 @@ fn parens(ts: Vec<TokenTree>) -> TokenTree {
     )
 }
 
-fn make_attr(name: &str, tokens: TokenStream) -> Attribute {
+fn delimited(ts: Vec<TokenTree>) -> MacArgs {
+    MacArgs::Delimited(
+        DelimSpan::dummy(),
+        MacDelimiter::Parenthesis,
+        ts.into_iter().collect::<TokenStream>(),
+    )
+}
+
+fn make_attr(name: &str, args: MacArgs) -> Attribute {
     Attribute {
         id: AttrId(0),
         style: AttrStyle::Outer,
-        item: AttrItem {
+        kind: AttrKind::Normal(AttrItem {
             path: mk().path(vec![name]),
-            tokens: tokens,
-        },
-        is_sugared_doc: false,
+            args: args,
+        }),
         span: DUMMY_SP,
     }
 }
 
 fn build_variant_attr(group: &str) -> Attribute {
-    let tokens = parens(vec![str_token(group)]).into();
-    make_attr("ownership_variant_of", tokens)
+    make_attr("ownership_variant_of", delimited(vec![str_token(group)]))
 }
 
 

@@ -9,7 +9,7 @@ use rustc::session::Session;
 use rustc::session::config::CrateType;
 use rustc::ty::subst::InternalSubsts;
 use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
-use rustc_metadata::cstore::CStore;
+use rustc_metadata::creader::CStore;
 use syntax::ast::{
     self, Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FunctionRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
 };
@@ -27,8 +27,8 @@ use c2rust_ast_builder::mk;
 #[derive(Clone)]
 pub struct RefactorCtxt<'a, 'tcx: 'a> {
     sess: &'a Session,
-    cstore: &'a CStore,
 
+    cstore: Option<&'a CStore>,
     map: Option<HirMap<'a, 'tcx>>,
     tcx: Option<GenerationalTyCtxt<'tcx>>,
 }
@@ -36,11 +36,10 @@ pub struct RefactorCtxt<'a, 'tcx: 'a> {
 impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn new(
         sess: &'a Session,
-        cstore: &'a CStore,
-        map: Option<&'a hir_map::Map<'tcx>>,
+        cstore: Option<&'a CStore>,
+        map: Option<HirMap<'a, 'tcx>>,
         tcx: Option<GenerationalTyCtxt<'tcx>>,
     ) -> Self {
-        let map = map.map(|map| HirMap::new(sess, map));
         Self {
             sess,
             cstore,
@@ -60,8 +59,7 @@ pub struct HirMap<'a, 'hir: 'a> {
 }
 
 impl<'a, 'hir> HirMap<'a, 'hir> {
-    fn new(sess: &'a Session, map: &'a hir_map::Map<'hir>) -> Self {
-        let max_node_id = sess.next_node_id();
+    pub fn new(max_node_id: NodeId, map: &'a hir_map::Map<'hir>) -> Self {
         Self { map, max_node_id }
     }
 }
@@ -73,10 +71,11 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         self.sess
     }
 
-    #[inline]
-    pub fn cstore(&self) -> &'a CStore {
-        self.cstore
-    }
+    // #[inline]
+    // pub fn cstore(&self) -> &'a CStore {
+    //     self.cstore
+    //         .expect("crate store is not available in this context (requires phase 2)")
+    // }
 
     #[inline]
     pub fn hir_map(&self) -> HirMap<'a, 'tcx> {

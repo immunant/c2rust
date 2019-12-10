@@ -4,7 +4,7 @@
 //! Rust.
 
 use super::*;
-use syntax::parse::token::{self, TokenKind};
+use syntax::token::{self, TokenKind};
 
 impl<'c> Translation<'c> {
     pub fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, TranslationError> {
@@ -74,7 +74,7 @@ impl<'c> Translation<'c> {
                                 ),
                                 "expect",
                                 vec![mk().lit_expr(
-                                    mk().str_lit("Failed to convert argument into CString."),
+                                    "Failed to convert argument into CString.",
                                 )],
                             ),
                             "into_raw",
@@ -144,7 +144,7 @@ impl<'c> Translation<'c> {
                             Some(mk().mac_expr(mk().mac(
                                 vec!["format"],
                                 vec![
-                                    token::Interpolated(Rc::new(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit("{}={}"))))),
+                                    token::Interpolated(Rc::new(Nonterminal::NtExpr(mk().lit_expr("{}={}")))),
                                     token::Comma,
                                     TokenKind::Ident(var_name_ident.name, var_name_ident.is_raw_guess()),
                                     token::Comma,
@@ -167,7 +167,7 @@ impl<'c> Translation<'c> {
                                         ),
                                         "expect",
                                         vec![mk().lit_expr(
-                                            mk().str_lit("Failed to convert environment variable into CString.")
+                                            "Failed to convert environment variable into CString."
                                         )],
                                     ),
                                     "into_raw",

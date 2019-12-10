@@ -10,6 +10,7 @@ use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
 use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
+use c2rust_ast_printer::pprust;
 use syntax::ast::{
     self, AttrStyle, BinOpKind, Expr, ExprKind, Lit, LitIntType, LitKind, MetaItemKind,
     NestedMetaItem, StmtKind, StrStyle, StructField, Ty, TyKind,
@@ -307,7 +308,7 @@ impl<'a> Translation<'a> {
                     let mut field = mk();
                     let field_attrs = attrs.iter().map(|attr| {
                         let ty_str = match &attr.1.kind {
-                            TyKind::Path(_, path) => format!("{}", path),
+                            TyKind::Path(_, path) => pprust::path_to_string(path),
                             _ => unreachable!("Found type other than path"),
                         };
                         let field_attr_items = vec![

@@ -5,13 +5,13 @@ use rustc::hir::def_id::DefId;
 use rustc::ty::{self, TyKind, TyCtxt, ParamEnv};
 use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
-use syntax::parse::PResult;
-use syntax::parse::parser::Parser;
-use syntax::parse::token::{TokenKind, BinOpToken};
+use rustc_errors::PResult;
+use rustc_parse::parser::Parser;
+use syntax::token::{TokenKind, BinOpToken};
 use syntax::print::pprust;
 use syntax::ptr::P;
 use syntax_pos::Span;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use c2rust_ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisit, MutVisitNodes, fold_output_exprs};
@@ -351,8 +351,8 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
             let i = if matches!([i.kind] ItemKind::Fn(..)) {
                 i.map(|mut i| {
                     let mut fd = expect!([i.kind]
-                                         ItemKind::Fn(ref fd, _, _, _) =>
-                                         fd.clone().into_inner());
+                                         ItemKind::Fn(ref sig, _, _) =>
+                                         sig.decl.clone().into_inner());
 
                     for (j, arg) in fd.inputs.iter_mut().enumerate() {
                         let old_ty = arg.ty.clone();
@@ -384,8 +384,8 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                     }
 
                     match i.kind {
-                        ItemKind::Fn(ref mut fd_ptr, _, _, _) => {
-                            *fd_ptr = P(fd);
+                        ItemKind::Fn(ref mut sig, _, _) => {
+                            *sig.decl = fd;
                         },
                         _ => panic!("expected ItemKind::Fn"),
                     }
@@ -1030,7 +1030,6 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
     fn can_cast(&self, from: ty::Ty<'tcx>, to: ty::Ty<'tcx>, parent: DefId) -> bool {
         use rustc::ty::TyKind::*;
         use rustc::ty::TypeAndMut;
-        use rustc::hir::Mutability::*;
 
         // coercion-cast
         if can_coerce(from, to, self.cx.ty_ctxt()) {
@@ -1038,11 +1037,11 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         }
 
         match (&from.kind, &to.kind) {
-            (Ref(_, ref from, MutMutable), Ref(_, ref to, _))
+            (Ref(_, ref from, Mutability::Mutable), Ref(_, ref to, _))
             // We ignore regions here because references from command-line args
             // won't have a valid region.
                 => self.can_cast(from, to, parent),
-            (Ref(_, ref from, MutImmutable), Ref(_, ref to, MutImmutable))
+            (Ref(_, ref from, Mutability::Immutable), Ref(_, ref to, Mutability::Immutable))
             // We ignore regions here because references from command-line args
             // won't have a valid region.
                 => self.can_cast(from, to, parent),
@@ -1052,7 +1051,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
              &RawPtr(TypeAndMut{ty: ref _to_ty, mutbl: to_mut})) => match (from_mut, to_mut) {
                 // Immutable -> Mutable is an allowed cast, but we shouldn't
                 // introduce these as they may break semantics.
-                (MutImmutable, MutMutable) => false,
+                (Mutability::Immutable, Mutability::Mutable) => false,
 
                 _ => {
                     let param_env_ty = self.cx.ty_ctxt().param_env(parent).and(to);
@@ -1195,11 +1194,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
         match (&expected.ty.kind, &lit.kind) {
             (TyKind::Int(t), LitKind::Int(v, _)) => {
-                let int_type = if let IntTy::Isize = *t {
-                    self.cx.session().target.isize_ty
-                } else {
-                    *t
-                };
+                let int_type = t.normalize(self.cx.session().target.ptr_width);
                 let (_, max) = int_ty_range(int_type);
                 let max = max as u128;
 
@@ -1212,11 +1207,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 }
             }
             (TyKind::Uint(t), LitKind::Int(v, _)) => {
-                let uint_type = if let UintTy::Usize = *t {
-                    self.cx.session().target.usize_ty
-                } else {
-                    *t
-                };
+                let uint_type = t.normalize(self.cx.session().target.ptr_width);
                 let (min, max) = uint_ty_range(uint_type);
                 if *v >= min && *v <= max {
                     Some(mk().lit_expr(mk().int_lit(*v, uint_type)))
@@ -1255,7 +1246,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 TyKind::RawPtr(ty::TypeAndMut{ty: ref inner_ty, ref mutbl}),
             ) if (path.ident.name.as_str() == "as_mut_ptr"
                   || path.ident.name.as_str() == "as_ptr") => {
-                let new_method_name = if *mutbl == hir::Mutability::MutMutable {
+                let new_method_name = if *mutbl == hir::Mutability::Mutable {
                     "as_mut_ptr"
                 } else {
                     "as_ptr"
@@ -1299,20 +1290,17 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 };
                 return self.try_retype(e, sub_expected);
             }
-            (ExprKind::AddrOf(expr_mut, e), TyKind::Ref(_, subty, expected_mut)) => {
+            (ExprKind::AddrOf(_, expr_mut, e), TyKind::Ref(_, subty, expected_mut)) => {
                 let mutbl = match (&expr_mut, expected_mut) {
                     (Mutability::Mutable, _) |
-                    (Mutability::Immutable, hir::Mutability::MutImmutable) => expected_mut,
+                    (Mutability::Immutable, hir::Mutability::Immutable) => expected_mut,
                     _ => return false,
                 };
                 let mut sub_expected = expected;
                 sub_expected.ty = subty;
                 sub_expected.mutability = Some(*mutbl);
                 if self.try_retype(e, sub_expected) {
-                    *expr_mut = match *mutbl {
-                        hir::Mutability::MutImmutable => Mutability::Immutable,
-                        hir::Mutability::MutMutable => Mutability::Mutable,
-                    };
+                    *expr_mut = *mutbl;
                     return true;
                 }
             }
