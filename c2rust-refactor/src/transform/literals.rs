@@ -921,8 +921,18 @@ impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
 
 #[derive(Debug, Clone, Copy)]
 enum LitTyKeyNode<'kt, 'tcx: 'kt> {
+    /// Empty node, ignored during unification. Used for types
+    /// where we intentionally don't want to unify, e.g., `Param`,
+    /// and when we can't determine a structure.
     Empty,
+
+    /// Internal node with children, corresponding to aggregate types
+    /// and other aggregate-like types, e.g., `FnDef`, that have
+    /// multiple inner types.
     Node(&'kt [LitTyKeyTree<'kt, 'tcx>]),
+
+    /// Leaf node containing a unification key. Mostly corresponds
+    /// to scalar Rust types.
     Leaf(LitTyKey<'tcx>),
 }
 
