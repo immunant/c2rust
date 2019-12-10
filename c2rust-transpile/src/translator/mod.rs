@@ -2238,18 +2238,17 @@ impl<'c> Translation<'c> {
                     mk_.span(span).unsafe_().fn_item(new_name, decl, block),
                 ))
             } else if emitting_wrapper {
-                // translating an aliased function declaration -> emit wrapper function
+                // translating an aliased function declaration -> emit wrapper function.
                 // NOTE: this does not emulate GNU C semantics entirely since the alias and aliased
                 // functions will have different addresses. See discussion here:
-                //
+                // https://internals.rust-lang.org/t/pre-rfc-defining-function-aliases/11424
 
                 // FIXME: need to emit a warning that we're not entirely emulating GNU C semantics
                 for attr in attrs {
                     match attr {
                         c_ast::Attribute::Alias(aliasee) => {
-                            let mk_ = mk().abi("C").pub_().single_attr("no_mangle");
+                            let mk_ = mk().extern_("C").pub_().single_attr("no_mangle");
                             let aliasee = mk().path_expr(vec![aliasee]);
-                            // when
                             let args_exprs = args
                                 .iter()
                                 .map(|a|{
