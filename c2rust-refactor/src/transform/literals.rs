@@ -493,9 +493,11 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             // We particularly want to leave this one as `Empty`,
-            // because we never want to unify with type parameters
-            // in target definitions, since changing the suffix
-            // might potentially change the substitution
+            // because we unifying type parameters and removing suffixes
+            // might change their type during compilation, which
+            // could cause compilation errors (especially for `self`), e.g.,
+            // `1u32.wrapping_add(2)` can't ever be rewritten to
+            // `1.wrapping_add(2)` since the latter fails to compile
             ty::TyKind::Param(_) => {}
 
             // All the others are irrelevant
