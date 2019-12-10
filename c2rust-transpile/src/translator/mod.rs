@@ -2072,6 +2072,13 @@ impl<'c> Translation<'c> {
     ) -> Result<ConvertedDecl, TranslationError> {
         self.function_context.borrow_mut().enter_new(name);
 
+        let emitting_wrapper = body.is_none() && attrs.iter().any(|a| {
+           match a {
+               c_ast::Attribute::Alias(_) => true,
+               _ => false,
+           }
+        });
+
         self.with_scope(|| {
             let mut args: Vec<Param> = vec![];
 
@@ -2080,7 +2087,9 @@ impl<'c> Translation<'c> {
                 let (ty, mutbl, _) = self.convert_variable(ctx, None, typ)?;
 
                 let pat = if var.is_empty() {
-                    mk().wild_pat()
+                    if emitting_wrapper {
+                        mk().ident_pat(self.renamer.borrow_mut().pick_name("a"))
+                    } else { mk().wild_pat() }
                 } else {
                     // extern function declarations don't support/require mut patterns
                     let mutbl = if body.is_none() {
@@ -2110,8 +2119,10 @@ impl<'c> Translation<'c> {
                     let arg_va_list_name = self.register_va_decls(body_id);
 
                     // FIXME: detect mutability requirements.
-                    let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(arg_va_list_name);
+                    let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(arg_va_list_name.clone());
                     args.push(mk().arg(mk().cvar_args_ty(), pat));
+                } else if emitting_wrapper {  // wrappers for function aliases
+                    args.push(mk().arg(mk().cvar_args_ty(), mk().ident_pat("args")));
                 } else {  // function declarations
                     args.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()));
                 }
@@ -2134,7 +2145,7 @@ impl<'c> Translation<'c> {
                 FunctionRetTy::Ty(ret)
             };
 
-            let decl = mk().fn_decl(args, ret);
+            let decl = mk().fn_decl(args.clone(), ret);
 
             if let Some(body) = body {
                 // Translating an actual function
@@ -2226,6 +2237,46 @@ impl<'c> Translation<'c> {
                 Ok(ConvertedDecl::Item(
                     mk_.span(span).unsafe_().fn_item(new_name, decl, block),
                 ))
+            } else if emitting_wrapper {
+                // translating an aliased function declaration -> emit wrapper function
+                // NOTE: this does not emulate GNU C semantics entirely since the alias and aliased
+                // functions will have different addresses. See discussion here:
+                //
+
+                // FIXME: need to emit a warning that we're not entirely emulating GNU C semantics
+                for attr in attrs {
+                    match attr {
+                        c_ast::Attribute::Alias(aliasee) => {
+                            let mk_ = mk().abi("C").pub_().single_attr("no_mangle");
+                            let aliasee = mk().path_expr(vec![aliasee]);
+                            // when
+                            let args_exprs = args
+                                .iter()
+                                .map(|a|{
+                                    let kind = &a.pat.kind;
+                                    match kind {
+                                        PatKind::Ident(_, ident, _) => {
+                                            let name = String::from(&*ident.name.as_str());
+                                            mk().ident_expr(name)
+                                        },
+                                        PatKind::Wild => {
+                                            mk().ident_expr("args")
+                                        },
+                                        p => panic!("unexpected argument pattern kind: {:?}", p),
+                                    }
+                                })
+                                .collect::<Vec<P<Expr>>>();
+                            let call_expr = mk().call_expr(aliasee, args_exprs);
+                            let call_stmt = mk().expr_stmt(call_expr);
+                            let block = mk().block(vec![call_stmt]);
+                            return Ok(ConvertedDecl::Item(
+                                mk_.span(span).unsafe_().fn_item(new_name, decl, block)
+                            ))
+                        },
+                        _ => continue,
+                    };
+                }
+                panic!();
             } else {
                 // Translating an extern function declaration
 
@@ -2236,14 +2287,7 @@ impl<'c> Translation<'c> {
                     ""
                 };
 
-                let mut mk_ = mk_linkage(true, new_name, name).span(span).vis(visibility);
-
-                for attr in attrs {
-                    mk_ = match attr {
-                        c_ast::Attribute::Alias(aliasee) => mk_.str_attr("link_name", aliasee),
-                        _ => continue,
-                    };
-                }
+                let mk_ = mk_linkage(true, new_name, name).span(span).vis(visibility);
 
                 let function_decl = mk_.fn_foreign_item(new_name, decl);
 

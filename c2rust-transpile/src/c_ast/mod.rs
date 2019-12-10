@@ -532,6 +532,24 @@ impl TypedAstContext {
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 }
+                // preserve aliased function declarations
+                CDeclKind::Function {
+                    body: None,
+                    is_global: true,
+                    ref attrs,
+                    ..
+                } => {
+                    let has_alias = attrs.iter().any(|a| {
+                        match a {
+                            Attribute::Alias(_) => true,
+                            _ => false,
+                        }
+                    });
+                    if has_alias {
+                        to_walk.push(decl_id);
+                        used.insert(decl_id);
+                    }
+                }
                 CDeclKind::Variable {
                     is_defn: true,
                     is_externally_visible: true,
