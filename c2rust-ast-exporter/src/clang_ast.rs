@@ -1,9 +1,11 @@
 use serde_bytes::ByteBuf;
 use serde_cbor::error;
-use serde_cbor::{from_value, Value};
 use std;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::convert::TryInto;
 use std::path::{Path, PathBuf};
+
+pub use serde_cbor::value::{from_value, Value};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -121,7 +123,7 @@ pub struct AstContext {
 pub fn expect_opt_str(val: &Value) -> Option<Option<&str>> {
     match *val {
         Value::Null => Some(None),
-        Value::String(ref s) => Some(Some(s)),
+        Value::Text(ref s) => Some(Some(s)),
         _ => None,
     }
 }
@@ -129,7 +131,7 @@ pub fn expect_opt_str(val: &Value) -> Option<Option<&str>> {
 pub fn expect_opt_u64(val: &Value) -> Option<Option<u64>> {
     match *val {
         Value::Null => Some(None),
-        Value::U64(n) => Some(Some(n)),
+        Value::Integer(n) => Some(Some(n.try_into().unwrap())),
         _ => None,
     }
 }
@@ -158,7 +160,7 @@ pub fn process(items: Value) -> error::Result<AstContext> {
     let mut comments: Vec<CommentNode> = vec![];
 
     let (all_nodes, top_nodes, files, raw_comments, va_list_kind): (
-        Vec<Vec<Value>>,
+        Vec<VecDeque<Value>>,
         Vec<u64>,
         Vec<(String, Option<(u64, u64, u64)>)>,
         Vec<(u64, u64, u64, ByteBuf)>,
@@ -188,53 +190,58 @@ pub fn process(items: Value) -> error::Result<AstContext> {
         })
         .collect::<Vec<_>>();
 
-    for entry in all_nodes {
-        let entry_id = entry[0].as_u64().unwrap();
-        let tag = entry[1].as_u64().unwrap();
+    for mut entry in all_nodes.into_iter() {
+        let entry_id: u64 = from_value(entry.pop_front().unwrap()).unwrap();
+        let tag = from_value(entry.pop_front().unwrap()).unwrap();
 
         if tag < 400 {
-            let children = entry[2]
-                .as_array()
+            let children = from_value::<Vec<Value>>(entry.pop_front().unwrap())
                 .unwrap()
                 .iter()
                 .map(|x| expect_opt_u64(x).unwrap())
                 .collect::<Vec<Option<u64>>>();
 
-            let type_id: Option<u64> = expect_opt_u64(&entry[8]).unwrap();
-            let fileid = entry[3].as_u64().unwrap();
+            // entry[3]
+            let fileid = from_value(entry.pop_front().unwrap()).unwrap();
+            let begin_line = from_value(entry.pop_front().unwrap()).unwrap();
+            let begin_column = from_value(entry.pop_front().unwrap()).unwrap();
+            let end_line = from_value(entry.pop_front().unwrap()).unwrap();
+            let end_column = from_value(entry.pop_front().unwrap()).unwrap();
 
-            let macro_expansions = entry[10]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|x| x.as_u64().unwrap())
-                .collect::<Vec<u64>>();
+            // entry[8]
+            let type_id: Option<u64> = expect_opt_u64(&entry.pop_front().unwrap()).unwrap();
+
+            // entry[9]
+            let rvalue = if from_value(entry.pop_front().unwrap()).unwrap() {
+                LRValue::RValue
+            } else {
+                LRValue::LValue
+            };
+
+            // entry[10]
+            let macro_expansions = from_value::<Vec<u64>>(entry.pop_front().unwrap()).unwrap();
 
             let node = AstNode {
                 tag: import_ast_tag(tag),
                 children,
                 loc: SrcSpan {
                     fileid,
-                    begin_line: entry[4].as_u64().unwrap(),
-                    begin_column: entry[5].as_u64().unwrap(),
-                    end_line: entry[6].as_u64().unwrap(),
-                    end_column: entry[7].as_u64().unwrap(),
+                    begin_line,
+                    begin_column,
+                    end_line,
+                    end_column,
                 },
                 type_id,
-                rvalue: if entry[9].as_boolean().unwrap() {
-                    LRValue::RValue
-                } else {
-                    LRValue::LValue
-                },
+                rvalue,
                 macro_expansions,
-                extras: entry[11..].to_vec(),
+                extras: entry.into_iter().collect(),
             };
 
             asts.insert(entry_id, node);
         } else {
             let node = TypeNode {
                 tag: import_type_tag(tag),
-                extras: entry[2..].to_vec(),
+                extras: entry.into_iter().collect(),
             };
 
             types.insert(entry_id, node);
