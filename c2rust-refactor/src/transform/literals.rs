@@ -1,7 +1,7 @@
 use arena::SyncDroplessArena;
 use ena::unify as ut;
 use rustc::{hir, ty};
-use rustc::hir::def::{Res, DefKind};
+use rustc::hir::def::Res;
 use rustc_data_structures::sync::Lrc;
 use syntax::ast::*;
 use syntax::token;
@@ -155,7 +155,6 @@ impl Transform for RemoveLiteralSuffixes {
             unif: ut::UnificationTable::new(),
             lit_nodes: HashMap::new(),
             hir_id_key_tree_cache: HashMap::new(),
-            def_id_key_tree_cache: HashMap::new(),
             ty_key_tree_cache: HashMap::new(),
         };
         visit::walk_crate(&mut uv, &krate);
@@ -202,7 +201,7 @@ impl Transform for RemoveLiteralSuffixes {
                             }
                         }
 
-                        LitTySource::None => {}
+                        LitTySource::Unknown => {}
                     };
                 }
                 _ => {}
@@ -221,18 +220,17 @@ struct UnifyVisitor<'a, 'kt, 'tcx: 'a + 'kt> {
     unif: ut::UnificationTable<ut::InPlace<LitTyKey<'tcx>>>,
     lit_nodes: HashMap<NodeId, LitTyKey<'tcx>>,
     hir_id_key_tree_cache: HashMap<hir::HirId, LitTyKeyTree<'kt, 'tcx>>,
-    def_id_key_tree_cache: HashMap<hir::def_id::DefId, LitTyKeyTree<'kt, 'tcx>>,
     ty_key_tree_cache: HashMap<(ty::Ty<'tcx>, bool), LitTyKeyTree<'kt, 'tcx>>,
 }
 
 impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
+    fn new_empty_node(&mut self) -> LitTyKeyTree<'kt, 'tcx> {
+        self.arena.alloc(Cell::new(LitTyKeyNode::Empty))
+    }
+
     fn new_leaf(&mut self, source: LitTySource<'tcx>) -> LitTyKeyTree<'kt, 'tcx> {
         let key = self.unif.new_key(source);
         self.arena.alloc(Cell::new(LitTyKeyNode::Leaf(key)))
-    }
-
-    fn new_none_leaf(&mut self) -> LitTyKeyTree<'kt, 'tcx> {
-        self.new_leaf(LitTySource::None)
     }
 
     fn new_node(&mut self, kts: &[LitTyKeyTree<'kt, 'tcx>]) -> LitTyKeyTree<'kt, 'tcx> {
@@ -296,9 +294,9 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.unif.unify_var_var(l1, l2).expect("failed to unify");
             }
 
-            // FIXME
-            // (kt1 @ _, kt2 @ _) => panic!("mismatched key trees: {:?} != {:?}", kt1, kt2)
-            _ => {}
+            (LitTyKeyNode::Empty, _) | (_, LitTyKeyNode::Empty) => {}
+
+            (kt1 @ _, kt2 @ _) => panic!("mismatched key trees: {:?} != {:?}", kt1, kt2)
         }
     }
 
@@ -315,9 +313,9 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     /// or going through the typeck tables.
     fn ast_ty_to_key_tree(&mut self, ty: &Ty) -> LitTyKeyTree<'kt, 'tcx> {
         let node = match_or!([self.cx.hir_map().find(ty.id)] Some(x) => x;
-                             return self.new_none_leaf());
+                             return self.new_empty_node());
         let t = match_or!([node] hir::Node::Ty(t) => t;
-                          return self.new_none_leaf());
+                          return self.new_empty_node());
         self.hir_ty_to_key_tree(t)
     }
 
@@ -345,7 +343,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.new_node(&ch)
             }
 
-            _ => self.new_none_leaf()
+            _ => self.new_empty_node()
         }
     }
 
@@ -353,8 +351,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         // TODO: use the HirId cache???
         let tcx = self.cx.ty_ctxt();
         match path.res {
-            Res::Def(def_kind, did) => {
-                self.def_id_to_key_tree(def_kind, did, path.span)
+            Res::Def(_, did) => {
+                self.def_id_to_key_tree(did, path.span)
             }
 
             Res::PrimTy(prim_ty) => {
@@ -363,7 +361,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     hir::Int(it) => LitTySource::Actual(tcx.mk_mach_int(it)),
                     hir::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(uit)),
                     hir::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ft)),
-                    _ => LitTySource::None
+                    _ => LitTySource::Unknown
                 };
                 self.new_leaf(source)
             }
@@ -377,7 +375,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 if let Some(key_tree) = self.hir_id_key_tree_cache.get(&pid) {
                     return key_tree;
                 }
-                let new_node = self.new_none_leaf();
+                let new_node = self.new_empty_node();
                 self.hir_id_key_tree_cache.insert(pid, new_node);
 
                 let node = match_or!([tcx.hir().find(pid)]
@@ -395,143 +393,28 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
             // TODO: handle `SelfCtor`
 
-            _ => self.new_none_leaf()
+            _ => self.new_empty_node()
         }
     }
 
     fn def_id_to_key_tree(
         &mut self,
-        def_kind: DefKind,
         did: hir::def_id::DefId,
         sp: Span,
     ) -> LitTyKeyTree<'kt, 'tcx> {
-        if let Some(key_tree) = self.def_id_key_tree_cache.get(&did) {
-            return key_tree;
-        }
-
         let tcx = self.cx.ty_ctxt();
-        let hir_id = if let Some(hir_id) = tcx.hir().as_local_hir_id(did) {
-            hir_id
-        } else {
-            // The type is from outside the local crate,
-            // which we don't touch, so we can just get it from rustc
-            // FIXME: is this always correct, and do we always want to do it???
-            let ty = tcx.at(sp).type_of(did);
-            let key_tree = self.ty_to_key_tree(ty, true);
-            self.def_id_key_tree_cache.insert(did, key_tree);
-            return key_tree;
-        };
-
-        let new_node = self.new_none_leaf();
-        self.def_id_key_tree_cache.insert(did, new_node);
-        match def_kind {
-            DefKind::TyAlias => {
-                let item = tcx.hir().expect_item(hir_id);
-                let (ty, _) =
-                    match_or!([item.kind]
-                              hir::ItemKind::TyAlias(ref ty, ref generics) => (ty, generics);
-                              panic!("expected TyAlias, got {:?}", item));
-                // TODO: check generics
-                new_node.set(self.hir_ty_to_key_tree(ty).get());
-            }
-
-            DefKind::Struct | DefKind::Union | DefKind::Enum => {
-                let item = tcx.hir().expect_item(hir_id);
-                let ch = match item.kind {
-                    hir::ItemKind::Struct(ref def, _) |
-                    hir::ItemKind::Union(ref def, _) => {
-                        def.fields()
-                            .iter()
-                            .map(|field| self.hir_ty_to_key_tree(&field.ty))
-                            .collect::<Vec<_>>()
-                    }
-
-                    hir::ItemKind::Enum(ref def, _) => {
-                        // FIXME: I think this matches the `ty::Ty` order,
-                        // but should double-check somehow
-                        def.variants
-                            .iter()
-                            .flat_map(|v| v.data.fields())
-                            .map(|field| self.hir_ty_to_key_tree(&field.ty))
-                            .collect::<Vec<_>>()
-                    }
-
-                    _ => panic!("expected Struct/Union/Enum, got {:?}", item)
-                };
-                self.replace_with_node(new_node, &ch);
-            }
-
-            // TODO: handle `Variant`???
-
-            DefKind::Fn => {
-                let decl = match tcx.hir().get(hir_id) {
-                    hir::Node::Item(ref item) => {
-                        match_or!([item.kind]
-                                  hir::ItemKind::Fn(ref sig, ..) => &sig.decl;
-                                  panic!("expected ItemKind::Fn, got {:?}", item))
-                    }
-                    hir::Node::ForeignItem(ref item) => {
-                        match_or!([item.kind]
-                                  hir::ForeignItemKind::Fn(ref decl, ..) => decl;
-                                  panic!("expected ForeignItemKind::Fn, got {:?}", item))
-                    }
-                    n @ _ => panic!("expected Item/ForeignItem, got {:?}", n)
-                };
-
-                let output_key_tree = match decl.output {
-                    hir::FunctionRetTy::DefaultReturn(_) => self.new_none_leaf(),
-                    hir::FunctionRetTy::Return(ref ty) => self.hir_ty_to_key_tree(ty),
-                };
-
-                let ch = decl.inputs
-                    .iter()
-                    .map(|ty| self.hir_ty_to_key_tree(ty))
-                    .chain(std::iter::once(output_key_tree))
-                    .collect::<Vec<_>>();
-
-                self.replace_with_node(new_node, &ch);
-            }
-
-            DefKind::Const => {
-                let item = tcx.hir().expect_item(hir_id);
-                let ty = match_or!([item.kind]
-                                   hir::ItemKind::Const(ref ty, _) => ty;
-                                   panic!("expected ItemKind::Const, got {:?}", item));
-                new_node.set(self.hir_ty_to_key_tree(ty).get());
-            }
-
-            DefKind::Static => {
-                let ty = match tcx.hir().get(hir_id) {
-                    hir::Node::Item(ref item) => {
-                        match_or!([item.kind]
-                                  hir::ItemKind::Static(ref ty, ..) => ty;
-                                  panic!("expected ItemKind::Static, got {:?}", item))
-                    }
-                    hir::Node::ForeignItem(ref item) => {
-                        match_or!([item.kind]
-                                  hir::ForeignItemKind::Static(ref ty, ..) => ty;
-                                  panic!("expected ForeignItemKind::Static, got {:?}", item))
-                    }
-                    n @ _ => panic!("expected Item/ForeignItem, got {:?}", n)
-                };
-                new_node.set(self.hir_ty_to_key_tree(ty).get());
-            }
-
-            // TODO: handle `Method`???
-
-            _ => {}
-        };
-        new_node
+        let ty = tcx.at(sp).type_of(did);
+        self.ty_to_key_tree(ty, true)
     }
 
-    fn ty_to_key_tree(&mut self, ty: ty::Ty<'tcx>, allow_mach: bool) -> LitTyKeyTree<'kt, 'tcx> {
+    fn ty_to_key_tree(&mut self, ty: ty::Ty<'tcx>, mach_actual: bool) -> LitTyKeyTree<'kt, 'tcx> {
         // We memoize the result both to improve performance and
         // eliminate infinite recursion
-        let hash_key = (ty, allow_mach);
+        let hash_key = (ty, mach_actual);
         if let Some(kt) = self.ty_key_tree_cache.get(&hash_key) {
             return kt;
         }
-        let new_node = self.new_none_leaf();
+        let new_node = self.new_empty_node();
         self.ty_key_tree_cache.insert(hash_key, new_node);
 
         let tcx = self.cx.ty_ctxt();
@@ -548,8 +431,13 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         match ty.kind {
             ty::TyKind::Int(_) |
             ty::TyKind::Uint(_) |
-            ty::TyKind::Float(_) if allow_mach => {
-                self.replace_with_leaf(new_node, LitTySource::Actual(ty));
+            ty::TyKind::Float(_) => {
+                let source = if mach_actual {
+                    LitTySource::Actual(ty)
+                } else {
+                    LitTySource::Unknown
+                };
+                self.replace_with_leaf(new_node, source);
             }
 
             ty::TyKind::Adt(ref adt_ref, ref substs)
@@ -557,13 +445,13 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // Ignore the actual structure for these types, and just
                 // use the inner type as the single child
                 let inner_ty = substs.type_at(0);
-                let ty_kt = self.ty_to_key_tree(inner_ty, allow_mach);
+                let ty_kt = self.ty_to_key_tree(inner_ty, mach_actual);
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
             ty::TyKind::Adt(ref adt_def, ref substs) => {
                 let ch = adt_def.all_fields()
-                    .map(|field| self.ty_to_key_tree(field.ty(tcx, substs), allow_mach))
+                    .map(|field| self.ty_to_key_tree(field.ty(tcx, substs), mach_actual))
                     .collect::<Vec<_>>();
                 self.replace_with_node(new_node, &ch);
             }
@@ -578,7 +466,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             ty::TyKind::Slice(ty) |
             ty::TyKind::RawPtr(ty::TypeAndMut { ty, .. }) |
             ty::TyKind::Ref(_, ty, _) => {
-                let ty_kt = self.ty_to_key_tree(ty, allow_mach);
+                let ty_kt = self.ty_to_key_tree(ty, mach_actual);
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
@@ -589,17 +477,23 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 fn_sig_to_key_tree(tcx.fn_sig(def_id), true);
             }
             ty::TyKind::FnPtr(fn_sig) => {
-                fn_sig_to_key_tree(fn_sig, allow_mach);
+                fn_sig_to_key_tree(fn_sig, mach_actual);
             }
 
             // TODO: Closure
 
             ty::TyKind::Tuple(ref elems) => {
                 let ch = elems.types()
-                    .map(|ty| self.ty_to_key_tree(ty, allow_mach))
+                    .map(|ty| self.ty_to_key_tree(ty, mach_actual))
                     .collect::<Vec<_>>();
                 self.replace_with_node(new_node, &ch);
             }
+
+            // We particularly want to leave this one as `Empty`,
+            // because we never want to unify with type parameters
+            // in target definitions, since changing the suffix
+            // might potentially change the substitution
+            ty::TyKind::Param(_) => {}
 
             // All the others are irrelevant
             _ => {}
@@ -611,7 +505,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         if let Some(ty) = self.cx.opt_node_type(ex.id) {
             self.ty_to_key_tree(ty, false)
         } else {
-            self.new_none_leaf()
+            // FIXME: should we leave this as an empty node???
+            self.new_leaf(LitTySource::Unknown)
         }
     }
 
@@ -848,7 +743,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                             break 'block self.ty_to_key_tree(idx_ty, true);
                         }
                     }
-                    self.new_none_leaf()
+                    self.new_leaf(LitTySource::Unknown)
                 };
                 self.visit_expr_unify(idx, idx_key_tree);
             }
@@ -993,13 +888,14 @@ impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
 
     fn visit_pat(&mut self, p: &'ast Pat) {
         // TODO: approximate structure
-        let key_tree = self.new_none_leaf();
+        let key_tree = self.new_leaf(LitTySource::Unknown);
         self.visit_pat_unify(p, key_tree);
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 enum LitTyKeyNode<'kt, 'tcx: 'kt> {
+    Empty,
     Node(&'kt [LitTyKeyTree<'kt, 'tcx>]),
     Leaf(LitTyKey<'tcx>),
 }
@@ -1010,14 +906,14 @@ impl<'kt, 'tcx: 'kt> LitTyKeyNode<'kt, 'tcx> {
     fn as_key(&self) -> LitTyKey<'tcx> {
         match self {
             Self::Leaf(key) => *key,
-            Self::Node(ch) => panic!("expected leaf, found node: {:?}", ch)
+            _ => panic!("expected leaf, found: {:?}", self)
         }
     }
 
     fn children(&self) -> &'kt [LitTyKeyTree<'kt, 'tcx>] {
         match self {
             Self::Node(ch) => ch,
-            Self::Leaf(key) => panic!("expected node, found leaf: {:?}", key)
+            _ => panic!("expected node, found: {:?}", self)
         }
     }
 }
@@ -1036,7 +932,7 @@ impl<'tcx> ut::UnifyKey for LitTyKey<'tcx> {
 #[derive(Debug, Clone, Copy)]
 enum LitTySource<'tcx> {
     /// No type information for this key.
-    None,
+    Unknown,
 
     /// This type came from a suffix. If we get all our type information from
     /// suffixes, that means we need to keep one literal suffix around to maintain
@@ -1065,7 +961,7 @@ impl<'tcx> LitTySource<'tcx> {
             LitKind::Float(_, LitFloatType::Suffixed(float_ty)) =>
                 LitTySource::Suffix(tcx.mk_mach_float(float_ty)),
 
-            _ => LitTySource::None
+            _ => LitTySource::Unknown
         }
     }
 }
@@ -1084,7 +980,7 @@ impl<'tcx> ut::UnifyValue for LitTySource<'tcx> {
 
             (Actual(ty), _) | (_, Actual(ty)) => Ok(Actual(ty)),
             (Suffix(ty), _) | (_, Suffix(ty)) => Ok(Suffix(ty)),
-            (None, None) => Ok(None),
+            (Unknown, Unknown) => Ok(Unknown),
         }
     }
 }
