@@ -513,20 +513,23 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         }
     }
 
+    fn visit_expr_unify_child(&mut self, e: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
+        if let Some(ch_kt) = kt.get().children() {
+            assert!(ch_kt.len() == 1);
+            self.visit_expr_unify(e, ch_kt[0]);
+        } else {
+            self.visit_expr(e);
+        }
+    }
+
     fn visit_expr_unify(&mut self, ex: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
         let tcx = self.cx.ty_ctxt();
         match ex.kind {
-            ExprKind::Box(ref e) => {
-                assert!(kt.get().children().len() == 1);
-                let inner_key_tree = kt.get().children()[0];
-                self.visit_expr_unify(e, inner_key_tree);
-            }
+            ExprKind::Box(ref e) => self.visit_expr_unify_child(e, kt),
 
             ExprKind::Array(ref exprs) => {
-                assert!(kt.get().children().len() == 1);
-                let inner_key_tree = kt.get().children()[0];
                 for e in exprs {
-                    self.visit_expr_unify(e, inner_key_tree);
+                    self.visit_expr_unify_child(e, kt);
                 }
             }
 
@@ -534,13 +537,15 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let callee_key_tree = self.expr_ty_to_key_tree(callee);
                 self.visit_expr_unify(callee, callee_key_tree);
                 // TODO: check if generic
-                if let &[ref input_key_trees @ .., output_key_tree] = callee_key_tree.get().children() {
+                if let Some(&[ref input_key_trees @ .., output_key_tree]) = callee_key_tree.get().children() {
                     for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
                         self.visit_expr_unify(arg_expr, arg_key_tree);
                     }
                     self.unify_key_trees(kt, output_key_tree);
                 } else {
-                    panic!("invalid key tree for call: {:?}", ex);
+                    for arg in args {
+                        self.visit_expr(arg);
+                    }
                 }
             }
 
@@ -556,23 +561,33 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // we don't get the parametric `Self` as the type of
                 // the `self` argument, instead we get the actual type,
                 // and we can't unify with that since it can break stuff
-                callee_key_tree.get().children()[0].set(LitTyKeyNode::Empty);
+                if let Some(ch) = callee_key_tree.get().children() {
+                    ch[0].set(LitTyKeyNode::Empty);
+                }
 
                 self.visit_path_segment(ex.span, segment);
-                if let &[ref input_key_trees @ .., output_key_tree] = callee_key_tree.get().children() {
+                if let Some(&[ref input_key_trees @ .., output_key_tree]) = callee_key_tree.get().children() {
                     for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
                         self.visit_expr_unify(arg_expr, arg_key_tree);
                     }
                     self.unify_key_trees(kt, output_key_tree);
                 } else {
-                    panic!("invalid key tree for call: {:?}", ex);
+                    for arg in args {
+                        self.visit_expr(arg);
+                    }
                 }
             }
 
             ExprKind::Tup(ref exprs) => {
-                assert!(kt.get().children().len() == exprs.len());
-                for (ch, ch_kt) in exprs.iter().zip(kt.get().children().iter()) {
-                    self.visit_expr_unify(ch, ch_kt);
+                if let Some(ch_kt) = kt.get().children() {
+                    assert!(ch_kt.len() == exprs.len());
+                    for (e, ch_kt) in exprs.iter().zip(ch_kt.iter()) {
+                        self.visit_expr_unify(e, ch_kt);
+                    }
+                } else {
+                    for e in exprs {
+                        self.visit_expr(e);
+                    }
                 }
             }
 
@@ -614,9 +629,10 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     self.visit_expr_unify(e, ptr_key_tree);
                     if let Some(e_ty) = self.cx.opt_node_type(e.id) {
                         if e_ty.builtin_deref(true).is_some() {
-                            assert!(ptr_key_tree.get().children().len() == 1);
-                            let inner_key_tree = ptr_key_tree.get().children()[0];
-                            self.unify_key_trees(kt, inner_key_tree);
+                            if let Some(ch) = ptr_key_tree.get().children() {
+                                assert!(ch.len() == 1);
+                                self.unify_key_trees(kt, ch[0]);
+                            }
                         } else {
                             // TODO: handle other types that implement `Deref`
                         }
@@ -713,14 +729,15 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.visit_ident(ident);
                 if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
                     let ch = inner_key_tree.get().children();
-                    match struct_ty.kind {
-                        ty::TyKind::Adt(def, _) => {
+                    match (ch, &struct_ty.kind) {
+                        (None, _) => {}
+                        (Some(ch), ty::TyKind::Adt(def, _)) => {
                             let v = &def.non_enum_variant();
                             assert!(ch.len() == v.fields.len());
                             let idx = tcx.find_field_index(ident, v).unwrap();
                             self.unify_key_trees(kt, ch[idx]);
                         }
-                        ty::TyKind::Tuple(ref tys) => {
+                        (Some(ch), ty::TyKind::Tuple(ref tys)) => {
                             assert!(ch.len() == tys.len());
                             if let Ok(idx) = ident.as_str().parse::<usize>() {
                                 self.unify_key_trees(kt, ch[idx]);
@@ -740,9 +757,10 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 if let Some(e_ty) = self.cx.opt_node_type(e.id) {
                     use ty::TyKind::*;
                     if let Array(..) | Slice(_) | Str = e_ty.kind {
-                        assert!(e_key_tree.get().children().len() == 1);
-                        let inner_key_tree = e_key_tree.get().children()[0];
-                        self.unify_key_trees(kt, inner_key_tree);
+                        if let Some(ch) = e_key_tree.get().children() {
+                            assert!(ch.len() == 1);
+                            self.unify_key_trees(kt, ch[0]);
+                        }
                     } else {
                         // TODO: check for `Index`/`IndexMut`
                     }
@@ -791,11 +809,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // TODO: handle TypeRelative paths
             }
 
-            ExprKind::AddrOf(_, _, ref e) => {
-                assert!(kt.get().children().len() == 1);
-                let inner_key_tree = kt.get().children()[0];
-                self.visit_expr_unify(e, inner_key_tree);
-            }
+            ExprKind::AddrOf(_, _, ref e) => self.visit_expr_unify_child(e, kt),
 
             // TODO: unify `Break` with return values
             //
@@ -803,11 +817,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             //
             // TODO: unify non-generic `Struct`
 
-            ExprKind::Repeat(ref e, _) => {
-                assert!(kt.get().children().len() == 1);
-                let inner_key_tree = kt.get().children()[0];
-                self.visit_expr_unify(e, inner_key_tree);
-            }
+            ExprKind::Repeat(ref e, _) => self.visit_expr_unify_child(e, kt),
 
             ExprKind::Paren(ref e) => self.visit_expr_unify(e, kt),
 
@@ -927,9 +937,10 @@ impl<'kt, 'tcx: 'kt> LitTyKeyNode<'kt, 'tcx> {
         }
     }
 
-    fn children(&self) -> &'kt [LitTyKeyTree<'kt, 'tcx>] {
+    fn children(&self) -> Option<&'kt [LitTyKeyTree<'kt, 'tcx>]> {
         match self {
-            Self::Node(ch) => ch,
+            Self::Node(ch) => Some(ch),
+            Self::Empty => None,
             _ => panic!("expected node, found: {:?}", self)
         }
     }
