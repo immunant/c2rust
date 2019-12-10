@@ -764,8 +764,8 @@ function decay_ref_to_ptr(expr, cfg, for_struct_field, ptr_ty)
             DUMMY_SP,
         }
 
-        if not cfg.extra_data.non_null_wrapped then
-            if cfg:is_mut() then
+        if not cfg:non_null_wrapped() then
+            if is_mut then
                 expr:to_method_call("as_mut", {expr})
             else
                 expr:to_method_call("as_ref", {expr})
@@ -788,16 +788,16 @@ function decay_ref_to_ptr(expr, cfg, for_struct_field, ptr_ty)
         expr:to_unary("Deref", expr)
         expr:to_addr_of(expr, is_mut)
     elseif cfg:is_slice_any() then
-        if cfg:is_mut() then
+        if is_mut then
             expr:to_method_call("as_mut_ptr", {expr})
         else
             expr:to_method_call("as_ptr", {expr})
         end
     -- If we're using the expr in a field ie (*e.as_mut().unwrap()).bar then
     -- we can skip the deref as rust will do it automatically
-    elseif cfg:is_mut() and cfg:is_opt_any() and not for_struct_field then
+    elseif is_mut and cfg:is_opt_any() and not for_struct_field then
         expr:to_unary("Deref", expr)
-    elseif cfg.extra_data.non_null_wrapped then
+    elseif cfg:non_null_wrapped() then
         expr:to_method_call("as_ptr", {expr})
     end
 
