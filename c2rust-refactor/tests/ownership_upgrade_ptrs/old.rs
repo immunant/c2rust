@@ -735,3 +735,10 @@ unsafe fn array_ref2() {
     let fresh = t;
     t = t.offset(1);
 }
+
+pub unsafe extern "C" fn deref_to_slice(
+    #[slice] mut s: *mut libc::wchar_t,
+) {
+    deref_to_slice(&mut *s.offset(1isize));
+    deref_to_slice(&mut *s);
+}

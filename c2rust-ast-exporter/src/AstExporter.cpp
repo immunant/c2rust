@@ -934,6 +934,7 @@ class TranslateASTVisitor final
 
         std::vector<void *> childIds{expr, CS->getSubStmt()};
         encode_entry(CS, TagCaseStmt, childIds, [value](CborEncoder *extra) {
+            cbor_encode_boolean(extra, value.isSigned());
             if (value.isSigned()) {
                 cbor_encode_int(extra, value.getSExtValue());
             } else {
@@ -1968,6 +1969,7 @@ class TranslateASTVisitor final
                          cbor_encode_string(local, name);
 
                          auto value = D->getInitVal();
+                         cbor_encode_boolean(local, value.isSigned());
                          if (value.isSigned()) {
                              cbor_encode_int(local, value.getSExtValue());
                          } else {

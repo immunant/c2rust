@@ -4,7 +4,6 @@
 
 extern crate colored;
 extern crate dtoa;
-extern crate serde_cbor;
 extern crate syntax;
 extern crate syntax_pos;
 #[macro_use]

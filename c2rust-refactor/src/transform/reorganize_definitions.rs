@@ -49,7 +49,7 @@ pub struct Reorganizer<'a, 'tcx: 'a> {
     cx: &'a RefactorCtxt<'a, 'tcx>,
     st: &'a CommandState,
 
-    modules: HashMap<NodeId, ModuleInfo>,
+    modules: IndexMap<NodeId, ModuleInfo>,
 
     stdlib_id: NodeId,
 
@@ -104,7 +104,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         Reorganizer {
             st,
             cx,
-            modules: HashMap::new(),
+            modules: IndexMap::new(),
             path_mapping: HashMap::new(),
             stdlib_id: DUMMY_NODE_ID,
             ident_counter: HashMap::new(),
@@ -1038,7 +1038,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         if let ItemKind::Use(_) = decl.kind {
                             return true;
                         }
-                        if cx.structural_eq(&decl, item) {
+                        if cx.compatible_types(&decl, item) {
                             matches.push(cx.node_def_id(decl.id));
                             return false;
                         }
@@ -1247,10 +1247,10 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             } else {
                 let line_a = info.header_lines.get(&a.parent_header.ident).unwrap_or(&0);
                 let line_b = info.header_lines.get(&b.parent_header.ident).unwrap_or(&0);
-                if line_a == line_b {
-                    a.parent_header.ident.as_str().cmp(&b.parent_header.ident.as_str())
-                } else {
+                if line_a != line_b {
                     line_a.cmp(line_b)
+                } else {
+                    a.parent_header.ident.as_str().cmp(&b.parent_header.ident.as_str())
                 }
             }
         });
@@ -1350,7 +1350,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         // Otherwise make sure these items are structurally
                         // equivalent.
                         _ => {
-                            if self.cx.structural_eq(&item, &existing_item) {
+                            if self.cx.compatible_types(&item, &existing_item) {
                                 return ContainsDecl::Equivalent(existing_decl);
                             }
                         }
@@ -1375,6 +1375,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         }
                     }
                 }
+                trace!("{:?} and {:?} share idents, but are not compatible", item, existing_decl);
             }
         }
 

@@ -980,3 +980,8 @@ unsafe fn array_ref2() {
     let fresh = t;
     t = &t[1..];
 }
+
+pub unsafe extern "C" fn deref_to_slice(#[slice] mut s: Option<&[libc::wchar_t]>) {
+    deref_to_slice(Some(&s.unwrap()[1..]));
+    deref_to_slice(Some(&s.unwrap()[0..]));
+}

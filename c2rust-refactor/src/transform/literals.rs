@@ -154,8 +154,6 @@ impl Transform for RemoveLiteralSuffixes {
             arena: &arena,
             unif: ut::UnificationTable::new(),
             lit_nodes: HashMap::new(),
-            hir_id_key_tree_cache: HashMap::new(),
-            ty_key_tree_cache: HashMap::new(),
         };
         visit::walk_crate(&mut uv, &krate);
 
@@ -175,7 +173,7 @@ impl Transform for RemoveLiteralSuffixes {
                             }
                         }
 
-                        LitTySource::Suffix(ty) => {
+                        LitTySource::Suffix(ty, needs_suffix) => {
                             assert!(lit.kind.is_suffixed());
                             // We have a set of literals with no other type source,
                             // so the first one (this one) gets a suffix to make it typed,
@@ -190,9 +188,9 @@ impl Transform for RemoveLiteralSuffixes {
                             // Special case: if `ty` is `i32` or `f64`,
                             // then we can remove the suffix, since those
                             // are the default inference types
-                            match ty.kind {
-                                ty::TyKind::Int(IntTy::I32) |
-                                ty::TyKind::Float(FloatTy::F64) => {
+                            match (needs_suffix, &ty.kind) {
+                                (false, ty::TyKind::Int(IntTy::I32)) |
+                                (false, ty::TyKind::Float(FloatTy::F64)) => {
                                     if let Some(new_lit) = remove_suffix(&lit) {
                                         *lit = new_lit;
                                     }
@@ -201,7 +199,10 @@ impl Transform for RemoveLiteralSuffixes {
                             }
                         }
 
-                        LitTySource::Unknown => {}
+                        LitTySource::Unknown(needs_suffix) => {
+                            // We should never wind up here
+                            assert!(!needs_suffix);
+                        }
                     };
                 }
                 _ => {}
@@ -219,8 +220,6 @@ struct UnifyVisitor<'a, 'kt, 'tcx: 'a + 'kt> {
     arena: &'kt SyncDroplessArena,
     unif: ut::UnificationTable<ut::InPlace<LitTyKey<'tcx>>>,
     lit_nodes: HashMap<NodeId, LitTyKey<'tcx>>,
-    hir_id_key_tree_cache: HashMap<hir::HirId, LitTyKeyTree<'kt, 'tcx>>,
-    ty_key_tree_cache: HashMap<(ty::Ty<'tcx>, bool), LitTyKeyTree<'kt, 'tcx>>,
 }
 
 impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
@@ -324,7 +323,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         // TODO: use the HirId cache???
         match ty.kind {
             hir::TyKind::Path(hir::QPath::Resolved(_, ref path)) => {
-                self.hir_path_to_key_tree(path)
+                self.res_to_key_tree(path.res, path.span)
             }
             // TODO: handle TypeRelative paths
 
@@ -347,12 +346,12 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         }
     }
 
-    fn hir_path_to_key_tree(&mut self, path: &hir::Path) -> LitTyKeyTree<'kt, 'tcx> {
+    fn res_to_key_tree(&mut self, res: Res, span: Span) -> LitTyKeyTree<'kt, 'tcx> {
         // TODO: use the HirId cache???
         let tcx = self.cx.ty_ctxt();
-        match path.res {
+        match res {
             Res::Def(_, did) => {
-                self.def_id_to_key_tree(did, path.span)
+                self.def_id_to_key_tree(did, span)
             }
 
             Res::PrimTy(prim_ty) => {
@@ -361,7 +360,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     hir::Int(it) => LitTySource::Actual(tcx.mk_mach_int(it)),
                     hir::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(uit)),
                     hir::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ft)),
-                    _ => LitTySource::Unknown
+                    _ => LitTySource::Unknown(false)
                 };
                 self.new_leaf(source)
             }
@@ -373,24 +372,17 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // This is a local variable that may have a type,
                 // try to get that type and unify it
                 let pid = tcx.hir().get_parent_node(id);
-                if let Some(key_tree) = self.hir_id_key_tree_cache.get(&pid) {
-                    return key_tree;
-                }
-                let new_node = self.new_empty_node();
-                self.hir_id_key_tree_cache.insert(pid, new_node);
-
                 let node = match_or!([tcx.hir().find(pid)]
                                      Some(x) => x;
-                                     return new_node);
+                                     return self.new_empty_node());
                 let l = match_or!([node] hir::Node::Local(l) => l;
-                                  return new_node);
+                                  return self.new_empty_node());
                 let lty = match_or!([l.ty] Some(ref lty) => lty;
-                                    return new_node);
-                new_node.set(self.hir_ty_to_key_tree(lty).get());
+                                    return self.new_empty_node());
                 // FIXME: this local reference might be a sub-binding,
                 // and not the entire local; in that case, we need
                 // to split up the key tree
-                new_node
+                self.hir_ty_to_key_tree(lty)
             }
             // TODO: handle `SelfCtor`
 
@@ -408,15 +400,19 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         self.ty_to_key_tree(ty, true)
     }
 
-    fn ty_to_key_tree(&mut self, ty: ty::Ty<'tcx>, mach_actual: bool) -> LitTyKeyTree<'kt, 'tcx> {
-        // We memoize the result both to improve performance and
-        // eliminate infinite recursion
+    fn ty_to_key_tree_internal(
+        &mut self,
+        ty: ty::Ty<'tcx>,
+        mach_actual: bool,
+        seen: &mut HashMap<(ty::Ty<'tcx>, bool), LitTyKeyTree<'kt, 'tcx>>,
+    ) -> LitTyKeyTree<'kt, 'tcx> {
+        // We memoize the result to eliminate infinite recursion
         let hash_key = (ty, mach_actual);
-        if let Some(kt) = self.ty_key_tree_cache.get(&hash_key) {
+        if let Some(kt) = seen.get(&hash_key) {
             return kt;
         }
         let new_node = self.new_empty_node();
-        self.ty_key_tree_cache.insert(hash_key, new_node);
+        seen.insert(hash_key, new_node);
 
         let tcx = self.cx.ty_ctxt();
         let mut fn_sig_to_key_tree = |fn_sig: ty::PolyFnSig<'tcx>, sig_mach: bool| {
@@ -424,7 +420,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 .skip_binder()
                 .inputs_and_output
                 .iter()
-                .map(|ty| self.ty_to_key_tree(ty, sig_mach))
+                .map(|ty| self.ty_to_key_tree_internal(ty, sig_mach, seen))
                 .collect::<Vec<_>>();
             self.replace_with_node(new_node, &ch);
         };
@@ -436,7 +432,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let source = if mach_actual {
                     LitTySource::Actual(ty)
                 } else {
-                    LitTySource::Unknown
+                    LitTySource::Unknown(false)
                 };
                 self.replace_with_leaf(new_node, source);
             }
@@ -446,20 +442,20 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // Ignore the actual structure for these types, and just
                 // use the inner type as the single child
                 let inner_ty = substs.type_at(0);
-                let ty_kt = self.ty_to_key_tree(inner_ty, mach_actual);
+                let ty_kt = self.ty_to_key_tree_internal(inner_ty, mach_actual, seen);
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
             ty::TyKind::Adt(ref adt_def, ref substs) => {
                 let ch = adt_def.all_fields()
-                    .map(|field| self.ty_to_key_tree(field.ty(tcx, substs), mach_actual))
+                    .map(|field| self.ty_to_key_tree_internal(field.ty(tcx, substs), mach_actual, seen))
                     .collect::<Vec<_>>();
                 self.replace_with_node(new_node, &ch);
             }
 
             ty::TyKind::Str => {
                 let u8_ty = tcx.mk_mach_uint(UintTy::U8);
-                let u8_kt = self.ty_to_key_tree(u8_ty, true);
+                let u8_kt = self.ty_to_key_tree_internal(u8_ty, true, seen);
                 self.replace_with_node(new_node, &[u8_kt]);
             }
 
@@ -467,7 +463,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             ty::TyKind::Slice(ty) |
             ty::TyKind::RawPtr(ty::TypeAndMut { ty, .. }) |
             ty::TyKind::Ref(_, ty, _) => {
-                let ty_kt = self.ty_to_key_tree(ty, mach_actual);
+                let ty_kt = self.ty_to_key_tree_internal(ty, mach_actual, seen);
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
@@ -485,7 +481,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             ty::TyKind::Tuple(ref elems) => {
                 let ch = elems.types()
-                    .map(|ty| self.ty_to_key_tree(ty, mach_actual))
+                    .map(|ty| self.ty_to_key_tree_internal(ty, mach_actual, seen))
                     .collect::<Vec<_>>();
                 self.replace_with_node(new_node, &ch);
             }
@@ -504,6 +500,11 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         new_node
     }
 
+    fn ty_to_key_tree(&mut self, ty: ty::Ty<'tcx>, mach_actual: bool) -> LitTyKeyTree<'kt, 'tcx> {
+        let mut seen = HashMap::new();
+        self.ty_to_key_tree_internal(ty, mach_actual, &mut seen)
+    }
+
     fn expr_ty_to_key_tree(&mut self, ex: &Expr) -> LitTyKeyTree<'kt, 'tcx> {
         if let Some(ty) = self.cx.opt_node_type(ex.id) {
             self.ty_to_key_tree(ty, false)
@@ -512,7 +513,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         }
     }
 
-    fn visit_expr_unify_child(&mut self, e: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
+    fn unify_expr_child(&mut self, e: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
         if let Some(ch_kt) = kt.get().children() {
             assert!(ch_kt.len() == 1);
             self.visit_expr_unify(e, ch_kt[0]);
@@ -524,11 +525,24 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     fn visit_expr_unify(&mut self, ex: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
         let tcx = self.cx.ty_ctxt();
         match ex.kind {
-            ExprKind::Box(ref e) => self.visit_expr_unify_child(e, kt),
+            ExprKind::Box(ref e) => self.unify_expr_child(e, kt),
 
             ExprKind::Array(ref exprs) => {
+                // We really want the subexpressions to at least unify with
+                // each other, so we need to either get the key tree
+                // from the caller, or create a new common one for all subexpressions
+                let elem_kt = if let Some(ch) = kt.get().children() {
+                    assert!(ch.len() == 1);
+                    ch[0]
+                } else {
+                    exprs.first()
+                        .and_then(|e| self.cx.opt_node_type(e.id))
+                        .map(|ty| self.ty_to_key_tree(ty, false))
+                        .unwrap_or_else(|| self.new_empty_node())
+
+                };
                 for e in exprs {
-                    self.visit_expr_unify_child(e, kt);
+                    self.visit_expr_unify(e, elem_kt);
                 }
             }
 
@@ -652,7 +666,17 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let ty_key_tree = self.ast_ty_to_key_tree(ty);
                 self.unify_key_trees(kt, ty_key_tree);
 
-                self.visit_expr(e);
+                let e_key_tree = self.expr_ty_to_key_tree(e);
+                if let LitTyKeyNode::Leaf(l) = e_key_tree.get() {
+                    if self.cx.opt_node_type(ty.id).map(|ty| ty.is_scalar()).unwrap_or(false) {
+                        // Special case: if we're casting a literal to a scalar,
+                        // rustc will infer the type of the literal if it's unsuffixed,
+                        // so we really need to keep the suffix
+                        self.unif.unify_var_value(l, LitTySource::Unknown(true))
+                            .expect("failed to unify");
+                    }
+                }
+                self.visit_expr_unify(e, e_key_tree);
                 self.visit_ty(ty);
             }
 
@@ -796,19 +820,14 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             ExprKind::Path(..) => {
                 visit::walk_expr(self, ex);
-                let node = self.cx.hir_map().find(ex.id).unwrap();
-				let e = match_or!([node] hir::Node::Expr(e) => e;
-                                  panic!("expected Expr, got {:?}", node));
-				let qpath = match_or!([e.kind] hir::ExprKind::Path(ref q) => q;
-                                      panic!("expected ExprKind::Path, got {:?}", e.kind));
-                if let hir::QPath::Resolved(_, ref path) = qpath {
-                    let path_key_tree = self.hir_path_to_key_tree(path);
+                if let Some(res) = self.cx.try_resolve_expr_hir(ex) {
+                    let path_key_tree = self.res_to_key_tree(res, ex.span);
                     self.unify_key_trees(kt, path_key_tree);
                 }
                 // TODO: handle TypeRelative paths
             }
 
-            ExprKind::AddrOf(_, _, ref e) => self.visit_expr_unify_child(e, kt),
+            ExprKind::AddrOf(_, _, ref e) => self.unify_expr_child(e, kt),
 
             // TODO: unify `Break` with return values
             //
@@ -816,7 +835,10 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             //
             // TODO: unify non-generic `Struct`
 
-            ExprKind::Repeat(ref e, _) => self.visit_expr_unify_child(e, kt),
+            ExprKind::Repeat(ref e, ref count) => {
+                self.unify_expr_child(e, kt);
+                self.visit_anon_const(count);
+            }
 
             ExprKind::Paren(ref e) => self.visit_expr_unify(e, kt),
 
@@ -839,17 +861,122 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         }
     }
 
-    fn visit_pat_unify(&mut self, p: &Pat, kt: LitTyKeyTree<'kt, 'tcx>) {
+    fn unify_pat_children(
+        &mut self,
+        pats: &Vec<P<Pat>>,
+        ch: &'kt [LitTyKeyTree<'kt, 'tcx>],
+    ) {
+        let mut ich = 0;
+        for pat in pats {
+            let is_rest = self.visit_pat_unify(pat, ch[ich]);
+            if is_rest {
+                // Encountered a `..`, skip over the corresponding children
+                assert!(pats.len() <= ch.len());
+                ich += ch.len() - pats.len();
+            }
+            ich += 1;
+        }
+        assert!(ich == ch.len());
+    }
+
+    /// Visit a `Pat` node, unifying sub-nodes along the way.
+    /// Returns `true` if this node is a `Rest`.
+    fn visit_pat_unify(&mut self, p: &Pat, kt: LitTyKeyTree<'kt, 'tcx>) -> bool {
         match p.kind {
+            PatKind::Ident(_, ident, Some(ref pat)) => {
+                // `ref? mut? ident @ pat`, handle it as `pat`
+                self.visit_ident(ident);
+                return self.visit_pat_unify(pat, kt);
+            }
+
+            //FIXME: these are not correct
+            //PatKind::Struct(ref path, ref fields, _) => {
+            //    self.visit_path(path, p.id);
+            //    let res = self.cx.try_resolve_pat_hir(p);
+            //    if let Some(res) = res {
+            //        let path_key_tree = self.res_to_key_tree(res, path.span);
+            //        self.unify_key_trees(kt, path_key_tree);
+            //    }
+
+            //    let v = self.cx
+            //        .opt_adjusted_node_type(p.id)
+            //        .and_then(|ty| ty.ty_adt_def())
+            //        .and_then(|def| res.map(|res| def.variant_of_res(res)));
+            //    for field in fields {
+            //        self.visit_ident(field.ident);
+            //        // TODO: unify with type of field
+            //        if let (Some(ch), Some(idx)) = (
+            //            kt.get().children(),
+            //            v.and_then(|v| tcx.find_field_index(field.ident, v)),
+            //        ) {
+            //            self.visit_pat_unify(&field.pat, ch[idx]);
+            //        } else {
+            //            self.visit_pat(&field.pat);
+            //        }
+            //        for attr in field.attrs.iter() {
+            //            self.visit_attribute(attr);
+            //        }
+            //    }
+            //}
+
+            //PatKind::TupleStruct(ref path, ref pats) => {
+            //    self.visit_path(path, p.id);
+            //    let res = self.cx.try_resolve_pat_hir(p);
+            //    if let Some(res) = res {
+            //        let path_key_tree = self.res_to_key_tree(res, path.span);
+            //        self.unify_key_trees(kt, path_key_tree);
+            //    }
+
+            //    // FIXME: get correct field index
+            //    let ch = self.cx.opt_node_type(p.id)
+            //        .map(|ty| self.ty_to_key_tree(ty, false))
+            //        .and_then(|kt| kt.get().children());
+            //    if let Some(ch) = ch {
+            //        self.unify_pat_children(pats, ch);
+            //    } else {
+            //        for pat in pats {
+            //            self.visit_pat(pat);
+            //        }
+            //    };
+            //}
+
             PatKind::Or(ref pats) => {
                 for pat in pats {
-                    self.visit_pat_unify(pat, kt);
+                    let _is_rest = self.visit_pat_unify(pat, kt);
+                    // None of the above should ever be `Rest` nodes,
+                    // but we should sanity-check
+                    assert!(!_is_rest);
                 }
             }
 
-            PatKind::Lit(ref e) => {
-                self.visit_expr_unify(e, kt);
+            PatKind::Path(..) => {
+                visit::walk_pat(self, p);
+                if let Some(res) = self.cx.try_resolve_pat_hir(p) {
+                    let path_key_tree = self.res_to_key_tree(res, p.span);
+                    self.unify_key_trees(kt, path_key_tree);
+                }
             }
+
+            PatKind::Tuple(ref pats) => {
+                if let Some(ch) = kt.get().children() {
+                    self.unify_pat_children(pats, ch);
+                } else {
+                    for pat in pats {
+                        self.visit_pat(pat);
+                    }
+                };
+            }
+
+            PatKind::Box(ref inner) | PatKind::Ref(ref inner, _) => {
+                if let Some(ch) = kt.get().children() {
+                    assert!(ch.len() == 1);
+                    self.visit_pat_unify(inner, ch[0]);
+                } else {
+                    self.visit_pat(inner);
+                }
+            }
+
+            PatKind::Lit(ref e) => self.visit_expr_unify(e, kt),
 
             PatKind::Range(ref start, ref end, _) => {
                 // TODO: approximate???
@@ -858,12 +985,31 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.visit_expr_unify(end, inner_key_tree);
             }
 
-            PatKind::Paren(ref pat) => self.visit_pat_unify(pat, kt),
+            PatKind::Slice(ref pats) => {
+                // See comment for `ExprKind::Array`
+                let elem_kt = if let Some(ch) = kt.get().children() {
+                    assert!(ch.len() == 1);
+                    ch[0]
+                } else {
+                    pats.first()
+                        .and_then(|pat| self.cx.opt_node_type(pat.id))
+                        .map(|ty| self.ty_to_key_tree(ty, false))
+                        .unwrap_or_else(|| self.new_empty_node())
+                };
+                for pat in pats {
+                    self.visit_pat_unify(pat, elem_kt);
+                }
+            }
 
-            // TODO: handle more pattern types once we have hierarchical keys
+            PatKind::Rest => return true,
+
+            PatKind::Paren(ref pat) => return self.visit_pat_unify(pat, kt),
+
+            // TODO: handle `Mac`? Do we need to?
 
             _ => visit::walk_pat(self, p)
-        }
+        };
+        false
     }
 
     // TODO: handle `Field`
@@ -913,8 +1059,11 @@ impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
     }
 
     fn visit_pat(&mut self, p: &'ast Pat) {
-        // TODO: approximate structure
-        let key_tree = self.new_leaf(LitTySource::Unknown);
+        let key_tree = if let Some(ty) = self.cx.opt_node_type(p.id) {
+            self.ty_to_key_tree(ty, false)
+        } else {
+            self.new_empty_node()
+        };
         self.visit_pat_unify(p, key_tree);
     }
 }
@@ -968,13 +1117,16 @@ impl<'tcx> ut::UnifyKey for LitTyKey<'tcx> {
 /// Source for the type information for the current `LitTyKey`.
 #[derive(Debug, Clone, Copy)]
 enum LitTySource<'tcx> {
-    /// No type information for this key.
-    Unknown,
+    /// No type information for this key. The first field is set
+    /// to `true` if the suffix needs to be preserved, e.g.,
+    /// this literal is used in a method call or cast to scalar.
+    Unknown(bool),
 
     /// This type came from a suffix. If we get all our type information from
     /// suffixes, that means we need to keep one literal suffix around to maintain
-    /// the type, and throw out all the rest.
-    Suffix(ty::Ty<'tcx>),
+    /// the type, and throw out all the rest. The first field is set to `true`
+    /// if the suffix needs to be preserved (see above).
+    Suffix(ty::Ty<'tcx>, bool),
 
     /// We got this type from an actual value, e.g., a structure field or
     /// an explicitly typed local. If we get one of these, we can throw out
@@ -990,15 +1142,15 @@ impl<'tcx> LitTySource<'tcx> {
         };
         match lit.kind {
             LitKind::Int(_, LitIntType::Signed(int_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_int(int_ty)),
+                LitTySource::Suffix(tcx.mk_mach_int(int_ty), false),
 
             LitKind::Int(_, LitIntType::Unsigned(uint_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_uint(uint_ty)),
+                LitTySource::Suffix(tcx.mk_mach_uint(uint_ty), false),
 
             LitKind::Float(_, LitFloatType::Suffixed(float_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_float(float_ty)),
+                LitTySource::Suffix(tcx.mk_mach_float(float_ty), false),
 
-            _ => LitTySource::Unknown
+            _ => LitTySource::Unknown(false)
         }
     }
 }
@@ -1011,13 +1163,16 @@ impl<'tcx> ut::UnifyValue for LitTySource<'tcx> {
         match (value1, value2) {
             // Check for mismatched types
             (Actual(ty1), Actual(ty2)) |
-            (Actual(ty1), Suffix(ty2)) |
-            (Suffix(ty1), Actual(ty2)) |
-            (Suffix(ty1), Suffix(ty2)) if ty1 != ty2 => Err((ty1, ty2)),
+            (Actual(ty1), Suffix(ty2, _)) |
+            (Suffix(ty1, _), Actual(ty2)) |
+            (Suffix(ty1, _), Suffix(ty2, _)) if ty1 != ty2 => Err((ty1, ty2)),
+
+            (Suffix(ty, n1), Suffix(_, n2)) |
+            (Suffix(ty, n1), Unknown(n2)) |
+            (Unknown(n1), Suffix(ty, n2)) => Ok(Suffix(ty, *n1 || *n2)),
 
             (Actual(ty), _) | (_, Actual(ty)) => Ok(Actual(ty)),
-            (Suffix(ty), _) | (_, Suffix(ty)) => Ok(Suffix(ty)),
-            (Unknown, Unknown) => Ok(Unknown),
+            (Unknown(n1), Unknown(n2)) => Ok(Unknown(*n1 || *n2)),
         }
     }
 }

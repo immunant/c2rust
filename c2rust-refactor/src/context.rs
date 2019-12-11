@@ -430,6 +430,22 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         Some(path.res)
     }
 
+    pub fn try_resolve_pat_hir(&self, p: &ast::Pat) -> Option<Res> {
+        let node = match_or!([self.hir_map().find(p.id)] Some(x) => x;
+                             return None);
+        let p = match_or!([node] hir::Node::Pat(p) => p;
+                          return None);
+        let qpath = match p.kind {
+            hir::PatKind::Path(ref q) |
+            hir::PatKind::Struct(ref q, ..) |
+            hir::PatKind::TupleStruct(ref q, ..) => q,
+            _ => return None
+        };
+        let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
+                             return None);
+        Some(path.res)
+    }
+
     /// Try to resolve a node as a reference to a type-dependent definition, like `Vec::new` (a.k.a.
     /// `<Vec>::new`) or `<Vec as IntoIterator>::into_iter`.
     ///
@@ -473,8 +489,8 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         Some(path)
     }
 
-    /// Compare two items for internal structural equivalence, ignoring field names.
-    pub fn structural_eq(&self, item1: &Item, item2: &Item) -> bool {
+    /// Compare two items for type compatibility under the C definition
+    pub fn compatible_types(&self, item1: &Item, item2: &Item) -> bool {
         use syntax::ast::ItemKind::*;
         match (&item1.kind, &item2.kind) {
             // * Assure that these two items are in fact of the same type, just to be safe.
@@ -505,6 +521,28 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
             (Struct(variant1, _), Struct(variant2, _))
             | (Union(variant1, _), Union(variant2, _)) => {
+                if !item1.ident.unnamed_equiv(&item2.ident) {
+                    return false;
+                }
+                if let Struct(..) = &item1.kind {
+                    // Ensure all field names are equivalent
+                    for (field1, field2) in variant1.fields().iter().zip(variant2.fields().iter()) {
+                        if !field1.ident.unnamed_equiv(&field2.ident) {
+                            return false;
+                        }
+                    }
+                } else {
+                    // Union field names are not required to be in the same order
+                    for field1 in variant1.fields() {
+                        let matching_field = variant2
+                            .fields()
+                            .iter()
+                            .find(|field2| field1.ident.unnamed_equiv(&field2.ident));
+                        if matching_field.is_none() {
+                            return false;
+                        }
+                    }
+                }
                 match (self.opt_node_type(item1.id), self.opt_node_type(item2.id)) {
                     (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
                     _ => {
