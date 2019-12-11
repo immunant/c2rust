@@ -981,7 +981,7 @@ unsafe fn array_ref2() {
     t = &t[1..];
 }
 
-pub unsafe extern "C" fn __strftime(#[slice] mut s: Option<&[libc::wchar_t]>) {
-    __strftime(Some(&s.unwrap()[1..]));
-    __strftime(Some(&s.unwrap()[0..]));
+pub unsafe extern "C" fn deref_to_slice(#[slice] mut s: Option<&[libc::wchar_t]>) {
+    deref_to_slice(Some(&s.unwrap()[1..]));
+    deref_to_slice(Some(&s.unwrap()[0..]));
 }
