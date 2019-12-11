@@ -512,7 +512,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         }
     }
 
-    fn visit_expr_unify_child(&mut self, e: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
+    fn unify_expr_child(&mut self, e: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
         if let Some(ch_kt) = kt.get().children() {
             assert!(ch_kt.len() == 1);
             self.visit_expr_unify(e, ch_kt[0]);
@@ -524,7 +524,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     fn visit_expr_unify(&mut self, ex: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
         let tcx = self.cx.ty_ctxt();
         match ex.kind {
-            ExprKind::Box(ref e) => self.visit_expr_unify_child(e, kt),
+            ExprKind::Box(ref e) => self.unify_expr_child(e, kt),
 
             ExprKind::Array(ref exprs) => {
                 // We really want the subexpressions to at least unify with
@@ -816,7 +816,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // TODO: handle TypeRelative paths
             }
 
-            ExprKind::AddrOf(_, _, ref e) => self.visit_expr_unify_child(e, kt),
+            ExprKind::AddrOf(_, _, ref e) => self.unify_expr_child(e, kt),
 
             // TODO: unify `Break` with return values
             //
@@ -824,7 +824,10 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             //
             // TODO: unify non-generic `Struct`
 
-            ExprKind::Repeat(ref e, _) => self.visit_expr_unify_child(e, kt),
+            ExprKind::Repeat(ref e, ref count) => {
+                self.unify_expr_child(e, kt);
+                self.visit_anon_const(count);
+            }
 
             ExprKind::Paren(ref e) => self.visit_expr_unify(e, kt),
 
