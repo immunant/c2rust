@@ -666,7 +666,17 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let ty_key_tree = self.ast_ty_to_key_tree(ty);
                 self.unify_key_trees(kt, ty_key_tree);
 
-                self.visit_expr(e);
+                let e_key_tree = self.expr_ty_to_key_tree(e);
+                if let LitTyKeyNode::Leaf(l) = e_key_tree.get() {
+                    if self.cx.opt_node_type(ty.id).map(|ty| ty.is_scalar()).unwrap_or(false) {
+                        // Special case: if we're casting a literal to a scalar,
+                        // rustc will infer the type of the literal if it's unsuffixed,
+                        // so we really need to keep the suffix
+                        self.unif.unify_var_value(l, LitTySource::Unknown(true))
+                            .expect("failed to unify");
+                    }
+                }
+                self.visit_expr_unify(e, e_key_tree);
                 self.visit_ty(ty);
             }
 
