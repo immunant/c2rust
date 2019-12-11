@@ -871,7 +871,6 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     /// Visit a `Pat` node, unifying sub-nodes along the way.
     /// Returns `true` if this node is a `Rest`.
     fn visit_pat_unify(&mut self, p: &Pat, kt: LitTyKeyTree<'kt, 'tcx>) -> bool {
-        let tcx = self.cx.ty_ctxt();
         match p.kind {
             PatKind::Ident(_, ident, Some(ref pat)) => {
                 // `ref? mut? ident @ pat`, handle it as `pat`
