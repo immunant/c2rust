@@ -800,7 +800,7 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         /// Rewrite all paths in a crate
         // @function visit_paths
         // @tparam LuaAstNode node AST node to visit. Valid node types: {P<Item>}.
-        // @tparam function(NodeId, QSelf, Path, Def) callback Function called for each path. Can modify QSelf and/or Path to rewrite the path.
+        // @tparam function(NodeId, QSelf, Path, {Def,...}) callback Function called for each path. Can modify QSelf and/or Path to rewrite the path.
         methods.add_method("visit_paths", |lua_ctx, this, (node, callback): (LuaValue<'lua>, LuaFunction<'lua>)| {
             dispatch!(this.fold_paths, node, lua_ctx, (callback, lua_ctx), {P<ast::Item>})
         });
