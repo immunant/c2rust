@@ -2248,7 +2248,13 @@ impl<'c> Translation<'c> {
                     match attr {
                         c_ast::Attribute::Alias(aliasee) => {
                             let mk_ = mk().extern_("C").pub_().single_attr("no_mangle");
-                            let aliasee = mk().path_expr(vec![aliasee]);
+                            let aliasee = match &self.tcfg.prefix_function_names {
+                                Some(prefix) => {
+                                    let prefixed_aliasee = format!("{}{}", prefix, aliasee);
+                                    mk().path_expr(vec![prefixed_aliasee])
+                                },
+                                None => mk().path_expr(vec![aliasee]),
+                            };
                             let args_exprs = args
                                 .iter()
                                 .map(|a|{
