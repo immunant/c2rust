@@ -980,3 +980,8 @@ unsafe fn array_ref2() {
     let fresh = t;
     t = &t[1..];
 }
+
+pub unsafe extern "C" fn __strftime(#[slice] mut s: Option<&[libc::wchar_t]>) {
+    __strftime(Some(&s.unwrap()[1..]));
+    __strftime(Some(&s.unwrap()[0..]));
+}

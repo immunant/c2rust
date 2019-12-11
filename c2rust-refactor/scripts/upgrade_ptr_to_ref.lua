@@ -646,7 +646,7 @@ function Visitor:rewrite_method_call_expr(expr)
             exprs[2] = decay_ref_to_ptr(exprs[2], rhs_cfg)
         end
 
-        expr:to_method_call("wrapping_offset_from", {exprs[1], exprs[2]})
+        expr:to_method_call(method_name, {exprs[1], exprs[2]})
     end
 end
 
@@ -866,9 +866,10 @@ function rewrite_chained_offsets(unwrapped_expr)
     return offset_expr, unwrapped_expr
 end
 
-function Visitor:rewrite_deref_expr(expr)
+function Visitor:rewrite_deref_expr(expr, output_slice)
     local derefed_exprs = expr:get_exprs()
     local unwrapped_expr = derefed_exprs[1]
+    local cfg
 
     -- *p.offset(x).offset(y) -> p[x + y] (pointer) or
     -- *p.as_mut_ptr().offset(x).offset(y) -> p[x + y] (array)
@@ -876,7 +877,7 @@ function Visitor:rewrite_deref_expr(expr)
         local offset_expr, unwrapped_expr = rewrite_chained_offsets(unwrapped_expr)
 
         -- Should be left with a path or field, otherwise bail
-        local cfg = self:get_expr_cfg(unwrapped_expr)
+        cfg = self:get_expr_cfg(unwrapped_expr)
 
         if not cfg then
             return
@@ -924,7 +925,7 @@ function Visitor:rewrite_deref_expr(expr)
         expr:to_index(unwrapped_expr, offset_expr)
     -- *ptr = 1 -> **ptr.as_mut().unwrap() = 1
     elseif unwrapped_expr:kind_name() == "Path" then
-        local cfg = self:get_expr_cfg(unwrapped_expr)
+        cfg = self:get_expr_cfg(unwrapped_expr)
 
         if not cfg or cfg:failed_rewrite() then return end
 
@@ -967,6 +968,16 @@ function Visitor:rewrite_deref_expr(expr)
             local zero_expr = self.tctx:int_lit_expr(0, nil)
             expr:to_index(unwrapped_expr, zero_expr)
         end
+    end
+
+    -- May need to output a slice in certain circumstances,
+    -- ie if the deref expr is a slice wrapped in an AddrOf
+    if output_slice and cfg and cfg:is_slice_any() and expr:kind_name() == "Index" then
+        local index = expr:child(2)
+
+        index = Expr.new{"Range", index, nil, "HalfOpen"}
+
+        expr:replace_child(2, index)
     end
 end
 
@@ -1217,6 +1228,17 @@ function Visitor:rewrite_call_expr(expr)
                 -- &T -> Some(&T)
                 elseif param_kind == "AddrOf" then
                     local some_path_expr = self.tctx:ident_path_expr("Some")
+                    local kind = param_expr:get_kind()
+                    local mutbl = param_cfg:is_mut() and "Mutable" or "Immutable"
+                    local target = kind:child(3)
+
+                    if target:kind_name() == "Unary" and tostring(target:child(1)) == "Deref" then
+                        self:rewrite_deref_expr(target, true)
+                        kind:replace_child(3, target)
+                    end
+
+                    kind:replace_child(2, mutbl)
+                    param_expr:set_kind(kind)
                     param_expr:to_call{some_path_expr, param_expr}
 
                     goto continue
@@ -1238,6 +1260,12 @@ function Visitor:rewrite_call_expr(expr)
                         -- foo(x) -> foo(x.as_ref().map(|r| &**r)) iff both path and param
                         -- aren't boxes (REVIEW: maybe should check that they're opt too?)
                         elseif not (path_cfg:is_box_any() and param_cfg:is_box_any()) then
+                            if path_cfg:non_null_wrapped() then
+                                log_error("Found unsupported NonNull to safe type conversion in call param")
+
+                                goto continue
+                            end
+
                             local var_expr = self.tctx:ident_path_expr("r")
 
                             var_expr:to_unary("Deref", var_expr)
