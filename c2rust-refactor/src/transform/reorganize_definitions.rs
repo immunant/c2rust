@@ -1038,7 +1038,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         if let ItemKind::Use(_) = decl.kind {
                             return true;
                         }
-                        if cx.structural_eq(&decl, item) {
+                        if cx.compatible_types(&decl, item) {
                             matches.push(cx.node_def_id(decl.id));
                             return false;
                         }
@@ -1350,7 +1350,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         // Otherwise make sure these items are structurally
                         // equivalent.
                         _ => {
-                            if self.cx.structural_eq(&item, &existing_item) {
+                            if self.cx.compatible_types(&item, &existing_item) {
                                 return ContainsDecl::Equivalent(existing_decl);
                             }
                         }

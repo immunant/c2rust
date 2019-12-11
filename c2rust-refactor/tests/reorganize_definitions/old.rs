@@ -38,6 +38,13 @@ pub mod bar {
         use super::libc;
     }
 
+    #[c2rust::header_src = "compat.h:6"]
+    pub mod compat_h {
+        pub struct conflicting {
+            pub x: libc::c_char,
+        }
+    }
+
     use bar_h::bar_t;
 
     #[no_mangle]
@@ -75,7 +82,14 @@ pub mod foo {
         }
     }
 
+    #[c2rust::header_src = "compat.h:6"]
+    pub mod compat_h {
+        pub struct conflicting {
+            pub y: libc::c_char,
+        }
+    }
     use bar_h::{Bar, bar_t};
+    use compat_h::conflicting;
 
     // Comment on foo_t
     #[derive(Copy, Clone)]
@@ -86,6 +100,7 @@ pub mod foo {
     }
 
     unsafe fn foo() -> *const bar_t {
+        let c = conflicting { y: 10 };
         &Bar as *const bar_t
     }
 }

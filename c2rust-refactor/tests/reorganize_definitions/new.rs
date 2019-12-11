@@ -11,6 +11,16 @@
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
 
+pub mod compat_h_0 {
+    pub struct conflicting {
+        pub y: libc::c_char,
+    }
+}
+pub mod compat_h {
+    pub struct conflicting {
+        pub x: libc::c_char,
+    }
+}
 extern crate libc;
 
 type outside = i32;
@@ -49,6 +59,7 @@ pub mod foo {
 
     use crate::bar::bar_t;
     use crate::bar::Bar;
+    use crate::compat_h_0::conflicting;
 
     // Comment on foo_t
 
@@ -60,6 +71,7 @@ pub mod foo {
     }
 
     unsafe fn foo() -> *const crate::bar::bar_t {
+        let c = crate::compat_h_0::conflicting { y: 10 };
         &crate::bar::Bar as *const crate::bar::bar_t
     }
 }
