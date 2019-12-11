@@ -154,8 +154,6 @@ impl Transform for RemoveLiteralSuffixes {
             arena: &arena,
             unif: ut::UnificationTable::new(),
             lit_nodes: HashMap::new(),
-            hir_id_key_tree_cache: HashMap::new(),
-            ty_key_tree_cache: HashMap::new(),
         };
         visit::walk_crate(&mut uv, &krate);
 
@@ -219,8 +217,6 @@ struct UnifyVisitor<'a, 'kt, 'tcx: 'a + 'kt> {
     arena: &'kt SyncDroplessArena,
     unif: ut::UnificationTable<ut::InPlace<LitTyKey<'tcx>>>,
     lit_nodes: HashMap<NodeId, LitTyKey<'tcx>>,
-    hir_id_key_tree_cache: HashMap<hir::HirId, LitTyKeyTree<'kt, 'tcx>>,
-    ty_key_tree_cache: HashMap<(ty::Ty<'tcx>, bool), LitTyKeyTree<'kt, 'tcx>>,
 }
 
 impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
@@ -373,24 +369,17 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // This is a local variable that may have a type,
                 // try to get that type and unify it
                 let pid = tcx.hir().get_parent_node(id);
-                if let Some(key_tree) = self.hir_id_key_tree_cache.get(&pid) {
-                    return key_tree;
-                }
-                let new_node = self.new_empty_node();
-                self.hir_id_key_tree_cache.insert(pid, new_node);
-
                 let node = match_or!([tcx.hir().find(pid)]
                                      Some(x) => x;
-                                     return new_node);
+                                     return self.new_empty_node());
                 let l = match_or!([node] hir::Node::Local(l) => l;
-                                  return new_node);
+                                  return self.new_empty_node());
                 let lty = match_or!([l.ty] Some(ref lty) => lty;
-                                    return new_node);
-                new_node.set(self.hir_ty_to_key_tree(lty).get());
+                                    return self.new_empty_node());
                 // FIXME: this local reference might be a sub-binding,
                 // and not the entire local; in that case, we need
                 // to split up the key tree
-                new_node
+                self.hir_ty_to_key_tree(lty)
             }
             // TODO: handle `SelfCtor`
 
@@ -408,15 +397,19 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         self.ty_to_key_tree(ty, true)
     }
 
-    fn ty_to_key_tree(&mut self, ty: ty::Ty<'tcx>, mach_actual: bool) -> LitTyKeyTree<'kt, 'tcx> {
-        // We memoize the result both to improve performance and
-        // eliminate infinite recursion
+    fn ty_to_key_tree_internal(
+        &mut self,
+        ty: ty::Ty<'tcx>,
+        mach_actual: bool,
+        seen: &mut HashMap<(ty::Ty<'tcx>, bool), LitTyKeyTree<'kt, 'tcx>>,
+    ) -> LitTyKeyTree<'kt, 'tcx> {
+        // We memoize the result to eliminate infinite recursion
         let hash_key = (ty, mach_actual);
-        if let Some(kt) = self.ty_key_tree_cache.get(&hash_key) {
+        if let Some(kt) = seen.get(&hash_key) {
             return kt;
         }
         let new_node = self.new_empty_node();
-        self.ty_key_tree_cache.insert(hash_key, new_node);
+        seen.insert(hash_key, new_node);
 
         let tcx = self.cx.ty_ctxt();
         let mut fn_sig_to_key_tree = |fn_sig: ty::PolyFnSig<'tcx>, sig_mach: bool| {
@@ -424,7 +417,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 .skip_binder()
                 .inputs_and_output
                 .iter()
-                .map(|ty| self.ty_to_key_tree(ty, sig_mach))
+                .map(|ty| self.ty_to_key_tree_internal(ty, sig_mach, seen))
                 .collect::<Vec<_>>();
             self.replace_with_node(new_node, &ch);
         };
@@ -446,20 +439,20 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // Ignore the actual structure for these types, and just
                 // use the inner type as the single child
                 let inner_ty = substs.type_at(0);
-                let ty_kt = self.ty_to_key_tree(inner_ty, mach_actual);
+                let ty_kt = self.ty_to_key_tree_internal(inner_ty, mach_actual, seen);
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
             ty::TyKind::Adt(ref adt_def, ref substs) => {
                 let ch = adt_def.all_fields()
-                    .map(|field| self.ty_to_key_tree(field.ty(tcx, substs), mach_actual))
+                    .map(|field| self.ty_to_key_tree_internal(field.ty(tcx, substs), mach_actual, seen))
                     .collect::<Vec<_>>();
                 self.replace_with_node(new_node, &ch);
             }
 
             ty::TyKind::Str => {
                 let u8_ty = tcx.mk_mach_uint(UintTy::U8);
-                let u8_kt = self.ty_to_key_tree(u8_ty, true);
+                let u8_kt = self.ty_to_key_tree_internal(u8_ty, true, seen);
                 self.replace_with_node(new_node, &[u8_kt]);
             }
 
@@ -467,7 +460,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             ty::TyKind::Slice(ty) |
             ty::TyKind::RawPtr(ty::TypeAndMut { ty, .. }) |
             ty::TyKind::Ref(_, ty, _) => {
-                let ty_kt = self.ty_to_key_tree(ty, mach_actual);
+                let ty_kt = self.ty_to_key_tree_internal(ty, mach_actual, seen);
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
@@ -485,7 +478,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             ty::TyKind::Tuple(ref elems) => {
                 let ch = elems.types()
-                    .map(|ty| self.ty_to_key_tree(ty, mach_actual))
+                    .map(|ty| self.ty_to_key_tree_internal(ty, mach_actual, seen))
                     .collect::<Vec<_>>();
                 self.replace_with_node(new_node, &ch);
             }
@@ -502,6 +495,11 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             _ => {}
         }
         new_node
+    }
+
+    fn ty_to_key_tree(&mut self, ty: ty::Ty<'tcx>, mach_actual: bool) -> LitTyKeyTree<'kt, 'tcx> {
+        let mut seen = HashMap::new();
+        self.ty_to_key_tree_internal(ty, mach_actual, &mut seen)
     }
 
     fn expr_ty_to_key_tree(&mut self, ex: &Expr) -> LitTyKeyTree<'kt, 'tcx> {
