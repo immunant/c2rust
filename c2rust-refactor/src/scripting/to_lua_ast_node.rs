@@ -928,6 +928,10 @@ impl UserData for LuaAstNode<Res> {
         methods.add_method("get_namespace", |_lua_ctx, this, ()| {
             Ok(util::namespace(&*this.borrow()).map(|namespace| namespace.descr()))
         });
+        methods.add_meta_method(
+          MetaMethod::ToString,
+          |_lua_ctx, this, ()| Ok(format!("{:?}", this.borrow())),
+        );
     }
 }
 
