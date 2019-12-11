@@ -173,7 +173,7 @@ impl Transform for RemoveLiteralSuffixes {
                             }
                         }
 
-                        LitTySource::Suffix(ty) => {
+                        LitTySource::Suffix(ty, needs_suffix) => {
                             assert!(lit.kind.is_suffixed());
                             // We have a set of literals with no other type source,
                             // so the first one (this one) gets a suffix to make it typed,
@@ -188,9 +188,9 @@ impl Transform for RemoveLiteralSuffixes {
                             // Special case: if `ty` is `i32` or `f64`,
                             // then we can remove the suffix, since those
                             // are the default inference types
-                            match ty.kind {
-                                ty::TyKind::Int(IntTy::I32) |
-                                ty::TyKind::Float(FloatTy::F64) => {
+                            match (needs_suffix, &ty.kind) {
+                                (false, ty::TyKind::Int(IntTy::I32)) |
+                                (false, ty::TyKind::Float(FloatTy::F64)) => {
                                     if let Some(new_lit) = remove_suffix(&lit) {
                                         *lit = new_lit;
                                     }
@@ -199,7 +199,10 @@ impl Transform for RemoveLiteralSuffixes {
                             }
                         }
 
-                        LitTySource::Unknown => {}
+                        LitTySource::Unknown(needs_suffix) => {
+                            // We should never wind up here
+                            assert!(!needs_suffix);
+                        }
                     };
                 }
                 _ => {}
@@ -357,7 +360,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     hir::Int(it) => LitTySource::Actual(tcx.mk_mach_int(it)),
                     hir::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(uit)),
                     hir::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ft)),
-                    _ => LitTySource::Unknown
+                    _ => LitTySource::Unknown(false)
                 };
                 self.new_leaf(source)
             }
@@ -429,7 +432,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let source = if mach_actual {
                     LitTySource::Actual(ty)
                 } else {
-                    LitTySource::Unknown
+                    LitTySource::Unknown(false)
                 };
                 self.replace_with_leaf(new_node, source);
             }
@@ -1104,13 +1107,16 @@ impl<'tcx> ut::UnifyKey for LitTyKey<'tcx> {
 /// Source for the type information for the current `LitTyKey`.
 #[derive(Debug, Clone, Copy)]
 enum LitTySource<'tcx> {
-    /// No type information for this key.
-    Unknown,
+    /// No type information for this key. The first field is set
+    /// to `true` if the suffix needs to be preserved, e.g.,
+    /// this literal is used in a method call or cast to scalar.
+    Unknown(bool),
 
     /// This type came from a suffix. If we get all our type information from
     /// suffixes, that means we need to keep one literal suffix around to maintain
-    /// the type, and throw out all the rest.
-    Suffix(ty::Ty<'tcx>),
+    /// the type, and throw out all the rest. The first field is set to `true`
+    /// if the suffix needs to be preserved (see above).
+    Suffix(ty::Ty<'tcx>, bool),
 
     /// We got this type from an actual value, e.g., a structure field or
     /// an explicitly typed local. If we get one of these, we can throw out
@@ -1126,15 +1132,15 @@ impl<'tcx> LitTySource<'tcx> {
         };
         match lit.kind {
             LitKind::Int(_, LitIntType::Signed(int_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_int(int_ty)),
+                LitTySource::Suffix(tcx.mk_mach_int(int_ty), false),
 
             LitKind::Int(_, LitIntType::Unsigned(uint_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_uint(uint_ty)),
+                LitTySource::Suffix(tcx.mk_mach_uint(uint_ty), false),
 
             LitKind::Float(_, LitFloatType::Suffixed(float_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_float(float_ty)),
+                LitTySource::Suffix(tcx.mk_mach_float(float_ty), false),
 
-            _ => LitTySource::Unknown
+            _ => LitTySource::Unknown(false)
         }
     }
 }
@@ -1147,13 +1153,16 @@ impl<'tcx> ut::UnifyValue for LitTySource<'tcx> {
         match (value1, value2) {
             // Check for mismatched types
             (Actual(ty1), Actual(ty2)) |
-            (Actual(ty1), Suffix(ty2)) |
-            (Suffix(ty1), Actual(ty2)) |
-            (Suffix(ty1), Suffix(ty2)) if ty1 != ty2 => Err((ty1, ty2)),
+            (Actual(ty1), Suffix(ty2, _)) |
+            (Suffix(ty1, _), Actual(ty2)) |
+            (Suffix(ty1, _), Suffix(ty2, _)) if ty1 != ty2 => Err((ty1, ty2)),
+
+            (Suffix(ty, n1), Suffix(_, n2)) |
+            (Suffix(ty, n1), Unknown(n2)) |
+            (Unknown(n1), Suffix(ty, n2)) => Ok(Suffix(ty, *n1 || *n2)),
 
             (Actual(ty), _) | (_, Actual(ty)) => Ok(Actual(ty)),
-            (Suffix(ty), _) | (_, Suffix(ty)) => Ok(Suffix(ty)),
-            (Unknown, Unknown) => Ok(Unknown),
+            (Unknown(n1), Unknown(n2)) => Ok(Unknown(*n1 || *n2)),
         }
     }
 }
