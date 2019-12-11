@@ -16,13 +16,13 @@ description = "Clang AST extraction API for use in the C2Rust project"
 libc = "0.2"
 serde = "1.0"
 serde_bytes = "0.11"
-serde_cbor = "0.9"
+serde_cbor = "0.10"
 
 [build-dependencies]
-bindgen = { version = "0.51", features = ["logging"] }
+bindgen = { version = "0.52", features = ["logging"] }
 cmake = "0.1"
 clang-sys = "0.28"
-env_logger = "0.6"
+env_logger = "0.7"
 
 [features]
 default = []

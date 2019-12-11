@@ -44,31 +44,33 @@ fn parse_bitfield_attr(
                     Lit::Str(lit_str) => lit_str.value(),
                     _ => {
                         let err_str = "Found bitfield attribute with non str literal assignment";
-                        let span = meta_name_value.ident.span();
+                        let span = meta_name_value.path.span();
 
                         return Err(Error::new(span, err_str));
                     }
                 };
 
-                let lhs_string = meta_name_value.ident.to_string();
-
-                match lhs_string.as_str() {
-                    "name" => name = Some(rhs_string),
-                    "ty" => ty = Some(rhs_string),
-                    "bits" => {
-                        bits = Some(rhs_string);
-                        bits_span = Some(meta_name_value.ident.span());
+                if let Some(lhs_ident) = meta_name_value.path.get_ident() {
+                    match lhs_ident.to_string().as_str() {
+                        "name" => name = Some(rhs_string),
+                        "ty" => ty = Some(rhs_string),
+                        "bits" => {
+                            bits = Some(rhs_string);
+                            bits_span = Some(meta_name_value.path.span());
+                        }
+                        // This one shouldn't ever occur here,
+                        // but we're handling it just to be safe
+                        "padding" => {
+                            return Ok(None);
+                        }
+                        _ => {}
                     }
-                    // This one shouldn't ever occur here,
-                    // but we're handling it just to be safe
-                    "padding" => {
+                }
+            } else if let NestedMeta::Meta(Meta::Path(ref path)) = nested_meta {
+                if let Some(ident) = path.get_ident() {
+                    if ident == "padding" {
                         return Ok(None);
                     }
-                    _ => {}
-                }
-            } else if let NestedMeta::Meta(Meta::Word(ref ident)) = nested_meta {
-                if ident == "padding" {
-                    return Ok(None);
                 }
             }
         }
@@ -107,7 +109,7 @@ fn filter_and_parse_fields(field: &Field) -> Vec<Result<BFFieldAttr, Error>> {
     let attrs: Vec<_> = field
         .attrs
         .iter()
-        .filter(|attr| attr.path.segments.last().unwrap().value().ident == "bitfield")
+        .filter(|attr| attr.path.segments.last().unwrap().ident == "bitfield")
         .collect();
 
     if attrs.len() == 0 {

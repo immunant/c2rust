@@ -298,7 +298,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     }
 
     impl Executor for LoggingExecutor {
-        fn init(&self, cx: &Context, unit: &Unit) {
+        fn init<'a, 'cfg>(&self, cx: &Context<'a, 'cfg>, unit: &Unit<'a>) {
             self.default.init(cx, unit);
         }
 
@@ -308,23 +308,11 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
             id: PackageId,
             target: &Target,
             mode: CompileMode,
+            _on_stdout_line: &mut dyn FnMut(&str) -> CargoResult<()>,
+            _on_stderr_line: &mut dyn FnMut(&str) -> CargoResult<()>,
         ) -> CargoResult<()> {
             self.maybe_record_cmd(&cmd, &id, target);
-            self.default.exec(cmd, id, target, mode)
-        }
-
-        fn exec_json(
-            &self,
-            cmd: ProcessBuilder,
-            id: PackageId,
-            target: &Target,
-            mode: CompileMode,
-            handle_stdout: &mut dyn FnMut(&str) -> CargoResult<()>,
-            handle_stderr: &mut dyn FnMut(&str) -> CargoResult<()>,
-        ) -> CargoResult<()> {
-            self.maybe_record_cmd(&cmd, &id, target);
-            self.default
-                .exec_json(cmd, id, target, mode, handle_stdout, handle_stderr)
+            self.default.exec(cmd, id, target, mode, &mut |_| Ok(()), &mut |_| Ok(()))
         }
 
         fn force_rebuild(&self, unit: &Unit) -> bool {
@@ -348,7 +336,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     let mut arg_vec = exec.pkg_args.lock().unwrap().clone();
 
     for args in &mut arg_vec {
-        let rustc = config.rustc(Some(&ws)).unwrap();
+        let rustc = config.load_global_rustc(Some(&ws)).unwrap();
         args.args.insert(0, get_rustc_executable(&rustc.path));
         info!("cargo-provided rustc args = {:?}", args);
     }
