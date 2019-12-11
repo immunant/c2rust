@@ -430,6 +430,22 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         Some(path.res)
     }
 
+    pub fn try_resolve_pat_hir(&self, p: &ast::Pat) -> Option<Res> {
+        let node = match_or!([self.hir_map().find(p.id)] Some(x) => x;
+                             return None);
+        let p = match_or!([node] hir::Node::Pat(p) => p;
+                          return None);
+        let qpath = match p.kind {
+            hir::PatKind::Path(ref q) |
+            hir::PatKind::Struct(ref q, ..) |
+            hir::PatKind::TupleStruct(ref q, ..) => q,
+            _ => return None
+        };
+        let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
+                             return None);
+        Some(path.res)
+    }
+
     /// Try to resolve a node as a reference to a type-dependent definition, like `Vec::new` (a.k.a.
     /// `<Vec>::new`) or `<Vec as IntoIterator>::into_iter`.
     ///

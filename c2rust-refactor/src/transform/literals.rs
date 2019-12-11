@@ -324,7 +324,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         // TODO: use the HirId cache???
         match ty.kind {
             hir::TyKind::Path(hir::QPath::Resolved(_, ref path)) => {
-                self.hir_path_to_key_tree(path)
+                self.res_to_key_tree(path.res, path.span)
             }
             // TODO: handle TypeRelative paths
 
@@ -347,12 +347,12 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         }
     }
 
-    fn hir_path_to_key_tree(&mut self, path: &hir::Path) -> LitTyKeyTree<'kt, 'tcx> {
+    fn res_to_key_tree(&mut self, res: Res, span: Span) -> LitTyKeyTree<'kt, 'tcx> {
         // TODO: use the HirId cache???
         let tcx = self.cx.ty_ctxt();
-        match path.res {
+        match res {
             Res::Def(_, did) => {
-                self.def_id_to_key_tree(did, path.span)
+                self.def_id_to_key_tree(did, span)
             }
 
             Res::PrimTy(prim_ty) => {
@@ -527,8 +527,21 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             ExprKind::Box(ref e) => self.visit_expr_unify_child(e, kt),
 
             ExprKind::Array(ref exprs) => {
+                // We really want the subexpressions to at least unify with
+                // each other, so we need to either get the key tree
+                // from the caller, or create a new common one for all subexpressions
+                let elem_kt = if let Some(ch) = kt.get().children() {
+                    assert!(ch.len() == 1);
+                    ch[0]
+                } else {
+                    exprs.first()
+                        .and_then(|e| self.cx.opt_node_type(e.id))
+                        .map(|ty| self.ty_to_key_tree(ty, false))
+                        .unwrap_or_else(|| self.new_empty_node())
+
+                };
                 for e in exprs {
-                    self.visit_expr_unify_child(e, kt);
+                    self.visit_expr_unify(e, elem_kt);
                 }
             }
 
@@ -796,13 +809,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             ExprKind::Path(..) => {
                 visit::walk_expr(self, ex);
-                let node = self.cx.hir_map().find(ex.id).unwrap();
-				let e = match_or!([node] hir::Node::Expr(e) => e;
-                                  panic!("expected Expr, got {:?}", node));
-				let qpath = match_or!([e.kind] hir::ExprKind::Path(ref q) => q;
-                                      panic!("expected ExprKind::Path, got {:?}", e.kind));
-                if let hir::QPath::Resolved(_, ref path) = qpath {
-                    let path_key_tree = self.hir_path_to_key_tree(path);
+                if let Some(res) = self.cx.try_resolve_expr_hir(ex) {
+                    let path_key_tree = self.res_to_key_tree(res, ex.span);
                     self.unify_key_trees(kt, path_key_tree);
                 }
                 // TODO: handle TypeRelative paths
@@ -839,17 +847,123 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         }
     }
 
-    fn visit_pat_unify(&mut self, p: &Pat, kt: LitTyKeyTree<'kt, 'tcx>) {
+    fn unify_pat_children(
+        &mut self,
+        pats: &Vec<P<Pat>>,
+        ch: &'kt [LitTyKeyTree<'kt, 'tcx>],
+    ) {
+        let mut ich = 0;
+        for pat in pats {
+            let is_rest = self.visit_pat_unify(pat, ch[ich]);
+            if is_rest {
+                // Encountered a `..`, skip over the corresponding children
+                assert!(pats.len() <= ch.len());
+                ich += ch.len() - pats.len();
+            }
+            ich += 1;
+        }
+        assert!(ich == ch.len());
+    }
+
+    /// Visit a `Pat` node, unifying sub-nodes along the way.
+    /// Returns `true` if this node is a `Rest`.
+    fn visit_pat_unify(&mut self, p: &Pat, kt: LitTyKeyTree<'kt, 'tcx>) -> bool {
+        let tcx = self.cx.ty_ctxt();
         match p.kind {
+            PatKind::Ident(_, ident, Some(ref pat)) => {
+                // `ref? mut? ident @ pat`, handle it as `pat`
+                self.visit_ident(ident);
+                return self.visit_pat_unify(pat, kt);
+            }
+
+            //FIXME: these are not correct
+            //PatKind::Struct(ref path, ref fields, _) => {
+            //    self.visit_path(path, p.id);
+            //    let res = self.cx.try_resolve_pat_hir(p);
+            //    if let Some(res) = res {
+            //        let path_key_tree = self.res_to_key_tree(res, path.span);
+            //        self.unify_key_trees(kt, path_key_tree);
+            //    }
+
+            //    let v = self.cx
+            //        .opt_adjusted_node_type(p.id)
+            //        .and_then(|ty| ty.ty_adt_def())
+            //        .and_then(|def| res.map(|res| def.variant_of_res(res)));
+            //    for field in fields {
+            //        self.visit_ident(field.ident);
+            //        // TODO: unify with type of field
+            //        if let (Some(ch), Some(idx)) = (
+            //            kt.get().children(),
+            //            v.and_then(|v| tcx.find_field_index(field.ident, v)),
+            //        ) {
+            //            self.visit_pat_unify(&field.pat, ch[idx]);
+            //        } else {
+            //            self.visit_pat(&field.pat);
+            //        }
+            //        for attr in field.attrs.iter() {
+            //            self.visit_attribute(attr);
+            //        }
+            //    }
+            //}
+
+            //PatKind::TupleStruct(ref path, ref pats) => {
+            //    self.visit_path(path, p.id);
+            //    let res = self.cx.try_resolve_pat_hir(p);
+            //    if let Some(res) = res {
+            //        let path_key_tree = self.res_to_key_tree(res, path.span);
+            //        self.unify_key_trees(kt, path_key_tree);
+            //    }
+
+            //    // FIXME: get correct field index
+            //    let ch = self.cx.opt_node_type(p.id)
+            //        .map(|ty| self.ty_to_key_tree(ty, false))
+            //        .and_then(|kt| kt.get().children());
+            //    if let Some(ch) = ch {
+            //        self.unify_pat_children(pats, ch);
+            //    } else {
+            //        for pat in pats {
+            //            self.visit_pat(pat);
+            //        }
+            //    };
+            //}
+
             PatKind::Or(ref pats) => {
                 for pat in pats {
-                    self.visit_pat_unify(pat, kt);
+                    let _is_rest = self.visit_pat_unify(pat, kt);
+                    // None of the above should ever be `Rest` nodes,
+                    // but we should sanity-check
+                    assert!(!_is_rest);
                 }
             }
 
-            PatKind::Lit(ref e) => {
-                self.visit_expr_unify(e, kt);
+            PatKind::Path(..) => {
+                visit::walk_pat(self, p);
+                if let Some(res) = self.cx.try_resolve_pat_hir(p) {
+                    let path_key_tree = self.res_to_key_tree(res, p.span);
+                    self.unify_key_trees(kt, path_key_tree);
+                }
             }
+
+            PatKind::Tuple(ref pats) => {
+                if let Some(ch) = kt.get().children() {
+                    self.unify_pat_children(pats, ch);
+                } else {
+                    for pat in pats {
+                        self.visit_pat(pat);
+                    }
+                };
+            }
+
+            PatKind::Box(ref inner) | PatKind::Ref(ref inner, _) => {
+                if let Some(ch) = kt.get().children() {
+                    assert!(ch.len() == 1);
+                    self.visit_pat_unify(inner, ch[0]);
+                } else {
+                    self.visit_pat(inner);
+                }
+            }
+
+            PatKind::Lit(ref e) => self.visit_expr_unify(e, kt),
 
             PatKind::Range(ref start, ref end, _) => {
                 // TODO: approximate???
@@ -858,12 +972,31 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.visit_expr_unify(end, inner_key_tree);
             }
 
-            PatKind::Paren(ref pat) => self.visit_pat_unify(pat, kt),
+            PatKind::Slice(ref pats) => {
+                // See comment for `ExprKind::Array`
+                let elem_kt = if let Some(ch) = kt.get().children() {
+                    assert!(ch.len() == 1);
+                    ch[0]
+                } else {
+                    pats.first()
+                        .and_then(|pat| self.cx.opt_node_type(pat.id))
+                        .map(|ty| self.ty_to_key_tree(ty, false))
+                        .unwrap_or_else(|| self.new_empty_node())
+                };
+                for pat in pats {
+                    self.visit_pat_unify(pat, elem_kt);
+                }
+            }
 
-            // TODO: handle more pattern types once we have hierarchical keys
+            PatKind::Rest => return true,
+
+            PatKind::Paren(ref pat) => return self.visit_pat_unify(pat, kt),
+
+            // TODO: handle `Mac`? Do we need to?
 
             _ => visit::walk_pat(self, p)
-        }
+        };
+        false
     }
 
     // TODO: handle `Field`
@@ -913,8 +1046,11 @@ impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
     }
 
     fn visit_pat(&mut self, p: &'ast Pat) {
-        // TODO: approximate structure
-        let key_tree = self.new_leaf(LitTySource::Unknown);
+        let key_tree = if let Some(ty) = self.cx.opt_node_type(p.id) {
+            self.ty_to_key_tree(ty, false)
+        } else {
+            self.new_empty_node()
+        };
         self.visit_pat_unify(p, key_tree);
     }
 }
