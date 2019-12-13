@@ -1025,7 +1025,7 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
                 ));
             }
 
-            s.print_item(&mk().use_glob_item(vec![&t.tcfg.crate_name()]));
+            s.print_item(&mk().use_glob_item(vec!["", &t.tcfg.crate_name()]));
         }
     }
 }
