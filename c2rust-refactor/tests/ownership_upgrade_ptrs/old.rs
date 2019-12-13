@@ -1,5 +1,14 @@
-#![feature(rustc_private, param_attrs, ptr_wrapping_offset_from, c_variadic, extern_types)]
+#![feature(
+    rustc_private,
+    param_attrs,
+    ptr_wrapping_offset_from,
+    c_variadic,
+    extern_types,
+    register_tool,
+    register_attr,
+)]
 #![register_tool(c2rust)]
+#![register_attr(slice, nonnull, ownership_constraints)]
 
 extern crate libc;
 
@@ -734,6 +743,8 @@ unsafe fn array_ref2() {
     #[nonnull]
     let fresh = t;
     t = t.offset(1);
+
+    let x = *r.as_ptr().offset(1);
 }
 
 pub unsafe extern "C" fn deref_to_slice(

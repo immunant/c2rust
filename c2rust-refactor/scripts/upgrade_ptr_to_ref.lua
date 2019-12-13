@@ -875,6 +875,11 @@ function Visitor:rewrite_deref_expr(expr, output_slice)
     -- *p.as_mut_ptr().offset(x).offset(y) -> p[x + y] (array)
     if unwrapped_expr:get_method_name() == "offset" then
         local offset_expr, unwrapped_expr = rewrite_chained_offsets(unwrapped_expr)
+        local method_name = unwrapped_expr:get_method_name()
+
+        if method_name == "as_ptr" or method_name == "as_mut_ptr" then
+            unwrapped_expr = unwrapped_expr:child(2)[1]
+        end
 
         -- Should be left with a path or field, otherwise bail
         cfg = self:get_expr_cfg(unwrapped_expr)
