@@ -561,6 +561,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 .retain(|attr| !is_c2rust_attr(attr, "src_loc"));
             smallvec![item]
         });
+
+        // Remove header_src attributes
+        FlatMapNodes::visit(krate, |mut item: P<Item>| {
+            item.attrs
+                .retain(|attr| !is_c2rust_attr(attr, "header_src"));
+            smallvec![item]
+        });
     }
 
     /// Update paths to moved items and remove redundant imports.
