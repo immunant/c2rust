@@ -22,6 +22,7 @@ This document tracks things that we know the translator can't handle, as well as
   * GNU packed structs (Rust has `#[repr(packed)]` compatible with `#[repr(C)]`)
   * `restrict` pointers (Rust has references)
   * macros
+  * GNU labels-as-values (https://github.com/immunant/c2rust/issues/221)
 
 ## Likely won't ever support
 
