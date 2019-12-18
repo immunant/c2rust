@@ -46,28 +46,28 @@ C2Rust requires LLVM 6, 7, or 8 with its corresponding clang compiler and librar
 
 Finally, installing the correct nightly Rust compiler with [Rustup](https://rustup.rs/) is required on all platforms. You will also need to add `rustfmt`:
 
-    rustup install nightly-2019-10-04
-    rustup component add --toolchain nightly-2019-10-04 rustfmt
+    rustup install nightly-2019-12-05
+    rustup component add --toolchain nightly-2019-12-05 rustfmt
 
 
 ### Installing from crates.io
 
-    cargo +nightly-2019-10-04 install c2rust
+    cargo +nightly-2019-12-05 install c2rust
 
 On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
 
-    LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo +nightly-2019-10-04 install c2rust
+    LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo +nightly-2019-12-05 install c2rust
 
 On Linux with Linuxbrew LLVM, you need to point the build system at the LLVM installation as follows:
 
-    LLVM_CONFIG_PATH=/home/linuxbrew/.linuxbrew/opt/llvm/bin/llvm-config cargo +nightly-2019-10-04 install c2rust    
+    LLVM_CONFIG_PATH=/home/linuxbrew/.linuxbrew/opt/llvm/bin/llvm-config cargo +nightly-2019-12-05 install c2rust    
 
 Note: adjust `LLVM_CONFIG_PATH` accordingly if Linuxbrew was installed to your home directory.
 
 On Gentoo, you need to point the build system to the location of `libclang.so` 
   and `llvm-config` as follows:
 
-    LLVM_CONFIG_PATH=/path/to/llvm-config LIBCLANG_PATH=/path/to/libclang.so cargo +nightly-2019-10-04 install c2rust 
+    LLVM_CONFIG_PATH=/path/to/llvm-config LIBCLANG_PATH=/path/to/libclang.so cargo +nightly-2019-12-05 install c2rust 
 
 
 If you have trouble with building and installing, or want to build from the latest master, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
