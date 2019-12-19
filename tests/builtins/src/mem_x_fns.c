@@ -9,5 +9,6 @@ void mem_x(const char src[4], char dest[4]) {
 }
 
 void* assume_aligned(void* ptr) {
+    __builtin_unwind_init();
     return __builtin_assume_aligned(ptr, 8);
 }

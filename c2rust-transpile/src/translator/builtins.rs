@@ -591,7 +591,11 @@ impl<'c> Translation<'c> {
                     )
                 })
             }
+            // There's currently no way to replicate this functionality in Rust, so we just
+            // pass the ptr input param in its place.
             "__builtin_assume_aligned" => Ok(self.convert_expr(ctx.used(), args[0])?),
+            // Skip over, there's no way to implement it in Rust
+            "__builtin_unwind_init" => Ok(WithStmts::new_val(self.panic_or_err("no value"))),
             "__builtin_unreachable" => {
                 Ok(WithStmts::new(
                     vec![mk().semi_stmt(mk().mac_expr(mk().mac(
