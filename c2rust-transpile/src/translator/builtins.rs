@@ -591,7 +591,7 @@ impl<'c> Translation<'c> {
                     )
                 })
             }
-
+            "__builtin_assume_aligned" => Ok(self.convert_expr(ctx.used(), args[0])?),
             "__builtin_unreachable" => {
                 Ok(WithStmts::new(
                     vec![mk().semi_stmt(mk().mac_expr(mk().mac(

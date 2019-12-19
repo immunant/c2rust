@@ -2,7 +2,7 @@
 extern crate libc;
 
 use atomics::{rust_atomics_entry, rust_new_atomics};
-use mem_x_fns::rust_mem_x;
+use mem_x_fns::{rust_mem_x, rust_assume_aligned};
 use math::{rust_ffs, rust_ffsl, rust_ffsll, rust_isfinite, rust_isnan, rust_isinf_sign};
 use self::libc::{c_int, c_uint, c_char, c_long, c_longlong, c_double};
 
@@ -152,5 +152,13 @@ pub fn test_clang9_intrinsics() {
         };
 
         assert_eq!(isinf_sign_ret, rust_isinf_sign_ret);
+    }
+}
+
+pub fn test_assume_aligned() {
+    let null = std::ptr::null_mut();
+
+    unsafe {
+        assert_eq!(rust_assume_aligned(null), null);
     }
 }
