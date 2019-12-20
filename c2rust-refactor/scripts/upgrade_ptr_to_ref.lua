@@ -1044,7 +1044,7 @@ function Visitor:rewrite_assign_expr(expr)
 
                 -- Only wrap in Some if we're assigning to an opt variable
                 if conversion_cfg:is_opt_any() then
-                    local some_path_expr = self.tctx:ident_path_expr("Some")
+                    local some_path_expr = Expr.new{"Path", nil, Path.new{"Some"}}
                     rhs:to_call{some_path_expr, new_rhs}
                 else
                     rhs = new_rhs
@@ -1074,7 +1074,7 @@ function Visitor:rewrite_assign_expr(expr)
             -- If lhs was a ptr, and rhs isn't wrapped in some, wrap it
             -- TODO: Validate rhs needs to be wrapped
             if lhs_ty:kind_name() == "Ptr" then
-                local some_path_expr = self.tctx:ident_path_expr("Some")
+                local some_path_expr = Expr.new{"Path", nil, Path.new{"Some"}}
 
                 rhs:to_call{some_path_expr, rhs}
                 expr:set_exprs{lhs, rhs}
@@ -1176,7 +1176,7 @@ function Visitor:rewrite_call_expr(expr)
                     expr:to_call{path_expr, uncasted_expr}
                 end
             elseif cfg:is_box_any() then
-                local drop = self.tctx:ident_path_expr("drop")
+                local drop = Expr.new{"Path", nil, Path.new{"drop"}}
                 expr:to_call{drop, uncasted_expr}
             end
         end
@@ -1217,7 +1217,7 @@ function Visitor:rewrite_call_expr(expr)
                     end
 
                     if param_cfg:is_opt_any() then
-                        local some_path_expr = self.tctx:ident_path_expr("Some")
+                        local some_path_expr = Expr.new{"Path", nil, Path.new{"Some"}}
                         param_expr:to_call{some_path_expr, param_expr}
                     end
 
@@ -1232,7 +1232,7 @@ function Visitor:rewrite_call_expr(expr)
                     goto continue
                 -- &T -> Some(&T)
                 elseif param_kind == "AddrOf" then
-                    local some_path_expr = self.tctx:ident_path_expr("Some")
+                    local some_path_expr = Expr.new{"Path", nil, Path.new{"Some"}}
                     local kind = param_expr:get_kind()
                     local mutbl = param_cfg:is_mut() and "Mutable" or "Immutable"
                     local target = kind:child(3)
@@ -1253,7 +1253,7 @@ function Visitor:rewrite_call_expr(expr)
                     if path_cfg then
                         -- path -> Some(path)
                         if not path_cfg:is_opt_any() then
-                            local some_path_expr = self.tctx:ident_path_expr("Some")
+                            local some_path_expr = Expr.new{"Path", nil, Path.new{"Some"}}
                             param_expr:to_call{some_path_expr, param_expr}
                             goto continue
                         -- Decay mut ref to immut ref inside option
@@ -1271,12 +1271,34 @@ function Visitor:rewrite_call_expr(expr)
                                 goto continue
                             end
 
-                            local var_expr = self.tctx:ident_path_expr("r")
+                            local mutbl = param_cfg:is_mut() and "Mutable" or "Immutable"
+                            local fn_decl = {
+                                "FnDecl",
+                                inputs={
+                                    {
+                                        "Param",
+                                        attrs={},
+                                        ty=Ty.new{"Infer"},
+                                        pat=Pat.new{
+                                            "Ident",
+                                            {
+                                                "ByValue",
+                                                "Immutable",
+                                            },
+                                            Ident.new("r"),
+                                            nil,
+                                        },
+                                        is_placeholder=false,
+                                    },
+                                },
+                                output={"Default", DUMMY_SP},
+                            }
+                            local var_expr = Expr.new{"Path", nil, Path.new{"r"}}
 
-                            var_expr:to_unary("Deref", var_expr)
-                            var_expr:to_unary("Deref", var_expr)
-                            var_expr:to_addr_of(var_expr, param_cfg:is_mut())
-                            var_expr:to_closure({"r"}, var_expr)
+                            var_expr = Expr.new{"Unary", "Deref", var_expr}
+                            var_expr = Expr.new{"Unary", "Deref", var_expr}
+                            var_expr = Expr.new{"AddrOf", "Ref", mutbl, var_expr}
+                            var_expr = Expr.new{"Closure", "Ref", "NotAsync", "Movable", fn_decl, var_expr}
 
                             if path_cfg:is_mut() then
                                 if not param_cfg:is_mut() then
@@ -1535,9 +1557,9 @@ function Visitor:flat_map_stmt(stmt, walk)
 
             if expr:kind_name() == "Assign" then
                 local exprs = expr:get_exprs()
-                local new_lhs = self.tctx:ident_path_expr(cfg.extra_data[1])
-                local tup0 = self.tctx:ident_path_expr("tup")
-                local tup1 = self.tctx:ident_path_expr("tup")
+                local new_lhs = Expr.new{"Path", nil, Path.new{cfg.extra_data[1]}}
+                local tup0 = Expr.new{"Path", nil, Path.new{"tup"}}
+                local tup1 = Expr.new{"Path", nil, Path.new{"tup"}}
                 local locl_cfg = self.node_id_cfgs[cfg.extra_data[2]]
                 local offset_expr, _ = rewrite_chained_offsets(exprs[2])
                 local offset_caller_cfg = self:get_expr_cfg(exprs[1])
@@ -1551,12 +1573,15 @@ function Visitor:flat_map_stmt(stmt, walk)
 
                 local locl = self.tctx:ident_local("tup", nil, init, "ByValImmut")
 
-                tup0:to_field(tup0, "0")
-                tup1:to_field(tup1, "1")
+                tup0 = Expr.new{"Field", tup0, Ident.new("0")}
+                tup1 = Expr.new{"Field", tup1, Ident.new("1")}
 
                 if locl_cfg:is_opt_any() then
-                    local some_path_expr = self.tctx:ident_path_expr("Some")
-                    tup0:to_call{some_path_expr, tup0}
+                    tup0 = Expr.new{
+                        "Call",
+                        Expr.new{"Path", nil, Path.new{"Some"}},
+                        {tup0},
+                    }
                 end
 
                 local assign_expr = self.tctx:assign_expr(new_lhs, tup0)
@@ -1673,8 +1698,12 @@ function Visitor:visit_local(locl, walk)
 
         if rhs_cfg then
             if cfg:is_opt_any() and not rhs_cfg:is_opt_any() then
-                local some_path_expr = self.tctx:ident_path_expr("Some")
-                init:to_call{some_path_expr, init}
+                init = Expr.new{
+                    "Call",
+                    Expr.new{"Path", nil, Path.new{"Some"}},
+                    {init},
+                }
+
                 locl:set_init(init)
             end
 
