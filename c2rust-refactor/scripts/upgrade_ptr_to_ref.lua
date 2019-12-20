@@ -297,6 +297,33 @@ function Pat.new(kind)
     return self
 end
 
+Local = {}
+
+function Local.new(pat, ty, init, attrs)
+    local self = {}
+
+    self[1] = "Local"
+    self.id = DUMMY_NODE_ID
+    self.span = DUMMY_SP
+    self.pat = pat
+    self.ty = ty
+    self.init = init
+    self.attrs = attrs
+
+    return self
+end
+
+Stmt = {}
+
+function Stmt.new(kind)
+    local self = {}
+
+    self[1] = "Stmt"
+    self.kind = kind
+
+    return self
+end
+
 Ident = {}
 
 function Ident.new(name)
@@ -1571,7 +1598,16 @@ function Visitor:flat_map_stmt(stmt, walk)
 
                 init = self.tctx:method_call_expr("split_at_mut", {init or exprs[1], offset_expr})
 
-                local locl = self.tctx:ident_local("tup", nil, init, "ByValImmut")
+                local pat = Pat.new{
+                    "Ident",
+                    {
+                        "ByValue",
+                        "Immutable",
+                    },
+                    Ident.new("tup"),
+                    nil,
+                }
+                local locl = Local.new(pat, nil, init)
 
                 tup0 = Expr.new{"Field", tup0, Ident.new("0")}
                 tup1 = Expr.new{"Field", tup1, Ident.new("1")}
@@ -1587,9 +1623,9 @@ function Visitor:flat_map_stmt(stmt, walk)
                 local assign_expr = self.tctx:assign_expr(new_lhs, tup0)
                 local assign_expr2 = self.tctx:assign_expr(exprs[1], tup1)
                 local stmts = {
-                    locl:to_stmt(),
-                    assign_expr:to_stmt(true),
-                    assign_expr2:to_stmt(true),
+                    Stmt.new{"Local", locl},
+                    Stmt.new{"Semi", assign_expr},
+                    Stmt.new{"Semi", assign_expr2},
                 }
 
                 expr:to_block(stmts, nil, true)

@@ -11,8 +11,8 @@ use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
 use syntax::ThinVec;
 use syntax::ast::{
-    self, BindingMode, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, Local, MacDelimiter,
-    Mutability, NodeId, Pat, PathSegment, PatKind, Ty,
+    self, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, MacDelimiter,
+    NodeId, PathSegment, Ty,
 };
 use syntax::mut_visit::MutVisitor;
 use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
@@ -865,36 +865,6 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             });
 
             Ok(LuaAstNode::new(expr))
-        });
-
-        methods.add_method(
-            "ident_local",
-            |_lua_ctx, _this, (ident, ty, init, binding): (LuaString, Option<LuaAstNode<P<Ty>>>, Option<LuaAstNode<P<Expr>>>, LuaString)|
-        {
-            let binding = match binding.to_str()? {
-                "ByRefMut" => BindingMode::ByRef(Mutability::Mutable),
-                "ByRefImmut" => BindingMode::ByRef(Mutability::Immutable),
-                "ByValMut" => BindingMode::ByValue(Mutability::Mutable),
-                "ByValImmut" => BindingMode::ByValue(Mutability::Immutable),
-                e => panic!("Unknown local binding: {}", e),
-            };
-            let ty = ty.map(|ty| ty.borrow().clone());
-            let init = init.map(|e| e.borrow().clone());
-            let pat = P(Pat {
-                id: DUMMY_NODE_ID,
-                span: DUMMY_SP,
-                kind: PatKind::Ident(binding, Ident::from_str(ident.to_str()?), None),
-            });
-            let local = Local {
-                id: DUMMY_NODE_ID,
-                span: DUMMY_SP,
-                ty,
-                init,
-                pat,
-                attrs: ThinVec::new(),
-            };
-
-            Ok(LuaAstNode::new(P(local)))
         });
 
         methods.add_method("vec_mac_init_num", |_lua_ctx, _this, (init, num): (LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {

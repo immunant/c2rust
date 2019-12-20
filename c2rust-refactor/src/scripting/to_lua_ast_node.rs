@@ -1212,20 +1212,6 @@ impl AddMoreMethods for LuaAstNode<P<Expr>> {
             Ok(())
         });
 
-        methods.add_method("to_stmt", |_lua_ctx, this, is_semi: bool| {
-            let kind = if is_semi {
-                StmtKind::Semi(this.borrow().clone())
-            } else {
-                StmtKind::Expr(this.borrow().clone())
-            };
-
-            Ok(LuaAstNode::new(Stmt {
-                id: DUMMY_NODE_ID,
-                kind,
-                span: DUMMY_SP,
-            }))
-        });
-
         methods.add_method("to_method_call", |lua_ctx, this, (segment, exprs): (LuaString, Vec<Value>)| {
             let segment = PathSegment::from_ident(Ident::from_str(segment.to_str()?));
             let exprs = exprs.into_iter()
@@ -1659,16 +1645,6 @@ impl AddMoreMethods for LuaAstNode<P<Local>> {
                 .iter()
                 .map(|attr| LuaAstNode::new(attr.clone()))
                 .collect::<Vec<_>>())
-        });
-
-        methods.add_method("to_stmt", |_lua_ctx, this, ()| {
-            let kind = StmtKind::Local(this.borrow().clone());
-
-            Ok(LuaAstNode::new(Stmt {
-                id: DUMMY_NODE_ID,
-                span: DUMMY_SP,
-                kind,
-            }))
         });
     }
 }
