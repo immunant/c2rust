@@ -390,6 +390,7 @@ impl<'lua> MutVisitor for LuaAstVisitorNew<'lua> {
         [visit_fn_decl, P<FnDecl>, noop_visit_fn_decl],
         [visit_item_kind, ItemKind, noop_visit_item_kind],
         [visit_ty, P<Ty>, noop_visit_ty],
+        [visit_ident, Ident, noop_visit_ident],
         [visit_local, P<Local>, noop_visit_local]
     }
 
