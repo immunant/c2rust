@@ -378,78 +378,40 @@ macro_rules! impl_visitors {
             } else {
                 mut_visit::$noop_visitor(node, self)
             }
-        })*
+        }
+    };
+    {[flat_map: $visitor:ident, $ty:ty, $noop_visitor:ident]} => {
+        fn $visitor(&mut self, node: $ty) -> SmallVec<[$ty; 1]> {
+            let visit_method: Option<LuaFunction> = self.visitor.get(stringify!($visitor))
+                .expect("Could not get lua visitor function");
+            if let Some(method) = visit_method {
+                let new_items = self.call_flat_map(method, node);
+                SmallVec::from_vec(new_items)
+            } else {
+                mut_visit::$noop_visitor(node, self)
+            }
+        }
+    };
+    {$([$kind:ident: $visitor:ident, $ty:ty, $noop_visitor:ident]),*} => {
+        $(impl_visitors!{[$kind: $visitor, $ty, $noop_visitor]})*
     }
 }
 
 impl<'lua> MutVisitor for LuaAstVisitorNew<'lua> {
     impl_visitors!{
-        [visit_mod, Mod, noop_visit_mod],
-        [visit_expr, P<Expr>, noop_visit_expr],
-        [visit_fn_header, FnHeader, noop_visit_fn_header],
-        [visit_fn_decl, P<FnDecl>, noop_visit_fn_decl],
-        [visit_item_kind, ItemKind, noop_visit_item_kind],
-        [visit_ty, P<Ty>, noop_visit_ty],
-        [visit_ident, Ident, noop_visit_ident],
-        [visit_local, P<Local>, noop_visit_local]
-    }
-
-    fn flat_map_param(&mut self, m: Param) -> SmallVec<[Param; 1]> {
-        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_param")
-            .expect("Could not get lua visitor function");
-        if let Some(method) = visit_method {
-            let new_params = self.call_flat_map(method, m);
-            new_params.into_iter().map(|p| p.into_inner()).collect()
-        } else {
-            mut_visit::noop_flat_map_param(m, self)
-        }
-    }
-
-    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_item")
-            .expect("Could not get lua visitor function");
-
-        if let Some(method) = visit_method {
-            let new_items = self.call_flat_map(method, i);
-            new_items.into_iter().map(|i| i.into_inner()).collect()
-        } else {
-            mut_visit::noop_flat_map_item(i, self)
-        }
-    }
-
-    fn flat_map_foreign_item(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
-        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_foreign_item")
-            .expect("Could not get lua visitor function");
-
-        if let Some(method) = visit_method {
-            let new_items = self.call_flat_map(method, i);
-            new_items.into_iter().map(|i| i.into_inner()).collect()
-        } else {
-            mut_visit::noop_flat_map_foreign_item(i, self)
-        }
-    }
-
-    fn flat_map_stmt(&mut self, i: Stmt) -> SmallVec<[Stmt; 1]> {
-        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_stmt")
-            .expect("Could not get lua visitor function");
-
-        if let Some(method) = visit_method {
-            let new_items = self.call_flat_map(method, i);
-            new_items.into_iter().map(|i| i.into_inner()).collect()
-        } else {
-            mut_visit::noop_flat_map_stmt(i, self)
-        }
-    }
-
-    fn flat_map_struct_field(&mut self, m: StructField) -> SmallVec<[StructField; 1]> {
-        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_struct_field")
-            .expect("Could not get lua visitor function");
-        if let Some(method) = visit_method {
-            let new_fields = self.call_flat_map(method, m);
-            new_fields.into_iter().map(|f| f.into_inner()).collect()
-        } else {
-            mut_visit::noop_flat_map_struct_field(m, self)
-        }
+        [visit: visit_mod, Mod, noop_visit_mod],
+        [visit: visit_expr, P<Expr>, noop_visit_expr],
+        [visit: visit_fn_header, FnHeader, noop_visit_fn_header],
+        [visit: visit_fn_decl, P<FnDecl>, noop_visit_fn_decl],
+        [visit: visit_item_kind, ItemKind, noop_visit_item_kind],
+        [visit: visit_ty, P<Ty>, noop_visit_ty],
+        [visit: visit_ident, Ident, noop_visit_ident],
+        [visit: visit_local, P<Local>, noop_visit_local],
+        [flat_map: flat_map_param, Param, noop_flat_map_param],
+        [flat_map: flat_map_item, P<Item>, noop_flat_map_item],
+        [flat_map: flat_map_foreign_item, ForeignItem, noop_flat_map_foreign_item],
+        [flat_map: flat_map_stmt, Stmt, noop_flat_map_stmt],
+        [flat_map: flat_map_struct_field, StructField, noop_flat_map_struct_field]
     }
 
     fn visit_mac(&mut self, mac: &mut Mac) {
