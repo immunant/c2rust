@@ -369,8 +369,8 @@ impl<'lua> LuaAstVisitorNew<'lua> {
 }
 
 macro_rules! impl_visitors {
-    {$([$visitor:ident, $ty:ty, $noop_visitor:ident]),*} => {
-        $(fn $visitor(&mut self, node: &mut $ty) {
+    {visit: $visitor:ident, $ty:ty, $noop_visitor:ident} => {
+        fn $visitor(&mut self, node: &mut $ty) {
             let visit_method: Option<LuaFunction> = self.visitor.get(stringify!($visitor))
                 .expect("Could not get lua visitor function");
             if let Some(method) = visit_method {
@@ -380,20 +380,20 @@ macro_rules! impl_visitors {
             }
         }
     };
-    {[flat_map: $visitor:ident, $ty:ty, $noop_visitor:ident]} => {
+    {flat_map: $visitor:ident, $ty:ty, $noop_visitor:ident} => {
         fn $visitor(&mut self, node: $ty) -> SmallVec<[$ty; 1]> {
             let visit_method: Option<LuaFunction> = self.visitor.get(stringify!($visitor))
                 .expect("Could not get lua visitor function");
             if let Some(method) = visit_method {
                 let new_items = self.call_flat_map(method, node);
-                SmallVec::from_vec(new_items)
+                new_items.into_iter().map(|p| p.into_inner()).collect()
             } else {
                 mut_visit::$noop_visitor(node, self)
             }
         }
     };
     {$([$kind:ident: $visitor:ident, $ty:ty, $noop_visitor:ident]),*} => {
-        $(impl_visitors!{[$kind: $visitor, $ty, $noop_visitor]})*
+        $(impl_visitors!{$kind: $visitor, $ty, $noop_visitor})*
     }
 }
 
