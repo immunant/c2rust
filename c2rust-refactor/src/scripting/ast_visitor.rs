@@ -3,11 +3,11 @@ use syntax::ast::*;
 use syntax::mut_visit::{self, *};
 use syntax::ptr::P;
 
-use rlua::prelude::{LuaContext, LuaFunction, LuaResult, LuaTable, LuaUserData};
+use rlua::prelude::{LuaContext, LuaFunction, LuaResult, LuaTable, LuaUserData, LuaValue};
 
 use crate::ast_manip::{WalkAst};
 use super::DisplayLuaError;
-use super::to_lua_ast_node::{LuaAstNode};
+use super::to_lua_ast_node::{FromLuaAstNode, FromLuaExt, LuaAstNode, ToLuaScoped};
 
 macro_rules! call_lua_visitor_method {
     ($obj: expr , $method: ident ($($params: expr),*)) => {
@@ -335,14 +335,15 @@ impl<'lua> LuaAstVisitorNew<'lua> {
 
     fn call_visit<T>(&mut self, method: LuaFunction<'lua>, param: &mut T)
         where T: WalkAst + Clone,
-              LuaAstNode<T>: 'static + LuaUserData + Clone,
+              LuaAstNode<T>: 'static + LuaUserData + Clone + FromLuaAstNode,
     {
         let node = LuaAstNode::new(param.clone());
         self.lua_ctx.scope(|scope| {
             let visitor = self.visitor.clone();
             let param = scope.create_static_userdata(node.clone()).unwrap();
-            let walk = scope.create_function_mut(|_lua_ctx, x: LuaAstNode<T>| {
-                x.walk(self);
+            let walk = scope.create_function_mut(|lua_ctx, x: LuaValue| {
+                <LuaAstNode<T> as FromLuaAstNode>::from_lua_ast_node(x, lua_ctx)?
+                    .walk(self);
                 Ok(())
             });
             method.call((visitor, (param, walk)))
@@ -351,18 +352,21 @@ impl<'lua> LuaAstVisitorNew<'lua> {
         *param = node.into_inner();
     }
 
-    fn call_flat_map<T>(&mut self, method: LuaFunction<'lua>, param: T) -> Vec<LuaAstNode<T>>
-        where T: WalkAst,
-              LuaAstNode<T>: 'static + LuaUserData + Clone,
+    fn call_flat_map<T>(&mut self, method: LuaFunction<'lua>, param: T) -> Vec<T>
+        where T: WalkAst + ToLuaScoped + FromLuaExt,
+              LuaAstNode<T>: LuaUserData + FromLuaAstNode,
     {
-        self.lua_ctx.scope(|scope| {
+        let lua_ctx = self.lua_ctx;
+        lua_ctx.scope(|scope| {
             let visitor = self.visitor.clone();
-            let param = scope.create_static_userdata(LuaAstNode::new(param)).unwrap();
-            let walk = scope.create_function_mut(|_lua_ctx, x: LuaAstNode<T>| {
-                x.walk(self);
+            let param = ToLuaScoped::to_lua_scoped(param, self.lua_ctx, scope).unwrap();
+            let walk = scope.create_function_mut(|lua_ctx, x: LuaValue| {
+                <LuaAstNode<T> as FromLuaAstNode>::from_lua_ast_node(x, lua_ctx)?
+                    .walk(self);
                 Ok(())
             });
             method.call((visitor, (param, walk)))
+                .and_then(|res| FromLuaExt::from_lua_ext(res, lua_ctx))
                 .unwrap_or_else(|e| panic!("Lua visit function failed: {:}", DisplayLuaError(e)))
         })
     }
@@ -386,7 +390,7 @@ macro_rules! impl_visitors {
                 .expect("Could not get lua visitor function");
             if let Some(method) = visit_method {
                 let new_items = self.call_flat_map(method, node);
-                new_items.into_iter().map(|p| p.into_inner()).collect()
+                SmallVec::from_vec(new_items)
             } else {
                 mut_visit::$noop_visitor(node, self)
             }
