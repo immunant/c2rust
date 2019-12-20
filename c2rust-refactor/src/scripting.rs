@@ -12,7 +12,7 @@ use rustc_interface::interface;
 use syntax::ThinVec;
 use syntax::ast::{
     self, BindingMode, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, Local, MacDelimiter,
-    Mutability, NodeId, Pat, PathSegment, PatKind, Ty, TyKind,
+    Mutability, NodeId, Pat, PathSegment, PatKind, Ty,
 };
 use syntax::mut_visit::MutVisitor;
 use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
@@ -867,17 +867,6 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             Ok(LuaAstNode::new(expr))
         });
 
-        methods.add_method("ident_path_ty", |_lua_ctx, _this, path: LuaString| {
-            let path = syntax::ast::Path::from_ident(Ident::from_str(path.to_str()?));
-            let expr = P(Ty {
-                id: DUMMY_NODE_ID,
-                kind: TyKind::Path(None, path),
-                span: DUMMY_SP,
-            });
-
-            Ok(LuaAstNode::new(expr))
-        });
-
         methods.add_method(
             "ident_local",
             |_lua_ctx, _this, (ident, ty, init, binding): (LuaString, Option<LuaAstNode<P<Ty>>>, Option<LuaAstNode<P<Expr>>>, LuaString)|
@@ -947,9 +936,9 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             Ok(LuaAstNode::new(expr))
         });
 
-        methods.add_method("cast_expr", |_lua_ctx, _this, (expr, ty): (LuaAstNode<P<Expr>>, LuaAstNode<P<Ty>>)| {
-            let expr = expr.borrow().clone();
-            let ty = ty.borrow().clone();
+        methods.add_method("cast_expr", |lua_ctx, _this, (expr, ty): (LuaValue, LuaValue)| {
+            let expr = FromLuaExt::from_lua_ext(expr, lua_ctx)?;
+            let ty = FromLuaExt::from_lua_ext(ty, lua_ctx)?;
             let expr = P(Expr {
                 id: DUMMY_NODE_ID,
                 kind: ExprKind::Cast(expr, ty),
