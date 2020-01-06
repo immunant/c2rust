@@ -609,7 +609,7 @@ function Visitor:rewrite_method_call_expr(expr)
         if offset_expr:kind_name() == "Cast" then
             local usize_ty = Ty.new{"Path", nil, Path.new{"usize"}}
             local inner_expr = offset_expr:get_exprs()[1]
-            offset_expr = self.tctx:cast_expr(inner_expr, usize_ty)
+            offset_expr = Expr.new{"Cast", inner_expr, usize_ty}
         end
 
         if not is_mut then
@@ -1052,7 +1052,7 @@ function Visitor:rewrite_assign_expr(expr)
                     path_expr:to_call{path_expr}
 
                     local usize_ty = Ty.new{"Path", nil, Path.new{"usize"}}
-                    local cast_expr = self.tctx:cast_expr(param_expr, usize_ty)
+                    local cast_expr = Expr.new{"Cast", param_expr, usize_ty}
                     local binary_expr = Expr.new{
                         "Binary",
                         {"Spanned", node="Div", span=DUMMY_SP},
