@@ -1616,8 +1616,8 @@ function Visitor:flat_map_stmt(stmt, walk)
                     }
                 end
 
-                local assign_expr = self.tctx:assign_expr(new_lhs, tup0)
-                local assign_expr2 = self.tctx:assign_expr(exprs[1], tup1)
+                local assign_expr = Expr.new{"Assign", new_lhs, tup0}
+                local assign_expr2 = Expr.new{"Assign", exprs[1], tup1}
                 local stmts = {
                     Stmt.new{"Local", locl},
                     Stmt.new{"Semi", assign_expr},
@@ -1638,7 +1638,7 @@ function Visitor:flat_map_stmt(stmt, walk)
         if lhs and rhs then
             rhs:to_method_call("swap_bytes", {rhs})
 
-            local assign_expr = self.tctx:assign_expr(lhs, rhs)
+            local assign_expr = Expr.new{"Assign", lhs, rhs}
 
             stmt:to_expr(assign_expr, true)
         end

@@ -820,19 +820,6 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             this.cx.resolve_use_id(ast::NodeId::from_u32(id)).res.to_lua_ext(lua_ctx)
         });
 
-        methods.add_method("assign_expr", |lua_ctx, _this, (lhs, rhs): (LuaValue, LuaValue)| {
-            let lhs = FromLuaExt::from_lua_ext(lhs, lua_ctx)?;
-            let rhs = FromLuaExt::from_lua_ext(rhs, lua_ctx)?;
-            let expr = P(Expr {
-                id: DUMMY_NODE_ID,
-                kind: ExprKind::Assign(lhs, rhs),
-                span: DUMMY_SP,
-                attrs: ThinVec::new(),
-            });
-
-            Ok(LuaAstNode::new(expr))
-        });
-
         methods.add_method(
             "method_call_expr",
             |_lua_ctx, _this, (segment, exprs): (LuaString, Vec<LuaAstNode<P<Expr>>>)|
