@@ -820,24 +820,6 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             this.cx.resolve_use_id(ast::NodeId::from_u32(id)).res.to_lua_ext(lua_ctx)
         });
 
-        methods.add_method("binary_expr", |_lua_ctx, _this, (op, lhs, rhs): (LuaString, LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
-            let op = match op.to_str()? {
-                "Add" => BinOpKind::Add,
-                "Div" => BinOpKind::Div,
-                _ => unimplemented!("BinOpKind parsing from string"),
-            };
-            let lhs = lhs.borrow().clone();
-            let rhs = rhs.borrow().clone();
-            let expr = P(Expr {
-                id: DUMMY_NODE_ID,
-                kind: ExprKind::Binary(dummy_spanned(op), lhs, rhs),
-                span: DUMMY_SP,
-                attrs: ThinVec::new(),
-            });
-
-            Ok(LuaAstNode::new(expr))
-        });
-
         methods.add_method("assign_expr", |lua_ctx, _this, (lhs, rhs): (LuaValue, LuaValue)| {
             let lhs = FromLuaExt::from_lua_ext(lhs, lua_ctx)?;
             let rhs = FromLuaExt::from_lua_ext(rhs, lua_ctx)?;
@@ -867,9 +849,9 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
             Ok(LuaAstNode::new(expr))
         });
 
-        methods.add_method("vec_mac_init_num", |_lua_ctx, _this, (init, num): (LuaAstNode<P<Expr>>, LuaAstNode<P<Expr>>)| {
-            let init = Rc::new(Nonterminal::NtExpr(init.borrow().clone()));
-            let num = Rc::new(Nonterminal::NtExpr(num.borrow().clone()));
+        methods.add_method("vec_mac_init_num", |lua_ctx, _this, (init, num): (LuaValue, LuaValue)| {
+            let init = Rc::new(Nonterminal::NtExpr(FromLuaExt::from_lua_ext(init, lua_ctx)?));
+            let num = Rc::new(Nonterminal::NtExpr(FromLuaExt::from_lua_ext(num, lua_ctx)?));
             let macro_body = vec![
                 TokenTree::Token(Token { kind: TokenKind::Interpolated(init), span: DUMMY_SP }),
                 TokenTree::Token(Token { kind: TokenKind::Semi, span: DUMMY_SP }),

@@ -775,10 +775,7 @@ function decay_ref_to_ptr(expr, cfg, for_struct_field, ptr_ty)
                         ty=Ty.new{"Infer"},
                         pat=Pat.new{
                             "Ident",
-                            {
-                                "ByValue",
-                                "Immutable",
-                            },
+                            {"ByValue", "Immutable"},
                             Ident.new("r"),
                             nil,
                         },
@@ -1056,7 +1053,12 @@ function Visitor:rewrite_assign_expr(expr)
 
                     local usize_ty = Ty.new{"Path", nil, Path.new{"usize"}}
                     local cast_expr = self.tctx:cast_expr(param_expr, usize_ty)
-                    local binary_expr = self.tctx:binary_expr("Div", cast_expr, path_expr)
+                    local binary_expr = Expr.new{
+                        "Binary",
+                        {"Spanned", node="Div", span=DUMMY_SP},
+                        cast_expr,
+                        path_expr,
+                    }
 
                     new_rhs = self.tctx:vec_mac_init_num(init, binary_expr)
                     new_rhs:to_method_call("into_boxed_slice", {new_rhs})
@@ -1308,10 +1310,7 @@ function Visitor:rewrite_call_expr(expr)
                                         ty=Ty.new{"Infer"},
                                         pat=Pat.new{
                                             "Ident",
-                                            {
-                                                "ByValue",
-                                                "Immutable",
-                                            },
+                                            {"ByValue", "Immutable"},
                                             Ident.new("r"),
                                             nil,
                                         },
@@ -1600,10 +1599,7 @@ function Visitor:flat_map_stmt(stmt, walk)
 
                 local pat = Pat.new{
                     "Ident",
-                    {
-                        "ByValue",
-                        "Immutable",
-                    },
+                    {"ByValue", "Immutable"},
                     Ident.new("tup"),
                     nil,
                 }
