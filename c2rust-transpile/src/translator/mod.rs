@@ -516,39 +516,39 @@ pub fn translate(
         expanding_macro: None,
     };
 
-    t.use_crate(ExternCrate::Libc);
-
-    // Sort the top-level declarations by file and source location so that we
-    // preserve the ordering of all declarations in each file.
-    t.ast_context.sort_top_decls();
-
-    t.locate_comments();
-
-    // Headers often pull in declarations that are unused;
-    // we simplify the translator output by omitting those.
-    t.ast_context.prune_unused_decls();
-
-    enum Name<'a> {
-        VarName(&'a str),
-        TypeName(&'a str),
-        AnonymousType,
-        NoName,
-    }
-
-    fn some_type_name(s: Option<&str>) -> Name {
-        match s {
-            None => Name::AnonymousType,
-            Some(r) => Name::TypeName(r),
-        }
-    }
-
-    // Used for testing; so that we don't overlap with C function names
-    if let Some(ref prefix) = t.tcfg.prefix_function_names {
-        prefix_names(&mut t, prefix);
-    }
-
     // `with_globals` sets up a thread-local variable required by the syntax crate.
     with_globals(Edition::Edition2018, || {
+        t.use_crate(ExternCrate::Libc);
+
+        // Sort the top-level declarations by file and source location so that we
+        // preserve the ordering of all declarations in each file.
+        t.ast_context.sort_top_decls();
+
+        t.locate_comments();
+
+        // Headers often pull in declarations that are unused;
+        // we simplify the translator output by omitting those.
+        t.ast_context.prune_unused_decls();
+
+        enum Name<'a> {
+            VarName(&'a str),
+            TypeName(&'a str),
+            AnonymousType,
+            NoName,
+        }
+
+        fn some_type_name(s: Option<&str>) -> Name {
+            match s {
+                None => Name::AnonymousType,
+                Some(r) => Name::TypeName(r),
+            }
+        }
+
+        // Used for testing; so that we don't overlap with C function names
+        if let Some(ref prefix) = t.tcfg.prefix_function_names {
+            prefix_names(&mut t, prefix);
+        }
+
         // Identify typedefs that name unnamed types and collapse the two declarations
         // into a single name and declaration, eliminating the typedef altogether.
         let mut prenamed_decls: IndexMap<CDeclId, CDeclId> = IndexMap::new();
