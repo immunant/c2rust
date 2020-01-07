@@ -1592,10 +1592,11 @@ function Visitor:flat_map_stmt(stmt, walk)
                 local init = nil
 
                 if offset_caller_cfg:is_opt_any() then
-                    init = self.tctx:method_call_expr("unwrap", {exprs[1]})
+                    init = Expr.new{"MethodCall", PathSegment.new("unwrap"), {exprs[1]}}
+                    pretty.dump(init)
                 end
 
-                init = self.tctx:method_call_expr("split_at_mut", {init or exprs[1], offset_expr})
+                init = Expr.new{"MethodCall", PathSegment.new("split_at_mut"), {init or exprs[1], offset_expr}}
 
                 local pat = Pat.new{
                     "Ident",

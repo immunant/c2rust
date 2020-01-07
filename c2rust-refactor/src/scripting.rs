@@ -11,13 +11,12 @@ use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
 use syntax::ThinVec;
 use syntax::ast::{
-    self, BinOpKind, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, MacDelimiter,
+    self, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, MacDelimiter,
     NodeId, PathSegment, Ty,
 };
 use syntax::mut_visit::MutVisitor;
 use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
 use syntax::ptr::P;
-use syntax::source_map::dummy_spanned;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::TokenTree;
 use syntax_pos::DUMMY_SP;
@@ -818,22 +817,6 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
 
         methods.add_method("get_use_def", |lua_ctx, this, id: u32| {
             this.cx.resolve_use_id(ast::NodeId::from_u32(id)).res.to_lua_ext(lua_ctx)
-        });
-
-        methods.add_method(
-            "method_call_expr",
-            |_lua_ctx, _this, (segment, exprs): (LuaString, Vec<LuaAstNode<P<Expr>>>)|
-        {
-            let segment = PathSegment::from_ident(Ident::from_str(segment.to_str()?));
-            let exprs = exprs.iter().map(|e| e.borrow().clone()).collect();
-            let expr = P(Expr {
-                id: DUMMY_NODE_ID,
-                kind: ExprKind::MethodCall(segment, exprs),
-                span: DUMMY_SP,
-                attrs: ThinVec::new(),
-            });
-
-            Ok(LuaAstNode::new(expr))
         });
 
         methods.add_method("vec_mac_init_num", |lua_ctx, _this, (init, num): (LuaValue, LuaValue)| {
