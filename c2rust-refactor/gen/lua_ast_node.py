@@ -199,7 +199,7 @@ def do_one_impl(s, kind_map, boxed, emit_ldoc):
                 for i, f in enumerate(v.fields):
                     yield ('        from_lua_prepend_field("%d", "%s::%s", '
                            'FromLuaExt::from_lua_ext(_table.get::<_, '
-                           'Value>(%d)?, _lua_ctx))?,' % (i, s.name,
+                           'Value>(%d)?, _lua_ctx))?,' % (i + 1, s.name,
                                v.name, i + 2))
             else:
                 for f in v.fields:
