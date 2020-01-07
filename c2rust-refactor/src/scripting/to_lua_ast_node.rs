@@ -658,14 +658,17 @@ fn from_lua_kind_error<T>(expected: &'static str, actual: &str) -> Result<T> {
     })
 }
 
-fn from_lua_prepend_field<T>(field: &'static str, res: Result<T>) -> Result<T> {
+fn from_lua_prepend_field<T>(
+    field: &'static str,
+    r#struct: &'static str,
+    res: Result<T>
+) -> Result<T> {
     match res {
         Err(Error::FromLuaConversionError { from, to, message: None }) => {
             Err(Error::FromLuaConversionError {
                 from,
                 to,
-                message: Some(format!("field '{}' in '{}'", field,
-                                      std::any::type_name::<T>())),
+                message: Some(format!("field '{}' of '{}'", field, r#struct)),
             })
         }
 
@@ -673,8 +676,7 @@ fn from_lua_prepend_field<T>(field: &'static str, res: Result<T>) -> Result<T> {
             Err(Error::FromLuaConversionError {
                 from,
                 to,
-                message: Some(format!("field '{}' in '{}': {}", field,
-                                      std::any::type_name::<T>(), msg)),
+                message: Some(format!("field '{}' of '{}': {}", field, r#struct, msg)),
             })
         }
 
