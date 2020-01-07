@@ -668,7 +668,7 @@ fn from_lua_prepend_field<T>(
             Err(Error::FromLuaConversionError {
                 from,
                 to,
-                message: Some(format!("field '{}' of '{}'", field, r#struct)),
+                message: Some(format!("field {} of {}", field, r#struct)),
             })
         }
 
@@ -676,7 +676,7 @@ fn from_lua_prepend_field<T>(
             Err(Error::FromLuaConversionError {
                 from,
                 to,
-                message: Some(format!("field '{}' of '{}': {}", field, r#struct, msg)),
+                message: Some(format!("field {} of {}: {}", field, r#struct, msg)),
             })
         }
 

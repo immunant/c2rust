@@ -197,10 +197,16 @@ def do_one_impl(s, kind_map, boxed, emit_ldoc):
             yield '      "%s" => Ok(%s%s::%s%s' % (v.name, box_open, s.name, v.name, delim_open)
             if v.is_tuple:
                 for i, f in enumerate(v.fields):
-                    yield '        FromLuaExt::from_lua_ext(_table.get::<_, Value>(%d)?, _lua_ctx)?,' % (i + 2)
+                    yield ('        from_lua_prepend_field("%d", "%s::%s", '
+                           'FromLuaExt::from_lua_ext(_table.get::<_, '
+                           'Value>(%d)?, _lua_ctx))?,' % (i, s.name,
+                               v.name, i + 2))
             else:
                 for f in v.fields:
-                    yield '        %s: FromLuaExt::from_lua_ext(_table.get::<_, Value>("%s")?, _lua_ctx)?,' % (f.name, f.name)
+                    yield ('        %s: from_lua_prepend_field("%s", "%s::%s", '
+                           'FromLuaExt::from_lua_ext(_table.get::<_, '
+                           'Value>("%s")?, _lua_ctx))?,' % (f.name, f.name,
+                               s.name, v.name, f.name))
             yield '      %s%s),' % (delim_close, box_close)
 
         yield '      _ => from_lua_kind_error("%s", _kind)' % s.name
