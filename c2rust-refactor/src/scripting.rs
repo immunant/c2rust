@@ -11,7 +11,7 @@ use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
 use syntax::ThinVec;
 use syntax::ast::{
-    self, DUMMY_NODE_ID, Expr, ExprKind, Ident, Lit, LitIntType, LitKind, MacDelimiter,
+    self, DUMMY_NODE_ID, Expr, ExprKind, Lit, LitIntType, LitKind, MacDelimiter,
     NodeId, PathSegment, Ty,
 };
 use syntax::mut_visit::MutVisitor;
