@@ -214,7 +214,7 @@ def do_one_impl(s, kind_map, boxed, emit_ldoc):
 
     else:
         # TODO: add a message
-        yield '    Err(Error::FromLuaConversionError { from: "Table", to: "%s", message: None })' % s.name
+        yield '    Err(Error::FromLuaConversionError { from: "table", to: "%s", message: None })' % s.name
 
     yield '  }'
     yield '}'

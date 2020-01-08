@@ -340,14 +340,14 @@ impl<T> FromLuaExt for T
 
             Value::String(s) => TryFromString::try_from_string(s.to_str()?).ok_or_else(|| {
                 Error::FromLuaConversionError {
-                    from: "String",
+                    from: "string",
                     to: std::any::type_name::<T>(),
                     message: None,
                 }
             }),
 
             Value::Nil => Err(Error::FromLuaConversionError {
-                from: "Nil",
+                from: "nil",
                 to: std::any::type_name::<T>(),
                 message: None,
             }),
@@ -356,7 +356,7 @@ impl<T> FromLuaExt for T
                 // FIXME: we should get this from `value.type_name()`,
                 // but that method is currently private, see
                 // https://github.com/kyren/rlua/issues/58
-                from: "Value",
+                from: "value",
                 to: std::any::type_name::<T>(),
                 message: None,
             })
@@ -382,20 +382,20 @@ impl<T> FromLuaAstNode for LuaAstNode<T>
 
             Value::String(s) => TryFromString::try_from_string(s.to_str()?).ok_or_else(|| {
                 Error::FromLuaConversionError {
-                    from: "String",
+                    from: "string",
                     to: std::any::type_name::<T>(),
                     message: None,
                 }
             }).map(LuaAstNode::new),
 
             Value::Nil => Err(Error::FromLuaConversionError {
-                from: "Nil",
+                from: "nil",
                 to: std::any::type_name::<T>(),
                 message: None,
             }),
 
             _ => Err(Error::FromLuaConversionError {
-                from: "Value",
+                from: "value",
                 to: std::any::type_name::<T>(),
                 message: None,
             })
@@ -453,7 +453,7 @@ impl<A, B> FromLuaExt for (A, B)
 {
     fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
         let err_fn = || Error::FromLuaConversionError {
-            from: "Value",
+            from: "value",
             to: "Tuple",
             message: Some("tuple table must have at least 2 elements".to_string()),
         };
@@ -474,7 +474,7 @@ impl<A, B, C> FromLuaExt for (A, B, C)
 {
     fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
         let err_fn = || Error::FromLuaConversionError {
-            from: "Value",
+            from: "value",
             to: "Tuple",
             message: Some("tuple table must have at least 3 elements".to_string()),
         };
@@ -497,7 +497,7 @@ impl<A, B, C> FromLuaExt for P<(A, B, C)>
 {
     fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
         let err_fn = || Error::FromLuaConversionError {
-            from: "Value",
+            from: "value",
             to: "Tuple",
             message: Some("tuple table must have at least 3 elements".to_string()),
         };
@@ -547,7 +547,7 @@ impl FromLuaExt for char {
     fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
         let s: String = FromLua::from_lua(value, lua)?;
         s.chars().next().ok_or_else(|| Error::FromLuaConversionError {
-            from: "String",
+            from: "string",
             to: "char",
             message: Some(format!("invalid single-character string: {}", s)),
         })
@@ -562,7 +562,7 @@ impl FromLuaExt for NodeId {
             Value::Nil => Ok(DUMMY_NODE_ID),
 
             _ => Err(Error::FromLuaConversionError {
-                from: "Value",
+                from: "value",
                 to: "NodeId",
                 message: None,
             })
@@ -588,7 +588,7 @@ impl FromLuaExt for Abi {
     fn from_lua_ext<'lua>(value: Value<'lua>, lua: Context<'lua>) -> Result<Self> {
         let abi: String = FromLua::from_lua(value, lua)?;
         lookup_abi(&abi).ok_or_else(|| Error::FromLuaConversionError {
-            from: "String",
+            from: "string",
             to: "Abi",
             message: Some(format!("unknown ABI: {}", abi)),
         })
@@ -652,7 +652,7 @@ impl<T: UserData> AddMoreMethods for T {
 // Helper functions for lua_ast_node_gen.inc.rs
 fn from_lua_kind_error<T>(expected: &'static str, actual: &str) -> Result<T> {
     Err(Error::FromLuaConversionError {
-        from: "Table",
+        from: "table",
         to: expected,
         message: Some(format!("expected kind {}, got {}", expected, actual)),
     })
@@ -959,7 +959,7 @@ impl FromLuaExt for Span {
             Value::Nil => Ok(DUMMY_SP),
 
             _ => Err(Error::FromLuaConversionError {
-                from: "Value",
+                from: "value",
                 to: "Span",
                 message: None,
             })
@@ -970,7 +970,7 @@ impl FromLuaExt for Span {
 fn get_iter_next<T, I: Iterator<Item = T>>(iter: &mut I) -> Result<T> {
     iter.next().ok_or_else(|| {
         Error::FromLuaConversionError {
-            from: "Table",
+            from: "table",
             to: "Vec",
             message: Some("not enough elements in table".to_string()),
         }
