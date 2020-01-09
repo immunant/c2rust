@@ -17,7 +17,7 @@ use syntax::ptr::P;
 
 use crate::ast_manip::AstEquiv;
 use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
-use crate::ast_manip::util::namespace;
+use crate::ast_manip::util::{namespace, is_export_attr};
 use crate::reflect;
 use c2rust_ast_builder::mk;
 
@@ -487,6 +487,19 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         let hir_item = expect!([hir_node] hir::Node::Item(i) => i);
         let path = expect!([&hir_item.kind] hir::ItemKind::Use(path, _) => path);
         Some(path)
+    }
+
+    /// Is this definition visible outside its translation unit?
+    pub fn is_exported_def(&self, id: DefId) -> bool {
+        match self.hir_map().get_if_local(id) {
+            Some(Node::Item(item)) => match &item.kind {
+                hir::ItemKind::Static(..) | hir::ItemKind::Const(..) | hir::ItemKind::Fn(..) => {
+                    item.attrs.iter().any(is_export_attr)
+                }
+                _ => true,
+            },
+            _ => true,
+        }
     }
 
     /// Compare two items for type compatibility under the C definition

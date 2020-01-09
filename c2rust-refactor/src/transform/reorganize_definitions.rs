@@ -270,6 +270,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 if let ItemKind::Use(tree) = &item.kind {
                     if used_idents.contains(&tree.ident()) {
                         keep_items.insert(item.id);
+                        continue;
                     }
                 }
             }
@@ -295,6 +296,19 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         if needed_items.contains(&item.id) {
                             return true;
                         }
+
+                        if let ItemKind::Use(_) = &item.kind {
+                            // Retain uses of non-exported parent items
+                            if let Some(def_id) = self.cx
+                                .try_resolve_use_id(item.id)
+                                .and_then(|def| def.res.opt_def_id())
+                            {
+                                if !self.cx.is_exported_def(def_id) {
+                                    return true;
+                                }
+                            }
+                        }
+
                         let header_info = HeaderInfo::new(
                             header_item.ident,
                             path.clone(),
