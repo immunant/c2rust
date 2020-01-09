@@ -5,9 +5,9 @@ use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::mem;
 
 use crate::transform::Transform;
-use rustc::hir::def::{Namespace, PerNS};
+use rustc::hir::def::{DefKind, Export, Namespace, PerNS, Res};
 use rustc::hir::def_id::DefId;
-use rustc::hir::{self, Node};
+use rustc::hir::{self, HirId, Node};
 use rustc::ty::{self, ParamEnv};
 use rustc_target::spec::abi::{self, Abi};
 use syntax::ast::*;
@@ -16,10 +16,10 @@ use syntax::util::comments::{Comment, CommentStyle};
 use syntax::ptr::P;
 use syntax::symbol::{kw, Symbol};
 use syntax::util::map_in_place::MapInPlace;
-use syntax_pos::BytePos;
+use syntax_pos::{BytePos, DUMMY_SP};
 use smallvec::smallvec;
 
-use crate::ast_manip::util::{is_relative_path, join_visibility, split_uses, is_exported, is_c2rust_attr};
+use crate::ast_manip::util::{is_relative_path, join_visibility, namespace, split_uses, is_exported, is_c2rust_attr};
 use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
@@ -298,13 +298,15 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         }
 
                         if let ItemKind::Use(_) = &item.kind {
-                            // Retain uses of non-exported parent items
+                            // Don't add unused uses of non-exported parent
+                            // items. These won't get merged with anything and
+                            // will violate visibility if we move them.
                             if let Some(def_id) = self.cx
                                 .try_resolve_use_id(item.id)
                                 .and_then(|def| def.res.opt_def_id())
                             {
                                 if !self.cx.is_exported_def(def_id) {
-                                    return true;
+                                    return false;
                                 }
                             }
                         }
@@ -344,7 +346,24 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             if !is_exported(item) {
                 return;
             }
-            let decl_ids = declarations.remove_matching_defs(&item);
+            let ns = match item.kind {
+                // Can't match these items
+                ItemKind::Use(..) | ItemKind::Impl(..) | ItemKind::ForeignMod(..)
+                    | ItemKind::Mod(..) => return,
+
+                // Values
+                ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => Namespace::ValueNS,
+
+                // Types
+                _ => Namespace::TypeNS,
+            };
+
+            let decl_ids = declarations.remove_matching_defs(ns, item.ident, |decl| {
+                match decl {
+                    DeclKind::Item(decl) => self.cx.compatible_types(&decl, item),
+                    DeclKind::ForeignItem(foreign, _) => foreign_equiv(&foreign, item),
+                }
+            });
             if !decl_ids.is_empty() {
                 let def_id = self.cx.node_def_id(item.id);
                 let hir_id = self.cx.hir_map().node_to_hir_id(item.id);
@@ -364,6 +383,135 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     });
             }
         });
+
+        for crate_def in &self.cx.crate_defs() {
+            if crate_def.is_local() {
+                continue;
+            }
+            match self.cx.ty_ctxt().extern_crate(*crate_def) {
+                Some(extern_crate) if extern_crate.is_direct() => {}
+                _ => continue,
+            }
+            for item in self.cx.ty_ctxt().item_children(*crate_def).iter() {
+                let crate_name = self.cx.ty_ctxt().crate_name(crate_def.krate);
+                let path = Path {
+                    span: DUMMY_SP,
+                    segments: vec![
+                        PathSegment::path_root(DUMMY_SP),
+                        PathSegment::from_ident(Ident::with_dummy_span(crate_name)),
+                    ],
+                };
+                self.match_exports(declarations, path, item);
+            }
+        }
+    }
+
+    fn match_exports(
+        &mut self,
+        declarations: &mut HeaderDeclarations,
+        mut path: Path,
+        item: &Export<HirId>,
+    ) {
+        path.segments.push(PathSegment::from_ident(item.ident));
+        if item.vis != ty::Visibility::Public {
+            return;
+        }
+        let possible_match = match item.res {
+            Res::Def(DefKind::ForeignTy, _) => false,
+            Res::Def(DefKind::Fn, def_id) => {
+                self.cx.ty_ctxt().fn_sig(def_id).abi() == Abi::C
+            }
+            Res::Def(DefKind::Static, def_id) => {
+                if let ty::TyKind::Adt(def, _) = self.cx.ty_ctxt().type_of(def_id).kind {
+                    def.repr.c()
+                } else {
+                    false
+                }
+            }
+            Res::Def(DefKind::Mod, def_id) => {
+                for item in self.cx.ty_ctxt().item_children(def_id).iter() {
+                    self.match_exports(declarations, path.clone(), item);
+                }
+                false
+            }
+            Res::Def(DefKind::Struct, _) | Res::Def(DefKind::Union, _) |
+            Res::Def(DefKind::Enum, _) | Res::Def(DefKind::Const, _) |
+            Res::Def(DefKind::TyAlias, _) => true,
+            _ => false,
+        };
+        if !possible_match {
+            return;
+        }
+        if let Some(def_id) = item.res.opt_def_id() {
+            let ns = namespace(&item.res).unwrap();
+            let decl_ids = declarations.remove_matching_defs(ns, item.ident, |decl| {
+                match decl {
+                    DeclKind::Item(decl) => match decl.kind {
+                        // We don't want to replace type aliases, as they are
+                        // easy to replace later if desired.
+                        ItemKind::TyAlias(..) => false,
+
+                        _ => {
+                            if let Some(decl_ty) = self.cx.opt_node_type(decl.id) {
+                                self.cx.structural_eq_tys(decl_ty, self.cx.ty_ctxt().type_of(def_id))
+                            } else {
+                                false
+                            }
+                        }
+                    }
+
+                    // If we find a matching name from another crate, we
+                    // should resolve to it.
+                    // TODO: Refactor foreign_equiv to be able to use it
+                    // without an Item
+                    DeclKind::ForeignItem(foreign, _abi) => {
+                        match &foreign.kind {
+                            ForeignItemKind::Fn(..) => {
+                                if let Res::Def(DefKind::Fn, def_id) = item.res {
+                                    let export_fn_sig = self.cx.ty_ctxt().fn_sig(def_id);
+                                    let export_fn_sig = match export_fn_sig.no_bound_vars() {
+                                        Some(sig) => sig,
+                                        None => return false,
+                                    };
+                                    let foreign_def_id = self.cx.node_def_id(foreign.id);
+                                    let foreign_fn_sig = self.cx.ty_ctxt().fn_sig(foreign_def_id);
+                                    let foreign_fn_sig = match foreign_fn_sig.no_bound_vars() {
+                                        Some(sig) => sig,
+                                        None => return false,
+                                    };
+                                    self.cx.compatible_fn_sigs(&export_fn_sig, &foreign_fn_sig)
+                                } else {
+                                    false
+                                }
+                            }
+                            ForeignItemKind::Static(..) => {
+                                if let Res::Def(DefKind::Static, def_id) = item.res {
+                                    let export_static_ty = self.cx.ty_ctxt().type_of(def_id);
+                                    let foreign_def_id = self.cx.node_def_id(foreign.id);
+                                    let foreign_static_ty = self.cx.ty_ctxt().type_of(foreign_def_id);
+                                    self.cx.structural_eq_tys(export_static_ty, foreign_static_ty)
+                                } else {
+                                    false
+                                }
+                            }
+                            ForeignItemKind::Ty => true,
+                            ForeignItemKind::Macro(..) => false,
+                        }
+                    }
+                }
+            });
+            decl_ids.into_iter()
+                .for_each(|decl_id| {
+                    self.path_mapping.insert(
+                        decl_id,
+                        Replacement {
+                            path: path.clone(),
+                            parent: DUMMY_NODE_ID,
+                            def: Some(def_id),
+                        }
+                    );
+                });
+        }
     }
 
     /// Update items set in ModuleInfos with current remaining items in that
@@ -668,9 +816,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         }).collect();
         // Mapping from user path expr NodeId to old DefId
         let path_ids = remapped_paths.iter().map(|(user, (_parent, def))| (*user, *def)).collect();
+        // Mapping from old DefId to new path
+        let new_paths = self.path_mapping.iter().map(|(old_did, replacement)| {
+            (*old_did, (None, replacement.path.clone()))
+        }).collect::<HashMap<_, _>>();
 
         // Cast updated values back to their original type if needed
-        externs::fix_users(krate, &replacement_map, &path_ids, self.cx);
+        externs::fix_users(krate, &replacement_map, &path_ids, &new_paths, self.cx);
 
         // Remove use statements that now refer to their self module.
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
@@ -1002,8 +1154,8 @@ struct HeaderDeclarations<'a, 'tcx: 'a> {
     matching_defs: HashMap<DefId, DefId>
     // // Set of imported definition NodeIds that must be made pub(crate) at least
     // imports: HashSet<HirId>,
-}
 
+}
 impl<'a, 'tcx> Extend<MovedDecl> for HeaderDeclarations<'a, 'tcx> {
     fn extend<T: IntoIterator<Item = MovedDecl>>(&mut self, iter: T) {
         for item in iter {
@@ -1029,22 +1181,17 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
     }
 
     /// Remove and return declarations matching the specified item definition
-    fn remove_matching_defs(&mut self, item: &Item) -> Vec<DefId> {
-        let ns = match item.kind {
-            // Can't match these items
-            ItemKind::Use(..) | ItemKind::Impl(..) | ItemKind::ForeignMod(..)
-            | ItemKind::Mod(..) => return vec![],
-
-            // Values
-            ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => Namespace::ValueNS,
-
-            // Types
-            _ => Namespace::TypeNS,
-        };
-        assert!(item.ident.name != kw::Invalid);
+    fn remove_matching_defs<P>(
+        &mut self,
+        namespace: Namespace,
+        ident: Ident,
+        mut predicate: P,
+    ) -> Vec<DefId>
+        where P: FnMut(&DeclKind) -> bool
+    {
+        assert!(ident.name != kw::Invalid);
         let mut matches = vec![];
-        let cx = self.cx;
-        if let Some(items) = self.idents[ns].get_mut(&item.ident) {
+        if let Some(items) = self.idents[namespace].get_mut(&ident) {
             items.retain(|decl| {
                 match &decl.kind {
                     DeclKind::Item(decl) => {
@@ -1052,20 +1199,15 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         if let ItemKind::Use(_) = decl.kind {
                             return true;
                         }
-                        if cx.compatible_types(&decl, item) {
-                            matches.push(cx.node_def_id(decl.id));
-                            return false;
-                        }
                     }
-
-                    DeclKind::ForeignItem(foreign, _) => {
-                        if foreign_equiv(&foreign, item) {
-                            matches.push(cx.node_def_id(foreign.id));
-                            return false;
-                        }
-                    }
+                    _ => {}
                 }
-                true
+                if predicate(&decl.kind) {
+                    matches.push(decl.def_id);
+                    false
+                } else {
+                    true
+                }
             });
         }
         matches
