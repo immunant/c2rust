@@ -280,12 +280,14 @@ pub fn is_exported(item: &Item) -> bool {
         // Values are only visible outside their translation unit if marked with
         // no mangle or an explicit symbol name
         ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
-            item.attrs.iter().find(|attr| {
-                attr.has_name(sym::no_mangle) || attr.has_name(sym::export_name)
-            }).is_some()
+            item.attrs.iter().any(is_export_attr)
         }
 
         // Types are visible if pub
         _ => item.vis.node.is_pub(),
     }
+}
+
+pub fn is_export_attr(attr: &Attribute) -> bool {
+    attr.has_name(sym::no_mangle) || attr.has_name(sym::export_name)
 }
