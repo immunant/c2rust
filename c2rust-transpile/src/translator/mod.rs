@@ -4157,6 +4157,9 @@ impl<'c> Translation<'c> {
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         self.use_crate(ExternCrate::NumTraits);
 
+        self.with_cur_file_item_store(|item_store| {
+            item_store.add_use(vec!["num_traits".into()], "ToPrimitive");
+        });
         let to_method_name = match target_ty_ctype {
             CTypeKind::Float => "to_f32",
             CTypeKind::Double => "to_f64",
