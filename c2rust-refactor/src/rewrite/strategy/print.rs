@@ -760,7 +760,14 @@ impl RewriteAt for Item {
         if let ItemKind::Mod(module) = &self.kind {
             if !module.inline {
                 // We need to print the `mod name;` in the parent and the module
-                // contents in its own file.
+                // contents in its own file. If there are no items, delete the
+                // `mod name;`.
+
+                if module.items.is_empty() {
+                    info!("DELETE {}", describe(rcx.session(), old_span));
+                    rcx.record(TextRewrite::new(old_span, DUMMY_SP));
+                    return true;
+                }
 
                 let mut item = self.clone();
 
