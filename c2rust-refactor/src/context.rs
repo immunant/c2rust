@@ -1,8 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
 use rustc::hir::def::{DefKind, Namespace, Res};
-use rustc::hir::def_id::DefId;
+use rustc::hir::def_id::{CRATE_DEF_INDEX, DefId};
 use rustc::hir::map as hir_map;
 use rustc::hir::{self, Node, HirId};
 use rustc::session::Session;
@@ -489,312 +489,31 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         Some(path)
     }
 
-    /// Is this definition visible outside its translation unit?
-    pub fn is_exported_def(&self, id: DefId) -> bool {
-        match self.hir_map().get_if_local(id) {
-            Some(Node::Item(item)) => match &item.kind {
-                hir::ItemKind::Static(..) | hir::ItemKind::Const(..) | hir::ItemKind::Fn(..) => {
-                    item.attrs.iter().any(is_export_attr)
-                }
-                _ => true,
-            },
-            _ => true,
-        }
-    }
-
     /// Compare two items for type compatibility under the C definition
     pub fn compatible_types(&self, item1: &Item, item2: &Item) -> bool {
-        use syntax::ast::ItemKind::*;
-        match (&item1.kind, &item2.kind) {
-            // * Assure that these two items are in fact of the same type, just to be safe.
-            (TyAlias(ty1, g1), TyAlias(ty2, g2)) => {
-                match (self.opt_node_type(item1.id), self.opt_node_type(item2.id)) {
-                    (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
-                    _ => {
-                        if g1.params.is_empty() && g2.params.is_empty() {
-                            self.structural_eq_ast_tys(ty1, ty2)
-                        } else {
-                            // FIXME: handle generics (we don't need to for now)
-                            false
-                        }
-                    }
-                }
-            }
-
-            (Const(ty1, expr1), Const(ty2, expr2)) => {
-                match (self.opt_node_type(item1.id), self.opt_node_type(item2.id)) {
-                    (Some(ty1), Some(ty2)) => {
-                        self.structural_eq_tys(ty1, ty2) && expr1.unnamed_equiv(expr2)
-                    }
-                    _ => self.structural_eq_ast_tys(ty1, ty2) && expr1.unnamed_equiv(expr2),
-                }
-            }
-
-            (Use(_), Use(_)) => panic!("We should have already handled the use statement case"),
-
-            (Struct(variant1, _), Struct(variant2, _))
-            | (Union(variant1, _), Union(variant2, _)) => {
-                if !item1.ident.unnamed_equiv(&item2.ident) {
-                    return false;
-                }
-                if let Struct(..) = &item1.kind {
-                    // Ensure all field names are equivalent
-                    for (field1, field2) in variant1.fields().iter().zip(variant2.fields().iter()) {
-                        if !field1.ident.unnamed_equiv(&field2.ident) {
-                            return false;
-                        }
-                    }
-                } else {
-                    // Union field names are not required to be in the same order
-                    for field1 in variant1.fields() {
-                        let matching_field = variant2
-                            .fields()
-                            .iter()
-                            .find(|field2| field1.ident.unnamed_equiv(&field2.ident));
-                        if matching_field.is_none() {
-                            return false;
-                        }
-                    }
-                }
-                match (self.opt_node_type(item1.id), self.opt_node_type(item2.id)) {
-                    (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
-                    _ => {
-                        let mut fields = variant1.fields().iter().zip(variant2.fields().iter());
-                        fields.all(|(field1, field2)| self.structural_eq_ast_tys(&field1.ty, &field2.ty))
-                    }
-                }
-            }
-
-            (Enum(enum1, _), Enum(enum2, _)) => {
-                let variants = enum1.variants.iter().zip(enum2.variants.iter());
-                let mut fields = variants.flat_map(|(variant1, variant2)| {
-                    variant1
-                        .data
-                        .fields()
-                        .iter()
-                        .zip(variant2.data.fields().iter())
-                });
-                fields.all(|(field1, field2)| {
-                    match (self.opt_node_type(field1.id), self.opt_node_type(field2.id)) {
-                        (Some(ty1), Some(ty2)) => ty1 == ty2,
-                        _ => false,
-                    }
-                })
-            }
-
-            _ => {
-                if self.item_namespace(item1) == Some(Namespace::TypeNS) &&
-                    self.item_namespace(item2) == Some(Namespace::TypeNS)
-                {
-                    match (self.opt_node_type(item1.id), self.opt_node_type(item2.id)) {
-                        (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
-                        _ => {}
-                    }
-                }
-
-                // Fall back on AST equivalence for other items
-                item1.unnamed_equiv(item2)
-            }
-        }
+        TypeCompare::new(self).compatible_types(item1, item2)
     }
 
     /// Compare two function declarations for equivalent argument and return types,
     /// ignoring argument names.
     pub fn compatible_fn_prototypes(&self, decl1: &FnDecl, decl2: &FnDecl) -> bool {
-        let mut args = decl1.inputs.iter().zip(decl2.inputs.iter());
-        if !args.all(|(arg1, arg2)| self.structural_eq_ast_tys(&arg1.ty, &arg2.ty)) {
-            return false;
-        }
-
-        // We assume we're dealing with function declaration prototypes, not
-        // closures, so the default return type is ()
-        let unit_ty = mk().tuple_ty::<P<ast::Ty>>(vec![]);
-        let ty1 = match &decl1.output {
-            FunctionRetTy::Default(..) => &unit_ty,
-            FunctionRetTy::Ty(ty) => &ty,
-        };
-        let ty2 = match &decl2.output {
-            FunctionRetTy::Default(..) => &unit_ty,
-            FunctionRetTy::Ty(ty) => &ty,
-        };
-
-        self.structural_eq_ast_tys(ty1, ty2)
+        TypeCompare::new(self).compatible_fn_prototypes(decl1, decl2)
     }
 
-    /// Compare two AST types for structural equivalence, ignoring names.
-    fn structural_eq_ast_tys(&self, ty1: &ast::Ty, ty2: &ast::Ty) -> bool {
-        match (self.opt_node_type(ty1.id), self.opt_node_type(ty2.id)) {
-            (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
-            _ => {}
-        }
-        match (self.try_resolve_ty(ty1), self.try_resolve_ty(ty1)) {
-            (Some(did1), Some(did2)) => self.structural_eq_defs(did1, did2),
-            _ => ty1.unnamed_equiv(ty2),
-        }
-    }
-
-    /// Compare two Ty types for structural equivalence, ignoring names.
-    fn structural_eq_tys_impl(
-        &self,
-        ty1: Ty<'tcx>,
-        ty2: Ty<'tcx>,
-        seen: &mut HashSet<DefId>,
-    ) -> bool {
-        // TODO: Make this follow the C rules for structural equivalence rather
-        // than strict equivalence
-        if ty1 == ty2 {
-            return true;
-        }
-
-        let tcx = self.ty_ctxt();
-
-        match (&ty1.kind, &ty2.kind) {
-            (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
-                if substs1.types().count() != substs2.types().count() || 
-                    !substs1.types().zip(substs2.types())
-                         .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
-                {
-                    trace!("Substituted types don't match between {:?} and {:?}", ty1, ty2);
-                    return false;
-                }
-                // warning: we're ignore lifetime and const generic params
-
-                if seen.contains(&def1.did) && seen.contains(&def2.did) {
-                    return true;
-                }
-
-                def1.all_fields().count() == def2.all_fields().count() &&
-                    def1.all_fields()
-                        .zip(def2.all_fields())
-                        .all(|(field1, field2)| {
-                            self.structural_eq_defs_impl(field1.did, field2.did, seen)
-                        })
-            }
-
-            (TyKind::Array(ty1, n1), TyKind::Array(ty2, n2)) => {
-                let len1 = n1.try_eval_usize(tcx, ParamEnv::empty());
-                let len2 = n2.try_eval_usize(tcx, ParamEnv::empty());
-                // We allow 0 length arrays to match any length arrays. This
-                // isn't exactly the C definition of compatible extern global
-                // array types with global array definitions, but it should be
-                // apply in practice as we translate empty extern array lengths
-                // into 0 length extern arrays.
-                if len1 != len2 && len1 != Some(0) && len2 != Some(0) {
-                    trace!("Array lengths don't match: {:?} and {:?}", n1, n2);
-                    return false;
-                }
-                self.structural_eq_tys_impl(ty1, ty2, seen)
-            }
-
-            (TyKind::Slice(ty1), TyKind::Slice(ty2)) => self.structural_eq_tys_impl(ty1, ty2, seen),
-
-            (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) => {
-                if ty1.mutbl != ty2.mutbl { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
-                ty1.mutbl == ty2.mutbl && self.structural_eq_tys_impl(ty1.ty, ty2.ty, seen)
-            }
-
-            (TyKind::Ref(region1, ty1, mutbl1), TyKind::Ref(region2, ty2, mutbl2)) => {
-                if region1 != region2 { trace!("Regions don't match: {:?} and {:?}", ty1, ty2); }
-                if mutbl1 != mutbl2 { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
-                region1 == region2 && mutbl1 == mutbl2 && self.structural_eq_tys_impl(ty1, ty2, seen)
-            }
-
-            (TyKind::FnDef(fn1, substs1), TyKind::FnDef(fn2, substs2)) => {
-                if substs1.types().count() != substs2.types().count() || 
-                    !substs1.types().zip(substs2.types())
-                         .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
-                {
-                    trace!("Substituted types don't match between {:?} and {:?}", ty1, ty2);
-                    return false;
-                }
-                // warning: we're ignore lifetime and const generic params
-
-                self.structural_eq_defs_impl(*fn1, *fn2, seen)
-            }
-
-            (TyKind::FnPtr(fn1), TyKind::FnPtr(fn2)) => {
-                let (fn1, fn2) = match (fn1.no_bound_vars(), fn2.no_bound_vars()) {
-                    (Some(x), Some(y)) => (x, y),
-                    _ => {
-                        trace!("Function pointers have bound vars: {:?} and {:?}", fn1, fn2);
-                        return false;
-                    }
-                };
-
-                if fn1.inputs().len() != fn2.inputs().len() ||
-                    fn1.c_variadic != fn2.c_variadic ||
-                    fn1.abi != fn2.abi
-                {
-                    trace!("Function pointers attributes don't match: {:?} and {:?}", fn1, fn2);
-                    return false;
-                }
-
-                if !self.structural_eq_tys_impl(fn1.output(), fn2.output(), seen) {
-                    trace!("Function pointer output types don't match: {:?} and {:?}", fn1, fn2);
-                    return false;
-                }
-
-                fn1.inputs().iter().zip(fn2.inputs().iter())
-                    .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
-            }
-
-            (TyKind::Tuple(_), TyKind::Tuple(_)) => {
-                ty1.tuple_fields().count() == ty2.tuple_fields().count() &&
-                    ty1.tuple_fields().zip(ty2.tuple_fields())
-                       .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
-            }
-
-            (TyKind::Foreign(did1), TyKind::Foreign(did2)) => {
-                // Foreign types are matched by symbol name
-                let matching = tcx.item_name(*did1) == tcx.item_name(*did2);
-                if !matching { trace!("Foreign types did not match: {:?} and {:?}", ty1, ty2); }
-                matching
-            }
-
-            // Allow foreign opaque types to match against any ADT with the same
-            // name
-            (TyKind::Foreign(foreign_did), TyKind::Adt(adt, _substs))
-            | (TyKind::Adt(adt, _substs), TyKind::Foreign(foreign_did)) => {
-                let matching = tcx.item_name(*foreign_did) == tcx.item_name(adt.did);
-                if !matching { trace!("Foreign type did not match ADT: {:?} and {:?}", ty1, ty2); }
-                matching
-            }
-
-            // We don't handle anything else here, and hopefully won't need
-            // to...
-            _ => {
-                trace!("Unhandled types {:?} and {:?}", ty1.kind, ty2.kind);
-                false
-            }
-        }
-    }
-
-    fn structural_eq_defs_impl(&self, did1: DefId, did2: DefId, seen: &mut HashSet<DefId>) -> bool {
-        // Convert to TyCtxt types and compare
-        if seen.contains(&did1) && seen.contains(&did2) {
-            return true;
-        }
-        seen.insert(did1);
-        seen.insert(did2);
-        self.structural_eq_tys_impl(self.def_type(did1), self.def_type(did2), seen)
+    /// Compare two ty function signatures for equivalent argument and return
+    /// types, ignoring argument names.
+    pub fn compatible_fn_sigs(&self, sig1: &FnSig<'tcx>, sig2: &FnSig<'tcx>) -> bool {
+        TypeCompare::new(self).compatible_fn_sigs(sig1, sig2)
     }
 
     /// Compare two Defs for structural equivalence, ignoring names.
     pub fn structural_eq_defs(&self, did1: DefId, did2: DefId) -> bool {
-        // We have to track which def ids we've seen so we don't recurse
-        // infinitely
-        let mut seen = HashSet::new();
-        // Convert to TyCtxt types and compare
-        self.structural_eq_defs_impl(did1, did2, &mut seen)
+        TypeCompare::new(self).structural_eq_defs(did1, did2)
     }
 
     /// Compare two Tys for structural equivalence, ignoring names.
     pub fn structural_eq_tys(&self, ty1: Ty<'tcx>, ty2: Ty<'tcx>) -> bool {
-        // We have to track which def ids we've seen so we don't recurse
-        // infinitely
-        let mut seen = HashSet::new();
-        // Convert to TyCtxt types and compare
-        self.structural_eq_tys_impl(ty1, ty2, &mut seen)
+        TypeCompare::new(self).structural_eq_tys(ty1, ty2)
     }
 
     /// Are we refactoring an executable crate?
@@ -831,6 +550,25 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             ForeignItemKind::Ty => Some(Namespace::TypeNS),
             ForeignItemKind::Macro(..) => None,
         }
+    }
+
+    /// Is this definition visible outside its translation unit?
+    pub fn is_exported_def(&self, id: DefId) -> bool {
+        match self.hir_map().get_if_local(id) {
+            Some(Node::Item(item)) => match &item.kind {
+                hir::ItemKind::Static(..) | hir::ItemKind::Const(..) | hir::ItemKind::Fn(..) => {
+                    item.attrs.iter().any(is_export_attr)
+                }
+                _ => true,
+            },
+            _ => true,
+        }
+    }
+
+    pub fn crate_defs(&self) -> Vec<DefId> {
+        self.ty_ctxt().crates().iter().map(|crate_num| {
+            DefId { krate: *crate_num, index: CRATE_DEF_INDEX }
+        }).collect()
     }
 }
 
@@ -892,4 +630,518 @@ pub struct CalleeInfo<'tcx> {
 
     /// The type and region arguments that were substituted in at the call site.
     pub substs: Option<&'tcx InternalSubsts<'tcx>>,
+}
+
+type DefMapping = HashMap<DefId, DefId>;
+
+pub struct TypeCompare<'a, 'tcx: 'a, 'b> {
+    cx: &'a RefactorCtxt<'a, 'tcx>,
+
+    /// Mapping from old DefId to new DefId for defs that have been replaced
+    /// after types were resolved.
+    def_mapping: Option<&'b DefMapping>,
+
+}
+
+impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
+    pub fn new(cx: &'a RefactorCtxt<'a, 'tcx>) -> Self {
+        Self {
+            cx,
+            def_mapping: None,
+        }
+    }
+
+    pub fn new_with_mapping(cx: &'a RefactorCtxt<'a, 'tcx>, def_mapping: &'b DefMapping) -> Self {
+        Self {
+            cx,
+            def_mapping: Some(def_mapping),
+        }
+    }
+
+    /// Compare two items for type compatibility under the C definition
+    pub fn compatible_types(&self, item1: &Item, item2: &Item) -> bool {
+        use syntax::ast::ItemKind::*;
+        match (&item1.kind, &item2.kind) {
+            // * Assure that these two items are in fact of the same type, just to be safe.
+            (TyAlias(ty1, g1), TyAlias(ty2, g2)) => {
+                match (self.cx.opt_node_type(item1.id), self.cx.opt_node_type(item2.id)) {
+                    (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
+                    _ => {
+                        if g1.params.is_empty() && g2.params.is_empty() {
+                            self.structural_eq_ast_tys(ty1, ty2)
+                        } else {
+                            // FIXME: handle generics (we don't need to for now)
+                            false
+                        }
+                    }
+                }
+            }
+
+            (Const(ty1, expr1), Const(ty2, expr2)) => {
+                match (self.cx.opt_node_type(item1.id), self.cx.opt_node_type(item2.id)) {
+                    (Some(ty1), Some(ty2)) => {
+                        self.structural_eq_tys(ty1, ty2) && expr1.unnamed_equiv(expr2)
+                    }
+                    _ => self.structural_eq_ast_tys(ty1, ty2) && expr1.unnamed_equiv(expr2),
+                }
+            }
+
+            (Use(_), Use(_)) => panic!("We should have already handled the use statement case"),
+
+            (Struct(variant1, _), Struct(variant2, _))
+            | (Union(variant1, _), Union(variant2, _)) => {
+                if !item1.ident.unnamed_equiv(&item2.ident) {
+                    return false;
+                }
+                if let Struct(..) = &item1.kind {
+                    // Ensure all field names are equivalent
+                    for (field1, field2) in variant1.fields().iter().zip(variant2.fields().iter()) {
+                        if !field1.ident.unnamed_equiv(&field2.ident) {
+                            return false;
+                        }
+                    }
+                } else {
+                    // Union field names are not required to be in the same order
+                    for field1 in variant1.fields() {
+                        let matching_field = variant2
+                            .fields()
+                            .iter()
+                            .find(|field2| field1.ident.unnamed_equiv(&field2.ident));
+                        if matching_field.is_none() {
+                            return false;
+                        }
+                    }
+                }
+                match (self.cx.opt_node_type(item1.id), self.cx.opt_node_type(item2.id)) {
+                    (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
+                    _ => {
+                        let mut fields = variant1.fields().iter().zip(variant2.fields().iter());
+                        fields.all(|(field1, field2)| self.structural_eq_ast_tys(&field1.ty, &field2.ty))
+                    }
+                }
+            }
+
+            (Enum(enum1, _), Enum(enum2, _)) => {
+                let variants = enum1.variants.iter().zip(enum2.variants.iter());
+                let mut fields = variants.flat_map(|(variant1, variant2)| {
+                    variant1
+                        .data
+                        .fields()
+                        .iter()
+                        .zip(variant2.data.fields().iter())
+                });
+                fields.all(|(field1, field2)| {
+                    match (self.cx.opt_node_type(field1.id), self.cx.opt_node_type(field2.id)) {
+                        (Some(ty1), Some(ty2)) => ty1 == ty2,
+                        _ => false,
+                    }
+                })
+            }
+
+            _ => {
+                if self.cx.item_namespace(item1) == Some(Namespace::TypeNS) &&
+                    self.cx.item_namespace(item2) == Some(Namespace::TypeNS)
+                {
+                    match (self.cx.opt_node_type(item1.id), self.cx.opt_node_type(item2.id)) {
+                        (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
+                        _ => {}
+                    }
+                }
+
+                // Fall back on AST equivalence for other items
+                item1.unnamed_equiv(item2)
+            }
+        }
+    }
+
+    /// Compare two function declarations for equivalent argument and return types,
+    /// ignoring argument names.
+    pub fn compatible_fn_prototypes(&self, decl1: &FnDecl, decl2: &FnDecl) -> bool {
+        let mut args = decl1.inputs.iter().zip(decl2.inputs.iter());
+        if !args.all(|(arg1, arg2)| self.structural_eq_ast_tys(&arg1.ty, &arg2.ty)) {
+            return false;
+        }
+
+        // We assume we're dealing with function declaration prototypes, not
+        // closures, so the default return type is ()
+        let unit_ty = mk().tuple_ty::<P<ast::Ty>>(vec![]);
+        let ty1 = match &decl1.output {
+            FunctionRetTy::Default(..) => &unit_ty,
+            FunctionRetTy::Ty(ty) => &ty,
+        };
+        let ty2 = match &decl2.output {
+            FunctionRetTy::Default(..) => &unit_ty,
+            FunctionRetTy::Ty(ty) => &ty,
+        };
+
+        self.structural_eq_ast_tys(ty1, ty2)
+    }
+
+    /// Compare two ty function signatures for equivalent argument and return
+    /// types, ignoring argument names.
+    pub fn compatible_fn_sigs(&self, sig1: &FnSig<'tcx>, sig2: &FnSig<'tcx>) -> bool {
+        if sig1.inputs().len() != sig2.inputs().len() {
+            return false;
+        }
+
+        if sig1.c_variadic != sig2.c_variadic {
+            return false;
+        }
+
+        for (&arg_ty1, &arg_ty2) in sig1.inputs().iter().zip(sig2.inputs().iter()) {
+            if !self.structural_eq_tys(arg_ty1, arg_ty2) {
+                return false;
+            }
+        }
+
+        let out_ty1 = sig1.output();
+        let out_ty2 = sig2.output();
+        self.structural_eq_tys(out_ty1, out_ty2)
+    }
+
+    /// Compare two AST types for structural equivalence, ignoring names.
+    pub fn structural_eq_ast_tys(&self, ty1: &ast::Ty, ty2: &ast::Ty) -> bool {
+        match (self.cx.opt_node_type(ty1.id), self.cx.opt_node_type(ty2.id)) {
+            (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
+            _ => {}
+        }
+        match (self.cx.try_resolve_ty(ty1), self.cx.try_resolve_ty(ty1)) {
+            (Some(did1), Some(did2)) => self.structural_eq_defs(did1, did2),
+            _ => ty1.unnamed_equiv(ty2),
+        }
+    }
+
+    /// Compare two Ty types for structural equivalence, ignoring names.
+    pub fn structural_eq_tys(&self, ty1: Ty<'tcx>, ty2: Ty<'tcx>) -> bool {
+        // We have to track which def ids we've seen so we don't recurse
+        // infinitely
+        let mut seen = HashSet::new();
+        self.structural_eq_tys_impl(ty1, ty2, &mut seen)
+    }
+
+    pub fn structural_eq_defs(&self, did1: DefId, did2: DefId) -> bool {
+        // We have to track which def ids we've seen so we don't recurse
+        // infinitely
+        let mut seen = HashSet::new();
+        self.structural_eq_defs_impl(did1, did2, &mut seen)
+    }
+
+    fn structural_eq_tys_impl(&self, ty1: Ty<'tcx>, ty2: Ty<'tcx>, seen: &mut HashSet<(DefId, DefId)>) -> bool {
+        // TODO: Make this follow the C rules for structural equivalence rather
+        // than strict equivalence
+        if ty1 == ty2 {
+            return true;
+        }
+
+        let tcx = self.cx.ty_ctxt();
+
+        match (&ty1.kind, &ty2.kind) {
+            (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
+                if substs1.types().count() != substs2.types().count() || 
+                    !substs1.types().zip(substs2.types())
+                         .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
+                {
+                    trace!("Substituted types don't match between {:?} and {:?}", ty1, ty2);
+                    return false;
+                }
+                // warning: we're ignore lifetime and const generic params
+
+                if let Some(mapping) = self.def_mapping {
+                    if mapping.contains_key(&def1.did) || mapping.contains_key(&def2.did) {
+                        // structural_eq_defs_impl will look up the defs in the
+                        // mapping before calling us again.
+                        return self.structural_eq_defs_impl(def1.did, def2.did, seen);
+                    }
+                }
+
+                if seen.contains(&(def1.did, def2.did)) {
+                    return true;
+                }
+
+                def1.all_fields().count() == def2.all_fields().count() &&
+                    def1.all_fields().zip(def2.all_fields()).all(|(field1, field2)| {
+                        field1.ident.unnamed_equiv(&field2.ident) &&
+                            self.structural_eq_defs_impl(field1.did, field2.did, seen)
+                    })
+            }
+
+            (TyKind::Array(ty1, n1), TyKind::Array(ty2, n2)) => {
+                let len1 = n1.try_eval_usize(tcx, ParamEnv::empty());
+                let len2 = n2.try_eval_usize(tcx, ParamEnv::empty());
+                // We allow 0 length arrays to match any length arrays. This
+                // isn't exactly the C definition of compatible extern global
+                // array types with global array definitions, but it should be
+                // apply in practice as we translate empty extern array lengths
+                // into 0 length extern arrays.
+                if len1 != len2 && len1 != Some(0) && len2 != Some(0) {
+                    trace!("Array lengths don't match: {:?} and {:?}", n1, n2);
+                    return false;
+                }
+                self.structural_eq_tys_impl(ty1, ty2, seen)
+            }
+
+            (TyKind::Slice(ty1), TyKind::Slice(ty2)) => self.structural_eq_tys_impl(ty1, ty2, seen),
+
+            (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) => {
+                if ty1.mutbl != ty2.mutbl { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
+                ty1.mutbl == ty2.mutbl && self.structural_eq_tys_impl(ty1.ty, ty2.ty, seen)
+            }
+
+            (TyKind::Ref(region1, ty1, mutbl1), TyKind::Ref(region2, ty2, mutbl2)) => {
+                if region1 != region2 { trace!("Regions don't match: {:?} and {:?}", ty1, ty2); }
+                if mutbl1 != mutbl2 { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
+                region1 == region2 && mutbl1 == mutbl2 && self.structural_eq_tys_impl(ty1, ty2, seen)
+            }
+
+            (TyKind::FnDef(fn1, substs1), TyKind::FnDef(fn2, substs2)) => {
+                if substs1.types().count() != substs2.types().count() || 
+                    !substs1.types().zip(substs2.types())
+                         .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
+                {
+                    trace!("Substituted types don't match between {:?} and {:?}", ty1, ty2);
+                    return false;
+                }
+                // warning: we're ignore lifetime and const generic params
+
+                self.structural_eq_defs(*fn1, *fn2)
+            }
+
+            (TyKind::FnPtr(fn1), TyKind::FnPtr(fn2)) => {
+                let (fn1, fn2) = match (fn1.no_bound_vars(), fn2.no_bound_vars()) {
+                    (Some(x), Some(y)) => (x, y),
+                    _ => {
+                        trace!("Function pointers have bound vars: {:?} and {:?}", fn1, fn2);
+                        return false;
+                    }
+                };
+
+                if fn1.inputs().len() != fn2.inputs().len() ||
+                    fn1.c_variadic != fn2.c_variadic ||
+                    fn1.abi != fn2.abi
+                {
+                    trace!("Function pointers attributes don't match: {:?} and {:?}", fn1, fn2);
+                    return false;
+                }
+
+                if !self.structural_eq_tys_impl(fn1.output(), fn2.output(), seen) {
+                    trace!("Function pointer output types don't match: {:?} and {:?}", fn1, fn2);
+                    return false;
+                }
+
+                fn1.inputs().iter().zip(fn2.inputs().iter())
+                    .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
+            }
+
+            (TyKind::Tuple(_), TyKind::Tuple(_)) => {
+                ty1.tuple_fields().count() == ty2.tuple_fields().count() &&
+                    ty1.tuple_fields().zip(ty2.tuple_fields())
+                       .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
+            }
+
+            (TyKind::Foreign(did1), TyKind::Foreign(did2)) => {
+                // Foreign types are matched by symbol name
+                let matching = tcx.item_name(*did1) == tcx.item_name(*did2);
+                if !matching { trace!("Foreign types did not match: {:?} and {:?}", ty1, ty2); }
+                matching
+            }
+
+            // Allow foreign opaque types to match against any ADT with the same
+            // name
+            (TyKind::Foreign(foreign_did), TyKind::Adt(adt, _substs))
+            | (TyKind::Adt(adt, _substs), TyKind::Foreign(foreign_did)) => {
+                let matching = tcx.item_name(*foreign_did) == tcx.item_name(adt.did);
+                if !matching { trace!("Foreign type did not match ADT: {:?} and {:?}", ty1, ty2); }
+                matching
+            }
+
+            // We don't handle anything else here, and hopefully won't need
+            // to...
+            _ => {
+                trace!("Unhandled types {:?} and {:?}", ty1.kind, ty2.kind);
+                false
+            }
+        }
+    }
+
+    fn structural_eq_defs_impl(&self, did1: DefId, did2: DefId, seen: &mut HashSet<(DefId, DefId)>) -> bool {
+        let did1 = *self.def_mapping.and_then(|mapping| mapping.get(&did1)).unwrap_or(&did1);
+        let did2 = *self.def_mapping.and_then(|mapping| mapping.get(&did2)).unwrap_or(&did2);
+
+        // Convert to TyCtxt types and compare
+        if seen.contains(&(did1, did2)) {
+            return true;
+        }
+        seen.insert((did1, did2));
+        self.structural_eq_tys_impl(self.cx.def_type(did1), self.cx.def_type(did2), seen)
+    }
+
+    pub fn eq_tys(&self, ty1: Ty<'tcx>, ty2: Ty<'tcx>) -> bool {
+        // TODO: Make this follow the C rules for structural equivalence rather
+        // than strict equivalence
+        if ty1 == ty2 {
+            return true;
+        }
+
+        let tcx = self.cx.ty_ctxt();
+
+        match (&ty1.kind, &ty2.kind) {
+            (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
+                if substs1.types().count() != substs2.types().count() || 
+                    !substs1.types().zip(substs2.types())
+                    .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
+                {
+                    trace!("Substituted types don't match between {:?} and {:?}", ty1, ty2);
+                    return false;
+                }
+                // warning: we're ignore lifetime and const generic params
+
+                if let Some(mapping) = self.def_mapping {
+                    let did1 = mapping.get(&def1.did);
+                    let did2 = mapping.get(&def2.did);
+                    if did1.is_some() || did2.is_some() {
+                        // We need to look up the type of the replacement def
+                        // and compare using that.
+                        let did1 = *mapping.get(&def1.did).unwrap_or(&def1.did);
+                        let did2 = *mapping.get(&def2.did).unwrap_or(&def2.did);
+                        return self.eq_tys(self.cx.def_type(did1), self.cx.def_type(did2));
+                    }
+                }
+
+                def1.all_fields().count() == def2.all_fields().count() &&
+                    def1.all_fields().zip(def2.all_fields()).all(|(field1, field2)| {
+                        let def1 = self.def_mapping
+                            .and_then(|m| m.get(&field1.did))
+                            .unwrap_or(&field1.did);
+                        let def2 = self.def_mapping
+                            .and_then(|m| m.get(&field2.did))
+                            .unwrap_or(&field2.did);
+                        field1.ident.unnamed_equiv(&field2.ident) && def1 == def2
+                    })
+            }
+
+            (TyKind::Array(ty1, n1), TyKind::Array(ty2, n2)) => {
+                let len1 = n1.try_eval_usize(tcx, ParamEnv::empty());
+                let len2 = n2.try_eval_usize(tcx, ParamEnv::empty());
+                // We allow 0 length arrays to match any length arrays. This
+                // isn't exactly the C definition of compatible extern global
+                // array types with global array definitions, but it should be
+                // apply in practice as we translate empty extern array lengths
+                // into 0 length extern arrays.
+                if len1 != len2 && len1 != Some(0) && len2 != Some(0) {
+                    trace!("Array lengths don't match: {:?} and {:?}", n1, n2);
+                    return false;
+                }
+                self.eq_tys(ty1, ty2)
+            }
+
+            (TyKind::Slice(ty1), TyKind::Slice(ty2)) => self.eq_tys(ty1, ty2),
+
+            (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) => {
+                if ty1.mutbl != ty2.mutbl { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
+                ty1.mutbl == ty2.mutbl && self.eq_tys(ty1.ty, ty2.ty)
+            }
+
+            (TyKind::Ref(region1, ty1, mutbl1), TyKind::Ref(region2, ty2, mutbl2)) => {
+                if region1 != region2 { trace!("Regions don't match: {:?} and {:?}", ty1, ty2); }
+                if mutbl1 != mutbl2 { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
+                region1 == region2 && mutbl1 == mutbl2 &&
+                    self.eq_tys(ty1, ty2)
+            }
+
+            (TyKind::FnDef(fn1, substs1), TyKind::FnDef(fn2, substs2)) => {
+                if substs1.types().count() != substs2.types().count() || 
+                    !substs1.types().zip(substs2.types())
+                    .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
+                {
+                    trace!("Substituted types don't match between {:?} and {:?}", ty1, ty2);
+                    return false;
+                }
+                // warning: we're ignore lifetime and const generic params
+
+                let def1 = self.def_mapping
+                    .and_then(|m| m.get(&fn1))
+                    .unwrap_or(&fn1);
+                let def2 = self.def_mapping
+                    .and_then(|m| m.get(&fn2))
+                    .unwrap_or(&fn2);
+                def1 == def2
+            }
+
+            (TyKind::FnPtr(fn1), TyKind::FnPtr(fn2)) => {
+                let (fn1, fn2) = match (fn1.no_bound_vars(), fn2.no_bound_vars()) {
+                    (Some(x), Some(y)) => (x, y),
+                    _ => {
+                        trace!("Function pointers have bound vars: {:?} and {:?}", fn1, fn2);
+                        return false;
+                    }
+                };
+
+                if fn1.inputs().len() != fn2.inputs().len() ||
+                    fn1.c_variadic != fn2.c_variadic ||
+                    fn1.abi != fn2.abi
+                {
+                    trace!("Function pointers attributes don't match: {:?} and {:?}", fn1, fn2);
+                    return false;
+                }
+
+                if !self.eq_tys(fn1.output(), fn2.output()) {
+                    trace!("Function pointer output types don't match: {:?} and {:?}", fn1, fn2);
+                    return false;
+                }
+
+                fn1.inputs().iter().zip(fn2.inputs().iter())
+                    .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
+            }
+
+            (TyKind::Tuple(_), TyKind::Tuple(_)) => {
+                ty1.tuple_fields().count() == ty2.tuple_fields().count() &&
+                    ty1.tuple_fields().zip(ty2.tuple_fields())
+                    .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
+            }
+
+            (TyKind::Foreign(did1), TyKind::Foreign(did2)) => {
+                // Foreign types are matched by symbol name
+                let matching = tcx.item_name(*did1) == tcx.item_name(*did2);
+                if !matching { trace!("Foreign types did not match: {:?} and {:?}", ty1, ty2); }
+                matching
+            }
+
+            // Allow foreign opaque types to match against any ADT with the same
+            // name
+            (TyKind::Foreign(foreign_did), TyKind::Adt(adt, _substs))
+                | (TyKind::Adt(adt, _substs), TyKind::Foreign(foreign_did)) => {
+                    let matching = tcx.item_name(*foreign_did) == tcx.item_name(adt.did);
+                    if !matching { trace!("Foreign type did not match ADT: {:?} and {:?}", ty1, ty2); }
+                    matching
+                }
+
+            // We don't handle anything else here, and hopefully won't need
+            // to...
+            _ => {
+                trace!("Unhandled types {:?} and {:?}", ty1.kind, ty2.kind);
+                false
+            }
+        }
+    }
+
+    #[allow(unused)]
+    pub fn eq_fn_sigs(&self, sig1: FnSig<'tcx>, sig2: FnSig<'tcx>) -> bool {
+        if sig1.inputs().len() != sig2.inputs().len() {
+            return false;
+        }
+
+        if sig1.c_variadic != sig2.c_variadic {
+            return false;
+        }
+
+        for (&arg_ty1, &arg_ty2) in sig1.inputs().iter().zip(sig2.inputs().iter()) {
+            if !self.eq_tys(arg_ty1, arg_ty2) {
+                return false;
+            }
+        }
+
+        let out_ty1 = sig1.output();
+        let out_ty2 = sig2.output();
+        self.eq_tys(out_ty1, out_ty2)
+    }
 }
