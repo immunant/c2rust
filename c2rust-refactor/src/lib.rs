@@ -86,6 +86,7 @@ pub mod transform;
 mod context;
 mod scripting;
 
+use cargo::core::manifest::TargetKind;
 use cargo::util::paths;
 use rustc_interface::interface;
 use std::collections::HashSet;
@@ -159,6 +160,7 @@ pub enum RustcArgSource {
 
 #[derive(Clone, Debug)]
 struct RustcArgs {
+    kind: Option<TargetKind>,
     args: Vec<String>,
     cwd: Option<PathBuf>,
 }
@@ -225,6 +227,7 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<RustcArgs> {
     match src {
         RustcArgSource::CmdLine(mut args) => {
             let mut rustc_args = RustcArgs {
+                kind: None,
                 args: vec![get_rustc_executable(Path::new("rustc"))],
                 cwd: None,
             };
@@ -238,7 +241,6 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<RustcArgs> {
 #[cfg_attr(feature = "profile", flame)]
 fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
-    use cargo::core::manifest::TargetKind;
     use cargo::core::{maybe_allow_nightly_features, PackageId, Target, Workspace, Verbosity};
     use cargo::ops;
     use cargo::ops::CompileOptions;
@@ -291,7 +293,17 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
             let mut g = self.pkg_args.lock().unwrap();
 
             let cwd = cmd.get_cwd().map(Path::to_path_buf);
-            g.push(RustcArgs { args, cwd });
+
+            // TODO: We should be topologically sorting the crates here so that
+            // we refactor dependencies before crates that depend on them, but
+            // for now we don't support workspaces, so there can only be one
+            // lib.
+            let args = RustcArgs { kind: Some(target.kind().clone()), args, cwd };
+            if let TargetKind::Lib(..) = target.kind() {
+                g.insert(0, args);
+            } else {
+                g.push(args);
+            }
 
             true
         }
@@ -344,6 +356,24 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     arg_vec
 }
 
+fn rebuild() {
+    use cargo::core::compiler::CompileMode;
+    use cargo::core::{Workspace, Verbosity};
+    use cargo::ops;
+    use cargo::ops::CompileOptions;
+    use cargo::util::important_paths::find_root_manifest_for_wd;
+    use cargo::Config;
+
+    let config = Config::default().unwrap();
+    config.shell().set_verbosity(Verbosity::Quiet);
+    let mode = CompileMode::Check { test: false };
+    let compile_opts = CompileOptions::new(&config, mode).unwrap();
+
+    let manifest_path = find_root_manifest_for_wd(config.cwd()).unwrap();
+    let ws = Workspace::new(&manifest_path, &config).unwrap();
+    ops::compile(&ws, &compile_opts).expect("Could not rebuild crate");
+}
+
 #[cfg_attr(feature = "profile", flame)]
 pub fn lib_main(opts: Options) -> interface::Result<()> {
     env_logger::init();
@@ -369,6 +399,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
     if target_args.is_empty() {
         warn!("Could not derive any rustc invocations for refactoring");
     }
+    let multiple_refactorings = target_args.len() > 1;
     for rustc_args in target_args {
         let mut marks = HashSet::new();
         for m in &opts.marks {
@@ -473,6 +504,14 @@ fn main_impl(opts: Options) -> interface::Result<()> {
 
                 state.save_crate();
             });
+        }
+
+        // We need to rebuild the crate metadata if this was a library and we
+        // are refactoring binaries that may depend on it.
+        if multiple_refactorings {
+            if let Some(TargetKind::Lib(..)) = rustc_args.kind {
+                rebuild();
+            }
         }
     }
 
