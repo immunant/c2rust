@@ -9,6 +9,7 @@ requirements:
 
 transpile:
   autogen: true
+  tflags: --reorganize-definitions
   binary: ruby
 #  cflags: "-O0"
 
