@@ -25,6 +25,9 @@ pub mod bar {
         // Test relative paths
         use super::super::outside;
 
+        #[c2rust::src_loc = "11:0"]
+        type FooInt = i32;
+
         // Comment on bar_t
         #[derive(Copy, Clone)]
         #[repr(C)]
@@ -35,6 +38,10 @@ pub mod bar {
             pub data: *mut libc::c_char,
             pub i: outside,
         }
+
+        #[c2rust::src_loc = "8:0"]
+        type OtherInt = i32;
+
         use super::libc;
     }
 
@@ -78,6 +85,7 @@ pub mod foo {
         use super::libc;
 
         extern "C" {
+            // Comment on Bar
             pub static mut Bar: bar_t;
         }
     }

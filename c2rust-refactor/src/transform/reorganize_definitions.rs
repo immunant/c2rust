@@ -11,10 +11,10 @@ use rustc::hir::{self, HirId, Node};
 use rustc::ty::{self, ParamEnv};
 use rustc_target::spec::abi::{self, Abi};
 use syntax::ast::*;
-use syntax::attr::{self, HasAttrs};
+use syntax::attr::HasAttrs;
 use syntax::util::comments::{Comment, CommentStyle};
 use syntax::ptr::P;
-use syntax::symbol::{kw, Symbol};
+use syntax::symbol::kw;
 use syntax::util::map_in_place::MapInPlace;
 use syntax_pos::{BytePos, DUMMY_SP};
 use smallvec::smallvec;
@@ -1045,8 +1045,11 @@ impl MovedDecl {
         T: Into<DeclKind>,
     {
         let kind: DeclKind = decl.into();
-        let loc: Option<SrcLoc> =
-            attr::find_by_name(kind.attrs(), Symbol::intern("src_loc")).map(|l| l.into());
+        let loc: Option<SrcLoc> = kind
+            .attrs()
+            .iter()
+            .find(|attr| is_c2rust_attr(attr, "src_loc"))
+            .map(|l| l.into());
 
         Self {
             kind,
@@ -1121,7 +1124,7 @@ impl HasAttrs for DeclKind {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct SrcLoc {
     line: usize,
     col: usize,
@@ -1399,7 +1402,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
 
         all_items.sort_by(|a, b| {
             if a.parent_header.ident == b.parent_header.ident {
-                a.parent_header.include_line.cmp(&b.parent_header.include_line)
+                a.loc.cmp(&b.loc)
             } else {
                 let line_a = info.header_lines.get(&a.parent_header.ident).unwrap_or(&0);
                 let line_b = info.header_lines.get(&b.parent_header.ident).unwrap_or(&0);

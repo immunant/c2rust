@@ -31,6 +31,10 @@ pub mod bar {
 
     // Test relative paths
     use crate::outside;
+    //test2
+    use libc;
+    //test1
+    type OtherInt = i32;
     // Comment on bar_t
 
     #[repr(C)]
@@ -41,8 +45,8 @@ pub mod bar {
         pub data: *mut libc::c_char,
         pub i: outside,
     }
-    //test2
-    use libc;
+
+    type FooInt = i32;
 
     #[no_mangle]
     static mut Bar: crate::bar::bar_t = unsafe {
