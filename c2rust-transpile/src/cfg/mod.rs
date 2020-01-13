@@ -1761,7 +1761,7 @@ impl CfgBuilder {
                     self.add_wip_block(wip, Jump(this_label));
 
                     // Case
-                    let branch = match translator.ast_context.resolve_expr_value(case_expr) {
+                    let branch = match translator.ast_context[case_expr].kind {
                         CExprKind::Literal(..) | CExprKind::ConstantExpr(..) => {
                             match translator
                                 .convert_expr(ctx.used(), case_expr)?
