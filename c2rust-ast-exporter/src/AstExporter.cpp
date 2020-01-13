@@ -472,6 +472,24 @@ class TranslateASTVisitor final
         return search != std::end(exportedTags);
     }
 
+    bool evaluateConstantInt(Expr *E, APSInt &constant) {
+        bool hasValue = E->isIntegerConstantExpr(constant, *Context);
+        if (!hasValue) {
+#if CLANG_VERSION_MAJOR < 8
+            APSInt eval_result;
+#else
+            Expr::EvalResult eval_result;
+#endif // CLANG_VERSION_MAJOR
+            hasValue = E->EvaluateAsInt(eval_result, *Context);
+#if CLANG_VERSION_MAJOR < 8
+            constant = eval_result;
+#else
+            constant = eval_result.Val.getInt();
+#endif // CLANG_VERSION_MAJOR
+        }
+        return hasValue;
+    }
+
     // Template required because Decl and Stmt don't share a common base class
     void encode_entry_raw(void *ast, ASTEntryTag tag, SourceRange loc,
                           const QualType ty, bool rvalue,
@@ -913,23 +931,11 @@ class TranslateASTVisitor final
         auto expr = CS->getLHS();
 
         APSInt value;
-        if (!expr->isIntegerConstantExpr(value, *Context)) {
-#if CLANG_VERSION_MAJOR < 8
-            APSInt eval_result;
-#else
-            Expr::EvalResult eval_result;
-#endif // CLANG_VERSION_MAJOR
-            if (!expr->EvaluateAsInt(eval_result, *Context)) {
-                std::string msg =
-                    "Expression in case statement is not an integer. Aborting.";
-                printError(msg, CS);
-                abort();
-            }
-#if CLANG_VERSION_MAJOR < 8
-            value = eval_result;
-#else
-            value = eval_result.Val.getInt();
-#endif // CLANG_VERSION_MAJOR
+        if (!evaluateConstantInt(expr, value)) {
+            std::string msg =
+                "Expression in case statement is not an integer. Aborting.";
+            printError(msg, CS);
+            abort();
         }
 
         std::vector<void *> childIds{expr, CS->getSubStmt()};
@@ -1577,7 +1583,23 @@ class TranslateASTVisitor final
     bool VisitConstantExpr(ConstantExpr *E) {
         auto children = E->children();
         std::vector<void *> childIds(std::begin(children), std::end(children));
-        encode_entry(E, TagConstantExpr, childIds);
+
+        APSInt value;
+        bool hasValue = evaluateConstantInt(E, value);
+
+        encode_entry(E, TagConstantExpr, childIds,
+                     [hasValue, value](CborEncoder *extra) {
+                         cbor_encode_boolean(extra, hasValue);
+                         if (hasValue) {
+                             cbor_encode_boolean(extra, value.isSigned());
+                             if (value.isSigned()) {
+                                 cbor_encode_int(extra, value.getSExtValue());
+                             } else {
+                                 cbor_encode_uint(extra, value.getZExtValue());
+                             }
+                         }
+                     });
+
         return true;
     }
 #endif // CLANG_VERSION_MAJOR

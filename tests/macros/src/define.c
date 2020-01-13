@@ -63,3 +63,14 @@ int stmt_expr_inc(void) {
   // used
   return inc(b);
 }
+
+int test_switch(int x) {
+  switch (x) {
+  case TEST_CONST1:
+    return 10;
+  case TEST_NESTED:
+    return 20;
+  }
+
+  return 0;
+}

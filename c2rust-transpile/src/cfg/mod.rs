@@ -1755,25 +1755,23 @@ impl CfgBuilder {
                     Ok(None)
                 }
 
-                CStmtKind::Case(_case_expr, sub_stmt, cie) => {
+                CStmtKind::Case(case_expr, sub_stmt, cie) => {
                     self.last_per_stmt_mut().saw_unmatched_case = true;
                     let this_label = Label::FromC(stmt_id);
                     self.add_wip_block(wip, Jump(this_label));
 
                     // Case
-                    let branch = match cie {
-                        ConstIntExpr::U(n) => {
-                            mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed))
+                    let branch = match translator.ast_context.resolve_expr_value(case_expr) {
+                        CExprKind::Literal(..) | CExprKind::ConstantExpr(..) => {
+                            match translator
+                                .convert_expr(ctx.used(), case_expr)?
+                                .to_pure_expr()
+                            {
+                                Some(expr) => expr,
+                                None => translator.convert_constant(cie)?,
+                            }
                         }
-
-                        ConstIntExpr::I(n) if n >= 0 => {
-                            mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed))
-                        }
-
-                        ConstIntExpr::I(n) => mk().unary_expr(
-                            syntax::ast::UnOp::Neg,
-                            mk().lit_expr(mk().int_lit((-n) as u128, LitIntType::Unsuffixed)),
-                        ),
+                        _ => translator.convert_constant(cie)?,
                     };
                     self.switch_expr_cases
                         .last_mut()

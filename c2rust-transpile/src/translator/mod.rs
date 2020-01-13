@@ -3104,6 +3104,14 @@ impl<'c> Translation<'c> {
                 Ok(result.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc", "c_ulong"]))))
             }
 
+            CExprKind::ConstantExpr(_ty, child, value) => {
+                if let Some(constant) = value {
+                    self.convert_constant(constant).map(WithStmts::new_val)
+                } else {
+                    self.convert_expr(ctx, child)
+                }
+            }
+
             CExprKind::DeclRef(qual_ty, decl_id, lrvalue) => {
                 let decl = &self
                     .ast_context
@@ -3694,6 +3702,24 @@ impl<'c> Translation<'c> {
                 self.convert_atomic(ctx, name, ptr, order, val1, order_fail, val2, weak)
             }
         }
+    }
+
+    pub fn convert_constant(&self, constant: ConstIntExpr) -> Result<P<Expr>, TranslationError> {
+        let expr = match constant {
+            ConstIntExpr::U(n) => {
+                mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed))
+            }
+
+            ConstIntExpr::I(n) if n >= 0 => {
+                mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed))
+            }
+
+            ConstIntExpr::I(n) => mk().unary_expr(
+                syntax::ast::UnOp::Neg,
+                mk().lit_expr(mk().int_lit((-n) as u128, LitIntType::Unsuffixed)),
+            ),
+        };
+        Ok(expr)
     }
 
     fn convert_macro_expansion(&self, ctx: ExprContext, expr_id: CExprId)

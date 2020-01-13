@@ -144,6 +144,7 @@ impl<W: Write> Printer<W> {
 
                 Ok(())
             }
+            Some(&CExprKind::ConstantExpr(_, expr, _)) => self.print_expr(expr, context),
             Some(&CExprKind::DeclRef(_, decl, _)) => self.print_decl_name(decl, context),
             Some(&CExprKind::Call(_, func, ref args)) => {
                 self.print_expr(func, context)?;

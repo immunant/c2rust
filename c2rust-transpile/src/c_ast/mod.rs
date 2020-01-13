@@ -466,7 +466,8 @@ impl TypedAstContext {
             CExprKind::Literal(_, _) |
             CExprKind::DeclRef(_, _, _) |
             CExprKind::UnaryType(_, _, _, _) |
-            CExprKind::OffsetOf(..) => true,
+            CExprKind::OffsetOf(..) |
+            CExprKind::ConstantExpr(..) => true,
 
             CExprKind::DesignatedInitExpr(_,_,e) |
             CExprKind::ImplicitCast(_, e, _, _, _) |
@@ -1002,6 +1003,9 @@ pub enum CExprKind {
     // Explicit cast
     ExplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>, LRValue),
 
+    // Constant context expression
+    ConstantExpr(CQualTypeId, CExprId, Option<ConstIntExpr>),
+
     // Reference to a decl (a variable, for instance)
     // TODO: consider enforcing what types of declarations are allowed here
     DeclRef(CQualTypeId, CDeclId, LRValue),
@@ -1112,7 +1116,8 @@ impl CExprKind {
             | CExprKind::VAArg(ty, _)
             | CExprKind::ShuffleVector(ty, _)
             | CExprKind::ConvertVector(ty, _)
-            | CExprKind::DesignatedInitExpr(ty, _, _) => Some(ty),
+            | CExprKind::DesignatedInitExpr(ty, _, _)
+            | CExprKind::ConstantExpr(ty, _, _) => Some(ty),
             | CExprKind::Choose(ty, _, _, _, _)
             | CExprKind::Atomic{typ: ty, ..} => Some(ty),
         }

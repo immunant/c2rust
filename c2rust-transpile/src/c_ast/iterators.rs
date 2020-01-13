@@ -44,7 +44,7 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
         ShuffleVector(..) | ConvertVector(..) => vec![],
         OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
         DeclRef(..) => vec![], // don't follow references back!
-        Unary(_ty, _op, subexpr, _) => intos![subexpr],
+        Unary(_, _, subexpr, _) | ConstantExpr(_, subexpr, _) => intos![subexpr],
         UnaryType(_ty, _op, opt_expr_id, _) => opt_expr_id.iter().map(|&x| x.into()).collect(),
         Binary(_ty, _op, lhs, rhs, _, _) => intos![lhs, rhs],
         Call(_, f, ref args) => {
@@ -90,7 +90,7 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
         OffsetOf(_, OffsetOfKind::Variable(qty, _, _)) => intos![qty.ctype],
         OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
         DeclRef(..) => vec![], // don't follow references back!
-        Unary(_ty, _op, subexpr, _) => intos![subexpr],
+        Unary(_, _, subexpr, _) | ConstantExpr(_, subexpr, _) => intos![subexpr],
         UnaryType(_ty, _op, opt_expr_id, qty) => {
             let mut res = intos![qty.ctype];
             if let Some(expr_id) = opt_expr_id {
