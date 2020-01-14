@@ -1,17 +1,17 @@
 fn main() {
-    let mut i;
+    let (mut i, mut j, mut k);
     
     'a: for i in 0..10 {
         println!("{}", i);
     }
-    'a: for i in (0..10).step_by(2 as usize) {
-        println!("{}", i);
+    'b: for j in (0..10).step_by(2 as usize) {
+        println!("{}", j);
     }
 
-    i = 0;
-    'a: while (i < 10) {
-        i += 2;
-        println!("{}", i);
-        i = i + 1;
+    k = 0;
+    'c: while (k < 10) {
+        k += 2;
+        println!("{}", k);
+        k = k + 1;
     }
 }
