@@ -328,7 +328,7 @@ impl Recover for Block {
 
 /// Codegenned trait for recursively traversing new and reparsed ASTs, looking for places we can
 /// invoke `recover`.
-pub trait RecoverChildren {
+pub trait RecoverChildren: Debug {
     /// Recursively attempt to `recover()` descendants of `reparsed`/`new`, not including
     /// `reparsed`/`new` itself.
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef);
@@ -451,7 +451,8 @@ impl<T: RecoverChildren> RecoverChildren for [T] {
     fn recover_children(reparsed: &Self, new: &Self, mut rcx: RewriteCtxtRef) {
         assert!(
             reparsed.len() == new.len(),
-            "new and reprinted ASTs don't match"
+            "new and reparsed ASTs don't match: {:?} != {:?}",
+            new, reparsed
         );
         for i in 0..reparsed.len() {
             RecoverChildren::recover_children(&reparsed[i], &new[i], rcx.borrow());
@@ -461,7 +462,8 @@ impl<T: RecoverChildren> RecoverChildren for [T] {
     fn recover_node_and_children(reparsed: &Self, new: &Self, mut rcx: RewriteCtxtRef) {
         assert!(
             reparsed.len() == new.len(),
-            "new and reprinted ASTs don't match"
+            "new and reparsed ASTs don't match: {:?} != {:?}",
+            new, reparsed
         );
         for i in 0..reparsed.len() {
             RecoverChildren::recover_node_and_children(&reparsed[i], &new[i], rcx.borrow());
@@ -587,7 +589,7 @@ where
 
 pub fn rewrite<T>(old: &T, new: &T, rcx: RewriteCtxtRef) -> bool
 where
-    T: PrintParse + RecoverChildren + Splice + Debug + MaybeGetNodeId,
+    T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
     if !is_rewritable(old.splice_span()) {
         // If we got here, it means rewriting failed somewhere inside macro-generated code, and
@@ -655,7 +657,7 @@ fn add_comments<T>(s: String, node: &T, rcx: &RewriteCtxt) -> String
 
 fn rewrite_at_impl<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
 where
-    T: PrintParse + RecoverChildren + Splice + Debug + MaybeGetNodeId,
+    T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
     let printed = add_comments(new.to_string(), new, &rcx);
     let reparsed = T::parse(rcx.session(), &printed);
@@ -691,7 +693,7 @@ pub trait RewriteAt {
 }
 
 impl<T> RewriteAt for T
-    where T: PrintParse + RecoverChildren + Splice + Debug + MaybeGetNodeId
+    where T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId
 {
     default fn rewrite_at(&self, old_span: Span, rcx: RewriteCtxtRef) -> bool {
         rewrite_at_impl(old_span, self, rcx)
