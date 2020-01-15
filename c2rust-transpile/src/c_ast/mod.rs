@@ -67,7 +67,10 @@ pub struct TypedAstContext {
     include_map: Vec<Vec<SrcLoc>>,
 
     // map expressions to the stack of macros they were expanded from
-    pub macro_expansions: HashMap<CExprId, Vec<CDeclId>>,
+    pub macro_invocations: HashMap<CExprId, Vec<CDeclId>>,
+
+    // map macro decls to the expressions they expand to
+    pub macro_expansions: HashMap<CDeclId, Vec<CExprId>>,
 
     // map expressions to the text of the macro invocation they expanded from,
     // if any
@@ -165,6 +168,7 @@ impl TypedAstContext {
             file_map,
             include_map,
             parents: HashMap::new(),
+            macro_invocations: HashMap::new(),
             macro_expansions: HashMap::new(),
             macro_expansion_text: HashMap::new(),
 
@@ -585,7 +589,7 @@ impl TypedAstContext {
 
                     SomeId::Expr(expr_id) => {
                         let expr = self.index(expr_id);
-                        if let Some(macs) = self.macro_expansions.get(&expr_id) {
+                        if let Some(macs) = self.macro_invocations.get(&expr_id) {
                             for mac_id in macs {
                                 if used.insert(*mac_id) {
                                     to_walk.push(*mac_id);
@@ -929,12 +933,12 @@ pub enum CDeclKind {
 
     MacroObject {
         name: String,
-        replacements: Vec<CExprId>,
+        // replacements: Vec<CExprId>,
     },
 
     MacroFunction {
         name: String,
-        replacements: Vec<CExprId>,
+        // replacements: Vec<CExprId>,
     },
 
     NonCanonicalDecl {

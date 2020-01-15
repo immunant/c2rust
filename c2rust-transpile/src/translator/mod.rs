@@ -1966,9 +1966,7 @@ impl<'c> Translation<'c> {
                 "This should be handled in 'convert_decl_stmt'",
             )),
 
-            CDeclKind::MacroObject {
-                ref replacements, ..
-            } => {
+            CDeclKind::MacroObject { .. } => {
                 let name = self
                     .renamer
                     .borrow_mut()
@@ -1979,7 +1977,7 @@ impl<'c> Translation<'c> {
 
                 let maybe_replacement = self.canonical_macro_replacement(
                     ctx.set_const(true).set_expanding_macro(decl_id),
-                    &replacements,
+                    &self.ast_context.macro_expansions[&decl_id],
                 );
 
                 match maybe_replacement {
@@ -3738,7 +3736,7 @@ impl<'c> Translation<'c> {
 
     fn convert_macro_expansion(&self, ctx: ExprContext, expr_id: CExprId)
                                -> Result<Option<WithStmts<P<Expr>>>, TranslationError> {
-        if let Some(macs) = self.ast_context.macro_expansions.get(&expr_id) {
+        if let Some(macs) = self.ast_context.macro_invocations.get(&expr_id) {
             // Find the first macro after the macro we're currently
             // expanding, if any.
             if let Some(macro_id) = macs

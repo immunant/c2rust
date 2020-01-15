@@ -461,6 +461,16 @@ impl ConversionContext {
             self.visit_node(untyped_context, node_id, new_id, expected_ty)
         }
 
+        // Invert the macro invocations to get a list of macro expansion expressions
+        for (expr_id, macro_ids) in &self.typed_context.macro_invocations {
+            for mac_id in macro_ids {
+                self.typed_context.macro_expansions
+                    .entry(*mac_id)
+                    .or_default()
+                    .push(*expr_id);
+            }
+        }
+
         self.typed_context.va_list_kind = untyped_context.va_list_kind;
     }
 
@@ -794,11 +804,13 @@ impl ConversionContext {
                 None => return,
             };
 
-            for mac_id in &node.macro_expansions {
-                let mac = CDeclId(self.visit_node_type(*mac_id, MACRO_DECL));
-                self.typed_context.macro_expansions.entry(CExprId(new_id))
-                    .or_default()
-                    .push(mac);
+            if expected_ty & EXPR != 0 {
+                for mac_id in &node.macro_expansions {
+                    let mac = CDeclId(self.visit_node_type(*mac_id, MACRO_DECL));
+                    self.typed_context.macro_invocations.entry(CExprId(new_id))
+                        .or_default()
+                        .push(mac);
+                }
             }
 
             if let Some(text) = &node.macro_expansion_text {
@@ -1976,20 +1988,18 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, FIELD_DECL);
                 }
 
-                ASTEntryTag::TagMacroObjectDef if expected_ty & MACRO_DECL != 0 => {
+                ASTEntryTag::TagMacroObjectDef | ASTEntryTag::TagMacroFunctionDef
+                    if expected_ty & MACRO_DECL != 0 =>
+                {
                     let name = from_value::<String>(node.extras[0].clone())
                         .expect("Macros must have a name");
 
-                    let replacements = node
-                        .children
-                        .iter()
-                        .map(|id| {
-                            let expr_id = id.expect("Macro replacement expr not found");
-                            self.visit_expr(expr_id)
-                        })
-                        .collect();
+                    let mac_object = match node.tag {
+                        ASTEntryTag::TagMacroObjectDef => CDeclKind::MacroObject { name },
+                        ASTEntryTag::TagMacroFunctionDef => CDeclKind::MacroFunction { name },
+                        _ => unreachable!("Unexpected tag for macro"),
+                    };
 
-                    let mac_object = CDeclKind::MacroObject { name, replacements };
                     self.add_decl(new_id, located(node, mac_object));
                     self.processed_nodes.insert(new_id, MACRO_DECL);
 
@@ -2003,7 +2013,7 @@ impl ConversionContext {
                     let name = from_value::<String>(node.extras[0].clone())
                         .expect("Macros must have a name");
 
-                    let mac_object = CDeclKind::MacroFunction { name, replacements: vec![] };
+                    let mac_object = CDeclKind::MacroFunction { name };
                     self.add_decl(new_id, located(node, mac_object));
                     self.processed_nodes.insert(new_id, MACRO_DECL);
 

@@ -442,9 +442,6 @@ class TranslateASTVisitor final
 
     struct MacroExpansionInfo {
         StringRef Name;
-
-        /// Expressions that we have seen this macro expand to
-        SmallPtrSet<Expr*, 10> Expressions;
     };
 
     ASTContext *Context;
@@ -660,7 +657,6 @@ class TranslateASTVisitor final
         else if (info.Name != name)
             return false;
 
-        info.Expressions.insert(E);
         typeEncoder.VisitQualType(E->getType());
         return true;
     }
@@ -730,9 +726,7 @@ class TranslateASTVisitor final
             else
                 tag = TagMacroObjectDef;
 
-            std::vector<void *> childIds(Info.Expressions.begin(),
-                                         Info.Expressions.end());
-
+            std::vector<void *> childIds;
             auto range = SourceRange(Mac->getDefinitionLoc(), Mac->getDefinitionEndLoc());
             encode_entry_raw(Mac, tag, range, QualType(), false,
                              false, false, childIds, [Name](CborEncoder *local) {
