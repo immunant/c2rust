@@ -3,7 +3,7 @@ use super::*;
 
 impl<'c> Translation<'c> {
     fn convert_constant_bool(&self, expr: CExprId) -> Option<bool> {
-        let val = self.ast_context.resolve_expr_value(expr);
+        let val = self.ast_context.resolve_expr(expr).1;
         match val {
             CExprKind::Literal(_, CLiteral::Integer(0, _)) => Some(false),
             CExprKind::Literal(_, CLiteral::Integer(_, _)) => Some(true),

@@ -382,15 +382,15 @@ impl TypedAstContext {
     }
 
     /// Resolve expression value, ignoring any casts
-    pub fn resolve_expr_value(&self, expr_id: CExprId) -> &CExprKind {
+    pub fn resolve_expr(&self, expr_id: CExprId) -> (CExprId, &CExprKind) {
         let expr = &self.index(expr_id).kind;
         match expr {
             CExprKind::ImplicitCast(_, subexpr, _, _, _) |
             CExprKind::ExplicitCast(_, subexpr, _, _, _) |
             CExprKind::Paren(_, subexpr) => {
-                self.resolve_expr_value(*subexpr)
+                self.resolve_expr(*subexpr)
             }
-            _ => expr
+            _ => (expr_id, expr)
         }
     }
 
