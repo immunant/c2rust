@@ -30,7 +30,7 @@ use crate::file_io::{OutputMode, RealFileIO};
 use crate::matcher::{self, mut_visit_match_with, replace_expr, MatchCtxt, Pattern, Subst, TryMatch};
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::reflect::reflect_tcx_ty;
-use crate::RefactorCtxt;
+use crate::{Command, RefactorCtxt};
 
 pub mod ast_visitor;
 pub mod into_lua_ast;
@@ -50,6 +50,16 @@ use to_lua_ast_node::{FromLuaAstNode, FromLuaExt, FromLuaTable, LuaHirId, ToLuaE
 
 /// Global refactoring state
 // @field refactor RefactorState object
+
+pub fn validate_command(command: &Command) -> bool {
+    assert_eq!(command.args.len(), 1);
+    if !Path::new(&command.args[0]).exists() {
+        error!("No script file found at {}", command.args[0]);
+        return false;
+    }
+
+    true
+}
 
 pub fn run_lua_file(
     script_path: &Path,

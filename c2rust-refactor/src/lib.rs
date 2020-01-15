@@ -395,6 +395,14 @@ pub fn lib_main(opts: Options) -> interface::Result<()> {
 }
 
 fn main_impl(opts: Options) -> interface::Result<()> {
+    if opts.commands.len() == 1 && opts.commands[0].name == "script" {
+        // Validate script command ASAP to avoid running the compiler if the
+        // script path is invalid.
+        if !scripting::validate_command(&opts.commands[0]) {
+            return Err(rustc_errors::ErrorReported);
+        }
+    }
+
     let target_args = get_rustc_arg_strings(opts.rustc_args.clone());
     if target_args.is_empty() {
         warn!("Could not derive any rustc invocations for refactoring");
@@ -478,7 +486,6 @@ fn main_impl(opts: Options) -> interface::Result<()> {
         if opts.commands.len() == 1 && opts.commands[0].name == "interact" {
             interact::interact_command(&opts.commands[0].args, config, cmd_reg);
         } else if opts.commands.len() == 1 && opts.commands[0].name == "script" {
-            assert_eq!(opts.commands[0].args.len(), 1);
             scripting::run_lua_file(
                 Path::new(&opts.commands[0].args[0]),
                 config,
