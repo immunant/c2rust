@@ -1,5 +1,11 @@
 //! translate_const_macros
 
+#define TEST_FN_MACRO(x) ((x) * (x))
+
+int test_fn_macro(int x) {
+  return TEST_FN_MACRO(x);
+}
+
 #include <stddef.h>
 #include <stdint.h>
 typedef  uint64_t U64;

@@ -461,6 +461,7 @@ class TranslateASTVisitor final
     // SourceLocation isn't hashable.
     std::unordered_set<unsigned> macroCallSites;
     SmallVector<MacroInfo*, 1> curMacroExpansionStack;
+    StringRef curMacroExpansionSource;
 
     // Returns true when a new entry is added to exportedTags
     bool markForExport(void *ptr, ASTEntryTag tag) {
@@ -544,7 +545,14 @@ class TranslateASTVisitor final
         }
         cbor_encoder_close_container(&local, &childEnc);
 
-        // 11.. - Extra entries
+        // 11 - Macro expansion source string, if applicable.
+        if (!curMacroExpansionSource.empty()) {
+            cbor_encode_string(&local, curMacroExpansionSource.str());
+        } else {
+            cbor_encode_null(&local);
+        }
+
+        // 12.. - Extra entries
         extra(&local);
 
         cbor_encoder_close_container(encoder, &local);
@@ -1068,11 +1076,12 @@ class TranslateASTVisitor final
 
     bool VisitExpr(Expr *E) {
         curMacroExpansionStack.clear();
+        curMacroExpansionSource = StringRef();
 
         // We only translate constant macro objects to Rust consts, so this
         // expression must be constant.
-        if (!E->isConstantInitializer(*Context, false))
-            return true;
+        // if (!E->isConstantInitializer(*Context, false))
+        //     return true;
 
         auto &Mgr = Context->getSourceManager();
         auto Range = E->getSourceRange();
@@ -1088,6 +1097,12 @@ class TranslateASTVisitor final
         if (!Begin.isMacroID() || !End.isMacroID() ||
             Mgr.getImmediateMacroCallerLoc(Begin) != Mgr.getImmediateMacroCallerLoc(End))
             return true;
+
+        if (Begin.isMacroID()) {
+            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
+            curMacroExpansionSource = 
+                Lexer::getSourceText(ExpansionRange, Mgr, Context->getLangOpts());
+        }
 
         // The macro stack unwound by getImmediateMacroCallerLoc and friends
         // starts with literal replacement and works it's way to the macro call
@@ -1119,7 +1134,7 @@ class TranslateASTVisitor final
             Begin = ExpansionBegin;
             End = ExpansionEnd;
 
-            if (mac->isObjectLike() && VisitMacro(name, Begin, mac, E)) {
+            if (VisitMacro(name, Begin, mac, E)) {
                 curMacroExpansionStack.push_back(mac);
             }
         }

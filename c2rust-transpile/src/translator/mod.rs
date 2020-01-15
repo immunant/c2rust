@@ -11,11 +11,13 @@ use dtoa;
 use failure::{err_msg, Fail};
 use indexmap::{IndexMap, IndexSet};
 
+use rustc_parse::parse_stream_from_source_str;
 use syntax::attr;
 use syntax::ast::*;
 use syntax::util::comments::CommentStyle;
 use syntax::token::{self, DelimToken, Nonterminal};
 use syntax::ptr::*;
+use syntax::sess::ParseSess;
 use syntax::source_map::{FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
@@ -715,6 +717,7 @@ pub fn translate(
                 CDeclKind::Function { is_implicit, .. } => !is_implicit,
                 CDeclKind::Variable { .. } => true,
                 CDeclKind::MacroObject { .. } => tcfg.translate_const_macros,
+                CDeclKind::MacroFunction { .. } => tcfg.translate_fn_macros,
                 _ => false,
             };
             if needs_export {
@@ -2001,6 +2004,10 @@ impl<'c> Translation<'c> {
                 }
             }
 
+            // We aren't doing anything with the definitions of function-like
+            // macros yet.
+            CDeclKind::MacroFunction { .. } => Ok(ConvertedDecl::NoItem),
+
             // Do not translate non-canonical decls. They will be translated at
             // their canonical declaration.
             CDeclKind::NonCanonicalDecl { .. } => Ok(ConvertedDecl::NoItem),
@@ -3065,6 +3072,13 @@ impl<'c> Translation<'c> {
             }
         }
 
+        if self.tcfg.translate_fn_macros {
+            let text = self.ast_context.macro_expansion_text.get(&expr_id);
+            if let Some(converted) = text.and_then(|text| self.convert_macro_invocation(ctx, &text)) {
+                return Ok(converted);
+            }
+        }
+
         match *expr_kind {
             CExprKind::DesignatedInitExpr(..) => {
                 Err(TranslationError::generic("Unexpected designated init expr"))
@@ -3780,6 +3794,22 @@ impl<'c> Translation<'c> {
         }
 
         Ok(None)
+    }
+
+    fn convert_macro_invocation(&self, _ctx: ExprContext, text: &str)
+                                -> Option<WithStmts<P<Expr>>> {
+        let mut split = text.splitn(2, '(');
+        let ident = split.next()?;
+        let args = split.next()?.trim_end_matches(')');
+
+        let parse_sess = ParseSess::new(FilePathMapping::empty());
+        let ts = parse_stream_from_source_str(
+            FileName::Anon(0),
+            args.to_string(),
+            &parse_sess,
+            None,
+        );
+        Some(WithStmts::new_val(mk().mac_expr(mk().mac(ident, ts, MacDelimiter::Parenthesis))))
     }
 
     /// If `ctx` is unused, convert `expr` to a semi statement, otherwise return
@@ -4712,7 +4742,7 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            CDeclKind::Function { .. } => {
+            CDeclKind::Function { .. } | CDeclKind::MacroFunction { .. } => {
                 // TODO: We may need to explicitly skip SIMD functions here when getting types for
                 // a fn definition in a header since SIMD headers define functions but we're using imports
                 // rather than translating the original definition

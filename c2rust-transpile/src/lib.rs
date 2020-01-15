@@ -4,6 +4,7 @@
 
 extern crate colored;
 extern crate dtoa;
+extern crate rustc_parse;
 extern crate syntax;
 extern crate syntax_pos;
 #[macro_use]
@@ -60,6 +61,7 @@ use crate::compile_cmds::get_compile_commands;
 use crate::convert_type::RESERVED_NAMES;
 pub use crate::translator::ReplaceMode;
 use std::prelude::v1::Vec;
+use syntax_pos::edition::Edition;
 
 type PragmaVec = Vec<(&'static str, Vec<&'static str>)>;
 type PragmaSet = indexmap::IndexSet<(&'static str, &'static str)>;
@@ -105,6 +107,7 @@ pub struct TranspilerConfig {
     pub emit_no_std: bool,
     pub output_dir: Option<PathBuf>,
     pub translate_const_macros: bool,
+    pub translate_fn_macros: bool,
     pub disable_refactoring: bool,
     pub log_level: log::LevelFilter,
 
@@ -509,7 +512,9 @@ fn transpile_single(
 
     // Perform the translation
     let (translated_string, pragmas, crates) =
-        translator::translate(typed_context, &tcfg, input_path);
+        syntax::with_globals(Edition::Edition2018, move || {
+            translator::translate(typed_context, &tcfg, input_path)
+        });
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,

@@ -729,6 +729,19 @@ impl<W: Write> Printer<W> {
                 Ok(())
             }
 
+            Some(&CDeclKind::MacroFunction {
+                ref name,
+                ref replacements,
+                ..
+            }) => {
+                self.writer.write_fmt(format_args!("#define {}() ", name))?;
+                for replacement in replacements {
+                    self.print_expr(*replacement, context)?;
+                }
+
+                Ok(())
+            }
+
             Some(&CDeclKind::NonCanonicalDecl {
                 ref canonical_decl,
             }) => {

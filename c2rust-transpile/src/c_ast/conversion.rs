@@ -801,6 +801,10 @@ impl ConversionContext {
                     .push(mac);
             }
 
+            if let Some(text) = &node.macro_expansion_text {
+                self.typed_context.macro_expansion_text.insert(CExprId(new_id), text.clone());
+            }
+
             match node.tag {
                 // Statements
                 ASTEntryTag::TagBreakStmt if expected_ty & OTHER_STMT != 0 => {
@@ -1986,6 +1990,20 @@ impl ConversionContext {
                         .collect();
 
                     let mac_object = CDeclKind::MacroObject { name, replacements };
+                    self.add_decl(new_id, located(node, mac_object));
+                    self.processed_nodes.insert(new_id, MACRO_DECL);
+
+                    // Macros aren't technically top-level decls, so clang
+                    // doesn't put them in top_nodes, but we do need to process
+                    // them early.
+                    self.typed_context.c_decls_top.push(CDeclId(new_id));
+                }
+
+                ASTEntryTag::TagMacroFunctionDef if expected_ty & MACRO_DECL != 0 => {
+                    let name = from_value::<String>(node.extras[0].clone())
+                        .expect("Macros must have a name");
+
+                    let mac_object = CDeclKind::MacroFunction { name, replacements: vec![] };
                     self.add_decl(new_id, located(node, mac_object));
                     self.processed_nodes.insert(new_id, MACRO_DECL);
 

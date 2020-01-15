@@ -69,6 +69,10 @@ pub struct TypedAstContext {
     // map expressions to the stack of macros they were expanded from
     pub macro_expansions: HashMap<CExprId, Vec<CDeclId>>,
 
+    // map expressions to the text of the macro invocation they expanded from,
+    // if any
+    pub macro_expansion_text: HashMap<CExprId, String>,
+
     pub comments: Vec<Located<String>>,
 
     // The key is the typedef decl being squashed away,
@@ -162,6 +166,7 @@ impl TypedAstContext {
             include_map,
             parents: HashMap::new(),
             macro_expansions: HashMap::new(),
+            macro_expansion_text: HashMap::new(),
 
             comments: vec![],
             prenamed_decls: IndexMap::new(),
@@ -923,6 +928,11 @@ pub enum CDeclKind {
     },
 
     MacroObject {
+        name: String,
+        replacements: Vec<CExprId>,
+    },
+
+    MacroFunction {
         name: String,
         replacements: Vec<CExprId>,
     },

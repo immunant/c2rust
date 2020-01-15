@@ -87,6 +87,7 @@ fn main() {
         translate_valist: true,
 
         translate_const_macros: matches.is_present("translate-const-macros"),
+        translate_fn_macros: matches.is_present("translate-fn-macros"),
         disable_refactoring: matches.is_present("disable-refactoring"),
 
         use_c_loop_info: !matches.is_present("ignore-c-loop-info"),
