@@ -1763,16 +1763,23 @@ impl CfgBuilder {
                     // Case
                     let resolved = translator.ast_context.resolve_expr(case_expr);
                     let branch = match resolved.1 {
-                        CExprKind::Literal(..) | CExprKind::ConstantExpr(..)  => {
+                        CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_))  => {
                             match translator
                                 .convert_expr(ctx.used(), resolved.0)?
                                 .to_pure_expr()
                             {
-                                Some(expr) => expr,
-                                None => translator.convert_constant(cie)?,
+                                Some(expr) => match expr.kind {
+                                    ExprKind::Lit(..) | ExprKind::Path(..) => Some(expr),
+                                    _ => None,
+                                }
+                                _ => None,
                             }
                         }
-                        _ => translator.convert_constant(cie)?,
+                        _ => None,
+                    };
+                    let branch = match branch {
+                        Some(expr) => expr,
+                        None => translator.convert_constant(cie)?,
                     };
                     self.switch_expr_cases
                         .last_mut()
