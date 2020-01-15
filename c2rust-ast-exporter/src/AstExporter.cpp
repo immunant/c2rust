@@ -1099,7 +1099,15 @@ class TranslateASTVisitor final
             return true;
 
         if (Begin.isMacroID()) {
+#if CLANG_VERSION_MAJOR < 7
+            // getImmediateExpansionRange in LLVM<7 returns a
+            // std::pair<SourceLocation, SourceLocation>, which we need to
+            // translate to a CharSourceRange for Lexer::getSourceText
+            auto LocPair = Mgr.getImmediateExpansionRange(Begin);
+            auto ExpansionRange = CharSourceRange::getCharRange(LocPair.first, LocPair.second);
+#else // CLANG_VERSION_MAJOR >= 7
             auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
+#endif
             curMacroExpansionSource = 
                 Lexer::getSourceText(ExpansionRange, Mgr, Context->getLangOpts());
         }
