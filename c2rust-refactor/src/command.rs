@@ -334,7 +334,12 @@ impl RefactorState {
             );
 
             let unexpanded = cs.krate().clone();
-            reset_node_ids(&mut *cs.krate.borrow_mut());
+            if phase != Phase::Phase1 {
+                // We need all the `NodeId`s for rewriting,
+                // so keep them for Phase 1 but let the compiler
+                // replace them for the other phases
+                reset_node_ids(&mut *cs.krate.borrow_mut());
+            }
 
             // Immediately fix up the attr spans, since during expansion, any
             // `derive` attrs will be removed.
