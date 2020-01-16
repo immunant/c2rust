@@ -413,7 +413,7 @@ def ensure_clang_version(min_ver: List[int]):
         m = re.search(r"clang\s+version\s([^\s-]+)", version)
         _common_check(m)
     elif on_mac():
-        m = re.search(r"Apple\sLLVM\sversion\s([^\s-]+)", version)
+        m = re.search(r"Apple\s(?:LLVM|clang)\sversion\s([^\s-]+)", version)
         _common_check(m)
     else:
         assert False, "run this script on macOS or linux"
