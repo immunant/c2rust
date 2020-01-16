@@ -233,8 +233,8 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         cc_db.to_string_lossy()
     ));
 
-    // we may need to specify path to system include dir on macOS
-    let clang_args: Vec<String> = get_isystem_args();
+    // Specify path to system include dir on macOS 10.14 and later. Disable the blocks extension.
+    let clang_args: Vec<String> = get_extra_args_macos();
     let mut clang_args: Vec<&str> = clang_args.iter().map(AsRef::as_ref).collect();
     clang_args.extend_from_slice(extra_clang_args);
 
@@ -285,7 +285,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                                         &ancestor_path,
                                         &build_dir,
                                         cc_db,
-                                        extra_clang_args))
+                                        &clang_args))
             .collect::<Vec<TranspileResult>>();
         let mut modules = vec![];
         let mut modules_skipped = false;
@@ -357,7 +357,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 /// It is possible to install a package which puts the headers in
 /// `/usr/include` but the user doesn't have to since we can find
 /// the system headers we need by running `xcrun --show-sdk-path`.
-fn get_isystem_args() -> Vec<String> {
+fn get_extra_args_macos() -> Vec<String> {
     let mut args = vec![];
     if cfg!(target_os = "macos") {
         let usr_incl = Path::new("/usr/include");
@@ -374,6 +374,9 @@ fn get_isystem_args() -> Vec<String> {
             args.push("-isystem".to_owned());
             args.push(sdk_path);
         }
+
+        // disable Apple's blocks extension; see https://github.com/immunant/c2rust/issues/229
+        args.push("-fno-blocks".to_owned());
     }
     args
 }

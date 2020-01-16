@@ -109,14 +109,6 @@ class CFile:
         args.append("--")
         args.extend(extra_args)
 
-        # Add -isysroot on MacOS to get SDK directory
-        if on_mac():
-            try:
-                xcrun = pb.local["xcrun"]
-                args.append("-isysroot" + xcrun("--show-sdk-path").strip())
-            except pb.CommandNotFound:
-                pass
-
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
             # log the command in a format that's easy to re-run
             translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
