@@ -8,6 +8,7 @@ use syntax::source_map::{Span, SyntaxContext};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
 
+use std::fmt::Debug;
 use std::rc::Rc;
 use syntax::attr;
 use syntax::ptr::P;
@@ -17,6 +18,7 @@ use syntax_pos::Symbol;
 
 use crate::ast_manip::Visit;
 use crate::ast_manip::{GetNodeId, GetSpan};
+use crate::ast_manip::util::path_eq;
 
 use super::root_callsite_span;
 
@@ -357,17 +359,41 @@ fn get_child_invoc<'a>(
     id: InvocId,
     new: MacNodeRef<'a>,
 ) -> Option<InvocKind<'a>> {
+    if is_derived(invoc, new) {
+        Some(InvocKind::Derive(id))
+    } else {
+        None
+    }
+}
+
+fn is_derived<'a>(
+    invoc: InvocKind<'a>,
+    new: MacNodeRef<'a>,
+) -> bool {
     match invoc {
         InvocKind::ItemAttr(..) => {
             if let MacNodeRef::Item(i) = new {
                 if attr::contains_name(&i.attrs, Symbol::intern("automatically_derived")) {
-                    return Some(InvocKind::Derive(id));
+                    return true;
+                }
+
+                // This is a hack to work around the StructuralPartialEq impl
+                // from derive(PartialEq) not being marked with an
+                // automatically_derived attribute. TODO: remove this when
+                // StructuralPartialEq is labeled with the right attribute.
+                match &i.kind {
+                    ItemKind::Impl(_, _, _, _, Some(traitref), _, _) => {
+                        if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"]) {
+                            return true;
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
         _ => {}
     }
-    None
+    false
 }
 
 trait CollectMacros {
@@ -394,14 +420,14 @@ impl<T: CollectMacros> CollectMacros for Spanned<T> {
     }
 }
 
-impl<T: CollectMacros> CollectMacros for Option<T> {
+impl<T: CollectMacros+Debug> CollectMacros for Option<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         match (old, new) {
             (&Some(ref old), &Some(ref new)) => {
                 <T as CollectMacros>::collect_macros(old, new, cx);
             }
             (&None, &None) => {}
-            (_, _) => panic!("mismatch between unexpanded and expanded ASTs"),
+            (_, _) => panic!("mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}", old, new),
         }
     }
 }
