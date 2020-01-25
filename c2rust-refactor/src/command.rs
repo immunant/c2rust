@@ -874,8 +874,9 @@ fn register_commit(reg: &mut Registry) {
 
     reg.register("dump_crate", |_args| {
         Box::new(FuncCommand(|rs: &mut RefactorState| {
-            rs.load_crate();
-            eprintln!("{:#?}", rs.krate.as_ref().unwrap());
+            rs.transform_crate(Phase::Phase2, |st, _cx| {
+                eprintln!("{:#?}", st.krate());
+            }).unwrap();
         }))
     });
 }
