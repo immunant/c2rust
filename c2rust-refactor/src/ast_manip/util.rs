@@ -291,3 +291,9 @@ pub fn is_exported(item: &Item) -> bool {
 pub fn is_export_attr(attr: &Attribute) -> bool {
     attr.has_name(sym::no_mangle) || attr.has_name(sym::export_name)
 }
+
+/// Are the idents of the segments of `path` equivalent to the list of idents
+pub fn path_eq<T: AsRef<str>>(path: &Path, idents: &[T]) -> bool {
+    path.segments.len() == idents.len()
+        && path.segments.iter().zip(idents).all(|(p, i)| p.ident.as_str() == i.as_ref())
+}
