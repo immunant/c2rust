@@ -219,6 +219,9 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                     trace!("ItemAttr: drop (generated): {:?} -> /**/", i);
                     return smallvec![];
                 }
+                _ => {
+                    error!("bad macro kind for item: {:?}", info.invoc);
+                }
             }
         }
         mut_visit::noop_flat_map_item(i, self)

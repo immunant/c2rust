@@ -88,6 +88,11 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
         visit::walk_item(self, x);
     }
 
+    fn visit_block(&mut self, block: &'ast Block) {
+        self.handle_seq(block.id, &block.stmts);
+        visit::walk_block(self, block);
+    }
+
     fn visit_mac(&mut self, mac: &'ast Mac) {
         visit::walk_mac(self, mac)
     }
@@ -229,6 +234,11 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
             x
         });
         mut_visit::noop_flat_map_item(x, self)
+    }
+
+    fn visit_block(&mut self, block: &mut P<Block>) {
+        self.restore_seq(block.id, &mut block.stmts);
+        mut_visit::noop_visit_block(block, self)
     }
 
     fn visit_mac(&mut self, mac: &mut Mac) {
