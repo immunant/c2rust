@@ -387,7 +387,9 @@ fn is_derived<'a>(
                 // StructuralPartialEq is labeled with the right attribute.
                 match &i.kind {
                     ItemKind::Impl(_, _, _, _, Some(traitref), _, _) => {
-                        if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"]) {
+                        if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"])
+                            || path_eq(&traitref.path, &["$crate", "marker", "StructuralEq"])
+                        {
                             return true;
                         }
                     }
