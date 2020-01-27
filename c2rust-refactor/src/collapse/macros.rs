@@ -209,18 +209,15 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                         return smallvec![];
                     }
                 }
-                InvocKind::ItemAttr(orig_i) => {
-                    trace!("ItemAttr: return original: {:?}", i);
-                    let i = i.map(|i| restore_attrs(i, orig_i));
+                InvocKind::Attrs(attrs) => {
+                    trace!("Attrs: return original: {:?}", i);
+                    let i = i.map(|i| restore_attrs(i, attrs));
                     self.record_matched_ids(i.id, i.id);
                     return smallvec![i];
                 }
                 InvocKind::Derive(_parent_invoc_id) => {
-                    trace!("ItemAttr: drop (generated): {:?} -> /**/", i);
+                    trace!("Derive: drop (generated): {:?} -> /**/", i);
                     return smallvec![];
-                }
-                _ => {
-                    error!("bad macro kind for item: {:?}", info.invoc);
                 }
             }
         }
@@ -336,17 +333,17 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
 /// transform, we can't just copy `old.attrs`.  Instead, we look through `old.attrs` for attributes
 /// with known effects (such as `#[cfg]`, which removes itself when the condition is met) and tries
 /// to reverse those specific effects on `new.attrs`.
-fn restore_attrs(mut new: Item, old: &Item) -> Item {
+fn restore_attrs(mut new: Item, old_attrs: &[Attribute]) -> Item {
     // If the original item had a `#[derive]` attr, transfer it to the new one.
     // TODO: handle multiple instances of `#[derive]`
     // TODO: try to keep attrs in the same order
-    if let Some(attr) = attr::find_by_name(&old.attrs, sym::derive) {
+    if let Some(attr) = attr::find_by_name(old_attrs, sym::derive) {
         if !attr::contains_name(&new.attrs, sym::derive) {
             new.attrs.push(attr.clone());
         }
     }
 
-    if let Some(attr) = attr::find_by_name(&old.attrs, sym::cfg) {
+    if let Some(attr) = attr::find_by_name(old_attrs, sym::cfg) {
         if !attr::contains_name(&new.attrs, sym::cfg) {
             new.attrs.push(attr.clone());
         }

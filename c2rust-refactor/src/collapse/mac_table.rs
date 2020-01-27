@@ -147,10 +147,9 @@ pub struct InvocId(pub u32);
 #[derive(Clone, Copy, Debug)]
 pub enum InvocKind<'ast> {
     Mac(&'ast Mac),
-    ItemAttr(&'ast Item),
-    StmtAttr(&'ast Stmt),
+    Attrs(&'ast [Attribute]),
     /// This is the generated item part of a `#[derive]`'s output.  The `InvocId` points to the
-    /// originating `ItemAttr`.
+    /// originating `Attrs`.
     Derive(InvocId),
 }
 
@@ -329,7 +328,7 @@ where
 
                     // Recurse into children so they get added to the node map.
                     match invoc {
-                        InvocKind::ItemAttr(..) | InvocKind::StmtAttr(..) => {
+                        InvocKind::Attrs(..) => {
                             CollectMacros::collect_macros(old, new, cx);
                         }
                         _ => {}
@@ -375,7 +374,7 @@ fn is_derived<'a>(
     new: MacNodeRef<'a>,
 ) -> bool {
     match invoc {
-        InvocKind::ItemAttr(..) => {
+        InvocKind::Attrs(..) => {
             if let MacNodeRef::Item(i) = new {
                 if attr::contains_name(&i.attrs, Symbol::intern("automatically_derived")) {
                     return true;
@@ -525,7 +524,7 @@ impl MaybeInvoc for Item {
             ItemKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => {
                 if has_macro_attr(&self.attrs) {
-                    Some(InvocKind::ItemAttr(self))
+                    Some(InvocKind::Attrs(&self.attrs))
                 } else {
                     None
                 }
@@ -538,7 +537,13 @@ impl MaybeInvoc for ImplItem {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
             ImplItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
-            _ => None,
+            _ => {
+                if has_macro_attr(&self.attrs) {
+                    Some(InvocKind::Attrs(&self.attrs))
+                } else {
+                    None
+                }
+            }
         }
     }
 }
@@ -569,17 +574,17 @@ impl MaybeInvoc for Stmt {
                 match &self.kind {
                     StmtKind::Local(l) => {
                         if has_macro_attr(&l.attrs) {
-                            return Some(InvocKind::StmtAttr(self));
+                            return Some(InvocKind::Attrs(&l.attrs));
                         }
                     }
                     StmtKind::Item(i) => {
                         if has_macro_attr(&i.attrs) {
-                            return Some(InvocKind::StmtAttr(self));
+                            return Some(InvocKind::Attrs(&i.attrs));
                         }
                     }
                     StmtKind::Expr(e) | StmtKind::Semi(e) => {
                         if has_macro_attr(&e.attrs) {
-                            return Some(InvocKind::StmtAttr(self));
+                            return Some(InvocKind::Attrs(&e.attrs));
                         }
                     }
                     StmtKind::Mac(..) => {}
