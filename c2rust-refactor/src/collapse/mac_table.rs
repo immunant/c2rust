@@ -375,25 +375,47 @@ fn is_derived<'a>(
 ) -> bool {
     match invoc {
         InvocKind::Attrs(..) => {
-            if let MacNodeRef::Item(i) = new {
-                if attr::contains_name(&i.attrs, Symbol::intern("automatically_derived")) {
+            let attrs = match new {
+                MacNodeRef::Item(i) => {
+                    if is_structural_derive(i) { return true; }
+                    Some(&i.attrs[..])
+                }
+                MacNodeRef::Stmt(s) => match &s.kind {
+                    StmtKind::Local(l) => Some(&l.attrs[..]),
+                    StmtKind::Item(i) => {
+                        if is_structural_derive(i) { return true; }
+                        Some(&i.attrs[..])
+                    }
+                    StmtKind::Expr(e) | StmtKind::Semi(e) => Some(&e.attrs[..]),
+                    StmtKind::Mac(..) => None,
+                },
+                MacNodeRef::Expr(e) => Some(&e.attrs[..]),
+                MacNodeRef::ImplItem(i) => Some(&i.attrs[..]),
+                MacNodeRef::TraitItem(i) => Some(&i.attrs[..]),
+                _ => None,
+            };
+            if let Some(attrs) = attrs {
+                if attr::contains_name(attrs, Symbol::intern("automatically_derived")) {
                     return true;
                 }
+            }
+        }
+        _ => {}
+    }
+    false
+}
 
-                // This is a hack to work around the StructuralPartialEq impl
-                // from derive(PartialEq) not being marked with an
-                // automatically_derived attribute. TODO: remove this when
-                // StructuralPartialEq is labeled with the right attribute.
-                match &i.kind {
-                    ItemKind::Impl(_, _, _, _, Some(traitref), _, _) => {
-                        if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"])
-                            || path_eq(&traitref.path, &["$crate", "marker", "StructuralEq"])
-                        {
-                            return true;
-                        }
-                    }
-                    _ => {}
-                }
+fn is_structural_derive(i: &Item) -> bool {
+    // This is a hack to work around the StructuralPartialEq impl
+    // from derive(PartialEq) not being marked with an
+    // automatically_derived attribute. TODO: remove this when
+    // StructuralPartialEq is labeled with the right attribute.
+    match &i.kind {
+        ItemKind::Impl(_, _, _, _, Some(traitref), _, _) => {
+            if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"])
+                || path_eq(&traitref.path, &["$crate", "marker", "StructuralEq"])
+            {
+                return true;
             }
         }
         _ => {}
@@ -568,29 +590,18 @@ impl MaybeInvoc for ForeignItem {
 
 impl MaybeInvoc for Stmt {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.kind {
-            StmtKind::Mac(ref mac) => Some(InvocKind::Mac(&mac.0)),
-            _ => {
-                match &self.kind {
-                    StmtKind::Local(l) => {
-                        if has_macro_attr(&l.attrs) {
-                            return Some(InvocKind::Attrs(&l.attrs));
-                        }
-                    }
-                    StmtKind::Item(i) => {
-                        if has_macro_attr(&i.attrs) {
-                            return Some(InvocKind::Attrs(&i.attrs));
-                        }
-                    }
-                    StmtKind::Expr(e) | StmtKind::Semi(e) => {
-                        if has_macro_attr(&e.attrs) {
-                            return Some(InvocKind::Attrs(&e.attrs));
-                        }
-                    }
-                    StmtKind::Mac(..) => {}
-                }
-                None
+        match &self.kind {
+            StmtKind::Mac(mac) => Some(InvocKind::Mac(&mac.0)),
+            StmtKind::Local(l) if has_macro_attr(&l.attrs) => {
+                Some(InvocKind::Attrs(&l.attrs))
             }
+            StmtKind::Item(i) if has_macro_attr(&i.attrs) => {
+                Some(InvocKind::Attrs(&i.attrs))
+            }
+            StmtKind::Expr(e) | StmtKind::Semi(e) if has_macro_attr(&e.attrs) => {
+                Some(InvocKind::Attrs(&e.attrs))
+            }
+            _ => None,
         }
     }
 }

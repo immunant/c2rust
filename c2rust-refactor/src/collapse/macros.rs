@@ -156,29 +156,36 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(info) = self.mac_table.get(s.id) {
-            if let InvocKind::Mac(mac) = info.invoc {
-                let old = info
-                    .expanded
-                    .as_stmt()
-                    .unwrap_or_else(|| panic!(
-                        "replaced {:?} with {:?} which is a different type?",
-                        s,
-                        info.expanded,
-                    ));
-                self.collect_token_rewrites(info.id, old, &s as &Stmt);
+            match info.invoc {
+                InvocKind::Mac(mac) => {
+                    let old = info
+                        .expanded
+                        .as_stmt()
+                        .unwrap_or_else(|| panic!(
+                            "replaced {:?} with {:?} which is a different type?",
+                            s,
+                            info.expanded,
+                        ));
+                    self.collect_token_rewrites(info.id, old, &s as &Stmt);
 
-                if !self.seen_invocs.contains(&info.id) {
-                    self.seen_invocs.insert(info.id);
-                    let new_s = mk().id(s.id).span(root_callsite_span(s.span)).mac_stmt(mac);
-                    self.record_matched_ids(s.id, new_s.id);
-                    trace!("collapse: {:?} -> {:?}", s, new_s);
-                    return smallvec![new_s];
-                } else {
-                    trace!("collapse (duplicate): {:?} -> /**/", s);
+                    if !self.seen_invocs.contains(&info.id) {
+                        self.seen_invocs.insert(info.id);
+                        let new_s = mk().id(s.id).span(root_callsite_span(s.span)).mac_stmt(mac);
+                        self.record_matched_ids(s.id, new_s.id);
+                        trace!("collapse: {:?} -> {:?}", s, new_s);
+                        return smallvec![new_s];
+                    } else {
+                        trace!("collapse (duplicate): {:?} -> /**/", s);
+                        return smallvec![];
+                    }
+                }
+                InvocKind::Derive(_parent_invoc_id) => {
+                    trace!("Derive: drop (generated): {:?} -> /**/", s);
                     return smallvec![];
                 }
-            } else {
-                warn!("bad macro kind for stmt: {:?}", info.invoc);
+                _ => {
+                    warn!("bad macro kind for stmt: {:?}", info.invoc);
+                }
             }
         }
         mut_visit::noop_flat_map_stmt(s, self)
