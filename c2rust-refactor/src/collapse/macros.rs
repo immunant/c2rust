@@ -184,7 +184,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
         mut_visit::noop_flat_map_stmt(s, self)
     }
 
-    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
+    fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         if let Some(info) = self.mac_table.get(i.id) {
             match info.invoc {
                 InvocKind::Mac(mac) => {
@@ -211,9 +211,8 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 }
                 InvocKind::Attrs(attrs) => {
                     trace!("Attrs: return original: {:?}", i);
-                    let i = i.map(|i| restore_attrs(i, attrs));
+                    restore_attrs(&mut i, attrs);
                     self.record_matched_ids(i.id, i.id);
-                    return smallvec![i];
                 }
                 InvocKind::Derive(_parent_invoc_id) => {
                     trace!("Derive: drop (generated): {:?} -> /**/", i);
@@ -333,7 +332,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
 /// transform, we can't just copy `old.attrs`.  Instead, we look through `old.attrs` for attributes
 /// with known effects (such as `#[cfg]`, which removes itself when the condition is met) and tries
 /// to reverse those specific effects on `new.attrs`.
-fn restore_attrs(mut new: Item, old_attrs: &[Attribute]) -> Item {
+fn restore_attrs(new: &mut Item, old_attrs: &[Attribute]) {
     // If the original item had a `#[derive]` attr, transfer it to the new one.
     // TODO: handle multiple instances of `#[derive]`
     // TODO: try to keep attrs in the same order
@@ -354,8 +353,6 @@ fn restore_attrs(mut new: Item, old_attrs: &[Attribute]) -> Item {
         // (It can be written explicitly, but is also inserted by #[derive(Eq)].)
         !attr.check_name(sym::structural_match)
     });
-
-    new
 }
 
 fn spans_overlap(sp1: Span, sp2: Span) -> bool {
