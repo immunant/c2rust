@@ -98,7 +98,6 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 trace!("collapse: {:?} -> {:?}", e, new_e);
                 self.record_matched_ids(e.id, new_e.id);
                 *e = new_e;
-                return;
             } else {
                 warn!("bad macro kind for expr: {:?}", info.invoc);
             }
@@ -122,7 +121,6 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 trace!("collapse: {:?} -> {:?}", p, new_p);
                 self.record_matched_ids(p.id, new_p.id);
                 *p = new_p;
-                return;
             } else {
                 warn!("bad macro kind for pat: {:?}", info.invoc);
             }
@@ -146,7 +144,6 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 trace!("collapse: {:?} -> {:?}", t, new_t);
                 self.record_matched_ids(t.id, new_t.id);
                 *t = new_t;
-                return;
             } else {
                 warn!("bad macro kind for ty: {:?}", info.invoc);
             }
@@ -154,7 +151,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
         mut_visit::noop_visit_ty(t, self)
     }
 
-    fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
+    fn flat_map_stmt(&mut self, mut s: Stmt) -> SmallVec<[Stmt; 1]> {
         if let Some(info) = self.mac_table.get(s.id) {
             match info.invoc {
                 InvocKind::Mac(mac) => {
@@ -173,18 +170,33 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                         let new_s = mk().id(s.id).span(root_callsite_span(s.span)).mac_stmt(mac);
                         self.record_matched_ids(s.id, new_s.id);
                         trace!("collapse: {:?} -> {:?}", s, new_s);
-                        return smallvec![new_s];
+                        s = new_s;
                     } else {
                         trace!("collapse (duplicate): {:?} -> /**/", s);
                         return smallvec![];
                     }
                 }
+                InvocKind::Attrs(attrs) => {
+                    trace!("Attrs: return original: {:?}", s);
+                    match &mut s.kind {
+                        StmtKind::Local(l) => {
+                            let mut new_attrs = l.attrs.to_vec();
+                            restore_attrs(&mut new_attrs, attrs);
+                            l.attrs = new_attrs.into();
+                        }
+                        StmtKind::Item(i) => restore_attrs(&mut i.attrs, attrs),
+                        StmtKind::Expr(e) | StmtKind::Semi(e) => {
+                            let mut new_attrs = e.attrs.to_vec();
+                            restore_attrs(&mut new_attrs, attrs);
+                            e.attrs = new_attrs.into();
+                        }
+                        StmtKind::Mac(..) => {}
+                    }
+                    self.record_matched_ids(s.id, s.id);
+                }
                 InvocKind::Derive(_parent_invoc_id) => {
                     trace!("Derive: drop (generated): {:?} -> /**/", s);
                     return smallvec![];
-                }
-                _ => {
-                    warn!("bad macro kind for stmt: {:?}", info.invoc);
                 }
             }
         }
@@ -210,7 +222,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                         let new_i = mk().id(i.id).span(root_callsite_span(i.span)).mac_item(mac);
                         trace!("collapse: {:?} -> {:?}", i, new_i);
                         self.record_matched_ids(i.id, new_i.id);
-                        return smallvec![new_i];
+                        i = new_i;
                     } else {
                         trace!("collapse (duplicate): {:?} -> /**/", i);
                         return smallvec![];
@@ -218,7 +230,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 }
                 InvocKind::Attrs(attrs) => {
                     trace!("Attrs: return original: {:?}", i);
-                    restore_attrs(&mut i, attrs);
+                    restore_attrs(&mut i.attrs, attrs);
                     self.record_matched_ids(i.id, i.id);
                 }
                 InvocKind::Derive(_parent_invoc_id) => {
@@ -339,23 +351,23 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
 /// transform, we can't just copy `old.attrs`.  Instead, we look through `old.attrs` for attributes
 /// with known effects (such as `#[cfg]`, which removes itself when the condition is met) and tries
 /// to reverse those specific effects on `new.attrs`.
-fn restore_attrs(new: &mut Item, old_attrs: &[Attribute]) {
+fn restore_attrs(new_attrs: &mut Vec<Attribute>, old_attrs: &[Attribute]) {
     // If the original item had a `#[derive]` attr, transfer it to the new one.
     // TODO: handle multiple instances of `#[derive]`
     // TODO: try to keep attrs in the same order
     if let Some(attr) = attr::find_by_name(old_attrs, sym::derive) {
-        if !attr::contains_name(&new.attrs, sym::derive) {
-            new.attrs.push(attr.clone());
+        if !attr::contains_name(&new_attrs, sym::derive) {
+            new_attrs.push(attr.clone());
         }
     }
 
     if let Some(attr) = attr::find_by_name(old_attrs, sym::cfg) {
-        if !attr::contains_name(&new.attrs, sym::cfg) {
-            new.attrs.push(attr.clone());
+        if !attr::contains_name(&new_attrs, sym::cfg) {
+            new_attrs.push(attr.clone());
         }
     }
 
-    new.attrs.retain(|attr| {
+    new_attrs.retain(|attr| {
         // TODO: don't erase user-written #[structural_match] attrs
         // (It can be written explicitly, but is also inserted by #[derive(Eq)].)
         !attr.check_name(sym::structural_match)

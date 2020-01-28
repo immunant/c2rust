@@ -77,6 +77,17 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
 }
 
 impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
+    fn visit_expr(&mut self, x: &'ast Expr) {
+        match &x.kind {
+            ExprKind::Array(elements) | ExprKind::Call(_, elements)
+            | ExprKind::MethodCall(_, elements) | ExprKind::Tup(elements) => {
+                self.handle_seq(x.id, elements);
+            }
+            _ => {}
+        }
+        visit::walk_expr(self, x);
+    }
+
     fn visit_item(&mut self, x: &'ast Item) {
         match x.kind {
             ItemKind::Mod(ref m) => self.handle_seq(x.id, &m.items),
@@ -222,18 +233,28 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
         mut_visit::noop_visit_crate(x, self)
     }
 
-    fn flat_map_item(&mut self, x: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        let x = x.map(|mut x| {
-            match x.kind {
-                ItemKind::Mod(ref mut m) => self.restore_seq(x.id, &mut m.items),
-                ItemKind::ForeignMod(ref mut fm) => self.restore_seq(x.id, &mut fm.items),
-                ItemKind::Trait(_, _, _, _, ref mut items) => self.restore_seq(x.id, items),
-                ItemKind::Impl(_, _, _, _, _, _, ref mut items) => self.restore_seq(x.id, items),
-                _ => {}
-            }
-            x
-        });
+    fn flat_map_item(&mut self, mut x: P<Item>) -> SmallVec<[P<Item>; 1]> {
+        let id = x.id;
+        match x.kind {
+            ItemKind::Mod(ref mut m) => self.restore_seq(id, &mut m.items),
+            ItemKind::ForeignMod(ref mut fm) => self.restore_seq(id, &mut fm.items),
+            ItemKind::Trait(_, _, _, _, ref mut items) => self.restore_seq(id, items),
+            ItemKind::Impl(_, _, _, _, _, _, ref mut items) => self.restore_seq(id, items),
+            _ => {}
+        }
         mut_visit::noop_flat_map_item(x, self)
+    }
+
+    fn visit_expr(&mut self, expr: &mut P<Expr>) {
+        let id = expr.id;
+        match &mut expr.kind {
+            ExprKind::Array(elements) | ExprKind::Call(_, elements)
+            | ExprKind::MethodCall(_, elements) | ExprKind::Tup(elements) => {
+                self.restore_seq(id, elements);
+            }
+            _ => {}
+        }
+        mut_visit::noop_visit_expr(expr, self)
     }
 
     fn visit_block(&mut self, block: &mut P<Block>) {

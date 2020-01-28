@@ -337,6 +337,10 @@ where
                 cx.record_node_id_match(old.get_node_id(), new.get_node_id());
                 j += 1;
             }
+
+            if empty {
+                cx.record_empty_invoc(old.get_node_id(), invoc_id);
+            }
         } else {
             // For now, any time we see a node with a macro-generated span that wasn't eaten up by
             // the macro handling above, we assume it was created by a compiler plugin (such as
@@ -517,6 +521,9 @@ impl MaybeInvoc for Expr {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
             ExprKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            _ if has_macro_attr(&self.attrs) => {
+                Some(InvocKind::Attrs(&self.attrs))
+            }
             _ => None,
         }
     }
