@@ -289,7 +289,7 @@ fn is_macro_generated(sp: Span) -> bool {
 
 fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'a>)
 where
-    T: CollectMacros + MaybeInvoc + GetNodeId + GetSpan + AsMacNodeRef,
+    T: CollectMacros + MaybeInvoc + GetNodeId + GetSpan + AsMacNodeRef + Debug,
 {
     let mut j = 0;
 
@@ -297,10 +297,11 @@ where
         if let Some(invoc) = old.as_invoc() {
             let invoc_id = cx.record_invoc(invoc);
             trace!(
-                "new {:?} from macro {:?} at {:?}",
+                "new {:?} from macro {:?} at {:?}: {:?}",
                 invoc_id,
                 old.get_node_id(),
-                old.get_span()
+                old.get_span(),
+                old,
             );
 
             let mut empty = true;
