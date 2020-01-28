@@ -255,10 +255,10 @@ struct Expr { id, kind, span, #[match=ignore] attrs }
 #[prec_contains_expr]
 enum ExprKind {
     Box(#[prec=PREFIX] expr),
-    Array(elems),
-    Call(#[prec=POSTFIX] #[prec_special=Callee] func, args),
-    MethodCall(path_seg, #[prec_first=POSTFIX] args),
-    Tup(elems),
+    Array(#[mac_table_seq] elems),
+    Call(#[prec=POSTFIX] #[prec_special=Callee] func, #[mac_table_seq] args),
+    MethodCall(path_seg, #[prec_first=POSTFIX] #[mac_table_seq] args),
+    Tup(#[mac_table_seq] elems),
     Binary(op, #[prec_left_of_binop=op] a, #[prec_right_of_binop=op] b),
     Unary(op, #[prec=PREFIX] a),
     Lit(lit),

@@ -60,10 +60,12 @@ def do_collect_macros_body(se, target1, target2):
 
     if 'mac_table_record' in se.attrs:
         yield 'if let Some(invoc) = MaybeInvoc::as_invoc(%s) {' % target1
-        yield '  assert!(MaybeInvoc::as_invoc(%s).is_none(),' % target2
-        yield '    "impossible: found macro invocation in expanded AST");'
-        yield '  cx.record_one_macro(%s.id, invoc, MacNodeRef::%s(new));' % \
+        yield '  match MaybeInvoc::as_invoc(%s) {' % target2
+        yield '    Some(InvocKind::Attrs(..)) => {}'
+        yield '    Some(_) => panic!("impossible: found macro invocation in expanded AST"),'
+        yield '    None => cx.record_one_macro(%s.id, invoc, MacNodeRef::%s(new)),' % \
                 (target1, se.name)
+        yield '  }'
         yield '}'
 
 @linewise
