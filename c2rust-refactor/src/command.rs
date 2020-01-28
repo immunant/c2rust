@@ -879,6 +879,13 @@ fn register_commit(reg: &mut Registry) {
             }).unwrap();
         }))
     });
+
+    reg.register("noop", |_args| {
+        Box::new(FuncCommand(|rs: &mut RefactorState| {
+            rs.transform_crate(Phase::Phase2, |_st, _cx| {
+            }).unwrap();
+        }))
+    });
 }
 
 pub fn register_commands(reg: &mut Registry) {
