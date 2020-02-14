@@ -141,6 +141,8 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
                 CargoTarget::Bin(bin.to_string())
             } else if args.is_present("bins") {
                 CargoTarget::AllBins
+            } else if args.is_present("lib") {
+                CargoTarget::Lib
             } else {
                 CargoTarget::All
             };

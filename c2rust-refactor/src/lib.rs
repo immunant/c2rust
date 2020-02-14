@@ -150,6 +150,7 @@ pub enum CargoTarget {
     All,
     AllBins,
     Bin(String),
+    Lib,
 }
 
 #[derive(Clone, Debug)]
@@ -279,6 +280,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
                 (CargoTarget::All, TargetKind::Bin) => true,
                 (CargoTarget::AllBins, TargetKind::Bin) => true,
                 (CargoTarget::Bin(bin), TargetKind::Bin) => target.name() == bin,
+                (CargoTarget::Lib, TargetKind::Lib(..)) => true,
                 _ => false,
             };
             if !do_record {

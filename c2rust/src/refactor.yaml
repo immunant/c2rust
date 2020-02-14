@@ -68,6 +68,7 @@ args:
       conflicts_with:
         - rustc-args
         - bins
+        - lib
   - bins:
       long: bins
       help: "Refactor all binaries (cargo only)"
@@ -75,6 +76,15 @@ args:
       conflicts_with:
         - rustc-args
         - bin
+        - lib
+  - lib:
+      long: lib
+      help: "Refactor only the library (cargo only)"
+      takes_value: false
+      conflicts_with:
+        - rustc-args
+        - bin
+        - bins
   - transforms:
       help: Refactoring transformations
       takes_value: true
