@@ -44,11 +44,10 @@ C2Rust requires LLVM 6, 7, or 8 with its corresponding clang compiler and librar
         brew install llvm python3 cmake openssl
 
 
-Finally, installing the correct nightly Rust compiler with [Rustup](https://rustup.rs/) is required on all platforms. You will also need to add `rustfmt`:
+Finally, installing the correct nightly Rust compiler with [Rustup](https://rustup.rs/) is required on all platforms. You will also need to add `rustfmt` and `rustc-dev`:
 
     rustup install nightly-2019-12-05
-    rustup component add --toolchain nightly-2019-12-05 rustfmt
-
+    rustup component add --toolchain nightly-2019-12-05 rustfmt rustc-dev
 
 ### Installing from crates.io
 
