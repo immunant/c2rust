@@ -75,26 +75,31 @@ pub fn handle_marks<'a, 'tcx, 'lty>(
             last_sig_did: None,
         };
 
-        type_map::map_types(&dcx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
-            debug!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
-            if st.marked(ast_ty.id, "box") {
-                if let Some(p) = lty.label {
-                    fixed_vars.push((p, source.last_sig_did, ConcretePerm::Move));
+        type_map::map_types(
+            &dcx.hir_map(),
+            source,
+            &st.krate(),
+            |source, ast_ty, lty| {
+                debug!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
+                if st.marked(ast_ty.id, "box") {
+                    if let Some(p) = lty.label {
+                        fixed_vars.push((p, source.last_sig_did, ConcretePerm::Move));
+                    }
                 }
-            }
 
-            if st.marked(ast_ty.id, "mut") {
-                if let Some(p) = lty.label {
-                    fixed_vars.push((p, source.last_sig_did, ConcretePerm::Write));
+                if st.marked(ast_ty.id, "mut") {
+                    if let Some(p) = lty.label {
+                        fixed_vars.push((p, source.last_sig_did, ConcretePerm::Write));
+                    }
                 }
-            }
 
-            if st.marked(ast_ty.id, "ref") {
-                if let Some(p) = lty.label {
-                    fixed_vars.push((p, source.last_sig_did, ConcretePerm::Read));
+                if st.marked(ast_ty.id, "ref") {
+                    if let Some(p) = lty.label {
+                        fixed_vars.push((p, source.last_sig_did, ConcretePerm::Read));
+                    }
                 }
-            }
-        });
+            },
+        );
     }
 
     // For any marked types that are in signatures, add constraints to the parent function's cset.

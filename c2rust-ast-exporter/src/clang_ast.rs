@@ -172,12 +172,17 @@ pub fn process(items: Value) -> error::Result<AstContext> {
 
     for (fileid, line, column, bytes) in raw_comments {
         comments.push(CommentNode {
-            loc: SrcLoc { fileid, line, column },
+            loc: SrcLoc {
+                fileid,
+                line,
+                column,
+            },
             string: String::from_utf8_lossy(&bytes).to_string(),
         })
     }
 
-    let files = files.into_iter()
+    let files = files
+        .into_iter()
         .map(|(path, loc)| {
             let path = match path.as_str() {
                 "" => None,
@@ -186,7 +191,11 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             };
             SrcFile {
                 path,
-                include_loc: loc.map(|(fileid, line, column)| SrcLoc { fileid, line, column }),
+                include_loc: loc.map(|(fileid, line, column)| SrcLoc {
+                    fileid,
+                    line,
+                    column,
+                }),
             }
         })
         .collect::<Vec<_>>();
@@ -222,7 +231,8 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             // entry[10]
             let macro_expansions = from_value::<Vec<u64>>(entry.pop_front().unwrap()).unwrap();
 
-            let macro_expansion_text = expect_opt_str(&entry.pop_front().unwrap()).unwrap()
+            let macro_expansion_text = expect_opt_str(&entry.pop_front().unwrap())
+                .unwrap()
                 .map(|s| s.to_string());
 
             let node = AstNode {

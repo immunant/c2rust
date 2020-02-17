@@ -30,7 +30,10 @@ impl<'c> Translation<'c> {
         self.use_feature("asm");
 
         fn push_expr(tokens: &mut Vec<TokenTree>, expr: P<Expr>) {
-            tokens.push(TokenTree::token(token::Interpolated(Rc::new(Nonterminal::NtExpr(expr))), DUMMY_SP));
+            tokens.push(TokenTree::token(
+                token::Interpolated(Rc::new(Nonterminal::NtExpr(expr))),
+                DUMMY_SP,
+            ));
         }
 
         let mut stmts: Vec<Stmt> = vec![];
@@ -42,10 +45,12 @@ impl<'c> Translation<'c> {
         push_expr(&mut tokens, mk().lit_expr(asm));
 
         let mut tied_operands = HashMap::new();
-        for (input_idx, &AsmOperand {
-            ref constraints,
-            ..
-        }) in inputs.iter().enumerate()
+        for (
+            input_idx,
+            &AsmOperand {
+                ref constraints, ..
+            },
+        ) in inputs.iter().enumerate()
         {
             let constraints_digits = constraints.trim_matches(|c: char| !c.is_ascii_digit());
             if let Ok(output_idx) = constraints_digits.parse::<usize>() {
@@ -62,10 +67,13 @@ impl<'c> Translation<'c> {
             first = true;
             tokens.push(TokenTree::token(token::Colon, DUMMY_SP)); // Always emitted, even if list is empty
 
-            for (operand_idx, &AsmOperand {
-                ref constraints,
-                expression,
-            }) in list.iter().enumerate()
+            for (
+                operand_idx,
+                &AsmOperand {
+                    ref constraints,
+                    expression,
+                },
+            ) in list.iter().enumerate()
             {
                 if first {
                     first = false
@@ -126,9 +134,7 @@ impl<'c> Translation<'c> {
                             item_store.add_use(vec!["c2rust_asm_casts".into()], "AsmCastTrait");
                         });
 
-                        let (output_name, inner_name) = operand_renames
-                            .get(&tied_operand)
-                            .unwrap();
+                        let (output_name, inner_name) = operand_renames.get(&tied_operand).unwrap();
 
                         let input_name = self.renamer.borrow_mut().fresh();
                         let input_local = mk().local(
@@ -140,17 +146,16 @@ impl<'c> Translation<'c> {
 
                         // Replace `result` with
                         // `c2rust_asm_casts::AsmCast::cast_in(output, input)`
-                        let path_expr = mk().path_expr(
-                            vec!["c2rust_asm_casts", "AsmCast", "cast_in"]
-                        );
+                        let path_expr =
+                            mk().path_expr(vec!["c2rust_asm_casts", "AsmCast", "cast_in"]);
                         let output = mk().ident_expr(output_name);
                         let input = mk().ident_expr(input_name);
                         result = mk().call_expr(path_expr, vec![output.clone(), input.clone()]);
 
                         // Append the cast-out call after the assembly macro:
                         // `c2rust_asm_casts::AsmCast::cast_out(output, input, inner);`
-                        let path_expr = mk().path_expr(
-                            vec!["c2rust_asm_casts", "AsmCast", "cast_out"]);
+                        let path_expr =
+                            mk().path_expr(vec!["c2rust_asm_casts", "AsmCast", "cast_out"]);
                         let inner = mk().ident_expr(inner_name);
                         let cast_out = mk().call_expr(path_expr, vec![output, input, inner]);
                         post_stmts.push(mk().semi_stmt(cast_out));

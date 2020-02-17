@@ -2,7 +2,7 @@
 
 use syntax::ast::{Lit, LitKind, StrLit, StrStyle};
 use syntax::token;
-use syntax::util::parser::{AssocOp};
+use syntax::util::parser::AssocOp;
 
 // From libsyntax/src/util/parser.rs
 
@@ -19,7 +19,6 @@ crate fn prec_let_scrutinee_needs_par() -> usize {
 crate fn needs_par_as_let_scrutinee(order: i8) -> bool {
     order <= prec_let_scrutinee_needs_par() as i8
 }
-
 
 // From libsyntax/ast.rs
 crate fn as_lit(lit: &StrLit) -> Lit {

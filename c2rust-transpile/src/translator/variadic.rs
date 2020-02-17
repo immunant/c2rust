@@ -23,7 +23,6 @@ macro_rules! match_or {
 }
 
 impl<'c> Translation<'c> {
-
     /// Returns true iff `va_start`, `va_end`, or `va_copy` may be called on `decl_id`.
     pub fn is_va_decl(&self, decl_id: CDeclId) -> bool {
         let fn_ctx = self.function_context.borrow();
@@ -116,43 +115,58 @@ impl<'c> Translation<'c> {
             // The current implementation of the C-variadics feature doesn't allow us to
             // return `Option<fn(...) -> _>` from `VaList::arg`, so we detect function pointers
             // and construct the corresponding unsafe type `* mut fn(...) -> _`.
-            let fn_ptr_ty : Option<P<Ty>> = {
+            let fn_ptr_ty: Option<P<Ty>> = {
                 let resolved_ctype = self.ast_context.resolve_type(ty.ctype);
                 if let CTypeKind::Pointer(p) = resolved_ctype.kind {
                     // ty is a pointer type
                     let resolved_ctype = self.ast_context.resolve_type(p.ctype);
-                    if let CTypeKind::Function(
-                                        ret,
-                                        ref params,
-                                        is_variadic,
-                                        is_noreturn, _) = resolved_ctype.kind {
+                    if let CTypeKind::Function(ret, ref params, is_variadic, is_noreturn, _) =
+                        resolved_ctype.kind
+                    {
                         // ty is a function pointer type -> build Rust unsafe function pointer type
                         let opt_ret = if is_noreturn { None } else { Some(ret) };
-                        
-                        let fn_ty = self.type_converter
-                            .borrow_mut()
-                            .convert_function(&self.ast_context, opt_ret, params, is_variadic)?;
 
-                        let m = if p.qualifiers.is_const { Mutability::Immutable } else { Mutability::Mutable };
+                        let fn_ty = self.type_converter.borrow_mut().convert_function(
+                            &self.ast_context,
+                            opt_ret,
+                            params,
+                            is_variadic,
+                        )?;
+
+                        let m = if p.qualifiers.is_const {
+                            Mutability::Immutable
+                        } else {
+                            Mutability::Mutable
+                        };
                         Some(mk().set_mutbl(m).ptr_ty(fn_ty))
-                    } else { None }
-                } else { None }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             };
 
             let have_fn_ptr = fn_ptr_ty.is_some();
-            let mut arg_ty = fn_ptr_ty.unwrap_or_else(||self.convert_type(ty.ctype).unwrap());
+            let mut arg_ty = fn_ptr_ty.unwrap_or_else(|| self.convert_type(ty.ctype).unwrap());
 
             let mut real_arg_ty = None;
-            if self.ast_context.get_pointee_qual_type(ty.ctype)
-                .map_or(false, |ty| self.ast_context.is_forward_declared_type(ty.ctype))
+            if self
+                .ast_context
+                .get_pointee_qual_type(ty.ctype)
+                .map_or(false, |ty| {
+                    self.ast_context.is_forward_declared_type(ty.ctype)
+                })
             {
                 real_arg_ty = Some(arg_ty.clone());
                 arg_ty = mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_void"]));
             }
 
             val.and_then(|val| {
-                let path = mk()
-                    .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![arg_ty]));
+                let path = mk().path_segment_with_args(
+                    mk().ident("arg"),
+                    mk().angle_bracketed_args(vec![arg_ty]),
+                );
                 let mut val = mk().method_call_expr(val, path, vec![] as Vec<P<Expr>>);
                 if let Some(ty) = real_arg_ty {
                     val = mk().cast_expr(val, ty);
@@ -166,7 +180,9 @@ impl<'c> Translation<'c> {
                 } else {
                     let val = if have_fn_ptr {
                         // transmute result of call to `arg` when expecting a function pointer
-                        if ctx.is_const { self.use_feature("const_transmute"); }
+                        if ctx.is_const {
+                            self.use_feature("const_transmute");
+                        }
                         transmute_expr(mk().infer_ty(), mk().infer_ty(), val, self.tcfg.emit_no_std)
                     } else {
                         val

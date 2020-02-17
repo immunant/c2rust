@@ -93,7 +93,7 @@ pub trait StructuredStatement: Sized {
 
     /// Make a `match` statement
     fn mk_match(
-        cond: Self::E,                    // expression being matched
+        cond: Self::E,               // expression being matched
         cases: Vec<(Self::P, Self)>, // match arms
     ) -> Self;
 
@@ -202,9 +202,7 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 /// Recursive helper for `structured_cfg`
 ///
 /// TODO: move this into `structured_cfg`?
-fn structured_cfg_help<
-    S: StructuredStatement<E = P<Expr>, P = P<Pat>, L = Label, S = Stmt>,
->(
+fn structured_cfg_help<S: StructuredStatement<E = P<Expr>, P = P<Pat>, L = Label, S = Stmt>>(
     exits: Vec<(Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>)>,
     next: &IndexSet<Label>,
     root: &Vec<Structure<Stmt>>,
@@ -236,55 +234,53 @@ fn structured_cfg_help<
                     }
                 };
 
-                let mut branch =
-                    |slbl: &StructureLabel<Stmt>| -> Result<S, TranslationError> {
-                        match slbl {
-                            &StructureLabel::Nested(ref nested) => {
-                                structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
-                            }
-
-                            &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to)
-                                if next.contains(&to) =>
-                            {
-                                Ok(insert_goto(to, &next))
-                            }
-
-                            &StructureLabel::ExitTo(to) => {
-                                let mut immediate = true;
-                                for &(label, ref local) in &exits {
-                                    if let Some(&(ref follow, exit_style)) = local.get(&to) {
-                                        let lbl = if immediate {
-                                            None
-                                        } else {
-                                            used_loop_labels.insert(label);
-                                            Some(label)
-                                        };
-
-                                        let mut new_cfg = S::mk_append(
-                                            insert_goto(to, follow),
-                                            S::mk_exit(exit_style, lbl),
-                                        );
-                                        new_cfg.extend_span(*span);
-                                        return Ok(new_cfg);
-                                    }
-                                    immediate = false;
-                                }
-
-                                Err(format_err!(
-                                    "Not a valid exit: {:?} has nothing to exit to",
-                                    to
-                                )
-                                .into())
-                            }
-
-                            &StructureLabel::GoTo(to) => Err(format_err!(
-                                "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
-                                to,
-                                next
-                            )
-                            .into()),
+                let mut branch = |slbl: &StructureLabel<Stmt>| -> Result<S, TranslationError> {
+                    match slbl {
+                        &StructureLabel::Nested(ref nested) => {
+                            structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
                         }
-                    };
+
+                        &StructureLabel::GoTo(to) | &StructureLabel::ExitTo(to)
+                            if next.contains(&to) =>
+                        {
+                            Ok(insert_goto(to, &next))
+                        }
+
+                        &StructureLabel::ExitTo(to) => {
+                            let mut immediate = true;
+                            for &(label, ref local) in &exits {
+                                if let Some(&(ref follow, exit_style)) = local.get(&to) {
+                                    let lbl = if immediate {
+                                        None
+                                    } else {
+                                        used_loop_labels.insert(label);
+                                        Some(label)
+                                    };
+
+                                    let mut new_cfg = S::mk_append(
+                                        insert_goto(to, follow),
+                                        S::mk_exit(exit_style, lbl),
+                                    );
+                                    new_cfg.extend_span(*span);
+                                    return Ok(new_cfg);
+                                }
+                                immediate = false;
+                            }
+
+                            Err(
+                                format_err!("Not a valid exit: {:?} has nothing to exit to", to)
+                                    .into(),
+                            )
+                        }
+
+                        &StructureLabel::GoTo(to) => Err(format_err!(
+                            "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
+                            to,
+                            next
+                        )
+                        .into()),
+                    }
+                };
 
                 new_rest = S::mk_append(
                     new_rest,
@@ -435,7 +431,13 @@ impl StructureState {
                 return (vec![s], span);
             }
 
-            Append(box Spanned {node: Empty, span: lhs_span}, rhs) => {
+            Append(
+                box Spanned {
+                    node: Empty,
+                    span: lhs_span,
+                },
+                rhs,
+            ) => {
                 let span = ast.span.substitute_dummy(lhs_span);
                 let span = span_subst_lo(span, lhs_span).unwrap_or_else(|| {
                     comment_store.move_comments(lhs_span.lo(), span.lo());
@@ -528,14 +530,20 @@ impl StructureState {
                 let mut if_stmt = match (then_stmts.is_empty(), els_stmts.is_empty()) {
                     (true, true) => mk().semi_stmt(cond),
                     (false, true) => {
-                        let if_expr =
-                            mk().ifte_expr(cond, mk().span(then_span).block(then_stmts), None as Option<P<Expr>>);
+                        let if_expr = mk().ifte_expr(
+                            cond,
+                            mk().span(then_span).block(then_stmts),
+                            None as Option<P<Expr>>,
+                        );
                         mk().expr_stmt(if_expr)
                     }
                     (true, false) => {
                         let negated_cond = not(&cond);
-                        let if_expr =
-                            mk().ifte_expr(negated_cond, mk().span(els_span).block(els_stmts), None as Option<P<Expr>>);
+                        let if_expr = mk().ifte_expr(
+                            negated_cond,
+                            mk().span(els_span).block(els_stmts),
+                            None as Option<P<Expr>>,
+                        );
                         mk().expr_stmt(if_expr)
                     }
                     (false, false) => {
@@ -567,7 +575,11 @@ impl StructureState {
                             mk().block_expr(mk().span(els_span).block(els_stmts))
                         };
 
-                        let if_expr = mk().ifte_expr(cond, mk().span(then_span).block(then_stmts), Some(els_branch));
+                        let if_expr = mk().ifte_expr(
+                            cond,
+                            mk().span(then_span).block(then_stmts),
+                            Some(els_branch),
+                        );
                         mk().expr_stmt(if_expr)
                     }
                 };
@@ -623,7 +635,11 @@ impl StructureState {
                     ..
                 }) = body.first()
                 {
-                    let span = if !stmt_span.is_dummy() { stmt_span } else { span };
+                    let span = if !stmt_span.is_dummy() {
+                        stmt_span
+                    } else {
+                        span
+                    };
                     if let syntax::ast::ExprKind::If(ref cond, ref thn, None) = expr.kind {
                         if let &syntax::ast::Block {
                             ref stmts,
@@ -640,7 +656,8 @@ impl StructureState {
                                     if let syntax::ast::ExprKind::Break(None, None) = expr.kind {
                                         let e = mk().while_expr(
                                             not(cond),
-                                            mk().span(body_span).block(body.iter().skip(1).cloned().collect()),
+                                            mk().span(body_span)
+                                                .block(body.iter().skip(1).cloned().collect()),
                                             lbl.map(|l| l.pretty_print()),
                                         );
                                         return (vec![mk().span(span).expr_stmt(e)], ast.span);
@@ -651,7 +668,10 @@ impl StructureState {
                     }
                 }
 
-                let e = mk().loop_expr(mk().span(body_span).block(body), lbl.map(|l| l.pretty_print()));
+                let e = mk().loop_expr(
+                    mk().span(body_span).block(body),
+                    lbl.map(|l| l.pretty_print()),
+                );
 
                 mk().span(span).expr_stmt(e)
             }

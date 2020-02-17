@@ -77,8 +77,10 @@ impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
 
         // Add constraints for all used static vars.
         let mut used_statics = HashSet::new();
-        cset.for_each_perm(|p| if let Perm::StaticVar(v) = p {
-            used_statics.insert(v);
+        cset.for_each_perm(|p| {
+            if let Perm::StaticVar(v) = p {
+                used_statics.insert(v);
+            }
         });
         for &v in &used_statics {
             debug!("  import static: {:?} = {:?}", v, self.cx.static_assign[v]);

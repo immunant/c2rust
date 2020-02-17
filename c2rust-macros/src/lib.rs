@@ -17,13 +17,7 @@ struct VisitorImpls {
 }
 
 impl VisitorImpls {
-    fn generate_visit(
-        &mut self,
-        method_name: &Ident,
-        arg_pat: &Pat,
-        ty: &Type,
-        walk: &Block,
-    ) {
+    fn generate_visit(&mut self, method_name: &Ident, arg_pat: &Pat, ty: &Type, walk: &Block) {
         self.tokens.extend(quote! {
             impl MutVisit for #ty {
                 fn visit<F: MutVisitor>(&mut self, f: &mut F) {
@@ -76,13 +70,7 @@ impl VisitorImpls {
         self.count += 1;
     }
 
-    fn generate_flat_map(
-        &mut self,
-        method_name: &Ident,
-        arg_pat: &Pat,
-        ty: &Type,
-        walk: &Block,
-    ) {
+    fn generate_flat_map(&mut self, method_name: &Ident, arg_pat: &Pat, ty: &Type, walk: &Block) {
         self.tokens.extend(quote! {
             impl MutVisit for #ty {
                 fn visit<F: MutVisitor>(&mut self, f: &mut F) {

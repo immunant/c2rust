@@ -1,16 +1,17 @@
 use rlua::prelude::{LuaError, LuaResult, LuaString, LuaTable, LuaValue};
 use syntax::ast::{
-    BindingMode, Block, BorrowKind, Crate, Expr, ExprKind, Extern, FloatTy, FnDecl, FnSig, ImplItem, ImplItemKind,
-    Item, ItemKind, Lit, LitFloatType, LitKind, Local, Mod, Mutability::*, NodeId, Param, Pat, PatKind, Path, PathSegment,
-    Stmt, StmtKind, UintTy, IntTy, LitIntType, Ident, DUMMY_NODE_ID, BinOpKind, UnOp, BlockCheckMode,
-    Label, StrLit, StrStyle, TyKind, Ty, MutTy, Unsafety, FunctionRetTy, BareFnTy, UnsafeSource::*, Field,
-    AnonConst, Lifetime, AngleBracketedArgs, GenericArgs, GenericArg, VisibilityKind, InlineAsm,
-    AsmDialect, InlineAsmOutput, Constness, FnHeader, Generics, IsAsync, ImplPolarity, Defaultness,
-    UseTree, UseTreeKind, Arm
+    AngleBracketedArgs, AnonConst, Arm, AsmDialect, BareFnTy, BinOpKind, BindingMode, Block,
+    BlockCheckMode, BorrowKind, Constness, Crate, Defaultness, Expr, ExprKind, Extern, Field,
+    FloatTy, FnDecl, FnHeader, FnSig, FunctionRetTy, GenericArg, GenericArgs, Generics, Ident,
+    ImplItem, ImplItemKind, ImplPolarity, InlineAsm, InlineAsmOutput, IntTy, IsAsync, Item,
+    ItemKind, Label, Lifetime, Lit, LitFloatType, LitIntType, LitKind, Local, Mod, MutTy,
+    Mutability::*, NodeId, Param, Pat, PatKind, Path, PathSegment, Stmt, StmtKind, StrLit,
+    StrStyle, Ty, TyKind, UintTy, UnOp, UnsafeSource::*, Unsafety, UseTree, UseTreeKind,
+    VisibilityKind, DUMMY_NODE_ID,
 };
-use syntax::source_map::symbol::Symbol;
-use syntax::source_map::{DUMMY_SP, dummy_spanned, Span, SpanData};
 use syntax::ptr::P;
+use syntax::source_map::symbol::Symbol;
+use syntax::source_map::{dummy_spanned, Span, SpanData, DUMMY_SP};
 use syntax::ThinVec;
 
 use std::rc::Rc;
@@ -154,11 +155,13 @@ fn get_node_id_or_default(table: &LuaTable<'_>, field_name: &str) -> LuaResult<N
 
 fn get_span_or_default(table: &LuaTable<'_>, field_name: &str) -> LuaResult<Span> {
     let opt_span_data: Option<LuaSpan> = table.get(field_name)?;
-    let opt_span: Option<Span> = opt_span_data.map(|data| {
-        let SpanData {lo, hi, ctxt} = data.0;
+    let opt_span: Option<Span> = opt_span_data
+        .map(|data| {
+            let SpanData { lo, hi, ctxt } = data.0;
 
-        Ok(Span::new(lo, hi, ctxt))
-    }).transpose()?;
+            Ok(Span::new(lo, hi, ctxt))
+        })
+        .transpose()?;
 
     Ok(opt_span.unwrap_or(DUMMY_SP))
 }
@@ -232,7 +235,7 @@ impl MergeLuaAst for Stmt {
                 local.merge_lua_ast(table)?;
 
                 StmtKind::Local(local)
-            },
+            }
             "Item" => {
                 let mut item = dummy_item();
                 let lua_item = table.get("item")?;
@@ -240,7 +243,7 @@ impl MergeLuaAst for Stmt {
                 item.merge_lua_ast(lua_item)?;
 
                 StmtKind::Item(item)
-            },
+            }
             "Expr" => {
                 let lua_expr = table.get("expr")?;
                 let mut expr = dummy_expr();
@@ -248,7 +251,7 @@ impl MergeLuaAst for Stmt {
                 expr.merge_lua_ast(lua_expr)?;
 
                 StmtKind::Expr(expr)
-            },
+            }
             "Semi" => {
                 let lua_expr = table.get("expr")?;
                 let mut expr = dummy_expr();
@@ -256,7 +259,7 @@ impl MergeLuaAst for Stmt {
                 expr.merge_lua_ast(lua_expr)?;
 
                 StmtKind::Semi(expr)
-            },
+            }
             e => unimplemented!("MergeLuaAst unimplemented for StmtKind::{}", e),
         };
 
@@ -268,11 +271,13 @@ impl MergeLuaAst for P<FnDecl> {
     fn merge_lua_ast<'lua>(&mut self, table: LuaTable<'lua>) -> LuaResult<()> {
         let lua_args: LuaTable = table.get("args")?;
         let lua_return_type: Option<LuaTable> = table.get("return_type")?;
-        let return_type = lua_return_type.map(|lua_ty| {
-            let mut ty = dummy_ty();
+        let return_type = lua_return_type
+            .map(|lua_ty| {
+                let mut ty = dummy_ty();
 
-            ty.merge_lua_ast(lua_ty).map(|_| ty)
-        }).transpose()?;
+                ty.merge_lua_ast(lua_ty).map(|_| ty)
+            })
+            .transpose()?;
 
         self.output = match return_type {
             Some(ty) => FunctionRetTy::Ty(ty),
@@ -335,7 +340,7 @@ impl MergeLuaAst for P<Pat> {
 
                 // TODO: Sub-pattern
                 PatKind::Ident(binding, ident, None)
-            },
+            }
             "Tuple" => {
                 let lua_patterns: LuaTable = table.get("pats")?;
                 let mut patterns = Vec::new();
@@ -348,7 +353,7 @@ impl MergeLuaAst for P<Pat> {
                 }
 
                 PatKind::Tuple(patterns)
-            },
+            }
             "Lit" => {
                 let lua_expr = table.get("expr")?;
                 let mut expr = dummy_expr();
@@ -356,7 +361,7 @@ impl MergeLuaAst for P<Pat> {
                 expr.merge_lua_ast(lua_expr)?;
 
                 PatKind::Lit(expr)
-            },
+            }
             e => unimplemented!("MergeLuaAst unimplemented pat: {:?}", e),
         };
 
@@ -373,11 +378,9 @@ impl MergeLuaAst for Local {
         self.pat.merge_lua_ast(pat)?;
 
         match &mut self.init {
-            Some(existing_init) => {
-                match opt_init {
-                    Some(init) => existing_init.merge_lua_ast(init)?,
-                    None => self.init = None,
-                }
+            Some(existing_init) => match opt_init {
+                Some(init) => existing_init.merge_lua_ast(init)?,
+                None => self.init = None,
             },
             None => {
                 if let Some(init) = opt_init {
@@ -387,15 +390,13 @@ impl MergeLuaAst for Local {
 
                     self.init = Some(expr);
                 }
-            },
+            }
         }
 
         match &mut self.ty {
-            Some(existing_ty) => {
-                match opt_lua_ty {
-                    Some(ty) => existing_ty.merge_lua_ast(ty)?,
-                    None => self.ty = None,
-                }
+            Some(existing_ty) => match opt_lua_ty {
+                Some(ty) => existing_ty.merge_lua_ast(ty)?,
+                None => self.ty = None,
             },
             None => {
                 if let Some(ty) = opt_lua_ty {
@@ -405,7 +406,7 @@ impl MergeLuaAst for Local {
 
                     self.ty = Some(expr);
                 }
-            },
+            }
         }
 
         Ok(())
@@ -430,11 +431,15 @@ impl MergeLuaAst for Mod {
 
         // TODO: This may need to be improved if we want to delete or add
         // items as it currently expects items to be 1-1
-        self.items.iter_mut().enumerate().map(|(i, item)| {
-            let item_table: LuaTable = lua_items.get(i + 1)?;
+        self.items
+            .iter_mut()
+            .enumerate()
+            .map(|(i, item)| {
+                let item_table: LuaTable = lua_items.get(i + 1)?;
 
-            item.merge_lua_ast(item_table)
-        }).collect()
+                item.merge_lua_ast(item_table)
+            })
+            .collect()
     }
 }
 
@@ -471,7 +476,7 @@ impl MergeLuaAst for P<Item> {
                             span: DUMMY_SP,
                             symbol_unescaped: Symbol::intern(s),
                         }),
-                    }
+                    },
                     None => Extern::None,
                 };
                 let fn_header = FnHeader {
@@ -490,7 +495,7 @@ impl MergeLuaAst for P<Item> {
                 };
 
                 ItemKind::Fn(sig, generics, block)
-            },
+            }
             "Impl" => {
                 let lua_items: LuaTable = table.get("items")?;
                 let lua_ty = table.get("ty")?;
@@ -512,8 +517,16 @@ impl MergeLuaAst for P<Item> {
                     items.push(item);
                 }
 
-                ItemKind::Impl(unsafety, polarity, defaultness, generics, trait_ref, ty, items)
-            },
+                ItemKind::Impl(
+                    unsafety,
+                    polarity,
+                    defaultness,
+                    generics,
+                    trait_ref,
+                    ty,
+                    items,
+                )
+            }
             "Use" => {
                 let lua_use_tree = table.get("tree")?;
                 let mut use_tree = dummy_use_tree();
@@ -521,7 +534,7 @@ impl MergeLuaAst for P<Item> {
                 use_tree.merge_lua_ast(lua_use_tree)?;
 
                 ItemKind::Use(P(use_tree))
-            },
+            }
             "TyAlias" => {
                 let lua_ty = table.get("ty")?;
                 let mut ty = dummy_ty();
@@ -530,7 +543,7 @@ impl MergeLuaAst for P<Item> {
 
                 // TODO: Generics
                 ItemKind::TyAlias(ty, Generics::default())
-            },
+            }
             "Static" => {
                 let lua_ty = table.get("ty")?;
                 let lua_expr = table.get("expr")?;
@@ -591,7 +604,7 @@ impl MergeLuaAst for P<Expr> {
 
                 // TODO: QSelf support
                 ExprKind::Path(None, path)
-            },
+            }
             "Lit" => {
                 let val: LuaValue = table.get("value")?;
                 let suffix: Option<LuaString> = table.get("suffix")?;
@@ -619,12 +632,16 @@ impl MergeLuaAst for P<Expr> {
 
                             match suffix {
                                 None => LitKind::Float(sym, LitFloatType::Unsuffixed),
-                                Some("f32") => LitKind::Float(sym, LitFloatType::Suffixed(FloatTy::F32)),
-                                Some("f64") => LitKind::Float(sym, LitFloatType::Suffixed(FloatTy::F64)),
+                                Some("f32") => {
+                                    LitKind::Float(sym, LitFloatType::Suffixed(FloatTy::F32))
+                                }
+                                Some("f64") => {
+                                    LitKind::Float(sym, LitFloatType::Suffixed(FloatTy::F64))
+                                }
                                 Some(e) => unreachable!("Unknown float suffix: {}{}", num, e),
                             }
                         }
-                    },
+                    }
                     LuaValue::String(lua_string) => {
                         let str_kind = table.get::<_, LuaString>("str_kind")?;
                         let str_kind = str_kind.to_str()?;
@@ -632,21 +649,16 @@ impl MergeLuaAst for P<Expr> {
                         let is_char = str_kind == "Char";
 
                         if is_bytes {
-                            let bytes: Vec<u8> = lua_string
-                                .as_bytes()
-                                .iter()
-                                .map(|b| *b)
-                                .collect();
+                            let bytes: Vec<u8> = lua_string.as_bytes().iter().map(|b| *b).collect();
 
                             LitKind::ByteStr(Rc::new(bytes))
                         } else {
                             let string = lua_string.to_str()?;
 
                             if is_char {
-                                let ch = string
-                                    .chars()
-                                    .next()
-                                    .ok_or(LuaError::external("Found empty string where char was expected."));
+                                let ch = string.chars().next().ok_or(LuaError::external(
+                                    "Found empty string where char was expected.",
+                                ));
 
                                 LitKind::Char(ch?)
                             } else {
@@ -657,12 +669,12 @@ impl MergeLuaAst for P<Expr> {
                                 LitKind::Str(symbol, style)
                             }
                         }
-                    },
+                    }
                     LuaValue::Nil => {
                         let symbol = Symbol::intern("NIL");
 
                         LitKind::Err(symbol)
-                    },
+                    }
                     _ => unimplemented!("MergeLuaAst unimplemented lit: {:?}", val),
                 };
 
@@ -671,32 +683,36 @@ impl MergeLuaAst for P<Expr> {
                     kind: lit_kind,
                     span: DUMMY_SP,
                 })
-            },
+            }
             "Binary" | "AssignOp" | "Assign" => {
                 let lua_lhs = table.get("lhs")?;
                 let lua_rhs = table.get("rhs")?;
                 let op: Option<LuaString> = table.get("op")?;
-                let op = op.map(|s| Ok(match s.to_str()? {
-                    "+" => BinOpKind::Add,
-                    "-" => BinOpKind::Sub,
-                    "*" => BinOpKind::Mul,
-                    "/" => BinOpKind::Div,
-                    "%" => BinOpKind::Rem,
-                    "&&" => BinOpKind::And,
-                    "||" => BinOpKind::Or,
-                    "^" => BinOpKind::BitXor,
-                    "&" => BinOpKind::BitAnd,
-                    "|" => BinOpKind::BitOr,
-                    "<<" => BinOpKind::Shl,
-                    ">>" => BinOpKind::Shr,
-                    "==" => BinOpKind::Eq,
-                    "<" => BinOpKind::Lt,
-                    "<=" => BinOpKind::Le,
-                    "!=" => BinOpKind::Ne,
-                    ">=" => BinOpKind::Ge,
-                    ">" => BinOpKind::Gt,
-                    e => unreachable!("Unknown BinOpKind: {}", e),
-                })).transpose()?;
+                let op = op
+                    .map(|s| {
+                        Ok(match s.to_str()? {
+                            "+" => BinOpKind::Add,
+                            "-" => BinOpKind::Sub,
+                            "*" => BinOpKind::Mul,
+                            "/" => BinOpKind::Div,
+                            "%" => BinOpKind::Rem,
+                            "&&" => BinOpKind::And,
+                            "||" => BinOpKind::Or,
+                            "^" => BinOpKind::BitXor,
+                            "&" => BinOpKind::BitAnd,
+                            "|" => BinOpKind::BitOr,
+                            "<<" => BinOpKind::Shl,
+                            ">>" => BinOpKind::Shr,
+                            "==" => BinOpKind::Eq,
+                            "<" => BinOpKind::Lt,
+                            "<=" => BinOpKind::Le,
+                            "!=" => BinOpKind::Ne,
+                            ">=" => BinOpKind::Ge,
+                            ">" => BinOpKind::Gt,
+                            e => unreachable!("Unknown BinOpKind: {}", e),
+                        })
+                    })
+                    .transpose()?;
 
                 let mut lhs = dummy_expr();
                 let mut rhs = dummy_expr();
@@ -710,7 +726,7 @@ impl MergeLuaAst for P<Expr> {
                     "Assign" => ExprKind::Assign(lhs, rhs),
                     _ => unreachable!(),
                 }
-            },
+            }
             "Array" => {
                 let lua_exprs: LuaTable = table.get("values")?;
                 let mut exprs = Vec::new();
@@ -724,7 +740,7 @@ impl MergeLuaAst for P<Expr> {
                 }
 
                 ExprKind::Array(exprs)
-            },
+            }
             "Index" => {
                 let lua_indexed: LuaTable = table.get("indexed")?;
                 let lua_index: LuaTable = table.get("index")?;
@@ -735,7 +751,7 @@ impl MergeLuaAst for P<Expr> {
                 index.merge_lua_ast(lua_index)?;
 
                 ExprKind::Index(indexed, index)
-            },
+            }
             "Unary" => {
                 let op: LuaString = table.get("op")?;
                 let lua_expr: LuaTable = table.get("expr")?;
@@ -750,7 +766,7 @@ impl MergeLuaAst for P<Expr> {
                 expr.merge_lua_ast(lua_expr)?;
 
                 ExprKind::Unary(op, expr)
-            },
+            }
             "Call" => {
                 let mut path = dummy_expr();
                 let lua_path = table.get("path")?;
@@ -767,7 +783,7 @@ impl MergeLuaAst for P<Expr> {
                 }
 
                 ExprKind::Call(path, args)
-            },
+            }
             "MethodCall" => {
                 let lua_args: LuaTable = table.get("args")?;
                 let mut args = Vec::new();
@@ -783,17 +799,19 @@ impl MergeLuaAst for P<Expr> {
                 let name: LuaString = lua_segment.get("ident")?;
                 let mut segment = PathSegment::from_ident(Ident::from_str(name.to_str()?));
                 let lua_generics: Option<LuaTable> = lua_segment.get("generics")?;
-                let opt_generics = lua_generics.map(|lua_generics| {
-                    let mut generics = dummy_generic_args();
+                let opt_generics = lua_generics
+                    .map(|lua_generics| {
+                        let mut generics = dummy_generic_args();
 
-                    generics.merge_lua_ast(lua_generics).map(|_| P(generics))
-                }).transpose()?;
+                        generics.merge_lua_ast(lua_generics).map(|_| P(generics))
+                    })
+                    .transpose()?;
 
                 segment.id = get_node_id_or_default(&lua_segment, "id")?;
                 segment.args = opt_generics;
 
                 ExprKind::MethodCall(segment, args)
-            },
+            }
             "Field" => {
                 let lua_expr: LuaTable = table.get("expr")?;
                 let mut expr = dummy_expr();
@@ -802,7 +820,7 @@ impl MergeLuaAst for P<Expr> {
                 expr.merge_lua_ast(lua_expr)?;
 
                 ExprKind::Field(expr, Ident::from_str(name.to_str()?))
-            },
+            }
             "Ret" => {
                 let opt_lua_expr: Option<LuaTable> = table.get("value")?;
 
@@ -813,10 +831,10 @@ impl MergeLuaAst for P<Expr> {
                         expr.merge_lua_ast(lua_expr)?;
 
                         ExprKind::Ret(Some(expr))
-                    },
+                    }
                     None => ExprKind::Ret(None),
                 }
-            },
+            }
             "Tup" => {
                 let lua_exprs: LuaTable = table.get("exprs")?;
                 let mut exprs = Vec::new();
@@ -829,7 +847,7 @@ impl MergeLuaAst for P<Expr> {
                 }
 
                 ExprKind::Tup(exprs)
-            },
+            }
             "AddrOf" => {
                 let lua_expr = table.get("expr")?;
                 let mut expr = dummy_expr();
@@ -843,34 +861,42 @@ impl MergeLuaAst for P<Expr> {
                 };
 
                 ExprKind::AddrOf(BorrowKind::Ref, mutability, expr)
-            },
+            }
             "Block" => {
                 let lua_block = table.get("block")?;
                 let mut block = dummy_block();
                 let opt_label_str: Option<LuaString> = table.get("label")?;
-                let opt_label = opt_label_str.map(|s| Ok(Label {
-                    ident: Ident::from_str(s.to_str()?)
-                })).transpose()?;
+                let opt_label = opt_label_str
+                    .map(|s| {
+                        Ok(Label {
+                            ident: Ident::from_str(s.to_str()?),
+                        })
+                    })
+                    .transpose()?;
 
                 block.merge_lua_ast(lua_block)?;
 
                 ExprKind::Block(block, opt_label)
-            },
+            }
             "While" => {
                 let lua_cond = table.get("cond")?;
                 let lua_block = table.get("block")?;
                 let mut cond = dummy_expr();
                 let mut block = dummy_block();
                 let opt_label_str: Option<LuaString> = table.get("label")?;
-                let opt_label = opt_label_str.map(|s| Ok(Label {
-                    ident: Ident::from_str(s.to_str()?)
-                })).transpose()?;
+                let opt_label = opt_label_str
+                    .map(|s| {
+                        Ok(Label {
+                            ident: Ident::from_str(s.to_str()?),
+                        })
+                    })
+                    .transpose()?;
 
                 block.merge_lua_ast(lua_block)?;
                 cond.merge_lua_ast(lua_cond)?;
 
                 ExprKind::While(cond, block, opt_label)
-            },
+            }
             "If" => {
                 let lua_cond = table.get("cond")?;
                 let lua_then = table.get("then")?;
@@ -881,14 +907,16 @@ impl MergeLuaAst for P<Expr> {
                 cond.merge_lua_ast(lua_cond)?;
                 then.merge_lua_ast(lua_then)?;
 
-                let opt_else = opt_lua_else.map(|lua_else| {
-                    let mut expr = dummy_expr();
+                let opt_else = opt_lua_else
+                    .map(|lua_else| {
+                        let mut expr = dummy_expr();
 
-                    expr.merge_lua_ast(lua_else).map(|_| expr)
-                }).transpose()?;
+                        expr.merge_lua_ast(lua_else).map(|_| expr)
+                    })
+                    .transpose()?;
 
                 ExprKind::If(cond, then, opt_else)
-            },
+            }
             "Cast" => {
                 let lua_expr = table.get("expr")?;
                 let mut expr = dummy_expr();
@@ -899,16 +927,18 @@ impl MergeLuaAst for P<Expr> {
                 ty.merge_lua_ast(lua_ty)?;
 
                 ExprKind::Cast(expr, ty)
-            },
+            }
             "Struct" => {
                 let lua_path = table.get("path")?;
                 let lua_fields: LuaTable = table.get("fields")?;
                 let opt_lua_expr: Option<_> = table.get("expr")?;
-                let opt_expr = opt_lua_expr.map(|lua_expr| {
-                    let mut expr = dummy_expr();
+                let opt_expr = opt_lua_expr
+                    .map(|lua_expr| {
+                        let mut expr = dummy_expr();
 
-                    expr.merge_lua_ast(lua_expr).map(|_| expr)
-                }).transpose()?;
+                        expr.merge_lua_ast(lua_expr).map(|_| expr)
+                    })
+                    .transpose()?;
                 let mut path = dummy_path();
                 let mut fields = Vec::new();
 
@@ -938,7 +968,7 @@ impl MergeLuaAst for P<Expr> {
                 }
 
                 ExprKind::Struct(path, fields, opt_expr)
-            },
+            }
             "Repeat" => {
                 let lua_expr = table.get("expr")?;
                 let lua_ac_expr = table.get("anon_const")?;
@@ -949,13 +979,10 @@ impl MergeLuaAst for P<Expr> {
                 expr.merge_lua_ast(lua_expr)?;
                 ac_expr.merge_lua_ast(lua_ac_expr)?;
 
-                let anon_const = AnonConst {
-                    id,
-                    value: ac_expr,
-                };
+                let anon_const = AnonConst { id, value: ac_expr };
 
                 ExprKind::Repeat(expr, anon_const)
-            },
+            }
             "InlineAsm" => {
                 let asm: LuaString = table.get("asm")?;
                 let asm = Symbol::intern(asm.to_str()?);
@@ -1017,41 +1044,55 @@ impl MergeLuaAst for P<Expr> {
                     alignstack: table.get("alignstack")?,
                     dialect,
                 }))
-            },
+            }
             "Loop" => {
                 let lua_block = table.get("block")?;
                 let lua_label: Option<LuaString> = table.get("label")?;
-                let opt_label = lua_label.map(|string| Ok(Label {
-                    ident: Ident::from_str(string.to_str()?)
-                })).transpose()?;
+                let opt_label = lua_label
+                    .map(|string| {
+                        Ok(Label {
+                            ident: Ident::from_str(string.to_str()?),
+                        })
+                    })
+                    .transpose()?;
                 let mut block = dummy_block();
 
                 block.merge_lua_ast(lua_block)?;
 
                 ExprKind::Loop(block, opt_label)
-            },
+            }
             "Break" => {
                 let lua_expr: Option<LuaTable> = table.get("expr")?;
                 let lua_label: Option<LuaString> = table.get("label")?;
-                let opt_label = lua_label.map(|string| Ok(Label {
-                    ident: Ident::from_str(string.to_str()?)
-                })).transpose()?;
-                let opt_expr = lua_expr.map(|lua_expr| {
-                    let mut expr = dummy_expr();
+                let opt_label = lua_label
+                    .map(|string| {
+                        Ok(Label {
+                            ident: Ident::from_str(string.to_str()?),
+                        })
+                    })
+                    .transpose()?;
+                let opt_expr = lua_expr
+                    .map(|lua_expr| {
+                        let mut expr = dummy_expr();
 
-                    expr.merge_lua_ast(lua_expr).map(|_| expr)
-                }).transpose()?;
+                        expr.merge_lua_ast(lua_expr).map(|_| expr)
+                    })
+                    .transpose()?;
 
                 ExprKind::Break(opt_label, opt_expr)
-            },
+            }
             "Continue" => {
                 let lua_label: Option<LuaString> = table.get("label")?;
-                let opt_label = lua_label.map(|string| Ok(Label {
-                    ident: Ident::from_str(string.to_str()?)
-                })).transpose()?;
+                let opt_label = lua_label
+                    .map(|string| {
+                        Ok(Label {
+                            ident: Ident::from_str(string.to_str()?),
+                        })
+                    })
+                    .transpose()?;
 
                 ExprKind::Continue(opt_label)
-            },
+            }
             "Match" => {
                 let lua_expr = table.get("expr")?;
                 let lua_arms: LuaTable = table.get("arms")?;
@@ -1068,15 +1109,19 @@ impl MergeLuaAst for P<Expr> {
                 expr.merge_lua_ast(lua_expr)?;
 
                 ExprKind::Match(expr, arms)
-            },
+            }
             "ForLoop" => {
                 let lua_expr = table.get("expr")?;
                 let lua_pat = table.get("pat")?;
                 let lua_block = table.get("block")?;
                 let lua_label: Option<LuaString> = table.get("label")?;
-                let opt_label = lua_label.map(|string| Ok(Label {
-                    ident: Ident::from_str(string.to_str()?)
-                })).transpose()?;
+                let opt_label = lua_label
+                    .map(|string| {
+                        Ok(Label {
+                            ident: Ident::from_str(string.to_str()?),
+                        })
+                    })
+                    .transpose()?;
                 let mut expr = dummy_expr();
                 let mut pat = dummy_pat();
                 let mut block = dummy_block();
@@ -1086,7 +1131,7 @@ impl MergeLuaAst for P<Expr> {
                 pat.merge_lua_ast(lua_pat)?;
 
                 ExprKind::ForLoop(pat, expr, block, opt_label)
-            },
+            }
             "Paren" => {
                 let lua_expr = table.get("expr")?;
                 let mut expr = dummy_expr();
@@ -1098,7 +1143,7 @@ impl MergeLuaAst for P<Expr> {
             ref e => {
                 warn!("MergeLuaAst unimplemented expr: {:?}", e);
                 return Ok(());
-            },
+            }
         };
 
         Ok(())
@@ -1121,7 +1166,7 @@ impl MergeLuaAst for ImplItem {
                 block.merge_lua_ast(lua_block)?;
 
                 // TODO: generics, attrs, ..
-            },
+            }
             ref e => unimplemented!("MergeLuaAst for {:?}", e),
         }
 
@@ -1145,7 +1190,7 @@ impl MergeLuaAst for P<Ty> {
 
                 // TODO: QSelf support
                 TyKind::Path(None, path)
-            },
+            }
             "Ptr" | "Rptr" => {
                 let mutbl = match table.get::<_, LuaString>("mutbl")?.to_str()? {
                     "Immutable" => Immutable,
@@ -1157,21 +1202,24 @@ impl MergeLuaAst for P<Ty> {
 
                 ty.merge_lua_ast(lua_ty)?;
 
-                let mut_ty = MutTy {ty, mutbl};
+                let mut_ty = MutTy { ty, mutbl };
 
                 if kind == "Ptr" {
                     TyKind::Ptr(mut_ty)
                 } else {
                     let lua_lifetime: Option<LuaString> = table.get("lifetime")?;
-                    let opt_lifetime = lua_lifetime.map(|s| {
-                        s.to_str()
-                            .map(|s| Ident::from_str(s))
-                            .map(|i| Lifetime {id: DUMMY_NODE_ID, ident: i})
-                    }).transpose()?;
+                    let opt_lifetime = lua_lifetime
+                        .map(|s| {
+                            s.to_str().map(|s| Ident::from_str(s)).map(|i| Lifetime {
+                                id: DUMMY_NODE_ID,
+                                ident: i,
+                            })
+                        })
+                        .transpose()?;
 
                     TyKind::Rptr(opt_lifetime, mut_ty)
                 }
-            },
+            }
             "BareFn" => {
                 let lua_decl = table.get("decl")?;
                 let mut decl = dummy_fn_decl();
@@ -1190,7 +1238,7 @@ impl MergeLuaAst for P<Ty> {
                             span: DUMMY_SP,
                             symbol_unescaped: Symbol::intern(s),
                         }),
-                    }
+                    },
                     None => Extern::None,
                 };
                 decl.merge_lua_ast(lua_decl)?;
@@ -1203,7 +1251,7 @@ impl MergeLuaAst for P<Ty> {
                 };
 
                 TyKind::BareFn(P(bare_fn))
-            },
+            }
             "Array" => {
                 let lua_ty = table.get("ty")?;
                 let lua_ac_expr = table.get("anon_const")?;
@@ -1219,7 +1267,7 @@ impl MergeLuaAst for P<Ty> {
                 };
 
                 TyKind::Array(ty, anon_const)
-            },
+            }
             "Typeof" => {
                 let lua_ac_expr = table.get("anon_const")?;
                 let mut ac_expr = dummy_expr();
@@ -1232,7 +1280,7 @@ impl MergeLuaAst for P<Ty> {
                 };
 
                 TyKind::Typeof(anon_const)
-            },
+            }
             "Paren" | "Slice" => {
                 let lua_ty = table.get("ty")?;
                 let mut ty = dummy_ty();
@@ -1244,7 +1292,7 @@ impl MergeLuaAst for P<Ty> {
                 } else {
                     TyKind::Slice(ty)
                 }
-            },
+            }
             "Tup" => {
                 let lua_tys: LuaTable = table.get("tys")?;
                 let mut tys = Vec::new();
@@ -1257,7 +1305,7 @@ impl MergeLuaAst for P<Ty> {
                 }
 
                 TyKind::Tup(tys)
-            },
+            }
             "Never" => TyKind::Never,
             "ImplicitSelf" => TyKind::ImplicitSelf,
             "CVarArgs" => TyKind::CVarArgs,
@@ -1278,11 +1326,13 @@ impl MergeLuaAst for Path {
             let ident: LuaString = lua_segment.get("ident")?;
             let lua_generics: Option<LuaTable> = lua_segment.get("generics")?;
             let mut path_segment = PathSegment::from_ident(Ident::from_str(ident.to_str()?));
-            let opt_generics = lua_generics.map(|lua_generics| {
-                let mut generics = dummy_generic_args();
+            let opt_generics = lua_generics
+                .map(|lua_generics| {
+                    let mut generics = dummy_generic_args();
 
-                generics.merge_lua_ast(lua_generics).map(|_| P(generics))
-            }).transpose()?;
+                    generics.merge_lua_ast(lua_generics).map(|_| P(generics))
+                })
+                .transpose()?;
 
             path_segment.id = get_node_id_or_default(&lua_segment, "id")?;
             path_segment.args = opt_generics;
@@ -1319,7 +1369,7 @@ impl MergeLuaAst for GenericArgs {
                     span,
                     constraints: Vec::new(), // TODO
                 })
-            },
+            }
             "Parenthesized" => unimplemented!("MergeLuaAst unimplemented for Parenthesized"),
             e => unimplemented!("Unknown GenericArgs kind: {}", e),
         };
@@ -1341,7 +1391,7 @@ impl MergeLuaAst for GenericArg {
                 ty.merge_lua_ast(lua_ty)?;
 
                 GenericArg::Type(ty)
-            },
+            }
             e => unimplemented!("Unknown GenericArg kind: {}", e),
         };
 
@@ -1360,12 +1410,12 @@ impl MergeLuaAst for UseTree {
         self.kind = match kind {
             "Simple" => {
                 let lua_ident: Option<LuaString> = table.get("ident")?;
-                let opt_ident = lua_ident.map(|lua_string|
-                    Ok(Ident::from_str(lua_string.to_str()?))
-                ).transpose()?;
+                let opt_ident = lua_ident
+                    .map(|lua_string| Ok(Ident::from_str(lua_string.to_str()?)))
+                    .transpose()?;
 
                 UseTreeKind::Simple(opt_ident, DUMMY_NODE_ID, DUMMY_NODE_ID)
-            },
+            }
             "Nested" => {
                 let lua_trees: LuaTable = table.get("trees")?;
                 let mut trees = Vec::new();
@@ -1379,7 +1429,7 @@ impl MergeLuaAst for UseTree {
                 }
 
                 UseTreeKind::Nested(trees)
-            },
+            }
             "Glob" => UseTreeKind::Glob,
             e => unimplemented!("Unknown UseTree kind: {}", e),
         };
@@ -1405,7 +1455,7 @@ impl MergeLuaAst for Arm {
                 expr.merge_lua_ast(lua_guard)?;
 
                 self.guard = Some(expr);
-            },
+            }
             _ => (),
         }
 

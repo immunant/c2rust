@@ -1,5 +1,5 @@
-use std::sync::atomic::Ordering;
 use super::*;
+use std::sync::atomic::Ordering;
 
 impl<'c> Translation<'c> {
     fn convert_constant_bool(&self, expr: CExprId) -> Option<bool> {
@@ -14,17 +14,15 @@ impl<'c> Translation<'c> {
     fn convert_memordering(&self, expr: CExprId) -> Option<Ordering> {
         let memorder = &self.ast_context[expr];
         match memorder.kind {
-            CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
-                match i {
-                    0 => Some(Ordering::Relaxed),
-                    1 => Some(Ordering::Acquire),
-                    2 => Some(Ordering::Acquire),
-                    3 => Some(Ordering::Release),
-                    4 => Some(Ordering::AcqRel),
-                    5 => Some(Ordering::SeqCst),
-                    _ => None,
-                }
-            }
+            CExprKind::Literal(_, CLiteral::Integer(i, _)) => match i {
+                0 => Some(Ordering::Relaxed),
+                1 => Some(Ordering::Acquire),
+                2 => Some(Ordering::Acquire),
+                3 => Some(Ordering::Release),
+                4 => Some(Ordering::AcqRel),
+                5 => Some(Ordering::SeqCst),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -43,71 +41,83 @@ impl<'c> Translation<'c> {
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
         let ptr = self.convert_expr(ctx.used(), ptr_id)?;
         let order = self.convert_memordering(order_id);
-        let val1 = val1_id.map(|x| self.convert_expr(ctx.used(), x)).transpose()?;
+        let val1 = val1_id
+            .map(|x| self.convert_expr(ctx.used(), x))
+            .transpose()?;
         let order_fail = order_fail_id.and_then(|x| self.convert_memordering(x));
-        let val2 = val2_id.map(|x| self.convert_expr(ctx.used(), x)).transpose()?;
+        let val2 = val2_id
+            .map(|x| self.convert_expr(ctx.used(), x))
+            .transpose()?;
         let weak = weak_id.and_then(|x| self.convert_constant_bool(x));
 
         match name {
-            "__atomic_load" | "__atomic_load_n" => {
-                ptr.and_then(|ptr| {
-                    let intrinsic_name = match order {
-                        None => unimplemented!("Dynamic memory consistency arguments are not yet supported"),
-                        Some(Ordering::SeqCst) => Some("atomic_load"),
-                        Some(Ordering::AcqRel) => None,
-                        Some(Ordering::Acquire) => Some("atomic_load_acq"),
-                        Some(Ordering::Release) => None,
-                        Some(Ordering::Relaxed) => Some("atomic_load_relaxed"),
-                        Some(_) => unreachable!("Did we not handle a case above??"),
-                    }.ok_or_else(|| format_translation_err!(
-                        self.ast_context.display_loc(&self.ast_context[order_id].loc),
+            "__atomic_load" | "__atomic_load_n" => ptr.and_then(|ptr| {
+                let intrinsic_name = match order {
+                    None => {
+                        unimplemented!("Dynamic memory consistency arguments are not yet supported")
+                    }
+                    Some(Ordering::SeqCst) => Some("atomic_load"),
+                    Some(Ordering::AcqRel) => None,
+                    Some(Ordering::Acquire) => Some("atomic_load_acq"),
+                    Some(Ordering::Release) => None,
+                    Some(Ordering::Relaxed) => Some("atomic_load_relaxed"),
+                    Some(_) => unreachable!("Did we not handle a case above??"),
+                }
+                .ok_or_else(|| {
+                    format_translation_err!(
+                        self.ast_context
+                            .display_loc(&self.ast_context[order_id].loc),
                         "Invalid memory ordering for __atomic_load",
-                    ))?;
+                    )
+                })?;
 
-                    self.use_feature("core_intrinsics");
+                self.use_feature("core_intrinsics");
 
-                    let atomic_load =
-                        mk().path_expr(vec!["", std_or_core, "intrinsics", intrinsic_name]);
-                    let call = mk().call_expr(atomic_load, vec![ptr]);
-                    if name == "__atomic_load" {
-                        let ret = val1.expect("__atomic_load should have a ret argument");
-                        ret.and_then(|ret| {
-                            let assignment = mk().assign_expr(
-                                mk().unary_expr(ast::UnOp::Deref, ret),
-                                call,
-                            );
-                            self.convert_side_effects_expr(
-                                ctx,
-                                WithStmts::new_val(assignment),
-                                "Builtin is not supposed to be used",
-                            )
-                        })
-                    } else {
+                let atomic_load =
+                    mk().path_expr(vec!["", std_or_core, "intrinsics", intrinsic_name]);
+                let call = mk().call_expr(atomic_load, vec![ptr]);
+                if name == "__atomic_load" {
+                    let ret = val1.expect("__atomic_load should have a ret argument");
+                    ret.and_then(|ret| {
+                        let assignment =
+                            mk().assign_expr(mk().unary_expr(ast::UnOp::Deref, ret), call);
                         self.convert_side_effects_expr(
                             ctx,
-                            WithStmts::new_val(call),
+                            WithStmts::new_val(assignment),
                             "Builtin is not supposed to be used",
                         )
-                    }
-                })
-            }
+                    })
+                } else {
+                    self.convert_side_effects_expr(
+                        ctx,
+                        WithStmts::new_val(call),
+                        "Builtin is not supposed to be used",
+                    )
+                }
+            }),
 
             "__atomic_store" | "__atomic_store_n" => {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
                         let intrinsic_name = match order {
-                            None => unimplemented!("Dynamic memory consistency arguments are not yet supported"),
+                            None => unimplemented!(
+                                "Dynamic memory consistency arguments are not yet supported"
+                            ),
                             Some(Ordering::SeqCst) => Some("atomic_store"),
                             Some(Ordering::AcqRel) => None,
                             Some(Ordering::Acquire) => None,
                             Some(Ordering::Release) => Some("atomic_store_rel"),
                             Some(Ordering::Relaxed) => Some("atomic_store_relaxed"),
                             Some(_) => unreachable!("Did we not handle a case above??"),
-                        }.ok_or_else(|| format_translation_err!(
-                            self.ast_context.display_loc(&self.ast_context[order_id].loc),
-                            "Invalid memory ordering for __atomic_store",
-                        ))?;
+                        }
+                        .ok_or_else(|| {
+                            format_translation_err!(
+                                self.ast_context
+                                    .display_loc(&self.ast_context[order_id].loc),
+                                "Invalid memory ordering for __atomic_store",
+                            )
+                        })?;
 
                         self.use_feature("core_intrinsics");
 
@@ -133,17 +143,23 @@ impl<'c> Translation<'c> {
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
                         let intrinsic_name = match order {
-                            None => unimplemented!("Dynamic memory consistency arguments are not yet supported"),
+                            None => unimplemented!(
+                                "Dynamic memory consistency arguments are not yet supported"
+                            ),
                             Some(Ordering::SeqCst) => Some("atomic_xchg"),
                             Some(Ordering::AcqRel) => Some("atomic_xchg_acqrel"),
                             Some(Ordering::Acquire) => Some("atomic_xchg_acq"),
                             Some(Ordering::Release) => Some("atomic_xchg_rel"),
                             Some(Ordering::Relaxed) => Some("atomic_xchg_relaxed"),
                             Some(_) => unreachable!("Did we not handle a case above??"),
-                        }.ok_or_else(|| format_translation_err!(
-                            self.ast_context.display_loc(&self.ast_context[order_id].loc),
-                            "Invalid memory ordering for __atomic_exchange",
-                        ))?;
+                        }
+                        .ok_or_else(|| {
+                            format_translation_err!(
+                                self.ast_context
+                                    .display_loc(&self.ast_context[order_id].loc),
+                                "Invalid memory ordering for __atomic_exchange",
+                            )
+                        })?;
 
                         self.use_feature("core_intrinsics");
 
@@ -162,10 +178,8 @@ impl<'c> Translation<'c> {
                                 .transpose()?
                                 .expect("__atomic_exchange must have a ret pointer argument")
                                 .and_then(|ret| {
-                                    let assignment = mk().assign_expr(
-                                        mk().unary_expr(ast::UnOp::Deref, ret),
-                                        call,
-                                    );
+                                    let assignment = mk()
+                                        .assign_expr(mk().unary_expr(ast::UnOp::Deref, ret), call);
                                     self.convert_side_effects_expr(
                                         ctx,
                                         WithStmts::new_val(assignment),
@@ -184,7 +198,8 @@ impl<'c> Translation<'c> {
             }
 
             "__atomic_compare_exchange" | "__atomic_compare_exchange_n" => {
-                let expected = val1.expect("__atomic_compare_exchange must have a expected argument");
+                let expected =
+                    val1.expect("__atomic_compare_exchange must have a expected argument");
                 let desired = val2.expect("__atomic_compare_exchange must have a desired argument");
                 ptr.and_then(|ptr| {
                     expected.and_then(|expected| {
@@ -321,7 +336,9 @@ impl<'c> Translation<'c> {
 
                 let intrinsic_name = match order {
                     None => {
-                        unimplemented!("Dynamic memory consistency arguments are not yet supported");
+                        unimplemented!(
+                            "Dynamic memory consistency arguments are not yet supported"
+                        );
                     }
 
                     Some(Ordering::SeqCst) => format!("{}", intrinsic_name),
@@ -337,13 +354,7 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic arithmetic operations must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        self.convert_atomic_op(
-                            ctx,
-                            &intrinsic_name,
-                            ptr,
-                            val,
-                            fetch_first,
-                        )
+                        self.convert_atomic_op(ctx, &intrinsic_name, ptr, val, fetch_first)
                     })
                 })
             }
@@ -365,8 +376,7 @@ impl<'c> Translation<'c> {
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
         // Emit `atomic_cxchg(a0, a1, a2).idx`
-        let atomic_cxchg =
-            mk().path_expr(vec!["", std_or_core, "intrinsics", intrinsic_name]);
+        let atomic_cxchg = mk().path_expr(vec!["", std_or_core, "intrinsics", intrinsic_name]);
         let call = mk().call_expr(atomic_cxchg, vec![dst, old_val, src_val]);
         let field_idx = if returns_val { "0" } else { "1" };
         let call_expr = mk().field_expr(call, field_idx);
@@ -445,13 +455,9 @@ impl<'c> Translation<'c> {
             };
             self.convert_side_effects_expr(
                 ctx,
-                WithStmts::new(
-                    vec![arg0_let, arg1_let],
-                    val,
-                ),
+                WithStmts::new(vec![arg0_let, arg1_let], val),
                 "Builtin is not supposed to be used",
             )
         }
     }
-
 }

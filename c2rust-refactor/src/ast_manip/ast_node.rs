@@ -1,5 +1,5 @@
-use std::convert::TryFrom;
 use derive_more::{From, TryInto};
+use std::convert::TryFrom;
 
 use syntax::ast;
 use syntax::ptr::P;
@@ -15,7 +15,7 @@ pub enum AstNodeRef<'a> {
     ForeignItem(&'a ast::ForeignItem),
     Block(&'a ast::Block),
 }
- 
+
 #[derive(Clone, Debug, From, TryInto)]
 pub enum AstNode {
     Crate(ast::Crate),

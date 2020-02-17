@@ -58,8 +58,10 @@ impl<'a> From<&LuaTy> for ty::Ty<'a> {
     fn from(lua_ty: &LuaTy) -> Self {
         let tcx_gen = lua_ty.tcx_gen_ref.load(Ordering::Relaxed);
         if lua_ty.tcx_gen != tcx_gen {
-            panic!("Dangling LuaTy from generation {}, current is {}",
-                   lua_ty.tcx_gen, tcx_gen);
+            panic!(
+                "Dangling LuaTy from generation {}, current is {}",
+                lua_ty.tcx_gen, tcx_gen
+            );
         }
         unsafe { &*(lua_ty.ty_ptr as *const ty::TyS) }
     }
@@ -86,7 +88,7 @@ impl LuaUserData for LuaTy {
                     }
                 }
             };
-            match_kinds!{
+            match_kinds! {
                 [Bool, Char, Str, Never, Error],
                 [Int, Uint, Float, Adt, Foreign, Array, Slice, RawPtr,
                  Ref, FnDef, FnPtr, Dynamic, Closure, Generator,

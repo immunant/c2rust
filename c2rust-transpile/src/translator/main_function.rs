@@ -73,9 +73,7 @@ impl<'c> Translation<'c> {
                                     vec![mk().path_expr(vec!["arg"])],
                                 ),
                                 "expect",
-                                vec![mk().lit_expr(
-                                    "Failed to convert argument into CString.",
-                                )],
+                                vec![mk().lit_expr("Failed to convert argument into CString.")],
                             ),
                             "into_raw",
                             vec![] as Vec<P<Expr>>,
@@ -134,50 +132,70 @@ impl<'c> Translation<'c> {
                 ))));
                 let var_name_ident = mk().ident("var_name");
                 let var_value_ident = mk().ident("var_value");
-                stmts.push(mk().semi_stmt(mk().for_expr(
-                    mk().tuple_pat(vec![mk().ident_pat("var_name"), mk().ident_pat("var_value")]),
-                    mk().call_expr(vars_fn, vec![] as Vec<P<Expr>>),
-                    mk().block(vec![
-                        mk().local_stmt(P(mk().local(
-                            mk().ident_pat("var"),
-                            Some(mk().path_ty(vec!["String"])),
-                            Some(mk().mac_expr(mk().mac(
-                                vec!["format"],
-                                vec![
-                                    token::Interpolated(Rc::new(Nonterminal::NtExpr(mk().lit_expr("{}={}")))),
-                                    token::Comma,
-                                    TokenKind::Ident(var_name_ident.name, var_name_ident.is_raw_guess()),
-                                    token::Comma,
-                                    TokenKind::Ident(var_value_ident.name, var_value_ident.is_raw_guess())
-                                ].into_iter()
-                                    .map(|tk| TokenTree::token(tk, DUMMY_SP))
-                                    .collect::<TokenStream>(),
-                                MacDelimiter::Parenthesis,
-                            )))
-                        ))),
-                        mk().semi_stmt(mk().method_call_expr(
-                            mk().path_expr(vec!["vars"]),
-                            "push",
-                            vec![
-                                mk().method_call_expr(
-                                    mk().method_call_expr(
-                                        mk().call_expr(
-                                            mk().path_expr(vec!["","std","ffi","CString","new"]),
-                                            vec![mk().path_expr(vec!["var"])],
+                stmts.push(
+                    mk().semi_stmt(
+                        mk().for_expr(
+                            mk().tuple_pat(vec![
+                                mk().ident_pat("var_name"),
+                                mk().ident_pat("var_value"),
+                            ]),
+                            mk().call_expr(vars_fn, vec![] as Vec<P<Expr>>),
+                            mk().block(vec![
+                                mk().local_stmt(P(mk().local(
+                                    mk().ident_pat("var"),
+                                    Some(mk().path_ty(vec!["String"])),
+                                    Some(
+                                        mk().mac_expr(
+                                            mk().mac(
+                                                vec!["format"],
+                                                vec![
+                                                    token::Interpolated(Rc::new(
+                                                        Nonterminal::NtExpr(mk().lit_expr("{}={}")),
+                                                    )),
+                                                    token::Comma,
+                                                    TokenKind::Ident(
+                                                        var_name_ident.name,
+                                                        var_name_ident.is_raw_guess(),
+                                                    ),
+                                                    token::Comma,
+                                                    TokenKind::Ident(
+                                                        var_value_ident.name,
+                                                        var_value_ident.is_raw_guess(),
+                                                    ),
+                                                ]
+                                                .into_iter()
+                                                .map(|tk| TokenTree::token(tk, DUMMY_SP))
+                                                .collect::<TokenStream>(),
+                                                MacDelimiter::Parenthesis,
+                                            ),
                                         ),
-                                        "expect",
-                                        vec![mk().lit_expr(
+                                    ),
+                                ))),
+                                mk().semi_stmt(mk().method_call_expr(
+                                    mk().path_expr(vec!["vars"]),
+                                    "push",
+                                    vec![mk().method_call_expr(
+                                        mk().method_call_expr(
+                                            mk().call_expr(
+                                                mk().path_expr(vec![
+                                                    "", "std", "ffi", "CString", "new",
+                                                ]),
+                                                vec![mk().path_expr(vec!["var"])],
+                                            ),
+                                            "expect",
+                                            vec![mk().lit_expr(
                                             "Failed to convert environment variable into CString."
                                         )],
-                                    ),
-                                    "into_raw",
-                                    vec![] as Vec<P<Expr>>,
-                                )
-                            ],
-                        ))
-                    ]),
-                    None as Option<Ident>,
-                )));
+                                        ),
+                                        "into_raw",
+                                        vec![] as Vec<P<Expr>>,
+                                    )],
+                                )),
+                            ]),
+                            None as Option<Ident>,
+                        ),
+                    ),
+                );
                 stmts.push(mk().semi_stmt(mk().method_call_expr(
                     mk().path_expr(vec!["vars"]),
                     "push",

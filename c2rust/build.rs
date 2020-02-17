@@ -39,22 +39,20 @@ fn check_nightly_version() {
         .and_then(|s| s.parse::<NaiveDate>().ok())
         .expect("Could not parse expected toolchain version");
     let expected_commit_date = (expected_nightly_date - Duration::days(1)).to_string();
-    let version = rustc_version::version_meta()
-        .expect("Could not find rustc version");
+    let version = rustc_version::version_meta().expect("Could not find rustc version");
     if version.channel != Channel::Nightly {
         panic!(
             "C2Rust requires rustc nightly-{}, but version {} was found",
-            expected_nightly_date,
-            version.semver,
+            expected_nightly_date, version.semver,
         );
     }
     if version.commit_date.clone().unwrap() != expected_commit_date {
         let nightly_date = (version.commit_date.unwrap().parse::<NaiveDate>().unwrap()
-                           + Duration::days(1)).to_string();
+            + Duration::days(1))
+        .to_string();
         panic!(
             "C2Rust requires rustc nightly-{}, but version nightly-{} was found",
-            expected_nightly_date,
-            nightly_date,
+            expected_nightly_date, nightly_date,
         );
     }
 }

@@ -1,12 +1,12 @@
 //! `fold_resolved_paths` function, for rewriting paths based on their resolved `DefId`.
 use rustc::hir;
 use rustc::hir::def::Res;
+use smallvec::smallvec;
 use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::util::map_in_place::MapInPlace;
-use smallvec::smallvec;
 
 use crate::ast_manip::util::split_uses;
 use crate::ast_manip::MutVisit;
@@ -133,15 +133,19 @@ where
     pub fn alter_use_path(&mut self, item: &mut P<Item>, nodes: &[hir::Node]) {
         let id = item.id;
         unpack!([&mut item.kind] ItemKind::Use(tree));
-        let resolutions: Vec<_> = nodes.iter().map(|node| {
-            let hir = expect!([node] hir::Node::Item(i) => i);
-            if let hir::ItemKind::Use(ref hir_path, _) = hir.kind {
-                debug!("{:?}", hir_path);
-                Some(hir_path.res)
-            } else {
-                None
-            }
-        }).flatten().collect();
+        let resolutions: Vec<_> = nodes
+            .iter()
+            .map(|node| {
+                let hir = expect!([node] hir::Node::Item(i) => i);
+                if let hir::ItemKind::Use(ref hir_path, _) = hir.kind {
+                    debug!("{:?}", hir_path);
+                    Some(hir_path.res)
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect();
         let (_, new_path) = (self.callback)(id, None, tree.prefix.clone(), &resolutions);
         tree.prefix = new_path;
     }
@@ -291,9 +295,6 @@ where
     T: MutVisit,
     F: FnMut(NodeId, Option<QSelf>, Path, &[Res]) -> (Option<QSelf>, Path),
 {
-    let mut f = ResolvedPathFolder {
-        cx,
-        callback,
-    };
+    let mut f = ResolvedPathFolder { cx, callback };
     target.visit(&mut f)
 }

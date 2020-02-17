@@ -83,14 +83,22 @@ impl CommentStore {
 
     /// Convert the comment context into the accumulated (and ordered) `libsyntax` comments.
     pub fn into_comments(self) -> Vec<comments::Comment> {
-        self.output_comments.into_iter().map(|(_, v)| v).flatten().collect()
+        self.output_comments
+            .into_iter()
+            .map(|(_, v)| v)
+            .flatten()
+            .collect()
     }
 
     /// Add comments at the specified position, then return the `BytePos` that
     /// should be given to something we want associated with this comment. If
     /// `pos` is None, or a comment is not found in the given position, use the
     /// current position instead.
-    fn insert_comments(&mut self, mut new_comments: SmallVec<[comments::Comment; 1]>, pos: Option<BytePos>) -> BytePos {
+    fn insert_comments(
+        &mut self,
+        mut new_comments: SmallVec<[comments::Comment; 1]>,
+        pos: Option<BytePos>,
+    ) -> BytePos {
         if let Some(pos) = pos {
             if let Some(comments) = self.output_comments.get_mut(&pos) {
                 comments.extend(new_comments);
@@ -154,7 +162,7 @@ impl CommentStore {
                         || begin.starts_with("/*!")
                     {
                         let begin_loc = line.len() - begin.len();
-                        line.insert(2+begin_loc, ' ');
+                        line.insert(2 + begin_loc, ' ');
                     };
                     line
                 })
@@ -181,7 +189,10 @@ impl CommentStore {
             return;
         }
         if let Some(comments) = self.output_comments.remove(&old) {
-            self.output_comments.entry(new).or_insert(SmallVec::new()).extend(comments);
+            self.output_comments
+                .entry(new)
+                .or_insert(SmallVec::new())
+                .extend(comments);
         }
     }
 
@@ -192,9 +203,16 @@ impl CommentStore {
             if span.lo() == BytePos(0) {
                 span.shrink_to_hi()
             } else {
-                let new_comments = self.output_comments.remove(&span.hi())
-                    .unwrap_or_else(|| panic!("Expected comments attached to the high end of span {:?}", span));
-                self.output_comments.entry(span.lo()).or_insert(SmallVec::new()).extend(new_comments);
+                let new_comments = self.output_comments.remove(&span.hi()).unwrap_or_else(|| {
+                    panic!(
+                        "Expected comments attached to the high end of span {:?}",
+                        span
+                    )
+                });
+                self.output_comments
+                    .entry(span.lo())
+                    .or_insert(SmallVec::new())
+                    .extend(new_comments);
                 span.shrink_to_lo()
             }
         } else {
@@ -256,8 +274,16 @@ macro_rules! reinsert_and_traverse {
 impl traverse::Traversal for CommentTraverser {
     reinsert_and_traverse!(traverse_stmt, Stmt, traverse::traverse_stmt_def);
     reinsert_and_traverse!(traverse_expr, Expr, traverse::traverse_expr_def);
-    reinsert_and_traverse!(traverse_trait_item, TraitItem, traverse::traverse_trait_item_def);
-    reinsert_and_traverse!(traverse_impl_item, ImplItem, traverse::traverse_impl_item_def);
+    reinsert_and_traverse!(
+        traverse_trait_item,
+        TraitItem,
+        traverse::traverse_trait_item_def
+    );
+    reinsert_and_traverse!(
+        traverse_impl_item,
+        ImplItem,
+        traverse::traverse_impl_item_def
+    );
     reinsert_and_traverse!(traverse_block, Block, traverse::traverse_block_def);
     reinsert_and_traverse!(traverse_local, Local, traverse::traverse_local_def);
     reinsert_and_traverse!(traverse_field, Field, traverse::traverse_field_def);

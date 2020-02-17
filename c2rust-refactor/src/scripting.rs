@@ -9,41 +9,45 @@ use std::sync::Arc;
 use rlua::prelude::{LuaContext, LuaError, LuaFunction, LuaResult, LuaString, LuaTable, LuaValue};
 use rlua::{AnyUserData, FromLua, Lua, UserData, UserDataMethods};
 use rustc_interface::interface;
-use syntax::ThinVec;
 use syntax::ast::{
-    self, DUMMY_NODE_ID, Expr, ExprKind, Lit, LitIntType, LitKind, MacDelimiter,
-    NodeId, PathSegment, Ty,
+    self, Expr, ExprKind, Lit, LitIntType, LitKind, MacDelimiter, NodeId, PathSegment, Ty,
+    DUMMY_NODE_ID,
 };
 use syntax::mut_visit::MutVisitor;
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind, Nonterminal, Token, TokenKind};
 use syntax::tokenstream::TokenTree;
+use syntax::ThinVec;
 use syntax_pos::DUMMY_SP;
 
-use c2rust_ast_builder::mk;
-use crate::ast_manip::MutVisit;
 use crate::ast_manip::fn_edit::{mut_visit_fns, FnLike};
+use crate::ast_manip::MutVisit;
 use crate::command::{self, CommandState, RefactorState};
 use crate::driver::{self, Phase};
 use crate::file_io::{OutputMode, RealFileIO};
-use crate::matcher::{self, mut_visit_match_with, replace_expr, MatchCtxt, Pattern, Subst, TryMatch};
+use crate::matcher::{
+    self, mut_visit_match_with, replace_expr, MatchCtxt, Pattern, Subst, TryMatch,
+};
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::reflect::reflect_tcx_ty;
 use crate::{Command, RefactorCtxt};
+use c2rust_ast_builder::mk;
 
 pub mod ast_visitor;
 pub mod into_lua_ast;
-pub mod merge_lua_ast;
 mod lua_ty;
+pub mod merge_lua_ast;
 mod to_lua_ast_node;
 
 use ast_visitor::{LuaAstVisitor, LuaAstVisitorNew};
-use lua_ty::LuaTy;
 use into_lua_ast::IntoLuaAst;
+use lua_ty::LuaTy;
 use merge_lua_ast::MergeLuaAst;
 use to_lua_ast_node::LuaAstNode;
-use to_lua_ast_node::{FromLuaAstNode, FromLuaExt, FromLuaTable, LuaHirId, ToLuaExt, ToLuaScoped, ToLuaAstNode};
+use to_lua_ast_node::{
+    FromLuaAstNode, FromLuaExt, FromLuaTable, LuaHirId, ToLuaAstNode, ToLuaExt, ToLuaScoped,
+};
 
 /// Refactoring module
 // @module Refactor
@@ -95,10 +99,12 @@ pub fn run_lua_file(
             lua_ctx.globals().set("package", package)?;
 
             // Add common rustc AST constants to Lua globals
-            lua_ctx.globals().set("DUMMY_NODE_ID",
-                                  DUMMY_NODE_ID.to_lua_ext(lua_ctx)?)?;
-            lua_ctx.globals().set("DUMMY_SP",
-                                  DUMMY_SP.to_lua_ext(lua_ctx)?)?;
+            lua_ctx
+                .globals()
+                .set("DUMMY_NODE_ID", DUMMY_NODE_ID.to_lua_ext(lua_ctx)?)?;
+            lua_ctx
+                .globals()
+                .set("DUMMY_SP", DUMMY_SP.to_lua_ext(lua_ctx)?)?;
 
             // Load the script into the created scope
             lua_ctx.scope(|scope| {
@@ -150,7 +156,9 @@ struct DisplayLuaError(LuaError);
 impl fmt::Display for DisplayLuaError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.0 {
-            LuaError::SyntaxError{message, ..} => write!(f, "Syntax error while parsing lua: {}", message),
+            LuaError::SyntaxError { message, .. } => {
+                write!(f, "Syntax error while parsing lua: {}", message)
+            }
             LuaError::RuntimeError(e) => write!(f, "Runtime error during lua execution: {}", e),
             LuaError::CallbackError { traceback, cause } => {
                 write!(f, "Callback error: {}, traceback: {}", cause, traceback)
@@ -176,61 +184,54 @@ impl UserData for RefactorState {
             },
         );
 
-        methods.add_method_mut(
-            "save_crate",
-            |_lua_ctx, this, ()| Ok(this.save_crate()),
-        );
+        methods.add_method_mut("save_crate", |_lua_ctx, this, ()| Ok(this.save_crate()));
 
-        methods.add_method_mut(
-            "load_crate",
-            |_lua_ctx, this, ()| Ok(this.load_crate()),
-        );
+        methods.add_method_mut("load_crate", |_lua_ctx, this, ()| Ok(this.load_crate()));
 
-        methods.add_method(
-            "dump_marks",
-            |_lua_ctx, this, ()| Ok(println!("Marks: {:?}", this.marks())),
-        );
+        methods.add_method("dump_marks", |_lua_ctx, this, ()| {
+            Ok(println!("Marks: {:?}", this.marks()))
+        });
 
-        methods.add_method_mut(
-            "clear_marks",
-            |_lua_ctx, this, ()| Ok(this.clear_marks()),
-        );
+        methods.add_method_mut("clear_marks", |_lua_ctx, this, ()| Ok(this.clear_marks()));
 
-        methods.add_method(
-            "get_marks",
-            |lua_ctx, this, ()| lua_serialize_marks(&*this.marks(), lua_ctx),
-        );
+        methods.add_method("get_marks", |lua_ctx, this, ()| {
+            lua_serialize_marks(&*this.marks(), lua_ctx)
+        });
 
         /// Run a custom refactoring transformation
         // @function transform
         // @tparam function(TransformCtxt) callback Transformation function called with a fresh @{TransformCtxt}. This @{TransformCtxt} can operate on the crate to implement transformations.
-        methods.add_method_mut("transform", |lua_ctx, this, (callback, phase): (LuaFunction, Option<u8>)| {
-            let phase = match phase {
-                Some(1) => Phase::Phase1,
-                Some(2) => Phase::Phase2,
-                Some(3) | None => Phase::Phase3,
-                _ => return Err(LuaError::external("Phase must be nil, 1, 2, or 3")),
-            };
-            this.transform_crate(phase, |st, cx| {
-                enter_transform(st, cx, |transform| {
-                    let res: LuaResult<()> = lua_ctx.scope(|scope| {
-                        let transform_data = scope.create_nonstatic_userdata(transform)?;
-                        callback.call(transform_data)?;
-                        Ok(())
-                    });
-                    res.unwrap_or_else(|e| {
-                        match e {
+        methods.add_method_mut(
+            "transform",
+            |lua_ctx, this, (callback, phase): (LuaFunction, Option<u8>)| {
+                let phase = match phase {
+                    Some(1) => Phase::Phase1,
+                    Some(2) => Phase::Phase2,
+                    Some(3) | None => Phase::Phase3,
+                    _ => return Err(LuaError::external("Phase must be nil, 1, 2, or 3")),
+                };
+                this.transform_crate(phase, |st, cx| {
+                    enter_transform(st, cx, |transform| {
+                        let res: LuaResult<()> = lua_ctx.scope(|scope| {
+                            let transform_data = scope.create_nonstatic_userdata(transform)?;
+                            callback.call(transform_data)?;
+                            Ok(())
+                        });
+                        res.unwrap_or_else(|e| match e {
                             LuaError::CallbackError { traceback, cause } => {
-                                panic!("Could not run transform due to {:#?} at:\n{}", cause, traceback);
+                                panic!(
+                                    "Could not run transform due to {:#?} at:\n{}",
+                                    cause, traceback
+                                );
                             }
                             _ => panic!("Could not run transform due to {:#?}", e),
-                        }
+                        });
                     });
-                });
-            })
-            .map_err(|e| LuaError::external(format!("Failed to run compiler: {:#?}", e)))?;
-            Ok(())
-        });
+                })
+                .map_err(|e| LuaError::external(format!("Failed to run compiler: {:#?}", e)))?;
+                Ok(())
+            },
+        );
     }
 }
 
@@ -311,11 +312,11 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
         krate: &mut ast::Crate,
         callback: LuaFunction<'lua>,
         lua_ctx: LuaContext<'lua>,
-    )
-        where P: Pattern<V> + Clone,
-              V: 'static + ToLuaScoped + Clone,
-              LuaAstNode<P>: 'static + UserData,
-              LuaAstNode<V>: 'static + UserData,
+    ) where
+        P: Pattern<V> + Clone,
+        V: 'static + ToLuaScoped + Clone,
+        LuaAstNode<P>: 'static + UserData,
+        LuaAstNode<V>: 'static + UserData,
     {
         let pattern = pattern.borrow().clone();
         mut_visit_match_with(self.mcx.clone(), pattern, krate, |x, mcx| {
@@ -341,34 +342,45 @@ impl<'a, 'tcx> ScriptingMatchCtxt<'a, 'tcx> {
         target: LuaValue<'lua>,
         lua_ctx: LuaContext<'lua>,
     ) -> LuaResult<bool>
-        where T: TryMatch + FromLuaTable + Clone,
-              LuaAstNode<T>: 'static + UserData,
+    where
+        T: TryMatch + FromLuaTable + Clone,
+        LuaAstNode<T>: 'static + UserData,
     {
         let target: LuaAstNode<T> = match FromLuaAstNode::from_lua_ast_node(target, lua_ctx) {
             Ok(t) => t,
             Err(_) => return Ok(false), // target was not the same type of node as pat
         };
-        let res = self.mcx.try_match(&*pat.borrow(), &*target.borrow()).is_ok();
+        let res = self
+            .mcx
+            .try_match(&*pat.borrow(), &*target.borrow())
+            .is_ok();
         // TODO: Return the matcher error to Lua instead of a bool
         Ok(res)
     }
 
     fn find_first<P, T>(&mut self, pat: &LuaAstNode<P>, target: &mut T) -> LuaResult<bool>
-        where P: Pattern<P> + Clone,
-              LuaAstNode<P>: 'static + UserData,
-              T: MutVisit,
+    where
+        P: Pattern<P> + Clone,
+        LuaAstNode<P>: 'static + UserData,
+        T: MutVisit,
     {
         // let target = match target.borrow::<LuaAstNode<T>>() {
         //     Ok(t) => t,
         //     Err(_) => return Ok(false), // target was not the same type of node as pat
         // };
-        let res = matcher::find_first_with(self.mcx.clone(), pat.borrow().clone(), target).is_some();
+        let res =
+            matcher::find_first_with(self.mcx.clone(), pat.borrow().clone(), target).is_some();
         // TODO: Return the matcher error to Lua instead of a bool
         Ok(res)
     }
 
-    fn subst<'lua, T>(&self, node: &LuaAstNode<T>, lua_ctx: LuaContext<'lua>) -> LuaResult<LuaValue<'lua>>
-        where T: Subst + Clone + ToLuaAstNode,
+    fn subst<'lua, T>(
+        &self,
+        node: &LuaAstNode<T>,
+        lua_ctx: LuaContext<'lua>,
+    ) -> LuaResult<LuaValue<'lua>>
+    where
+        T: Subst + Clone + ToLuaAstNode,
     {
         // FIXME: use `ToLuaExt` here sometimes???
         node.borrow()
@@ -426,7 +438,8 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @tparam string pattern Literal variable pattern
         // @treturn LuaAstNode Literal matched by this binding
         methods.add_method_mut("get_lit", |lua_ctx, this, pattern: String| {
-            this.mcx.bindings
+            this.mcx
+                .bindings
                 .get::<_, ast::Lit>(pattern)
                 .unwrap()
                 .clone()
@@ -438,7 +451,8 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @tparam string pattern Expression variable pattern
         // @treturn LuaAstNode Expression matched by this binding
         methods.add_method_mut("get_expr", |lua_ctx, this, pattern: String| {
-            this.mcx.bindings
+            this.mcx
+                .bindings
                 .get::<_, P<ast::Expr>>(pattern)
                 .unwrap()
                 .clone()
@@ -450,7 +464,8 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @tparam string pattern Type variable pattern
         // @treturn LuaAstNode Type matched by this binding
         methods.add_method_mut("get_ty", |lua_ctx, this, pattern: String| {
-            this.mcx.bindings
+            this.mcx
+                .bindings
                 .get::<_, P<ast::Ty>>(pattern)
                 .unwrap()
                 .clone()
@@ -462,7 +477,10 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @tparam string pattern Statement variable pattern
         // @treturn LuaAstNode Statement matched by this binding
         methods.add_method_mut("get_stmt", |lua_ctx, this, pattern: String| {
-            this.mcx.bindings.get::<_, ast::Stmt>(pattern).to_lua_ext(lua_ctx)
+            this.mcx
+                .bindings
+                .get::<_, ast::Stmt>(pattern)
+                .to_lua_ext(lua_ctx)
         });
 
         /// Get matched binding for a multistmt variable
@@ -470,7 +488,9 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
         // @tparam string pattern Statement variable pattern
         // @treturn LuaAstNode Statement matched by this binding
         methods.add_method_mut("get_multistmt", |lua_ctx, this, pattern: String| {
-            this.mcx.bindings.get::<_, Vec<ast::Stmt>>(pattern)
+            this.mcx
+                .bindings
+                .get::<_, Vec<ast::Stmt>>(pattern)
                 .cloned()
                 .map(|v| v.to_lua_ast_node(lua_ctx))
                 .unwrap_or(Ok(LuaValue::Nil))
@@ -500,7 +520,9 @@ impl<'a, 'tcx> UserData for ScriptingMatchCtxt<'a, 'tcx> {
                 if let Ok(t) = target.borrow::<LuaAstNode<Vec<ast::Stmt>>>() {
                     dispatch!(this.find_first, pat, lua_ctx, (&mut *t.borrow_mut()), {P<ast::Expr>})
                 } else {
-                    Err(LuaError::external("Only MultiStmt targets are supported for now"))
+                    Err(LuaError::external(
+                        "Only MultiStmt targets are supported for now",
+                    ))
                 }
             },
         );
@@ -522,36 +544,41 @@ pub(crate) struct TransformCtxt<'a, 'tcx: 'a> {
 }
 
 fn enter_transform<'a, 'tcx, F, R>(st: &'a CommandState, cx: &'a RefactorCtxt<'a, 'tcx>, f: F) -> R
-    where F: Fn(TransformCtxt) -> R
+where
+    F: Fn(TransformCtxt) -> R,
 {
-    let ctx = TransformCtxt {
-        st,
-        cx,
-    };
+    let ctx = TransformCtxt { st, cx };
 
     f(ctx)
 }
 
 impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
-    fn fold_paths<'lua, T>(&self, node: &LuaAstNode<T>, callback: LuaFunction<'lua>, lua_ctx: LuaContext<'lua>) -> LuaResult<()>
-        where T: MutVisit,
-              LuaAstNode<T>: 'static + UserData + Clone,
+    fn fold_paths<'lua, T>(
+        &self,
+        node: &LuaAstNode<T>,
+        callback: LuaFunction<'lua>,
+        lua_ctx: LuaContext<'lua>,
+    ) -> LuaResult<()>
+    where
+        T: MutVisit,
+        LuaAstNode<T>: 'static + UserData + Clone,
     {
         node.map(|node| {
             fold_resolved_paths_with_id(node, self.cx, |id, qself, path, defs| {
-                let (qself, path): (Option<LuaAstNode<ast::QSelf>>, LuaAstNode<ast::Path>) = lua_ctx
-                    .scope(|scope| {
-                        let qself = qself.map(|q| q.to_lua_scoped(lua_ctx, scope).unwrap());
-                        let path = path.to_lua_scoped(lua_ctx, scope).unwrap();
-                        let defs: Vec<_> = defs.into_iter().map(|def| def.to_lua_scoped(lua_ctx, scope).unwrap()).collect();
-                        callback.call((
-                            id.to_lua_ext(lua_ctx).unwrap(),
-                            qself,
-                            path,
-                            defs,
-                        ))
-                    })
-                    .unwrap_or_else(|e| panic!("Lua callback failed in visit_paths: {}", DisplayLuaError(e)));
+                let (qself, path): (Option<LuaAstNode<ast::QSelf>>, LuaAstNode<ast::Path>) =
+                    lua_ctx
+                        .scope(|scope| {
+                            let qself = qself.map(|q| q.to_lua_scoped(lua_ctx, scope).unwrap());
+                            let path = path.to_lua_scoped(lua_ctx, scope).unwrap();
+                            let defs: Vec<_> = defs
+                                .into_iter()
+                                .map(|def| def.to_lua_scoped(lua_ctx, scope).unwrap())
+                                .collect();
+                            callback.call((id.to_lua_ext(lua_ctx).unwrap(), qself, path, defs))
+                        })
+                        .unwrap_or_else(|e| {
+                            panic!("Lua callback failed in visit_paths: {}", DisplayLuaError(e))
+                        });
                 (qself.map(|x| x.into_inner()), path.into_inner())
             });
         });
@@ -562,7 +589,7 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
         &self,
         lua_ctx: LuaContext<'lua>,
         lua_tree: LuaTable<'lua>,
-        ident: Option<ast::Ident>
+        ident: Option<ast::Ident>,
     ) -> LuaResult<ast::UseTree> {
         let mut trees: Vec<ast::UseTree> = vec![];
         for pair in lua_tree.pairs::<LuaValue, LuaValue>() {
@@ -590,32 +617,42 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
                         )?);
                     }
 
-                    _ => return Err(LuaError::FromLuaConversionError {
-                        from: "UseTree table value",
-                        to: "ast::UseTree",
-                        message: Some("UseTree table keys must be \"*\" or a table".to_string()),
-                    })
+                    _ => {
+                        return Err(LuaError::FromLuaConversionError {
+                            from: "UseTree table value",
+                            to: "ast::UseTree",
+                            message: Some(
+                                "UseTree table keys must be \"*\" or a table".to_string(),
+                            ),
+                        })
+                    }
                 },
 
-                _ => return Err(LuaError::FromLuaConversionError {
-                    from: "UseTree table key",
-                    to: "ast::UseTree",
-                    message: Some("UseTree table keys must be integer or string".to_string()),
-                }),
+                _ => {
+                    return Err(LuaError::FromLuaConversionError {
+                        from: "UseTree table key",
+                        to: "ast::UseTree",
+                        message: Some("UseTree table keys must be integer or string".to_string()),
+                    })
+                }
             }
         }
 
         if trees.len() == 1 {
             let mut use_tree = trees.pop().unwrap();
             if let Some(ident) = ident {
-                use_tree.prefix.segments.insert(0, PathSegment::from_ident(ident));
+                use_tree
+                    .prefix
+                    .segments
+                    .insert(0, PathSegment::from_ident(ident));
             }
             return Ok(use_tree);
         }
         let prefix = ast::Path::from_ident(ident.unwrap_or_else(|| ast::Ident::from_str("")));
-        Ok(mk().use_tree(prefix, ast::UseTreeKind::Nested(
-            trees.into_iter().map(|u| (u, DUMMY_NODE_ID)).collect()
-        )))
+        Ok(mk().use_tree(
+            prefix,
+            ast::UseTreeKind::Nested(trees.into_iter().map(|u| (u, DUMMY_NODE_ID)).collect()),
+        ))
     }
 }
 
@@ -624,25 +661,21 @@ impl<'a, 'tcx> TransformCtxt<'a, 'tcx> {
 #[allow(unused_doc_comments)]
 impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method(
-            "dump_marks",
-            |_lua_ctx, this, ()| Ok(println!("Marks: {:?}", this.st.marks())),
-        );
+        methods.add_method("dump_marks", |_lua_ctx, this, ()| {
+            Ok(println!("Marks: {:?}", this.st.marks()))
+        });
 
-        methods.add_method_mut(
-            "clear_marks",
-            |_lua_ctx, this, ()| Ok(this.st.marks_mut().clear()),
-        );
+        methods.add_method_mut("clear_marks", |_lua_ctx, this, ()| {
+            Ok(this.st.marks_mut().clear())
+        });
 
-        methods.add_method(
-            "get_marks",
-            |lua_ctx, this, ()| lua_serialize_marks(&*this.st.marks(), lua_ctx),
-        );
+        methods.add_method("get_marks", |lua_ctx, this, ()| {
+            lua_serialize_marks(&*this.st.marks(), lua_ctx)
+        });
 
-        methods.add_method(
-            "dump_crate",
-            |_lua_ctx, this, ()| Ok(println!("{:#?}", this.st.krate())),
-        );
+        methods.add_method("dump_crate", |_lua_ctx, this, ()| {
+            Ok(println!("{:#?}", this.st.krate()))
+        });
 
         /// Replace matching statements using given callback
         // @function replace_stmts_with
@@ -663,34 +696,34 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         methods.add_method(
             "resolve_path_hirid",
             |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
-                Ok(this.cx.try_resolve_expr_to_hid(&expr.borrow()).map(LuaHirId))
+                Ok(this
+                    .cx
+                    .try_resolve_expr_to_hid(&expr.borrow())
+                    .map(LuaHirId))
             },
         );
 
-        methods.add_method("resolve_ty_hirid", |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
-            let def_id = match this.cx.try_resolve_ty(&ty.borrow()) {
-                Some(id) => id,
-                None => return Ok(None),
-            };
+        methods.add_method(
+            "resolve_ty_hirid",
+            |_lua_ctx, this, ty: LuaAstNode<P<Ty>>| {
+                let def_id = match this.cx.try_resolve_ty(&ty.borrow()) {
+                    Some(id) => id,
+                    None => return Ok(None),
+                };
 
-           Ok(this.cx.hir_map().as_local_hir_id(def_id).map(LuaHirId))
+                Ok(this.cx.hir_map().as_local_hir_id(def_id).map(LuaHirId))
+            },
+        );
+
+        methods.add_method("hirid_to_nodeid", |_lua_ctx, this, id: LuaHirId| {
+            Ok(this.cx.hir_map().hir_to_node_id(id.0).as_usize())
         });
 
-        methods.add_method(
-            "hirid_to_nodeid",
-            |_lua_ctx, this, id: LuaHirId| {
-                Ok(this.cx.hir_map().hir_to_node_id(id.0).as_usize())
-            },
-        );
+        methods.add_method("nodeid_to_hirid", |_lua_ctx, this, id: i64| {
+            let node_id = NodeId::from_usize(id as usize);
 
-        methods.add_method(
-            "nodeid_to_hirid",
-            |_lua_ctx, this, id: i64| {
-                let node_id = NodeId::from_usize(id as usize);
-
-                Ok(LuaHirId(this.cx.hir_map().node_to_hir_id(node_id)))
-            },
-        );
+            Ok(LuaHirId(this.cx.hir_map().node_to_hir_id(node_id)))
+        });
 
         /// Replace matching expressions using given replacements
         // @function replace_expr_with
@@ -736,75 +769,66 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         /// Visits an entire crate via a lua object's methods
         // @function visit_crate
         // @tparam Visitor object Visitor whose methods will be called during the traversal
-        methods.add_method(
-            "visit_crate",
-            |lua_ctx, this, visitor_obj: LuaTable| {
-                this.st.map_krate(|krate| {
-                    let lua_crate = krate.clone().into_lua_ast(this, lua_ctx)?;
+        methods.add_method("visit_crate", |lua_ctx, this, visitor_obj: LuaTable| {
+            this.st.map_krate(|krate| {
+                let lua_crate = krate.clone().into_lua_ast(this, lua_ctx)?;
 
-                    let visitor = LuaAstVisitor::new(visitor_obj);
+                let visitor = LuaAstVisitor::new(visitor_obj);
 
-                    visitor.visit_crate(lua_crate.clone())?;
-                    visitor.finish()?;
+                visitor.visit_crate(lua_crate.clone())?;
+                visitor.finish()?;
 
-                    krate.merge_lua_ast(lua_crate)
-                })
-            },
-        );
+                krate.merge_lua_ast(lua_crate)
+            })
+        });
 
         /// Visits an entire crate via a lua object's methods
         // @function visit_crate
         // @tparam Visitor object Visitor whose methods will be called during the traversal
-        methods.add_method(
-            "visit_crate_new",
-            |lua_ctx, this, visitor_obj: LuaTable| {
-                this.st.map_krate(|krate: &mut ast::Crate| {
-                    let mut visitor = LuaAstVisitorNew::new(lua_ctx, visitor_obj);
+        methods.add_method("visit_crate_new", |lua_ctx, this, visitor_obj: LuaTable| {
+            this.st.map_krate(|krate: &mut ast::Crate| {
+                let mut visitor = LuaAstVisitorNew::new(lua_ctx, visitor_obj);
 
-                    visitor.visit_crate(krate);
-                    Ok(())
-                })
-            },
-        );
+                visitor.visit_crate(krate);
+                Ok(())
+            })
+        });
 
         /// Visits every fn like via a lua object's methods
         // @function visit_fn_like
         // @tparam Visitor object Visitor whose methods will be called during the traversal
-        methods.add_method(
-            "visit_fn_like",
-            |lua_ctx, this, visitor_obj: LuaTable| {
-                this.st.map_krate(|krate| {
-                    let mut result = Ok(());
-                    let visitor = LuaAstVisitor::new(visitor_obj);
+        methods.add_method("visit_fn_like", |lua_ctx, this, visitor_obj: LuaTable| {
+            this.st.map_krate(|krate| {
+                let mut result = Ok(());
+                let visitor = LuaAstVisitor::new(visitor_obj);
 
-                    // Here we actually call the visitor visit methods recursively, as
-                    // well as the lua finish method once complete.
-                    let wrapper = |fn_like: &mut FnLike| -> LuaResult<()> {
-                        let lua_fn_like = fn_like.clone().into_lua_ast(this, lua_ctx)?;
+                // Here we actually call the visitor visit methods recursively, as
+                // well as the lua finish method once complete.
+                let wrapper = |fn_like: &mut FnLike| -> LuaResult<()> {
+                    let lua_fn_like = fn_like.clone().into_lua_ast(this, lua_ctx)?;
 
-                        visitor.visit_fn_like(lua_fn_like.clone())?;
-                        visitor.finish()?;
+                    visitor.visit_fn_like(lua_fn_like.clone())?;
+                    visitor.finish()?;
 
-                        fn_like.merge_lua_ast(lua_fn_like)
-                    };
+                    fn_like.merge_lua_ast(lua_fn_like)
+                };
 
-                    mut_visit_fns(krate, |mut fn_like| {
-                        if result.is_err() {
-                            return;
+                mut_visit_fns(krate, |mut fn_like| {
+                    if result.is_err() {
+                        return;
+                    }
+
+                    match wrapper(&mut fn_like) {
+                        Ok(()) => (),
+                        Err(e) => {
+                            result = Err(e);
                         }
+                    };
+                });
 
-                        match wrapper(&mut fn_like) {
-                            Ok(()) => (),
-                            Err(e) => {
-                                result = Err(e);
-                            }
-                        };
-                    });
-
-                    result
-                })
-            },
-        );
+                result
+            })
+        });
 
         /// Rewrite all paths in a crate
         // @function visit_paths
@@ -818,88 +842,119 @@ impl<'a, 'tcx> UserData for TransformCtxt<'a, 'tcx> {
         // @function create_use
         // @tparam tab Tree of paths to convert into a UseTree. Each leaf of the tree corresponds to a UseTree and is an array of items to import. Each of these items may be a string (the item name), an array with two values: the item name and an identifier to rebind the item name to (i.e. `a as b`), or the literal string '*' indicating a glob import from that module. The prefix for each UseTree is the sequence of keys in the map along the path to that leaf array.
         // @treturn LuaAstNode New use item node
-        methods.add_method("create_use", |lua_ctx, this, (tree, pub_vis): (LuaTable, bool)| {
-            let use_tree = this.create_use_tree(lua_ctx, tree, None)?;
-            let mut builder = mk();
-            if pub_vis { builder = builder.pub_(); }
-            Ok(builder.use_item(use_tree).to_lua_ext(lua_ctx))
-        });
+        methods.add_method(
+            "create_use",
+            |lua_ctx, this, (tree, pub_vis): (LuaTable, bool)| {
+                let use_tree = this.create_use_tree(lua_ctx, tree, None)?;
+                let mut builder = mk();
+                if pub_vis {
+                    builder = builder.pub_();
+                }
+                Ok(builder.use_item(use_tree).to_lua_ext(lua_ctx))
+            },
+        );
 
         methods.add_method("get_use_def", |lua_ctx, this, id: u32| {
-            this.cx.resolve_use_id(ast::NodeId::from_u32(id)).res.to_lua_ext(lua_ctx)
+            this.cx
+                .resolve_use_id(ast::NodeId::from_u32(id))
+                .res
+                .to_lua_ext(lua_ctx)
         });
 
-        methods.add_method("vec_mac_init_num", |lua_ctx, _this, (init, num): (LuaValue, LuaValue)| {
-            let init = Rc::new(Nonterminal::NtExpr(FromLuaExt::from_lua_ext(init, lua_ctx)?));
-            let num = Rc::new(Nonterminal::NtExpr(FromLuaExt::from_lua_ext(num, lua_ctx)?));
-            let macro_body = vec![
-                TokenTree::Token(Token { kind: TokenKind::Interpolated(init), span: DUMMY_SP }),
-                TokenTree::Token(Token { kind: TokenKind::Semi, span: DUMMY_SP }),
-                TokenTree::Token(Token { kind: TokenKind::Interpolated(num), span: DUMMY_SP}),
-            ];
-            let mac = mk().mac(mk().path("vec"), macro_body, MacDelimiter::Bracket);
-            let expr = P(Expr {
-                id: DUMMY_NODE_ID,
-                kind: ExprKind::Mac(mac),
-                span: DUMMY_SP,
-                attrs: ThinVec::new(),
-            });
+        methods.add_method(
+            "vec_mac_init_num",
+            |lua_ctx, _this, (init, num): (LuaValue, LuaValue)| {
+                let init = Rc::new(Nonterminal::NtExpr(FromLuaExt::from_lua_ext(
+                    init, lua_ctx,
+                )?));
+                let num = Rc::new(Nonterminal::NtExpr(FromLuaExt::from_lua_ext(num, lua_ctx)?));
+                let macro_body = vec![
+                    TokenTree::Token(Token {
+                        kind: TokenKind::Interpolated(init),
+                        span: DUMMY_SP,
+                    }),
+                    TokenTree::Token(Token {
+                        kind: TokenKind::Semi,
+                        span: DUMMY_SP,
+                    }),
+                    TokenTree::Token(Token {
+                        kind: TokenKind::Interpolated(num),
+                        span: DUMMY_SP,
+                    }),
+                ];
+                let mac = mk().mac(mk().path("vec"), macro_body, MacDelimiter::Bracket);
+                let expr = P(Expr {
+                    id: DUMMY_NODE_ID,
+                    kind: ExprKind::Mac(mac),
+                    span: DUMMY_SP,
+                    attrs: ThinVec::new(),
+                });
 
-            Ok(LuaAstNode::new(expr))
-        });
+                Ok(LuaAstNode::new(expr))
+            },
+        );
 
-        methods.add_method("int_lit_expr", |_lua_ctx, _this, (int, _suffix): (i64, Option<LuaString>)| {
-            let lit = Lit {
-                token: TokenLit {
-                    kind: TokenLitKind::Integer,
-                    symbol: Symbol::intern(&format!("{}", int)),
-                    suffix: None,
-                },
-                kind: LitKind::Int(int as u128, LitIntType::Unsuffixed),
-                span: DUMMY_SP,
-            };
-            let expr = P(Expr {
-                id: DUMMY_NODE_ID,
-                kind: ExprKind::Lit(lit),
-                span: DUMMY_SP,
-                attrs: ThinVec::new(),
-            });
+        methods.add_method(
+            "int_lit_expr",
+            |_lua_ctx, _this, (int, _suffix): (i64, Option<LuaString>)| {
+                let lit = Lit {
+                    token: TokenLit {
+                        kind: TokenLitKind::Integer,
+                        symbol: Symbol::intern(&format!("{}", int)),
+                        suffix: None,
+                    },
+                    kind: LitKind::Int(int as u128, LitIntType::Unsuffixed),
+                    span: DUMMY_SP,
+                };
+                let expr = P(Expr {
+                    id: DUMMY_NODE_ID,
+                    kind: ExprKind::Lit(lit),
+                    span: DUMMY_SP,
+                    attrs: ThinVec::new(),
+                });
 
-            Ok(LuaAstNode::new(expr))
-        });
+                Ok(LuaAstNode::new(expr))
+            },
+        );
 
-        methods.add_method("get_expr_ty", |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
-            let rty = this.cx.node_type(expr.borrow().id);
-            let ty = reflect_tcx_ty(this.cx.ty_ctxt(), rty);
+        methods.add_method(
+            "get_expr_ty",
+            |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
+                let rty = this.cx.node_type(expr.borrow().id);
+                let ty = reflect_tcx_ty(this.cx.ty_ctxt(), rty);
 
-            Ok(LuaAstNode::new(ty))
-        });
+                Ok(LuaAstNode::new(ty))
+            },
+        );
 
-        methods.add_method("get_field_expr_hirid", |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
-            use rustc::ty::TyKind;
+        methods.add_method(
+            "get_field_expr_hirid",
+            |_lua_ctx, this, expr: LuaAstNode<P<Expr>>| {
+                use rustc::ty::TyKind;
 
-            let expr = expr.borrow();
+                let expr = expr.borrow();
 
-            let (ref expr, ref ident) = match &expr.kind {
-                ExprKind::Field(expr, ident) => (expr, ident),
-                _ => return Ok(None)
-            };
+                let (ref expr, ref ident) = match &expr.kind {
+                    ExprKind::Field(expr, ident) => (expr, ident),
+                    _ => return Ok(None),
+                };
 
-            if let TyKind::Adt(def, _) = &this.cx.adjusted_node_type(expr.id).kind {
-                // Assuming only one variant, struct
-                let def = def.variants.iter().next().unwrap();
+                if let TyKind::Adt(def, _) = &this.cx.adjusted_node_type(expr.id).kind {
+                    // Assuming only one variant, struct
+                    let def = def.variants.iter().next().unwrap();
 
-                for field in def.fields.iter() {
-                    if field.ident == **ident {
-                        let hir_id = this.cx.hir_map().as_local_hir_id(field.did);
+                    for field in def.fields.iter() {
+                        if field.ident == **ident {
+                            let hir_id = this.cx.hir_map().as_local_hir_id(field.did);
 
-                        return Ok(hir_id.map(LuaHirId));
+                            return Ok(hir_id.map(LuaHirId));
+                        }
                     }
-                }
-            };
+                };
 
-            Ok(None)
-        });
+                Ok(None)
+            },
+        );
 
         /// Get the node type of the node with the given id
         // @function get_node_type

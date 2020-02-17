@@ -139,9 +139,6 @@ where
     T: MutVisit,
     F: FnMut(&mut P<Expr>),
 {
-    let mut f = OutputFolder {
-        callback,
-        trailing,
-    };
+    let mut f = OutputFolder { callback, trailing };
     target.visit(&mut f)
 }

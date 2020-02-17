@@ -1,13 +1,13 @@
 use regex::Regex;
 use rustc::session::Session;
+use rustc_parse::parser::{Parser, PathStyle};
 use std::mem;
 use std::str::FromStr;
 use std::vec;
 use syntax::ast::Path;
-use rustc_parse::parser::{Parser, PathStyle};
-use syntax::token::{DelimToken, Lit, LitKind, Token, TokenKind};
 use syntax::sess::ParseSess;
 use syntax::symbol::Symbol;
+use syntax::token::{DelimToken, Lit, LitKind, Token, TokenKind};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax_pos::FileName;
 

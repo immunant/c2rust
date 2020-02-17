@@ -38,7 +38,10 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
 
     /// Create a Reflector that uses `def_mapping` to look up new paths for
     /// replaced defs.
-    pub fn new_with_mapping(tcx: TyCtxt<'tcx>, def_mapping: &'a HashMap<DefId, (Option<QSelf>, Path)>) -> Self {
+    pub fn new_with_mapping(
+        tcx: TyCtxt<'tcx>,
+        def_mapping: &'a HashMap<DefId, (Option<QSelf>, Path)>,
+    ) -> Self {
         Self {
             tcx,
             def_mapping: Some(def_mapping),
@@ -75,26 +78,30 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             Str => mk().ident_ty("str"),
             Array(ty, len) => mk().array_ty(
                 self.reflect_ty(ty),
-                mk().lit_expr(mk().int_lit(len.eval_usize(self.tcx, ty::ParamEnv::empty()) as u128, "usize")),
+                mk().lit_expr(mk().int_lit(
+                    len.eval_usize(self.tcx, ty::ParamEnv::empty()) as u128,
+                    "usize",
+                )),
             ),
             Slice(ty) => mk().slice_ty(self.reflect_ty(ty)),
-            RawPtr(mty) => mk()
-                .set_mutbl(mty.mutbl)
-                .ptr_ty(self.reflect_ty(mty.ty)),
+            RawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(self.reflect_ty(mty.ty)),
             Ref(_, ty, m) => mk().set_mutbl(m).ref_ty(self.reflect_ty(ty)),
             FnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
-            FnPtr(poly_fn_sig) => if let Some(fn_sig) = poly_fn_sig.no_bound_vars() {
-                let inputs = fn_sig.inputs().iter().map(|input| {
-                    mk().arg(self.reflect_ty(input), mk().wild_pat())
-                }).collect();
-                let output = FunctionRetTy::Ty(self.reflect_ty(fn_sig.output()));
-                mk()
-                    .unsafety(fn_sig.unsafety)
-                    .extern_(fn_sig.abi)
-                    .barefn_ty(mk().fn_decl(inputs, output))
-            } else {
-                mk().infer_ty()    // TODO higher-rank lifetimes (for<'a> fn(...) -> ...)
-            },
+            FnPtr(poly_fn_sig) => {
+                if let Some(fn_sig) = poly_fn_sig.no_bound_vars() {
+                    let inputs = fn_sig
+                        .inputs()
+                        .iter()
+                        .map(|input| mk().arg(self.reflect_ty(input), mk().wild_pat()))
+                        .collect();
+                    let output = FunctionRetTy::Ty(self.reflect_ty(fn_sig.output()));
+                    mk().unsafety(fn_sig.unsafety)
+                        .extern_(fn_sig.abi)
+                        .barefn_ty(mk().fn_decl(inputs, output))
+                } else {
+                    mk().infer_ty() // TODO higher-rank lifetimes (for<'a> fn(...) -> ...)
+                }
+            }
             Dynamic(_, _) => mk().infer_ty(), // TODO (dyn Trait)
             Closure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
             Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
@@ -125,7 +132,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
     fn reflect_def_path_inner(
         &self,
         id: DefId,
-        opt_substs: Option<&[ty::Ty<'tcx>]>
+        opt_substs: Option<&[ty::Ty<'tcx>]>,
     ) -> (Option<QSelf>, Path) {
         if let Some(mapping) = self.def_mapping {
             if let Some(new_path) = mapping.get(&id) {
@@ -216,11 +223,11 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 }
 
                 DefPathData::LifetimeNs(_)
-                    | DefPathData::MacroNs(_)
-                    | DefPathData::ClosureExpr
-                    | DefPathData::Ctor
-                    | DefPathData::AnonConst
-                    | DefPathData::ImplTrait => {}
+                | DefPathData::MacroNs(_)
+                | DefPathData::ClosureExpr
+                | DefPathData::Ctor
+                | DefPathData::AnonConst
+                | DefPathData::ImplTrait => {}
             }
 
             // Special logic for certain node kinds
@@ -238,36 +245,45 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 // If we query for generics_of non-local defs, we may get a
                 // panic if the def cannot be generic. This is a list of
                 // DefKinds that can have generic type params.
-                Some(DefKind::Struct) | Some(DefKind::Union) | Some(DefKind::Enum)
-                    | Some(DefKind::Variant) | Some(DefKind::Trait) | Some(DefKind::OpaqueTy)
-                    | Some(DefKind::TyAlias) | Some(DefKind::ForeignTy) | Some(DefKind::TraitAlias)
-                    | Some(DefKind::AssocTy) | Some(DefKind::AssocOpaqueTy)
-                    | Some(DefKind::TyParam) | Some(DefKind::Fn) | Some(DefKind::Method)
-                    | Some(DefKind::Ctor(..)) => {
-                        let gen = self.tcx.generics_of(id);
-                        let num_params = gen
-                            .params
-                            .iter()
-                            .filter(|x| match x.kind {
-                                GenericParamDefKind::Lifetime { .. } => false,
-                                GenericParamDefKind::Type { .. } => true,
-                                GenericParamDefKind::Const => false,
-                            })
-                            .count();
-                        if let Some(substs) = opt_substs {
-                            if !substs.is_empty() {
-                                assert!(substs.len() >= num_params);
-                                let start = substs.len() - num_params;
-                                let tys = substs[start..]
-                                    .iter()
-                                    .map(|ty| self.reflect_ty(ty))
-                                    .collect::<Vec<_>>();
-                                let abpd = mk().angle_bracketed_args(tys);
-                                segments.last_mut().unwrap().args = abpd.into();
-                                opt_substs = Some(&substs[..start]);
-                            }
+                Some(DefKind::Struct)
+                | Some(DefKind::Union)
+                | Some(DefKind::Enum)
+                | Some(DefKind::Variant)
+                | Some(DefKind::Trait)
+                | Some(DefKind::OpaqueTy)
+                | Some(DefKind::TyAlias)
+                | Some(DefKind::ForeignTy)
+                | Some(DefKind::TraitAlias)
+                | Some(DefKind::AssocTy)
+                | Some(DefKind::AssocOpaqueTy)
+                | Some(DefKind::TyParam)
+                | Some(DefKind::Fn)
+                | Some(DefKind::Method)
+                | Some(DefKind::Ctor(..)) => {
+                    let gen = self.tcx.generics_of(id);
+                    let num_params = gen
+                        .params
+                        .iter()
+                        .filter(|x| match x.kind {
+                            GenericParamDefKind::Lifetime { .. } => false,
+                            GenericParamDefKind::Type { .. } => true,
+                            GenericParamDefKind::Const => false,
+                        })
+                        .count();
+                    if let Some(substs) = opt_substs {
+                        if !substs.is_empty() {
+                            assert!(substs.len() >= num_params);
+                            let start = substs.len() - num_params;
+                            let tys = substs[start..]
+                                .iter()
+                                .map(|ty| self.reflect_ty(ty))
+                                .collect::<Vec<_>>();
+                            let abpd = mk().angle_bracketed_args(tys);
+                            segments.last_mut().unwrap().args = abpd.into();
+                            opt_substs = Some(&substs[..start]);
                         }
                     }
+                }
                 _ => {}
             }
 
@@ -284,7 +300,6 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
         segments.reverse();
         (qself, mk().path(segments))
     }
-
 }
 
 /// Build an AST representing a `ty::Ty`.
@@ -373,8 +388,7 @@ fn register_test_reflect(reg: &mut Registry) {
 
                     let new_expr = if let TyKind::FnDef(def_id, ref substs) = ty.kind {
                         let substs = substs.types().collect::<Vec<_>>();
-                        let (qself, path) = reflector
-                            .reflect_def_path_inner(def_id, Some(&substs));
+                        let (qself, path) = reflector.reflect_def_path_inner(def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
                     } else if let Some(def_id) = cx.try_resolve_expr(&e) {
                         let parent = cx
@@ -385,8 +399,7 @@ fn register_test_reflect(reg: &mut Registry) {
                         let hir_id = cx.hir_map().node_to_hir_id(e.id);
                         let substs = tables.node_substs(hir_id);
                         let substs = substs.types().collect::<Vec<_>>();
-                        let (qself, path) = reflector
-                            .reflect_def_path_inner(def_id, Some(&substs));
+                        let (qself, path) = reflector.reflect_def_path_inner(def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
                     } else {
                         e.clone()

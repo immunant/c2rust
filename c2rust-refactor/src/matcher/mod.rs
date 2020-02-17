@@ -38,16 +38,16 @@
 
 use rustc::hir::def_id::DefId;
 use rustc::session::Session;
+use rustc_errors::PResult;
+use rustc_parse::parser::{Parser, PathStyle};
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
 use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
-use rustc_parse::parser::{Parser, PathStyle};
-use syntax::token::{TokenKind};
-use rustc_errors::PResult;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
+use syntax::token::TokenKind;
 use syntax::tokenstream::TokenStream;
 use syntax_pos::FileName;
 
@@ -626,7 +626,10 @@ fn make_bindings_parser<'a>(sess: &'a Session, src: &str) -> (Parser<'a>, Bindin
         None,
     );
     let (ts, bt) = parse_bindings(ts);
-    (rustc_parse::stream_to_parser(&sess.parse_sess, ts, None), bt)
+    (
+        rustc_parse::stream_to_parser(&sess.parse_sess, ts, None),
+        bt,
+    )
 }
 
 pub trait TryMatch {
@@ -828,7 +831,8 @@ where
             } else {
                 // If the pattern starts with a glob, then trying to match it at `i + 1` will fail
                 // just the same as at `i`.
-                if !self.pattern.is_empty() && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0]) {
+                if !self.pattern.is_empty() && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0])
+                {
                     break;
                 } else {
                     i += 1;

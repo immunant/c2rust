@@ -43,13 +43,13 @@ macro_rules! matches {
 macro_rules! profile_start {
     ($msg:expr) => {
         flame::start($msg)
-    }
+    };
 }
 
 #[macro_export]
 #[cfg(not(feature = "profile"))]
 macro_rules! profile_start {
-    ($msg:expr) => {}
+    ($msg:expr) => {};
 }
 
 #[macro_export]
@@ -57,11 +57,11 @@ macro_rules! profile_start {
 macro_rules! profile_end {
     ($msg:expr) => {
         flame::end($msg)
-    }
+    };
 }
 
 #[macro_export]
 #[cfg(not(feature = "profile"))]
 macro_rules! profile_end {
-    ($msg:expr) => {}
+    ($msg:expr) => {};
 }

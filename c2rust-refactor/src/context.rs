@@ -2,22 +2,23 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
 use rustc::hir::def::{DefKind, Namespace, Res};
-use rustc::hir::def_id::{CRATE_DEF_INDEX, DefId};
+use rustc::hir::def_id::{DefId, CRATE_DEF_INDEX};
 use rustc::hir::map as hir_map;
-use rustc::hir::{self, Node, HirId};
-use rustc::session::Session;
+use rustc::hir::{self, HirId, Node};
 use rustc::session::config::CrateType;
+use rustc::session::Session;
 use rustc::ty::subst::InternalSubsts;
 use rustc::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_metadata::creader::CStore;
 use syntax::ast::{
-    self, Expr, ExprKind, ForeignItem, ForeignItemKind, FnDecl, FunctionRetTy, Item, ItemKind, NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
+    self, Expr, ExprKind, FnDecl, ForeignItem, ForeignItemKind, FunctionRetTy, Item, ItemKind,
+    NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
 };
 use syntax::ptr::P;
 
+use crate::ast_manip::util::{is_export_attr, namespace};
 use crate::ast_manip::AstEquiv;
 use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
-use crate::ast_manip::util::{namespace, is_export_attr};
 use crate::reflect;
 use c2rust_ast_builder::mk;
 
@@ -181,9 +182,10 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         match self.hir_map().find(id) {
             Some(Node::Binding(_)) => {
                 let hir_id = self.hir_map().node_to_hir_id(id);
-                self.node_def_id(self.hir_map().hir_to_node_id(
-                    self.hir_map().get_parent_node(hir_id)
-                ))
+                self.node_def_id(
+                    self.hir_map()
+                        .hir_to_node_id(self.hir_map().get_parent_node(hir_id)),
+                )
             }
             Some(Node::Item(item)) => self.hir_map().local_def_id(item.hir_id),
             _ => self.hir_map().local_def_id_from_node_id(id),
@@ -315,12 +317,10 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                 // gathered up and passed in a single tuple.
                 //
                 // We detect this case by the presence of a type-dependent def on the Call.
-                if let Some(Ok((kind, func_def_id))) = tables.type_dependent_defs().get(call_hir_id) {
+                if let Some(Ok((kind, func_def_id))) = tables.type_dependent_defs().get(call_hir_id)
+                {
                     if !matches!([kind] DefKind::Fn, DefKind::Method) {
-                        warn!(
-                            "overloaded call dispatches to non-fnlike def {:?}",
-                            kind
-                        );
+                        warn!("overloaded call dispatches to non-fnlike def {:?}", kind);
                         return None;
                     }
                     def_id = Some(*func_def_id);
@@ -345,7 +345,9 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
                     // (3) Type-dependent function (`S::f()`).  Unlike the next case, these don't
                     // get fully resolved until typeck, so the results are recorded differently.
-                    } else if let Some(Ok((kind, func_def_id))) = tables.type_dependent_defs().get(func_hir_id) {
+                    } else if let Some(Ok((kind, func_def_id))) =
+                        tables.type_dependent_defs().get(func_hir_id)
+                    {
                         if !matches!([kind] DefKind::Fn, DefKind::Method) {
                             warn!("type-dep call dispatches to non-fnlike def {:?}", kind);
                             return None;
@@ -436,10 +438,10 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         let p = match_or!([node] hir::Node::Pat(p) => p;
                           return None);
         let qpath = match p.kind {
-            hir::PatKind::Path(ref q) |
-            hir::PatKind::Struct(ref q, ..) |
-            hir::PatKind::TupleStruct(ref q, ..) => q,
-            _ => return None
+            hir::PatKind::Path(ref q)
+            | hir::PatKind::Struct(ref q, ..)
+            | hir::PatKind::TupleStruct(ref q, ..) => q,
+            _ => return None,
         };
         let path = match_or!([*qpath] hir::QPath::Resolved(_, ref path) => path;
                              return None);
@@ -481,9 +483,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     /// Attempt to resolve a `Use` item id to the `hir::Path` of the imported
     /// item. The given item _must_ be a `Use`.
     pub fn try_resolve_use_id(&self, id: NodeId) -> Option<&hir::ptr::P<hir::Path>> {
-        let hir_node = self
-            .hir_map()
-            .find(id)?;
+        let hir_node = self.hir_map().find(id)?;
         let hir_item = expect!([hir_node] hir::Node::Item(i) => i);
         let path = expect!([&hir_item.kind] hir::ItemKind::Use(path, _) => path);
         Some(path)
@@ -518,7 +518,10 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Are we refactoring an executable crate?
     pub fn is_executable(&self) -> bool {
-        self.sess.crate_types.borrow().contains(&CrateType::Executable)
+        self.sess
+            .crate_types
+            .borrow()
+            .contains(&CrateType::Executable)
     }
 
     pub fn item_namespace(&self, item: &Item) -> Option<Namespace> {
@@ -538,7 +541,9 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
             ItemKind::ForeignMod(_) => None,
 
-            ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => Some(Namespace::ValueNS),
+            ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
+                Some(Namespace::ValueNS)
+            }
 
             _ => Some(Namespace::TypeNS),
         }
@@ -566,9 +571,14 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     }
 
     pub fn crate_defs(&self) -> Vec<DefId> {
-        self.ty_ctxt().crates().iter().map(|crate_num| {
-            DefId { krate: *crate_num, index: CRATE_DEF_INDEX }
-        }).collect()
+        self.ty_ctxt()
+            .crates()
+            .iter()
+            .map(|crate_num| DefId {
+                krate: *crate_num,
+                index: CRATE_DEF_INDEX,
+            })
+            .collect()
     }
 }
 
@@ -640,7 +650,6 @@ pub struct TypeCompare<'a, 'tcx: 'a, 'b> {
     /// Mapping from old DefId to new DefId for defs that have been replaced
     /// after types were resolved.
     def_mapping: Option<&'b DefMapping>,
-
 }
 
 impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
@@ -664,7 +673,10 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         match (&item1.kind, &item2.kind) {
             // * Assure that these two items are in fact of the same type, just to be safe.
             (TyAlias(ty1, g1), TyAlias(ty2, g2)) => {
-                match (self.cx.opt_node_type(item1.id), self.cx.opt_node_type(item2.id)) {
+                match (
+                    self.cx.opt_node_type(item1.id),
+                    self.cx.opt_node_type(item2.id),
+                ) {
                     (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
                     _ => {
                         if g1.params.is_empty() && g2.params.is_empty() {
@@ -678,7 +690,10 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             }
 
             (Const(ty1, expr1), Const(ty2, expr2)) => {
-                match (self.cx.opt_node_type(item1.id), self.cx.opt_node_type(item2.id)) {
+                match (
+                    self.cx.opt_node_type(item1.id),
+                    self.cx.opt_node_type(item2.id),
+                ) {
                     (Some(ty1), Some(ty2)) => {
                         self.structural_eq_tys(ty1, ty2) && expr1.unnamed_equiv(expr2)
                     }
@@ -712,11 +727,16 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                         }
                     }
                 }
-                match (self.cx.opt_node_type(item1.id), self.cx.opt_node_type(item2.id)) {
+                match (
+                    self.cx.opt_node_type(item1.id),
+                    self.cx.opt_node_type(item2.id),
+                ) {
                     (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
                     _ => {
                         let mut fields = variant1.fields().iter().zip(variant2.fields().iter());
-                        fields.all(|(field1, field2)| self.structural_eq_ast_tys(&field1.ty, &field2.ty))
+                        fields.all(|(field1, field2)| {
+                            self.structural_eq_ast_tys(&field1.ty, &field2.ty)
+                        })
                     }
                 }
             }
@@ -731,7 +751,10 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                         .zip(variant2.data.fields().iter())
                 });
                 fields.all(|(field1, field2)| {
-                    match (self.cx.opt_node_type(field1.id), self.cx.opt_node_type(field2.id)) {
+                    match (
+                        self.cx.opt_node_type(field1.id),
+                        self.cx.opt_node_type(field2.id),
+                    ) {
                         (Some(ty1), Some(ty2)) => ty1 == ty2,
                         _ => false,
                     }
@@ -739,10 +762,13 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             }
 
             _ => {
-                if self.cx.item_namespace(item1) == Some(Namespace::TypeNS) &&
-                    self.cx.item_namespace(item2) == Some(Namespace::TypeNS)
+                if self.cx.item_namespace(item1) == Some(Namespace::TypeNS)
+                    && self.cx.item_namespace(item2) == Some(Namespace::TypeNS)
                 {
-                    match (self.cx.opt_node_type(item1.id), self.cx.opt_node_type(item2.id)) {
+                    match (
+                        self.cx.opt_node_type(item1.id),
+                        self.cx.opt_node_type(item2.id),
+                    ) {
                         (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
                         _ => {}
                     }
@@ -826,7 +852,12 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         self.structural_eq_defs_impl(did1, did2, &mut seen)
     }
 
-    fn structural_eq_tys_impl(&self, ty1: Ty<'tcx>, ty2: Ty<'tcx>, seen: &mut HashSet<(DefId, DefId)>) -> bool {
+    fn structural_eq_tys_impl(
+        &self,
+        ty1: Ty<'tcx>,
+        ty2: Ty<'tcx>,
+        seen: &mut HashSet<(DefId, DefId)>,
+    ) -> bool {
         // TODO: Make this follow the C rules for structural equivalence rather
         // than strict equivalence
         if ty1 == ty2 {
@@ -837,11 +868,17 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
         match (&ty1.kind, &ty2.kind) {
             (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
-                if substs1.types().count() != substs2.types().count() || 
-                    !substs1.types().zip(substs2.types())
-                         .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
+                if substs1.types().count() != substs2.types().count()
+                    || !substs1
+                        .types()
+                        .zip(substs2.types())
+                        .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
                 {
-                    trace!("Substituted types don't match between {:?} and {:?}", ty1, ty2);
+                    trace!(
+                        "Substituted types don't match between {:?} and {:?}",
+                        ty1,
+                        ty2
+                    );
                     return false;
                 }
                 // warning: we're ignore lifetime and const generic params
@@ -858,11 +895,14 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     return true;
                 }
 
-                def1.all_fields().count() == def2.all_fields().count() &&
-                    def1.all_fields().zip(def2.all_fields()).all(|(field1, field2)| {
-                        field1.ident.unnamed_equiv(&field2.ident) &&
-                            self.structural_eq_defs_impl(field1.did, field2.did, seen)
-                    })
+                def1.all_fields().count() == def2.all_fields().count()
+                    && def1
+                        .all_fields()
+                        .zip(def2.all_fields())
+                        .all(|(field1, field2)| {
+                            field1.ident.unnamed_equiv(&field2.ident)
+                                && self.structural_eq_defs_impl(field1.did, field2.did, seen)
+                        })
             }
 
             (TyKind::Array(ty1, n1), TyKind::Array(ty2, n2)) => {
@@ -883,22 +923,36 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             (TyKind::Slice(ty1), TyKind::Slice(ty2)) => self.structural_eq_tys_impl(ty1, ty2, seen),
 
             (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) => {
-                if ty1.mutbl != ty2.mutbl { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
+                if ty1.mutbl != ty2.mutbl {
+                    trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2);
+                }
                 ty1.mutbl == ty2.mutbl && self.structural_eq_tys_impl(ty1.ty, ty2.ty, seen)
             }
 
             (TyKind::Ref(region1, ty1, mutbl1), TyKind::Ref(region2, ty2, mutbl2)) => {
-                if region1 != region2 { trace!("Regions don't match: {:?} and {:?}", ty1, ty2); }
-                if mutbl1 != mutbl2 { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
-                region1 == region2 && mutbl1 == mutbl2 && self.structural_eq_tys_impl(ty1, ty2, seen)
+                if region1 != region2 {
+                    trace!("Regions don't match: {:?} and {:?}", ty1, ty2);
+                }
+                if mutbl1 != mutbl2 {
+                    trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2);
+                }
+                region1 == region2
+                    && mutbl1 == mutbl2
+                    && self.structural_eq_tys_impl(ty1, ty2, seen)
             }
 
             (TyKind::FnDef(fn1, substs1), TyKind::FnDef(fn2, substs2)) => {
-                if substs1.types().count() != substs2.types().count() || 
-                    !substs1.types().zip(substs2.types())
-                         .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
+                if substs1.types().count() != substs2.types().count()
+                    || !substs1
+                        .types()
+                        .zip(substs2.types())
+                        .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
                 {
-                    trace!("Substituted types don't match between {:?} and {:?}", ty1, ty2);
+                    trace!(
+                        "Substituted types don't match between {:?} and {:?}",
+                        ty1,
+                        ty2
+                    );
                     return false;
                 }
                 // warning: we're ignore lifetime and const generic params
@@ -915,33 +969,47 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     }
                 };
 
-                if fn1.inputs().len() != fn2.inputs().len() ||
-                    fn1.c_variadic != fn2.c_variadic ||
-                    fn1.abi != fn2.abi
+                if fn1.inputs().len() != fn2.inputs().len()
+                    || fn1.c_variadic != fn2.c_variadic
+                    || fn1.abi != fn2.abi
                 {
-                    trace!("Function pointers attributes don't match: {:?} and {:?}", fn1, fn2);
+                    trace!(
+                        "Function pointers attributes don't match: {:?} and {:?}",
+                        fn1,
+                        fn2
+                    );
                     return false;
                 }
 
                 if !self.structural_eq_tys_impl(fn1.output(), fn2.output(), seen) {
-                    trace!("Function pointer output types don't match: {:?} and {:?}", fn1, fn2);
+                    trace!(
+                        "Function pointer output types don't match: {:?} and {:?}",
+                        fn1,
+                        fn2
+                    );
                     return false;
                 }
 
-                fn1.inputs().iter().zip(fn2.inputs().iter())
+                fn1.inputs()
+                    .iter()
+                    .zip(fn2.inputs().iter())
                     .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
             }
 
             (TyKind::Tuple(_), TyKind::Tuple(_)) => {
-                ty1.tuple_fields().count() == ty2.tuple_fields().count() &&
-                    ty1.tuple_fields().zip(ty2.tuple_fields())
-                       .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
+                ty1.tuple_fields().count() == ty2.tuple_fields().count()
+                    && ty1
+                        .tuple_fields()
+                        .zip(ty2.tuple_fields())
+                        .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, seen))
             }
 
             (TyKind::Foreign(did1), TyKind::Foreign(did2)) => {
                 // Foreign types are matched by symbol name
                 let matching = tcx.item_name(*did1) == tcx.item_name(*did2);
-                if !matching { trace!("Foreign types did not match: {:?} and {:?}", ty1, ty2); }
+                if !matching {
+                    trace!("Foreign types did not match: {:?} and {:?}", ty1, ty2);
+                }
                 matching
             }
 
@@ -950,7 +1018,9 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             (TyKind::Foreign(foreign_did), TyKind::Adt(adt, _substs))
             | (TyKind::Adt(adt, _substs), TyKind::Foreign(foreign_did)) => {
                 let matching = tcx.item_name(*foreign_did) == tcx.item_name(adt.did);
-                if !matching { trace!("Foreign type did not match ADT: {:?} and {:?}", ty1, ty2); }
+                if !matching {
+                    trace!("Foreign type did not match ADT: {:?} and {:?}", ty1, ty2);
+                }
                 matching
             }
 
@@ -963,9 +1033,20 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         }
     }
 
-    fn structural_eq_defs_impl(&self, did1: DefId, did2: DefId, seen: &mut HashSet<(DefId, DefId)>) -> bool {
-        let did1 = *self.def_mapping.and_then(|mapping| mapping.get(&did1)).unwrap_or(&did1);
-        let did2 = *self.def_mapping.and_then(|mapping| mapping.get(&did2)).unwrap_or(&did2);
+    fn structural_eq_defs_impl(
+        &self,
+        did1: DefId,
+        did2: DefId,
+        seen: &mut HashSet<(DefId, DefId)>,
+    ) -> bool {
+        let did1 = *self
+            .def_mapping
+            .and_then(|mapping| mapping.get(&did1))
+            .unwrap_or(&did1);
+        let did2 = *self
+            .def_mapping
+            .and_then(|mapping| mapping.get(&did2))
+            .unwrap_or(&did2);
 
         // Convert to TyCtxt types and compare
         if seen.contains(&(did1, did2)) {
@@ -986,11 +1067,17 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
         match (&ty1.kind, &ty2.kind) {
             (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
-                if substs1.types().count() != substs2.types().count() || 
-                    !substs1.types().zip(substs2.types())
-                    .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
+                if substs1.types().count() != substs2.types().count()
+                    || !substs1
+                        .types()
+                        .zip(substs2.types())
+                        .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
                 {
-                    trace!("Substituted types don't match between {:?} and {:?}", ty1, ty2);
+                    trace!(
+                        "Substituted types don't match between {:?} and {:?}",
+                        ty1,
+                        ty2
+                    );
                     return false;
                 }
                 // warning: we're ignore lifetime and const generic params
@@ -1007,16 +1094,21 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     }
                 }
 
-                def1.all_fields().count() == def2.all_fields().count() &&
-                    def1.all_fields().zip(def2.all_fields()).all(|(field1, field2)| {
-                        let def1 = self.def_mapping
-                            .and_then(|m| m.get(&field1.did))
-                            .unwrap_or(&field1.did);
-                        let def2 = self.def_mapping
-                            .and_then(|m| m.get(&field2.did))
-                            .unwrap_or(&field2.did);
-                        field1.ident.unnamed_equiv(&field2.ident) && def1 == def2
-                    })
+                def1.all_fields().count() == def2.all_fields().count()
+                    && def1
+                        .all_fields()
+                        .zip(def2.all_fields())
+                        .all(|(field1, field2)| {
+                            let def1 = self
+                                .def_mapping
+                                .and_then(|m| m.get(&field1.did))
+                                .unwrap_or(&field1.did);
+                            let def2 = self
+                                .def_mapping
+                                .and_then(|m| m.get(&field2.did))
+                                .unwrap_or(&field2.did);
+                            field1.ident.unnamed_equiv(&field2.ident) && def1 == def2
+                        })
             }
 
             (TyKind::Array(ty1, n1), TyKind::Array(ty2, n2)) => {
@@ -1037,33 +1129,40 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             (TyKind::Slice(ty1), TyKind::Slice(ty2)) => self.eq_tys(ty1, ty2),
 
             (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) => {
-                if ty1.mutbl != ty2.mutbl { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
+                if ty1.mutbl != ty2.mutbl {
+                    trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2);
+                }
                 ty1.mutbl == ty2.mutbl && self.eq_tys(ty1.ty, ty2.ty)
             }
 
             (TyKind::Ref(region1, ty1, mutbl1), TyKind::Ref(region2, ty2, mutbl2)) => {
-                if region1 != region2 { trace!("Regions don't match: {:?} and {:?}", ty1, ty2); }
-                if mutbl1 != mutbl2 { trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2); }
-                region1 == region2 && mutbl1 == mutbl2 &&
-                    self.eq_tys(ty1, ty2)
+                if region1 != region2 {
+                    trace!("Regions don't match: {:?} and {:?}", ty1, ty2);
+                }
+                if mutbl1 != mutbl2 {
+                    trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2);
+                }
+                region1 == region2 && mutbl1 == mutbl2 && self.eq_tys(ty1, ty2)
             }
 
             (TyKind::FnDef(fn1, substs1), TyKind::FnDef(fn2, substs2)) => {
-                if substs1.types().count() != substs2.types().count() || 
-                    !substs1.types().zip(substs2.types())
-                    .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
+                if substs1.types().count() != substs2.types().count()
+                    || !substs1
+                        .types()
+                        .zip(substs2.types())
+                        .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
                 {
-                    trace!("Substituted types don't match between {:?} and {:?}", ty1, ty2);
+                    trace!(
+                        "Substituted types don't match between {:?} and {:?}",
+                        ty1,
+                        ty2
+                    );
                     return false;
                 }
                 // warning: we're ignore lifetime and const generic params
 
-                let def1 = self.def_mapping
-                    .and_then(|m| m.get(&fn1))
-                    .unwrap_or(&fn1);
-                let def2 = self.def_mapping
-                    .and_then(|m| m.get(&fn2))
-                    .unwrap_or(&fn2);
+                let def1 = self.def_mapping.and_then(|m| m.get(&fn1)).unwrap_or(&fn1);
+                let def2 = self.def_mapping.and_then(|m| m.get(&fn2)).unwrap_or(&fn2);
                 def1 == def2
             }
 
@@ -1076,44 +1175,60 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     }
                 };
 
-                if fn1.inputs().len() != fn2.inputs().len() ||
-                    fn1.c_variadic != fn2.c_variadic ||
-                    fn1.abi != fn2.abi
+                if fn1.inputs().len() != fn2.inputs().len()
+                    || fn1.c_variadic != fn2.c_variadic
+                    || fn1.abi != fn2.abi
                 {
-                    trace!("Function pointers attributes don't match: {:?} and {:?}", fn1, fn2);
+                    trace!(
+                        "Function pointers attributes don't match: {:?} and {:?}",
+                        fn1,
+                        fn2
+                    );
                     return false;
                 }
 
                 if !self.eq_tys(fn1.output(), fn2.output()) {
-                    trace!("Function pointer output types don't match: {:?} and {:?}", fn1, fn2);
+                    trace!(
+                        "Function pointer output types don't match: {:?} and {:?}",
+                        fn1,
+                        fn2
+                    );
                     return false;
                 }
 
-                fn1.inputs().iter().zip(fn2.inputs().iter())
+                fn1.inputs()
+                    .iter()
+                    .zip(fn2.inputs().iter())
                     .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
             }
 
             (TyKind::Tuple(_), TyKind::Tuple(_)) => {
-                ty1.tuple_fields().count() == ty2.tuple_fields().count() &&
-                    ty1.tuple_fields().zip(ty2.tuple_fields())
-                    .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
+                ty1.tuple_fields().count() == ty2.tuple_fields().count()
+                    && ty1
+                        .tuple_fields()
+                        .zip(ty2.tuple_fields())
+                        .all(|(ty1, ty2)| self.eq_tys(ty1, ty2))
             }
 
             (TyKind::Foreign(did1), TyKind::Foreign(did2)) => {
                 // Foreign types are matched by symbol name
                 let matching = tcx.item_name(*did1) == tcx.item_name(*did2);
-                if !matching { trace!("Foreign types did not match: {:?} and {:?}", ty1, ty2); }
+                if !matching {
+                    trace!("Foreign types did not match: {:?} and {:?}", ty1, ty2);
+                }
                 matching
             }
 
             // Allow foreign opaque types to match against any ADT with the same
             // name
             (TyKind::Foreign(foreign_did), TyKind::Adt(adt, _substs))
-                | (TyKind::Adt(adt, _substs), TyKind::Foreign(foreign_did)) => {
-                    let matching = tcx.item_name(*foreign_did) == tcx.item_name(adt.did);
-                    if !matching { trace!("Foreign type did not match ADT: {:?} and {:?}", ty1, ty2); }
-                    matching
+            | (TyKind::Adt(adt, _substs), TyKind::Foreign(foreign_did)) => {
+                let matching = tcx.item_name(*foreign_did) == tcx.item_name(adt.did);
+                if !matching {
+                    trace!("Foreign type did not match ADT: {:?} and {:?}", ty1, ty2);
                 }
+                matching
+            }
 
             // We don't handle anything else here, and hopefully won't need
             // to...

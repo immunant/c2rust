@@ -6,7 +6,7 @@ use rustc::mir::*;
 use rustc::ty::{Ty, TyKind};
 use rustc_index::vec::IndexVec;
 use rustc_target::abi::VariantIdx;
-use syntax::source_map::{DUMMY_SP, Spanned};
+use syntax::source_map::{Spanned, DUMMY_SP};
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
@@ -137,15 +137,14 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             let span = match &decl.local_info {
                 LocalInfo::User(ClearCrossCrate::Set(binding)) => Some(binding),
                 _ => None,
-            }.map(|binding| match binding {
+            }
+            .map(|binding| match binding {
                 BindingForm::Var(var) => var.pat_span,
                 _ => DUMMY_SP,
-            }).unwrap_or(DUMMY_SP);
+            })
+            .unwrap_or(DUMMY_SP);
 
-            self.local_tys.push(Spanned {
-                node: lty,
-                span,
-            });
+            self.local_tys.push(Spanned { node: lty, span });
         }
 
         // Pick up any preset constraints for this variant.
@@ -205,14 +204,18 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             _ => None,
         };
 
-        let relabeled_locals = self.local_tys
+        let relabeled_locals = self
+            .local_tys
             .raw
             .iter()
             .filter_map(|spanned_ity| {
                 if spanned_ity.span == DUMMY_SP {
                     None
                 } else {
-                    Some((spanned_ity.span, self.cx.lcx.relabel(spanned_ity.node, &mut f)))
+                    Some((
+                        spanned_ity.span,
+                        self.cx.lcx.relabel(spanned_ity.node, &mut f),
+                    ))
                 }
             })
             .collect();

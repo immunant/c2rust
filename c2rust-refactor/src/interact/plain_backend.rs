@@ -97,11 +97,13 @@ fn decode_message(line: &str) -> Result<ToServer, String> {
             match parts.next() {
                 Some(x) => match <$t>::from_str(x) {
                     Ok(y) => y,
-                    Err(e) => return Err(format!("error while parsing {}: {:?}", stringify!($t), e)),
+                    Err(e) => {
+                        return Err(format!("error while parsing {}: {:?}", stringify!($t), e))
+                    }
                 },
                 None => return Err(format!("expected {} before end of line", stringify!($t))),
             }
-        }
+        };
     }
 
     Ok(match &kind as &str {

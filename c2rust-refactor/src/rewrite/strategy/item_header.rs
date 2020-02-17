@@ -11,8 +11,8 @@
 //!
 //! Aside from the special handling of qualifiers, this strategy works the same as `recursive`.
 use syntax::ast::*;
-use syntax::token::{DelimToken, Token, TokenKind};
 use syntax::source_map::{BytePos, Span};
+use syntax::token::{DelimToken, Token, TokenKind};
 use syntax::tokenstream::{TokenStream, TokenTree};
 
 use crate::ast_manip::AstEquiv;
@@ -228,10 +228,12 @@ fn rewrite_arg_list_with_tokens(
                         // This token is just past the end of the current arg.
                         past_arg = true;
                     }
-                    if past_arg && matches!([tt] TokenTree::Token(Token {
-                        kind: TokenKind::Comma,
-                        ..
-                    })) {
+                    if past_arg
+                        && matches!([tt] TokenTree::Token(Token {
+                            kind: TokenKind::Comma,
+                            ..
+                        }))
+                    {
                         // Found the comma following the current arg.
                         comma_spans.push(tt.span());
                         break;
@@ -346,7 +348,11 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             }
 
             if sig1.header.constness.node != sig2.header.constness.node {
-                record_qualifier_rewrite(sig1.header.constness.span, reparsed_sig.header.constness.span, rcx.borrow());
+                record_qualifier_rewrite(
+                    sig1.header.constness.span,
+                    reparsed_sig.header.constness.span,
+                    rcx.borrow(),
+                );
             }
 
             if ident1 != ident2 {

@@ -5,8 +5,8 @@ extern crate rustc_target;
 extern crate syntax;
 extern crate syntax_pos;
 
-pub mod pprust;
-pub mod pp;
 mod helpers;
+pub mod pp;
+pub mod pprust;
 
 mod syntax_priv;

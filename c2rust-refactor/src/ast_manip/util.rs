@@ -1,12 +1,12 @@
 //! Miscellaneous utility functions.
 use rustc::hir::def::{self, Namespace, Res};
+use smallvec::smallvec;
 use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::symbol::{kw, Symbol};
 use syntax_pos::sym;
-use smallvec::smallvec;
 
 use super::AstEquiv;
 
@@ -26,7 +26,7 @@ impl PatternSymbol for Lit {
         match self.kind {
             // FIXME: can this conflict with regular Err literals???
             LitKind::Err(ref sym) => Some(*sym),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -234,15 +234,13 @@ pub fn namespace(res: &def::Res) -> Option<Namespace> {
     use rustc::hir::def::DefKind::*;
     match res {
         Res::Def(kind, _) => match kind {
-            Mod | Struct | Union | Enum | Variant | Trait | OpaqueTy | TyAlias
-            | ForeignTy | TraitAlias | AssocTy | AssocOpaqueTy | TyParam => {
-                Some(Namespace::TypeNS)
-            }
+            Mod | Struct | Union | Enum | Variant | Trait | OpaqueTy | TyAlias | ForeignTy
+            | TraitAlias | AssocTy | AssocOpaqueTy | TyParam => Some(Namespace::TypeNS),
             Fn | Const | ConstParam | Static | Ctor(..) | Method | AssocConst => {
                 Some(Namespace::ValueNS)
             }
             Macro(..) => Some(Namespace::MacroNS),
-        }
+        },
 
         Res::PrimTy(..) | Res::SelfTy(..) | Res::ToolMod => Some(Namespace::TypeNS),
 
@@ -295,5 +293,9 @@ pub fn is_export_attr(attr: &Attribute) -> bool {
 /// Are the idents of the segments of `path` equivalent to the list of idents
 pub fn path_eq<T: AsRef<str>>(path: &Path, idents: &[T]) -> bool {
     path.segments.len() == idents.len()
-        && path.segments.iter().zip(idents).all(|(p, i)| p.ident.as_str() == i.as_ref())
+        && path
+            .segments
+            .iter()
+            .zip(idents)
+            .all(|(p, i)| p.ident.as_str() == i.as_ref())
 }

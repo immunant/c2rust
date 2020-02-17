@@ -123,10 +123,7 @@ pub struct Ctxt<'lty, 'tcx> {
 }
 
 impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
-    pub fn new(
-        tcx: TyCtxt<'tcx>,
-        arena: &'lty SyncDroplessArena,
-    ) -> Ctxt<'lty, 'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>, arena: &'lty SyncDroplessArena) -> Ctxt<'lty, 'tcx> {
         Ctxt {
             tcx,
             lcx: LabeledTyCtxt::new(&arena),

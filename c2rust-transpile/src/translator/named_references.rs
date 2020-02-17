@@ -58,9 +58,9 @@ impl<'c> Translation<'c> {
             fn is_lvalue(e: &Expr) -> bool {
                 match e.kind {
                     ExprKind::Path(..)
-                        | ExprKind::Unary(ast::UnOp::Deref, _)
-                        | ExprKind::Field(..)
-                        | ExprKind::Index(..) => true,
+                    | ExprKind::Unary(ast::UnOp::Deref, _)
+                    | ExprKind::Field(..)
+                    | ExprKind::Index(..) => true,
                     _ => false,
                 }
             }
@@ -70,8 +70,8 @@ impl<'c> Translation<'c> {
                 match e.kind {
                     ExprKind::Path(..) => true,
                     ExprKind::Unary(ast::UnOp::Deref, ref e)
-                        | ExprKind::Field(ref e, _)
-                        | ExprKind::Index(ref e, _) => is_simple_lvalue(e),
+                    | ExprKind::Field(ref e, _)
+                    | ExprKind::Index(ref e, _) => is_simple_lvalue(e),
                     _ => false,
                 }
             }
@@ -88,7 +88,10 @@ impl<'c> Translation<'c> {
             if !uses_read && is_lvalue(&*reference) {
                 Ok(WithStmts::new_val((reference, None)))
             } else if is_simple_lvalue(&*reference) {
-                Ok(WithStmts::new_val((reference.clone(), Some(read(reference)?))))
+                Ok(WithStmts::new_val((
+                    reference.clone(),
+                    Some(read(reference)?),
+                )))
             } else {
                 // This is the case where we explicitly need to factor out possible side-effects.
 

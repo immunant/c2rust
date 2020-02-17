@@ -5,9 +5,9 @@ use rustc::session::Session;
 use std::path::PathBuf;
 use std::str::FromStr;
 use syntax::ast::*;
-use syntax_pos::hygiene::SyntaxContext;
 use syntax::source_map::{BytePos, Span};
 use syntax::visit::{self, FnKind, Visitor};
+use syntax_pos::hygiene::SyntaxContext;
 use syntax_pos::FileName;
 
 use crate::ast_manip::Visit;
@@ -259,7 +259,7 @@ impl FromStr for NodeKind {
             "pat" => NodeKind::Pat,
             "ty" => NodeKind::Ty,
             "param" => NodeKind::Param,
-            "arg" => NodeKind::Param,  // arg is an alias for param
+            "arg" => NodeKind::Param, // arg is an alias for param
             "field" => NodeKind::Field,
 
             _ => return Err(()),

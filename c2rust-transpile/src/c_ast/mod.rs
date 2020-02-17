@@ -1,14 +1,14 @@
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display};
 use std::mem;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
 
-pub use c2rust_ast_exporter::clang_ast::{SrcFile, SrcLoc, SrcSpan, BuiltinVaListKind};
+pub use c2rust_ast_exporter::clang_ast::{BuiltinVaListKind, SrcFile, SrcLoc, SrcSpan};
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub struct CTypeId(pub u64);
@@ -100,7 +100,13 @@ pub struct DisplaySrcSpan {
 impl Display for DisplaySrcSpan {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(ref file) = self.file {
-            write!(f, "{}:{}:{}", file.display(), self.loc.begin_line, self.loc.begin_column)
+            write!(
+                f,
+                "{}:{}:{}",
+                file.display(),
+                self.loc.begin_line,
+                self.loc.begin_column
+            )
         } else {
             Debug::fmt(self, f)
         }
@@ -179,22 +185,20 @@ impl TypedAstContext {
     }
 
     pub fn display_loc(&self, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
-        loc.as_ref().map(|loc| {
-            DisplaySrcSpan {
-                file: self.files[self.file_map[loc.fileid as usize]].path.clone(),
-                loc: loc.clone(),
-            }
+        loc.as_ref().map(|loc| DisplaySrcSpan {
+            file: self.files[self.file_map[loc.fileid as usize]].path.clone(),
+            loc: loc.clone(),
         })
     }
 
     pub fn get_source_path<'a, T>(&'a self, node: &Located<T>) -> Option<&'a Path> {
-        self.file_id(node).and_then(|fileid| self.get_file_path(fileid))
+        self.file_id(node)
+            .and_then(|fileid| self.get_file_path(fileid))
     }
 
     pub fn get_file_path<'a>(&'a self, id: FileId) -> Option<&'a Path> {
         self.files[id].path.as_ref().map(|p| p.as_path())
     }
-
 
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
         /// Compare `self` with `other`, without regard to file id
@@ -228,11 +232,16 @@ impl TypedAstContext {
     }
 
     pub fn find_file_id(&self, path: &Path) -> Option<FileId> {
-        self.files.iter().position(|f| f.path.as_ref().map_or(false, |p| p == path))
+        self.files
+            .iter()
+            .position(|f| f.path.as_ref().map_or(false, |p| p == path))
     }
 
     pub fn file_id<T>(&self, located: &Located<T>) -> Option<FileId> {
-        located.loc.as_ref().and_then(|loc| self.file_map.get(loc.fileid as usize).copied())
+        located
+            .loc
+            .as_ref()
+            .and_then(|loc| self.file_map.get(loc.fileid as usize).copied())
     }
 
     pub fn get_src_loc(&self, id: SomeId) -> Option<SrcSpan> {
@@ -293,14 +302,16 @@ impl TypedAstContext {
     pub fn is_builtin_va_list(&self, typ: CTypeId) -> bool {
         match self.index(typ).kind {
             CTypeKind::Typedef(decl) => match &self.index(decl).kind {
-                    CDeclKind::Typedef { name: nam, typ: ty, .. } => {
-                        if nam == "__builtin_va_list" {
-                            true
-                        } else {
-                            self.is_builtin_va_list(ty.ctype)
-                        }
-                    },
-                    _ => panic!("Typedef decl did not point to a typedef"),
+                CDeclKind::Typedef {
+                    name: nam, typ: ty, ..
+                } => {
+                    if nam == "__builtin_va_list" {
+                        true
+                    } else {
+                        self.is_builtin_va_list(ty.ctype)
+                    }
+                }
+                _ => panic!("Typedef decl did not point to a typedef"),
             },
             _ => false,
         }
@@ -310,46 +321,45 @@ impl TypedAstContext {
     /// FIXME: can we get rid of this method and use `is_builtin_va_list` instead?
     pub fn is_va_list_struct(&self, typ: CTypeId) -> bool {
         // detect `va_list`s based on typedef (should work across implementations)
-//        if self.is_builtin_va_list(typ) {
-//            return true;
-//        }
+        //        if self.is_builtin_va_list(typ) {
+        //            return true;
+        //        }
 
         // detect `va_list`s based on type (assumes struct-based implementation)
         let resolved_ctype = self.resolve_type(typ);
         match resolved_ctype.kind {
             CTypeKind::Struct(record_id) => {
                 let r#struct = &self[record_id];
-                if let CDeclKind::Struct { name: Some(ref nam), .. } = r#struct.kind {
-                    return nam == "__va_list_tag" || nam == "__va_list"
+                if let CDeclKind::Struct {
+                    name: Some(ref nam),
+                    ..
+                } = r#struct.kind
+                {
+                    return nam == "__va_list_tag" || nam == "__va_list";
                 } else {
                     false
                 }
-            },
+            }
             // va_list is a 1 element array; return true iff element type is struct __va_list_tag
             CTypeKind::ConstantArray(typ, 1) => {
                 return self.is_va_list(typ);
-            },
-            _ => false
+            }
+            _ => false,
         }
     }
 
     /// Predicate for pointers to types that are used to implement C's `va_list`.
     pub fn is_va_list(&self, typ: CTypeId) -> bool {
         match self.va_list_kind {
-            BuiltinVaListKind::CharPtrBuiltinVaList | BuiltinVaListKind::VoidPtrBuiltinVaList
-            | BuiltinVaListKind::X86_64ABIBuiltinVaList => {
-                match self.resolve_type(typ).kind {
-                    CTypeKind::Pointer(CQualTypeId { ctype, .. })
-                    | CTypeKind::ConstantArray(ctype, _) => {
-                        self.is_va_list_struct(ctype)
-                    }
-                    _ => false,
-                }
-            }
+            BuiltinVaListKind::CharPtrBuiltinVaList
+            | BuiltinVaListKind::VoidPtrBuiltinVaList
+            | BuiltinVaListKind::X86_64ABIBuiltinVaList => match self.resolve_type(typ).kind {
+                CTypeKind::Pointer(CQualTypeId { ctype, .. })
+                | CTypeKind::ConstantArray(ctype, _) => self.is_va_list_struct(ctype),
+                _ => false,
+            },
 
-            BuiltinVaListKind::AArch64ABIBuiltinVaList => {
-                self.is_va_list_struct(typ)
-            }
+            BuiltinVaListKind::AArch64ABIBuiltinVaList => self.is_va_list_struct(typ),
 
             kind => unimplemented!("va_list type {:?} not yet implemented", kind),
         }
@@ -373,9 +383,9 @@ impl TypedAstContext {
     pub fn maybe_flexible_array(&self, typ: CTypeId) -> bool {
         let field_ty = self.resolve_type(typ);
         match field_ty.kind {
-            CTypeKind::IncompleteArray(_) |
-            CTypeKind::ConstantArray(_, 0) |
-            CTypeKind::ConstantArray(_, 1) => true,
+            CTypeKind::IncompleteArray(_)
+            | CTypeKind::ConstantArray(_, 0)
+            | CTypeKind::ConstantArray(_, 1) => true,
 
             _ => false,
         }
@@ -394,12 +404,10 @@ impl TypedAstContext {
     pub fn resolve_expr(&self, expr_id: CExprId) -> (CExprId, &CExprKind) {
         let expr = &self.index(expr_id).kind;
         match expr {
-            CExprKind::ImplicitCast(_, subexpr, _, _, _) |
-            CExprKind::ExplicitCast(_, subexpr, _, _, _) |
-            CExprKind::Paren(_, subexpr) => {
-                self.resolve_expr(*subexpr)
-            }
-            _ => (expr_id, expr)
+            CExprKind::ImplicitCast(_, subexpr, _, _, _)
+            | CExprKind::ExplicitCast(_, subexpr, _, _, _)
+            | CExprKind::Paren(_, subexpr) => self.resolve_expr(*subexpr),
+            _ => (expr_id, expr),
         }
     }
 
@@ -409,9 +417,9 @@ impl TypedAstContext {
         let expr = &self.index(expr_id).kind;
         let mut ty = expr.get_type();
         match expr {
-            CExprKind::ImplicitCast(_, subexpr, _, _, _) |
-            CExprKind::ExplicitCast(_, subexpr, _, _, _) |
-            CExprKind::Paren(_, subexpr) => {
+            CExprKind::ImplicitCast(_, subexpr, _, _, _)
+            | CExprKind::ExplicitCast(_, subexpr, _, _, _)
+            | CExprKind::Paren(_, subexpr) => {
                 return self.resolve_expr_type_id(*subexpr);
             }
             CExprKind::DeclRef(_, decl_id, _) => {
@@ -420,8 +428,7 @@ impl TypedAstContext {
                     CDeclKind::Function { typ, .. } => {
                         ty = Some(self.resolve_type_id(typ));
                     }
-                    CDeclKind::Variable { typ, .. } |
-                    CDeclKind::Typedef { typ, .. } => {
+                    CDeclKind::Variable { typ, .. } | CDeclKind::Typedef { typ, .. } => {
                         ty = Some(self.resolve_type_id(typ.ctype));
                     }
                     _ => {}
@@ -661,29 +668,34 @@ impl TypedAstContext {
 
     pub fn has_inner_struct_decl(&self, decl_id: CDeclId) -> bool {
         match self.index(decl_id).kind {
-            CDeclKind::Struct { manual_alignment: Some(_), .. } => true,
-            _ => false
+            CDeclKind::Struct {
+                manual_alignment: Some(_),
+                ..
+            } => true,
+            _ => false,
         }
     }
 
     pub fn is_packed_struct_decl(&self, decl_id: CDeclId) -> bool {
         match self.index(decl_id).kind {
-            CDeclKind::Struct { is_packed: true, .. } => true,
-            CDeclKind::Struct { max_field_alignment: Some(_), .. } => true,
-            _ => false
+            CDeclKind::Struct {
+                is_packed: true, ..
+            } => true,
+            CDeclKind::Struct {
+                max_field_alignment: Some(_),
+                ..
+            } => true,
+            _ => false,
         }
     }
 
     pub fn is_aligned_struct_type(&self, typ: CTypeId) -> bool {
-        if let Some(decl_id) = self
-            .resolve_type(typ)
-            .kind
-            .as_underlying_decl()
-        {
+        if let Some(decl_id) = self.resolve_type(typ).kind.as_underlying_decl() {
             if let CDeclKind::Struct {
                 manual_alignment: Some(_),
                 ..
-            } = self.index(decl_id).kind {
+            } = self.index(decl_id).kind
+            {
                 return true;
             }
         }
@@ -718,10 +730,7 @@ impl CommentContext {
         // ordering. This makes it easy to pop the next comment off.
         for comments in comments_by_file.values_mut() {
             comments.sort_by(|a, b| {
-                ast_context.compare_src_locs(
-                    &b.loc.unwrap().begin(),
-                    &a.loc.unwrap().begin(),
-                )
+                ast_context.compare_src_locs(&b.loc.unwrap().begin(), &a.loc.unwrap().begin())
             });
         }
 
@@ -730,9 +739,7 @@ impl CommentContext {
             .map(|(k, v)| (k, RefCell::new(v)))
             .collect();
 
-        CommentContext {
-            comments_by_file,
-        }
+        CommentContext { comments_by_file }
     }
 
     pub fn get_comments_before(&self, loc: SrcLoc, ctx: &TypedAstContext) -> Vec<String> {
@@ -768,7 +775,11 @@ impl CommentContext {
         }
     }
 
-    pub fn peek_next_comment_on_line(&self, loc: SrcLoc, ctx: &TypedAstContext) -> Option<Located<String>> {
+    pub fn peek_next_comment_on_line(
+        &self,
+        loc: SrcLoc,
+        ctx: &TypedAstContext,
+    ) -> Option<Located<String>> {
         let file_id = ctx.file_map[loc.fileid as usize];
         let comments = self.comments_by_file.get(&file_id)?.borrow();
         comments.last().and_then(|comment| {
@@ -851,7 +862,6 @@ impl Index<CStmtId> for TypedAstContext {
         }
     }
 }
-
 
 /// All of our AST types should have location information bundled with them
 pub type CDecl = Located<CDeclKind>;
@@ -943,7 +953,7 @@ pub enum CDeclKind {
 
     NonCanonicalDecl {
         canonical_decl: CDeclId,
-    }
+    },
 }
 
 impl CDeclKind {
@@ -1132,8 +1142,7 @@ impl CExprKind {
             | CExprKind::ConvertVector(ty, _)
             | CExprKind::DesignatedInitExpr(ty, _, _)
             | CExprKind::ConstantExpr(ty, _, _) => Some(ty),
-            | CExprKind::Choose(ty, _, _, _, _)
-            | CExprKind::Atomic{typ: ty, ..} => Some(ty),
+            CExprKind::Choose(ty, _, _, _, _) | CExprKind::Atomic { typ: ty, .. } => Some(ty),
         }
     }
 
@@ -1744,14 +1753,20 @@ impl CTypeKind {
 
             // Array to pointer decay. We want to use the array and push the
             // decay to the use of the value.
-            (CTypeKind::Pointer(ptr_ty), CTypeKind::ConstantArray(arr_ty, _)) |
-            (CTypeKind::Pointer(ptr_ty), CTypeKind::IncompleteArray(arr_ty)) |
-            (CTypeKind::Pointer(ptr_ty), CTypeKind::VariableArray(arr_ty, _))
-                if ptr_ty.ctype == *arr_ty => Some(ty2),
-            (CTypeKind::ConstantArray(arr_ty, _), CTypeKind::Pointer(ptr_ty)) |
-            (CTypeKind::IncompleteArray(arr_ty), CTypeKind::Pointer(ptr_ty)) |
-            (CTypeKind::VariableArray(arr_ty, _), CTypeKind::Pointer(ptr_ty))
-                if ptr_ty.ctype == *arr_ty => Some(ty1),
+            (CTypeKind::Pointer(ptr_ty), CTypeKind::ConstantArray(arr_ty, _))
+            | (CTypeKind::Pointer(ptr_ty), CTypeKind::IncompleteArray(arr_ty))
+            | (CTypeKind::Pointer(ptr_ty), CTypeKind::VariableArray(arr_ty, _))
+                if ptr_ty.ctype == *arr_ty =>
+            {
+                Some(ty2)
+            }
+            (CTypeKind::ConstantArray(arr_ty, _), CTypeKind::Pointer(ptr_ty))
+            | (CTypeKind::IncompleteArray(arr_ty), CTypeKind::Pointer(ptr_ty))
+            | (CTypeKind::VariableArray(arr_ty, _), CTypeKind::Pointer(ptr_ty))
+                if ptr_ty.ctype == *arr_ty =>
+            {
+                Some(ty1)
+            }
 
             _ => None,
         }

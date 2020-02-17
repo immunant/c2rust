@@ -129,10 +129,7 @@ impl<T> Cursor<T> {
         let name = self.next_mark;
         self.next_mark += 1;
 
-        self.left_marks.push(MarkData {
-            name,
-            depth: 0,
-        });
+        self.left_marks.push(MarkData { name, depth: 0 });
         Mark(name)
     }
 

@@ -341,29 +341,23 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
                 "Core",
             ],
         )
-            .unwrap_or("-lLLVM".to_string())
-            .split_whitespace()
-            .map(|lib| String::from(lib.trim_start_matches("-l")))
-            .collect();
+        .unwrap_or("-lLLVM".to_string())
+        .split_whitespace()
+        .map(|lib| String::from(lib.trim_start_matches("-l")))
+        .collect();
 
         libs.extend(
             env::var("LLVM_SYSTEM_LIBS")
                 .ok()
                 .or(invoke_command(
                     llvm_config.as_ref(),
-                    &[
-                        "--system-libs",
-                        link_mode,
-                    ],
+                    &["--system-libs", link_mode],
                 ))
                 .unwrap_or(String::new())
                 .split_whitespace()
-                .map(|lib| String::from(lib.trim_start_matches("-l")))
+                .map(|lib| String::from(lib.trim_start_matches("-l"))),
         );
 
-        Self {
-            lib_dir,
-            libs,
-        }
+        Self { lib_dir, libs }
     }
 }

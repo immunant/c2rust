@@ -4,10 +4,10 @@ use std::convert::{TryFrom, TryInto};
 
 use derive_more::{From, TryInto};
 use syntax::ast::{Expr, Ident, Item, Lit, Pat, Path, Stmt, Ty};
-use syntax::token::{Token, TokenKind, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::DUMMY_SP;
 use syntax::symbol::Symbol;
+use syntax::token::{LitKind as TokenLitKind, Token, TokenKind};
 use syntax::tokenstream::{Cursor, TokenStream, TokenStreamBuilder, TokenTree};
 
 use crate::ast_manip::AstEquiv;
@@ -293,17 +293,27 @@ impl Type {
 
 fn maybe_get_type(c: &mut Cursor) -> Type {
     let mut c_idx = 0;
-    if let Some(TokenTree::Token(Token{kind: TokenKind::Colon, ..})) = c.look_ahead(c_idx) {
+    if let Some(TokenTree::Token(Token {
+        kind: TokenKind::Colon,
+        ..
+    })) = c.look_ahead(c_idx)
+    {
         c_idx += 1;
         let is_optional = match c.look_ahead(c_idx) {
-            Some(TokenTree::Token(Token{kind: TokenKind::Question, ..})) => {
+            Some(TokenTree::Token(Token {
+                kind: TokenKind::Question,
+                ..
+            })) => {
                 c_idx += 1;
                 true
             }
             _ => false,
         };
         match c.look_ahead(c_idx) {
-            Some(TokenTree::Token(Token{kind: TokenKind::Ident(ty_ident, _), ..})) => {
+            Some(TokenTree::Token(Token {
+                kind: TokenKind::Ident(ty_ident, _),
+                ..
+            })) => {
                 if let Some(ty) = Type::from_ast_ident(ty_ident) {
                     c.nth(c_idx);
                     if is_optional {
@@ -325,8 +335,14 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
     let mut c = ts.into_trees();
     while let Some(tt) = c.next() {
         let new_tt = match tt {
-            TokenTree::Token(Token{kind: TokenKind::Dollar, ..}) => match c.look_ahead(0) {
-                Some(TokenTree::Token(Token{kind: TokenKind::Ident(ident, is_raw), span})) => {
+            TokenTree::Token(Token {
+                kind: TokenKind::Dollar,
+                ..
+            }) => match c.look_ahead(0) {
+                Some(TokenTree::Token(Token {
+                    kind: TokenKind::Ident(ident, is_raw),
+                    span,
+                })) => {
                     c.next();
                     let dollar_sym = Symbol::intern(&format!("${}", ident));
                     let ident_ty = maybe_get_type(&mut c);
@@ -338,12 +354,18 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                             // inside a LitKind::Err
                             TokenKind::lit(TokenLitKind::Err, dollar_sym, None)
                         }
-                        _ => TokenKind::Ident(dollar_sym, is_raw)
+                        _ => TokenKind::Ident(dollar_sym, is_raw),
                     };
-                    TokenTree::Token(Token{kind: token_kind, span})
+                    TokenTree::Token(Token {
+                        kind: token_kind,
+                        span,
+                    })
                 }
 
-                Some(TokenTree::Token(Token{kind: TokenKind::Lifetime(ident), span})) => {
+                Some(TokenTree::Token(Token {
+                    kind: TokenKind::Lifetime(ident),
+                    span,
+                })) => {
                     c.next();
                     let ident_str = &*ident.as_str();
                     let (prefix, label) = ident_str.split_at(1);
@@ -355,10 +377,16 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                     let dollar_sym = Symbol::intern(&format!("'${}", label));
                     let label_ty = maybe_get_type(&mut c);
                     bt.set_type(dollar_sym, label_ty);
-                    TokenTree::Token(Token{kind: TokenKind::Lifetime(dollar_sym), span})
+                    TokenTree::Token(Token {
+                        kind: TokenKind::Lifetime(dollar_sym),
+                        span,
+                    })
                 }
 
-                _ => TokenTree::Token(Token{kind: TokenKind::Dollar, span: DUMMY_SP}),
+                _ => TokenTree::Token(Token {
+                    kind: TokenKind::Dollar,
+                    span: DUMMY_SP,
+                }),
             },
 
             TokenTree::Delimited(sp, delim, tts) => {

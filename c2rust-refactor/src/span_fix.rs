@@ -93,11 +93,11 @@ impl FixFormat {
 
         if let ExprKind::Call(callee, _) = &e.kind {
             if let ExprKind::Path(None, path) = &callee.kind {
-                let matches_fmt_args = path.segments.len() == 4 &&
-                    path.segments[1].ident.as_str() == "fmt" &&
-                    path.segments[2].ident.as_str() == "Arguments" &&
-                    (path.segments[3].ident.as_str() == "new_v1" ||
-                     path.segments[3].ident.as_str() == "new_v1_formatted");
+                let matches_fmt_args = path.segments.len() == 4
+                    && path.segments[1].ident.as_str() == "fmt"
+                    && path.segments[2].ident.as_str() == "Arguments"
+                    && (path.segments[3].ident.as_str() == "new_v1"
+                        || path.segments[3].ident.as_str() == "new_v1_formatted");
                 return matches_fmt_args;
             }
         }
@@ -108,9 +108,7 @@ impl FixFormat {
 
 impl MutVisitor for FixFormat {
     fn visit_expr(&mut self, e: &mut P<Expr>) {
-        if !e.span.from_expansion()
-            && self.ctxt.in_match
-            && matches!([e.kind] ExprKind::AddrOf(..))
+        if !e.span.from_expansion() && self.ctxt.in_match && matches!([e.kind] ExprKind::AddrOf(..))
         {
             trace!("EXITING format! at {:?}", e);
             // Current node is the `&foo`.  We need to change its span.  On
@@ -122,10 +120,7 @@ impl MutVisitor for FixFormat {
                 mut_visit::noop_visit_expr(e, this);
                 e.span = mac_span;
             })
-        } else if !e.span.from_expansion()
-            && self.ctxt.in_format
-            && !self.ctxt.in_match
-        {
+        } else if !e.span.from_expansion() && self.ctxt.in_format && !self.ctxt.in_match {
             trace!("Fixing format! string at {:?}", e);
             let mac_span = self.ctxt.parent_span;
             let new_ctxt = self.ctxt.enter_span(mac_span);

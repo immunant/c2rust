@@ -2,10 +2,10 @@
 use rustc_target::spec::abi::Abi;
 use std::rc::Rc;
 use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
 use syntax_pos::hygiene::SyntaxContext;
@@ -131,7 +131,9 @@ impl<A: AstEquiv, B: AstEquiv, C: AstEquiv> AstEquiv for (A, B, C) {
         self.0.ast_equiv(&other.0) && self.1.ast_equiv(&other.1) && self.2.ast_equiv(&other.2)
     }
     fn unnamed_equiv(&self, other: &Self) -> bool {
-        self.0.unnamed_equiv(&other.0) && self.1.unnamed_equiv(&other.1) && self.2.unnamed_equiv(&other.2)
+        self.0.unnamed_equiv(&other.0)
+            && self.1.unnamed_equiv(&other.1)
+            && self.2.unnamed_equiv(&other.2)
     }
 }
 
@@ -142,23 +144,29 @@ impl AstEquiv for Ident {
     fn ast_equiv(&self, other: &Self) -> bool {
         // Exhaustiveness check
         match self {
-            &Ident { name: ref _name, span: ref _span } => {},
+            &Ident {
+                name: ref _name,
+                span: ref _span,
+            } => {}
         }
 
         // Comparison
         match (self, other) {
-            (&Ident { name: ref name1, span: ref span1 },
-             &Ident { name: ref name2, span: ref span2 }) => {
-                AstEquiv::ast_equiv(name1, name2) &&
-                    AstEquiv::ast_equiv(span1, span2) &&
-                    true
-            }
+            (
+                &Ident {
+                    name: ref name1,
+                    span: ref span1,
+                },
+                &Ident {
+                    name: ref name2,
+                    span: ref span2,
+                },
+            ) => AstEquiv::ast_equiv(name1, name2) && AstEquiv::ast_equiv(span1, span2) && true,
         }
     }
 
     fn unnamed_equiv(&self, other: &Self) -> bool {
-        (self.as_str().contains("C2RustUnnamed")
-         && other.as_str().contains("C2RustUnnamed"))
+        (self.as_str().contains("C2RustUnnamed") && other.as_str().contains("C2RustUnnamed"))
             || self.ast_equiv(other)
     }
 }

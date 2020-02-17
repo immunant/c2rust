@@ -1,4 +1,5 @@
 //! Helpers for rewriting all `fn` itemlikes, regardless of item kind.
+use smallvec::smallvec;
 use smallvec::SmallVec;
 use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
@@ -6,7 +7,6 @@ use syntax::ptr::P;
 use syntax::util::map_in_place::MapInPlace;
 use syntax::visit::{self, Visitor};
 use syntax_pos::Span;
-use smallvec::smallvec;
 
 use crate::ast_manip::{AstName, GetNodeId, GetSpan, MutVisit, Visit};
 
@@ -41,7 +41,8 @@ impl AstName for FnKind {
             FnKind::ImplMethod => "ImplMethod",
             FnKind::TraitMethod => "TraitMethod",
             FnKind::Foreign => "Foreign",
-        }.into()
+        }
+        .into()
     }
 }
 

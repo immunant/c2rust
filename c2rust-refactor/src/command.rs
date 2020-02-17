@@ -9,13 +9,13 @@ use rustc_interface::interface;
 use rustc_interface::util;
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::iter;
 use std::io::Write;
+use std::iter;
 use std::mem;
 use std::ops::Deref;
 use std::process;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use syntax::ast::{Crate, NodeId, CRATE_NODE_ID};
 use syntax::ast::{Expr, Item, Pat, Stmt, Ty};
 use syntax::ptr::P;
@@ -27,8 +27,8 @@ use crate::ast_manip::map_ast_into;
 use crate::ast_manip::number_nodes::{
     number_nodes, number_nodes_with, reset_node_ids, NodeIdCounter,
 };
-use crate::ast_manip::{remove_paren, ListNodeIds, MutVisit, Visit};
 use crate::ast_manip::{collect_comments, gather_comments, Comment, CommentMap};
+use crate::ast_manip::{remove_paren, ListNodeIds, MutVisit, Visit};
 use crate::collapse::CollapseInfo;
 use crate::driver::{self, Phase};
 use crate::file_io::FileIO;
@@ -152,11 +152,8 @@ fn parse_extras(source_map: &Lrc<SourceMap>, session: &Lrc<Session>) -> Vec<Comm
     let mut comments = vec![];
     for file in source_map.files().iter() {
         if let Some(src) = &file.src {
-            let mut new_comments = gather_comments(
-                &session.parse_sess,
-                file.name.clone(),
-                src.deref().clone(),
-            );
+            let mut new_comments =
+                gather_comments(&session.parse_sess, file.name.clone(), src.deref().clone());
 
             // gather_comments_and_literals starts positions at 0 each time, so
             // we need to adjust by the file offset
@@ -175,7 +172,12 @@ pub const FRESH_NODE_ID_START: u32 = 0x8000_0000;
 impl DiskState {
     /// Initialization shared between new() and load_crate()
     #[cfg_attr(feature = "profile", flame)]
-    fn new(krate: Crate, source_map: &Lrc<SourceMap>, session: &Lrc<Session>, node_map: &mut NodeMap) -> DiskState {
+    fn new(
+        krate: Crate,
+        source_map: &Lrc<SourceMap>,
+        session: &Lrc<Session>,
+        node_map: &mut NodeMap,
+    ) -> DiskState {
         // (Re)initialize `node_map` and `marks`.
         node_map.init(krate.list_node_ids().into_iter());
         // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
@@ -270,17 +272,19 @@ impl RefactorState {
         let node_id_map = self.node_map.clone().into_inner();
 
         self.file_io
-            .save_marks(
-                new,
-                self.session().source_map(),
-                &node_id_map,
-                &self.marks,
-            )
+            .save_marks(new, self.session().source_map(), &node_id_map, &self.marks)
             .unwrap();
 
-        let rw = rewrite::rewrite(self.session(), old, new, &disk_state.comment_map, node_id_map, |map| {
-            map_ast_into(&self.parsed_nodes, map);
-        });
+        let rw = rewrite::rewrite(
+            self.session(),
+            old,
+            new,
+            &disk_state.comment_map,
+            node_id_map,
+            |map| {
+                map_ast_into(&self.parsed_nodes, map);
+            },
+        );
         // Note that `rewrite_files_with` does not read any files from disk - it uses the
         // `SourceMap` to get files' original source text.
         files::rewrite_files_with(self.source_map(), &rw, &*self.file_io).unwrap();
@@ -314,19 +318,16 @@ impl RefactorState {
                 remove_paren(&mut krate);
                 number_nodes(&mut krate);
 
-                DiskState::new(
-                    krate,
-                    source_map,
-                    session,
-                    node_map,
-                )
+                DiskState::new(krate, source_map, session, node_map)
             });
 
             // The newly loaded `krate` and reinitialized `node_map` reference
             // none of the old `parsed_nodes`.  That means we can reset the ID
             // counter without risk of ID collisions.
             let mut cs = CommandState::new(
-                krate.take().unwrap_or_else(|| disk_state.orig_krate.clone()),
+                krate
+                    .take()
+                    .unwrap_or_else(|| disk_state.orig_krate.clone()),
                 Phase::Phase1,
                 marks.clone(),
                 ParsedNodes::default(),
@@ -355,11 +356,13 @@ impl RefactorState {
                 Phase::Phase2 | Phase::Phase3 => {
                     profile_start!("Expand crate");
                     let expansion = queries.expansion()?.peek();
-                    cs
-                        .krate
-                        .replace(expansion.0.clone());
+                    cs.krate.replace(expansion.0.clone());
                     max_crate_node_id = Some(
-                        expansion.1.borrow().borrow_mut().access(|resolver| resolver.next_node_id())
+                        expansion
+                            .1
+                            .borrow()
+                            .borrow_mut()
+                            .access(|resolver| resolver.next_node_id()),
                     );
                     profile_end!("Expand crate");
                     remove_paren(cs.krate.get_mut());
@@ -380,8 +383,7 @@ impl RefactorState {
             // Run the transform
             let r = match phase {
                 Phase::Phase1 => {
-                    let cx =
-                        RefactorCtxt::new_phase_1(session);
+                    let cx = RefactorCtxt::new_phase_1(session);
 
                     f(&cs, &cx)
                 }
@@ -399,11 +401,7 @@ impl RefactorState {
                     );
                     profile_end!("Lower to HIR");
 
-                    let cx = RefactorCtxt::new_phase_2(
-                        session,
-                        max_crate_node_id.unwrap(),
-                        &map,
-                    );
+                    let cx = RefactorCtxt::new_phase_2(session, max_crate_node_id.unwrap(), &map);
 
                     f(&cs, &cx)
                 }
@@ -530,10 +528,11 @@ impl RefactorState {
             .map(|s| s.as_ref().to_owned())
             .collect::<Vec<_>>();
         info!("running command: {} {:?}", cmd_name, args);
-        self.commands.push(args.iter().fold(cmd_name.to_string(), |mut s, arg| {
-            s.push_str(arg);
-            s
-        }));
+        self.commands
+            .push(args.iter().fold(cmd_name.to_string(), |mut s, arg| {
+                s.push_str(arg);
+                s
+            }));
 
         let mut cmd = self.cmd_reg.get_command(cmd_name, &args)?;
         profile_start!(format!("Command {}", cmd_name));
@@ -835,7 +834,10 @@ fn register_commit(reg: &mut Registry) {
             if git_commit && !commands.is_empty() {
                 let commit_msg = format!(
                     "refactor {} {}",
-                    rs.config.input_path.as_ref().map_or(String::new(), |s| s.display().to_string()),
+                    rs.config
+                        .input_path
+                        .as_ref()
+                        .map_or(String::new(), |s| s.display().to_string()),
                     commands.join("\n"),
                 );
                 if !clean {
@@ -848,8 +850,7 @@ fn register_commit(reg: &mut Registry) {
                         .stdin(process::Stdio::piped())
                         .spawn()
                         .expect("Could not execute git commit");
-                    git
-                        .stdin
+                    git.stdin
                         .as_mut()
                         .expect("failed to open stdin")
                         .write_all(commit_msg.as_bytes())
@@ -876,14 +877,14 @@ fn register_commit(reg: &mut Registry) {
         Box::new(FuncCommand(|rs: &mut RefactorState| {
             rs.transform_crate(Phase::Phase2, |st, _cx| {
                 eprintln!("{:#?}", st.krate());
-            }).unwrap();
+            })
+            .unwrap();
         }))
     });
 
     reg.register("noop", |_args| {
         Box::new(FuncCommand(|rs: &mut RefactorState| {
-            rs.transform_crate(Phase::Phase2, |_st, _cx| {
-            }).unwrap();
+            rs.transform_crate(Phase::Phase2, |_st, _cx| {}).unwrap();
         }))
     });
 }

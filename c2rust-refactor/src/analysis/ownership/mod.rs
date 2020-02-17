@@ -23,7 +23,7 @@ use log::Level;
 use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
 use rustc::hir::{Mutability, Node};
-use rustc::ty::{TyCtxt, TyKind, TypeAndMut, TyS};
+use rustc::ty::{TyCtxt, TyKind, TyS, TypeAndMut};
 use rustc_index::vec::{Idx, IndexVec};
 use syntax::ast::IntTy;
 use syntax::source_map::Span;
@@ -216,10 +216,17 @@ fn analyze_externs<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'
             if let Some(p) = input.label {
                 match input.ty.kind {
                     TyKind::Ref(_, _, Mutability::Mutable) => {
-                        func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
+                        func_summ
+                            .sig_cset
+                            .add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
                     }
-                    TyKind::RawPtr(TypeAndMut{mutbl: Mutability::Mutable, ..}) => {
-                        func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
+                    TyKind::RawPtr(TypeAndMut {
+                        mutbl: Mutability::Mutable,
+                        ..
+                    }) => {
+                        func_summ
+                            .sig_cset
+                            .add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
                     }
                     _ => {}
                 }
@@ -253,10 +260,7 @@ fn is_mut_t(ty: &TyS) -> bool {
 /// so that ownership analysis can reason about them properly
 // TODO: When we want to add more constraints to functions here, we should make this
 // more generic
-fn register_std_constraints<'a, 'tcx, 'lty>(
-    ctxt: &mut Ctxt<'lty, 'tcx>,
-    tctxt: TyCtxt<'tcx>,
-) {
+fn register_std_constraints<'a, 'tcx, 'lty>(ctxt: &mut Ctxt<'lty, 'tcx>, tctxt: TyCtxt<'tcx>) {
     for (def_id, func_summ) in ctxt.funcs_mut() {
         let fn_name_path = tctxt.def_path(*def_id).to_string_no_crate();
 
@@ -272,7 +276,9 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
             let ret_is_mut_t = is_mut_t(func_summ.sig.output.ty);
             if param0_is_mut_t && param1_is_isize && ret_is_mut_t {
                 func_summ.cset_provided = true;
-                func_summ.sig_cset.add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
+                func_summ
+                    .sig_cset
+                    .add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
             }
         }
     }
@@ -490,7 +496,8 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 }
             };
 
-            let locals = func.locals
+            let locals = func
+                .locals
                 .iter()
                 .map(|(&span, lty)| (span, var_lcx.relabel(&lty, &mut f)))
                 .collect();

@@ -85,7 +85,8 @@ impl<'c> Translation<'c> {
                     let x86_64_attr = mk()
                         .call_attr("cfg", vec!["target_arch = \"x86_64\""])
                         .pub_();
-                    let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
+                    let std_or_core =
+                        if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
 
                     item_store.add_use_with_attr(
                         vec![std_or_core.clone(), "arch".into(), "x86".into()],
@@ -222,7 +223,11 @@ impl<'c> Translation<'c> {
         let mut processed_args = vec![];
         let (_, first_expr_id, _) = self.strip_vector_explicit_cast(args[0]);
         processed_args.push(first_expr_id);
-        processed_args.extend(args[1..].iter().map(|arg| self.clean_int_or_vector_param(*arg)));
+        processed_args.extend(
+            args[1..]
+                .iter()
+                .map(|arg| self.clean_int_or_vector_param(*arg)),
+        );
 
         let param_translation = self.convert_exprs(ctx.used(), &processed_args)?;
         param_translation.and_then(|call_params| {
@@ -286,7 +291,10 @@ impl<'c> Translation<'c> {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");
 
-            Ok(WithStmts::new_val(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>)))
+            Ok(WithStmts::new_val(mk().call_expr(
+                mk().ident_expr(fn_name),
+                Vec::new() as Vec<P<Expr>>,
+            )))
         }
     }
 
@@ -390,16 +398,19 @@ impl<'c> Translation<'c> {
         }
 
         let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..])?;
-        let param_translation = self.convert_exprs(ctx.used(), &[
-            first_expr_id,
-            second_expr_id,
-            mask_expr_id,
-        ])?;
+        let param_translation =
+            self.convert_exprs(ctx.used(), &[first_expr_id, second_expr_id, mask_expr_id])?;
         param_translation.and_then(|params| {
             let mut params = params.into_iter();
-            let first = params.next().ok_or("Missing first param in convert_shuffle_vector")?;
-            let second = params.next().ok_or("Missing second param in convert_shuffle_vector")?;
-            let third = params.next().ok_or("Missing third param in convert_shuffle_vector")?;
+            let first = params
+                .next()
+                .ok_or("Missing first param in convert_shuffle_vector")?;
+            let second = params
+                .next()
+                .ok_or("Missing second param in convert_shuffle_vector")?;
+            let third = params
+                .next()
+                .ok_or("Missing third param in convert_shuffle_vector")?;
             let mut new_params = vec![first];
 
             // Some don't take a second param, but the expr is still there for some reason
@@ -432,8 +443,7 @@ impl<'c> Translation<'c> {
                     // _mm_shufflehi_epi16 mask params start with const int,
                     // _mm_shufflelo_epi16 does not
                     let expr_id = &child_expr_ids[2];
-                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind
-                    {
+                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind {
                         "_mm_shufflehi_epi16"
                     } else {
                         "_mm_shufflelo_epi16"
@@ -443,8 +453,7 @@ impl<'c> Translation<'c> {
                     // _mm256_shufflehi_epi16 mask params start with const int,
                     // _mm256_shufflelo_epi16 does not
                     let expr_id = &child_expr_ids[2];
-                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind
-                    {
+                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind {
                         "_mm256_shufflehi_epi16"
                     } else {
                         "_mm256_shufflelo_epi16"
@@ -527,24 +536,20 @@ impl<'c> Translation<'c> {
             // Sometimes you find a constant and the mask is used further down the expr list
             Literal(_, Integer(0, IntBase::Dec)) => self.get_shuffle_vector_mask(&[expr_ids[4]]),
             // format: ((char)(mask) & A) ?  B : C - (char)(mask)
-            Conditional(_, lhs_expr_id, _, _) => {
-                match self.ast_context[lhs_expr_id].kind {
-                    Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
-                        match self.ast_context[lhs_expr_id].kind {
-                            ImplicitCast(_, expr_id, IntegralCast, _, _) => {
-                                match self.ast_context[expr_id].kind {
-                                    ExplicitCast(_, expr_id, IntegralCast, _, _) => Ok(expr_id),
-                                    ref e => {
-                                        Err(format_err!("Found unknown mask format: {:?}", e))?
-                                    }
-                                }
+            Conditional(_, lhs_expr_id, _, _) => match self.ast_context[lhs_expr_id].kind {
+                Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
+                    match self.ast_context[lhs_expr_id].kind {
+                        ImplicitCast(_, expr_id, IntegralCast, _, _) => {
+                            match self.ast_context[expr_id].kind {
+                                ExplicitCast(_, expr_id, IntegralCast, _, _) => Ok(expr_id),
+                                ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
                             }
-                            ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
                         }
+                        ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
                     }
-                    ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
                 }
-            }
+                ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
+            },
             ref e => Err(format_err!("Found unknown mask format: {:?}", e))?,
         }
     }

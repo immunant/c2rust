@@ -227,7 +227,16 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b")")
             }
 
-            Some(&CExprKind::Atomic{ref name, ptr, order, val1, order_fail, val2, weak, ..}) => {
+            Some(&CExprKind::Atomic {
+                ref name,
+                ptr,
+                order,
+                val1,
+                order_fail,
+                val2,
+                weak,
+                ..
+            }) => {
                 self.writer.write_fmt(format_args!("{}(", name))?;
 
                 self.print_expr(ptr, context)?;
@@ -716,30 +725,25 @@ impl<W: Write> Printer<W> {
                 Ok(())
             }
 
-            Some(&CDeclKind::MacroObject {
-                ref name,
-            }) => {
+            Some(&CDeclKind::MacroObject { ref name }) => {
                 self.writer.write_fmt(format_args!("#define {} ", name))?;
 
                 Ok(())
             }
 
-            Some(&CDeclKind::MacroFunction {
-                ref name,
-                ..
-            }) => {
+            Some(&CDeclKind::MacroFunction { ref name, .. }) => {
                 self.writer.write_fmt(format_args!("#define {}() ", name))?;
 
                 Ok(())
             }
 
-            Some(&CDeclKind::NonCanonicalDecl {
-                ref canonical_decl,
-            }) => {
+            Some(&CDeclKind::NonCanonicalDecl { ref canonical_decl }) => {
                 if let Some(name) = context[*canonical_decl].kind.get_name() {
-                    self.writer.write_fmt(format_args!("// non-canonical decl for {}", name))
+                    self.writer
+                        .write_fmt(format_args!("// non-canonical decl for {}", name))
                 } else {
-                    self.writer.write_fmt(format_args!("// non-canonical decl for <unknown>"))
+                    self.writer
+                        .write_fmt(format_args!("// non-canonical decl for <unknown>"))
                 }
             }
 

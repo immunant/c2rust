@@ -1,9 +1,9 @@
 //! `MutVisit` trait for AST types that can be modified.
 use syntax::ast::*;
 use syntax::mut_visit::*;
-use syntax::token::{self, Token};
 use syntax::ptr::P;
 use syntax::source_map::Span;
+use syntax::token::{self, Token};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::util::map_in_place::MapInPlace;
 

@@ -2,9 +2,9 @@
 
 use std::fmt;
 
-use syntax::ast::Mutability;
 use rustc::ty::TyKind;
 use rustc_index::vec::Idx;
+use syntax::ast::Mutability;
 
 use crate::analysis::labeled_ty::LabeledTy;
 
@@ -106,7 +106,11 @@ where
             TyKind::Ref(_, _, m) => write!(
                 fmt,
                 "&{}{:?} {:?}",
-                if m == Mutability::Immutable { "" } else { "mut " },
+                if m == Mutability::Immutable {
+                    ""
+                } else {
+                    "mut "
+                },
                 PrettyLabel(self.0.label),
                 Pretty(self.0.args[0])
             ),

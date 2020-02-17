@@ -564,14 +564,12 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
 
                     for &(ref pat, ref lbl) in cases {
                         match lbl {
-                            &StructureLabel::GoTo(lbl) => merged_goto
-                                .entry(lbl)
-                                .or_insert(vec![])
-                                .push(pat.clone()),
-                            &StructureLabel::ExitTo(lbl) => merged_exit
-                                .entry(lbl)
-                                .or_insert(vec![])
-                                .push(pat.clone()),
+                            &StructureLabel::GoTo(lbl) => {
+                                merged_goto.entry(lbl).or_insert(vec![]).push(pat.clone())
+                            }
+                            &StructureLabel::ExitTo(lbl) => {
+                                merged_exit.entry(lbl).or_insert(vec![]).push(pat.clone())
+                            }
                             _ => panic!("simplify_structure: Nested precondition violated"),
                         }
                     }
@@ -585,14 +583,22 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                             &StructureLabel::GoTo(lbl) => match merged_goto.swap_remove(&lbl) {
                                 None => {}
                                 Some(pats) => {
-                                    let pat = if pats.len() == 1 { pats[0].clone() } else { mk().or_pat(pats) };
+                                    let pat = if pats.len() == 1 {
+                                        pats[0].clone()
+                                    } else {
+                                        mk().or_pat(pats)
+                                    };
                                     cases_new.push((pat, StructureLabel::GoTo(lbl)))
                                 }
                             },
                             &StructureLabel::ExitTo(lbl) => match merged_exit.swap_remove(&lbl) {
                                 None => {}
                                 Some(pats) => {
-                                    let pat = if pats.len() == 1 { pats[0].clone() } else { mk().or_pat(pats) };
+                                    let pat = if pats.len() == 1 {
+                                        pats[0].clone()
+                                    } else {
+                                        mk().or_pat(pats)
+                                    };
                                     cases_new.push((pat, StructureLabel::ExitTo(lbl)))
                                 }
                             },

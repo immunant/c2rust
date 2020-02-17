@@ -16,11 +16,12 @@ fn main() {
 
     // Build a TranspilerConfig from the command line
     let cc_json_path = Path::new(matches.value_of("COMPILE_COMMANDS").unwrap());
-    let cc_json_path = cc_json_path
-        .canonicalize()
-        .unwrap_or_else(|_| {
-            panic!("Could not find compile_commands.json file at path: {}", cc_json_path.display())
-        });
+    let cc_json_path = cc_json_path.canonicalize().unwrap_or_else(|_| {
+        panic!(
+            "Could not find compile_commands.json file at path: {}",
+            cc_json_path.display()
+        )
+    });
     let extra_args: Vec<&str> = match matches.values_of("extra-clang-args") {
         Some(args) => args.collect(),
         None => Vec::new(),

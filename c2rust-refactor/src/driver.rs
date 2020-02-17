@@ -2,8 +2,8 @@
 //! `rustc_driver::run_compiler`.
 
 use rustc::dep_graph::DepGraph;
-use rustc::hir::map as hir_map;
 use rustc::hir;
+use rustc::hir::map as hir_map;
 use rustc::lint::{self, LintStore};
 use rustc::session::config::Options as SessionOptions;
 use rustc::session::config::{Input, OutputFilenames};
@@ -16,11 +16,13 @@ use rustc_data_structures::declare_box_region_type;
 use rustc_data_structures::sync::{Lock, Lrc};
 use rustc_driver;
 use rustc_errors::DiagnosticBuilder;
+use rustc_errors::PResult;
 use rustc_incremental::DepGraphFuture;
 use rustc_interface::interface;
 use rustc_interface::interface::BoxedResolver;
 use rustc_interface::util::get_codegen_backend;
 use rustc_interface::{util, Config};
+use rustc_parse::parser::Parser;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -28,33 +30,31 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
+use syntax;
 use syntax::ast;
 use syntax::ast::DUMMY_NODE_ID;
 use syntax::ast::{
     Block, BlockCheckMode, Expr, ForeignItem, ImplItem, Item, ItemKind, NodeId, Param, Pat, Stmt,
     Ty, UnsafeSource,
 };
-use syntax_pos::hygiene::SyntaxContext;
-use rustc_parse::parser::Parser;
-use syntax::token::{self, TokenKind};
-use syntax;
-use rustc_errors::PResult;
 use syntax::ptr::P;
 use syntax::source_map::SourceMap;
 use syntax::source_map::{FileLoader, RealFileLoader};
 use syntax::symbol::{kw, Symbol};
+use syntax::token::{self, TokenKind};
 use syntax::tokenstream::TokenTree;
-use syntax_pos::{FileName, Span, DUMMY_SP};
 use syntax_pos::edition::Edition;
+use syntax_pos::hygiene::SyntaxContext;
+use syntax_pos::{FileName, Span, DUMMY_SP};
 
 use crate::ast_manip::remove_paren;
 use crate::command::{GenerationalTyCtxt, RefactorState, Registry};
 use crate::file_io::{ArcFileIO, FileIO};
 // TODO: don't forget to call span_fix after parsing
 // use crate::span_fix;
+use crate::context::HirMap;
 use crate::util::Lone;
 use crate::RefactorCtxt;
-use crate::context::HirMap;
 
 /// Compiler phase selection.  Later phases have more analysis results available, but are less
 /// robust against broken code.  (For example, phase 3 provides typechecking results, but can't be
@@ -370,7 +370,10 @@ declare_box_region_type!(
     (&'gcx GlobalCtxt<'gcx>) -> ((), ())
 );
 
-pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) -> interface::Compiler {
+pub fn make_compiler(
+    config: &Config,
+    file_io: Arc<dyn FileIO + Sync + Send>,
+) -> interface::Compiler {
     let mut config = clone_config(config);
     config.file_loader = Some(Box::new(ArcFileIO(file_io)));
     let (sess, codegen_backend, source_map) = util::create_session(

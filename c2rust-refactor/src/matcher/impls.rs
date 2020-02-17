@@ -3,16 +3,16 @@ use rustc_target::spec::abi::Abi;
 use std::convert::TryInto;
 use std::rc::Rc;
 use syntax::ast::*;
-use syntax_pos::hygiene::SyntaxContext;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
+use syntax_pos::hygiene::SyntaxContext;
 
-use crate::ast_manip::AstNode;
 use crate::ast_manip::util::{macro_name, PatternSymbol};
+use crate::ast_manip::AstNode;
 use crate::matcher::{self, MatchCtxt, TryMatch};
 
 impl TryMatch for AstNode {
@@ -142,11 +142,9 @@ impl TryMatch for Ty {
         if let TyKind::Mac(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
-                "marked" => mcx.do_marked(
-                    &mac.args,
-                    |p| p.parse_ty().map(|p| p.into_inner()),
-                    target,
-                ),
+                "marked" => {
+                    mcx.do_marked(&mac.args, |p| p.parse_ty().map(|p| p.into_inner()), target)
+                }
                 "def" => mcx.do_def_ty(&mac.args, target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };

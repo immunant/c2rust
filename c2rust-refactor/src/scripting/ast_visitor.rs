@@ -5,9 +5,9 @@ use syntax::ptr::P;
 
 use rlua::prelude::{LuaContext, LuaFunction, LuaResult, LuaTable, LuaUserData, LuaValue};
 
-use crate::ast_manip::{WalkAst};
-use super::DisplayLuaError;
 use super::to_lua_ast_node::{FromLuaAstNode, FromLuaExt, LuaAstNode, ToLuaScoped};
+use super::DisplayLuaError;
+use crate::ast_manip::WalkAst;
 
 macro_rules! call_lua_visitor_method {
     ($obj: expr , $method: ident ($($params: expr),*)) => {
@@ -24,18 +24,16 @@ macro_rules! call_lua_visitor_method {
 }
 
 pub(crate) struct LuaAstVisitor<'lua> {
-    visitor: LuaTable<'lua>
+    visitor: LuaTable<'lua>,
 }
 
 impl<'lua> LuaAstVisitor<'lua> {
     pub fn new(visitor: LuaTable<'lua>) -> Self {
-        LuaAstVisitor {
-            visitor,
-        }
+        LuaAstVisitor { visitor }
     }
 
     pub fn visit_crate(&self, lua_crate: LuaTable<'lua>) -> LuaResult<()> {
-        call_lua_visitor_method!(self.visitor,visit_crate(lua_crate));
+        call_lua_visitor_method!(self.visitor, visit_crate(lua_crate));
 
         self.visit_mod(lua_crate.get("module")?)?;
 
@@ -43,7 +41,7 @@ impl<'lua> LuaAstVisitor<'lua> {
     }
 
     pub fn visit_mod(&self, module: LuaTable<'lua>) -> LuaResult<()> {
-        call_lua_visitor_method!(self.visitor,visit_mod(module));
+        call_lua_visitor_method!(self.visitor, visit_mod(module));
 
         let items: LuaTable = module.get("items")?;
 
@@ -55,7 +53,7 @@ impl<'lua> LuaAstVisitor<'lua> {
     }
 
     pub fn visit_impl(&self, imp: LuaTable<'lua>) -> LuaResult<()> {
-        call_lua_visitor_method!(self.visitor,visit_impl(imp));
+        call_lua_visitor_method!(self.visitor, visit_impl(imp));
 
         let items: LuaTable = imp.get("items")?;
 
@@ -64,7 +62,9 @@ impl<'lua> LuaAstVisitor<'lua> {
             let kind: String = item.get("kind")?;
 
             match kind.as_str() {
-                "ImplMethod" => { self.visit_fn_like(item)?; },
+                "ImplMethod" => {
+                    self.visit_fn_like(item)?;
+                }
                 ref e => unimplemented!("visit_impl: Impl kind: {:?}", e),
             }
         }
@@ -73,49 +73,50 @@ impl<'lua> LuaAstVisitor<'lua> {
     }
 
     pub fn visit_item(&self, item: LuaTable<'lua>) -> LuaResult<()> {
-        call_lua_visitor_method!(self.visitor,visit_item(item));
+        call_lua_visitor_method!(self.visitor, visit_item(item));
 
         match item.get::<_, String>("kind")?.as_str() {
-            "Fn" => { self.visit_fn_like(item)?; },
-            "Impl" => { self.visit_impl(item)?; },
-            ref e =>
-                warn!("visit_item: Found unsupported item kind: {:?}", e),
+            "Fn" => {
+                self.visit_fn_like(item)?;
+            }
+            "Impl" => {
+                self.visit_impl(item)?;
+            }
+            ref e => warn!("visit_item: Found unsupported item kind: {:?}", e),
         }
 
         Ok(())
     }
 
     pub fn visit_expr(&self, expr: LuaTable<'lua>) -> LuaResult<()> {
-        call_lua_visitor_method!(self.visitor,visit_expr(expr));
+        call_lua_visitor_method!(self.visitor, visit_expr(expr));
 
         match expr.get::<_, String>("kind")?.as_str() {
             "Box" => {
                 let boxed = expr.get("expr")?;
 
                 self.visit_expr(boxed)?;
-            },
-            "AssignOp"
-            | "Binary"
-            | "Assign" => {
+            }
+            "AssignOp" | "Binary" | "Assign" => {
                 let lhs = expr.get("lhs")?;
                 let rhs = expr.get("rhs")?;
 
                 self.visit_expr(lhs)?;
                 self.visit_expr(rhs)?;
-            },
+            }
             "Array" => {
                 let values: LuaTable = expr.get("values")?;
 
                 for val in values.sequence_values::<LuaTable>() {
                     self.visit_expr(val?)?;
                 }
-            },
+            }
             "Path" => {
                 // TODO
-            },
+            }
             "Lit" => {
                 // TODO: self.visit_literal(lit)?;
-            },
+            }
             "InlineAsm" => {
                 let inputs: LuaTable = expr.get("inputs")?;
                 let outputs: LuaTable = expr.get("outputs")?;
@@ -133,12 +134,12 @@ impl<'lua> LuaAstVisitor<'lua> {
 
                     self.visit_expr(expr)?;
                 }
-            },
+            }
             "Unary" => {
                 let expr = expr.get("expr")?;
 
                 self.visit_expr(expr)?;
-            },
+            }
             "Call" => {
                 let path = expr.get("path")?;
                 let args: LuaTable = expr.get("args")?;
@@ -148,31 +149,31 @@ impl<'lua> LuaAstVisitor<'lua> {
                 for arg in args.sequence_values::<LuaTable>() {
                     self.visit_expr(arg?)?;
                 }
-            },
+            }
             "MethodCall" => {
                 let args: LuaTable = expr.get("args")?;
 
                 for arg in args.sequence_values::<LuaTable>() {
                     self.visit_expr(arg?)?;
                 }
-            },
+            }
             "Index" => {
                 let indexed = expr.get("indexed")?;
                 let index = expr.get("index")?;
 
                 self.visit_expr(indexed)?;
                 self.visit_expr(index)?;
-            },
+            }
             "AddrOf" => {
                 let expr = expr.get("expr")?;
 
                 self.visit_expr(expr)?;
-            },
+            }
             "Try" => {
                 let expr = expr.get("expr")?;
 
                 self.visit_expr(expr)?;
-            },
+            }
             "Match" => {
                 let match_expr = expr.get("expr")?;
                 let arms: LuaTable = expr.get("arms")?;
@@ -190,12 +191,12 @@ impl<'lua> LuaAstVisitor<'lua> {
                 }
 
                 self.visit_expr(match_expr)?;
-            },
+            }
             "Cast" => {
                 let expr = expr.get("expr")?;
 
                 self.visit_expr(expr)?;
-            },
+            }
             "If" => {
                 let cond = expr.get("cond")?;
                 let then = expr.get("then")?;
@@ -207,48 +208,48 @@ impl<'lua> LuaAstVisitor<'lua> {
                 if let Some(els) = opt_else {
                     self.visit_expr(els)?;
                 }
-            },
+            }
             "Block" => {
                 let block = expr.get("block")?;
 
                 self.visit_block(block)?
-            },
+            }
             "Tup" => {
                 let exprs: LuaTable = expr.get("exprs")?;
 
                 for expr in exprs.sequence_values::<LuaTable>() {
                     self.visit_expr(expr?)?;
                 }
-            },
+            }
             "Paren" => {
                 let expr = expr.get("expr")?;
 
                 self.visit_expr(expr)?
-            },
+            }
             "Field" => {
                 let expr = expr.get("expr")?;
 
                 self.visit_expr(expr)?
-            },
+            }
             "Loop" => {
                 let block = expr.get("block")?;
 
                 self.visit_block(block)?
-            },
+            }
             "While" => {
                 let block = expr.get("block")?;
                 let cond = expr.get("cond")?;
 
                 self.visit_expr(cond)?;
                 self.visit_block(block)?
-            },
+            }
             "Ret" => {
                 let opt_val = expr.get("value")?;
 
                 if let Some(value) = opt_val {
                     self.visit_expr(value)?;
                 }
-            },
+            }
             ref e => warn!("visit_expr: Found unsupported expr {}", e),
         }
 
@@ -256,23 +257,22 @@ impl<'lua> LuaAstVisitor<'lua> {
     }
 
     pub fn visit_stmt(&self, stmt: LuaTable<'lua>) -> LuaResult<()> {
-        call_lua_visitor_method!(self.visitor,visit_stmt(stmt));
+        call_lua_visitor_method!(self.visitor, visit_stmt(stmt));
 
         match stmt.get::<_, String>("kind")?.as_str() {
-            "Expr"
-            | "Semi" => {
+            "Expr" | "Semi" => {
                 let expr = stmt.get("expr")?;
 
                 self.visit_expr(expr)?;
-            },
+            }
             "Local" => {
                 self.visit_local(stmt)?;
-            },
+            }
             "Item" => {
                 let item = stmt.get("item")?;
 
                 self.visit_item(item)?;
-            },
+            }
             ref e => warn!("visit_stmt: Unsupported Stmt kind: {}", e),
         }
 
@@ -280,7 +280,7 @@ impl<'lua> LuaAstVisitor<'lua> {
     }
 
     pub fn visit_local(&self, local: LuaTable<'lua>) -> LuaResult<()> {
-        call_lua_visitor_method!(self.visitor,visit_local(local));
+        call_lua_visitor_method!(self.visitor, visit_local(local));
 
         let opt_init = local.get("init")?;
 
@@ -292,7 +292,7 @@ impl<'lua> LuaAstVisitor<'lua> {
     }
 
     pub fn visit_block(&self, block: LuaTable<'lua>) -> LuaResult<()> {
-        call_lua_visitor_method!(self.visitor,visit_block(block));
+        call_lua_visitor_method!(self.visitor, visit_block(block));
 
         let stmts: LuaTable = block.get("stmts")?;
 
@@ -304,7 +304,7 @@ impl<'lua> LuaAstVisitor<'lua> {
     }
 
     pub fn visit_fn_like(&self, fn_like: LuaTable<'lua>) -> LuaResult<()> {
-        call_lua_visitor_method!(self.visitor,visit_fn_like(fn_like));
+        call_lua_visitor_method!(self.visitor, visit_fn_like(fn_like));
 
         let opt_block = fn_like.get("block")?;
 
@@ -316,12 +316,11 @@ impl<'lua> LuaAstVisitor<'lua> {
     }
 
     pub fn finish(&self) -> LuaResult<()> {
-        call_lua_visitor_method!(self.visitor,finish());
+        call_lua_visitor_method!(self.visitor, finish());
 
         Ok(())
     }
 }
-
 
 pub(crate) struct LuaAstVisitorNew<'lua> {
     visitor: LuaTable<'lua>,
@@ -334,38 +333,40 @@ impl<'lua> LuaAstVisitorNew<'lua> {
     }
 
     fn call_visit<T>(&mut self, method: LuaFunction<'lua>, param: &mut T)
-        where T: WalkAst + Clone,
-              LuaAstNode<T>: 'static + LuaUserData + Clone + FromLuaAstNode,
+    where
+        T: WalkAst + Clone,
+        LuaAstNode<T>: 'static + LuaUserData + Clone + FromLuaAstNode,
     {
         let node = LuaAstNode::new(param.clone());
         self.lua_ctx.scope(|scope| {
             let visitor = self.visitor.clone();
             let param = scope.create_static_userdata(node.clone()).unwrap();
             let walk = scope.create_function_mut(|lua_ctx, x: LuaValue| {
-                <LuaAstNode<T> as FromLuaAstNode>::from_lua_ast_node(x, lua_ctx)?
-                    .walk(self);
+                <LuaAstNode<T> as FromLuaAstNode>::from_lua_ast_node(x, lua_ctx)?.walk(self);
                 Ok(())
             });
-            method.call((visitor, (param, walk)))
+            method
+                .call((visitor, (param, walk)))
                 .unwrap_or_else(|e| panic!("Lua visit function failed: {:}", DisplayLuaError(e)))
         });
         *param = node.into_inner();
     }
 
     fn call_flat_map<T>(&mut self, method: LuaFunction<'lua>, param: T) -> Vec<T>
-        where T: WalkAst + ToLuaScoped + FromLuaExt,
-              LuaAstNode<T>: LuaUserData + FromLuaAstNode,
+    where
+        T: WalkAst + ToLuaScoped + FromLuaExt,
+        LuaAstNode<T>: LuaUserData + FromLuaAstNode,
     {
         let lua_ctx = self.lua_ctx;
         lua_ctx.scope(|scope| {
             let visitor = self.visitor.clone();
             let param = ToLuaScoped::to_lua_scoped(param, self.lua_ctx, scope).unwrap();
             let walk = scope.create_function_mut(|lua_ctx, x: LuaValue| {
-                <LuaAstNode<T> as FromLuaAstNode>::from_lua_ast_node(x, lua_ctx)?
-                    .walk(self);
+                <LuaAstNode<T> as FromLuaAstNode>::from_lua_ast_node(x, lua_ctx)?.walk(self);
                 Ok(())
             });
-            method.call((visitor, (param, walk)))
+            method
+                .call((visitor, (param, walk)))
                 .and_then(|res| FromLuaExt::from_lua_ext(res, lua_ctx))
                 .unwrap_or_else(|e| panic!("Lua visit function failed: {:}", DisplayLuaError(e)))
         })
@@ -402,7 +403,7 @@ macro_rules! impl_visitors {
 }
 
 impl<'lua> MutVisitor for LuaAstVisitorNew<'lua> {
-    impl_visitors!{
+    impl_visitors! {
         [visit: visit_mod, Mod, noop_visit_mod],
         [visit: visit_expr, P<Expr>, noop_visit_expr],
         [visit: visit_fn_header, FnHeader, noop_visit_fn_header],

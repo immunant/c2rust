@@ -332,7 +332,10 @@ fn label_tys<'lty, 'a: 'lty, 'tcx: 'a>(
     krate: &ast::Crate,
 ) -> HashMap<HirId, LTy<'lty, 'tcx>> {
     let mut ty_nodes = HashMap::new();
-    let source = LabelTysSource { tcx: cx.ty_ctxt(), ltt };
+    let source = LabelTysSource {
+        tcx: cx.ty_ctxt(),
+        ltt,
+    };
     type_map::map_types(&cx.hir_map(), source, krate, |_, ast_ty, lty| {
         // Note that AST `Ty` nodes don't have `HirId`s, so we index everything by the old `NodeId`
         // instead.
@@ -549,7 +552,9 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     /// Get the signature of the method being called by an expression.  This includes substituting
     /// in the type arguments, if the method is generic.
     fn method_sig(&self, e: &Expr) -> LFnSig<'lty, 'tcx> {
-        let def_id = self.get_tables(e.hir_id).type_dependent_defs()[e.hir_id].unwrap().1;
+        let def_id = self.get_tables(e.hir_id).type_dependent_defs()[e.hir_id]
+            .unwrap()
+            .1;
         let sig = self.def_sig(def_id);
         let substs = self
             .node_substs
@@ -701,7 +706,6 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
             //     self.ltt.unify(self.prim_lty("()"), self.block_lty(body));
             //     self.ltt.unify(rty, self.prim_lty("()"));
             // }
-
             ExprKind::Loop(..) => {} // TODO
 
             ExprKind::Match(..) => {} // TODO
@@ -798,7 +802,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 };
 
                 match adj.kind {
-                    Adjust::NeverToAny => {}     // prev and result tys are unrelated
+                    Adjust::NeverToAny => {} // prev and result tys are unrelated
                     Adjust::Deref(None) => {
                         self.ltt.unify(rty, prev_ty.args[0]);
                     }
