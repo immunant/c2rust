@@ -31,7 +31,7 @@ use c2rust_ast_printer::pprust::{item_to_string, foreign_item_to_string};
 
 use super::externs;
 
-/// # `reoganize_definitions` Command
+/// # `reorganize_definitions` Command
 ///
 /// Usage: `reorganize_definitions`
 ///
