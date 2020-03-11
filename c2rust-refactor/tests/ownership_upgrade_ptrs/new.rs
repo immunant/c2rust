@@ -754,6 +754,31 @@ pub unsafe extern "C" fn eshdn1(#[slice] mut x: Option<&mut [libc::c_ushort]>) {
     }
 }
 
+pub unsafe extern "C" fn eshdn1_nonnull(
+    #[nonnull]
+    #[slice]
+    mut x: &mut [libc::c_ushort],
+) {
+    let mut bits: libc::c_ushort = 0; /* point to significand area */
+    let mut i: libc::c_int = 0;
+    x = x.split_at_mut(2).1;
+    bits = 0i32 as libc::c_ushort;
+    i = 2i32;
+    while i < 10i32 + 3i32 {
+        if x[0] as libc::c_int & 1i32 != 0 {
+            bits = (bits as libc::c_int | 1i32) as libc::c_ushort
+        }
+
+        x[0] = (x[0] as libc::c_int >> 1i32) as libc::c_ushort;
+        if bits as libc::c_int & 2i32 != 0 {
+            x[0] = (x[0] as libc::c_int | 0x8000i32) as libc::c_ushort
+        }
+        bits = ((bits as libc::c_int) << 1i32) as libc::c_ushort;
+        x = x.split_at_mut(1).1;
+        i += 1
+    }
+}
+
 pub unsafe extern "C" fn emovz(
     #[slice] mut a: Option<&[libc::c_ushort]>,
     #[slice] mut b: Option<&mut [libc::c_ushort]>,

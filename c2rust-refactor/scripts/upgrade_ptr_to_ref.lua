@@ -487,11 +487,13 @@ function Visitor:rewrite_method_call_expr(expr)
         end
 
         if not is_mut then
-            offset_expr:to_range(offset_expr, nil)
+            offset_expr = Expr.new{"Range", offset_expr, nil, "HalfOpen"}
         end
 
-        if cfg:is_opt_any() and not cfg:non_null_wrapped() then
-            caller:to_method_call("unwrap", {caller})
+        if not cfg:non_null_wrapped() then
+            if cfg:is_opt_any() then
+                caller:to_method_call("unwrap", {caller})
+            end
 
             if is_mut then
                 caller:to_method_call("split_at_mut", {caller, offset_expr})
