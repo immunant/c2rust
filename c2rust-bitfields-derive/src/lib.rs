@@ -5,7 +5,6 @@ extern crate quote;
 extern crate syn;
 
 use proc_macro::{Span, TokenStream};
-use quote::__rt;
 use quote::quote;
 use syn::parse::Error;
 use syn::punctuated::Punctuated;
@@ -25,7 +24,7 @@ struct BFFieldAttr {
     field_name: Ident,
     name: String,
     ty: String,
-    bits: (String, __rt::Span),
+    bits: (String, proc_macro2::Span),
 }
 
 fn parse_bitfield_attr(
