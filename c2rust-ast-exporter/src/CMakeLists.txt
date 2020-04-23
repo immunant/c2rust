@@ -87,7 +87,7 @@ endif()
 add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
 
 set_target_properties(c2rust-ast-exporter PROPERTIES
-  # CXX_STANDARD 11
+  CXX_STANDARD 14
   CXX_EXTENSIONS OFF
   )
 # PRIVATE was added to make c2rust-ast-exporter build with LLVM 6.0. Keyword
@@ -103,7 +103,7 @@ target_link_libraries(c2rust-ast-exporter PRIVATE
   )
 
 set_target_properties(clangAstExporter PROPERTIES
-  # CXX_STANDARD 11
+  CXX_STANDARD 14
   CXX_EXTENSIONS OFF
   )
 target_link_libraries(clangAstExporter PRIVATE
