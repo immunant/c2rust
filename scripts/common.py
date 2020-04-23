@@ -79,6 +79,13 @@ class Config:
         'http://releases.llvm.org/{ver}/compiler-rt-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
     ]
+    # Since LLVM version 10, sources have been hosted on Github.
+    GITHUB_LLVM_ARCHIVE_URLS = [
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/llvm-{ver}.src.tar.xz',
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/clang-{ver}.src.tar.xz',
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/compiler-rt-{ver}.src.tar.xz',
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/clang-tools-extra-{ver}.src.tar.xz',
+    ]
     # See http://releases.llvm.org/download.html#7.0.0
     LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=LLVM_VER)
     LLVM_PUBKEY = os.path.join(ROOT_DIR, LLVM_PUBKEY)
@@ -104,8 +111,17 @@ class Config:
     Reflect changes to all configuration variables that depend on LLVM_VER
     """
     def _init_llvm_ver_deps(self):
-        self.LLVM_ARCHIVE_URLS = [s.format(ver=self.LLVM_VER)
-                                  for s in Config.LLVM_ARCHIVE_URLS]
+        def use_github_archive_urls():
+            try:
+                (major, _, _) = self.LLVM_VER.split(".")
+                return int(major) >= 10
+            except ValueError:
+                emsg = "invalid LLVM version: {}".format(llvm_ver)
+                raise ValueError(emsg)
+        
+        urls = self.GITHUB_LLVM_ARCHIVE_URLS if use_github_archive_urls() \
+            else self.LLVM_ARCHIVE_URLS
+        self.LLVM_ARCHIVE_URLS = [u.format(ver=self.LLVM_VER) for u in urls]
         self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_FILES = [os.path.basename(s)
                                    for s in self.LLVM_ARCHIVE_URLS]
@@ -425,7 +441,7 @@ def get_ninja_build_type(ninja_build_file):
         lines = handle.readlines()
         if not lines[0] == signature:
             die("unexpected content in ninja.build: " + ninja_build_file)
-        r = re.compile(r'^#\s*Configuration:\s*(\w+)')
+        r = re.compile(r'^#\s*Configurations?:\s*(\w+)')
         for line in lines:
             m = r.match(line)
             if m:
@@ -609,10 +625,10 @@ def download_archive(aurl: str, afile: str, asig: str = None):
                 "-L",                       # follow redirects
                 "--max-redirs", "20",
                 "--connect-timeout", "5",   # timeout for reach attempt
-                "--max-time", "10",         # how long each retry will wait
+                "--max-time", "20",         # how long each retry will wait
                 "--retry", "5",
                 "--retry-delay", "0",       # exponential backoff
-                "--retry-max-time", "60",   # total time before we fail
+                "--retry-max-time", "120",   # total time before we fail
                 "-o", ofile
             ]
             curl(*curl_args)
