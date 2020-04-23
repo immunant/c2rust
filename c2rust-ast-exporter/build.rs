@@ -339,6 +339,7 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
                 "ProfileData",
                 "BinaryFormat",
                 "Core",
+                "FrontendOpenMP"
             ],
         )
             .unwrap_or("-lLLVM".to_string())

@@ -25,7 +25,11 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/Version.h"
 #include "clang/Frontend/CompilerInstance.h"
+#if CLANG_VERSION_MAJOR < 10
 #include "clang/Frontend/LangStandard.h"
+#else
+#include "clang/Basic/LangStandard.h"
+#endif // CLANG_VERSION_MAJOR
 #include "clang/Tooling/Tooling.h"
 
 #include "AstExporter.hpp"
@@ -2417,18 +2421,32 @@ class TranslateConsumer : public clang::ASTConsumer {
             //
             // Getting all comments requires -fparse-all-comments (see
             // augment_argv())!
+            const SourceManager& sourceMgr = Context.getSourceManager();
+#if CLANG_VERSION_MAJOR < 10
             auto comments = Context.getRawCommentList().getComments();
             cbor_encoder_create_array(&outer, &array, comments.size());
             for (auto comment : comments) {
+#else
+            const FileID file = sourceMgr.getMainFileID();
+            auto comments = Context.getRawCommentList().getCommentsInFile(file);
+            cbor_encoder_create_array(&outer, &array, comments->size());
+            for (auto comment : *comments) {
+#endif // CLANG_VERSION_MAJOR            
                 CborEncoder entry;
                 cbor_encoder_create_array(&array, &entry, 4);
 #if CLANG_VERSION_MAJOR < 8
                 SourceLocation loc = comment->getLocStart();
-#else
+#elif CLANG_VERSION_MAJOR < 10
                 SourceLocation loc = comment->getBeginLoc();
+#else 
+                SourceLocation loc = comment.second->getBeginLoc();
 #endif // CLANG_VERSION_MAJOR
                 visitor.encodeSourcePos(&entry, loc); // emits 3 values
-                auto raw_text = comment->getRawText(Context.getSourceManager());
+#if CLANG_VERSION_MAJOR < 10                
+                auto raw_text = comment->getRawText(sourceMgr);
+#else 
+                auto raw_text = comment.second->getRawText(sourceMgr);
+#endif // CLANG_VERSION_MAJOR                
                 cbor_encode_byte_string(&entry, raw_text.bytes_begin(),
                                         raw_text.size());
                 cbor_encoder_close_container(&array, &entry);
@@ -2467,7 +2485,11 @@ class TranslateAction : public clang::ASTFrontendAction {
     virtual std::unique_ptr<clang::ASTConsumer>
     CreateASTConsumer(clang::CompilerInstance &Compiler,
                       llvm::StringRef InFile) {
-        if(this->getCurrentFileKind().getLanguage() != InputKind::Language::C) {
+#if CLANG_VERSION_MAJOR < 10
+    if(this->getCurrentFileKind().getLanguage() != InputKind::Language::C) {
+#else
+    if(this->getCurrentFileKind().getLanguage() != Language::C) {
+#endif // CLANG_VERSION_MAJOR    
             return nullptr;
         }
 
@@ -2531,9 +2553,15 @@ class MyFrontendActionFactory : public FrontendActionFactory {
   public:
     MyFrontendActionFactory(Outputs *outputs) : outputs(outputs) {}
 
+#if CLANG_VERSION_MAJOR < 10
     clang::FrontendAction *create() override {
         return new TranslateAction(outputs);
     }
+#else
+    std::unique_ptr<FrontendAction> create() override {
+        return std::make_unique<TranslateAction>(outputs);
+    }
+#endif // CLANG_VERSION_MAJOR
 };
 
 // Marshal the output map into something easy to manipulate in Rust

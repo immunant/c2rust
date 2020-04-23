@@ -49,7 +49,7 @@ if( PROJECT_NAME STREQUAL "LLVM" )
   add_clang_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS} DEPENDS clang-headers)
   add_clang_library(clangAstExporter ${AST_EXPORTER_SRCS} DEPENDS clang-headers)
 
-  set(LLVM_LINK_COMPONENTS support)
+  set(LLVM_LINK_COMPONENTS Support FrontendOpenMP)
 else()
   find_package(LLVM REQUIRED CONFIG)
 
@@ -87,7 +87,7 @@ endif()
 add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
 
 set_target_properties(c2rust-ast-exporter PROPERTIES
-  CXX_STANDARD 11
+  # CXX_STANDARD 11
   CXX_EXTENSIONS OFF
   )
 # PRIVATE was added to make c2rust-ast-exporter build with LLVM 6.0. Keyword
@@ -98,11 +98,12 @@ target_link_libraries(c2rust-ast-exporter PRIVATE
   clangTooling
   clangBasic
   clangASTMatchers
+  LLVMFrontendOpenMP
   tinycbor
   )
 
 set_target_properties(clangAstExporter PROPERTIES
-  CXX_STANDARD 11
+  # CXX_STANDARD 11
   CXX_EXTENSIONS OFF
   )
 target_link_libraries(clangAstExporter PRIVATE
@@ -111,5 +112,6 @@ target_link_libraries(clangAstExporter PRIVATE
   clangTooling
   clangBasic
   clangASTMatchers
+  LLVMFrontendOpenMP
   tinycbor
   )
