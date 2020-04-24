@@ -98,7 +98,6 @@ target_link_libraries(c2rust-ast-exporter PRIVATE
   clangTooling
   clangBasic
   clangASTMatchers
-  LLVMFrontendOpenMP
   tinycbor
   )
 
@@ -112,6 +111,5 @@ target_link_libraries(clangAstExporter PRIVATE
   clangTooling
   clangBasic
   clangASTMatchers
-  LLVMFrontendOpenMP
   tinycbor
   )
