@@ -70,10 +70,8 @@ class Config:
     CBOR_PREFIX = os.path.join(BUILD_DIR, "tinycbor")
 
     LLVM_VER = "7.0.0"
-    # make the build directory unique to the hostname such that
-    # building inside a vagrant/docker environment uses a different
-    # folder than building directly on the host.
-    LLVM_ARCHIVE_URLS = [
+    LLVM_ARCHIVE_URLS = None  # initialized by _init_llvm_ver_deps
+    OLD_LLVM_ARCHIVE_URLS = [
         'http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/compiler-rt-{ver}.src.tar.xz',
@@ -116,11 +114,11 @@ class Config:
                 (major, _, _) = self.LLVM_VER.split(".")
                 return int(major) >= 10
             except ValueError:
-                emsg = "invalid LLVM version: {}".format(llvm_ver)
+                emsg = "invalid LLVM version: {}".format(self.LLVM_VER)
                 raise ValueError(emsg)
         
         urls = self.GITHUB_LLVM_ARCHIVE_URLS if use_github_archive_urls() \
-            else self.LLVM_ARCHIVE_URLS
+            else self.OLD_LLVM_ARCHIVE_URLS
         self.LLVM_ARCHIVE_URLS = [u.format(ver=self.LLVM_VER) for u in urls]
         self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_FILES = [os.path.basename(s)
