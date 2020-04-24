@@ -49,7 +49,11 @@ if( PROJECT_NAME STREQUAL "LLVM" )
   add_clang_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS} DEPENDS clang-headers)
   add_clang_library(clangAstExporter ${AST_EXPORTER_SRCS} DEPENDS clang-headers)
 
-  set(LLVM_LINK_COMPONENTS Support FrontendOpenMP)
+  if( PROJECT_VERSION VERSION_LESS "10.0.0" )
+    set(LLVM_LINK_COMPONENTS Support)
+  else()
+    set(LLVM_LINK_COMPONENTS Support FrontendOpenMP)
+  endif()
 else()
   find_package(LLVM REQUIRED CONFIG)
 

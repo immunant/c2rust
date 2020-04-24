@@ -210,6 +210,10 @@ impl LLVMInfo {
                 }))
                 // In PATH
                 .or([
+                    "llvm-config-10",
+                    "llvm-config-9",
+                    "llvm-config-8",
+                    "llvm-config-7",
                     "llvm-config-7.0",
                     "llvm-config-6.1",
                     "llvm-config-6.0",
@@ -250,18 +254,17 @@ impl LLVMInfo {
         }
 
         let llvm_config = find_llvm_config();
+        let llvm_config_missing = "
+        Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
+        variable or make sure `llvm-config` is on $PATH then re-build. For example:
+
+          $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
+        ";
         let lib_dir = {
             let path_str = env::var("LLVM_LIB_DIR")
                 .ok()
                 .or(invoke_command(llvm_config.as_ref(), &["--libdir"]))
-                .expect(
-                    "
-Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
-variable or make sure `llvm-config` is on $PATH then re-build. For example:
-
-  $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
-",
-                );
+                .expect(llvm_config_missing);
             String::from(
                 Path::new(&path_str)
                     .canonicalize()
@@ -325,22 +328,39 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
             "--link-shared"
         };
 
+        let llvm_major_version = {
+            let version = invoke_command(
+                llvm_config.as_ref(),
+                 &["--version"]
+                )
+                .expect(llvm_config_missing);
+            let emsg = format!("invalid version string {}", version);
+            version.split(".")
+                .next()
+                .expect(&emsg)
+                .parse::<u32>()
+                .expect(&emsg)
+        };
+
         // Construct the list of libs we need to link against
+        let mut args = vec![
+            "--libs",
+            link_mode,
+            "MC",
+            "MCParser",
+            "Support",
+            "Option",
+            "BitReader",
+            "ProfileData",
+            "BinaryFormat",
+            "Core"];
+        if llvm_major_version >= 10 {
+            args.push("FrontendOpenMP");
+        }
+    
         let mut libs: Vec<String> = invoke_command(
             llvm_config.as_ref(),
-            &[
-                "--libs",
-                link_mode,
-                "MC",
-                "MCParser",
-                "Support",
-                "Option",
-                "BitReader",
-                "ProfileData",
-                "BinaryFormat",
-                "Core",
-                "FrontendOpenMP"
-            ],
+            &args,
         )
             .unwrap_or("-lLLVM".to_string())
             .split_whitespace()
