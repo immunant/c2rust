@@ -113,20 +113,20 @@ jobs:
       brew remove curl
     displayName: 'Provision macOS'
 
-  # - script: |
-  #     source $HOME/.cargo/env
-  #     cargo build
-  #   displayName: 'Fast build against host clang/LLVM'
+  - script: |
+      source $HOME/.cargo/env
+      cargo build
+    displayName: 'Fast build against host clang/LLVM'
 
-  # - script: |
-  #     source $HOME/.cargo/env
-  #     python3 ./scripts/test_translator.py  ./tests
-  #   displayName: 'Test translator (fast build)'
+  - script: |
+      source $HOME/.cargo/env
+      python3 ./scripts/test_translator.py  ./tests
+    displayName: 'Test translator (fast build)'
 
-  # - script: |
-  #     source $HOME/.cargo/env
-  #     cargo clean
-  #   displayName: 'Cargo clean'
+  - script: |
+      source $HOME/.cargo/env
+      cargo clean
+    displayName: 'Cargo clean'
 
   - script: |
       source $HOME/.cargo/env
@@ -138,17 +138,17 @@ jobs:
       python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator against developer build (LLVM 7)'
 
-  # - script: |
-  #     source $HOME/.cargo/env
-  #     cargo clean
-  #   displayName: 'Cargo clean'
+  - script: |
+      source $HOME/.cargo/env
+      cargo clean && rm -rf build
+    displayName: 'Cargo clean && rm -rf build'
 
-  # - script: |
-  #     source $HOME/.cargo/env
-  #     python3 ./scripts/build_translator.py --with-llvm-version=8.0.0
-  #   displayName: 'Developer build against local LLVM 8'
+  - script: |
+      source $HOME/.cargo/env
+      python3 ./scripts/build_translator.py --with-llvm-version=8.0.0
+    displayName: 'Developer build against local LLVM 8'
 
-  # - script: |
-  #     source $HOME/.cargo/env
-  #     python3 ./scripts/test_translator.py ./tests
-  #   displayName: 'Test translator against developer build (LLVM 8)'
+  - script: |
+      source $HOME/.cargo/env
+      python3 ./scripts/test_translator.py ./tests
+    displayName: 'Test translator against developer build (LLVM 8)'
