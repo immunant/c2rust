@@ -63,35 +63,35 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/build_translator.py --debug --with-llvm-version=7.0.1
+      python3 ./scripts/build_translator.py --with-llvm-version=7.0.1
     displayName: 'Developer build against local LLVM 7'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/test_translator.py --debug ./tests
+      python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator against developer build (LLVM 7)'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      cargo clean
-    displayName: 'Cargo clean'
+      cargo clean && rm -rf build
+    displayName: 'Cargo clean && rm -rf build'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/build_translator.py --debug --with-llvm-version=8.0.0
+      python3 ./scripts/build_translator.py --with-llvm-version=8.0.0
     displayName: 'Developer build against local LLVM 8'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/test_translator.py --debug ./tests
+      python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator against developer build (LLVM 8)'
 
 - job: Darwin
@@ -120,7 +120,7 @@ jobs:
 
   - script: |
       source $HOME/.cargo/env
-      python3 ./scripts/test_translator.py --debug ./tests
+      python3 ./scripts/test_translator.py  ./tests
     displayName: 'Test translator (fast build)'
 
   - script: |
@@ -130,25 +130,25 @@ jobs:
 
   - script: |
       source $HOME/.cargo/env
-      python3 ./scripts/build_translator.py --debug --with-llvm-version=7.0.1
+      python3 ./scripts/build_translator.py --with-llvm-version=7.0.1
     displayName: 'Developer build against local LLVM 7'
 
   - script: |
       source $HOME/.cargo/env
-      python3 ./scripts/test_translator.py --debug ./tests
+      python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator against developer build (LLVM 7)'
 
   - script: |
       source $HOME/.cargo/env
-      cargo clean
-    displayName: 'Cargo clean'
+      cargo clean && rm -rf build
+    displayName: 'Cargo clean && rm -rf build'
 
   - script: |
       source $HOME/.cargo/env
-      python3 ./scripts/build_translator.py --debug --with-llvm-version=8.0.0
+      python3 ./scripts/build_translator.py --with-llvm-version=8.0.0
     displayName: 'Developer build against local LLVM 8'
 
   - script: |
       source $HOME/.cargo/env
-      python3 ./scripts/test_translator.py --debug ./tests
+      python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator against developer build (LLVM 8)'

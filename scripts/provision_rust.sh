@@ -24,9 +24,9 @@ fi
 # make rust environment available for commands below 
 source ~/.cargo/env
 
-# required for c2rust-refactor tests
-# rustup run $RUST_VER cargo install --force rustfmt
-rustup component add rustfmt-preview
+# rustfmt is required for c2rust-refactor tests
+# rustc-dev was added make sure it is installed on Azure/macOS-10.15
+rustup component add rustfmt-preview rustc-dev
 
 # Make rustup directory world-writable so other test users can install new rust
 # versions
