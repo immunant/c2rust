@@ -28,15 +28,19 @@ use crate::RefactorCtxt;
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     fn double(x: i32) -> i32 {
 ///         x * 2
 ///     }
+/// ```
 /// 
 /// After running `rewrite_expr '$e * 2' '$e + $e'`:
 /// 
+/// ```ignore
 ///     fn double(x: i32) -> i32 {
 ///         x + x
 ///     }
+/// ```
 /// 
 /// Here `$e * 2` matches `x * 2`, capturing `x` as `$e`.  Then `x` is
 /// substituted for `$e` in `$e + $e`, producing the final expression `x + x`.

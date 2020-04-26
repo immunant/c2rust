@@ -20,24 +20,23 @@ pub trait Transform {
     }
 }
 
-
 /// Adapter for turning a `Transform` into a `Command`.
 pub struct TransformCommand<T: Transform>(pub T);
 
 impl<T: Transform> Command for TransformCommand<T> {
     fn run(&mut self, state: &mut RefactorState) {
-        state.transform_crate(self.0.min_phase(), |st, cx| {
-            self.0.transform(&mut *st.krate_mut(), st, cx)
-        }).expect("Failed to run compiler");
+        state
+            .transform_crate(self.0.min_phase(), |st, cx| {
+                self.0.transform(&mut *st.krate_mut(), st, cx)
+            })
+            .expect("Failed to run compiler");
     }
 }
 
 /// Wrap a `Transform` to produce a `Box<Command>`.
-fn mk<T: Transform + 'static>(t: T) -> Box<Command> {
+fn mk<T: Transform + 'static>(t: T) -> Box<dyn Command> {
     Box::new(TransformCommand(t))
 }
-
-
 
 macro_rules! transform_modules {
     ($($name:ident,)*) => {
@@ -51,6 +50,7 @@ macro_rules! transform_modules {
 
 transform_modules! {
     canonicalize_refs,
+    casts,
     char_literals,
     control_flow,
     externs,
@@ -69,5 +69,4 @@ transform_modules! {
     structs,
     test,
     vars,
-    wrapping_arith,
 }

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 '''
 Generate Markdown-formatted documentation for c2rust-refactor commands.  This
 works by extracting from the c2rust-refactor source code any doc comment

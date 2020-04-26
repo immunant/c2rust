@@ -1,23 +1,26 @@
 use std::collections::HashMap;
 
-use syntax::ThinVec;
-use syntax::ast::*;
-use syntax::source_map::{Span, SyntaxContext};
-use syntax::parse::token::{Token, DelimToken, Nonterminal};
-use syntax::tokenstream::{TokenTree, DelimSpan, TokenStream};
 use rustc_target::spec::abi::Abi;
+use syntax::ast::*;
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax::source_map::{Span, SyntaxContext};
+use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use syntax::ThinVec;
 
+use std::fmt::Debug;
 use std::rc::Rc;
 use syntax::attr;
-use syntax::source_map::Spanned;
 use syntax::ptr::P;
+use syntax::source_map::Spanned;
 use syntax::visit::Visitor;
+use syntax_pos::Symbol;
 
-use crate::ast_manip::{GetNodeId, GetSpan};
 use crate::ast_manip::Visit;
+use crate::ast_manip::{GetNodeId, GetSpan};
+use crate::ast_manip::util::path_eq;
 
 use super::root_callsite_span;
-
 
 #[derive(Clone, Copy, Debug)]
 pub enum MacNodeRef<'a> {
@@ -74,8 +77,7 @@ mac_node_ref_getters! {
     as_stmt(Stmt),
 }
 
-
-pub trait AsMacNodeRef: Clone+Sized {
+pub trait AsMacNodeRef: Clone + Sized {
     fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a>;
     fn from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> &'a Self;
     fn clone_from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> Self {
@@ -109,7 +111,7 @@ as_mac_node_ref_impls! {
     Stmt,
 }
 
-impl<T: AsMacNodeRef+'static> AsMacNodeRef for P<T> {
+impl<T: AsMacNodeRef + 'static> AsMacNodeRef for P<T> {
     fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a> {
         <T as AsMacNodeRef>::as_mac_node_ref(self)
     }
@@ -138,7 +140,6 @@ impl<'a> Visit for MacNodeRef<'a> {
     }
 }
 
-
 /// Unique identifier of a macro invocation.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct InvocId(pub u32);
@@ -146,9 +147,9 @@ pub struct InvocId(pub u32);
 #[derive(Clone, Copy, Debug)]
 pub enum InvocKind<'ast> {
     Mac(&'ast Mac),
-    ItemAttr(&'ast Item),
+    Attrs(&'ast [Attribute]),
     /// This is the generated item part of a `#[derive]`'s output.  The `InvocId` points to the
-    /// originating `ItemAttr`.
+    /// originating `Attrs`.
     Derive(InvocId),
 }
 
@@ -189,7 +190,7 @@ impl<'ast> MacTable<'ast> {
         self.invoc_map.get(&id).cloned()
     }
 
-    pub fn invocations<'a>(&'a self) -> impl Iterator<Item=MacInfo<'ast>> + 'a {
+    pub fn invocations<'a>(&'a self) -> impl Iterator<Item = MacInfo<'ast>> + 'a {
         self.map.values().map(move |raw| MacInfo {
             id: raw.id,
             invoc: self.invoc_map[&raw.id],
@@ -198,20 +199,22 @@ impl<'ast> MacTable<'ast> {
     }
 }
 
-pub fn collect_macro_invocations<'ast>(unexpanded: &'ast Crate,
-                                       expanded: &'ast Crate)
-                                       -> (MacTable<'ast>, Vec<(NodeId, NodeId)>) {
+pub fn collect_macro_invocations<'ast>(
+    unexpanded: &'ast Crate,
+    expanded: &'ast Crate,
+) -> (MacTable<'ast>, Vec<(NodeId, NodeId)>) {
     let mut ctxt = Ctxt::new();
     // Because `expanded` hasn't been transformed since it was macro expanded, we know that the
     // first `inj_count` items are the injected prelude and crate imports.
     let (crate_names, has_prelude) = super::injected_items(unexpanded);
     let inj_count = crate_names.len() + if has_prelude { 1 } else { 0 };
-    collect_macros_seq(&unexpanded.module.items[..],
-                       &expanded.module.items[inj_count..],
-                       &mut ctxt);
+    collect_macros_seq(
+        &unexpanded.module.items[..],
+        &expanded.module.items[inj_count..],
+        &mut ctxt,
+    );
     (ctxt.table, ctxt.matched_node_ids)
 }
-
 
 struct Ctxt<'a> {
     table: MacTable<'a>,
@@ -248,25 +251,33 @@ impl<'a> Ctxt<'a> {
         self.table.empty_invocs.insert(node_id, invoc_id);
     }
 
-    fn record_macro_with_id(&mut self,
-                            invoc_id: InvocId,
-                            expanded: MacNodeRef<'a>) {
+    fn record_macro_with_id(&mut self, invoc_id: InvocId, expanded: MacNodeRef<'a>) {
         self.table.map.insert(
-            expanded.id(), MacInfoRaw { id: invoc_id, expanded });
+            expanded.id(),
+            MacInfoRaw {
+                id: invoc_id,
+                expanded,
+            },
+        );
     }
 
-    fn record_node_id_match(&mut self,
-                            old: NodeId,
-                            new: NodeId) {
+    fn record_node_id_match(&mut self, old: NodeId, new: NodeId) {
         self.matched_node_ids.push((old, new));
     }
 
-    fn record_one_macro(&mut self,
-                        old_id: NodeId,
-                        invoc_kind: InvocKind<'a>,
-                        expanded: MacNodeRef<'a>) {
+    fn record_one_macro(
+        &mut self,
+        old_id: NodeId,
+        invoc_kind: InvocKind<'a>,
+        expanded: MacNodeRef<'a>,
+    ) {
         let invoc_id = self.record_invoc(invoc_kind);
-        trace!("new {:?} from macro {:?} - collect matching {:?}", invoc_id, old_id, expanded.id());
+        trace!(
+            "new {:?} from macro {:?} - collect matching {:?}",
+            invoc_id,
+            old_id,
+            expanded.id()
+        );
         self.record_macro_with_id(invoc_id, expanded);
         self.record_node_id_match(old_id, expanded.id());
     }
@@ -277,14 +288,21 @@ fn is_macro_generated(sp: Span) -> bool {
 }
 
 fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'a>)
-        where T: CollectMacros + MaybeInvoc + GetNodeId + GetSpan + AsMacNodeRef {
+where
+    T: CollectMacros + MaybeInvoc + GetNodeId + GetSpan + AsMacNodeRef + Debug,
+{
     let mut j = 0;
 
     for old in old_seq {
         if let Some(invoc) = old.as_invoc() {
             let invoc_id = cx.record_invoc(invoc);
-            trace!("new {:?} from macro {:?} at {:?}",
-                  invoc_id, old.get_node_id(), old.get_span());
+            trace!(
+                "new {:?} from macro {:?} at {:?}: {:?}",
+                invoc_id,
+                old.get_node_id(),
+                old.get_span(),
+                old,
+            );
 
             let mut empty = true;
             while j < new_seq.len() {
@@ -303,15 +321,26 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
                 trace!("  collect {:?} at {:?}", new.get_node_id(), new.get_span());
 
                 // The node came from `invoc`, so consume and record the node.
-                if let Some(child_invoc) = get_child_invoc(
-                        invoc, invoc_id, new.as_mac_node_ref()) {
+                if let Some(child_invoc) = get_child_invoc(invoc, invoc_id, new.as_mac_node_ref()) {
                     let child_invoc_id = cx.record_invoc(child_invoc);
                     cx.record_macro_with_id(child_invoc_id, new.as_mac_node_ref());
                 } else {
                     cx.record_macro_with_id(invoc_id, new.as_mac_node_ref());
+
+                    // Recurse into children so they get added to the node map.
+                    match invoc {
+                        InvocKind::Attrs(..) => {
+                            CollectMacros::collect_macros(old, new, cx);
+                        }
+                        _ => {}
+                    }
                 }
                 cx.record_node_id_match(old.get_node_id(), new.get_node_id());
                 j += 1;
+            }
+
+            if empty {
+                cx.record_empty_invoc(old.get_node_id(), invoc_id);
             }
         } else {
             // For now, any time we see a node with a macro-generated span that wasn't eaten up by
@@ -320,41 +349,90 @@ fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'
             while j < new_seq.len() && is_macro_generated(new_seq[j].get_span()) {
                 j += 1;
             }
-            assert!(j < new_seq.len(),
-                    "impossible: ran out of items in expanded sequence");
-            CollectMacros::collect_macros(old, &new_seq[j], cx);
-            j += 1;
+            if j < new_seq.len() {
+                CollectMacros::collect_macros(old, &new_seq[j], cx);
+                j += 1;
+            }
         }
     }
 
-    assert!(j == new_seq.len(),
-            "impossible: too many items in expanded sequence");
+    assert!(
+        j == new_seq.len(),
+        "impossible: too many items in expanded sequence"
+    );
 }
 
-fn get_child_invoc<'a>(invoc: InvocKind<'a>,
-                       id: InvocId,
-                       new: MacNodeRef<'a>) -> Option<InvocKind<'a>> {
+fn get_child_invoc<'a>(
+    invoc: InvocKind<'a>,
+    id: InvocId,
+    new: MacNodeRef<'a>,
+) -> Option<InvocKind<'a>> {
+    if is_derived(invoc, new) {
+        Some(InvocKind::Derive(id))
+    } else {
+        None
+    }
+}
+
+fn is_derived<'a>(
+    invoc: InvocKind<'a>,
+    new: MacNodeRef<'a>,
+) -> bool {
     match invoc {
-        InvocKind::ItemAttr(..) => {
-            if let MacNodeRef::Item(i) = new {
-                if attr::contains_name(&i.attrs, "automatically_derived") {
-                    return Some(InvocKind::Derive(id));
+        InvocKind::Attrs(..) => {
+            let attrs = match new {
+                MacNodeRef::Item(i) => {
+                    if is_structural_derive(i) { return true; }
+                    Some(&i.attrs[..])
+                }
+                MacNodeRef::Stmt(s) => match &s.kind {
+                    StmtKind::Local(l) => Some(&l.attrs[..]),
+                    StmtKind::Item(i) => {
+                        if is_structural_derive(i) { return true; }
+                        Some(&i.attrs[..])
+                    }
+                    StmtKind::Expr(e) | StmtKind::Semi(e) => Some(&e.attrs[..]),
+                    StmtKind::Mac(..) => None,
+                },
+                MacNodeRef::Expr(e) => Some(&e.attrs[..]),
+                MacNodeRef::ImplItem(i) => Some(&i.attrs[..]),
+                MacNodeRef::TraitItem(i) => Some(&i.attrs[..]),
+                _ => None,
+            };
+            if let Some(attrs) = attrs {
+                if attr::contains_name(attrs, Symbol::intern("automatically_derived")) {
+                    return true;
                 }
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
-    None
+    false
 }
 
-
+fn is_structural_derive(i: &Item) -> bool {
+    // This is a hack to work around the StructuralPartialEq impl
+    // from derive(PartialEq) not being marked with an
+    // automatically_derived attribute. TODO: remove this when
+    // StructuralPartialEq is labeled with the right attribute.
+    match &i.kind {
+        ItemKind::Impl(_, _, _, _, Some(traitref), _, _) => {
+            if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"])
+                || path_eq(&traitref.path, &["$crate", "marker", "StructuralEq"])
+            {
+                return true;
+            }
+        }
+        _ => {}
+    }
+    false
+}
 
 trait CollectMacros {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>);
 }
 
 include!(concat!(env!("OUT_DIR"), "/mac_table_gen.inc.rs"));
-
 
 impl<T: CollectMacros> CollectMacros for Rc<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
@@ -374,14 +452,14 @@ impl<T: CollectMacros> CollectMacros for Spanned<T> {
     }
 }
 
-impl<T: CollectMacros> CollectMacros for Option<T> {
+impl<T: CollectMacros+Debug> CollectMacros for Option<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         match (old, new) {
             (&Some(ref old), &Some(ref new)) => {
                 <T as CollectMacros>::collect_macros(old, new, cx);
-            },
-            (&None, &None) => {},
-            (_, _) => panic!("mismatch between unexpanded and expanded ASTs"),
+            }
+            (&None, &None) => {}
+            (_, _) => panic!("mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}", old, new),
         }
     }
 }
@@ -430,6 +508,11 @@ impl CollectMacros for NodeId {
     }
 }
 
+fn has_macro_attr(attrs: &[Attribute]) -> bool {
+    attr::contains_name(attrs, Symbol::intern("derive"))
+        || attr::contains_name(attrs, Symbol::intern("cfg"))
+        || attr::contains_name(attrs, Symbol::intern("test"))
+}
 
 trait MaybeInvoc {
     fn as_invoc(&self) -> Option<InvocKind>;
@@ -437,8 +520,11 @@ trait MaybeInvoc {
 
 impl MaybeInvoc for Expr {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ExprKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            _ if has_macro_attr(&self.attrs) => {
+                Some(InvocKind::Attrs(&self.attrs))
+            }
             _ => None,
         }
     }
@@ -446,7 +532,7 @@ impl MaybeInvoc for Expr {
 
 impl MaybeInvoc for Pat {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             PatKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -455,7 +541,7 @@ impl MaybeInvoc for Pat {
 
 impl MaybeInvoc for Ty {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             TyKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -464,33 +550,37 @@ impl MaybeInvoc for Ty {
 
 impl MaybeInvoc for Item {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ItemKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => {
-                if attr::contains_name(&self.attrs, "derive") ||
-                   attr::contains_name(&self.attrs, "cfg") ||
-                   attr::contains_name(&self.attrs, "test") {
-                    Some(InvocKind::ItemAttr(self))
+                if has_macro_attr(&self.attrs) {
+                    Some(InvocKind::Attrs(&self.attrs))
                 } else {
                     None
                 }
-            },
+            }
         }
     }
 }
 
 impl MaybeInvoc for ImplItem {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ImplItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
-            _ => None,
+            _ => {
+                if has_macro_attr(&self.attrs) {
+                    Some(InvocKind::Attrs(&self.attrs))
+                } else {
+                    None
+                }
+            }
         }
     }
 }
 
 impl MaybeInvoc for TraitItem {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             TraitItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -499,7 +589,7 @@ impl MaybeInvoc for TraitItem {
 
 impl MaybeInvoc for ForeignItem {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ForeignItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -508,8 +598,17 @@ impl MaybeInvoc for ForeignItem {
 
 impl MaybeInvoc for Stmt {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
-            StmtKind::Mac(ref mac) => Some(InvocKind::Mac(&mac.0)),
+        match &self.kind {
+            StmtKind::Mac(mac) => Some(InvocKind::Mac(&mac.0)),
+            StmtKind::Local(l) if has_macro_attr(&l.attrs) => {
+                Some(InvocKind::Attrs(&l.attrs))
+            }
+            StmtKind::Item(i) if has_macro_attr(&i.attrs) => {
+                Some(InvocKind::Attrs(&i.attrs))
+            }
+            StmtKind::Expr(e) | StmtKind::Semi(e) if has_macro_attr(&e.attrs) => {
+                Some(InvocKind::Attrs(&e.attrs))
+            }
             _ => None,
         }
     }
@@ -520,4 +619,3 @@ impl<T: MaybeInvoc> MaybeInvoc for P<T> {
         <T as MaybeInvoc>::as_invoc(self)
     }
 }
-

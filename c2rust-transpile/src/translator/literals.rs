@@ -3,59 +3,64 @@
 //! These include integer, floating, array, struct, union, enum literals.
 
 use super::*;
+use std::iter;
 
 impl<'c> Translation<'c> {
     /// Generate an integer literal corresponding to the given type, value, and base.
-    pub fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> P<Expr> {
-        // Note that C doesn't have anything smaller than integer literals
-        let (intty, suffix) = match self.ast_context.resolve_type(ty.ctype).kind {
-            CTypeKind::Int => (LitIntType::Signed(IntTy::I32), "i32"),
-            CTypeKind::Long => (LitIntType::Signed(IntTy::I64), "i64"),
-            CTypeKind::LongLong => (LitIntType::Signed(IntTy::I64), "i64"),
-            CTypeKind::UInt => (LitIntType::Unsigned(UintTy::U32), "u32"),
-            CTypeKind::ULong => (LitIntType::Unsigned(UintTy::U64), "u64"),
-            CTypeKind::ULongLong => (LitIntType::Unsigned(UintTy::U64), "u64"),
-            _ => (LitIntType::Unsuffixed, ""),
-        };
-
+    pub fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> Result<P<Expr>, TranslationError> {
         let lit = match base {
-            IntBase::Dec => mk().int_lit(val.into(), intty),
-            IntBase::Hex => mk().float_unsuffixed_lit(format!("0x{:x}{}", val, suffix)),
-            IntBase::Oct => mk().float_unsuffixed_lit(format!("0o{:o}{}", val, suffix)),
+            IntBase::Dec => mk().int_lit(val.into(), LitIntType::Unsuffixed),
+            IntBase::Hex => mk().float_unsuffixed_lit(format!("0x{:x}", val)),
+            IntBase::Oct => mk().float_unsuffixed_lit(format!("0o{:o}", val)),
         };
 
-        mk().lit_expr(lit)
+        let target_ty = self.convert_type(ty.ctype)?;
+        Ok(mk().cast_expr(mk().lit_expr(lit), target_ty))
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum
     /// variant directly, otherwise it transmutes a number to the enum type.
     pub fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> P<Expr> {
-
         let def_id = match self.ast_context.resolve_type(enum_type_id).kind {
             CTypeKind::Enum(def_id) => def_id,
             _ => panic!("{:?} does not point to an `enum` type"),
         };
 
         let (variants, underlying_type_id) = match self.ast_context[def_id].kind {
-            CDeclKind::Enum { ref variants, integral_type, .. } => (variants, integral_type),
-            _ => panic!("{:?} does not point to an `enum` declaration")
+            CDeclKind::Enum {
+                ref variants,
+                integral_type,
+                ..
+            } => (variants, integral_type),
+            _ => panic!("{:?} does not point to an `enum` declaration"),
         };
 
         for &variant_id in variants {
             match self.ast_context[variant_id].kind {
-                CDeclKind::EnumConstant { value: v, .. } =>
-                if v == ConstIntExpr::I(value) || v == ConstIntExpr::U(value as u64) {
-                    let name = self.renamer.borrow().get(&variant_id).unwrap();
-                    return mk().path_expr(vec![name])
+                CDeclKind::EnumConstant { value: v, .. } => {
+                    if v == ConstIntExpr::I(value) || v == ConstIntExpr::U(value as u64) {
+                        let name = self.renamer.borrow().get(&variant_id).unwrap();
+
+                        // Import the enum variant if needed
+                        if let Some(cur_file) = *self.cur_file.borrow() {
+                            self.add_import(cur_file, variant_id, &name);
+                        }
+                        return mk().path_expr(vec![name]);
+                    }
                 }
                 _ => panic!("{:?} does not point to an enum variant", variant_id),
             }
         }
 
-        let underlying_type_id = underlying_type_id.expect("Attempt to construct value of forward declared enum");
+        let underlying_type_id =
+            underlying_type_id.expect("Attempt to construct value of forward declared enum");
         let value = match self.ast_context.resolve_type(underlying_type_id.ctype).kind {
-            CTypeKind::UInt => mk().lit_expr(mk().int_lit((value as u32) as u128, LitIntType::Unsuffixed)),
-            CTypeKind::ULong => mk().lit_expr(mk().int_lit((value as u64) as u128, LitIntType::Unsuffixed)),
+            CTypeKind::UInt => {
+                mk().lit_expr(mk().int_lit((value as u32) as u128, LitIntType::Unsuffixed))
+            }
+            CTypeKind::ULong => {
+                mk().lit_expr(mk().int_lit((value as u64) as u128, LitIntType::Unsuffixed))
+            }
             _ => signed_int_expr(value),
         };
 
@@ -67,28 +72,35 @@ impl<'c> Translation<'c> {
     /// Convert a C literal expression to a Rust expression
     pub fn convert_literal(
         &self,
-        is_static: bool,
+        ctx: ExprContext,
         ty: CQualTypeId,
         kind: &CLiteral,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         match *kind {
-            CLiteral::Integer(val, base) => Ok(WithStmts::new(self.mk_int_lit(ty, val, base))),
+            CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base)?)),
 
             CLiteral::Character(val) => {
-                let expr = match char::from_u32(val as u32) {
+                let val = val as u32;
+                let expr = match char::from_u32(val) {
                     Some(c) => {
-                        let lit = mk().char_lit(c);
-                        let expr = mk().lit_expr(lit);
+                        let expr = mk().lit_expr(c);
                         let i32_type = mk().path_ty(vec!["i32"]);
                         mk().cast_expr(expr, i32_type)
                     }
                     None => {
                         // Fallback for characters outside of the valid Unicode range
-                        let lit = mk().int_lit(val as u128, LitIntType::Signed(IntTy::I32));
-                        mk().lit_expr(lit)
+                        if (val as i32) < 0 {
+                            mk().unary_expr("-", mk().lit_expr(
+                                mk().int_lit((val as i32).abs() as u128, LitIntType::Signed(IntTy::I32))
+                            ))
+                        } else {
+                            mk().lit_expr(
+                                mk().int_lit(val as u128, LitIntType::Signed(IntTy::I32))
+                            )
+                        }
                     }
                 };
-                Ok(WithStmts::new(expr))
+                Ok(WithStmts::new_val(expr))
             }
 
             CLiteral::Floating(val, ref c_str) => {
@@ -101,41 +113,60 @@ impl<'c> Translation<'c> {
                 };
                 let val = match self.ast_context.resolve_type(ty.ctype).kind {
                     CTypeKind::LongDouble => {
-                        self.extern_crates.borrow_mut().insert("f128");
+                        self.use_crate(ExternCrate::F128);
 
                         let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
                         let args = vec![mk().ident_expr(str)];
 
                         mk().call_expr(fn_path, args)
-                    },
+                    }
                     CTypeKind::Double => mk().lit_expr(mk().float_lit(str, FloatTy::F64)),
                     CTypeKind::Float => mk().lit_expr(mk().float_lit(str, FloatTy::F32)),
                     ref k => panic!("Unsupported floating point literal type {:?}", k),
                 };
-                Ok(WithStmts::new(val))
+                Ok(WithStmts::new_val(val))
             }
 
             CLiteral::String(ref val, width) => {
                 let mut val = val.to_owned();
 
+                let mut expects_uchars = false;
                 match self.ast_context.resolve_type(ty.ctype).kind {
-                    // Match the literal size to the expected size padding with zeros as needed
-                    CTypeKind::ConstantArray(_, size) => val.resize(size * (width as usize), 0),
+
+                    CTypeKind::ConstantArray(elem_ty, size) => {
+                        // Is the element type is unsigned char?
+                        if &CTypeKind::UChar == &self.ast_context.resolve_type(elem_ty).kind {
+                            expects_uchars = true;
+                        }
+                        // Match the literal size to the expected size padding with zeros as needed
+                        val.resize(size * (width as usize), 0)
+                    },
 
                     // Add zero terminator
                     _ => {
+//                        println()
                         for _ in 0..width {
                             val.push(0);
                         }
                     }
                 };
-                if is_static {
+                if ctx.is_static {
                     let mut vals: Vec<P<Expr>> = vec![];
                     for c in val {
-                        vals.push(mk().lit_expr(mk().int_lit(c as u128, LitIntType::Unsuffixed)));
+                        // Emit negative literals if the expected type is not unsigned char. This
+                        // provides a fallback for characters outside of the normal ASCII range.
+                        // Python 2 doc strings, for example, contain non-ASCII chars (https://git.io/fjAxu).
+                        if !expects_uchars && (c as i8) < 0 {
+                            // NOTE: the conversion to i32 avoids overflow when calling abs on -128.
+                            vals.push(mk().unary_expr("-", mk().lit_expr(
+                                mk().int_lit(((c as i8) as i32).abs() as u128, LitIntType::Unsuffixed))
+                            ));
+                        } else {
+                            vals.push(mk().lit_expr(mk().int_lit(c as u128, LitIntType::Unsuffixed)));
+                        }
                     }
                     let array = mk().array_expr(vals);
-                    Ok(WithStmts::new(array))
+                    Ok(WithStmts::new_val(array))
                 } else {
                     let u8_ty = mk().path_ty(vec!["u8"]);
                     let width_lit =
@@ -148,10 +179,12 @@ impl<'c> Translation<'c> {
                         Mutability::Mutable
                     };
                     let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
-                    let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
-                    let pointer = transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
+                    let byte_literal = mk().lit_expr(val);
+                    if ctx.is_const { self.use_feature("const_transmute"); }
+                    let pointer =
+                        transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
                     let array = mk().unary_expr(ast::UnOp::Deref, pointer);
-                    Ok(WithStmts::new(array))
+                    Ok(WithStmts::new_unsafe_val(array))
                 }
             }
         }
@@ -184,58 +217,77 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                let mut stmts: Vec<Stmt> = vec![];
-                let val: P<Expr> = if is_string {
+                if is_string {
                     let v = ids.first().unwrap();
-                    let mut x = self.convert_expr(ctx.used(), *v)?;
-                    stmts.append(&mut x.stmts);
-                    x.val
+                    self.convert_expr(ctx.used(), *v)
                 } else {
-                    let mut vals: Vec<P<Expr>> = vec![];
-                    for &v in ids {
-                        let mut x = self.convert_expr(ctx.used(), v)?;
-
-                        // Array literals require all of their elements to be the correct type; they
-                        // will not use implicit casts to change mut to const. This becomes a problem
-                        // when an array literal is used in a position where there is no type information
-                        // available to force its type to the correct const or mut variation. To avoid
-                        // this issue we manually insert the otherwise elided casts in this particular context.
-                        if let CExprKind::ImplicitCast(ty, _, CastKind::ConstCast, _, _) =
-                            self.ast_context[v].kind
-                        {
-                            let t = self.convert_type(ty.ctype)?;
-                            x.val = mk().cast_expr(x.val, t)
-                        }
-
-                        stmts.append(&mut x.stmts);
-                        vals.push(x.val);
-                    }
-                    // Pad out the array literal with default values to the desired size
-                    for _i in ids.len()..n {
-                        vals.push(self.implicit_default_expr(ty, ctx.is_static)?)
-                    }
-                    mk().array_expr(vals)
-                };
-
-                Ok(WithStmts { stmts, val })
+                    Ok(ids
+                        .iter()
+                        .map(|id| {
+                            self.convert_expr(ctx.used(), *id)?
+                                .result_map(|x| {
+                                    // Array literals require all of their elements to be
+                                    // the correct type; they will not use implicit casts to
+                                    // change mut to const. This becomes a problem when an
+                                    // array literal is used in a position where there is no
+                                    // type information available to force its type to the
+                                    // correct const or mut variation. To avoid this issue
+                                    // we manually insert the otherwise elided casts in this
+                                    // particular context.
+                                    if let CExprKind::ImplicitCast(ty, _, CastKind::ConstCast, _, _) =
+                                        self.ast_context[*id].kind
+                                    {
+                                        let t = self.convert_type(ty.ctype)?;
+                                        Ok(mk().cast_expr(x, t))
+                                    } else {
+                                        Ok(x)
+                                    }
+                                })
+                        })
+                        .chain(
+                            // Pad out the array literal with default values to the desired size
+                            iter::repeat(
+                                self.implicit_default_expr(ty, ctx.is_static)
+                            ).take(n - ids.len())
+                        )
+                        .collect::<Result<WithStmts<Vec<P<Expr>>>, TranslationError>>()?
+                        .map(|vals| {
+                            mk().array_expr(vals)
+                        }))
+                }
             }
             CTypeKind::Struct(struct_id) => {
-                self.convert_struct_literal(ctx, struct_id, ids.as_ref())
+                let mut literal = self.convert_struct_literal(ctx, struct_id, ids.as_ref());
+                if self.ast_context.has_inner_struct_decl(struct_id) {
+                    // If the structure is split into an outer/inner,
+                    // wrap the inner initializer using the outer structure
+                    let outer_name = self.type_converter
+                        .borrow()
+                        .resolve_decl_name(struct_id)
+                        .unwrap();
+
+                    let outer_path = mk().path_expr(vec![outer_name]);
+                    literal = literal.map(|lit_ws| {
+                        lit_ws.map(|lit| {
+                            mk().call_expr(outer_path, vec![lit])
+                        })
+                    });
+                };
+                literal
             }
-            CTypeKind::Union(union_id) => self.convert_union_literal(
-                ctx,
-                union_id,
-                ids.as_ref(),
-                ty,
-                opt_union_field_id,
-            ),
+            CTypeKind::Union(union_id) => {
+                self.convert_union_literal(ctx, union_id, ids.as_ref(), ty, opt_union_field_id)
+            }
             CTypeKind::Pointer(_) => {
                 let id = ids.first().unwrap();
-                let mut x = self.convert_expr(ctx.used(), *id);
-                Ok(x.unwrap())
+                self.convert_expr(ctx.used(), *id)
             }
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
+            }
+            CTypeKind::Char => {
+                let id = ids.first().unwrap();
+                self.convert_expr(ctx.used(), *id)
             }
             ref t => Err(format_err!("Init list not implemented for {:?}", t).into()),
         }
@@ -261,10 +313,7 @@ impl<'c> Translation<'c> {
                 match self.ast_context.index(union_field_id).kind {
                     CDeclKind::Field { typ: field_ty, .. } => {
                         let val = if ids.is_empty() {
-                            WithStmts {
-                                stmts: vec![],
-                                val: self.implicit_default_expr(field_ty.ctype, ctx.is_static)?,
-                            }
+                            self.implicit_default_expr(field_ty.ctype, ctx.is_static)?
                         } else {
                             self.convert_expr(ctx.used(), ids[0])?
                         };
@@ -285,76 +334,5 @@ impl<'c> Translation<'c> {
             }
             _ => panic!("Expected union decl"),
         }
-    }
-
-    fn convert_struct_literal(
-        &self,
-        ctx: ExprContext,
-        struct_id: CRecordId,
-        ids: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
-        let mut has_bitfields = false;
-        let (field_decls, platform_byte_size) = match self.ast_context.index(struct_id).kind {
-            CDeclKind::Struct { ref fields, platform_byte_size, .. } => {
-                let mut fieldnames = vec![];
-
-                let fields = match fields {
-                    &Some(ref fields) => fields,
-                    &None => return Err(TranslationError::generic("Attempted to construct forward-declared struct")),
-                };
-
-                for &x in fields {
-                    let name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_field_name(Some(struct_id), x)
-                        .unwrap();
-                    if let CDeclKind::Field { typ, bitfield_width, platform_type_bitwidth, platform_bit_offset, .. } = self.ast_context.index(x).kind {
-                        has_bitfields |= bitfield_width.is_some();
-
-                        fieldnames.push((name, typ, bitfield_width, platform_bit_offset, platform_type_bitwidth));
-                    } else {
-                        panic!("Struct field decl type mismatch")
-                    }
-                }
-
-                (fieldnames, platform_byte_size)
-            }
-            _ => panic!("Struct literal declaration mismatch"),
-        };
-
-        let struct_name = self
-            .type_converter
-            .borrow()
-            .resolve_decl_name(struct_id)
-            .unwrap();
-
-        if has_bitfields {
-            return self.convert_bitfield_struct_literal(struct_name, platform_byte_size, ids, field_decls, ctx);
-        }
-
-        let mut stmts: Vec<Stmt> = vec![];
-        let mut fields: Vec<Field> = vec![];
-
-        // Add specified record fields
-        for i in 0usize..ids.len() {
-            let v = ids[i];
-            let &(ref field_name, _, _, _, _) = &field_decls[i];
-
-            let mut x = self.convert_expr(ctx.used(), v)?;
-            stmts.append(&mut x.stmts);
-            fields.push(mk().field(field_name, x.val));
-        }
-
-        // Pad out remaining omitted record fields
-        for i in ids.len()..fields.len() {
-            let &(ref field_name, ty, _, _, _) = &field_decls[i];
-            fields.push(mk().field(field_name, self.implicit_default_expr(ty.ctype, ctx.is_static)?));
-        }
-
-        Ok(WithStmts {
-            stmts,
-            val: mk().struct_expr(vec![mk().path_segment(struct_name)], fields),
-        })
     }
 }

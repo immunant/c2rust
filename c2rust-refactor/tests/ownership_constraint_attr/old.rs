@@ -1,4 +1,5 @@
-#![feature(custom_attribute, attr_literals)]
+#![feature(attr_literals)]
+#![register_tool(c2rust)]
 
 use std::os::raw::c_void;
 
@@ -6,6 +7,7 @@ extern "C" {
     fn free(ptr: *mut c_void);
 }
 
+#[derive(Debug,Clone)]
 struct RefCounted {
     ref_count: usize,
     data: i32,

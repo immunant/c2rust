@@ -9,17 +9,17 @@
 #include "AstExporter.hpp"
 
 int main(int argc, char *argv[]) {
-  int result;
-  auto outputs = process(argc, const_cast<const char **>(argv), &result);
+    int result;
+    auto outputs = process(argc, const_cast<const char **>(argv), &result);
 
-  for (auto const &kv : outputs) {
-      auto const &filename = kv.first;
-      auto const &bytes    = kv.second;
+    for (auto const &kv : outputs) {
+        auto const &filename = kv.first;
+        auto const &bytes = kv.second;
 
-      std::ofstream out(filename + ".cbor", out.binary | out.trunc);
+        std::ofstream out(filename + ".cbor", out.binary | out.trunc);
 
-      out.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-  }
+        out.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+    }
 
-  return result;
+    return result;
 }

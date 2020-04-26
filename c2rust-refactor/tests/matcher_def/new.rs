@@ -7,6 +7,6 @@ fn g() {
 }
 
 fn main() {
-    ::f2();
+    crate::f2();
     g();
 }

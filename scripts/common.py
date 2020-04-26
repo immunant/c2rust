@@ -64,6 +64,8 @@ class Config:
     XCHECK_DERIVE_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'derive-macros')
     XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'backends', 'dynamic-dlsym')
     XCHECK_CONFIG_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'config')
+    MACROS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-macros')
+    AST_PRINTER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-printer')
 
     CBOR_PREFIX = os.path.join(BUILD_DIR, "tinycbor")
 
@@ -74,6 +76,7 @@ class Config:
     LLVM_ARCHIVE_URLS = [
         'http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz',
+        'http://releases.llvm.org/{ver}/compiler-rt-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
     ]
     # See http://releases.llvm.org/download.html#7.0.0
@@ -95,9 +98,7 @@ class Config:
     MIN_PLUMBUM_VERSION = (1, 6, 3)
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = 'nightly-2019-04-08'
-    # output of `rustup run $CUSTOM_RUST_NAME -- rustc --version`
-    # CUSTOM_RUST_RUSTC_VERSION = "rustc 1.32.0-nightly (21f268495 2018-12-02)"
+    CUSTOM_RUST_NAME = 'nightly-2019-12-05'
 
     """
     Reflect changes to all configuration variables that depend on LLVM_VER
@@ -188,24 +189,6 @@ class Config:
 config = Config()
 
 
-def have_rust_toolchain(name: str) -> bool:
-    """
-    Check whether name is output by `rustup show` on its own line.
-    """
-    rustup = get_cmd_or_die('rustup')
-    lines = rustup('show').split('\n')
-    return any([True for l in lines if l.startswith(name)])
-
-
-def get_host_triplet() -> str:
-    if on_linux():
-        return "x86_64-unknown-linux-gnu"
-    elif on_mac():
-        return "x86_64-apple-darwin"
-    else:
-        assert False, "not implemented"
-
-
 def update_or_init_submodule(submodule_path: str):
     git = get_cmd_or_die("git")
     invoke_quietly(git, "submodule", "update", "--init", submodule_path)
@@ -222,24 +205,21 @@ def get_rust_toolchain_binpath() -> str:
 
 def _get_rust_toolchain_path(dirtype: str) -> str:
     """
-    returns library path to custom rust libdir
-
+    Ask rustc for the correct path to its {lib,bin} directory.
     """
-    if platform.architecture()[0] != '64bit':
-        die("must be on 64-bit host")
 
-    host_triplet = get_host_triplet()
+    # If rustup is being used, it will respect the RUSTUP_TOOLCHAIN environment
+    # variable, according to:
+    # https://github.com/rust-lang/rustup.rs/blob/master/README.md#override-precedence
+    #
+    # If rustup is not being used, we can't control the toolchain; but rustc
+    # will ignore this environment variable, so setting it is harmless.
 
-    if 'RUSTUP_HOME' in pb.local.env:
-        home = pb.local.env['RUSTUP_HOME']
-    else:
-        home = os.path.join(pb.local.env['HOME'], ".rustup")
-    libpath = "toolchains/{}-{}/{}/"
-    libpath = libpath.format(config.CUSTOM_RUST_NAME, host_triplet, dirtype)
-    libpath = os.path.join(home, libpath)
-    emsg = "custom rust compiler lib path missing: " + libpath
-    assert os.path.isdir(libpath), emsg
-    return libpath
+    sysroot = pb.local["rustc"].with_env(
+        RUSTUP_TOOLCHAIN=config.CUSTOM_RUST_NAME,
+    )("--print", "sysroot")
+
+    return os.path.join(sysroot.rstrip(), dirtype)
 
 
 def on_x86() -> bool:
@@ -257,48 +237,7 @@ def on_mac() -> bool:
 
 
 def on_linux() -> bool:
-    if on_mac():
-        return False
-    elif on_ubuntu() or on_arch() or on_debian() or on_fedora():
-        return True
-    else:
-        # neither on mac nor on a known distro
-        assert False, "not sure"
-
-
-def on_arch() -> bool:
-    """
-    return true on arch distros.
-    """
-    distro, *_ = platform.linux_distribution()
-
-    return distro == "arch"
-
-
-def on_ubuntu() -> bool:
-    """
-    return true on recent ubuntu linux distro.
-    """
-    match = re.match(r'^.+Ubuntu-\d\d\.\d\d-\w+', platform.platform())
-    return match is not None
-
-
-def on_debian() -> bool:
-    """
-    return true on debian distro (and derivatives?).
-    """
-    distro, *_ = platform.linux_distribution()
-
-    return distro == "debian"
-
-
-def on_fedora() -> bool:
-    """
-    return true on debian distro (and derivatives?).
-    """
-    distro, *_ = platform.linux_distribution()
-
-    return distro == "Fedora"
+    return platform.system() == "Linux"
 
 
 def regex(raw: str):
@@ -372,15 +311,6 @@ def get_cmd_or_die(cmd: str) -> Command:
         return pb.local[cmd]
     except pb.CommandNotFound:
         die("{} not in path".format(cmd), errno.ENOENT)
-
-
-def get_cmd_from_rustup(cmd: str) -> Command:
-    """
-    ask rustup for path to cmd for the right rust toolchain.
-    """
-    rustup = get_cmd_or_die("rustup")
-    toolpath = rustup('run', config.CUSTOM_RUST_NAME, 'which', cmd).strip()
-    return pb.local.get(toolpath)
 
 
 def ensure_dir(path):
@@ -483,7 +413,7 @@ def ensure_clang_version(min_ver: List[int]):
         m = re.search(r"clang\s+version\s([^\s-]+)", version)
         _common_check(m)
     elif on_mac():
-        m = re.search(r"Apple\sLLVM\sversion\s([^\s-]+)", version)
+        m = re.search(r"Apple\s(?:LLVM|clang)\sversion\s([^\s-]+)", version)
         _common_check(m)
     else:
         assert False, "run this script on macOS or linux"
@@ -576,7 +506,7 @@ def transpile(cc_db_path: str,
     if emit_modules:
         args.append('--emit-modules')
     if main_module_for_build_files:
-        args.append('--main')
+        args.append('--binary')
         args.append(main_module_for_build_files)
     if cross_checks:
         args.append('--cross-checks')

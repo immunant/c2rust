@@ -41,7 +41,7 @@ pub fn test_fn_attrs() {
     // extern void inline __attribute__((always_inline)) always_inline_extern(void) {}
     // extern void inline __attribute__((__gnu_inline__)) gnu_inline_extern(void) {}
     // extern void inline __attribute__((gnu_inline, always_inline)) always_inline_gnu_inline_extern(void) {}
-    assert!(src.contains("#[inline]\npub unsafe extern \"C\" fn rust_inline_extern"));
+    assert!(src.contains("#[inline]\n#[linkage = \"external\"]\npub unsafe extern \"C\" fn rust_inline_extern"));
     assert!(src.contains("#[inline(always)]\npub unsafe extern \"C\" fn rust_always_inline_extern"));
     assert!(src.contains("#[inline]\nunsafe extern \"C\" fn rust_gnu_inline_extern"));
     assert!(src.contains("#[inline(always)]\nunsafe extern \"C\" fn rust_always_inline_gnu_inline_extern"));

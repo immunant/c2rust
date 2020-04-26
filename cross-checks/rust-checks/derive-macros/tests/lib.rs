@@ -121,7 +121,7 @@ fn test_skip_field() {
 #[test]
 fn test_fixed_hash() {
     test_struct!([]
-                 { [fixed_hash="0x0f0f0f0f0f0f0f0f"] x: u64 = 0x12345678 }
+                 { [fixed="0x0f0f0f0f0f0f0f0f"] x: u64 = 0x12345678 }
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
@@ -140,7 +140,7 @@ fn test_custom_field_hash() {
         h.write_u64(0x0f0f0f0f0f0f0f0f)
     }
     test_struct!([]
-                 { [custom_hash="custom_hash"] x: u64 = 0x12345678 }
+                 { [custom="custom_hash"] x: u64 = 0x12345678 }
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<SimpleHasher, SimpleHasher>(&ts),
@@ -158,7 +158,7 @@ fn test_custom_hash_skip() {
         assert_eq!(*field.borrow(), 0x12345678);
     }
     test_struct!([]
-                 { [custom_hash="custom_hash"] x: u64 = 0x12345678 }
+                 { [custom="custom_hash"] x: u64 = 0x12345678 }
                  |ts| {
         assert_eq!(
             XCH::cross_check_hash::<Djb2Hasher, Djb2Hasher>(&ts),

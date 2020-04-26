@@ -5,6 +5,7 @@
 #![cfg_attr(feature = "xcheck-with-dlsym", feature(libc))]
 #![cfg_attr(feature = "xcheck-with-weak", feature(linkage))]
 #![cfg_attr(feature = "libc-hash", feature(libc))]
+#![no_std]
 
 #[cfg(feature = "djb2-ssse3")]
 extern crate simd;

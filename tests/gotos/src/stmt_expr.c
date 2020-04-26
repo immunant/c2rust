@@ -1,5 +1,3 @@
-//! enable_relooper
-
 int stmt_expr_func(int y) {
 
   int x = ({

@@ -17,6 +17,6 @@ mod b {
 }
 
 fn main() {
-    let a_struct = ::a::TheStruct { x: 100 };
-    let b_struct = ::b::TheStruct { x: 100 };
+    let a_struct = crate::a::TheStruct { x: 100 };
+    let b_struct = crate::b::TheStruct { x: 100 };
 }

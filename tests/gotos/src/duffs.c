@@ -1,4 +1,4 @@
-//! enable_relooper, allow_current_block
+//! allow_current_block
 
 void copy(int *to, int *from, int count) {
     int n = (count + 7) / 8;

@@ -61,6 +61,30 @@ args:
       help: "get rustc arguments from cargo"
       takes_value: false
       conflicts_with: rustc-args
+  - bin:
+      long: bin
+      help: "Refactor only the specified binary (cargo only)"
+      takes_value: true
+      conflicts_with:
+        - rustc-args
+        - bins
+        - lib
+  - bins:
+      long: bins
+      help: "Refactor all binaries (cargo only)"
+      takes_value: false
+      conflicts_with:
+        - rustc-args
+        - bin
+        - lib
+  - lib:
+      long: lib
+      help: "Refactor only the library (cargo only)"
+      takes_value: false
+      conflicts_with:
+        - rustc-args
+        - bin
+        - bins
   - transforms:
       help: Refactoring transformations
       takes_value: true

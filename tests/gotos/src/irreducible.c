@@ -1,4 +1,4 @@
-//! enable_relooper, allow_current_block
+//! allow_current_block
 int irreducible(int x) {
 
 l1:

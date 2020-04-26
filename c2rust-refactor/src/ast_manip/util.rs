@@ -1,14 +1,14 @@
 //! Miscellaneous utility functions.
+use rustc::hir::def::{self, Namespace, Res};
 use smallvec::SmallVec;
-use rustc::hir::def::{Def, Namespace};
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
-use syntax::symbol::{Symbol, keywords};
-use syntax::tokenstream::{TokenStream};
+use syntax::symbol::{kw, Symbol};
+use syntax_pos::sym;
+use smallvec::smallvec;
 
 use super::AstEquiv;
-
 
 /// Extract the symbol from a pattern-like AST.
 pub trait PatternSymbol {
@@ -18,6 +18,16 @@ pub trait PatternSymbol {
 impl PatternSymbol for Ident {
     fn pattern_symbol(&self) -> Option<Symbol> {
         Some(self.name)
+    }
+}
+
+impl PatternSymbol for Lit {
+    fn pattern_symbol(&self) -> Option<Symbol> {
+        match self.kind {
+            // FIXME: can this conflict with regular Err literals???
+            LitKind::Err(ref sym) => Some(*sym),
+            _ => None
+        }
     }
 }
 
@@ -42,7 +52,7 @@ impl PatternSymbol for Path {
 
 impl PatternSymbol for Expr {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             ExprKind::Path(None, ref p) => p.pattern_symbol(),
             _ => None,
         }
@@ -51,7 +61,7 @@ impl PatternSymbol for Expr {
 
 impl PatternSymbol for Stmt {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             StmtKind::Semi(ref e) => e.pattern_symbol(),
             _ => None,
         }
@@ -60,9 +70,10 @@ impl PatternSymbol for Stmt {
 
 impl PatternSymbol for Pat {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
-            PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
-                           ref i, None) => i.pattern_symbol(),
+        match self.kind {
+            PatKind::Ident(BindingMode::ByValue(Mutability::Immutable), ref i, None) => {
+                i.pattern_symbol()
+            }
             _ => None,
         }
     }
@@ -70,7 +81,7 @@ impl PatternSymbol for Pat {
 
 impl PatternSymbol for Ty {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             TyKind::Path(None, ref p) => p.pattern_symbol(),
             _ => None,
         }
@@ -79,16 +90,16 @@ impl PatternSymbol for Ty {
 
 impl PatternSymbol for Mac {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        if self.node.tts != TokenStream::empty() {
-            return None;
+        match &*self.args {
+            MacArgs::Empty => self.path.pattern_symbol(),
+            _ => None,
         }
-        self.node.path.pattern_symbol()
     }
 }
 
 impl PatternSymbol for Item {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             ItemKind::Mac(ref m) => m.pattern_symbol(),
             _ => None,
         }
@@ -97,7 +108,7 @@ impl PatternSymbol for Item {
 
 impl PatternSymbol for ImplItem {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             ImplItemKind::Macro(ref m) => m.pattern_symbol(),
             _ => None,
         }
@@ -106,13 +117,22 @@ impl PatternSymbol for ImplItem {
 
 impl PatternSymbol for TraitItem {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             TraitItemKind::Macro(ref m) => m.pattern_symbol(),
             _ => None,
         }
     }
 }
 
+pub fn is_c2rust_attr(attr: &Attribute, name: &str) -> bool {
+    if let AttrKind::Normal(item) = &attr.kind {
+        item.path.segments.len() == 2
+            && item.path.segments[0].ident.as_str() == "c2rust"
+            && item.path.segments[1].ident.as_str() == name
+    } else {
+        false
+    }
+}
 
 /// Get the text of a span, and pass it to a callback.  Returns `false` if the span text isn't
 /// available.
@@ -123,15 +143,14 @@ pub fn with_span_text<F: FnOnce(&str)>(cm: &SourceMap, span: Span, callback: F) 
         Some(x) => x,
         None => return false,
     };
-    let node_src = &file_src[lo.pos.0 as usize .. hi.pos.0 as usize];
+    let node_src = &file_src[lo.pos.0 as usize..hi.pos.0 as usize];
     callback(node_src);
     true
 }
 
-
 /// Extend a node span to cover its attributes.  (By default, item spans cover only the item body,
 /// not the preceding attrs.)
-pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
+pub fn extend_span_attrs(mut s: Span, attrs: &[Attribute]) -> Span {
     // Extend `s` backward to cover all the attrs
     for attr in attrs {
         // Not sure these checks are exactly right, but it seems to work for now.
@@ -142,10 +161,9 @@ pub fn extended_span(mut s: Span, attrs: &[Attribute]) -> Span {
     s
 }
 
-
 /// Get the name of a macro invocation.
 pub fn macro_name(mac: &Mac) -> Name {
-    let p = &mac.node.path;
+    let p = &mac.path;
     p.segments.last().unwrap().ident.name
 }
 
@@ -154,9 +172,10 @@ pub fn use_idents(tree: &UseTree) -> Vec<Ident> {
     match &tree.kind {
         UseTreeKind::Simple(..) => vec![tree.ident()],
         UseTreeKind::Glob => unimplemented!(),
-        UseTreeKind::Nested(children) => {
-            children.iter().flat_map(|(tree, _)| use_idents(tree)).collect()
-        }
+        UseTreeKind::Nested(children) => children
+            .iter()
+            .flat_map(|(tree, _)| use_idents(tree))
+            .collect(),
     }
 }
 
@@ -166,13 +185,13 @@ fn split_uses_impl(
     mut path: Path,
     id: NodeId,
     tree: UseTree,
-    out: &mut SmallVec<[P<Item>; 1]>
+    out: &mut SmallVec<[P<Item>; 1]>,
 ) {
     path.segments.extend_from_slice(&tree.prefix.segments);
     match tree.kind {
         UseTreeKind::Simple(..) | UseTreeKind::Glob => {
             item.id = id;
-            item.node = ItemKind::Use(P(UseTree {
+            item.kind = ItemKind::Use(P(UseTree {
                 prefix: path,
                 ..tree
             }));
@@ -189,7 +208,9 @@ fn split_uses_impl(
 /// Split a use statement which may have nesting into one or more simple use
 /// statements without nesting.
 pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
-    let use_tree = expect!([&item.node] ItemKind::Use(u) => u).clone().into_inner();
+    let use_tree = expect!([&item.kind] ItemKind::Use(u) => u)
+        .clone()
+        .into_inner();
     let mut out = smallvec![];
     let initial_path = Path {
         span: use_tree.prefix.span,
@@ -203,38 +224,33 @@ pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
 /// Is a path relative to the current module?
 pub fn is_relative_path(path: &Path) -> bool {
     !path.segments.is_empty()
-        && (path.segments[0].ident.name == keywords::SelfLower.name()
-            || path.segments[0].ident.name == keywords::Super.name())
+        && (path.segments[0].ident.name == kw::SelfLower
+            || path.segments[0].ident.name == kw::Super)
 }
 
 /// Return the namespace the given Def is defined in. Does not yet handle the
 /// macro namespace.
-pub fn namespace(def: &Def) -> Option<Namespace> {
-    use rustc::hir::def::Def::*;
-    match def {
-        Mod(..)
-        | Struct(..)
-        | Union(..)
-        | Enum(..)
-        | Variant(..)
-        | Trait(..)
-        | Existential(..)
-        | TyAlias(..)
-        | ForeignTy(..)
-        | TraitAlias(..)
-        | AssociatedTy(..)
-        | AssociatedExistential(..)
-        | PrimTy(..)
-        | TyParam(..)
-        | SelfTy(..)
-        | ToolMod => Some(Namespace::TypeNS),
-
-        Fn(..) | Const(..) | Static(..) | SelfCtor(..)
-        | Method(..) | AssociatedConst(..) | Local(..) | Upvar(..) | Label(..) => {
-            Some(Namespace::ValueNS)
+pub fn namespace(res: &def::Res) -> Option<Namespace> {
+    use rustc::hir::def::DefKind::*;
+    match res {
+        Res::Def(kind, _) => match kind {
+            Mod | Struct | Union | Enum | Variant | Trait | OpaqueTy | TyAlias
+            | ForeignTy | TraitAlias | AssocTy | AssocOpaqueTy | TyParam => {
+                Some(Namespace::TypeNS)
+            }
+            Fn | Const | ConstParam | Static | Ctor(..) | Method | AssocConst => {
+                Some(Namespace::ValueNS)
+            }
+            Macro(..) => Some(Namespace::MacroNS),
         }
 
-        _ => None,
+        Res::PrimTy(..) | Res::SelfTy(..) | Res::ToolMod => Some(Namespace::TypeNS),
+
+        Res::SelfCtor(..) | Res::Local(..) => Some(Namespace::ValueNS),
+
+        Res::NonMacroAttr(..) => Some(Namespace::MacroNS),
+
+        Res::Err => None,
     }
 }
 
@@ -256,4 +272,28 @@ pub fn join_visibility(vis1: &VisibilityKind, vis2: &VisibilityKind) -> Visibili
         (Inherited, Restricted { .. }) => vis2.clone(),
         _ => Inherited,
     }
+}
+
+/// Is this item visible outside its translation unit?
+pub fn is_exported(item: &Item) -> bool {
+    match &item.kind {
+        // Values are only visible outside their translation unit if marked with
+        // no mangle or an explicit symbol name
+        ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
+            item.attrs.iter().any(is_export_attr)
+        }
+
+        // Types are visible if pub
+        _ => item.vis.node.is_pub(),
+    }
+}
+
+pub fn is_export_attr(attr: &Attribute) -> bool {
+    attr.has_name(sym::no_mangle) || attr.has_name(sym::export_name)
+}
+
+/// Are the idents of the segments of `path` equivalent to the list of idents
+pub fn path_eq<T: AsRef<str>>(path: &Path, idents: &[T]) -> bool {
+    path.segments.len() == idents.len()
+        && path.segments.iter().zip(idents).all(|(p, i)| p.ident.as_str() == i.as_ref())
 }

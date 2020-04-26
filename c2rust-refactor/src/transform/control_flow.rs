@@ -1,10 +1,16 @@
+use rustc::hir::{self, HirId};
+use rustc::ty::{self, ParamEnv};
+use rustc_typeck::expr_use_visitor::*;
 use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
 use syntax::ptr::P;
 
 use crate::command::{CommandState, Registry};
+use crate::context::HirMap;
+use crate::driver::Phase;
 use crate::matcher::{MatchCtxt, Subst, replace_expr, mut_visit_match_with, find_first};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
+use c2rust_ast_builder::mk;
 
 
 /// # `reconstruct_while` Command
@@ -44,13 +50,17 @@ impl Transform for ReconstructWhile {
 /// 
 /// Replaces `i = start; while i < end { ...; i += step; }` with
 /// `for i in (start .. end).step_by(step) { ...; }`.
+///
+/// This takes a pretty conservative approach: the command only replaces the loop
+/// if the induction variable is written exactly once inside the loop (by the
+/// increment statement) and never read outside the loop.
 pub struct ReconstructForRange;
 
 impl Transform for ReconstructForRange {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat_str = r#"
-            $i:Ident = $start:Expr;
+            $i:Expr = $start:Expr;
             $'label:?Ident: while $cond:Expr {
                 $body:MultiStmt;
                 $incr:Stmt;
@@ -63,10 +73,10 @@ impl Transform for ReconstructForRange {
         let i_plus_eq = mcx.parse_expr("$i += $step:Expr");
         let i_eq_plus = mcx.parse_expr("$i = $i + $step:Expr");
 
-        let range_one_excl = mcx.parse_stmts("$'label: for $i in $start .. $end { $body; }");
-        let range_one_incl = mcx.parse_stmts("$'label: for $i in $start ..= $end { $body; }");
-        let range_step_excl = mcx.parse_stmts("$'label: for $i in ($start .. $end).step_by($step) { $body; }");
-        let range_step_incl = mcx.parse_stmts("$'label: for $i in ($start ..= $end).step_by($step) { $body; }");
+        let range_one_excl = mcx.parse_stmts("$'label: for $ipat:Pat in $start .. $end { $body; }");
+        let range_one_incl = mcx.parse_stmts("$'label: for $ipat:Pat in $start ..= $end { $body; }");
+        let range_step_excl = mcx.parse_stmts("$'label: for $ipat:Pat in ($start .. $end).step_by($step as usize) { $body; }");
+        let range_step_incl = mcx.parse_stmts("$'label: for $ipat:Pat in ($start ..= $end).step_by($step as usize) { $body; }");
 
         mut_visit_match_with(mcx, pat, krate, |orig, mut mcx| {
             let cond = mcx.bindings.get::<_, P<Expr>>("$cond").unwrap().clone();
@@ -78,7 +88,7 @@ impl Transform for ReconstructForRange {
                 return;
             };
 
-            let incr = match mcx.bindings.get::<_, Stmt>("$incr").unwrap().node {
+            let incr = match mcx.bindings.get::<_, Stmt>("$incr").unwrap().kind {
                 StmtKind::Semi(ref e) |
                 StmtKind::Expr(ref e) => e.clone(),
                 _ => { return; }
@@ -87,6 +97,64 @@ impl Transform for ReconstructForRange {
                !mcx.try_match(&*i_eq_plus, &incr).is_ok() {
                 return;
             }
+
+            let hir_map = cx.hir_map();
+			let while_hir_id = hir_map.node_to_hir_id(orig[1].id);
+			let parent_hir_id = hir_map.get_parent_item(while_hir_id);
+            let var_expr = mcx.bindings.get::<_, P<Expr>>("$i")
+                .unwrap().clone();
+            let var_hir_id = match_or!([cx.try_resolve_expr_hir(&var_expr)]
+                                       Some(hir::def::Res::Local(x)) => x; return);
+            let mut delegate = ForRangeDelegate {
+                hir_map,
+                while_hir_id,
+                parent_hir_id,
+                var_hir_id,
+
+                writes_inside_loop: 0,
+                reads_outside_loop: 0,
+            };
+
+            let tcx = cx.ty_ctxt();
+            let parent_did = match_or!([hir_map.opt_local_def_id(parent_hir_id)]
+                                       Some(x) => x; return);
+			let parent_body_id = match_or!([hir_map.maybe_body_owned_by(parent_hir_id)]
+                                           Some(x) => x; return);
+            let parent_body = hir_map.body(parent_body_id);
+			let tables = tcx.body_tables(parent_body_id);
+            tcx.infer_ctxt().enter(|infcx| {
+                ExprUseVisitor::new(&mut delegate, &infcx, parent_did,
+                                    ParamEnv::empty(), tables)
+                    .consume_body(&parent_body);
+            });
+            assert!(delegate.writes_inside_loop > 0);
+            debug!("Loop variable '{:?}' writes:{} reads:{}",
+                   var_expr,
+                   delegate.writes_inside_loop,
+                   delegate.reads_outside_loop);
+            if delegate.writes_inside_loop > 1 || delegate.reads_outside_loop > 0 {
+                return;
+            }
+
+            if let ExprKind::Path(ref qself, ref path) = var_expr.kind {
+                let var_pat = if qself.is_none() &&
+                    path.segments.len() == 1 &&
+                    path.segments[0].args.is_none()
+                {
+                    // If this path is a single-segment identifier,
+                    // we need to emit it as a `PatKind::Ident`
+                    mk()
+                        .span(var_expr.span)
+                        .ident_pat(path.segments[0].ident)
+                } else {
+                    mk()
+                        .span(var_expr.span)
+                        .qpath_pat(qself.clone(), path.clone())
+                };
+                mcx.bindings.add("$ipat", var_pat);
+            } else {
+                return;
+            };
 
             let step = mcx.bindings.get::<_, P<Expr>>("$step").unwrap();
             let repl_step = match (is_one_expr(&*step), range_excl) {
@@ -98,19 +166,99 @@ impl Transform for ReconstructForRange {
             *orig = repl_step.subst(st, cx, &mcx.bindings);
         });
     }
+
+    fn min_phase(&self) -> Phase {
+        Phase::Phase3
+    }
 }
 
 fn is_one_expr(e: &Expr) -> bool {
-    match e.node {
+    match e.kind {
         ExprKind::Lit(ref l) => is_one_lit(l),
         _ => false,
     }
 }
 
 fn is_one_lit(l: &Lit) -> bool {
-    match l.node {
+    match l.kind {
         LitKind::Int(1, _) => true,
         _ => false,
+    }
+}
+
+struct ForRangeDelegate<'a, 'hir: 'a> {
+    hir_map: HirMap<'a, 'hir>,
+    while_hir_id: HirId,
+    parent_hir_id: HirId,
+    var_hir_id: HirId,
+
+    writes_inside_loop: usize,
+    reads_outside_loop: usize,
+}
+
+impl<'a, 'hir: 'a> ForRangeDelegate<'a, 'hir> {
+    fn node_inside_loop(&self, id: HirId) -> bool {
+        let mut cur_id = id;
+        loop {
+            if cur_id == self.while_hir_id {
+                return true;
+            }
+            if cur_id == self.parent_hir_id {
+                return false;
+            }
+
+            let parent_id = self.hir_map.get_parent_node(cur_id);
+            if parent_id == cur_id {
+                panic!("expected node {} inside parent item {}",
+                       id, self.parent_hir_id);
+            }
+            cur_id = parent_id;
+        }
+    }
+}
+
+impl<'a, 'hir: 'a, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
+    fn consume(&mut self, cmt: &Place<'tcx>, _: ConsumeMode) {
+        match cmt.base {
+            PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
+            _ => return
+        }
+
+        if !self.node_inside_loop(cmt.hir_id) {
+            self.reads_outside_loop += 1;
+        }
+    }
+
+    fn borrow(&mut self, cmt: &Place<'tcx>, bk: ty::BorrowKind) {
+        match cmt.base {
+            PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
+            _ => return
+        }
+
+        if bk == ty::BorrowKind::MutBorrow {
+            if !self.node_inside_loop(cmt.hir_id) {
+                // Be conservative here and assume that a
+                // mutable borrow outside the loop implies a read
+                self.reads_outside_loop += 1;
+            } else {
+                self.writes_inside_loop += 1;
+            }
+        } else {
+            if !self.node_inside_loop(cmt.hir_id) {
+                self.reads_outside_loop += 1;
+            }
+        }
+    }
+
+    fn mutate(&mut self, cmt: &Place<'tcx>) {
+        match cmt.base {
+            PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
+            _ => return
+        }
+
+        if self.node_inside_loop(cmt.hir_id) {
+            self.writes_inside_loop += 1;
+        }
     }
 }
 

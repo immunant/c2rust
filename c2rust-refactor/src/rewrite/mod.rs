@@ -54,17 +54,16 @@
 //! happens: when `recursive` fails, `Rewrite::rewrite` will try the next strategy (such as
 //! `print`), which can perform rewrites to correct the error at this higher level.
 
-
+use rustc::session::Session;
 use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use rustc::session::Session;
 use syntax::ast::*;
 use syntax::source_map::{Span, DUMMY_SP};
 use syntax::util::parser;
 
-use crate::ast_manip::{GetSpan, Visit};
-use crate::ast_manip::ast_map::{AstMap, map_ast};
+use crate::ast_manip::{map_ast, AstMap};
+use crate::ast_manip::{GetSpan, Visit, CommentMap};
 use crate::driver;
 
 mod cleanup;
@@ -76,14 +75,13 @@ mod strategy;
 
 pub use self::base::Rewrite;
 
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TextAdjust {
     None,
     Parenthesize,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct TextRewrite {
     pub old_span: Span,
     pub new_span: Span,
@@ -102,13 +100,14 @@ impl TextRewrite {
 
     pub fn adjusted(old_span: Span, new_span: Span, adjust: TextAdjust) -> TextRewrite {
         TextRewrite {
-            old_span, new_span, adjust,
+            old_span,
+            new_span,
+            adjust,
             rewrites: Vec::new(),
             nodes: Vec::new(),
         }
     }
 }
-
 
 /// Common ID type for nodes and `Attribute`s.  Both are sequence items, but `Attribute`s have
 /// their own custom ID type for some reason.
@@ -143,7 +142,6 @@ impl MappableId for SeqItemId {
     }
 }
 
-
 /// Precedence information about the context surrounding an expression.  Used to determine whether
 /// an expr needs to be parenthesized.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -161,10 +159,10 @@ pub enum ExprPrec {
     LeftLess(i8),
 }
 
-
 pub struct RewriteCtxt<'s> {
     sess: &'s Session,
     old_nodes: AstMap<'s>,
+    comment_map: &'s CommentMap,
     text_span_cache: HashMap<String, Span>,
 
     /// The span of the new AST the last time we entered "fresh" mode.  This lets us avoid infinite
@@ -186,12 +184,16 @@ pub struct RewriteCtxt<'s> {
 }
 
 impl<'s> RewriteCtxt<'s> {
-    fn new(sess: &'s Session,
-           old_nodes: AstMap<'s>,
-           node_id_map: HashMap<NodeId, NodeId>) -> RewriteCtxt<'s> {
+    fn new(
+        sess: &'s Session,
+        old_nodes: AstMap<'s>,
+        comment_map: &'s CommentMap,
+        node_id_map: HashMap<NodeId, NodeId>,
+    ) -> RewriteCtxt<'s> {
         RewriteCtxt {
             sess,
             old_nodes,
+            comment_map,
             text_span_cache: HashMap::new(),
 
             fresh_start: DUMMY_SP,
@@ -206,6 +208,10 @@ impl<'s> RewriteCtxt<'s> {
 
     pub fn old_nodes(&self) -> &AstMap<'s> {
         &self.old_nodes
+    }
+
+    pub fn comments(&self) -> &'s CommentMap {
+        &self.comment_map
     }
 
     pub fn fresh_start(&self) -> Span {
@@ -229,10 +235,7 @@ impl<'s> RewriteCtxt<'s> {
     }
 
     pub fn enter<'b>(&'b mut self, rw: &'b mut TextRewrite) -> RewriteCtxtRef<'s, 'b> {
-        RewriteCtxtRef {
-            cx: self,
-            rw,
-        }
+        RewriteCtxtRef { cx: self, rw }
     }
 
     pub fn text_span(&mut self, s: &str) -> Span {
@@ -245,7 +248,6 @@ impl<'s> RewriteCtxt<'s> {
         sp
     }
 }
-
 
 pub struct RewriteCtxtRef<'s: 'a, 'a> {
     cx: &'a mut RewriteCtxt<'s>,
@@ -275,15 +277,11 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
     }
 
     pub fn enter<'b>(&'b mut self, rw: &'b mut TextRewrite) -> RewriteCtxtRef<'s, 'b> {
-        RewriteCtxtRef {
-            cx: self.cx,
-            rw,
-        }
+        RewriteCtxtRef { cx: self.cx, rw }
     }
 
     pub fn mark(&self) -> (usize, usize) {
-        (self.rw.rewrites.len(),
-         self.rw.nodes.len())
+        (self.rw.rewrites.len(), self.rw.nodes.len())
     }
 
     pub fn rewind(&mut self, mark: (usize, usize)) {
@@ -295,9 +293,7 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
         self.rw.rewrites.push(rw);
     }
 
-    pub fn record_text(&mut self,
-                       old_span: Span,
-                       text: &str) {
+    pub fn record_text(&mut self, old_span: Span, text: &str) {
         let new_span = self.text_span(text);
         self.record(TextRewrite::new(old_span, new_span));
     }
@@ -307,19 +303,22 @@ impl<'s, 'a> RewriteCtxtRef<'s, 'a> {
     }
 }
 
-
-pub fn rewrite<'s, T>(sess: &Session,
-                      old: &'s T,
-                      new: &T,
-                      node_id_map: HashMap<NodeId, NodeId>,
-                      map_extra_ast: impl FnOnce(&mut AstMap<'s>))
-                      -> TextRewrite
-        where T: Rewrite+Visit+GetSpan {
+pub fn rewrite<'s, T>(
+    sess: &Session,
+    old: &'s T,
+    new: &T,
+    comment_map: &CommentMap,
+    node_id_map: HashMap<NodeId, NodeId>,
+    map_extra_ast: impl FnOnce(&mut AstMap<'s>),
+) -> TextRewrite
+where
+    T: Rewrite + Visit + GetSpan,
+{
     let mut map = map_ast(old);
     map_extra_ast(&mut map);
 
     let mut rw = TextRewrite::new(DUMMY_SP, old.get_span());
-    let mut rcx = RewriteCtxt::new(sess, map, node_id_map);
+    let mut rcx = RewriteCtxt::new(sess, map, comment_map, node_id_map);
     let ok = Rewrite::rewrite(old, new, rcx.enter(&mut rw));
     assert!(ok, "rewriting did not complete");
     rw

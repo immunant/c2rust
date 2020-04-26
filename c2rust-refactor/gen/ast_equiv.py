@@ -13,6 +13,8 @@ Attributes:
 - `#[equiv_mode=ignore]`: On a type declaration, generate a trivial `impl` that
   always returns `true`.  The effect is that comparisons will ignore fields of
   this type.
+
+- `#[equiv_mode=custom]`: On a type declaration, do not generate an `impl`.
 '''
 
 from datetime import datetime
@@ -30,14 +32,14 @@ def exhaustiveness_check(se, target):
     yield '}'
 
 @linewise
-def comparison(se, target1, target2):
+def comparison(se, method, target1, target2):
     yield 'match (%s, %s) {' % (target1, target2)
     for v, path in variants_paths(se):
         yield '  (&%s,' % struct_pattern(v, path, '1')
         yield '   &%s) => {' % struct_pattern(v, path, '2')
         for f in v.fields:
-            yield '    AstEquiv::ast_equiv(%s1, %s2) &&' % \
-                    (f.name, f.name)
+            yield '    AstEquiv::%s(%s1, %s2) &&' % \
+                    (method, f.name, f.name)
         yield '    true'
         yield '  }'
     yield '  (_, _) => false,'
@@ -53,7 +55,10 @@ def compare_impl(se):
     yield indent(exhaustiveness_check(se, 'self'), '    ')
     yield ''
     yield '    // Comparison'
-    yield indent(comparison(se, 'self', 'other'), '    ')
+    yield indent(comparison(se, 'ast_equiv', 'self', 'other'), '    ')
+    yield '  }'
+    yield '  fn unnamed_equiv(&self, other: &Self) -> bool {'
+    yield indent(comparison(se, 'unnamed_equiv', 'self', 'other'), '    ')
     yield '  }'
     yield '}'
 
@@ -64,6 +69,9 @@ def eq_impl(d):
     yield '  fn ast_equiv(&self, other: &Self) -> bool {'
     yield '    self == other'
     yield '  }'
+    yield '  fn unnamed_equiv(&self, other: &Self) -> bool {'
+    yield '    self == other'
+    yield '  }'
     yield '}'
 
 @linewise
@@ -71,6 +79,9 @@ def ignore_impl(d):
     yield '#[allow(unused)]'
     yield 'impl AstEquiv for %s {' % d.name
     yield '  fn ast_equiv(&self, other: &Self) -> bool {'
+    yield '    true'
+    yield '  }'
+    yield '  fn unnamed_equiv(&self, other: &Self) -> bool {'
     yield '    true'
     yield '  }'
     yield '}'
@@ -95,3 +106,5 @@ def generate(decls):
             yield eq_impl(d)
         elif mode == 'ignore':
             yield ignore_impl(d)
+        elif mode == 'custom':
+            pass

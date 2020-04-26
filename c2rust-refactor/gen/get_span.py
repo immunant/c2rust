@@ -33,7 +33,7 @@ def do_impl(s, field_name):
         yield '    self.%s' % field_name
     else:
         attr_field = s.attrs['extend_span'] or 'attrs'
-        yield '    extended_span(self.%s, &self.%s)' % (field_name, attr_field)
+        yield '    extend_span_attrs(self.%s, &self.%s)' % (field_name, attr_field)
     yield '  }'
     yield '}'
 

@@ -1,0 +1,7 @@
+#!/usr/bin/python3
+
+import common
+import sys
+
+if __name__ == '__main__':
+    sys.exit(common.run(build_type="ld"))

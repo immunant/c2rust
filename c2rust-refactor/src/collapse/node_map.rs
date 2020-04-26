@@ -1,17 +1,16 @@
 //! `NodeMap` support for macro expansion/collapsing.
-use std::collections::HashMap;
 use rustc_data_structures::sync::Lrc;
+use std::collections::HashMap;
 use syntax::ast::*;
+use syntax::token::{Nonterminal, Token, TokenKind};
 use syntax::source_map::Span;
-use syntax::parse::token::{Token, Nonterminal};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::visit::{self, Visitor};
 
-use crate::ast_manip::{AstEquiv, Visit, ListNodeIds};
+use crate::ast_manip::{AstEquiv, ListNodeIds, Visit};
 use crate::node_map::NodeMap;
 
-use super::mac_table::{MacTable, InvocKind};
-
+use super::mac_table::{InvocKind, MacTable};
 
 /// Match up IDs of pre-expansion `Nonterminal` tokens with post-expansion AST nodes.  Matching is
 /// performed by first checking for equal spans and then by comparing with `ast_equiv`.  This can
@@ -30,10 +29,13 @@ pub fn match_nonterminal_ids(node_map: &mut NodeMap, mac_table: &MacTable) {
 
         // Find all nonterminals in the macro's input tokens.
         let mut span_map = HashMap::new();
-        collect_nonterminals(mac.node.tts.clone().into(), &mut span_map);
+        collect_nonterminals(mac.args.inner_tokens(), &mut span_map);
 
         // Match IDs of nonterminal nodes with IDs of their uses in the expanded AST.
-        let mut v = NtUseVisitor { nts: &span_map, matched_ids: Vec::new() };
+        let mut v = NtUseVisitor {
+            nts: &span_map,
+            matched_ids: Vec::new(),
+        };
         info.expanded.visit(&mut v);
 
         // Add the results to `node_map.pending_edges`.
@@ -41,11 +43,10 @@ pub fn match_nonterminal_ids(node_map: &mut NodeMap, mac_table: &MacTable) {
     }
 }
 
-
 /// Get the span of the inner node of a nonterminal token.  Note we only need to handle nonterminal
 /// kinds that have both spans and NodeIds.
 fn nt_span(nt: &Nonterminal) -> Option<Span> {
-    use syntax::parse::token::Nonterminal::*;
+    use syntax::token::Nonterminal::*;
     Some(match nt {
         NtItem(ref i) => i.span,
         NtBlock(ref b) => b.span,
@@ -63,15 +64,15 @@ fn nt_span(nt: &Nonterminal) -> Option<Span> {
 fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Lrc<Nonterminal>>) {
     for tt in ts.into_trees() {
         match tt {
-            TokenTree::Token(_, Token::Interpolated(nt)) => {
+            TokenTree::Token(Token{kind: TokenKind::Interpolated(nt), ..}) => {
                 if let Some(span) = nt_span(&nt) {
                     span_map.insert(span, nt.clone());
                 }
-            },
-            TokenTree::Token(..) => {},
+            }
+            TokenTree::Token(..) => {}
             TokenTree::Delimited(_, _, tts) => {
-                collect_nonterminals(tts.into(), span_map);
-            },
+                collect_nonterminals(tts, span_map);
+            }
         }
     }
 }

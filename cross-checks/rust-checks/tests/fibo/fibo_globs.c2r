@@ -12,6 +12,10 @@
     - item: defaults
       disable_xchecks: true
 
+    - item: struct
+      name: ".*"
+      disable_xchecks: false
+
     - item: function
       name: fibo
       disable_xchecks: false
@@ -36,7 +40,6 @@
 
     - item: struct
       name: FiboArg
-      disable_xchecks: false
       //ahasher: "::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher"
       //shasher: "::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher"
       //fields:

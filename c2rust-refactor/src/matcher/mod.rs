@@ -18,6 +18,11 @@
 //!    For itemlikes, a lone ident can't be used as a pattern because it's not a valid itemlike.
 //!    Use a zero-argument macro invocation `__x!()` instead.
 //!
+//!  * `$x:NODE` captures an AST node of type `NODE`, which is one of the binding types from
+//!    `bindings.rs` (case-sensitive), e.g., `Expr`. For example, `$x:Expr` matched all expression
+//!    ASTs. The capture can also have the form `$x:?NODE`, which matches an optional AST of type
+//!    `Option<Node>`, e.g., `$l:?Ident` matches against `Option<Ident>` for optional loop labels.
+//!
 //!  * `marked!(x [, label])`: Matches `x` only if the node is marked with the given label.  The
 //!    label defaults to "target" if omitted.
 //!
@@ -36,31 +41,30 @@ use rustc::session::Session;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Pat, Path, Stmt, Ty};
+use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
-use syntax::parse::parser::{Parser, PathStyle};
-use syntax::parse::token::Token;
-use syntax::parse::{self, PResult};
+use rustc_parse::parser::{Parser, PathStyle};
+use syntax::token::{TokenKind};
+use rustc_errors::PResult;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax::tokenstream::TokenStream;
 use syntax_pos::FileName;
 
 use crate::ast_manip::util::PatternSymbol;
-use crate::ast_manip::{MutVisit, GetNodeId, remove_paren};
+use crate::ast_manip::{remove_paren, GetNodeId, MutVisit};
 use crate::command::CommandState;
 use crate::driver::{self, emit_and_panic};
-use crate::RefactorCtxt;
 use crate::reflect;
+use crate::RefactorCtxt;
 use c2rust_ast_builder::IntoSymbol;
 
 mod bindings;
 mod impls;
 mod subst;
 
-pub use self::bindings::{Bindings, BindingTypes, Type as BindingType, parse_bindings};
+pub use self::bindings::{parse_bindings, BindingTypes, Bindings, Type as BindingType};
 pub use self::subst::Subst;
-
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -69,6 +73,9 @@ pub enum Error {
     VariantMismatch,
     LengthMismatch,
     SymbolMismatch,
+
+    /// Parse error while parsing pattern
+    InvalidParse,
 
     // For nonlinear patterns, it's possible that the 2nd+ occurrence of the variable in the
     // pattern matches a different ident/expr/stmt than the 1st occurrence.
@@ -103,17 +110,15 @@ pub struct MatchCtxt<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
-    pub fn new(st: &'a CommandState,
-               cx: &'a RefactorCtxt<'a, 'tcx>) -> MatchCtxt<'a, 'tcx> {
+    pub fn new(st: &'a CommandState, cx: &'a RefactorCtxt<'a, 'tcx>) -> MatchCtxt<'a, 'tcx> {
         MatchCtxt {
             bindings: Bindings::new(),
             types: BindingTypes::new(),
-            st: st,
-            cx: cx,
+            st,
+            cx,
             debug: false,
         }
     }
-
 
     pub fn parse_expr(&mut self, src: &str) -> P<Expr> {
         let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
@@ -192,18 +197,19 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     /// Build a new `MatchCtxt`, and try to match `target` against `pat` in that context.
-    pub fn from_match<T: TryMatch>(st: &'a CommandState,
-                                   cx: &'a RefactorCtxt<'a, 'tcx>,
-                                   pat: &T,
-                                   target: &T) -> Result<MatchCtxt<'a, 'tcx>> {
+    pub fn from_match<T: TryMatch>(
+        st: &'a CommandState,
+        cx: &'a RefactorCtxt<'a, 'tcx>,
+        pat: &T,
+        target: &T,
+    ) -> Result<MatchCtxt<'a, 'tcx>> {
         let mut m = MatchCtxt::new(st, cx);
         m.try_match(pat, target)?;
         Ok(m)
     }
 
     /// Clone this context and try to perform a match in the clone, returning `Ok` if it succeeds.
-    pub fn clone_match<T: TryMatch>(&self, pat: &T, target: &T)
-                                    -> Result<MatchCtxt<'a, 'tcx>> {
+    pub fn clone_match<T: TryMatch>(&self, pat: &T, target: &T) -> Result<MatchCtxt<'a, 'tcx>> {
         let mut m = self.clone();
         m.try_match(pat, target)?;
         Ok(m)
@@ -212,9 +218,13 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     pub fn set_type<S: IntoSymbol>(&mut self, name: S, ty: BindingType) {
         let name = name.into_symbol();
         if let Some(old_ty) = self.bindings.get_type(name) {
-            assert!(ty == old_ty || ty == BindingType::Unknown || old_ty == BindingType::Unknown,
-                    "tried to set type of {:?} to {:?}, but it already has a value of type {:?}",
-                    name, ty, old_ty);
+            assert!(
+                ty == old_ty || ty == BindingType::Unknown || old_ty == BindingType::Unknown,
+                "tried to set type of {:?} to {:?}, but it already has a value of type {:?}",
+                name,
+                ty,
+                old_ty
+            );
         }
 
         self.types.set_type(name, ty)
@@ -239,9 +249,13 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(_)) => {
                 let ok = self.bindings.try_add_none(sym);
-                if ok { Ok(()) } else { Err(Error::NonlinearMismatch) }
+                if ok {
+                    Ok(())
+                } else {
+                    Err(Error::NonlinearMismatch)
+                }
             }
-            bt @ _ => panic!("expected optional binding, got {:?}", bt)
+            bt @ _ => panic!("expected optional binding, got {:?}", bt),
         }
     }
     /// Try to capture an ident.  Returns `Ok(true)` if it captured, `Ok(false)` if `pattern` is
@@ -256,19 +270,27 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         // starts with "__", then it's a valid pattern for any binding type.
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(bindings::Type::Ident)) => {
-                let ok = self.bindings.try_add(sym, Some(target.clone()));
-                let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
+                let ok = self.bindings.try_add(sym, Some(*target));
+                let res = if ok {
+                    Ok(true)
+                } else {
+                    Err(Error::NonlinearMismatch)
+                };
                 return res;
             }
 
-            Some(&bindings::Type::Ident) => {},
-            Some(&bindings::Type::Unknown) => {},
-            None if sym.as_str().starts_with("__") => {},
+            Some(&bindings::Type::Ident) => {}
+            Some(&bindings::Type::Unknown) => {}
+            None if sym.as_str().starts_with("__") => {}
             _ => return Ok(false),
         }
 
         let ok = self.bindings.try_add(sym, target.clone());
-        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+        if ok {
+            Ok(true)
+        } else {
+            Err(Error::NonlinearMismatch)
+        }
     }
 
     pub fn maybe_capture_label(&mut self, pattern: &Label, target: &Label) -> Result<bool> {
@@ -281,18 +303,26 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(bindings::Type::Ident)) => {
                 let ok = self.bindings.try_add(sym, Some(target.ident.clone()));
-                let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
+                let res = if ok {
+                    Ok(true)
+                } else {
+                    Err(Error::NonlinearMismatch)
+                };
                 return res;
             }
 
-            Some(&bindings::Type::Ident) => {},
-            Some(&bindings::Type::Unknown) => {},
-            None if sym.as_str().starts_with("'__") => {},
+            Some(&bindings::Type::Ident) => {}
+            Some(&bindings::Type::Unknown) => {}
+            None if sym.as_str().starts_with("'__") => {}
             _ => return Ok(false),
         }
 
         let ok = self.bindings.try_add(sym, target.ident.clone());
-        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+        if ok {
+            Ok(true)
+        } else {
+            Err(Error::NonlinearMismatch)
+        }
     }
 
     pub fn maybe_capture_path(&mut self, pattern: &Path, target: &Path) -> Result<bool> {
@@ -302,14 +332,38 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         };
 
         match self.types.get(&sym) {
-            Some(&bindings::Type::Path) => {},
-            Some(&bindings::Type::Unknown) => {},
-            None if sym.as_str().starts_with("__") => {},
+            Some(&bindings::Type::Path) => {}
+            Some(&bindings::Type::Unknown) => {}
+            None if sym.as_str().starts_with("__") => {}
             _ => return Ok(false),
         }
 
         let ok = self.bindings.try_add(sym, target.clone());
-        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+        if ok {
+            Ok(true)
+        } else {
+            Err(Error::NonlinearMismatch)
+        }
+    }
+
+    pub fn maybe_capture_lit(&mut self, pattern: &Lit, target: &Lit) -> Result<bool> {
+        let sym = match pattern.pattern_symbol() {
+            Some(x) => x,
+            None => return Ok(false),
+        };
+
+        match self.types.get(&sym) {
+            Some(&bindings::Type::Lit) => {}
+            Some(&bindings::Type::Unknown) => {}
+            _ => return Ok(false),
+        }
+
+        let ok = self.bindings.try_add(sym, target.clone());
+        if ok {
+            Ok(true)
+        } else {
+            Err(Error::NonlinearMismatch)
+        }
     }
 
     pub fn maybe_capture_expr(&mut self, pattern: &Expr, target: &Expr) -> Result<bool> {
@@ -321,18 +375,26 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(bindings::Type::Expr)) => {
                 let ok = self.bindings.try_add(sym, Some(P(target.clone())));
-                let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
+                let res = if ok {
+                    Ok(true)
+                } else {
+                    Err(Error::NonlinearMismatch)
+                };
                 return res;
             }
 
-            Some(&bindings::Type::Expr) => {},
-            Some(&bindings::Type::Unknown) => {},
-            None if sym.as_str().starts_with("__") => {},
+            Some(&bindings::Type::Expr) => {}
+            Some(&bindings::Type::Unknown) => {}
+            None if sym.as_str().starts_with("__") => {}
             _ => return Ok(false),
         }
 
         let ok = self.bindings.try_add(sym, P(target.clone()));
-        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+        if ok {
+            Ok(true)
+        } else {
+            Err(Error::NonlinearMismatch)
+        }
     }
 
     pub fn maybe_capture_pat(&mut self, pattern: &Pat, target: &Pat) -> Result<bool> {
@@ -342,14 +404,18 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         };
 
         match self.types.get(&sym) {
-            Some(&bindings::Type::Pat) => {},
-            Some(&bindings::Type::Unknown) => {},
-            None if sym.as_str().starts_with("__") => {},
+            Some(&bindings::Type::Pat) => {}
+            Some(&bindings::Type::Unknown) => {}
+            None if sym.as_str().starts_with("__") => {}
             _ => return Ok(false),
         }
 
         let ok = self.bindings.try_add(sym, P(target.clone()));
-        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+        if ok {
+            Ok(true)
+        } else {
+            Err(Error::NonlinearMismatch)
+        }
     }
 
     pub fn maybe_capture_ty(&mut self, pattern: &Ty, target: &Ty) -> Result<bool> {
@@ -361,18 +427,26 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(bindings::Type::Ty)) => {
                 let ok = self.bindings.try_add(sym, Some(P(target.clone())));
-                let res = if ok { Ok(true) } else { Err(Error::NonlinearMismatch) };
+                let res = if ok {
+                    Ok(true)
+                } else {
+                    Err(Error::NonlinearMismatch)
+                };
                 return res;
             }
 
-            Some(&bindings::Type::Ty) => {},
-            Some(&bindings::Type::Unknown) => {},
-            None if sym.as_str().starts_with("__") => {},
+            Some(&bindings::Type::Ty) => {}
+            Some(&bindings::Type::Unknown) => {}
+            None if sym.as_str().starts_with("__") => {}
             _ => return Ok(false),
         }
 
         let ok = self.bindings.try_add(sym, P(target.clone()));
-        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+        if ok {
+            Ok(true)
+        } else {
+            Err(Error::NonlinearMismatch)
+        }
     }
 
     pub fn maybe_capture_stmt(&mut self, pattern: &Stmt, target: &Stmt) -> Result<bool> {
@@ -382,14 +456,18 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         };
 
         match self.types.get(&sym) {
-            Some(&bindings::Type::Stmt) => {},
-            Some(&bindings::Type::Unknown) => {},
-            None if sym.as_str().starts_with("__") => {},
+            Some(&bindings::Type::Stmt) => {}
+            Some(&bindings::Type::Unknown) => {}
+            None if sym.as_str().starts_with("__") => {}
             _ => return Ok(false),
         }
 
         let ok = self.bindings.try_add(sym, target.clone());
-        if ok { Ok(true) } else { Err(Error::NonlinearMismatch) }
+        if ok {
+            Ok(true)
+        } else {
+            Err(Error::NonlinearMismatch)
+        }
     }
 
     // If you want to be able to capture more types of nodes with `__x` / `__x!()` forms, then add
@@ -397,25 +475,30 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     // with `#[match=custom]` in ast.txt.  You may also need to add a new `PatternSymbol` impl in
     // util.rs.
 
-
     /// Handle the `marked!(...)` matching form.
-    pub fn do_marked<T, F>(&mut self,
-                           tts: &TokenStream,
-                           func: F,
-                           target: &T) -> Result<()>
-            where T: TryMatch + GetNodeId,
-                  F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T> {
-        let mut p = Parser::new(&self.cx.session().parse_sess,
-                                tts.clone().into(),
-                                None, false, false);
+    pub fn do_marked<T, F>(&mut self, args: &MacArgs, func: F, target: &T) -> Result<()>
+    where
+        T: TryMatch + GetNodeId,
+        F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T>,
+    {
+        let mut p = Parser::new(
+            &self.cx.session().parse_sess,
+            args.inner_tokens().clone(),
+            None,
+            false,
+            false,
+            None,
+        );
         let pattern = func(&mut p).unwrap();
 
-        let label =
-            if p.eat(&Token::Comma) {
-                p.parse_ident().unwrap().name
-            } else {
-                "target".into_symbol()
-            };
+        let label = if p.eat(&TokenKind::Comma) {
+            match p.token.kind {
+                TokenKind::Ident(name, _) => name,
+                _ => return Err(Error::InvalidParse),
+            }
+        } else {
+            "target".into_symbol()
+        };
 
         if !self.st.marked(target.get_node_id(), label) {
             return Err(Error::NotMarked);
@@ -425,13 +508,20 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     /// Core implementation of the `def!(...)` matching form.
-    fn do_def_impl(&mut self,
-                   tts: &TokenStream,
-                   style: PathStyle,
-                   opt_def_id: Option<DefId>) -> Result<()> {
-        let mut p = Parser::new(&self.cx.session().parse_sess,
-                                tts.clone().into(),
-                                None, false, false);
+    fn do_def_impl(
+        &mut self,
+        args: &MacArgs,
+        style: PathStyle,
+        opt_def_id: Option<DefId>,
+    ) -> Result<()> {
+        let mut p = Parser::new(
+            &self.cx.session().parse_sess,
+            args.inner_tokens(),
+            None,
+            false,
+            false,
+            None,
+        );
         let path_pattern = p.parse_path(style).unwrap();
 
         let def_id = match_or!([opt_def_id] Some(x) => x;
@@ -441,8 +531,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let (_qself, def_path) = reflect::reflect_def_path(self.cx.ty_ctxt(), def_id);
 
         if self.debug {
-            eprintln!("def!(): trying to match pattern {:?} against AST {:?}",
-                      path_pattern, def_path);
+            eprintln!(
+                "def!(): trying to match pattern {:?} against AST {:?}",
+                path_pattern, def_path
+            );
         }
         if self.try_match(&path_pattern, &def_path).is_err() {
             return Err(Error::DefMismatch);
@@ -452,38 +544,46 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     /// Handle the `def!(...)` matching form for exprs.
-    pub fn do_def_expr(&mut self, tts: &TokenStream, target: &Expr) -> Result<()> {
+    pub fn do_def_expr(&mut self, args: &MacArgs, target: &Expr) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_expr(target);
-        self.do_def_impl(tts, PathStyle::Expr, opt_def_id)
+        self.do_def_impl(args, PathStyle::Expr, opt_def_id)
     }
 
     /// Handle the `def!(...)` matching form for exprs.
-    pub fn do_def_ty(&mut self, tts: &TokenStream, target: &Ty) -> Result<()> {
+    pub fn do_def_ty(&mut self, args: &MacArgs, target: &Ty) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_ty(target);
-        self.do_def_impl(tts, PathStyle::Type, opt_def_id)
+        self.do_def_impl(args, PathStyle::Type, opt_def_id)
     }
 
     /// Handle the `typed!(...)` matching form.
-    pub fn do_typed<T, F>(&mut self,
-                          tts: &TokenStream,
-                          func: F,
-                          target: &T) -> Result<()>
-            where T: TryMatch + GetNodeId,
-                  F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T> {
-        let mut p = Parser::new(&self.cx.session().parse_sess,
-                                tts.clone().into(),
-                                None, false, false);
+    pub fn do_typed<T, F>(&mut self, args: &MacArgs, func: F, target: &T) -> Result<()>
+    where
+        T: TryMatch + GetNodeId,
+        F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T>,
+    {
+        let mut p = Parser::new(
+            &self.cx.session().parse_sess,
+            args.inner_tokens(),
+            None,
+            false,
+            false,
+            None,
+        );
         let pattern = func(&mut p).unwrap();
-        p.expect(&Token::Comma).unwrap();
+        p.expect(&TokenKind::Comma).unwrap();
         let ty_pattern = p.parse_ty().unwrap();
 
-        let tcx_ty = self.cx.opt_node_type(target.get_node_id())
+        let tcx_ty = self
+            .cx
+            .opt_node_type(target.get_node_id())
             .ok_or(Error::TypeUnavailable)?;
         let ast_ty = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), tcx_ty);
 
         if self.debug {
-            eprintln!("typed!(): trying to match pattern {:?} against AST {:?}",
-                      ty_pattern, ast_ty);
+            eprintln!(
+                "typed!(): trying to match pattern {:?} against AST {:?}",
+                ty_pattern, ast_ty
+            );
         }
         if self.try_match(&ty_pattern, &ast_ty).is_err() {
             return Err(Error::WrongType);
@@ -492,9 +592,11 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         self.try_match(&pattern, target)
     }
 
-    pub fn do_cast<F>(&mut self, tts: &TokenStream, func: F, target: &Expr) -> Result<()>
-            where F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, P<Expr>> {
-        let ts: TokenStream = tts.clone().into();
+    pub fn do_cast<F>(&mut self, args: &MacArgs, func: F, target: &Expr) -> Result<()>
+    where
+        F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, P<Expr>>,
+    {
+        let ts: TokenStream = args.inner_tokens();
         let pattern = driver::run_parser_tts(self.cx.session(), ts.into_trees().collect(), func);
 
         let mut target = target;
@@ -508,7 +610,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             };
             self.bindings = old_bnd;
 
-            target = match target.node {
+            target = match target.kind {
                 ExprKind::Cast(ref e, _) => e,
                 _ => return Err(err),
             };
@@ -517,42 +619,36 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 }
 
 fn make_bindings_parser<'a>(sess: &'a Session, src: &str) -> (Parser<'a>, BindingTypes) {
-    let ts =
-        parse::parse_stream_from_source_str(FileName::anon_source_code(src),
-                                            src.to_owned(),
-                                            &sess.parse_sess,
-                                            None);
+    let ts = rustc_parse::parse_stream_from_source_str(
+        FileName::anon_source_code(src),
+        src.to_owned(),
+        &sess.parse_sess,
+        None,
+    );
     let (ts, bt) = parse_bindings(ts);
-    (parse::stream_to_parser(&sess.parse_sess, ts), bt)
+    (rustc_parse::stream_to_parser(&sess.parse_sess, ts, None), bt)
 }
 
 pub trait TryMatch {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> Result<()>;
 }
 
-
-
 /// Trait for AST types that can be used as patterns in a search-and-replace (`mut_visit_match`).
-pub trait Pattern<V>: TryMatch+Sized {
-    fn visit<'a, 'tcx, T, F>(
-        self,
-        _init_mcx: MatchCtxt<'a, 'tcx>,
-        _callback: F,
-        _target: &mut T,
-    )
-    where T: MutVisit,
-          F: FnMut(&mut V, MatchCtxt<'a, 'tcx>) {}
+pub trait Pattern<V>: TryMatch + Sized {
+    fn visit<'a, 'tcx, T, F>(self, _init_mcx: MatchCtxt<'a, 'tcx>, _callback: F, _target: &mut T)
+    where
+        T: MutVisit,
+        F: FnMut(&mut V, MatchCtxt<'a, 'tcx>),
+    {
+    }
 
-    fn flat_map<'a, 'tcx, T, F>(
-        self,
-        _init_mcx: MatchCtxt<'a, 'tcx>,
-        _callback: F,
-        _target: &mut T,
-    )
-    where T: MutVisit,
-          F: FnMut(V, MatchCtxt<'a, 'tcx>) -> SmallVec<[V; 1]> {}
+    fn flat_map<'a, 'tcx, T, F>(self, _init_mcx: MatchCtxt<'a, 'tcx>, _callback: F, _target: &mut T)
+    where
+        T: MutVisit,
+        F: FnMut(V, MatchCtxt<'a, 'tcx>) -> SmallVec<[V; 1]>,
+    {
+    }
 }
-
 
 macro_rules! gen_pattern_impl {
     (
@@ -692,21 +788,24 @@ gen_pattern_impl! {
     map(match_one) = { let mut s = s; s.iter_mut().for_each(match_one); s };
 }
 
-
 // Implementation of multi-statement matching.
 
 /// Custom `Folder` for multi-statement `Pattern`s.
 pub struct MultiStmtPatternFolder<'a, 'tcx: 'a, F>
-        where F: FnMut(&mut Vec<Stmt>, MatchCtxt<'a, 'tcx>) {
+where
+    F: FnMut(&mut Vec<Stmt>, MatchCtxt<'a, 'tcx>),
+{
     pattern: Vec<Stmt>,
     init_mcx: MatchCtxt<'a, 'tcx>,
     callback: F,
 }
 
 impl<'a, 'tcx, F> MutVisitor for MultiStmtPatternFolder<'a, 'tcx, F>
-        where F: FnMut(&mut Vec<Stmt>, MatchCtxt<'a, 'tcx>) {
+where
+    F: FnMut(&mut Vec<Stmt>, MatchCtxt<'a, 'tcx>),
+{
     fn visit_block(&mut self, b: &mut P<Block>) {
-        assert!(self.pattern.len() > 0);
+        assert!(!self.pattern.is_empty());
 
         mut_visit::noop_visit_block(b, self);
 
@@ -718,9 +817,9 @@ impl<'a, 'tcx, F> MutVisitor for MultiStmtPatternFolder<'a, 'tcx, F>
             let mut mcx = self.init_mcx.clone();
             let result = match_multi_stmt(&mut mcx, &self.pattern, &b.stmts[i..]);
             if let Some(consumed) = result {
-                new_stmts.extend_from_slice(&b.stmts[last .. i]);
+                new_stmts.extend_from_slice(&b.stmts[last..i]);
 
-                let mut consumed_stmts = b.stmts[i .. i + consumed].to_owned();
+                let mut consumed_stmts = b.stmts[i..i + consumed].to_owned();
                 (self.callback)(&mut consumed_stmts, mcx);
                 new_stmts.extend(consumed_stmts);
 
@@ -729,7 +828,7 @@ impl<'a, 'tcx, F> MutVisitor for MultiStmtPatternFolder<'a, 'tcx, F>
             } else {
                 // If the pattern starts with a glob, then trying to match it at `i + 1` will fail
                 // just the same as at `i`.
-                if self.pattern.len() > 0 && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0]) {
+                if !self.pattern.is_empty() && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0]) {
                     break;
                 } else {
                     i += 1;
@@ -738,20 +837,20 @@ impl<'a, 'tcx, F> MutVisitor for MultiStmtPatternFolder<'a, 'tcx, F>
         }
 
         if last != 0 {
-            new_stmts.extend_from_slice(&b.stmts[last ..]);
+            new_stmts.extend_from_slice(&b.stmts[last..]);
             b.stmts = new_stmts;
         }
     }
 }
 
 pub fn match_multi_stmt(mcx: &mut MatchCtxt, pattern: &[Stmt], target: &[Stmt]) -> Option<usize> {
-    if pattern.len() == 0 {
+    if pattern.is_empty() {
         return Some(0);
     }
 
     if is_multi_stmt_glob(mcx, &pattern[0]) {
         let name = pattern[0].pattern_symbol().unwrap();
-        for i in (0 .. target.len() + 1).rev() {
+        for i in (0..=target.len()).rev() {
             let orig_mcx = mcx.clone();
             if let Some(consumed) = match_multi_stmt(mcx, &pattern[1..], &target[i..]) {
                 let ok = mcx.bindings.try_add(name, target[..i].to_owned());
@@ -779,7 +878,7 @@ pub fn match_multi_stmt(mcx: &mut MatchCtxt, pattern: &[Stmt], target: &[Stmt]) 
 
             let r = mcx.try_match(&pattern[i], &target[i]);
             match r {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(_) => return None,
             }
             i += 1;
@@ -796,8 +895,8 @@ fn is_multi_stmt_glob(mcx: &MatchCtxt, pattern: &Stmt) -> bool {
     };
 
     match mcx.types.get(&sym) {
-        Some(&bindings::Type::MultiStmt) => {}, // FIXME: match Unknown too???
-        None if sym.as_str().starts_with("__m_") => {},
+        Some(&bindings::Type::MultiStmt) => {} // FIXME: match Unknown too???
+        None if sym.as_str().starts_with("__m_") => {}
         _ => return false,
     }
 
@@ -805,33 +904,32 @@ fn is_multi_stmt_glob(mcx: &MatchCtxt, pattern: &Stmt) -> bool {
 }
 
 impl Pattern<Vec<Stmt>> for Vec<Stmt> {
-    fn visit<'a, 'tcx, T, F>(
-        self,
-        init_mcx: MatchCtxt<'a, 'tcx>,
-        callback: F,
-        target: &mut T,
-    ) where T: MutVisit,
-            F: FnMut(&mut Vec<Stmt>, MatchCtxt<'a, 'tcx>)
+    fn visit<'a, 'tcx, T, F>(self, init_mcx: MatchCtxt<'a, 'tcx>, callback: F, target: &mut T)
+    where
+        T: MutVisit,
+        F: FnMut(&mut Vec<Stmt>, MatchCtxt<'a, 'tcx>),
     {
         let mut f = MultiStmtPatternFolder {
             pattern: self,
-            init_mcx: init_mcx,
-            callback: callback,
+            init_mcx,
+            callback,
         };
         target.visit(&mut f)
     }
 }
 
-
 /// Find every match for `pattern` within `target`, and rewrite each one by invoking `callback`.
-pub fn mut_visit_match<P, T, F>(st: &CommandState,
-                           cx: &RefactorCtxt,
-                           pattern: P,
-                           target: &mut T,
-                           callback: F)
-        where P: Pattern<P>,
-              T: MutVisit,
-              F: FnMut(&mut P, MatchCtxt) {
+pub fn mut_visit_match<P, T, F>(
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    pattern: P,
+    target: &mut T,
+    callback: F,
+) where
+    P: Pattern<P>,
+    T: MutVisit,
+    F: FnMut(&mut P, MatchCtxt),
+{
     mut_visit_match_with(MatchCtxt::new(st, cx), pattern, target, callback)
 }
 
@@ -841,10 +939,10 @@ pub fn mut_visit_match_with<'a, 'tcx, P, T, V, F>(
     pattern: P,
     target: &mut T,
     callback: F,
-)
-where P: Pattern<V>,
-      T: MutVisit,
-      F: FnMut(&mut V, MatchCtxt<'a, 'tcx>)
+) where
+    P: Pattern<V>,
+    T: MutVisit,
+    F: FnMut(&mut V, MatchCtxt<'a, 'tcx>),
 {
     pattern.visit(init_mcx, callback, target)
 }
@@ -854,20 +952,21 @@ pub fn flat_map_match_with<'a, 'tcx, P, T, V, F>(
     pattern: P,
     target: &mut T,
     callback: F,
-)
-where P: Pattern<V>,
-      T: MutVisit,
-      F: FnMut(V, MatchCtxt<'a, 'tcx>) -> SmallVec<[V; 1]>
+) where
+    P: Pattern<V>,
+    T: MutVisit,
+    F: FnMut(V, MatchCtxt<'a, 'tcx>) -> SmallVec<[V; 1]>,
 {
     pattern.flat_map(init_mcx, callback, target)
 }
 
 /// Find the first place where `pattern` matches under initial context `init_mcx`, and return the
 /// resulting `Bindings`.
-pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
-                             pattern: P,
-                             target: &mut T) -> Option<Bindings>
-        where P: Pattern<P>, T: MutVisit {
+pub fn find_first_with<P, T>(init_mcx: MatchCtxt, pattern: P, target: &mut T) -> Option<Bindings>
+where
+    P: Pattern<P>,
+    T: MutVisit,
+{
     let mut result = None;
     mut_visit_match_with(init_mcx, pattern, target, |_p, mcx| {
         if result.is_none() {
@@ -878,37 +977,50 @@ pub fn find_first_with<P, T>(init_mcx: MatchCtxt,
 }
 
 /// Find the first place where `pattern` matches, and return the resulting `Bindings`.
-pub fn find_first<P, T>(st: &CommandState,
-                        cx: &RefactorCtxt,
-                        pattern: P,
-                        target: &mut T) -> Option<Bindings>
-        where P: Pattern<P>, T: MutVisit {
+pub fn find_first<P, T>(
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    pattern: P,
+    target: &mut T,
+) -> Option<Bindings>
+where
+    P: Pattern<P>,
+    T: MutVisit,
+{
     find_first_with(MatchCtxt::new(st, cx), pattern, target)
 }
 
 // TODO: find a better place to put this
 /// Replace all instances of expression `pat` with expression `repl`.
-pub fn replace_expr<T: MutVisit>(st: &CommandState,
-                             cx: &RefactorCtxt,
-                             ast: &mut T,
-                             pat: &str,
-                             repl: &str) {
+pub fn replace_expr<T: MutVisit>(
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    ast: &mut T,
+    pat: &str,
+    repl: &str,
+) {
     let mut mcx = MatchCtxt::new(st, cx);
     let pat = mcx.parse_expr(pat);
     let repl = mcx.parse_expr(repl);
     // TODO: Make Subst modify in place
-    mut_visit_match_with(mcx, pat, ast, |x, mcx| *x = repl.clone().subst(st, cx, &mcx.bindings))
+    mut_visit_match_with(mcx, pat, ast, |x, mcx| {
+        *x = repl.clone().subst(st, cx, &mcx.bindings)
+    })
 }
 
 /// Replace all instances of the statement sequence `pat` with `repl`.
-pub fn replace_stmts<T: MutVisit>(st: &CommandState,
-                              cx: &RefactorCtxt,
-                              ast: &mut T,
-                              pat: &str,
-                              repl: &str) {
+pub fn replace_stmts<T: MutVisit>(
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    ast: &mut T,
+    pat: &str,
+    repl: &str,
+) {
     let mut mcx = MatchCtxt::new(st, cx);
     let pat = mcx.parse_stmts(pat);
     let repl = mcx.parse_stmts(repl);
     // TODO: Make Subst modify in place
-    mut_visit_match_with(mcx, pat, ast, |x, mcx| *x = repl.clone().subst(st, cx, &mcx.bindings))
+    mut_visit_match_with(mcx, pat, ast, |x, mcx| {
+        *x = repl.clone().subst(st, cx, &mcx.bindings)
+    })
 }

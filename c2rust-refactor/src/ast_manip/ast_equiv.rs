@@ -1,12 +1,13 @@
 //! `AstEquiv` trait for checking equivalence of two ASTs.
-use std::rc::Rc;
 use rustc_target::spec::abi::Abi;
-use syntax::ThinVec;
+use std::rc::Rc;
 use syntax::ast::*;
-use syntax::parse::token::{Token, DelimToken, Nonterminal};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
-use syntax::tokenstream::{TokenTree, DelimSpan, TokenStream};
+use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use syntax::ThinVec;
 use syntax_pos::hygiene::SyntaxContext;
 
 /// Trait for checking equivalence of AST nodes.  This is similar to `PartialEq`, but less strict,
@@ -14,12 +15,18 @@ use syntax_pos::hygiene::SyntaxContext;
 /// `Span`s and `NodeId`s).
 pub trait AstEquiv {
     fn ast_equiv(&self, other: &Self) -> bool;
-}
 
+    /// Checks for structural and name equivalence of AST nodes, while ignoring
+    /// any difference in the names of C2RustUnnamed* types
+    fn unnamed_equiv(&self, other: &Self) -> bool;
+}
 
 impl<'a, T: AstEquiv> AstEquiv for &'a T {
     fn ast_equiv(&self, other: &&'a T) -> bool {
         <T as AstEquiv>::ast_equiv(*self, *other)
+    }
+    fn unnamed_equiv(&self, other: &&'a T) -> bool {
+        <T as AstEquiv>::unnamed_equiv(*self, *other)
     }
 }
 
@@ -27,11 +34,17 @@ impl<T: AstEquiv> AstEquiv for P<T> {
     fn ast_equiv(&self, other: &P<T>) -> bool {
         <T as AstEquiv>::ast_equiv(self, other)
     }
+    fn unnamed_equiv(&self, other: &P<T>) -> bool {
+        <T as AstEquiv>::unnamed_equiv(self, other)
+    }
 }
 
 impl<T: AstEquiv> AstEquiv for Rc<T> {
     fn ast_equiv(&self, other: &Rc<T>) -> bool {
         <T as AstEquiv>::ast_equiv(self, other)
+    }
+    fn unnamed_equiv(&self, other: &Rc<T>) -> bool {
+        <T as AstEquiv>::unnamed_equiv(self, other)
     }
 }
 
@@ -39,12 +52,29 @@ impl<T: AstEquiv> AstEquiv for Spanned<T> {
     fn ast_equiv(&self, other: &Spanned<T>) -> bool {
         self.node.ast_equiv(&other.node)
     }
+    fn unnamed_equiv(&self, other: &Spanned<T>) -> bool {
+        self.node.unnamed_equiv(&other.node)
+    }
 }
 
 impl<T: AstEquiv> AstEquiv for [T] {
     fn ast_equiv(&self, other: &[T]) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
         for (l, r) in self.iter().zip(other.iter()) {
             if !l.ast_equiv(r) {
+                return false;
+            }
+        }
+        true
+    }
+    fn unnamed_equiv(&self, other: &[T]) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        for (l, r) in self.iter().zip(other.iter()) {
+            if !l.unnamed_equiv(r) {
                 return false;
             }
         }
@@ -56,11 +86,17 @@ impl<T: AstEquiv> AstEquiv for Vec<T> {
     fn ast_equiv(&self, other: &Vec<T>) -> bool {
         <[T] as AstEquiv>::ast_equiv(self, other)
     }
+    fn unnamed_equiv(&self, other: &Vec<T>) -> bool {
+        <[T] as AstEquiv>::unnamed_equiv(self, other)
+    }
 }
 
 impl<T: AstEquiv> AstEquiv for ThinVec<T> {
     fn ast_equiv(&self, other: &ThinVec<T>) -> bool {
         <[T] as AstEquiv>::ast_equiv(self, other)
+    }
+    fn unnamed_equiv(&self, other: &ThinVec<T>) -> bool {
+        <[T] as AstEquiv>::unnamed_equiv(self, other)
     }
 }
 
@@ -72,23 +108,57 @@ impl<T: AstEquiv> AstEquiv for Option<T> {
             (_, _) => false,
         }
     }
+    fn unnamed_equiv(&self, other: &Option<T>) -> bool {
+        match (self, other) {
+            (&Some(ref x), &Some(ref y)) => x.unnamed_equiv(y),
+            (&None, &None) => true,
+            (_, _) => false,
+        }
+    }
 }
 
 impl<A: AstEquiv, B: AstEquiv> AstEquiv for (A, B) {
     fn ast_equiv(&self, other: &Self) -> bool {
-        self.0.ast_equiv(&other.0) &&
-        self.1.ast_equiv(&other.1)
+        self.0.ast_equiv(&other.0) && self.1.ast_equiv(&other.1)
+    }
+    fn unnamed_equiv(&self, other: &Self) -> bool {
+        self.0.unnamed_equiv(&other.0) && self.1.unnamed_equiv(&other.1)
     }
 }
 
 impl<A: AstEquiv, B: AstEquiv, C: AstEquiv> AstEquiv for (A, B, C) {
     fn ast_equiv(&self, other: &Self) -> bool {
-        self.0.ast_equiv(&other.0) &&
-        self.1.ast_equiv(&other.1) &&
-        self.2.ast_equiv(&other.2)
+        self.0.ast_equiv(&other.0) && self.1.ast_equiv(&other.1) && self.2.ast_equiv(&other.2)
+    }
+    fn unnamed_equiv(&self, other: &Self) -> bool {
+        self.0.unnamed_equiv(&other.0) && self.1.unnamed_equiv(&other.1) && self.2.unnamed_equiv(&other.2)
     }
 }
 
-
 // Implementations for specific AST types are auto-generated.
 include!(concat!(env!("OUT_DIR"), "/ast_equiv_gen.inc.rs"));
+
+impl AstEquiv for Ident {
+    fn ast_equiv(&self, other: &Self) -> bool {
+        // Exhaustiveness check
+        match self {
+            &Ident { name: ref _name, span: ref _span } => {},
+        }
+
+        // Comparison
+        match (self, other) {
+            (&Ident { name: ref name1, span: ref span1 },
+             &Ident { name: ref name2, span: ref span2 }) => {
+                AstEquiv::ast_equiv(name1, name2) &&
+                    AstEquiv::ast_equiv(span1, span2) &&
+                    true
+            }
+        }
+    }
+
+    fn unnamed_equiv(&self, other: &Self) -> bool {
+        (self.as_str().contains("C2RustUnnamed")
+         && other.as_str().contains("C2RustUnnamed"))
+            || self.ast_equiv(other)
+    }
+}

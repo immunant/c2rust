@@ -2,15 +2,19 @@ extern crate syn;
 
 use super::{ArgList, ArgValue};
 
-impl<'a> ArgValue<'a> {
+use std::cmp::Eq;
+use std::hash::Hash;
+
+impl<K: Hash + Eq> ArgValue<K> {
     pub fn get_str_ident(&self) -> syn::Ident {
         syn::Ident::from(self.as_str())
     }
 }
 
-impl<'a> ArgList<'a> {
-    pub fn get_ident_arg<D>(&self, arg: &str, default: D) -> syn::Ident
+impl<K: Hash + Eq> ArgList<K> {
+    pub fn get_ident_arg<D, Q>(&self, arg: &Q, default: D) -> syn::Ident
     where
+        Q: ?Sized + Hash + indexmap::Equivalent<K>,
         syn::Ident: ::std::convert::From<D>,
     {
         self.0
@@ -19,7 +23,7 @@ impl<'a> ArgList<'a> {
     }
 }
 
-pub fn get_item_args(mi: &syn::MetaItem) -> ArgList {
+pub fn get_item_args(mi: &syn::MetaItem) -> ArgList<&str> {
     if let syn::MetaItem::List(_, ref items) = *mi {
         ArgList::from_map(
             items
@@ -47,6 +51,6 @@ pub fn get_item_args(mi: &syn::MetaItem) -> ArgList {
                 .collect(),
         )
     } else {
-        Default::default()
+        ArgList::new()
     }
 }

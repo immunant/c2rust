@@ -33,9 +33,9 @@ impl<'ast, 'a, 'tcx> ChildMatchVisitor<'a, 'tcx> {
         self.in_old = was_in_old;
     }
 
-    fn walk_args(&mut self, x: &'ast [Arg]) {
+    fn walk_args(&mut self, x: &'ast [Param]) {
         for arg in x {
-            if self.in_old && self.matches(AnyNode::Arg(arg)) {
+            if self.in_old && self.matches(AnyNode::Param(arg)) {
                 self.new.insert(arg.id);
             }
 
@@ -56,8 +56,8 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let ItemKind::Fn(ref decl, ..) = x.node {
-                v.walk_args(&decl.inputs);
+            if let ItemKind::Fn(ref sig, ..) = x.kind {
+                v.walk_args(&sig.decl.inputs);
             }
             visit::walk_item(v, x)
         });
@@ -68,7 +68,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let TraitItemKind::Method(ref sig, ..) = x.node {
+            if let TraitItemKind::Method(ref sig, ..) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
             visit::walk_trait_item(v, x)
@@ -80,7 +80,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let ImplItemKind::Method(ref sig, ..) = x.node {
+            if let ImplItemKind::Method(ref sig, ..) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
             visit::walk_impl_item(v, x)
@@ -93,7 +93,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
         }
         self.maybe_enter_old(x.id, |v| {
             // walk_foreign_item doesn't call visit_fn
-            if let ForeignItemKind::Fn(ref decl, _) = x.node {
+            if let ForeignItemKind::Fn(ref decl, _) = x.kind {
                 v.walk_args(&decl.inputs);
             }
             visit::walk_foreign_item(v, x)
@@ -136,24 +136,25 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
     }
 }
 
-pub fn matching_children(st: &CommandState,
-                         cx: &RefactorCtxt,
-                         krate: &Crate,
-                         sel: HashSet<NodeId>,
-                         filt: &Filter) -> HashSet<NodeId> {
+pub fn matching_children(
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    krate: &Crate,
+    sel: HashSet<NodeId>,
+    filt: &Filter,
+) -> HashSet<NodeId> {
     let in_old = sel.contains(&CRATE_NODE_ID);
     let mut v = ChildMatchVisitor {
-        st: st,
-        cx: cx,
+        st,
+        cx,
         old: sel,
         new: HashSet::new(),
-        in_old: in_old,
-        filt: filt,
+        in_old,
+        filt,
     };
     visit::walk_crate(&mut v, krate);
     v.new
 }
-
 
 struct DescMatchVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
@@ -182,9 +183,9 @@ impl<'ast, 'a, 'tcx> DescMatchVisitor<'a, 'tcx> {
         }
     }
 
-    fn walk_args(&mut self, x: &'ast [Arg]) {
+    fn walk_args(&mut self, x: &'ast [Param]) {
         for arg in x {
-            if self.in_old && self.matches(AnyNode::Arg(arg)) {
+            if self.in_old && self.matches(AnyNode::Param(arg)) {
                 self.new.insert(arg.id);
             }
 
@@ -205,8 +206,8 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let ItemKind::Fn(ref decl, ..) = x.node {
-                v.walk_args(&decl.inputs);
+            if let ItemKind::Fn(ref sig, ..) = x.kind {
+                v.walk_args(&sig.decl.inputs);
             }
             visit::walk_item(v, x)
         });
@@ -217,7 +218,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let TraitItemKind::Method(ref sig, ..) = x.node {
+            if let TraitItemKind::Method(ref sig, ..) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
             visit::walk_trait_item(v, x)
@@ -229,7 +230,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let ImplItemKind::Method(ref sig, ..) = x.node {
+            if let ImplItemKind::Method(ref sig, ..) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
             visit::walk_impl_item(v, x)
@@ -241,7 +242,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let ForeignItemKind::Fn(ref decl, ..) = x.node {
+            if let ForeignItemKind::Fn(ref decl, ..) = x.kind {
                 v.walk_args(&decl.inputs);
             }
             visit::walk_foreign_item(v, x)
@@ -284,24 +285,25 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
     }
 }
 
-pub fn matching_descendants(st: &CommandState,
-                            cx: &RefactorCtxt,
-                            krate: &Crate,
-                            sel: HashSet<NodeId>,
-                            filt: &Filter) -> HashSet<NodeId> {
+pub fn matching_descendants(
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    krate: &Crate,
+    sel: HashSet<NodeId>,
+    filt: &Filter,
+) -> HashSet<NodeId> {
     let in_old = sel.contains(&CRATE_NODE_ID);
     let mut v = DescMatchVisitor {
-        st: st,
-        cx: cx,
+        st,
+        cx,
         old: sel,
         new: HashSet::new(),
-        in_old: in_old,
-        filt: filt,
+        in_old,
+        filt,
     };
     visit::walk_crate(&mut v, krate);
     v.new
 }
-
 
 struct FilterVisitor<'a, 'tcx: 'a> {
     st: &'a CommandState,
@@ -316,9 +318,9 @@ impl<'ast, 'a, 'tcx> FilterVisitor<'a, 'tcx> {
         filter::matches_filter(self.st, self.cx, node, self.filt)
     }
 
-    fn walk_args(&mut self, x: &'ast [Arg]) {
+    fn walk_args(&mut self, x: &'ast [Param]) {
         for arg in x {
-            if self.old.contains(&arg.id) && self.matches(AnyNode::Arg(arg)) {
+            if self.old.contains(&arg.id) && self.matches(AnyNode::Param(arg)) {
                 self.new.insert(arg.id);
             }
         }
@@ -330,8 +332,8 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         if self.old.contains(&x.id) && self.matches(AnyNode::Item(x)) {
             self.new.insert(x.id);
         }
-        if let ItemKind::Fn(ref decl, ..) = x.node {
-            self.walk_args(&decl.inputs);
+        if let ItemKind::Fn(ref sig, ..) = x.kind {
+            self.walk_args(&sig.decl.inputs);
         }
         visit::walk_item(self, x);
     }
@@ -340,7 +342,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         if self.old.contains(&x.id) && self.matches(AnyNode::TraitItem(x)) {
             self.new.insert(x.id);
         }
-        if let TraitItemKind::Method(ref sig, ..) = x.node {
+        if let TraitItemKind::Method(ref sig, ..) = x.kind {
             self.walk_args(&sig.decl.inputs);
         }
         visit::walk_trait_item(self, x);
@@ -350,7 +352,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         if self.old.contains(&x.id) && self.matches(AnyNode::ImplItem(x)) {
             self.new.insert(x.id);
         }
-        if let ImplItemKind::Method(ref sig, ..) = x.node {
+        if let ImplItemKind::Method(ref sig, ..) = x.kind {
             self.walk_args(&sig.decl.inputs);
         }
         visit::walk_impl_item(self, x);
@@ -360,7 +362,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         if self.old.contains(&x.id) && self.matches(AnyNode::ForeignItem(x)) {
             self.new.insert(x.id);
         }
-        if let ForeignItemKind::Fn(ref decl, ..) = x.node {
+        if let ForeignItemKind::Fn(ref decl, ..) = x.kind {
             self.walk_args(&decl.inputs);
         }
         visit::walk_foreign_item(self, x);
@@ -396,7 +398,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
 
     fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
         for arg in &fd.inputs {
-            if self.old.contains(&arg.id) && self.matches(AnyNode::Arg(arg)) {
+            if self.old.contains(&arg.id) && self.matches(AnyNode::Param(arg)) {
                 self.new.insert(arg.id);
             }
         }
@@ -412,17 +414,19 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
     }
 }
 
-pub fn filter(st: &CommandState,
-              cx: &RefactorCtxt,
-              krate: &Crate,
-              sel: HashSet<NodeId>,
-              filt: &Filter) -> HashSet<NodeId> {
+pub fn filter(
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    krate: &Crate,
+    sel: HashSet<NodeId>,
+    filt: &Filter,
+) -> HashSet<NodeId> {
     let mut v = FilterVisitor {
-        st: st,
-        cx: cx,
+        st,
+        cx,
         old: sel,
         new: HashSet::new(),
-        filt: filt,
+        filt,
     };
     visit::walk_crate(&mut v, krate);
     v.new

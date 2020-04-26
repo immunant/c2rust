@@ -13,15 +13,15 @@ branches:
 matrix:
   fast_finish: true
   include:
-    - os: osx
-      # osx_image: xcode9.3 # request macOS 10.13
-      env: >-
-          # https://docs.travis-ci.com/user/caching/#caches-and-build-matrices
-          CACHE_NAME=OSX_DEV_BUILD
-          PATH="/usr/local/opt/ccache/libexec:$PATH"
-          USE_CCACHE=1
-          CCACHE_COMPRESS=1
-          CCACHE_CPP2=1
+    # - os: osx
+    #   # osx_image: xcode9.3 # request macOS 10.13
+    #   env: >-
+    #       # https://docs.travis-ci.com/user/caching/#caches-and-build-matrices
+    #       CACHE_NAME=OSX_DEV_BUILD
+    #       PATH="/usr/local/opt/ccache/libexec:$PATH"
+    #       USE_CCACHE=1
+    #       CCACHE_COMPRESS=1
+    #       CCACHE_CPP2=1
 
     - os: osx
       env: >-
@@ -29,17 +29,17 @@ matrix:
           # https://github.com/immunant/c2rust/blob/master/README.md#building-c2rust
           LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
 
-    - os: linux
-      dist: xenial
-      env: >-
-          CACHE_NAME=LINUX_DEV_BUILD
-          PATH="/usr/lib/ccache:/usr/bin:$PATH"
-          USE_CCACHE=1
-          CCACHE_CPP2=1
-          CCACHE_COMPRESS=1
-      before_script:
-        # Clang is not in `/usr/lib/ccache/`, so it needs to be added
-        - sudo /usr/sbin/update-ccache-symlinks
+    # - os: linux
+    #   dist: xenial
+    #   env: >-
+    #       CACHE_NAME=LINUX_DEV_BUILD
+    #       PATH="/usr/lib/ccache:/usr/bin:$PATH"
+    #       USE_CCACHE=1
+    #       CCACHE_CPP2=1
+    #       CCACHE_COMPRESS=1
+    #   before_script:
+    #     # Clang is not in `/usr/lib/ccache/`, so it needs to be added
+    #     - sudo /usr/sbin/update-ccache-symlinks
 
     - os: linux
       dist: xenial

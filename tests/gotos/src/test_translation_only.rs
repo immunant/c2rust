@@ -1,3 +1,5 @@
+//! feature_label_break_value
+
 use label_break_trigger::rust_triggers_label_break;
 use jump_into_loop::rust_jump_into_loop;
 

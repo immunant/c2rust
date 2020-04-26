@@ -1,14 +1,14 @@
 #![recursion_limit = "128"]
-extern crate syn;
 extern crate proc_macro;
 extern crate proc_macro2;
 extern crate quote;
+extern crate syn;
 
 use proc_macro2::{Span, TokenStream};
-use syn::parse_macro_input;
-use syn::{ArgCaptured, Block, FnArg, Ident, Pat, TraitItemMethod, Type, TypeReference};
-use syn::visit::Visit;
 use quote::quote;
+use syn::parse_macro_input;
+use syn::visit::Visit;
+use syn::{Block, FnArg, Ident, Pat, TraitItemMethod, Type, TypeReference};
 
 #[derive(Default)]
 struct VisitorImpls {
@@ -17,7 +17,13 @@ struct VisitorImpls {
 }
 
 impl VisitorImpls {
-    fn generate_visit(&mut self, method_name: &Ident, arg_pat: &Pat, ty: &Type, noop: &Option<Block>) {
+    fn generate_visit(
+        &mut self,
+        method_name: &Ident,
+        arg_pat: &Pat,
+        ty: &Type,
+        walk: &Block,
+    ) {
         self.tokens.extend(quote! {
             impl MutVisit for #ty {
                 fn visit<F: MutVisitor>(&mut self, f: &mut F) {
@@ -29,16 +35,17 @@ impl VisitorImpls {
         let folder_name = format!("Folder{}", self.count);
         let folder_ident = Ident::new(&folder_name, Span::call_site());
 
-        let walk = match noop {
-            Some(block) => quote! { #block },
-            None => {
-                let noop_fn_name = format!("noop_{}", method_name);
-                let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
-                quote! {
-                    syntax::mut_visit::#noop_fn(#arg_pat, self);
+        if !walk.stmts.is_empty() {
+            let noop_fn_name = format!("noop_{}", method_name);
+            let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
+            self.tokens.extend(quote! {
+                impl WalkAst for #ty {
+                    fn walk<T: MutVisitor>(&mut self, v: &mut T) {
+                        syntax::mut_visit::#noop_fn(self, v);
+                    }
                 }
-            }
-        };
+            });
+        }
         self.tokens.extend(quote! {
             struct #folder_ident<F>
                 where F: FnMut(&mut #ty)
@@ -69,7 +76,13 @@ impl VisitorImpls {
         self.count += 1;
     }
 
-    fn generate_flat_map(&mut self, method_name: &Ident, arg_pat: &Pat, ty: &Type, noop: &Option<Block>) {
+    fn generate_flat_map(
+        &mut self,
+        method_name: &Ident,
+        arg_pat: &Pat,
+        ty: &Type,
+        walk: &Block,
+    ) {
         self.tokens.extend(quote! {
             impl MutVisit for #ty {
                 fn visit<F: MutVisitor>(&mut self, f: &mut F) {
@@ -86,16 +99,17 @@ impl VisitorImpls {
         let folder_name = format!("Folder{}", self.count);
         let folder_ident = Ident::new(&folder_name, Span::call_site());
 
-        let walk = match noop {
-            Some(block) => quote! { #block },
-            None => {
-                let noop_fn_name = format!("noop_{}", method_name);
-                let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
-                quote! {
-                    syntax::mut_visit::#noop_fn(#arg_pat, self);
+        if !walk.stmts.is_empty() {
+            let noop_fn_name = format!("noop_{}", method_name);
+            let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
+            self.tokens.extend(quote! {
+                impl WalkAst for #ty {
+                    fn walk<T: MutVisitor>(&mut self, v: &mut T) {
+                        *self = syntax::mut_visit::#noop_fn(self.clone(), v).lone();
+                    }
                 }
-            }
-        };
+            })
+        }
         self.tokens.extend(quote! {
             struct #folder_ident<F>
                 where F: FnMut(#ty) -> SmallVec<[#ty; 1]>
@@ -139,27 +153,17 @@ impl VisitorImpls {
 impl<'ast> Visit<'ast> for VisitorImpls {
     fn visit_trait_item_method(&mut self, m: &TraitItemMethod) {
         let method_name = &m.sig.ident;
-        let method_noop = &m.default;
-        match &m.sig.decl.inputs[1] {
-            FnArg::Captured(
-                ArgCaptured {
-                    pat,
-                    ty,
+        let method_noop = m.default.as_ref().unwrap();
+        match &m.sig.inputs[1] {
+            FnArg::Typed(pat_ty) => match &*pat_ty.ty {
+                Type::Reference(TypeReference {
+                    mutability: Some(_),
+                    elem,
                     ..
-                }
-            ) => {
-                match ty {
-                    Type::Reference(
-                        TypeReference {
-                            mutability: Some(_),
-                            elem,
-                            ..
-                        }
-                    ) => self.generate_visit(method_name, &pat, &elem, method_noop),
+                }) => self.generate_visit(method_name, &pat_ty.pat, &elem, method_noop),
 
-                    _ => self.generate_flat_map(method_name, &pat, &ty, method_noop),
-                }
-            }
+                ty => self.generate_flat_map(method_name, &pat_ty.pat, &ty, method_noop),
+            },
 
             _ => {}
         }
@@ -174,4 +178,3 @@ pub fn gen_visitor_impls(tokens: proc_macro::TokenStream) -> proc_macro::TokenSt
 
     visitor.tokens.into()
 }
-

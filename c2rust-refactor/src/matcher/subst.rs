@@ -17,14 +17,15 @@
 //!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
 
-use syntax::ast::{Ident, Path, Expr, Pat, Ty, Stmt, Item, ImplItem, Label};
+use smallvec::SmallVec;
 use syntax::ast::Mac;
+use syntax::ast::{Expr, ExprKind, Ident, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
-use smallvec::SmallVec;
+use smallvec::smallvec;
 
-use crate::ast_manip::MutVisit;
 use crate::ast_manip::util::PatternSymbol;
+use crate::ast_manip::{AstNode, MutVisit};
 use crate::command::CommandState;
 use crate::matcher::Bindings;
 use crate::RefactorCtxt;
@@ -38,6 +39,28 @@ struct SubstFolder<'a, 'tcx: 'a> {
     bindings: &'a Bindings,
 }
 
+impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
+    fn subst_opt_label(&mut self, ol: &mut Option<Label>) {
+        if let Some(l) = ol {
+            let ps = l.ident.pattern_symbol();
+            if let Some(i) = ps.and_then(|sym| self.bindings.get::<_, Ident>(sym)) {
+                l.ident = *i;
+            } else {
+                let i = ps.and_then(|sym| self.bindings.get_opt::<_, Ident>(sym));
+                match i {
+                    Some(Some(i)) => l.ident = *i,
+                    Some(None) => {
+                        *ol = None;
+                        return;
+                    }
+                    None => {}
+                }
+            }
+        }
+    }
+
+}
+
 impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
     fn visit_ident(&mut self, i: &mut Ident) {
         // The `Ident` case is a bit different from the others.  If `fold_stmt` finds a non-`Stmt`
@@ -48,9 +71,12 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
 
         if let Some(sym) = i.pattern_symbol() {
             if let Some(binding) = self.bindings.get::<_, Ident>(sym) {
-                *i = binding.clone();
+                *i = *binding;
             } else if let Some(ty) = self.bindings.get::<_, P<Ty>>(sym) {
-                panic!("binding {:?} (of type {:?}) has wrong type for hole", sym, ty);
+                panic!(
+                    "binding {:?} (of type {:?}) has wrong type for hole",
+                    sym, ty
+                );
             }
             // Otherwise, fall through
         }
@@ -58,7 +84,10 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
     }
 
     fn visit_path(&mut self, p: &mut Path) {
-        if let Some(binding) = p.pattern_symbol().and_then(|sym| self.bindings.get::<_, Path>(sym)) {
+        if let Some(binding) = p
+            .pattern_symbol()
+            .and_then(|sym| self.bindings.get::<_, Path>(sym))
+        {
             *p = binding.clone();
         }
 
@@ -74,11 +103,28 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             }
         }
 
+        // Some Expr nodes contain an optional label, which we need to handle here,
+        // since `visit_label` takes the inner `Label` instead of `Option<Label>`
+        match e.kind {
+            ExprKind::While(_, _, ref mut label) |
+            ExprKind::ForLoop(_, _, _, ref mut label) |
+            ExprKind::Loop(_, ref mut label) |
+            ExprKind::Block(_, ref mut label) |
+            ExprKind::Break(ref mut label, _) |
+            ExprKind::Continue(ref mut label) => {
+                self.subst_opt_label(label);
+            }
+            _ => {}
+        }
+
         mut_visit::noop_visit_expr(e, self);
     }
 
     fn visit_pat(&mut self, p: &mut P<Pat>) {
-        if let Some(binding) = p.pattern_symbol().and_then(|sym| self.bindings.get::<_, P<Pat>>(sym)) {
+        if let Some(binding) = p
+            .pattern_symbol()
+            .and_then(|sym| self.bindings.get::<_, P<Pat>>(sym))
+        {
             *p = binding.clone();
         }
 
@@ -98,10 +144,15 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
     }
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
-        if let Some(stmt) = s.pattern_symbol().and_then(|sym| self.bindings.get::<_, Stmt>(sym)) {
+        if let Some(stmt) = s
+            .pattern_symbol()
+            .and_then(|sym| self.bindings.get::<_, Stmt>(sym))
+        {
             smallvec![stmt.clone()]
-        } else if let Some(stmts) = s.pattern_symbol()
-                .and_then(|sym| self.bindings.get::<_, Vec<Stmt>>(sym)) {
+        } else if let Some(stmts) = s
+            .pattern_symbol()
+            .and_then(|sym| self.bindings.get::<_, Vec<Stmt>>(sym))
+        {
             SmallVec::from_vec(stmts.clone())
         } else {
             mut_visit::noop_flat_map_stmt(s, self)
@@ -109,22 +160,14 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
     }
 
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        if let Some(item) = i.pattern_symbol().and_then(|sym| self.bindings.get::<_, P<Item>>(sym)) {
+        if let Some(item) = i
+            .pattern_symbol()
+            .and_then(|sym| self.bindings.get::<_, P<Item>>(sym))
+        {
             smallvec![item.clone()]
         } else {
             mut_visit::noop_flat_map_item(i, self)
         }
-    }
-
-    fn visit_label(&mut self, l: &mut Label) {
-        let ps = l.ident.pattern_symbol();
-        if let Some(i) = ps.and_then(|sym| self.bindings.get::<_, Ident>(sym)) {
-            l.ident = i.clone();
-        } else if let Some(Some(i)) = ps.and_then(|sym| self.bindings.get_opt::<_, Ident>(sym)) {
-            l.ident = i.clone();
-        }
-
-        mut_visit::noop_visit_label(l, self);
     }
 
     fn visit_mac(&mut self, mac: &mut Mac) {
@@ -132,9 +175,22 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
     }
 }
 
-
 pub trait Subst {
     fn subst(self, st: &CommandState, cx: &RefactorCtxt, bindings: &Bindings) -> Self;
+}
+
+impl Subst for AstNode {
+    fn subst(self, st: &CommandState, cx: &RefactorCtxt, bindings: &Bindings) -> Self {
+        match self {
+            AstNode::Crate(_) => panic!("Can't subst Crates"),
+            AstNode::Expr(x) => AstNode::Expr(x.subst(st, cx, bindings)),
+            AstNode::Pat(x) => AstNode::Pat(x.subst(st, cx, bindings)),
+            AstNode::Ty(x) => AstNode::Ty(x.subst(st, cx, bindings)),
+            AstNode::Stmts(x) => AstNode::Stmts(x.subst(st, cx, bindings)),
+            AstNode::Stmt(x) => AstNode::Stmt(x.subst(st, cx, bindings)),
+            AstNode::Item(x) => AstNode::Item(x.subst(st, cx, bindings)),
+        }
+    }
 }
 
 macro_rules! subst_impl {

@@ -1,4 +1,4 @@
-//! enable_relooper, allow_current_block
+//! allow_current_block
 void goto_switch(unsigned buffer_size, int buffer[]) {
 
   int i = -3;

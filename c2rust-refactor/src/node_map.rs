@@ -1,11 +1,11 @@
 //! Mappings between old and new `NodeId`s.  Also has some support for `AttrId`s.
-use std::collections::{HashMap, HashSet, BTreeSet};
 use std::collections::hash_map::Entry;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::mem;
 use std::ops::Bound::Included;
-use syntax::ast::{NodeId, AttrId, DUMMY_NODE_ID};
+use std::ops::Deref;
+use syntax::ast::{AttrId, NodeId, DUMMY_NODE_ID};
 use syntax::source_map::symbol::Symbol;
-
 
 pub const DUMMY_ATTR_ID: AttrId = AttrId(!0);
 
@@ -32,46 +32,48 @@ impl NodeMap {
         self.id_map
     }
 
-
     pub fn commit(&mut self) {
         let mut new_id_map = HashMap::new();
-        debug!("committing edges");
+        trace!("committing edges");
         for (id2, id3) in mem::replace(&mut self.pending_edges, BTreeSet::new()) {
             if id2 == DUMMY_NODE_ID || id3 == DUMMY_NODE_ID {
                 continue;
             }
 
             if let Some(&id1) = self.id_map.get(&id2) {
-                debug!("  {:?} -> {:?} -> {:?}", id3, id2, id1);
+                trace!("  {:?} -> {:?} -> {:?}", id3, id2, id1);
                 match new_id_map.entry(id3) {
                     Entry::Vacant(e) => {
                         e.insert(id1);
-                    },
+                    }
                     Entry::Occupied(mut e) => {
                         if *e.get() != id1 {
                             // This is bad - we have two *different* old IDs for the same new ID.
                             // Report a warning, and deterministically pick one as the winner.
-                            let winner =
-                                if *e.get() < id1 { *e.get() } else { id1 };
-                            warn!("new {:?} maps to both old {:?} and old {:?} - \
-                                   picking {:?} as the winner",
-                                  id3, *e.get(), id1, winner);
+                            let winner = if *e.get() < id1 { *e.get() } else { id1 };
+                            warn!(
+                                "new {:?} maps to both old {:?} and old {:?} - \
+                                 picking {:?} as the winner",
+                                id3,
+                                *e.get(),
+                                id1,
+                                winner
+                            );
                             *e.get_mut() = winner;
                         }
                         // Otherwise, both old IDs match - there's no conflict.
-                    },
+                    }
                 }
             } else {
-                debug!("  {:?} -> {:?} -> NOT FOUND", id3, id2);
+                trace!("  {:?} -> {:?} -> NOT FOUND", id3, id2);
             }
         }
 
         self.id_map = new_id_map;
     }
 
-
     /// Initialize by mapping every `NodeId` in `nodes` to itself.
-    pub fn init<I: Iterator<Item=NodeId>>(&mut self, nodes: I) {
+    pub fn init<I: Iterator<Item = NodeId>>(&mut self, nodes: I) {
         for id in nodes {
             if id == DUMMY_NODE_ID {
                 continue;
@@ -79,7 +81,6 @@ impl NodeMap {
             self.id_map.insert(id, id);
         }
     }
-
 
     /// Update the NodeId mapping using a list of `(old_id, new_id)` pairs.
     pub fn add_edges(&mut self, matched_ids: &[(NodeId, NodeId)]) {
@@ -89,7 +90,6 @@ impl NodeMap {
     pub fn add_edge(&mut self, id: NodeId, new_id: NodeId) {
         self.pending_edges.insert((id, new_id));
     }
-
 
     /// Save what we know about the origin of node `id`.  The origin can be tracked externally and
     /// restored later with `restore_id`.  This is useful when a node will be removed from the AST,
@@ -105,7 +105,6 @@ impl NodeMap {
         }
     }
 
-
     /// Update mark NodeIds to account for the pending (not committed) NodeId changes.
     pub fn transfer_marks(&self, marks: &mut HashSet<(NodeId, Symbol)>) {
         let mut new_marks = HashSet::new();
@@ -114,12 +113,12 @@ impl NodeMap {
             let hi = (old_id, NodeId::MAX);
             let mut empty = true;
             for &(_, new_id) in self.pending_edges.range((Included(&lo), Included(&hi))) {
-                debug!("  {:?}: {:?} -> {:?}", label, old_id, new_id);
+                trace!("  {:?}: {:?} -> {:?}", label, old_id, new_id);
                 new_marks.insert((new_id, label));
                 empty = false;
             }
             if empty {
-                debug!("  {:?}: {:?} -> DROPPED", label, old_id);
+                trace!("  {:?}: {:?} -> DROPPED", label, old_id);
             }
         }
         *marks = new_marks;
@@ -133,7 +132,9 @@ impl NodeMap {
             let lo = (old_id, NodeId::from_u32(0));
             let hi = (old_id, NodeId::MAX);
 
-            let mut new_ids = self.pending_edges.range((Included(&lo), Included(&hi)))
+            let mut new_ids = self
+                .pending_edges
+                .range((Included(&lo), Included(&hi)))
                 .map(|&(_, new_id)| new_id)
                 .peekable();
 
@@ -150,11 +151,20 @@ impl NodeMap {
         new_map
     }
 
-    pub fn transfer<'a>(&'a self, id: NodeId) -> impl Iterator<Item=NodeId> + 'a {
+    pub fn transfer<'a>(&'a self, id: NodeId) -> impl Iterator<Item = NodeId> + 'a {
         let lo = (id, NodeId::from_u32(0));
         let hi = (id, NodeId::MAX);
 
-        self.pending_edges.range((Included(&lo), Included(&hi)))
+        self.pending_edges
+            .range((Included(&lo), Included(&hi)))
             .map(|&(_, new_id)| new_id)
+    }
+}
+
+impl Deref for NodeMap {
+    type Target = HashMap<NodeId, NodeId>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.id_map
     }
 }

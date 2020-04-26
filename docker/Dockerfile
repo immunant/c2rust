@@ -5,7 +5,6 @@ LABEL maintainer="c2rust@immunant.com"
 ARG USER=docker
 ARG UID=1000
 ARG GID=1000
-ARG PROVISION_SCRIPT=provision_deb.sh
 ENV HOME=/home/$USER
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -24,7 +23,7 @@ RUN chmod +x /tmp/provision*.sh && /tmp/provision.sh
 
 USER $USER
 # Provision rust language and packages (should not run as root)
-ARG RUST_VER=nightly-2018-12-03
+ARG RUST_VER=nightly-2019-12-05
 RUN RUST_VER=$RUST_VER /tmp/provision_rust.sh
 
 ENV PATH="/home/${USER}/.cargo/bin:${PATH}"

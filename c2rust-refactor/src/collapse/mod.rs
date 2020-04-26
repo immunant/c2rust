@@ -14,11 +14,11 @@
 //! Though most of the code and comments talk about "macros", we really mean everything that gets
 //! processed during macro expansion, which includes regular macros, proc macros (`format!`, etc.),
 //! certain attributes (`#[derive]`, `#[cfg]`), and `std`/prelude injection.
-use std::collections::{HashMap, HashSet};
-use syntax::attr;
+use std::collections::HashMap;
 use syntax::ast::*;
+use syntax::attr;
 use syntax::source_map::Span;
-use c2rust_ast_builder::IntoSymbol;
+use syntax_pos::sym;
 
 mod cfg_attr;
 mod deleted;
@@ -27,12 +27,11 @@ mod macros;
 mod node_map;
 mod nt_match;
 
-
 pub use self::cfg_attr::{collect_cfg_attrs, restore_cfg_attrs};
 pub use self::deleted::{collect_deleted_nodes, restore_deleted_nodes};
-pub use self::mac_table::{MacTable, MacInfo, collect_macro_invocations};
-pub use self::node_map::match_nonterminal_ids;
+pub use self::mac_table::{collect_macro_invocations, MacInfo, MacTable};
 pub use self::macros::collapse_macros;
+pub use self::node_map::match_nonterminal_ids;
 
 use crate::command::CommandState;
 use crate::node_map::NodeMap;
@@ -45,6 +44,7 @@ pub struct CollapseInfo<'ast> {
 }
 
 impl<'ast> CollapseInfo<'ast> {
+    #[cfg_attr(feature = "profile", flame)]
     pub fn collect(
         unexpanded: &'ast Crate,
         expanded: &'ast Crate,
@@ -52,13 +52,11 @@ impl<'ast> CollapseInfo<'ast> {
         cs: &CommandState,
     ) -> Self {
         // Collect info + update node_map, then transfer and commit
-        let (mac_table, matched_ids) =
-            collect_macro_invocations(unexpanded, expanded);
+        let (mac_table, matched_ids) = collect_macro_invocations(unexpanded, expanded);
         node_map.add_edges(&matched_ids);
         node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
         let cfg_attr_info = collect_cfg_attrs(&unexpanded);
-        let deleted_info = collect_deleted_nodes(
-            &unexpanded, &node_map, &mac_table);
+        let deleted_info = collect_deleted_nodes(&unexpanded, &node_map, &mac_table);
         match_nonterminal_ids(node_map, &mac_table);
 
         node_map.transfer_marks(&mut cs.marks_mut());
@@ -72,6 +70,7 @@ impl<'ast> CollapseInfo<'ast> {
         }
     }
 
+    #[cfg_attr(feature = "profile", flame)]
     pub fn collapse(self, node_map: &mut NodeMap, cs: &CommandState) {
         // Collapse macros + update node_map.  The cfg_attr step requires the updated node_map
         // TODO: we should be able to skip some of these steps if `!cmd_state.krate_changed()`
@@ -95,15 +94,14 @@ impl<'ast> CollapseInfo<'ast> {
     }
 }
 
-
 /// Returns a list of injected crate names, plus a flag indicating whether a prelude import was
 /// also injected.
 fn injected_items(krate: &Crate) -> (&'static [&'static str], bool) {
     // Mirrors the logic in syntax::std_inject
-    if attr::contains_name(&krate.attrs, "no_core") {
+    if attr::contains_name(&krate.attrs, sym::no_core) {
         (&[], false)
-    } else if attr::contains_name(&krate.attrs, "no_std") {
-        if attr::contains_name(&krate.attrs, "compiler_builtins") {
+    } else if attr::contains_name(&krate.attrs, sym::no_std) {
+        if attr::contains_name(&krate.attrs, sym::compiler_builtins) {
             (&["core"], true)
         } else {
             (&["core", "compiler_builtins"], true)
@@ -116,26 +114,27 @@ fn injected_items(krate: &Crate) -> (&'static [&'static str], bool) {
 /// Reverse the effect of `std`/prelude injection, by deleting the injected items.
 pub fn collapse_injected(krate: &mut Crate) {
     let (crate_names, mut expect_prelude) = injected_items(krate);
-    let mut crate_names = crate_names.iter().map(|x| x.into_symbol()).collect::<HashSet<_>>();
+    let mut crate_names = crate_names.to_vec();
 
     krate.module.items.retain(|i| {
-        match i.node {
+        match i.kind {
             ItemKind::ExternCrate(_) => {
                 // Remove the first `extern crate` matching each entry in `crate_names`.
-                if crate_names.remove(&i.ident.name) {
+                if let Some(index) = crate_names.iter().position(|s| i.ident.as_str() == *s) {
+                    crate_names.remove(index);
                     false
                 } else {
                     true
                 }
-            },
+            }
             ItemKind::Use(_) => {
-                if expect_prelude && attr::contains_name(&i.attrs, "prelude_import") {
+                if expect_prelude && attr::contains_name(&i.attrs, sym::prelude_import) {
                     expect_prelude = false;
                     false
                 } else {
                     true
                 }
-            },
+            }
             _ => true,
         }
     });

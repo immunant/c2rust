@@ -7,9 +7,10 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
-use syntax::parse::token::{Token, Nonterminal};
+use syntax::token::{Token, TokenKind, Nonterminal};
 use syntax::tokenstream::TokenTree;
-use syntax_pos::Span;
+use syntax_pos::{sym, Span};
+use smallvec::smallvec;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
@@ -19,31 +20,35 @@ use crate::RefactorCtxt;
 
 
 /// # `convert_format_args` Command
-/// 
+///
 /// Usage: `convert_format_args`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For each function call, if one of its argument expressions is marked `target`,
 /// then parse that argument as a `printf` format string, with the subsequent arguments as the
 /// format args.  Replace both the format string and the args with an invocation of the Rust
 /// `format_args!` macro.
-/// 
+///
 /// This transformation applies casts to the remaining arguments to account for differences in
 /// argument conversion behavior between C-style and Rust-style string formatting.  However, it
 /// does not attempt to convert the `format_args!` output into something compatible with the
 /// original C function.  This results in a type error, so this pass should usually be followed up
 /// by an additional rewrite to change the function being called.
-/// 
+///
 /// Example:
-/// 
+///
+/// ```ignore
 ///     printf("hello %d\n", 123);
-/// 
+/// ```
+///
 /// If the string `"hello %d\n"` is marked `target`, then running
 /// `convert_format_string` will replace this call with
-/// 
+///
+/// ```ignore
 ///     printf(format_args!("hello {:}\n", 123 as i32));
-/// 
+/// ```
+///
 /// At this point, it would be wise to replace the `printf` expression with a function that accepts
 /// the `std::fmt::Arguments` produced by `format_args!`.
 pub struct ConvertFormatArgs;
@@ -51,7 +56,7 @@ pub struct ConvertFormatArgs;
 impl Transform for ConvertFormatArgs {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            let fmt_idx = match e.node {
+            let fmt_idx = match e.kind {
                 ExprKind::Call(_, ref args) =>
                     args.iter().position(|e| st.marked(e.id, "target")),
                 _ => None,
@@ -62,7 +67,7 @@ impl Transform for ConvertFormatArgs {
             let fmt_idx = fmt_idx.unwrap();
 
 
-            let (func, args) = expect!([e.node] ExprKind::Call(ref f, ref a) => (f, a));
+            let (func, args) = expect!([e.kind] ExprKind::Call(ref f, ref a) => (f, a));
 
             // Find the expr for the format string.  This may not be exactly args[fmt_idx] - the
             // user can mark the actual string literal in case there are casts/conversions applied.
@@ -102,7 +107,7 @@ fn build_format_macro(
     let mut ep = &old_fmt_str_expr;
     let lit = loop {
         // Peel off any casts and retrieve the inner string
-        match ep.node {
+        match ep.kind {
             ExprKind::Lit(ref l) => break l,
             ExprKind::Cast(ref e, _) |
             ExprKind::Type(ref e, _) => ep = &*e,
@@ -113,7 +118,7 @@ fn build_format_macro(
             _ => panic!("unexpected format string: {:?}", old_fmt_str_expr)
         }
     };
-    let s = expect!([lit.node]
+    let s = expect!([lit.kind]
         LitKind::Str(s, _) => (&s.as_str() as &str).to_owned(),
         LitKind::ByteStr(ref b) => str::from_utf8(b).unwrap().to_owned());
 
@@ -149,10 +154,10 @@ fn build_format_macro(
         },
     }).parse();
 
-    while new_s.ends_with("\0") {
+    while new_s.ends_with('\0') {
         new_s.pop();
     }
-    let macro_name = if new_s.ends_with("\n") && ln_macro_name.is_some() {
+    let macro_name = if new_s.ends_with('\n') && ln_macro_name.is_some() {
         // Format string ends with "\n", call println!/eprintln! versions instead
         new_s.pop();
         ln_macro_name.unwrap()
@@ -160,7 +165,7 @@ fn build_format_macro(
         macro_name
     };
 
-    let new_fmt_str_expr = mk().span(old_fmt_str_expr.span).lit_expr(mk().str_lit(&new_s));
+    let new_fmt_str_expr = mk().span(old_fmt_str_expr.span).lit_expr(&new_s);
 
     info!("old fmt str expr: {:?}", old_fmt_str_expr);
     info!("new fmt str expr: {:?}", new_fmt_str_expr);
@@ -169,13 +174,16 @@ fn build_format_macro(
     let expr_tt = |mut e: P<Expr>| {
         let span = e.span;
         e.span = DUMMY_SP;
-        TokenTree::Token(span, Token::Interpolated(Lrc::new(Nonterminal::NtExpr(e))))
+        TokenTree::Token(Token {
+            kind: TokenKind::Interpolated(Lrc::new(Nonterminal::NtExpr(e))),
+            span,
+        })
     };
     macro_tts.push(expr_tt(new_fmt_str_expr));
     for (i, arg) in fmt_args[1..].iter().enumerate() {
         if let Some(cast) = casts.get(&i) {
             let tt = expr_tt(cast.apply(arg.clone()));
-            macro_tts.push(TokenTree::Token(DUMMY_SP, Token::Comma));
+            macro_tts.push(TokenTree::Token(Token {kind: TokenKind::Comma, span: DUMMY_SP}));
             macro_tts.push(tt);
         }
     }
@@ -202,13 +210,13 @@ fn build_format_macro(
 ///
 /// Example:
 ///
-/// ```
+/// ```ignore
 /// printf("Number: %d\n", 123);
 /// ```
 ///
 /// gets converted to:
 ///
-/// ```
+/// ```ignore
 /// print!("Number: {}\n", 123);
 /// ```
 pub struct ConvertPrintfs;
@@ -219,8 +227,8 @@ impl Transform for ConvertPrintfs {
         let mut fprintf_defs = HashSet::<DefId>::new();
         let mut stderr_defs = HashSet::<DefId>::new();
         visit_nodes(krate, |fi: &ForeignItem| {
-            if attr::contains_name(&fi.attrs, "no_mangle") {
-                match (&*fi.ident.as_str(), &fi.node) {
+            if attr::contains_name(&fi.attrs, sym::no_mangle) {
+                match (&*fi.ident.as_str(), &fi.kind) {
                     ("printf", ForeignItemKind::Fn(_, _)) => {
                         printf_defs.insert(cx.node_def_id(fi.id));
                     }
@@ -235,9 +243,9 @@ impl Transform for ConvertPrintfs {
             }
         });
         FlatMapNodes::visit(krate, |s: Stmt| {
-            match s.node {
+            match s.kind {
                 StmtKind::Semi(ref expr) => {
-                    if let ExprKind::Call(ref f, ref args) = expr.node {
+                    if let ExprKind::Call(ref f, ref args) = expr.kind {
                         if args.len() < 1 {
                             return smallvec![s];
                         }
@@ -292,7 +300,7 @@ impl CastType {
                 // CStr::from_ptr(e as *const libc::c_char).to_str().unwrap()
                 let e = mk().cast_expr(e, mk().ptr_ty(mk().path_ty(vec!["libc", "c_char"])));
                 let cs = mk().call_expr(
-                    mk().path_expr(mk().abs_path(vec!["std", "ffi", "CStr", "from_ptr"])),
+                    mk().path_expr(vec!["std", "ffi", "CStr", "from_ptr"]),
                     vec![e]);
                 let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
                 let call = mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new());
@@ -487,7 +495,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
 
             if b'1' <= self.peek() && self.peek() <= b'9' || self.peek() == b'*'{
                 conv.width = Some(self.parse_amount());
-            } 
+            }
             if self.eat(b'.') {
                 conv.prec = Some(self.parse_amount());
             }

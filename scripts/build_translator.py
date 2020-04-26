@@ -25,7 +25,6 @@ from common import (
     on_x86,
     on_mac,
     setup_logging,
-    have_rust_toolchain,
     ensure_clang_version,
     git_ignore_dir,
     on_linux,
@@ -126,10 +125,9 @@ def configure_and_build_llvm(args) -> None:
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
                      # required to build LLVM 8 on Debian Jessie
                      "-DLLVM_TEMPORARILY_ALLOW_OLD_TOOLCHAIN=1",
+                     "-DLLVM_TARGETS_TO_BUILD=host",  # speed up build
                      ast_ext_dir]
 
-            if on_x86():  # speed up builds on x86 hosts
-                cargs.append("-DLLVM_TARGETS_TO_BUILD=X86")
             invoke(cmake[cargs])
 
             # NOTE: we only generate Xcode project files for IDE support
@@ -157,14 +155,16 @@ def configure_and_build_llvm(args) -> None:
         # relative to LLVM_INSTALL/bin, which MUST exist for the relative
         # reference to be valid. To force this, we also install llvm-config,
         # since we are building and using it for other purposes.
+        nice = get_cmd_or_die("nice")
         ninja = get_cmd_or_die("ninja")
-        ninja_args = ['c2rust-ast-exporter', 'clangAstExporter',
-                      'llvm-config',
-                      'install-clang-headers',
-                      'FileCheck', 'count', 'not']
+        nice_args = ['-n', '19', str(ninja),
+                     'c2rust-ast-exporter', 'clangAstExporter',
+                     'llvm-config',
+                     'install-clang-headers', 'install-compiler-rt-headers',
+                     'FileCheck', 'count', 'not']
         if args.with_clang:
-            ninja_args.append('clang')
-        invoke(ninja, *ninja_args)
+            nice_args.append('clang')
+        invoke(nice, *nice_args)
 
         # Make sure install/bin exists so that we can create a relative path
         # using it in AstExporter.cpp
@@ -197,12 +197,13 @@ def need_cargo_clean(args) -> bool:
 
 
 def build_transpiler(args):
+    nice = get_cmd_or_die("nice")
     cargo = get_cmd_or_die("cargo")
 
     if need_cargo_clean(args):
         invoke(cargo, "clean")
 
-    build_flags = ["build", "--features", "llvm-static"]
+    build_flags = ["-n", "19", str(cargo), "build", "--features", "llvm-static"]
 
     if not args.debug:
         build_flags.append("--release")
@@ -227,7 +228,7 @@ def build_transpiler(args):
     msg += "LLVM_CONFIG_PATH={} \\\n".format(llvm_config)
     msg += "LLVM_SYSTEM_LIBS='{}' \\\n".format(llvm_system_libs)
     msg += "C2RUST_AST_EXPORTER_LIB_DIR={} \\\n".format(llvm_libdir)
-    msg += " cargo +{} ".format(c.CUSTOM_RUST_NAME)
+    msg += " cargo"
     msg += " ".join(build_flags)
     logging.debug(msg)
 
@@ -243,8 +244,7 @@ def build_transpiler(args):
                           LLVM_CONFIG_PATH=llvm_config,
                           LLVM_SYSTEM_LIBS=llvm_system_libs,
                           C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
-            # build with custom rust toolchain
-            invoke(cargo, "+" + c.CUSTOM_RUST_NAME, *build_flags)
+            invoke(nice, *build_flags)
 
 
 def _parse_args():
@@ -261,7 +261,7 @@ def _parse_args():
                         help='build clang with this tool')
     llvm_ver_help = 'fetch and build specified version of clang/LLVM (default: {})'.format(c.LLVM_VER)
     # FIXME: build this list by globbing for scripts/llvm-*.0.*-key.asc
-    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0"]
+    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0", "9.0.0"]
     parser.add_argument('--with-llvm-version', default=None,
                         action='store', dest='llvm_ver',
                         help=llvm_ver_help, choices=llvm_ver_choices)
@@ -326,10 +326,6 @@ def _main():
         die(err)
 
     args = _parse_args()
-
-    # prerequisites
-    if not have_rust_toolchain(c.CUSTOM_RUST_NAME):
-        die("missing rust toolchain: " + c.CUSTOM_RUST_NAME, errno.ENOENT)
 
     # clang 3.6.0 is known to work; 3.4.0 known to not work.
     ensure_clang_version([3, 6, 0])

@@ -1,4 +1,3 @@
-//! enable_relooper
 void goto_linear(const unsigned int sz, int buffer[const]) {
   int i = 0;
   buffer[++i] = 1;

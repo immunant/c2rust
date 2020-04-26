@@ -20,15 +20,15 @@ using std::string;
 // "1.000" -> "1.000"
 // "1.2e+3" -> "1.2e+3"
 // "1e-5" -> "1e-5"
-string matchFloatingLiteral(const char * prefix) {
-    
+string matchFloatingLiteral(const char *prefix) {
+
     // Hex literals are not supported
     if (strcmp("0x", prefix) == 0 || strcmp("0X", prefix) == 0) {
         return "";
     }
-    
+
     string output;
-    
+
     // detect when there are no digits before the decimal
     bool hasDigits = false;
     for (;;) {
@@ -50,17 +50,17 @@ string matchFloatingLiteral(const char * prefix) {
             return "";
         }
     }
-    
+
 fracpart:
     // detect when we have a decimal but no digits, Rust doesn't allow this
     hasDigits = false;
     for (;;) {
         auto c = *prefix++;
-        
+
         if ('0' <= c && c <= '9') { // decimal digit
             output.push_back(c);
             hasDigits = true;
-        } else if('E' == c || 'e' == c) { // start of exponent
+        } else if ('E' == c || 'e' == c) { // start of exponent
             if (!hasDigits) {
                 output.push_back('0');
             }
@@ -75,11 +75,12 @@ fracpart:
     }
 
 exppart:
-    // detect if we're at the beginning of the exponent where a + or - is allowed
+    // detect if we're at the beginning of the exponent where a + or - is
+    // allowed
     hasDigits = false;
     for (;;) {
         auto c = *prefix++;
-        
+
         if ('0' <= c && c <= '9') {
             output.push_back(c);
             hasDigits = true;

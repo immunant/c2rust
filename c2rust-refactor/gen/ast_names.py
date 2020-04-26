@@ -24,26 +24,6 @@ def do_ast_names_impl(d):
     yield '  }'
     yield '}'
 
-def find_kind_field(s):
-    if 'no_kind' in s.attrs:
-        return None
-
-    marked_fields = []
-    for f in s.fields:
-        if 'kind' in f.attrs:
-            marked_fields.append(f.name)
-    if len(marked_fields) == 1:
-        return marked_fields[0]
-    elif len(marked_fields) > 1:
-        raise ValueError('struct %s has %d fields marked #[kind] (expected 0 or 1)' %
-                (s.name, len(marked_fields)))
-
-    for f in s.fields:
-        if f.name == 'node':
-            return f.name
-
-    return None
-
 @linewise
 def generate(decls):
     yield '// AUTOMATICALLY GENERATED - DO NOT EDIT'

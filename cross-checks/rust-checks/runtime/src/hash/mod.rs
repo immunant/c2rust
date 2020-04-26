@@ -1,5 +1,5 @@
-use std::hash::Hasher;
-use std::mem;
+use core::hash::Hasher;
+use core::mem;
 
 #[cfg(feature = "libc-hash")]
 use libc;

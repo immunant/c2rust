@@ -5,9 +5,11 @@ members = [
     "c2rust-refactor",
     "c2rust-ast-builder",
     "c2rust-ast-exporter",
+    "c2rust-ast-printer",
     "manual/preprocessors",
     "c2rust-bitfields",
     "c2rust-macros",
+    "c2rust-asm-casts",
 ]
 exclude = [
     "cross-checks/pointer-tracer",

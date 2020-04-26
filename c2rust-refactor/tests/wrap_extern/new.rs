@@ -6,20 +6,20 @@ extern "C" {
 
 mod wrap {
     pub unsafe fn f() {
-        ::f()
+        crate::f()
     }
     pub unsafe fn g(x: u32) {
-        ::g(x)
+        crate::g(x)
     }
     pub unsafe fn h(x: u32, y: u32) -> u32 {
-        ::h(x, y)
+        crate::h(x, y)
     }
 }
 
 fn main() {
     unsafe {
-        ::wrap::f();
-        ::wrap::g(17);
-        let x = ::wrap::h(10, 20);
+        crate::wrap::f();
+        crate::wrap::g(17);
+        let x = crate::wrap::h(10, 20);
     }
 }

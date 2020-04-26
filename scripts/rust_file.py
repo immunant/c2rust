@@ -134,6 +134,7 @@ class RustMatch:
 class RustFileBuilder:
     def __init__(self) -> None:
         self.features = set()
+        self.pragmas = []
         self.extern_crates = set()
         self.mods = set()
         self.uses = set()
@@ -147,8 +148,13 @@ class RustFileBuilder:
 
         buffer += '\n'
 
+        for pragma in self.pragmas:
+            buffer += "#![{}({})]\n".format(pragma[0], ",".join(pragma[1]))
+
+        buffer += '\n'
+
         for crate in self.extern_crates:
-            buffer += "extern crate {};\n".format(crate)
+            buffer += "#[macro_use] extern crate {};\n".format(crate)
 
         buffer += '\n'
 
@@ -174,6 +180,9 @@ class RustFileBuilder:
 
     def add_features(self, features: Iterable[str]) -> None:
         self.features.update(features)
+
+    def add_pragma(self, name: str, value: [str]) -> None:
+        self.pragmas.append((name, value))
 
     def add_extern_crate(self, crate: str) -> None:
         self.extern_crates.add(crate)

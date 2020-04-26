@@ -6,9 +6,9 @@ use syntax::ptr::P;
 use syntax::util::map_in_place::MapInPlace;
 use syntax::visit::{self, Visitor};
 use syntax_pos::Span;
+use smallvec::smallvec;
 
-use crate::ast_manip::{MutVisit, Visit, GetNodeId, GetSpan};
-
+use crate::ast_manip::{AstName, GetNodeId, GetSpan, MutVisit, Visit};
 
 /// Enum indicating which kind of itemlike a `fn` is.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -34,6 +34,17 @@ pub struct FnLike {
     // TODO: Also unsafety, constness, and abi (these should be much easier to add)
 }
 
+impl AstName for FnKind {
+    fn ast_name(&self) -> String {
+        match self {
+            FnKind::Normal => "Normal",
+            FnKind::ImplMethod => "ImplMethod",
+            FnKind::TraitMethod => "TraitMethod",
+            FnKind::Foreign => "Foreign",
+        }.into()
+    }
+}
+
 impl GetNodeId for FnLike {
     fn get_node_id(&self) -> NodeId {
         self.id
@@ -46,23 +57,26 @@ impl GetSpan for FnLike {
     }
 }
 
-
 /// MutVisitor for rewriting `fn`s using a `FnLike` callback.
 struct FnFolder<F>
-        where F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
+where
+    F: FnMut(FnLike) -> SmallVec<[FnLike; 1]>,
+{
     callback: F,
 }
 
 impl<F> MutVisitor for FnFolder<F>
-        where F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
+where
+    F: FnMut(FnLike) -> SmallVec<[FnLike; 1]>,
+{
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        match i.node {
-            ItemKind::Fn(..) => {},
+        match i.kind {
+            ItemKind::Fn(..) => {}
             _ => return mut_visit::noop_flat_map_item(i, self),
         }
 
         let i = i.into_inner();
-        unpack!([i.node] ItemKind::Fn(decl, header, generics, block));
+        unpack!([i.kind] ItemKind::Fn(fn_sig, generics, block));
         let vis = i.vis;
 
         let fl = FnLike {
@@ -70,120 +84,141 @@ impl<F> MutVisitor for FnFolder<F>
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl: fn_sig.decl.clone(),
             block: Some(block),
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
 
-        fls.into_iter().map(|fl| {
-            let block = fl.block.expect("can't remove Block from ItemKind::Fn");
-            P(Item {
-                id: fl.id,
-                ident: fl.ident,
-                span: fl.span,
-                node: ItemKind::Fn(fl.decl, header.clone(), generics.clone(), block),
-                attrs: fl.attrs,
-                vis: vis.clone(),
-                // Don't keep the old tokens.  The callback could have made arbitrary changes to
-                // the signature and body of the function.
-                tokens: None,
+        fls.into_iter()
+            .map(|fl| {
+                let block = fl.block.expect("can't remove Block from ItemKind::Fn");
+                P(Item {
+                    id: fl.id,
+                    ident: fl.ident,
+                    span: fl.span,
+                    kind: ItemKind::Fn(
+                        FnSig {
+                            decl: fl.decl,
+                            header: fn_sig.header,
+                        },
+                        generics.clone(),
+                        block,
+                    ),
+                    attrs: fl.attrs,
+                    vis: vis.clone(),
+                    // Don't keep the old tokens.  The callback could have made arbitrary changes to
+                    // the signature and body of the function.
+                    tokens: None,
+                })
             })
-        }).flat_map(|i| mut_visit::noop_flat_map_item(i, self)).collect()
+            .flat_map(|i| mut_visit::noop_flat_map_item(i, self))
+            .collect()
     }
 
     fn flat_map_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
-        match i.node {
-            ImplItemKind::Method(..) => {},
+        match i.kind {
+            ImplItemKind::Method(..) => {}
             _ => return mut_visit::noop_flat_map_impl_item(i, self),
         }
 
-        unpack!([i.node] ImplItemKind::Method(sig, block));
+        unpack!([i.kind] ImplItemKind::Method(sig, block));
         let vis = i.vis;
         let defaultness = i.defaultness;
         let generics = i.generics;
-        let MethodSig { header, decl } = sig;
+        let FnSig { header, decl } = sig;
 
         let fl = FnLike {
             kind: FnKind::ImplMethod,
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl,
             block: Some(block),
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
 
-        fls.into_iter().map(|fl| {
-            let sig = MethodSig {
-                header: header.clone(),
-                decl: fl.decl,
-            };
-            let block = fl.block.expect("can't remove Block from ImplItemKind::Method");
-            ImplItem {
-                id: fl.id,
-                ident: fl.ident,
-                span: fl.span,
-                node: ImplItemKind::Method(sig, block),
-                attrs: fl.attrs,
-                generics: generics.clone(),
-                vis: vis.clone(),
-                defaultness: defaultness,
-                tokens: None,
-            }
-        }).flat_map(|i| mut_visit::noop_flat_map_impl_item(i, self)).collect()
+        fls.into_iter()
+            .map(|fl| {
+                let sig = FnSig {
+                    header,
+                    decl: fl.decl,
+                };
+                let block = fl
+                    .block
+                    .expect("can't remove Block from ImplItemKind::Method");
+                ImplItem {
+                    id: fl.id,
+                    ident: fl.ident,
+                    span: fl.span,
+                    kind: ImplItemKind::Method(sig, block),
+                    attrs: fl.attrs,
+                    generics: generics.clone(),
+                    vis: vis.clone(),
+                    defaultness,
+                    tokens: None,
+                }
+            })
+            .flat_map(|i| mut_visit::noop_flat_map_impl_item(i, self))
+            .collect()
     }
 
     fn flat_map_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> {
-        match i.node {
-            TraitItemKind::Method(..) => {},
+        match i.kind {
+            TraitItemKind::Method(..) => {}
             _ => return mut_visit::noop_flat_map_trait_item(i, self),
         }
 
-        unpack!([i.node] TraitItemKind::Method(sig, block));
-        let MethodSig { header, decl } = sig;
+        unpack!([i.kind] TraitItemKind::Method(sig, block));
+        let FnSig { header, decl } = sig;
         let generics = i.generics;
+        let vis = i.vis;
 
         let fl = FnLike {
             kind: FnKind::TraitMethod,
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl: decl,
-            block: block,
+            decl,
+            block,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
 
-        fls.into_iter().map(|fl| {
-            let sig = MethodSig {
-                header: header.clone(),
-                decl: fl.decl,
-            };
-            TraitItem {
-                id: fl.id,
-                ident: fl.ident,
-                span: fl.span,
-                node: TraitItemKind::Method(sig, fl.block),
-                attrs: fl.attrs,
-                generics: generics.clone(),
-                tokens: None,
-            }
-        }).flat_map(|i| mut_visit::noop_flat_map_trait_item(i, self)).collect()
+        fls.into_iter()
+            .map(|fl| {
+                let sig = FnSig {
+                    header,
+                    decl: fl.decl,
+                };
+                TraitItem {
+                    id: fl.id,
+                    ident: fl.ident,
+                    span: fl.span,
+                    vis: vis.clone(),
+                    kind: TraitItemKind::Method(sig, fl.block),
+                    attrs: fl.attrs,
+                    generics: generics.clone(),
+                    tokens: None,
+                }
+            })
+            .flat_map(|i| mut_visit::noop_flat_map_trait_item(i, self))
+            .collect()
     }
 
     fn visit_foreign_mod(&mut self, nm: &mut ForeignMod) {
-        nm.items.flat_map_in_place(|i| self.flat_map_foreign_item(i));
+        nm.items
+            .flat_map_in_place(|i| self.flat_map_foreign_item(i));
     }
 
     fn flat_map_foreign_item(&mut self, i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
-        match i.node {
-            ForeignItemKind::Fn(..) => {},
+        match i.kind {
+            ForeignItemKind::Fn(..) => {}
             _ => return mut_visit::noop_flat_map_foreign_item(i, self),
         }
 
-        unpack!([i.node] ForeignItemKind::Fn(decl, generics));
+        unpack!([i.kind] ForeignItemKind::Fn(decl, generics));
         let vis = i.vis;
 
         let fl = FnLike {
@@ -191,30 +226,33 @@ impl<F> MutVisitor for FnFolder<F>
             id: i.id,
             ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl,
             block: None,
             attrs: i.attrs,
         };
         let fls = (self.callback)(fl);
 
-        fls.into_iter().map(|fl| {
-            ForeignItem {
+        fls.into_iter()
+            .map(|fl| ForeignItem {
                 id: fl.id,
                 ident: fl.ident,
                 span: fl.span,
-                node: ForeignItemKind::Fn(fl.decl, generics.clone()),
+                kind: ForeignItemKind::Fn(fl.decl, generics.clone()),
                 attrs: fl.attrs,
                 vis: vis.clone(),
-            }
-        }).flat_map(|i| mut_visit::noop_flat_map_foreign_item(i, self)).collect()
+            })
+            .flat_map(|i| mut_visit::noop_flat_map_foreign_item(i, self))
+            .collect()
     }
 }
 
 /// Fold over all item-like function definitions, including `ItemKind::Fn`, `ImplItemKind::Method`,
 /// `TraitItemKind::Method`, and `ForeignItemKind::Fn`.
 pub fn mut_visit_fns<T, F>(target: &mut T, mut callback: F)
-        where T: MutVisit,
-              F: FnMut(&mut FnLike) {
+where
+    T: MutVisit,
+    F: FnMut(&mut FnLike),
+{
     flat_map_fns(target, |mut fl| {
         callback(&mut fl);
         smallvec![fl]
@@ -224,40 +262,43 @@ pub fn mut_visit_fns<T, F>(target: &mut T, mut callback: F)
 /// Similar to `mut_visit_fns`, but allows transforming each `FnLike` into a sequence of zero or more
 /// `FnLike`s.
 pub fn flat_map_fns<T, F>(target: &mut T, callback: F)
-        where T: MutVisit,
-              F: FnMut(FnLike) -> SmallVec<[FnLike; 1]> {
-    let mut f = FnFolder {
-        callback: callback,
-    };
+where
+    T: MutVisit,
+    F: FnMut(FnLike) -> SmallVec<[FnLike; 1]>,
+{
+    let mut f = FnFolder { callback };
     target.visit(&mut f)
 }
 
-
 /// Visitor for visiting `fn`s using a `FnLike` callback.
 struct FnVisitor<F>
-        where F: FnMut(FnLike) {
+where
+    F: FnMut(FnLike),
+{
     callback: F,
 }
 
 impl<'ast, F> Visitor<'ast> for FnVisitor<F>
-        where F: FnMut(FnLike) {
+where
+    F: FnMut(FnLike),
+{
     fn visit_item(&mut self, i: &'ast Item) {
         visit::walk_item(self, i);
-        match i.node {
-            ItemKind::Fn(..) => {},
+        match i.kind {
+            ItemKind::Fn(..) => {}
             _ => return,
         }
 
-        let (decl, block) = expect!([i.node]
-                                    ItemKind::Fn(ref decl, _, _, ref block) =>
-                                        (decl.clone(), block.clone()));
+        let (sig, block) = expect!([i.kind]
+                                    ItemKind::Fn(ref sig, _, ref block) =>
+                                        (sig.clone(), block.clone()));
 
         (self.callback)(FnLike {
             kind: FnKind::Normal,
             id: i.id,
-            ident: i.ident.clone(),
+            ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl: sig.decl,
             block: Some(block),
             attrs: i.attrs.clone(),
         });
@@ -265,21 +306,21 @@ impl<'ast, F> Visitor<'ast> for FnVisitor<F>
 
     fn visit_impl_item(&mut self, i: &'ast ImplItem) {
         visit::walk_impl_item(self, i);
-        match i.node {
-            ImplItemKind::Method(..) => {},
+        match i.kind {
+            ImplItemKind::Method(..) => {}
             _ => return,
         }
 
-        let (decl, block) = expect!([i.node]
+        let (decl, block) = expect!([i.kind]
                                     ImplItemKind::Method(ref sig, ref block) =>
                                         (sig.decl.clone(), block.clone()));
 
         (self.callback)(FnLike {
             kind: FnKind::ImplMethod,
             id: i.id,
-            ident: i.ident.clone(),
+            ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl,
             block: Some(block),
             attrs: i.attrs.clone(),
         });
@@ -287,42 +328,42 @@ impl<'ast, F> Visitor<'ast> for FnVisitor<F>
 
     fn visit_trait_item(&mut self, i: &'ast TraitItem) {
         visit::walk_trait_item(self, i);
-        match i.node {
-            TraitItemKind::Method(..) => {},
+        match i.kind {
+            TraitItemKind::Method(..) => {}
             _ => return,
         }
 
-        let (decl, block) = expect!([i.node]
+        let (decl, block) = expect!([i.kind]
                                     TraitItemKind::Method(ref sig, ref block) =>
                                         (sig.decl.clone(), block.clone()));
 
         (self.callback)(FnLike {
             kind: FnKind::TraitMethod,
             id: i.id,
-            ident: i.ident.clone(),
+            ident: i.ident,
             span: i.span,
-            decl: decl,
-            block: block,
+            decl,
+            block,
             attrs: i.attrs.clone(),
         });
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {
         visit::walk_foreign_item(self, i);
-        match i.node {
-            ForeignItemKind::Fn(..) => {},
+        match i.kind {
+            ForeignItemKind::Fn(..) => {}
             _ => return,
         }
 
-        let decl = expect!([i.node]
+        let decl = expect!([i.kind]
                            ForeignItemKind::Fn(ref decl, _) => decl.clone());
 
         (self.callback)(FnLike {
             kind: FnKind::Foreign,
             id: i.id,
-            ident: i.ident.clone(),
+            ident: i.ident,
             span: i.span,
-            decl: decl,
+            decl,
             block: None,
             attrs: i.attrs.clone(),
         });
@@ -332,10 +373,10 @@ impl<'ast, F> Visitor<'ast> for FnVisitor<F>
 /// Visit all item-like function definitions, including `ItemKind::Fn`, `ImplItemKind::Method`,
 /// `TraitItemKind::Method`, and `ForeignItemKind::Fn`.
 pub fn visit_fns<T, F>(target: &T, callback: F)
-        where T: Visit,
-              F: FnMut(FnLike) {
-    let mut f = FnVisitor {
-        callback: callback,
-    };
+where
+    T: Visit,
+    F: FnMut(FnLike),
+{
+    let mut f = FnVisitor { callback };
     target.visit(&mut f)
 }

@@ -1,7 +1,5 @@
 #include <alloca.h>
 
-//! enable_relooper
-//
 void use_arrays(const int n, const int m, int a[const][n*n][m]) {
 
         int counter = 1;

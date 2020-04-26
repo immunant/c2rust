@@ -393,8 +393,12 @@ private:
         auto depth = fn_decl->getParamDecl(1);
         auto depth_ty = depth->getType();
         auto depth_rv =
-            new (ctx) DeclRefExpr(depth, false, depth_ty,
-                                         VK_RValue, SourceLocation());
+            new (ctx) DeclRefExpr(
+#if CLANG_VERSION_MAJOR >= 8
+                                  ctx,
+#endif
+                                  depth, false, depth_ty,
+                                  VK_RValue, SourceLocation());
         if (!sub1)
             return depth_rv;
 

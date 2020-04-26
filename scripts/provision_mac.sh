@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # complain if we're not on macOS
 UNAME=$(uname -s)
 if [ "$UNAME" != "Darwin" ]; then

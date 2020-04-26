@@ -21,4 +21,9 @@ void cast_stuff(void) {
         _Bool x11 = (_Bool)10.5;
         _Bool x12 = NULL;
         double x13 = (double)10.5f;
+
+        // const casts in LLVM 8 are now NoOp casts instead of BitCasts, so we
+        // need to make sure we handle this correctly.
+        const int const_i = -1;
+        int *x14 = (int*) &const_i;
 }

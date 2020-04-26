@@ -31,7 +31,7 @@ Here, all instances of the expression `1+1` (the "pattern") are replaced with
 `rewrite_expr` parses both the pattern and the replacement as Rust expressions,
 and compares the structure of the expression instead of its raw text when
 looking for occurrences of the pattern.  This lets it recognize that `1 + 1`
-and `1 + /* comment */` both match the pattern `1+1` (despite being textually
+and `1 + /* comment */ 1` both match the pattern `1+1` (despite being textually
 distinct), while `1+11` does not (despite being textually similar).
 
 

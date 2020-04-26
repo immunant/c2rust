@@ -260,3 +260,14 @@ void multiple_assignments(void) {
     ma_results[15] = tbd.day;
     ma_results[16] = tbd.month;
 }
+
+struct renamer_required {
+    int a;
+    unsigned int use: 1;
+};
+
+void use_renamed_field(void) {
+    struct renamer_required rr;
+
+    rr.use = 0;
+}

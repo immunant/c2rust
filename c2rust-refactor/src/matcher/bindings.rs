@@ -1,13 +1,14 @@
 //! The `Bindings` type, for mapping names to AST fragments.
 use std::collections::hash_map::{Entry, HashMap};
-use std::convert::{TryInto, TryFrom};
+use std::convert::{TryFrom, TryInto};
 
 use derive_more::{From, TryInto};
-use syntax::ast::{Expr, Ident, Item, Pat, Path, Stmt, Ty};
-use syntax::parse::token::Token;
+use syntax::ast::{Expr, Ident, Item, Lit, Pat, Path, Stmt, Ty};
+use syntax::token::{Token, TokenKind, LitKind as TokenLitKind};
 use syntax::ptr::P;
+use syntax::source_map::DUMMY_SP;
 use syntax::symbol::Symbol;
-use syntax::tokenstream::{Cursor, TokenTree, TokenStream, TokenStreamBuilder};
+use syntax::tokenstream::{Cursor, TokenStream, TokenStreamBuilder, TokenTree};
 
 use crate::ast_manip::AstEquiv;
 use c2rust_ast_builder::IntoSymbol;
@@ -36,7 +37,7 @@ impl BindingTypes {
         match self.types.entry(name.into_symbol()) {
             Entry::Vacant(e) => {
                 e.insert(ty);
-            },
+            }
             Entry::Occupied(mut e) => {
                 let old_ty = *e.get();
                 match (old_ty, ty) {
@@ -105,13 +106,15 @@ impl Bindings {
     }
 
     pub fn try_add_none<S>(&mut self, name: S) -> bool
-    where S: IntoSymbol,
+    where
+        S: IntoSymbol,
     {
         self.try_add(name.into_symbol(), Value::Optional(None))
     }
 
     pub fn add_none<S>(&mut self, name: S)
-    where S: IntoSymbol,
+    where
+        S: IntoSymbol,
     {
         self.add(name, Value::Optional(None));
     }
@@ -140,16 +143,16 @@ impl Bindings {
 }
 
 impl<T> From<Option<T>> for Value
-where T: Into<Value>,
+where
+    T: Into<Value>,
 {
     fn from(val: Option<T>) -> Value {
         match val {
             Some(v) => Value::Optional(Some(Box::new(v.into()))),
-            None => Value::Optional(None)
+            None => Value::Optional(None),
         }
     }
 }
-
 
 macro_rules! define_binding_values {
     ($( $Thing:ident($Repr:ty) ),*) => {
@@ -174,7 +177,7 @@ macro_rules! define_binding_values {
         ];
 
         impl Type {
-            fn from_ast_ident(ty_ident: Ident) -> Option<Type> {
+            fn from_ast_ident(ty_ident: Symbol) -> Option<Type> {
                 match &*ty_ident.as_str() {
                     $(stringify!($Thing) => Some(Type::$Thing),)*
                     _ => None
@@ -224,6 +227,30 @@ macro_rules! define_binding_values {
                     (_, _) => false,
                 }
             }
+            fn unnamed_equiv(&self, other: &Self) -> bool {
+                match (self, other) {
+                    $(
+                        (&Value::$Thing(ref x1),
+                         &Value::$Thing(ref x2)) => {
+                            x1.unnamed_equiv(x2)
+                        },
+                        (&Value::$Thing(ref x1),
+                         &Value::Optional(Some(box Value::$Thing(ref x2)))) => {
+                            x1.unnamed_equiv(x2)
+                        },
+                        (&Value::Optional(Some(box Value::$Thing(ref x1))),
+                         &Value::$Thing(ref x2)) => {
+                            x1.unnamed_equiv(x2)
+                        },
+                        (&Value::Optional(Some(box Value::$Thing(ref x1))),
+                         &Value::Optional(Some(box Value::$Thing(ref x2)))) => {
+                            x1.unnamed_equiv(x2)
+                        },
+                    )*
+                    (&Value::Optional(None), &Value::Optional(None)) => true,
+                    (_, _) => false,
+                }
+            }
         }
 
         $(
@@ -244,6 +271,7 @@ macro_rules! define_binding_values {
 define_binding_values! {
     Ident(Ident),
     Path(Path),
+    Lit(Lit),
     Expr(P<Expr>),
     Pat(P<Pat>),
     Ty(P<Ty>),
@@ -265,17 +293,17 @@ impl Type {
 
 fn maybe_get_type(c: &mut Cursor) -> Type {
     let mut c_idx = 0;
-    if let Some(TokenTree::Token(_, Token::Colon)) = c.look_ahead(c_idx) {
+    if let Some(TokenTree::Token(Token{kind: TokenKind::Colon, ..})) = c.look_ahead(c_idx) {
         c_idx += 1;
         let is_optional = match c.look_ahead(c_idx) {
-            Some(TokenTree::Token(_, Token::Question)) => {
+            Some(TokenTree::Token(Token{kind: TokenKind::Question, ..})) => {
                 c_idx += 1;
                 true
             }
-            _ => false
+            _ => false,
         };
         match c.look_ahead(c_idx) {
-            Some(TokenTree::Token(_, Token::Ident(ty_ident, _))) => {
+            Some(TokenTree::Token(Token{kind: TokenKind::Ident(ty_ident, _), ..})) => {
                 if let Some(ty) = Type::from_ast_ident(ty_ident) {
                     c.nth(c_idx);
                     if is_optional {
@@ -297,35 +325,48 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
     let mut c = ts.into_trees();
     while let Some(tt) = c.next() {
         let new_tt = match tt {
-            TokenTree::Token(sp, Token::Dollar) => match c.look_ahead(0) {
-                Some(TokenTree::Token(sp, Token::Ident(ident, is_raw))) => {
+            TokenTree::Token(Token{kind: TokenKind::Dollar, ..}) => match c.look_ahead(0) {
+                Some(TokenTree::Token(Token{kind: TokenKind::Ident(ident, is_raw), span})) => {
                     c.next();
                     let dollar_sym = Symbol::intern(&format!("${}", ident));
                     let ident_ty = maybe_get_type(&mut c);
                     bt.set_type(dollar_sym, ident_ty);
-                    TokenTree::Token(sp, Token::Ident(Ident::new(dollar_sym, ident.span), is_raw))
+
+                    let token_kind = match ident_ty {
+                        Type::Lit | Type::Optional(Type::Lit) => {
+                            // Lit nodes don't have an Ident, so we stick the name
+                            // inside a LitKind::Err
+                            TokenKind::lit(TokenLitKind::Err, dollar_sym, None)
+                        }
+                        _ => TokenKind::Ident(dollar_sym, is_raw)
+                    };
+                    TokenTree::Token(Token{kind: token_kind, span})
                 }
 
-                Some(TokenTree::Token(sp, Token::Lifetime(ident))) => {
+                Some(TokenTree::Token(Token{kind: TokenKind::Lifetime(ident), span})) => {
                     c.next();
                     let ident_str = &*ident.as_str();
                     let (prefix, label) = ident_str.split_at(1);
-                    assert!(prefix == "'", "Lifetime identifier does not start with ': {}", ident);
+                    assert!(
+                        prefix == "'",
+                        "Lifetime identifier does not start with ': {}",
+                        ident
+                    );
                     let dollar_sym = Symbol::intern(&format!("'${}", label));
                     let label_ty = maybe_get_type(&mut c);
                     bt.set_type(dollar_sym, label_ty);
-                    TokenTree::Token(sp, Token::Lifetime(Ident::new(dollar_sym, ident.span)))
+                    TokenTree::Token(Token{kind: TokenKind::Lifetime(dollar_sym), span})
                 }
 
-                _ => TokenTree::Token(sp, Token::Dollar)
+                _ => TokenTree::Token(Token{kind: TokenKind::Dollar, span: DUMMY_SP}),
             },
 
             TokenTree::Delimited(sp, delim, tts) => {
-                let dts = rewrite_token_stream(tts.into(), bt);
-                TokenTree::Delimited(sp, delim, dts.into() )
+                let dts = rewrite_token_stream(tts, bt);
+                TokenTree::Delimited(sp, delim, dts)
             }
 
-            tt @ _ => tt
+            tt @ _ => tt,
         };
         tsb.push(new_tt);
     }
