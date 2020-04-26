@@ -42,14 +42,14 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      cargo build
+      cargo build --release
     displayName: 'Fast build against host clang/LLVM'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/test_translator.py --debug ./tests
+      python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator (fast build)'
 
   - script: |
@@ -115,7 +115,7 @@ jobs:
 
   - script: |
       source $HOME/.cargo/env
-      cargo build
+      cargo build --release
     displayName: 'Fast build against host clang/LLVM'
 
   - script: |
