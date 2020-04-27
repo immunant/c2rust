@@ -63,36 +63,36 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/build_translator.py --with-llvm-version=7.0.1
-    displayName: 'Developer build against local LLVM 7'
+      python3 ./scripts/build_translator.py --with-llvm-version=10.0.0
+    displayName: 'Developer build against local LLVM 10'
 
   - script: |
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
       python3 ./scripts/test_translator.py ./tests
-    displayName: 'Test translator against developer build (LLVM 7)'
+    displayName: 'Test translator against developer build (LLVM 10)'
 
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      cargo clean && rm -rf build
-    displayName: 'Cargo clean && rm -rf build'
+  # - script: |
+  #     export PATH="/home/docker/.cargo/bin:$PATH"
+  #     export RUSTUP_HOME=/home/docker/.rustup
+  #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+  #     cargo clean && rm -rf build
+  #   displayName: 'Cargo clean && rm -rf build'
 
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/build_translator.py --with-llvm-version=8.0.0
-    displayName: 'Developer build against local LLVM 8'
+  # - script: |
+  #     export PATH="/home/docker/.cargo/bin:$PATH"
+  #     export RUSTUP_HOME=/home/docker/.rustup
+  #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+  #     python3 ./scripts/build_translator.py --with-llvm-version=8.0.0
+  #   displayName: 'Developer build against local LLVM 8'
 
-  - script: |
-      export PATH="/home/docker/.cargo/bin:$PATH"
-      export RUSTUP_HOME=/home/docker/.rustup
-      export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
-      python3 ./scripts/test_translator.py ./tests
-    displayName: 'Test translator against developer build (LLVM 8)'
+  # - script: |
+  #     export PATH="/home/docker/.cargo/bin:$PATH"
+  #     export RUSTUP_HOME=/home/docker/.rustup
+  #     export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+  #     python3 ./scripts/test_translator.py ./tests
+  #   displayName: 'Test translator against developer build (LLVM 8)'
 
 - job: Darwin
   timeoutInMinutes: 120
