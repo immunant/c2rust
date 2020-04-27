@@ -2426,31 +2426,39 @@ class TranslateConsumer : public clang::ASTConsumer {
             auto comments = Context.getRawCommentList().getComments();
             cbor_encoder_create_array(&outer, &array, comments.size());
             for (auto comment : comments) {
-#else
-            const FileID file = sourceMgr.getMainFileID();
-            auto comments = Context.getRawCommentList().getCommentsInFile(file);
-            cbor_encoder_create_array(&outer, &array, comments->size());
-            for (auto comment : *comments) {
-#endif // CLANG_VERSION_MAJOR            
                 CborEncoder entry;
                 cbor_encoder_create_array(&array, &entry, 4);
 #if CLANG_VERSION_MAJOR < 8
                 SourceLocation loc = comment->getLocStart();
-#elif CLANG_VERSION_MAJOR < 10
+#else // 7 < CLANG_VERSION_MAJOR < 10
                 SourceLocation loc = comment->getBeginLoc();
-#else 
-                SourceLocation loc = comment.second->getBeginLoc();
-#endif // CLANG_VERSION_MAJOR
+#endif // CLANG_VERSION_MAJOR < 10
                 visitor.encodeSourcePos(&entry, loc); // emits 3 values
-#if CLANG_VERSION_MAJOR < 10                
                 auto raw_text = comment->getRawText(sourceMgr);
-#else 
-                auto raw_text = comment.second->getRawText(sourceMgr);
-#endif // CLANG_VERSION_MAJOR                
                 cbor_encode_byte_string(&entry, raw_text.bytes_begin(),
                                         raw_text.size());
                 cbor_encoder_close_container(&array, &entry);
             }
+#else  // CLANG_VERSION_MAJOR >= 10
+            const FileID file = sourceMgr.getMainFileID();
+            auto comments = Context.getRawCommentList().getCommentsInFile(file);
+            if (comments != nullptr) {
+                cbor_encoder_create_array(&outer, &array, comments->size());
+                for (auto comment : *comments) {
+                    CborEncoder entry;
+                    cbor_encoder_create_array(&array, &entry, 4);
+                    SourceLocation loc = comment.second->getBeginLoc();
+                    visitor.encodeSourcePos(&entry, loc); // emits 3 values
+                    auto raw_text = comment.second->getRawText(sourceMgr);
+                    cbor_encode_byte_string(&entry, raw_text.bytes_begin(),
+                                            raw_text.size());
+                    cbor_encoder_close_container(&array, &entry);
+                }
+            } else { 
+                // this happens when the C file contains no comments
+                cbor_encoder_create_array(&outer, &array, 0);
+            }
+#endif // CLANG_VERSION_MAJOR >= 10              
             cbor_encoder_close_container(&outer, &array);
 
             // 5. Target VaList type as BuiltiVaListKind
