@@ -162,6 +162,9 @@ def configure_and_build_llvm(args) -> None:
                      'llvm-config',
                      'install-clang-headers', 'install-compiler-rt-headers',
                      'FileCheck', 'count', 'not']
+        (major, _minor, _point) = c.LLVM_VER.split(".")
+        if int(major) > 8:
+            nice_args.append("install-clang-resource-headers")
         if args.with_clang:
             nice_args.append('clang')
         invoke(nice, *nice_args)
