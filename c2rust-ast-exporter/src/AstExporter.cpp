@@ -2432,7 +2432,7 @@ class TranslateConsumer : public clang::ASTConsumer {
                 SourceLocation loc = comment->getLocStart();
 #else // 7 < CLANG_VERSION_MAJOR < 10
                 SourceLocation loc = comment->getBeginLoc();
-#endif // CLANG_VERSION_MAJOR < 10
+#endif // CLANG_VERSION_MAJOR < 8
                 visitor.encodeSourcePos(&entry, loc); // emits 3 values
                 auto raw_text = comment->getRawText(sourceMgr);
                 cbor_encode_byte_string(&entry, raw_text.bytes_begin(),
@@ -2493,11 +2493,13 @@ class TranslateAction : public clang::ASTFrontendAction {
     virtual std::unique_ptr<clang::ASTConsumer>
     CreateASTConsumer(clang::CompilerInstance &Compiler,
                       llvm::StringRef InFile) {
+        
 #if CLANG_VERSION_MAJOR < 10
-    if(this->getCurrentFileKind().getLanguage() != InputKind::Language::C) {
+        const InputKind::Language lang_c = InputKind::Language::C;
 #else
-    if(this->getCurrentFileKind().getLanguage() != Language::C) {
+        const Language lang_c = Language::C;
 #endif // CLANG_VERSION_MAJOR    
+        if(this->getCurrentFileKind().getLanguage() != lang_c) {
             return nullptr;
         }
 
