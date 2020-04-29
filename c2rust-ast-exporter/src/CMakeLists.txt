@@ -50,7 +50,7 @@ if( PROJECT_NAME STREQUAL "LLVM" )
   add_clang_library(clangAstExporter ${AST_EXPORTER_SRCS} DEPENDS clang-headers)
 
   set(LLVM_LINK_COMPONENTS Support)
-  if( PROJECT_VERSION VERSION_GREATER_EQUAL "10.0.0" )
+  if( PROJECT_VERSION_MAJOR GREATER 9 )
       list(APPEND LLVM_LINK_COMPONENTS FrontendOpenMP)
   endif()
 else()
