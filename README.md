@@ -24,7 +24,7 @@ To learn more about using and developing C2Rust, check out the [manual](https://
 
 ### Prerequisites
 
-C2Rust requires LLVM 6, 7, or 8 with its corresponding clang compiler and libraries. Python 3.4 or later, CMake 3.4.3 or later, and openssl (1.0) are also required. These prerequisites may be installed with the following commands, depending on your platform:
+C2Rust requires LLVM 6 or later with its corresponding clang compiler and libraries. Python 3.4 or later, CMake 3.4.3 or later, and openssl (1.0) are also required. These prerequisites may be installed with the following commands, depending on your platform:
 
 - **Ubuntu 16.04, 18.04 & 18.10:**
 
