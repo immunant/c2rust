@@ -145,27 +145,44 @@ fn build_native(llvm_info: &LLVMInfo) {
     println!("cargo:rustc-link-lib=static=tinycbor");
     println!("cargo:rustc-link-lib=static=clangAstExporter");
 
-    // Link against these Clang libs. The ordering here is important! Libraries
-    // must be listed before their dependencies when statically linking.
     println!("cargo:rustc-link-search=native={}", llvm_lib_dir);
-    for lib in &[
-        "clangTooling",
-        "clangFrontend",
-        "clangASTMatchers",
-        "clangParse",
-        "clangSerialization",
-        "clangSema",
-        "clangEdit",
-        "clangAnalysis",
-        "clangDriver",
-        "clangFormat",
-        "clangToolingCore",
-        "clangAST",
-        "clangRewrite",
-        "clangLex",
-        "clangBasic",
-    ] {
-        println!("cargo:rustc-link-lib={}", lib);
+
+    // Some distro's, including arch and Fedora, no longer build with 
+    // BUILD_SHARED_LIBS=ON; programs linking to clang are required to 
+    // link to libclang-cpp.so instead of individual libraries.
+    let use_libclang = if cfg!(target_os = "macos") {
+        false
+    } else { // target_os = "linux"
+        let mut libclang_path = PathBuf::new();
+        libclang_path.push(llvm_lib_dir);
+        libclang_path.push("libclang-cpp.so");
+        libclang_path.exists()
+    };
+
+    if use_libclang {
+        println!("cargo:rustc-link-lib=clang-cpp");
+    } else {
+        // Link against these Clang libs. The ordering here is important! Libraries
+        // must be listed before their dependencies when statically linking.
+        for lib in &[
+            "clangTooling",
+            "clangFrontend",
+            "clangASTMatchers",
+            "clangParse",
+            "clangSerialization",
+            "clangSema",
+            "clangEdit",
+            "clangAnalysis",
+            "clangDriver",
+            "clangFormat",
+            "clangToolingCore",
+            "clangAST",
+            "clangRewrite",
+            "clangLex",
+            "clangBasic",
+        ] {
+            println!("cargo:rustc-link-lib={}", lib);
+        }
     }
 
     for lib in &llvm_info.libs {
