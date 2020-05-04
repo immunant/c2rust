@@ -59,11 +59,12 @@ update-alternatives --install /usr/bin/clang clang /usr/bin/clang-7 100
 update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-7 100
 # update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-7 100
 
+pip3 install --upgrade pip
 # Current version of scan-build requires setuptools 20.5 or newer to parse
 # environment markers in install_requires
-pip3 install "setuptools >= 20.5"
+pip3 install "setuptools >= 20.5" --disable-pip-version-check --quiet
 # Install python3 packages
-pip3 install -r $SCRIPT_DIR/requirements.txt
+pip3 install -r $SCRIPT_DIR/requirements.txt --disable-pip-version-check --quiet
 
 # Set the system-wide Lua path to include luarocks directories
 luarocks path > /etc/profile.d/luarocks-path.sh
