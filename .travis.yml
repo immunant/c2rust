@@ -66,7 +66,7 @@ install:
       # HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
       ./scripts/provision_mac.sh
     else
-      sudo ./scripts/provision_deb.sh
+      sudo -H ./scripts/provision_deb.sh
       ./scripts/provision_rust.sh
     fi
   - . ~/.cargo/env
