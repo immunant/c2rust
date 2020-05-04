@@ -145,27 +145,44 @@ fn build_native(llvm_info: &LLVMInfo) {
     println!("cargo:rustc-link-lib=static=tinycbor");
     println!("cargo:rustc-link-lib=static=clangAstExporter");
 
-    // Link against these Clang libs. The ordering here is important! Libraries
-    // must be listed before their dependencies when statically linking.
     println!("cargo:rustc-link-search=native={}", llvm_lib_dir);
-    for lib in &[
-        "clangTooling",
-        "clangFrontend",
-        "clangASTMatchers",
-        "clangParse",
-        "clangSerialization",
-        "clangSema",
-        "clangEdit",
-        "clangAnalysis",
-        "clangDriver",
-        "clangFormat",
-        "clangToolingCore",
-        "clangAST",
-        "clangRewrite",
-        "clangLex",
-        "clangBasic",
-    ] {
-        println!("cargo:rustc-link-lib={}", lib);
+
+    // Some distro's, including arch and Fedora, no longer build with 
+    // BUILD_SHARED_LIBS=ON; programs linking to clang are required to 
+    // link to libclang-cpp.so instead of individual libraries.
+    let use_libclang = if cfg!(target_os = "macos") {
+        false
+    } else { // target_os = "linux"
+        let mut libclang_path = PathBuf::new();
+        libclang_path.push(llvm_lib_dir);
+        libclang_path.push("libclang-cpp.so");
+        libclang_path.exists()
+    };
+
+    if use_libclang {
+        println!("cargo:rustc-link-lib=clang-cpp");
+    } else {
+        // Link against these Clang libs. The ordering here is important! Libraries
+        // must be listed before their dependencies when statically linking.
+        for lib in &[
+            "clangTooling",
+            "clangFrontend",
+            "clangASTMatchers",
+            "clangParse",
+            "clangSerialization",
+            "clangSema",
+            "clangEdit",
+            "clangAnalysis",
+            "clangDriver",
+            "clangFormat",
+            "clangToolingCore",
+            "clangAST",
+            "clangRewrite",
+            "clangLex",
+            "clangBasic",
+        ] {
+            println!("cargo:rustc-link-lib={}", lib);
+        }
     }
 
     for lib in &llvm_info.libs {
@@ -210,6 +227,10 @@ impl LLVMInfo {
                 }))
                 // In PATH
                 .or([
+                    "llvm-config-10",
+                    "llvm-config-9",
+                    "llvm-config-8",
+                    "llvm-config-7",
                     "llvm-config-7.0",
                     "llvm-config-6.1",
                     "llvm-config-6.0",
@@ -250,18 +271,17 @@ impl LLVMInfo {
         }
 
         let llvm_config = find_llvm_config();
+        let llvm_config_missing = "
+        Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
+        variable or make sure `llvm-config` is on $PATH then re-build. For example:
+
+          $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
+        ";
         let lib_dir = {
             let path_str = env::var("LLVM_LIB_DIR")
                 .ok()
                 .or(invoke_command(llvm_config.as_ref(), &["--libdir"]))
-                .expect(
-                    "
-Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
-variable or make sure `llvm-config` is on $PATH then re-build. For example:
-
-  $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
-",
-                );
+                .expect(llvm_config_missing);
             String::from(
                 Path::new(&path_str)
                     .canonicalize()
@@ -325,21 +345,39 @@ variable or make sure `llvm-config` is on $PATH then re-build. For example:
             "--link-shared"
         };
 
+        let llvm_major_version = {
+            let version = invoke_command(
+                llvm_config.as_ref(),
+                 &["--version"]
+                )
+                .expect(llvm_config_missing);
+            let emsg = format!("invalid version string {}", version);
+            version.split(".")
+                .next()
+                .expect(&emsg)
+                .parse::<u32>()
+                .expect(&emsg)
+        };
+
         // Construct the list of libs we need to link against
+        let mut args = vec![
+            "--libs",
+            link_mode,
+            "MC",
+            "MCParser",
+            "Support",
+            "Option",
+            "BitReader",
+            "ProfileData",
+            "BinaryFormat",
+            "Core"];
+        if llvm_major_version >= 10 {
+            args.push("FrontendOpenMP");
+        }
+    
         let mut libs: Vec<String> = invoke_command(
             llvm_config.as_ref(),
-            &[
-                "--libs",
-                link_mode,
-                "MC",
-                "MCParser",
-                "Support",
-                "Option",
-                "BitReader",
-                "ProfileData",
-                "BinaryFormat",
-                "Core",
-            ],
+            &args,
         )
             .unwrap_or("-lLLVM".to_string())
             .split_whitespace()

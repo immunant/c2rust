@@ -18,8 +18,8 @@ SCRIPT_DIR="$(dirname "$0")"
 declare -A IMAGES
 IMAGES["ubuntu:bionic"]="1" # any non-empty string will do
 IMAGES["ubuntu:xenial"]="1"
+IMAGES["debian:buster"]="1"
 IMAGES["debian:stretch"]="1"
-IMAGES["debian:jessie"]="1"
 IMAGES["archlinux/base"]="1"
 IMAGES["fedora:29"]="1"
 

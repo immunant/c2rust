@@ -123,8 +123,6 @@ def configure_and_build_llvm(args) -> None:
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
-                     # required to build LLVM 8 on Debian Jessie
-                     "-DLLVM_TEMPORARILY_ALLOW_OLD_TOOLCHAIN=1",
                      "-DLLVM_TARGETS_TO_BUILD=host",  # speed up build
                      ast_ext_dir]
 
@@ -162,6 +160,9 @@ def configure_and_build_llvm(args) -> None:
                      'llvm-config',
                      'install-clang-headers', 'install-compiler-rt-headers',
                      'FileCheck', 'count', 'not']
+        (major, _minor, _point) = c.LLVM_VER.split(".")
+        if int(major) > 8:
+            nice_args.append("install-clang-resource-headers")
         if args.with_clang:
             nice_args.append('clang')
         invoke(nice, *nice_args)
@@ -261,7 +262,7 @@ def _parse_args():
                         help='build clang with this tool')
     llvm_ver_help = 'fetch and build specified version of clang/LLVM (default: {})'.format(c.LLVM_VER)
     # FIXME: build this list by globbing for scripts/llvm-*.0.*-key.asc
-    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0", "9.0.0"]
+    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0", "9.0.0", "10.0.0"]
     parser.add_argument('--with-llvm-version', default=None,
                         action='store', dest='llvm_ver',
                         help=llvm_ver_help, choices=llvm_ver_choices)

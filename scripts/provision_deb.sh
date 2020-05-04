@@ -47,26 +47,17 @@ apt-get install -qq \
 # the latest versions of those packages from the LLVM project. 
 export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
 curl -s https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
-apt-add-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-6.0 main"
+apt-add-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-7 main"
 
 apt-get update -qq
-# libclang-6.0-dev: for fast builds against host libclang
-apt-get install -qq clang-6.0 libclang-6.0-dev 
-
-source /etc/os-release
-# Debian jessie ships with a version of cmake that is too old
-if [ "$VERSION" == "8 (jessie)" ]; then
-    echo "deb http://archive.debian.org/debian jessie-backports main" >> /etc/apt/sources.list
-	echo "Acquire::Check-Valid-Until "false";" >> /etc/apt/apt.conf
-    apt-get update -qq
-    apt-get -t jessie-backports install -y --no-install-recommends cmake
-fi
+# libclang-7.0-dev: for fast builds against host libclang
+apt-get install -qq clang-7 libclang-7-dev 
 
 apt-get clean # clear apt-caches to reduce image size
 
-update-alternatives --install /usr/bin/clang clang /usr/bin/clang-6.0 100
-update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-6.0 100
-# update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-6.0 100
+update-alternatives --install /usr/bin/clang clang /usr/bin/clang-7 100
+update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-7 100
+# update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-7 100
 
 # Current version of scan-build requires setuptools 20.5 or newer to parse
 # environment markers in install_requires

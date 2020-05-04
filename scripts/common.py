@@ -70,14 +70,19 @@ class Config:
     CBOR_PREFIX = os.path.join(BUILD_DIR, "tinycbor")
 
     LLVM_VER = "7.0.0"
-    # make the build directory unique to the hostname such that
-    # building inside a vagrant/docker environment uses a different
-    # folder than building directly on the host.
-    LLVM_ARCHIVE_URLS = [
+    LLVM_ARCHIVE_URLS = None  # initialized by _init_llvm_ver_deps
+    OLD_LLVM_ARCHIVE_URLS = [
         'http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/compiler-rt-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
+    ]
+    # Since LLVM version 10, sources have been hosted on Github.
+    GITHUB_LLVM_ARCHIVE_URLS = [
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/llvm-{ver}.src.tar.xz',
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/clang-{ver}.src.tar.xz',
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/compiler-rt-{ver}.src.tar.xz',
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/clang-tools-extra-{ver}.src.tar.xz',
     ]
     # See http://releases.llvm.org/download.html#7.0.0
     LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=LLVM_VER)
@@ -104,8 +109,17 @@ class Config:
     Reflect changes to all configuration variables that depend on LLVM_VER
     """
     def _init_llvm_ver_deps(self):
-        self.LLVM_ARCHIVE_URLS = [s.format(ver=self.LLVM_VER)
-                                  for s in Config.LLVM_ARCHIVE_URLS]
+        def use_github_archive_urls():
+            try:
+                (major, _, _) = self.LLVM_VER.split(".")
+                return int(major) >= 10
+            except ValueError:
+                emsg = "invalid LLVM version: {}".format(self.LLVM_VER)
+                raise ValueError(emsg)
+        
+        urls = self.GITHUB_LLVM_ARCHIVE_URLS if use_github_archive_urls() \
+            else self.OLD_LLVM_ARCHIVE_URLS
+        self.LLVM_ARCHIVE_URLS = [u.format(ver=self.LLVM_VER) for u in urls]
         self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_FILES = [os.path.basename(s)
                                    for s in self.LLVM_ARCHIVE_URLS]
@@ -425,7 +439,7 @@ def get_ninja_build_type(ninja_build_file):
         lines = handle.readlines()
         if not lines[0] == signature:
             die("unexpected content in ninja.build: " + ninja_build_file)
-        r = re.compile(r'^#\s*Configuration:\s*(\w+)')
+        r = re.compile(r'^#\s*Configurations?:\s*(\w+)')
         for line in lines:
             m = r.match(line)
             if m:
@@ -609,10 +623,10 @@ def download_archive(aurl: str, afile: str, asig: str = None):
                 "-L",                       # follow redirects
                 "--max-redirs", "20",
                 "--connect-timeout", "5",   # timeout for reach attempt
-                "--max-time", "10",         # how long each retry will wait
+                "--max-time", "20",         # how long each retry will wait
                 "--retry", "5",
                 "--retry-delay", "0",       # exponential backoff
-                "--retry-max-time", "60",   # total time before we fail
+                "--retry-max-time", "120",   # total time before we fail
                 "-o", ofile
             ]
             curl(*curl_args)

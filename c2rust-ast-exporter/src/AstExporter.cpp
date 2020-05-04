@@ -25,7 +25,11 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/Version.h"
 #include "clang/Frontend/CompilerInstance.h"
+#if CLANG_VERSION_MAJOR < 10
 #include "clang/Frontend/LangStandard.h"
+#else
+#include "clang/Basic/LangStandard.h"
+#endif // CLANG_VERSION_MAJOR
 #include "clang/Tooling/Tooling.h"
 
 #include "AstExporter.hpp"
@@ -2417,6 +2421,8 @@ class TranslateConsumer : public clang::ASTConsumer {
             //
             // Getting all comments requires -fparse-all-comments (see
             // augment_argv())!
+            const SourceManager& sourceMgr = Context.getSourceManager();
+#if CLANG_VERSION_MAJOR < 10
             auto comments = Context.getRawCommentList().getComments();
             cbor_encoder_create_array(&outer, &array, comments.size());
             for (auto comment : comments) {
@@ -2424,15 +2430,35 @@ class TranslateConsumer : public clang::ASTConsumer {
                 cbor_encoder_create_array(&array, &entry, 4);
 #if CLANG_VERSION_MAJOR < 8
                 SourceLocation loc = comment->getLocStart();
-#else
+#else // 7 < CLANG_VERSION_MAJOR < 10
                 SourceLocation loc = comment->getBeginLoc();
-#endif // CLANG_VERSION_MAJOR
+#endif // CLANG_VERSION_MAJOR < 8
                 visitor.encodeSourcePos(&entry, loc); // emits 3 values
-                auto raw_text = comment->getRawText(Context.getSourceManager());
+                auto raw_text = comment->getRawText(sourceMgr);
                 cbor_encode_byte_string(&entry, raw_text.bytes_begin(),
                                         raw_text.size());
                 cbor_encoder_close_container(&array, &entry);
             }
+#else  // CLANG_VERSION_MAJOR >= 10
+            const FileID file = sourceMgr.getMainFileID();
+            auto comments = Context.getRawCommentList().getCommentsInFile(file);
+            if (comments != nullptr) {
+                cbor_encoder_create_array(&outer, &array, comments->size());
+                for (auto comment : *comments) {
+                    CborEncoder entry;
+                    cbor_encoder_create_array(&array, &entry, 4);
+                    SourceLocation loc = comment.second->getBeginLoc();
+                    visitor.encodeSourcePos(&entry, loc); // emits 3 values
+                    auto raw_text = comment.second->getRawText(sourceMgr);
+                    cbor_encode_byte_string(&entry, raw_text.bytes_begin(),
+                                            raw_text.size());
+                    cbor_encoder_close_container(&array, &entry);
+                }
+            } else { 
+                // this happens when the C file contains no comments
+                cbor_encoder_create_array(&outer, &array, 0);
+            }
+#endif // CLANG_VERSION_MAJOR >= 10              
             cbor_encoder_close_container(&outer, &array);
 
             // 5. Target VaList type as BuiltiVaListKind
@@ -2467,7 +2493,13 @@ class TranslateAction : public clang::ASTFrontendAction {
     virtual std::unique_ptr<clang::ASTConsumer>
     CreateASTConsumer(clang::CompilerInstance &Compiler,
                       llvm::StringRef InFile) {
-        if(this->getCurrentFileKind().getLanguage() != InputKind::Language::C) {
+        
+#if CLANG_VERSION_MAJOR < 10
+        const InputKind::Language lang_c = InputKind::Language::C;
+#else
+        const Language lang_c = Language::C;
+#endif // CLANG_VERSION_MAJOR    
+        if(this->getCurrentFileKind().getLanguage() != lang_c) {
             return nullptr;
         }
 
@@ -2531,9 +2563,15 @@ class MyFrontendActionFactory : public FrontendActionFactory {
   public:
     MyFrontendActionFactory(Outputs *outputs) : outputs(outputs) {}
 
+#if CLANG_VERSION_MAJOR < 10
     clang::FrontendAction *create() override {
         return new TranslateAction(outputs);
     }
+#else
+    std::unique_ptr<FrontendAction> create() override {
+        return std::make_unique<TranslateAction>(outputs);
+    }
+#endif // CLANG_VERSION_MAJOR
 };
 
 // Marshal the output map into something easy to manipulate in Rust

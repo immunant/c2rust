@@ -74,13 +74,8 @@ class CFile:
         self.reorganize_definitions = "reorganize_definitions" in flags
         self.emit_build_files = "emit_build_files" in flags
 
-    def translate(self, cc_db, extra_args: List[str] = []) -> RustFile:
+    def translate(self, cc_db, ld_lib_path, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
-
-        # help plumbum find rust
-        ld_lib_path = get_rust_toolchain_libpath()
-        if 'LD_LIBRARY_PATH' in pb.local.env:
-            ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
         # run the transpiler
         transpiler = get_cmd_or_die(c.TRANSPILER)
@@ -134,13 +129,14 @@ def build_static_library(c_files: Iterable[CFile],
 
     # create .o files
     args = ["-c", "-fPIC", "-march=native"]
+    paths = [c_file.path for c_file in c_files]
 
-    args.extend(c_file.path for c_file in c_files)
-
-    if len(args) == 2:
+    if len(paths) == 0:
         return
+    else:
+        args += paths
 
-    logging.debug("complication command:\n %s", str(clang[args]))
+    logging.debug("compilation command:\n %s", str(clang[args]))
     retcode, stdout, stderr = clang[args].run(retcode=None)
 
     logging.debug("stdout:\n%s", stdout)
@@ -355,6 +351,12 @@ class TestDirectory:
         ])
         rust_file_builder.add_pragma("register_tool", ["c2rust"])
 
+
+        # Ensure that path to rustc's lib dir is in`LD_LIBRARY_PATH`
+        ld_lib_path = get_rust_toolchain_libpath()
+        if 'LD_LIBRARY_PATH' in pb.local.env:
+            ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
+
         # .c -> .rs
         for c_file in self.c_files:
             _, c_file_short = os.path.split(c_file.path)
@@ -367,7 +369,9 @@ class TestDirectory:
             self._generate_cc_db(c_file.path)
 
             try:
+                logging.debug("translating %s", c_file_short)
                 translated_rust_file = c_file.translate(self.generated_files["cc_db"],
+                                                        ld_lib_path,
                                                         extra_args=["-march=native"])
             except NonZeroReturn as exception:
                 self.print_status(Colors.FAIL, "FAILED", "translate " +
