@@ -225,11 +225,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
         VisitQualType(t);
     }
 
-    void VisitEnumType(const EnumType *T) {
-        encodeType(T, TagEnumType, [T](CborEncoder *local) {
-            cbor_encode_uint(local, uintptr_t(T->getDecl()->getDefinition()));
-        });
-    }
+    void VisitEnumType(const EnumType *T);
 
     void VisitConstantArrayType(const ConstantArrayType *T) {
         auto t = T->getElementType();
@@ -1963,11 +1959,9 @@ class TranslateASTVisitor final
     }
 
     bool VisitEnumDecl(EnumDecl *D) {
-        // Skip non-definition decls. We previously skipped non-canonical
-        // decls here, however a canonical decl is not guaranteed to also
-        // be the definition
-        if (!D->isCompleteDefinition())
-            return true;
+        // Unlike struct or union, there are no forward-declared enums in ISO C.
+        // They are used in actual code and accepted by compilers, so we cannot
+        // exit early via code like `if (!D->isCompleteDefinition()) return true;`.
 
         auto t = D->getTypeForDecl();
         if(isa<AtomicType>(t)) {
@@ -2272,6 +2266,15 @@ class TranslateASTVisitor final
             CharSourceRange::getCharRange(S->getSourceRange()));
     }
 };
+
+void TypeEncoder::VisitEnumType(const EnumType *T) {
+    auto ed = T->getDecl()->getDefinition();
+    encodeType(T, TagEnumType, [T, ed](CborEncoder *local) {
+        cbor_encode_uint(local, uintptr_t(ed));
+    });
+
+    astEncoder->VisitEnumDecl(ed);
+}
 
 void TypeEncoder::VisitRecordType(const RecordType *T) {
 
