@@ -3,14 +3,16 @@
 import os
 import sys
 import json
+import logging
 import subprocess
 from typing import List
+from common import setup_logging, die, get_cmd_or_die
 
 
 def dump_ast(cmd):
     args: List[str] = cmd["arguments"]
+    assert args.len() >= 3 and args[1] == "-c"
     args[0] = "clang"
-    assert args[1] == "-c"
     args[1] = "-fsyntax-only"
     args.append("-Xclang")
     args.append("-ast-dump")
@@ -25,31 +27,33 @@ def dump_ast(cmd):
 
 
 def main():
+    setup_logging()
     if not len(sys.argv) == 3:
         print(
-            "usage: print_clang_ast.py <file.c> <compile_commands.json>",
+            "usage: print_clang_ast.py <file.c> path/to/compile_commands.json",
             file=sys.stderr)
         exit(1)
-    c_file: str = sys.argv[1]
-    compile_commands_file: str = sys.argv[2]
+    c_file: str = os.path.basename(sys.argv[1])
+    compile_commands_path: str = sys.argv[2]
 
-    with open(compile_commands_file, "r") as fh:
-        commands = json.load(fh)
+    # do we have clang in path?
+    get_cmd_or_die("clang")
+
+    try:
+        with open(compile_commands_path, "r") as fh:
+            commands = json.load(fh)
+    except FileNotFoundError:
+        die(f"file not found: " + compile_commands_path)
+
     commands = filter(
         lambda c: os.path.basename(c["file"]) == c_file,
         commands)
 
     cmd = next(commands, None)
-
     if not cmd:
-        print(
-            f"error: no command to compile {c_file}",
-            file=sys.stderr)
-        exit(1)
+        die(f"no command to compile {c_file}")
     elif next(commands, None):
-        print(
-            f"warning: found multiple ({cl}) commands for {c_file}",
-            file=sys.stderr)
+        logging.warning(f"warning: found multiple commands for {c_file}")
     
     dump_ast(cmd)
 
