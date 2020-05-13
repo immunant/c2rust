@@ -11,7 +11,7 @@ from common import setup_logging, die, get_cmd_or_die
 
 def dump_ast(cmd):
     args: List[str] = cmd["arguments"]
-    assert args.len() >= 3 and args[1] == "-c"
+    assert len(args) >= 3 and args[1] == "-c"
     args[0] = "clang"
     args[1] = "-fsyntax-only"
     args.append("-Xclang")
