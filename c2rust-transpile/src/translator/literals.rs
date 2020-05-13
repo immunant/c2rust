@@ -285,7 +285,7 @@ impl<'c> Translation<'c> {
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
             }
-            CTypeKind::Char => {
+            CTypeKind::Char | CTypeKind::Int => {
                 let id = ids.first().unwrap();
                 self.convert_expr(ctx.used(), *id)
             }
