@@ -2273,7 +2273,7 @@ void TypeEncoder::VisitEnumType(const EnumType *T) {
         cbor_encode_uint(local, uintptr_t(ed));
     });
 
-    astEncoder->VisitEnumDecl(ed);
+    if(ed != nullptr) astEncoder->VisitEnumDecl(ed);
 }
 
 void TypeEncoder::VisitRecordType(const RecordType *T) {
