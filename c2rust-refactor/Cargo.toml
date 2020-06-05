@@ -21,7 +21,7 @@ ena = "0.13"
 c2rust-ast-builder = { version = "0.14.0", path = "../c2rust-ast-builder" }
 c2rust-ast-printer = { version = "0.14.0", path = "../c2rust-ast-printer" }
 indexmap = { version = "1.0.1", features = ["serde-1"] }
-cargo = "0.40"
+cargo = "0.44"
 clap = {version = "2.33", features = ["yaml"]}
 env_logger = "0.7"
 log = "0.4"
