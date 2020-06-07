@@ -12,6 +12,9 @@ grep -Ei 'debian|buntu|mint' /etc/*release > /dev/null || {
 export DEBIAN_FRONTEND=noninteractive
 SCRIPT_DIR="$(dirname "$0")"
 
+# Configure apt to avoid to avoid provisioning slowdowns
+echo "Acquire::ForceIPv4 \"true\";" > /etc/apt/apt.conf.d/99force-ipv4
+
 # Retry the `apt-get update` command a few times upon failure
 # to work around transient network problems in CI.
 n=0
@@ -23,6 +26,10 @@ do
     sleep 30
 done
 
+apt-get install -y --no-install-recommends \
+    apt-utils \
+    apt-transport-https \
+    ca-certificates
 # gnupg2: required for gnupg2 key retrieval
 apt-get install -qq \
     cmake \
