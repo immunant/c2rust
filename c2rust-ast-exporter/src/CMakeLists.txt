@@ -22,8 +22,6 @@ ExternalProject_Add(tinycbor_build
             BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/lib/libtinycbor.a
 )
 
-include_directories(${CMAKE_BINARY_DIR}/include)
-
 add_library(tinycbor STATIC IMPORTED)
 set_target_properties(tinycbor PROPERTIES IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/lib/libtinycbor.a)
 add_dependencies(tinycbor tinycbor_build)
@@ -93,6 +91,9 @@ set_target_properties(c2rust-ast-exporter PROPERTIES
   CXX_STANDARD 14
   CXX_EXTENSIONS OFF
   )
+target_include_directories(c2rust-ast-exporter PRIVATE
+  ${CMAKE_BINARY_DIR}/include
+)
 # PRIVATE was added to make c2rust-ast-exporter build with LLVM 6.0. Keyword
 # description: https://cmake.org/pipermail/cmake/2016-May/063400.html
 target_link_libraries(c2rust-ast-exporter PRIVATE
@@ -108,6 +109,9 @@ set_target_properties(clangAstExporter PROPERTIES
   CXX_STANDARD 14
   CXX_EXTENSIONS OFF
   )
+target_include_directories(clangAstExporter PRIVATE
+  ${CMAKE_BINARY_DIR}/include
+)
 target_link_libraries(clangAstExporter PRIVATE
   clangAST
   clangFrontend
