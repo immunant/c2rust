@@ -131,7 +131,7 @@ impl<'c> Translation<'c> {
                 let mut val = val.to_owned();
 
                 match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::ConstantArray(elem_ty, size) => {
+                    CTypeKind::ConstantArray(_elem_ty, size) => {
                         // Match the literal size to the expected size padding with zeros as needed
                         val.resize(size * (width as usize), 0)
                     },
