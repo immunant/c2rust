@@ -2,14 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import os
-import re
 import sys
-import json
-import errno
 import shutil
 import logging
 import argparse
-from typing import Optional
 
 from common import (
     config as c,
@@ -22,12 +18,9 @@ from common import (
     invoke_quietly,
     install_sig,
     ensure_dir,
-    on_x86,
     on_mac,
     setup_logging,
-    ensure_clang_version,
     git_ignore_dir,
-    on_linux,
     get_ninja_build_type,
 )
 

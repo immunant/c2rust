@@ -11,14 +11,9 @@ import argparse
 import platform
 import multiprocessing
 
-from typing import Optional, List, Callable
+from typing import List, Callable
 
-try:
-    import plumbum as pb
-except ImportError:
-    # run `pip install plumbum` or `easy_install plumbum` to fix
-    print("error: python package plumbum is not installed.", file=sys.stderr)
-    sys.exit(errno.ENOENT)
+import plumbum as pb
 
 
 class Colors:
@@ -100,7 +95,6 @@ class Config:
     CLANG_XCHECK_PLUGIN_BLD = os.path.join(BUILD_DIR,
                                            'clang-xcheck-plugin')
 
-    MIN_PLUMBUM_VERSION = (1, 6, 3)
     CC_DB_JSON = "compile_commands.json"
 
     CUSTOM_RUST_NAME = 'nightly-2019-12-05'
