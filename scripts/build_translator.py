@@ -69,29 +69,6 @@ def download_llvm_sources():
                 os.rename(c.LLVM_ARCHIVE_DIRS[2], "extra")
 
 
-def update_cmakelists():
-    """
-    Even though we build the ast-exporter out-of-tree, we still need
-    it to be treated as if it was in a subdirectory of clang to pick
-    up the required clang headers, etc.
-    """
-    filepath = os.path.join(c.LLVM_SRC, 'tools/clang/CMakeLists.txt')
-    command = "add_clang_subdirectory(c2rust-ast-exporter)"
-    if not os.path.isfile(filepath):
-        die("not found: " + filepath, errno.ENOENT)
-
-    # did we add the required command already?
-    with open(filepath, "r") as handle:
-        cmakelists = handle.readlines()
-        add_commands = not any([command in l for l in cmakelists])
-        logging.debug("add commands to %s: %s", filepath, add_commands)
-
-    if add_commands:
-        with open(filepath, "a+") as handle:
-            handle.writelines(command)
-        logging.debug("added commands to %s", filepath)
-
-
 def configure_and_build_llvm(args) -> None:
     """
     run cmake as needed to generate ninja buildfiles. then run ninja.
@@ -112,8 +89,6 @@ def configure_and_build_llvm(args) -> None:
             clangpp = get_cmd_or_die("clang++")
             max_link_jobs = est_parallel_link_jobs()
             assertions = "1" if args.assertions else "0"
-            ast_ext_dir = "-DLLVM_EXTERNAL_C2RUST_AST_EXPORTER_SOURCE_DIR={}"
-            ast_ext_dir = ast_ext_dir.format(c.AST_EXPO_SRC_DIR)
             cargs = ["-G", "Ninja", c.LLVM_SRC,
                      "-Wno-dev",
                      "-DCMAKE_C_COMPILER={}".format(clang),
@@ -124,7 +99,7 @@ def configure_and_build_llvm(args) -> None:
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
                      "-DLLVM_TARGETS_TO_BUILD=host",  # speed up build
-                     ast_ext_dir]
+            ]
 
             invoke(cmake[cargs])
 
@@ -156,8 +131,12 @@ def configure_and_build_llvm(args) -> None:
         nice = get_cmd_or_die("nice")
         ninja = get_cmd_or_die("ninja")
         nice_args = ['-n', '19', str(ninja),
-                     'c2rust-ast-exporter', 'clangAstExporter',
-                     'llvm-config',
+                     'clangAST',
+                     'clangFrontend',
+                     'clangTooling',
+                     'clangBasic',
+                     'clangASTMatchers',
+                     'llvm-config', 
                      'install-clang-headers', 'install-compiler-rt-headers',
                      'FileCheck', 'count', 'not']
         (major, _minor, _point) = c.LLVM_VER.split(".")
@@ -213,25 +192,15 @@ def build_transpiler(args):
         build_flags.append("-vv")
 
     llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
-    assert os.path.isfile(llvm_config), "missing binary: " + llvm_config
+    assert os.path.isfile(llvm_config), \
+        "expected llvm_config at " + llvm_config
 
     if on_mac():
         llvm_system_libs = "-lz -lcurses -lm -lxml2"
     else:  # linux
         llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm"
 
-    llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
-
-    # log how we run `cargo build` to aid troubleshooting, IDE setup, etc.
-    msg = "invoking cargo build as\ncd {} && \\\n".format(c.C2RUST_DIR)
-    msg += "LIBCURL_NO_PKG_CONFIG=1\\\n"
-    msg += "ZLIB_NO_PKG_CONFIG=1\\\n"
-    msg += "LLVM_CONFIG_PATH={} \\\n".format(llvm_config)
-    msg += "LLVM_SYSTEM_LIBS='{}' \\\n".format(llvm_system_libs)
-    msg += "C2RUST_AST_EXPORTER_LIB_DIR={} \\\n".format(llvm_libdir)
-    msg += " cargo"
-    msg += " ".join(build_flags)
-    logging.debug(msg)
+    # llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
 
     # NOTE: the `curl-rust` and `libz-sys` crates use the `pkg_config`
     # crate to locate the system libraries they wrap. This causes
@@ -243,8 +212,8 @@ def build_transpiler(args):
         with pb.local.env(LIBCURL_NO_PKG_CONFIG=1,
                           ZLIB_NO_PKG_CONFIG=1,
                           LLVM_CONFIG_PATH=llvm_config,
-                          LLVM_SYSTEM_LIBS=llvm_system_libs,
-                          C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
+                        #   LLVM_LIB_DIR=llvm_libdir,
+                          LLVM_SYSTEM_LIBS=llvm_system_libs):
             invoke(nice, *build_flags)
 
 
@@ -346,7 +315,6 @@ def _main():
     git_ignore_dir(c.BUILD_DIR)
 
     download_llvm_sources()
-    update_cmakelists()
     configure_and_build_llvm(args)
     build_transpiler(args)
     print_success_msg(args)
