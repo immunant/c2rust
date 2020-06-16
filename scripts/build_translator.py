@@ -85,21 +85,16 @@ def configure_and_build_llvm(args) -> None:
 
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
-            clang = get_cmd_or_die("clang")
-            clangpp = get_cmd_or_die("clang++")
             max_link_jobs = est_parallel_link_jobs()
             assertions = "1" if args.assertions else "0"
             cargs = ["-G", "Ninja", c.LLVM_SRC,
                      "-Wno-dev",
-                     "-DCMAKE_C_COMPILER={}".format(clang),
-                     "-DCMAKE_CXX_COMPILER={}".format(clangpp),
                      "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
-                     "-DLLVM_TARGETS_TO_BUILD=host",  # speed up build
-            ]
+                     "-DLLVM_TARGETS_TO_BUILD=host"]
 
             invoke(cmake[cargs])
 
@@ -136,12 +131,33 @@ def configure_and_build_llvm(args) -> None:
                      'clangTooling',
                      'clangBasic',
                      'clangASTMatchers',
-                     'llvm-config', 
+                     'clangParse',
+                     'clangSerialization',
+                     'clangSema',
+                     'clangEdit',
+                     'clangAnalysis',
+                     'clangDriver',
+                     'clangFormat',
+                     'clangToolingCore',
+                     'clangRewrite',
+                     'clangLex',
+                     'LLVMMC',
+                     'LLVMMCParser',
+                     'LLVMDemangle',
+                     'LLVMSupport',
+                     'LLVMOption',
+                     'LLVMBinaryFormat',
+                     'LLVMCore',
+                     'LLVMBitReader',
+                     'LLVMProfileData',
+                     'llvm-config',
                      'install-clang-headers', 'install-compiler-rt-headers',
                      'FileCheck', 'count', 'not']
         (major, _minor, _point) = c.LLVM_VER.split(".")
         if int(major) > 8:
             nice_args.append("install-clang-resource-headers")
+        if int(major) >= 10:
+            nice_args.append("LLVMFrontendOpenMP")
         if args.with_clang:
             nice_args.append('clang')
         invoke(nice, *nice_args)
@@ -200,7 +216,7 @@ def build_transpiler(args):
     else:  # linux
         llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm"
 
-    # llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
+    llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
 
     # NOTE: the `curl-rust` and `libz-sys` crates use the `pkg_config`
     # crate to locate the system libraries they wrap. This causes
@@ -212,7 +228,7 @@ def build_transpiler(args):
         with pb.local.env(LIBCURL_NO_PKG_CONFIG=1,
                           ZLIB_NO_PKG_CONFIG=1,
                           LLVM_CONFIG_PATH=llvm_config,
-                        #   LLVM_LIB_DIR=llvm_libdir,
+                          LLVM_LIB_DIR=llvm_libdir,
                           LLVM_SYSTEM_LIBS=llvm_system_libs):
             invoke(nice, *build_flags)
 
@@ -287,18 +303,7 @@ def _main():
     # FIXME: check that cmake and ninja are installed
     # FIXME: option to build LLVM/Clang from master?
 
-    # earlier plumbum versions are missing features such as TEE
-    if pb.__version__ < c.MIN_PLUMBUM_VERSION:
-        err = "locally installed version {} of plumbum is too old.\n" \
-            .format(pb.__version__)
-        err += "please upgrade plumbum to version {} or later." \
-            .format(c.MIN_PLUMBUM_VERSION)
-        die(err)
-
     args = _parse_args()
-
-    # clang 3.6.0 is known to work; 3.4.0 known to not work.
-    ensure_clang_version([3, 6, 0])
 
     if args.clean_all:
         logging.info("cleaning all dependencies and previous built files")
