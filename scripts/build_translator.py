@@ -118,35 +118,40 @@ def configure_and_build_llvm(args) -> None:
         # since we are building and using it for other purposes.
         nice = get_cmd_or_die("nice")
         ninja = get_cmd_or_die("ninja")
-        nice_args = ['-n', '19', str(ninja),
-                     'clangAST',
-                     'clangFrontend',
-                     'clangTooling',
-                     'clangBasic',
-                     'clangASTMatchers',
-                     'clangParse',
-                     'clangSerialization',
-                     'clangSema',
-                     'clangEdit',
-                     'clangAnalysis',
-                     'clangDriver',
-                     'clangFormat',
-                     'clangToolingCore',
-                     'clangRewrite',
-                     'clangLex',
-                     'LLVMMC',
-                     'LLVMMCParser',
-                     'LLVMDemangle',
-                     'LLVMSupport',
-                     'LLVMOption',
-                     'LLVMBinaryFormat',
-                     'LLVMCore',
-                     'LLVMBitReader',
-                     'LLVMProfileData',
-                     'llvm-config',
-                     'install-clang-headers', 'install-compiler-rt-headers',
-                     'FileCheck', 'count', 'not']
+        nice_args = [
+            '-n', '19', str(ninja),
+            'clangAST',
+            'clangFrontend',
+            'clangTooling',
+            'clangBasic',
+            'clangASTMatchers',
+            'clangParse',
+            'clangSerialization',
+            'clangSema',
+            'clangEdit',
+            'clangAnalysis',
+            'clangDriver',
+            'clangFormat',
+            'clangToolingCore',
+            'clangRewrite',
+            'clangLex',
+            'LLVMMC',
+            'LLVMMCParser',
+            'LLVMDemangle',
+            'LLVMSupport',
+            'LLVMOption',
+            'LLVMBinaryFormat',
+            'LLVMCore',
+            'LLVMBitReader',
+            'LLVMProfileData',
+            'llvm-config',
+            'install-clang-headers', 'install-compiler-rt-headers',
+            'FileCheck', 'count', 'not']
         (major, _minor, _point) = c.LLVM_VER.split(".")
+        if on_mac():
+            nice_args += [
+                'LLVMDebugInfoMSF',
+                'LLVMDebugInfoCodeView']
         if int(major) > 8:
             nice_args.append("install-clang-resource-headers")
         if int(major) >= 10:
