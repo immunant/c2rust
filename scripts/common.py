@@ -11,14 +11,9 @@ import argparse
 import platform
 import multiprocessing
 
-from typing import Optional, List, Callable
+from typing import List, Callable
 
-try:
-    import plumbum as pb
-except ImportError:
-    # run `pip install plumbum` or `easy_install plumbum` to fix
-    print("error: python package plumbum is not installed.", file=sys.stderr)
-    sys.exit(errno.ENOENT)
+import plumbum as pb
 
 
 class Colors:
@@ -100,7 +95,6 @@ class Config:
     CLANG_XCHECK_PLUGIN_BLD = os.path.join(BUILD_DIR,
                                            'clang-xcheck-plugin')
 
-    MIN_PLUMBUM_VERSION = (1, 6, 3)
     CC_DB_JSON = "compile_commands.json"
 
     CUSTOM_RUST_NAME = 'nightly-2019-12-05'
@@ -401,36 +395,6 @@ def ensure_rustfmt_version():
         emsg = emsg + 9 * "." + "actual version: {}"
         emsg = emsg.format(expected_version_str, actual_version)
         die(emsg)
-
-
-def ensure_clang_version(min_ver: List[int]):
-    clang = get_cmd_or_die("clang")
-    version = clang("--version")
-
-    def _common_check(match):
-        nonlocal version
-        if match:
-            version = match.group(1)
-            # print(version)
-            version = [int(d) for d in version.split(".")]
-            emsg = "can't compare versions {} and {}".format(version, min_ver)
-            assert len(version) == len(min_ver), emsg
-            if version < min_ver:
-                emsg = "clang version: {} < min version: {}"
-                emsg = emsg.format(version, min_ver)
-                die(emsg)
-        else:
-            logging.warning("unknown clang version: " + version)
-            die("unable to identify clang version")
-
-    if on_linux():
-        m = re.search(r"clang\s+version\s([^\s-]+)", version)
-        _common_check(m)
-    elif on_mac():
-        m = re.search(r"Apple\s(?:LLVM|clang)\sversion\s([^\s-]+)", version)
-        _common_check(m)
-    else:
-        assert False, "run this script on macOS or linux"
 
 
 def get_ninja_build_type(ninja_build_file):

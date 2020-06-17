@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.4.3)
-
+project(ASTExporter)
 
 #################################################
 # TinyCBOR                                      #
@@ -39,53 +39,37 @@ set(AST_EXPORTER_BIN_SRCS
   Main.cpp
   )
 
-if( PROJECT_NAME STREQUAL "LLVM" )
-  # We are building in-tree, we can use LLVM cmake functions
+find_package(LLVM REQUIRED CONFIG)
 
-  add_definitions(-DCLANG_BIN_PATH="${CMAKE_INSTALL_PREFIX}/bin")
-  add_definitions(-DCLANG_VERSION_STRING="${PACKAGE_VERSION}")
+# Debian and Ubuntu's clang cmake files are broken, so we can't require the
+# package here. We already have to manually order the link against the clang
+# libs in build.rs, so that's not so bad.
+find_package(Clang CONFIG)
 
-  set(LLVM_OPTIONAL_SOURCES Main.cpp)
-  add_clang_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS} DEPENDS clang-headers)
-  add_clang_library(clangAstExporter ${AST_EXPORTER_SRCS} DEPENDS clang-headers)
+include_directories(${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+add_definitions(${LLVM_DEFINITIONS} ${CLANG_DEFINITIONS})
 
-  set(LLVM_LINK_COMPONENTS Support)
-  if( PROJECT_VERSION_MAJOR GREATER 9 )
-      list(APPEND LLVM_LINK_COMPONENTS FrontendOpenMP)
-  endif()
+if (DEFINED CLANG_INSTALL_PREFIX)
+  add_definitions(-DCLANG_BIN_PATH="${CLANG_INSTALL_PREFIX}/bin")
+elseif(DEFINED LLVM_INSTALL_PREFIX)
+  add_definitions(-DCLANG_BIN_PATH="${LLVM_INSTALL_PREFIX}/bin")
+elseif(DEFINED LLVM_TOOLS_BINARY_DIR)
+  add_definitions(-DCLANG_BIN_PATH="${LLVM_TOOLS_BINARY_DIR}")
 else()
-  find_package(LLVM REQUIRED CONFIG)
-
-  # Debian and Ubuntu's clang cmake files are broken, so we can't require the
-  # package here. We already have to manually order the link against the clang
-  # libs in build.rs, so that's not so bad.
-  find_package(Clang CONFIG)
-
-  include_directories(${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
-  add_definitions(${LLVM_DEFINITIONS} ${CLANG_DEFINITIONS})
-
-  if (DEFINED CLANG_INSTALL_PREFIX)
-    add_definitions(-DCLANG_BIN_PATH="${CLANG_INSTALL_PREFIX}/bin")
-  elseif(DEFINED LLVM_INSTALL_PREFIX)
-    add_definitions(-DCLANG_BIN_PATH="${LLVM_INSTALL_PREFIX}/bin")
-  elseif(DEFINED LLVM_TOOLS_BINARY_DIR)
-    add_definitions(-DCLANG_BIN_PATH="${LLVM_TOOLS_BINARY_DIR}")
-  else()
-    message(FATAL_ERROR "Cannot find path to clang binary")
-  endif()
-  add_definitions(-DCLANG_VERSION_STRING="${LLVM_PACKAGE_VERSION}")
-
-  set(LLVM_LINK_COMPONENTS support)
-
-  # LLVM is not always built with RTTI, we don't need it either.
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
-
-  # The executable
-  add_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS})
-
-  # The library
-  add_library(clangAstExporter STATIC ${AST_EXPORTER_SRCS})
+  message(FATAL_ERROR "Cannot find path to clang binary")
 endif()
+add_definitions(-DCLANG_VERSION_STRING="${LLVM_PACKAGE_VERSION}")
+
+set(LLVM_LINK_COMPONENTS support)
+
+# LLVM is not always built with RTTI, we don't need it either.
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
+
+# The executable
+add_executable(c2rust-ast-exporter ${AST_EXPORTER_BIN_SRCS})
+
+# The library
+add_library(clangAstExporter STATIC ${AST_EXPORTER_SRCS})
 
 add_definitions(-DCLANG_LIBDIR_SUFFIX="${LLVM_LIBDIR_SUFFIX}")
 
