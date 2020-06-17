@@ -148,13 +148,18 @@ def configure_and_build_llvm(args) -> None:
             'install-clang-headers', 'install-compiler-rt-headers',
             'FileCheck', 'count', 'not']
         (major, _minor, _point) = c.LLVM_VER.split(".")
-        if on_mac():
+        major = int(major)
+        if major >= 7 and major < 10:
             nice_args += [
                 'LLVMDebugInfoMSF',
                 'LLVMDebugInfoCodeView']
-        if int(major) > 8:
+        if major > 8:
             nice_args.append("install-clang-resource-headers")
-        if int(major) >= 10:
+        if major == 9:
+            nice_args += [
+                'LLVMBitstreamReader',
+                'LLVMRemarks']
+        if major >= 10:
             nice_args.append("LLVMFrontendOpenMP")
         if args.with_clang:
             nice_args.append('clang')
