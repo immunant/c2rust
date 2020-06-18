@@ -130,62 +130,36 @@ impl<'c> Translation<'c> {
             CLiteral::String(ref val, width) => {
                 let mut val = val.to_owned();
 
-                let mut expects_uchars = false;
                 match self.ast_context.resolve_type(ty.ctype).kind {
-
-                    CTypeKind::ConstantArray(elem_ty, size) => {
-                        // Is the element type is unsigned char?
-                        if &CTypeKind::UChar == &self.ast_context.resolve_type(elem_ty).kind {
-                            expects_uchars = true;
-                        }
+                    CTypeKind::ConstantArray(_elem_ty, size) => {
                         // Match the literal size to the expected size padding with zeros as needed
                         val.resize(size * (width as usize), 0)
                     },
 
                     // Add zero terminator
                     _ => {
-//                        println()
                         for _ in 0..width {
                             val.push(0);
                         }
                     }
                 };
-                if ctx.is_static {
-                    let mut vals: Vec<P<Expr>> = vec![];
-                    for c in val {
-                        // Emit negative literals if the expected type is not unsigned char. This
-                        // provides a fallback for characters outside of the normal ASCII range.
-                        // Python 2 doc strings, for example, contain non-ASCII chars (https://git.io/fjAxu).
-                        if !expects_uchars && (c as i8) < 0 {
-                            // NOTE: the conversion to i32 avoids overflow when calling abs on -128.
-                            vals.push(mk().unary_expr("-", mk().lit_expr(
-                                mk().int_lit(((c as i8) as i32).abs() as u128, LitIntType::Unsuffixed))
-                            ));
-                        } else {
-                            vals.push(mk().lit_expr(mk().int_lit(c as u128, LitIntType::Unsuffixed)));
-                        }
-                    }
-                    let array = mk().array_expr(vals);
-                    Ok(WithStmts::new_val(array))
+                let u8_ty = mk().path_ty(vec!["u8"]);
+                let width_lit =
+                    mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
+                let array_ty = mk().array_ty(u8_ty, width_lit);
+                let source_ty = mk().ref_ty(array_ty);
+                let mutbl = if ty.qualifiers.is_const {
+                    Mutability::Immutable
                 } else {
-                    let u8_ty = mk().path_ty(vec!["u8"]);
-                    let width_lit =
-                        mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
-                    let array_ty = mk().array_ty(u8_ty, width_lit);
-                    let source_ty = mk().ref_ty(array_ty);
-                    let mutbl = if ty.qualifiers.is_const {
-                        Mutability::Immutable
-                    } else {
-                        Mutability::Mutable
-                    };
-                    let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
-                    let byte_literal = mk().lit_expr(val);
-                    if ctx.is_const { self.use_feature("const_transmute"); }
-                    let pointer =
-                        transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
-                    let array = mk().unary_expr(ast::UnOp::Deref, pointer);
-                    Ok(WithStmts::new_unsafe_val(array))
-                }
+                    Mutability::Mutable
+                };
+                let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
+                let byte_literal = mk().lit_expr(val);
+                if ctx.is_const || ctx.is_static { self.use_feature("const_transmute"); }
+                let pointer =
+                    transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
+                let array = mk().unary_expr(ast::UnOp::Deref, pointer);
+                Ok(WithStmts::new_unsafe_val(array))
             }
         }
     }
