@@ -266,7 +266,11 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         // FIXME: this is quadratic-time in the length of the ancestor path
         let mut ancestor_path = cmds
             .first()
-            .map(|cmd| cmd.abs_file())
+            .map(|cmd| {
+                let mut dir = cmd.abs_file();
+                dir.pop(); // discard the file part
+                dir
+            })
             .unwrap_or_else(PathBuf::new);
         if cmds.len() > 1 {
             for cmd in &cmds[1..] {
