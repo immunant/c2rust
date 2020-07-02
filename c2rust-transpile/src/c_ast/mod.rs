@@ -536,7 +536,6 @@ impl TypedAstContext {
                 CDeclKind::Function {
                     body: Some(_),
                     is_global: true,
-                    is_inline: false,
                     ..
                 } => {
                     to_walk.push(decl_id);
