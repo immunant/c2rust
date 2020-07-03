@@ -536,9 +536,12 @@ impl TypedAstContext {
                 CDeclKind::Function {
                     body: Some(_),
                     is_global: true,
-                    is_inline: false,
+                    is_inline,
+                    is_extern,
                     ..
-                } => {
+                } if !is_inline || (is_inline && is_extern) => {
+                    // In C99, a function defined inline will never, and a function defined extern 
+                    // inline will always, emit an externally visible function.
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 }
