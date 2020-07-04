@@ -537,11 +537,11 @@ impl TypedAstContext {
                     body: Some(_),
                     is_global: true,
                     is_inline,
-                    is_extern,
+                    is_inline_externally_visible,
                     ..
-                } if !is_inline || (is_inline && is_extern) => {
-                    // In C99, a function defined inline will never, and a function defined extern 
-                    // inline will always, emit an externally visible function.
+                } if !is_inline || is_inline_externally_visible => {
+                    // Depending on the C specification and dialect, an inlined function
+                    // may be externally visible. We rely on clang to determine visibility.
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 }
@@ -870,6 +870,7 @@ pub enum CDeclKind {
         is_inline: bool,
         is_implicit: bool,
         is_extern: bool,
+        is_inline_externally_visible: bool,
         typ: CFuncTypeId,
         name: String,
         parameters: Vec<CParamId>,

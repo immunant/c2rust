@@ -1724,6 +1724,16 @@ class TranslateASTVisitor final
                 bool is_extern = FD->getStorageClass() == SC_Extern;
                 cbor_encode_boolean(array, is_extern);
 
+                // The rules for when inlined functions are externally visible
+                // are complex, so we export the visibility computed by clang.
+                bool can_query_inline_visibility = is_inline &&
+                    (FD->doesThisDeclarationHaveABody() ||
+                     FD->willHaveBody() ||
+                     FD->hasAttr<AliasAttr>());
+                bool is_inline_externally_visible = can_query_inline_visibility
+                    && FD->isInlineDefinitionExternallyVisible();
+                cbor_encode_boolean(array, is_inline_externally_visible);
+
                 // Encode attribute names and relevant info if supported
                 CborEncoder attr_info;
                 bool has_attrs = def ? def->hasAttrs() : FD->hasAttrs();
