@@ -3,6 +3,7 @@ requirements:
     apt:
       packages:
         - python2.7
+        - python2.7-dev
 
 transpile:
   autogen: true
