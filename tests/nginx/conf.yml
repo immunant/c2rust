@@ -10,5 +10,6 @@ cargo:
 
 transpile:
   autogen: true
-  tflags: --reorganize-definitions
+  # blocked on https://github.com/immunant/c2rust/issues/266 
+  # tflags: --reorganize-definitions
   binary: nginx
