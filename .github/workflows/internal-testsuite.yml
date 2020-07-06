@@ -22,11 +22,14 @@ jobs:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     - name: Checkout c2rust
       uses: actions/checkout@v2
+      with:
+        path: c2rust
 
     - name: Checkout c2rust-testsuite
       uses: actions/checkout@v2
       with:
         repository: immunant/c2rust-testsuite
+        path: c2rust-testsuite
 
     # Runs a single command using the runners shell
     - name: Provision c2rust-testsuite
