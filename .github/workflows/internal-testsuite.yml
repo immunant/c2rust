@@ -30,6 +30,7 @@ jobs:
       with:
         repository: immunant/c2rust-testsuite
         path: c2rust-testsuite
+        token: ${{ secrets.GH_ACTIONS_READ_ONLY_PAT }}
 
     # Runs a single command using the runners shell
     - name: Provision c2rust-testsuite
