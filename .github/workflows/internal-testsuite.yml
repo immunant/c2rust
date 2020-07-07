@@ -44,7 +44,6 @@ jobs:
             python3-setuptools      \
             python3-wheel           \
             rcs
-        python3 -m pip install -r $GITHUB_WORKSPACE/testsuite/requirements.txt
 
     - name: Provision Python Packages
       run: python3 -m pip install \
