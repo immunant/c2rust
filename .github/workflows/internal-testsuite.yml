@@ -17,7 +17,7 @@ jobs:
     # The type of runner that the job will run on
     runs-on: ubuntu-18.04
     env:
-      PATH: $GITHUB_WORKSPACE/target/release:$HOME/.local/bin:$PATH
+      PATH: ${{ env.GITHUB_WORKSPACE }}/target/release:$HOME/.local/bin:${{ env.PATH }}
       LLVM_CONFIG_PATH: /usr/bin/llvm-config-9
 
     # Steps represent a sequence of tasks that will be executed as part of the job
