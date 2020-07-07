@@ -31,6 +31,7 @@ jobs:
         repository: immunant/c2rust-testsuite
         token: ${{ secrets.GH_ACTIONS_CONTROL_PRIV_REPOS }}
         path: testsuite
+        submodules: true
 
     - name: Cache Rust artifacts
       uses: actions/cache@v2
