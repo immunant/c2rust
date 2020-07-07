@@ -32,6 +32,9 @@ jobs:
         token: ${{ secrets.GH_ACTIONS_CONTROL_PRIV_REPOS }}
         path: testsuite
 
+    - name: Provision c2rust
+      run:  rustup component add rustfmt-preview rustc-dev
+
     # Runs a single command using the runners shell
     - name: Provision c2rust-testsuite
       run: |
@@ -39,6 +42,7 @@ jobs:
         sudo apt-get -qq install    \
             libreadline-dev         \
             python3-setuptools      \
+            python3-wheel           \
             rcs
         python3 -m pip install -r $GITHUB_WORKSPACE/testsuite/requirements.txt
 
