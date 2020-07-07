@@ -32,6 +32,15 @@ jobs:
         token: ${{ secrets.GH_ACTIONS_CONTROL_PRIV_REPOS }}
         path: testsuite
 
+    - name: Cache Rust artifacts
+    - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
     - name: Provision Rust
       run:  rustup component add rustfmt-preview rustc-dev
 
@@ -55,6 +64,7 @@ jobs:
             rcs                     \
             zlib1g-dev
 
+    # installs intercept-build to $HOME/.local/bin
     - name: Provision Python Packages
       run: python3 -m pip install -r $GITHUB_WORKSPACE/testsuite/requirements.txt
 
@@ -66,5 +76,6 @@ jobs:
     # Runs a set of commands using the runners shell
     - name: Run c2rust testsuite
       run: |
-        export PATH=$PWD/target/release:$PATH
+        export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
+        echo "PATH=$PATH"
         python3 testsuite/test.py curl json-c lua nginx zstd
