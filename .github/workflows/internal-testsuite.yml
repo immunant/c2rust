@@ -32,19 +32,23 @@ jobs:
         token: ${{ secrets.GH_ACTIONS_CONTROL_PRIV_REPOS }}
         path: testsuite
 
-    - name: Provision c2rust
+    - name: Provision Rust
       run:  rustup component add rustfmt-preview rustc-dev
 
-    # Runs a single command using the runners shell
-    - name: Provision c2rust-testsuite
+    - name: Provision Debian Packages
       run: |
         sudo apt-get -qq update
         sudo apt-get -qq install    \
+            libclang-9-dev          \
             libreadline-dev         \
             python3-setuptools      \
             python3-wheel           \
             rcs
         python3 -m pip install -r $GITHUB_WORKSPACE/testsuite/requirements.txt
+
+    - name: Provision Python Packages
+      run: python3 -m pip install \
+            -r $GITHUB_WORKSPACE/testsuite/requirements.txt
 
     # Runs a single command using the runners shell
     # Working dir is /home/runner/work/c2rust/c2rust
