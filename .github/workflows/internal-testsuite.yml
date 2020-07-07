@@ -13,7 +13,7 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
-  ubuntu-latest:
+  build-on-ubuntu:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
@@ -38,15 +38,12 @@ jobs:
         sudo apt-get -qq update
         sudo apt-get -qq install \
             libreadline-dev rcs 
-        pwd
-        ls $GITHUB_WORKSPACE
-        ls $GITHUB_WORKSPACE/c2rust
-        ls $GITHUB_WORKSPACE/c2rust/testsuite
-        python3 -m pip install -r $GITHUB_WORKSPACE/c2rust/testsuite/requirements.txt
+        python3 -m pip install -r $GITHUB_WORKSPACE/testsuite/requirements.txt
 
     # Runs a single command using the runners shell
+    # Working dir is /home/runner/work/c2rust/c2rust
     - name: Build c2rust
-      run: cd $GITHUB_WORKSPACE && cargo build --release
+      run: cargo build --release
 
     # Runs a set of commands using the runners shell
     - name: Run a multi-line script
