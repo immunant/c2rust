@@ -46,7 +46,7 @@ jobs:
             libidn2-dev             \
             libldap2-dev            \
             libnghttp2-dev          \
-            libpcre3-dev            \            
+            libpcre3-dev            \
             libpsl-dev              \
             librtmp-dev             \
             libtool                 \
