@@ -1724,7 +1724,9 @@ impl ConversionContext {
                         .expect("Expected to find implicit");
                     let is_extern = from_value(node.extras[5].clone())
                         .expect("Expected to find externness");
-                    let attributes = from_value::<Vec<Value>>(node.extras[6].clone())
+                    let is_inline_externally_visible = from_value(node.extras[6].clone())
+                        .expect("Expected to find inline visibliity");
+                    let attributes = from_value::<Vec<Value>>(node.extras[7].clone())
                         .expect("Expected to find attributes");
                     let attrs = parse_attributes(attributes);
 
@@ -1759,6 +1761,7 @@ impl ConversionContext {
                         is_global,
                         is_implicit,
                         is_inline,
+                        is_inline_externally_visible,
                         name,
                         parameters,
                         typ,
