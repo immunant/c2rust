@@ -16,9 +16,6 @@ jobs:
   build-on-ubuntu-1804:
     # The type of runner that the job will run on
     runs-on: ubuntu-18.04
-    env:
-      PATH: ${{ env.GITHUB_WORKSPACE }}/target/release:$HOME/.local/bin:${{ env.PATH }}
-      LLVM_CONFIG_PATH: /usr/bin/llvm-config-9
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -76,8 +73,13 @@ jobs:
     # Runs a single command using the runners shell
     # Working dir is /home/runner/work/c2rust/c2rust
     - name: Build c2rust
-      run: cargo build --release
+      run: |
+        export LLVM_CONFIG_PATH=/usr/bin/llvm-config-9
+        cargo build --release
 
     # Runs a set of commands using the runners shell
     - name: Run c2rust testsuite
-      run: python3 testsuite/test.py curl json-c lua nginx zstd
+      run: |
+        export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
+        echo "PATH=$PATH"
+        python3 testsuite/test.py curl json-c lua nginx zstd
