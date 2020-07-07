@@ -33,7 +33,7 @@ jobs:
         path: testsuite
 
     - name: Cache Rust artifacts
-    - uses: actions/cache@v2
+      uses: actions/cache@v2
       with:
         path: |
           ~/.cargo/registry
