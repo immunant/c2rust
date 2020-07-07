@@ -16,6 +16,9 @@ jobs:
   build-on-ubuntu-1804:
     # The type of runner that the job will run on
     runs-on: ubuntu-18.04
+    env:
+      PATH: $GITHUB_WORKSPACE/target/release:$HOME/.local/bin:$PATH
+      LLVM_CONFIG_PATH: /usr/bin/llvm-config-9
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -77,7 +80,4 @@ jobs:
 
     # Runs a set of commands using the runners shell
     - name: Run c2rust testsuite
-      run: |
-        export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
-        echo "PATH=$PATH"
-        python3 testsuite/test.py curl json-c lua nginx zstd
+      run: python3 testsuite/test.py curl json-c lua nginx zstd
