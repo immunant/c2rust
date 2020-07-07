@@ -46,8 +46,7 @@ jobs:
             rcs
 
     - name: Provision Python Packages
-      run: python3 -m pip install \
-            -r $GITHUB_WORKSPACE/testsuite/requirements.txt
+      run: python3 -m pip install -r $GITHUB_WORKSPACE/testsuite/requirements.txt
 
     # Runs a single command using the runners shell
     # Working dir is /home/runner/work/c2rust/c2rust
