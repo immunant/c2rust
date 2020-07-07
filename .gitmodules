@@ -40,5 +40,5 @@
 	ignore = all
 [submodule "tests/snudown/repo"]
 	path = tests/snudown/repo
-	url = ssh://git@github.com/reddit/snudown.git
+	url = https://github.com/reddit/snudown.git
 	ignore = all
