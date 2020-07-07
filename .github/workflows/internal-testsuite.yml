@@ -39,11 +39,21 @@ jobs:
       run: |
         sudo apt-get -qq update
         sudo apt-get -qq install    \
+            libbrotli-dev           \
             libclang-9-dev          \
+            libgcrypt20             \
             libreadline-dev         \
+            libidn2-dev             \
+            libldap2-dev            \
+            libnghttp2-dev          \
+            libpcre3-dev            \            
+            libpsl-dev              \
+            librtmp-dev             \
+            libtool                 \
             python3-setuptools      \
             python3-wheel           \
-            rcs
+            rcs                     \
+            zlib1g-dev
 
     - name: Provision Python Packages
       run: python3 -m pip install -r $GITHUB_WORKSPACE/testsuite/requirements.txt
@@ -57,4 +67,4 @@ jobs:
     - name: Run c2rust testsuite
       run: |
         export PATH=$PWD/target/release:$PATH
-        python3 testsuite/test.py lua
+        python3 testsuite/test.py curl json-c lua nginx zstd
