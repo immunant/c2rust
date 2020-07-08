@@ -947,6 +947,11 @@ pub enum CDeclKind {
 
     NonCanonicalDecl {
         canonical_decl: CDeclId,
+    },
+
+    StaticAssert {
+        assert_expr: CExprId,
+        message: Option<CExprId>
     }
 }
 

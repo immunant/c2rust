@@ -743,6 +743,10 @@ impl<W: Write> Printer<W> {
                 }
             }
 
+            Some(&CDeclKind::StaticAssert { .. }) => {
+                self.writer.write_fmt(format_args!("static_assert(...)"))
+            }
+
             None => panic!("Could not find declaration with ID {:?}", decl_id),
             // _ => unimplemented!("Printer::print_decl"),
         }

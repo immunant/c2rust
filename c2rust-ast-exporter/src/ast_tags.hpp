@@ -23,6 +23,8 @@ enum ASTEntryTag {
 
     TagNonCanonicalDecl,
 
+    TagStaticAssertDecl,
+
     TagMacroObjectDef,
     TagMacroFunctionDef,
 

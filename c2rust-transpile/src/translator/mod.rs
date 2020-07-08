@@ -2009,6 +2009,11 @@ impl<'c> Translation<'c> {
             // Do not translate non-canonical decls. They will be translated at
             // their canonical declaration.
             CDeclKind::NonCanonicalDecl { .. } => Ok(ConvertedDecl::NoItem),
+
+            CDeclKind::StaticAssert { .. } => {
+                warn!("ignoring static assert during translation");
+                Ok(ConvertedDecl::NoItem)
+            }
         }
     }
 
