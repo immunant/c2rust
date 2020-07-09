@@ -176,7 +176,7 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         NonCanonicalDecl { canonical_decl } => intos![canonical_decl],
         StaticAssert { assert_expr, message } => {
             if let Some(message) = message {
-                intos![assert_expr, message.unwrap()]
+                intos![assert_expr, message]
             } else {
                 intos![assert_expr]
             }
