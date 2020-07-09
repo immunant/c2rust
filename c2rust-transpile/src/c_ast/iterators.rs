@@ -175,7 +175,7 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         MacroObject { .. } | MacroFunction { .. } => vec![],
         NonCanonicalDecl { canonical_decl } => intos![canonical_decl],
         StaticAssert { assert_expr, message } => {
-            if message.is_some() {
+            if let Some(message) = message {
                 intos![assert_expr, message.unwrap()]
             } else {
                 intos![assert_expr]
