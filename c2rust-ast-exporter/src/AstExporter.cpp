@@ -862,8 +862,7 @@ class TranslateASTVisitor final
         auto msg = SAD->getMessage();
         if (msg != nullptr)
             childIds.push_back(msg);
-        auto T = QualType(); // don't care about the type
-        encode_entry(SAD, TagStaticAssertDecl, childIds, T);
+        encode_entry(SAD, TagStaticAssertDecl, childIds, QualType()); // 4th argument unused
         return true;
     }
 
