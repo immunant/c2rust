@@ -2036,6 +2036,19 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_DECL);
                 }
 
+                ASTEntryTag::TagStaticAssertDecl if expected_ty & DECL != 0 => {
+                    let assert_expr = CExprId(node.children[0]
+                        .expect("StaticAssert must point to an expression"));
+                    let message = if node.children.len() > 1 {
+                        Some(CExprId(node.children[1]
+                            .expect("Expected static assert message")))
+                    } else {
+                        None
+                    };
+                    let static_assert = CDeclKind::StaticAssert{ assert_expr, message };
+                    self.add_decl(new_id, located(node, static_assert));
+                }
+
                 t => panic!("Could not translate node {:?} as type {}", t, expected_ty),
             }
         }

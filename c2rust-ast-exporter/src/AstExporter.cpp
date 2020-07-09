@@ -857,6 +857,15 @@ class TranslateASTVisitor final
         abort();
     }
 
+    bool VisitStaticAssertDecl(StaticAssertDecl *SAD) {
+        std::vector<void *> childIds = {SAD->getAssertExpr()};
+        auto msg = SAD->getMessage();
+        if (msg != nullptr)
+            childIds.push_back(msg);
+        encode_entry(SAD, TagStaticAssertDecl, childIds, QualType()); // 4th argument unused
+        return true;
+    }
+
     bool VisitLabelStmt(LabelStmt *LS) {
 
         std::vector<void *> childIds = {LS->getSubStmt()};
