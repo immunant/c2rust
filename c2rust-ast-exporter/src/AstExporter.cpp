@@ -858,7 +858,10 @@ class TranslateASTVisitor final
     }
 
     bool VisitStaticAssertDecl(StaticAssertDecl *SAD) {
-        std::vector<void *> childIds = {SAD->getAssertExpr(), SAD->getMessage()};
+        std::vector<void *> childIds = {SAD->getAssertExpr()};
+        auto msg = SAD->getMessage();
+        if (msg != nullptr)
+            childIds.push_back(msg);
         auto T = QualType(); // don't care about the type
         encode_entry(SAD, TagStaticAssertDecl, childIds, T);
         return true;
