@@ -40,7 +40,7 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-          $GITHUB_WORKSPACE/testsuite/tests/**/compile_commands.json
+          ${{ env.GITHUB_WORKSPACE }}/testsuite/tests/**/compile_commands.json
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Provision Rust
@@ -96,5 +96,5 @@ jobs:
     - uses: actions/upload-artifact@v2
       with:
         name: testsuite-log-files
-        path: $GITHUB_WORKSPACE/testsuite/**/*.log
+        path: ${{ env.GITHUB_WORKSPACE }}/testsuite/**/*.log
       if: always()
