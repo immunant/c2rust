@@ -40,7 +40,7 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-          $GITHUB_WORKSPACE/testsuite/tests/**/compile_commands.json
+          ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Provision Rust
@@ -92,3 +92,9 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # optional
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
       if: always() # Pick up events even if the job fails or is canceled.
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: testsuite-log-files
+        path: ${{ github.workspace }}/testsuite/**/*.log
+      if: always()
