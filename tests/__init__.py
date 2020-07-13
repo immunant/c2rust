@@ -83,13 +83,24 @@ class Test(object):
         # if we already have `compile_commands.json`, skip the build stages
         if stage in ["autogen", "configure", "make"]:
             compile_commands = os.path.join(self.dir, "compile_commands.json")
-            compile_commands_present = os.path.isfile(compile_commands)
-            if compile_commands_present:
-                fill = (75 - len(line)) * "."
-                color = Colors.OKBLUE
-                msg = "OK_CACHED"
-                print(f"{fill} {color}{msg}{Colors.NO_COLOR}")
+
+            use_cached_cc_cmds, emsg = check_compile_commands(compile_commands)
+
+            if use_cached_cc_cmds:
+                if not verbose:
+                    fill = (75 - len(line)) * "."
+                    color = Colors.OKBLUE
+                    msg = "OK_CACHED"
+                    print(f"{fill} {color}{msg}{Colors.NO_COLOR}")
                 return True
+            elif emsg:
+                if verbose:
+                    print(f"cached compile_commands.json is stale:\n{emsg}")
+                try:
+                    os.remove(compile_commands)
+                except OSError:
+                    print(f"could not remove {compile_commands}")
+
 
         success = False
 
@@ -195,7 +206,7 @@ class Test(object):
 
 def run_tests(conf):
     if not conf.ignore_requirements:
-        requirements.check(conf)
+        check(conf)
 
     tests = [Test(td) for td in conf.project_dirs]
 

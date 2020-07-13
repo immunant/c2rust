@@ -1,6 +1,7 @@
 import os
 import sys
 import yaml
+import json
 import errno
 
 from typing import List, Iterable
@@ -102,3 +103,31 @@ def get_yaml(file: str) -> dict:
             return yaml.safe_load(stream)
         except yaml.YAMLError as exc:
             die(str(exc))
+
+
+def check_compile_commands(compile_commands_path: str) -> (bool, str):
+    """
+    Return True iff compile_commands_path points to a valid
+    compile_commands.json and all referenced source files exist.
+    If the commands file exists but source files do not, the second
+    tuple value will list the missing files.
+    """
+    if not os.path.isfile(compile_commands_path):
+        return (False, "")
+
+    try:
+        with open(compile_commands_path) as fp:
+            cc_db = json.load(fp)
+    except:
+        return (False, "could not open or parse compile commands")
+
+    missing: List[str] = []
+    for cmd in cc_db:
+        path = os.path.join(cmd["directory"], cmd["file"])
+        if not os.path.isfile(path):
+            missing += path
+
+    if missing:
+        return (False, "\n".join(missing))
+
+    return (True, "PASS")
