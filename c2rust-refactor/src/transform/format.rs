@@ -278,6 +278,7 @@ enum CastType {
     Usize,
     Char,
     Str,
+    Float,
 }
 
 impl CastType {
@@ -291,6 +292,7 @@ impl CastType {
             CastType::Int(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
             CastType::Uint(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
             CastType::Usize => mk().span(span).cast_expr(e, mk().ident_ty("usize")),
+            CastType::Float => mk().span(span).cast_expr(e, mk().ident_ty("f64")),
             CastType::Char => {
                 // e as u8 as char
                 let e = mk().cast_expr(e, mk().ident_ty("u8"));
@@ -355,6 +357,7 @@ enum ConvType {
     Hex(Length, bool),
     Char,
     Str,
+    Float,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -395,6 +398,7 @@ impl Conv {
             ConvType::Hex(len, _) => CastType::Uint(len),
             ConvType::Char => CastType::Char,
             ConvType::Str => CastType::Str,
+            ConvType::Float => CastType::Float,
         };
 
         casts.insert(*idx, cast);
@@ -570,6 +574,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
             'X' => ConvType::Hex(len, true),
             'c' => ConvType::Char,
             's' => ConvType::Str,
+            'f' => ConvType::Float,
             _ => panic!("unrecognized conversion spec `{}`", c),
         }
     }
