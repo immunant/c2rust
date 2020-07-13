@@ -95,6 +95,8 @@ jobs:
 
     - uses: actions/upload-artifact@v2
       with:
-        name: testsuite-log-files
-        path: ${{ github.workspace }}/testsuite/**/*.log
+        name: testsuite-build-artifacts
+        path: |
+          ${{ github.workspace }}/testsuite/**/*.log
+          ${{ github.workspace }}/testsuite/**/compile_commands.json
       if: always()
