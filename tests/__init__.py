@@ -34,9 +34,16 @@ class Test(object):
         def print_log_tail_on_fail(script_path):
             logfile = f"{script_path}.log"
             if os.path.isfile(logfile):
-                proc = subprocess.Popen(['tail', '-n', '20', logfile], stdout=subprocess.PIPE)
-                for line in proc.stdout:
+                grep_cmd = ['grep', '-i', '-A', '20', '-E', 'panicked|error', logfile]
+                grep = subprocess.Popen(grep_cmd, stdout=subprocess.PIPE)
+                for line in grep.stdout:
                     print(line.decode().rstrip())
+
+                # fall back to tail if grep didn't find anything
+                if grep.returncode != 0:
+                    tail = subprocess.Popen(['tail', '-n', '20', logfile], stdout=subprocess.PIPE)
+                    for line in tail.stdout:
+                        print(line.decode().rstrip())
             else:
                 print("{color}Missing log file: {logf}{nocolor}".format(
                     color=Colors.WARNING,
