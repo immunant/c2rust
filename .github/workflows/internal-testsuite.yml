@@ -6,7 +6,7 @@ name: c2rust-testsuite
 # events but only for the master branch
 on:
   push:
-    branches: [ master, feature/gh_actions ]
+    branches: [ master, feature/gh_caching ]
   pull_request:
     branches: [ master ]
 
