@@ -28,8 +28,9 @@ from common import (
 def download_llvm_sources():
     tar = get_cmd_or_die("tar")
 
-    # make sure we have the gpg public key installed first
-    install_sig(c.LLVM_PUBKEY)
+    if not c.LLVM_SKIP_SIGNATURE_CHECKS:
+        # make sure we have the gpg public key installed first
+        install_sig(c.LLVM_PUBKEY)
 
     with pb.local.cwd(c.BUILD_DIR):
         # download archives and signatures
@@ -39,7 +40,9 @@ def download_llvm_sources():
                 c.LLVM_ARCHIVE_FILES,
                 c.LLVM_ARCHIVE_DIRS):
 
-            # download archive + signature
+            if c.LLVM_SKIP_SIGNATURE_CHECKS:
+                asig = None
+            # download archive and (by default) its signature
             download_archive(aurl, afile, asig)
 
     # first extract llvm archive
@@ -250,7 +253,7 @@ def _parse_args():
                         help='build clang with this tool')
     llvm_ver_help = 'fetch and build specified version of clang/LLVM (default: {})'.format(c.LLVM_VER)
     # FIXME: build this list by globbing for scripts/llvm-*.0.*-key.asc
-    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0", "9.0.0", "10.0.0"]
+    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0", "9.0.0", "10.0.0", "10.0.1"]
     parser.add_argument('--with-llvm-version', default=None,
                         action='store', dest='llvm_ver',
                         help=llvm_ver_help, choices=llvm_ver_choices)
@@ -263,6 +266,10 @@ def _parse_args():
     parser.add_argument('-v', '--verbose', default=False,
                         action='store_true', dest='verbose',
                         help='emit verbose information during build')
+    parser.add_argument('--skip-signature-checks', default=False,
+                        action='store_true', dest='llvm_skip_signature_checks',
+                        help='skip signature check of source code archives')
+            
     c.add_args(parser)
     args = parser.parse_args()
 
