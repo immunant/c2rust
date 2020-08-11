@@ -241,7 +241,7 @@ def on_mac() -> bool:
     """
     return true on macOS/OS X.
     """
-    return 'Darwin' in platform.platform()
+    return platform.system() == "Darwin"
 
 
 def on_linux() -> bool:
