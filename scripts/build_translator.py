@@ -42,24 +42,31 @@ def download_llvm_sources():
             # download archive + signature
             download_archive(aurl, afile, asig)
 
-    # first extract llvm archive
+    # first extract llvm archive,
     if not os.path.isdir(c.LLVM_SRC):
         logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[0])
         tar("xf", c.LLVM_ARCHIVE_FILES[0])
         os.rename(c.LLVM_ARCHIVE_DIRS[0], c.LLVM_SRC)
 
-    # then clang front end
+    # then compiler-rt,
+    with pb.local.cwd(os.path.join(c.LLVM_SRC, "projects")):
+        if not os.path.isdir("compiler-rt"):
+            logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[2])
+            tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[2]))
+            os.rename(c.LLVM_ARCHIVE_DIRS[2], "compiler-rt")
+
+    # finally clang, and clang-tools-extra.
     with pb.local.cwd(os.path.join(c.LLVM_SRC, "tools")):
         if not os.path.isdir("clang"):
             logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[1])
             tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[1]))
             os.rename(c.LLVM_ARCHIVE_DIRS[1], "clang")
 
-        with pb.local.cwd("clang/tools"):
-            if not os.path.isdir("extra"):
-                logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[2])
-                tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[2]))
-                os.rename(c.LLVM_ARCHIVE_DIRS[2], "extra")
+        # with pb.local.cwd("clang/tools"):
+        #     if not os.path.isdir("extra"):
+        #         logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[3])
+        #         tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[3]))
+        #         os.rename(c.LLVM_ARCHIVE_DIRS[3], "extra")
 
 
 def configure_and_build_llvm(args) -> None:
