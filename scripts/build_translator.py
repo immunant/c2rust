@@ -269,7 +269,7 @@ def _parse_args():
     parser.add_argument('--skip-signature-checks', default=False,
                         action='store_true', dest='llvm_skip_signature_checks',
                         help='skip signature check of source code archives')
-            
+
     c.add_args(parser)
     args = parser.parse_args()
 
