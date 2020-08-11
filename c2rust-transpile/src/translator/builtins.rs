@@ -203,7 +203,7 @@ impl<'c> Translation<'c> {
             | "__builtin_strcmp" | "__builtin_strncmp"
             | "__builtin_strcpy" | "__builtin_strncpy"
             | "__builtin_strcspn"
-            | "__builtin_strdup" | "__builtin_strndup" 
+            | "__builtin_strdup" | "__builtin_strndup"
             | "__builtin_strlen" | "__builtin_strnlen"
             | "__builtin_strpbrk"
             | "__builtin_strrchr"
