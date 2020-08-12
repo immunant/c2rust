@@ -197,7 +197,18 @@ impl<'c> Translation<'c> {
             | "__builtin_memchr"
             | "__builtin_memcmp"
             | "__builtin_memmove"
-            | "__builtin_memset" => self.convert_mem_fns(builtin_name, ctx, args),
+            | "__builtin_memset"
+            | "__builtin_strcat" | "__builtin_strncat"
+            | "__builtin_strchr"
+            | "__builtin_strcmp" | "__builtin_strncmp"
+            | "__builtin_strcpy" | "__builtin_strncpy"
+            | "__builtin_strcspn"
+            | "__builtin_strdup" | "__builtin_strndup"
+            | "__builtin_strlen" | "__builtin_strnlen"
+            | "__builtin_strpbrk"
+            | "__builtin_strrchr"
+            | "__builtin_strspn"
+            | "__builtin_strstr" => self.convert_libc_fns(builtin_name, ctx, args),
 
             "__builtin_add_overflow"
             | "__builtin_sadd_overflow"
@@ -652,8 +663,8 @@ impl<'c> Translation<'c> {
         })
     }
 
-    /// Converts a __buitlin_mem* use by calling into libc's mem* directly.
-    fn convert_mem_fns(
+    /// Converts a __builtin_{mem|str}* use by calling the equivalent libc fn.
+    fn convert_libc_fns(
         &self,
         builtin_name: &str,
         ctx: ExprContext,
@@ -664,9 +675,9 @@ impl<'c> Translation<'c> {
         let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
             let mut args = args.into_iter();
-            let dst = args.next().ok_or("Missing dst argument to convert_mem_fns")?;
-            let c = args.next().ok_or("Missing c argument to convert_mem_fns")?;
-            let len = args.next().ok_or("Missing len argument to convert_mem_fns")?;
+            let dst = args.next().ok_or("Missing dst argument to convert_libc_fns")?;
+            let c = args.next().ok_or("Missing c argument to convert_libc_fns")?;
+            let len = args.next().ok_or("Missing len argument to convert_libc_fns")?;
             let size_t = mk().path_ty(vec!["libc", "size_t"]);
             let len1 = mk().cast_expr(len, size_t);
             let mem_expr = mk().call_expr(mem, vec![dst, c, len1]);
