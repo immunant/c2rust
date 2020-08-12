@@ -99,6 +99,8 @@ class Config:
 
     CUSTOM_RUST_NAME = 'nightly-2019-12-05'
 
+    LLVM_SKIP_SIGNATURE_CHECKS  = False
+
     """
     Reflect changes to all configuration variables that depend on LLVM_VER
     """
@@ -181,6 +183,10 @@ class Config:
 
         self.TARGET_DIR = "target/{}/".format(build_type)
         self.TARGET_DIR = os.path.join(self.ROOT_DIR, self.TARGET_DIR)
+
+        has_skip_sig = args and hasattr(args, 'llvm_skip_signature_checks') 
+        self.LLVM_SKIP_SIGNATURE_CHECKS = args.llvm_skip_signature_checks \
+            if has_skip_sig else False
 
     @staticmethod
     def add_args(parser: argparse.ArgumentParser):
@@ -600,11 +606,12 @@ def download_archive(aurl: str, afile: str, asig: str = None):
     if not asig:
         return
 
-    # download archive signature
-    asigfile = afile + ".sig"
-    _download_helper(asig, asigfile)
+    if asig:
+        # download archive signature
+        asigfile = afile + ".sig"
+        _download_helper(asig, asigfile)
 
-    check_sig(afile, asigfile)
+        check_sig(afile, asigfile)
 
 
 class NonZeroReturn(Exception):
