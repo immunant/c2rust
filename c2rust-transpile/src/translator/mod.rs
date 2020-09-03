@@ -4926,6 +4926,16 @@ impl<'c> Translation<'c> {
                             Box::new(unparen(arg).clone()),
                         );
                     }
+                // Another simplification we can make is mapping {0, 1} => {true, false}
+                } else if let Expr::Lit(ExprLit {
+                    lit: Lit::Int(ref val),
+                    ..
+                }) = *unparen(arg)
+                {
+                    match val.base10_parse() {
+                        Ok(n @ 0) | Ok(n @ 1) => return mk().lit_expr(mk().bool_lit(n == 1)),
+                        _ => {}
+                    }
                 }
             }
 
