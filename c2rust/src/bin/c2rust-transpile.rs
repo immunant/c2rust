@@ -89,6 +89,7 @@ fn main() {
         translate_const_macros: matches.is_present("translate-const-macros"),
         translate_fn_macros: matches.is_present("translate-fn-macros"),
         disable_refactoring: matches.is_present("disable-refactoring"),
+        preserve_unused_functions: matches.is_present("preserve-unused-functions"),
 
         use_c_loop_info: !matches.is_present("ignore-c-loop-info"),
         use_c_multiple_info: !matches.is_present("ignore-c-multiple-info"),

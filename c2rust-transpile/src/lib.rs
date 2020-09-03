@@ -109,6 +109,7 @@ pub struct TranspilerConfig {
     pub translate_const_macros: bool,
     pub translate_fn_macros: bool,
     pub disable_refactoring: bool,
+    pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,
 
     // Options that control build files

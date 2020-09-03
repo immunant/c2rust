@@ -530,7 +530,7 @@ pub fn translate(
 
         // Headers often pull in declarations that are unused;
         // we simplify the translator output by omitting those.
-        t.ast_context.prune_unused_decls();
+        t.ast_context.prune_unused_decls(tcfg.preserve_unused_functions);
 
         enum Name<'a> {
             VarName(&'a str),

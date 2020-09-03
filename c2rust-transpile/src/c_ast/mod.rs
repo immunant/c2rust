@@ -519,7 +519,7 @@ impl TypedAstContext {
         }
     }
 
-    pub fn prune_unused_decls(&mut self) {
+    pub fn prune_unused_decls(&mut self, preserve_unused_functions: bool) {
         // Starting from a set of root declarations, walk each one to find declarations it
         // depends on. Then walk each of those, recursively.
 
@@ -542,6 +542,13 @@ impl TypedAstContext {
                 } if !is_inline || is_inline_externally_visible => {
                     // Depending on the C specification and dialect, an inlined function
                     // may be externally visible. We rely on clang to determine visibility.
+                    to_walk.push(decl_id);
+                    used.insert(decl_id);
+                }
+                CDeclKind::Function {
+                    body: Some(_),
+                    ..
+                } if preserve_unused_functions => {
                     to_walk.push(decl_id);
                     used.insert(decl_id);
                 }

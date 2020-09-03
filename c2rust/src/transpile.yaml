@@ -172,6 +172,10 @@ args:
       long: disable-refactoring
       help: Disable running refactoring tool after translation
       takes_value: false
+  - preserve-unused-functions:
+      long: preserve-unused-functions
+      help: Include static and inline functions in translation
+      takes_value: false
   - log-level:
       long: log-level
       help: Logging level
