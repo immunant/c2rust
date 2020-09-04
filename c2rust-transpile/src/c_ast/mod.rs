@@ -532,41 +532,33 @@ impl TypedAstContext {
         // be visible from another compilation unit.
         for &decl_id in &self.c_decls_top {
             let decl = self.index(decl_id);
-            match decl.kind {
+            let is_used = match decl.kind {
                 CDeclKind::Function {
                     body: Some(_),
                     is_global: true,
                     is_inline,
                     is_inline_externally_visible,
                     ..
-                } if !is_inline || is_inline_externally_visible => {
                     // Depending on the C specification and dialect, an inlined function
                     // may be externally visible. We rely on clang to determine visibility.
-                    to_walk.push(decl_id);
-                    used.insert(decl_id);
-                }
+                } if !is_inline || is_inline_externally_visible => true,
                 CDeclKind::Function {
                     body: Some(_),
                     ..
-                } if preserve_unused_functions => {
-                    to_walk.push(decl_id);
-                    used.insert(decl_id);
-                }
+                } if preserve_unused_functions => true,
                 CDeclKind::Variable {
                     is_defn: true,
                     is_externally_visible: true,
                     ..
-                } => {
-                    to_walk.push(decl_id);
-                    used.insert(decl_id);
-                }
+                } => true,
                 CDeclKind::Variable { ref attrs, .. } | CDeclKind::Function { ref attrs, .. }
-                    if attrs.contains(&Attribute::Used) =>
-                {
-                    to_walk.push(decl_id);
-                    used.insert(decl_id);
-                }
-                _ => {}
+                    if attrs.contains(&Attribute::Used) => true,
+                _ => false,
+            };
+
+            if is_used {
+                to_walk.push(decl_id);
+                used.insert(decl_id);
             }
         }
 
