@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 # complain if we're not on macOS
 UNAME=$(uname -s)
