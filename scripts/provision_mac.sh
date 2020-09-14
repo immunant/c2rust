@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ex
+set -e
 
 # complain if we're not on macOS
 UNAME=$(uname -s)
@@ -21,7 +21,7 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 
 hb_packages=(python cmake ninja gpg ccache llvm)
 for item in "${hb_packages[@]}"; do
-  brew info "${item}" | grep --quiet 'Not installed' && brew install "${item}"
+  brew info "${item}" | grep 'Not installed' > /dev/null && brew install "${item}"
 done
 
 type -P "pip3" >/dev/null || {
