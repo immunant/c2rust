@@ -95,6 +95,14 @@ pub const RUST_KEYWORDS: &[&str] = &[
     "yield",
 ];
 
+/// Keywords that cannot be expressed as a raw identifier [0] because they can be used as path
+/// segments. The list of path segment keywords can be found here [1]. For discussion of this
+/// topic see [2].
+/// [0] https://doc.rust-lang.org/edition-guide/rust-2018/module-system/raw-identifiers.html
+/// [1] https://github.com/rust-lang/rust/blob/04488afe34512aa4c33566eb16d8c912a3ae04f9/src/librustc_span/symbol.rs#L1331
+/// [2] https://internals.rust-lang.org/t/raw-identifiers-dont-work-for-all-identifiers/9094
+const RESERVED_PATH_SEGMENT_NAMES: [&str; 4] = ["super", "self", "Self", "crate"];
+
 const PRELUDE_TYPE_NAMESPACE: &[&str] = &[
     "Copy",
     "Send",
@@ -224,7 +232,8 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     /// Assigns a name that doesn't collide with anything in the context of a particular
     /// scope, defaulting to the current scope if None is provided
     fn pick_name_in_scope(&mut self, basename: &str, scope: Option<usize>) -> String {
-        let mut target = basename.to_string();
+        let mut target =
+            Self::raw_identifier_if_reserved_name(basename).unwrap_or_else(|| basename.to_string());
 
         for i in 0.. {
             if self.is_target_used(&target) {
@@ -316,6 +325,14 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
         self.next_fresh += 1;
         self.pick_name(&format!("c2rust_fresh{fresh}"))
     }
+
+    fn raw_identifier_if_reserved_name(basename: &str) -> Option<String> {
+        if RUST_KEYWORDS.contains(&basename) && !RESERVED_PATH_SEGMENT_NAMES.contains(&basename) {
+            Some(format!("r#{}", basename))
+        } else {
+            None
+        }
+    }
 }
 
 fn check_c2rust_name(basename: &str) {
@@ -369,5 +386,28 @@ mod tests {
         renamer.insert(1, "example");
         renamer.drop_scope();
         assert_eq!(renamer.get(&1), None);
+    }
+
+    #[test]
+    fn raw_identifier() {
+        let mut renamer = Renamer::new(&[RUST_KEYWORDS]);
+
+        // A reserved keyword that can be expressed as a raw identifier
+        let reserved1 = renamer.insert(1, "dyn").unwrap();
+        let reserved2 = renamer.get(&1).unwrap();
+        assert_eq!(reserved1, "r#dyn");
+        assert_eq!(reserved2, "r#dyn");
+
+        // A reserved keyword that is already bound and therefore does not need the "#r" prefix
+        let reserved1 = renamer.insert(2, "dyn").unwrap();
+        let reserved2 = renamer.get(&2).unwrap();
+        assert_eq!(reserved1, "dyn_0");
+        assert_eq!(reserved2, "dyn_0");
+
+        // A reserved that cannot be used as a raw identifier because it can be used in a path
+        let reserved1 = renamer.insert(3, "self").unwrap();
+        let reserved2 = renamer.get(&3).unwrap();
+        assert_eq!(reserved1, "self_0");
+        assert_eq!(reserved2, "self_0");
     }
 }
