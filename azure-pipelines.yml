@@ -114,11 +114,14 @@ jobs:
       # prepare environment for the following steps
       source $HOME/.cargo/env
       export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
-      ls /usr/local/opt/llvm/bin/
-      brew info llvm
+      # Temporary fix to make sure we have LLVM 10.0.1_1 or later
+      brew upgrade llvm
     displayName: 'Provision macOS'
 
-  - script: cargo build --release
+  - script: |
+      echo $LLVM_CONFIG_PATH
+      export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
+      cargo build --release
     displayName: 'Fast build against host clang/LLVM'
 
   - script: python3 ./scripts/test_translator.py  ./tests
