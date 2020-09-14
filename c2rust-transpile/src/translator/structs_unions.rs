@@ -527,6 +527,7 @@ impl<'a> Translation<'a> {
 
                 // Now we must use the bitfield methods to initialize bitfields
                 for (field_name, val) in bitfield_inits {
+                    let field_name = strip_raw_ident(&field_name);
                     let field_name_setter = format!("set_{}", field_name);
                     let struct_ident = mk().ident_expr("init");
                     is_unsafe |= val.is_unsafe();
@@ -719,6 +720,7 @@ impl<'a> Translation<'a> {
                     .borrow()
                     .resolve_field_name(None, field_id)
                     .ok_or("Could not find bitfield name")?;
+                let field_name = strip_raw_ident(&field_name);
                 let setter_name = format!("set_{}", field_name);
                 let lhs_expr_read = mk().method_call_expr(lhs_expr.clone(), field_name, Vec::new());
                 // Allow the value of this assignment to be used as the RHS of other assignments
@@ -1114,5 +1116,15 @@ fn contains_block(expr_kind: &Expr) -> bool {
         Unary(ExprUnary { expr, .. }) | Cast(ExprCast { expr, .. }) => contains_block(expr),
         MethodCall(ExprMethodCall { args, .. }) => args.iter().any(contains_block),
         _ => false,
+    }
+}
+
+fn strip_raw_ident(ident: &str) -> &str {
+    const RAW_IDENT_PREFIX: &str = "r#";
+
+    if ident.starts_with(RAW_IDENT_PREFIX) {
+        &ident[RAW_IDENT_PREFIX.len()..]
+    } else {
+        ident
     }
 }

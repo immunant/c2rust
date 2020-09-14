@@ -187,7 +187,10 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     let field_types_setter_arg = &field_types;
     let method_names: Vec<_> = bitfields
         .iter()
-        .map(|field| Ident::new(&field.name, Span::call_site()))
+        .map(|field| {
+            // We cannot use `Ident::new` here because it does not support raw identifiers
+            quote::format_ident!("{}", field.name, span = Span::call_site())
+        })
         .collect();
     let field_names: Vec<_> = bitfields.iter().map(|field| &field.field_name).collect();
     let field_names_setters = &field_names;
@@ -196,7 +199,9 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
         .iter()
         .map(|field_ident| {
             let span = Span::call_site();
-            let setter_name = &format!("set_{}", field_ident);
+            let raw_ident = &field_ident.to_string();
+            let ident = strip_raw_ident(&raw_ident);
+            let setter_name = &format!("set_{}", ident);
 
             Ident::new(setter_name, span)
         })
@@ -256,4 +261,14 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     };
 
     Ok(q.into())
+}
+
+fn strip_raw_ident(ident: &str) -> &str {
+    const RAW_IDENT_PREFIX: &str = "r#";
+
+    if ident.starts_with(RAW_IDENT_PREFIX) {
+        &ident[RAW_IDENT_PREFIX.len()..]
+    } else {
+        ident
+    }
 }
