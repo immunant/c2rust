@@ -114,6 +114,8 @@ jobs:
       # prepare environment for the following steps
       source $HOME/.cargo/env
       export LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
+      ls /usr/local/opt/llvm/bin/
+      brew info llvm
     displayName: 'Provision macOS'
 
   - script: cargo build --release
