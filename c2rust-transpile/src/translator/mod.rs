@@ -4033,10 +4033,10 @@ impl<'c> Translation<'c> {
                 }
                 let target_ty = self.convert_type(ty.ctype)?;
                 val.and_then(|x| {
-                    let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
-                    let intptr = mk().cast_expr(x, intptr_t.clone());
+                    let r#usize = mk().ident_ty("usize");
+                    let intptr = mk().cast_expr(x, r#usize.clone());
                     Ok(WithStmts::new_unsafe_val(
-                        transmute_expr(intptr_t, target_ty, intptr, self.tcfg.emit_no_std)
+                        transmute_expr(r#usize, target_ty, intptr, self.tcfg.emit_no_std)
                     ))
                 })
             }
