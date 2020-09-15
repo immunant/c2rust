@@ -19,9 +19,11 @@ done
 SCRIPT_DIR="$(dirname "$0")"
 export HOMEBREW_NO_AUTO_UPDATE=1
 
-hb_packages=(python cmake ninja gpg ccache llvm)
+# NOTE(perl): Due to problems with LLVM 10.0.1 we request LLVM 9 for now
+# https://discourse.brew.sh/t/llvm-config-10-0-1-advertise-libxml2-tbd-as-system-libs/8593
+hb_packages=(python cmake ninja gpg ccache llvm@9)
 for item in "${hb_packages[@]}"; do
-  brew info "${item}" | grep --quiet 'Not installed' && brew install "${item}"
+  brew info "${item}" | grep 'Not installed' > /dev/null && brew install "${item}"
 done
 
 type -P "pip3" >/dev/null || {
@@ -30,7 +32,7 @@ type -P "pip3" >/dev/null || {
 
 # Python 3 packages
 pip3 install --user --upgrade pip
-pip3 install -r "$SCRIPT_DIR/requirements.txt" --user --disable-pip-version-check --quiet
+pip3 install -r "$SCRIPT_DIR/requirements.txt" --user --disable-pip-version-check
 
 RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain"
 export RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')

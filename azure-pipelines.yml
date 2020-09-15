@@ -111,44 +111,34 @@ jobs:
       # whereas the brew version does not, this causes curl-sys to 
       # build its own curl which then fails to link on Azure Devops.
       brew remove curl
+      # prepare environment for the following steps
+      source $HOME/.cargo/env
+      brew info llvm@9
     displayName: 'Provision macOS'
 
   - script: |
-      source $HOME/.cargo/env
+      # Temporary fix to use LLVM 9 due to problems with LLVM 10.0.1
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm@9)/bin/llvm-config
       cargo build --release
     displayName: 'Fast build against host clang/LLVM'
 
-  - script: |
-      source $HOME/.cargo/env
-      python3 ./scripts/test_translator.py  ./tests
+  - script: python3 ./scripts/test_translator.py  ./tests
     displayName: 'Test translator (fast build)'
 
-  - script: |
-      source $HOME/.cargo/env
-      cargo clean
+  - script: cargo clean
     displayName: 'Cargo clean'
 
-  - script: |
-      source $HOME/.cargo/env
-      python3 ./scripts/build_translator.py --with-llvm-version=7.0.1
+  - script: python3 ./scripts/build_translator.py --with-llvm-version=7.0.1
     displayName: 'Developer build against local LLVM 7'
 
-  - script: |
-      source $HOME/.cargo/env
-      python3 ./scripts/test_translator.py ./tests
+  - script: python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator against developer build (LLVM 7)'
 
-  - script: |
-      source $HOME/.cargo/env
-      cargo clean && rm -rf build
+  - script: cargo clean && rm -rf build
     displayName: 'Cargo clean && rm -rf build'
 
-  - script: |
-      source $HOME/.cargo/env
-      python3 ./scripts/build_translator.py --with-llvm-version=8.0.0
+  - script: python3 ./scripts/build_translator.py --with-llvm-version=8.0.0
     displayName: 'Developer build against local LLVM 8'
 
-  - script: |
-      source $HOME/.cargo/env
-      python3 ./scripts/test_translator.py ./tests
+  - script: python3 ./scripts/test_translator.py ./tests
     displayName: 'Test translator against developer build (LLVM 8)'
