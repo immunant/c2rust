@@ -519,52 +519,53 @@ impl TypedAstContext {
         }
     }
 
-    pub fn prune_unused_decls(&mut self) {
+    pub fn prune_unwanted_decls(&mut self, want_unused_functions: bool) {
         // Starting from a set of root declarations, walk each one to find declarations it
         // depends on. Then walk each of those, recursively.
 
-        // Declarations we still need to walk.  Everything in here is also in `used`.
+        // Declarations we still need to walk.  Everything in here is also in `wanted`.
         let mut to_walk: Vec<CDeclId> = Vec::new();
         // Declarations accessible from a root.
-        let mut used: HashSet<CDeclId> = HashSet::new();
+        let mut wanted: HashSet<CDeclId> = HashSet::new();
 
-        // Mark all the roots as used.  Roots are all top-level functions and variables that might
+        // Mark all the roots as wanted.  Roots are all top-level functions and variables that might
         // be visible from another compilation unit.
+        //
+        // In addition, mark any other (unused) function wanted if configured.
         for &decl_id in &self.c_decls_top {
             let decl = self.index(decl_id);
-            match decl.kind {
+            let is_wanted = match decl.kind {
                 CDeclKind::Function {
                     body: Some(_),
                     is_global: true,
                     is_inline,
                     is_inline_externally_visible,
                     ..
-                } if !is_inline || is_inline_externally_visible => {
                     // Depending on the C specification and dialect, an inlined function
                     // may be externally visible. We rely on clang to determine visibility.
-                    to_walk.push(decl_id);
-                    used.insert(decl_id);
-                }
+                } if !is_inline || is_inline_externally_visible => true,
+                CDeclKind::Function {
+                    body: Some(_),
+                    ..
+                } if want_unused_functions => true,
                 CDeclKind::Variable {
                     is_defn: true,
                     is_externally_visible: true,
                     ..
-                } => {
-                    to_walk.push(decl_id);
-                    used.insert(decl_id);
-                }
+                } => true,
                 CDeclKind::Variable { ref attrs, .. } | CDeclKind::Function { ref attrs, .. }
-                    if attrs.contains(&Attribute::Used) =>
-                {
-                    to_walk.push(decl_id);
-                    used.insert(decl_id);
-                }
-                _ => {}
+                    if attrs.contains(&Attribute::Used) => true,
+                _ => false,
+            };
+
+            if is_wanted {
+                to_walk.push(decl_id);
+                wanted.insert(decl_id);
             }
         }
 
-        // Add all referenced macros to the set of used decls
-        // used.extend(self.macro_expansions.values().flatten());
+        // Add all referenced macros to the set of wanted decls
+        // wanted.extend(self.macro_expansions.values().flatten());
 
         while let Some(enclosing_decl_id) = to_walk.pop() {
             for some_id in DFNodes::new(self, SomeId::Decl(enclosing_decl_id)) {
@@ -573,13 +574,13 @@ impl TypedAstContext {
                         match self.c_types[&type_id].kind {
                             // This is a reference to a previously declared type.  If we look
                             // through it we should(?) get something that looks like a declaration,
-                            // which we can mark as used.
+                            // which we can mark as wanted.
                             CTypeKind::Elaborated(decl_type_id) => {
                                 let decl_id = self.c_types[&decl_type_id]
                                     .kind
                                     .as_decl_or_typedef()
                                     .expect("target of CTypeKind::Elaborated isn't a decl?");
-                                if used.insert(decl_id) {
+                                if wanted.insert(decl_id) {
                                     to_walk.push(decl_id);
                                 }
                             }
@@ -594,20 +595,20 @@ impl TypedAstContext {
                         let expr = self.index(expr_id);
                         if let Some(macs) = self.macro_invocations.get(&expr_id) {
                             for mac_id in macs {
-                                if used.insert(*mac_id) {
+                                if wanted.insert(*mac_id) {
                                     to_walk.push(*mac_id);
                                 }
                             }
                         }
                         if let CExprKind::DeclRef(_, decl_id, _) = &expr.kind {
-                            if used.insert(*decl_id) {
+                            if wanted.insert(*decl_id) {
                                 to_walk.push(*decl_id);
                             }
                         }
                     }
 
                     SomeId::Decl(decl_id) => {
-                        if used.insert(decl_id) {
+                        if wanted.insert(decl_id) {
                             to_walk.push(decl_id);
                         }
 
@@ -616,7 +617,7 @@ impl TypedAstContext {
                                 // Special case for enums.  The enum constant is used, so the whole
                                 // enum is also used.
                                 let parent_id = self.parents[&decl_id];
-                                if used.insert(parent_id) {
+                                if wanted.insert(parent_id) {
                                     to_walk.push(parent_id);
                                 }
                             }
@@ -633,17 +634,17 @@ impl TypedAstContext {
 
         // Unset c_main if we are not retaining its declaration
         if let Some(main_id) = self.c_main {
-            if !used.contains(&main_id) {
+            if !wanted.contains(&main_id) {
                 self.c_main = None;
             }
         }
 
         // Prune any declaration that isn't considered live
         self.c_decls
-            .retain(|&decl_id, _decl| used.contains(&decl_id));
+            .retain(|&decl_id, _decl| wanted.contains(&decl_id));
 
         // Prune top declarations that are not considered live
-        self.c_decls_top.retain(|x| used.contains(x));
+        self.c_decls_top.retain(|x| wanted.contains(x));
     }
 
     pub fn sort_top_decls(&mut self) {
