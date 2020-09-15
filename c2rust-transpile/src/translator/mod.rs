@@ -2787,7 +2787,10 @@ impl<'c> Translation<'c> {
         if self.tcfg.ctypes_prefix == "libc" {
             self.use_crate(ExternCrate::Libc);
         }
-        self.type_converter.borrow().convert_primitive_type_kind(kind).unwrap()
+        self.type_converter
+            .borrow()
+            .convert_primitive_type_kind(kind)
+            .unwrap()
     }
 
     /// Convert a boolean expression to a c_int
