@@ -53,7 +53,7 @@ impl<'c> Translation<'c> {
                     Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
                         mk().angle_bracketed_args(vec![
-                            mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
+                            mk().mutbl().ptr_ty(self.convert_primitive_type_kind(&CTypeKind::Char)),
                         ]),
                     )])),
                     Some(
@@ -125,7 +125,7 @@ impl<'c> Translation<'c> {
                     Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
                         mk().angle_bracketed_args(vec![
-                            mk().mutbl().ptr_ty(mk().path_ty(vec!["libc", "c_char"])),
+                            mk().mutbl().ptr_ty(self.convert_primitive_type_kind(&CTypeKind::Char)),
                         ]),
                     )])),
                     Some(

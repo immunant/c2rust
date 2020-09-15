@@ -111,6 +111,7 @@ fn main() {
             }
         },
         replace_unsupported_decls: ReplaceMode::Extern,
+        use_libc_types: matches.is_present("use-libc-types"),
         emit_no_std: matches.is_present("emit-no-std"),
         enabled_warnings,
         log_level,

@@ -104,6 +104,7 @@ pub struct TranspilerConfig {
     pub reduce_type_annotations: bool,
     pub reorganize_definitions: bool,
     pub enabled_warnings: HashSet<Diagnostic>,
+    pub use_libc_types: bool,
     pub emit_no_std: bool,
     pub output_dir: Option<PathBuf>,
     pub translate_const_macros: bool,

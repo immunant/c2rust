@@ -520,7 +520,9 @@ pub fn translate(
 
     // `with_globals` sets up a thread-local variable required by the syntax crate.
     with_globals(Edition::Edition2018, || {
-        t.use_crate(ExternCrate::Libc);
+        if t.tcfg.use_libc_types {
+            t.use_crate(ExternCrate::Libc);
+        }
 
         // Sort the top-level declarations by file and source location so that we
         // preserve the ordering of all declarations in each file.
@@ -1033,11 +1035,6 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
     }
 }
 
-/// Convert a boolean expression to a c_int
-fn bool_to_int(val: P<Expr>) -> P<Expr> {
-    mk().cast_expr(val, mk().path_ty(vec!["libc", "c_int"]))
-}
-
 /// Add a src_loc = "line:col" attribute to an item/foreign_item
 fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
     if let Some(src_loc) = src_loc.as_ref() {
@@ -1092,7 +1089,7 @@ impl<'c> Translation<'c> {
         main_file: &path::Path,
     ) -> Self {
         let comment_context = CommentContext::new(&mut ast_context);
-        let mut type_converter = TypeConverter::new(tcfg.emit_no_std);
+        let mut type_converter = TypeConverter::new(tcfg.use_libc_types, tcfg.emit_no_std);
 
         if tcfg.translate_valist {
             type_converter.translate_valist = true
@@ -2786,6 +2783,18 @@ impl<'c> Translation<'c> {
             .convert(&self.ast_context, type_id)
     }
 
+    fn convert_primitive_type_kind(&self, kind: &CTypeKind) -> P<Ty> {
+        if self.tcfg.use_libc_types {
+            self.use_crate(ExternCrate::Libc);
+        }
+        self.type_converter.borrow().convert_primitive_type_kind(kind).unwrap()
+    }
+
+    /// Convert a boolean expression to a c_int
+    fn convert_bool_to_int(&self, val: P<Expr>) -> P<Expr> {
+        mk().cast_expr(val, self.convert_primitive_type_kind(&CTypeKind::Int))
+    }
+
     /// Construct an expression for a NULL at any type, including forward declarations,
     /// function pointers, and normal pointers.
     fn null_ptr(&self, type_id: CTypeId, is_static: bool) -> Result<P<Expr>, TranslationError> {
@@ -3118,7 +3127,7 @@ impl<'c> Translation<'c> {
                     UnTypeOp::PreferredAlignOf => self.compute_align_of_type(arg_ty.ctype, true)?,
                 };
 
-                Ok(result.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc", "c_ulong"]))))
+                Ok(result.map(|x| mk().cast_expr(x, self.convert_primitive_type_kind(&CTypeKind::ULong))))
             }
 
             CExprKind::ConstantExpr(_ty, child, value) => {

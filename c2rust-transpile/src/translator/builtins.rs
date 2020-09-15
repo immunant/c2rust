@@ -93,7 +93,7 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|v| {
                     let val = mk().method_call_expr(v, "is_sign_negative", vec![] as Vec<P<Expr>>);
 
-                    mk().cast_expr(val, mk().path_ty(vec!["libc", "c_int"]))
+                    mk().cast_expr(val, self.convert_primitive_type_kind(&CTypeKind::Int))
                 }))
             },
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
@@ -246,6 +246,8 @@ impl<'c> Translation<'c> {
             "__builtin_constant_p" => Ok(WithStmts::new_val(mk().lit_expr(mk().int_lit(0, "")))),
 
             "__builtin_object_size" => {
+                self.use_crate(ExternCrate::Libc);
+
                 // We can't convert this to Rust, but it should be safe to always return -1/0
                 // (depending on the value of `type`), so we emit the following:
                 // `(if (type & 2) == 0 { -1isize } else { 0isize }) as libc::size_t`
@@ -670,6 +672,8 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         args: &[CExprId],
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+        self.use_crate(ExternCrate::Libc);
+
         let name = &builtin_name[10..];
         let mem = mk().path_expr(vec!["libc", name]);
         let args = self.convert_exprs(ctx.used(), args)?;
