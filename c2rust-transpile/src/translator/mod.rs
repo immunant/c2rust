@@ -520,7 +520,7 @@ pub fn translate(
 
     // `with_globals` sets up a thread-local variable required by the syntax crate.
     with_globals(Edition::Edition2018, || {
-        if t.tcfg.use_libc_types {
+        if t.tcfg.ctypes_prefix == "libc" {
             t.use_crate(ExternCrate::Libc);
         }
 
@@ -1089,7 +1089,7 @@ impl<'c> Translation<'c> {
         main_file: &path::Path,
     ) -> Self {
         let comment_context = CommentContext::new(&mut ast_context);
-        let mut type_converter = TypeConverter::new(tcfg.use_libc_types, tcfg.emit_no_std);
+        let mut type_converter = TypeConverter::new(tcfg.emit_no_std, tcfg.ctypes_prefix.clone());
 
         if tcfg.translate_valist {
             type_converter.translate_valist = true
@@ -2784,7 +2784,7 @@ impl<'c> Translation<'c> {
     }
 
     fn convert_primitive_type_kind(&self, kind: &CTypeKind) -> P<Ty> {
-        if self.tcfg.use_libc_types {
+        if self.tcfg.ctypes_prefix == "libc" {
             self.use_crate(ExternCrate::Libc);
         }
         self.type_converter.borrow().convert_primitive_type_kind(kind).unwrap()

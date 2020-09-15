@@ -111,8 +111,11 @@ fn main() {
             }
         },
         replace_unsupported_decls: ReplaceMode::Extern,
-        use_libc_types: matches.is_present("use-libc-types"),
         emit_no_std: matches.is_present("emit-no-std"),
+        ctypes_prefix: matches
+            .value_of("ctypes-prefix")
+            .map(String::from)
+            .unwrap(),
         enabled_warnings,
         log_level,
     };

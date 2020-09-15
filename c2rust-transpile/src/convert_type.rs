@@ -20,8 +20,8 @@ pub struct TypeConverter {
     fields: HashMap<CDeclId, Renamer<FieldKey>>,
     suffix_names: HashMap<(CDeclId, &'static str), String>,
     features: HashSet<&'static str>,
-    use_libc_types: bool,
     emit_no_std: bool,
+    ctypes_prefix: String,
 }
 
 pub const RESERVED_NAMES: [&str; 103] = [
@@ -134,15 +134,15 @@ pub const RESERVED_NAMES: [&str; 103] = [
 ];
 
 impl TypeConverter {
-    pub fn new(use_libc_types: bool, emit_no_std: bool) -> TypeConverter {
+    pub fn new(emit_no_std: bool, ctypes_prefix: String) -> TypeConverter {
         TypeConverter {
             translate_valist: false,
             renamer: Renamer::new(&RESERVED_NAMES),
             fields: HashMap::new(),
             suffix_names: HashMap::new(),
             features: HashSet::new(),
-            use_libc_types,
             emit_no_std,
+            ctypes_prefix,
         }
     }
 
@@ -306,11 +306,11 @@ impl TypeConverter {
     /// Convert a primitive C type kind into the equivalent Rust type
     pub fn convert_primitive_type_kind(&self, kind: &CTypeKind) -> Option<P<Ty>> {
         let primitive_type = |ty: &str| {
-            let path = if self.use_libc_types {
-                vec!["libc", ty]
-            } else {
-                vec!["std", "os", "raw", ty]
-            };
+            let path = self
+                .ctypes_prefix
+                .split("::")
+                .chain(std::iter::once(ty))
+                .collect::<Vec<_>>();
             mk().path_ty(mk().path(path))
         };
 

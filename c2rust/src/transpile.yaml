@@ -164,15 +164,21 @@ args:
       short: W
       help: Enable the specified warning (all enables all warnings)
       takes_value: true
-  - use-libc-types:
-      long: use-libc-types
-      help: Use primitive types from libc crate instead of std::os::raw
-      takes_value: false
   - emit-no-std:
       long: emit-no-std
       help: Emit code using core rather than std
       takes_value: false
       requires: use-libc-types
+  - ctypes-prefix:
+      long: ctypes-prefix
+      help: Prefix to use for C types
+      takes_value: true
+      default_value: std::os::raw
+      # FIXME: clap has a bug parsing this which was fixed
+      # immediately after the release of 2.33.3; when 2.33.4
+      # comes out, this will work
+      #default_value_if:
+      #    - ["emit-no-std", null, "libc"]
   - disable-refactoring:
       long: disable-refactoring
       help: Disable running refactoring tool after translation
