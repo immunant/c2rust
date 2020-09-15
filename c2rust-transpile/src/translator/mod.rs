@@ -4042,10 +4042,10 @@ impl<'c> Translation<'c> {
                 }
                 let target_ty = self.convert_type(ty.ctype)?;
                 val.and_then(|x| {
-                    let r#usize = mk().ident_ty("usize");
-                    let intptr = mk().cast_expr(x, r#usize.clone());
+                    let usize_ty = mk().ident_ty("usize");
+                    let intptr = mk().cast_expr(x, usize_ty.clone());
                     Ok(WithStmts::new_unsafe_val(
-                        transmute_expr(r#usize, target_ty, intptr, self.tcfg.emit_no_std)
+                        transmute_expr(usize_ty, target_ty, intptr, self.tcfg.emit_no_std)
                     ))
                 })
             }
