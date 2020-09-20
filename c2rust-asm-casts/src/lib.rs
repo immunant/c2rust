@@ -1,4 +1,5 @@
-use std::marker::PhantomData;
+#![no_std]
+use core::marker::PhantomData;
 
 /// Pseudo-structure that provides the inner type definition
 /// and cast functions for every pair of types used
