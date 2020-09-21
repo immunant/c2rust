@@ -351,6 +351,14 @@ impl TypedAstContext {
                 self.is_va_list_struct(typ)
             }
 
+            BuiltinVaListKind::AAPCSABIBuiltinVaList => {
+                // The mechanism applies: va_list is a `struct __va_list { ... }` as per
+                // https://documentation-service.arm.com/static/5f201281bb903e39c84d7eae
+                // ("Procedure Call Standard for the Arm Architecture Release 2020Q2, Document
+                // number IHI 0042J") Section 8.1.4 "Additional Types"
+                self.is_va_list_struct(typ)
+            }
+
             kind => unimplemented!("va_list type {:?} not yet implemented", kind),
         }
     }
