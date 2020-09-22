@@ -63,6 +63,7 @@ int test_fn() {
   return x + CONSTANT1;
 
   /* after all statements */
+  /** even a double comment is not turned into a doc comment *//** */
 }
 
 /* after all functions */
