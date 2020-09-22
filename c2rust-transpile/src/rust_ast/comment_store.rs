@@ -150,8 +150,6 @@ impl CommentStore {
                     let begin = line.trim_start();
                     if begin.starts_with("//!")
                         || begin.starts_with("///")
-                        || begin.starts_with("/**")
-                        || begin.starts_with("/*!")
                     {
                         let begin_loc = line.len() - begin.len();
                         line.insert(2+begin_loc, ' ');
@@ -159,6 +157,8 @@ impl CommentStore {
                     line
                 })
                 .join("\n")
+                .replace("/**", "/* *")
+                .replace("/*!", "/* !")
         }
 
         let lines: Vec<String> = lines.into_iter().map(translate_comment).collect();
