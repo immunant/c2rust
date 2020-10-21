@@ -167,7 +167,7 @@ impl From<ExternCrate> for ExternCrateDetails {
     fn from(extern_crate: ExternCrate) -> Self {
         match extern_crate {
             ExternCrate::C2RustBitfields => Self::new("c2rust-bitfields", "0.3", true),
-            ExternCrate::C2RustAsmCasts => Self::new("c2rust-asm-casts", "0.1", true),
+            ExternCrate::C2RustAsmCasts => Self::new("c2rust-asm-casts", "0.2", true),
             ExternCrate::F128 => Self::new("f128", "0.2", false),
             ExternCrate::NumTraits => Self::new("num-traits", "0.2", true),
             ExternCrate::Memoffset => Self::new("memoffset", "0.5", true),
