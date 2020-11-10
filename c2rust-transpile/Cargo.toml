@@ -25,7 +25,7 @@ c2rust-ast-builder = { version = "0.15.0", path = "../c2rust-ast-builder" }
 libc = "0.2"
 c2rust-ast-exporter = { version = "0.15.0", path = "../c2rust-ast-exporter" }
 c2rust-ast-printer = { version = "0.15.0", path = "../c2rust-ast-printer" }
-handlebars = "2.0"
+handlebars = "3.0"
 itertools = "0.8"
 pathdiff = "0.1.0"
 regex = "1"
