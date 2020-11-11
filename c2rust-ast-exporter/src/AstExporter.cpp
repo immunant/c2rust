@@ -2463,7 +2463,7 @@ class TranslateConsumer : public clang::ASTConsumer {
             }
 #else  // CLANG_VERSION_MAJOR >= 10
             const FileID file = sourceMgr.getMainFileID();
-            auto comments = Context.getRawCommentList().getCommentsInFile(file);
+            auto comments = Context.Comments.getCommentsInFile(file);
             if (comments != nullptr) {
                 cbor_encoder_create_array(&outer, &array, comments->size());
                 for (auto comment : *comments) {
