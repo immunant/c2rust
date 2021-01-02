@@ -19,9 +19,9 @@ done
 SCRIPT_DIR="$(dirname "$0")"
 export HOMEBREW_NO_AUTO_UPDATE=1
 
-# NOTE(perl): Due to problems with LLVM 10.0.1 we request LLVM 9 for now
-# https://discourse.brew.sh/t/llvm-config-10-0-1-advertise-libxml2-tbd-as-system-libs/8593
-hb_packages=(python cmake ninja gpg ccache llvm@9)
+# NOTE: Pin LLVM to a known good version since new releases
+# tend not to be backwards compatible
+hb_packages=(python cmake ninja gpg ccache llvm@11)
 for item in "${hb_packages[@]}"; do
   brew info "${item}" | grep 'Not installed' > /dev/null && brew install "${item}"
 done
