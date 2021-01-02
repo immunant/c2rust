@@ -33,15 +33,15 @@ jobs:
         path: testsuite
         submodules: true
 
-    # - name: Cache Rust artifacts & compile commands
-    #   uses: actions/cache@v2
-    #   with:
-    #     path: |
-    #       ~/.cargo/registry
-    #       ~/.cargo/git
-    #       target
-    #       ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
-    #     key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Cache Rust artifacts & compile commands
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+          ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Provision Rust
       run:  rustup component add rustfmt-preview rustc-dev
