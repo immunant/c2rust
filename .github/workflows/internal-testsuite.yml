@@ -33,7 +33,7 @@ jobs:
         path: testsuite
         submodules: true
 
-    - name: Cache Rust artifacts & compile commands
+    - name: Cache Rust artifacts
       uses: actions/cache@v2
       with:
         path: |
@@ -42,6 +42,17 @@ jobs:
           target
           ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Cache testsuite compile_commands
+      uses: actions/cache@v2
+      with:
+        path: |
+          ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
+        key: ${{ runner.os }}-ccdb-${{ hashFiles('**/compile_commands.json') }}
+        restore-keys: |
+          ${{ runner.os }}-ccdb-
 
     - name: Provision Rust
       run:  rustup component add rustfmt-preview rustc-dev
