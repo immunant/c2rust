@@ -113,12 +113,11 @@ jobs:
       brew remove curl
       # prepare environment for the following steps
       source $HOME/.cargo/env
-      brew info llvm@9
+      brew info llvm@11
     displayName: 'Provision macOS'
 
   - script: |
-      # Temporary fix to use LLVM 9 due to problems with LLVM 10.0.1
-      export LLVM_CONFIG_PATH=$(brew --prefix llvm@9)/bin/llvm-config
+      export LLVM_CONFIG_PATH=$(brew --prefix llvm@11)/bin/llvm-config
       cargo build --release
     displayName: 'Fast build against host clang/LLVM'
 
