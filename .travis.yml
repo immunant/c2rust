@@ -10,13 +10,14 @@ branches:
     - master
     - feature/ci-dev
 
+
 matrix:
   fast_finish: true
   include:
     - os: osx
+      osx_image: xcode12.2 # macOS 10.15.7
       env: >-
           CACHE_NAME=OSX_FAST_BUILD
-          # https://github.com/immunant/c2rust/blob/master/README.md#building-c2rust
 
     - os: linux
       dist: xenial
