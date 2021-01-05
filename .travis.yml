@@ -27,7 +27,7 @@ matrix:
       env: >-
           CACHE_NAME=OSX_FAST_BUILD
           # https://github.com/immunant/c2rust/blob/master/README.md#building-c2rust
-          LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
+          LLVM_CONFIG_PATH=$(brew --prefix llvm@11)/bin/llvm-config
 
     # - os: linux
     #   dist: xenial
