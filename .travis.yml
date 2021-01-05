@@ -27,7 +27,7 @@ matrix:
       env: >-
           CACHE_NAME=OSX_FAST_BUILD
           # https://github.com/immunant/c2rust/blob/master/README.md#building-c2rust
-          LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config
+          LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config
 
     # - os: linux
     #   dist: xenial
@@ -61,6 +61,8 @@ cache:
 
 install:
   - /usr/bin/env python3 --version
+  - echo $LLVM_CONFIG_PATH
+  - ls -la $LLVM_CONFIG_PATH
   - |
     if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
       # HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade python
@@ -90,10 +92,6 @@ script:
         python3 ./scripts/test_translator.py --debug ./tests || travis_terminate 1
         ;;
     esac
- # NOTE: disabled because it takes to long to compile on free plan :/
- # To enable, add `--with-clang` to build_translator.py line above.
- # - python3 ./scripts/build_cross_checks.py || travis_terminate 1
- # - python3 ./scripts/test_cross_checks.py || travis_terminate 1
 
 notifications:
   slack:
