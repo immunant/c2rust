@@ -60,12 +60,18 @@ jobs:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
 
+    - name: Get Image Version
+      id: get-image-ver
+      run: |
+        echo "::set-output name=version::$(echo $ImageVersion)"
+      shell: bash
+
     - name: Cache testsuite compile_commands
       uses: actions/cache@v2
       with:
         path: |
           ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
-        key: ${{ runner.os }}-ccdb-${{ env.ImageVersion }}
+        key: ${{ runner.os }}-ccdb-${{ steps.get-image-ver.outputs.version }}
 
     - name: Provision Rust
       run:  rustup component add rustfmt-preview rustc-dev
