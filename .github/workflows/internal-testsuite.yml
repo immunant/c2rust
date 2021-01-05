@@ -33,6 +33,15 @@ jobs:
         path: testsuite
         submodules: true
 
+    - name: Cache Rust toolchain
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.rustup/toolchains
+          ~/.rustup/update-hashes
+          ~/.rustup/settings.toml
+        key: ${{ runner.os }}-rust-toolchain-${{ hashFiles('rust-toolchain') }}
+
     - name: Cache Rust artifacts
       uses: actions/cache@v2
       with:
