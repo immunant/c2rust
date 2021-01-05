@@ -60,7 +60,7 @@ jobs:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
 
-    # TODO(pl): Figure out why json-c fails when caching compile comands
+    # TODO(pl): Figure out why json-c fails when caching compile commands
     # - name: Get Image Version
     #   id: get-image-ver
     #   run: |
@@ -108,9 +108,10 @@ jobs:
         export LLVM_CONFIG_PATH=/usr/bin/llvm-config-9
         cargo build --release
 
-    # Runs a set of commands using the runners shell
+    # TODO(pl): figure out why compile_commands.json may cause json-c to fail
     - name: Run c2rust testsuite
       run: |
+        find testsuite -type f -name compile_commands.json -delete
         export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         python3 testsuite/test.py curl json-c lua nginx zstd
