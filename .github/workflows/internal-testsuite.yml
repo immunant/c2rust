@@ -50,9 +50,7 @@ jobs:
       with:
         path: |
           ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
-        key: ${{ runner.os }}-ccdb-${{ hashFiles('**/compile_commands.json') }}
-        restore-keys: |
-          ${{ runner.os }}-ccdb-
+        key: ${{ runner.os }}-ccdb-${{ env.ImageVersion }}
 
     - name: Provision Rust
       run:  rustup component add rustfmt-preview rustc-dev
