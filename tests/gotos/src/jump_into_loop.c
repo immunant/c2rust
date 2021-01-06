@@ -1,3 +1,4 @@
+#include <stdlib.h>
 
 // This used to cause the translator to crash at translation time.
 // It doesn't do anything, but it does have interesting control-flow.

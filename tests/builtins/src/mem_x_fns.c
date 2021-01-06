@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 void mem_x(const char src[4], char dest[4]) {
     __builtin_memcpy(dest, src, strlen(src)+1);

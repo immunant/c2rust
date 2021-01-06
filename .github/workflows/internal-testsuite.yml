@@ -33,6 +33,15 @@ jobs:
         path: testsuite
         submodules: true
 
+    - name: Cache Rust toolchain
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.rustup/toolchains
+          ~/.rustup/update-hashes
+          ~/.rustup/settings.toml
+        key: ${{ runner.os }}-rust-toolchain-${{ hashFiles('rust-toolchain') }}
+
     - name: Cache Rust artifacts
       uses: actions/cache@v2
       with:
@@ -45,14 +54,25 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
 
-    - name: Cache testsuite compile_commands
+    - name: Cache Python - pip
       uses: actions/cache@v2
       with:
-        path: |
-          ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
-        key: ${{ runner.os }}-ccdb-${{ hashFiles('**/compile_commands.json') }}
-        restore-keys: |
-          ${{ runner.os }}-ccdb-
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+
+    # TODO(pl): Figure out why json-c fails when caching compile commands
+    # - name: Get Image Version
+    #   id: get-image-ver
+    #   run: |
+    #     echo "::set-output name=version::$(echo $ImageVersion)"
+    #   shell: bash
+
+    # - name: Cache testsuite compile_commands
+    #   uses: actions/cache@v2
+    #   with:
+    #     path: |
+    #       ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
+    #     key: ${{ runner.os }}-ccdb-${{ steps.get-image-ver.outputs.version }}
 
     - name: Provision Rust
       run:  rustup component add rustfmt-preview rustc-dev
@@ -88,9 +108,10 @@ jobs:
         export LLVM_CONFIG_PATH=/usr/bin/llvm-config-9
         cargo build --release
 
-    # Runs a set of commands using the runners shell
+    # TODO(pl): figure out why compile_commands.json may cause json-c to fail
     - name: Run c2rust testsuite
       run: |
+        find testsuite -type f -name compile_commands.json -delete
         export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         python3 testsuite/test.py curl json-c lua nginx zstd
