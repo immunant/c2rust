@@ -83,6 +83,19 @@ std::string make_realpath(std::string const &path) {
         abort();
     }
 }
+
+// Helper to smooth out differences between versions of clang
+Optional<APSInt> getIntegerConstantExpr(const Expr &E, const ASTContext &Ctx) {
+#if CLANG_VERSION_MAJOR < 12
+    APSInt value;
+    if (E.isIntegerConstantExpr(value, Ctx))
+        return {value};
+    else
+        return {};
+#else
+    return E.getIntegerConstantExpr(Ctx);
+#endif // CLANG_VERSION_MAJOR
+}
 } // namespace
 
 class TranslateASTVisitor;
@@ -471,7 +484,8 @@ class TranslateASTVisitor final
     }
 
     bool evaluateConstantInt(Expr *E, APSInt &constant) {
-        bool hasValue = E->isIntegerConstantExpr(constant, *Context);
+        bool hasValue = E->isIntegerConstantExpr(*Context);
+
         if (!hasValue) {
 #if CLANG_VERSION_MAJOR < 8
             APSInt eval_result;
@@ -1234,14 +1248,12 @@ class TranslateASTVisitor final
     bool VisitOffsetOfExpr(OffsetOfExpr *E) {
         std::vector<void *> childIds;
 
-        APSInt value;
-        bool is_constant =
-            E->isIntegerConstantExpr(value, *this->Context);
+        auto value = getIntegerConstantExpr(*E, *this->Context);
 
         encode_entry(
-            E, TagOffsetOfExpr, childIds, [this, E, value, is_constant](CborEncoder *extras) {
-                if (is_constant) {
-                    cbor_encode_uint(extras, value.getZExtValue());
+            E, TagOffsetOfExpr, childIds, [this, E, value](CborEncoder *extras) {
+                if (value) {
+                    cbor_encode_uint(extras, value->getZExtValue());
                 } else {
                     // It's possible to get a non ICE in a field array like so:
                     // offsetof(S, field[idx]) so here we are encoding the type,
@@ -1272,7 +1284,7 @@ class TranslateASTVisitor final
 
         // If this is the only use of the struct type, we need to ensure that it
         // gets visited.
-        if (!is_constant) {
+        if (!value) {
             auto ty = E->getTypeSourceInfo()->getType();
             typeEncoder.VisitQualType(ty);
         }
@@ -1374,14 +1386,13 @@ class TranslateASTVisitor final
                         cbor_encoder_create_array(&array, &entry, 2);
                         cbor_encode_int(&entry, 1);
 
-                        APSInt Result;
-                        bool success =
-                            E->getArrayIndex(designator)
-                                ->isIntegerConstantExpr(Result, *Context);
+                        auto constant = getIntegerConstantExpr(
+                            *E->getArrayIndex(designator), *Context);
+
                         assert(
-                            success &&
+                            constant &&
                             "designator array index not integer constant expr");
-                        cbor_encode_int(&entry, Result.getZExtValue());
+                        cbor_encode_int(&entry, constant->getZExtValue());
 
                     } else if (designator.isFieldDesignator()) {
                         cbor_encoder_create_array(&array, &entry, 2);
@@ -1392,19 +1403,17 @@ class TranslateASTVisitor final
                         cbor_encoder_create_array(&array, &entry, 3);
                         cbor_encode_int(&entry, 3);
 
-                        APSInt Result;
-                        bool success =
-                            E->getArrayRangeStart(designator)
-                                ->isIntegerConstantExpr(Result, *Context);
-                        assert(success && "designator array range start not "
+                        auto constant = getIntegerConstantExpr(
+                            *E->getArrayRangeStart(designator), *Context);
+                        assert(constant && "designator array range start not "
                                           "integer constant expr");
-                        cbor_encode_int(&entry, Result.getZExtValue());
+                        cbor_encode_int(&entry, constant->getZExtValue());
 
-                        success = E->getArrayRangeEnd(designator)
-                                      ->isIntegerConstantExpr(Result, *Context);
-                        assert(success && "designator array range end not "
+                        constant = getIntegerConstantExpr(
+                            *E->getArrayRangeEnd(designator), *Context);
+                        assert(constant && "designator array range end not "
                                           "integer constant expr");
-                        cbor_encode_int(&entry, Result.getZExtValue());
+                        cbor_encode_int(&entry, constant->getZExtValue());
                     } else {
                         assert(0 && "unknown designator kind");
                     }
