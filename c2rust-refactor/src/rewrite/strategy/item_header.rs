@@ -11,157 +11,153 @@
 //!
 //! Aside from the special handling of qualifiers, this strategy works the same as `recursive`.
 use syntax::ast::*;
-use syntax::parse::parser::Parser;
-use syntax::parse::token::{DelimToken, Token, TokenKind};
-use syntax::parse::PResult;
+use syntax::token::{DelimToken, Token, TokenKind};
 use syntax::source_map::{BytePos, Span};
-use syntax::symbol::kw;
 use syntax::tokenstream::{TokenStream, TokenTree};
 
 use crate::ast_manip::AstEquiv;
-use crate::driver;
 use crate::rewrite::base::{describe, rewrite_seq_comma_sep};
 use crate::rewrite::strategy::print::PrintParse;
 use crate::rewrite::{Rewrite, RewriteCtxtRef, TextRewrite};
 
-struct FnHeaderSpans {
-    vis: Span,
-    constness: Span,
-    unsafety: Span,
-    abi: Span,
-    ident: Span,
-}
+// struct FnHeaderSpans {
+//     vis: Span,
+//     constness: Span,
+//     unsafety: Span,
+//     abi: Span,
+//     ident: Span,
+// }
 
-fn start_point(sp: Span) -> Span {
-    sp.with_hi(sp.lo())
-}
+// fn start_point(sp: Span) -> Span {
+//     sp.with_hi(sp.lo())
+// }
 
 fn span_empty(sp: Span) -> bool {
     sp.lo() == sp.hi()
 }
 
-fn find_fn_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, FnHeaderSpans> {
-    // Skip over any attributes that were included in the token stream.
-    loop {
-        if matches!([p.token.kind] TokenKind::DocComment(..)) {
-            p.bump();
-        } else if matches!([p.token.kind] TokenKind::Pound) {
-            // I don't think we should ever see inner attributes inside `item.tokens`, but allow
-            // them just in case.
-            p.parse_attribute(true)?;
-        } else {
-            break;
-        }
-    }
+// fn find_fn_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, FnHeaderSpans> {
+//     // Skip over any attributes that were included in the token stream.
+//     loop {
+//         if matches!([p.token.kind] TokenKind::DocComment(..)) {
+//             p.bump();
+//         } else if matches!([p.token.kind] TokenKind::Pound) {
+//             // I don't think we should ever see inner attributes inside `item.tokens`, but allow
+//             // them just in case.
+//             p.parse_attribute(true)?;
+//         } else {
+//             break;
+//         }
+//     }
 
-    let spanned_vis = p.parse_visibility(false)?;
-    let vis = if !spanned_vis.node.ast_equiv(&VisibilityKind::Inherited) {
-        spanned_vis.span
-    } else {
-        // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
-        // before the next token.
-        start_point(p.token.span)
-    };
+//     let spanned_vis = p.parse_visibility(FollowedByType::No)?;
+//     let vis = if !spanned_vis.node.ast_equiv(&VisibilityKind::Inherited) {
+//         spanned_vis.span
+//     } else {
+//         // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
+//         // before the next token.
+//         start_point(p.token.span)
+//     };
 
-    let constness = if p.eat_keyword(kw::Const) {
-        p.prev_span
-    } else {
-        start_point(p.token.span)
-    };
+//     let constness = if p.eat(&TokenKind::Ident(kw::Const, false)) {
+//         p.prev_span
+//     } else {
+//         start_point(p.token.span)
+//     };
 
-    let unsafety = if p.eat_keyword(kw::Unsafe) {
-        p.prev_span
-    } else {
-        start_point(p.token.span)
-    };
+//     let unsafety = if p.eat(&TokenKind::Ident(kw::Unsafe, false)) {
+//         p.prev_span
+//     } else {
+//         start_point(p.token.span)
+//     };
 
-    let abi = if p.eat_keyword(kw::Extern) {
-        let extern_span = p.prev_span;
-        if matches!([p.token.kind] TokenKind::Literal(..)) {
-            // Just assume it's a valid abi string token.  If it wasn't, these tokens wouldn't have
-            // parsed as an item to begin with.
-            p.bump();
-            extern_span.to(p.prev_span)
-        } else {
-            // Implicitly `extern "C"`.
-            extern_span
-        }
-    } else {
-        start_point(p.token.span)
-    };
+//     let abi = if p.eat(&TokenKind::Ident(kw::Extern, false)) {
+//         let extern_span = p.prev_span;
+//         if matches!([p.token.kind] TokenKind::Literal(..)) {
+//             // Just assume it's a valid abi string token.  If it wasn't, these tokens wouldn't have
+//             // parsed as an item to begin with.
+//             p.bump();
+//             extern_span.to(p.prev_span)
+//         } else {
+//             // Implicitly `extern "C"`.
+//             extern_span
+//         }
+//     } else {
+//         start_point(p.token.span)
+//     };
 
-    p.expect(&TokenKind::Ident(kw::Fn, false))?;
+//     p.expect(&TokenKind::Ident(kw::Fn, false))?;
 
-    p.parse_ident()?;
-    let ident = p.prev_span;
+//     p.parse_ident()?;
+//     let ident = p.prev_span;
 
-    Ok(FnHeaderSpans {
-        vis,
-        constness,
-        unsafety,
-        abi,
-        ident,
-    })
-}
+//     Ok(FnHeaderSpans {
+//         vis,
+//         constness,
+//         unsafety,
+//         abi,
+//         ident,
+//     })
+// }
 
-struct ItemHeaderSpans {
-    vis: Span,
-    ident: Span,
-}
+// struct ItemHeaderSpans {
+//     vis: Span,
+//     ident: Span,
+// }
 
 /// Generic parsing function for item headers of the form "<vis> <struct/enum/etc> <ident>".
-fn find_item_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, ItemHeaderSpans> {
-    // Skip over any attributes that were included in the token stream.
-    loop {
-        if matches!([p.token.kind] TokenKind::DocComment(..)) {
-            p.bump();
-        } else if matches!([p.token.kind] TokenKind::Pound) {
-            // I don't think we should ever see inner attributes inside `item.tokens`, but allow
-            // them just in case.
-            p.parse_attribute(true)?;
-        } else {
-            break;
-        }
-    }
+// fn find_item_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, ItemHeaderSpans> {
+//     // Skip over any attributes that were included in the token stream.
+//     loop {
+//         if matches!([p.token.kind] TokenKind::DocComment(..)) {
+//             p.bump();
+//         } else if matches!([p.token.kind] TokenKind::Pound) {
+//             // I don't think we should ever see inner attributes inside `item.tokens`, but allow
+//             // them just in case.
+//             p.parse_attribute(true)?;
+//         } else {
+//             break;
+//         }
+//     }
 
-    let spanned_vis = p.parse_visibility(false)?;
-    let vis = if !spanned_vis.node.ast_equiv(&VisibilityKind::Inherited) {
-        spanned_vis.span
-    } else {
-        // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
-        // before the next token.
-        start_point(p.token.span)
-    };
+//     let spanned_vis = p.parse_visibility(false)?;
+//     let vis = if !spanned_vis.node.ast_equiv(&VisibilityKind::Inherited) {
+//         spanned_vis.span
+//     } else {
+//         // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
+//         // before the next token.
+//         start_point(p.token.span)
+//     };
 
-    let kws = &[
-        kw::Static,
-        kw::Const,
-        kw::Fn,
-        kw::Mod,
-        kw::Type,
-        kw::Enum,
-        kw::Struct,
-        kw::Union,
-        kw::Trait,
-    ];
+//     let kws = &[
+//         kw::Static,
+//         kw::Const,
+//         kw::Fn,
+//         kw::Mod,
+//         kw::Type,
+//         kw::Enum,
+//         kw::Struct,
+//         kw::Union,
+//         kw::Trait,
+//     ];
 
-    for (i, &kw) in kws.iter().enumerate() {
-        if i < kws.len() - 1 {
-            if p.eat_keyword(kw) {
-                break;
-            }
-        } else {
-            // Use `expect` for the last one so we produce a parse error on "none of the above".
-            p.expect(&TokenKind::Ident(kw, false))?;
-            break;
-        }
-    }
+//     for (i, &kw) in kws.iter().enumerate() {
+//         if i < kws.len() - 1 {
+//             if p.eat_keyword(kw) {
+//                 break;
+//             }
+//         } else {
+//             // Use `expect` for the last one so we produce a parse error on "none of the above".
+//             p.expect(&TokenKind::Ident(kw, false))?;
+//             break;
+//         }
+//     }
 
-    p.parse_ident()?;
-    let ident = p.prev_span;
+//     p.parse_ident()?;
+//     let ident = p.prev_span;
 
-    Ok(ItemHeaderSpans { vis, ident })
-}
+//     Ok(ItemHeaderSpans { vis, ident })
+// }
 
 fn find_fn_header_arg_list(ts: TokenStream, generics_span: Span) -> Option<(TokenStream, Span)> {
     // Take the body of the first paren-delimited subtree that's strictly after `generics_span`.
@@ -207,8 +203,8 @@ fn record_qualifier_rewrite(old_span: Span, new_span: Span, mut rcx: RewriteCtxt
 }
 
 fn rewrite_arg_list_with_tokens(
-    old: &[Arg],
-    new: &[Arg],
+    old: &[Param],
+    new: &[Param],
     args_tokens: TokenStream,
     args_span: Span,
     rcx: RewriteCtxtRef,
@@ -285,7 +281,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         ident: ref ident1,
         attrs: ref attrs1,
         id: ref id1,
-        node: ref node1,
+        kind: ref kind1,
         vis: ref vis1,
         span: ref span1,
         tokens: ref tokens1,
@@ -294,7 +290,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         ident: ref ident2,
         attrs: ref attrs2,
         id: ref id2,
-        node: ref node2,
+        kind: ref kind2,
         vis: ref vis2,
         span: ref span2,
         tokens: ref _tokens2,
@@ -306,22 +302,11 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         return false;
     }
 
-    match (node1, node2) {
+    match (kind1, kind2) {
         (
-            &ItemKind::Fn(ref decl1, ref header1, ref generics1, ref block1),
-            &ItemKind::Fn(ref decl2, ref header2, ref generics2, ref block2),
+            &ItemKind::Fn(ref sig1, ref generics1, ref block1),
+            &ItemKind::Fn(ref sig2, ref generics2, ref block2),
         ) => {
-            let FnDecl {
-                inputs: inputs1,
-                output: output1,
-                c_variadic: variadic1,
-            } = decl1 as &_;
-            let FnDecl {
-                inputs: inputs2,
-                output: output2,
-                c_variadic: variadic2,
-            } = decl2 as &_;
-
             let (old_args_tokens, old_args_span) =
                 find_fn_header_arg_list(tokens1.as_ref().unwrap().clone(), generics1.span)
                     .expect("failed to find arg list in item tokens");
@@ -334,13 +319,14 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
                 Rewrite::rewrite(id1, id2, rcx.borrow()) &&
                 Rewrite::rewrite(span1, span2, rcx.borrow()) &&
                 // ItemKind::Fn parts
+                Rewrite::rewrite(&sig1.header.unsafety, &sig2.header.unsafety, rcx.borrow()) &&
+                Rewrite::rewrite(&sig1.header.ext, &sig2.header.ext, rcx.borrow()) &&
                 Rewrite::rewrite(generics1, generics2, rcx.borrow()) &&
                 Rewrite::rewrite(block1, block2, rcx.borrow()) &&
                 // FnDecl parts
                 rewrite_arg_list_with_tokens(
-                    inputs1, inputs2, old_args_tokens.into(), old_args_span, rcx.borrow()) &&
-                Rewrite::rewrite(output1, output2, rcx.borrow()) &&
-                Rewrite::rewrite(variadic1, variadic2, rcx.borrow()) &&
+                    &sig1.decl.inputs, &sig2.decl.inputs, old_args_tokens, old_args_span, rcx.borrow()) &&
+                Rewrite::rewrite(&sig1.decl.output, &sig2.decl.output, rcx.borrow()) &&
                 true;
             if !ok {
                 return false;
@@ -348,36 +334,23 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
 
             // Now try to splice changes to vis, constness, unsafety, abi, and ident.  We use the
             // parser to find spans for all the old stuff.
-            //
-            // We could recover from parse errors by bailing on the rewrite (returning `true`), but
-            // it's easier to just panic.
-            let tts1 = tokens1.as_ref().unwrap().trees().collect::<Vec<_>>();
-            let spans1 = driver::run_parser_tts(rcx.session(), tts1, find_fn_header_spans);
-
             let src2: String = <Item as PrintParse>::to_string(new);
-            let spans2 = driver::run_parser(rcx.session(), &src2, find_fn_header_spans);
+            let reparsed = Item::parse(rcx.session(), &src2);
+            unpack!([&reparsed.kind] ItemKind::Fn(reparsed_sig, _generics, _block));
 
-            // The first four go in a specific order.  If multiple qualifiers are added (for
+            // The first two go in a specific order.  If multiple qualifiers are added (for
             // example, both `unsafe` and `extern`), we need to add them in the right order.
 
             if !vis1.node.ast_equiv(&vis2.node) {
-                record_qualifier_rewrite(spans1.vis, spans2.vis, rcx.borrow());
+                record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
             }
 
-            if header1.constness.node != header2.constness.node {
-                record_qualifier_rewrite(spans1.constness, spans2.constness, rcx.borrow());
-            }
-
-            if header1.unsafety != header2.unsafety {
-                record_qualifier_rewrite(spans1.unsafety, spans2.unsafety, rcx.borrow());
-            }
-
-            if header1.abi != header2.abi {
-                record_qualifier_rewrite(spans1.abi, spans2.abi, rcx.borrow());
+            if sig1.header.constness.node != sig2.header.constness.node {
+                record_qualifier_rewrite(sig1.header.constness.span, reparsed_sig.header.constness.span, rcx.borrow());
             }
 
             if ident1 != ident2 {
-                record_qualifier_rewrite(spans1.ident, spans2.ident, rcx.borrow());
+                record_qualifier_rewrite(ident1.span, reparsed.ident.span, rcx.borrow());
             }
 
             true
@@ -387,33 +360,22 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             // Generic case, for items of the form "<vis> <struct/enum/etc> <ident>".
             let ok = Rewrite::rewrite(attrs1, attrs2, rcx.borrow())
                 && Rewrite::rewrite(id1, id2, rcx.borrow())
-                && Rewrite::rewrite(node1, node2, rcx.borrow())
+                && Rewrite::rewrite(kind1, kind2, rcx.borrow())
                 && Rewrite::rewrite(span1, span2, rcx.borrow())
                 && true;
             if !ok {
                 return false;
             }
 
-            let tts1 = tokens1.as_ref().unwrap().trees().collect::<Vec<_>>();
-            let spans1 =
-                match driver::try_run_parser_tts(rcx.session(), tts1, find_item_header_spans) {
-                    Some(x) => x,
-                    None => return false,
-                };
-
             let src2: String = <Item as PrintParse>::to_string(new);
-            let spans2 = match driver::try_run_parser(rcx.session(), &src2, find_item_header_spans)
-            {
-                Some(x) => x,
-                None => return false,
-            };
+            let reparsed = Item::parse(rcx.session(), &src2);
 
             if !vis1.node.ast_equiv(&vis2.node) {
-                record_qualifier_rewrite(spans1.vis, spans2.vis, rcx.borrow());
+                record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
             }
 
             if ident1 != ident2 {
-                record_qualifier_rewrite(spans1.ident, spans2.ident, rcx.borrow());
+                record_qualifier_rewrite(ident1.span, reparsed.ident.span, rcx.borrow());
             }
 
             true

@@ -5,6 +5,7 @@ use std::fmt::Display;
 use syntax::ast::*;
 use syntax::mut_visit::MutVisitor;
 use syntax::ptr::P;
+use smallvec::smallvec;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{FlatMapNodes, MutVisit, visit_nodes};
@@ -89,8 +90,8 @@ impl Transform for Ionize {
         // Find marked unions
         visit_nodes(krate, |i: &Item| {
             if st.marked(i.id, "target") {
-                if let ItemKind::Union(VariantData::Struct(ref _fields, _), _) = i.node {
-                    if let Some(def_id) = cx.hir_map().opt_local_def_id(i.id) {
+                if let ItemKind::Union(VariantData::Struct(ref _fields, _), _) = i.kind {
+                    if let Some(def_id) = cx.hir_map().opt_local_def_id_from_node_id(i.id) {
                         targets.insert(def_id);
                     } else {
                         panic!("Bad target, no def id")
@@ -114,7 +115,7 @@ impl Transform for Ionize {
 
 
             let ty0 = cx.adjusted_node_type(val.id);
-            match ty0.sty {
+            match ty0.kind {
                 TyKind::Adt(ref adt, _) if targets.contains(&adt.did) => {
 
                     let (_qself, mut path) = reflect_def_path(cx.ty_ctxt(), adt.did);
@@ -152,12 +153,12 @@ impl Transform for Ionize {
 
         // Replace union with enum
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            match cx.hir_map().opt_local_def_id(i.id) {
+            match cx.hir_map().opt_local_def_id_from_node_id(i.id) {
                 Some(ref def_id) if targets.contains(def_id) => {}
                 _ => return smallvec![i]
             }
 
-            if let ItemKind::Union(VariantData::Struct(ref fields, _), _) = i.node {
+            if let ItemKind::Union(VariantData::Struct(ref fields, _), _) = i.kind {
                 let impl_items = fields.iter().flat_map(|x| {
                     let mut bnd = Bindings::new();
                     let fieldname = x.ident.expect("missing union field");

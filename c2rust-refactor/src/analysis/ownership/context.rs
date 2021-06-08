@@ -26,7 +26,7 @@ use arena::SyncDroplessArena;
 use log::Level;
 use rustc::hir::def_id::DefId;
 use rustc::ty::{Ty, TyCtxt, TyKind};
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::LabeledTyCtxt;
@@ -39,9 +39,13 @@ use super::{ConcretePerm, FnSig, LFnSig, LTy, PermVar, Var};
 // analysis.  These structures generally start out minimally initialized, and are populated as
 // parts of the analysis runs.
 
+#[derive(Debug)]
 pub struct FuncSumm<'lty, 'tcx> {
     pub sig: LFnSig<'lty, 'tcx>,
     pub num_sig_vars: u32,
+
+    /// Mapping of local pat spans to LTys
+    pub locals: HashMap<Span, LTy<'lty, 'tcx>>,
 
     /// Constraints over signature variables only.
     ///
@@ -57,8 +61,12 @@ pub struct FuncSumm<'lty, 'tcx> {
 
     pub variant_ids: Vec<DefId>,
     pub num_monos: usize,
+
+    /// Assignment of concrete permissions to local vars
+    pub local_assign: IndexVec<Var, ConcretePerm>,
 }
 
+#[derive(Debug)]
 pub struct VariantSumm<'lty> {
     pub func_id: DefId,
     pub variant_idx: usize,
@@ -90,6 +98,7 @@ pub struct MonoSumm {
     pub suffix: String,
 }
 
+#[derive(Debug)]
 pub struct Instantiation {
     pub callee: DefId,
     pub span: Option<Span>,
@@ -119,9 +128,9 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
         arena: &'lty SyncDroplessArena,
     ) -> Ctxt<'lty, 'tcx> {
         Ctxt {
-            tcx: tcx,
+            tcx,
             lcx: LabeledTyCtxt::new(&arena),
-            arena: arena,
+            arena,
 
             static_summ: HashMap::new(),
             static_assign: IndexVec::new(),
@@ -138,9 +147,9 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
             Entry::Vacant(e) => {
                 *e.insert(
                     self.lcx
-                        .label(self.tcx.type_of(did), &mut |ty| match ty.sty {
+                        .label(self.tcx.type_of(did), &mut |ty| match ty.kind {
                             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
-                                let v = assign.push(ConcretePerm::Read);
+                                let v = assign.push(ConcretePerm::Move);
                                 Some(PermVar::Static(v))
                             }
                             _ => None,
@@ -169,7 +178,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                 let mut counter = 0;
 
                 let l_sig = {
-                    let mut f = |ty: Ty<'tcx>| match ty.sty {
+                    let mut f = |ty: Ty<'tcx>| match ty.kind {
                         TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                             let v = Var(counter);
                             counter += 1;
@@ -181,6 +190,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     FnSig {
                         inputs: lcx.label_slice(sig.skip_binder().inputs(), &mut f),
                         output: lcx.label(sig.skip_binder().output(), &mut f),
+                        is_variadic: sig.skip_binder().c_variadic,
                     }
                 };
 
@@ -206,9 +216,10 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     sig_cset: cset,
                     cset_provided: provided,
                     monos_provided: false,
-
+                    locals: HashMap::new(),
                     variant_ids: vec![did],
                     num_monos: 0,
+                    local_assign: IndexVec::new(),
                 })
             }
 
@@ -234,6 +245,10 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
         FuncIds {
             inner: self.funcs.keys(),
         }
+    }
+
+    pub fn funcs_mut(&mut self) -> hash_map::IterMut<DefId, FuncSumm<'lty, 'tcx>> {
+        self.funcs.iter_mut()
     }
 
     pub fn variant_ids<'b>(&'b self) -> VariantIds<'b, 'lty> {
@@ -453,7 +468,7 @@ impl<'a, 'lty, 'tcx> Iterator for FuncIds<'a, 'lty, 'tcx> {
     type Item = DefId;
 
     fn next(&mut self) -> Option<DefId> {
-        self.inner.next().map(|&x| x)
+        self.inner.next().copied()
     }
 }
 
@@ -465,7 +480,7 @@ impl<'a, 'lty> Iterator for VariantIds<'a, 'lty> {
     type Item = DefId;
 
     fn next(&mut self) -> Option<DefId> {
-        self.inner.next().map(|&x| x)
+        self.inner.next().copied()
     }
 }
 
@@ -477,6 +492,6 @@ impl<'a> Iterator for MonoIds<'a> {
     type Item = (DefId, usize);
 
     fn next(&mut self) -> Option<(DefId, usize)> {
-        self.inner.next().map(|&x| x)
+        self.inner.next().copied()
     }
 }

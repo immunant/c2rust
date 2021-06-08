@@ -2,14 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import os
-import re
 import sys
-import json
-import errno
 import shutil
 import logging
 import argparse
-from typing import Optional
 
 from common import (
     config as c,
@@ -22,12 +18,9 @@ from common import (
     invoke_quietly,
     install_sig,
     ensure_dir,
-    on_x86,
     on_mac,
     setup_logging,
-    ensure_clang_version,
     git_ignore_dir,
-    on_linux,
     get_ninja_build_type,
 )
 
@@ -35,8 +28,9 @@ from common import (
 def download_llvm_sources():
     tar = get_cmd_or_die("tar")
 
-    # make sure we have the gpg public key installed first
-    install_sig(c.LLVM_PUBKEY)
+    if not c.LLVM_SKIP_SIGNATURE_CHECKS:
+        # make sure we have the gpg public key installed first
+        install_sig(c.LLVM_PUBKEY)
 
     with pb.local.cwd(c.BUILD_DIR):
         # download archives and signatures
@@ -46,50 +40,36 @@ def download_llvm_sources():
                 c.LLVM_ARCHIVE_FILES,
                 c.LLVM_ARCHIVE_DIRS):
 
-            # download archive + signature
+            if c.LLVM_SKIP_SIGNATURE_CHECKS:
+                asig = None
+            # download archive and (by default) its signature
             download_archive(aurl, afile, asig)
 
-    # first extract llvm archive
+    # first extract llvm archive,
     if not os.path.isdir(c.LLVM_SRC):
         logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[0])
         tar("xf", c.LLVM_ARCHIVE_FILES[0])
         os.rename(c.LLVM_ARCHIVE_DIRS[0], c.LLVM_SRC)
 
-    # then clang front end
+    # then compiler-rt,
+    with pb.local.cwd(os.path.join(c.LLVM_SRC, "projects")):
+        if not os.path.isdir("compiler-rt"):
+            logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[2])
+            tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[2]))
+            os.rename(c.LLVM_ARCHIVE_DIRS[2], "compiler-rt")
+
+    # finally clang, and clang-tools-extra.
     with pb.local.cwd(os.path.join(c.LLVM_SRC, "tools")):
         if not os.path.isdir("clang"):
             logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[1])
             tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[1]))
             os.rename(c.LLVM_ARCHIVE_DIRS[1], "clang")
 
-        with pb.local.cwd("clang/tools"):
-            if not os.path.isdir("extra"):
-                logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[2])
-                tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[2]))
-                os.rename(c.LLVM_ARCHIVE_DIRS[2], "extra")
-
-
-def update_cmakelists():
-    """
-    Even though we build the ast-exporter out-of-tree, we still need
-    it to be treated as if it was in a subdirectory of clang to pick
-    up the required clang headers, etc.
-    """
-    filepath = os.path.join(c.LLVM_SRC, 'tools/clang/CMakeLists.txt')
-    command = "add_clang_subdirectory(c2rust-ast-exporter)"
-    if not os.path.isfile(filepath):
-        die("not found: " + filepath, errno.ENOENT)
-
-    # did we add the required command already?
-    with open(filepath, "r") as handle:
-        cmakelists = handle.readlines()
-        add_commands = not any([command in l for l in cmakelists])
-        logging.debug("add commands to %s: %s", filepath, add_commands)
-
-    if add_commands:
-        with open(filepath, "a+") as handle:
-            handle.writelines(command)
-        logging.debug("added commands to %s", filepath)
+        # with pb.local.cwd("clang/tools"):
+        #     if not os.path.isdir("extra"):
+        #         logging.info("extracting %s", c.LLVM_ARCHIVE_FILES[3])
+        #         tar("xf", os.path.join(c.ROOT_DIR, c.LLVM_ARCHIVE_FILES[3]))
+        #         os.rename(c.LLVM_ARCHIVE_DIRS[3], "extra")
 
 
 def configure_and_build_llvm(args) -> None:
@@ -108,27 +88,17 @@ def configure_and_build_llvm(args) -> None:
 
         if run_cmake:
             cmake = get_cmd_or_die("cmake")
-            clang = get_cmd_or_die("clang")
-            clangpp = get_cmd_or_die("clang++")
             max_link_jobs = est_parallel_link_jobs()
             assertions = "1" if args.assertions else "0"
-            ast_ext_dir = "-DLLVM_EXTERNAL_C2RUST_AST_EXPORTER_SOURCE_DIR={}"
-            ast_ext_dir = ast_ext_dir.format(c.AST_EXPO_SRC_DIR)
             cargs = ["-G", "Ninja", c.LLVM_SRC,
                      "-Wno-dev",
-                     "-DCMAKE_C_COMPILER={}".format(clang),
-                     "-DCMAKE_CXX_COMPILER={}".format(clangpp),
                      "-DCMAKE_INSTALL_PREFIX=" + c.LLVM_INSTALL,
                      "-DCMAKE_BUILD_TYPE=" + build_type,
                      "-DLLVM_PARALLEL_LINK_JOBS={}".format(max_link_jobs),
                      "-DLLVM_ENABLE_ASSERTIONS=" + assertions,
                      "-DCMAKE_EXPORT_COMPILE_COMMANDS=1",
-                     # required to build LLVM 8 on Debian Jessie
-                     "-DLLVM_TEMPORARILY_ALLOW_OLD_TOOLCHAIN=1",
-                     ast_ext_dir]
+                     "-DLLVM_TARGETS_TO_BUILD=host"]
 
-            if on_x86():  # speed up builds on x86 hosts
-                cargs.append("-DLLVM_TARGETS_TO_BUILD=X86")
             invoke(cmake[cargs])
 
             # NOTE: we only generate Xcode project files for IDE support
@@ -156,14 +126,54 @@ def configure_and_build_llvm(args) -> None:
         # relative to LLVM_INSTALL/bin, which MUST exist for the relative
         # reference to be valid. To force this, we also install llvm-config,
         # since we are building and using it for other purposes.
+        nice = get_cmd_or_die("nice")
         ninja = get_cmd_or_die("ninja")
-        ninja_args = ['c2rust-ast-exporter', 'clangAstExporter',
-                      'llvm-config',
-                      'install-clang-headers',
-                      'FileCheck', 'count', 'not']
+        nice_args = [
+            '-n', '19', str(ninja),
+            'clangAST',
+            'clangFrontend',
+            'clangTooling',
+            'clangBasic',
+            'clangASTMatchers',
+            'clangParse',
+            'clangSerialization',
+            'clangSema',
+            'clangEdit',
+            'clangAnalysis',
+            'clangDriver',
+            'clangFormat',
+            'clangToolingCore',
+            'clangRewrite',
+            'clangLex',
+            'LLVMMC',
+            'LLVMMCParser',
+            'LLVMDemangle',
+            'LLVMSupport',
+            'LLVMOption',
+            'LLVMBinaryFormat',
+            'LLVMCore',
+            'LLVMBitReader',
+            'LLVMProfileData',
+            'llvm-config',
+            'install-clang-headers', 'install-compiler-rt-headers',
+            'FileCheck', 'count', 'not']
+        (major, _minor, _point) = c.LLVM_VER.split(".")
+        major = int(major)
+        if major >= 7 and major < 10:
+            nice_args += [
+                'LLVMDebugInfoMSF',
+                'LLVMDebugInfoCodeView']
+        if major > 8:
+            nice_args.append("install-clang-resource-headers")
+        if major == 9:
+            nice_args += [
+                'LLVMBitstreamReader',
+                'LLVMRemarks']
+        if major >= 10:
+            nice_args.append("LLVMFrontendOpenMP")
         if args.with_clang:
-            ninja_args.append('clang')
-        invoke(ninja, *ninja_args)
+            nice_args.append('clang')
+        invoke(nice, *nice_args)
 
         # Make sure install/bin exists so that we can create a relative path
         # using it in AstExporter.cpp
@@ -196,12 +206,13 @@ def need_cargo_clean(args) -> bool:
 
 
 def build_transpiler(args):
+    nice = get_cmd_or_die("nice")
     cargo = get_cmd_or_die("cargo")
 
     if need_cargo_clean(args):
         invoke(cargo, "clean")
 
-    build_flags = ["build", "--features", "llvm-static"]
+    build_flags = ["-n", "19", str(cargo), "build", "--features", "llvm-static"]
 
     if not args.debug:
         build_flags.append("--release")
@@ -210,7 +221,8 @@ def build_transpiler(args):
         build_flags.append("-vv")
 
     llvm_config = os.path.join(c.LLVM_BLD, "bin/llvm-config")
-    assert os.path.isfile(llvm_config), "missing binary: " + llvm_config
+    assert os.path.isfile(llvm_config), \
+        "expected llvm_config at " + llvm_config
 
     if on_mac():
         llvm_system_libs = "-lz -lcurses -lm -lxml2"
@@ -218,17 +230,6 @@ def build_transpiler(args):
         llvm_system_libs = "-lz -lrt -ltinfo -ldl -lpthread -lm"
 
     llvm_libdir = os.path.join(c.LLVM_BLD, "lib")
-
-    # log how we run `cargo build` to aid troubleshooting, IDE setup, etc.
-    msg = "invoking cargo build as\ncd {} && \\\n".format(c.C2RUST_DIR)
-    msg += "LIBCURL_NO_PKG_CONFIG=1\\\n"
-    msg += "ZLIB_NO_PKG_CONFIG=1\\\n"
-    msg += "LLVM_CONFIG_PATH={} \\\n".format(llvm_config)
-    msg += "LLVM_SYSTEM_LIBS='{}' \\\n".format(llvm_system_libs)
-    msg += "C2RUST_AST_EXPORTER_LIB_DIR={} \\\n".format(llvm_libdir)
-    msg += " cargo"
-    msg += " ".join(build_flags)
-    logging.debug(msg)
 
     # NOTE: the `curl-rust` and `libz-sys` crates use the `pkg_config`
     # crate to locate the system libraries they wrap. This causes
@@ -240,9 +241,9 @@ def build_transpiler(args):
         with pb.local.env(LIBCURL_NO_PKG_CONFIG=1,
                           ZLIB_NO_PKG_CONFIG=1,
                           LLVM_CONFIG_PATH=llvm_config,
-                          LLVM_SYSTEM_LIBS=llvm_system_libs,
-                          C2RUST_AST_EXPORTER_LIB_DIR=llvm_libdir):
-            invoke(cargo, *build_flags)
+                          LLVM_LIB_DIR=llvm_libdir,
+                          LLVM_SYSTEM_LIBS=llvm_system_libs):
+            invoke(nice, *build_flags)
 
 
 def _parse_args():
@@ -259,7 +260,8 @@ def _parse_args():
                         help='build clang with this tool')
     llvm_ver_help = 'fetch and build specified version of clang/LLVM (default: {})'.format(c.LLVM_VER)
     # FIXME: build this list by globbing for scripts/llvm-*.0.*-key.asc
-    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0"]
+    llvm_ver_choices = ["6.0.0", "6.0.1", "7.0.0", "7.0.1", "8.0.0", "9.0.0", 
+        "10.0.0", "10.0.1", "11.0.0", "11.1.0"]
     parser.add_argument('--with-llvm-version', default=None,
                         action='store', dest='llvm_ver',
                         help=llvm_ver_help, choices=llvm_ver_choices)
@@ -272,6 +274,10 @@ def _parse_args():
     parser.add_argument('-v', '--verbose', default=False,
                         action='store_true', dest='verbose',
                         help='emit verbose information during build')
+    parser.add_argument('--skip-signature-checks', default=False,
+                        action='store_true', dest='llvm_skip_signature_checks',
+                        help='skip signature check of source code archives')
+
     c.add_args(parser)
     args = parser.parse_args()
 
@@ -315,18 +321,7 @@ def _main():
     # FIXME: check that cmake and ninja are installed
     # FIXME: option to build LLVM/Clang from master?
 
-    # earlier plumbum versions are missing features such as TEE
-    if pb.__version__ < c.MIN_PLUMBUM_VERSION:
-        err = "locally installed version {} of plumbum is too old.\n" \
-            .format(pb.__version__)
-        err += "please upgrade plumbum to version {} or later." \
-            .format(c.MIN_PLUMBUM_VERSION)
-        die(err)
-
     args = _parse_args()
-
-    # clang 3.6.0 is known to work; 3.4.0 known to not work.
-    ensure_clang_version([3, 6, 0])
 
     if args.clean_all:
         logging.info("cleaning all dependencies and previous built files")
@@ -343,7 +338,6 @@ def _main():
     git_ignore_dir(c.BUILD_DIR)
 
     download_llvm_sources()
-    update_cmakelists()
     configure_and_build_llvm(args)
     build_transpiler(args)
     print_success_msg(args)

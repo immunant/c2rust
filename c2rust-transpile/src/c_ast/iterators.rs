@@ -44,7 +44,7 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
         ShuffleVector(..) | ConvertVector(..) => vec![],
         OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
         DeclRef(..) => vec![], // don't follow references back!
-        Unary(_ty, _op, subexpr, _) => intos![subexpr],
+        Unary(_, _, subexpr, _) | ConstantExpr(_, subexpr, _) => intos![subexpr],
         UnaryType(_ty, _op, opt_expr_id, _) => opt_expr_id.iter().map(|&x| x.into()).collect(),
         Binary(_ty, _op, lhs, rhs, _, _) => intos![lhs, rhs],
         Call(_, f, ref args) => {
@@ -59,6 +59,13 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
         | Choose(_, c, t, e, _) => intos![c, t, e],
         BinaryConditional(_, c, t) => intos![c, t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
+        Atomic { ptr, order, val1, order_fail, val2, weak, ..} => {
+            [Some(ptr), Some(order), val1, order_fail, val2, weak]
+                .iter()
+                .flatten()
+                .map(|&x| x.into())
+                .collect()
+        }
         ImplicitCast(_, e, _, _, _)
         | ExplicitCast(_, e, _, _, _)
         | Member(_, e, _, _, _)
@@ -83,7 +90,7 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
         OffsetOf(_, OffsetOfKind::Variable(qty, _, _)) => intos![qty.ctype],
         OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
         DeclRef(..) => vec![], // don't follow references back!
-        Unary(_ty, _op, subexpr, _) => intos![subexpr],
+        Unary(_, _, subexpr, _) | ConstantExpr(_, subexpr, _) => intos![subexpr],
         UnaryType(_ty, _op, opt_expr_id, qty) => {
             let mut res = intos![qty.ctype];
             if let Some(expr_id) = opt_expr_id {
@@ -104,6 +111,13 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
         | Choose(_, c, t, e, _) => intos![c, t, e],
         BinaryConditional(_, c, t) => intos![c, t],
         InitList(_, ref xs, _, _) => xs.iter().map(|&x| x.into()).collect(),
+        Atomic { ptr, order, val1, order_fail, val2, weak, ..} => {
+            [Some(ptr), Some(order), val1, order_fail, val2, weak]
+                .iter()
+                .flatten()
+                .map(|&x| x.into())
+                .collect()
+        }
         Member(_, e, _, _, _) | Predefined(_, e) => intos![e],
         // Normally we don't step into the result type annotation field, because it's not really
         // part of the expression.  But for `ExplicitCast`, the result type is actually the cast's
@@ -158,10 +172,15 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         Struct { ref fields, .. } => fields.iter().flat_map(|x| x).map(|&x| x.into()).collect(),
         Union { ref fields, .. } => fields.iter().flat_map(|x| x).map(|&x| x.into()).collect(),
         Field { typ, .. } => intos![typ.ctype],
-        MacroObject {
-            ref replacements, ..
-        } => replacements.iter().map(|&x| x.into()).collect(),
+        MacroObject { .. } | MacroFunction { .. } => vec![],
         NonCanonicalDecl { canonical_decl } => intos![canonical_decl],
+        StaticAssert { assert_expr, message } => {
+            if let Some(message) = message {
+                intos![assert_expr, message]
+            } else {
+                intos![assert_expr]
+            }
+        },
     }
 }
 

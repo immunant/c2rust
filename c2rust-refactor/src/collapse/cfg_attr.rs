@@ -22,7 +22,7 @@ impl CollectCfgAttrs {
             .filter(|attr| attr.check_name(sym::cfg_attr))
             .cloned()
             .collect::<Vec<_>>();
-        if attrs.len() > 0 {
+        if !attrs.is_empty() {
             self.node_attrs.insert(x.get_node_id(), attrs);
         }
     }
@@ -74,11 +74,11 @@ impl RestoreCfgAttrs {
                 "RESTORE ATTRS {:?} onto {:?}",
                 cfg_attrs
                     .iter()
-                    .map(|a| ::syntax::print::pprust::attr_to_string(a))
+                    .map(|a| ::syntax::print::pprust::attribute_to_string(a))
                     .collect::<Vec<_>>(),
                 x.attrs()
                     .iter()
-                    .map(|a| ::syntax::print::pprust::attr_to_string(a))
+                    .map(|a| ::syntax::print::pprust::attribute_to_string(a))
                     .collect::<Vec<_>>()
             );
             x.visit_attrs(|attrs| {
@@ -91,7 +91,7 @@ impl RestoreCfgAttrs {
                 "  attrs changed to {:?}",
                 x.attrs()
                     .iter()
-                    .map(|a| ::syntax::print::pprust::attr_to_string(a))
+                    .map(|a| ::syntax::print::pprust::attribute_to_string(a))
                     .collect::<Vec<_>>()
             );
         }

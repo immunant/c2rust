@@ -53,7 +53,7 @@ use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use std::collections::BTreeMap;
 use syntax::ast::*;
-use syntax::parse::lexer::comments;
+use syntax::util::comments;
 use syntax_pos::{BytePos, Span};
 
 pub struct CommentStore {
@@ -147,12 +147,14 @@ impl CommentStore {
                 .lines()
                 .map(|line: &str| {
                     let mut line = line.to_owned();
-                    if line.starts_with("//!")
-                        || line.starts_with("///")
-                        || line.starts_with("/**")
-                        || line.starts_with("/*!")
+                    let begin = line.trim_start();
+                    if begin.starts_with("//!")
+                        || begin.starts_with("///")
+                        || begin.starts_with("/**")
+                        || begin.starts_with("/*!")
                     {
-                        line.insert(2, ' ');
+                        let begin_loc = line.len() - begin.len();
+                        line.insert(2+begin_loc, ' ');
                     };
                     line
                 })
@@ -179,7 +181,7 @@ impl CommentStore {
             return;
         }
         if let Some(comments) = self.output_comments.remove(&old) {
-            self.output_comments.get_mut(&new).unwrap().extend(comments);
+            self.output_comments.entry(new).or_insert(SmallVec::new()).extend(comments);
         }
     }
 
@@ -192,7 +194,7 @@ impl CommentStore {
             } else {
                 let new_comments = self.output_comments.remove(&span.hi())
                     .unwrap_or_else(|| panic!("Expected comments attached to the high end of span {:?}", span));
-                self.output_comments.get_mut(&span.lo()).unwrap().extend(new_comments);
+                self.output_comments.entry(span.lo()).or_insert(SmallVec::new()).extend(new_comments);
                 span.shrink_to_lo()
             }
         } else {

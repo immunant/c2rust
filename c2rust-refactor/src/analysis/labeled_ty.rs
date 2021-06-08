@@ -59,14 +59,14 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
     /// built the underlying `Ty`s to be labeled.
     pub fn new(arena: &'lty SyncDroplessArena) -> LabeledTyCtxt<'lty, L> {
         LabeledTyCtxt {
-            arena: arena,
+            arena,
             _marker: PhantomData,
         }
     }
 
     /// Manually construct a slice in the context's arena.
     pub fn mk_slice(&self, ltys: &[LabeledTy<'lty, 'tcx, L>]) -> &'lty [LabeledTy<'lty, 'tcx, L>] {
-        if ltys.len() == 0 {
+        if ltys.is_empty() {
             return &[];
         }
         self.arena.alloc_slice(ltys)
@@ -81,9 +81,9 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         label: L,
     ) -> LabeledTy<'lty, 'tcx, L> {
         self.arena.alloc(LabeledTyS {
-            ty: ty,
-            args: args,
-            label: label,
+            ty,
+            args,
+            label,
         })
     }
 
@@ -96,7 +96,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
     ) -> LabeledTy<'lty, 'tcx, L> {
         use rustc::ty::TyKind::*;
         let label = f(ty);
-        match ty.sty {
+        match ty.kind {
             // Types with no arguments
             Bool | Char | Int(_) | Uint(_) | Float(_) | Str | Foreign(_) | Never => {
                 self.mk(ty, &[], label)
@@ -181,14 +181,17 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         lty: LabeledTy<'lty, 'tcx, L>,
         substs: &[LabeledTy<'lty, 'tcx, L>],
     ) -> LabeledTy<'lty, 'tcx, L> {
-        match lty.ty.sty {
-            TyKind::Param(ref tp) => substs[tp.index as usize],
-            _ => self.mk(
-                lty.ty,
-                self.subst_slice(lty.args, substs),
-                lty.label.clone(),
-            ),
+        if let TyKind::Param(ref ty) = lty.ty.kind {
+            if let Some(p) = substs.get(ty.index as usize) {
+                return p;
+            }
         }
+
+        self.mk(
+            lty.ty,
+            self.subst_slice(lty.args, substs),
+            lty.label.clone(),
+        )
     }
 
     /// Substitute arguments in multiple labeled types.
@@ -238,7 +241,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
 
 impl<'lty, 'tcx, L: fmt::Debug> type_map::Type for LabeledTy<'lty, 'tcx, L> {
     fn sty(&self) -> &TyKind {
-        &self.ty.sty
+        &self.ty.kind
     }
 
     fn num_args(&self) -> usize {

@@ -1,22 +1,24 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::mem;
 use std::ops::Index;
 use std::path::{self, PathBuf};
-use std::{char, io};
+use std::rc::Rc;
+use std::char;
 
 use dtoa;
 
-use failure::{err_msg, Context, Fail};
+use failure::{err_msg, Fail};
 use indexmap::{IndexMap, IndexSet};
 
-use rustc_data_structures::sync::Lrc;
+use rustc_parse::parse_stream_from_source_str;
 use syntax::attr;
 use syntax::ast::*;
-use syntax::parse::lexer::comments::CommentStyle;
-use syntax::parse::token::{self, DelimToken, Nonterminal};
-use syntax::print::pprust::{self, PrintState};
+use syntax::util::comments::CommentStyle;
+use syntax::token::{self, DelimToken, Nonterminal};
 use syntax::ptr::*;
-use syntax::source_map::{dummy_spanned, FilePathMapping, SourceMap};
+use syntax::sess::ParseSess;
+use syntax::source_map::{FilePathMapping, SourceMap};
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::{ast, with_globals};
 use syntax_pos::{FileName, Span, DUMMY_SP};
@@ -27,6 +29,7 @@ use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::traverse::Traversal;
 use c2rust_ast_builder::{mk, Builder, IntoSymbol};
+use c2rust_ast_printer::pprust::{self, Comments, PrintState};
 
 use crate::c_ast;
 use crate::c_ast::iterators::{DFExpr, SomeId};
@@ -35,10 +38,11 @@ use crate::cfg;
 use crate::convert_type::TypeConverter;
 use crate::renamer::Renamer;
 use crate::with_stmts::WithStmts;
-use crate::TranspilerConfig;
+use crate::{ExternCrate, ExternCrateDetails, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
 
 mod assembly;
+mod atomics;
 mod builtins;
 mod comments;
 mod literals;
@@ -115,6 +119,10 @@ pub struct ExprContext {
     // address in function pointer literals.
     needs_address: bool,
 
+    /// Set to false if we should decay VaListImpl to VaList or true if we are
+    /// expect a VaListImpl in this context.
+    expecting_valistimpl: bool,
+
     ternary_needs_parens: bool,
     expanding_macro: Option<CDeclId>,
 }
@@ -178,6 +186,13 @@ impl ExprContext {
         }
     }
 
+    pub fn expect_valistimpl(self) -> Self {
+        ExprContext {
+            expecting_valistimpl: true,
+            ..self
+        }
+    }
+
     /// Are we expanding the given macro in the current context?
     pub fn expanding_macro(&self, mac: &CDeclId) -> bool {
         match self.expanding_macro {
@@ -197,30 +212,40 @@ impl ExprContext {
 pub struct FunContext {
     /// The name of the function we're currently translating
     name: Option<String>,
-    /// The va_list decl that we promote to a Rust function arg
-    promoted_va_decl: Option<CDeclId>,
-    /// The va_list decls that we did not promote because they were `va_copy`ed.
-    copied_va_decls: Option<IndexSet<CDeclId>>,
+    /// The name we give to the Rust function argument corresponding
+    /// to the elipsis in variadic C functions.
+    va_list_arg_name: Option<String>,
+    /// The va_list decls that are either `va_start`ed or `va_copy`ed.
+    va_list_decl_ids: Option<IndexSet<CDeclId>>,
 }
 
 impl FunContext {
     pub fn new() -> Self {
         FunContext {
             name: None,
-            promoted_va_decl: None,
-            copied_va_decls: None,
+            va_list_arg_name: None,
+            va_list_decl_ids: None,
         }
     }
 
     pub fn enter_new(&mut self, fn_name: &str) {
         self.name = Some(fn_name.to_string());
-        self.promoted_va_decl = None;
-        self.copied_va_decls = None;
+        self.va_list_arg_name = None;
+        self.va_list_decl_ids = None;
     }
 
-    pub fn get_name<'a>(&'a self) -> &'a str {
+    pub fn get_name(&self) -> &str {
         return self.name.as_ref().unwrap();
     }
+
+    pub fn get_va_list_arg_name(&self) -> &str {
+        return self.va_list_arg_name.as_ref().unwrap();
+    }
+}
+
+#[derive(Clone)]
+struct MacroExpansion {
+    ty: CTypeId,
 }
 
 pub struct Translation<'c> {
@@ -231,7 +256,7 @@ pub struct Translation<'c> {
     // Accumulated outputs
     pub features: RefCell<IndexSet<&'static str>>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
-    extern_crates: RefCell<IndexSet<&'static str>>,
+    extern_crates: RefCell<CrateSet>,
 
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
@@ -239,7 +264,7 @@ pub struct Translation<'c> {
     zero_inits: RefCell<IndexMap<CDeclId, WithStmts<P<Expr>>>>,
     function_context: RefCell<FunContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
-    macro_types: RefCell<IndexMap<CDeclId, CTypeId>>,
+    macro_expansions: RefCell<IndexMap<CDeclId, Option<MacroExpansion>>>,
 
     // Comment support
     pub comment_context: CommentContext, // Incoming comments
@@ -280,8 +305,8 @@ fn int_arg_metaitem(name: &str, arg: u128) -> NestedMetaItem {
 }
 
 fn cast_int(val: P<Expr>, name: &str, need_lit_suffix: bool) -> P<Expr> {
-    let opt_literal_val = match val.node {
-        ExprKind::Lit(ref l) => match l.node {
+    let opt_literal_val = match val.kind {
+        ExprKind::Lit(ref l) => match l.kind {
             LitKind::Int(i, _) => Some(i),
             _ => None,
         },
@@ -325,12 +350,12 @@ fn pointer_offset(
 /// Given an expression with type Option<fn(...)->...>, unwrap
 /// the Option and return the function.
 fn unwrap_function_pointer(ptr: P<Expr>) -> P<Expr> {
-    let err_msg = mk().lit_expr(mk().str_lit("non-null function pointer"));
+    let err_msg = mk().lit_expr("non-null function pointer");
     mk().method_call_expr(ptr, "expect", vec![err_msg])
 }
 
 fn transmute_expr(source_ty: P<Ty>, target_ty: P<Ty>, expr: P<Expr>, no_std: bool) -> P<Expr> {
-    let type_args = match (&source_ty.node, &target_ty.node) {
+    let type_args = match (&source_ty.kind, &target_ty.kind) {
         (TyKind::Infer, TyKind::Infer) => Vec::new(),
         (_, TyKind::Infer) => vec![source_ty],
         _ => vec![source_ty, target_ty],
@@ -358,8 +383,8 @@ fn vec_expr(val: P<Expr>, count: P<Expr>) -> P<Expr> {
 
 pub fn stmts_block(mut stmts: Vec<Stmt>) -> P<Block> {
     if stmts.len() == 1 {
-        if let StmtKind::Expr(ref e) = stmts[0].node {
-            if let ExprKind::Block(ref b, None) = e.node {
+        if let StmtKind::Expr(ref e) = stmts[0].kind {
+            if let ExprKind::Block(ref b, None) = e.kind {
                 return b.clone();
             }
         }
@@ -471,7 +496,7 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
 pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
     error!("{}", msg);
     if tcfg.fail_on_error {
-        panic!();
+        panic!("Translation failed, see error above");
     }
 }
 
@@ -488,51 +513,44 @@ pub fn translate(
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
+        expecting_valistimpl: false,
         ternary_needs_parens: false,
         expanding_macro: None,
     };
 
-    if t.tcfg.reorganize_definitions {
-        t.use_feature("custom_attribute");
-    }
-
-    if tcfg.emit_no_std {
-        t.extern_crates.borrow_mut().insert("core");
-    }
-
-    t.extern_crates.borrow_mut().insert("libc");
-
-    // Sort the top-level declarations by file and source location so that we
-    // preserve the ordering of all declarations in each file.
-    t.ast_context.sort_top_decls();
-
-    t.locate_comments();
-
-    // Headers often pull in declarations that are unused;
-    // we simplify the translator output by omitting those.
-    t.ast_context.prune_unused_decls();
-
-    enum Name<'a> {
-        VarName(&'a str),
-        TypeName(&'a str),
-        AnonymousType,
-        NoName,
-    }
-
-    fn some_type_name(s: Option<&str>) -> Name {
-        match s {
-            None => Name::AnonymousType,
-            Some(r) => Name::TypeName(r),
-        }
-    }
-
-    // Used for testing; so that we don't overlap with C function names
-    if let Some(ref prefix) = t.tcfg.prefix_function_names {
-        prefix_names(&mut t, prefix);
-    }
-
     // `with_globals` sets up a thread-local variable required by the syntax crate.
     with_globals(Edition::Edition2018, || {
+        t.use_crate(ExternCrate::Libc);
+
+        // Sort the top-level declarations by file and source location so that we
+        // preserve the ordering of all declarations in each file.
+        t.ast_context.sort_top_decls();
+
+        t.locate_comments();
+
+        // Headers often pull in declarations that are unused;
+        // we simplify the translator output by omitting those.
+        t.ast_context.prune_unwanted_decls(tcfg.preserve_unused_functions);
+
+        enum Name<'a> {
+            VarName(&'a str),
+            TypeName(&'a str),
+            AnonymousType,
+            NoName,
+        }
+
+        fn some_type_name(s: Option<&str>) -> Name {
+            match s {
+                None => Name::AnonymousType,
+                Some(r) => Name::TypeName(r),
+            }
+        }
+
+        // Used for testing; so that we don't overlap with C function names
+        if let Some(ref prefix) = t.tcfg.prefix_function_names {
+            prefix_names(&mut t, prefix);
+        }
+
         // Identify typedefs that name unnamed types and collapse the two declarations
         // into a single name and declaration, eliminating the typedef altogether.
         let mut prenamed_decls: IndexMap<CDeclId, CDeclId> = IndexMap::new();
@@ -699,6 +717,7 @@ pub fn translate(
                 CDeclKind::Function { is_implicit, .. } => !is_implicit,
                 CDeclKind::Variable { .. } => true,
                 CDeclKind::MacroObject { .. } => tcfg.translate_const_macros,
+                CDeclKind::MacroFunction { .. } => tcfg.translate_fn_macros,
                 _ => false,
             };
             if needs_export {
@@ -775,111 +794,61 @@ pub fn translate(
         let pragmas = t.get_pragmas();
         let crates = t.extern_crates.borrow().clone();
 
-        // pass all converted items to the Rust pretty printer
-        let translation = to_string(|s| {
-            print_header(s, &t, t.tcfg.is_binary(main_file.as_path()))?;
+        let mut mod_items: Vec<P<Item>> = Vec::new();
 
-            let mut mod_items: Vec<P<Item>> = Vec::new();
+        // Keep track of new uses we need while building header submodules
+        let mut new_uses = ItemStore::new();
 
-            // Keep track of new uses we need while building header submodules
-            let mut new_uses = ItemStore::new();
-
-            // Header Reorganization: Submodule Item Stores
-            for (file_id, ref mut mod_item_store) in t.items.borrow_mut().iter_mut() {
-                if *file_id != t.main_file {
-                    let mut submodule = make_submodule(
-                        &t.ast_context,
-                        mod_item_store,
-                        *file_id,
-                        &mut new_uses,
-                        &t.mod_names,
-                    );
-                    let comments = t.comment_context.get_remaining_comments(*file_id);
-                    submodule.span = match t
-                        .comment_store
-                        .borrow_mut()
-                        .add_comments(&comments)
-                    {
-                        Some(pos) => submodule.span.with_hi(pos),
-                        None => submodule.span,
-                    };
-                    mod_items.push(submodule);
-                }
+        // Header Reorganization: Submodule Item Stores
+        for (file_id, ref mut mod_item_store) in t.items.borrow_mut().iter_mut() {
+            if *file_id != t.main_file {
+                let mut submodule = make_submodule(
+                    &t.ast_context,
+                    mod_item_store,
+                    *file_id,
+                    &mut new_uses,
+                    &t.mod_names,
+                );
+                let comments = t.comment_context.get_remaining_comments(*file_id);
+                submodule.span = match t
+                    .comment_store
+                    .borrow_mut()
+                    .add_comments(&comments)
+                {
+                    Some(pos) => submodule.span.with_hi(pos),
+                    None => submodule.span,
+                };
+                mod_items.push(submodule);
             }
+        }
 
-            // Main file item store
-            let (items, foreign_items, uses) = t.items.borrow_mut()[&t.main_file].drain();
+        // Main file item store
+        let (items, foreign_items, uses) = t.items.borrow_mut()[&t.main_file].drain();
 
-            // Re-order comments
-            let mut traverser = t.comment_store.into_inner().into_comment_traverser();
+        // Re-order comments
+        // FIXME: We shouldn't have to replace with an empty comment store here,
+        // that's bad design
+        let mut traverser = t.comment_store.replace(CommentStore::new()).into_comment_traverser();
 
-            // Add a comment mapping span to each node that should have a
-            // comment printed before it. The pretty printer picks up these
-            // spans and uses them to decide when to emit comments.
-            mod_items = mod_items
-                .into_iter()
-                .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
-                .collect();
-            let foreign_items: Vec<ForeignItem> = foreign_items
-                .into_iter()
-                .map(|fi| traverser.traverse_foreign_item(fi))
-                .collect();
-            let items: Vec<P<Item>> = items
-                .into_iter()
-                .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
-                .collect();
+        // Add a comment mapping span to each node that should have a
+        // comment printed before it. The pretty printer picks up these
+        // spans and uses them to decide when to emit comments.
+        mod_items = mod_items
+            .into_iter()
+            .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
+            .collect();
+        let foreign_items: Vec<ForeignItem> = foreign_items
+            .into_iter()
+            .map(|fi| traverser.traverse_foreign_item(fi))
+            .collect();
+        let items: Vec<P<Item>> = items
+            .into_iter()
+            .map(|p_i| p_i.map(|i| traverser.traverse_item(i)))
+            .collect();
 
-            let mut reordered_comment_store = traverser.into_comment_store();
-            let remaining_comments = t.comment_context.get_remaining_comments(t.main_file);
-            reordered_comment_store.add_comments(&remaining_comments);
-            s.comments()
-                .get_or_insert(vec![])
-                .extend(reordered_comment_store.into_comments());
-
-            for mod_item in mod_items {
-                s.print_item(&*mod_item)?;
-            }
-
-            // This could have been merged in with items below; however, it's more idiomatic to have
-            // imports near the top of the file than randomly scattered about. Also, there is probably
-            // no reason to have comments associated with imports so it doesn't need to go through
-            // the above comment store process
-            for use_item in uses.into_items() {
-                s.print_item(&use_item)?;
-            }
-
-            // Print new uses from submodules
-            let (_, _, new_uses) = new_uses.drain();
-            for use_item in new_uses.into_items() {
-                s.print_item(&use_item)?;
-            }
-
-            if !foreign_items.is_empty() {
-                s.print_item(&mk().abi("C").foreign_items(foreign_items))?
-            }
-
-            // Add the items accumulated
-            for x in items {
-                s.print_item(&*x)?;
-            }
-
-            s.print_remaining_comments()?;
-
-            Ok(())
-        });
-        (translation, pragmas, crates)
-    })
-}
-
-/// Same as pprust::to_string, but initializes the printer with an empty
-/// SourceMap, which is necessary to get the printer to print trailing comments
-/// on the same line.
-fn to_string<F>(f: F) -> String where
-    F: FnOnce(&mut pprust::State<'_>) -> io::Result<()>,
-{
-    let mut wr = Vec::new();
-    {
-        let ann = pprust::NoAnn;
+        let mut reordered_comment_store = traverser.into_comment_store();
+        let remaining_comments = t.comment_context.get_remaining_comments(t.main_file);
+        reordered_comment_store.add_comments(&remaining_comments);
 
         // We need a dummy SourceMap with a dummy file so that pprust can try to
         // look up source line numbers for Spans. This is needed to be able to
@@ -889,17 +858,43 @@ fn to_string<F>(f: F) -> String where
         let sm = SourceMap::new(FilePathMapping::empty());
         sm.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
-        let mut printer = pprust::State::new(
-            &sm,
-            Box::new(&mut wr),
-            &ann,
-            None,
-            false,
-        );
-        f(&mut printer).unwrap();
-        printer.s.eof().unwrap();
-    }
-    String::from_utf8(wr).unwrap()
+        let comments = Comments::new(&sm, reordered_comment_store.into_comments());
+
+        // pass all converted items to the Rust pretty printer
+        let translation = pprust::to_string_with_comments(comments, |s| {
+            print_header(s, &t, t.tcfg.is_binary(main_file.as_path()));
+
+            for mod_item in mod_items {
+                s.print_item(&*mod_item);
+            }
+
+            // This could have been merged in with items below; however, it's more idiomatic to have
+            // imports near the top of the file than randomly scattered about. Also, there is probably
+            // no reason to have comments associated with imports so it doesn't need to go through
+            // the above comment store process
+            for use_item in uses.into_items() {
+                s.print_item(&use_item);
+            }
+
+            // Print new uses from submodules
+            let (_, _, new_uses) = new_uses.drain();
+            for use_item in new_uses.into_items() {
+                s.print_item(&use_item);
+            }
+
+            if !foreign_items.is_empty() {
+                s.print_item(&mk().extern_("C").foreign_items(foreign_items))
+            }
+
+            // Add the items accumulated
+            for x in items {
+                s.print_item(&*x);
+            }
+
+            s.print_remaining_comments();
+        });
+        (translation, pragmas, crates)
+    })
 }
 
 fn make_submodule(
@@ -938,7 +933,7 @@ fn make_submodule(
     }
 
     if !foreign_items.is_empty() {
-        items.push(mk().abi("C").foreign_items(foreign_items));
+        items.push(mk().extern_("C").foreign_items(foreign_items));
     }
 
     let file_path_str = file_path.map_or(
@@ -946,14 +941,22 @@ fn make_submodule(
         |path| path.to_str().expect("Found invalid unicode"),
     );
     mk().vis("pub")
-        .str_attr("header_src", format!("{}:{}", file_path_str, include_line_number))
+        .str_attr(
+            vec!["c2rust", "header_src"],
+            format!("{}:{}", file_path_str, include_line_number),
+        )
         .mod_item(mod_name, mk().mod_(items))
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
-fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) -> io::Result<()> {
+fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
     if t.tcfg.emit_modules && !is_binary {
-        s.print_item(&mk().use_simple_item(vec!["libc"], None as Option<Ident>))?;
+        for c in t.extern_crates.borrow().iter() {
+            s.print_item(&mk().use_simple_item(
+                vec![String::new(), ExternCrateDetails::from(*c).ident],
+                None as Option<Ident>,
+            ));
+        }
     } else {
         let pragmas = t.get_pragmas();
         for (key, mut values) in pragmas {
@@ -964,15 +967,14 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) -> io::
                 .collect::<Vec<_>>();
             let item = mk().meta_item(vec![key], MetaItemKind::List(value_attr_vec));
             for attr in mk().meta_item_attr(AttrStyle::Inner, item).as_inner_attrs() {
-                s.print_attribute(&attr)?;
+                s.print_attribute(&attr);
             }
         }
 
         if t.tcfg.cross_checks {
             let mut xcheck_plugin_args: Vec<NestedMetaItem> = vec![];
             for config_file in &t.tcfg.cross_check_configs {
-                let file_lit = mk().str_lit(config_file);
-                let file_item = mk().meta_item(vec!["config_file"], file_lit);
+                let file_item = mk().meta_item(vec!["config_file"], config_file);
                 xcheck_plugin_args.push(mk().nested_meta_item(file_item));
             }
             let xcheck_plugin_item = mk().meta_item(
@@ -985,44 +987,50 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) -> io::
                 .meta_item_attr(AttrStyle::Inner, plugin_item)
                 .as_inner_attrs()
             {
-                s.print_attribute(&attr)?;
+                s.print_attribute(&attr);
             }
         }
 
         if t.tcfg.emit_no_std {
-            s.print_attribute(&mk().single_attr("no_std").as_inner_attrs()[0])?;
-        }
-
-        // Add `extern crate X;` to the top of the file
-        for crate_name in t.extern_crates.borrow().iter() {
-            s.print_item(&mk().extern_crate_item(*crate_name, None))?;
-        }
-
-        if t.tcfg.cross_checks {
-            s.print_item(
-                &mk()
-                    .single_attr("macro_use")
-                    .extern_crate_item("c2rust_xcheck_derive", None),
-            )?;
-            s.print_item(
-                &mk()
-                    .single_attr("macro_use")
-                    .extern_crate_item("c2rust_xcheck_runtime", None),
-            )?;
-            // When cross-checking, always use the system allocator
-            let sys_alloc_path = vec!["", "std", "alloc", "System"];
-            s.print_item(&mk().single_attr("global_allocator").static_item(
-                "C2RUST_ALLOC",
-                mk().path_ty(sys_alloc_path.clone()),
-                mk().path_expr(sys_alloc_path),
-            ))?;
+            s.print_attribute(&mk().single_attr("no_std").as_inner_attrs()[0]);
         }
 
         if is_binary {
-            s.print_item(&mk().use_glob_item(vec![&t.tcfg.crate_name()]))?;
+            // Add `extern crate X;` to the top of the file
+            for extern_crate in t.extern_crates.borrow().iter() {
+                let extern_crate = ExternCrateDetails::from(*extern_crate);
+                if extern_crate.macro_use {
+                    s.print_item(
+                        &mk()
+                            .single_attr("macro_use")
+                            .extern_crate_item(extern_crate.ident.clone(), None),
+                    );
+                }
+            }
+
+            if t.tcfg.cross_checks {
+                s.print_item(
+                    &mk()
+                        .single_attr("macro_use")
+                        .extern_crate_item("c2rust_xcheck_derive", None),
+                );
+                s.print_item(
+                    &mk()
+                        .single_attr("macro_use")
+                        .extern_crate_item("c2rust_xcheck_runtime", None),
+                );
+                // When cross-checking, always use the system allocator
+                let sys_alloc_path = vec!["", "std", "alloc", "System"];
+                s.print_item(&mk().single_attr("global_allocator").static_item(
+                    "C2RUST_ALLOC",
+                    mk().path_ty(sys_alloc_path.clone()),
+                    mk().path_expr(sys_alloc_path),
+                ));
+            }
+
+            s.print_item(&mk().use_glob_item(vec!["", &t.tcfg.crate_name()]));
         }
     }
-    Ok(())
 }
 
 /// Convert a boolean expression to a c_int
@@ -1034,9 +1042,9 @@ fn bool_to_int(val: P<Expr>) -> P<Expr> {
 fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
     if let Some(src_loc) = src_loc.as_ref() {
         let loc_str = format!("{}:{}", src_loc.line, src_loc.column);
-        attrs.push(attr::mk_attr_outer(DUMMY_SP, attr::mk_attr_id(), attr::mk_name_value_item_str(
-            Ident::from_str("src_loc"),
-            dummy_spanned(loc_str.into_symbol()),
+        attrs.push(attr::mk_attr_outer(mk().meta_item(
+            vec!["c2rust", "src_loc"],
+            loc_str.into_symbol(),
         )));
     }
 }
@@ -1114,7 +1122,7 @@ impl<'c> Translation<'c> {
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FunContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
-            macro_types: RefCell::new(IndexMap::new()),
+            macro_expansions: RefCell::new(IndexMap::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             spans: HashMap::new(),
@@ -1125,6 +1133,28 @@ impl<'c> Translation<'c> {
             extern_crates: RefCell::new(IndexSet::new()),
             cur_file: RefCell::new(None),
         }
+    }
+
+    fn use_crate(&self, extern_crate: ExternCrate) {
+        self.extern_crates.borrow_mut().insert(extern_crate);
+    }
+
+    pub fn cur_file(&self) -> FileId {
+        if let Some(cur_file) = *self.cur_file.borrow() {
+            cur_file
+        } else {
+            self.main_file
+        }
+    }
+
+    fn with_cur_file_item_store<F, T>(&self, f: F) -> T
+        where F: FnOnce(&mut ItemStore) -> T
+    {
+        let mut item_stores = self.items.borrow_mut();
+        let item_store = item_stores
+            .entry(self.cur_file())
+            .or_insert_with(ItemStore::new);
+        f(item_store)
     }
 
     /// Called when translation makes use of a language feature that will require a feature-gate.
@@ -1149,9 +1179,12 @@ impl<'c> Translation<'c> {
             ],
         )];
         if self.tcfg.cross_checks {
-            features.append(&mut vec!["plugin", "custom_attribute"]);
+            features.append(&mut vec!["plugin"]);
             pragmas.push(("cross_check", vec!["yes"]));
         }
+
+        features.push("register_tool");
+        pragmas.push(("register_tool", vec!["c2rust"]));
 
         if !features.is_empty() {
             pragmas.push(("feature", features));
@@ -1171,10 +1204,10 @@ impl<'c> Translation<'c> {
 
     fn panic_or_err_helper(&self, msg: &str, panic: bool) -> P<Expr> {
         let macro_name = if panic { "panic" } else { "compile_error" };
-        let macro_msg = vec![TokenTree::token(token::Interpolated(Lrc::new(Nonterminal::NtExpr(
-            mk().lit_expr(mk().str_lit(msg))))), DUMMY_SP)]
+        let macro_msg = vec![TokenTree::token(token::Interpolated(Rc::new(Nonterminal::NtExpr(
+            mk().lit_expr(msg)))), DUMMY_SP)]
         .into_iter()
-        .collect::<TokenStream>();
+            .collect::<TokenStream>();
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
     }
 
@@ -1274,7 +1307,13 @@ impl<'c> Translation<'c> {
                         return true;
                     }
                 }
-                CExprKind::ImplicitCast(_, _, PointerToIntegral, _, _) => return true,
+
+                // PointerToIntegral is no longer allowed, const-eval throws an
+                // error: "pointer-to-integer cast" needs an rfc before being
+                // allowed inside constants
+                CExprKind::ImplicitCast(_, _, PointerToIntegral, _, _)
+                | CExprKind::ExplicitCast(_, _, PointerToIntegral, _, _) => return true,
+
                 CExprKind::Binary(typ, op, _, _, _, _) => {
                     let problematic_op = match op {
                         Add | Subtract | Multiply | Divide | Modulus => true,
@@ -1370,13 +1409,13 @@ impl<'c> Translation<'c> {
             .borrow_mut()
             .pick_name("run_static_initializers");
         let fn_ty = FunctionRetTy::Default(DUMMY_SP);
-        let fn_decl = mk().fn_decl(vec![], fn_ty, false);
+        let fn_decl = mk().fn_decl(vec![], fn_ty);
         let fn_block = mk().block(sectioned_static_initializers);
         let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
         let fn_item = fn_attributes
             .unsafe_()
-            .abi("C")
-            .fn_item(&fn_name, &fn_decl, fn_block);
+            .extern_("C")
+            .fn_item(&fn_name, fn_decl.clone(), fn_block);
 
         let static_attributes = mk()
             .single_attr("used")
@@ -1397,7 +1436,7 @@ impl<'c> Translation<'c> {
             );
         let static_array_size = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
         let static_ty = mk().array_ty(
-            mk().unsafe_().abi("C").barefn_ty(fn_decl),
+            mk().unsafe_().extern_("C").barefn_ty(fn_decl),
             static_array_size,
         );
         let static_val = mk().array_expr(vec![mk().path_expr(vec![fn_name])]);
@@ -1487,10 +1526,7 @@ impl<'c> Translation<'c> {
                     });
                 if has_bitfields {
                     derives.push("BitfieldStruct");
-                    self.extern_crates.borrow_mut().insert("c2rust_bitfields");
-
-                    let item_store = &mut self.items.borrow_mut()[&self.main_file];
-                    item_store.add_use(vec!["c2rust_bitfields".into()], "BitfieldStruct");
+                    self.use_crate(ExternCrate::C2RustBitfields);
                 }
 
                 let mut reprs = vec![simple_metaitem("C")];
@@ -1657,6 +1693,9 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(enum_id)
                     .expect("Enums should already be renamed");
+                if let Some(cur_file) = *self.cur_file.borrow() {
+                    self.add_import(cur_file, enum_id, &enum_name);
+                }
                 let ty = mk().path_ty(mk().path(vec![enum_name]));
                 let val = match value {
                     ConstIntExpr::I(value) => signed_int_expr(value),
@@ -1750,7 +1789,17 @@ impl<'c> Translation<'c> {
                     return Ok(ConvertedDecl::NoItem);
                 }
 
+                // We can't typedef to std::ffi::VaList, since the typedef won't
+                // have explicit lifetime params which VaList
+                // requires. Temporarily disable translation of valist to Rust
+                // native VaList.
+                let translate_valist = mem::replace(
+                    &mut self.type_converter.borrow_mut().translate_valist,
+                    false,
+                );
                 let ty = self.convert_type(typ.ctype)?;
+                self.type_converter.borrow_mut().translate_valist = translate_valist;
+
                 Ok(ConvertedDecl::Item(
                     mk().span(s).pub_().type_item(new_name, ty),
                 ))
@@ -1883,7 +1932,7 @@ impl<'c> Translation<'c> {
                 };
 
                 let static_def = if is_externally_visible {
-                    mk_linkage(false, new_name, ident).pub_().abi("C")
+                    mk_linkage(false, new_name, ident).pub_().extern_("C")
                 } else if self.cur_file.borrow().is_some() {
                     mk().pub_()
                 } else {
@@ -1917,9 +1966,7 @@ impl<'c> Translation<'c> {
                 "This should be handled in 'convert_decl_stmt'",
             )),
 
-            CDeclKind::MacroObject {
-                ref replacements, ..
-            } => {
+            CDeclKind::MacroObject { .. } => {
                 let name = self
                     .renamer
                     .borrow_mut()
@@ -1930,12 +1977,15 @@ impl<'c> Translation<'c> {
 
                 let maybe_replacement = self.canonical_macro_replacement(
                     ctx.set_const(true).set_expanding_macro(decl_id),
-                    &replacements,
+                    &self.ast_context.macro_expansions[&decl_id],
                 );
 
                 match maybe_replacement {
                     Ok((replacement, ty)) => {
-                        self.macro_types.borrow_mut().insert(decl_id, ty);
+                        trace!("  to {:?}", replacement);
+
+                        let expansion = MacroExpansion {ty};
+                        self.macro_expansions.borrow_mut().insert(decl_id, Some(expansion));
                         let ty = self.convert_type(ty)?;
 
                         Ok(ConvertedDecl::Item(mk().span(s).pub_().const_item(
@@ -1945,15 +1995,25 @@ impl<'c> Translation<'c> {
                         )))
                     }
                     Err(e) => {
+                        self.macro_expansions.borrow_mut().insert(decl_id, None);
                         info!("Could not expand macro {}: {}", name, e);
                         Ok(ConvertedDecl::NoItem)
                     }
                 }
             }
 
+            // We aren't doing anything with the definitions of function-like
+            // macros yet.
+            CDeclKind::MacroFunction { .. } => Ok(ConvertedDecl::NoItem),
+
             // Do not translate non-canonical decls. They will be translated at
             // their canonical declaration.
             CDeclKind::NonCanonicalDecl { .. } => Ok(ConvertedDecl::NoItem),
+
+            CDeclKind::StaticAssert { .. } => {
+                warn!("ignoring static assert during translation");
+                Ok(ConvertedDecl::NoItem)
+            }
         }
     }
 
@@ -2004,17 +2064,6 @@ impl<'c> Translation<'c> {
         // common type to minimize casts.
     }
 
-    /// Returns true iff type is a (pointer to)* the `va_list` structure type.
-    pub fn is_inner_type_valist(ctxt: &TypedAstContext, qtype: CQualTypeId) -> bool {
-        if ctxt.is_va_list(qtype.ctype) {
-            true
-        } else if let CTypeKind::Pointer(pointer_id) = ctxt.resolve_type(qtype.ctype).kind {
-            Self::is_inner_type_valist(ctxt, pointer_id)
-        } else {
-            false
-        }
-    }
-
     fn convert_function(
         &self,
         ctx: ExprContext,
@@ -2033,19 +2082,8 @@ impl<'c> Translation<'c> {
     ) -> Result<ConvertedDecl, TranslationError> {
         self.function_context.borrow_mut().enter_new(name);
 
-        let is_valist: bool = arguments
-            .iter()
-            .any(|&(_, _, typ)| Self::is_inner_type_valist(&self.ast_context, typ));
-        if is_variadic || is_valist {
-            if let Some(body_id) = body {
-                if !self.is_well_formed_variadic(body_id) {
-                    return Err(format_err!("Variadic function definition is not well-formed.").into());
-                }
-            }
-        }
-
         self.with_scope(|| {
-            let mut args: Vec<Arg> = vec![];
+            let mut args: Vec<Param> = vec![];
 
             // handle regular (non-variadic) arguments
             for &(decl_id, ref var, typ) in arguments {
@@ -2076,21 +2114,16 @@ impl<'c> Translation<'c> {
                 args.push(mk().arg(ty, pat))
             }
 
-            // handle variadic arguments
             if is_variadic {
-                if let Some(va_decl_id) = self.get_promoted_va_decl() {
-                    // `register_va_arg` succeeded
-                    let var = self
-                        .renamer
-                        .borrow_mut()
-                        .get(&va_decl_id)
-                        .expect(&format!("Failed to get name for variadic argument"));
+                // function definitions
+                if let Some(body_id) = body {
+                    let arg_va_list_name = self.register_va_decls(body_id);
 
-                    // FIXME: detect mutability requirements
-                    let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(var);
-                    args.push(mk().arg(mk().cvar_args_ty(), pat))
-                } else {
-                    args.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
+                    // FIXME: detect mutability requirements.
+                    let pat = mk().set_mutbl(Mutability::Mutable).ident_pat(arg_va_list_name);
+                    args.push(mk().arg(mk().cvar_args_ty(), pat));
+                } else {  // function declarations
+                    args.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()));
                 }
             }
 
@@ -2111,7 +2144,7 @@ impl<'c> Translation<'c> {
                 FunctionRetTy::Ty(ret)
             };
 
-            let decl = mk().fn_decl(args, ret, is_variadic);
+            let decl = mk().fn_decl(args, ret);
 
             if let Some(body) = body {
                 // Translating an actual function
@@ -2153,16 +2186,16 @@ impl<'c> Translation<'c> {
                     // but strings have to do for now
                     self.mk_cross_check(mk(), vec!["entry(djb2=\"main\")", "exit(djb2=\"main\")"])
                 } else if is_global && !is_inline {
-                    mk_linkage(false, new_name, name).abi("C").pub_()
+                    mk_linkage(false, new_name, name).extern_("C").pub_()
                 } else if is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
                     // c99 extern inline functions should be pub, but not gnu_inline attributed
                     // extern inlines, which become subject to their gnu89 visibility (private)
 
-                    mk_linkage(false, new_name, name).abi("C").pub_()
+                    mk_linkage(false, new_name, name).extern_("C").pub_()
                 } else if self.cur_file.borrow().is_some() {
-                    mk().abi("C").pub_()
+                    mk().extern_("C").pub_()
                 } else {
-                    mk().abi("C")
+                    mk().extern_("C")
                 };
 
                 for attr in attrs {
@@ -2422,11 +2455,6 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         decl_id: CDeclId,
     ) -> Result<cfg::DeclStmtInfo, TranslationError> {
-        if self.is_promoted_va_decl(decl_id) {
-            // `va_list` decl was promoted to arg
-            self.use_feature("c_variadic");
-            return Ok(cfg::DeclStmtInfo::empty());
-        }
 
         match self.ast_context.index(decl_id).kind {
             CDeclKind::Variable {
@@ -2496,13 +2524,12 @@ impl<'c> Translation<'c> {
                     .insert(decl_id, &ident)
                     .expect(&format!("Failed to insert variable '{}'", ident));
 
-                if self.is_copied_va_decl(decl_id) {
-                    // translate `va_list` declarations not promoted to an arg
-                    // to `VaList` and do not emit an initializer.
+                if self.ast_context.is_va_list(typ.ctype) {
+                    // translate `va_list` variables to `VaListImpl`s and omit the initializer.
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
                     let ty = {
                         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
-                        let path = vec!["", std_or_core, "ffi", "VaList"];
+                        let path = vec!["", std_or_core, "ffi", "VaListImpl"];
                         mk().path_ty(path)
                     };
                     let local_mut = mk().local::<_, _, P<Expr>>(pat_mut, Some(ty), None);
@@ -2603,7 +2630,7 @@ impl<'c> Translation<'c> {
                 } else {
                     let items = match self.convert_decl(ctx, decl_id)? {
                         ConvertedDecl::Item(item) => vec![item],
-                        ConvertedDecl::ForeignItem(item) => vec![mk().abi("C").foreign_items(vec![item])],
+                        ConvertedDecl::ForeignItem(item) => vec![mk().extern_("C").foreign_items(vec![item])],
                         ConvertedDecl::Items(items) => items,
                         ConvertedDecl::NoItem => return Ok(cfg::DeclStmtInfo::empty()),
                     };
@@ -2792,7 +2819,7 @@ impl<'c> Translation<'c> {
         lhs_type: CQualTypeId,
         rhs: P<Expr>,
     ) -> Result<P<Expr>, TranslationError> {
-        let addr_lhs = match lhs.node {
+        let addr_lhs = match lhs.kind {
             ExprKind::Unary(ast::UnOp::Deref, ref e) => {
                 if lhs_type.qualifiers.is_const {
                     let lhs_type = self.convert_type(lhs_type.ctype)?;
@@ -2826,7 +2853,7 @@ impl<'c> Translation<'c> {
         lhs: &P<Expr>,
         lhs_type: CQualTypeId,
     ) -> Result<P<Expr>, TranslationError> {
-        let addr_lhs = match lhs.node {
+        let addr_lhs = match lhs.kind {
             ExprKind::Unary(ast::UnOp::Deref, ref e) => {
                 if !lhs_type.qualifiers.is_const {
                     let lhs_type = self.convert_type(lhs_type.ctype)?;
@@ -3048,6 +3075,13 @@ impl<'c> Translation<'c> {
             }
         }
 
+        if self.tcfg.translate_fn_macros {
+            let text = self.ast_context.macro_expansion_text.get(&expr_id);
+            if let Some(converted) = text.and_then(|text| self.convert_macro_invocation(ctx, &text)) {
+                return Ok(converted);
+            }
+        }
+
         match *expr_kind {
             CExprKind::DesignatedInitExpr(..) => {
                 Err(TranslationError::generic("Unexpected designated init expr"))
@@ -3085,6 +3119,14 @@ impl<'c> Translation<'c> {
                 };
 
                 Ok(result.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc", "c_ulong"]))))
+            }
+
+            CExprKind::ConstantExpr(_ty, child, value) => {
+                if let Some(constant) = value {
+                    self.convert_constant(constant).map(WithStmts::new_val)
+                } else {
+                    self.convert_expr(ctx, child)
+                }
             }
 
             CExprKind::DeclRef(qual_ty, decl_id, lrvalue) => {
@@ -3136,33 +3178,55 @@ impl<'c> Translation<'c> {
                     val = mk().cast_expr(val, ty);
                 }
 
+                // Most references to the va_list should refer to the VaList
+                // type, not VaListImpl
+                if !ctx.expecting_valistimpl && self.ast_context.is_va_list(qual_ty.ctype) {
+                    val = mk().method_call_expr(val, "as_va_list", Vec::<P<Expr>>::new());
+                }
+
                 // If we are referring to a function and need its address, we
                 // need to cast it to fn() to ensure that it has a real address.
+                let mut set_unsafe = false;
                 if ctx.needs_address() {
-                    if let &CDeclKind::Function { .. } = decl {
+                    if let &CDeclKind::Function { ref parameters, .. } = decl {
                         let ty = self.convert_type(qual_ty.ctype)?;
-                        val = mk().cast_expr(val, ty);
+                        let actual_ty = self.type_converter
+                            .borrow_mut()
+                            .knr_function_type_with_parameters(&self.ast_context, qual_ty.ctype, parameters)?;
+                        if let Some(actual_ty) = actual_ty {
+                            // If we're casting a concrete function to
+                            // a K&R function pointer type, use transmute
+                            if ctx.is_static || ctx.is_const {
+                                self.use_feature("const_transmute");
+                            }
+                            if let Some(cur_file) = *self.cur_file.borrow() {
+                                self.import_type(qual_ty.ctype, cur_file);
+                            }
+                            val = transmute_expr(actual_ty, ty, val, self.tcfg.emit_no_std);
+                            set_unsafe = true;
+                        } else {
+                            val = mk().cast_expr(val, ty);
+                        }
                     }
                 }
 
-                if self.ast_context.is_va_list(qual_ty.ctype) {
-                    val = mk().method_call_expr(val, "as_va_list", vec![] as Vec<P<Expr>>);
-                } else if let CTypeKind::VariableArray(..) =
+                if let CTypeKind::VariableArray(..) =
                     self.ast_context.resolve_type(qual_ty.ctype).kind
                 {
                     val = mk().method_call_expr(val, "as_mut_ptr", vec![] as Vec<P<Expr>>);
                 }
 
-                Ok(WithStmts::new_val(val))
+                let mut res = WithStmts::new_val(val);
+                res.merge_unsafe(set_unsafe);
+                Ok(res)
             }
 
             CExprKind::OffsetOf(ty, ref kind) => match kind {
                 OffsetOfKind::Constant(val) => {
-                    Ok(WithStmts::new_val(self.mk_int_lit(ty, *val, IntBase::Dec)))
+                    Ok(WithStmts::new_val(self.mk_int_lit(ty, *val, IntBase::Dec)?))
                 }
                 OffsetOfKind::Variable(qty, field_id, expr_id) => {
-                    self.extern_crates.borrow_mut().insert("memoffset");
-                    self.items.borrow_mut()[&self.main_file].add_use(vec!["memoffset".into()], "offset_of");
+                    self.use_crate(ExternCrate::Memoffset);
 
                     // Struct Type
                     let decl_id = {
@@ -3196,11 +3260,11 @@ impl<'c> Translation<'c> {
 
                     // offset_of!(Struct, field[expr as usize]) as ty
                     let macro_body = vec![
-                        TokenTree::token(token::Interpolated(Lrc::new(ty_ident)), DUMMY_SP),
+                        TokenTree::token(token::Interpolated(Rc::new(ty_ident)), DUMMY_SP),
                         TokenTree::token(token::Comma, DUMMY_SP),
-                        TokenTree::token(token::Interpolated(Lrc::new(field_ident)), DUMMY_SP),
+                        TokenTree::token(token::Interpolated(Rc::new(field_ident)), DUMMY_SP),
                         TokenTree::token(token::OpenDelim(DelimToken::Bracket), DUMMY_SP),
-                        TokenTree::token(token::Interpolated(Lrc::new(index_expr)), DUMMY_SP),
+                        TokenTree::token(token::Interpolated(Rc::new(index_expr)), DUMMY_SP),
                         TokenTree::token(token::CloseDelim(DelimToken::Bracket), DUMMY_SP),
                     ];
                     let path = mk().path("offset_of");
@@ -3423,7 +3487,8 @@ impl<'c> Translation<'c> {
                             }
                         }))
                     } else {
-                        let lhs = self.convert_expr(ctx.used(), *lhs)?;
+                        // LHS must be ref decayed for the offset method call's self param
+                        let lhs = self.convert_expr(ctx.used().decay_ref(), *lhs)?;
                         lhs.result_map(|lhs| {
                             // stmts.extend(lhs.stmts_mut());
                             // is_unsafe = is_unsafe || lhs.is_unsafe();
@@ -3461,7 +3526,14 @@ impl<'c> Translation<'c> {
                 };
                 let func = match self.ast_context[func].kind {
                     // Direct function call
-                    CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _) => {
+                    CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _)
+                        // Only a direct function call with pointer decay if the
+                        // callee is a declref
+                        if match self.ast_context[fexp].kind {
+                            CExprKind::DeclRef(..) => true,
+                            _ => false,
+                        } =>
+                    {
                         self.convert_expr(ctx.used(), fexp)?
                     }
 
@@ -3474,7 +3546,7 @@ impl<'c> Translation<'c> {
                     _ => {
                         let callee = self.convert_expr(ctx.used(), func)?;
                         let make_fn_ty = |ret_ty: P<Ty>| {
-                            let ret_ty = match ret_ty.node {
+                            let ret_ty = match ret_ty.kind {
                                 TyKind::Tup(ref v) if v.is_empty() => FunctionRetTy::Default(DUMMY_SP),
                                 _ => FunctionRetTy::Ty(ret_ty),
                             };
@@ -3488,7 +3560,6 @@ impl<'c> Translation<'c> {
                                         args.len()
                                     ],
                                     ret_ty,
-                                    is_variadic,
                                 )
                             )
                         };
@@ -3644,12 +3715,33 @@ impl<'c> Translation<'c> {
                 Ok(chosen_expr)
             }
 
+            CExprKind::Atomic{ref name, ptr, order, val1, order_fail, val2, weak, ..} => {
+                self.convert_atomic(ctx, name, ptr, order, val1, order_fail, val2, weak)
+            }
         }
+    }
+
+    pub fn convert_constant(&self, constant: ConstIntExpr) -> Result<P<Expr>, TranslationError> {
+        let expr = match constant {
+            ConstIntExpr::U(n) => {
+                mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed))
+            }
+
+            ConstIntExpr::I(n) if n >= 0 => {
+                mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed))
+            }
+
+            ConstIntExpr::I(n) => mk().unary_expr(
+                syntax::ast::UnOp::Neg,
+                mk().lit_expr(mk().int_lit((-n) as u128, LitIntType::Unsuffixed)),
+            ),
+        };
+        Ok(expr)
     }
 
     fn convert_macro_expansion(&self, ctx: ExprContext, expr_id: CExprId)
                                -> Result<Option<WithStmts<P<Expr>>>, TranslationError> {
-        if let Some(macs) = self.ast_context.macro_expansions.get(&expr_id) {
+        if let Some(macs) = self.ast_context.macro_invocations.get(&expr_id) {
             // Find the first macro after the macro we're currently
             // expanding, if any.
             if let Some(macro_id) = macs
@@ -3661,10 +3753,24 @@ impl<'c> Translation<'c> {
                 trace!("  found macro expansion: {:?}", macro_id);
                 // Ensure that we've converted this macro and that it has a
                 // valid definition
-                if let ConvertedDecl::NoItem = self.convert_decl(ctx, *macro_id)? {
-                    return Ok(None);
-                }
-                let macro_ty = self.macro_types.borrow()[macro_id];
+                let expansion = self.macro_expansions.borrow().get(macro_id).cloned();
+                let macro_ty = match expansion {
+                    // expansion exists
+                    Some(Some(expansion)) => expansion.ty,
+
+                    // expansion wasn't possible
+                    Some(None) => return Ok(None),
+
+                    // We haven't tried to expand it yet
+                    None => {
+                        self.convert_decl(ctx, *macro_id)?;
+                        if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
+                            expansion.ty
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+                };
                 let rustname = self
                     .renamer
                     .borrow_mut()
@@ -3693,6 +3799,24 @@ impl<'c> Translation<'c> {
         Ok(None)
     }
 
+    fn convert_macro_invocation(&self, _ctx: ExprContext, text: &str)
+                                -> Option<WithStmts<P<Expr>>> {
+        let mut split = text.splitn(2, '(');
+        let ident = split.next()?;
+        let args = split.next()?.trim_end_matches(')');
+
+        let parse_sess = ParseSess::new(FilePathMapping::empty());
+        let ts = parse_stream_from_source_str(
+            FileName::Anon(0),
+            args.to_string(),
+            &parse_sess,
+            None,
+        );
+        Some(WithStmts::new_val(mk().mac_expr(mk().mac(ident, ts, MacDelimiter::Parenthesis))))
+    }
+
+    /// If `ctx` is unused, convert `expr` to a semi statement, otherwise return
+    /// `expr`.
     fn convert_side_effects_expr(
         &self,
         ctx: ExprContext,
@@ -3720,12 +3844,12 @@ impl<'c> Translation<'c> {
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         fn as_semi_break_stmt(stmt: &ast::Stmt, lbl: &cfg::Label) -> Option<Option<P<ast::Expr>>> {
             if let ast::Stmt {
-                node: ast::StmtKind::Semi(ref expr),
+                kind: ast::StmtKind::Semi(ref expr),
                 ..
             } = *stmt
             {
                 if let ast::Expr {
-                    node: ast::ExprKind::Break(Some(ref blbl), ref ret_val),
+                    kind: ast::ExprKind::Break(Some(ref blbl), ref ret_val),
                     ..
                 } = **expr
                 {
@@ -3762,15 +3886,23 @@ impl<'c> Translation<'c> {
                 if let Some(stmt) = stmts.pop() {
                     match as_semi_break_stmt(&stmt, &lbl) {
                         Some(val) => {
-                            let block = mk().block_expr({
+                            let block = mk().block_expr(
                                 match val {
                                     None => mk().block(stmts),
                                     Some(val) => WithStmts::new(stmts, val).to_block(),
                                 }
-                            });
+                            );
+
                             // enclose block in parentheses to work around
                             // https://github.com/rust-lang/rust/issues/54482
-                            return Ok(WithStmts::new_val(mk().paren_expr(block)));
+                            let val = mk().paren_expr(block);
+                            let stmts = if ctx.is_unused() {
+                                vec![mk().expr_stmt(val.clone())]
+                            } else {
+                                Vec::new()
+                            };
+
+                            return Ok(WithStmts::new(stmts, val));
                         }
                         _ => {
                             self.use_feature("label_break_value");
@@ -3922,48 +4054,12 @@ impl<'c> Translation<'c> {
 
                 let source_ty = self.convert_type(source_ty_ctype_id)?;
                 if let CTypeKind::LongDouble = target_ty_ctype {
-                    self.extern_crates.borrow_mut().insert("f128");
+                    self.use_crate(ExternCrate::F128);
 
                     let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
                     Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
                 } else if let CTypeKind::LongDouble = self.ast_context[source_ty_ctype_id].kind {
-                    self.extern_crates.borrow_mut().insert("num_traits");
-                    self.items.borrow_mut()[&self.main_file].add_use(vec!["num_traits".into()], "ToPrimitive");
-
-                    let to_method_name = match target_ty_ctype {
-                        CTypeKind::Float => "to_f32",
-                        CTypeKind::Double => "to_f64",
-                        CTypeKind::Char => "to_i8",
-                        CTypeKind::UChar => "to_u8",
-                        CTypeKind::Short => "to_i16",
-                        CTypeKind::UShort => "to_u16",
-                        CTypeKind::Int => "to_i32",
-                        CTypeKind::UInt => "to_u32",
-                        CTypeKind::Long => "to_i64",
-                        CTypeKind::ULong => "to_u64",
-                        CTypeKind::LongLong => "to_i64",
-                        CTypeKind::ULongLong => "to_u64",
-                        CTypeKind::Int128 => "to_i128",
-                        CTypeKind::UInt128 => "to_u128",
-                        _ => {
-                            return Err(format_err!(
-                                "Tried casting long double to unsupported type: {:?}",
-                                target_ty_ctype
-                            )
-                            .into())
-                        }
-                    };
-
-                    Ok(val.map(|val| {
-                        let to_call =
-                            mk().method_call_expr(val, to_method_name, Vec::<P<Expr>>::new());
-
-                        mk().method_call_expr(
-                            to_call,
-                            "unwrap",
-                            Vec::<P<Expr>>::new(),
-                        )
-                    }))
+                    self.f128_cast_to(val, target_ty_ctype)
                 } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
                     // Casts targeting `enum` types...
                     let expr = expr.ok_or_else(|| format_err!("Casts to enums require a C ExprId"))?;
@@ -3991,18 +4087,19 @@ impl<'c> Translation<'c> {
             }
 
             CastKind::ArrayToPointerDecay => {
+                // Because va_list is sometimes defined as a single-element
+                // array in order for it to allocate memory as a local variable
+                // and to be a pointer as a function argument we would get
+                // spurious casts when trying to treat it like a VaList which
+                // has reference semantics.
+                if self.ast_context.is_va_list(ty.ctype) {
+                    return Ok(val)
+                }
+
                 let pointee = match self.ast_context.resolve_type(ty.ctype).kind {
                     CTypeKind::Pointer(pointee) => pointee,
                     _ => panic!("Dereferencing a non-pointer"),
                 };
-
-                // Because va_list is defined as a single-element array in order for it to allocate
-                // memory as a local variable and to be a pointer as a function argument we would
-                // get spurious casts when trying to treat it like a VaList which has reference
-                // semantics.
-                if self.ast_context.is_va_list(pointee.ctype) {
-                    return Ok(val)
-                }
 
                 let is_const = pointee.qualifiers.is_const;
 
@@ -4013,7 +4110,7 @@ impl<'c> Translation<'c> {
 
                         let mut bytes = bytes.to_owned();
                         bytes.push(0);
-                        let byte_literal = mk().lit_expr(mk().bytestr_lit(bytes));
+                        let byte_literal = mk().lit_expr(bytes);
                         let val =
                             mk().cast_expr(byte_literal, mk().ptr_ty(mk().path_ty(vec!["u8"])));
                         let val = mk().cast_expr(val, target_ty);
@@ -4111,6 +4208,52 @@ impl<'c> Translation<'c> {
         }
     }
 
+    /// Cast a f128 to some other int or float type
+    fn f128_cast_to(
+        &self,
+        val: WithStmts<P<Expr>>,
+        target_ty_ctype: &CTypeKind,
+    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+        self.use_crate(ExternCrate::NumTraits);
+
+        self.with_cur_file_item_store(|item_store| {
+            item_store.add_use(vec!["num_traits".into()], "ToPrimitive");
+        });
+        let to_method_name = match target_ty_ctype {
+            CTypeKind::Float => "to_f32",
+            CTypeKind::Double => "to_f64",
+            CTypeKind::Char => "to_i8",
+            CTypeKind::UChar => "to_u8",
+            CTypeKind::Short => "to_i16",
+            CTypeKind::UShort => "to_u16",
+            CTypeKind::Int => "to_i32",
+            CTypeKind::UInt => "to_u32",
+            CTypeKind::Long => "to_i64",
+            CTypeKind::ULong => "to_u64",
+            CTypeKind::LongLong => "to_i64",
+            CTypeKind::ULongLong => "to_u64",
+            CTypeKind::Int128 => "to_i128",
+            CTypeKind::UInt128 => "to_u128",
+            _ => {
+                return Err(format_err!(
+                    "Tried casting long double to unsupported type: {:?}",
+                    target_ty_ctype
+                )
+                .into())
+            }
+        };
+
+        Ok(val.map(|val| {
+            let to_call = mk().method_call_expr(val, to_method_name, Vec::<P<Expr>>::new());
+
+            mk().method_call_expr(
+                to_call,
+                "unwrap",
+                Vec::<P<Expr>>::new(),
+            )
+        }))
+    }
+
     /// This handles translating casts when the target type in an `enum` type.
     ///
     /// When translating variable references to `EnumConstant`'s, we always insert casts to the
@@ -4137,7 +4280,7 @@ impl<'c> Translation<'c> {
             // we are casting to. Here, we can just remove the extraneous cast instead of generating
             // a new one.
             CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) => {
-                return val.map(|x| match x.node {
+                return val.map(|x| match x.kind {
                     ast::ExprKind::Cast(ref e, _) => e.clone(),
                     _ => panic!(format!(
                         "DeclRef {:?} of enum {:?} is not cast",
@@ -4218,6 +4361,10 @@ impl<'c> Translation<'c> {
         type_id: CTypeId,
         is_static: bool,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+        if let Some(file_id) = self.cur_file.borrow().as_ref() {
+            self.import_type(type_id, *file_id);
+        }
+
         // Look up the decl in the cache and return what we find (if we find anything)
         if let Some(init) = self.zero_inits.borrow().get(&decl_id) {
             return Ok(init.clone());
@@ -4360,8 +4507,8 @@ impl<'c> Translation<'c> {
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
-            if let ExprKind::Cast(ref arg, _) = val.node {
-                if let ExprKind::Binary(op, _, _) = arg.node {
+            if let ExprKind::Cast(ref arg, _) = val.kind {
+                if let ExprKind::Binary(op, _, _) = arg.kind {
                     match op.node {
                         BinOpKind::Or
                         | BinOpKind::And
@@ -4463,6 +4610,7 @@ impl<'c> Translation<'c> {
             return;
         }
 
+        // TODO: get rid of this, not compatible with nested modules
         let mut module_path = vec!["super".into()];
 
         // If the decl does not live in the main module add the path to the sibling submodule
@@ -4484,26 +4632,6 @@ impl<'c> Translation<'c> {
             .add_use(module_path, ident_name);
     }
 
-    fn add_lib_import(&self, decl_file_id: FileId, ident_name: &str, re_export: bool) {
-        let attrs = if re_export {
-            mk().pub_()
-        } else {
-            mk()
-        };
-
-        if decl_file_id == self.main_file {
-            return;
-        }
-
-        let module_path = vec!["super".into()];
-
-        let mut module_items = self.items.borrow_mut();
-        module_items
-            .entry(decl_file_id)
-            .or_insert(ItemStore::new())
-            .add_use_with_attr(module_path, ident_name, attrs);
-    }
-
     fn import_type(
         &self,
         ctype: CTypeId,
@@ -4511,14 +4639,11 @@ impl<'c> Translation<'c> {
     ) {
         use self::CTypeKind::*;
 
-        match self.ast_context[ctype].kind {
+        let type_kind = &self.ast_context[ctype].kind;
+        match type_kind {
+            // libc can be accessed from anywhere as of Rust 2019 by full path
             Void | Char | SChar | UChar | Short | UShort | Int | UInt | Long | ULong | LongLong
-            | ULongLong | Int128 | UInt128 | Half | Float | Double => {
-                self.add_lib_import(decl_file_id, "libc", false);
-            }
-            LongDouble => {
-                self.add_lib_import(decl_file_id, "f128", false);
-            }
+            | ULongLong | Int128 | UInt128 | Half | Float | Double | LongDouble => {}
             // Bool uses the bool type, so no dependency on libc
             Bool => {}
             Paren(ctype)
@@ -4526,8 +4651,14 @@ impl<'c> Translation<'c> {
             | IncompleteArray(ctype)
             | ConstantArray(ctype, _)
             | Elaborated(ctype)
-            | Pointer(CQualTypeId { ctype, .. }) => {
-                self.import_type(ctype, decl_file_id)
+            | Pointer(CQualTypeId { ctype, .. })
+            | Attributed(CQualTypeId { ctype, .. }, _)
+            | VariableArray(ctype, _)
+            | Reference(CQualTypeId { ctype, ..})
+            | BlockPointer(CQualTypeId { ctype, .. })
+            | TypeOf(ctype)
+            | Complex(ctype) => {
+                self.import_type(*ctype, decl_file_id)
             }
             Enum(decl_id) | Typedef(decl_id) | Union(decl_id) | Struct(decl_id) => {
                 let mut decl_id = decl_id.clone();
@@ -4545,11 +4676,11 @@ impl<'c> Translation<'c> {
             }
             Function(CQualTypeId { ctype, .. }, ref params, ..) => {
                 // Return Type
-                let type_kind = &self.ast_context[ctype].kind;
+                let type_kind = &self.ast_context[*ctype].kind;
 
                 // Rust doesn't use void for return type, so skip
                 if *type_kind != Void {
-                    self.import_type(ctype, decl_file_id);
+                    self.import_type(*ctype, decl_file_id);
                 }
 
                 // Param Types
@@ -4557,25 +4688,10 @@ impl<'c> Translation<'c> {
                     self.import_type(param_id.ctype, decl_file_id);
                 }
             }
-            Vector(CQualTypeId { ctype, .. }, len) => {
-                // Since vector imports are global, we can find the correct type name in the parent scope
-                let type_name = match (&self.ast_context[ctype].kind, len) {
-                    (CTypeKind::Float, 4) => "__m128",
-                    (CTypeKind::Float, 8) => "__m256",
-                    (CTypeKind::Double, 2) => "__m128d",
-                    (CTypeKind::Double, 4) => "__m256d",
-                    (CTypeKind::LongLong, 4) => "__m256i",
-                    (CTypeKind::LongLong, 2)
-                    | (CTypeKind::Char, 16)
-                    | (CTypeKind::Int, 4)
-                    | (CTypeKind::Short, 8) => "__m128i",
-                    (CTypeKind::LongLong, 1) | (CTypeKind::Int, 2) => "__m64",
-                    (kind, len) => unimplemented!("Unknown vector type: {:?} x {}", kind, len),
-                };
-
-                self.add_lib_import(decl_file_id, type_name, true);
+            Vector(..) => {
+                // Handled in `import_simd_typedef`
             }
-            ref e => unimplemented!("{:?}", e),
+            TypeOfExpr(_) | BuiltinFn => {}
         }
     }
 
@@ -4600,11 +4716,7 @@ impl<'c> Translation<'c> {
                     }
                 }
             }
-            CDeclKind::EnumConstant { .. } => {}
-            // REVIEW: Enums can only be integer types? So libc is likely always required?
-            CDeclKind::Enum { .. } => {
-                self.add_lib_import(decl_file_id, "libc", false);
-            }
+            CDeclKind::EnumConstant { .. } | CDeclKind::Enum { .. } => {}
 
             CDeclKind::Variable {
                 has_static_duration: true,
@@ -4628,12 +4740,12 @@ impl<'c> Translation<'c> {
             } => self.import_type(typ, decl_file_id),
 
             CDeclKind::MacroObject { .. } => {
-                if let Some(macro_ty) = self.macro_types.borrow().get(&decl_id) {
-                    self.import_type(*macro_ty, decl_file_id)
+                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(&decl_id) {
+                    self.import_type(expansion.ty, decl_file_id)
                 }
             }
 
-            CDeclKind::Function { .. } => {
+            CDeclKind::Function { .. } | CDeclKind::MacroFunction { .. } => {
                 // TODO: We may need to explicitly skip SIMD functions here when getting types for
                 // a fn definition in a header since SIMD headers define functions but we're using imports
                 // rather than translating the original definition

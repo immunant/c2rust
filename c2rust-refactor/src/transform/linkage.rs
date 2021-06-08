@@ -5,6 +5,7 @@ use syntax::attr;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
 use syntax_pos::sym;
+use smallvec::smallvec;
 
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
 use crate::ast_manip::fn_edit::{visit_fns, FnKind};
@@ -26,6 +27,7 @@ use crate::RefactorCtxt;
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     mod a {
 ///         #[no_mangle]
 ///         unsafe extern "C" fn foo() { ... }
@@ -41,9 +43,11 @@ use crate::RefactorCtxt;
 ///             foo();
 ///         }
 ///     }
+/// ```
 /// 
 /// After running `link_funcs`:
 /// 
+/// ```ignore
 ///     mod a {
 ///         #[no_mangle]
 ///         unsafe extern "C" fn foo() { ... }
@@ -56,6 +60,7 @@ use crate::RefactorCtxt;
 ///             ::a::foo();
 ///         }
 ///     }
+/// ```
 pub struct LinkFuncs;
 
 impl Transform for LinkFuncs {
@@ -80,7 +85,7 @@ impl Transform for LinkFuncs {
 
         // (3) Adjust references to extern fns to refer to the `#[no_mangle]` definition instead.
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            if let Some(def_id) = def.opt_def_id() {
+            if let Some(def_id) = def[0].opt_def_id() {
                 if let Some(&symbol) = extern_def_to_symbol.get(&def_id) {
                     if let Some(&real_def_id) = symbol_to_def.get(&symbol) {
                         return (None, cx.def_path(real_def_id));
@@ -122,6 +127,7 @@ impl Transform for LinkFuncs {
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     mod a {
 ///         struct Foo { ... }
 ///     }
@@ -133,9 +139,11 @@ impl Transform for LinkFuncs {
 /// 
 ///         unsafe fn use_foo(x: &Foo) { ... }
 ///     }
+/// ```
 /// 
 /// After running `link_incomplete_types`:
 /// 
+/// ```ignore
 ///     mod a {
 ///         struct Foo { ... }
 ///     }
@@ -145,6 +153,7 @@ impl Transform for LinkFuncs {
 ///         // 2. `use_foo` now references `Foo` directly
 ///         unsafe fn use_foo(x: &::a::Foo) { ... }
 ///     }
+/// ```
 pub struct LinkIncompleteTypes;
 
 impl Transform for LinkIncompleteTypes {
@@ -154,11 +163,11 @@ impl Transform for LinkIncompleteTypes {
         let mut incomplete_to_name = HashMap::new();
 
         visit_nodes(krate, |i: &Item| {
-            let complete = match i.node {
+            let complete = match i.kind {
                 ItemKind::Struct(..) => true,
                 ItemKind::Union(..) => true,
                 ItemKind::Enum(..) => true,
-                ItemKind::Ty(..) => true,
+                ItemKind::TyAlias(..) => true,
                 _ => false,
             };
 
@@ -170,7 +179,7 @@ impl Transform for LinkIncompleteTypes {
 
         // (2) Find incomplete type definitions (extern types), and index them by name.
         visit_nodes(krate, |i: &ForeignItem| {
-            let incomplete = match i.node {
+            let incomplete = match i.kind {
                 ForeignItemKind::Ty => true,
                 _ => false,
             };
@@ -183,7 +192,7 @@ impl Transform for LinkIncompleteTypes {
 
         // (3) Replace references to incomplete types with references to same-named complete types.
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            if let Some(&name) = def.opt_def_id().as_ref().and_then(|x| incomplete_to_name.get(x)) {
+            if let Some(&name) = def[0].opt_def_id().as_ref().and_then(|x| incomplete_to_name.get(x)) {
                 if let Some(complete_def_ids) = name_to_complete.get(&name) {
                     // Arbitrarily choose the first complete definition, if there's more than one.
                     // A separate transform will canonicalize references to complete types.
@@ -214,6 +223,7 @@ impl Transform for LinkIncompleteTypes {
 /// 
 /// Example:
 /// 
+/// ```ignore
 ///     mod a {
 ///         pub struct Foo { ... }  // Foo: target
 ///     }
@@ -223,9 +233,11 @@ impl Transform for LinkIncompleteTypes {
 /// 
 ///         unsafe fn use_foo(x: &Foo) { ... }
 ///     }
+/// ```
 /// 
 /// After running `canonicalize_structs`:
 /// 
+/// ```ignore
 ///     mod a {
 ///         pub struct Foo { ... }
 ///     }
@@ -235,6 +247,7 @@ impl Transform for LinkIncompleteTypes {
 ///         // 2. `use_foo` now references `::a::Foo` directly
 ///         unsafe fn use_foo(x: &::a::Foo) { ... }
 ///     }
+/// ```
 /// 
 /// Note that this transform does not check or adjust item visibility.  If the
 /// `target` type is not visible throughout the crate, this may introduce compile
@@ -258,7 +271,7 @@ impl Transform for CanonicalizeStructs {
         let mut removed_id_map = HashMap::new();
 
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            let should_remove = match i.node {
+            let should_remove = match i.kind {
                 ItemKind::Struct(..) => {
                     if let Some(&canon_def_id) = canon_ids.get(&i.ident.name) {
                         let def_id = cx.node_def_id(i.id);
@@ -285,7 +298,7 @@ impl Transform for CanonicalizeStructs {
         // (3) Remove impls for removed structs.
 
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            let should_remove = match i.node {
+            let should_remove = match i.kind {
                 ItemKind::Impl(_, _, _, _, _, ref ty, _) => {
                     if let Some(ty_def_id) = cx.try_resolve_ty(ty) {
                         removed_id_map.contains_key(&ty_def_id)
@@ -306,7 +319,7 @@ impl Transform for CanonicalizeStructs {
         // (4) Rewrite references to removed structs.
 
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            if let Some(&canon_def_id) = def.opt_def_id().as_ref()
+            if let Some(&canon_def_id) = def[0].opt_def_id().as_ref()
                 .and_then(|x| removed_id_map.get(&x)) {
                 (None, cx.def_path(canon_def_id))
             } else {

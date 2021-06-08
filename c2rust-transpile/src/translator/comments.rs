@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use syntax::parse::lexer::comments::CommentStyle;
+use syntax::util::comments::CommentStyle;
 use syntax::source_map::{DUMMY_SP, Span};
 use crate::c_ast::{CDeclId, CDeclKind, CommentContext, SrcLoc, TypedAstContext};
 use crate::c_ast::iterators::{NodeVisitor, SomeId};

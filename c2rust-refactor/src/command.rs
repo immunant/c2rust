@@ -3,21 +3,21 @@
 use rustc::hir;
 use rustc::hir::def_id::LOCAL_CRATE;
 use rustc::session::{self, DiagnosticOutput, Session};
+use rustc::ty::TyCtxt;
 use rustc_data_structures::sync::Lrc;
 use rustc_interface::interface;
 use rustc_interface::util;
-use rustc_lint;
-use rustc_metadata::cstore::CStore;
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::iter;
+use std::io::Write;
 use std::mem;
+use std::ops::Deref;
+use std::process;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use syntax::ast::{Crate, NodeId, CRATE_NODE_ID};
 use syntax::ast::{Expr, Item, Pat, Stmt, Ty};
-use syntax::ext::base::NamedSyntaxExtension;
-use syntax::feature_gate::AttributeType;
-use syntax::parse::lexer::comments::{gather_comments, Comment};
 use syntax::ptr::P;
 use syntax::source_map::SourceMap;
 use syntax::symbol::Symbol;
@@ -28,7 +28,7 @@ use crate::ast_manip::number_nodes::{
     number_nodes, number_nodes_with, reset_node_ids, NodeIdCounter,
 };
 use crate::ast_manip::{remove_paren, ListNodeIds, MutVisit, Visit};
-use crate::ast_manip::{collect_comments, CommentMap};
+use crate::ast_manip::{collect_comments, gather_comments, Comment, CommentMap};
 use crate::collapse::CollapseInfo;
 use crate::driver::{self, Phase};
 use crate::file_io::FileIO;
@@ -54,6 +54,16 @@ struct ParsedNodes {
     items: Vec<P<Item>>,
 }
 
+impl ParsedNodes {
+    fn append(&mut self, other: ParsedNodes) {
+        self.exprs.extend(other.exprs);
+        self.pats.extend(other.pats);
+        self.tys.extend(other.tys);
+        self.stmts.extend(other.stmts);
+        self.items.extend(other.items);
+    }
+}
+
 impl Visit for ParsedNodes {
     fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V) {
         self.exprs.iter().for_each(|x| (&**x).visit(v));
@@ -64,10 +74,30 @@ impl Visit for ParsedNodes {
     }
 }
 
-#[derive(Default)]
-struct PluginInfo {
-    _syntax_exts: Vec<NamedSyntaxExtension>,
-    _attributes: Vec<(String, AttributeType)>,
+pub type TyCtxtGeneration = Arc<AtomicUsize>;
+
+#[derive(Clone)]
+pub struct GenerationalTyCtxt<'tcx>(TyCtxt<'tcx>, TyCtxtGeneration);
+
+impl<'tcx> GenerationalTyCtxt<'tcx> {
+    pub fn ty_ctxt(&self) -> TyCtxt<'tcx> {
+        self.0
+    }
+
+    pub fn tcx_gen(&self) -> TyCtxtGeneration {
+        Arc::clone(&self.1)
+    }
+}
+
+/// State available during a compiler run
+struct DiskState {
+    /// The original crate AST. This is used as the "old" AST when rewriting.
+    /// This is always a real unexpanded AST, as it was loaded from disk, with
+    /// full user-provided source text.
+    orig_krate: Crate,
+
+    /// Original comments from the parsed crate
+    comment_map: CommentMap,
 }
 
 /// Stores the overall state of the refactoring process, which can be read and updated by
@@ -78,39 +108,54 @@ pub struct RefactorState {
     cmd_reg: Registry,
     file_io: Arc<dyn FileIO + Sync + Send>,
 
-    /// The original crate AST.  This is used as the "old" AST when rewriting.  This is always a
-    /// real unexpanded AST, as it was loaded from disk, with full user-provided source text.
-    orig_krate: Crate,
+    /// Original state of crate as parsed from disk, None if no commands have
+    /// been run yet
+    disk_state: Option<DiskState>,
 
-    /// Original comments from the parsed crate
-    comment_map: CommentMap,
-
-    /// Mapping from `krate` IDs to `disk_krate` IDs
+    /// Mapping from `krate` IDs to `disk_state.orig_krate` IDs
     node_map: NodeMap,
 
-    /// Mutable state available to a driver command
-    cs: CommandState,
+    marks: HashSet<(NodeId, Symbol)>,
+
+    /// Current crate after running commands, None if no commands have been run
+    /// yet
+    krate: Option<Crate>,
+
+    /// New nodes parsed by commands
+    parsed_nodes: ParsedNodes,
+
+    /// Counter for assigning fresh `NodeId`s to newly parsed nodes (among others).
+    ///
+    /// It's important that this counter is preserved across `transform_crate` calls.  Parsed
+    /// nodes' IDs stick around after the originating `transform_crate` ends: they remain in
+    /// `parsed_nodes`, and they can be referenced by `node_map` as "old" IDs.  Preserving this
+    /// counter ensures that every parsed node has a distinct `NodeId`.
+    node_id_counter: NodeIdCounter,
+
+    /// Commands run so far
+    commands: Vec<String>,
+
+    /// Generation number for TyCtxt references
+    tcx_gen: TyCtxtGeneration,
 }
 
-#[cfg_attr(feature = "profile", flame)]
-fn parse_crate(compiler: &interface::Compiler) -> Crate {
-    let mut krate = compiler.parse().unwrap().take();
-    remove_paren(&mut krate);
-    number_nodes(&mut krate);
-    krate
-}
+// #[cfg_attr(feature = "profile", flame)]
+// fn parse_crate(queries: &interface::Compiler) -> Crate {
+//     let mut krate = queries.parse().unwrap().take();
+//     remove_paren(&mut krate);
+//     number_nodes(&mut krate);
+//     krate
+// }
 
 #[cfg_attr(feature = "profile", flame)]
-fn parse_extras(compiler: &interface::Compiler) -> Vec<Comment> {
+fn parse_extras(source_map: &Lrc<SourceMap>, session: &Lrc<Session>) -> Vec<Comment> {
     let mut comments = vec![];
-    for file in compiler.source_map().files().iter() {
+    for file in source_map.files().iter() {
         if let Some(src) = &file.src {
-            let mut reader = src.as_bytes();
-
             let mut new_comments = gather_comments(
-                &compiler.session().parse_sess,
+                &session.parse_sess,
                 file.name.clone(),
-                &mut reader,
+                src.deref().clone(),
             );
 
             // gather_comments_and_literals starts positions at 0 each time, so
@@ -127,6 +172,30 @@ fn parse_extras(compiler: &interface::Compiler) -> Vec<Comment> {
 
 pub const FRESH_NODE_ID_START: u32 = 0x8000_0000;
 
+impl DiskState {
+    /// Initialization shared between new() and load_crate()
+    #[cfg_attr(feature = "profile", flame)]
+    fn new(krate: Crate, source_map: &Lrc<SourceMap>, session: &Lrc<Session>, node_map: &mut NodeMap) -> DiskState {
+        // (Re)initialize `node_map` and `marks`.
+        node_map.init(krate.list_node_ids().into_iter());
+        // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
+        node_map.init(iter::once(CRATE_NODE_ID));
+
+        // The newly loaded `krate` and reinitialized `node_map` reference none of the old
+        // `parsed_nodes`.  That means we can reset the ID counter without risk of ID collisions.
+        // let parsed_nodes = ParsedNodes::default();
+        // let node_id_counter = NodeIdCounter::new(FRESH_NODE_ID_START);
+
+        let comments = parse_extras(source_map, session);
+        let comment_map = collect_comments(&krate, &comments);
+
+        DiskState {
+            orig_krate: krate,
+            comment_map,
+        }
+    }
+}
+
 impl RefactorState {
     #[cfg_attr(feature = "profile", flame)]
     pub fn new(
@@ -136,44 +205,27 @@ impl RefactorState {
         marks: HashSet<(NodeId, Symbol)>,
     ) -> RefactorState {
         let compiler = driver::make_compiler(&config, file_io.clone());
-        let krate = parse_crate(&compiler);
-        let comments = parse_extras(&compiler);
-        let comment_map = collect_comments(&krate, &comments);
-        let orig_krate = krate.clone();
-        let (node_map, cs) = Self::init(krate, Some(marks));
         RefactorState {
             config,
             compiler,
             cmd_reg,
             file_io,
+            marks: marks,
 
-            orig_krate,
-            comment_map,
+            commands: vec![],
 
-            node_map,
+            disk_state: None,
 
-            cs,
+            node_map: NodeMap::new(),
+
+            krate: None,
+
+            parsed_nodes: ParsedNodes::default(),
+
+            node_id_counter: NodeIdCounter::new(FRESH_NODE_ID_START),
+
+            tcx_gen: Arc::new(AtomicUsize::new(1)),
         }
-    }
-
-    /// Initialization shared between new() and load_crate()
-    #[cfg_attr(feature = "profile", flame)]
-    fn init(krate: Crate, marks: Option<HashSet<(NodeId, Symbol)>>) -> (NodeMap, CommandState) {
-        // (Re)initialize `node_map` and `marks`.
-        let mut node_map = NodeMap::new();
-        node_map.init(krate.list_node_ids().into_iter());
-        // Special case: CRATE_NODE_ID doesn't actually appear anywhere in the AST.
-        node_map.init(iter::once(CRATE_NODE_ID));
-        let marks = marks.unwrap_or_else(|| HashSet::new());
-
-        // The newly loaded `krate` and reinitialized `node_map` reference none of the old
-        // `parsed_nodes`.  That means we can reset the ID counter without risk of ID collisions.
-        let parsed_nodes = ParsedNodes::default();
-        let node_id_counter = NodeIdCounter::new(FRESH_NODE_ID_START);
-
-        let cs = CommandState::new(krate, Phase::Phase1, marks, parsed_nodes, node_id_counter);
-
-        (node_map, cs)
     }
 
     pub fn session(&self) -> &Session {
@@ -184,19 +236,21 @@ impl RefactorState {
         self.compiler.source_map()
     }
 
+    pub fn drain_commands(&mut self) -> Vec<String> {
+        mem::replace(&mut self.commands, vec![])
+    }
+
     /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
     /// rewriting with the previous `orig_crate` any more.
     #[cfg_attr(feature = "profile", flame)]
     pub fn load_crate(&mut self) {
         self.compiler = driver::make_compiler(&self.config, self.file_io.clone());
-        let krate = parse_crate(&self.compiler);
-        let comments = parse_extras(&self.compiler);
-        let comment_map = collect_comments(&krate, &comments);
-        self.orig_krate = krate.clone();
-        self.comment_map = comment_map;
-        let (node_map, cs) = Self::init(krate, None);
-        self.node_map = node_map;
-        self.cs = cs;
+        self.disk_state = None;
+        self.krate = None;
+        self.marks.clear();
+        self.node_map = NodeMap::new();
+        self.parsed_nodes = ParsedNodes::default();
+        self.node_id_counter = NodeIdCounter::new(FRESH_NODE_ID_START);
     }
 
     /// Save the crate to disk, by writing out the new source text produced by rewriting.
@@ -206,8 +260,13 @@ impl RefactorState {
     /// matches the text on disk) as the basis for rewriting.
     #[cfg_attr(feature = "profile", flame)]
     pub fn save_crate(&mut self) {
-        let old = &self.orig_krate;
-        let new = &self.cs.krate();
+        if let None = self.krate {
+            return;
+        }
+
+        let disk_state = self.disk_state.as_ref().unwrap();
+        let old = &disk_state.orig_krate;
+        let new = self.krate.as_ref().unwrap();
         let node_id_map = self.node_map.clone().into_inner();
 
         self.file_io
@@ -215,13 +274,12 @@ impl RefactorState {
                 new,
                 self.session().source_map(),
                 &node_id_map,
-                &self.cs.marks(),
+                &self.marks,
             )
             .unwrap();
 
-        let parsed_nodes = self.cs.parsed_nodes.borrow();
-        let rw = rewrite::rewrite(self.session(), old, new, &self.comment_map, node_id_map, |map| {
-            map_ast_into(&*parsed_nodes, map);
+        let rw = rewrite::rewrite(self.session(), old, new, &disk_state.comment_map, node_id_map, |map| {
+            map_ast_into(&self.parsed_nodes, map);
         });
         // Note that `rewrite_files_with` does not read any files from disk - it uses the
         // `SourceMap` to get files' original source text.
@@ -233,144 +291,187 @@ impl RefactorState {
     where
         F: FnOnce(&CommandState, &RefactorCtxt) -> R,
     {
-        // let mut krate = mem::replace(&mut self.krate, dummy_crate());
-        // let marks = mem::replace(&mut self.marks, HashSet::new());
-
-        let unexpanded = self.cs.krate().clone();
-
-        self.cs.reset();
-
         self.rebuild_session();
 
-        // Immediately fix up the attr spans, since during expansion, any
-        // `derive` attrs will be removed.
-        span_fix::fix_attr_spans(self.cs.krate.get_mut());
+        let disk_state = &mut self.disk_state;
+        let marks = &mut self.marks;
+        let parsed_nodes = &mut self.parsed_nodes;
+        let source_map = self.compiler.source_map();
+        let session = self.compiler.session();
+        let node_map = &mut self.node_map;
+        let tcx_gen = &self.tcx_gen;
+        let krate = &mut self.krate;
+        let node_id_counter = &mut self.node_id_counter;
 
-        // Replace current parse query results
-        profile_start!("Replace compiler crate");
-        let parse = self.compiler.parse()?;
-        let _ = parse.take();
-        parse.give(self.cs.krate().clone());
-        profile_end!("Replace compiler crate");
+        self.compiler.enter(|queries| {
+            // Replace current parse query results
+            profile_start!("Replace compiler crate");
+            let parse = queries.parse()?;
 
-        match phase {
-            Phase::Phase1 => {}
+            // Initialize initial parsed crate if not previously parsed
+            let disk_state = disk_state.get_or_insert_with(|| {
+                let mut krate = parse.peek().clone();
+                remove_paren(&mut krate);
+                number_nodes(&mut krate);
 
-            Phase::Phase2 | Phase::Phase3 => {
-                profile_start!("Expand crate");
-                self.cs
-                    .krate
-                    .replace(self.compiler.expansion()?.peek().0.clone());
-                profile_end!("Expand crate");
-                remove_paren(self.cs.krate.get_mut());
-            }
-        }
+                DiskState::new(
+                    krate,
+                    source_map,
+                    session,
+                    node_map,
+                )
+            });
 
-        self.cs.phase = phase;
+            // The newly loaded `krate` and reinitialized `node_map` reference
+            // none of the old `parsed_nodes`.  That means we can reset the ID
+            // counter without risk of ID collisions.
+            let mut cs = CommandState::new(
+                krate.take().unwrap_or_else(|| disk_state.orig_krate.clone()),
+                Phase::Phase1,
+                marks.clone(),
+                ParsedNodes::default(),
+                node_id_counter.clone(),
+            );
 
-        span_fix::fix_format(self.cs.krate.get_mut());
-        let expanded = self.cs.krate().clone();
-        let collapse_info = match phase {
-            Phase::Phase1 => None,
-            Phase::Phase2 | Phase::Phase3 => {
-                Some(CollapseInfo::collect(&unexpanded, &expanded, &mut self.node_map, &self.cs))
-            }
-        };
-
-        // Run the transform
-        let r = match phase {
-            Phase::Phase1 => {
-                let cx =
-                    RefactorCtxt::new_phase_1(&self.compiler.session(), &self.compiler.cstore());
-
-                f(&self.cs, &cx)
-            }
-
-            Phase::Phase2 => {
-                profile_start!("Lower to HIR");
-                let hir = self.compiler.lower_to_hir()?.take();
-                let (ref hir_forest, ref expansion) = hir;
-                let hir_forest = hir_forest.borrow();
-                let defs = expansion.defs.borrow();
-                let map = hir::map::map_crate(
-                    self.compiler.session(),
-                    &*self.compiler.cstore().clone(),
-                    &hir_forest,
-                    &defs,
-                );
-                profile_end!("Lower to HIR");
-
-                let cx = RefactorCtxt::new_phase_2(
-                    self.compiler.session(),
-                    self.compiler.cstore(),
-                    &map,
-                );
-
-                f(&self.cs, &cx)
+            let unexpanded = cs.krate().clone();
+            if phase != Phase::Phase1 {
+                // We need all the `NodeId`s for rewriting,
+                // so keep them for Phase 1 but let the compiler
+                // replace them for the other phases
+                reset_node_ids(&mut *cs.krate.borrow_mut());
             }
 
-            Phase::Phase3 => {
-                profile_start!("Compiler Phase 3");
-                let r = self.compiler.global_ctxt()?.take().enter(|tcx| {
-                    let _result = tcx.analysis(LOCAL_CRATE);
-                    let cx = RefactorCtxt::new_phase_3(
-                        self.compiler.session(),
-                        self.compiler.cstore(),
-                        tcx.hir(),
-                        tcx,
+            // Immediately fix up the attr spans, since during expansion, any
+            // `derive` attrs will be removed.
+            span_fix::fix_attr_spans(&mut *cs.krate.borrow_mut());
+
+            *parse.peek_mut() = cs.krate().clone();
+            profile_end!("Replace compiler crate");
+
+            let mut max_crate_node_id = None;
+            match phase {
+                Phase::Phase1 => {}
+
+                Phase::Phase2 | Phase::Phase3 => {
+                    profile_start!("Expand crate");
+                    let expansion = queries.expansion()?.peek();
+                    cs
+                        .krate
+                        .replace(expansion.0.clone());
+                    max_crate_node_id = Some(
+                        expansion.1.borrow().borrow_mut().access(|resolver| resolver.next_node_id())
                     );
-                    profile_end!("Compiler Phase 3");
-
-                    f(&self.cs, &cx)
-                });
-
-                // Ensure that we've dropped any copies of the session Lrc
-                let _ = self.compiler.lower_to_hir()?.take();
-                let _ = self.compiler.codegen_channel()?.take();
-
-                r
+                    profile_end!("Expand crate");
+                    remove_paren(cs.krate.get_mut());
+                }
             }
-        };
 
-        self.node_map
-            .init(self.cs.new_parsed_node_ids.get_mut().drain(..));
+            cs.phase = phase;
 
-        if let Some(collapse_info) = collapse_info {
-            collapse_info.collapse(&mut self.node_map, &self.cs);
-        }
+            span_fix::fix_format(cs.krate.get_mut());
+            let expanded = cs.krate().clone();
+            let collapse_info = match phase {
+                Phase::Phase1 => None,
+                Phase::Phase2 | Phase::Phase3 => {
+                    Some(CollapseInfo::collect(&unexpanded, &expanded, node_map, &cs))
+                }
+            };
 
-        for (node, comment) in self.cs.new_comments.get_mut().drain(..) {
-            if let Some(node) = self.node_map.get(&node) {
-                self.comment_map.insert(*node, comment);
-            } else {
-                warn!("Could not create comment: {:?}", comment.lines);
+            // Run the transform
+            let r = match phase {
+                Phase::Phase1 => {
+                    let cx =
+                        RefactorCtxt::new_phase_1(session);
+
+                    f(&cs, &cx)
+                }
+
+                Phase::Phase2 => {
+                    profile_start!("Lower to HIR");
+                    let hir = queries.lower_to_hir()?.take();
+                    let (ref hir_forest, ref resolver) = hir;
+                    let resolver = resolver.steal();
+                    let map = hir::map::map_crate(
+                        session,
+                        &*resolver.cstore,
+                        &hir_forest,
+                        resolver.definitions,
+                    );
+                    profile_end!("Lower to HIR");
+
+                    let cx = RefactorCtxt::new_phase_2(
+                        session,
+                        max_crate_node_id.unwrap(),
+                        &map,
+                    );
+
+                    f(&cs, &cx)
+                }
+
+                Phase::Phase3 => {
+                    profile_start!("Compiler Phase 3");
+                    let r = queries.global_ctxt()?.take().enter(|tcx| {
+                        let _result = tcx.analysis(LOCAL_CRATE);
+                        let cx = RefactorCtxt::new_phase_3(
+                            session,
+                            max_crate_node_id.unwrap(),
+                            tcx.hir(),
+                            GenerationalTyCtxt(tcx, tcx_gen.clone()),
+                        );
+                        profile_end!("Compiler Phase 3");
+
+                        f(&cs, &cx)
+                    });
+
+                    // Increment the `TyCtxt` generation number, so all the
+                    // existing `LuaTy` values are invalidated
+                    tcx_gen.fetch_add(1, Ordering::Relaxed);
+
+                    // Ensure that we've dropped any copies of the session Lrc
+                    let _ = queries.lower_to_hir()?.take();
+
+                    r
+                }
+            };
+
+            node_map.init(cs.new_parsed_node_ids.get_mut().drain(..));
+
+            if let Some(collapse_info) = collapse_info {
+                collapse_info.collapse(node_map, &cs);
             }
-        }
 
-        Ok(r)
+            for (node, comment) in cs.new_comments.get_mut().drain(..) {
+                if let Some(node) = node_map.get(&node) {
+                    disk_state.comment_map.insert(*node, comment);
+                } else {
+                    warn!("Could not create comment: {:?}", comment.lines);
+                }
+            }
+
+            *marks = cs.marks.into_inner();
+            parsed_nodes.append(cs.parsed_nodes.into_inner());
+            *krate = Some(cs.krate.into_inner());
+            *node_id_counter = cs.node_id_counter;
+
+            Ok(r)
+        })
     }
 
     #[cfg_attr(feature = "profile", flame)]
     fn rebuild_session(&mut self) {
-        // Ensure we've dropped the resolver if we're in phase 2 or 3 since the
-        // resolver keeps a copy of the session Rc
-        match self.cs.phase {
-            Phase::Phase1 => {}
-            Phase::Phase2 | Phase::Phase3 => {
-                if let Ok(expansion) = self.compiler.expansion() {
-                    if let Ok(resolver) = Lrc::try_unwrap(expansion.take().1) {
-                        resolver.map(|x| x.into_inner().complete());
-                    } else {
-                        panic!("Could not drop resolver");
-                    }
-                }
-            }
-        }
+        // // Ensure we've take the expansion result if we're in phase 2 or 3 since
+        // // we need later queries to rebuild it.
+        // match self.cs.phase {
+        //     Phase::Phase1 => {}
+        //     Phase::Phase2 | Phase::Phase3 => {
+        //         let _ = self.compiler.expansion().unwrap().take();
+        //     }
+        // }
 
         let compiler: &mut driver::Compiler = unsafe { mem::transmute(&mut self.compiler) };
         let old_session = &compiler.sess;
 
-        let descriptions = util::diagnostics_registry();
+        let descriptions = rustc_driver::diagnostics_registry();
         let mut new_sess = session::build_session_with_source_map(
             old_session.opts.clone(),
             old_session.local_crate_source_file.clone(),
@@ -380,18 +481,16 @@ impl RefactorState {
             Default::default(),
         );
         let new_codegen_backend = util::get_codegen_backend(&new_sess);
-        let new_cstore = CStore::new(new_codegen_backend.metadata_loader());
 
-        rustc_lint::register_builtins(&mut new_sess.lint_store.borrow_mut(), Some(&new_sess));
-        if new_sess.unstable_options() {
-            rustc_lint::register_internals(&mut new_sess.lint_store.borrow_mut(), Some(&new_sess));
-        }
+        // rustc_lint::register_builtins(&mut new_sess.lint_store.borrow_mut(), Some(&new_sess));
+        // if new_sess.unstable_options() {
+        //     rustc_lint::register_internals(&mut new_sess.lint_store.borrow_mut(), Some(&new_sess));
+        // }
 
         new_sess.parse_sess.config = old_session.parse_sess.config.clone();
 
         *Lrc::get_mut(&mut compiler.sess).unwrap() = new_sess;
         *Lrc::get_mut(&mut compiler.codegen_backend).unwrap() = new_codegen_backend;
-        *Lrc::get_mut(&mut compiler.cstore).unwrap() = new_cstore;
     }
 
     #[cfg_attr(feature = "profile", flame)]
@@ -420,7 +519,7 @@ impl RefactorState {
     }
 
     pub fn clear_marks(&mut self) {
-        self.cs.marks.get_mut().clear()
+        self.marks.clear();
     }
 
     /// Invoke a registered command with the given command name and arguments.
@@ -431,6 +530,10 @@ impl RefactorState {
             .map(|s| s.as_ref().to_owned())
             .collect::<Vec<_>>();
         info!("running command: {} {:?}", cmd_name, args);
+        self.commands.push(args.iter().fold(cmd_name.to_string(), |mut s, arg| {
+            s.push_str(arg);
+            s
+        }));
 
         let mut cmd = self.cmd_reg.get_command(cmd_name, &args)?;
         profile_start!(format!("Command {}", cmd_name));
@@ -439,12 +542,12 @@ impl RefactorState {
         Ok(())
     }
 
-    pub fn marks(&self) -> cell::Ref<HashSet<(NodeId, Symbol)>> {
-        self.cs.marks.borrow()
+    pub fn marks(&self) -> &HashSet<(NodeId, Symbol)> {
+        &self.marks
     }
 
-    pub fn marks_mut(&mut self) -> cell::RefMut<HashSet<(NodeId, Symbol)>> {
-        self.cs.marks.borrow_mut()
+    pub fn marks_mut(&mut self) -> &mut HashSet<(NodeId, Symbol)> {
+        &mut self.marks
     }
 }
 
@@ -477,9 +580,6 @@ pub struct CommandState {
     /// Current marks.  The `NodeId`s here refer to nodes in `krate`.
     marks: RefCell<HashSet<(NodeId, Symbol)>>,
 
-    // krate: RefCell<Crate>,
-    // marks: RefCell<HashSet<(NodeId, Symbol)>>,
-    // parsed_nodes: RefCell<ParsedNodes>,
     new_parsed_node_ids: RefCell<Vec<NodeId>>,
 
     new_comments: RefCell<Vec<(NodeId, Comment)>>,
@@ -509,16 +609,6 @@ impl CommandState {
 
             node_id_counter,
         }
-    }
-
-    /// Reset the command state in preparation for a new transform iteration
-    fn reset(&mut self) {
-        reset_node_ids(self.krate.get_mut());
-
-        self.new_parsed_node_ids.get_mut().clear();
-        self.new_comments.get_mut().clear();
-        self.krate_changed.set(false);
-        self.marks_changed.set(false);
     }
 
     pub fn krate(&self) -> cell::Ref<Crate> {
@@ -720,9 +810,57 @@ where
 /// part of the operation won't actually change the original source files, and the
 /// "read" part will revert the crate to its original form.
 fn register_commit(reg: &mut Registry) {
-    reg.register("commit", |_args| {
-        Box::new(FuncCommand(|rs: &mut RefactorState| {
+    reg.register("commit", |args| {
+        let git_commit = match args.get(0) {
+            Some(arg) if arg == "git" => true,
+            _ => false,
+        };
+        Box::new(FuncCommand(move |rs: &mut RefactorState| {
+            let clean = if git_commit {
+                let result = process::Command::new("git")
+                    .arg("status")
+                    .arg("--porcelain")
+                    .arg("--ignore-submodules=dirty")
+                    .output()
+                    .expect("Could not get git status");
+                result.stdout.is_empty() && result.stderr.is_empty()
+            } else {
+                false
+            };
+
             rs.save_crate();
+
+            let mut commands = rs.drain_commands();
+            let _ = commands.pop(); // remove commit command
+            if git_commit && !commands.is_empty() {
+                let commit_msg = format!(
+                    "refactor {} {}",
+                    rs.config.input_path.as_ref().map_or(String::new(), |s| s.display().to_string()),
+                    commands.join("\n"),
+                );
+                if !clean {
+                    warn!("Working tree is dirty, not committing");
+                } else {
+                    let mut git = process::Command::new("git")
+                        .arg("commit")
+                        .arg("--all")
+                        .arg("--file=-") // read commit message from stdin
+                        .stdin(process::Stdio::piped())
+                        .spawn()
+                        .expect("Could not execute git commit");
+                    git
+                        .stdin
+                        .as_mut()
+                        .expect("failed to open stdin")
+                        .write_all(commit_msg.as_bytes())
+                        .expect("could not write commit message");
+                    let status = git.wait().expect("Git did not terminate successfully");
+                    if !status.success() {
+                        warn!("Git commit was unsuccessful");
+                    }
+                }
+            }
+
             rs.load_crate();
             rs.clear_marks();
         }))
@@ -736,7 +874,16 @@ fn register_commit(reg: &mut Registry) {
 
     reg.register("dump_crate", |_args| {
         Box::new(FuncCommand(|rs: &mut RefactorState| {
-            eprintln!("{:#?}", rs.cs.krate());
+            rs.transform_crate(Phase::Phase2, |st, _cx| {
+                eprintln!("{:#?}", st.krate());
+            }).unwrap();
+        }))
+    });
+
+    reg.register("noop", |_args| {
+        Box::new(FuncCommand(|rs: &mut RefactorState| {
+            rs.transform_crate(Phase::Phase2, |_st, _cx| {
+            }).unwrap();
         }))
     });
 }

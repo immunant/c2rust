@@ -22,6 +22,7 @@ use syntax::ast::Mac;
 use syntax::ast::{Expr, ExprKind, Ident, ImplItem, Item, Label, Pat, Path, Stmt, Ty};
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
+use smallvec::smallvec;
 
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{AstNode, MutVisit};
@@ -43,11 +44,11 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
         if let Some(l) = ol {
             let ps = l.ident.pattern_symbol();
             if let Some(i) = ps.and_then(|sym| self.bindings.get::<_, Ident>(sym)) {
-                l.ident = i.clone();
+                l.ident = *i;
             } else {
                 let i = ps.and_then(|sym| self.bindings.get_opt::<_, Ident>(sym));
                 match i {
-                    Some(Some(i)) => l.ident = i.clone(),
+                    Some(Some(i)) => l.ident = *i,
                     Some(None) => {
                         *ol = None;
                         return;
@@ -70,7 +71,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
 
         if let Some(sym) = i.pattern_symbol() {
             if let Some(binding) = self.bindings.get::<_, Ident>(sym) {
-                *i = binding.clone();
+                *i = *binding;
             } else if let Some(ty) = self.bindings.get::<_, P<Ty>>(sym) {
                 panic!(
                     "binding {:?} (of type {:?}) has wrong type for hole",
@@ -104,7 +105,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
 
         // Some Expr nodes contain an optional label, which we need to handle here,
         // since `visit_label` takes the inner `Label` instead of `Option<Label>`
-        match e.node {
+        match e.kind {
             ExprKind::While(_, _, ref mut label) |
             ExprKind::ForLoop(_, _, _, ref mut label) |
             ExprKind::Loop(_, ref mut label) |

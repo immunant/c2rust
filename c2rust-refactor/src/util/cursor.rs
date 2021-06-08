@@ -130,7 +130,7 @@ impl<T> Cursor<T> {
         self.next_mark += 1;
 
         self.left_marks.push(MarkData {
-            name: name,
+            name,
             depth: 0,
         });
         Mark(name)
@@ -149,7 +149,7 @@ impl<T> Cursor<T> {
 
     /// Checks if the cursor is positioned at the end of the sequence.
     pub fn eof(&self) -> bool {
-        self.right.len() == 0
+        self.right.is_empty()
     }
 
     /// Insert an element at the current position.  Afterward, the cursor will point after the

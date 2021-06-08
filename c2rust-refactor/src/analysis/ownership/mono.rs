@@ -1,4 +1,4 @@
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 
 use super::constraint::{ConstraintSet, Perm};
 use super::context::{Ctxt, FuncSumm};
@@ -88,7 +88,7 @@ fn for_each_output_assignment<F>(
                 return;
             }
 
-            let next = Var(cur.0 + 1);
+            let next = cur.next();
             if !self.is_out[cur] {
                 self.walk_vars(next);
                 return;
@@ -116,8 +116,8 @@ fn for_each_output_assignment<F>(
 
     State {
         max: Var(is_out.len() as u32),
-        is_out: is_out,
-        is_bounded: is_bounded,
+        is_out,
+        is_bounded,
         cset: &summ.sig_cset,
         assignment: IndexVec::from_elem_n(None, summ.num_sig_vars as usize),
         callback: &mut callback,
@@ -142,7 +142,7 @@ fn find_input_assignment(
                 return true;
             }
 
-            let next = Var(cur.0 + 1);
+            let next = cur.next();
             if let Some(p) = self.out_assign[cur] {
                 let ok = self.try_assign(cur, p);
                 if !ok {
@@ -167,7 +167,7 @@ fn find_input_assignment(
 
         fn try_assign(&mut self, cur: Var, p: ConcretePerm) -> bool {
             self.assignment[cur] = p;
-            let assign_ok = self.cset.check_partial_assignment(|p| match p {
+            self.cset.check_partial_assignment(|p| match p {
                 Perm::SigVar(v) => {
                     if let Some(c) = self.out_assign[v] {
                         Some(c)
@@ -178,14 +178,13 @@ fn find_input_assignment(
                     }
                 }
                 _ => None,
-            });
-            assign_ok
+            })
         }
     }
 
     let mut s = State {
         max: Var(out_assign.len() as u32),
-        out_assign: out_assign,
+        out_assign,
         cset: &summ.sig_cset,
         assignment: IndexVec::from_elem_n(ConcretePerm::Read, summ.num_sig_vars as usize),
     };
@@ -198,7 +197,78 @@ fn find_input_assignment(
     }
 }
 
-pub fn get_mono_sigs(summ: &FuncSumm) -> Vec<IndexVec<Var, ConcretePerm>> {
+/// Determines permissions to be assigned to local, non param, variables.
+fn find_local_assignment(summ: &FuncSumm) -> Option<IndexVec<Var, ConcretePerm>> {
+    struct State<'lty> {
+        max: Var,
+        cset: &'lty ConstraintSet<'lty>,
+        assignment: IndexVec<Var, ConcretePerm>,
+    }
+
+    impl<'lty, 'tcx> State<'lty> {
+        fn walk_vars(&mut self, cur: Var) -> bool {
+            if cur >= self.max {
+                return true;
+            }
+
+            let next = cur.next();
+
+            for &p in &[ConcretePerm::Read, ConcretePerm::Write, ConcretePerm::Move] {
+                let ok = self.try_assign(cur, p);
+                if !ok {
+                    continue;
+                }
+
+                if self.walk_vars(next) {
+                    return true;
+                }
+            }
+
+            false
+        }
+
+        fn try_assign(&mut self, cur: Var, p: ConcretePerm) -> bool {
+            self.assignment[cur] = p;
+            self.cset.check_partial_assignment(|p| match p {
+                Perm::LocalVar(v) => {
+                    if v <= cur {
+                        Some(self.assignment[v])
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+        }
+    }
+
+    // summ.locals doesn't include unspanned vars, so by finding the largest spanned var
+    // we often save some space at the end of the IndexVec
+    let max_spanned_local_var = summ.locals
+        .values()
+        .filter_map(|ty| match ty.label {
+            Some(PermVar::Local(l)) => Some(l),
+            _ => None
+        })
+        .max()
+        .unwrap_or(Var(0));
+
+    let mut s = State {
+        max: max_spanned_local_var,
+        cset: &summ.sig_cset,
+        assignment: IndexVec::from_elem_n(ConcretePerm::Read, max_spanned_local_var.0 as usize + 1),
+    };
+    let ok = s.walk_vars(Var(0));
+
+    if ok {
+        Some(s.assignment)
+    } else {
+        None
+    }
+}
+
+/// Determines permissions to be assigned to param, return, and local variables.
+pub fn get_mono_sigs(summ: &FuncSumm) -> (Vec<IndexVec<Var, ConcretePerm>>, IndexVec<Var, ConcretePerm>) {
     let is_out = infer_outputs(&summ);
     let is_bounded = upper_bounded_vars(&summ);
 
@@ -210,21 +280,23 @@ pub fn get_mono_sigs(summ: &FuncSumm) -> Vec<IndexVec<Var, ConcretePerm>> {
         }
     });
 
-    assigns
+    let local_assigns = find_local_assignment(summ).unwrap();
+
+    (assigns, local_assigns)
 }
 
 pub fn compute_all_mono_sigs(cx: &mut Ctxt) {
     let ids = cx.variant_ids().collect::<Vec<_>>();
     for &id in &ids {
-        let assigns = {
-            let (func, _var) = cx.variant_summ(id);
-            if func.monos_provided {
-                // No work for us to do in this pass.
-                continue;
-            }
-            get_mono_sigs(func)
-        };
-        assert!(assigns.len() > 0, "found no mono sigs for {:?}", id);
+        let (func, _var) = cx.variant_summ(id);
+        if func.monos_provided {
+            // No work for us to do in this pass.
+            continue;
+        }
+        let (assigns, local_assigns) = get_mono_sigs(func);
+        assert!(!assigns.is_empty(), "found no mono sigs for {:?}", id);
+
+        func.local_assign = local_assigns;
 
         for assign in assigns {
             let mono = cx.add_mono(id).2;

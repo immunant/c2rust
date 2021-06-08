@@ -160,9 +160,9 @@ impl InteractState {
                             start_col: lo.col.0 as u32,
                             end_line: hi.line as u32,
                             end_col: hi.col.0 as u32,
-                            labels: labels,
+                            labels,
                         };
-                        Mark { info: info }
+                        Mark { info }
                     })
                     .expect("Failed to run compiler");
                 self.to_client.send(msg).unwrap();
@@ -173,7 +173,7 @@ impl InteractState {
                     .state
                     .transform_crate(driver::Phase::Phase2, |st, cx| {
                         let infos = collect_mark_infos(&st.marks(), &st.krate(), &cx);
-                        MarkList { infos: infos }
+                        MarkList { infos }
                     })
                     .expect("Failed to run compiler");
                 self.to_client.send(msg).unwrap();
@@ -257,7 +257,7 @@ pub fn interact_command(args: &[String], config: Config, registry: command::Regi
     let (to_worker, worker_recv) = mpsc::sync_channel(1);
 
     let backend_to_worker = WrapSender::new(to_worker.clone(), ToWorker::InputMessage);
-    let to_client = if args.len() > 0 && &args[0] == "vim8" {
+    let to_client = if !args.is_empty() && &args[0] == "vim8" {
         vim8_backend::init(backend_to_worker)
     } else {
         plain_backend::init(backend_to_worker)
@@ -383,7 +383,7 @@ impl<'ast> Visitor<'ast> for CollectSpanVisitor {
 
 fn collect_spans<T: Visit>(target: &T, ids: HashSet<NodeId>) -> HashMap<NodeId, Span> {
     let mut v = CollectSpanVisitor {
-        ids: ids,
+        ids,
         spans: HashMap::new(),
     };
     target.visit(&mut v);

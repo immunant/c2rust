@@ -25,6 +25,11 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/Version.h"
 #include "clang/Frontend/CompilerInstance.h"
+#if CLANG_VERSION_MAJOR < 10
+#include "clang/Frontend/LangStandard.h"
+#else
+#include "clang/Basic/LangStandard.h"
+#endif // CLANG_VERSION_MAJOR
 #include "clang/Tooling/Tooling.h"
 
 #include "AstExporter.hpp"
@@ -220,11 +225,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
         VisitQualType(t);
     }
 
-    void VisitEnumType(const EnumType *T) {
-        encodeType(T, TagEnumType, [T](CborEncoder *local) {
-            cbor_encode_uint(local, uintptr_t(T->getDecl()->getDefinition()));
-        });
-    }
+    void VisitEnumType(const EnumType *T);
 
     void VisitConstantArrayType(const ConstantArrayType *T) {
         auto t = T->getElementType();
@@ -441,9 +442,6 @@ class TranslateASTVisitor final
 
     struct MacroExpansionInfo {
         StringRef Name;
-
-        /// Expressions that we have seen this macro expand to
-        SmallPtrSet<Expr*, 10> Expressions;
     };
 
     ASTContext *Context;
@@ -460,6 +458,7 @@ class TranslateASTVisitor final
     // SourceLocation isn't hashable.
     std::unordered_set<unsigned> macroCallSites;
     SmallVector<MacroInfo*, 1> curMacroExpansionStack;
+    StringRef curMacroExpansionSource;
 
     // Returns true when a new entry is added to exportedTags
     bool markForExport(void *ptr, ASTEntryTag tag) {
@@ -469,6 +468,24 @@ class TranslateASTVisitor final
     bool isExported(void *ptr, ASTEntryTag tag) {
         auto search = exportedTags.find(std::make_pair(ptr, tag));
         return search != std::end(exportedTags);
+    }
+
+    bool evaluateConstantInt(Expr *E, APSInt &constant) {
+        bool hasValue = E->isIntegerConstantExpr(constant, *Context);
+        if (!hasValue) {
+#if CLANG_VERSION_MAJOR < 8
+            APSInt eval_result;
+#else
+            Expr::EvalResult eval_result;
+#endif // CLANG_VERSION_MAJOR
+            hasValue = E->EvaluateAsInt(eval_result, *Context);
+#if CLANG_VERSION_MAJOR < 8
+            constant = eval_result;
+#else
+            constant = eval_result.Val.getInt();
+#endif // CLANG_VERSION_MAJOR
+        }
+        return hasValue;
     }
 
     // Template required because Decl and Stmt don't share a common base class
@@ -525,7 +542,14 @@ class TranslateASTVisitor final
         }
         cbor_encoder_close_container(&local, &childEnc);
 
-        // 11.. - Extra entries
+        // 11 - Macro expansion source string, if applicable.
+        if (!curMacroExpansionSource.empty()) {
+            cbor_encode_string(&local, curMacroExpansionSource.str());
+        } else {
+            cbor_encode_null(&local);
+        }
+
+        // 12.. - Extra entries
         extra(&local);
 
         cbor_encoder_close_container(encoder, &local);
@@ -633,7 +657,6 @@ class TranslateASTVisitor final
         else if (info.Name != name)
             return false;
 
-        info.Expressions.insert(E);
         typeEncoder.VisitQualType(E->getType());
         return true;
     }
@@ -703,9 +726,7 @@ class TranslateASTVisitor final
             else
                 tag = TagMacroObjectDef;
 
-            std::vector<void *> childIds(Info.Expressions.begin(),
-                                         Info.Expressions.end());
-
+            std::vector<void *> childIds;
             auto range = SourceRange(Mac->getDefinitionLoc(), Mac->getDefinitionEndLoc());
             encode_entry_raw(Mac, tag, range, QualType(), false,
                              false, false, childIds, [Name](CborEncoder *local) {
@@ -836,6 +857,15 @@ class TranslateASTVisitor final
         abort();
     }
 
+    bool VisitStaticAssertDecl(StaticAssertDecl *SAD) {
+        std::vector<void *> childIds = {SAD->getAssertExpr()};
+        auto msg = SAD->getMessage();
+        if (msg != nullptr)
+            childIds.push_back(msg);
+        encode_entry(SAD, TagStaticAssertDecl, childIds, QualType()); // 4th argument unused
+        return true;
+    }
+
     bool VisitLabelStmt(LabelStmt *LS) {
 
         std::vector<void *> childIds = {LS->getSubStmt()};
@@ -912,27 +942,16 @@ class TranslateASTVisitor final
         auto expr = CS->getLHS();
 
         APSInt value;
-        if (!expr->isIntegerConstantExpr(value, *Context)) {
-#if CLANG_VERSION_MAJOR < 8
-            APSInt eval_result;
-#else
-            Expr::EvalResult eval_result;
-#endif // CLANG_VERSION_MAJOR
-            if (!expr->EvaluateAsInt(eval_result, *Context)) {
-                std::string msg =
-                    "Expression in case statement is not an integer. Aborting.";
-                printError(msg, CS);
-                abort();
-            }
-#if CLANG_VERSION_MAJOR < 8
-            value = eval_result;
-#else
-            value = eval_result.Val.getInt();
-#endif // CLANG_VERSION_MAJOR
+        if (!evaluateConstantInt(expr, value)) {
+            std::string msg =
+                "Expression in case statement is not an integer. Aborting.";
+            printError(msg, CS);
+            abort();
         }
 
         std::vector<void *> childIds{expr, CS->getSubStmt()};
         encode_entry(CS, TagCaseStmt, childIds, [value](CborEncoder *extra) {
+            cbor_encode_boolean(extra, value.isSigned());
             if (value.isSigned()) {
                 cbor_encode_int(extra, value.getSExtValue());
             } else {
@@ -979,7 +998,7 @@ class TranslateASTVisitor final
             std::vector<std::string> outputs, inputs, clobbers;
             std::vector<TargetInfo::ConstraintInfo> output_infos;
             for (unsigned i = 0, num = E->getNumOutputs(); i < num; ++i) {
-                auto constraint = E->getOutputConstraint(i).str();
+                auto constraint = E->getOutputConstraint(i);
                 std::string convertedConstraint;
                 TargetInfo::ConstraintInfo info(constraint, E->getOutputName(i));
                 this->Context->getTargetInfo().validateOutputConstraint(info);
@@ -995,11 +1014,7 @@ class TranslateASTVisitor final
                     // into); clang does this conversion, but rustc doesn't
                     convertedConstraint += '*';
                 }
-                // FIXME: we need the equivalent of clang's `SimplifyConstraint`
-                auto s = constraint.c_str();
-                while (*s == '=' || *s == '+' || *s == '&')
-                    s++;
-                convertedConstraint += this->Context->getTargetInfo().convertConstraint(s);
+                convertedConstraint += SimplifyConstraint(constraint.str());
                 outputs.push_back(convertedConstraint);
                 output_infos.push_back(std::move(info));
             }
@@ -1013,14 +1028,14 @@ class TranslateASTVisitor final
                     // See above
                     convertedConstraint += '*';
                 }
-                // FIXME: we need the equivalent of clang's `SimplifyConstraint`
-                auto s = constraint.str().c_str();
-                convertedConstraint += this->Context->getTargetInfo().convertConstraint(s);
+                convertedConstraint += SimplifyConstraint(constraint.str());
                 inputs.emplace_back(convertedConstraint);
             }
             for (unsigned i = 0, num = E->getNumClobbers(); i < num; ++i) {
-                auto constraint = E->getClobber(i);
-                clobbers.emplace_back(constraint);
+                auto clobber = E->getClobber(i);
+                if (clobber != "memory" && clobber != "cc")
+                    clobber = Context->getTargetInfo().getNormalizedGCCRegisterName(clobber);
+                clobbers.emplace_back(clobber);
             }
             cbor_encode_string_array(local, ArrayRef<std::string>(inputs));
             cbor_encode_string_array(local, ArrayRef<std::string>(outputs));
@@ -1029,17 +1044,47 @@ class TranslateASTVisitor final
         return true;
     }
 
+    std::string SimplifyConstraint(const std::string &constraint) {
+        std::string res;
+        const char *p = constraint.c_str();
+        while (*p) {
+            switch (*p) {
+            case '=':
+            case '+':
+            case '*':
+                break;
+
+            case 'g':
+                res += "imr";
+                break;
+
+            case ',':
+                res += '|';
+                break;
+
+            // TODO: handle more cases
+
+            default:
+                res += this->Context->getTargetInfo().convertConstraint(p);
+                break;
+            }
+            p++;
+        }
+        return res;
+    }
+
     //
     // Expressions
     //
 
     bool VisitExpr(Expr *E) {
         curMacroExpansionStack.clear();
+        curMacroExpansionSource = StringRef();
 
         // We only translate constant macro objects to Rust consts, so this
         // expression must be constant.
-        if (!E->isConstantInitializer(*Context, false))
-            return true;
+        // if (!E->isConstantInitializer(*Context, false))
+        //     return true;
 
         auto &Mgr = Context->getSourceManager();
         auto Range = E->getSourceRange();
@@ -1055,6 +1100,20 @@ class TranslateASTVisitor final
         if (!Begin.isMacroID() || !End.isMacroID() ||
             Mgr.getImmediateMacroCallerLoc(Begin) != Mgr.getImmediateMacroCallerLoc(End))
             return true;
+
+        if (Begin.isMacroID()) {
+#if CLANG_VERSION_MAJOR < 7
+            // getImmediateExpansionRange in LLVM<7 returns a
+            // std::pair<SourceLocation, SourceLocation>, which we need to
+            // translate to a CharSourceRange for Lexer::getSourceText
+            auto LocPair = Mgr.getImmediateExpansionRange(Begin);
+            auto ExpansionRange = CharSourceRange::getCharRange(LocPair.first, LocPair.second);
+#else // CLANG_VERSION_MAJOR >= 7
+            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
+#endif
+            curMacroExpansionSource = 
+                Lexer::getSourceText(ExpansionRange, Mgr, Context->getLangOpts());
+        }
 
         // The macro stack unwound by getImmediateMacroCallerLoc and friends
         // starts with literal replacement and works it's way to the macro call
@@ -1086,7 +1145,7 @@ class TranslateASTVisitor final
             Begin = ExpansionBegin;
             End = ExpansionEnd;
 
-            if (mac->isObjectLike() && VisitMacro(name, Begin, mac, E)) {
+            if (VisitMacro(name, Begin, mac, E)) {
                 curMacroExpansionStack.push_back(mac);
             }
         }
@@ -1550,13 +1609,43 @@ class TranslateASTVisitor final
     bool VisitConstantExpr(ConstantExpr *E) {
         auto children = E->children();
         std::vector<void *> childIds(std::begin(children), std::end(children));
-        encode_entry(E, TagConstantExpr, childIds);
+
+        APSInt value;
+        bool hasValue = evaluateConstantInt(E, value);
+
+        encode_entry(E, TagConstantExpr, childIds,
+                     [hasValue, value](CborEncoder *extra) {
+                         cbor_encode_boolean(extra, hasValue);
+                         if (hasValue) {
+                             cbor_encode_boolean(extra, value.isSigned());
+                             if (value.isSigned()) {
+                                 cbor_encode_int(extra, value.getSExtValue());
+                             } else {
+                                 cbor_encode_uint(extra, value.getZExtValue());
+                             }
+                         }
+                     });
+
         return true;
     }
 #endif // CLANG_VERSION_MAJOR
 
     bool VisitAtomicExpr(AtomicExpr *E) {
-        printWarning("Encountered unsupported atomic expression", E);
+        auto children = E->children();
+        std::vector<void *> childIds(std::begin(children), std::end(children));
+        encode_entry(E, TagAtomicExpr, childIds,
+                     [E, this](CborEncoder *array) {
+                         switch (E->getOp()) {
+#define BUILTIN(ID, TYPE, ATTRS)
+#define ATOMIC_BUILTIN(ID, TYPE, ATTRS) \
+                             case AtomicExpr::AO ## ID:                 \
+                                 cbor_encode_string(array, #ID);       \
+                                 break;
+#include "clang/Basic/Builtins.def"
+                         default: printError("Unknown atomic builtin: " +
+                                             std::to_string(E->getOp()), E);
+                         };
+                     });
         return true;
     }
 
@@ -1595,6 +1684,7 @@ class TranslateASTVisitor final
             if (FD->doesThisDeclarationHaveABody())
                 span = FD->getCanonicalDecl()->getSourceRange();
             encode_entry(FD, TagNonCanonicalDecl, span, childIds, FD->getType());
+            typeEncoder.VisitQualType(FD->getType());
             return true;
         }
 
@@ -1643,6 +1733,16 @@ class TranslateASTVisitor final
                 bool is_extern = FD->getStorageClass() == SC_Extern;
                 cbor_encode_boolean(array, is_extern);
 
+                // The rules for when inlined functions are externally visible
+                // are complex, so we export the visibility computed by clang.
+                bool can_query_inline_visibility = is_inline &&
+                    (FD->doesThisDeclarationHaveABody() ||
+                     FD->willHaveBody() ||
+                     FD->hasAttr<AliasAttr>());
+                bool is_inline_externally_visible = can_query_inline_visibility
+                    && FD->isInlineDefinitionExternallyVisible();
+                cbor_encode_boolean(array, is_inline_externally_visible);
+
                 // Encode attribute names and relevant info if supported
                 CborEncoder attr_info;
                 bool has_attrs = def ? def->hasAttrs() : FD->hasAttrs();
@@ -1657,11 +1757,12 @@ class TranslateASTVisitor final
                         cbor_encode_text_stringz(&attr_info,
                                                  attr->getSpelling());
 
-                        if (attr->getKind() == attr::Kind::Alias) {
-                            auto aa = def->getAttr<AliasAttr>();
-
+                        if (auto *aa = dyn_cast<AliasAttr>(attr)) {
                             cbor_encode_text_stringz(
                                 &attr_info, aa->getAliasee().str().c_str());
+                        } else if (auto *va = dyn_cast<VisibilityAttr>(attr)) {
+                            const char *vis = VisibilityAttr::ConvertVisibilityTypeToStr(va->getVisibility());
+                            cbor_encode_text_stringz(&attr_info, vis);
                         }
                     }
                 }
@@ -1695,6 +1796,7 @@ class TranslateASTVisitor final
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {VD->getCanonicalDecl()};
             encode_entry(VD, TagNonCanonicalDecl, VD->getLocation(), childIds, VD->getType());
+            typeEncoder.VisitQualType(VD->getType());
             return true;
         }
 
@@ -1727,9 +1829,15 @@ class TranslateASTVisitor final
         // Use the type from the definition in case the extern was an incomplete
         // type
         auto T = def->getType();
+        if(isa<AtomicType>(T)) {
+            printC11AtomicError(def);
+            abort();
+        }
+
+        auto loc = is_defn ? def->getLocation() : VD->getLocation();
 
         encode_entry(
-            VD, TagVarDecl, def->getLocation(), childIds, T,
+            VD, TagVarDecl, loc, childIds, T,
             [VD, is_defn, def, is_externally_visible](CborEncoder *array) {
                 auto name = VD->getNameAsString();
                 cbor_encode_string(array, name);
@@ -1759,14 +1867,10 @@ class TranslateASTVisitor final
                         cbor_encode_text_stringz(&attr_info,
                                                  attr->getSpelling());
 
-                        if (attr->getKind() == attr::Kind::Section) {
-                            auto sa = def->getAttr<SectionAttr>();
-
+                        if (auto *sa = dyn_cast<SectionAttr>(attr)) {
                             cbor_encode_text_stringz(
                                 &attr_info, sa->getName().str().c_str());
-                        } else if (attr->getKind() == attr::Kind::Alias) {
-                            auto aa = def->getAttr<AliasAttr>();
-
+                        } else if (auto *aa = dyn_cast<AliasAttr>(attr)) {
                             cbor_encode_text_stringz(
                                 &attr_info, aa->getAliasee().str().c_str());
                         }
@@ -1800,6 +1904,13 @@ class TranslateASTVisitor final
         auto recordAlignment = 0;
         auto byteSize = 0;
 
+        auto t = D->getTypeForDecl();
+        if(isa<AtomicType>(t)) {
+            printC11AtomicError(D);
+            abort();
+        }
+
+        auto loc = D->getLocation();
         std::vector<void *> childIds;
         if (def) {
             for (auto x : def->fields()) {
@@ -1808,8 +1919,7 @@ class TranslateASTVisitor final
             // Since the RecordDecl D isn't the complete definition,
             // the actual location should be given. This should handle opaque
             // types.
-            auto loc = def->getLocation();
-            D->setLocation(loc);
+            loc = def->getLocation();
 
             const ASTRecordLayout &layout =
                 this->Context->getASTRecordLayout(def);
@@ -1820,7 +1930,7 @@ class TranslateASTVisitor final
         auto tag = D->isStruct() ? TagStructDecl : TagUnionDecl;
 
         encode_entry(
-            D, tag, childIds, QualType(),
+            D, tag, loc, childIds, QualType(),
             [D, def, recordAlignment, byteSize](CborEncoder *local) {
                 // 1. Encode name or null
                 auto name = D->getNameAsString();
@@ -1868,11 +1978,15 @@ class TranslateASTVisitor final
     }
 
     bool VisitEnumDecl(EnumDecl *D) {
-        // Skip non-definition decls. We previously skipped non-canonical
-        // decls here, however a canonical decl is not guaranteed to also
-        // be the definition
-        if (!D->isCompleteDefinition())
-            return true;
+        // Unlike struct or union, there are no forward-declared enums in ISO C.
+        // They are used in actual code and accepted by compilers, so we cannot
+        // exit early via code like `if (!D->isCompleteDefinition()) return true;`.
+
+        auto t = D->getTypeForDecl();
+        if(isa<AtomicType>(t)) {
+            printC11AtomicError(D);
+            abort();
+        }
 
         std::vector<void *> childIds;
         for (auto x : D->enumerators()) {
@@ -1911,6 +2025,7 @@ class TranslateASTVisitor final
                          cbor_encode_string(local, name);
 
                          auto value = D->getInitVal();
+                         cbor_encode_boolean(local, value.isSigned());
                          if (value.isSigned()) {
                              cbor_encode_int(local, value.getSExtValue());
                          } else {
@@ -1925,11 +2040,17 @@ class TranslateASTVisitor final
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
             encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, D->getType());
+            typeEncoder.VisitQualType(D->getType());
             return true;
         }
 
         std::vector<void *> childIds;
         auto t = D->getType();
+        if(isa<AtomicType>(t)) {
+            printC11AtomicError(D);
+            abort();
+        }
+
         auto record = D->getParent();
         const ASTRecordLayout &layout =
             this->Context->getASTRecordLayout(record);
@@ -1965,15 +2086,16 @@ class TranslateASTVisitor final
     }
 
     bool VisitTypedefNameDecl(TypedefNameDecl *D) {
+        auto typeForDecl = D->getUnderlyingType();
         if (!D->isCanonicalDecl()) {
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
-            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, D->getUnderlyingType());
+            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, typeForDecl);
+            typeEncoder.VisitQualType(typeForDecl);
             return true;
         }
 
         std::vector<void *> childIds;
-        auto typeForDecl = D->getUnderlyingType();
         encode_entry(D, TagTypedefDecl, childIds, typeForDecl,
                      [D](CborEncoder *array) {
                          auto name = D->getNameAsString();
@@ -2138,6 +2260,19 @@ class TranslateASTVisitor final
             CharSourceRange::getCharRange(E->getSourceRange()));
     }
 
+    void printC11AtomicError(Decl *D) {
+        std::string msg = "C11 Atomics are not supported. Aborting.";
+        printError(msg, D);
+    }
+
+    void printError(std::string Message, Decl *D) {
+        auto DiagBuilder =
+                getDiagBuilder(D->getLocation(), DiagnosticsEngine::Error);
+        DiagBuilder.AddString(Message);
+        DiagBuilder.AddSourceRange(
+                CharSourceRange::getCharRange(D->getSourceRange()));
+    }
+
     void printError(std::string Message, Stmt *S) {
 #if CLANG_VERSION_MAJOR < 8
         SourceLocation loc = S->getLocStart();
@@ -2150,6 +2285,15 @@ class TranslateASTVisitor final
             CharSourceRange::getCharRange(S->getSourceRange()));
     }
 };
+
+void TypeEncoder::VisitEnumType(const EnumType *T) {
+    auto ed = T->getDecl()->getDefinition();
+    encodeType(T, TagEnumType, [T, ed](CborEncoder *local) {
+        cbor_encode_uint(local, uintptr_t(ed));
+    });
+
+    if(ed != nullptr) astEncoder->VisitEnumDecl(ed);
+}
 
 void TypeEncoder::VisitRecordType(const RecordType *T) {
 
@@ -2206,6 +2350,15 @@ void TypeEncoder::VisitVariableArrayType(const VariableArrayType *T) {
 
     VisitQualType(t);
 }
+//
+//void TypeEncoder::VisitAtomicType(const AtomicType *AT) {
+//    std::string msg =
+//            "C11 Atomic types are not supported. Aborting.";
+////    auto horse = AT->get
+////    astEncoder->printError(msg, AT);
+//    AT->getValueType()->dump();
+//    abort();
+//}
 
 class TranslateConsumer : public clang::ASTConsumer {
     Outputs *outputs;
@@ -2231,7 +2384,7 @@ class TranslateConsumer : public clang::ASTConsumer {
             cbor_encoder_init(&encoder, buffer, len, 0);
 
             CborEncoder outer;
-            cbor_encoder_create_array(&encoder, &outer, 4);
+            cbor_encoder_create_array(&encoder, &outer, 5);
 
             CborEncoder array;
 
@@ -2255,6 +2408,11 @@ class TranslateConsumer : public clang::ASTConsumer {
                     if (!(var_decl->isExternC() && var_decl->isLocalVarDecl())) {
                         continue;
                     }
+                }
+
+                // Empty-decls aren't exported. This avoids warnings during conversion.
+                if(isa<EmptyDecl>(d)) {
+                    continue;
                 }
 
                 cbor_encode_uint(&array, reinterpret_cast<std::uintptr_t>(d));
@@ -2285,6 +2443,8 @@ class TranslateConsumer : public clang::ASTConsumer {
             //
             // Getting all comments requires -fparse-all-comments (see
             // augment_argv())!
+            const SourceManager& sourceMgr = Context.getSourceManager();
+#if CLANG_VERSION_MAJOR < 10
             auto comments = Context.getRawCommentList().getComments();
             cbor_encoder_create_array(&outer, &array, comments.size());
             for (auto comment : comments) {
@@ -2292,16 +2452,39 @@ class TranslateConsumer : public clang::ASTConsumer {
                 cbor_encoder_create_array(&array, &entry, 4);
 #if CLANG_VERSION_MAJOR < 8
                 SourceLocation loc = comment->getLocStart();
-#else
+#else // 7 < CLANG_VERSION_MAJOR < 10
                 SourceLocation loc = comment->getBeginLoc();
-#endif // CLANG_VERSION_MAJOR
+#endif // CLANG_VERSION_MAJOR < 8
                 visitor.encodeSourcePos(&entry, loc); // emits 3 values
-                auto raw_text = comment->getRawText(Context.getSourceManager());
+                auto raw_text = comment->getRawText(sourceMgr);
                 cbor_encode_byte_string(&entry, raw_text.bytes_begin(),
                                         raw_text.size());
                 cbor_encoder_close_container(&array, &entry);
             }
+#else  // CLANG_VERSION_MAJOR >= 10
+            const FileID file = sourceMgr.getMainFileID();
+            auto comments = Context.Comments.getCommentsInFile(file);
+            if (comments != nullptr) {
+                cbor_encoder_create_array(&outer, &array, comments->size());
+                for (auto comment : *comments) {
+                    CborEncoder entry;
+                    cbor_encoder_create_array(&array, &entry, 4);
+                    SourceLocation loc = comment.second->getBeginLoc();
+                    visitor.encodeSourcePos(&entry, loc); // emits 3 values
+                    auto raw_text = comment.second->getRawText(sourceMgr);
+                    cbor_encode_byte_string(&entry, raw_text.bytes_begin(),
+                                            raw_text.size());
+                    cbor_encoder_close_container(&array, &entry);
+                }
+            } else { 
+                // this happens when the C file contains no comments
+                cbor_encoder_create_array(&outer, &array, 0);
+            }
+#endif // CLANG_VERSION_MAJOR >= 10              
             cbor_encoder_close_container(&outer, &array);
+
+            // 5. Target VaList type as BuiltiVaListKind
+            cbor_encode_uint(&outer, static_cast<std::uintptr_t>(Context.getTargetInfo().getBuiltinVaListKind()));
 
             cbor_encoder_close_container(&encoder, &outer);
         };
@@ -2332,6 +2515,16 @@ class TranslateAction : public clang::ASTFrontendAction {
     virtual std::unique_ptr<clang::ASTConsumer>
     CreateASTConsumer(clang::CompilerInstance &Compiler,
                       llvm::StringRef InFile) {
+        
+#if CLANG_VERSION_MAJOR < 10
+        const InputKind::Language lang_c = InputKind::Language::C;
+#else
+        const Language lang_c = Language::C;
+#endif // CLANG_VERSION_MAJOR    
+        if(this->getCurrentFileKind().getLanguage() != lang_c) {
+            return nullptr;
+        }
+
         return std::unique_ptr<clang::ASTConsumer>(
             new TranslateConsumer(outputs, InFile, Compiler.getPreprocessor()));
     }
@@ -2369,7 +2562,7 @@ static std::vector<const char *> augment_argv(int argc, const char *argv[]) {
     SmallString<128> P("-extra-arg=-resource-dir=" CLANG_BIN_PATH);
     llvm::sys::path::append(P, "..", Twine("lib") + CLANG_LIBDIR_SUFFIX,
                             "clang", CLANG_VERSION_STRING);
-    std::string resource_dir = P.str();
+    std::string resource_dir = P.str().str();
     char *resource_dir_cstr = new char[resource_dir.length() + 1];
     strncpy(resource_dir_cstr, resource_dir.c_str(), resource_dir.length() + 1);
 
@@ -2392,9 +2585,15 @@ class MyFrontendActionFactory : public FrontendActionFactory {
   public:
     MyFrontendActionFactory(Outputs *outputs) : outputs(outputs) {}
 
+#if CLANG_VERSION_MAJOR < 10
     clang::FrontendAction *create() override {
         return new TranslateAction(outputs);
     }
+#else
+    std::unique_ptr<FrontendAction> create() override {
+        return std::make_unique<TranslateAction>(outputs);
+    }
+#endif // CLANG_VERSION_MAJOR
 };
 
 // Marshal the output map into something easy to manipulate in Rust

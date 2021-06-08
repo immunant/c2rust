@@ -7,5 +7,5 @@ use syntax_pos::hygiene::SyntaxContext;
 
 /// Make a new span at `pos`
 pub fn pos_to_span(pos: BytePos) -> Span {
-    Span::new(pos, pos, SyntaxContext::empty())
+    Span::new(pos, pos, SyntaxContext::root())
 }

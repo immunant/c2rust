@@ -15,7 +15,8 @@ use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::symbol::{kw, Ident, Symbol};
 use rustc::ty;
-use syntax_pos::{Span, FileName, BytePos, Pos, DUMMY_SP, NO_EXPANSION};
+use syntax_pos::{Span, FileName, BytePos, Pos, DUMMY_SP};
+use syntax_pos::hygiene::SyntaxContext;
 
 use indexmap::IndexSet;
 use failure::{Error, ResultExt};
@@ -70,7 +71,7 @@ impl GetPointerArg for EventKind {
             EventKind::Alloc{..} => None,
             EventKind::Free{..} | EventKind::Realloc{..} => {
                 let expr: &ast::Expr = ast_node.try_into().unwrap();
-                let args = expect!([&expr.node] ast::ExprKind::Call(_, args) => args);
+                let args = expect!([&expr.kind] ast::ExprKind::Call(_, args) => args);
                 Some(&args[0])
             }
             EventKind::Arg{..} | EventKind::Assign{..} | EventKind::Deref{..} | EventKind::Ret{..} => {
@@ -88,7 +89,7 @@ fn get_block_value(block: &ast::Block) -> &ast::Expr {
         .stmts
         .last()
         .expect("Instrumented block expression must have a non-trivial value");
-    if let ast::StmtKind::Expr(last_expr) = &last_stmt.node {
+    if let ast::StmtKind::Expr(last_expr) = &last_stmt.kind {
         last_expr
     } else {
         panic!("Instrumented block expression must have a non-trivial value");
@@ -100,7 +101,7 @@ fn get_block_value_mut(block: &mut ast::Block) -> &mut P<ast::Expr> {
         .stmts
         .last_mut()
         .expect("Instrumented block expression must have a non-trivial value");
-    if let ast::StmtKind::Expr(last_expr) = &mut last_stmt.node {
+    if let ast::StmtKind::Expr(last_expr) = &mut last_stmt.kind {
         last_expr
     } else {
         panic!("Instrumented block expression must have a non-trivial value");
@@ -108,14 +109,14 @@ fn get_block_value_mut(block: &mut ast::Block) -> &mut P<ast::Expr> {
 }
 
 fn get_ptr_expr(expr: &ast::Expr) -> &ast::Expr {
-    match &expr.node {
+    match &expr.kind {
         ast::ExprKind::Cast(e, _) | ast::ExprKind::Type(e, _) | ast::ExprKind::Paren(e) => {
-            get_ptr_expr(e)
+            get_ptr_expr(&e)
         }
 
         ast::ExprKind::Loop(block, _) | ast::ExprKind::Block(block, _)
         | ast::ExprKind::TryBlock(block) => {
-            get_block_value(block)
+            get_block_value(&block)
         }
 
         ast::ExprKind::Unary(ast::UnOp::Deref, e) => e,
@@ -125,8 +126,8 @@ fn get_ptr_expr(expr: &ast::Expr) -> &ast::Expr {
 }
 
 fn instrumented_inner_value(expr: &ast::Expr) -> &ast::Expr {
-    if let ast::ExprKind::Block(block, _) = &expr.node {
-        if let ast::StmtKind::Local(local) = &block.stmts[0].node {
+    if let ast::ExprKind::Block(block, _) = &expr.kind {
+        if let ast::StmtKind::Local(local) = &block.stmts[0].kind {
             if let Some(init) = &local.init {
                 return init;
             }
@@ -151,7 +152,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         let main_path = {
             if let ast::TyKind::Path(_, mut path) = parse_ty(cx.session(), main_path)
                 .into_inner()
-                .node
+                .kind
             {
                 if !path.segments[0].ident.is_path_segment_keyword() {
                     path.segments.insert(0, mk().path_segment(kw::Crate));
@@ -208,7 +209,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
     /// If ty is a Ptr type, return a new expr that is a cast of expr to usize,
     /// otherwise just return a clone of expr.
     fn add_ptr_cast(&self, expr: &P<ast::Expr>, ty: &ast::Ty) -> P<ast::Expr> {
-        match ty.node {
+        match ty.kind {
             ast::TyKind::Ptr(_) => mk().cast_expr(expr, mk().ident_ty("usize")),
             _ => expr.clone(),
         }
@@ -239,7 +240,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         let init_stmt = mk().semi_stmt(
             mk().call_expr(
                 mk().path_expr(vec!["c2rust_analysis_rt", "init"]),
-                vec![mk().lit_expr(mk().str_lit(self.span_file_path))],
+                vec![mk().lit_expr(self.span_file_path)],
             )
         );
         block.stmts.insert(0, init_stmt);
@@ -295,9 +296,8 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
     fn instrument_expr_use<I>(&mut self, expr: &mut P<ast::Expr>, fn_name: I)
         where I: Make<Ident> + Copy
     {
-        match &mut expr.node {
-            ast::ExprKind::If(_, true_block, else_block)
-            | ast::ExprKind::IfLet(_, _, true_block, else_block) => {
+        match &mut expr.kind {
+            ast::ExprKind::If(_, true_block, else_block) => {
                 self.instrument_expr_use(get_block_value_mut(true_block), fn_name);
                 if let Some(else_block) = else_block {
                     self.instrument_expr_use(else_block, fn_name);
@@ -306,7 +306,6 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
             }
 
             ast::ExprKind::While(..)
-            | ast::ExprKind::WhileLet(..)
             | ast::ExprKind::ForLoop(..) => {
                 panic!("Unexpected loop expression without value: {:?}", expr);
             }
@@ -332,7 +331,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         let mut value = mk().path_expr(vec!["ret"]);
         if let Some(ty::TyKind::Ref(_, ty, _)) = self.cx
             .opt_node_type(inner.id)
-            .map(|x| &x.sty)
+            .map(|x| &x.kind)
         {
             // Cast the reference to a raw pointer
             value = mk().cast_expr(
@@ -346,7 +345,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
             &[mk().cast_expr(value, mk().ident_ty("usize"))],
         );
         if inner.id != expr.id {
-            if let ast::ExprKind::Block(block, _) = &mut expr.node {
+            if let ast::ExprKind::Block(block, _) = &mut expr.kind {
                 // Insert the new instrumentation call right before the
                 // return value
                 let index = block.stmts.len()-1;
@@ -363,7 +362,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
     fn is_constant(&self, expr: &ast::Expr) -> bool {
         let mut constant = true;
         visit_nodes(expr, |e: &ast::Expr| {
-            match e.node {
+            match e.kind {
                 // These expressions are const if composed of const expressions
                 ast::ExprKind::Box(..)
                 | ast::ExprKind::Array(..)
@@ -412,7 +411,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
             return;
         }
 
-        if let ast::ExprKind::Call(callee, args) = &expr.node {
+        if let ast::ExprKind::Call(callee, args) = &expr.kind {
             if let Some(def) = self.cx.try_resolve_expr_to_hid(callee) {
                 if let Some((fn_name, decl)) = self.hooked_fn(def) {
                     // Add all original arguments, casting pointers to usize
@@ -448,7 +447,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
             }
         }
 
-        match &mut expr.node {
+        match &mut expr.kind {
             ast::ExprKind::Call(_callee, args) => {
                 for arg in args.iter_mut() {
                     if self.cx.node_type(arg.id).is_unsafe_ptr() && !self.is_constant(arg) {
@@ -484,11 +483,11 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
     }
 
     fn flat_map_stmt(&mut self, mut stmt: ast::Stmt) -> SmallVec<[ast::Stmt; 1]> {
-        match &mut stmt.node {
+        match &mut stmt.kind {
             ast::StmtKind::Local(local) => {
                 // TODO: We don't handle @ subpattern patterns or let binding
                 // decomposition yet.
-                if let ast::PatKind::Ident(binding, _local_ident, None) = local.pat.node {
+                if let ast::PatKind::Ident(binding, _local_ident, None) = local.pat.kind {
                     let is_unsafe_ptr = self.cx.opt_node_type(local.id)
                         .map_or(false, |ty| ty.is_unsafe_ptr());
                     if let Some(init) = &mut local.init {
@@ -498,7 +497,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
                                 // directly dereferenced value for now. As this
                                 // is the only kind of reference the translator
                                 // creates, that's fine.
-                                if let ast::ExprKind::Unary(ast::UnOp::Deref, ptr_value) = &mut init.node {
+                                if let ast::ExprKind::Unary(ast::UnOp::Deref, ptr_value) = &mut init.kind {
                                     self.instrument_expr_use(ptr_value, "ptr_assign");
                                 }
                             } else {
@@ -536,7 +535,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
             entry::EntryPointType::MainNamed |
             entry::EntryPointType::MainAttr |
             entry::EntryPointType::Start => {
-                if let ast::ItemKind::Fn(_decl, _header, _generics, block) = &mut item.node {
+                if let ast::ItemKind::Fn(_sig, _generics, block) = &mut item.kind {
                     self.instrument_entry_block(block);
                 } else {
                     panic!("Expected a function item");
@@ -547,7 +546,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
 
         let item_id = item.id;
         // Instrument the real main function
-        if let ast::ItemKind::Fn(_decl, _header, _generics, block) = &mut item.node {
+        if let ast::ItemKind::Fn(_sig, _generics, block) = &mut item.kind {
             if self.cx.def_path(self.cx.node_def_id(item_id)).ast_equiv(&self.main_path) {
                 self.instrument_main_block(block);
             }
@@ -747,7 +746,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
             Span::new(
                 source_file.start_pos + BytePos::from_u32(s.lo.to_u32()),
                 source_file.start_pos + BytePos::from_u32(s.hi.to_u32()),
-                NO_EXPANSION,
+                SyntaxContext::root(),
             )
         }).collect();
 
@@ -776,7 +775,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
         // we visit statements before expressions, as we want the expression for
         // most statements.
         visit_nodes(krate, |e: &ast::Stmt| {
-            if let ast::StmtKind::Local(..) = e.node {
+            if let ast::StmtKind::Local(..) = e.kind {
                 if let Some(id) = self.span_ids.get(&e.span) {
                     if self.span_to_node_id.insert(*id, e.id).is_some() {
                         warn!("Duplicate node for span {:?}", e.span);
@@ -879,7 +878,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
     }
 
     fn canonical_def(&self, expr: &ast::Expr) -> hir::HirId {
-        match &expr.node {
+        match &expr.kind {
             ast::ExprKind::Cast(sub, _) => self.canonical_def(sub),
             
             _ => {
@@ -894,7 +893,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
 
     /// Look up the canonical definition of `expr` in `sources`.
     fn get_source(&self, sources: &HashMap<HirId, NodeIndex>, expr: &ast::Expr) -> Option<NodeIndex> {
-        if let ast::ExprKind::Call(callee, _) = &expr.node {
+        if let ast::ExprKind::Call(callee, _) = &expr.kind {
             debug!("    Callee node id: {:?}", self.cx.hir_map().hir_to_node_id(self.canonical_def(callee)));
             if let Some(source) = sources.get(&self.canonical_def(callee)) {
                 return Some(*source);
@@ -974,31 +973,33 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                 EventKind::Assign(..) => {
                     let input_ptr = input_ptr.expect("Could not identify input pointer to assignment");
                     let source = self.get_source(&sources, input_ptr);
-                    let mut node_id = event.node;
+                    let mut hir_id = self.cx.hir_map().node_to_hir_id(event.node);
                     // Walk up from the assigned value to the assignment node
                     loop {
+                        let node_id = self.cx.hir_map().hir_to_node_id(hir_id);
                         if let Some(expr) = ast_map.get_ast::<ast::Expr>(&node_id) {
-                            if let ast::ExprKind::Assign(..) = &expr.node {
+                            if let ast::ExprKind::Assign(..) = &expr.kind {
                                 break;
                             }
                         } else if let Some(_stmt) = ast_map.get_ast::<ast::Stmt>(&node_id) {
                             break;
                         }
-                        node_id = self.cx.hir_map().get_parent_node(node_id);
+                        hir_id = self.cx.hir_map().get_parent_node(hir_id);
                     }
+                    let node_id = self.cx.hir_map().hir_to_node_id(hir_id);
                     if let Some(expr) = ast_map.get_ast::<ast::Expr>(&node_id) {
-                        let lhs = expect!([expr.node] ast::ExprKind::Assign(ref lhs, _) => lhs);
+                        let lhs = expect!([expr.kind] ast::ExprKind::Assign(ref lhs, _) => lhs);
                         let dest_id = self.canonical_def(lhs);
                         let dest = self.data_flow.get_node(
                             dest_id,
-                            DataFlowNodeKind::from_lvalue(&lhs.node),
+                            DataFlowNodeKind::from_lvalue(&lhs.kind),
                         );
                         if let Some(source) = source {
                             self.data_flow.add_flow(source, dest, DataFlowEdge::Assign);
                         }
                         sources.insert(dest_id, dest);
                     } else if let Some(stmt) = ast_map.get_ast::<ast::Stmt>(&node_id) {
-                        let local = expect!([&stmt.node] ast::StmtKind::Local(local) => local);
+                        let local = expect!([&stmt.kind] ast::StmtKind::Local(local) => local);
                         let id = self.cx.hir_map().node_to_hir_id(local.pat.id);
                         let dest = self.data_flow.get_node(id, DataFlowNodeKind::Local);
                         if let Some(source) = source {
@@ -1011,15 +1012,17 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                 },
                 EventKind::Arg(..) => {
                     let input_ptr = input_ptr.expect("Could not identify input pointer to argument");
-                    let mut node_id = self.cx.hir_map().get_parent_node(event.node);
+                    let mut hir_id = self.cx.hir_map().node_to_hir_id(event.node);
+                    hir_id = self.cx.hir_map().get_parent_node(hir_id);
                     // Walk up to the call
                     let (callee, call_args) = loop {
+                        let node_id = self.cx.hir_map().hir_to_node_id(hir_id);
                         if let Some(expr) = ast_map.get_ast::<ast::Expr>(&node_id) {
-                            if let ast::ExprKind::Call(callee, call_args) = &expr.node {
+                            if let ast::ExprKind::Call(callee, call_args) = &expr.kind {
                                 break (callee, call_args);
                             }
                         }
-                        node_id = self.cx.hir_map().get_parent_node(node_id);
+                        hir_id = self.cx.hir_map().get_parent_node(hir_id);
                     };
                     let arg_index = call_args.iter().position(|arg| arg.id == event.node)
                         .expect("Could not find event node id in call argument list");
@@ -1030,7 +1033,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                         let callee_hir_id = self.canonical_def(callee);
                         if let Some(body_id) = self.cx.hir_map().maybe_body_owned_by(callee_hir_id) {
                             let body = self.cx.hir_map().body(body_id);
-                            let arg = &body.arguments[arg_index];
+                            let arg = &body.params[arg_index];
                             let arg_id = arg.pat.hir_id;
                             let dest = self.data_flow.get_node(arg_id, DataFlowNodeKind::Arg);
                             self.data_flow.add_flow(source, dest, DataFlowEdge::Use);
@@ -1064,8 +1067,8 @@ impl DataFlowNodeKind {
     fn from_lvalue(kind: &ast::ExprKind) -> Self {
         match kind {
             ast::ExprKind::Path(..) => DataFlowNodeKind::Local,
-            ast::ExprKind::Index(base, _) => DataFlowNodeKind::from_lvalue(&base.node),
-            ast::ExprKind::Field(base, _) => DataFlowNodeKind::from_lvalue(&base.node),
+            ast::ExprKind::Index(base, _) => DataFlowNodeKind::from_lvalue(&base.kind),
+            ast::ExprKind::Field(base, _) => DataFlowNodeKind::from_lvalue(&base.kind),
             ast::ExprKind::Unary(ast::UnOp::Deref, _) => DataFlowNodeKind::Pointer,
             _ => panic!("Unexpected lvalue expression kind"),
         }

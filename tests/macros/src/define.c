@@ -1,5 +1,11 @@
 //! translate_const_macros
 
+#define TEST_FN_MACRO(x) ((x) * (x))
+
+int test_fn_macro(int x) {
+  return TEST_FN_MACRO(x);
+}
+
 #include <stddef.h>
 #include <stdint.h>
 typedef  uint64_t U64;
@@ -45,4 +51,32 @@ U64 test_zstd() {
   // to a const.
   ZSTD_STATIC_ASSERT(ZSTD_WINDOWLOG_MAX <= 31);
   return ZSTD_WINDOWLOG_MAX;
+}
+
+#define inc(ptr) ({\
+  (*ptr)++;\
+  *ptr;\
+})
+
+// Ensure the macro generated stmt expr block is codegen'd
+int stmt_expr_inc(void) {
+  int a = 0;
+  int* b = &a;
+
+  // unused
+  inc(b);
+
+  // used
+  return inc(b);
+}
+
+int test_switch(int x) {
+  switch (x) {
+  case TEST_CONST1:
+    return 10;
+  case TEST_NESTED:
+    return 20;
+  }
+
+  return 0;
 }

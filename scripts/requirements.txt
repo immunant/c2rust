@@ -1,3 +1,4 @@
+bencode-python3
 cbor
 colorlog
 mako
@@ -5,6 +6,6 @@ pip
 plumbum >= 1.6.3
 psutil
 pygments
-typing
+typing;python_version<"3.5"
 scan-build
 pyyaml

@@ -2,8 +2,8 @@
 use rustc_target::spec::abi::Abi;
 use std::rc::Rc;
 use syntax::ast::*;
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
@@ -59,6 +59,9 @@ impl<T: AstEquiv> AstEquiv for Spanned<T> {
 
 impl<T: AstEquiv> AstEquiv for [T] {
     fn ast_equiv(&self, other: &[T]) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
         for (l, r) in self.iter().zip(other.iter()) {
             if !l.ast_equiv(r) {
                 return false;
@@ -67,6 +70,9 @@ impl<T: AstEquiv> AstEquiv for [T] {
         true
     }
     fn unnamed_equiv(&self, other: &[T]) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
         for (l, r) in self.iter().zip(other.iter()) {
             if !l.unnamed_equiv(r) {
                 return false;

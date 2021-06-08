@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-bitfields"
-version = "0.2.0"
+version = "0.3.0"
 authors = [
     "The C2Rust Project Developers <c2rust@immunant.com>",
     "Daniel Kolsoi <djk@immunant.com>",
@@ -13,7 +13,7 @@ description = "C-compatible struct bitfield implementation used in the C2Rust pr
 readme = "README.md"
 
 [dependencies]
-c2rust-bitfields-derive = { version = "0.1", path = "../c2rust-bitfields-derive" }
+c2rust-bitfields-derive = { version = "0.2", path = "../c2rust-bitfields-derive" }
 
 [dev-dependencies]
 libc = "0.2"

@@ -50,6 +50,7 @@ macro_rules! transform_modules {
 
 transform_modules! {
     canonicalize_refs,
+    casts,
     char_literals,
     control_flow,
     externs,
@@ -69,5 +70,4 @@ transform_modules! {
     structs,
     test,
     vars,
-    wrapping_arith,
 }

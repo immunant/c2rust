@@ -1,5 +1,8 @@
 long double long_double_ops(long double *a) {
     long double b = 1.3L;
+    double rounder = 0.0;
+    long double realvalue = 0.0;
+    rounder += realvalue * 3e-16;
 
     (*a)++;
     ++*a;

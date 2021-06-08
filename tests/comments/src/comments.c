@@ -1,4 +1,4 @@
-//! translate_const_macros, reorganize_definitions
+//! translate_const_macros, reorganize_definitions, emit_build_files
 /* top level doc comment
  * second line
  */
@@ -48,6 +48,16 @@ int test_fn() {
     x = x;
     /* end of else */
   }
+
+  /* quake3 style */
+  if (x > 50)
+  {
+    x = 20;
+  } //end if
+  else if (x > 75)
+  {
+    x = 13;
+  } //end else if
 
   /* before a statement */
   return x + CONSTANT1;

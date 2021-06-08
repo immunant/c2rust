@@ -12,14 +12,14 @@ struct RemoveParen;
 
 impl MutVisitor for RemoveParen {
     fn visit_expr(&mut self, e: &mut P<Expr>) {
-        if let ExprKind::Paren(ref inner) = e.node {
+        if let ExprKind::Paren(ref inner) = e.kind {
             *e = inner.clone();
         }
         mut_visit::noop_visit_expr(e, self);
     }
 
     fn visit_ty(&mut self, t: &mut P<Ty>) {
-        if let TyKind::Paren(ref inner) = t.node {
+        if let TyKind::Paren(ref inner) = t.kind {
             *t = inner.clone();
         }
         mut_visit::noop_visit_ty(t, self)

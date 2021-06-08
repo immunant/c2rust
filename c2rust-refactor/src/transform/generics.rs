@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
+use smallvec::smallvec;
 
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
@@ -30,7 +31,8 @@ use c2rust_ast_builder::{mk, IntoSymbol};
 /// that was replaced with `VAR`.
 /// 
 /// Example:
-/// 
+///
+/// ```ignore
 ///     struct Foo {    // Foo: target
 ///         x: i32,     // i32: target
 ///         y: i32,
@@ -41,9 +43,11 @@ use c2rust_ast_builder::{mk, IntoSymbol};
 ///     fn main() {
 ///         f(...);
 ///     }
+/// ```
 /// 
 /// After running `generalize_items T`:
-/// 
+///
+/// ```ignore
 ///     // 1. Foo gains a new type parameter `T`
 ///     struct Foo<T> {
 ///         // 2. Marked type annotations become `T`
@@ -63,6 +67,7 @@ use c2rust_ast_builder::{mk, IntoSymbol};
 ///         // first type that was replaced with `T`.
 ///         f::<i32>(...);
 ///     }
+/// ```
 pub struct GeneralizeItems {
     ty_var_name: Symbol,
     replacement_ty: Option<String>,
@@ -106,8 +111,8 @@ impl Transform for GeneralizeItems {
             item_def_ids.insert(cx.node_def_id(i.id));
             smallvec![i.map(|mut i| {
                 {
-                    let gen = match i.node {
-                        ItemKind::Fn(_, _, ref mut gen, _) => gen,
+                    let gen = match i.kind {
+                        ItemKind::Fn(_, ref mut gen, _) => gen,
                         ItemKind::Enum(_, ref mut gen) => gen,
                         ItemKind::Struct(_, ref mut gen) => gen,
                         ItemKind::Union(_, ref mut gen) => gen,
@@ -129,7 +134,7 @@ impl Transform for GeneralizeItems {
             .expect("must provide a replacement type argument or mark");
 
         fold_resolved_paths_with_id(krate, cx, |path_id, qself, mut path, def| {
-            match def.opt_def_id() {
+            match def[0].opt_def_id() {
                 Some(def_id) if item_def_ids.contains(&def_id) => (),
                 _ => return (qself, path),
             };

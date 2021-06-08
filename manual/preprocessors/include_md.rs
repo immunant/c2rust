@@ -22,6 +22,7 @@ extern crate pulldown_cmark_to_cmark;
 extern crate regex;
 extern crate serde_json;
 
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -30,7 +31,6 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use mdbook::book::{Book, BookItem};
 use mdbook::errors::*;
 use mdbook::preprocess::{CmdPreprocessor, Preprocessor, PreprocessorContext};
-use mdbook::utils::fs::file_to_string;
 use mdbook::utils::normalize_id;
 use pulldown_cmark::{Event, Parser, Tag};
 use pulldown_cmark_to_cmark::fmt::cmark;
@@ -256,7 +256,7 @@ impl<'a> Link<'a> {
         let read_file = |path: &PathBuf| {
             let target = base.join(path);
 
-            file_to_string(&target).chain_err(|| {
+            fs::read_to_string(&target).chain_err(|| {
                 format!(
                     "Could not read file for link {} ({})",
                     self.link_text,

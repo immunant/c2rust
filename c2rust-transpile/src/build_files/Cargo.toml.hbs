@@ -1,28 +1,42 @@
+{{#if is_workspace~}}
 [workspace]
+members = [
+{{#each workspace_members}}    "{{{this}}}",
+{{/each~}}
+]
+{{~/if}}
 
+{{#if is_crate~}}
 [package]
 name = "{{crate_name}}"
 authors = ["C2Rust"]
 version = "0.0.0"
 publish = false
 edition = "2018"
+autobins = false
 
+{{#if is_library~}}
 [lib]
 name = "{{crate_rust_name}}"
 path = "{{lib_rs_file}}"
-crate-type = ["lib", "staticlib"]
+crate-type = [{{{crate_types}}}]
+{{~else~}}
+[[bin]]
+name = "{{crate_rust_name}}"
+path = "{{lib_rs_file}}"
+{{~/if}}
+
 {{#each binaries}}
 [[bin]]
 path = "{{path}}"
 name = "{{name}}"
 {{/each}}
 [dependencies]
-{{#if c2rust_bitfields~}}c2rust-bitfields = "0.2"{{~/if}}
-{{~#if f128~}}f128 = "0.2"{{~/if}}
-{{~#if num_traits~}}num-traits = "0.2"{{~/if}}
-libc = "0.2"
+{{#each dependencies~}}
+{{this.name}} = "{{this.version}}"
+{{/each}}
 
-{{~#if cross_checks~}}
+{{#if cross_checks~}}
 [dependencies.c2rust-xcheck-plugin]
 version = "*"
 
@@ -35,4 +49,5 @@ features = ["libc-hash", "fixed-length-array-hash"]
 
 [dependencies.c2rust-xcheck-backend-{{cross_check_backend}}]
 version = "*"
+{{~/if}}
 {{~/if}}

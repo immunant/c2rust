@@ -3,11 +3,11 @@ use syntax::ast::*;
 use syntax::mut_visit::{self, *};
 use syntax::ptr::P;
 
-use rlua::prelude::{LuaContext, LuaFunction, LuaResult, LuaTable, LuaUserData};
+use rlua::prelude::{LuaContext, LuaFunction, LuaResult, LuaTable, LuaUserData, LuaValue};
 
 use crate::ast_manip::{WalkAst};
-use super::{DisplayLuaError, TransformCtxt};
-use super::to_lua_ast_node::{LuaAstNode};
+use super::DisplayLuaError;
+use super::to_lua_ast_node::{FromLuaAstNode, FromLuaExt, LuaAstNode, ToLuaScoped};
 
 macro_rules! call_lua_visitor_method {
     ($obj: expr , $method: ident ($($params: expr),*)) => {
@@ -323,155 +323,99 @@ impl<'lua> LuaAstVisitor<'lua> {
 }
 
 
-pub(crate) struct LuaAstVisitorNew<'lua, 'a, 'tcx> {
+pub(crate) struct LuaAstVisitorNew<'lua> {
     visitor: LuaTable<'lua>,
     lua_ctx: LuaContext<'lua>,
-    _ctx: TransformCtxt<'a, 'tcx>,
 }
 
-impl<'lua, 'a, 'tcx> LuaAstVisitorNew<'lua, 'a, 'tcx> {
-    pub fn new(ctx: TransformCtxt<'a, 'tcx>, lua_ctx: LuaContext<'lua>, visitor: LuaTable<'lua>) -> Self {
-        LuaAstVisitorNew { _ctx: ctx, lua_ctx, visitor }
+impl<'lua> LuaAstVisitorNew<'lua> {
+    pub fn new(lua_ctx: LuaContext<'lua>, visitor: LuaTable<'lua>) -> Self {
+        LuaAstVisitorNew { lua_ctx, visitor }
     }
 
     fn call_visit<T>(&mut self, method: LuaFunction<'lua>, param: &mut T)
         where T: WalkAst + Clone,
-              LuaAstNode<T>: 'static + LuaUserData + Clone,
+              LuaAstNode<T>: 'static + LuaUserData + Clone + FromLuaAstNode,
     {
         let node = LuaAstNode::new(param.clone());
         self.lua_ctx.scope(|scope| {
             let visitor = self.visitor.clone();
             let param = scope.create_static_userdata(node.clone()).unwrap();
-            let walk = scope.create_function_mut(|_lua_ctx, x: LuaAstNode<T>| {
-                x.walk(self);
+            let walk = scope.create_function_mut(|lua_ctx, x: LuaValue| {
+                <LuaAstNode<T> as FromLuaAstNode>::from_lua_ast_node(x, lua_ctx)?
+                    .walk(self);
                 Ok(())
             });
             method.call((visitor, (param, walk)))
-                .unwrap_or_else(|e| panic!("Lua visit function failed: {:?}", e))
+                .unwrap_or_else(|e| panic!("Lua visit function failed: {:}", DisplayLuaError(e)))
         });
         *param = node.into_inner();
     }
 
-    fn call_flat_map<T>(&mut self, method: LuaFunction<'lua>, param: T) -> Vec<LuaAstNode<T>>
-        where T: WalkAst,
-              LuaAstNode<T>: 'static + LuaUserData + Clone,
+    fn call_flat_map<T>(&mut self, method: LuaFunction<'lua>, param: T) -> Vec<T>
+        where T: WalkAst + ToLuaScoped + FromLuaExt,
+              LuaAstNode<T>: LuaUserData + FromLuaAstNode,
     {
-        self.lua_ctx.scope(|scope| {
+        let lua_ctx = self.lua_ctx;
+        lua_ctx.scope(|scope| {
             let visitor = self.visitor.clone();
-            let param = scope.create_static_userdata(LuaAstNode::new(param)).unwrap();
-            let walk = scope.create_function_mut(|_lua_ctx, x: LuaAstNode<T>| {
-                x.walk(self);
+            let param = ToLuaScoped::to_lua_scoped(param, self.lua_ctx, scope).unwrap();
+            let walk = scope.create_function_mut(|lua_ctx, x: LuaValue| {
+                <LuaAstNode<T> as FromLuaAstNode>::from_lua_ast_node(x, lua_ctx)?
+                    .walk(self);
                 Ok(())
             });
             method.call((visitor, (param, walk)))
+                .and_then(|res| FromLuaExt::from_lua_ext(res, lua_ctx))
                 .unwrap_or_else(|e| panic!("Lua visit function failed: {:}", DisplayLuaError(e)))
         })
     }
 }
 
-impl<'lua, 'a, 'tcx> MutVisitor for LuaAstVisitorNew<'lua, 'a, 'tcx> {
-    fn visit_mod(&mut self, m: &mut Mod) {
-        let visit_method: Option<LuaFunction> = self.visitor.get("visit_mod")
-            .expect("Could not get lua visitor function");
-        if let Some(method) = visit_method {
-            self.call_visit(method, m);
-        } else {
-            mut_visit::noop_visit_mod(m, self)
+macro_rules! impl_visitors {
+    {visit: $visitor:ident, $ty:ty, $noop_visitor:ident} => {
+        fn $visitor(&mut self, node: &mut $ty) {
+            let visit_method: Option<LuaFunction> = self.visitor.get(stringify!($visitor))
+                .expect("Could not get lua visitor function");
+            if let Some(method) = visit_method {
+                self.call_visit(method, node);
+            } else {
+                mut_visit::$noop_visitor(node, self)
+            }
         }
+    };
+    {flat_map: $visitor:ident, $ty:ty, $noop_visitor:ident} => {
+        fn $visitor(&mut self, node: $ty) -> SmallVec<[$ty; 1]> {
+            let visit_method: Option<LuaFunction> = self.visitor.get(stringify!($visitor))
+                .expect("Could not get lua visitor function");
+            if let Some(method) = visit_method {
+                let new_items = self.call_flat_map(method, node);
+                SmallVec::from_vec(new_items)
+            } else {
+                mut_visit::$noop_visitor(node, self)
+            }
+        }
+    };
+    {$([$kind:ident: $visitor:ident, $ty:ty, $noop_visitor:ident]),*} => {
+        $(impl_visitors!{$kind: $visitor, $ty, $noop_visitor})*
     }
+}
 
-    fn visit_arg(&mut self, m: &mut Arg) {
-        let visit_method: Option<LuaFunction> = self.visitor.get("visit_arg")
-            .expect("Could not get lua visitor function");
-        if let Some(method) = visit_method {
-            self.call_visit(method, m);
-        } else {
-            mut_visit::noop_visit_arg(m, self)
-        }
-    }
-
-    fn visit_expr(&mut self, m: &mut P<Expr>) {
-        let visit_method: Option<LuaFunction> = self.visitor.get("visit_expr")
-            .expect("Could not get lua visitor function");
-        if let Some(method) = visit_method {
-            self.call_visit(method, m);
-        }
-
-        mut_visit::noop_visit_expr(m, self)
-    }
-
-    fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_item")
-            .expect("Could not get lua visitor function");
-
-        if let Some(method) = visit_method {
-            let new_items = self.call_flat_map(method, i);
-            new_items.into_iter().map(|i| i.into_inner()).collect()
-        } else {
-            mut_visit::noop_flat_map_item(i, self)
-        }
-    }
-
-    fn flat_map_stmt(&mut self, i: Stmt) -> SmallVec<[Stmt; 1]> {
-        let visit_method: Option<LuaFunction> = self.visitor.get("flat_map_stmt")
-            .expect("Could not get lua visitor function");
-
-        if let Some(method) = visit_method {
-            let new_items = self.call_flat_map(method, i);
-            new_items.into_iter().map(|i| i.into_inner()).collect()
-        } else {
-            mut_visit::noop_flat_map_stmt(i, self)
-        }
-    }
-
-    fn visit_fn_header(&mut self, m: &mut FnHeader) {
-        let visit_method: Option<LuaFunction> = self.visitor.get("visit_fn_header")
-            .expect("Could not get lua visitor function");
-        if let Some(method) = visit_method {
-            self.call_visit(method, m);
-        }
-
-        mut_visit::noop_visit_fn_header(m, self)
-    }
-
-    fn visit_fn_decl(&mut self, m: &mut P<FnDecl>) {
-        let visit_method: Option<LuaFunction> = self.visitor.get("visit_fn_decl")
-            .expect("Could not get lua visitor function");
-        if let Some(method) = visit_method {
-            self.call_visit(method, m);
-        }
-
-        mut_visit::noop_visit_fn_decl(m, self)
-    }
-
-    fn visit_struct_field(&mut self, m: &mut StructField) {
-        let visit_method: Option<LuaFunction> = self.visitor.get("visit_struct_field")
-            .expect("Could not get lua visitor function");
-        if let Some(method) = visit_method {
-            self.call_visit(method, m);
-        }
-
-        mut_visit::noop_visit_struct_field(m, self)
-    }
-
-    fn visit_item_kind(&mut self, m: &mut ItemKind) {
-        let visit_method: Option<LuaFunction> = self.visitor.get("visit_item_kind")
-            .expect("Could not get lua visitor function");
-        if let Some(method) = visit_method {
-            self.call_visit(method, m);
-        }
-
-        mut_visit::noop_visit_item_kind(m, self)
-    }
-
-    fn visit_local(&mut self, m: &mut P<Local>) {
-        let visit_method: Option<LuaFunction> = self.visitor.get("visit_local")
-            .expect("Could not get lua visitor function");
-        if let Some(method) = visit_method {
-            self.call_visit(method, m);
-        }
-
-        mut_visit::noop_visit_local(m, self)
+impl<'lua> MutVisitor for LuaAstVisitorNew<'lua> {
+    impl_visitors!{
+        [visit: visit_mod, Mod, noop_visit_mod],
+        [visit: visit_expr, P<Expr>, noop_visit_expr],
+        [visit: visit_fn_header, FnHeader, noop_visit_fn_header],
+        [visit: visit_fn_decl, P<FnDecl>, noop_visit_fn_decl],
+        [visit: visit_item_kind, ItemKind, noop_visit_item_kind],
+        [visit: visit_ty, P<Ty>, noop_visit_ty],
+        [visit: visit_ident, Ident, noop_visit_ident],
+        [visit: visit_local, P<Local>, noop_visit_local],
+        [flat_map: flat_map_param, Param, noop_flat_map_param],
+        [flat_map: flat_map_item, P<Item>, noop_flat_map_item],
+        [flat_map: flat_map_foreign_item, ForeignItem, noop_flat_map_foreign_item],
+        [flat_map: flat_map_stmt, Stmt, noop_flat_map_stmt],
+        [flat_map: flat_map_struct_field, StructField, noop_flat_map_struct_field]
     }
 
     fn visit_mac(&mut self, mac: &mut Mac) {

@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-refactor"
-version = "0.10.1"
+version = "0.15.0"
 authors = [
   "The C2Rust Project Developers <c2rust@immunant.com>",
   "Stuart Pernsteiner <spernsteiner@galois.com>",
@@ -13,27 +13,33 @@ description = "C2Rust refactoring tool implementation"
 edition = "2018"
 
 [dependencies]
-diff = "0.1.10"
-json = "0.11.8"
-libc = "0.2.28"
-regex = "1.1.0"
+diff = "0.1"
+json = "0.12"
+libc = "0.2"
+regex = "1.1"
 ena = "0.13"
-c2rust-ast-builder = { version = "0.10.0", path = "../c2rust-ast-builder" }
+c2rust-ast-builder = { version = "0.15.0", path = "../c2rust-ast-builder" }
+c2rust-ast-printer = { version = "0.15.0", path = "../c2rust-ast-printer" }
 indexmap = { version = "1.0.1", features = ["serde-1"] }
-cargo = "0.34.0"
+cargo = "0.44"
 clap = {version = "2.33", features = ["yaml"]}
 c2rust-analysis-rt = { path = "../analysis/runtime" }
-env_logger = "0.6"
+env_logger = "0.7"
 log = "0.4"
-rlua = "0.16.3"
-slotmap = {version = "0.3", features = ["unstable"]}
-derive_more = "0.14"
-c2rust-macros = { version = "0.10.0", path = "../c2rust-macros" }
+rlua = "0.17"
+slotmap = {version = "0.4", features = ["unstable"]}
+derive_more = "0.99"
+c2rust-macros = { version = "0.15.0", path = "../c2rust-macros" }
 flame = { version = "0.2.2", optional = true }
-flamer = { version = "0.3", optional = true }
+flamer = { version = "0.4", optional = true }
 failure = "0.1"
 bincode = "1.0.1"
 petgraph = "0.4"
+
+[dev-dependencies]
+z3 = "0.4.0"
+quickcheck = "0.9.0"
+rand = "0.7"
 
 [lib]
 name = "c2rust_refactor"

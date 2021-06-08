@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-transpile"
-version = "0.10.0"
+version = "0.15.1"
 authors = [
   "The C2Rust Project Developers <c2rust@immunant.com>",
   "Eric Mertens <emertens@galois.com>",
@@ -13,23 +13,25 @@ description = "C2Rust transpiler implementation"
 edition = "2018"
 
 [dependencies]
-serde_cbor = "0.9"
 clap = {version = "2.33", features = ["yaml"]}
 dtoa = "0.4.2"
-serde = "1.0"
+serde = { version = "1.0", features = ["rc"] }
 serde_json = "1.0"
 serde_derive = "1.0.80"
+serde_bytes = "0.11"
+serde_bencode = "0.2"
 indexmap = { version = "1.0.1", features = ["serde-1"] }
-c2rust-ast-builder = { version = "0.10.0", path = "../c2rust-ast-builder" }
+c2rust-ast-builder = { version = "0.15.0", path = "../c2rust-ast-builder" }
 libc = "0.2"
-c2rust-ast-exporter = { version = "0.10.0", path = "../c2rust-ast-exporter" }
-handlebars = "1.1.0"
+c2rust-ast-exporter = { version = "0.15.0", path = "../c2rust-ast-exporter" }
+c2rust-ast-printer = { version = "0.15.0", path = "../c2rust-ast-printer" }
+handlebars = "2.0"
 itertools = "0.8"
 pathdiff = "0.1.0"
 regex = "1"
-smallvec = "0.6"
-strum = "0.15"
-strum_macros = "0.15"
+smallvec = "1.0"
+strum = "0.16"
+strum_macros = "0.16"
 log = "0.4"
 fern = { version = "0.5", features = ["colored"] }
 failure = "0.1.5"

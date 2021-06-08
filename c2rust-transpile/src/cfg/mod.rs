@@ -83,11 +83,11 @@ impl Label {
         self.hash(&mut s);
         let as_num = s.finish();
 
-        mk().lit_expr(mk().int_lit(as_num as u128, ""))
+        mk().lit_expr(as_num as u128)
     }
 
     fn to_string_expr(&self) -> P<Expr> {
-        mk().lit_expr(mk().str_lit(self.debug_print()))
+        mk().lit_expr(self.debug_print())
     }
 }
 
@@ -315,7 +315,7 @@ pub enum GenTerminator<Lbl> {
     /// Multi-way branch. The patterns are expected to match the type of the expression.
     Switch {
         expr: P<Expr>,
-        cases: Vec<(Vec<P<Pat>>, Lbl)>, // TODO: support ranges of expressions
+        cases: Vec<(P<Pat>, Lbl)>, // TODO: support ranges of expressions
     },
 }
 
@@ -340,9 +340,9 @@ impl<L: Serialize> Serialize for GenTerminator<L> {
                 ref cases,
             } => {
                 let mut cases_sane: Vec<(String, &L)> = vec![];
-                for &(ref ps, ref l) in cases {
-                    let pats: Vec<String> = ps.iter().map(|x| pprust::pat_to_string(x)).collect();
-                    cases_sane.push((pats.join(" | "), l));
+                for &(ref p, ref l) in cases {
+                    let pat: String = pprust::pat_to_string(p);
+                    cases_sane.push((pat, l));
                 }
 
                 let mut tv = serializer.serialize_struct_variant("Terminator", 3, "Switch", 2)?;
@@ -713,12 +713,12 @@ impl<Lbl: Copy + Ord + Hash + Debug, Stmt> Cfg<Lbl, Stmt> {
         let mut actual_rewrites: IndexMap<Lbl, Lbl> = IndexMap::new();
 
         while let Some((from, to)) = proposed_rewrites.iter().map(|(f, t)| (*f, *t)).next() {
-            proposed_rewrites.remove(&from);
+            proposed_rewrites.swap_remove(&from);
             let mut from_any: IndexSet<Lbl> = indexset![from];
 
             // Try to apply more rewrites from `proposed_rewrites`
             let mut to_intermediate: Lbl = to;
-            while let Some(to_new) = proposed_rewrites.remove(&to_intermediate) {
+            while let Some(to_new) = proposed_rewrites.swap_remove(&to_intermediate) {
                 from_any.insert(to_intermediate);
                 to_intermediate = to_new;
             }
@@ -1016,7 +1016,7 @@ impl DeclStmtStore {
     /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
     /// want to move just a declaration to a larger scope.
     pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
-        let DeclStmtInfo { decl, assign, .. } = self.store.remove(&decl_id).ok_or(format_err!(
+        let DeclStmtInfo { decl, assign, .. } = self.store.swap_remove(&decl_id).ok_or(format_err!(
             "Cannot find information on declaration 1 {:?}",
             decl_id
         ))?;
@@ -1040,7 +1040,7 @@ impl DeclStmtStore {
     /// initially attached to). Used when you've moved a declaration but now you need to also run the
     /// initializer.
     pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
-        let DeclStmtInfo { decl, assign, .. } = self.store.remove(&decl_id).ok_or(format_err!(
+        let DeclStmtInfo { decl, assign, .. } = self.store.swap_remove(&decl_id).ok_or(format_err!(
             "Cannot find information on declaration 2 {:?}",
             decl_id
         ))?;
@@ -1068,7 +1068,7 @@ impl DeclStmtStore {
     ) -> Result<Vec<Stmt>, TranslationError> {
         let DeclStmtInfo {
             decl_and_assign, ..
-        } = self.store.remove(&decl_id).ok_or(format_err!(
+        } = self.store.swap_remove(&decl_id).ok_or(format_err!(
             "Cannot find information on declaration 3 {:?}",
             decl_id
         ))?;
@@ -1755,25 +1755,31 @@ impl CfgBuilder {
                     Ok(None)
                 }
 
-                CStmtKind::Case(_case_expr, sub_stmt, cie) => {
+                CStmtKind::Case(case_expr, sub_stmt, cie) => {
                     self.last_per_stmt_mut().saw_unmatched_case = true;
                     let this_label = Label::FromC(stmt_id);
                     self.add_wip_block(wip, Jump(this_label));
 
                     // Case
-                    let branch = match cie {
-                        ConstIntExpr::U(n) => {
-                            mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed))
+                    let resolved = translator.ast_context.resolve_expr(case_expr);
+                    let branch = match resolved.1 {
+                        CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_))  => {
+                            match translator
+                                .convert_expr(ctx.used(), resolved.0)?
+                                .to_pure_expr()
+                            {
+                                Some(expr) => match expr.kind {
+                                    ExprKind::Lit(..) | ExprKind::Path(..) => Some(expr),
+                                    _ => None,
+                                }
+                                _ => None,
+                            }
                         }
-
-                        ConstIntExpr::I(n) if n >= 0 => {
-                            mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed))
-                        }
-
-                        ConstIntExpr::I(n) => mk().unary_expr(
-                            syntax::ast::UnOp::Neg,
-                            mk().lit_expr(mk().int_lit((-n) as u128, LitIntType::Unsuffixed)),
-                        ),
+                        _ => None,
+                    };
+                    let branch = match branch {
+                        Some(expr) => expr,
+                        None => translator.convert_constant(cie)?,
                     };
                     self.switch_expr_cases
                         .last_mut()
@@ -1847,13 +1853,9 @@ impl CfgBuilder {
                         .pop()
                         .expect("No 'SwitchCases' to pop");
 
-                    let mut cases: Vec<_> = switch_case
-                        .cases
-                        .into_iter()
-                        .map(|(p, lbl)| (vec![p], lbl))
-                        .collect();
+                    let mut cases: Vec<_> = switch_case.cases.clone();
                     cases.push((
-                        vec![mk().wild_pat()],
+                        mk().wild_pat(),
                         switch_case.default.unwrap_or(next_label),
                     ));
 
@@ -2172,13 +2174,10 @@ impl Cfg<Label, StmtOrDecl> {
                 Switch { ref cases, .. } => {
                     let cases: Vec<(String, Label)> = cases
                         .iter()
-                        .map(|&(ref pats, tgt)| -> (String, Label) {
-                            let pats: Vec<String> = pats
-                                .iter()
-                                .map(|p| pprust::pat_to_string(p.deref()))
-                                .collect();
+                        .map(|&(ref pat, tgt)| -> (String, Label) {
+                            let pat: String = pprust::pat_to_string(pat.deref());
 
-                            (pats.join(" | "), tgt)
+                            (pat, tgt)
                         })
                         .collect();
                     cases

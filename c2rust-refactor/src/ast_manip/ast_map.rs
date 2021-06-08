@@ -96,7 +96,7 @@ struct MapAstInto<'a, 's: 'a> {
 
 impl<'a, 's> Visitor<'s> for MapAstInto<'a, 's> {
     fn visit_expr(&mut self, x: &'s Expr) {
-        if let ExprKind::Paren(_) = x.node {
+        if let ExprKind::Paren(_) = x.kind {
             // Ignore.  `Paren` nodes cause problems because they have the same NodeId as the inner
             // expression.
         } else {
@@ -175,7 +175,7 @@ struct MapAstIntoUnified<'a, 's: 'a> {
 
 impl<'a, 's> Visitor<'s> for MapAstIntoUnified<'a, 's> {
     fn visit_expr(&mut self, x: &'s Expr) {
-        if let ExprKind::Paren(_) = x.node {
+        if let ExprKind::Paren(_) = x.kind {
             // Ignore.  `Paren` nodes cause problems because they have the same NodeId as the inner
             // expression.
         } else {

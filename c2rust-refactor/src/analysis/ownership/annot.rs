@@ -8,7 +8,7 @@ use std::str::FromStr;
 use arena::SyncDroplessArena;
 use log::Level;
 use rustc::hir::def_id::DefId;
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 use syntax::ast;
 use syntax::symbol::Symbol;
 use syntax::visit::{self, Visitor};
@@ -71,7 +71,7 @@ pub fn handle_marks<'a, 'tcx, 'lty>(
     let mut fixed_vars = Vec::new();
     {
         let source = LTySource {
-            cx: cx,
+            cx,
             last_sig_did: None,
         };
 
@@ -123,9 +123,9 @@ struct AttrVisitor<'ast> {
 
 impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     fn visit_item(&mut self, i: &'ast ast::Item) {
-        match i.node {
+        match i.kind {
             ast::ItemKind::Fn(..) | ast::ItemKind::Static(..) | ast::ItemKind::Const(..) => {
-                if i.attrs.len() > 0 {
+                if !i.attrs.is_empty() {
                     self.def_attrs.push((i.id, &i.attrs));
                 }
             }
@@ -136,9 +136,9 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 
     fn visit_impl_item(&mut self, i: &'ast ast::ImplItem) {
-        match i.node {
+        match i.kind {
             ast::ImplItemKind::Method(..) | ast::ImplItemKind::Const(..) => {
-                if i.attrs.len() > 0 {
+                if !i.attrs.is_empty() {
                     self.def_attrs.push((i.id, &i.attrs));
                 }
             }
@@ -148,8 +148,22 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
         visit::walk_impl_item(self, i);
     }
 
+    fn visit_foreign_item(&mut self, i: &'ast ast::ForeignItem) {
+        match i.kind {
+            // TODO: Foreign statics?
+            ast::ForeignItemKind::Fn(..) => {
+                if !i.attrs.is_empty() {
+                    self.def_attrs.push((i.id, &i.attrs));
+                }
+            }
+            _ => {}
+        }
+
+        visit::walk_foreign_item(self, i);
+    }
+
     fn visit_struct_field(&mut self, sf: &'ast ast::StructField) {
-        if sf.attrs.len() > 0 {
+        if !sf.attrs.is_empty() {
             self.def_attrs.push((sf.id, &sf.attrs));
         }
 
@@ -157,7 +171,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 }
 
-pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
+pub fn handle_attrs<'a, 'tcx, 'lty>(
     cx: &mut Ctxt<'lty, 'tcx>,
     st: &CommandState,
     dcx: &RefactorCtxt<'a, 'tcx>,
@@ -174,7 +188,7 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
     let mut variant_group_primary = HashMap::new();
 
     for (node_id, attrs) in v.def_attrs {
-        let def_id = match_or!([dcx.hir_map().opt_local_def_id(node_id)] Some(x) => x; continue);
+        let def_id = match_or!([dcx.hir_map().opt_local_def_id_from_node_id(node_id)] Some(x) => x; continue);
 
         // Handle `ownership_variant_of` first.
         let mut is_variant = false;
@@ -207,7 +221,7 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
 
         for attr in attrs {
             let meta = match_or!([attr.meta()] Some(x) => x; continue);
-            match &meta.path.to_string() as &str {
+            match &*attr.name_or_empty().as_str() {
                 "ownership_constraints" => {
                     let cset = parse_ownership_constraints(&meta, cx.arena).unwrap_or_else(|e| {
                         panic!("bad #[ownership_constraints] for {:?}: {}", def_id, e)
@@ -274,14 +288,14 @@ pub fn handle_attrs<'a, 'hir, 'tcx, 'lty>(
 }
 
 fn meta_item_list(meta: &ast::MetaItem) -> Result<&[ast::NestedMetaItem], &'static str> {
-    match meta.node {
+    match meta.kind {
         ast::MetaItemKind::List(ref xs) => Ok(xs),
         _ => Err("expected MetaItemKind::List"),
     }
 }
 
 fn meta_item_word(meta: &ast::MetaItem) -> Result<(), &'static str> {
-    match meta.node {
+    match meta.kind {
         ast::MetaItemKind::Word => Ok(()),
         _ => Err("expected MetaItemKind::List"),
     }
@@ -296,7 +310,7 @@ fn nested_meta_item(nmeta: &ast::NestedMetaItem) -> Result<&ast::MetaItem, &'sta
 
 fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
     match nmeta {
-        ast::NestedMetaItem::Literal(ref lit) => match lit.node {
+        ast::NestedMetaItem::Literal(ref lit) => match lit.kind {
             ast::LitKind::Str(s, _) => Ok(s),
             _ => Err("expected str"),
         },
@@ -304,7 +318,7 @@ fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
     }
 }
 
-fn parse_ownership_constraints<'lty, 'tcx>(
+fn parse_ownership_constraints<'lty>(
     meta: &ast::MetaItem,
     arena: &'lty SyncDroplessArena,
 ) -> Result<ConstraintSet<'lty>, &'static str> {
@@ -330,13 +344,13 @@ fn parse_ownership_constraints<'lty, 'tcx>(
     Ok(cset)
 }
 
-fn parse_perm<'lty, 'tcx>(
+fn parse_perm<'lty>(
     meta: &ast::MetaItem,
     arena: &'lty SyncDroplessArena,
 ) -> Result<Perm<'lty>, &'static str> {
     if meta.check_name(Symbol::intern("min")) {
         let args = meta_item_list(meta)?;
-        if args.len() == 0 {
+        if args.is_empty() {
             return Err("`min` requires at least one argument");
         }
 
@@ -352,15 +366,15 @@ fn parse_perm<'lty, 'tcx>(
     } else {
         meta_item_word(meta)?;
 
-        let name = meta.path.to_string();
-        match &name as &str {
+        let name = meta.name_or_empty().as_str();
+        match &*name {
             "READ" => return Ok(Perm::read()),
             "WRITE" => return Ok(Perm::write()),
             "MOVE" => return Ok(Perm::move_()),
             _ => {}
         }
 
-        if !name.starts_with("_") {
+        if !name.starts_with('_') {
             return Err("invalid permission variable");
         }
         let idx = FromStr::from_str(&name[1..]).map_err(|_| "invalid permission variable")?;
@@ -371,8 +385,7 @@ fn parse_perm<'lty, 'tcx>(
 fn parse_concrete(meta: &ast::MetaItem) -> Result<ConcretePerm, &'static str> {
     meta_item_word(meta)?;
 
-    let name = meta.path.to_string();
-    match &name as &str {
+    match &*meta.name_or_empty().as_str() {
         "READ" => Ok(ConcretePerm::Read),
         "WRITE" => Ok(ConcretePerm::Write),
         "MOVE" => Ok(ConcretePerm::Move),

@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-macros"
-version = "0.10.0"
+version = "0.15.0"
 authors = ["Stephen Crane <sjc@immunant.com>", "The C2Rust Project Developers <c2rust@immunant.com>"]
 edition = "2018"
 description = "Procedural macro support crate for C2Rust"
@@ -12,6 +12,6 @@ repository = "https://github.com/immunant/c2rust"
 proc-macro = true
 
 [dependencies]
-proc-macro2 = { version = "0.4", features = ["nightly"] }
-quote = "0.6"
-syn = { version = "0.15", features = ["full", "extra-traits", "visit"] }
+proc-macro2 = { version = "1.0", features = ["nightly"] }
+quote = "1.0"
+syn = { version = "1.0", features = ["full", "extra-traits", "visit"] }

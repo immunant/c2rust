@@ -11,7 +11,7 @@ fn process_ast(mode: &str, dest: &Path) {
         .arg(mode)
         .arg(dest)
         .spawn()
-        .expect("failed to run process_ast.py");
+        .expect("failed to run process_ast.py. Make sure python3 is in your PATH.");
 
     let ret = p.wait().expect("failed to wait on process_ast.py");
 
@@ -32,6 +32,7 @@ fn main() {
     process_ast("mac_table", &out_dir.join("mac_table_gen.inc.rs"));
     process_ast("nt_match", &out_dir.join("nt_match_gen.inc.rs"));
     process_ast("ast_names", &out_dir.join("ast_names_gen.inc.rs"));
+    process_ast("lua_ast_node", &out_dir.join("lua_ast_node_gen.inc.rs"));
 
     process_ast(
         "rewrite_rewrite",

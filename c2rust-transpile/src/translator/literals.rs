@@ -7,25 +7,15 @@ use std::iter;
 
 impl<'c> Translation<'c> {
     /// Generate an integer literal corresponding to the given type, value, and base.
-    pub fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> P<Expr> {
-        // Note that C doesn't have anything smaller than integer literals
-        let (intty, suffix) = match self.ast_context.resolve_type(ty.ctype).kind {
-            CTypeKind::Int => (LitIntType::Signed(IntTy::I32), "i32"),
-            CTypeKind::Long => (LitIntType::Signed(IntTy::I64), "i64"),
-            CTypeKind::LongLong => (LitIntType::Signed(IntTy::I64), "i64"),
-            CTypeKind::UInt => (LitIntType::Unsigned(UintTy::U32), "u32"),
-            CTypeKind::ULong => (LitIntType::Unsigned(UintTy::U64), "u64"),
-            CTypeKind::ULongLong => (LitIntType::Unsigned(UintTy::U64), "u64"),
-            _ => (LitIntType::Unsuffixed, ""),
-        };
-
+    pub fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> Result<P<Expr>, TranslationError> {
         let lit = match base {
-            IntBase::Dec => mk().int_lit(val.into(), intty),
-            IntBase::Hex => mk().float_unsuffixed_lit(format!("0x{:x}{}", val, suffix)),
-            IntBase::Oct => mk().float_unsuffixed_lit(format!("0o{:o}{}", val, suffix)),
+            IntBase::Dec => mk().int_lit(val.into(), LitIntType::Unsuffixed),
+            IntBase::Hex => mk().float_unsuffixed_lit(format!("0x{:x}", val)),
+            IntBase::Oct => mk().float_unsuffixed_lit(format!("0o{:o}", val)),
         };
 
-        mk().lit_expr(lit)
+        let target_ty = self.convert_type(ty.ctype)?;
+        Ok(mk().cast_expr(mk().lit_expr(lit), target_ty))
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum
@@ -87,14 +77,13 @@ impl<'c> Translation<'c> {
         kind: &CLiteral,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
         match *kind {
-            CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base))),
+            CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base)?)),
 
             CLiteral::Character(val) => {
                 let val = val as u32;
                 let expr = match char::from_u32(val) {
                     Some(c) => {
-                        let lit = mk().char_lit(c);
-                        let expr = mk().lit_expr(lit);
+                        let expr = mk().lit_expr(c);
                         let i32_type = mk().path_ty(vec!["i32"]);
                         mk().cast_expr(expr, i32_type)
                     }
@@ -102,7 +91,7 @@ impl<'c> Translation<'c> {
                         // Fallback for characters outside of the valid Unicode range
                         if (val as i32) < 0 {
                             mk().unary_expr("-", mk().lit_expr(
-                                mk().int_lit(-(val as i32) as u128, LitIntType::Signed(IntTy::I32))
+                                mk().int_lit((val as i32).abs() as u128, LitIntType::Signed(IntTy::I32))
                             ))
                         } else {
                             mk().lit_expr(
@@ -124,7 +113,7 @@ impl<'c> Translation<'c> {
                 };
                 let val = match self.ast_context.resolve_type(ty.ctype).kind {
                     CTypeKind::LongDouble => {
-                        self.extern_crates.borrow_mut().insert("f128");
+                        self.use_crate(ExternCrate::F128);
 
                         let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
                         let args = vec![mk().ident_expr(str)];
@@ -142,8 +131,10 @@ impl<'c> Translation<'c> {
                 let mut val = val.to_owned();
 
                 match self.ast_context.resolve_type(ty.ctype).kind {
-                    // Match the literal size to the expected size padding with zeros as needed
-                    CTypeKind::ConstantArray(_, size) => val.resize(size * (width as usize), 0),
+                    CTypeKind::ConstantArray(_elem_ty, size) => {
+                        // Match the literal size to the expected size padding with zeros as needed
+                        val.resize(size * (width as usize), 0)
+                    },
 
                     // Add zero terminator
                     _ => {
@@ -152,32 +143,23 @@ impl<'c> Translation<'c> {
                         }
                     }
                 };
-                if ctx.is_static {
-                    let mut vals: Vec<P<Expr>> = vec![];
-                    for c in val {
-                        vals.push(mk().lit_expr(mk().int_lit(c as u128, LitIntType::Unsuffixed)));
-                    }
-                    let array = mk().array_expr(vals);
-                    Ok(WithStmts::new_val(array))
+                let u8_ty = mk().path_ty(vec!["u8"]);
+                let width_lit =
+                    mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
+                let array_ty = mk().array_ty(u8_ty, width_lit);
+                let source_ty = mk().ref_ty(array_ty);
+                let mutbl = if ty.qualifiers.is_const {
+                    Mutability::Immutable
                 } else {
-                    let u8_ty = mk().path_ty(vec!["u8"]);
-                    let width_lit =
-                        mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
-                    let array_ty = mk().array_ty(u8_ty, width_lit);
-                    let source_ty = mk().ref_ty(array_ty);
-                    let mutbl = if ty.qualifiers.is_const {
-                        Mutability::Immutable
-                    } else {
-                        Mutability::Mutable
-                    };
-                    let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
-                    let byte_literal = mk().lit_expr(mk().bytestr_lit(val));
-                    if ctx.is_const { self.use_feature("const_transmute"); }
-                    let pointer =
-                        transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
-                    let array = mk().unary_expr(ast::UnOp::Deref, pointer);
-                    Ok(WithStmts::new_unsafe_val(array))
-                }
+                    Mutability::Mutable
+                };
+                let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
+                let byte_literal = mk().lit_expr(val);
+                if ctx.is_const || ctx.is_static { self.use_feature("const_transmute"); }
+                let pointer =
+                    transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
+                let array = mk().unary_expr(ast::UnOp::Deref, pointer);
+                Ok(WithStmts::new_unsafe_val(array))
             }
         }
     }
@@ -276,6 +258,10 @@ impl<'c> Translation<'c> {
             }
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
+            }
+            CTypeKind::Char | CTypeKind::Int => {
+                let id = ids.first().unwrap();
+                self.convert_expr(ctx.used(), *id)
             }
             ref t => Err(format_err!("Init list not implemented for {:?}", t).into()),
         }

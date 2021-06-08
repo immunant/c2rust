@@ -102,7 +102,7 @@ impl<'a> Visitor<'a> for PrintSpanVisitor<'a> {
 
 /// Print the spans of all major nodes in `x`.
 pub fn print_spans<T: Visit>(x: &T, cm: &SourceMap) {
-    x.visit(&mut PrintSpanVisitor { cm: cm });
+    x.visit(&mut PrintSpanVisitor { cm });
 }
 
 pub fn print_one_span<T: Visit>(id: usize, root: &T, cm: &SourceMap, msg: &str) {

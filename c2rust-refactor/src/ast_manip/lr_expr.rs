@@ -5,8 +5,8 @@ use smallvec::SmallVec;
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::mut_visit::{self, MutVisitor};
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
@@ -135,15 +135,15 @@ impl<A: LRExpr, B: LRExpr, C: LRExpr> LRExpr for (A, B, C) {
 
 impl LRExpr for P<Expr> {
     fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
-        self.node.fold_rvalue(lr);
+        self.kind.fold_rvalue(lr);
         lr.fold_rvalue(self)
     }
     fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
-        self.node.fold_lvalue(lr);
+        self.kind.fold_lvalue(lr);
         lr.fold_lvalue(self)
     }
     fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {
-        self.node.fold_lvalue_mut(lr);
+        self.kind.fold_lvalue_mut(lr);
         lr.fold_lvalue_mut(self)
     }
 }
@@ -187,7 +187,7 @@ pub fn fold_expr_with_context<F>(e: &mut P<Expr>, start: Context, callback: F)
 where
     F: FnMut(&mut P<Expr>, Context),
 {
-    let mut lr = Rewrites { callback: callback };
+    let mut lr = Rewrites { callback };
     match start {
         Context::Rvalue => e.fold_rvalue(&mut lr),
         Context::Lvalue => e.fold_lvalue(&mut lr),
@@ -239,7 +239,7 @@ where
     F: FnMut(&mut P<Expr>),
 {
     let mut f = TopExprFolder {
-        callback: callback,
+        callback,
         in_expr: false,
     };
     x.visit(&mut f)

@@ -46,7 +46,7 @@ where
     S: IntoSymbol,
 {
     let mut v = ContainsMarkVisitor {
-        st: st,
+        st,
         label: label.into_symbol(),
         found: false,
     };

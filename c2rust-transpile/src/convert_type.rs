@@ -254,8 +254,8 @@ impl TypeConverter {
             inputs.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
         };
 
-        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output), is_variadic);
-        return Ok(mk().unsafe_().abi("C").barefn_ty(fn_ty));
+        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output));
+        return Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty));
     }
 
     pub fn convert_pointer(
@@ -263,18 +263,19 @@ impl TypeConverter {
         ctxt: &TypedAstContext,
         qtype: CQualTypeId,
     ) -> Result<P<Ty>, TranslationError> {
+        let mutbl = if qtype.qualifiers.is_const {
+            Mutability::Immutable
+        } else {
+            Mutability::Mutable
+        };
+
         match ctxt.resolve_type(qtype.ctype).kind {
             // While void converts to () in function returns, it converts to c_void
             // in the case of pointers.
             CTypeKind::Void => {
-                let mutbl = if qtype.qualifiers.is_const {
-                    Mutability::Immutable
-                } else {
-                    Mutability::Mutable
-                };
-                return Ok(mk()
+                Ok(mk()
                     .set_mutbl(mutbl)
-                    .ptr_ty(mk().path_ty(vec!["libc", "c_void"])));
+                    .ptr_ty(mk().path_ty(vec!["libc", "c_void"])))
             }
 
             CTypeKind::VariableArray(mut elt, _len) => {
@@ -282,60 +283,21 @@ impl TypeConverter {
                     elt = elt_
                 }
                 let child_ty = self.convert(ctxt, elt)?;
-                let mutbl = if qtype.qualifiers.is_const {
-                    Mutability::Immutable
-                } else {
-                    Mutability::Mutable
-                };
-                return Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty));
+                Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
             }
 
             // Function pointers are translated to Option applied to the function type
             // in order to support NULL function pointers natively
-            CTypeKind::Function(ret, ref params, is_var, is_noreturn, _has_proto) => {
-                let opt_ret = if is_noreturn { None } else { Some(ret) };
-                let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
+            CTypeKind::Function(..) => {
+                let fn_ty = self.convert(ctxt, qtype.ctype)?;
                 let param = mk().angle_bracketed_args(vec![fn_ty]);
-                let optn_ty = mk().path_ty(vec![mk().path_segment_with_args("Option", param)]);
-                return Ok(optn_ty);
+                Ok(mk().path_ty(vec![mk().path_segment_with_args("Option", param)]))
             }
 
-            _ => {}
-        }
-        if self.translate_valist && ctxt.is_va_list(qtype.ctype) {
-            self.features.insert("c_variadic");
-
-            let std_or_core = if self.emit_no_std { "core" } else { "std" };
-            let path = vec!["", std_or_core, "ffi", "VaList"];
-            let ty = mk().path_ty(path);
-            return Ok(ty);
-        }
-
-        let child_ty = self.convert(ctxt, qtype.ctype)?;
-        let mutbl = if qtype.qualifiers.is_const {
-            Mutability::Immutable
-        } else {
-            Mutability::Mutable
-        };
-        Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
-    }
-
-    pub fn is_inner_type_valist(ctxt: &TypedAstContext, qtype: CQualTypeId) -> bool {
-        match ctxt.resolve_type(qtype.ctype).kind {
-            CTypeKind::Struct(struct_id) => {
-                if let CDeclKind::Struct {
-                    name: Some(ref struct_name),
-                    ..
-                } = ctxt[struct_id].kind
-                {
-                    if struct_name == "__va_list_tag" {
-                        return true;
-                    }
-                }
-                false
+            _ => {
+                let child_ty = self.convert(ctxt, qtype.ctype)?;
+                Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
             }
-            CTypeKind::Pointer(pointer_id) => Self::is_inner_type_valist(ctxt, pointer_id),
-            _ => false,
         }
     }
 
@@ -346,6 +308,13 @@ impl TypeConverter {
         ctxt: &TypedAstContext,
         ctype: CTypeId,
     ) -> Result<P<Ty>, TranslationError> {
+        if self.translate_valist && ctxt.is_va_list(ctype) {
+            let std_or_core = if self.emit_no_std { "core" } else { "std" };
+            let path = vec!["", std_or_core, "ffi", "VaList"];
+            let ty = mk().path_ty(path);
+            return Ok(ty);
+        }
+
         match ctxt.index(ctype).kind {
             CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
             CTypeKind::Bool => Ok(mk().path_ty(mk().path(vec!["bool"]))),
@@ -419,12 +388,14 @@ impl TypeConverter {
 
             CTypeKind::Attributed(ty, _) => self.convert(ctxt, ty.ctype),
 
+            // ANSI/ISO C-style function
             CTypeKind::Function(ret, ref params, is_var, is_noreturn, true) => {
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, params, is_var)?;
                 Ok(fn_ty)
             }
 
+            // K&R-style function
             CTypeKind::Function(ret, _, is_var, is_noreturn, false) => {
                 let opt_ret = if is_noreturn { None } else { Some(ret) };
                 let fn_ty = self.convert_function(ctxt, opt_ret, &vec![], is_var)?;
@@ -434,6 +405,51 @@ impl TypeConverter {
             CTypeKind::TypeOf(ty) => self.convert(ctxt, ty),
 
             ref t => Err(format_err!("Unsupported type {:?}", t).into()),
+        }
+    }
+
+    /// Add the given parameters to a K&R function pointer type,
+    /// returning a full signature or `None` if the function isn't K&R.
+    pub fn knr_function_type_with_parameters(
+        &mut self,
+        ctxt: &TypedAstContext,
+        ctype: CTypeId,
+        params: &Vec<CParamId>
+    ) -> Result<Option<P<Ty>>, TranslationError> {
+        match ctxt.index(ctype).kind {
+            // ANSI/ISO C-style function
+            CTypeKind::Function(.., true) => Ok(None),
+
+            // K&R-style function
+            CTypeKind::Function(ret, ref _params, is_var, is_noreturn, false) => {
+                // _params is empty here -> get params from function definition instead
+                let params = params
+                    .iter()
+                    .map(|p| {
+                        let decl = &ctxt.get_decl(p).unwrap().kind;
+                        match decl {
+                            CDeclKind::Variable { typ, ..} => *typ,
+                            _ => panic!("parameter referenced non-variable decl.")
+                        }
+                    })
+                    .collect();
+
+                let opt_ret = if is_noreturn { None } else { Some(ret) };
+                let fn_ty = self.convert_function(ctxt, opt_ret, &params, is_var)?;
+                Ok(Some(fn_ty))
+            }
+
+            CTypeKind::Elaborated(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
+            CTypeKind::Decayed(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
+            CTypeKind::Paren(ref ctype) => self.knr_function_type_with_parameters(ctxt, *ctype, params),
+            CTypeKind::TypeOf(ty) => self.knr_function_type_with_parameters(ctxt, ty, params),
+
+            CTypeKind::Typedef(decl) => match &ctxt.index(decl).kind {
+                CDeclKind::Typedef { typ, .. } => self.knr_function_type_with_parameters(ctxt, typ.ctype, params),
+                _ => panic!("Typedef decl did not point to a typedef"),
+            }
+
+            ref kind @ _ => panic!("ctype parameter must be a function instead of {:?}", kind)
         }
     }
 }

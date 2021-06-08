@@ -2,6 +2,8 @@ use rustc::ty;
 use syntax::ast::*;
 use syntax::ptr::P;
 
+use smallvec::smallvec;
+
 use crate::ast_manip::{fold_blocks, FlatMapNodes, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
@@ -13,22 +15,26 @@ use crate::RefactorCtxt;
 
 
 /// # `struct_assign_to_update` Command
-/// 
+///
 /// Usage: `struct_assign_to_update`
-/// 
+///
 /// Replace all struct field assignments with functional update expressions.
-/// 
+///
 /// Example:
-/// 
+///
+/// ```ignore
 ///     let mut x: S = ...;
 ///     x.f = 1;
 ///     x.g = 2;
-/// 
+/// ```
+///
 /// After running `struct_assign_to_update`:
-/// 
+///
+/// ```ignore
 ///     let mut x: S = ...;
 ///     x = S { f: 1, ..x };
 ///     x = S { g: 2, ..x };
+/// ```
 pub struct AssignToUpdate;
 
 impl Transform for AssignToUpdate {
@@ -39,7 +45,7 @@ impl Transform for AssignToUpdate {
         mut_visit_match(st, cx, pat, krate, |orig, mut mcx| {
             let x = mcx.bindings.get::<_, P<Expr>>("__x").unwrap().clone();
 
-            let struct_def_id = match cx.node_type(x.id).sty {
+            let struct_def_id = match cx.node_type(x.id).kind {
                 ty::TyKind::Adt(ref def, _) => def.did,
                 _ => return,
             };
@@ -57,21 +63,25 @@ impl Transform for AssignToUpdate {
 
 
 /// # `struct_merge_updates` Command
-/// 
+///
 /// Usage: `struct_merge_updates`
-/// 
+///
 /// Merge consecutive struct updates into a single update.
-/// 
+///
 /// Example:
-/// 
+///
+/// ```ignore
 ///     let mut x: S = ...;
 ///     x = S { f: 1, ..x };
 ///     x = S { g: 2, ..x };
-/// 
+/// ```
+///
 /// After running `struct_assign_to_update`:
-/// 
+///
+/// ```ignore
 ///     let mut x: S = ...;
 ///     x = S { f: 1, g: 2, ..x };
+/// ```
 pub struct MergeUpdates;
 
 impl Transform for MergeUpdates {
@@ -99,25 +109,25 @@ impl Transform for MergeUpdates {
 }
 
 fn is_struct_update(s: &Stmt) -> bool {
-    let e = match_or!([s.node] StmtKind::Semi(ref e) => e; return false);
-    let (lhs, rhs) = match_or!([e.node] ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs);
+    let e = match_or!([s.kind] StmtKind::Semi(ref e) => e; return false);
+    let (lhs, rhs) = match_or!([e.kind] ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs);
                                return false);
-    match_or!([rhs.node] ExprKind::Struct(_, _, Some(ref base)) => lhs.ast_equiv(base);
+    match_or!([rhs.kind] ExprKind::Struct(_, _, Some(ref base)) => lhs.ast_equiv(base);
               return false)
 }
 
 fn is_struct_update_for(s: &Stmt, base1: &Expr) -> bool {
-    let e = match_or!([s.node] StmtKind::Semi(ref e) => e; return false);
-    let rhs = match_or!([e.node] ExprKind::Assign(_, ref rhs) => rhs;
+    let e = match_or!([s.kind] StmtKind::Semi(ref e) => e; return false);
+    let rhs = match_or!([e.kind] ExprKind::Assign(_, ref rhs) => rhs;
                         return false);
-    match_or!([rhs.node] ExprKind::Struct(_, _, Some(ref base)) => base1.ast_equiv(base);
+    match_or!([rhs.kind] ExprKind::Struct(_, _, Some(ref base)) => base1.ast_equiv(base);
               return false)
 }
 
 fn unpack_struct_update(s: Stmt) -> (Path, Vec<Field>, P<Expr>) {
-    let e = expect!([s.node] StmtKind::Semi(e) => e);
-    let rhs = expect!([e.into_inner().node] ExprKind::Assign(_, rhs) => rhs);
-    expect!([rhs.into_inner().node]
+    let e = expect!([s.kind] StmtKind::Semi(e) => e);
+    let rhs = expect!([e.into_inner().kind] ExprKind::Assign(_, rhs) => rhs);
+    expect!([rhs.into_inner().kind]
             ExprKind::Struct(path, fields, Some(base)) => (path, fields, base))
 }
 
@@ -130,20 +140,20 @@ fn build_struct_update(path: Path, fields: Vec<Field>, base: P<Expr>) -> Stmt {
 
 
 /// # `rename_struct` Command
-/// 
+///
 /// Obsolete - use `rename_items_regex` instead.
-/// 
+///
 /// Usage: `rename_struct NAME`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Rename the struct marked `target` to `NAME`.  Only supports renaming a single
 /// struct at a time.
 pub struct Rename(pub String);
 
 impl Transform for Rename {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let new_ident = Ident::with_empty_ctxt((&self.0 as &str).into_symbol());
+        let new_ident = Ident::with_dummy_span((&self.0 as &str).into_symbol());
         let mut target_def_id = None;
 
         // Find the struct definition and rename it.
@@ -161,7 +171,7 @@ impl Transform for Rename {
 
             smallvec![i.map(|i| {
                 Item {
-                    ident: new_ident.clone(),
+                    ident: new_ident,
                     .. i
                 }
             })]
@@ -175,7 +185,7 @@ impl Transform for Rename {
             .expect("found no struct to rename");
 
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
-            if let Some(def_id) = def.opt_def_id() {
+            if let Some(def_id) = def[0].opt_def_id() {
                 if def_id == target_def_id {
                     path.segments.last_mut().unwrap().ident = new_ident;
                 }
@@ -190,7 +200,7 @@ impl Transform for Rename {
 }
 
 fn is_struct(i: &Item) -> bool {
-    if let ItemKind::Struct(ref vd, _) = i.node {
+    if let ItemKind::Struct(ref vd, _) = i.kind {
         if let VariantData::Struct(..) = *vd {
             return true;
         }

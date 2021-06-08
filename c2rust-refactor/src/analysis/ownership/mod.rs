@@ -22,9 +22,10 @@ use arena::SyncDroplessArena;
 use log::Level;
 use rustc::hir;
 use rustc::hir::def_id::{DefId, LOCAL_CRATE};
-use rustc::hir::Node;
-use rustc::ty::TyCtxt;
-use rustc_data_structures::indexed_vec::{Idx, IndexVec};
+use rustc::hir::{Mutability, Node};
+use rustc::ty::{TyCtxt, TyKind, TypeAndMut, TyS};
+use rustc_index::vec::{Idx, IndexVec};
+use syntax::ast::IntTy;
 use syntax::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -75,6 +76,12 @@ impl Idx for Var {
     }
 }
 
+impl Var {
+    fn next(self) -> Self {
+        Var(self.0 + 1)
+    }
+}
+
 /// A permission variable.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PermVar {
@@ -107,6 +114,7 @@ type LFnSig<'lty, 'tcx> = FnSig<'lty, 'tcx, Option<PermVar>>;
 pub struct FnSig<'lty, 'tcx, L: 'lty> {
     pub inputs: &'lty [LabeledTy<'lty, 'tcx, L>],
     pub output: LabeledTy<'lty, 'tcx, L>,
+    pub is_variadic: bool,
 }
 
 /// One of the concrete permission values, READ, WRITE, or MOVE.
@@ -142,19 +150,19 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
     };
 
     match n {
-        Node::Item(i) => match i.node {
+        Node::Item(i) => match i.kind {
             hir::ItemKind::Fn(..) => true,
             _ => false,
         },
-        Node::ForeignItem(i) => match i.node {
+        Node::ForeignItem(i) => match i.kind {
             hir::ForeignItemKind::Fn(..) => true,
             _ => false,
         },
-        Node::TraitItem(i) => match i.node {
+        Node::TraitItem(i) => match i.kind {
             hir::TraitItemKind::Method(..) => true,
             _ => false,
         },
-        Node::ImplItem(i) => match i.node {
+        Node::ImplItem(i) => match i.kind {
             hir::ImplItemKind::Method(..) => true,
             _ => false,
         },
@@ -188,12 +196,86 @@ fn analyze_intra<'a, 'tcx, 'lty>(
     }
 }
 
+/// Add conservative assignments for extern functions that we can't
+/// analyze. Results are written back into the first variant for each external
+/// function in the `Ctxt`.
+fn analyze_externs<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'a, 'tcx>) {
+    for (def_id, func_summ) in cx.funcs_mut() {
+        if func_summ.cset_provided {
+            continue;
+        }
+        match hir_map.get_if_local(*def_id) {
+            Some(Node::ForeignItem(i)) => match i.kind {
+                // We only want to consider foreign functions
+                hir::ForeignItemKind::Fn(..) => {}
+                _ => continue,
+            },
+            _ => continue,
+        }
+        for &input in func_summ.sig.inputs {
+            if let Some(p) = input.label {
+                match input.ty.kind {
+                    TyKind::Ref(_, _, Mutability::Mutable) => {
+                        func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
+                    }
+                    TyKind::RawPtr(TypeAndMut{mutbl: Mutability::Mutable, ..}) => {
+                        func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        func_summ.cset_provided = true;
+    }
+}
+
 /// Run the interprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
 fn analyze_inter<'lty, 'tcx>(cx: &mut Ctxt<'lty, 'tcx>) {
     let mut inter_cx = InterCtxt::new(cx);
     inter_cx.process();
     inter_cx.finish();
+}
+
+fn is_mut_t(ty: &TyS) -> bool {
+    if let TyKind::RawPtr(mut_ty) = ty.kind {
+        if mut_ty.mutbl == Mutability::Mutable {
+            if let TyKind::Param(param_ty) = mut_ty.ty.kind {
+                return param_ty.name.as_str() == "T";
+            }
+        }
+    }
+
+    false
+}
+
+/// This function adds permission constraints to builtin functions like ptr.offset()
+/// so that ownership analysis can reason about them properly
+// TODO: When we want to add more constraints to functions here, we should make this
+// more generic
+fn register_std_constraints<'a, 'tcx, 'lty>(
+    ctxt: &mut Ctxt<'lty, 'tcx>,
+    tctxt: TyCtxt<'tcx>,
+) {
+    for (def_id, func_summ) in ctxt.funcs_mut() {
+        let fn_name_path = tctxt.def_path(*def_id).to_string_no_crate();
+
+        // #[ownership_constraints(le(WRITE, _0), le(WRITE, _1), le(_0, _1))]
+        // fn offset<T>(self: *mut T, _: isize) -> *mut T;
+        if func_summ.sig.inputs.len() == 2 && fn_name_path == "::ptr[0]::{{impl}}[1]::offset[0]" {
+            let param0_is_mut_t = is_mut_t(func_summ.sig.inputs[0].ty);
+            let param1_is_isize = if let TyKind::Int(int_ty) = func_summ.sig.inputs[1].ty.kind {
+                int_ty == IntTy::Isize
+            } else {
+                false
+            };
+            let ret_is_mut_t = is_mut_t(func_summ.sig.output.ty);
+            if param0_is_mut_t && param1_is_isize && ret_is_mut_t {
+                func_summ.cset_provided = true;
+                func_summ.sig_cset.add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
+            }
+        }
+    }
 }
 
 /// Run the analysis.
@@ -210,6 +292,10 @@ pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
 
     // Compute polymorphic signatures / constraint sets for each function
     analyze_intra(&mut cx, &dcx.hir_map(), dcx.ty_ctxt());
+    // Add constraints for extern functions
+    analyze_externs(&mut cx, &dcx.hir_map());
+    // Inject constraints for std functions
+    register_std_constraints(&mut cx, dcx.ty_ctxt());
     analyze_inter(&mut cx);
 
     // Compute monomorphic signatures and select instantiations in each function
@@ -254,9 +340,16 @@ pub struct AnalysisResult<'lty, 'tcx> {
 }
 
 /// Results specific to an analysis-level function.
-pub struct FunctionResult<'lty, 'tcx> {
+#[derive(Debug)]
+pub struct FunctionResult<'lty, 'tcx: 'lty> {
     /// Polymorphic function signature.  Each pointer is labeled with a `SigVar`.
     pub sig: VFnSig<'lty, 'tcx>,
+
+    /// Mapping of local pat spans to VTys
+    pub locals: HashMap<Span, VTy<'lty, 'tcx>>,
+
+    /// Mapping of local vars to concrete permissions
+    pub local_assign: IndexVec<Var, ConcretePerm>,
 
     pub num_sig_vars: u32,
 
@@ -275,6 +368,7 @@ pub struct FunctionResult<'lty, 'tcx> {
 /// Results specific to a variant `fn`.
 ///
 /// Each variant has a parent `FunctionResult`, identified by the `func_id` field.
+#[derive(Debug)]
 pub struct VariantResult {
     /// ID of the parent function.
     pub func_id: DefId,
@@ -289,6 +383,7 @@ pub struct VariantResult {
 }
 
 /// A reference to a function.
+#[derive(Debug)]
 pub struct FuncRef {
     /// Function ID of the callee.  Note this refers to an analysis-level function, even if the
     /// `Expr` in the AST refers to a specific variant.
@@ -306,6 +401,7 @@ pub struct FuncRef {
 /// function's `variants` field is `None`, then the ID of the variant is the same as the function
 /// ID.  Otherwise, the variant ID is found by indexing into `variants` with the index of this
 /// monomorphization.
+#[derive(Debug)]
 pub struct MonoResult {
     /// Suffix to add to the function name when this monomorphization is split into its own `fn`.
     /// Usually something like `"mut"` or `"take"`.  If empty, the original name should be used.
@@ -375,6 +471,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 FnSig {
                     inputs: var_lcx.relabel_slice(func.sig.inputs, &mut f),
                     output: var_lcx.relabel(func.sig.output, &mut f),
+                    is_variadic: func.sig.is_variadic,
                 }
             };
 
@@ -384,14 +481,30 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 Some(func.variant_ids.clone())
             };
 
+            // LTy -> VTy
+            let mut f = |p: &Option<PermVar>| -> Option<Var> {
+                if let Some(PermVar::Local(v)) = *p {
+                    Some(v)
+                } else {
+                    None
+                }
+            };
+
+            let locals = func.locals
+                .iter()
+                .map(|(&span, lty)| (span, var_lcx.relabel(&lty, &mut f)))
+                .collect();
+
             funcs.insert(
                 def_id,
                 FunctionResult {
-                    sig: sig,
+                    sig,
+                    locals,
                     num_sig_vars: func.num_sig_vars,
                     cset: func.sig_cset.clone(),
                     variants: variant_ids,
                     num_monos: func.num_monos,
+                    local_assign: func.local_assign.clone(),
                 },
             );
 
@@ -413,7 +526,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                     VariantResult {
                         func_id: def_id,
                         index: idx,
-                        func_refs: func_refs,
+                        func_refs,
                     },
                 );
             }
@@ -429,7 +542,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 suffixes.push(String::new());
             } else {
                 /// Default suffixes corresponding to the three concrete permissions.
-                static SUFFIX_BASE: [&'static str; 3] = ["", "mut", "take"];
+                static SUFFIX_BASE: [&str; 3] = ["", "mut", "take"];
                 // If more than one mono tries to use the same default suffix, we need to append a
                 // number to disambiguate.
                 let mut suffix_count = [0, 0, 0];
@@ -471,7 +584,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 monos.insert(
                     (def_id, idx),
                     MonoResult {
-                        suffix: suffix,
+                        suffix,
                         assign: mono.assign.clone(),
                         callee_mono_idxs: mono.callee_mono_idxs.clone(),
                     },

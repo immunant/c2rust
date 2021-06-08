@@ -231,7 +231,7 @@ impl Transform for TestDebugCallees {
                 }
             };
 
-            match e.node {
+            match e.kind {
                 ExprKind::Call(ref func, _) => {
                     info!("at plain call {:?}", e);
                     info!("  call info:");

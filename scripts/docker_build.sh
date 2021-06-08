@@ -15,11 +15,11 @@ REPO_NAME=immunant/c2rust
 DATE_TAG=$(date +'%Y%m%d')
 SCRIPT_DIR="$(dirname "$0")"
 
-declare -A IMAGES
+declare -A IMAGES  # associative arrays are only supported in bash 4 and higher
 IMAGES["ubuntu:bionic"]="1" # any non-empty string will do
 IMAGES["ubuntu:xenial"]="1"
+IMAGES["debian:buster"]="1"
 IMAGES["debian:stretch"]="1"
-IMAGES["debian:jessie"]="1"
 IMAGES["archlinux/base"]="1"
 IMAGES["fedora:29"]="1"
 

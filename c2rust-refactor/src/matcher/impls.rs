@@ -3,9 +3,9 @@ use rustc_target::spec::abi::Abi;
 use std::convert::TryInto;
 use std::rc::Rc;
 use syntax::ast::*;
-use syntax::ext::hygiene::SyntaxContext;
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax_pos::hygiene::SyntaxContext;
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
 use syntax::source_map::{Span, Spanned};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
@@ -67,27 +67,37 @@ impl TryMatch for Path {
     }
 }
 
+impl TryMatch for Lit {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        if mcx.maybe_capture_lit(self, target)? {
+            return Ok(());
+        }
+
+        default_try_match_lit(self, target, mcx)
+    }
+}
+
 impl TryMatch for Expr {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if mcx.maybe_capture_expr(self, target)? {
             return Ok(());
         }
 
-        if let ExprKind::Mac(ref mac) = self.node {
+        if let ExprKind::Mac(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
-                    &mac.node.tts,
+                    &mac.args,
                     |p| p.parse_expr().map(|p| p.into_inner()),
                     target,
                 ),
-                "def" => mcx.do_def_expr(&mac.node.tts, target),
+                "def" => mcx.do_def_expr(&mac.args, target),
                 "typed" => mcx.do_typed(
-                    &mac.node.tts,
+                    &mac.args,
                     |p| p.parse_expr().map(|p| p.into_inner()),
                     target,
                 ),
-                "cast" => mcx.do_cast(&mac.node.tts, |p| p.parse_expr(), target),
+                "cast" => mcx.do_cast(&mac.args, |p| p.parse_expr(), target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
         }
@@ -102,16 +112,16 @@ impl TryMatch for Pat {
             return Ok(());
         }
 
-        if let PatKind::Mac(ref mac) = self.node {
+        if let PatKind::Mac(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
-                    &mac.node.tts,
+                    &mac.args,
                     |p| p.parse_pat(None).map(|p| p.into_inner()),
                     target,
                 ),
                 "typed" => mcx.do_typed(
-                    &mac.node.tts,
+                    &mac.args,
                     |p| p.parse_pat(None).map(|p| p.into_inner()),
                     target,
                 ),
@@ -129,15 +139,15 @@ impl TryMatch for Ty {
             return Ok(());
         }
 
-        if let TyKind::Mac(ref mac) = self.node {
+        if let TyKind::Mac(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
-                    &mac.node.tts,
+                    &mac.args,
                     |p| p.parse_ty().map(|p| p.into_inner()),
                     target,
                 ),
-                "def" => mcx.do_def_ty(&mac.node.tts, target),
+                "def" => mcx.do_def_ty(&mac.args, target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
         }

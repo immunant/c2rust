@@ -2,12 +2,13 @@ use std::collections::HashMap;
 
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{Span, SyntaxContext};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
 
+use std::fmt::Debug;
 use std::rc::Rc;
 use syntax::attr;
 use syntax::ptr::P;
@@ -17,6 +18,7 @@ use syntax_pos::Symbol;
 
 use crate::ast_manip::Visit;
 use crate::ast_manip::{GetNodeId, GetSpan};
+use crate::ast_manip::util::path_eq;
 
 use super::root_callsite_span;
 
@@ -145,9 +147,9 @@ pub struct InvocId(pub u32);
 #[derive(Clone, Copy, Debug)]
 pub enum InvocKind<'ast> {
     Mac(&'ast Mac),
-    ItemAttr(&'ast Item),
+    Attrs(&'ast [Attribute]),
     /// This is the generated item part of a `#[derive]`'s output.  The `InvocId` points to the
-    /// originating `ItemAttr`.
+    /// originating `Attrs`.
     Derive(InvocId),
 }
 
@@ -287,7 +289,7 @@ fn is_macro_generated(sp: Span) -> bool {
 
 fn collect_macros_seq<'a, T>(old_seq: &'a [T], new_seq: &'a [T], cx: &mut Ctxt<'a>)
 where
-    T: CollectMacros + MaybeInvoc + GetNodeId + GetSpan + AsMacNodeRef,
+    T: CollectMacros + MaybeInvoc + GetNodeId + GetSpan + AsMacNodeRef + Debug,
 {
     let mut j = 0;
 
@@ -295,10 +297,11 @@ where
         if let Some(invoc) = old.as_invoc() {
             let invoc_id = cx.record_invoc(invoc);
             trace!(
-                "new {:?} from macro {:?} at {:?}",
+                "new {:?} from macro {:?} at {:?}: {:?}",
                 invoc_id,
                 old.get_node_id(),
-                old.get_span()
+                old.get_span(),
+                old,
             );
 
             let mut empty = true;
@@ -323,9 +326,21 @@ where
                     cx.record_macro_with_id(child_invoc_id, new.as_mac_node_ref());
                 } else {
                     cx.record_macro_with_id(invoc_id, new.as_mac_node_ref());
+
+                    // Recurse into children so they get added to the node map.
+                    match invoc {
+                        InvocKind::Attrs(..) => {
+                            CollectMacros::collect_macros(old, new, cx);
+                        }
+                        _ => {}
+                    }
                 }
                 cx.record_node_id_match(old.get_node_id(), new.get_node_id());
                 j += 1;
+            }
+
+            if empty {
+                cx.record_empty_invoc(old.get_node_id(), invoc_id);
             }
         } else {
             // For now, any time we see a node with a macro-generated span that wasn't eaten up by
@@ -334,12 +349,10 @@ where
             while j < new_seq.len() && is_macro_generated(new_seq[j].get_span()) {
                 j += 1;
             }
-            assert!(
-                j < new_seq.len(),
-                "impossible: ran out of items in expanded sequence"
-            );
-            CollectMacros::collect_macros(old, &new_seq[j], cx);
-            j += 1;
+            if j < new_seq.len() {
+                CollectMacros::collect_macros(old, &new_seq[j], cx);
+                j += 1;
+            }
         }
     }
 
@@ -354,17 +367,65 @@ fn get_child_invoc<'a>(
     id: InvocId,
     new: MacNodeRef<'a>,
 ) -> Option<InvocKind<'a>> {
+    if is_derived(invoc, new) {
+        Some(InvocKind::Derive(id))
+    } else {
+        None
+    }
+}
+
+fn is_derived<'a>(
+    invoc: InvocKind<'a>,
+    new: MacNodeRef<'a>,
+) -> bool {
     match invoc {
-        InvocKind::ItemAttr(..) => {
-            if let MacNodeRef::Item(i) = new {
-                if attr::contains_name(&i.attrs, Symbol::intern("automatically_derived")) {
-                    return Some(InvocKind::Derive(id));
+        InvocKind::Attrs(..) => {
+            let attrs = match new {
+                MacNodeRef::Item(i) => {
+                    if is_structural_derive(i) { return true; }
+                    Some(&i.attrs[..])
+                }
+                MacNodeRef::Stmt(s) => match &s.kind {
+                    StmtKind::Local(l) => Some(&l.attrs[..]),
+                    StmtKind::Item(i) => {
+                        if is_structural_derive(i) { return true; }
+                        Some(&i.attrs[..])
+                    }
+                    StmtKind::Expr(e) | StmtKind::Semi(e) => Some(&e.attrs[..]),
+                    StmtKind::Mac(..) => None,
+                },
+                MacNodeRef::Expr(e) => Some(&e.attrs[..]),
+                MacNodeRef::ImplItem(i) => Some(&i.attrs[..]),
+                MacNodeRef::TraitItem(i) => Some(&i.attrs[..]),
+                _ => None,
+            };
+            if let Some(attrs) = attrs {
+                if attr::contains_name(attrs, Symbol::intern("automatically_derived")) {
+                    return true;
                 }
             }
         }
         _ => {}
     }
-    None
+    false
+}
+
+fn is_structural_derive(i: &Item) -> bool {
+    // This is a hack to work around the StructuralPartialEq impl
+    // from derive(PartialEq) not being marked with an
+    // automatically_derived attribute. TODO: remove this when
+    // StructuralPartialEq is labeled with the right attribute.
+    match &i.kind {
+        ItemKind::Impl(_, _, _, _, Some(traitref), _, _) => {
+            if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"])
+                || path_eq(&traitref.path, &["$crate", "marker", "StructuralEq"])
+            {
+                return true;
+            }
+        }
+        _ => {}
+    }
+    false
 }
 
 trait CollectMacros {
@@ -391,14 +452,14 @@ impl<T: CollectMacros> CollectMacros for Spanned<T> {
     }
 }
 
-impl<T: CollectMacros> CollectMacros for Option<T> {
+impl<T: CollectMacros+Debug> CollectMacros for Option<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         match (old, new) {
             (&Some(ref old), &Some(ref new)) => {
                 <T as CollectMacros>::collect_macros(old, new, cx);
             }
             (&None, &None) => {}
-            (_, _) => panic!("mismatch between unexpanded and expanded ASTs"),
+            (_, _) => panic!("mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}", old, new),
         }
     }
 }
@@ -447,14 +508,23 @@ impl CollectMacros for NodeId {
     }
 }
 
+fn has_macro_attr(attrs: &[Attribute]) -> bool {
+    attr::contains_name(attrs, Symbol::intern("derive"))
+        || attr::contains_name(attrs, Symbol::intern("cfg"))
+        || attr::contains_name(attrs, Symbol::intern("test"))
+}
+
 trait MaybeInvoc {
     fn as_invoc(&self) -> Option<InvocKind>;
 }
 
 impl MaybeInvoc for Expr {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ExprKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            _ if has_macro_attr(&self.attrs) => {
+                Some(InvocKind::Attrs(&self.attrs))
+            }
             _ => None,
         }
     }
@@ -462,7 +532,7 @@ impl MaybeInvoc for Expr {
 
 impl MaybeInvoc for Pat {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             PatKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -471,7 +541,7 @@ impl MaybeInvoc for Pat {
 
 impl MaybeInvoc for Ty {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             TyKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -480,14 +550,11 @@ impl MaybeInvoc for Ty {
 
 impl MaybeInvoc for Item {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ItemKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
             _ => {
-                if attr::contains_name(&self.attrs, Symbol::intern("derive"))
-                    || attr::contains_name(&self.attrs, Symbol::intern("cfg"))
-                    || attr::contains_name(&self.attrs, Symbol::intern("test"))
-                {
-                    Some(InvocKind::ItemAttr(self))
+                if has_macro_attr(&self.attrs) {
+                    Some(InvocKind::Attrs(&self.attrs))
                 } else {
                     None
                 }
@@ -498,16 +565,22 @@ impl MaybeInvoc for Item {
 
 impl MaybeInvoc for ImplItem {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ImplItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
-            _ => None,
+            _ => {
+                if has_macro_attr(&self.attrs) {
+                    Some(InvocKind::Attrs(&self.attrs))
+                } else {
+                    None
+                }
+            }
         }
     }
 }
 
 impl MaybeInvoc for TraitItem {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             TraitItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -516,7 +589,7 @@ impl MaybeInvoc for TraitItem {
 
 impl MaybeInvoc for ForeignItem {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
+        match self.kind {
             ForeignItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
@@ -525,8 +598,17 @@ impl MaybeInvoc for ForeignItem {
 
 impl MaybeInvoc for Stmt {
     fn as_invoc(&self) -> Option<InvocKind> {
-        match self.node {
-            StmtKind::Mac(ref mac) => Some(InvocKind::Mac(&mac.0)),
+        match &self.kind {
+            StmtKind::Mac(mac) => Some(InvocKind::Mac(&mac.0)),
+            StmtKind::Local(l) if has_macro_attr(&l.attrs) => {
+                Some(InvocKind::Attrs(&l.attrs))
+            }
+            StmtKind::Item(i) if has_macro_attr(&i.attrs) => {
+                Some(InvocKind::Attrs(&i.attrs))
+            }
+            StmtKind::Expr(e) | StmtKind::Semi(e) if has_macro_attr(&e.attrs) => {
+                Some(InvocKind::Attrs(&e.attrs))
+            }
             _ => None,
         }
     }

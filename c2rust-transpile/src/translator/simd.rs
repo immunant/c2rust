@@ -80,24 +80,24 @@ impl<'c> Translation<'c> {
                     self.use_feature("stdsimd");
                 }
 
-                let item_store = &mut self.items.borrow_mut()[&self.main_file];
+                self.with_cur_file_item_store(|item_store| {
+                    let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+                    let x86_64_attr = mk()
+                        .call_attr("cfg", vec!["target_arch = \"x86_64\""])
+                        .pub_();
+                    let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
 
-                let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
-                let x86_64_attr = mk()
-                    .call_attr("cfg", vec!["target_arch = \"x86_64\""])
-                    .pub_();
-                let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
-
-                item_store.add_use_with_attr(
-                    vec![std_or_core.clone(), "arch".into(), "x86".into()],
-                    name,
-                    x86_attr,
-                );
-                item_store.add_use_with_attr(
-                    vec![std_or_core, "arch".into(), "x86_64".into()],
-                    name,
-                    x86_64_attr,
-                );
+                    item_store.add_use_with_attr(
+                        vec![std_or_core.clone(), "arch".into(), "x86".into()],
+                        name,
+                        x86_attr,
+                    );
+                    item_store.add_use_with_attr(
+                        vec![std_or_core, "arch".into(), "x86_64".into()],
+                        name,
+                        x86_64_attr,
+                    );
+                });
 
                 true
             }
@@ -117,6 +117,7 @@ impl<'c> Translation<'c> {
             | "__v2du"
             | "__v8hu"
             | "__v16qu"
+            | "__v32qu"
             | "__v4df"
             | "__v8sf"
             | "__v4di"
@@ -131,6 +132,7 @@ impl<'c> Translation<'c> {
             | "__v4df_aligned"
             | "__v4di_aligned"
             | "__v16qs"
+            | "__v32qs"
             | "__v8su"
             | "__v16hu"
             | "__mm_loadh_pi_v2f32"
@@ -155,29 +157,30 @@ impl<'c> Translation<'c> {
             // bits that are behind a feature gate.
             self.use_feature("stdsimd");
 
-            let item_store = &mut self.items.borrow_mut()[&self.main_file];
-            let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
+            self.with_cur_file_item_store(|item_store| {
+                let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
 
-            // REVIEW: Also a linear lookup
-            if !SIMD_X86_64_ONLY.contains(&name) {
-                let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+                // REVIEW: Also a linear lookup
+                if !SIMD_X86_64_ONLY.contains(&name) {
+                    let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+
+                    item_store.add_use_with_attr(
+                        vec![std_or_core.clone(), "arch".into(), "x86".into()],
+                        name,
+                        x86_attr,
+                    );
+                }
+
+                let x86_64_attr = mk()
+                    .call_attr("cfg", vec!["target_arch = \"x86_64\""])
+                    .pub_();
 
                 item_store.add_use_with_attr(
-                    vec![std_or_core.clone(), "arch".into(), "x86".into()],
+                    vec![std_or_core, "arch".into(), "x86_64".into()],
                     name,
-                    x86_attr,
+                    x86_64_attr,
                 );
-            }
-
-            let x86_64_attr = mk()
-                .call_attr("cfg", vec!["target_arch = \"x86_64\""])
-                .pub_();
-
-            item_store.add_use_with_attr(
-                vec![std_or_core, "arch".into(), "x86_64".into()],
-                name,
-                x86_64_attr,
-            );
+            });
 
             return Ok(true);
         }
@@ -480,7 +483,8 @@ impl<'c> Translation<'c> {
                     // vector param, not two, despite the following type match), so it's
                     // okay to provide a dummy here
                     Call(..) => expr_id,
-                    _ => unreachable!("Found cast other than explicit cast"),
+                    ImplicitCast(_, expr_id, _, _, _) => *expr_id,
+                    e => unreachable!("Found unexpected AST element: {:?}", e),
                 };
 
                 match &self.ast_context.resolve_type(ctype).kind {

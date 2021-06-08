@@ -30,30 +30,47 @@ impl<'c> Translation<'c> {
         self.use_feature("asm");
 
         fn push_expr(tokens: &mut Vec<TokenTree>, expr: P<Expr>) {
-            tokens.push(TokenTree::token(token::Interpolated(Lrc::new(Nonterminal::NtExpr(expr))), DUMMY_SP));
+            tokens.push(TokenTree::token(token::Interpolated(Rc::new(Nonterminal::NtExpr(expr))), DUMMY_SP));
         }
 
         let mut stmts: Vec<Stmt> = vec![];
+        let mut post_stmts: Vec<Stmt> = vec![];
         let mut tokens: Vec<TokenTree> = vec![];
         let mut first;
 
         // Assembly template
-        push_expr(&mut tokens, mk().lit_expr(mk().str_lit(asm)));
+        push_expr(&mut tokens, mk().lit_expr(asm));
+
+        let mut tied_operands = HashMap::new();
+        for (input_idx, &AsmOperand {
+            ref constraints,
+            ..
+        }) in inputs.iter().enumerate()
+        {
+            let constraints_digits = constraints.trim_matches(|c: char| !c.is_ascii_digit());
+            if let Ok(output_idx) = constraints_digits.parse::<usize>() {
+                let output_key = (output_idx, true);
+                let input_key = (input_idx, false);
+                tied_operands.insert(output_key, input_idx);
+                tied_operands.insert(input_key, output_idx);
+            }
+        }
 
         // Outputs and Inputs
+        let mut operand_renames = HashMap::new();
         for &(list, is_output) in &[(outputs, true), (inputs, false)] {
             first = true;
-            tokens.push( TokenTree::token(token::Colon, DUMMY_SP)); // Always emitted, even if list is empty
+            tokens.push(TokenTree::token(token::Colon, DUMMY_SP)); // Always emitted, even if list is empty
 
-            for &AsmOperand {
+            for (operand_idx, &AsmOperand {
                 ref constraints,
                 expression,
-            } in list
+            }) in list.iter().enumerate()
             {
                 if first {
                     first = false
                 } else {
-                    tokens.push( TokenTree::token(token::Comma, DUMMY_SP))
+                    tokens.push(TokenTree::token(token::Comma, DUMMY_SP))
                 }
 
                 let mut result = self.convert_expr(ctx.used(), expression)?;
@@ -72,27 +89,95 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                push_expr(&mut tokens, mk().lit_expr(mk().str_lit(constraints)));
+                if let Some(tied_operand) = tied_operands.get(&(operand_idx, is_output)) {
+                    // If we have an input operand tied to an output operand,
+                    // we need to replicate clang's behavior: the inline assembly
+                    // uses the larger type internally, and the smaller value gets
+                    // extended to the larger one before the call, and truncated
+                    // back after (if needed). For portability, we moved the
+                    // type conversions into the `c2rust-asm-casts` crate,
+                    // so we call into that one from here.
+                    if is_output {
+                        // Convert `x` into `let freshN = &mut x; *x`
+                        let output_name = self.renamer.borrow_mut().fresh();
+                        let output_local = mk().local(
+                            mk().ident_pat(&output_name),
+                            None as Option<P<Ty>>,
+                            Some(mk().mutbl().addr_of_expr(result)),
+                        );
+                        stmts.push(mk().local_stmt(P(output_local)));
+
+                        // `let mut freshN;`
+                        let inner_name = self.renamer.borrow_mut().fresh();
+                        let inner_local = mk().local(
+                            mk().ident_pat(&inner_name),
+                            None as Option<P<Ty>>,
+                            None as Option<P<Expr>>,
+                        );
+                        stmts.push(mk().local_stmt(P(inner_local)));
+
+                        result = mk().ident_expr(&inner_name);
+                        operand_renames.insert(operand_idx, (output_name, inner_name));
+                    } else {
+                        self.use_crate(ExternCrate::C2RustAsmCasts);
+
+                        // Import the trait into scope
+                        self.with_cur_file_item_store(|item_store| {
+                            item_store.add_use(vec!["c2rust_asm_casts".into()], "AsmCastTrait");
+                        });
+
+                        let (output_name, inner_name) = operand_renames
+                            .get(&tied_operand)
+                            .unwrap();
+
+                        let input_name = self.renamer.borrow_mut().fresh();
+                        let input_local = mk().local(
+                            mk().ident_pat(&input_name),
+                            None as Option<P<Ty>>,
+                            Some(result),
+                        );
+                        stmts.push(mk().local_stmt(P(input_local)));
+
+                        // Replace `result` with
+                        // `c2rust_asm_casts::AsmCast::cast_in(output, input)`
+                        let path_expr = mk().path_expr(
+                            vec!["c2rust_asm_casts", "AsmCast", "cast_in"]
+                        );
+                        let output = mk().ident_expr(output_name);
+                        let input = mk().ident_expr(input_name);
+                        result = mk().call_expr(path_expr, vec![output.clone(), input.clone()]);
+
+                        // Append the cast-out call after the assembly macro:
+                        // `c2rust_asm_casts::AsmCast::cast_out(output, input, inner);`
+                        let path_expr = mk().path_expr(
+                            vec!["c2rust_asm_casts", "AsmCast", "cast_out"]);
+                        let inner = mk().ident_expr(inner_name);
+                        let cast_out = mk().call_expr(path_expr, vec![output, input, inner]);
+                        post_stmts.push(mk().semi_stmt(cast_out));
+                    }
+                }
+
+                push_expr(&mut tokens, mk().lit_expr(constraints));
                 push_expr(&mut tokens, mk().paren_expr(result));
             }
         }
 
         // Clobbers
         first = true;
-        tokens.push( TokenTree::token(token::Colon, DUMMY_SP));
+        tokens.push(TokenTree::token(token::Colon, DUMMY_SP));
         for clobber in clobbers {
             if first {
                 first = false
             } else {
                 tokens.push(TokenTree::token(token::Comma, DUMMY_SP))
             }
-            push_expr(&mut tokens, mk().lit_expr(mk().str_lit(clobber)));
+            push_expr(&mut tokens, mk().lit_expr(clobber));
         }
 
         // Options
         if is_volatile {
-            tokens.push( TokenTree::token(token::Colon, DUMMY_SP));
-            push_expr(&mut tokens, mk().lit_expr(mk().str_lit("volatile")));
+            tokens.push(TokenTree::token(token::Colon, DUMMY_SP));
+            push_expr(&mut tokens, mk().lit_expr("volatile"));
         }
 
         let mac = mk().mac(
@@ -103,6 +188,9 @@ impl<'c> Translation<'c> {
         let mac = mk().mac_expr(mac);
         let mac = mk().span(span).expr_stmt(mac);
         stmts.push(mac);
+
+        // Push the post-macro statements
+        stmts.extend(post_stmts.into_iter());
 
         Ok(stmts)
     }

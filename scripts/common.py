@@ -11,14 +11,9 @@ import argparse
 import platform
 import multiprocessing
 
-from typing import Optional, List, Callable
+from typing import List, Callable
 
-try:
-    import plumbum as pb
-except ImportError:
-    # run `pip install plumbum` or `easy_install plumbum` to fix
-    print("error: python package plumbum is not installed.", file=sys.stderr)
-    sys.exit(errno.ENOENT)
+import plumbum as pb
 
 
 class Colors:
@@ -65,17 +60,24 @@ class Config:
     XCHECK_BACKEND_DYNAMIC_DLSYM_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'backends', 'dynamic-dlsym')
     XCHECK_CONFIG_CRATE_DIR = os.path.join(RUST_CHECKS_DIR, 'config')
     MACROS_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-macros')
+    AST_PRINTER_CRATE_DIR = os.path.join(ROOT_DIR, 'c2rust-ast-printer')
 
     CBOR_PREFIX = os.path.join(BUILD_DIR, "tinycbor")
 
     LLVM_VER = "7.0.0"
-    # make the build directory unique to the hostname such that
-    # building inside a vagrant/docker environment uses a different
-    # folder than building directly on the host.
-    LLVM_ARCHIVE_URLS = [
+    LLVM_ARCHIVE_URLS = None  # initialized by _init_llvm_ver_deps
+    OLD_LLVM_ARCHIVE_URLS = [
         'http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz',
         'http://releases.llvm.org/{ver}/cfe-{ver}.src.tar.xz',
-        'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
+        'http://releases.llvm.org/{ver}/compiler-rt-{ver}.src.tar.xz',
+        # 'http://releases.llvm.org/{ver}/clang-tools-extra-{ver}.src.tar.xz',
+    ]
+    # Since LLVM version 10, sources have been hosted on Github.
+    GITHUB_LLVM_ARCHIVE_URLS = [
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/llvm-{ver}.src.tar.xz',
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/clang-{ver}.src.tar.xz',
+        'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/compiler-rt-{ver}.src.tar.xz',
+        # 'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/clang-tools-extra-{ver}.src.tar.xz',
     ]
     # See http://releases.llvm.org/download.html#7.0.0
     LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=LLVM_VER)
@@ -93,17 +95,27 @@ class Config:
     CLANG_XCHECK_PLUGIN_BLD = os.path.join(BUILD_DIR,
                                            'clang-xcheck-plugin')
 
-    MIN_PLUMBUM_VERSION = (1, 6, 3)
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = 'nightly-2019-06-22'
+    CUSTOM_RUST_NAME = 'nightly-2019-12-05'
+
+    LLVM_SKIP_SIGNATURE_CHECKS  = False
 
     """
     Reflect changes to all configuration variables that depend on LLVM_VER
     """
     def _init_llvm_ver_deps(self):
-        self.LLVM_ARCHIVE_URLS = [s.format(ver=self.LLVM_VER)
-                                  for s in Config.LLVM_ARCHIVE_URLS]
+        def use_github_archive_urls():
+            try:
+                (major, _, _) = self.LLVM_VER.split(".")
+                return int(major) >= 10
+            except ValueError:
+                emsg = "invalid LLVM version: {}".format(self.LLVM_VER)
+                raise ValueError(emsg)
+        
+        urls = self.GITHUB_LLVM_ARCHIVE_URLS if use_github_archive_urls() \
+            else self.OLD_LLVM_ARCHIVE_URLS
+        self.LLVM_ARCHIVE_URLS = [u.format(ver=self.LLVM_VER) for u in urls]
         self.LLVM_SIGNATURE_URLS = [s + ".sig" for s in self.LLVM_ARCHIVE_URLS]
         self.LLVM_ARCHIVE_FILES = [os.path.basename(s)
                                    for s in self.LLVM_ARCHIVE_URLS]
@@ -172,6 +184,10 @@ class Config:
         self.TARGET_DIR = "target/{}/".format(build_type)
         self.TARGET_DIR = os.path.join(self.ROOT_DIR, self.TARGET_DIR)
 
+        has_skip_sig = args and hasattr(args, 'llvm_skip_signature_checks') 
+        self.LLVM_SKIP_SIGNATURE_CHECKS = args.llvm_skip_signature_checks \
+            if has_skip_sig else False
+
     @staticmethod
     def add_args(parser: argparse.ArgumentParser):
         """Add common command-line arguments that CommonGlobals understands to
@@ -231,7 +247,7 @@ def on_mac() -> bool:
     """
     return true on macOS/OS X.
     """
-    return 'Darwin' in platform.platform()
+    return platform.system() == "Darwin"
 
 
 def on_linux() -> bool:
@@ -387,43 +403,13 @@ def ensure_rustfmt_version():
         die(emsg)
 
 
-def ensure_clang_version(min_ver: List[int]):
-    clang = get_cmd_or_die("clang")
-    version = clang("--version")
-
-    def _common_check(match):
-        nonlocal version
-        if match:
-            version = match.group(1)
-            # print(version)
-            version = [int(d) for d in version.split(".")]
-            emsg = "can't compare versions {} and {}".format(version, min_ver)
-            assert len(version) == len(min_ver), emsg
-            if version < min_ver:
-                emsg = "clang version: {} < min version: {}"
-                emsg = emsg.format(version, min_ver)
-                die(emsg)
-        else:
-            logging.warning("unknown clang version: " + version)
-            die("unable to identify clang version")
-
-    if on_linux():
-        m = re.search(r"clang\s+version\s([^\s-]+)", version)
-        _common_check(m)
-    elif on_mac():
-        m = re.search(r"Apple\sLLVM\sversion\s([^\s-]+)", version)
-        _common_check(m)
-    else:
-        assert False, "run this script on macOS or linux"
-
-
 def get_ninja_build_type(ninja_build_file):
     signature = "# CMAKE generated file: DO NOT EDIT!" + os.linesep
     with open(ninja_build_file, "r") as handle:
         lines = handle.readlines()
         if not lines[0] == signature:
             die("unexpected content in ninja.build: " + ninja_build_file)
-        r = re.compile(r'^#\s*Configuration:\s*(\w+)')
+        r = re.compile(r'^#\s*Configurations?:\s*(\w+)')
         for line in lines:
             m = r.match(line)
             if m:
@@ -607,10 +593,10 @@ def download_archive(aurl: str, afile: str, asig: str = None):
                 "-L",                       # follow redirects
                 "--max-redirs", "20",
                 "--connect-timeout", "5",   # timeout for reach attempt
-                "--max-time", "10",         # how long each retry will wait
+                "--max-time", "20",         # how long each retry will wait
                 "--retry", "5",
                 "--retry-delay", "0",       # exponential backoff
-                "--retry-max-time", "60",   # total time before we fail
+                "--retry-max-time", "120",   # total time before we fail
                 "-o", ofile
             ]
             curl(*curl_args)
@@ -620,11 +606,12 @@ def download_archive(aurl: str, afile: str, asig: str = None):
     if not asig:
         return
 
-    # download archive signature
-    asigfile = afile + ".sig"
-    _download_helper(asig, asigfile)
+    if asig:
+        # download archive signature
+        asigfile = afile + ".sig"
+        _download_helper(asig, asigfile)
 
-    check_sig(afile, asigfile)
+        check_sig(afile, asigfile)
 
 
 class NonZeroReturn(Exception):

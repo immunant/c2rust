@@ -188,7 +188,7 @@ impl RelooperState {
                 .next()
                 .expect("Should find exactly one entry");
 
-            if let Some(bb) = blocks.remove(&entry) {
+            if let Some(bb) = blocks.swap_remove(&entry) {
                 let new_entries = bb.successors();
                 let BasicBlock {
                     body,
@@ -333,7 +333,7 @@ impl RelooperState {
                     }
 
                     // Check we've actually visited all of the expected content
-                    visited.remove(&join);
+                    visited.swap_remove(&join);
                     if let Some(_) = visited.difference(content).next() {
                         recognized_c_multiple = false;
                     }
@@ -491,7 +491,7 @@ impl RelooperState {
         let handler_keys: IndexSet<Label> = all_handlers.keys().cloned().collect();
         let (then, branches) = if handler_keys == entries {
             let a_key = *all_handlers.keys().next().expect("no handlers found");
-            let last_handler = all_handlers.remove(&a_key).expect("just got this key");
+            let last_handler = all_handlers.swap_remove(&a_key).expect("just got this key");
             (last_handler, all_handlers)
         } else {
             (vec![], all_handlers)
@@ -562,16 +562,16 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                     let mut merged_goto: IndexMap<Label, Vec<P<Pat>>> = IndexMap::new();
                     let mut merged_exit: IndexMap<Label, Vec<P<Pat>>> = IndexMap::new();
 
-                    for &(ref pats, ref lbl) in cases {
+                    for &(ref pat, ref lbl) in cases {
                         match lbl {
                             &StructureLabel::GoTo(lbl) => merged_goto
                                 .entry(lbl)
                                 .or_insert(vec![])
-                                .extend(pats.clone()),
+                                .push(pat.clone()),
                             &StructureLabel::ExitTo(lbl) => merged_exit
                                 .entry(lbl)
                                 .or_insert(vec![])
-                                .extend(pats.clone()),
+                                .push(pat.clone()),
                             _ => panic!("simplify_structure: Nested precondition violated"),
                         }
                     }
@@ -582,13 +582,19 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                     let mut cases_new: Vec<_> = vec![];
                     for &(_, ref lbl) in cases.iter().rev() {
                         match lbl {
-                            &StructureLabel::GoTo(lbl) => match merged_goto.remove(&lbl) {
+                            &StructureLabel::GoTo(lbl) => match merged_goto.swap_remove(&lbl) {
                                 None => {}
-                                Some(pats) => cases_new.push((pats, StructureLabel::GoTo(lbl))),
+                                Some(pats) => {
+                                    let pat = if pats.len() == 1 { pats[0].clone() } else { mk().or_pat(pats) };
+                                    cases_new.push((pat, StructureLabel::GoTo(lbl)))
+                                }
                             },
-                            &StructureLabel::ExitTo(lbl) => match merged_exit.remove(&lbl) {
+                            &StructureLabel::ExitTo(lbl) => match merged_exit.swap_remove(&lbl) {
                                 None => {}
-                                Some(pats) => cases_new.push((pats, StructureLabel::ExitTo(lbl))),
+                                Some(pats) => {
+                                    let pat = if pats.len() == 1 { pats[0].clone() } else { mk().or_pat(pats) };
+                                    cases_new.push((pat, StructureLabel::ExitTo(lbl)))
+                                }
                             },
                             _ => panic!("simplify_structure: Nested precondition violated"),
                         };

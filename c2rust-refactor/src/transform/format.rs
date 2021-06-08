@@ -7,9 +7,10 @@ use syntax::ast::*;
 use syntax::attr;
 use syntax::source_map::DUMMY_SP;
 use syntax::ptr::P;
-use syntax::parse::token::{Token, TokenKind, Nonterminal};
+use syntax::token::{Token, TokenKind, Nonterminal};
 use syntax::tokenstream::TokenTree;
 use syntax_pos::{sym, Span};
+use smallvec::smallvec;
 
 use c2rust_ast_builder::mk;
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
@@ -19,31 +20,35 @@ use crate::RefactorCtxt;
 
 
 /// # `convert_format_args` Command
-/// 
+///
 /// Usage: `convert_format_args`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For each function call, if one of its argument expressions is marked `target`,
 /// then parse that argument as a `printf` format string, with the subsequent arguments as the
 /// format args.  Replace both the format string and the args with an invocation of the Rust
 /// `format_args!` macro.
-/// 
+///
 /// This transformation applies casts to the remaining arguments to account for differences in
 /// argument conversion behavior between C-style and Rust-style string formatting.  However, it
 /// does not attempt to convert the `format_args!` output into something compatible with the
 /// original C function.  This results in a type error, so this pass should usually be followed up
 /// by an additional rewrite to change the function being called.
-/// 
+///
 /// Example:
-/// 
+///
+/// ```ignore
 ///     printf("hello %d\n", 123);
-/// 
+/// ```
+///
 /// If the string `"hello %d\n"` is marked `target`, then running
 /// `convert_format_string` will replace this call with
-/// 
+///
+/// ```ignore
 ///     printf(format_args!("hello {:}\n", 123 as i32));
-/// 
+/// ```
+///
 /// At this point, it would be wise to replace the `printf` expression with a function that accepts
 /// the `std::fmt::Arguments` produced by `format_args!`.
 pub struct ConvertFormatArgs;
@@ -51,7 +56,7 @@ pub struct ConvertFormatArgs;
 impl Transform for ConvertFormatArgs {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            let fmt_idx = match e.node {
+            let fmt_idx = match e.kind {
                 ExprKind::Call(_, ref args) =>
                     args.iter().position(|e| st.marked(e.id, "target")),
                 _ => None,
@@ -62,7 +67,7 @@ impl Transform for ConvertFormatArgs {
             let fmt_idx = fmt_idx.unwrap();
 
 
-            let (func, args) = expect!([e.node] ExprKind::Call(ref f, ref a) => (f, a));
+            let (func, args) = expect!([e.kind] ExprKind::Call(ref f, ref a) => (f, a));
 
             // Find the expr for the format string.  This may not be exactly args[fmt_idx] - the
             // user can mark the actual string literal in case there are casts/conversions applied.
@@ -102,7 +107,7 @@ fn build_format_macro(
     let mut ep = &old_fmt_str_expr;
     let lit = loop {
         // Peel off any casts and retrieve the inner string
-        match ep.node {
+        match ep.kind {
             ExprKind::Lit(ref l) => break l,
             ExprKind::Cast(ref e, _) |
             ExprKind::Type(ref e, _) => ep = &*e,
@@ -113,7 +118,7 @@ fn build_format_macro(
             _ => panic!("unexpected format string: {:?}", old_fmt_str_expr)
         }
     };
-    let s = expect!([lit.node]
+    let s = expect!([lit.kind]
         LitKind::Str(s, _) => (&s.as_str() as &str).to_owned(),
         LitKind::ByteStr(ref b) => str::from_utf8(b).unwrap().to_owned());
 
@@ -149,10 +154,10 @@ fn build_format_macro(
         },
     }).parse();
 
-    while new_s.ends_with("\0") {
+    while new_s.ends_with('\0') {
         new_s.pop();
     }
-    let macro_name = if new_s.ends_with("\n") && ln_macro_name.is_some() {
+    let macro_name = if new_s.ends_with('\n') && ln_macro_name.is_some() {
         // Format string ends with "\n", call println!/eprintln! versions instead
         new_s.pop();
         ln_macro_name.unwrap()
@@ -160,7 +165,7 @@ fn build_format_macro(
         macro_name
     };
 
-    let new_fmt_str_expr = mk().span(old_fmt_str_expr.span).lit_expr(mk().str_lit(&new_s));
+    let new_fmt_str_expr = mk().span(old_fmt_str_expr.span).lit_expr(&new_s);
 
     info!("old fmt str expr: {:?}", old_fmt_str_expr);
     info!("new fmt str expr: {:?}", new_fmt_str_expr);
@@ -205,13 +210,13 @@ fn build_format_macro(
 ///
 /// Example:
 ///
-/// ```
+/// ```ignore
 /// printf("Number: %d\n", 123);
 /// ```
 ///
 /// gets converted to:
 ///
-/// ```
+/// ```ignore
 /// print!("Number: {}\n", 123);
 /// ```
 pub struct ConvertPrintfs;
@@ -223,7 +228,7 @@ impl Transform for ConvertPrintfs {
         let mut stderr_defs = HashSet::<DefId>::new();
         visit_nodes(krate, |fi: &ForeignItem| {
             if attr::contains_name(&fi.attrs, sym::no_mangle) {
-                match (&*fi.ident.as_str(), &fi.node) {
+                match (&*fi.ident.as_str(), &fi.kind) {
                     ("printf", ForeignItemKind::Fn(_, _)) => {
                         printf_defs.insert(cx.node_def_id(fi.id));
                     }
@@ -238,9 +243,9 @@ impl Transform for ConvertPrintfs {
             }
         });
         FlatMapNodes::visit(krate, |s: Stmt| {
-            match s.node {
+            match s.kind {
                 StmtKind::Semi(ref expr) => {
-                    if let ExprKind::Call(ref f, ref args) = expr.node {
+                    if let ExprKind::Call(ref f, ref args) = expr.kind {
                         if args.len() < 1 {
                             return smallvec![s];
                         }
@@ -273,6 +278,7 @@ enum CastType {
     Usize,
     Char,
     Str,
+    Float,
 }
 
 impl CastType {
@@ -286,6 +292,7 @@ impl CastType {
             CastType::Int(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
             CastType::Uint(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
             CastType::Usize => mk().span(span).cast_expr(e, mk().ident_ty("usize")),
+            CastType::Float => mk().span(span).cast_expr(e, mk().ident_ty("f64")),
             CastType::Char => {
                 // e as u8 as char
                 let e = mk().cast_expr(e, mk().ident_ty("u8"));
@@ -350,6 +357,7 @@ enum ConvType {
     Hex(Length, bool),
     Char,
     Str,
+    Float,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -390,6 +398,7 @@ impl Conv {
             ConvType::Hex(len, _) => CastType::Uint(len),
             ConvType::Char => CastType::Char,
             ConvType::Str => CastType::Str,
+            ConvType::Float => CastType::Float,
         };
 
         casts.insert(*idx, cast);
@@ -490,7 +499,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
 
             if b'1' <= self.peek() && self.peek() <= b'9' || self.peek() == b'*'{
                 conv.width = Some(self.parse_amount());
-            } 
+            }
             if self.eat(b'.') {
                 conv.prec = Some(self.parse_amount());
             }
@@ -565,6 +574,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
             'X' => ConvType::Hex(len, true),
             'c' => ConvType::Char,
             's' => ConvType::Str,
+            'f' => ConvType::Float,
             _ => panic!("unrecognized conversion spec `{}`", c),
         }
     }

@@ -8,7 +8,7 @@ use std::mem;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
 
-pub use c2rust_ast_exporter::clang_ast::{SrcFile, SrcLoc, SrcSpan};
+pub use c2rust_ast_exporter::clang_ast::{SrcFile, SrcLoc, SrcSpan, BuiltinVaListKind};
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub struct CTypeId(pub u64);
@@ -67,13 +67,22 @@ pub struct TypedAstContext {
     include_map: Vec<Vec<SrcLoc>>,
 
     // map expressions to the stack of macros they were expanded from
-    pub macro_expansions: HashMap<CExprId, Vec<CDeclId>>,
+    pub macro_invocations: HashMap<CExprId, Vec<CDeclId>>,
+
+    // map macro decls to the expressions they expand to
+    pub macro_expansions: HashMap<CDeclId, Vec<CExprId>>,
+
+    // map expressions to the text of the macro invocation they expanded from,
+    // if any
+    pub macro_expansion_text: HashMap<CExprId, String>,
 
     pub comments: Vec<Located<String>>,
 
     // The key is the typedef decl being squashed away,
     // and the value is the decl id to the corresponding structure
     pub prenamed_decls: IndexMap<CDeclId, CDeclId>,
+
+    pub va_list_kind: BuiltinVaListKind,
 }
 
 /// Comments associated with a typed AST context
@@ -117,10 +126,12 @@ impl<T> Located<T> {
 }
 
 impl TypedAstContext {
+    // TODO: build the TypedAstContext during initialization, rather than
+    // building an empty one and filling it later.
     pub fn new(clang_files: &[SrcFile]) -> TypedAstContext {
         let mut files: Vec<SrcFile> = vec![];
         let mut file_map: Vec<FileId> = vec![];
-        for file in clang_files.into_iter() {
+        for file in clang_files {
             if let Some(existing) = files.iter().position(|f| f.path == file.path) {
                 file_map.push(existing);
             } else {
@@ -139,7 +150,7 @@ impl TypedAstContext {
                     line: include_loc.line,
                     column: include_loc.column,
                 });
-                cur = &files[file_map[include_loc.fileid as usize]];
+                cur = &clang_files[include_loc.fileid as usize];
             }
             include_path.reverse();
             include_map.push(include_path);
@@ -157,10 +168,13 @@ impl TypedAstContext {
             file_map,
             include_map,
             parents: HashMap::new(),
+            macro_invocations: HashMap::new(),
             macro_expansions: HashMap::new(),
+            macro_expansion_text: HashMap::new(),
 
             comments: vec![],
             prenamed_decls: IndexMap::new(),
+            va_list_kind: BuiltinVaListKind::CharPtrBuiltinVaList,
         }
     }
 
@@ -274,6 +288,81 @@ impl TypedAstContext {
         }
     }
 
+    /// Follow a chain of typedefs and return true iff the last typedef is named
+    /// `__buitin_va_list` thus naming the type clang uses to represent `va_list`s.
+    pub fn is_builtin_va_list(&self, typ: CTypeId) -> bool {
+        match self.index(typ).kind {
+            CTypeKind::Typedef(decl) => match &self.index(decl).kind {
+                    CDeclKind::Typedef { name: nam, typ: ty, .. } => {
+                        if nam == "__builtin_va_list" {
+                            true
+                        } else {
+                            self.is_builtin_va_list(ty.ctype)
+                        }
+                    },
+                    _ => panic!("Typedef decl did not point to a typedef"),
+            },
+            _ => false,
+        }
+    }
+
+    /// Predicate for types that are used to implement C's `va_list`.
+    /// FIXME: can we get rid of this method and use `is_builtin_va_list` instead?
+    pub fn is_va_list_struct(&self, typ: CTypeId) -> bool {
+        // detect `va_list`s based on typedef (should work across implementations)
+//        if self.is_builtin_va_list(typ) {
+//            return true;
+//        }
+
+        // detect `va_list`s based on type (assumes struct-based implementation)
+        let resolved_ctype = self.resolve_type(typ);
+        match resolved_ctype.kind {
+            CTypeKind::Struct(record_id) => {
+                let r#struct = &self[record_id];
+                if let CDeclKind::Struct { name: Some(ref nam), .. } = r#struct.kind {
+                    return nam == "__va_list_tag" || nam == "__va_list"
+                } else {
+                    false
+                }
+            },
+            // va_list is a 1 element array; return true iff element type is struct __va_list_tag
+            CTypeKind::ConstantArray(typ, 1) => {
+                return self.is_va_list(typ);
+            },
+            _ => false
+        }
+    }
+
+    /// Predicate for pointers to types that are used to implement C's `va_list`.
+    pub fn is_va_list(&self, typ: CTypeId) -> bool {
+        match self.va_list_kind {
+            BuiltinVaListKind::CharPtrBuiltinVaList | BuiltinVaListKind::VoidPtrBuiltinVaList
+            | BuiltinVaListKind::X86_64ABIBuiltinVaList => {
+                match self.resolve_type(typ).kind {
+                    CTypeKind::Pointer(CQualTypeId { ctype, .. })
+                    | CTypeKind::ConstantArray(ctype, _) => {
+                        self.is_va_list_struct(ctype)
+                    }
+                    _ => false,
+                }
+            }
+
+            BuiltinVaListKind::AArch64ABIBuiltinVaList => {
+                self.is_va_list_struct(typ)
+            }
+
+            BuiltinVaListKind::AAPCSABIBuiltinVaList => {
+                // The mechanism applies: va_list is a `struct __va_list { ... }` as per
+                // https://documentation-service.arm.com/static/5f201281bb903e39c84d7eae
+                // ("Procedure Call Standard for the Arm Architecture Release 2020Q2, Document
+                // number IHI 0042J") Section 8.1.4 "Additional Types"
+                self.is_va_list_struct(typ)
+            }
+
+            kind => unimplemented!("va_list type {:?} not yet implemented", kind),
+        }
+    }
+
     /// Predicate for function pointers
     pub fn is_function_pointer(&self, typ: CTypeId) -> bool {
         let resolved_ctype = self.resolve_type(typ);
@@ -286,34 +375,6 @@ impl TypedAstContext {
         } else {
             false
         }
-    }
-
-    pub fn is_va_list(&self, typ: CTypeId) -> bool {
-        match self.resolve_type(typ).kind {
-            CTypeKind::Struct(struct_id) => {
-                if let CDeclKind::Struct {
-                    name: Some(ref struct_name),
-                    ..
-                } = self[struct_id].kind {
-                    if struct_name == "__va_list_tag" {
-                        return true;
-                    }
-                }
-            }
-
-            // va_list is a 1 element array of type struct __va_list_tag
-            CTypeKind::ConstantArray(typ, 1) => {
-                return self.is_va_list(typ);
-            }
-
-            // Allow a decayed reference to the array to count as a va_list
-            CTypeKind::Pointer(pointee_qty) => {
-                return self.is_va_list(pointee_qty.ctype);
-            }
-
-            _ => {}
-        }
-        false
     }
 
     /// Can the given field decl be a flexible array member?
@@ -334,6 +395,19 @@ impl TypedAstContext {
             Some(p)
         } else {
             None
+        }
+    }
+
+    /// Resolve expression value, ignoring any casts
+    pub fn resolve_expr(&self, expr_id: CExprId) -> (CExprId, &CExprKind) {
+        let expr = &self.index(expr_id).kind;
+        match expr {
+            CExprKind::ImplicitCast(_, subexpr, _, _, _) |
+            CExprKind::ExplicitCast(_, subexpr, _, _, _) |
+            CExprKind::Paren(_, subexpr) => {
+                self.resolve_expr(*subexpr)
+            }
+            _ => (expr_id, expr)
         }
     }
 
@@ -403,12 +477,14 @@ impl TypedAstContext {
             CExprKind::ImplicitValueInit { .. } |
             CExprKind::Predefined(..) |
             CExprKind::Statements(..) | // TODO: more precision
-            CExprKind::VAArg(..) => false,
+            CExprKind::VAArg(..) |
+            CExprKind::Atomic{..} => false,
 
             CExprKind::Literal(_, _) |
             CExprKind::DeclRef(_, _, _) |
             CExprKind::UnaryType(_, _, _, _) |
-            CExprKind::OffsetOf(..) => true,
+            CExprKind::OffsetOf(..) |
+            CExprKind::ConstantExpr(..) => true,
 
             CExprKind::DesignatedInitExpr(_,_,e) |
             CExprKind::ImplicitCast(_, e, _, _, _) |
@@ -451,49 +527,53 @@ impl TypedAstContext {
         }
     }
 
-    pub fn prune_unused_decls(&mut self) {
+    pub fn prune_unwanted_decls(&mut self, want_unused_functions: bool) {
         // Starting from a set of root declarations, walk each one to find declarations it
         // depends on. Then walk each of those, recursively.
 
-        // Declarations we still need to walk.  Everything in here is also in `used`.
+        // Declarations we still need to walk.  Everything in here is also in `wanted`.
         let mut to_walk: Vec<CDeclId> = Vec::new();
         // Declarations accessible from a root.
-        let mut used: HashSet<CDeclId> = HashSet::new();
+        let mut wanted: HashSet<CDeclId> = HashSet::new();
 
-        // Mark all the roots as used.  Roots are all top-level functions and variables that might
+        // Mark all the roots as wanted.  Roots are all top-level functions and variables that might
         // be visible from another compilation unit.
+        //
+        // In addition, mark any other (unused) function wanted if configured.
         for &decl_id in &self.c_decls_top {
             let decl = self.index(decl_id);
-            match decl.kind {
+            let is_wanted = match decl.kind {
                 CDeclKind::Function {
                     body: Some(_),
                     is_global: true,
-                    is_inline: false,
+                    is_inline,
+                    is_inline_externally_visible,
                     ..
-                } => {
-                    to_walk.push(decl_id);
-                    used.insert(decl_id);
-                }
+                    // Depending on the C specification and dialect, an inlined function
+                    // may be externally visible. We rely on clang to determine visibility.
+                } if !is_inline || is_inline_externally_visible => true,
+                CDeclKind::Function {
+                    body: Some(_),
+                    ..
+                } if want_unused_functions => true,
                 CDeclKind::Variable {
                     is_defn: true,
                     is_externally_visible: true,
                     ..
-                } => {
-                    to_walk.push(decl_id);
-                    used.insert(decl_id);
-                }
+                } => true,
                 CDeclKind::Variable { ref attrs, .. } | CDeclKind::Function { ref attrs, .. }
-                    if attrs.contains(&Attribute::Used) =>
-                {
-                    to_walk.push(decl_id);
-                    used.insert(decl_id);
-                }
-                _ => {}
+                    if attrs.contains(&Attribute::Used) => true,
+                _ => false,
+            };
+
+            if is_wanted {
+                to_walk.push(decl_id);
+                wanted.insert(decl_id);
             }
         }
 
-        // Add all referenced macros to the set of used decls
-        // used.extend(self.macro_expansions.values().flatten());
+        // Add all referenced macros to the set of wanted decls
+        // wanted.extend(self.macro_expansions.values().flatten());
 
         while let Some(enclosing_decl_id) = to_walk.pop() {
             for some_id in DFNodes::new(self, SomeId::Decl(enclosing_decl_id)) {
@@ -502,13 +582,13 @@ impl TypedAstContext {
                         match self.c_types[&type_id].kind {
                             // This is a reference to a previously declared type.  If we look
                             // through it we should(?) get something that looks like a declaration,
-                            // which we can mark as used.
+                            // which we can mark as wanted.
                             CTypeKind::Elaborated(decl_type_id) => {
                                 let decl_id = self.c_types[&decl_type_id]
                                     .kind
                                     .as_decl_or_typedef()
                                     .expect("target of CTypeKind::Elaborated isn't a decl?");
-                                if used.insert(decl_id) {
+                                if wanted.insert(decl_id) {
                                     to_walk.push(decl_id);
                                 }
                             }
@@ -521,22 +601,22 @@ impl TypedAstContext {
 
                     SomeId::Expr(expr_id) => {
                         let expr = self.index(expr_id);
-                        if let Some(macs) = self.macro_expansions.get(&expr_id) {
+                        if let Some(macs) = self.macro_invocations.get(&expr_id) {
                             for mac_id in macs {
-                                if used.insert(*mac_id) {
+                                if wanted.insert(*mac_id) {
                                     to_walk.push(*mac_id);
                                 }
                             }
                         }
                         if let CExprKind::DeclRef(_, decl_id, _) = &expr.kind {
-                            if used.insert(*decl_id) {
+                            if wanted.insert(*decl_id) {
                                 to_walk.push(*decl_id);
                             }
                         }
                     }
 
                     SomeId::Decl(decl_id) => {
-                        if used.insert(decl_id) {
+                        if wanted.insert(decl_id) {
                             to_walk.push(decl_id);
                         }
 
@@ -545,7 +625,7 @@ impl TypedAstContext {
                                 // Special case for enums.  The enum constant is used, so the whole
                                 // enum is also used.
                                 let parent_id = self.parents[&decl_id];
-                                if used.insert(parent_id) {
+                                if wanted.insert(parent_id) {
                                     to_walk.push(parent_id);
                                 }
                             }
@@ -562,17 +642,17 @@ impl TypedAstContext {
 
         // Unset c_main if we are not retaining its declaration
         if let Some(main_id) = self.c_main {
-            if !used.contains(&main_id) {
+            if !wanted.contains(&main_id) {
                 self.c_main = None;
             }
         }
 
         // Prune any declaration that isn't considered live
         self.c_decls
-            .retain(|&decl_id, _decl| used.contains(&decl_id));
+            .retain(|&decl_id, _decl| wanted.contains(&decl_id));
 
         // Prune top declarations that are not considered live
-        self.c_decls_top.retain(|x| used.contains(x));
+        self.c_decls_top.retain(|x| wanted.contains(x));
     }
 
     pub fn sort_top_decls(&mut self) {
@@ -799,6 +879,7 @@ pub enum CDeclKind {
         is_inline: bool,
         is_implicit: bool,
         is_extern: bool,
+        is_inline_externally_visible: bool,
         typ: CFuncTypeId,
         name: String,
         parameters: Vec<CParamId>,
@@ -865,11 +946,21 @@ pub enum CDeclKind {
 
     MacroObject {
         name: String,
-        replacements: Vec<CExprId>,
+        // replacements: Vec<CExprId>,
+    },
+
+    MacroFunction {
+        name: String,
+        // replacements: Vec<CExprId>,
     },
 
     NonCanonicalDecl {
         canonical_decl: CDeclId,
+    },
+
+    StaticAssert {
+        assert_expr: CExprId,
+        message: Option<CExprId>
     }
 }
 
@@ -944,6 +1035,9 @@ pub enum CExprKind {
     // Explicit cast
     ExplicitCast(CQualTypeId, CExprId, CastKind, Option<CFieldId>, LRValue),
 
+    // Constant context expression
+    ConstantExpr(CQualTypeId, CExprId, Option<ConstIntExpr>),
+
     // Reference to a decl (a variable, for instance)
     // TODO: consider enforcing what types of declarations are allowed here
     DeclRef(CQualTypeId, CDeclId, LRValue),
@@ -995,6 +1089,18 @@ pub enum CExprKind {
     // GNU choose expr. Condition, true expr, false expr, was condition true?
     Choose(CQualTypeId, CExprId, CExprId, CExprId, bool),
 
+    // GNU/C11 atomic expr
+    Atomic {
+        typ: CQualTypeId,
+        name: String,
+        ptr: CExprId,
+        order: CExprId,
+        val1: Option<CExprId>,
+        order_fail: Option<CExprId>,
+        val2: Option<CExprId>,
+        weak: Option<CExprId>,
+    },
+
     BadExpr,
 }
 
@@ -1042,8 +1148,10 @@ impl CExprKind {
             | CExprKind::VAArg(ty, _)
             | CExprKind::ShuffleVector(ty, _)
             | CExprKind::ConvertVector(ty, _)
-            | CExprKind::DesignatedInitExpr(ty, _, _) => Some(ty),
-            | CExprKind::Choose(ty, _, _, _, _) => Some(ty),
+            | CExprKind::DesignatedInitExpr(ty, _, _)
+            | CExprKind::ConstantExpr(ty, _, _) => Some(ty),
+            | CExprKind::Choose(ty, _, _, _, _)
+            | CExprKind::Atomic{typ: ty, ..} => Some(ty),
         }
     }
 
@@ -1495,6 +1603,8 @@ pub enum Attribute {
     Section(String),
     /// __attribute__((used, __used__))
     Used,
+    /// __attribute((visibility("hidden")))
+    Visibility(String),
 }
 
 impl CTypeKind {

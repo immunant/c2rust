@@ -1,18 +1,19 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
-//! `rustc_driver::driver::compile_input`.
+//! `rustc_driver::run_compiler`.
 
 use rustc::dep_graph::DepGraph;
 use rustc::hir::map as hir_map;
+use rustc::hir;
+use rustc::lint::{self, LintStore};
 use rustc::session::config::Options as SessionOptions;
 use rustc::session::config::{Input, OutputFilenames};
 use rustc::session::{self, DiagnosticOutput, Session};
 use rustc::ty::steal::Steal;
-use rustc::ty::{self, GlobalCtxt, Resolutions, TyCtxt};
+use rustc::ty::{self, GlobalCtxt, ResolverOutputs};
 use rustc::util::common::ErrorReported;
 use rustc_codegen_utils::codegen_backend::CodegenBackend;
 use rustc_data_structures::declare_box_region_type;
 use rustc_data_structures::sync::{Lock, Lrc};
-use rustc_data_structures::thin_vec::ThinVec;
 use rustc_driver;
 use rustc_errors::DiagnosticBuilder;
 use rustc_incremental::DepGraphFuture;
@@ -20,42 +21,40 @@ use rustc_interface::interface;
 use rustc_interface::interface::BoxedResolver;
 use rustc_interface::util::get_codegen_backend;
 use rustc_interface::{util, Config};
-use rustc_metadata::cstore::CStore;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::mpsc;
 use std::sync::Arc;
 use syntax::ast;
 use syntax::ast::DUMMY_NODE_ID;
 use syntax::ast::{
-    Arg, Block, BlockCheckMode, Expr, ForeignItem, ImplItem, Item, ItemKind, NodeId, Pat, Stmt, Ty,
-    UnsafeSource,
+    Block, BlockCheckMode, Expr, ForeignItem, ImplItem, Item, ItemKind, NodeId, Param, Pat, Stmt,
+    Ty, UnsafeSource,
 };
-use syntax::ext::base::NamedSyntaxExtension;
-use syntax::ext::hygiene::SyntaxContext;
-use syntax::feature_gate::AttributeType;
-use syntax::parse::parser::Parser;
-use syntax::parse::token::TokenKind;
-use syntax::parse::{self, PResult};
+use syntax_pos::hygiene::SyntaxContext;
+use rustc_parse::parser::Parser;
+use syntax::token::{self, TokenKind};
+use syntax;
+use rustc_errors::PResult;
 use syntax::ptr::P;
 use syntax::source_map::SourceMap;
 use syntax::source_map::{FileLoader, RealFileLoader};
 use syntax::symbol::{kw, Symbol};
 use syntax::tokenstream::TokenTree;
-use syntax_pos::{FileName, Span};
+use syntax_pos::{FileName, Span, DUMMY_SP};
 use syntax_pos::edition::Edition;
 
 use crate::ast_manip::remove_paren;
-use crate::command::{RefactorState, Registry};
+use crate::command::{GenerationalTyCtxt, RefactorState, Registry};
 use crate::file_io::{ArcFileIO, FileIO};
 // TODO: don't forget to call span_fix after parsing
 // use crate::span_fix;
 use crate::util::Lone;
 use crate::RefactorCtxt;
+use crate::context::HirMap;
 
 /// Compiler phase selection.  Later phases have more analysis results available, but are less
 /// robust against broken code.  (For example, phase 3 provides typechecking results, but can't be
@@ -71,25 +70,25 @@ pub enum Phase {
 }
 
 impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
-    pub fn new_phase_1(sess: &'a Session, cstore: &'a CStore) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, cstore, None, None)
+    pub fn new_phase_1(sess: &'a Session) -> RefactorCtxt<'a, 'tcx> {
+        RefactorCtxt::new(sess, None, None, None)
     }
 
     pub fn new_phase_2(
         sess: &'a Session,
-        cstore: &'a CStore,
+        max_node_id: NodeId,
         map: &'a hir_map::Map<'tcx>,
     ) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, cstore, Some(map), None)
+        RefactorCtxt::new(sess, None, Some(HirMap::new(max_node_id, map)), None)
     }
 
     pub fn new_phase_3(
         sess: &'a Session,
-        cstore: &'a CStore,
+        max_node_id: NodeId,
         map: &'a hir_map::Map<'tcx>,
-        tcx: TyCtxt<'tcx>,
+        tcx: GenerationalTyCtxt<'tcx>,
     ) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, cstore, Some(map), Some(tcx))
+        RefactorCtxt::new(sess, None, Some(HirMap::new(max_node_id, map)), Some(tcx))
     }
 }
 
@@ -206,7 +205,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
 /// infer a sysroot.  Rustc's own sysroot detection (filesearch::get_or_default_sysroot) uses
 /// env::current_exe, which will point to c2rust-refactor, not rustc.
 fn maybe_set_sysroot(mut sopts: SessionOptions, args: &[String]) -> SessionOptions {
-    if sopts.maybe_sysroot.is_none() && args.len() > 0 {
+    if sopts.maybe_sysroot.is_none() && !args.is_empty() {
         let p = Path::new(&args[0]);
         if p.is_absolute() {
             if let Some(sysroot) = p.parent().and_then(|p| p.parent()) {
@@ -237,12 +236,16 @@ pub fn clone_config(config: &interface::Config) -> interface::Config {
         stderr: config.stderr.clone(),
         crate_name: config.crate_name.clone(),
         lint_caps: config.lint_caps.clone(),
+        register_lints: None,
+        override_queries: None,
+        registry: config.registry.clone(),
     }
 }
 
 pub fn create_config(args: &[String]) -> interface::Config {
     let matches = rustc_driver::handle_options(args).expect("rustc arg parsing failed");
-    let (sopts, cfg) = session::config::build_session_options_and_crate_config(&matches);
+    let sopts = session::config::build_session_options(&matches);
+    let cfg = interface::parse_cfgspecs(matches.opt_strs("cfg"));
     let sopts = maybe_set_sysroot(sopts, args);
     let output_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
     let output_file = matches.opt_str("o").map(|o| PathBuf::from(&o));
@@ -263,6 +266,9 @@ pub fn create_config(args: &[String]) -> interface::Config {
         stderr: None,
         crate_name: None,
         lint_caps: Default::default(),
+        register_lints: None,
+        override_queries: None,
+        registry: rustc_driver::diagnostics_registry(),
     }
 }
 
@@ -323,26 +329,23 @@ pub struct Compiler {
     input_path: Option<PathBuf>,
     output_dir: Option<PathBuf>,
     output_file: Option<PathBuf>,
-    queries: Queries,
-    pub cstore: Lrc<CStore>,
     crate_name: Option<String>,
+    register_lints: Option<Box<dyn Fn(&Session, &mut lint::LintStore) + Send + Sync>>,
+    override_queries:
+        Option<fn(&Session, &mut ty::query::Providers<'_>, &mut ty::query::Providers<'_>)>,
 }
 
 #[allow(dead_code)]
 #[derive(Default)]
-struct Queries {
+struct Queries<'tcx> {
     dep_graph_future: Query<Option<DepGraphFuture>>,
     parse: Query<ast::Crate>,
     crate_name: Query<String>,
-    register_plugins: Query<(ast::Crate, PluginInfo)>,
-    expansion: Query<(ast::Crate, Rc<Option<RefCell<BoxedResolver>>>)>,
+    register_plugins: Query<(ast::Crate, Lrc<LintStore>)>,
+    expansion: Query<(ast::Crate, Steal<Rc<RefCell<BoxedResolver>>>)>,
     dep_graph: Query<DepGraph>,
-    lower_to_hir: Query<(Steal<hir_map::Forest>, ExpansionResult)>,
+    lower_to_hir: Query<(&'tcx hir::map::Forest, Steal<ResolverOutputs>)>,
     prepare_outputs: Query<OutputFilenames>,
-    codegen_channel: Query<(
-        Steal<mpsc::Sender<Box<dyn Any + Send>>>,
-        Steal<mpsc::Receiver<Box<dyn Any + Send>>>,
-    )>,
     global_ctxt: Query<BoxedGlobalCtxt>,
     ongoing_codegen: Query<Box<dyn Any>>,
     link: Query<()>,
@@ -361,17 +364,6 @@ impl<T> Default for Query<T> {
     }
 }
 
-#[allow(dead_code)]
-struct PluginInfo {
-    syntax_exts: Vec<NamedSyntaxExtension>,
-    attributes: Vec<(String, AttributeType)>,
-}
-
-struct ExpansionResult {
-    pub defs: Steal<hir_map::Definitions>,
-    pub resolutions: Steal<Resolutions>,
-}
-
 declare_box_region_type!(
     pub BoxedGlobalCtxt,
     for('gcx),
@@ -388,25 +380,24 @@ pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) ->
         config.file_loader,
         config.input_path.clone(),
         config.lint_caps,
+        config.registry,
     );
 
     // Put a dummy file at the beginning of the source_map, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
     source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
-    let cstore = Lrc::new(CStore::new(codegen_backend.metadata_loader()));
-
     let compiler = Compiler {
         sess,
         codegen_backend,
         source_map,
-        cstore,
         input: config.input,
         input_path: config.input_path,
         output_dir: config.output_dir,
         output_file: config.output_file,
-        queries: Default::default(),
         crate_name: config.crate_name,
+        override_queries: config.override_queries,
+        register_lints: config.register_lints,
     };
 
     let compiler = unsafe { mem::transmute(compiler) };
@@ -470,13 +461,14 @@ pub fn build_session_from_args(
     file_loader: Option<Box<dyn FileLoader + Sync + Send>>,
 ) -> Session {
     let matches = rustc_driver::handle_options(args).expect("rustc arg parsing failed");
-    let (sopts, _cfg) = session::config::build_session_options_and_crate_config(&matches);
+
+    let sopts = session::config::build_session_options(&matches);
     let sopts = maybe_set_sysroot(sopts, args);
 
     assert!(matches.free.len() == 1, "expected exactly one input file");
     let in_path = Some(Path::new(&matches.free[0]).to_owned());
 
-    let (session, _cstore, _codegen_backend) = build_session(sopts, in_path, file_loader);
+    let (session, _codegen_backend) = build_session(sopts, in_path, file_loader);
     session
 }
 
@@ -484,9 +476,9 @@ fn build_session(
     sopts: SessionOptions,
     in_path: Option<PathBuf>,
     file_loader: Option<Box<dyn FileLoader + Sync + Send>>,
-) -> (Session, CStore, Box<dyn CodegenBackend>) {
+) -> (Session, Box<dyn CodegenBackend>) {
     // Corresponds roughly to `run_compiler`.
-    let descriptions = rustc_interface::util::diagnostics_registry();
+    let descriptions = rustc_driver::diagnostics_registry();
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
     // Note: `source_map` is expected to be an `Lrc<SourceMap>`, which is an alias for `Rc<SourceMap>`.
     // If this ever changes, we'll need a new trick to obtain the `SourceMap` in `rebuild_session`.
@@ -508,13 +500,12 @@ fn build_session(
     );
 
     let codegen_backend = get_codegen_backend(&sess);
-    let cstore = CStore::new(codegen_backend.metadata_loader());
 
-    (sess, cstore, codegen_backend)
+    (sess, codegen_backend)
 }
 
 fn make_parser<'a>(sess: &'a Session, src: &str) -> Parser<'a> {
-    parse::new_parser_from_source_str(
+    rustc_parse::new_parser_from_source_str(
         &sess.parse_sess,
         FileName::anon_source_code(src),
         src.to_owned(),
@@ -605,7 +596,7 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<ImplItem> {
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("impl ! {{ {} }}", src));
     match p.parse_item() {
-        Ok(item) => match item.expect("expected to find an item").into_inner().node {
+        Ok(item) => match item.expect("expected to find an item").into_inner().kind {
             ItemKind::Impl(_, _, _, _, _, _, items) => items,
             _ => panic!("expected to find an impl item"),
         },
@@ -619,7 +610,7 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
     // workaround that may cause suboptimal error messages.
     let mut p = make_parser(sess, &format!("extern {{ {} }}", src));
     match p.parse_item() {
-        Ok(item) => match item.expect("expected to find an item").into_inner().node {
+        Ok(item) => match item.expect("expected to find an item").into_inner().kind {
             ItemKind::ForeignMod(fm) => fm.items,
             _ => panic!("expected to find a foreignmod item"),
         },
@@ -631,7 +622,7 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<ForeignItem> {
 pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
     let mut p = make_parser(sess, src);
 
-    let rules = if p.eat_keyword(kw::Unsafe) {
+    let rules = if p.eat(&TokenKind::Ident(kw::Unsafe, false)) {
         BlockCheckMode::Unsafe(UnsafeSource::UserProvided)
     } else {
         BlockCheckMode::Default
@@ -647,21 +638,28 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
     }
 }
 
-fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Arg> {
-    // `parse_arg` is private, so we make do with `parse_pat` + `parse_ty`.
+fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Param> {
+    // `parse_arg` is private, so we make do with `parse_attribute`,
+    // `parse_pat`, & `parse_ty`.
+    let mut attrs: Vec<ast::Attribute> = Vec::new();
+    while let token::Pound = p.token.kind {
+        attrs.push(p.parse_attribute(false).unwrap());
+    }
     let pat = p.parse_pat(None)?;
     p.expect(&TokenKind::Colon)?;
     let ty = p.parse_ty()?;
-    Ok(Arg {
-        attrs: ThinVec::new(),
+    Ok(Param {
+        attrs: attrs.into(),
         pat,
         ty,
         id: DUMMY_NODE_ID,
+        span: DUMMY_SP,
+        is_placeholder: false,
     })
 }
 
 #[cfg_attr(feature = "profile", flame)]
-pub fn parse_arg(sess: &Session, src: &str) -> Arg {
+pub fn parse_arg(sess: &Session, src: &str) -> Param {
     let mut p = make_parser(sess, src);
     match parse_arg_inner(&mut p) {
         Ok(mut arg) => {
@@ -689,7 +687,7 @@ pub fn run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> R
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
 {
-    let mut p = parse::new_parser_from_tts(&sess.parse_sess, tts);
+    let mut p = rustc_parse::new_parser_from_tts(&sess.parse_sess, tts);
     match f(&mut p) {
         Ok(x) => x,
         Err(db) => emit_and_panic(db, "tts"),
@@ -716,7 +714,7 @@ pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Op
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
 {
-    let mut p = parse::new_parser_from_tts(&sess.parse_sess, tts);
+    let mut p = rustc_parse::new_parser_from_tts(&sess.parse_sess, tts);
     match f(&mut p) {
         Ok(x) => Some(x),
         Err(mut db) => {
@@ -730,5 +728,5 @@ where
 /// to the `SourceMap` on every call.
 pub fn make_span_for_text(cm: &SourceMap, s: &str) -> Span {
     let fm = cm.new_source_file(FileName::anon_source_code(s), s.to_string());
-    Span::new(fm.start_pos, fm.end_pos, SyntaxContext::empty())
+    Span::new(fm.start_pos, fm.end_pos, SyntaxContext::root())
 }

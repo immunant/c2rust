@@ -17,10 +17,10 @@ pub fn get_item_args(mi: &ast::MetaItem) -> ArgList<Ident> {
                     ast::NestedMetaItem::MetaItem(ref mi) => {
                         assert!(mi.path.segments.len() == 1);
                         let kw = mi.path.segments[0].ident;
-                        match mi.node {
+                        match mi.kind {
                             ast::MetaItemKind::Word => (kw, ArgValue::Nothing),
 
-                            ast::MetaItemKind::NameValue(ref val) => match val.node {
+                            ast::MetaItemKind::NameValue(ref val) => match val.kind {
                                 ast::LitKind::Str(ref s, ast::StrStyle::Cooked) => {
                                     (kw, ArgValue::Str(String::from(&*s.as_str())))
                                 }
@@ -43,7 +43,7 @@ pub fn get_item_args(mi: &ast::MetaItem) -> ArgList<Ident> {
 }
 
 fn parse_xcheck_type(name: &Ident, arg: &ArgValue<Ident>) -> XCheckType {
-    match name.as_str().get() {
+    match &*name.as_str() {
         "default" => XCheckType::Default,
         "none" => XCheckType::None,
         "disabled" => XCheckType::Disabled,
@@ -109,7 +109,7 @@ pub fn parse_attr_config(item_xcfg: &mut ItemConfig, mi: &ast::MetaItem) {
 fn parse_defaults_attr_config(d: &mut DefaultsConfig, mi: &ast::MetaItem) {
     let args = get_item_args(mi);
     for (name, arg) in args.iter() {
-        match name.as_str().get() {
+        match &*name.as_str() {
             "disabled" | "none" => d.disable_xchecks = Some(true),
             "enabled" | "yes" => d.disable_xchecks = Some(false),
             "entry" => d.entry = parse_xcheck_arg(&arg, true),
@@ -124,7 +124,7 @@ fn parse_defaults_attr_config(d: &mut DefaultsConfig, mi: &ast::MetaItem) {
 fn parse_function_attr_config(f: &mut FunctionConfig, mi: &ast::MetaItem) {
     let args = get_item_args(mi);
     for (name, arg) in args.iter() {
-        match name.as_str().get() {
+        match &*name.as_str() {
             "disabled" | "none" => f.disable_xchecks = Some(true),
             "enabled" | "yes" => f.disable_xchecks = Some(false),
             "entry" => f.entry = parse_xcheck_arg(&arg, true),
@@ -139,7 +139,7 @@ fn parse_function_attr_config(f: &mut FunctionConfig, mi: &ast::MetaItem) {
                             let arg_xcheck = parse_xcheck_arglist(l, false).unwrap_or_else(|| {
                                 panic!("expected valid cross-check type for argument: {}", name)
                             });
-                            Some((name.as_str().get().to_owned(), arg_xcheck))
+                            Some((name.to_string(), arg_xcheck))
                         } else {
                             None
                         }
@@ -156,7 +156,7 @@ fn parse_function_attr_config(f: &mut FunctionConfig, mi: &ast::MetaItem) {
 fn parse_struct_attr_config(s: &mut StructConfig, mi: &ast::MetaItem) {
     let args = get_item_args(mi);
     for (name, arg) in args.iter() {
-        match name.as_str().get() {
+        match &*name.as_str() {
             "disabled" | "none" => s.disable_xchecks = Some(true),
             "enabled" | "yes" => s.disable_xchecks = Some(false),
             "ahasher" => s.ahasher = Some(String::from(arg.as_str())),

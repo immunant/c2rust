@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-bitfields-derive"
-version = "0.1.0"
+version = "0.2.1"
 authors = [
     "The C2Rust Project Developers <c2rust@immunant.com>",
     "Daniel Kolsoi <djk@immunant.com>",
@@ -13,8 +13,9 @@ description = "C-compatible struct bitfield derive implementation used in the C2
 readme = "README.md"
 
 [dependencies]
-syn = { version = "0.15", features = ["full"] }
-quote = "0.6"
+proc-macro2 = "1.0"
+syn = { version = "1.0", features = ["full"] }
+quote = "1.0"
 
 [lib]
 proc-macro = true

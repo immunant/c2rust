@@ -2,6 +2,11 @@
     #![{{this.0}}({{this.1}})]
 {{/each}}
 
+{{#each crates~}}
+{{#if this.macro_use~}}#[macro_use]{{~/if}}
+extern crate {{this.ident}};
+{{~/each}}
+
 {{#if cross_checks~}}
 #![plugin(c2rust_xcheck_plugin({{plugin_args}}))]
 #[macro_use] extern crate c2rust_xcheck_derive;
@@ -11,11 +16,15 @@ extern crate c2rust_xcheck_backend_{{cross_check_backend}};
 #[global_allocator]
 static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
 {{~/if}}
-{{#each crates~}}
-extern crate {{this}};
-{{/each}}
 
 {{#each modules~}}
+{{~#if this.path~}}
 #[path = "{{this.path}}"]
-pub mod {{this.name}};
+{{/if~}}
+{{~#unless this.close~}}
+pub mod {{this.name}}
+{{~#if this.open}} { {{~else~}};{{~/if}}
+{{~else~}}
+} // mod {{this.name}}
+{{~/unless}}
 {{/each}}

@@ -94,6 +94,11 @@ impl PartialEq for ShuffleVectors {
             #[cfg(target_feature = "avx2")]
             n: (u128, u128),
             o: u128,
+            #[cfg(target_feature = "avx2")]
+            p: (u128, u128),
+            #[cfg(target_feature = "avx2")]
+            q: (u128, u128),
+            r: u128,
         ]);
 
         return true;

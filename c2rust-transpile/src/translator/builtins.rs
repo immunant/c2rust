@@ -72,13 +72,29 @@ impl<'c> Translation<'c> {
                 "NAN",
             ]))),
             "__builtin_nanl" => {
-                self.extern_crates.borrow_mut().insert("f128");
+                self.use_crate(ExternCrate::F128);
 
                 Ok(WithStmts::new_val(mk().path_expr(vec![
                     "f128",
                     "f128",
                     "NAN",
                 ])))
+            },
+            "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
+                // Long doubles require the Float trait from num_traits to call this method
+                if builtin_name == "__builtin_signbitl" {
+                    self.with_cur_file_item_store(|item_store| {
+                        item_store.add_use(vec!["num_traits".into()], "Float");
+                    });
+                }
+
+                let val = self.convert_expr(ctx.used(), args[0])?;
+
+                Ok(val.map(|v| {
+                    let val = mk().method_call_expr(v, "is_sign_negative", vec![] as Vec<P<Expr>>);
+
+                    mk().cast_expr(val, mk().path_ty(vec!["libc", "c_int"]))
+                }))
             },
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
                 let val = self.convert_expr(ctx.used(), args[0])?;
@@ -119,6 +135,34 @@ impl<'c> Translation<'c> {
                 let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![] as Vec<P<Expr>>)))
             }
+            "__builtin_isfinite" | "__builtin_isnan" => {
+                let val = self.convert_expr(ctx.used(), args[0])?;
+
+                let seg = match builtin_name {
+                    "__builtin_isfinite" => "is_finite",
+                    "__builtin_isnan" => "is_nan",
+                    _ => panic!(),
+                };
+                Ok(val.map(|x| {
+                    let call = mk().method_call_expr(x, seg, vec![] as Vec<P<Expr>>);
+                    mk().cast_expr(call, mk().path_ty(vec!["i32"]))
+                }))
+            }
+            "__builtin_isinf_sign" => {
+                // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
+                let val = self.convert_expr(ctx.used(), args[0])?;
+                Ok(val.map(|x| {
+                    let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![] as Vec<P<Expr>>);
+                    let one = mk().lit_expr(mk().int_lit(1, ""));
+                    let minus_one = mk().unary_expr(UnOp::Neg, mk().lit_expr(mk().int_lit(1, "")));
+                    let one_block = mk().block(vec![mk().expr_stmt(one)]);
+                    let inner_ifte = mk().ifte_expr(inner_cond, one_block, Some(minus_one));
+                    let zero = mk().lit_expr(mk().int_lit(0, ""));
+                    let outer_cond = mk().method_call_expr(x, "is_infinite", vec![] as Vec<P<Expr>>);
+                    let inner_ifte_block = mk().block(vec![mk().expr_stmt(inner_ifte)]);
+                    mk().ifte_expr(outer_cond, inner_ifte_block, Some(zero))
+                }))
+            }
             "__builtin_flt_rounds" => {
                 // LLVM simply lowers this to the constant one which means
                 // that floats are rounded to the nearest number.
@@ -153,7 +197,18 @@ impl<'c> Translation<'c> {
             | "__builtin_memchr"
             | "__builtin_memcmp"
             | "__builtin_memmove"
-            | "__builtin_memset" => self.convert_mem_fns(builtin_name, ctx, args),
+            | "__builtin_memset"
+            | "__builtin_strcat" | "__builtin_strncat"
+            | "__builtin_strchr"
+            | "__builtin_strcmp" | "__builtin_strncmp"
+            | "__builtin_strcpy" | "__builtin_strncpy"
+            | "__builtin_strcspn"
+            | "__builtin_strdup" | "__builtin_strndup"
+            | "__builtin_strlen" | "__builtin_strnlen"
+            | "__builtin_strpbrk"
+            | "__builtin_strrchr"
+            | "__builtin_strspn"
+            | "__builtin_strstr" => self.convert_libc_fns(builtin_name, ctx, args),
 
             "__builtin_add_overflow"
             | "__builtin_sadd_overflow"
@@ -215,74 +270,45 @@ impl<'c> Translation<'c> {
             "__builtin_va_start" => {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some(va_id) = self.match_vastart(args[0]) {
-                        if self.is_promoted_va_decl(va_id) {
-                            // `va_start` is automatically called for the promoted decl.
-                            return Ok(WithStmts::new_val(self.panic_or_err("va_start stub")));
+                        if let Some(_) = self.ast_context.get_decl(&va_id) {
+                            let dst = self.convert_expr(ctx.expect_valistimpl().used(), args[0])?;
+                            let fn_ctx = self.function_context.borrow();
+                            let src = fn_ctx.get_va_list_arg_name();
+
+                            let call_expr = mk().method_call_expr(mk().ident_expr(src), "clone", vec![] as Vec<P<Expr>>);
+                            let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
+                            let stmt = mk().semi_stmt(assign_expr);
+
+                            return Ok(WithStmts::new(
+                                vec![stmt],
+                                self.panic_or_err("va_start stub")));
                         }
                     }
                 }
                 Err(TranslationError::generic("Unsupported va_start"))
             }
             "__builtin_va_copy" => {
-                // We are waiting on raw va_copy support to land in rustc:
-                // https://github.com/rust-lang/rust/pull/59625
-                Err(TranslationError::new(
-                    self.ast_context.display_loc(&expr.loc),
-                    Context::new(TranslationErrorKind::VaCopyNotImplemented),
-                ))
-                // if ctx.is_unused() && args.len() == 2 {
-                //     if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
-                //         let dst = self.convert_expr(ctx.used(), args[0])?;
-                //         let src = self.convert_expr(ctx.used(), args[1])?;
+                 if ctx.is_unused() && args.len() == 2 {
+                     if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
+                         let dst = self.convert_expr(ctx.expect_valistimpl().used(), args[0])?;
+                         let src = self.convert_expr(ctx.expect_valistimpl().used(), args[1])?;
 
-                //         let path = {
-                //             let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
-                //             let path = vec!["", std_or_core, "intrinsics", "va_copy"];
-                //             mk().path_expr(path)
-                //         };
-                //         let mut_ref_src = mk().mutbl().addr_of_expr(src.val);
-                //         let call_expr = mk().call_expr(path, vec![mut_ref_src] as Vec<P<Expr>>);
-                //         let assign_expr = mk().assign_expr(dst.val, call_expr);
-                //         let stmt = mk().semi_stmt(assign_expr);
+                         let call_expr = mk().method_call_expr(src.to_expr(), "clone", vec![] as Vec<P<Expr>>);
+                         let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
+                         let stmt = mk().semi_stmt(assign_expr);
 
-                //         let mut res = WithStmts::new(self.panic_or_err("va_copy stub"));
-                //         res.stmts.push(stmt);
-                //         return Ok(res);
-                //     }
-                // }
-                // Err(TranslationError::generic("Unsupported va_copy"))
+                         return Ok(WithStmts::new(
+                             vec![stmt],
+                             self.panic_or_err("va_copy stub")));
+                     }
+                 }
+                 Err(TranslationError::generic("Unsupported va_copy"))
             }
             "__builtin_va_end" => {
                 if ctx.is_unused() && args.len() == 1 {
-                    if let Some(va_id) = self.match_vaend(args[0]) {
-                        if self.is_promoted_va_decl(va_id) {
-                            // no need to call end on `va_end` on `va_list` promoted to arg
-                            return Ok(WithStmts::new_val(self.panic_or_err("va_end stub")));
-                        } else if self.is_copied_va_decl(va_id) {
-                            // call to `va_end` on non-promoted `va_list`
-
-                            let val = self.convert_expr(ctx.used(), args[0])?;
-
-                            let path = {
-                                let std_or_core =
-                                    if self.tcfg.emit_no_std { "core" } else { "std" };
-                                let path = vec!["", std_or_core, "intrinsics", "va_end"];
-                                mk().path_expr(path)
-                            };
-                            return val.and_then(|val| {
-                                let ref_val = mk().mutbl().addr_of_expr(val);
-                                let call_expr = mk().call_expr(path, vec![ref_val] as Vec<P<Expr>>);
-
-                                let stmt = mk().semi_stmt(call_expr);
-
-                                Ok(WithStmts::new(
-                                    vec![stmt],
-                                    self.panic_or_err("va_end stub"),
-                                ))
-                            });
-
-                            // return Ok(WithStmts::new(self.panic("va_end stub")))
-                        }
+                    if let Some(_va_id) = self.match_vaend(args[0]) {
+                        // nothing to do since `VaListImpl`s get `Drop`'ed.
+                        return Ok(WithStmts::new_val(self.panic("va_end stub")))
                     }
                 }
                 Err(TranslationError::generic("Unsupported va_end"))
@@ -309,6 +335,24 @@ impl<'c> Translation<'c> {
             }
 
             // SIMD builtins:
+            "__builtin_ia32_aeskeygenassist128" => {
+                self.convert_simd_builtin(ctx, "_mm_aeskeygenassist_si128", args)
+            }
+            "__builtin_ia32_aesimc128" => {
+                self.convert_simd_builtin(ctx, "_mm_aesimc_si128", args)
+            }
+            "__builtin_ia32_aesenc128" => {
+                self.convert_simd_builtin(ctx, "_mm_aesenc_si128", args)
+            }
+            "__builtin_ia32_aesenclast128" => {
+                self.convert_simd_builtin(ctx, "_mm_aesenclast_si128", args)
+            }
+            "__builtin_ia32_aesdec128" => {
+                self.convert_simd_builtin(ctx, "_mm_aesdec_si128", args)
+            }
+            "__builtin_ia32_aesdeclast128" => {
+                self.convert_simd_builtin(ctx, "_mm_aesdeclast_si128", args)
+            }
             "__builtin_ia32_pshufw" => self.convert_simd_builtin(ctx, "_mm_shuffle_pi16", args),
             "__builtin_ia32_shufps" => self.convert_simd_builtin(ctx, "_mm_shuffle_ps", args),
             "__builtin_ia32_shufpd" => self.convert_simd_builtin(ctx, "_mm_shuffle_pd", args),
@@ -328,6 +372,15 @@ impl<'c> Translation<'c> {
             }
             "__builtin_ia32_pshuflw256" => {
                 self.convert_simd_builtin(ctx, "_mm256_shufflelo_epi16", args)
+            }
+            "__builtin_ia32_palignr128" => {
+                self.convert_simd_builtin(ctx, "_mm_alignr_epi8", args)
+            }
+            "__builtin_ia32_palignr256" => {
+                self.convert_simd_builtin(ctx, "_mm256_alignr_epi8", args)
+            }
+            "__builtin_ia32_permti256" => {
+                self.convert_simd_builtin(ctx, "_mm256_permute2x128_si256", args)
             }
             "__builtin_ia32_vec_ext_v4si" => {
                 self.convert_simd_builtin(ctx, "_mm_extract_epi32", args)
@@ -355,6 +408,7 @@ impl<'c> Translation<'c> {
             "__builtin_ia32_vec_set_v2di" => {
                 self.convert_simd_builtin(ctx, "_mm_insert_epi64", args)
             }
+            "__builtin_ia32_vec_ext_v8si" => self.convert_simd_builtin(ctx, "_mm256_extract_epi32", args),
             "__builtin_ia32_mpsadbw128" => self.convert_simd_builtin(ctx, "_mm_mpsadbw_epu8", args),
             "__builtin_ia32_pcmpistrm128" => self.convert_simd_builtin(ctx, "_mm_cmpistrm", args),
             "__builtin_ia32_pcmpistri128" => self.convert_simd_builtin(ctx, "_mm_cmpistri", args),
@@ -380,34 +434,25 @@ impl<'c> Translation<'c> {
             | "__sync_bool_compare_and_swap_4"
             | "__sync_bool_compare_and_swap_8"
             | "__sync_bool_compare_and_swap_16" => {
-                self.use_feature("core_intrinsics");
-
-                // Emit `atomic_cxchg(a0, a1, a2).idx`
-                let atomic_cxchg =
-                    mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_cxchg"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 let arg2 = self.convert_expr(ctx.used(), args[2])?;
                 arg0.and_then(|arg0| {
                     arg1.and_then(|arg1| {
                         arg2.and_then(|arg2| {
-                            let call = mk().call_expr(atomic_cxchg, vec![arg0, arg1, arg2]);
-                            let field_idx = if builtin_name.starts_with("__sync_val") {
-                                "0"
-                            } else {
-                                "1"
-                            };
-                            let call_expr = mk().field_expr(call, field_idx);
-                            self.convert_side_effects_expr(
+                            let returns_val = builtin_name.starts_with("__sync_val");
+                            self.convert_atomic_cxchg(
                                 ctx,
-                                WithStmts::new_val(call_expr),
-                                "Builtin is not supposed to be used",
+                                "atomic_cxchg",
+                                arg0,
+                                arg1,
+                                arg2,
+                                returns_val,
                             )
                         })
                     })
                 })
             }
-
             "__sync_fetch_and_add_1"
             | "__sync_fetch_and_add_2"
             | "__sync_fetch_and_add_4"
@@ -468,82 +513,35 @@ impl<'c> Translation<'c> {
             | "__sync_nand_and_fetch_4"
             | "__sync_nand_and_fetch_8"
             | "__sync_nand_and_fetch_16" => {
-                self.use_feature("core_intrinsics");
-
-                let (func_name, binary_op, is_nand) = if builtin_name.contains("_add_") {
-                    ("atomic_xadd", BinOpKind::Add, false)
+                let func_name = if builtin_name.contains("_add_") {
+                    "atomic_xadd"
                 } else if builtin_name.contains("_sub_") {
-                    ("atomic_xsub", BinOpKind::Sub, false)
+                    "atomic_xsub"
                 } else if builtin_name.contains("_or_") {
-                    ("atomic_or", BinOpKind::BitOr, false)
+                    "atomic_or"
                 } else if builtin_name.contains("_xor_") {
-                    ("atomic_xor", BinOpKind::BitXor, false)
+                    "atomic_xor"
                 } else if builtin_name.contains("_nand_") {
-                    ("atomic_nand", BinOpKind::BitAnd, true)
+                    "atomic_nand"
                 } else {
                     // We can't explicitly check for "_and_" since they all contain it
-                    ("atomic_and", BinOpKind::BitAnd, false)
+                    "atomic_and"
                 };
 
-                // Emit `atomic_func(a0, a1) (op a1)?`
-                let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", func_name]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
-                if builtin_name.starts_with("__sync_fetch") {
-                    // __sync_fetch_and_XXX
-                    arg0.and_then(|arg0| {
-                        arg1.and_then(|arg1| {
-                            let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
-                            self.convert_side_effects_expr(
-                                ctx,
-                                WithStmts::new_val(call_expr),
-                                "Builtin is not supposed to be used",
-                            )
-                        })
+                let fetch_first = builtin_name.starts_with("__sync_fetch");
+                arg0.and_then(|arg0| {
+                    arg1.and_then(|arg1| {
+                        self.convert_atomic_op(
+                            ctx,
+                            func_name,
+                            arg0,
+                            arg1,
+                            fetch_first,
+                        )
                     })
-                } else {
-                    // __sync_XXX_and_fetch
-                    arg0.and_then(|arg0| {
-                        arg1.and_then(|arg1| {
-                            // Since the value of `arg1` is used twice, we need to copy
-                            // it into a local temporary so we don't duplicate any side-effects
-                            // To preserve ordering of side-effects, we also do this for arg0
-                            let arg0_name = self.renamer.borrow_mut().fresh();
-                            let arg0_let = mk().local_stmt(P(mk().local(
-                                mk().ident_pat(&arg0_name),
-                                None as Option<P<Ty>>,
-                                Some(arg0),
-                            )));
-
-                            let arg1_name = self.renamer.borrow_mut().fresh();
-                            let arg1_let = mk().local_stmt(P(mk().local(
-                                mk().ident_pat(&arg1_name),
-                                None as Option<P<Ty>>,
-                                Some(arg1),
-                            )));
-
-                            let call = mk().call_expr(
-                                atomic_func,
-                                vec![mk().ident_expr(&arg0_name), mk().ident_expr(&arg1_name)],
-                            );
-                            let val = mk().binary_expr(binary_op, call, mk().ident_expr(arg1_name));
-                            let val = if is_nand {
-                                // For nand, return `!(atomic_nand(arg0, arg1) & arg1)`
-                                mk().unary_expr(UnOp::Not, val)
-                            } else {
-                                val
-                            };
-                            self.convert_side_effects_expr(
-                                ctx,
-                                WithStmts::new(
-                                    vec![arg0_let, arg1_let],
-                                    val,
-                                ),
-                                "Builtin is not supposed to be used",
-                            )
-                        })
-                    })
-                }
+                })
             }
 
             "__sync_synchronize" => {
@@ -604,7 +602,11 @@ impl<'c> Translation<'c> {
                     )
                 })
             }
-
+            // There's currently no way to replicate this functionality in Rust, so we just
+            // pass the ptr input param in its place.
+            "__builtin_assume_aligned" => Ok(self.convert_expr(ctx.used(), args[0])?),
+            // Skip over, there's no way to implement it in Rust
+            "__builtin_unwind_init" => Ok(WithStmts::new_val(self.panic_or_err("no value"))),
             "__builtin_unreachable" => {
                 Ok(WithStmts::new(
                     vec![mk().semi_stmt(mk().mac_expr(mk().mac(
@@ -661,8 +663,8 @@ impl<'c> Translation<'c> {
         })
     }
 
-    /// Converts a __buitlin_mem* use by calling into libc's mem* directly.
-    fn convert_mem_fns(
+    /// Converts a __builtin_{mem|str}* use by calling the equivalent libc fn.
+    fn convert_libc_fns(
         &self,
         builtin_name: &str,
         ctx: ExprContext,
@@ -673,9 +675,9 @@ impl<'c> Translation<'c> {
         let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
             let mut args = args.into_iter();
-            let dst = args.next().ok_or("Missing dst argument to convert_mem_fns")?;
-            let c = args.next().ok_or("Missing c argument to convert_mem_fns")?;
-            let len = args.next().ok_or("Missing len argument to convert_mem_fns")?;
+            let dst = args.next().ok_or("Missing dst argument to convert_libc_fns")?;
+            let c = args.next().ok_or("Missing c argument to convert_libc_fns")?;
+            let len = args.next().ok_or("Missing len argument to convert_libc_fns")?;
             let size_t = mk().path_ty(vec!["libc", "size_t"]);
             let len1 = mk().cast_expr(len, size_t);
             let mem_expr = mk().call_expr(mem, vec![dst, c, len1]);

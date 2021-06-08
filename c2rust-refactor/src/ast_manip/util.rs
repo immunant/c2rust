@@ -5,7 +5,8 @@ use syntax::ast::*;
 use syntax::ptr::P;
 use syntax::source_map::{SourceMap, Span, DUMMY_SP};
 use syntax::symbol::{kw, Symbol};
-use syntax::tokenstream::TokenStream;
+use syntax_pos::sym;
+use smallvec::smallvec;
 
 use super::AstEquiv;
 
@@ -17,6 +18,16 @@ pub trait PatternSymbol {
 impl PatternSymbol for Ident {
     fn pattern_symbol(&self) -> Option<Symbol> {
         Some(self.name)
+    }
+}
+
+impl PatternSymbol for Lit {
+    fn pattern_symbol(&self) -> Option<Symbol> {
+        match self.kind {
+            // FIXME: can this conflict with regular Err literals???
+            LitKind::Err(ref sym) => Some(*sym),
+            _ => None
+        }
     }
 }
 
@@ -41,7 +52,7 @@ impl PatternSymbol for Path {
 
 impl PatternSymbol for Expr {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             ExprKind::Path(None, ref p) => p.pattern_symbol(),
             _ => None,
         }
@@ -50,7 +61,7 @@ impl PatternSymbol for Expr {
 
 impl PatternSymbol for Stmt {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             StmtKind::Semi(ref e) => e.pattern_symbol(),
             _ => None,
         }
@@ -59,7 +70,7 @@ impl PatternSymbol for Stmt {
 
 impl PatternSymbol for Pat {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             PatKind::Ident(BindingMode::ByValue(Mutability::Immutable), ref i, None) => {
                 i.pattern_symbol()
             }
@@ -70,7 +81,7 @@ impl PatternSymbol for Pat {
 
 impl PatternSymbol for Ty {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             TyKind::Path(None, ref p) => p.pattern_symbol(),
             _ => None,
         }
@@ -79,16 +90,16 @@ impl PatternSymbol for Ty {
 
 impl PatternSymbol for Mac {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        if self.node.tts != TokenStream::empty() {
-            return None;
+        match &*self.args {
+            MacArgs::Empty => self.path.pattern_symbol(),
+            _ => None,
         }
-        self.node.path.pattern_symbol()
     }
 }
 
 impl PatternSymbol for Item {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             ItemKind::Mac(ref m) => m.pattern_symbol(),
             _ => None,
         }
@@ -97,7 +108,7 @@ impl PatternSymbol for Item {
 
 impl PatternSymbol for ImplItem {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             ImplItemKind::Macro(ref m) => m.pattern_symbol(),
             _ => None,
         }
@@ -106,10 +117,20 @@ impl PatternSymbol for ImplItem {
 
 impl PatternSymbol for TraitItem {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.node {
+        match self.kind {
             TraitItemKind::Macro(ref m) => m.pattern_symbol(),
             _ => None,
         }
+    }
+}
+
+pub fn is_c2rust_attr(attr: &Attribute, name: &str) -> bool {
+    if let AttrKind::Normal(item) = &attr.kind {
+        item.path.segments.len() == 2
+            && item.path.segments[0].ident.as_str() == "c2rust"
+            && item.path.segments[1].ident.as_str() == name
+    } else {
+        false
     }
 }
 
@@ -142,7 +163,7 @@ pub fn extend_span_attrs(mut s: Span, attrs: &[Attribute]) -> Span {
 
 /// Get the name of a macro invocation.
 pub fn macro_name(mac: &Mac) -> Name {
-    let p = &mac.node.path;
+    let p = &mac.path;
     p.segments.last().unwrap().ident.name
 }
 
@@ -170,7 +191,7 @@ fn split_uses_impl(
     match tree.kind {
         UseTreeKind::Simple(..) | UseTreeKind::Glob => {
             item.id = id;
-            item.node = ItemKind::Use(P(UseTree {
+            item.kind = ItemKind::Use(P(UseTree {
                 prefix: path,
                 ..tree
             }));
@@ -187,7 +208,7 @@ fn split_uses_impl(
 /// Split a use statement which may have nesting into one or more simple use
 /// statements without nesting.
 pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
-    let use_tree = expect!([&item.node] ItemKind::Use(u) => u)
+    let use_tree = expect!([&item.kind] ItemKind::Use(u) => u)
         .clone()
         .into_inner();
     let mut out = smallvec![];
@@ -213,8 +234,8 @@ pub fn namespace(res: &def::Res) -> Option<Namespace> {
     use rustc::hir::def::DefKind::*;
     match res {
         Res::Def(kind, _) => match kind {
-            Mod | Struct | Union | Enum | Variant | Trait | Existential | TyAlias
-            | ForeignTy | TraitAlias | AssocTy | AssocExistential | TyParam => {
+            Mod | Struct | Union | Enum | Variant | Trait | OpaqueTy | TyAlias
+            | ForeignTy | TraitAlias | AssocTy | AssocOpaqueTy | TyParam => {
                 Some(Namespace::TypeNS)
             }
             Fn | Const | ConstParam | Static | Ctor(..) | Method | AssocConst => {
@@ -251,4 +272,28 @@ pub fn join_visibility(vis1: &VisibilityKind, vis2: &VisibilityKind) -> Visibili
         (Inherited, Restricted { .. }) => vis2.clone(),
         _ => Inherited,
     }
+}
+
+/// Is this item visible outside its translation unit?
+pub fn is_exported(item: &Item) -> bool {
+    match &item.kind {
+        // Values are only visible outside their translation unit if marked with
+        // no mangle or an explicit symbol name
+        ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
+            item.attrs.iter().any(is_export_attr)
+        }
+
+        // Types are visible if pub
+        _ => item.vis.node.is_pub(),
+    }
+}
+
+pub fn is_export_attr(attr: &Attribute) -> bool {
+    attr.has_name(sym::no_mangle) || attr.has_name(sym::export_name)
+}
+
+/// Are the idents of the segments of `path` equivalent to the list of idents
+pub fn path_eq<T: AsRef<str>>(path: &Path, idents: &[T]) -> bool {
+    path.segments.len() == idents.len()
+        && path.segments.iter().zip(idents).all(|(p, i)| p.ident.as_str() == i.as_ref())
 }

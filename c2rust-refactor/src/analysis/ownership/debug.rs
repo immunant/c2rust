@@ -2,9 +2,9 @@
 
 use std::fmt;
 
-use rustc::hir;
+use syntax::ast::Mutability;
 use rustc::ty::TyKind;
-use rustc_data_structures::indexed_vec::Idx;
+use rustc_index::vec::Idx;
 
 use crate::analysis::labeled_ty::LabeledTy;
 
@@ -102,18 +102,18 @@ where
     PrettyLabel<L>: fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self.0.ty.sty {
+        match self.0.ty.kind {
             TyKind::Ref(_, _, m) => write!(
                 fmt,
                 "&{}{:?} {:?}",
-                if m == hir::MutImmutable { "" } else { "mut " },
+                if m == Mutability::Immutable { "" } else { "mut " },
                 PrettyLabel(self.0.label),
                 Pretty(self.0.args[0])
             ),
             TyKind::RawPtr(mty) => write!(
                 fmt,
                 "*{} {:?} {:?}",
-                if mty.mutbl == hir::MutImmutable {
+                if mty.mutbl == Mutability::Immutable {
                     "const"
                 } else {
                     "mut"

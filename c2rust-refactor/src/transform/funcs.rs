@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use rustc::hir::def_id::DefId;
 use rustc::ty::TyKind;
-use rustc_target::spec::abi::Abi;
 use syntax::ast;
 use syntax::ast::*;
 use syntax::attr;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax_pos::sym;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use c2rust_ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules, visit_nodes, MutVisit};
@@ -22,17 +21,17 @@ use crate::RefactorCtxt;
 
 
 /// # `func_to_method` Command
-/// 
+///
 /// Usage: `func_to_method`
-/// 
+///
 /// Marks: `target`, `dest`
-/// 
+///
 /// Turn functions marked `target` into static methods (no `self`) in the `impl`
 /// block marked `dest`.
 /// Turn functions that have an argument marked `target` into methods, replacing
 /// the named argument with `self`.
 /// Rewrite all uses of marked functions to call the new method versions.
-/// 
+///
 /// Marked arguments of type `T`, `&T`, and `&mut T` (where `T` is the `Self` type
 /// of the `dest` `impl`) will be converted to `self`, `&self`, and `&mut self`
 /// respectively.
@@ -47,7 +46,7 @@ impl Transform for ToMethod {
         FlatMapNodes::visit(krate, |i: P<Item>| {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
             if !st.marked(i.id, "dest") ||
-               !matches!([i.node] ItemKind::Impl(_, _, _, _, None, _, _)) {
+               !matches!([i.kind] ItemKind::Impl(_, _, _, _, None, _, _)) {
                 return smallvec![i];
             }
 
@@ -70,8 +69,7 @@ impl Transform for ToMethod {
         struct FnInfo {
             item: P<Item>,
 
-            decl: P<FnDecl>,
-            header: FnHeader,
+            sig: FnSig,
             generics: Generics,
             block: P<Block>,
 
@@ -84,8 +82,8 @@ impl Transform for ToMethod {
         fold_modules(krate, |curs| {
             while let Some(arg_idx) = curs.advance_until_match(|i| {
                 // Find the argument under the cursor.
-                let decl = match_or!([i.node] ItemKind::Fn(ref decl, ..) => decl; return None);
-                for (idx, arg) in decl.inputs.iter().enumerate() {
+                let sig = match_or!([i.kind] ItemKind::Fn(ref sig, ..) => sig; return None);
+                for (idx, arg) in sig.decl.inputs.iter().enumerate() {
                     if st.marked(arg.id, "target") {
                         return Some(Some(idx));
                     }
@@ -96,11 +94,11 @@ impl Transform for ToMethod {
                 None
             }) {
                 let i = curs.remove();
-                unpack!([i.node.clone()]
-                        ItemKind::Fn(decl, header, generics, block));
+                unpack!([i.kind.clone()]
+                        ItemKind::Fn(sig, generics, block));
                 fns.push(FnInfo {
                     item: i,
-                    decl, header, generics, block,
+                    sig, generics, block,
                     arg_idx,
                 });
             }
@@ -114,7 +112,7 @@ impl Transform for ToMethod {
         let fn_ref_info = fns.iter().map(|f| {
             (cx.node_def_id(f.item.id),
              FnRefInfo {
-                 ident: f.item.ident.clone(),
+                 ident: f.item.ident,
                  arg_idx: f.arg_idx,
              })
         }).collect::<HashMap<_, _>>();
@@ -124,12 +122,12 @@ impl Transform for ToMethod {
         for f in &mut fns {
             // Functions that are being turned into static methods don't need any changes.
             let arg_idx = match_or!([f.arg_idx] Some(x) => x; continue);
-            let mut inputs = f.decl.inputs.clone();
+            let mut inputs = f.sig.decl.inputs.clone();
 
             // Remove the marked arg and inspect it.
             let arg = inputs.remove(arg_idx);
 
-            let mode = match arg.pat.node {
+            let mode = match arg.pat.kind {
                 PatKind::Ident(mode, _, _) => mode,
                 _ => panic!("unsupported argument pattern (expected ident): {:?}", arg.pat),
             };
@@ -146,11 +144,11 @@ impl Transform for ToMethod {
                         BindingMode::ByRef(mutbl) => Some(SelfKind::Region(None, mutbl)),
                     }
                 } else {
-                    match pat_ty.sty {
+                    match pat_ty.kind {
                         TyKind::Ref(_, ty, _) if ty == self_ty => {
-                            match arg.ty.node {
+                            match arg.ty.kind {
                                 ast::TyKind::Rptr(ref lt, ref mty) =>
-                                    Some(SelfKind::Region(lt.clone(), mty.mutbl)),
+                                    Some(SelfKind::Region(*lt, mty.mutbl)),
                                 _ => None,
                             }
                         },
@@ -167,7 +165,7 @@ impl Transform for ToMethod {
             inputs.insert(0, mk().self_arg(self_kind));
 
             // Update `decl`
-            f.decl = f.decl.clone().map(|fd| FnDecl { inputs: inputs, .. fd });
+            f.sig.decl = f.sig.decl.clone().map(|fd| FnDecl { inputs: inputs, .. fd });
 
             // Rewrite references to the marked argument within the function body.
 
@@ -175,7 +173,7 @@ impl Transform for ToMethod {
             // don't have a Def for locals any more, and thus no def_id. We need
             // to fix this in path_edit.rs
             fold_resolved_paths(&mut f.block, cx, |qself, path, def| {
-                match cx.res_to_hir_id(&def) {
+                match cx.res_to_hir_id(&def[0]) {
                     Some(hir_id) =>
                         if hir_id == arg_hir_id {
                             assert!(qself.is_none());
@@ -199,29 +197,25 @@ impl Transform for ToMethod {
             }
 
             smallvec![i.map(|i| {
-                unpack!([i.node] ItemKind::Impl(
+                unpack!([i.kind] ItemKind::Impl(
                         unsafety, polarity, generics, defaultness, trait_ref, ty, items));
                 let mut items = items;
                 let fns = fns.take().unwrap();
                 items.extend(fns.into_iter().map(|f| {
-                    let sig = MethodSig {
-                        header: f.header,
-                        decl: f.decl,
-                    };
                     ImplItem {
                         id: DUMMY_NODE_ID,
-                        ident: f.item.ident.clone(),
+                        ident: f.item.ident,
                         vis: f.item.vis.clone(),
                         defaultness: Defaultness::Final,
                         attrs: f.item.attrs.clone(),
                         generics: f.generics,
-                        node: ImplItemKind::Method(sig, f.block),
+                        kind: ImplItemKind::Method(f.sig, f.block),
                         span: f.item.span,
                         tokens: None,
                     }
                 }));
                 Item {
-                    node: ItemKind::Impl(
+                    kind: ItemKind::Impl(
                               unsafety, polarity, generics, defaultness, trait_ref, ty, items),
                     .. i
                 }
@@ -232,11 +226,11 @@ impl Transform for ToMethod {
         // (5) Find all uses of marked functions, and rewrite them into method calls.
 
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            if !matches!([e.node] ExprKind::Call(..)) {
+            if !matches!([e.kind] ExprKind::Call(..)) {
                 return;
             }
 
-            unpack!([e.node.clone()] ExprKind::Call(func, args));
+            unpack!([e.kind.clone()] ExprKind::Call(func, args));
             let def_id = match_or!([cx.try_resolve_expr(&func)] Some(x) => x; return);
             let info = match_or!([fn_ref_info.get(&def_id)] Some(x) => x; return);
 
@@ -249,7 +243,7 @@ impl Transform for ToMethod {
                 let self_arg = args.remove(arg_idx);
                 args.insert(0, self_arg);
 
-                e.node = ExprKind::MethodCall(
+                e.kind = ExprKind::MethodCall(
                     mk().path_segment(&info.ident),
                     args
                 );
@@ -258,7 +252,7 @@ impl Transform for ToMethod {
                 let mut new_path = cx.def_path(cx.node_def_id(dest.id));
                 new_path.segments.push(mk().path_segment(&info.ident));
 
-                e.node = ExprKind::Call(mk().path_expr(new_path), args);
+                e.kind = ExprKind::Call(mk().path_expr(new_path), args);
             }
         });
     }
@@ -270,9 +264,9 @@ impl Transform for ToMethod {
 
 
 /// # `fix_unused_unsafe` Command
-/// 
+///
 /// Usage: `fix_unused_unsafe`
-/// 
+///
 /// Find unused `unsafe` blocks and turn them into ordinary blocks.
 pub struct FixUnusedUnsafe;
 
@@ -300,11 +294,11 @@ impl Transform for FixUnusedUnsafe {
 
 
 /// # `sink_unsafe` Command
-/// 
+///
 /// Usage: `sink_unsafe`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For functions marked `target`, convert `unsafe fn f() { ... }` into `fn () {
 /// unsafe { ... } }`.  Useful once unsafe argument handling has been eliminated
 /// from the function.
@@ -318,9 +312,9 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let i = if self.st.marked(i.id, "target") {
             i.map(|mut i| {
-                match i.node {
-                    ItemKind::Fn(_, ref mut header, _, ref mut block) => {
-                        sink_unsafe(&mut header.unsafety, block);
+                match i.kind {
+                    ItemKind::Fn(ref mut sig, _, ref mut block) => {
+                        sink_unsafe(&mut sig.header.unsafety, block);
                     },
                     _ => {},
                 }
@@ -336,8 +330,8 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
 
     fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
         if self.st.marked(i.id, "target") {
-            match i.node {
-                ImplItemKind::Method(MethodSig { ref mut header, .. }, ref mut block) => {
+            match i.kind {
+                ImplItemKind::Method(FnSig { ref mut header, .. }, ref mut block) => {
                     sink_unsafe(&mut header.unsafety, block);
                 },
                 _ => {},
@@ -365,47 +359,51 @@ impl Transform for SinkUnsafe {
 
 
 /// # `wrap_extern` Command
-/// 
+///
 /// Usage: `wrap_extern`
-/// 
+///
 /// Marks: `target`, `dest`
-/// 
+///
 /// For each foreign function marked `target`, generate a wrapper function in the
 /// module marked `dest`, and rewrite all uses of the function to call the wrapper
 /// instead.
-/// 
-/// 
+///
+///
 /// Example:
-/// 
+///
+/// ```ignore
 ///     extern "C" {
 ///         fn foo(x: i32) -> i32;
 ///     }
-/// 
+///
 ///     mod wrappers {
 ///         // empty
 ///     }
-/// 
+///
 ///     fn main() {
 ///         let x = unsafe { foo(123) };
 ///     }
-/// 
+/// ```
+///
 /// After transformation, with `fn foo` marked `target` and `mod wrappers` marked
 /// `dest`:
-/// 
+///
+/// ```ignore
 ///     extern "C" {
 ///         fn foo(x: i32) -> i32;
 ///     }
-/// 
+///
 ///     mod wrappers {
 ///         unsafe fn foo(x: i32) -> i32 {
 ///             ::foo(x)
 ///         }
 ///     }
-/// 
+///
 ///     fn main() {
 ///         let x = unsafe { ::wrappers::foo(123) };
 ///     }
-/// 
+/// ```
+///
 /// Note that this also replaces the function in expressions that take its address,
 /// which may cause problem as the wrapper function has a different type that the
 /// original (it lacks the `extern "C"` ABI qualifier).
@@ -428,12 +426,12 @@ impl Transform for WrapExtern {
                 return;
             }
 
-            match fi.node {
+            match fi.kind {
                 ForeignItemKind::Fn(ref decl, _) => {
                     fns.push(FuncInfo {
                         id: fi.id,
                         def_id: cx.node_def_id(fi.id),
-                        ident: fi.ident.clone(),
+                        ident: fi.ident,
                         decl: decl.clone(),
                     });
                 },
@@ -461,14 +459,14 @@ impl Transform for WrapExtern {
             dest_path = Some(cx.def_path(cx.node_def_id(i.id)));
 
             smallvec![i.map(|i| {
-                unpack!([i.node] ItemKind::Mod(m));
+                unpack!([i.kind] ItemKind::Mod(m));
                 let mut m = m;
 
                 for f in &fns {
                     let func_path = cx.def_path(cx.node_def_id(f.id));
                     let arg_names = f.decl.inputs.iter().enumerate().map(|(idx, arg)| {
                         // TODO: match_arg("__i: __t", arg).ident("__i")
-                        match arg.pat.node {
+                        match arg.pat.kind {
                             PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
                                            ident,
                                            None) => {
@@ -482,7 +480,7 @@ impl Transform for WrapExtern {
                     let wrapper_args = f.decl.inputs.iter()
                         .zip(arg_names.iter())
                         .map(|(old, name)| {
-                            Arg {
+                            Param {
                                 pat: mk().ident_pat(name.clone()),
                                 ..old.clone()
                             }
@@ -493,7 +491,6 @@ impl Transform for WrapExtern {
                     let decl = P(FnDecl {
                         inputs: wrapper_args,
                         output: f.decl.output.clone(),
-                        c_variadic: false,
                     });
                     let body = mk().block(vec![
                             mk().expr_stmt(mk().call_expr(
@@ -504,7 +501,7 @@ impl Transform for WrapExtern {
                 }
 
                 Item {
-                    node: ItemKind::Mod(m),
+                    kind: ItemKind::Mod(m),
                     .. i
                 }
             })]
@@ -519,7 +516,7 @@ impl Transform for WrapExtern {
         // (3) Rewrite call sites to use the new wrappers.
         let ident_map = fns.iter().map(|f| (f.def_id, f.ident)).collect::<HashMap<_, _>>();
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            match def.opt_def_id() {
+            match def[0].opt_def_id() {
                 Some(def_id) if ident_map.contains_key(&def_id) => {
                     let ident = ident_map.get(&def_id).unwrap();
                     let mut new_path = dest_path.clone();
@@ -538,18 +535,18 @@ impl Transform for WrapExtern {
 
 
 /// # `wrap_api` Command
-/// 
+///
 /// Usage: `wrap_api`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For each function `foo` marked `target`:
-/// 
+///
 ///  1. Reset the function's ABI to `"Rust"` (the default)
 ///  2. Remove any `#[no_mangle]` or `#[export_name]` attributes
 ///  3. Generate a new wrapper function called `foo_wrapper` with `foo`'s old ABI
 ///     and an `#[export_name="foo"]` attribute.
-/// 
+///
 /// Calls to `foo` are left unchanged.  The result is that callers from C use the
 /// wrapper function, while internal calls use `foo` directly, and the signature of
 /// `foo` can be changed freely without affecting external callers.
@@ -566,12 +563,12 @@ impl Transform for WrapApi {
                 return smallvec![i];
             }
 
-            if !matches!([i.node] ItemKind::Fn(..)) {
+            if !matches!([i.kind] ItemKind::Fn(..)) {
                 return smallvec![i];
             }
 
-            let (decl, old_abi) = expect!([i.node]
-                ItemKind::Fn(ref decl, ref header, _, _) => (decl.clone(), header.abi));
+            let (decl, old_ext) = expect!([i.kind]
+                ItemKind::Fn(ref sig, _, _) => (sig.decl.clone(), sig.header.ext));
 
             // Get the exported symbol name of the function
             let symbol =
@@ -587,12 +584,12 @@ impl Transform for WrapApi {
             // Remove export-related attrs from the original function, and set it to Abi::Rust.
             let i = i.map(|mut i| {
                 i.attrs.retain(|attr| {
-                    attr.path != sym::no_mangle &&
-                    attr.path != sym::export_name
+                    let attr = attr.name_or_empty();
+                    attr != sym::no_mangle && attr != sym::export_name
                 });
 
-                match i.node {
-                    ItemKind::Fn(_, ref mut header, _, _) => header.abi = Abi::Rust,
+                match i.kind {
+                    ItemKind::Fn(ref mut sig, _, _) => sig.header.ext = Extern::None,
                     _ => unreachable!(),
                 }
 
@@ -603,7 +600,7 @@ impl Transform for WrapApi {
             let mut used_names = HashSet::new();
 
             let arg_names = decl.inputs.iter().enumerate().map(|(idx, arg)| {
-                let base = match arg.pat.node {
+                let base = match arg.pat.kind {
                     // Use the name from the original function, if there is one.  Otherwise, fall
                     // back on `arg0`, `arg1`, ...
                     PatKind::Ident(_, ref ident, _) => ident.name,
@@ -645,8 +642,8 @@ impl Transform for WrapApi {
 
             let wrapper_name = format!("{}_wrapper", symbol.as_str());
             let wrapper =
-                mk().vis(i.vis.clone()).unsafe_().abi(old_abi)
-                        .str_attr(sym::export_name, symbol).fn_item(
+                mk().vis(i.vis.clone()).unsafe_().extern_(old_ext)
+                        .str_attr(vec![sym::export_name], symbol).fn_item(
                     &wrapper_name,
                     wrapper_decl,
                     mk().block(vec![
@@ -673,7 +670,7 @@ impl Transform for WrapApi {
         // same ABI) as the old function.
         let mut callees = HashSet::new();
         visit_nodes(krate, |e: &Expr| {
-            if let ExprKind::Call(ref callee, _) = e.node {
+            if let ExprKind::Call(ref callee, _) = e.kind {
                 callees.insert(callee.id);
             }
         });
@@ -682,7 +679,7 @@ impl Transform for WrapApi {
             if callees.contains(&id) || q.is_some() {
                 return (q, p);
             }
-            let hir_id = match_or!([cx.res_to_hir_id(d)] Some(x) => x; return (q, p));
+            let hir_id = match_or!([cx.res_to_hir_id(&d[0])] Some(x) => x; return (q, p));
             let name = match_or!([wrapper_map.get(&hir_id)] Some(x) => x; return (q, p));
 
             let mut new_path = p.clone();
@@ -699,30 +696,34 @@ impl Transform for WrapApi {
 
 
 /// # `abstract` Command
-/// 
+///
 /// Usage: `abstract SIG PAT [BODY]`
-/// 
+///
 /// Replace all instances of `pat` with calls to a new function whose name and signature is given
 /// by `sig`.  Example:
-/// 
+///
 /// Input:
-/// 
+///
+/// ```ignore
 ///     1 + 2
-/// 
+/// ```
+///
 /// After running `abstract 'add(x: u32, y: u32) -> u32' 'x + y'`:
-/// 
+///
+/// ```ignore
 ///     add(1, 2)
-/// 
+///
 ///     // Elsewhere:
 ///     fn add(x: u32, y: u32) -> u32 { x + y }
-/// 
+/// ```
+///
 /// All type and value parameter names in `sig` act as bindings when matching `pat`.  The captured
 /// exprs and types are passed as parameters when building the new call expression.  The body of
 /// the function is `body`, if provided, otherwise `pat` itself.
-/// 
+///
 /// Non-ident patterns in `sig` are not supported.  It is also an error for any type parameter's
 /// name to collide with any value parameter.
-/// 
+///
 /// If matching with `pat` fails to capture expressions for any of the value parameters of `sig`,
 /// it is an error.  If it fails to capture for a type parameter, the parameter is filled in with
 /// `_` (infer).
@@ -746,10 +747,10 @@ impl Transform for Abstract {
         let mut value_args = Vec::new();
         let mut type_args = Vec::new();
         {
-            let (decl, generics) = expect!([func.node]
-                    ItemKind::Fn(ref decl, _, ref gen, _) => (decl, gen));
+            let (decl, generics) = expect!([func.kind]
+                    ItemKind::Fn(ref sig, ref gen, _) => (&sig.decl, gen));
             for arg in &decl.inputs {
-                let name = expect!([arg.pat.node] PatKind::Ident(_, ident, _) => ident);
+                let name = expect!([arg.pat.kind] PatKind::Ident(_, ident, _) => ident);
                 value_args.push(name);
             }
             for param in &generics.params {

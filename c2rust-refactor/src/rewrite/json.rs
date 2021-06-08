@@ -151,7 +151,7 @@ impl<'a, 'ast> Visitor<'ast> for MarkVisitor<'a> {
 
     fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
         for arg in &fd.inputs {
-            let name = match arg.pat.node {
+            let name = match arg.pat.kind {
                 PatKind::Ident(_, ident, _) => Some(ident.name),
                 _ => None,
             };

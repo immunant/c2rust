@@ -197,5 +197,6 @@ refactor:transform(
         return transform_ctx:visit_fn_like(Visitor.new())
     end
 )
+refactor:save_crate()
 
 print("Finished cleanup_params_locals.lua")

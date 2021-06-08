@@ -24,6 +24,7 @@ unsafe fn struct_ptr(ctx: &mut Ctx, ctx2: *mut Ctx, p: &[u8]) {
     (*ctx2).data[0] = p[3 + off];
 }
 
+#[derive(Clone)]
 struct Ptrs<'r, 's> {
     r: &'r u32,
     r2: &'r mut u32,
@@ -32,6 +33,7 @@ struct Ptrs<'r, 's> {
     boxed: Option<Box<u32>>,
 }
 
+#[derive(Clone)]
 struct SizedData {
     buf: Option<Box<[u32]>>,
     bsize: usize,
@@ -85,6 +87,7 @@ unsafe fn destroy_buf(sd: &mut SizedData) {
 
 unsafe fn explicit_lifetimes<'a, 'r, 's>(_ptrs: &'a mut Ptrs<'r, 's>) {}
 
+#[derive(Clone)]
 struct HeapItem {
     item: Box<u32>,
     opt_item: Option<Box<u32>>,
@@ -134,19 +137,26 @@ unsafe fn init_opt_item2(hi: &mut HeapItem) {
     (hi).opt_item = ptr;
 }
 
-use libc::{int32_t, memset, uint16_t, uint32_t};
+use libc::{int32_t, uint16_t, uint32_t};
 
+#[derive(Clone)]
 struct HTab {
     pub hdr: HashHDR,
     pub nmaps: libc::c_int,
     pub mapp: [Option<Box<[uint32_t]>>; 32],
 }
 
+#[derive(Copy, Clone)]
 struct HashHDR {
     pub bsize: int32_t,
     pub bitmaps: [uint16_t; 32],
     pub magic: int32_t,
     pub spares: [int32_t; 32],
+}
+
+extern "C" {
+    #[no_mangle]
+    fn memset(_: *mut libc::c_void, _: libc::c_int, _: libc::c_ulong);
 }
 
 unsafe fn bm(
@@ -160,7 +170,7 @@ unsafe fn bm(
     let mut clearints: libc::c_int = 0;
 
     ip = vec![0; hashp.hdr.bsize as libc::c_ulong as usize / ::core::mem::size_of::<uint32_t>()]
-         .into_boxed_slice();
+        .into_boxed_slice();
 
     if false {
         return 1i32;
@@ -172,12 +182,12 @@ unsafe fn bm(
     memset(
         ip.as_mut_ptr() as *mut libc::c_char as *mut libc::c_void,
         0i32,
-        clearbytes as usize,
+        clearbytes as _,
     );
     memset(
         (ip.as_mut_ptr() as *mut libc::c_char).offset(clearbytes as isize) as *mut libc::c_void,
         0xffi32,
-        ((hashp).hdr.bsize - clearbytes) as usize,
+        ((hashp).hdr.bsize - clearbytes) as _,
     );
     ip[(clearints - 1i32) as usize] = 0xffffffffu32 << (nbits & (1i32 << 5i32) - 1i32);
     let ref mut fresh2 = ip[(0i32 / 32i32) as usize];
@@ -259,10 +269,10 @@ unsafe extern "C" fn bisearch_cat(
     return 4294967295 as Category;
 }
 
-unsafe extern "C" fn opt_params(p1: Option<&mut u32>, p2: Option<&u32>, p3: Option<&[u32]>) {
+unsafe extern "C" fn opt_params(mut p1: Option<&mut u32>, p2: Option<&u32>, p3: Option<&[u32]>) {
     if p1.is_none() || p2.is_none() {
         return;
     }
 
-    *p1.unwrap() = *p2.unwrap() + p3.unwrap()[0];
+    **p1.as_mut().unwrap() = *p2.unwrap() + p3.unwrap()[0];
 }

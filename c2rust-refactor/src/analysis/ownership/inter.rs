@@ -55,7 +55,7 @@ pub struct InterCtxt<'c, 'lty, 'tcx> {
 impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
     pub fn new(cx: &'c mut Ctxt<'lty, 'tcx>) -> InterCtxt<'c, 'lty, 'tcx> {
         InterCtxt {
-            cx: cx,
+            cx,
             complete_cset: HashMap::new(),
             work_list: WorkList::new(),
             rev_deps: HashMap::new(),
@@ -77,11 +77,8 @@ impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
 
         // Add constraints for all used static vars.
         let mut used_statics = HashSet::new();
-        cset.for_each_perm(|p| match p {
-            Perm::StaticVar(v) => {
-                used_statics.insert(v);
-            }
-            _ => {}
+        cset.for_each_perm(|p| if let Perm::StaticVar(v) = p {
+            used_statics.insert(v);
         });
         for &v in &used_statics {
             debug!("  import static: {:?} = {:?}", v, self.cx.static_assign[v]);

@@ -18,18 +18,19 @@ use std::path;
 use std::rc::Rc;
 use syntax::ast::*;
 use syntax::attr;
-use syntax::ext::hygiene::SyntaxContext;
-use syntax::parse::lexer::comments::CommentStyle;
-use syntax::parse::token::{DelimToken, Nonterminal, Token, TokenKind};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::print::pprust::{self, PrintState};
+use syntax_pos::hygiene::SyntaxContext;
+use syntax::util::comments::CommentStyle;
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::ptr::P;
-use syntax::source_map::{BytePos, DUMMY_SP, FileName, SourceFile, Span, Spanned, dummy_spanned};
+use syntax::source_map::{BytePos, FileName, SourceFile, Span, Spanned};
 use syntax::symbol::Symbol;
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::util::parser;
 use syntax::ThinVec;
+use syntax_pos::DUMMY_SP;
 
+use c2rust_ast_printer::pprust::{self, PrintState};
 use crate::ast_manip::NodeTable;
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::{AstDeref, GetSpan, MaybeGetNodeId};
@@ -95,7 +96,7 @@ impl PrintParse for Stmt {
         // pprust::stmt_to_string appends a semicolon to Expr kind statements,
         // not just to Semi kind statements. We want to differentiate these
         // nodes.
-        match self.node {
+        match self.kind {
             StmtKind::Expr(ref expr) => pprust::expr_to_string(expr),
             _ => pprust::stmt_to_string(self),
         }
@@ -142,12 +143,12 @@ impl PrintParse for Block {
     }
 }
 
-impl PrintParse for Arg {
+impl PrintParse for Param {
     fn to_string(&self) -> String {
-        pprust::arg_to_string(self)
+        pprust::param_to_string(self)
     }
 
-    type Parsed = Arg;
+    type Parsed = Param;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
         driver::parse_arg(sess, src)
     }
@@ -155,7 +156,7 @@ impl PrintParse for Arg {
 
 impl PrintParse for Attribute {
     fn to_string(&self) -> String {
-        pprust::attr_to_string(self)
+        pprust::attribute_to_string(self)
     }
 
     type Parsed = Attribute;
@@ -168,7 +169,7 @@ impl PrintParse for Attribute {
                     // Expand the `span` to include the trailing \n.  Otherwise multiple spliced
                     // doc comments will run together into a single line.
                     let span = p.token.span.with_hi(p.token.span.hi() + BytePos(1));
-                    let attr = attr::mk_sugared_doc_attr(attr::mk_attr_id(), s, span);
+                    let attr = attr::mk_doc_comment(AttrStyle::Outer, s, span);
                     p.bump();
                     return Ok(attr);
                 }
@@ -207,11 +208,11 @@ impl Splice for Expr {
             ExprPrec::Cond(min_prec) => {
                 prec.order() < min_prec || parser::contains_exterior_struct_lit(self)
             }
-            ExprPrec::Callee(min_prec) => match self.node {
+            ExprPrec::Callee(min_prec) => match self.kind {
                 ExprKind::Field(..) => true,
                 _ => prec.order() < min_prec,
             },
-            ExprPrec::LeftLess(min_prec) => match self.node {
+            ExprPrec::LeftLess(min_prec) => match self.kind {
                 ExprKind::Cast(..) | ExprKind::Type(..) => true,
                 _ => prec.order() < min_prec,
             },
@@ -261,7 +262,7 @@ impl Splice for Block {
     }
 }
 
-impl Splice for Arg {
+impl Splice for Param {
     fn splice_span(&self) -> Span {
         self.pat.span.to(self.ty.span)
     }
@@ -327,7 +328,7 @@ impl Recover for Block {
 
 /// Codegenned trait for recursively traversing new and reparsed ASTs, looking for places we can
 /// invoke `recover`.
-pub trait RecoverChildren {
+pub trait RecoverChildren: Debug {
     /// Recursively attempt to `recover()` descendants of `reparsed`/`new`, not including
     /// `reparsed`/`new` itself.
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef);
@@ -450,7 +451,8 @@ impl<T: RecoverChildren> RecoverChildren for [T] {
     fn recover_children(reparsed: &Self, new: &Self, mut rcx: RewriteCtxtRef) {
         assert!(
             reparsed.len() == new.len(),
-            "new and reprinted ASTs don't match"
+            "new and reparsed ASTs don't match: {:?} != {:?}",
+            new, reparsed
         );
         for i in 0..reparsed.len() {
             RecoverChildren::recover_children(&reparsed[i], &new[i], rcx.borrow());
@@ -460,7 +462,8 @@ impl<T: RecoverChildren> RecoverChildren for [T] {
     fn recover_node_and_children(reparsed: &Self, new: &Self, mut rcx: RewriteCtxtRef) {
         assert!(
             reparsed.len() == new.len(),
-            "new and reprinted ASTs don't match"
+            "new and reparsed ASTs don't match: {:?} != {:?}",
+            new, reparsed
         );
         for i in 0..reparsed.len() {
             RecoverChildren::recover_node_and_children(&reparsed[i], &new[i], rcx.borrow());
@@ -528,7 +531,7 @@ where
 {
     // Find a node with ID matching `new.id`, after accounting for renumbering of NodeIds.
     let old_id = rcx.new_to_old_id(new.get_node_id());
-    let old = match <T as Recover>::node_table(&mut rcx).get(old_id) {
+    let old = match <T as Recover>::node_table(&rcx).get(old_id) {
         Some(x) => x,
         None => {
             return false;
@@ -586,7 +589,7 @@ where
 
 pub fn rewrite<T>(old: &T, new: &T, rcx: RewriteCtxtRef) -> bool
 where
-    T: PrintParse + RecoverChildren + Splice + Debug + MaybeGetNodeId,
+    T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
     if !is_rewritable(old.splice_span()) {
         // If we got here, it means rewriting failed somewhere inside macro-generated code, and
@@ -654,7 +657,7 @@ fn add_comments<T>(s: String, node: &T, rcx: &RewriteCtxt) -> String
 
 fn rewrite_at_impl<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
 where
-    T: PrintParse + RecoverChildren + Splice + Debug + MaybeGetNodeId,
+    T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
     let printed = add_comments(new.to_string(), new, &rcx);
     let reparsed = T::parse(rcx.session(), &printed);
@@ -690,7 +693,7 @@ pub trait RewriteAt {
 }
 
 impl<T> RewriteAt for T
-    where T: PrintParse + RecoverChildren + Splice + Debug + MaybeGetNodeId
+    where T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId
 {
     default fn rewrite_at(&self, old_span: Span, rcx: RewriteCtxtRef) -> bool {
         rewrite_at_impl(old_span, self, rcx)
@@ -724,19 +727,14 @@ fn create_file_for_module(
                         // Add a #[path = "..."] attribute
                         let path_item = attr::mk_name_value_item_str(
                             Ident::from_str("path"),
-                            dummy_spanned(
-                                Symbol::intern(&format!(
-                                    "src{}{}",
-                                    path::MAIN_SEPARATOR,
-                                    mod_file_name,
-                                )),
-                            ),
-                        );
-                        path_attr = Some(attr::mk_attr_outer(
+                            Symbol::intern(&format!(
+                                "src{}{}",
+                                path::MAIN_SEPARATOR,
+                                mod_file_name,
+                            )),
                             DUMMY_SP,
-                            attr::mk_attr_id(),
-                            path_item,
-                        ));
+                        );
+                        path_attr = Some(attr::mk_attr_outer(path_item));
                     }
                 } else {
                     if path.file_name().unwrap() == "mod.rs" {
@@ -761,14 +759,21 @@ fn create_file_for_module(
 
 impl RewriteAt for Item {
     fn rewrite_at(&self, old_span: Span, mut rcx: RewriteCtxtRef) -> bool {
-        if let ItemKind::Mod(module) = &self.node {
+        if let ItemKind::Mod(module) = &self.kind {
             if !module.inline {
                 // We need to print the `mod name;` in the parent and the module
-                // contents in its own file.
+                // contents in its own file. If there are no items, delete the
+                // `mod name;`.
+
+                if module.items.is_empty() {
+                    info!("DELETE {}", describe(rcx.session(), old_span));
+                    rcx.record(TextRewrite::new(old_span, DUMMY_SP));
+                    return true;
+                }
 
                 let mut item = self.clone();
 
-                let old_span = rewind_span_over_whitespace(old_span, &rcx);
+                // let old_span = rewind_span_over_whitespace(old_span, &rcx);
 
                 // Where should the module contents be printed?
                 let inner_span = if !is_rewritable(module.inner) {
@@ -777,7 +782,7 @@ impl RewriteAt for Item {
                     if let Some(attr) = path_attr {
                         item.attrs.push(attr);
                     }
-                    Span::new(sf.start_pos, sf.end_pos, SyntaxContext::empty())
+                    Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root())
                 } else {
                     module.inner
                 };
@@ -805,9 +810,9 @@ impl RewriteAt for Item {
 
                 // Extend span to cover comments before and after items
                 let first_node = reparsed.first().unwrap();
-                let first_span = extend_span_comments(&first_node.get_node_id(), first_node.span, &rcx);
+                let first_span = extend_span_comments(&first_node.get_node_id(), first_node.splice_span(), &rcx);
                 let last_node = reparsed.last().unwrap();
-                let last_span = extend_span_comments(&last_node.get_node_id(), last_node.span, &rcx);
+                let last_span = extend_span_comments(&last_node.get_node_id(), last_node.splice_span(), &rcx);
                 let reparsed_span = first_span.with_hi(last_span.hi());
 
                 describe_rewrite(inner_span, reparsed_span, &rcx);

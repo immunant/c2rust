@@ -3,8 +3,10 @@ use std::iter;
 use std::mem;
 use std::usize;
 
+use log::Level;
+
 use rustc::hir::def_id::DefId;
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 
 use super::constraint::ConstraintSet;
 use super::context::{Ctxt, Instantiation, VariantSumm};
@@ -34,9 +36,9 @@ impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
         let cset = build_inst_cset(cx, variant, &mono.assign);
 
         InstCtxt {
-            cx: cx,
+            cx,
             insts: &variant.insts,
-            cset: cset,
+            cset,
             inst_sel: Vec::new(),
             inst_assign: IndexVec::new(),
         }
@@ -59,7 +61,8 @@ impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
 
         let ok = self.do_solve(0);
         if !ok {
-            panic!("found no solution");
+            warn!("found no solution for call to {:?}", self.insts);
+            return vec![];
         }
 
         let inst_sel = mem::replace(&mut self.inst_sel, Vec::new());
@@ -97,7 +100,6 @@ impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
         let inst = &self.insts[inst_idx];
         let callee = inst.callee;
         let mono_assign = &self.cx.get_mono_summ(callee, mono_idx).assign;
-
         let callee_summ = self.cx.get_func_summ(callee);
         let first_var = Var(inst.first_inst_var);
         let last_var = Var(inst.first_inst_var + callee_summ.num_sig_vars);
@@ -183,12 +185,12 @@ pub fn build_inst_cset<'lty, 'tcx>(
 
     cset.simplify(cx.arena);
 
-    /*
     debug!("  inst constraints:");
-    for &(a, b) in cset.iter() {
-        debug!("    {:?} <= {:?}", a, b);
+    if log_enabled!(Level::Debug) {
+        for &(a, b) in cset.iter() {
+            debug!("    {:?} <= {:?}", a, b);
+        }
     }
-    */
 
     cset
 }

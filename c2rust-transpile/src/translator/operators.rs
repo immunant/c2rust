@@ -113,7 +113,7 @@ impl<'c> Translation<'c> {
 
                 let ty = self.convert_type(type_id.ctype)?;
 
-                let lhs_type = self
+                let lhs_type_id = self
                     .ast_context
                     .index(lhs)
                     .kind
@@ -121,10 +121,11 @@ impl<'c> Translation<'c> {
                     .ok_or_else(|| {
                         format_translation_err!(self.ast_context.display_loc(lhs_loc), "bad lhs type for assignment")
                     })?;
-                let rhs_type = self
+                let rhs_kind = &self
                     .ast_context
                     .index(rhs)
-                    .kind
+                    .kind;
+                let rhs_type_id = rhs_kind
                     .get_qual_type()
                     .ok_or_else(|| {
                         format_translation_err!(self.ast_context.display_loc(rhs_loc), "bad rhs type for assignment")
@@ -135,30 +136,41 @@ impl<'c> Translation<'c> {
                        .and_then(|_| self.convert_expr(ctx, rhs))?
                        .map(|_| self.panic_or_err("Binary expression is not supposed to be used")))
                 } else {
-                    self.convert_expr(ctx, lhs)?
-                        .and_then(|lhs_val| {
-                            self.convert_expr(ctx, rhs)?
-                               .result_map(|rhs_val| {
-                                   let expr_ids = Some((lhs, rhs));
-                                   self.convert_binary_operator(
-                                       ctx,
-                                       op,
-                                       ty,
-                                       type_id.ctype,
-                                       lhs_type,
-                                       rhs_type,
-                                       lhs_val,
-                                       rhs_val,
-                                       expr_ids,
-                                   )
-                               })
+                    let rhs_ctx = ctx;
+
+                    // When we use methods on pointers (ie wrapping_offset_from or offset)
+                    // we must ensure we have an explicit raw ptr for the self param, as
+                    // self references do not decay
+                    if op == c_ast::BinOp::Subtract || op == c_ast::BinOp::Add {
+                        let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+
+                        if let CTypeKind::Pointer(_) = ty_kind {
+                            ctx = ctx.decay_ref();
+                        }
+                    }
+
+                    self.convert_expr(ctx, lhs)?.and_then(|lhs_val| {
+                        self.convert_expr(rhs_ctx, rhs)?.result_map(|rhs_val| {
+                            let expr_ids = Some((lhs, rhs));
+                            self.convert_binary_operator(
+                                ctx,
+                                op,
+                                ty,
+                                type_id.ctype,
+                                lhs_type_id,
+                                rhs_type_id,
+                                lhs_val,
+                                rhs_val,
+                                expr_ids,
+                            )
                         })
+                    })
                 }
             }
         }
     }
 
-    fn covert_assignment_operator_aux(
+    fn convert_assignment_operator_aux(
         &self,
         ctx: ExprContext,
         bin_op_kind: BinOpKind,
@@ -179,8 +191,20 @@ impl<'c> Translation<'c> {
         {
             Ok(WithStmts::new_val(mk().assign_op_expr(bin_op_kind, write, rhs)))
         } else {
+            let resolved_computed_kind = &self.ast_context.resolve_type(compute_lhs_ty.ctype).kind;
             let lhs_type = self.convert_type(compute_lhs_ty.ctype)?;
-            let lhs = mk().cast_expr(read, lhs_type.clone());
+
+            // We can't simply as-cast into a non primitive like f128
+            let lhs = if *resolved_computed_kind == CTypeKind::LongDouble {
+                self.use_crate(ExternCrate::F128);
+
+                let fn_path = mk().path_expr(vec!["f128", "f128", "from"]);
+                let args = vec![read];
+
+                mk().call_expr(fn_path, args)
+            } else {
+                mk().cast_expr(read, lhs_type.clone())
+            };
             let ty = self.convert_type(compute_res_ty.ctype)?;
             let val = self.convert_binary_operator(
                 ctx,
@@ -202,7 +226,15 @@ impl<'c> Translation<'c> {
                 if ctx.is_const { self.use_feature("const_transmute"); }
                 WithStmts::new_unsafe_val(transmute_expr(lhs_type, result_type, val, self.tcfg.emit_no_std))
             } else {
-                WithStmts::new_val(mk().cast_expr(val, result_type))
+                // We can't as-cast from a non primitive like f128 back to the result_type
+                if *resolved_computed_kind == CTypeKind::LongDouble {
+                    let resolved_lhs_kind = &self.ast_context.resolve_type(lhs_ty.ctype).kind;
+                    let val = WithStmts::new_val(val);
+
+                    self.f128_cast_to(val, resolved_lhs_kind)?
+                } else {
+                    WithStmts::new_val(mk().cast_expr(val, result_type))
+                }
             };
             Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
         }
@@ -323,8 +355,8 @@ impl<'c> Translation<'c> {
                 ))
         };
 
-        lhs_translation.and_then(|(write, read)| {
-            rhs_translation.and_then(|rhs| {
+        rhs_translation.and_then(|rhs| {
+            lhs_translation.and_then(|(write, read)| {
                 // Assignment expression itself
                 let assign_stmt = match op {
                     // Regular (possibly volatile) assignment
@@ -410,7 +442,7 @@ impl<'c> Translation<'c> {
                         WithStmts::new_val(mk().assign_expr(&write, ptr))
                     }
 
-                    c_ast::BinOp::AssignAdd => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignAdd => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Add,
                         c_ast::BinOp::Add,
@@ -422,7 +454,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignSubtract => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignSubtract => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Sub,
                         c_ast::BinOp::Subtract,
@@ -434,7 +466,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignMultiply => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignMultiply => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Mul,
                         c_ast::BinOp::Multiply,
@@ -446,7 +478,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignDivide => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignDivide => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Div,
                         c_ast::BinOp::Divide,
@@ -458,7 +490,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignModulus => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignModulus => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Rem,
                         c_ast::BinOp::Modulus,
@@ -470,7 +502,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignBitXor => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignBitXor => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::BitXor,
                         c_ast::BinOp::BitXor,
@@ -482,7 +514,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignShiftLeft => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignShiftLeft => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Shl,
                         c_ast::BinOp::ShiftLeft,
@@ -494,7 +526,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignShiftRight => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignShiftRight => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::Shr,
                         c_ast::BinOp::ShiftRight,
@@ -506,7 +538,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignBitOr => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignBitOr => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::BitOr,
                         c_ast::BinOp::BitOr,
@@ -518,7 +550,7 @@ impl<'c> Translation<'c> {
                         qtype,
                         rhs_type_id,
                     )?,
-                    c_ast::BinOp::AssignBitAnd => self.covert_assignment_operator_aux(
+                    c_ast::BinOp::AssignBitAnd => self.convert_assignment_operator_aux(
                         ctx,
                         BinOpKind::BitAnd,
                         c_ast::BinOp::BitAnd,
@@ -751,7 +783,7 @@ impl<'c> Translation<'c> {
             // CTypeKind::Half |
             CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
             CTypeKind::LongDouble => {
-                self.extern_crates.borrow_mut().insert("f128");
+                self.use_crate(ExternCrate::F128);
 
                 let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
                 let args = vec![mk().ident_expr("1.")];
@@ -809,7 +841,7 @@ impl<'c> Translation<'c> {
                     // CTypeKind::Half |
                     CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
                     CTypeKind::LongDouble => {
-                        self.extern_crates.borrow_mut().insert("f128");
+                        self.use_crate(ExternCrate::F128);
 
                         let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
                         let args = vec![mk().ident_expr("1.")];

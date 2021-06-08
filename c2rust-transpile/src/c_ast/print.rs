@@ -144,6 +144,7 @@ impl<W: Write> Printer<W> {
 
                 Ok(())
             }
+            Some(&CExprKind::ConstantExpr(_, expr, _)) => self.print_expr(expr, context),
             Some(&CExprKind::DeclRef(_, decl, _)) => self.print_decl_name(decl, context),
             Some(&CExprKind::Call(_, func, ref args)) => {
                 self.print_expr(func, context)?;
@@ -223,6 +224,32 @@ impl<W: Write> Printer<W> {
                 self.print_expr(lhs, context)?;
                 self.writer.write_all(b", ")?;
                 self.print_expr(rhs, context)?;
+                self.writer.write_all(b")")
+            }
+
+            Some(&CExprKind::Atomic{ref name, ptr, order, val1, order_fail, val2, weak, ..}) => {
+                self.writer.write_fmt(format_args!("{}(", name))?;
+
+                self.print_expr(ptr, context)?;
+                if let Some(val1) = val1 {
+                    self.writer.write_all(b", ")?;
+                    self.print_expr(val1, context)?;
+                }
+                if let Some(val2) = val2 {
+                    self.writer.write_all(b", ")?;
+                    self.print_expr(val2, context)?;
+                }
+                if let Some(weak) = weak {
+                    self.writer.write_all(b", ")?;
+                    self.print_expr(weak, context)?;
+                }
+                self.writer.write_all(b", ")?;
+                self.print_expr(order, context)?;
+                if let Some(order_fail) = order_fail {
+                    self.writer.write_all(b", ")?;
+                    self.print_expr(order_fail, context)?;
+                }
+
                 self.writer.write_all(b")")
             }
 
@@ -691,13 +718,17 @@ impl<W: Write> Printer<W> {
 
             Some(&CDeclKind::MacroObject {
                 ref name,
-                ref replacements,
-                ..
             }) => {
                 self.writer.write_fmt(format_args!("#define {} ", name))?;
-                for replacement in replacements {
-                    self.print_expr(*replacement, context)?;
-                }
+
+                Ok(())
+            }
+
+            Some(&CDeclKind::MacroFunction {
+                ref name,
+                ..
+            }) => {
+                self.writer.write_fmt(format_args!("#define {}() ", name))?;
 
                 Ok(())
             }
@@ -710,6 +741,10 @@ impl<W: Write> Printer<W> {
                 } else {
                     self.writer.write_fmt(format_args!("// non-canonical decl for <unknown>"))
                 }
+            }
+
+            Some(&CDeclKind::StaticAssert { .. }) => {
+                self.writer.write_fmt(format_args!("static_assert(...)"))
             }
 
             None => panic!("Could not find declaration with ID {:?}", decl_id),

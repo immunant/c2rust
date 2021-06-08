@@ -1,6 +1,6 @@
 use syntax::ast::*;
-use syntax::parse::token::Nonterminal;
-use syntax::parse::token::Lit as TokenLit;
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::tokenstream::{DelimSpan, TokenTree};
 use syntax::util::parser;
 

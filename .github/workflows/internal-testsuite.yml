@@ -1,0 +1,134 @@
+
+
+name: c2rust-testsuite
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the master branch
+on:
+  push:
+    branches: [ master, feature/ci-dev ]
+  pull_request:
+    branches: [ master ]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build-on-ubuntu-1804:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-18.04
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    # Working dir is /home/runner/work/c2rust/c2rust
+    - name: Checkout c2rust
+      uses: actions/checkout@v2
+
+    # Working dir is /home/runner/work/c2rust/c2rust/testsuite
+    - name: Checkout c2rust-testsuite
+      uses: actions/checkout@v2
+      with:
+        repository: immunant/c2rust-testsuite
+        token: ${{ secrets.GH_ACTIONS_CONTROL_PRIV_REPOS }}
+        path: testsuite
+        submodules: true
+
+    - name: Cache Rust toolchain
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.rustup/toolchains
+          ~/.rustup/update-hashes
+          ~/.rustup/settings.toml
+        key: ${{ runner.os }}-rust-toolchain-${{ hashFiles('rust-toolchain') }}
+
+    - name: Cache Rust artifacts
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+          ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Cache Python - pip
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+
+    # TODO(pl): Figure out why json-c fails when caching compile commands
+    # - name: Get Image Version
+    #   id: get-image-ver
+    #   run: |
+    #     echo "::set-output name=version::$(echo $ImageVersion)"
+    #   shell: bash
+
+    # - name: Cache testsuite compile_commands
+    #   uses: actions/cache@v2
+    #   with:
+    #     path: |
+    #       ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
+    #     key: ${{ runner.os }}-ccdb-${{ steps.get-image-ver.outputs.version }}
+
+    - name: Provision Rust
+      run:  rustup component add rustfmt-preview rustc-dev
+
+    - name: Provision Debian Packages
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get -qq install    \
+            libbrotli-dev           \
+            libclang-9-dev          \
+            libgcrypt20             \
+            libreadline-dev         \
+            libidn2-dev             \
+            libldap2-dev            \
+            libnghttp2-dev          \
+            libpcre3-dev            \
+            libpsl-dev              \
+            librtmp-dev             \
+            libtool                 \
+            python3-setuptools      \
+            python3-wheel           \
+            rcs                     \
+            zlib1g-dev
+
+    # installs intercept-build to $HOME/.local/bin
+    - name: Provision Python Packages
+      run: python3 -m pip install -r $GITHUB_WORKSPACE/testsuite/requirements.txt
+
+    # Runs a single command using the runners shell
+    # Working dir is /home/runner/work/c2rust/c2rust
+    - name: Build c2rust
+      run: |
+        export LLVM_CONFIG_PATH=/usr/bin/llvm-config-9
+        cargo build --release
+
+    # TODO(pl): figure out why compile_commands.json may cause json-c to fail
+    - name: Run c2rust testsuite
+      run: |
+        find testsuite -type f -name compile_commands.json -delete
+        export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
+        echo "PATH=$PATH"
+        python3 testsuite/test.py curl json-c lua nginx zstd
+
+    - uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        fields: repo,message,commit,author,action,ref,job,took # selectable (default: repo,message)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # optional
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+      if: always() # Pick up events even if the job fails or is canceled.
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: testsuite-build-artifacts
+        path: |
+          ${{ github.workspace }}/testsuite/**/*.log
+          ${{ github.workspace }}/testsuite/**/compile_commands.json
+      if: always()

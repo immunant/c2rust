@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{Span, Spanned, SyntaxContext};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
@@ -152,7 +152,7 @@ as_nonterminal_impl!(Ty, NtTy, P);
 //as_nonterminal_impl!(Ident, NtIdent);
 //as_nonterminal_impl!(Lifetime, NtLifetime);
 //as_nonterminal_impl!(Expr??, NtLiteral, P);
-as_nonterminal_impl!(MetaItem, NtMeta);
+as_nonterminal_impl!(AttrItem, NtMeta);
 as_nonterminal_impl!(Path, NtPath);
 as_nonterminal_impl!(Visibility, NtVis);
 as_nonterminal_impl!(TokenTree, NtTT);
@@ -166,13 +166,13 @@ as_nonterminal_impl!(ForeignItem, NtForeignItem);
 
 impl AsNonterminal for Ident {
     fn as_nonterminal(&self) -> Nonterminal {
-        Nonterminal::NtIdent(self.clone(), false)
+        Nonterminal::NtIdent(*self, false)
     }
 }
 
 impl AsNonterminal for Lifetime {
     fn as_nonterminal(&self) -> Nonterminal {
-        Nonterminal::NtLifetime(self.ident.clone())
+        Nonterminal::NtLifetime(self.ident)
     }
 }
 
@@ -186,7 +186,7 @@ fn check_nonterminal<T>(old: &T, new: &T, cx: &mut Ctxt) -> bool
 where
     T: GetSpan + AsNonterminal,
 {
-    let empty_ctxt = old.get_span().ctxt() == SyntaxContext::empty();
+    let empty_ctxt = !old.get_span().from_expansion();
     if empty_ctxt {
         cx.record(old.get_span(), new.as_nonterminal());
     }

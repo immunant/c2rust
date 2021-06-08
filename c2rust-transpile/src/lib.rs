@@ -4,9 +4,7 @@
 
 extern crate colored;
 extern crate dtoa;
-extern crate rustc_data_structures;
-extern crate rustc_target;
-extern crate serde_cbor;
+extern crate rustc_parse;
 extern crate syntax;
 extern crate syntax_pos;
 #[macro_use]
@@ -58,16 +56,17 @@ use crate::c_ast::*;
 pub use crate::diagnostics::Diagnostic;
 use c2rust_ast_exporter as ast_exporter;
 
-use crate::build_files::{emit_build_files, get_build_dir};
+use crate::build_files::{emit_build_files, get_build_dir, CrateConfig};
 use crate::compile_cmds::get_compile_commands;
 use crate::convert_type::RESERVED_NAMES;
 pub use crate::translator::ReplaceMode;
 use std::prelude::v1::Vec;
+use syntax_pos::edition::Edition;
 
 type PragmaVec = Vec<(&'static str, Vec<&'static str>)>;
 type PragmaSet = indexmap::IndexSet<(&'static str, &'static str)>;
-type CrateSet = indexmap::IndexSet<&'static str>;
-type TranspileResult = (PathBuf, Option<PragmaVec>, Option<CrateSet>);
+type CrateSet = indexmap::IndexSet<ExternCrate>;
+type TranspileResult = Result<(PathBuf, PragmaVec, CrateSet), ()>;
 
 /// Configuration settings for the translation process
 #[derive(Debug)]
@@ -108,7 +107,9 @@ pub struct TranspilerConfig {
     pub emit_no_std: bool,
     pub output_dir: Option<PathBuf>,
     pub translate_const_macros: bool,
+    pub translate_fn_macros: bool,
     pub disable_refactoring: bool,
+    pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,
 
     // Options that control build files
@@ -121,101 +122,235 @@ pub struct TranspilerConfig {
 
 impl TranspilerConfig {
     fn is_binary(&self, file: &Path) -> bool {
-        let fname = &file.file_stem().unwrap().to_str().map(String::from);
-        let name = get_module_name(fname).unwrap();
+        let file = Path::new(file.file_stem().unwrap());
+        let name = get_module_name(file, false, false, false).unwrap();
         self.binaries.contains(&name)
     }
 
     fn crate_name(&self) -> String {
         self.output_dir.as_ref().and_then(
             |x| x.file_name().map(|x| x.to_string_lossy().into_owned())
-        ).unwrap_or_else(|| "c2rust".into())
+        ).unwrap_or_else(|| "c2rust_out".into())
     }
 }
 
-/// Make sure that module name:
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ExternCrate {
+    C2RustBitfields,
+    C2RustAsmCasts,
+    F128,
+    NumTraits,
+    Memoffset,
+    Libc,
+}
+
+#[derive(Serialize)]
+struct ExternCrateDetails {
+    name: &'static str,
+    ident: String,
+    macro_use: bool,
+    version: &'static str,
+}
+
+impl ExternCrateDetails {
+    fn new(name: &'static str, version: &'static str, macro_use: bool) -> Self {
+        Self {
+            name,
+            ident: name.replace("-", "_"),
+            macro_use,
+            version,
+        }
+    }
+}
+
+impl From<ExternCrate> for ExternCrateDetails {
+    fn from(extern_crate: ExternCrate) -> Self {
+        match extern_crate {
+            ExternCrate::C2RustBitfields => Self::new("c2rust-bitfields", "0.3", true),
+            ExternCrate::C2RustAsmCasts => Self::new("c2rust-asm-casts", "0.2", true),
+            ExternCrate::F128 => Self::new("f128", "0.2", false),
+            ExternCrate::NumTraits => Self::new("num-traits", "0.2", true),
+            ExternCrate::Memoffset => Self::new("memoffset", "0.5", true),
+            ExternCrate::Libc => Self::new("libc", "0.2", false),
+        }
+    }
+}
+
+fn char_to_ident(c: char) -> char {
+    if c.is_alphanumeric() { c } else { '_' }
+}
+
+fn str_to_ident<S: AsRef<str>>(s: S) -> String {
+    s.as_ref().chars().map(char_to_ident).collect()
+}
+
+/// Make sure that name:
 /// - does not contain illegal characters,
 /// - does not clash with reserved keywords.
-fn get_module_name(filename: &Option<String>) -> Option<String> {
-    if let Some(ref name) = filename {
-        // module names cannot contain periods or dashes
-        let mut module = name.chars().map(|c|
-            match c {
-                '.' | '-' => '_',
-                _ => c
-            }
-        ).collect();
-
+fn str_to_ident_checked(filename: &Option<String>, check_reserved: bool) -> Option<String> {
+    // module names cannot contain periods or dashes
+    filename.as_ref().map(str_to_ident).map(|module| {
         // make sure the module name does not clash with keywords
-        if RESERVED_NAMES.contains(&name.as_str()) {
-            module = format!("r#{}", module);
+        if check_reserved && RESERVED_NAMES.contains(&module.as_str()) {
+            format!("r#{}", module)
+        } else {
+            module
         }
-        return Some(module);
-    }
-    None
+    })
 }
 
+fn get_module_name(
+    file: &Path,
+    check_reserved: bool,
+    keep_extension: bool,
+    full_path: bool
+) -> Option<String> {
+    let is_rs = file.extension().map(|ext| ext == "rs").unwrap_or(false);
+    let fname = if is_rs {
+        file.file_stem()
+    } else {
+        file.file_name()
+    };
+    let fname = &fname.unwrap().to_str().map(String::from);
+    let mut name = str_to_ident_checked(fname, check_reserved).unwrap();
+    if keep_extension && is_rs {
+        name.push_str(".rs");
+    }
+    let file = if full_path {
+        file.with_file_name(name)
+    } else {
+        Path::new(&name).to_path_buf()
+    };
+    file.to_str().map(String::from)
+}
 
 /// Main entry point to transpiler. Called from CLI tools with the result of
 /// clap::App::get_matches().
 pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]) {
     diagnostics::init(tcfg.enabled_warnings.clone(), tcfg.log_level);
 
-    let cmds = get_compile_commands(cc_db, &tcfg.filter).expect(&format!(
+    let lcmds = get_compile_commands(cc_db, &tcfg.filter).expect(&format!(
         "Could not parse compile commands from {}",
         cc_db.to_string_lossy()
     ));
 
-    // we may need to specify path to system include dir on macOS
-    let clang_args: Vec<String> = get_isystem_args();
+    // Specify path to system include dir on macOS 10.14 and later. Disable the blocks extension.
+    let clang_args: Vec<String> = get_extra_args_macos();
     let mut clang_args: Vec<&str> = clang_args.iter().map(AsRef::as_ref).collect();
     clang_args.extend_from_slice(extra_clang_args);
 
-    let results = cmds
-        .iter()
-        .map(|cmd| transpile_single(&tcfg, cmd.abs_file().as_path(), cc_db, extra_clang_args))
-        .collect::<Vec<TranspileResult>>();
-    let mut modules = vec![];
-    let mut modules_skipped = false;
-    let mut pragmas = PragmaSet::new();
-    let mut crates = CrateSet::new();
-    for res in results {
-        let (module, pragma_vec, crate_set) = res;
-        modules.push(module);
+    let mut top_level_ccfg = None;
+    let mut workspace_members = vec![];
+    let mut num_transpiled_files = 0;
+    let build_dir = get_build_dir(&tcfg, cc_db);
+    for lcmd in &lcmds {
+        let cmds = &lcmd.cmd_inputs;
+        let lcmd_name = lcmd.output
+            .as_ref()
+            .map(|output| {
+                let output_path = Path::new(output);
+                output_path
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .unwrap_or_else(|| tcfg.crate_name());
+        let build_dir = if lcmd.top_level {
+            build_dir.to_path_buf()
+        } else {
+            build_dir.join(&lcmd_name)
+        };
 
-        if let Some(pv) = pragma_vec {
-            for (key, vals) in pv {
-                for val in vals {
-                    pragmas.insert((key, val));
+        // Compute the common ancestor of all input files
+        // FIXME: this is quadratic-time in the length of the ancestor path
+        let mut ancestor_path = cmds
+            .first()
+            .map(|cmd| {
+                let mut dir = cmd.abs_file();
+                dir.pop(); // discard the file part
+                dir
+            })
+            .unwrap_or_else(PathBuf::new);
+        if cmds.len() > 1 {
+            for cmd in &cmds[1..] {
+                let cmd_path = cmd.abs_file();
+                ancestor_path = ancestor_path
+                    .ancestors()
+                    .find(|a| cmd_path.starts_with(a))
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(PathBuf::new);
+            }
+        }
+
+        let results = cmds
+            .iter()
+            .map(|cmd| transpile_single(&tcfg, cmd.abs_file(),
+                                        &ancestor_path,
+                                        &build_dir,
+                                        cc_db,
+                                        &clang_args))
+            .collect::<Vec<TranspileResult>>();
+        let mut modules = vec![];
+        let mut modules_skipped = false;
+        let mut pragmas = PragmaSet::new();
+        let mut crates = CrateSet::new();
+        for res in results {
+            match res {
+                Ok((module, pragma_vec, crate_set)) => {
+                    modules.push(module);
+                    crates.extend(crate_set);
+
+                    num_transpiled_files += 1;
+                    for (key, vals) in pragma_vec {
+                        for val in vals {
+                            pragmas.insert((key, val));
+                        }
+                    }
+                },
+                Err(_) => {
+                    modules_skipped = true;
                 }
             }
-        } else {
-            modules_skipped = true;
         }
+        pragmas.sort();
+        crates.sort();
 
-        if let Some(cs) = crate_set {
-            crates.extend(cs);
-        }
-    }
-    pragmas.sort();
-    crates.sort();
+        if tcfg.emit_build_files {
+            if modules_skipped {
+                // If we skipped a file, we may not have collected all required pragmas
+                warn!("Can't emit build files after incremental transpiler run; skipped.");
+                return;
+            }
 
-    if tcfg.emit_build_files {
-        if modules_skipped {
-            // If we skipped a file, we may not have collected all required pragmas
-            warn!("Can't emit build files after incremental transpiler run; skipped.");
-            return;
-        }
-        let build_dir = get_build_dir(&tcfg, cc_db);
-        let crate_file = emit_build_files(&tcfg, &build_dir, modules, pragmas, crates);
-        // We only run the reorganization refactoring if we emitted a fresh crate file
-        if crate_file.is_some() && !tcfg.disable_refactoring {
-            if tcfg.reorganize_definitions {
-                reorganize_definitions(&build_dir).unwrap_or_else(|e| {
-                    warn!("Failed to reorganize definitions. {}", e.as_fail());
-                })
+            let ccfg = CrateConfig {
+                crate_name: lcmd_name.clone(),
+                modules,
+                pragmas,
+                crates,
+                link_cmd: lcmd
+            };
+            if lcmd.top_level {
+                top_level_ccfg = Some(ccfg);
+            } else {
+                let crate_file = emit_build_files(&tcfg, &build_dir, Some(ccfg), None);
+                reorganize_definitions(&tcfg, &build_dir, crate_file)
+                    .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
+                workspace_members.push(lcmd_name);
             }
         }
+    }
+
+    if num_transpiled_files == 0 {
+        warn!("No C files found in compile_commands.json; nothing to do.");
+        return;
+    }
+
+    if tcfg.emit_build_files {
+        let crate_file = emit_build_files(&tcfg, &build_dir, top_level_ccfg, Some(workspace_members));
+        reorganize_definitions(&tcfg, &build_dir, crate_file)
+            .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
     }
 }
 
@@ -227,7 +362,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
 /// It is possible to install a package which puts the headers in
 /// `/usr/include` but the user doesn't have to since we can find
 /// the system headers we need by running `xcrun --show-sdk-path`.
-fn get_isystem_args() -> Vec<String> {
+fn get_extra_args_macos() -> Vec<String> {
     let mut args = vec![];
     if cfg!(target_os = "macos") {
         let usr_incl = Path::new("/usr/include");
@@ -244,6 +379,9 @@ fn get_isystem_args() -> Vec<String> {
             args.push("-isystem".to_owned());
             args.push(sdk_path);
         }
+
+        // disable Apple's blocks extension; see https://github.com/immunant/c2rust/issues/229
+        args.push("-fno-blocks".to_owned());
     }
     args
 }
@@ -287,39 +425,49 @@ fn invoke_refactor(build_dir: &PathBuf) -> Result<(), Error> {
     }
 }
 
-fn reorganize_definitions(build_dir: &PathBuf) -> Result<(), Error> {
+fn reorganize_definitions(
+    tcfg: &TranspilerConfig,
+    build_dir: &PathBuf,
+    crate_file: Option<PathBuf>,
+) -> Result<(), Error> {
+    // We only run the reorganization refactoring if we emitted a fresh crate file
+    if crate_file.is_none() || tcfg.disable_refactoring || !tcfg.reorganize_definitions {
+        return Ok(());
+    }
+
     invoke_refactor(build_dir)?;
     // fix the formatting of the output of `c2rust-refactor`
     let status = process::Command::new("cargo")
         .args(&["fmt"])
         .current_dir(build_dir)
         .status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format_err!("cargo fmt failed"))
+    if !status.success() {
+        warn!("cargo fmt failed, code may not be well-formatted");
     }
+    Ok(())
 }
 
 fn transpile_single(
     tcfg: &TranspilerConfig,
-    input_path: &Path,
+    input_path: PathBuf,
+    ancestor_path: &Path,
+    build_dir: &Path,
     cc_db: &Path,
     extra_clang_args: &[&str],
 ) -> TranspileResult {
-    let output_path = get_output_path(tcfg, input_path);
+    let output_path = get_output_path(tcfg, &input_path, ancestor_path, build_dir);
     if output_path.exists() && !tcfg.overwrite_existing {
-        println!("Skipping existing file {}", output_path.display());
-        return (output_path, None, None);
+        warn!("Skipping existing file {}", output_path.display());
+        return Err(());
     }
 
     let file = input_path.file_name().unwrap().to_str().unwrap();
-    println!("Transpiling {}", file);
     if !input_path.exists() {
         warn!(
             "Input C file {} does not exist, skipping!",
             input_path.display()
         );
+        return Err(());
     }
 
     if tcfg.verbose {
@@ -328,17 +476,23 @@ fn transpile_single(
 
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(
-        input_path,
+        input_path.as_path(),
         cc_db,
         extra_clang_args,
         tcfg.debug_ast_exporter,
     ) {
         Err(e) => {
-            eprintln!("Error: {:}", e);
-            process::exit(1);
+            warn!(
+                "Error: {}. Skipping {}; is it well-formed C?",
+                e,
+                input_path.display()
+            );
+            return Err(());
         }
         Ok(cxt) => cxt,
     };
+
+    println!("Transpiling {}", file);
 
     if tcfg.dump_untyped_context {
         println!("CBOR Clang AST");
@@ -348,6 +502,9 @@ fn transpile_single(
     // Convert this into a typed AST
     let typed_context = {
         let conv = ConversionContext::new(&untyped_context);
+        if conv.invalid_clang_ast && tcfg.fail_on_error {
+            panic!("Clang AST was invalid");
+        }
         conv.typed_context
     };
 
@@ -363,23 +520,30 @@ fn transpile_single(
 
     // Perform the translation
     let (translated_string, pragmas, crates) =
-        translator::translate(typed_context, &tcfg, input_path.to_path_buf());
+        syntax::with_globals(Edition::Edition2018, move || {
+            translator::translate(typed_context, &tcfg, input_path)
+        });
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,
-        Err(e) => panic!("Unable to open file for writing: {}", e),
+        Err(e) => panic!("Unable to open file {} for writing: {}", output_path.display(), e),
     };
 
     match file.write_all(translated_string.as_bytes()) {
         Ok(()) => (),
-        Err(e) => panic!("Unable to write translation to file: {}", e),
+        Err(e) => panic!("Unable to write translation to file {}: {}", output_path.display(), e),
     };
 
-    (output_path, Some(pragmas), Some(crates))
+    Ok((output_path, pragmas, crates))
 }
 
-fn get_output_path(tcfg: &TranspilerConfig, input_path: &Path) -> PathBuf {
-    let mut path_buf = PathBuf::from(input_path);
+fn get_output_path(
+    tcfg: &TranspilerConfig,
+    input_path: &PathBuf,
+    ancestor_path: &Path,
+    build_dir: &Path,
+) -> PathBuf {
+    let mut path_buf = input_path.clone();
 
     // When an output file name is not explictly specified, we should convert files
     // with dashes to underscores, as they are not allowed in rust file names.
@@ -393,19 +557,27 @@ fn get_output_path(tcfg: &TranspilerConfig, input_path: &Path) -> PathBuf {
     path_buf.set_file_name(file_name);
     path_buf.set_extension("rs");
 
-    if let Some(output_dir) = &tcfg.output_dir {
-        // Place the source files in output_dir/src/
-        let mut output_path = output_dir.clone();
+    if tcfg.output_dir.is_some() {
+        let path_buf = path_buf.strip_prefix(ancestor_path)
+            .expect("Couldn't strip common ancestor path");
+
+        // Place the source files in build_dir/src/
+        let mut output_path = build_dir.to_path_buf();
         output_path.push("src");
-        if !output_path.exists() {
-            fs::create_dir_all(&output_path).expect(&format!(
+        for elem in path_buf.iter() {
+            let path = Path::new(elem);
+            let name = get_module_name(&path, false, true, false).unwrap();
+            output_path.push(name);
+        }
+
+        // Create the parent directory if it doesn't exist
+        let parent = output_path.parent().unwrap();
+        if !parent.exists() {
+            fs::create_dir_all(&parent).expect(&format!(
                 "couldn't create source directory: {}",
-                output_path.display()
+                parent.display()
             ));
         }
-        // FIXME: replicate the subdirectory structure as well???
-        // this currently puts all the output files in the same directory
-        output_path.push(path_buf.file_name().unwrap());
         output_path
     } else {
         path_buf

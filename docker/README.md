@@ -8,9 +8,10 @@ Building the docker image:
     $ ../scripts/docker_build.sh
 
 
-The `docker_build.sh` script takes two optional arguments:
-1. the name of the base image (`ubuntu:bionic` by default)
-2. the name of the provisioning script (`provision_deb.sh` by default)
+The `docker_build.sh` script takes one argument which is the name of the base image (`ubuntu:bionic` by default). You can also use:
+ - `build-all` to build all supported images, and
+ - `push-all` to upload all images to docker hub (c2rust team members only).
+
 
 Creating a container:
 

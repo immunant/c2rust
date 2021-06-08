@@ -2,13 +2,13 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
 use rustc::hir::HirId;
-use syntax::attr;
+use rustc_parse::parser::FollowedByType;
 use syntax::ast::*;
 use syntax::source_map::DUMMY_SP;
 use syntax::mut_visit::{self, MutVisitor};
 use syntax::ptr::P;
 use syntax::symbol::Symbol;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use c2rust_ast_builder::{mk, Make, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisit, AstEquiv};
@@ -20,11 +20,11 @@ use crate::RefactorCtxt;
 
 
 /// # `rename_items_regex` Command
-/// 
+///
 /// Usage: `rename_items_regex PAT REPL [FILTER]`
-/// 
+///
 /// Marks: reads `FILTER`
-/// 
+///
 /// Replace `PAT` (a regular expression) with `REPL` in all item names.  If `FILTER` is provided,
 /// only items bearing the `FILTER` mark will be renamed.
 pub struct RenameRegex {
@@ -67,9 +67,9 @@ impl Transform for RenameRegex {
         // (2) Rewrite paths referring to renamed defs
 
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
-            if let Some(hir_id) = cx.res_to_hir_id(def) {
+            if let Some(hir_id) = cx.res_to_hir_id(&def[0]) {
                 if let Some(new_ident) = new_idents.get(&hir_id) {
-                    path.segments.last_mut().unwrap().ident = new_ident.clone();
+                    path.segments.last_mut().unwrap().ident = *new_ident;
                 }
             }
             (qself, path)
@@ -78,23 +78,23 @@ impl Transform for RenameRegex {
 }
 
 /// # `rename_unnamed` Command
-/// 
+///
 /// Usage: `rename_unnamed`
-/// 
+///
 /// Renames all `Ident`s that have `unnamed` throughout the `Crate`, so the `Crate` can
 /// have a completely unique naming scheme for Anonymous Types.
 /// This command should be ran after transpiling using `c2rust-transpile`, and
 /// is also mainly to be used when doing the `reorganize_definition` pass; although
 /// this pass can run on any `c2rust-transpile`d project.
-/// 
+///
 /// Example:
-/// ```
+/// ```ignore
 /// pub mod foo {
 ///     pub struct unnamed {
 ///         a: i32
 ///     }
 /// }
-/// 
+///
 /// pub mod bar {
 ///     pub struct unnamed {
 ///         b: usize
@@ -102,13 +102,13 @@ impl Transform for RenameRegex {
 /// }
 /// ```
 /// Becomes:
-/// ```
+/// ```ignore
 /// pub mod foo {
 ///     pub struct unnamed {
 ///         a: i32
 ///     }
 /// }
-/// 
+///
 /// pub mod bar {
 ///     pub struct unnamed_1 {
 ///         b: usize
@@ -124,7 +124,6 @@ impl Transform for RenameUnnamed {
             items_to_change: HashSet<NodeId>,
             new_idents: HashMap<HirId, Ident>,
             new_to_old: HashMap<Ident, Ident>,
-            is_source: bool,
         }
         let mut renamer: Renamer = Default::default();
         let mut counter: usize = 0;
@@ -134,11 +133,7 @@ impl Transform for RenameUnnamed {
 
         // 1. Rename Anonymous types to the unique Ident
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            if attr::contains_name(&i.attrs, Symbol::intern("header_src")) && !renamer.is_source {
-                renamer.is_source = true;
-            }
-
-            let is_module = match i.node {
+            let is_module = match i.kind {
                 ItemKind::Mod(..) => true,
                 _ => false,
             };
@@ -162,115 +157,12 @@ impl Transform for RenameUnnamed {
 
         // 2. Update types to match the new renamed Anonymous Types
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
-            if let Some(hir_id) = cx.res_to_hir_id(def) {
+            if let Some(hir_id) = cx.res_to_hir_id(&def[0]) {
                 if let Some(new_ident) = renamer.new_idents.get(&hir_id) {
-                    path.segments.last_mut().unwrap().ident = new_ident.clone();
+                    path.segments.last_mut().unwrap().ident = *new_ident;
                 }
             }
             (qself, path)
-        });
-
-        // No need to update paths if the project wasn't transpiled
-        // with `--reorganize-definitions` flag
-        if !renamer.is_source {
-            return;
-        }
-
-        // 3. Update paths to from the old AnonymousType `Ident` to the new AnonymousType `Ident`
-        FlatMapNodes::visit(krate, |mut i: P<Item>| {
-            // This pass is only intended to be ran when the `--reorganize-definition` flag is used
-            // on `c2rust-transpile`, and the reason is due to having use statements importing
-            // `Item`s within submodules (also the only time the `c2rust-transpile`r uses use
-            // statements).
-            match i.node {
-                ItemKind::Mod(ref mut outer_mod) => {
-
-                    // What the transpiler does is, separate items into their modules based on
-                    // source location, we need to gather the changed ident so paths can be
-                    // correctly updated.
-
-                    // This map holds the module name that will be used as a check in the path,
-                    // and a mapping between the old ident and the new one
-                    // mod_ident -> <old_unnamed_ident -> new_unnamed_ident>
-                    let mut mod_to_old_idents = HashMap::new();
-                    for outer_item in &outer_mod.items {
-                        // populate mod_to_old_idents
-                        match outer_item.node {
-                            ItemKind::Mod(ref inner_mod) => {
-                                let mut old_idents: HashMap<Ident, Ident> = HashMap::new();
-                                // iterate through and find all occurences of `unnamed` within this
-                                // inner module
-
-                                // TODO: if a module `foo_h` defines an Item with an ident
-                                // of `bar_h`, and there is also a module with that same ident.
-                                // That may cause some issues
-                                for inner_item in &inner_mod.items {
-                                    if let Some(old_ident) =
-                                        renamer.new_to_old.get(&inner_item.ident)
-                                    {
-                                        old_idents.insert(*old_ident, inner_item.ident);
-                                    }
-                                }
-                                mod_to_old_idents.insert(outer_item.ident, old_idents);
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    // Iterate through the items and locate use statements
-                    for outer_item in &mut outer_mod.items {
-                        match outer_item.node {
-                            ItemKind::Use(ref mut ut) => {
-                                let mut old_idents = HashMap::new();
-                                for segment in &ut.prefix.segments {
-                                    if let Some(map) = mod_to_old_idents.get(&segment.ident) {
-                                        old_idents = map.clone();
-                                    }
-                                }
-                                if !old_idents.is_empty() {
-                                    match ut.kind {
-                                        // Change paths that look like:
-                                        // use self::module::{unnamed, unnamed_0};
-                                        //
-                                        // unnamed -> unnamed_12 && unnamed_0 -> unnamed_13
-                                        // use self::module::{unnamed_12, unnamed_13};
-                                        UseTreeKind::Nested(ref mut use_trees) => {
-                                            for (use_tree, _) in use_trees.iter_mut() {
-                                                if let Some(new_ident) =
-                                                    old_idents.get(&use_tree.ident())
-                                                {
-                                                    let new_path =
-                                                        mk().path(Path::from_ident(*new_ident));
-                                                    use_tree.prefix = new_path;
-                                                }
-                                            }
-                                        }
-                                        // Update simple paths:
-                                        // use self::module::unnamed_0;
-                                        //
-                                        // unnamed_0 -> unnamed_17
-                                        // use self::module::unnamed_17;
-                                        UseTreeKind::Simple(..) => {
-                                            // Iterate through each segment until an unchanged unnamed
-                                            // is found
-                                            for segment in &mut ut.prefix.segments {
-                                                if let Some(new_ident) = old_idents.get(&segment.ident)
-                                                {
-                                                    segment.ident = *new_ident;
-                                                }
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                _ => {}
-            }
-            smallvec![i]
         });
     }
 
@@ -281,11 +173,11 @@ impl Transform for RenameUnnamed {
 
 
 /// # `replace_items` Command
-/// 
+///
 /// Usage: `replace_items`
-/// 
+///
 /// Marks: `target`, `repl`
-/// 
+///
 /// Replace all uses of items marked `target` with reference to the item marked
 /// `repl`, then remove all `target` items.
 pub struct ReplaceItems;
@@ -340,7 +232,7 @@ impl Transform for ReplaceItems {
         // (2) Rewrite references to `target` items to refer to `repl` instead.
 
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            match def.opt_def_id() {
+            match def[0].opt_def_id() {
                 Some(def_id) if target_ids.contains(&def_id) =>
                     (None, cx.def_path(repl_id)),
                 _ => (qself, path),
@@ -351,7 +243,7 @@ impl Transform for ReplaceItems {
         // we also remove the associated `Clone` impl.
 
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            let opt_def_id = match i.node {
+            let opt_def_id = match i.kind {
                 ItemKind::Impl(_, _, _, _, _, ref ty, _) => cx.try_resolve_ty(ty),
                 _ => None,
             };
@@ -372,14 +264,14 @@ impl Transform for ReplaceItems {
 
 
 /// # `set_visibility` Command
-/// 
+///
 /// Usage: `set_visibility VIS`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Set the visibility of all items marked `target` to `VIS`.  `VIS` is a Rust
 /// visibility qualifier such as `pub`, `pub(crate)`, or the empty string.
-/// 
+///
 /// Doesn't handle struct field visibility, for now.
 pub struct SetVisibility {
     vis_str: String,
@@ -388,7 +280,7 @@ pub struct SetVisibility {
 impl Transform for SetVisibility {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let vis = driver::run_parser(cx.session(), &self.vis_str,
-                                     |p| p.parse_visibility(false));
+                                     |p| p.parse_visibility(FollowedByType::No));
 
         struct SetVisFolder<'a> {
             st: &'a CommandState,
@@ -409,7 +301,7 @@ impl Transform for SetVisibility {
                 }
 
                 let was_in_trait_impl = self.in_trait_impl;
-                self.in_trait_impl = matches!([i.node]
+                self.in_trait_impl = matches!([i.kind]
                         ItemKind::Impl(_, _, _, _, Some(_), _, _));
                 let r = mut_visit::noop_flat_map_item(i, self);
                 self.in_trait_impl = was_in_trait_impl;
@@ -444,11 +336,11 @@ impl Transform for SetVisibility {
 
 
 /// # `set_mutability` Command
-/// 
+///
 /// Usage: `set_mutability MUT`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Set the mutability of all items marked `target` to `MUT`.  `MUT` is either
 /// `imm` or `mut`.  This command only affects `static` items (including extern statics).
 pub struct SetMutability {
@@ -468,7 +360,7 @@ impl Transform for SetMutability {
             fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
-                        match i.node {
+                        match i.kind {
                             ItemKind::Static(_, ref mut mutbl, _) => *mutbl = self.mutbl,
                             _ => {},
                         }
@@ -480,7 +372,7 @@ impl Transform for SetMutability {
 
             fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
                 if self.st.marked(i.id, "target") {
-                    match i.node {
+                    match i.kind {
                         ForeignItemKind::Static(_, ref mut is_mutbl) =>
                             *is_mutbl = self.mutbl,
                         _ => {},
@@ -513,9 +405,9 @@ impl Transform for SetUnsafety {
             fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
-                        match i.node {
-                            ItemKind::Fn(_, ref mut header, _, _) =>
-                                header.unsafety = self.unsafety,
+                        match i.kind {
+                            ItemKind::Fn(ref mut sig, _, _) =>
+                                sig.header.unsafety = self.unsafety,
                             ItemKind::Trait(_, ref mut unsafety, _, _, _) =>
                                 *unsafety = self.unsafety,
                             ItemKind::Impl(ref mut unsafety, _, _, _, _, _, _) =>
@@ -530,7 +422,7 @@ impl Transform for SetUnsafety {
 
             fn flat_map_trait_item(&mut self, mut i: TraitItem) -> SmallVec<[TraitItem; 1]> {
                 if self.st.marked(i.id, "target") {
-                    match i.node {
+                    match i.kind {
                         TraitItemKind::Method(ref mut sig, _) =>
                             sig.header.unsafety = self.unsafety,
                         _ => {},
@@ -541,7 +433,7 @@ impl Transform for SetUnsafety {
 
             fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
                 if self.st.marked(i.id, "target") {
-                    match i.node {
+                    match i.kind {
                         ImplItemKind::Method(ref mut sig, _) =>
                             sig.header.unsafety = self.unsafety,
                         _ => {},
@@ -557,15 +449,15 @@ impl Transform for SetUnsafety {
 
 
 /// # `create_item` Command
-/// 
+///
 /// Usage: `create_item ITEMS <inside/after> [MARK]`
-/// 
+///
 /// Marks: `MARK`/`target`
-/// 
+///
 /// Parse `ITEMS` as item definitions, and insert the parsed items either `inside` (as the first
 /// child) or `after` (as a sibling) of the AST node bearing `MARK` (default: `target`).  Supports
 /// adding items to both `mod`s and blocks.
-/// 
+///
 /// Note that other itemlikes, such as impl and trait items, are not handled by this command.
 pub struct CreateItem {
     header: String,
@@ -645,7 +537,7 @@ impl Transform for CreateItem {
 
             fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 let id = i.id;
-                if let ItemKind::Mod(m) = &mut i.node {
+                if let ItemKind::Mod(m) = &mut i.kind {
                     self.handle_mod(id, m, false);
                 }
                 mut_visit::noop_flat_map_item(i, self)
@@ -681,11 +573,11 @@ impl Transform for CreateItem {
 
 
 /// # `delete_items` Command
-/// 
+///
 /// Usage: `delete_items`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Delete all items marked `target` from the AST.  This handles items in both `mod`s and blocks,
 /// but doesn't handle other itemlikes.
 pub struct DeleteItems;
@@ -706,7 +598,7 @@ impl Transform for DeleteItems {
             }
 
             fn visit_block(&mut self, b: &mut P<Block>) {
-                b.stmts.retain(|s| match s.node {
+                b.stmts.retain(|s| match s.kind {
                     StmtKind::Item(ref i) => !self.st.marked(i.id, self.mark),
                     _ => true,
                 });

@@ -72,14 +72,10 @@ class CFile:
         self.disallow_current_block = "disallow_current_block" in flags
         self.translate_const_macros = "translate_const_macros" in flags
         self.reorganize_definitions = "reorganize_definitions" in flags
+        self.emit_build_files = "emit_build_files" in flags
 
-    def translate(self, cc_db, extra_args: List[str] = []) -> RustFile:
+    def translate(self, cc_db, ld_lib_path, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
-
-        # help plumbum find rust
-        ld_lib_path = get_rust_toolchain_libpath()
-        if 'LD_LIBRARY_PATH' in pb.local.env:
-            ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
         # run the transpiler
         transpiler = get_cmd_or_die(c.TRANSPILER)
@@ -99,20 +95,14 @@ class CFile:
             args.append("--translate-const-macros")
         if self.reorganize_definitions:
             args.append("--reorganize-definitions")
+        if self.emit_build_files:
+            args.append("--emit-build-files")
 
         if self.logLevel == 'DEBUG':
             args.append("--log-level=debug")
 
         args.append("--")
         args.extend(extra_args)
-
-        # Add -isysroot on MacOS to get SDK directory
-        if on_mac():
-            try:
-                xcrun = pb.local["xcrun"]
-                args.append("-isysroot" + xcrun("--show-sdk-path").strip())
-            except pb.CommandNotFound:
-                pass
 
         with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
             # log the command in a format that's easy to re-run
@@ -139,13 +129,14 @@ def build_static_library(c_files: Iterable[CFile],
 
     # create .o files
     args = ["-c", "-fPIC", "-march=native"]
+    paths = [c_file.path for c_file in c_files]
 
-    args.extend(c_file.path for c_file in c_files)
-
-    if len(args) == 2:
+    if len(paths) == 0:
         return
+    else:
+        args += paths
 
-    logging.debug("complication command:\n %s", str(clang[args]))
+    logging.debug("compilation command:\n %s", str(clang[args]))
     retcode, stdout, stderr = clang[args].run(retcode=None)
 
     logging.debug("stdout:\n%s", stdout)
@@ -261,7 +252,7 @@ class TestDirectory:
             file_flags = {flag.strip() for flag in flags_str.split(',')}
 
         found_tests = re.findall(
-            r"(//(.*))?\npub fn (test_\w+)\(\)", file_buffer)
+            r"(//(.*))?\n\s*pub fn (test_\w+)\(\)", file_buffer)
         test_fns = []
 
         for _, config, test_name in found_tests:
@@ -355,9 +346,16 @@ class TestDirectory:
             "stdsimd",
             "const_transmute",
             "nll",
-            "custom_attribute",
             "linkage",
+            "register_tool",
         ])
+        rust_file_builder.add_pragma("register_tool", ["c2rust"])
+
+
+        # Ensure that path to rustc's lib dir is in`LD_LIBRARY_PATH`
+        ld_lib_path = get_rust_toolchain_libpath()
+        if 'LD_LIBRARY_PATH' in pb.local.env:
+            ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
 
         # .c -> .rs
         for c_file in self.c_files:
@@ -371,7 +369,9 @@ class TestDirectory:
             self._generate_cc_db(c_file.path)
 
             try:
+                logging.debug("translating %s", c_file_short)
                 translated_rust_file = c_file.translate(self.generated_files["cc_db"],
+                                                        ld_lib_path,
                                                         extra_args=["-march=native"])
             except NonZeroReturn as exception:
                 self.print_status(Colors.FAIL, "FAILED", "translate " +
@@ -383,6 +383,11 @@ class TestDirectory:
                 continue
 
             self.generated_files["rust_src"].append(translated_rust_file)
+            if c_file.emit_build_files:
+                self.generated_files["rust_src"].append(self.full_path + "/src/Cargo.toml")
+                self.generated_files["rust_src"].append(self.full_path + "/src/build.rs")
+                self.generated_files["rust_src"].append(self.full_path + "/src/c2rust-lib.rs")
+                self.generated_files["rust_src"].append(self.full_path + "/src/rust-toolchain")
 
             _, rust_file_short = os.path.split(translated_rust_file.path)
             extensionless_rust_file, _ = os.path.splitext(rust_file_short)

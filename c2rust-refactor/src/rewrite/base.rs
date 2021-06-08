@@ -15,8 +15,8 @@
 //! `[T]` implementation.
 use rustc_target::spec::abi::Abi;
 use syntax::ast::*;
-use syntax::parse::token::{DelimToken, Nonterminal, Token};
-use syntax::parse::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
+use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use syntax::source_map::{Span, SyntaxContext};
 use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use syntax::ThinVec;
@@ -128,7 +128,7 @@ impl SeqItem for Attribute {
     }
 }
 
-impl SeqItem for Arg {
+impl SeqItem for Param {
     fn seq_item_id(&self) -> SeqItemId {
         SeqItemId::Node(self.id)
     }
@@ -167,7 +167,7 @@ impl<A: Rewrite, B: Rewrite> MaybeRewriteSeq for (A, B) {}
 pub fn rewrite_seq_unsupported<T: Rewrite>(old: &[T], new: &[T], mut rcx: RewriteCtxtRef) -> bool {
     if old.len() != new.len() {
         // Give up - hope to recover at a higher level
-        return false;
+        false
     } else {
         for i in 0..old.len() {
             if !Rewrite::rewrite(&old[i], &new[i], rcx.borrow()) {
@@ -191,7 +191,7 @@ where
     T: SeqItem + print::RewriteAt + print::Splice + print::PrintParse + print::RecoverChildren + Rewrite + Debug,
     R: AstDeref<Target = T>,
 {
-    if old.len() == 0 && new.len() != 0 && !is_rewritable(outer_span) {
+    if old.is_empty() && !new.is_empty() && !is_rewritable(outer_span) {
         // We can't handle this case because it provides us with no span information about the
         // `old` side.  We need at least one span so we know where to splice in any new items.
         return false;
@@ -335,7 +335,7 @@ where
                 rcx.record(TextRewrite::new(old_span, DUMMY_SP));
                 i += 1;
 
-                if i == old.len() && !has_trailing_comma {
+                if i > 1 && i == old.len() && !has_trailing_comma {
                     comma_before = false;
                 }
             }
@@ -412,7 +412,7 @@ pub fn binop_left_prec(op: &BinOp) -> ExprPrec {
     };
 
     match assoc_op {
-        AssocOp::Less | AssocOp::LessEqual => ExprPrec::LeftLess(prec),
+        AssocOp::Less | AssocOp::LessEqual | AssocOp::ShiftLeft => ExprPrec::LeftLess(prec),
         _ => ExprPrec::Normal(prec),
     }
 }
@@ -437,9 +437,7 @@ pub fn binop_right_prec(op: &BinOp) -> ExprPrec {
 /// Note that this does not require the source text to exist in a real (non-virtual) file - there
 /// just has to be text somewhere in the `SourceMap`.
 pub fn is_rewritable(sp: Span) -> bool {
-    sp != DUMMY_SP &&
-    // If it has a non-default SyntaxContext, it was generated as part of a macro expansion.
-    sp.ctxt() == SyntaxContext::empty()
+    sp != DUMMY_SP && !sp.from_expansion()
 }
 
 pub fn describe(sess: &Session, span: Span) -> String {
@@ -490,7 +488,12 @@ pub fn extend_span_comments_strict(id: &NodeId, mut span: Span, rcx: &RewriteCtx
         None => return Ok(span),
     };
 
-    debug!("Extending span comments for {:?} for comments: {:?}", span, comments);
+    debug!(
+        "Extending span comments for {:?} ({:?}) for comments: {:?}",
+        span,
+        id,
+        comments.iter().map(|comment| comment.lines.clone()).collect::<Vec<_>>(),
+    );
 
     let mut before = vec![];
     let mut after = vec![];

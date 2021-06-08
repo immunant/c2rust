@@ -2,7 +2,7 @@
 use rustc_data_structures::sync::Lrc;
 use std::collections::HashMap;
 use syntax::ast::*;
-use syntax::parse::token::{Nonterminal, Token, TokenKind};
+use syntax::token::{Nonterminal, Token, TokenKind};
 use syntax::source_map::Span;
 use syntax::tokenstream::{TokenStream, TokenTree};
 use syntax::visit::{self, Visitor};
@@ -29,7 +29,7 @@ pub fn match_nonterminal_ids(node_map: &mut NodeMap, mac_table: &MacTable) {
 
         // Find all nonterminals in the macro's input tokens.
         let mut span_map = HashMap::new();
-        collect_nonterminals(mac.node.tts.clone().into(), &mut span_map);
+        collect_nonterminals(mac.args.inner_tokens(), &mut span_map);
 
         // Match IDs of nonterminal nodes with IDs of their uses in the expanded AST.
         let mut v = NtUseVisitor {
@@ -46,7 +46,7 @@ pub fn match_nonterminal_ids(node_map: &mut NodeMap, mac_table: &MacTable) {
 /// Get the span of the inner node of a nonterminal token.  Note we only need to handle nonterminal
 /// kinds that have both spans and NodeIds.
 fn nt_span(nt: &Nonterminal) -> Option<Span> {
-    use syntax::parse::token::Nonterminal::*;
+    use syntax::token::Nonterminal::*;
     Some(match nt {
         NtItem(ref i) => i.span,
         NtBlock(ref b) => b.span,
@@ -71,7 +71,7 @@ fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Lrc<Nonter
             }
             TokenTree::Token(..) => {}
             TokenTree::Delimited(_, _, tts) => {
-                collect_nonterminals(tts.into(), span_map);
+                collect_nonterminals(tts, span_map);
             }
         }
     }

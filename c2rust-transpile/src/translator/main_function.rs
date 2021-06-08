@@ -4,7 +4,7 @@
 //! Rust.
 
 use super::*;
-use syntax::parse::token::{self, TokenKind};
+use syntax::token::{self, TokenKind};
 
 impl<'c> Translation<'c> {
     pub fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, TranslationError> {
@@ -25,7 +25,7 @@ impl<'c> Translation<'c> {
                 ))?,
             };
 
-            let decl = mk().fn_decl(vec![], FunctionRetTy::Default(DUMMY_SP), false);
+            let decl = mk().fn_decl(vec![], FunctionRetTy::Default(DUMMY_SP));
 
             let main_fn_name = self
                 .renamer
@@ -74,7 +74,7 @@ impl<'c> Translation<'c> {
                                 ),
                                 "expect",
                                 vec![mk().lit_expr(
-                                    mk().str_lit("Failed to convert argument into CString."),
+                                    "Failed to convert argument into CString.",
                                 )],
                             ),
                             "into_raw",
@@ -144,7 +144,7 @@ impl<'c> Translation<'c> {
                             Some(mk().mac_expr(mk().mac(
                                 vec!["format"],
                                 vec![
-                                    token::Interpolated(Lrc::new(Nonterminal::NtExpr(mk().lit_expr(mk().str_lit("{}={}"))))),
+                                    token::Interpolated(Rc::new(Nonterminal::NtExpr(mk().lit_expr("{}={}")))),
                                     token::Comma,
                                     TokenKind::Ident(var_name_ident.name, var_name_ident.is_raw_guess()),
                                     token::Comma,
@@ -167,7 +167,7 @@ impl<'c> Translation<'c> {
                                         ),
                                         "expect",
                                         vec![mk().lit_expr(
-                                            mk().str_lit("Failed to convert environment variable into CString.")
+                                            "Failed to convert environment variable into CString."
                                         )],
                                     ),
                                     "into_raw",
@@ -231,6 +231,8 @@ impl<'c> Translation<'c> {
 
             let block = mk().block(stmts);
             let main_attributes = self.mk_cross_check(mk(), vec!["none"]);
+            let main_attributes = main_attributes.single_attr("main");
+            self.use_feature("main");
             Ok(main_attributes.pub_().fn_item("main", decl, block))
         } else {
             Err(TranslationError::generic(

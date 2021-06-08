@@ -1,10 +1,12 @@
 //! Type equivalence-class analysis.  The goal is to find groups of types annotations that must be
 //! equal for the crate to typecheck.  Example:
 //!
+//! ```ignore
 //!     fn f(x: i32, y: i32) {
 //!         let a: i32 = x;
 //!         let b: i32 = y;
 //!     }
+//! ```
 //!
 //! Here the equivalence classes are {x, a} and {y, b}.  The annotations on `x` and `a` must match
 //! for the program to typecheck, but the annotations on `x` and `y` do not need to match because
@@ -203,7 +205,7 @@ impl<'lty, 'tcx> ExprPatVisitor<'lty, 'tcx> {
         for (&local_id, &ty) in tables.node_types().iter() {
             let id = HirId {
                 owner: def_id.index,
-                local_id: local_id,
+                local_id,
             };
             self.unadjusted.insert(id, self.ltt.label(ty));
 
@@ -223,17 +225,17 @@ impl<'lty, 'a, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'lty, 'hir> {
     // Visit every itemlike with a BodyId, and call `handle_body` on each.
 
     fn visit_item(&mut self, item: &'hir Item) {
-        let body_id = match item.node {
+        let body_id = match item.kind {
             ItemKind::Static(_, _, body_id) => body_id,
             ItemKind::Const(_, body_id) => body_id,
-            ItemKind::Fn(_, _, _, body_id) => body_id,
+            ItemKind::Fn(_, _, body_id) => body_id,
             _ => return,
         };
         self.handle_body(body_id);
     }
 
     fn visit_trait_item(&mut self, item: &'hir TraitItem) {
-        let body_id = match item.node {
+        let body_id = match item.kind {
             TraitItemKind::Const(_, Some(body_id)) => body_id,
             TraitItemKind::Method(_, TraitMethod::Provided(body_id)) => body_id,
             _ => return,
@@ -242,7 +244,7 @@ impl<'lty, 'a, 'hir> ItemLikeVisitor<'hir> for ExprPatVisitor<'lty, 'hir> {
     }
 
     fn visit_impl_item(&mut self, item: &'hir ImplItem) {
-        let body_id = match item.node {
+        let body_id = match item.kind {
             ImplItemKind::Const(_, body_id) => body_id,
             ImplItemKind::Method(_, body_id) => body_id,
             _ => return,
@@ -330,7 +332,7 @@ fn label_tys<'lty, 'a: 'lty, 'tcx: 'a>(
     krate: &ast::Crate,
 ) -> HashMap<HirId, LTy<'lty, 'tcx>> {
     let mut ty_nodes = HashMap::new();
-    let source = LabelTysSource { tcx: cx.ty_ctxt(), ltt: ltt };
+    let source = LabelTysSource { tcx: cx.ty_ctxt(), ltt };
     type_map::map_types(&cx.hir_map(), source, krate, |_, ast_ty, lty| {
         // Note that AST `Ty` nodes don't have `HirId`s, so we index everything by the old `NodeId`
         // instead.
@@ -486,7 +488,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     fn fn_num_inputs(&self, lty: LTy<'lty, 'tcx>) -> usize {
         use rustc::ty::TyKind::*;
-        match lty.ty.sty {
+        match lty.ty.kind {
             FnDef(id, _) => self.def_sig(id).inputs.len(),
             FnPtr(_) => lty.args.len() - 1,
             // TODO: Handle Closure.  This should be similar to FnDef, but the substs are a bit
@@ -498,7 +500,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     /// Get the input types out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_input(&self, lty: LTy<'lty, 'tcx>, idx: usize) -> LTy<'lty, 'tcx> {
         use rustc::ty::TyKind::*;
-        match lty.ty.sty {
+        match lty.ty.kind {
             FnDef(id, _) => {
                 // For a `FnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
                 // labeled substs recorded in `LTy.args`.
@@ -517,7 +519,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     /// Get the output type out of a `FnPtr` or `FnDef` `LTy`.
     fn fn_output(&self, lty: LTy<'lty, 'tcx>) -> LTy<'lty, 'tcx> {
         use rustc::ty::TyKind::*;
-        match lty.ty.sty {
+        match lty.ty.kind {
             FnDef(id, _) => {
                 let sig = self.def_sig(id);
                 self.ltt.subst(sig.output, &lty.args)
@@ -530,7 +532,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     fn fn_is_variadic(&self, lty: LTy<'lty, 'tcx>) -> bool {
         use rustc::ty::TyKind::*;
-        match lty.ty.sty {
+        match lty.ty.kind {
             FnDef(id, _) => self.def_sig(id).c_variadic,
             FnPtr(ty_sig) => ty_sig.skip_binder().c_variadic,
             // TODO: Closure
@@ -559,7 +561,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     /// Get the labeled type of a field.  For generic structs, this returns the type after
     /// substitution, using the type arguments from `struct_ty`.
     fn field_lty(&self, struct_ty: LTy<'lty, 'tcx>, name: Symbol) -> LTy<'lty, 'tcx> {
-        let adt = match struct_ty.ty.sty {
+        let adt = match struct_ty.ty.kind {
             ty::TyKind::Adt(ref adt, _) => adt,
             _ => panic!("field_lty: not a struct ty: {:?}", struct_ty),
         };
@@ -601,7 +603,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         // whole analysis to run over MIR.  At that level, operator-overload method calls are fully
         // explicit.)
 
-        match e.node {
+        match e.kind {
             ExprKind::Box(ref e) => {
                 self.ltt.unify(rty.args[0], self.expr_lty(e));
             }
@@ -616,7 +618,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 let func_lty = self.expr_lty(func);
 
                 fn is_closure(ty: ty::Ty) -> bool {
-                    if let ty::TyKind::Closure(..) = ty.sty {
+                    if let ty::TyKind::Closure(..) = ty.kind {
                         true
                     } else {
                         false
@@ -692,11 +694,13 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
             // ExprKind::If was replaced by ExprKind::Match, which needs to be
             // handled here
 
-            ExprKind::While(ref cond, ref body, _) => {
-                self.ltt.unify(self.prim_lty("bool"), self.expr_lty(cond));
-                self.ltt.unify(self.prim_lty("()"), self.block_lty(body));
-                self.ltt.unify(rty, self.prim_lty("()"));
-            }
+            // ExprKind::While was replaced by ExprKind::Loop ( ExprKind::Match
+            // ), which needs to be handled here
+            // ExprKind::While(ref cond, ref body, _) => {
+            //     self.ltt.unify(self.prim_lty("bool"), self.expr_lty(cond));
+            //     self.ltt.unify(self.prim_lty("()"), self.block_lty(body));
+            //     self.ltt.unify(rty, self.prim_lty("()"));
+            // }
 
             ExprKind::Loop(..) => {} // TODO
 
@@ -735,7 +739,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 }
             }
 
-            ExprKind::AddrOf(_, ref e) => {
+            ExprKind::AddrOf(_, _, ref e) => {
                 self.ltt.unify(rty.args[0], self.expr_lty(e));
             }
 
@@ -817,6 +821,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                         self.ltt.unify(rty, prev_ty);
                     }
                     Adjust::Pointer(PointerCast::Unsize) => {} // TODO
+                    Adjust::Pointer(PointerCast::ArrayToPointer) => {} // TODO
                 }
 
                 prev_ty = rty;
@@ -829,7 +834,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
     fn visit_pat(&mut self, p: &'hir Pat) {
         let rty = self.pat_lty(p);
 
-        match p.node {
+        match p.kind {
             PatKind::Wild => {}
 
             PatKind::Binding(_, node_id, _, ref opt_pat) => {
@@ -843,6 +848,8 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
             PatKind::Struct(..) => {} // TODO
 
             PatKind::TupleStruct(..) => {} // TODO
+
+            PatKind::Or(..) => {} // TODO
 
             PatKind::Path(..) => {} // TODO
 
@@ -896,7 +903,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         }
 
         let body = self.tcx.hir().body(body_id);
-        let def_id = self.tcx.hir().local_def_id_from_hir_id(id);
+        let def_id = self.tcx.hir().local_def_id(id);
         let sig = self.def_sig(def_id);
         // The results of `def_sig` and `def_lty` are produced by calling `tcx.fn_sig` /
         // `tcx.type_of` and giving the results fresh labels, so they initially have no connection
@@ -908,7 +915,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         // the argument types that appear in the `DefId` signature.
         for (i, ast_ty) in decl.inputs.iter().enumerate() {
             let lty = self.ty_lty(ast_ty);
-            self.ltt.unify(lty, self.pat_lty(&body.arguments[i].pat));
+            self.ltt.unify(lty, self.pat_lty(&body.params[i].pat));
             self.ltt.unify(lty, sig.inputs[i]);
         }
 
@@ -925,14 +932,14 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
     fn visit_struct_field(&mut self, field: &'hir StructField) {
         // Unify the field's type annotation with the definition type.
-        let def_id = self.tcx.hir().local_def_id_from_hir_id(field.hir_id);
+        let def_id = self.tcx.hir().local_def_id(field.hir_id);
         self.ltt.unify(self.ty_lty(&field.ty), self.def_lty(def_id));
         intravisit::walk_struct_field(self, field);
     }
 
     fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
-        let def_id = self.tcx.hir().local_def_id_from_hir_id(i.hir_id);
-        match i.node {
+        let def_id = self.tcx.hir().local_def_id(i.hir_id);
+        match i.kind {
             ForeignItemKind::Fn(ref decl, _, _) => {
                 let sig = self.def_sig(def_id);
 

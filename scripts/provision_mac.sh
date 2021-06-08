@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # complain if we're not on macOS
 UNAME=$(uname -s)
 if [ "$UNAME" != "Darwin" ]; then
@@ -17,9 +19,11 @@ done
 SCRIPT_DIR="$(dirname "$0")"
 export HOMEBREW_NO_AUTO_UPDATE=1
 
-hb_packages=(python cmake ninja gpg ccache llvm)
+# NOTE: Pin LLVM to a known good version since new releases
+# tend not to be backwards compatible
+hb_packages=(python cmake ninja gpg ccache llvm@11)
 for item in "${hb_packages[@]}"; do
-  brew info "${item}" | grep --quiet 'Not installed' && brew install "${item}"
+  brew info "${item}" | grep 'Not installed' > /dev/null && brew install "${item}"
 done
 
 type -P "pip3" >/dev/null || {
@@ -27,7 +31,8 @@ type -P "pip3" >/dev/null || {
 }
 
 # Python 3 packages
-pip3 install -r "$SCRIPT_DIR/requirements.txt" --user --disable-pip-version-check --quiet
+pip3 install --user --upgrade pip
+pip3 install -r "$SCRIPT_DIR/requirements.txt" --user --disable-pip-version-check
 
 RUST_TOOLCHAIN_FILE="$SCRIPT_DIR/../rust-toolchain"
 export RUST_VER=$(cat $RUST_TOOLCHAIN_FILE | tr -d '\n')
