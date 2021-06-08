@@ -91,7 +91,7 @@ Optional<APSInt> getIntegerConstantExpr(const Expr &E, const ASTContext &Ctx) {
     if (E.isIntegerConstantExpr(value, Ctx))
         return {value};
     else
-        return {};
+        return Optional<APSInt>();
 #else
     return E.getIntegerConstantExpr(Ctx);
 #endif // CLANG_VERSION_MAJOR
