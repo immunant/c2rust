@@ -12,7 +12,7 @@ use std::os::unix;
 use std::path::{Path, PathBuf};
 
 use cargo::{Config, CargoResult};
-use cargo::core::{shell, Shell, Workspace};
+use cargo::core::{shell, InternedString, Shell, Workspace};
 use cargo::core::compiler::CompileMode;
 use cargo::ops::{CompileOptions, compile};
 use cargo::util::config;
@@ -182,7 +182,9 @@ impl Instrumenter {
     /// Returns the target directory containing the built crate
     fn build(&self) -> CargoResult<()> {
         let mut compile_opts = CompileOptions::new(&self.out_config, CompileMode::Build)?;
-        compile_opts.build_config.release = !self.debug;
+        if !self.debug {
+            compile_opts.build_config.requested_profile = InternedString::new("release");
+        }
 
         let manifest_file = find_root_manifest_for_wd(self.out_config.cwd())?;
 
