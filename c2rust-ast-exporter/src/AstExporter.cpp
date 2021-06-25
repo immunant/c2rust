@@ -486,7 +486,7 @@ class TranslateASTVisitor final
     bool evaluateConstantInt(Expr *E, APSInt &constant) {
         bool hasValue = E->isIntegerConstantExpr(*Context);
 
-        if (!hasValue) {
+        if (hasValue) {
 #if CLANG_VERSION_MAJOR < 8
             APSInt eval_result;
 #else
