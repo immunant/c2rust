@@ -211,7 +211,7 @@ fn copy_recursively(src: &Path, dest: &Path) -> io::Result<()> {
                 fs::copy(&src_path, &dest_path)?;
             }
             file_type if file_type.is_symlink() => {
-                unimplemented!("Copying symlinks is not implemented yet");
+                fs::copy(&src_path, &dest_path)?;
             }
             _ => panic!("Unexpected file type"),
         }
