@@ -484,22 +484,25 @@ class TranslateASTVisitor final
     }
 
     bool evaluateConstantInt(Expr *E, APSInt &constant) {
-        bool hasValue = E->isIntegerConstantExpr(*Context);
+        auto value = getIntegerConstantExpr(*E, *Context);
 
-        if (!hasValue) {
+        if (value) {
+            constant = *value;
+            return true;
+        } else {
 #if CLANG_VERSION_MAJOR < 8
             APSInt eval_result;
 #else
             Expr::EvalResult eval_result;
 #endif // CLANG_VERSION_MAJOR
-            hasValue = E->EvaluateAsInt(eval_result, *Context);
+            bool hasValue = E->EvaluateAsInt(eval_result, *Context);
 #if CLANG_VERSION_MAJOR < 8
             constant = eval_result;
 #else
             constant = eval_result.Val.getInt();
 #endif // CLANG_VERSION_MAJOR
+            return hasValue;
         }
-        return hasValue;
     }
 
     // Template required because Decl and Stmt don't share a common base class
