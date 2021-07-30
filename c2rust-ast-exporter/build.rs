@@ -118,6 +118,10 @@ fn generate_bindings() -> Result<(), &'static str> {
 fn build_native(llvm_info: &LLVMInfo) {
     // Find where the (already built) LLVM lib dir is
     let llvm_lib_dir = &llvm_info.lib_dir;
+    // Find where the (already built) LLVM cmake module dir is
+    let llvm_cmake_dir = &llvm_info.cmake_dir;
+    // Find where the Clang cmake module dir is
+    let clang_cmake_dir = &llvm_info.clang_cmake_dir;
 
     match env::var("C2RUST_AST_EXPORTER_LIB_DIR") {
         Ok(libdir) => {
@@ -127,8 +131,8 @@ fn build_native(llvm_info: &LLVMInfo) {
             // Build libclangAstExporter.a with cmake
             let dst = Config::new("src")
                 // Where to find LLVM/Clang CMake files
-                .define("LLVM_DIR", &format!("{}/cmake/llvm", llvm_lib_dir))
-                .define("Clang_DIR", &format!("{}/cmake/clang", llvm_lib_dir))
+                .define("LLVM_DIR", llvm_cmake_dir)
+                .define("Clang_DIR", clang_cmake_dir)
                 // What to build
                 .build_target("clangAstExporter")
                 .build();
@@ -204,6 +208,10 @@ fn build_native(llvm_info: &LLVMInfo) {
 struct LLVMInfo {
     /// LLVM lib dir containing libclang* and libLLVM* libraries
     pub lib_dir: String,
+    /// LLVM cmake dir containing cmake modules
+    pub cmake_dir: String,
+    /// Clang cmake dir containing cmake modules
+    pub clang_cmake_dir: String,
 
     /// List of libs we need to link against
     pub libs: Vec<String>,
@@ -273,20 +281,59 @@ impl LLVMInfo {
 
         let llvm_config = find_llvm_config();
         let llvm_config_missing = "
+        Couldn't find `llvm-config`. Make sure `llvm-config` is on $PATH then
+        re-build.
+        ";
+        let llvm_config_libdir_missing = "
         Couldn't find LLVM lib dir. Try setting the `LLVM_LIB_DIR` environment
         variable or make sure `llvm-config` is on $PATH then re-build. For example:
 
           $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
         ";
+        let llvm_config_cmakedir_missing = "
+        Couldn't find LLVM cmake dir. Try setting the `LLVM_CMAKE_DIR` environment
+        variable or make sure `llvm-config` is on $PATH then re-build. For example:
+
+          $ export LLVM_CMAKE_DIR=/usr/local/opt/llvm/lib/cmake/llvm
+        ";
+        let clang_cmakedir_missing = "
+        Couldn't find Clang cmake dir. Try setting the `CLANG_CMAKE_DIR` environment
+        variable or make sure `llvm-config` is on $PATH then re-build. For example:
+
+          $ export CLANG_CMAKE_DIR=/usr/local/opt/llvm/lib/cmake/clang
+        ";
         let lib_dir = {
             let path_str = env::var("LLVM_LIB_DIR")
                 .ok()
                 .or(invoke_command(llvm_config.as_ref(), &["--libdir"]))
-                .expect(llvm_config_missing);
+                .expect(llvm_config_libdir_missing);
             String::from(
                 Path::new(&path_str)
                     .canonicalize()
                     .unwrap()
+                    .to_string_lossy(),
+            )
+        };
+        let cmake_dir = {
+            let path_str = env::var("LLVM_CMAKE_DIR")
+                .ok()
+                .or(invoke_command(llvm_config.as_ref(), &["--cmakedir"]))
+                .expect(llvm_config_cmakedir_missing);
+            String::from(
+                Path::new(&path_str)
+                    .canonicalize()
+                    .unwrap()
+                    .to_string_lossy(),
+            )
+        };
+        let clang_cmake_dir = {
+            let path_str = env::var("CLANG_CMAKE_DIR")
+                .ok()
+                .unwrap_or(format!("{}/../clang", cmake_dir));
+            String::from(
+                Path::new(&path_str)
+                    .canonicalize()
+                    .expect(clang_cmakedir_missing)
                     .to_string_lossy(),
             )
         };
@@ -402,6 +449,8 @@ impl LLVMInfo {
 
         Self {
             lib_dir,
+            cmake_dir,
+            clang_cmake_dir,
             libs,
         }
     }
