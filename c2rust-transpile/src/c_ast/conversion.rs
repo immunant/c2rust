@@ -1946,6 +1946,8 @@ impl ConversionContext {
                     let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
                     let has_def = from_value(node.extras[1].clone())
                         .expect("Expected has_def flag on struct");
+                    let attrs = from_value::<Vec<Value>>(node.extras[2].clone())
+                        .expect("Expected attribute array on record");
                     let fields: Option<Vec<CDeclId>> = if has_def {
                         Some(
                             node.children
@@ -1962,7 +1964,18 @@ impl ConversionContext {
                         None
                     };
 
-                    let record = CDeclKind::Union { name, fields };
+                    let mut is_packed = false;
+                    for attr in attrs {
+                        match from_value::<String>(attr.clone())
+                            .expect("Records attributes should be strings")
+                            .as_str()
+                        {
+                            "packed" => is_packed = true,
+                            _ => {}
+                        }
+                    }
+
+                    let record = CDeclKind::Union { name, fields, is_packed };
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, RECORD_DECL);

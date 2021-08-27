@@ -933,6 +933,7 @@ pub enum CDeclKind {
     Union {
         name: Option<String>,
         fields: Option<Vec<CFieldId>>,
+        is_packed: bool,
     },
 
     // Field
