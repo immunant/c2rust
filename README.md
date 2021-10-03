@@ -1,4 +1,5 @@
-[![Travis Build Status]][travis] [![GitHub Actions Status]][github] [![Azure Build Status]][azure] [![Latest Version]][crates.io] [![Rustc Version]](#)
+[![Travis Build Status]][travis] [![GitHub Actions Status]][github] [![Azure Build Status]][azure] [![Latest Version]][crates.io] [![Rustc Version]](#) [![Gitpod ready-to-code](https://img.shields.io/badge/Gitpod-ready--to--code-908a85?logo=gitpod)](gitpod)
+
 
 [GitHub Actions Status]: https://github.com/immunant/c2rust/workflows/c2rust-testsuite/badge.svg
 [github]: https://github.com/immunant/c2rust/actions
@@ -6,6 +7,7 @@
 [travis]: https://travis-ci.org/immunant/c2rust
 [Azure Build Status]: https://dev.azure.com/immunant/c2rust/_apis/build/status/immunant.c2rust?branchName=master
 [azure]: https://dev.azure.com/immunant/c2rust/_build/latest?definitionId=1&branchName=master
+[gitpod]: https://gitpod.io/from-referrer/
 
 [Latest Version]: https://img.shields.io/crates/v/c2rust.svg
 [crates.io]: https://crates.io/crates/c2rust
