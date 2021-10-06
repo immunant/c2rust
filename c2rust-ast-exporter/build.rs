@@ -227,6 +227,7 @@ impl LLVMInfo {
                 }))
                 // In PATH
                 .or([
+                    "llvm-config-12",
                     "llvm-config-11",
                     "llvm-config-10",
                     "llvm-config-9",
