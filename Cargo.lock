@@ -204,6 +204,9 @@ version = "0.2.0"
 [[package]]
 name = "c2rust-ast-builder"
 version = "0.15.0"
+dependencies = [
+ "cargo 0.44.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "c2rust-ast-exporter"

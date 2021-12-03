@@ -11,3 +11,4 @@ repository = "https://github.com/immunant/c2rust"
 description = "Rust AST builder support crate for the C2Rust project"
 
 [dependencies]
+cargo = "0.44" # rustc
