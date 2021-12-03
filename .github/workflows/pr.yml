@@ -1,6 +1,6 @@
 # https://github.com/actions-rs/meta/blob/master/recipes/quickstart.md
 
-on: [pull_request]
+on: [pull_request, push]
 
 name: debug build + test
 
