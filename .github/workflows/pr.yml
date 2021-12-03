@@ -1,0 +1,65 @@
+# https://github.com/actions-rs/meta/blob/master/recipes/quickstart.md
+
+on: [pull_request]
+
+name: debug build + test
+
+jobs:
+  check:
+    name: c2rust
+    runs-on: ubuntu-latest
+    steps:
+
+      - uses: actions/checkout@v2
+
+      # https://github.com/marketplace/actions/rust-toolchain
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2019-12-05 # rust-toolchain
+          default: true # set as default toolchain
+          override: true # set toolchain for workdir
+          profile: minimal # TODO? rustup set profile {value}
+          #components: rustfmt, clippy
+          components: rustfmt-preview, rustc-dev # scripts/provision_rust.sh
+
+      # https://github.com/marketplace/actions/rust-cache
+      - name: Enable Rust cache
+        uses: Swatinem/rust-cache@v1
+        with:
+          cache-on-failure: true # Cache even if the build fails
+
+      # https://github.com/actions/setup-python
+      # python is needed for build + test
+      #- name: Install python
+      #  uses: actions/setup-python@v2
+      #  with:
+      #    python-version: '3.x'
+
+      # scripts/provision_deb.sh
+      - name: Install dependencies
+        run: sudo apt-get install -y cmake clang curl dirmngr git gnupg2 gperf htop libssl-dev ninja-build pkg-config python-dev python3-pip python3-setuptools software-properties-common unzip libncurses5-dev # luarocks
+
+      - name: Install python dependencies
+        run: pip install -r scripts/requirements.txt
+
+      # https://github.com/marketplace/actions/install-luarocks
+      - uses: leafo/gh-actions-lua@v8
+      - uses: leafo/gh-actions-luarocks@v4
+      - name: install lua dependencies
+        run: luarocks install penlight
+
+      # https://github.com/actions-rs/cargo
+      - name: build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          #args: --release --all-features # release build is much slower
+
+      - name: test
+        run: python3 ./scripts/test_translator.py --debug ./tests
+
+#      - name: Run cargo check
+#        uses: actions-rs/cargo@v1
+#        with:
+#          command: check
