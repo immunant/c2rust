@@ -227,6 +227,7 @@ name = "c2rust-ast-printer"
 version = "0.15.0"
 dependencies = [
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cargo 0.44.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

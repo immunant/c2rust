@@ -9,3 +9,4 @@ description = "Customized version of libsyntax rust pretty-printer"
 
 [dependencies]
 log = "0.4"
+cargo = "0.44" # rustc_target
