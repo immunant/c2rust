@@ -227,6 +227,7 @@ impl LLVMInfo {
                 }))
                 // In PATH
                 .or([
+                    "llvm-config-13",
                     "llvm-config-12",
                     "llvm-config-11",
                     "llvm-config-10",
@@ -237,7 +238,13 @@ impl LLVMInfo {
                     "llvm-config-6.1",
                     "llvm-config-6.0",
                     "llvm-config",
-                    // Homebrew install location on MacOS
+                    // Homebrew install locations on MacOS
+                    "/usr/local/opt/llvm@13/bin/llvm-config",
+                    "/usr/local/opt/llvm@12/bin/llvm-config",
+                    "/usr/local/opt/llvm@11/bin/llvm-config",
+                    "/usr/local/opt/llvm@10/bin/llvm-config",
+                    "/usr/local/opt/llvm@9/bin/llvm-config",
+                    "/usr/local/opt/llvm@8/bin/llvm-config",
                     "/usr/local/opt/llvm/bin/llvm-config",
                 ]
                 .iter()

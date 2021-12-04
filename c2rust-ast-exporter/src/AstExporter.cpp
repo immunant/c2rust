@@ -586,7 +586,13 @@ class TranslateASTVisitor final
         auto ty = ast->getType();
         auto isVaList = false;
         auto encodeMacroExpansions = true;
-        encode_entry_raw(ast, tag, ast->getSourceRange(), ty, ast->isRValue(), isVaList,
+#if CLANG_VERSION_MAJOR < 13
+        bool isRValue = ast->isRValue();
+#else
+        assert(Context && "Expected Context to be non-NULL");
+        bool isRValue = ast->Classify(*Context).isRValue();
+#endif
+        encode_entry_raw(ast, tag, ast->getSourceRange(), ty, isRValue, isVaList,
                          encodeMacroExpansions, childIds, extra);
         typeEncoder.VisitQualType(ty);
     }
@@ -1128,7 +1134,7 @@ class TranslateASTVisitor final
 #else // CLANG_VERSION_MAJOR >= 7
             auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
 #endif
-            curMacroExpansionSource = 
+            curMacroExpansionSource =
                 Lexer::getSourceText(ExpansionRange, Mgr, Context->getLangOpts());
         }
 
@@ -2488,11 +2494,11 @@ class TranslateConsumer : public clang::ASTConsumer {
                                             raw_text.size());
                     cbor_encoder_close_container(&array, &entry);
                 }
-            } else { 
+            } else {
                 // this happens when the C file contains no comments
                 cbor_encoder_create_array(&outer, &array, 0);
             }
-#endif // CLANG_VERSION_MAJOR >= 10              
+#endif // CLANG_VERSION_MAJOR >= 10
             cbor_encoder_close_container(&outer, &array);
 
             // 5. Target VaList type as BuiltiVaListKind
@@ -2527,12 +2533,12 @@ class TranslateAction : public clang::ASTFrontendAction {
     virtual std::unique_ptr<clang::ASTConsumer>
     CreateASTConsumer(clang::CompilerInstance &Compiler,
                       llvm::StringRef InFile) {
-        
+
 #if CLANG_VERSION_MAJOR < 10
         const InputKind::Language lang_c = InputKind::Language::C;
 #else
         const Language lang_c = Language::C;
-#endif // CLANG_VERSION_MAJOR    
+#endif // CLANG_VERSION_MAJOR
         if(this->getCurrentFileKind().getLanguage() != lang_c) {
             return nullptr;
         }
@@ -2639,7 +2645,18 @@ Outputs process(int argc, const char *argv[], int *result) {
     static uint64_t source_path_count = 0;
     auto argv_ = augment_argv(argc, argv);
     int argc_ = argv_.size() - 1; // ignore the extra nullptr
+
+#if CLANG_VERSION_MAJOR < 13
     CommonOptionsParser OptionsParser(argc_, argv_.data(), MyToolCategory);
+#else
+    Expected<CommonOptionsParser> parseResult =
+        CommonOptionsParser::create(argc_, argv_.data(), MyToolCategory);
+    if(auto err = parseResult.takeError()) {
+        logAllUnhandledErrors(std::move(err), errs(), "[Parse Error] ");
+        assert(0 && "Failed to parse command line options");
+    }
+    CommonOptionsParser& OptionsParser = *parseResult;
+#endif
 
     // the logic below assumes we're only translating one source file
     assert(OptionsParser.getSourcePathList().size() - 1 ==
