@@ -23,14 +23,14 @@ jobs:
     matrix:
       arch:
         containerImage: immunant/c2rust:archlinux-base-latest
-      debian9:
-        containerImage: immunant/c2rust:debian-stretch-latest
       debian10:
         containerImage: immunant/c2rust:debian-buster-latest
-      fedora29:
-        containerImage: immunant/c2rust:fedora-29-latest
-      ubuntu16:
-        containerImage: immunant/c2rust:ubuntu-xenial-latest
+      debian11:
+        containerImage: immunant/c2rust:debian-bullseye-latest
+      fedora34:
+        containerImage: immunant/c2rust:fedora-34-latest
+      ubuntu20:
+        containerImage: immunant/c2rust:ubuntu-focal-latest
       ubuntu18:
         containerImage: immunant/c2rust:ubuntu-bionic-latest
   container: $[ variables['containerImage'] ]
