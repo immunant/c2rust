@@ -586,7 +586,13 @@ class TranslateASTVisitor final
         auto ty = ast->getType();
         auto isVaList = false;
         auto encodeMacroExpansions = true;
-        encode_entry_raw(ast, tag, ast->getSourceRange(), ty, ast->isRValue(), isVaList,
+        bool isRValue;
+        #if LLVM_VERSION_MAJOR >= 13
+        isRValue = ast->Classify(*Context).isRValue();
+        #else
+        isRValue = ast->isRValue();
+        #endif
+        encode_entry_raw(ast, tag, ast->getSourceRange(), ty, isRValue, isVaList,
                          encodeMacroExpansions, childIds, extra);
         typeEncoder.VisitQualType(ty);
     }
@@ -2639,7 +2645,12 @@ Outputs process(int argc, const char *argv[], int *result) {
     static uint64_t source_path_count = 0;
     auto argv_ = augment_argv(argc, argv);
     int argc_ = argv_.size() - 1; // ignore the extra nullptr
+    #if LLVM_VERSION_MAJOR >= 13
+    auto ParserPtr = CommonOptionsParser::create(argc_, argv_.data(), MyToolCategory);
+    CommonOptionsParser &OptionsParser = *ParserPtr;
+    #else
     CommonOptionsParser OptionsParser(argc_, argv_.data(), MyToolCategory);
+    #endif
 
     // the logic below assumes we're only translating one source file
     assert(OptionsParser.getSourcePathList().size() - 1 ==
