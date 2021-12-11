@@ -42,6 +42,7 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      grep -q -E -i 'ubuntu|debian' /etc/os-release && find /usr | fgrep llvm-config
       cargo build --release
     displayName: 'Fast build against host clang/LLVM'
 
