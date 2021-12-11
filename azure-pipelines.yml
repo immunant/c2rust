@@ -63,6 +63,7 @@ jobs:
       export PATH="/home/docker/.cargo/bin:$PATH"
       export RUSTUP_HOME=/home/docker/.rustup
       export CARGO_HOME=$AGENT_TEMPDIRECTORY/.cargo
+      export GNUPGHOME=$AGENT_TEMPDIRECTORY
       python3 ./scripts/build_translator.py --with-llvm-version=10.0.1
     displayName: 'Developer build against local LLVM 10'
 
