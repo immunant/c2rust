@@ -115,7 +115,7 @@ unsafe fn marshal_result(result: *const ExportResult) -> HashMap<String, Vec<u8>
         // Convert CBOR bytes
         let csize = *res.sizes.offset(i);
         let cbytes = *res.bytes.offset(i);
-        let bytes = slice::from_raw_parts(cbytes, csize);
+        let bytes = slice::from_raw_parts(cbytes, csize as usize);
         let mut v = Vec::new();
         v.extend_from_slice(bytes);
 
