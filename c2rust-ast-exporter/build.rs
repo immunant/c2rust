@@ -235,8 +235,6 @@ impl LLVMInfo {
                     "llvm-config-8",
                     "llvm-config-7",
                     "llvm-config-7.0",
-                    "llvm-config-6.1",
-                    "llvm-config-6.0",
                     "llvm-config",
                     // Homebrew install locations on MacOS
                     "/usr/local/opt/llvm@13/bin/llvm-config",
