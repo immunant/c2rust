@@ -1,12 +1,10 @@
-#![feature(rustc_private)]
 #![feature(crate_visibility_modifier)]
 
-extern crate rustc_target;
-extern crate syntax;
-extern crate syntax_pos;
+extern crate syn;
+extern crate proc_macro2;
 
 pub mod pprust;
-pub mod pp;
-mod helpers;
+//pub mod pp;
+//mod helpers;
 
-mod syntax_priv;
+//mod syntax_priv;
