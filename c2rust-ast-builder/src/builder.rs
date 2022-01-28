@@ -537,7 +537,7 @@ impl LitStringable for &str {
         self.to_string()
     }
 }
-#[derive(Clone)]//, Debug)]
+#[derive(Clone, Debug)]
 pub struct Builder {
     // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
     // building AST nodes don't take arguments of these types, but instead use any applicable
