@@ -1,9 +1,7 @@
-[![Travis Build Status]][travis] [![GitHub Actions Status]][github] [![Azure Build Status]][azure] [![Latest Version]][crates.io] [![Rustc Version]](#)
+[![GitHub Actions Status]][github] [![Azure Build Status]][azure] [![Latest Version]][crates.io] [![Rustc Version]](#)
 
 [GitHub Actions Status]: https://github.com/immunant/c2rust/workflows/c2rust-testsuite/badge.svg
 [github]: https://github.com/immunant/c2rust/actions
-[Travis Build Status]: https://api.travis-ci.org/immunant/c2rust.svg?branch=master
-[travis]: https://travis-ci.org/immunant/c2rust
 [Azure Build Status]: https://dev.azure.com/immunant/c2rust/_apis/build/status/immunant.c2rust?branchName=master
 [azure]: https://dev.azure.com/immunant/c2rust/_build/latest?definitionId=1&branchName=master
 
@@ -27,11 +25,11 @@ To learn more about using and developing C2Rust, check out the [manual](https://
 
 ### Prerequisites
 
-C2Rust requires LLVM 6 or later with its corresponding clang compiler and libraries. Python 3.4 or later, CMake 3.4.3 or later, and openssl (1.0) are also required. These prerequisites may be installed with the following commands, depending on your platform:
+C2Rust requires LLVM 7 or later with its corresponding clang compiler and libraries. Python 3.4 or later, CMake 3.4.3 or later, and openssl (1.0) are also required. These prerequisites may be installed with the following commands, depending on your platform:
 
-- **Ubuntu 16.04, 18.04 & 18.10:**
+- **Ubuntu 18.04, Debian 10, and later:**
 
-        apt install build-essential llvm-6.0 clang-6.0 libclang-6.0-dev cmake libssl-dev pkg-config python3
+        apt install build-essential llvm clang libclang-dev cmake libssl-dev pkg-config python3
 
 - **Arch Linux:**
 

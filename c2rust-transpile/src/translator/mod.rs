@@ -1614,6 +1614,7 @@ impl<'c> Translation<'c> {
 
             CDeclKind::Union {
                 fields: Some(ref fields),
+                is_packed,
                 ..
             } => {
                 let name = self
@@ -1642,13 +1643,18 @@ impl<'c> Translation<'c> {
                     }
                 }
 
+                let mut repr = vec!["C"];
+                if is_packed {
+                    repr.push("packed");
+                }
+
                 Ok(if field_syns.is_empty() {
                     // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
                     ConvertedDecl::Item(
                         mk().span(s)
                             .pub_()
                             .call_attr("derive", vec!["Copy", "Clone"])
-                            .call_attr("repr", vec!["C"])
+                            .call_attr("repr", repr)
                             .struct_item(name, vec![], false),
                     )
                 } else {
@@ -1656,7 +1662,7 @@ impl<'c> Translation<'c> {
                         mk().span(s)
                             .pub_()
                             .call_attr("derive", vec!["Copy", "Clone"])
-                            .call_attr("repr", vec!["C"])
+                            .call_attr("repr", repr)
                             .union_item(name, field_syns),
                     )
                 })
