@@ -221,24 +221,14 @@ fn emit_lib_rs(
     pragmas: PragmaSet,
     crates: &CrateSet,
 ) -> Option<PathBuf> {
-    let plugin_args = tcfg
-        .cross_check_configs
-        .iter()
-        .map(|ccc| format!("config_file = \"{}\"", ccc))
-        .collect::<Vec<String>>()
-        .join(", ");
 
     let modules = convert_module_list(tcfg, build_dir, modules, ModuleSubset::Libraries);
     let crates = convert_dependencies_list(crates.clone());
     let file_name = get_lib_rs_file_name(tcfg);
-    let rs_xcheck_backend = tcfg.cross_check_backend.replace("-", "_");
     let json = json!({
         "lib_rs_file": file_name,
         "reorganize_definitions": tcfg.reorganize_definitions,
         "translate_valist": tcfg.translate_valist,
-        "cross_checks": tcfg.cross_checks,
-        "cross_check_backend": rs_xcheck_backend,
-        "plugin_args": plugin_args,
         "modules": modules,
         "pragmas": pragmas,
         "crates": crates,
@@ -282,8 +272,6 @@ fn emit_cargo_toml<'lcmd>(
             "is_library": ccfg.link_cmd.r#type.is_library(),
             "lib_rs_file": get_lib_rs_file_name(tcfg),
             "binaries": binaries,
-            "cross_checks": tcfg.cross_checks,
-            "cross_check_backend": tcfg.cross_check_backend,
             "dependencies": dependencies,
         });
         json.as_object_mut()

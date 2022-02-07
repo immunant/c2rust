@@ -230,8 +230,7 @@ impl<'c> Translation<'c> {
             };
 
             let block = mk().block(stmts);
-            let main_attributes = self.mk_cross_check(mk(), vec!["none"]);
-            let main_attributes = main_attributes.single_attr("main");
+            let main_attributes = mk().single_attr("main");
             self.use_feature("main");
             Ok(main_attributes.pub_().fn_item("main", decl, block))
         } else {
