@@ -65,15 +65,6 @@ fn main() {
             }
         },
         debug_relooper_labels: matches.is_present("debug-labels"),
-        cross_checks: matches.is_present("cross-checks"),
-        cross_check_backend: matches
-            .value_of("cross-check-backend")
-            .map(String::from)
-            .unwrap(),
-        cross_check_configs: matches
-            .values_of("cross-check-config")
-            .map(|vals| vals.map(String::from).collect::<Vec<_>>())
-            .unwrap_or_default(),
         prefix_function_names: matches.value_of("prefix-function-names").map(String::from),
 
         // We used to guard asm translation with a command-line

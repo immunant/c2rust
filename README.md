@@ -9,7 +9,7 @@
 [crates.io]: https://crates.io/crates/c2rust
 [Rustc Version]: https://img.shields.io/badge/rustc-nightly--2019--12--05-lightgrey.svg "Rustc nightly-2019-12-05"
 
-C2Rust helps you migrate C99-compliant code to Rust. The [translator](c2rust-transpile) (or transpiler) produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to preserve functionality; test suites should continue to pass after translation. Generating safe and idiomatic Rust code from C ultimately requires manual effort. However, we are building a scriptable [refactoring tool](c2rust-refactor) that reduces the tedium of doing so. You can also [cross-check](cross-checks) the translated code against the original ([tutorial](docs/cross-check-tutorial.md)).
+C2Rust helps you migrate C99-compliant code to Rust. The [translator](c2rust-transpile) (or transpiler) produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to preserve functionality; test suites should continue to pass after translation. Generating safe and idiomatic Rust code from C ultimately requires manual effort. However, we are building a scriptable [refactoring tool](c2rust-refactor) that reduces the tedium of doing so.
 
 Here's the big picture:
 
@@ -34,7 +34,7 @@ C2Rust requires LLVM 7 or later with its corresponding clang compiler and librar
 - **Arch Linux:**
 
         pacman -S base-devel llvm clang cmake openssl python
-        
+
 - **NixOS / nix:**
 
         nix-shell
@@ -60,14 +60,14 @@ On OS X with Homebrew LLVM, you need to point the build system at the LLVM insta
 
 On Linux with Linuxbrew LLVM, you need to point the build system at the LLVM installation as follows:
 
-    LLVM_CONFIG_PATH=/home/linuxbrew/.linuxbrew/opt/llvm/bin/llvm-config cargo +nightly-2019-12-05 install c2rust    
+    LLVM_CONFIG_PATH=/home/linuxbrew/.linuxbrew/opt/llvm/bin/llvm-config cargo +nightly-2019-12-05 install c2rust
 
 Note: adjust `LLVM_CONFIG_PATH` accordingly if Linuxbrew was installed to your home directory.
 
-On Gentoo, you need to point the build system to the location of `libclang.so` 
+On Gentoo, you need to point the build system to the location of `libclang.so`
   and `llvm-config` as follows:
 
-    LLVM_CONFIG_PATH=/path/to/llvm-config LIBCLANG_PATH=/path/to/libclang.so cargo +nightly-2019-12-05 install c2rust 
+    LLVM_CONFIG_PATH=/path/to/llvm-config LIBCLANG_PATH=/path/to/libclang.so cargo +nightly-2019-12-05 install c2rust
 
 
 If you have trouble with building and installing, or want to build from the latest master, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
@@ -78,7 +78,7 @@ If you'd like to check our recently developed features or you urgently require a
 you can install it directly from Git:
 
     cargo +nightly-2019-12-05 install --git https://github.com/immunant/c2rust.git c2rust
-   
+
 Please note that the master branch is under constant development and you may expirience issues or crashes.
 
 You should also set `LLVM_CONFIG_PATH` accordingly if required as described above.
@@ -164,19 +164,19 @@ To reach the development team, join our [discord channel](https://discord.gg/ANS
 
 > I translated code on platform X but it didn't work correctly on platform Y
 
-We run the C preprocessor before translation to Rust. This specializes the code to the host platform. For this reason, we do not support cross compiling translated code at the moment. 
+We run the C preprocessor before translation to Rust. This specializes the code to the host platform. For this reason, we do not support cross compiling translated code at the moment.
 
 > What platforms can C2Rust be run on?
 
-The translator and refactoring tool support both macOS and Linux. Other features, such as cross checking the functionality between C and Rust code, are currently limited to Linux hosts. 
+The translator and refactoring tool support both macOS and Linux. Other features, such as cross checking the functionality between C and Rust code, are currently limited to Linux hosts.
 
 ## Acknowledgements and Licensing
 
 This material is available under the BSD-3 style license as found in the
 [LICENSE](LICENSE) file.
 
-The C2Rust translator is inspired by Jamey Sharp's [Corrode](https://github.com/jameysharp/corrode) translator. We rely on 
-[Emscripten](https://github.com/kripken/emscripten)'s 
+The C2Rust translator is inspired by Jamey Sharp's [Corrode](https://github.com/jameysharp/corrode) translator. We rely on
+[Emscripten](https://github.com/kripken/emscripten)'s
 Relooper algorithm to translate arbitrary C control flows.
 
 This material is based upon work supported by the United States Air Force and
