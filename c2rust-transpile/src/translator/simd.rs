@@ -270,8 +270,6 @@ impl<'c> Translation<'c> {
         };
 
         if is_static {
-            self.use_feature("const_transmute");
-
             let zero_expr = mk().lit_expr(mk().int_lit(0, "u8"));
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
@@ -310,8 +308,6 @@ impl<'c> Translation<'c> {
                     tuple,
                     self.tcfg.emit_no_std,
                 );
-
-                self.use_feature("const_transmute");
 
                 transmute
             } else {
