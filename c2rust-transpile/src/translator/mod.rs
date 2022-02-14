@@ -3146,9 +3146,6 @@ impl<'c> Translation<'c> {
                         if let Some(actual_ty) = actual_ty {
                             // If we're casting a concrete function to
                             // a K&R function pointer type, use transmute
-                            if ctx.is_static || ctx.is_const {
-                                self.use_feature("const_transmute");
-                            }
                             if let Some(cur_file) = *self.cur_file.borrow() {
                                 self.import_type(qual_ty.ctype, cur_file);
                             }
@@ -3516,7 +3513,6 @@ impl<'c> Translation<'c> {
                         match fn_ty {
                             Some(CTypeKind::Function(ret_ty, _, _, _, false)) => {
                                 // K&R function pointer without arguments
-                                if ctx.is_const { self.use_feature("const_transmute"); }
                                 let ret_ty = self.convert_type(ret_ty.ctype)?;
                                 let target_ty = make_fn_ty(ret_ty);
                                 callee.map(|fn_ptr| {
@@ -3526,7 +3522,6 @@ impl<'c> Translation<'c> {
                             }
                             None => {
                                 // We have to infer the return type from our expression type
-                                if ctx.is_const { self.use_feature("const_transmute"); }
                                 let ret_ty = self.convert_type(call_expr_ty.ctype)?;
                                 let target_ty = make_fn_ty(ret_ty);
                                 callee.map(|fn_ptr| {
@@ -3958,9 +3953,6 @@ impl<'c> Translation<'c> {
                     if self.ast_context.is_function_pointer(ty.ctype)
                         || self.ast_context.is_function_pointer(source_ty.ctype)
                     {
-                        if ctx.is_static || ctx.is_const {
-                            self.use_feature("const_transmute");
-                        }
                         let source_ty = self.convert_type(source_ty.ctype)?;
                         let target_ty = self.convert_type(ty.ctype)?;
                         Ok(WithStmts::new_unsafe_val(transmute_expr(
@@ -3978,9 +3970,6 @@ impl<'c> Translation<'c> {
             }
 
             CastKind::IntegralToPointer if self.ast_context.is_function_pointer(ty.ctype) => {
-                if ctx.is_static || ctx.is_const {
-                    self.use_feature("const_transmute");
-                }
                 let target_ty = self.convert_type(ty.ctype)?;
                 val.and_then(|x| {
                     let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
@@ -4019,9 +4008,6 @@ impl<'c> Translation<'c> {
                     // unless the cast is to a function pointer then use `transmute`.
                     val.and_then(|x| {
                         if self.ast_context.is_function_pointer(source_ty_ctype_id) {
-                            if ctx.is_static || ctx.is_const {
-                                self.use_feature("const_transmute");
-                            }
                             Ok(WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, x, self.tcfg.emit_no_std)))
                         } else {
                             Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))

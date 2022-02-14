@@ -155,7 +155,6 @@ impl<'c> Translation<'c> {
                 };
                 let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
                 let byte_literal = mk().lit_expr(val);
-                if ctx.is_const || ctx.is_static { self.use_feature("const_transmute"); }
                 let pointer =
                     transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
                 let array = mk().unary_expr(ast::UnOp::Deref, pointer);
