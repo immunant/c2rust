@@ -5,13 +5,10 @@ use self::libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn swap(_: *mut c_int, _: *mut c_int);
 
-    #[no_mangle]
     fn partition(_: *mut c_int, _: c_int, _: c_int);
 
-    #[no_mangle]
     fn quickSort(_: *mut c_int, _: c_int, _: c_int);
 }
 

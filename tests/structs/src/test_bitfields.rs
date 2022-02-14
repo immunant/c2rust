@@ -10,33 +10,19 @@ use bitfields::{
 };
 
 extern "C" {
-    #[no_mangle]
     fn size_of_three_byte_date() -> usize;
-    #[no_mangle]
     fn compare_three_byte_date(_: *const three_byte_date, _: u8, _: u8, _: u16) -> u8;
-    #[no_mangle]
     fn write_three_byte_date(_: *mut three_byte_date, _: u8, _: u8, _: u16);
-    #[no_mangle]
     fn size_of_padded_bitfield() -> usize;
-    #[no_mangle]
     fn ops_padded_bitfield(_: *mut padded_bitfield);
-    #[no_mangle]
     static mut static_date: three_byte_date;
-    #[no_mangle]
     fn size_of_mixed_bitfields() -> usize;
-    #[no_mangle]
     fn zeroed_mixed_bitfields() -> mixed_bitfields;
-    #[no_mangle]
     fn zeroed_padded_bitfield() -> padded_bitfield;
-    #[no_mangle]
     fn zeroed_three_byte_date() -> three_byte_date;
-    #[no_mangle]
     fn size_of_from_csmith() -> usize;
-    #[no_mangle]
     fn size_of_two_eight_bits() -> usize;
-    #[no_mangle]
     fn multiple_assignments();
-    #[no_mangle]
     static ma_results: [u8; 17];
 }
 

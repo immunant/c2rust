@@ -5,7 +5,6 @@ use self::libc::c_uint;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn modules();
 }
 

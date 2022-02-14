@@ -17,37 +17,26 @@ use std::fmt::{Debug, Formatter, Error};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn unpack_128_2x128(data: __m128i, data_lo: *mut __m128i, data_hi: *mut __m128i);
 
-    #[no_mangle]
     fn call_all() -> ShuffleVectors;
 
-    #[no_mangle]
     fn call_all_used() -> ShuffleVectors;
 
-    #[no_mangle]
     fn vector_init_lists() -> VectorInitLists;
 
-    #[no_mangle]
     fn vector_init_lists_used() -> VectorInitLists;
 
-    #[no_mangle]
     static static_m128: __m128;
 
-    #[no_mangle]
     static static_m256: __m256;
 
-    #[no_mangle]
     static static_m128d: __m128d;
 
-    #[no_mangle]
     static static_m256d: __m256d;
 
-    #[no_mangle]
     static static_m128i: __m128i;
 
-    #[no_mangle]
     static static_m256i: __m256i;
 }
 

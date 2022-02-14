@@ -5,7 +5,6 @@ use self::libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn sieve_of_eratosthenes(_: *mut c_int);
 }
 

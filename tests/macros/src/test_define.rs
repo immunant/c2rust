@@ -7,7 +7,6 @@ use self::libc::{c_int, c_uint, c_ulong};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn reference_define() -> c_uint;
 }
 

@@ -5,7 +5,6 @@ use self::libc::c_uint;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn sub(left: c_uint, right: c_uint) -> c_uint;
 }
 

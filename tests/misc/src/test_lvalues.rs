@@ -5,7 +5,6 @@ use self::libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn lvalue(_: *mut c_int);
 }
 

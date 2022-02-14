@@ -5,11 +5,8 @@ extern crate libc;
 use std::slice;
 
 extern "C" {
-    #[no_mangle]
     fn strlen(_: *const u8) -> libc::c_ulong;
-    #[no_mangle]
     fn printf(_: *const u8, ...) -> libc::c_int;
-    #[no_mangle]
     fn test_mut(_: *mut u8) -> libc::c_ulong;
 }
 

@@ -13,51 +13,31 @@
 extern crate libc;
 
 extern "C" {
-    #[no_mangle]
     fn malloc(_: libc::c_ulong) -> *mut libc::c_void;
-    #[no_mangle]
     #[ownership_constraints(le(WRITE, _0), le(_0, WRITE))]
     fn memset(_: *mut libc::c_void, _: libc::c_int, _: libc::c_ulong);
-    #[no_mangle]
     fn free(_: *mut libc::c_void);
-    #[no_mangle]
     fn fabs(_: libc::c_double) -> libc::c_double;
-    #[no_mangle]
     fn cosh(_: libc::c_double) -> libc::c_double;
-    #[no_mangle]
     fn sinh(_: libc::c_double) -> libc::c_double;
-    #[no_mangle]
     fn exp(_: libc::c_double) -> libc::c_double;
-    #[no_mangle]
     #[ownership_constraints(le(WRITE, _0), le(_0, WRITE))]
     fn takes_ptrs(_: *mut u32, _: *const u32);
-    #[no_mangle]
     fn takeswint(_: wint_t) -> wint_t;
-    #[no_mangle]
     fn strlen(_: *const libc::c_char) -> size_t;
-    #[no_mangle]
     fn memcpy(_: *mut libc::c_void, _: *const libc::c_void, _: size_t)
      -> *mut libc::c_void;
-    #[no_mangle]
     fn strdup(_: *const libc::c_char) -> *mut libc::c_char;
-    #[no_mangle]
     fn strsep(_: *mut *mut libc::c_char, _: *const libc::c_char)
      -> *mut libc::c_char;
-    #[no_mangle]
     fn __chk_fail() -> !;
-    #[no_mangle]
     fn vsprintf(_: *mut libc::c_char, _: *const libc::c_char,
                 _: ::std::ffi::VaList) -> libc::c_int;
-    #[no_mangle]
     fn vsnprintf(_: *mut libc::c_char, _: size_t, _: *const libc::c_char,
                  _: ::std::ffi::VaList) -> libc::c_int;
-    #[no_mangle]
     fn get_ptr() -> *mut u32;
-    #[no_mangle]
     fn get_struct_ptr() -> *mut Ctx;
-    #[no_mangle]
     type _reent;
-    #[no_mangle]
     static mut _impure_ptr: *mut _reent;
 }
 

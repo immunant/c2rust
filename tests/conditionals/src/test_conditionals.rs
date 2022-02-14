@@ -8,20 +8,14 @@ use self::libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn entry2(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn entry3(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn unused_conditional1() -> c_int;
-    #[no_mangle]
     fn unused_conditional2() -> c_int;
-    #[no_mangle]
     fn unused_conditional3() -> c_int;
 }
 
