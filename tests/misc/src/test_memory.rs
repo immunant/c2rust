@@ -6,10 +6,8 @@ use self::libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn malloc_test(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn setmem(_: c_uint, _: *mut c_int);
 }
 

@@ -9,16 +9,12 @@ use std::mem::transmute;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn cast_stuff();
 
-    #[no_mangle]
     fn identity(_: c_int) -> c_int;
 
-    #[no_mangle]
     fn get_identity() -> *mut c_void;
 
-    #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);
 }
 

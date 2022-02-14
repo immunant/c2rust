@@ -6,7 +6,6 @@ use self::libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn compound_assignment(_: c_uint, _: *mut c_int);
 }
 

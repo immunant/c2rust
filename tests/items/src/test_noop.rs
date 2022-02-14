@@ -7,10 +7,8 @@ use self::libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn noop();
 
-    #[no_mangle]
     fn nofnargs() -> c_int;
 }
 

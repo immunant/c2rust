@@ -2,7 +2,6 @@ use functions::rust_coreutils_static_assert;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn coreutils_static_assert();
 }
 

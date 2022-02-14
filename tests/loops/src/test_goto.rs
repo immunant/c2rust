@@ -8,13 +8,10 @@ use self::libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn goto_linear(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn goto_loop(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn goto_switch(_: c_uint, _: *mut c_int);
 }
 

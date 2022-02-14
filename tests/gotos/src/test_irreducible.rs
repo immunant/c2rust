@@ -5,7 +5,6 @@ use irreducible::rust_irreducible;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn irreducible(_: c_int) -> c_int;
 }
 

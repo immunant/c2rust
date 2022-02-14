@@ -7,7 +7,6 @@ use self::libc::c_uint;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn sizeofs(_: c_uint, _: *mut c_int);
 }
 

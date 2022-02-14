@@ -9,22 +9,16 @@ use self::libc::c_char;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn call_printf();
 
-    #[no_mangle]
     fn call_vprintf(_: *const c_char, ...);
 
-    #[no_mangle]
     fn my_printf(_: *const c_char, ...);
 
-    #[no_mangle]
     fn simple_vacopy(_: *const c_char, ...);
 
-    #[no_mangle]
     fn restart_valist(_: *const c_char, ...);
 
-    #[no_mangle]
     fn sample_stddev(count: i32, ...) -> f64;
 }
 

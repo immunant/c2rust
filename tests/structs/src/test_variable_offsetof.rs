@@ -6,9 +6,7 @@ use variable_offsetof::{rust_get_offset, rust_get_offset2, size_t};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn get_offset(_: size_t) -> size_t;
-    #[no_mangle]
     fn get_offset2(_: size_t) -> size_t;
 }
 

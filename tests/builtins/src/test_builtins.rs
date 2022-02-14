@@ -8,23 +8,14 @@ use self::libc::{c_int, c_uint, c_char, c_long, c_longlong, c_double};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn atomics_entry(_: c_uint, _: *mut c_int);
-    #[no_mangle]
     fn new_atomics(_: c_uint, _: *mut c_int);
-    #[no_mangle]
     fn mem_x(_: *const c_char, _: *mut c_char);
-    #[no_mangle]
     fn ffs(_: c_int) -> c_int;
-    #[no_mangle]
     fn ffsl(_: c_long) -> c_int;
-    #[no_mangle]
     fn ffsll(_: c_longlong) -> c_int;
-    #[no_mangle]
     fn isfinite(_: c_double) -> c_int;
-    #[no_mangle]
     fn isnan(_: c_double) -> c_int;
-    #[no_mangle]
     fn isinf_sign(_: c_double) -> c_int;
 }
 

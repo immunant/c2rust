@@ -5,7 +5,6 @@ use self::libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn switch_val(_: c_int) -> c_int;
 }
 

@@ -6,11 +6,8 @@ use self::libc::{c_int, c_uint, size_t};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);
-    #[no_mangle]
     fn alignment_of_aligned8_struct() -> size_t;
-    #[no_mangle]
     fn alignment_entry(_: c_uint, _: *mut c_int);
 }
 
