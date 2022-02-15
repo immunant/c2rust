@@ -71,13 +71,16 @@ impl<'c> Translation<'c> {
     /// Given the name of a typedef check if its one of the SIMD types.
     /// This function returns `true` when the name of the type is one that
     /// it knows how to implement and no further translation should be done.
-    pub fn import_simd_typedef(&self, name: &str) -> bool {
-        match name {
+    pub fn import_simd_typedef(&self, name: &str) -> Result<bool, TranslationError> {
+        Ok(match name {
             // Public API SIMD typedefs:
             "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
-                // __m64 is still behind a feature gate
+                // __m64 and MMX support were removed from upstream Rust.
+                // See https://github.com/immunant/c2rust/issues/369
                 if name == "__m64" {
-                    self.use_feature("stdsimd");
+                    Err(format_err!(
+                        "__m64 and MMX are no longer supported, due to removed upstream support. See https://github.com/immunant/c2rust/issues/369"
+                    ))?;
                 }
 
                 self.with_cur_file_item_store(|item_store| {
@@ -138,7 +141,7 @@ impl<'c> Translation<'c> {
             | "__mm_loadh_pi_v2f32"
             | "__mm_loadl_pi_v2f32" => true,
             _ => false,
-        }
+        })
     }
 
     /// Determine if a particular function name is an SIMD primitive. If so an appropriate
