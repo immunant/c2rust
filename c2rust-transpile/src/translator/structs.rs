@@ -28,7 +28,7 @@ enum FieldType {
         start_bit: u64,
         field_name: String,
         bytes: u64,
-        attrs: Vec<(String, P<Ty>, String)>,
+        attrs: Vec<(String, Box<Type>, String)>,
     },
     Padding {
         bytes: u64,
@@ -381,7 +381,7 @@ impl<'a> Translation<'a> {
         ctx: ExprContext,
         struct_id: CRecordId,
         field_expr_ids: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let name = self.resolve_decl_inner_name(struct_id);
 
         let (field_decl_ids, platform_byte_size) = match self.ast_context.index(struct_id).kind {
@@ -537,7 +537,7 @@ impl<'a> Translation<'a> {
             .and_then(|fields| {
                 let struct_expr = mk().struct_expr(name.as_str(), fields);
                 let local_variable =
-                    P(mk().local(local_pat, None as Option<P<Ty>>, Some(struct_expr)));
+                    Box::new(mk().local(local_pat, None as Option<Box<Type>>, Some(struct_expr)));
 
                 let mut is_unsafe = false;
                 let mut stmts = vec![mk().local_stmt(local_variable)];
@@ -578,7 +578,7 @@ impl<'a> Translation<'a> {
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
 
@@ -667,9 +667,9 @@ impl<'a> Translation<'a> {
         ctx: ExprContext,
         op: BinOp,
         lhs: CExprId,
-        rhs_expr: P<Expr>,
+        rhs_expr: Box<Expr>,
         field_id: CDeclId,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
         named_reference.and_then(|named_reference| {
@@ -681,7 +681,7 @@ impl<'a> Translation<'a> {
                 .ok_or("Could not find bitfield name")?;
             let setter_name = format!("set_{}", field_name);
             let lhs_expr_read =
-                mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<P<Expr>>::new());
+                mk().method_call_expr(lhs_expr.clone(), field_name, Vec::<Box<Expr>>::new());
             // Allow the value of this assignment to be used as the RHS of other assignments
             let val = lhs_expr_read.clone();
             let param_expr = match op {
@@ -730,12 +730,12 @@ impl<'a> Translation<'a> {
                     let name = self.renamer.borrow_mut().pick_name("rhs");
                     let name_ident = mk().mutbl().ident_pat(name.clone());
                     let temporary_stmt =
-                        mk().local(name_ident, None as Option<P<Ty>>, Some(param_expr.clone()));
+                        mk().local(name_ident, None as Option<Box<Type>>, Some(param_expr.clone()));
                     let assignment_expr =
                         mk().method_call_expr(lhs_expr, setter_name, vec![mk().ident_expr(name)]);
 
-                    stmts.push(mk().local_stmt(P(temporary_stmt)));
-                    stmts.push(mk().expr_stmt(assignment_expr));
+                    stmts.push(mk().local_stmt(Box::new(temporary_stmt)));
+                    stmts.push(mk().semi_stmt(assignment_expr));
                 }
                 _ => {
                     let assignment_expr =

@@ -7,7 +7,7 @@ use super::*;
 use syntax::token::{self, TokenKind};
 
 impl<'c> Translation<'c> {
-    pub fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, TranslationError> {
+    pub fn convert_main(&self, main_id: CDeclId) -> Result<Box<Item>, TranslationError> {
         if let CDeclKind::Function {
             ref parameters,
             typ,
@@ -38,17 +38,17 @@ impl<'c> Translation<'c> {
             let args_fn = mk().path_expr(vec!["", "std", "env", "args"]);
             let vars_fn = mk().path_expr(vec!["", "std", "env", "vars"]);
 
-            let no_args: Vec<P<Expr>> = vec![];
+            let no_args: Vec<Box<Expr>> = vec![];
 
             let mut stmts: Vec<Stmt> = vec![];
-            let mut main_args: Vec<P<Expr>> = vec![];
+            let mut main_args: Vec<Box<Expr>> = vec![];
 
             let n = parameters.len();
 
             if n >= 2 {
                 // `argv` and `argc`
 
-                stmts.push(mk().local_stmt(P(mk().local(
+                stmts.push(mk().local_stmt(Box::new(mk().local(
                     mk().mutbl().ident_pat("args"),
                     Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
@@ -57,12 +57,12 @@ impl<'c> Translation<'c> {
                         ]),
                     )])),
                     Some(
-                        mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<P<Expr>>),
+                        mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<Box<Expr>>),
                     ),
                 ))));
                 stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().ident_pat("arg"),
-                    mk().call_expr(args_fn, vec![] as Vec<P<Expr>>),
+                    mk().call_expr(args_fn, vec![] as Vec<Box<Expr>>),
                     mk().block(vec![mk().semi_stmt(mk().method_call_expr(
                         mk().path_expr(vec!["args"]),
                         "push",
@@ -78,7 +78,7 @@ impl<'c> Translation<'c> {
                                 )],
                             ),
                             "into_raw",
-                            vec![] as Vec<P<Expr>>,
+                            vec![] as Vec<Box<Expr>>,
                         )],
                     ))]),
                     None as Option<Ident>,
@@ -88,17 +88,17 @@ impl<'c> Translation<'c> {
                     "push",
                     vec![mk().call_expr(
                         mk().path_expr(vec!["", "std", "ptr", "null_mut"]),
-                        vec![] as Vec<P<Expr>>,
+                        vec![] as Vec<Box<Expr>>,
                     )],
                 )));
 
-                let argc_ty: P<Ty> = match self.ast_context.index(parameters[0]).kind {
+                let argc_ty: Box<Type> = match self.ast_context.index(parameters[0]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
                     _ => Err(TranslationError::generic(
                         "Cannot find type of 'argc' argument in main function",
                     )),
                 }?;
-                let argv_ty: P<Ty> = match self.ast_context.index(parameters[1]).kind {
+                let argv_ty: Box<Type> = match self.ast_context.index(parameters[1]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
                     _ => Err(TranslationError::generic(
                         "Cannot find type of 'argv' argument in main function",
@@ -120,7 +120,7 @@ impl<'c> Translation<'c> {
             if n >= 3 {
                 // non-standard `envp`
 
-                stmts.push(mk().local_stmt(P(mk().local(
+                stmts.push(mk().local_stmt(Box::new(mk().local(
                     mk().mutbl().ident_pat("vars"),
                     Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
@@ -129,16 +129,16 @@ impl<'c> Translation<'c> {
                         ]),
                     )])),
                     Some(
-                        mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<P<Expr>>),
+                        mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<Box<Expr>>),
                     ),
                 ))));
                 let var_name_ident = mk().ident("var_name");
                 let var_value_ident = mk().ident("var_value");
                 stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().tuple_pat(vec![mk().ident_pat("var_name"), mk().ident_pat("var_value")]),
-                    mk().call_expr(vars_fn, vec![] as Vec<P<Expr>>),
+                    mk().call_expr(vars_fn, vec![] as Vec<Box<Expr>>),
                     mk().block(vec![
-                        mk().local_stmt(P(mk().local(
+                        mk().local_stmt(Box::new(mk().local(
                             mk().ident_pat("var"),
                             Some(mk().path_ty(vec!["String"])),
                             Some(mk().mac_expr(mk().mac(
@@ -171,7 +171,7 @@ impl<'c> Translation<'c> {
                                         )],
                                     ),
                                     "into_raw",
-                                    vec![] as Vec<P<Expr>>,
+                                    vec![] as Vec<Box<Expr>>,
                                 )
                             ],
                         ))
@@ -183,11 +183,11 @@ impl<'c> Translation<'c> {
                     "push",
                     vec![mk().call_expr(
                         mk().path_expr(vec!["", "std", "ptr", "null_mut"]),
-                        vec![] as Vec<P<Expr>>,
+                        vec![] as Vec<Box<Expr>>,
                     )],
                 )));
 
-                let envp_ty: P<Ty> = match self.ast_context.index(parameters[2]).kind {
+                let envp_ty: Box<Type> = match self.ast_context.index(parameters[2]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
                     _ => Err(TranslationError::generic(
                         "Cannot find type of 'envp' argument in main function",

@@ -151,7 +151,7 @@ fn cleanup_if(stmt: Stmt) -> Stmt {
                 {
                     if blk.stmts.is_empty() {
                         return Stmt {
-                            kind: StmtKind::Expr(P(Expr {
+                            kind: StmtKind::Expr(Box::new(Expr {
                                 kind: ExprKind::If(cond.clone(), body.clone(), None),
                                 ..(**expr).clone()
                             })),

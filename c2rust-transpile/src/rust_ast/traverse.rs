@@ -93,7 +93,7 @@ impl<A: Traversable> Traversable for Option<A> {
     }
 }
 
-impl<A: Traversable + 'static> Traversable for ptr::P<A> {
+impl<A, B: Traversable> Traversable for Option<(A, B)> {
     fn traverse<T: Traversal>(self, t: &mut T) -> Self {
         self.map(|x| x.traverse(t))
     }

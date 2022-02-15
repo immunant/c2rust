@@ -39,7 +39,7 @@ impl<'c> Translation<'c> {
         order_fail_id: Option<CExprId>,
         val2_id: Option<CExprId>,
         weak_id: Option<CExprId>,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
         let ptr = self.convert_expr(ctx.used(), ptr_id)?;
         let order = self.convert_memordering(order_id);
@@ -273,9 +273,9 @@ impl<'c> Translation<'c> {
                                 mk().path_expr(vec!["", std_or_core, "intrinsics", intrinsic_name]);
                             let call = mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
                             let res_name = self.renamer.borrow_mut().fresh();
-                            let res_let = mk().local_stmt(P(mk().local(
+                            let res_let = mk().local_stmt(Box::new(mk().local(
                                 mk().ident_pat(&res_name),
-                                None as Option<P<Ty>>,
+                                None as Option<Box<Type>>,
                                 Some(call),
                             )));
                             let assignment = mk().semi_stmt(mk().assign_expr(
@@ -356,11 +356,11 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         intrinsic_name: &str,
-        dst: P<Expr>,
-        old_val: P<Expr>,
-        src_val: P<Expr>,
+        dst: Box<Expr>,
+        old_val: Box<Expr>,
+        src_val: Box<Expr>,
         returns_val: bool,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         self.use_feature("core_intrinsics");
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
@@ -381,10 +381,10 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         func_name: &str,
-        dst: P<Expr>,
-        src: P<Expr>,
+        dst: Box<Expr>,
+        src: Box<Expr>,
         fetch_first: bool,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         self.use_feature("core_intrinsics");
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
@@ -419,16 +419,16 @@ impl<'c> Translation<'c> {
             // it into a local temporary so we don't duplicate any side-effects
             // To preserve ordering of side-effects, we also do this for arg0
             let arg0_name = self.renamer.borrow_mut().fresh();
-            let arg0_let = mk().local_stmt(P(mk().local(
+            let arg0_let = mk().local_stmt(Box::new(mk().local(
                 mk().ident_pat(&arg0_name),
-                None as Option<P<Ty>>,
+                None as Option<Box<Type>>,
                 Some(dst),
             )));
 
             let arg1_name = self.renamer.borrow_mut().fresh();
-            let arg1_let = mk().local_stmt(P(mk().local(
+            let arg1_let = mk().local_stmt(Box::new(mk().local(
                 mk().ident_pat(&arg1_name),
-                None as Option<P<Ty>>,
+                None as Option<Box<Type>>,
                 Some(src),
             )));
 

@@ -2,12 +2,12 @@
 
 use super::*;
 
-fn neg_expr(arg: P<Expr>) -> P<Expr> {
-    mk().unary_expr(ast::UnOp::Neg, arg)
+fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
+    mk().unary_expr(UnOp::Neg(Default::default()), arg)
 }
 
-fn wrapping_neg_expr(arg: P<Expr>) -> P<Expr> {
-    mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<P<Expr>>)
+fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
+    mk().method_call_expr(arg, "wrapping_neg", vec![] as Vec<Box<Expr>>)
 }
 
 impl From<c_ast::BinOp> for BinOpKind {
@@ -48,7 +48,7 @@ impl<'c> Translation<'c> {
         rhs: CExprId,
         opt_lhs_type_id: Option<CQualTypeId>,
         opt_res_type_id: Option<CQualTypeId>,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         // If we're not making an assignment, a binop will require parens
         // applied to ternary conditionals
         if !op.is_assignment() {
@@ -175,14 +175,14 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         bin_op_kind: BinOpKind,
         bin_op: c_ast::BinOp,
-        read: P<Expr>,
-        write: P<Expr>,
-        rhs: P<Expr>,
+        read: Box<Expr>,
+        write: Box<Expr>,
+        rhs: Box<Expr>,
         compute_lhs_ty: Option<CQualTypeId>,
         compute_res_ty: Option<CQualTypeId>,
         lhs_ty: CQualTypeId,
         rhs_ty: CQualTypeId,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let compute_lhs_ty = compute_lhs_ty.unwrap();
         let compute_res_ty = compute_res_ty.unwrap();
 
@@ -248,7 +248,7 @@ impl<'c> Translation<'c> {
         rhs: CExprId,
         compute_type: Option<CQualTypeId>,
         result_type: Option<CQualTypeId>,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let rhs_type_id = self
             .ast_context
             .index(rhs)
@@ -276,10 +276,10 @@ impl<'c> Translation<'c> {
         qtype: CQualTypeId,
         lhs: CExprId,
         rhs_type_id: CQualTypeId,
-        rhs_translation: WithStmts<P<Expr>>,
+        rhs_translation: WithStmts<Box<Expr>>,
         compute_type: Option<CQualTypeId>,
         result_type: Option<CQualTypeId>,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let ty = self.convert_type(qtype.ctype)?;
 
         let result_type_id = result_type.unwrap_or(qtype);
@@ -580,14 +580,14 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         op: c_ast::BinOp,
-        ty: P<Ty>,
+        ty: Box<Type>,
         ctype: CTypeId,
         lhs_type: CQualTypeId,
         rhs_type: CQualTypeId,
-        lhs: P<Expr>,
-        rhs: P<Expr>,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
         lhs_rhs_ids: Option<(CExprId, CExprId)>,
-    ) -> Result<P<Expr>, TranslationError> {
+    ) -> Result<Box<Expr>, TranslationError> {
         let is_unsigned_integral_type = self
             .ast_context
             .index(ctype)
@@ -643,9 +643,9 @@ impl<'c> Translation<'c> {
                         && self.ast_context.is_null_expr(lhs_expr_id);
 
                     if fn_eq_null {
-                        mk().method_call_expr(lhs, "is_none", vec![] as Vec<P<Expr>>)
+                        mk().method_call_expr(lhs, "is_none", vec![] as Vec<Box<Expr>>)
                     } else if null_eq_fn {
-                        mk().method_call_expr(rhs, "is_none", vec![] as Vec<P<Expr>>)
+                        mk().method_call_expr(rhs, "is_none", vec![] as Vec<Box<Expr>>)
                     } else {
                         mk().binary_expr(BinOpKind::Eq, lhs, rhs)
                     }
@@ -665,9 +665,9 @@ impl<'c> Translation<'c> {
                         && self.ast_context.is_null_expr(lhs_expr_id);
 
                     if fn_eq_null {
-                        mk().method_call_expr(lhs, "is_some", vec![] as Vec<P<Expr>>)
+                        mk().method_call_expr(lhs, "is_some", vec![] as Vec<Box<Expr>>)
                     } else if null_eq_fn {
-                        mk().method_call_expr(rhs, "is_some", vec![] as Vec<P<Expr>>)
+                        mk().method_call_expr(rhs, "is_some", vec![] as Vec<Box<Expr>>)
                     } else {
                         mk().binary_expr(BinOpKind::Ne, lhs, rhs)
                     }
@@ -694,9 +694,9 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
-        lhs: P<Expr>,
-        rhs: P<Expr>,
-    ) -> Result<P<Expr>, TranslationError> {
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    ) -> Result<Box<Expr>, TranslationError> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
@@ -721,12 +721,12 @@ impl<'c> Translation<'c> {
     fn convert_subtraction(
         &self,
         ctx: ExprContext,
-        ty: P<Ty>,
+        ty: Box<Type>,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
-        lhs: P<Expr>,
-        rhs: P<Expr>,
-    ) -> Result<P<Expr>, TranslationError> {
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    ) -> Result<Box<Expr>, TranslationError> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
@@ -770,7 +770,7 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         up: bool,
         arg: CExprId,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let op = if up {
             c_ast::BinOp::AssignAdd
         } else {
@@ -812,7 +812,7 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         up: bool,
         arg: CExprId,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         // If we aren't going to be using the result, may as well do a simple pre-increment
         if ctx.is_unused() {
             return self.convert_pre_increment(ctx, ty, up, arg);
@@ -828,9 +828,9 @@ impl<'c> Translation<'c> {
         self.name_reference_write_read(ctx, arg)?
             .and_then(|(write, read)| {
                 let val_name = self.renamer.borrow_mut().fresh();
-                let save_old_val = mk().local_stmt(P(mk().local(
+                let save_old_val = mk().local_stmt(Box::new(mk().local(
                     mk().ident_pat(&val_name),
-                    None as Option<P<Ty>>,
+                    None as Option<Box<Type>>,
                     Some(read.clone()),
                 )));
 
@@ -903,7 +903,7 @@ impl<'c> Translation<'c> {
         cqual_type: CQualTypeId,
         arg: CExprId,
         lrvalue: LRValue,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let CQualTypeId { ctype, .. } = cqual_type;
         let ty = self.convert_type(ctype)?;
         let resolved_ctype = self.ast_context.resolve_type(ctype);
@@ -945,7 +945,7 @@ impl<'c> Translation<'c> {
                     };
 
                     arg.result_map(|a| {
-                        let mut addr_of_arg: P<Expr>;
+                        let mut addr_of_arg: Box<Expr>;
 
                         if ctx.is_static {
                             // static variable initializers aren't able to use &mut,
@@ -986,7 +986,7 @@ impl<'c> Translation<'c> {
                     }
                     _ => {
                         self.convert_expr(ctx.used(), arg)?
-                            .result_map(|val: P<Expr>| {
+                            .result_map(|val: Box<Expr>| {
                                 if let CTypeKind::Function(..) =
                                     self.ast_context.resolve_type(ctype).kind
                                 {

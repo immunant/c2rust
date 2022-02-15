@@ -78,7 +78,7 @@ impl Label {
         String::from(self.pretty_print().trim_start_matches('\''))
     }
 
-    fn to_num_expr(&self) -> P<Expr> {
+    fn to_num_expr(&self) -> Box<Expr> {
         let mut s = DefaultHasher::new();
         self.hash(&mut s);
         let as_num = s.finish();
@@ -86,7 +86,7 @@ impl Label {
         mk().lit_expr(as_num as u128)
     }
 
-    fn to_string_expr(&self) -> P<Expr> {
+    fn to_string_expr(&self) -> Box<Expr> {
         mk().lit_expr(self.debug_print())
     }
 }
@@ -310,12 +310,12 @@ pub enum GenTerminator<Lbl> {
 
     /// Conditional branch to another block. The expression is expected to be a boolean Rust
     /// expression
-    Branch(P<Expr>, Lbl, Lbl),
+    Branch(Box<Expr>, Lbl, Lbl),
 
     /// Multi-way branch. The patterns are expected to match the type of the expression.
     Switch {
-        expr: P<Expr>,
-        cases: Vec<(P<Pat>, Lbl)>, // TODO: support ranges of expressions
+        expr: Box<Expr>,
+        cases: Vec<(Box<Pat>, Lbl)>, // TODO: support ranges of expressions
     },
 }
 
@@ -434,7 +434,7 @@ impl GenTerminator<StructureLabel<StmtOrDecl>> {
 /// been seen which translating the body of the switch.
 #[derive(Clone, Debug, Default)]
 pub struct SwitchCases {
-    cases: Vec<(P<Pat>, Label)>,
+    cases: Vec<(Box<Pat>, Label)>,
     default: Option<Label>,
 }
 
@@ -598,19 +598,19 @@ impl Cfg<Label, StmtOrDecl> {
                 // Add in what to do after control-flow exits the statement
                 match ret {
                     ImplicitReturnType::Main => {
-                        let ret_expr: Option<P<Expr>> = Some(mk().lit_expr(mk().int_lit(0, "")));
+                        let ret_expr: Option<Box<Expr>> = Some(mk().lit_expr(mk().int_lit(0, "")));
                         wip.body
                             .push(StmtOrDecl::Stmt(mk().semi_stmt(mk().return_expr(ret_expr))));
                     }
                     ImplicitReturnType::Void => {
                         wip.body.push(StmtOrDecl::Stmt(
-                            mk().semi_stmt(mk().return_expr(None as Option<P<Expr>>)),
+                            mk().semi_stmt(mk().return_expr(None as Option<Box<Expr>>)),
                         ));
                     }
                     ImplicitReturnType::NoImplicitReturnType => {
                         // NOTE: emitting `ret_expr` is not necessarily an error. For instance,
                         // this statement exit may be dominated by one or more return statements.
-                        let ret_expr: P<Expr> =
+                        let ret_expr: Box<Expr> =
                             translator.panic("Reached end of non-void function without returning");
                         wip.body.push(StmtOrDecl::Stmt(mk().semi_stmt(ret_expr)));
                     }
@@ -1951,10 +1951,10 @@ impl CfgBuilder {
                 false,
             ),
 
-            Some(ImplicitReturnType::Void) => (mk().return_expr(None as Option<P<Expr>>), false),
+            Some(ImplicitReturnType::Void) => (mk().return_expr(None as Option<Box<Expr>>), false),
 
             _ => (
-                mk().break_expr_value(Some(brk_lbl.pretty_print()), None as Option<P<Expr>>),
+                mk().break_expr_value(Some(brk_lbl.pretty_print()), None as Option<Box<Expr>>),
                 true,
             ),
         };
@@ -2001,7 +2001,7 @@ impl CfgBuilder {
         if has_fallthrough && need_block && use_brk_lbl {
             translator.use_feature("label_break_value");
             let block_body = mk().block(stmts);
-            let block: P<Expr> = mk().labelled_block_expr(block_body, brk_lbl.pretty_print());
+            let block: Box<Expr> = mk().labelled_block_expr(block_body, brk_lbl.pretty_print());
             stmts = vec![mk().expr_stmt(block)]
         }
 

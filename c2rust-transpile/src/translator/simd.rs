@@ -219,7 +219,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         fn_name: &str,
         args: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         self.import_simd_function(fn_name)?;
 
         let mut processed_args = vec![];
@@ -249,7 +249,7 @@ impl<'c> Translation<'c> {
         ctype: CTypeId,
         len: usize,
         is_static: bool,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
         let (fn_name, bytes) = match (&self.ast_context[ctype].kind, len) {
@@ -287,7 +287,7 @@ impl<'c> Translation<'c> {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");
 
-            Ok(WithStmts::new_val(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>)))
+            Ok(WithStmts::new_val(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<Box<Expr>>)))
         }
     }
 
@@ -298,7 +298,7 @@ impl<'c> Translation<'c> {
         ids: &[CExprId],
         ctype: CTypeId,
         len: usize,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let param_translation = self.convert_exprs(ctx, ids)?;
         param_translation.and_then(|mut params| {
             // When used in a static, we cannot call the standard functions since they
@@ -364,7 +364,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         child_expr_ids: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
         // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm256_shuffle_epi8
 

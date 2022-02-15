@@ -238,8 +238,8 @@ impl TypeConverter {
         ret: Option<CQualTypeId>,
         params: &Vec<CQualTypeId>,
         is_variadic: bool,
-    ) -> Result<P<Ty>, TranslationError> {
-        let mut inputs = params
+    ) -> Result<Box<Type>, TranslationError> {
+        let barefn_inputs = params
             .iter()
             .map(|x| mk().arg(self.convert(ctxt, x.ctype).unwrap(), mk().wild_pat()))
             .collect::<Vec<_>>();
@@ -262,7 +262,7 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         qtype: CQualTypeId,
-    ) -> Result<P<Ty>, TranslationError> {
+    ) -> Result<Box<Type>, TranslationError> {
         let mutbl = if qtype.qualifiers.is_const {
             Mutability::Immutable
         } else {
@@ -307,7 +307,7 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ctype: CTypeId,
-    ) -> Result<P<Ty>, TranslationError> {
+    ) -> Result<Box<Type>, TranslationError> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
             let std_or_core = if self.emit_no_std { "core" } else { "std" };
             let path = vec!["", std_or_core, "ffi", "VaList"];
@@ -316,7 +316,7 @@ impl TypeConverter {
         }
 
         match ctxt.index(ctype).kind {
-            CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
+            CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<Box<Type>>)),
             CTypeKind::Bool => Ok(mk().path_ty(mk().path(vec!["bool"]))),
             CTypeKind::Short => Ok(mk().path_ty(mk().path(vec!["libc", "c_short"]))),
             CTypeKind::Int => Ok(mk().path_ty(mk().path(vec!["libc", "c_int"]))),
@@ -415,7 +415,7 @@ impl TypeConverter {
         ctxt: &TypedAstContext,
         ctype: CTypeId,
         params: &Vec<CParamId>
-    ) -> Result<Option<P<Ty>>, TranslationError> {
+    ) -> Result<Option<Box<Type>>, TranslationError> {
         match ctxt.index(ctype).kind {
             // ANSI/ISO C-style function
             CTypeKind::Function(.., true) => Ok(None),

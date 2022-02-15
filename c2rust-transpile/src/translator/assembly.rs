@@ -29,8 +29,8 @@ impl<'c> Translation<'c> {
 
         self.use_feature("asm");
 
-        fn push_expr(tokens: &mut Vec<TokenTree>, expr: P<Expr>) {
-            tokens.push(TokenTree::token(token::Interpolated(Rc::new(Nonterminal::NtExpr(expr))), DUMMY_SP));
+        fn push_expr(tokens: &mut Vec<TokenTree>, expr: Box<Expr>) {
+            tokens.extend(expr.to_token_stream());
         }
 
         let mut stmts: Vec<Stmt> = vec![];
@@ -102,19 +102,19 @@ impl<'c> Translation<'c> {
                         let output_name = self.renamer.borrow_mut().fresh();
                         let output_local = mk().local(
                             mk().ident_pat(&output_name),
-                            None as Option<P<Ty>>,
+                            None as Option<Box<Type>>,
                             Some(mk().mutbl().addr_of_expr(result)),
                         );
-                        stmts.push(mk().local_stmt(P(output_local)));
+                        stmts.push(mk().local_stmt(Box::new(output_local)));
 
                         // `let mut freshN;`
                         let inner_name = self.renamer.borrow_mut().fresh();
                         let inner_local = mk().local(
                             mk().ident_pat(&inner_name),
-                            None as Option<P<Ty>>,
-                            None as Option<P<Expr>>,
+                            None as Option<Box<Type>>,
+                            None as Option<Box<Expr>>,
                         );
-                        stmts.push(mk().local_stmt(P(inner_local)));
+                        stmts.push(mk().local_stmt(Box::new(inner_local)));
 
                         result = mk().ident_expr(&inner_name);
                         operand_renames.insert(operand_idx, (output_name, inner_name));
@@ -133,10 +133,10 @@ impl<'c> Translation<'c> {
                         let input_name = self.renamer.borrow_mut().fresh();
                         let input_local = mk().local(
                             mk().ident_pat(&input_name),
-                            None as Option<P<Ty>>,
+                            None as Option<Box<Type>>,
                             Some(result),
                         );
-                        stmts.push(mk().local_stmt(P(input_local)));
+                        stmts.push(mk().local_stmt(Box::new(input_local)));
 
                         // Replace `result` with
                         // `c2rust_asm_casts::AsmCast::cast_in(output, input)`

@@ -11,11 +11,11 @@ use crate::rust_ast::comment_store;
 pub fn structured_cfg(
     root: &Vec<Structure<Stmt>>,
     comment_store: &mut comment_store::CommentStore,
-    current_block: P<Expr>,
+    current_block: Box<Expr>,
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> Result<Vec<Stmt>, TranslationError> {
-    let ast: StructuredAST<P<Expr>, P<Pat>, Label, Stmt> =
+    let ast: StructuredAST<Box<Expr>, Box<Pat>, Label, Stmt> =
         structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
 
     let s = StructureState {
@@ -203,7 +203,7 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 ///
 /// TODO: move this into `structured_cfg`?
 fn structured_cfg_help<
-    S: StructuredStatement<E = P<Expr>, P = P<Pat>, L = Label, S = Stmt>,
+    S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = Label, S = Stmt>,
 >(
     exits: Vec<(Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>)>,
     next: &IndexSet<Label>,
@@ -296,10 +296,10 @@ fn structured_cfg_help<
                             ref expr,
                             ref cases,
                         } => {
-                            let branched_cases: Vec<(P<Pat>, S)> = cases
+                            let branched_cases: Vec<(Box<Pat>, S)> = cases
                                 .iter()
                                 .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
-                                .collect::<Result<Vec<(P<Pat>, S)>, TranslationError>>()?;
+                                .collect::<Result<Vec<(Box<Pat>, S)>, TranslationError>>()?;
 
                             S::mk_match(expr.clone(), branched_cases)
                         }
@@ -385,7 +385,7 @@ pub fn has_multiple<Stmt>(root: &Vec<Structure<Stmt>>) -> bool {
 
 struct StructureState {
     debug_labels: bool,
-    current_block: P<Expr>,
+    current_block: Box<Expr>,
 }
 
 /// Returns a `Span` between the beginning of `span` or `other`, whichever is
@@ -419,7 +419,7 @@ fn span_subst_hi(span: Span, other: Span) -> Option<Span> {
 impl StructureState {
     pub fn into_stmt(
         &self,
-        ast: StructuredAST<P<Expr>, P<Pat>, Label, Stmt>,
+        ast: StructuredAST<Box<Expr>, Box<Pat>, Label, Stmt>,
         comment_store: &mut comment_store::CommentStore,
     ) -> (Vec<Stmt>, Span) {
         use crate::cfg::structures::StructuredASTKind::*;
@@ -504,7 +504,7 @@ impl StructureState {
                         let (stmts, span) = self.into_stmt(stmts, comment_store);
 
                         let body = mk().block_expr(mk().span(span).block(stmts));
-                        mk().arm(pat, None as Option<P<Expr>>, body)
+                        mk().arm(pat, None as Option<Box<Expr>>, body)
                     })
                     .collect();
 
@@ -529,13 +529,13 @@ impl StructureState {
                     (true, true) => mk().semi_stmt(cond),
                     (false, true) => {
                         let if_expr =
-                            mk().ifte_expr(cond, mk().span(then_span).block(then_stmts), None as Option<P<Expr>>);
+                            mk().ifte_expr(cond, mk().span(then_span).block(then_stmts), None as Option<Box<Expr>>);
                         mk().expr_stmt(if_expr)
                     }
                     (true, false) => {
                         let negated_cond = not(&cond);
                         let if_expr =
-                            mk().ifte_expr(negated_cond, mk().span(els_span).block(els_stmts), None as Option<P<Expr>>);
+                            mk().ifte_expr(negated_cond, mk().span(els_span).block(els_stmts), None as Option<Box<Expr>>);
                         mk().expr_stmt(if_expr)
                     }
                     (false, false) => {
@@ -591,7 +591,7 @@ impl StructureState {
                         };
                         let pat = mk().lit_pat(lbl_expr);
                         let body = mk().block_expr(mk().span(stmts_span).block(stmts));
-                        mk().arm(pat, None as Option<P<Expr>>, body)
+                        mk().arm(pat, None as Option<Box<Expr>>, body)
                     })
                     .collect();
 
@@ -599,7 +599,7 @@ impl StructureState {
 
                 arms.push(mk().arm(
                     mk().wild_pat(),
-                    None as Option<P<Expr>>,
+                    None as Option<Box<Expr>>,
                     mk().block_expr(mk().span(then_span).block(then)),
                 ));
 
@@ -677,7 +677,7 @@ impl StructureState {
 ///
 ///   * Negating something of the form `!<expr>` produces `<expr>`
 ///
-fn not(bool_expr: &P<Expr>) -> P<Expr> {
+fn not(bool_expr: &Box<Expr>) -> Box<Expr> {
     match bool_expr.kind {
         ExprKind::Unary(syntax::ast::UnOp::Not, ref e) => e.clone(),
         _ => mk().unary_expr("!", bool_expr.clone()),
