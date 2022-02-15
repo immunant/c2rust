@@ -559,8 +559,8 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                 } = terminator
                 {
                     // Here, we group patterns by the label they go to.
-                    let mut merged_goto: IndexMap<Label, Vec<P<Pat>>> = IndexMap::new();
-                    let mut merged_exit: IndexMap<Label, Vec<P<Pat>>> = IndexMap::new();
+                    let mut merged_goto: IndexMap<Label, Vec<Box<Pat>>> = IndexMap::new();
+                    let mut merged_exit: IndexMap<Label, Vec<Box<Pat>>> = IndexMap::new();
 
                     for &(ref pat, ref lbl) in cases {
                         match lbl {

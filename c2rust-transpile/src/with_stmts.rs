@@ -109,9 +109,9 @@ impl<T> WithStmts<T> {
     }
 }
 
-impl WithStmts<P<Expr>> {
+impl WithStmts<Box<Expr>> {
     /// Package a series of statements and an expression into one block expression
-    pub fn to_expr(self) -> P<Expr> {
+    pub fn to_expr(self) -> Box<Expr> {
         if self.stmts.is_empty() {
             self.val
         } else {
@@ -120,12 +120,12 @@ impl WithStmts<P<Expr>> {
     }
 
     /// Package a series of statements and an expression into one block
-    pub fn to_block(mut self) -> P<Block> {
+    pub fn to_block(mut self) -> Box<Block> {
         self.stmts.push(mk().expr_stmt(self.val));
         mk().block(self.stmts)
     }
 
-    pub fn to_unsafe_pure_expr(self) -> Option<P<Expr>> {
+    pub fn to_unsafe_pure_expr(self) -> Option<Box<Expr>> {
         let is_unsafe = self.is_unsafe;
         self.to_pure_expr()
             .map(|expr| {
@@ -141,7 +141,7 @@ impl WithStmts<P<Expr>> {
             })
     }
 
-    pub fn to_pure_expr(self) -> Option<P<Expr>> {
+    pub fn to_pure_expr(self) -> Option<Box<Expr>> {
         if self.stmts.is_empty() {
             Some(self.val)
         } else {

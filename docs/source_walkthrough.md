@@ -59,17 +59,13 @@ The `Make` trait allows for convenient, implicit coercions when using the `Build
 pub trait Make<T> { fn make(self, mk: &Builder) -> T; }
 ```
 
-### P type
-
-The `P` type comes from the `libsyntax` crate and provides functionality similar to `Box` for immutable, shared values. Many components of the Rust AST will store `P<T>` instead of `T` when there are potential savings to be had from shared references.
-
 ### Spans and Node IDs
 
 The Rust AST types are designed to be able to be cross-referenced to source-file locations and various type-information metadata maps. These references are tracked through span and node IDs scattered throughout the AST type definitions. In the case of generating new syntax we don't have any corresponding metadata maps to align with. Instead we fill all of these ID fields with various dummy values: `DUMMY_SP` and `DUMMY_NODE_ID`.
 
 ### Naming convention
 
-Builder methods are named using the pattern `kind_type`. For example to make a `P<Ty>` that is a pointer to another `Ty` use the `ptr_ty` method because internally you're making a `TyKind::Ptr`.
+Builder methods are named using the pattern `kind_type`. For example to make a `Box<Ty>` that is a pointer to another `Ty` use the `ptr_ty` method because internally you're making a `TyKind::Ptr`.
 
 ## Crate Walkthrough: c2rust-transpile
 
