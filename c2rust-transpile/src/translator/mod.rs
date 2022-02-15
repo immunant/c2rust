@@ -362,7 +362,6 @@ fn transmute_expr(source_ty: Box<Type>, target_ty: Box<Type>, expr: Box<Expr>, n
     };
     let std_or_core = if no_std { "core" } else { "std" };
     let mut path = vec![
-        mk().path_segment(""),
         mk().path_segment(std_or_core),
         mk().path_segment("mem"),
     ];
@@ -373,11 +372,11 @@ fn transmute_expr(source_ty: Box<Type>, target_ty: Box<Type>, expr: Box<Expr>, n
         path.push(mk().path_segment_with_args("transmute", mk().angle_bracketed_args(type_args)));
     }
 
-    mk().call_expr(mk().path_expr(path), vec![expr])
+    mk().call_expr(mk().abs_path_expr(path), vec![expr])
 }
 
 fn vec_expr(val: Box<Expr>, count: Box<Expr>) -> Box<Expr> {
-    let from_elem = mk().path_expr(vec!["", "std", "vec", "from_elem"]);
+    let from_elem = mk().abs_path_expr(vec!["std", "vec", "from_elem"]);
     mk().call_expr(from_elem, vec![val, count])
 }
 
@@ -956,8 +955,8 @@ fn make_submodule(
 fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
     if t.tcfg.emit_modules && !is_binary {
         for c in t.extern_crates.borrow().iter() {
-            s.print_item(&mk().use_simple_item(
-                vec![String::new(), ExternCrateDetails::from(*c).ident],
+            out_items.push(mk().use_simple_item(
+                mk().abs_path(vec![ExternCrateDetails::from(*c).ident]),
                 None as Option<Ident>,
             ));
         }
@@ -992,7 +991,7 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
                 }
             }
 
-            s.print_item(&mk().use_glob_item(vec!["", &t.tcfg.crate_name()]));
+            out_items.push(mk().use_glob_item(mk().abs_path(vec![&t.tcfg.crate_name()])));
         }
     }
 }
@@ -2483,8 +2482,8 @@ impl<'c> Translation<'c> {
                     let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
                     let ty = {
                         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
-                        let path = vec!["", std_or_core, "ffi", "VaListImpl"];
-                        mk().path_ty(path)
+                        let path = vec![std_or_core, "ffi", "VaListImpl"];
+                        mk().path_ty(mk().abs_path(path))
                     };
                     let local_mut = mk().local::<_, _, Box<Expr>>(pat_mut, Some(ty), None);
 
@@ -2795,7 +2794,7 @@ impl<'c> Translation<'c> {
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
         Ok(mk().call_expr(
-            mk().path_expr(vec!["", std_or_core, "ptr", "write_volatile"]),
+            mk().abs_path_expr(vec![std_or_core, "ptr", "write_volatile"]),
             vec![addr_lhs, rhs],
         ))
     }
@@ -2832,7 +2831,7 @@ impl<'c> Translation<'c> {
         // in order to avoid omitted bit-casts to const from causing the
         // wrong type to be inferred via the result of the pointer.
         let mut path_parts: Vec<PathSegment> = vec![];
-        for elt in vec!["", std_or_core, "ptr"] {
+        for elt in vec![std_or_core, "ptr"] {
             path_parts.push(mk().path_segment(elt))
         }
         let elt_ty = self.convert_type(lhs_type.ctype)?;
@@ -2840,7 +2839,7 @@ impl<'c> Translation<'c> {
         let elt = mk().path_segment_with_args("read_volatile", ty_params);
         path_parts.push(elt);
 
-        let read_volatile_expr = mk().path_expr(path_parts);
+        let read_volatile_expr = mk().abs_path_expr(path_parts);
         Ok(mk().call_expr(read_volatile_expr, vec![addr_lhs]))
     }
 
@@ -2955,12 +2954,11 @@ impl<'c> Translation<'c> {
         let name = "size_of";
         let params = mk().angle_bracketed_args(vec![ty]);
         let path = vec![
-            mk().path_segment(""),
             mk().path_segment(std_or_core),
             mk().path_segment("mem"),
             mk().path_segment_with_args(name, params),
         ];
-        let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<Box<Expr>>);
+        let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
 
         Ok(WithStmts::new_val(call))
     }
@@ -2974,7 +2972,7 @@ impl<'c> Translation<'c> {
 
         let ty = self.convert_type(type_id)?;
         let tys = vec![ty];
-        let mut path = vec![mk().path_segment("")];
+        let mut path = vec![];
         if self.tcfg.emit_no_std {
             path.push(mk().path_segment("core"));
         } else {
@@ -2988,7 +2986,7 @@ impl<'c> Translation<'c> {
             path.push(mk().path_segment("mem"));
             path.push(mk().path_segment_with_args("align_of", mk().angle_bracketed_args(tys)));
         }
-        let call = mk().call_expr(mk().path_expr(path), vec![] as Vec<Box<Expr>>);
+        let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
         Ok(WithStmts::new_val(call))
     }
 

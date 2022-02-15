@@ -310,8 +310,8 @@ impl TypeConverter {
     ) -> Result<Box<Type>, TranslationError> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
             let std_or_core = if self.emit_no_std { "core" } else { "std" };
-            let path = vec!["", std_or_core, "ffi", "VaList"];
-            let ty = mk().path_ty(path);
+            let path = vec![std_or_core, "ffi", "VaList"];
+            let ty = mk().path_ty(mk().abs_path(path));
             return Ok(ty);
         }
 

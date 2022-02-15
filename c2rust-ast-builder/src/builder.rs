@@ -805,6 +805,15 @@ impl Builder {
         path.make(&self)
     }
 
+    pub fn abs_path<Pa>(self, path: Pa) -> Path
+    where
+        Pa: Make<Path>,
+    {
+        let mut path = path.make(&self);
+        path.leading_colon = Some(Default::default());
+        path
+    }
+
     pub fn use_tree<Pa, K>(self, prefix: Pa, kind: K) -> UseTree
     where
         Pa: Make<Path>,
@@ -1068,6 +1077,14 @@ impl Builder {
             expr: lhs,
             index: rhs,
         }))
+    }
+
+    pub fn abs_path_expr<Pa>(self, path: Pa) -> Box<Expr>
+    where
+        Pa: Make<Path>,
+    {
+        let path = mk().abs_path(path);
+        self.path_expr(path)
     }
 
     pub fn path_expr<Pa>(self, path: Pa) -> Box<Expr>

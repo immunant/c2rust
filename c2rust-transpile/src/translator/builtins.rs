@@ -33,40 +33,34 @@ impl<'c> Translation<'c> {
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
         match builtin_name {
-            "__builtin_huge_valf" => Ok(WithStmts::new_val(mk().path_expr(vec![
-                "",
+            "__builtin_huge_valf" => Ok(WithStmts::new_val(mk().abs_path_expr(vec![
                 std_or_core,
                 "f32",
                 "INFINITY",
             ]))),
             "__builtin_huge_val" | "__builtin_huge_vall" => {
-                Ok(WithStmts::new_val(mk().path_expr(vec![
-                    "",
+                Ok(WithStmts::new_val(mk().abs_path_expr(vec![
                     std_or_core,
                     "f64",
                     "INFINITY",
                 ])))
             }
-            "__builtin_inff" => Ok(WithStmts::new_val(mk().path_expr(vec![
-                "",
+            "__builtin_inff" => Ok(WithStmts::new_val(mk().abs_path_expr(vec![
                 std_or_core,
                 "f32",
                 "INFINITY",
             ]))),
-            "__builtin_inf" | "__builtin_infl" => Ok(WithStmts::new_val(mk().path_expr(vec![
-                "",
+            "__builtin_inf" | "__builtin_infl" => Ok(WithStmts::new_val(mk().abs_path_expr(vec![
                 std_or_core,
                 "f64",
                 "INFINITY",
             ]))),
-            "__builtin_nanf" => Ok(WithStmts::new_val(mk().path_expr(vec![
-                "",
+            "__builtin_nanf" => Ok(WithStmts::new_val(mk().abs_path_expr(vec![
                 std_or_core,
                 "f32",
                 "NAN",
             ]))),
-            "__builtin_nan" => Ok(WithStmts::new_val(mk().path_expr(vec![
-                "",
+            "__builtin_nan" => Ok(WithStmts::new_val(mk().abs_path_expr(vec![
                 std_or_core,
                 "f64",
                 "NAN",
@@ -181,7 +175,7 @@ impl<'c> Translation<'c> {
             "__builtin_bzero" => {
                 let ptr_stmts = self.convert_expr(ctx.used(), args[0])?;
                 let n_stmts = self.convert_expr(ctx.used(), args[1])?;
-                let write_bytes = mk().path_expr(vec!["", "std", "ptr", "write_bytes"]);
+                let write_bytes = mk().abs_path_expr(vec!["std", "ptr", "write_bytes"]);
                 let zero = mk().lit_expr(mk().int_lit(0, "u8"));
                 ptr_stmts.and_then(|ptr| {
                     Ok(n_stmts.map(|n| mk().call_expr(write_bytes, vec![ptr, zero, n])))
@@ -548,7 +542,7 @@ impl<'c> Translation<'c> {
                 self.use_feature("core_intrinsics");
 
                 let atomic_func =
-                    mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_fence"]);
+                    mk().abs_path_expr(vec![std_or_core, "intrinsics", "atomic_fence"]);
                 let call_expr = mk().call_expr(atomic_func, vec![] as Vec<Box<Expr>>);
                 self.convert_side_effects_expr(
                     ctx,
@@ -566,7 +560,7 @@ impl<'c> Translation<'c> {
 
                 // Emit `atomic_xchg_acq(arg0, arg1)`
                 let atomic_func =
-                    mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_xchg_acq"]);
+                    mk().abs_path_expr(vec![std_or_core, "intrinsics", "atomic_xchg_acq"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 arg0.and_then(|arg0| {
@@ -590,7 +584,7 @@ impl<'c> Translation<'c> {
 
                 // Emit `atomic_store_rel(arg0, 0)`
                 let atomic_func =
-                    mk().path_expr(vec!["", std_or_core, "intrinsics", "atomic_store_rel"]);
+                    mk().abs_path_expr(vec![std_or_core, "intrinsics", "atomic_store_rel"]);
                 let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 arg0.and_then(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
