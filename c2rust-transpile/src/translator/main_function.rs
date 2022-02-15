@@ -34,9 +34,9 @@ impl<'c> Translation<'c> {
                 .expect("Could not find main function in renamer");
             let main_fn = mk().path_expr(vec![main_fn_name]);
 
-            let exit_fn = mk().path_expr(vec!["", "std", "process", "exit"]);
-            let args_fn = mk().path_expr(vec!["", "std", "env", "args"]);
-            let vars_fn = mk().path_expr(vec!["", "std", "env", "vars"]);
+            let exit_fn = mk().abs_path_expr(vec!["std", "process", "exit"]);
+            let args_fn = mk().abs_path_expr(vec!["std", "env", "args"]);
+            let vars_fn = mk().abs_path_expr(vec!["std", "env", "vars"]);
 
             let no_args: Vec<Box<Expr>> = vec![];
 
@@ -69,7 +69,7 @@ impl<'c> Translation<'c> {
                         vec![mk().method_call_expr(
                             mk().method_call_expr(
                                 mk().call_expr(
-                                    mk().path_expr(vec!["", "std", "ffi", "CString", "new"]),
+                                    mk().abs_path_expr(vec!["std", "ffi", "CString", "new"]),
                                     vec![mk().path_expr(vec!["arg"])],
                                 ),
                                 "expect",
@@ -87,7 +87,7 @@ impl<'c> Translation<'c> {
                     mk().path_expr(vec!["args"]),
                     "push",
                     vec![mk().call_expr(
-                        mk().path_expr(vec!["", "std", "ptr", "null_mut"]),
+                        mk().abs_path_expr(vec!["std", "ptr", "null_mut"]),
                         vec![] as Vec<Box<Expr>>,
                     )],
                 )));
@@ -162,7 +162,7 @@ impl<'c> Translation<'c> {
                                 mk().method_call_expr(
                                     mk().method_call_expr(
                                         mk().call_expr(
-                                            mk().path_expr(vec!["","std","ffi","CString","new"]),
+                                            mk().abs_path_expr(vec!["std", "ffi", "CString", "new"]),
                                             vec![mk().path_expr(vec!["var"])],
                                         ),
                                         "expect",
@@ -182,7 +182,7 @@ impl<'c> Translation<'c> {
                     mk().path_expr(vec!["vars"]),
                     "push",
                     vec![mk().call_expr(
-                        mk().path_expr(vec!["", "std", "ptr", "null_mut"]),
+                        mk().abs_path_expr(vec!["std", "ptr", "null_mut"]),
                         vec![] as Vec<Box<Expr>>,
                     )],
                 )));
