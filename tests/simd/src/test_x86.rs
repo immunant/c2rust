@@ -64,6 +64,7 @@ macro_rules! cmp_vector_fields {
 impl PartialEq for ShuffleVectors {
     fn eq(&self, other: &ShuffleVectors) -> bool {
         cmp_vector_fields!(self, other: [
+            #[cfg(target_feature = "mmx")]
             a: u64,
             b: u128,
             c: u128,
@@ -78,6 +79,7 @@ impl PartialEq for ShuffleVectors {
             j: (u128, u128),
             #[cfg(target_feature = "avx2")]
             k: (u128, u128),
+            #[cfg(target_feature = "mmx")]
             l: u64,
             m: u128,
             #[cfg(target_feature = "avx2")]

@@ -1742,7 +1742,7 @@ impl<'c> Translation<'c> {
                     .resolve_decl_name(decl_id)
                     .unwrap();
 
-                if self.import_simd_typedef(new_name) {
+                if self.import_simd_typedef(new_name)? {
                     return Ok(ConvertedDecl::NoItem);
                 }
 

@@ -3,9 +3,13 @@
 #include <immintrin.h>
 
 // Our travis-ci machines don't support AVX2 so we conditionally compile those bits out
+// Additionally, rust std::arch removed MMX support, so we conditionally compile
+// out uses of __m64 and MMX intrinsics pending an alternative translation
 
 typedef struct {
+#ifdef MMX
     __m64 a;
+#endif
     __m128 b;
     __m128d c;
     __m256 d;
@@ -14,7 +18,9 @@ typedef struct {
 #ifdef __AVX2__
     __m256i i, j, k;
 #endif
+#ifdef MMX
     __m64 l;
+#endif
     __m128i m;
 #ifdef __AVX2__
     __m256i n, p, q;
@@ -44,21 +50,27 @@ void zero_init_all(void) {
     __m128i d;
     __m256d e;
     __m256i f;
+#ifdef MMX
     __m64 g;
+#endif
 }
 
 ShuffleVectors call_all(void) {
     __m128 a = _mm_setr_ps(7.8, 5.6, 3.4, 1.2);
     __m128d b = _mm_set1_pd(4.13);
+#ifdef MMX
     __m64 c = _mm_set_pi32(1, 2);
+#endif
     __m256 d = _mm256_set1_ps(45.2);
     __m256d e = _mm256_set_pd(1.1, 2.2, 3.3, 4.4);
     __m128i f = _mm_set1_epi8(123);
     __m256i g = _mm256_set_epi32(14, 18, 22, 33, -11, -3, 8, 300);
 
     ShuffleVectors sv = {
+#ifdef MMX
         // Actual Builtin:
         _mm_shuffle_pi16(c, _MM_SHUFFLE(0, 1, 2, 3)),
+#endif
 
         // Super builtins(in clang 6, but actual in 7):
         _mm_shuffle_ps(a, a, _MM_SHUFFLE(3, 2, 1, 0)),
@@ -75,7 +87,9 @@ ShuffleVectors call_all(void) {
         _mm256_shufflelo_epi16(g, _MM_SHUFFLE(2, 3, 2, 3)),
 #endif
         // Functions:
+#ifdef MMX
         _mm_shuffle_pi8(c, c),
+#endif
         _mm_shuffle_epi8(f, f),
 #ifdef __AVX2__
         _mm256_shuffle_epi8(g, g),
@@ -91,28 +105,36 @@ ShuffleVectors call_all(void) {
 ShuffleVectors call_all_used(void) {
     __m128 aa = _mm_setr_ps(1.2, 3.4, 5.6, 7.8);
     __m128d bb = _mm_set1_pd(3.14);
+#ifdef MMX
     __m64 cc = _mm_set_pi32(1, 2);
+#endif
     __m256 dd = _mm256_set1_ps(3.34);
     __m256d ee = _mm256_set_pd(4.4, 3.3, 2.2, 1.1);
     __m128i ff = _mm_set1_epi8(13);
     __m256i gg = _mm256_set_epi32(-12, 33, 44, 100, -44, 42, -33, -100);
 
+#ifdef MMX
     __m64 a;
+#endif
     __m128 b;
     __m128d c;
     __m256 d;
     __m256d e;
     __m128i f, g, h, o;
     __m256i i, j, k;
+#ifdef MMX
     __m64 l;
+#endif
     __m128i m;
     __m256i n;
     __m256i p;
     __m256i q;
     __m128i r;
 
+#ifdef MMX
     // Actual Builtin:
     a = _mm_shuffle_pi16(cc, _MM_SHUFFLE(0, 1, 2, 3));
+#endif
 
     // Super builtins(in clang 6, but actual in 7):
     b = _mm_shuffle_ps(aa, aa, _MM_SHUFFLE(3, 2, 1, 0));
@@ -130,7 +152,9 @@ ShuffleVectors call_all_used(void) {
     o = _mm_slli_si128(g, 2);
 
     // Functions:
+#ifdef MMX
     l = _mm_shuffle_pi8(cc, cc);
+#endif
     m = _mm_shuffle_epi8(ff, ff);
 #ifdef __AVX2__
     n = _mm256_shuffle_epi8(gg, gg);
@@ -140,12 +164,18 @@ ShuffleVectors call_all_used(void) {
     r = _mm_alignr_epi8(ff, ff, 2);
 
     ShuffleVectors sv = {
-        a, b, c, d, e, f, g, h, o,
+#ifdef MMX
+        a,
+#endif
+        b, c, d, e, f, g, h, o,
 
 #ifdef __AVX2__
         i, j, k,
 #endif
-        l, m,
+#ifdef MMX
+        l,
+#endif
+        m,
 
 #ifdef __AVX2__
         n, p, q,
