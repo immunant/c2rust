@@ -73,7 +73,7 @@ impl<'c> Translation<'c> {
                         let ret = val1.expect("__atomic_load should have a ret argument");
                         ret.and_then(|ret| {
                             let assignment = mk().assign_expr(
-                                mk().unary_expr(ast::UnOp::Deref, ret),
+                                mk().unary_expr(UnOp::Deref(Default::default()), ret),
                                 call,
                             );
                             self.convert_side_effects_expr(
@@ -114,7 +114,7 @@ impl<'c> Translation<'c> {
                         let atomic_store =
                             mk().abs_path_expr(vec![std_or_core, "intrinsics", intrinsic_name]);
                         let val = if name == "__atomic_store" {
-                            mk().unary_expr(ast::UnOp::Deref, val)
+                            mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
                             val
                         };
@@ -150,7 +150,7 @@ impl<'c> Translation<'c> {
                         let fn_path =
                             mk().abs_path_expr(vec![std_or_core, "intrinsics", intrinsic_name]);
                         let val = if name == "__atomic_exchange" {
-                            mk().unary_expr(ast::UnOp::Deref, val)
+                            mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
                             val
                         };
@@ -163,7 +163,7 @@ impl<'c> Translation<'c> {
                                 .expect("__atomic_exchange must have a ret pointer argument")
                                 .and_then(|ret| {
                                     let assignment = mk().assign_expr(
-                                        mk().unary_expr(ast::UnOp::Deref, ret),
+                                        mk().unary_expr(UnOp::Deref(Default::default()), ret),
                                         call,
                                     );
                                     self.convert_side_effects_expr(
@@ -262,11 +262,11 @@ impl<'c> Translation<'c> {
                             ))?;
 
                             self.use_feature("core_intrinsics");
-                            let expected = mk().unary_expr(ast::UnOp::Deref, expected);
+                            let expected = mk().unary_expr(UnOp::Deref(Default::default()), expected);
                             let desired = if name == "__atomic_compare_exchange_n" {
                                 desired
                             } else {
-                                mk().unary_expr(ast::UnOp::Deref, desired)
+                                mk().unary_expr(UnOp::Deref(Default::default()), desired)
                             };
 
                             let atomic_cxchg =
@@ -400,17 +400,17 @@ impl<'c> Translation<'c> {
             )
         } else {
             let (binary_op, is_nand) = if func_name.starts_with("atomic_xadd") {
-                (BinOpKind::Add, false)
+                (BinOp::Add(Default::default()), false)
             } else if func_name.starts_with("atomic_xsub") {
-                (BinOpKind::Sub, false)
+                (BinOp::Sub(Default::default()), false)
             } else if func_name.starts_with("atomic_or") {
-                (BinOpKind::BitOr, false)
+                (BinOp::BitOr(Default::default()), false)
             } else if func_name.starts_with("atomic_xor") {
-                (BinOpKind::BitXor, false)
+                (BinOp::BitXor(Default::default()), false)
             } else if func_name.starts_with("atomic_nand") {
-                (BinOpKind::BitAnd, true)
+                (BinOp::BitAnd(Default::default()), true)
             } else if func_name.starts_with("atomic_and") {
-                (BinOpKind::BitAnd, false)
+                (BinOp::BitAnd(Default::default()), false)
             } else {
                 panic!("Unexpected atomic intrinsic name: {}", func_name)
             };
@@ -439,7 +439,7 @@ impl<'c> Translation<'c> {
             let val = mk().binary_expr(binary_op, call, mk().ident_expr(arg1_name));
             let val = if is_nand {
                 // For nand, return `!(atomic_nand(arg0, arg1) & arg1)`
-                mk().unary_expr(UnOp::Not, val)
+                mk().unary_expr(UnOp::Not(Default::default()), val)
             } else {
                 val
             };

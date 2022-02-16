@@ -94,10 +94,10 @@ impl<'c> Translation<'c> {
                 let val = self.convert_expr(ctx.used(), args[0])?;
 
                 Ok(val.map(|x| {
-                    let add = BinOpKind::Add;
+                    let add = BinOp::Add(Default::default());
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
                     let one = mk().lit_expr(mk().int_lit(1, ""));
-                    let cmp = BinOpKind::Eq;
+                    let cmp = BinOp::Eq(Default::default());
                     let zeros = mk().method_call_expr(x.clone(), "trailing_zeros", vec![] as Vec<Box<Expr>>);
                     let zeros_cast = mk().cast_expr(zeros, mk().path_ty(vec!["i32"]));
                     let zeros_plus1 = mk().binary_expr(add, zeros_cast, one);
@@ -148,7 +148,7 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|x| {
                     let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![] as Vec<Box<Expr>>);
                     let one = mk().lit_expr(mk().int_lit(1, ""));
-                    let minus_one = mk().unary_expr(UnOp::Neg, mk().lit_expr(mk().int_lit(1, "")));
+                    let minus_one = mk().unary_expr(UnOp::Neg(Default::default()), mk().lit_expr(mk().int_lit(1, "")));
                     let one_block = mk().block(vec![mk().expr_stmt(one)]);
                     let inner_ifte = mk().ifte_expr(inner_cond, one_block, Some(minus_one));
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
@@ -247,11 +247,11 @@ impl<'c> Translation<'c> {
                 let type_arg = self.convert_expr(ctx.used(), args[1])?;
                 ptr_arg.and_then(|_| {
                     Ok(type_arg.map(|type_arg| {
-                        let type_and_2 = mk().binary_expr(BinOpKind::BitAnd, type_arg,
+                        let type_and_2 = mk().binary_expr(BinOp::BitAnd(Default::default()), type_arg,
                                                           mk().lit_expr(mk().int_lit(2, "")));
-                        let if_cond = mk().binary_expr(BinOpKind::Eq, type_and_2,
+                        let if_cond = mk().binary_expr(BinOp::Eq(Default::default()), type_and_2,
                                                        mk().lit_expr(mk().int_lit(0, "")));
-                        let minus_one = mk().unary_expr(UnOp::Neg, mk().lit_expr(mk().int_lit(1, "isize")));
+                        let minus_one = mk().unary_expr(UnOp::Neg(Default::default()), mk().lit_expr(mk().int_lit(1, "isize")));
                         let if_expr = mk().ifte_expr(if_cond,
                                        mk().block(vec![mk().expr_stmt(minus_one)]),
                                        Some(mk().lit_expr(mk().int_lit(0, "isize"))));
@@ -643,7 +643,7 @@ impl<'c> Translation<'c> {
             )));
 
             let out_assign = mk().assign_expr(
-                mk().unary_expr(ast::UnOp::Deref, c),
+                mk().unary_expr(UnOp::Deref(Default::default()), c),
                 mk().ident_expr(&sum_name),
             );
 

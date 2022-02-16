@@ -331,17 +331,17 @@ fn pointer_offset(
 
     if let Some(mul) = multiply_by {
         let mul = cast_int(mul, "isize", false);
-        offset = mk().binary_expr(BinOpKind::Mul, offset, mul);
+        offset = mk().binary_expr(BinOp::Mul(Default::default()), offset, mul);
         deref = false;
     }
 
     if neg {
-        offset = mk().unary_expr(ast::UnOp::Neg, offset);
+        offset = mk().unary_expr(UnOp::Neg(Default::default()), offset);
     }
 
     let res = mk().method_call_expr(ptr, "offset", vec![offset]);
     if deref {
-        mk().unary_expr(ast::UnOp::Deref, res)
+        mk().unary_expr(UnOp::Deref(Default::default()), res)
     } else {
         res
     }
@@ -417,7 +417,7 @@ fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder 
 pub fn signed_int_expr(value: i64) -> Box<Expr> {
     if value < 0 {
         mk().unary_expr(
-            ast::UnOp::Neg,
+            UnOp::Neg(Default::default()),
             mk().lit_expr(mk().int_lit((-value) as u128, "")),
         )
     } else {
@@ -1542,7 +1542,7 @@ impl<'c> Translation<'c> {
                     let outer_size = self.compute_size_of_ty(outer_ty)?.to_expr();
                     let inner_size = self.compute_size_of_ty(inner_ty)?.to_expr();
                     let padding_value =
-                        mk().binary_expr(BinOpKind::Sub, outer_size, inner_size);
+                        mk().binary_expr(BinOp::Sub(Default::default()), outer_size, inner_size);
                     let padding_const = mk().span(s)
                         .call_attr("allow", vec!["dead_code", "non_upper_case_globals"])
                         .const_item(padding_name, padding_ty, padding_value);
@@ -2331,7 +2331,7 @@ impl<'c> Translation<'c> {
                     } else {
                         let is_null = mk().method_call_expr(e, "is_null", vec![] as Vec<Box<Expr>>);
                         if negated {
-                            mk().unary_expr(ast::UnOp::Not, is_null)
+                            mk().unary_expr(UnOp::Not(Default::default()), is_null)
                         } else {
                             is_null
                         }
@@ -2858,7 +2858,7 @@ impl<'c> Translation<'c> {
 
                 let val = match opt_esize {
                     None => csize,
-                    Some(esize) => mk().binary_expr(BinOpKind::Mul, csize, esize),
+                    Some(esize) => mk().binary_expr(BinOp::Mul(Default::default()), csize, esize),
                 };
                 Some(val)
             }
@@ -2938,7 +2938,7 @@ impl<'c> Translation<'c> {
                 let len = self.convert_expr(ctx.used().not_static(), len)?;
                 Ok(len.map(|len| {
                     let rhs = cast_int(len, "usize", true);
-                    mk().binary_expr(BinOpKind::Mul, lhs, rhs)
+                    mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs)
                 }))
             });
         }
@@ -3058,7 +3058,7 @@ impl<'c> Translation<'c> {
                             let inner_size = self.compute_size_of_type(ctx, inner)?;
 
                             if let Some(sz) = self.compute_size_of_expr(arg_ty.ctype) {
-                                inner_size.map(|x| mk().binary_expr(BinOpKind::Mul, sz, x))
+                                inner_size.map(|x| mk().binary_expr(BinOp::Mul(Default::default()), sz, x))
                             } else {
                                 // Otherwise, use the pointer and make a deref of a pointer offset expression
                                 inner_size
@@ -3573,7 +3573,7 @@ impl<'c> Translation<'c> {
                                 self.convert_expr(ctx, subexpr_id)?
                             } else {
                                 let val = self.convert_expr(ctx, expr)?;
-                                val.map(|v| mk().unary_expr(ast::UnOp::Deref, v))
+                                val.map(|v| mk().unary_expr(UnOp::Deref(Default::default()), v))
                             }
                         }
                     };
@@ -3678,7 +3678,7 @@ impl<'c> Translation<'c> {
             }
 
             ConstIntExpr::I(n) => mk().unary_expr(
-                syntax::ast::UnOp::Neg,
+                UnOp::Neg(Default::default()),
                 mk().lit_expr(mk().int_unsuffixed_lit((-n) as u128)),
             ),
         };
@@ -4429,36 +4429,36 @@ impl<'c> Translation<'c> {
         } else if ty.is_pointer() {
             let mut res = mk().method_call_expr(val, "is_null", vec![] as Vec<Box<Expr>>);
             if target {
-                res = mk().unary_expr(ast::UnOp::Not, res)
+                res = mk().unary_expr(UnOp::Not(Default::default()), res)
             }
             res
         } else if ty.is_bool() {
             if target {
                 val
             } else {
-                mk().unary_expr(ast::UnOp::Not, val)
+                mk().unary_expr(UnOp::Not(Default::default()), val)
             }
         } else {
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
-                        BinOpKind::Or
-                        | BinOpKind::And
-                        | BinOpKind::Eq
-                        | BinOpKind::Ne
-                        | BinOpKind::Lt
-                        | BinOpKind::Le
-                        | BinOpKind::Gt
-                        | BinOpKind::Ge => {
             if let Expr::Cast(ExprCast { expr: ref arg, ..}) = *val {
                 if let Expr::Binary(ExprBinary {op, ..}) = **arg {
                     match op {
+                        BinOp::Or(_)
+                        | BinOp::And(_)
+                        | BinOp::Eq(_)
+                        | BinOp::Ne(_)
+                        | BinOp::Lt(_)
+                        | BinOp::Le(_)
+                        | BinOp::Gt(_)
+                        | BinOp::Ge(_) => {
                             if target {
                                 // If target == true, just return the argument
                                 return arg.clone();
                             } else {
                                 // If target == false, return !arg
-                                return mk().unary_expr(ast::UnOp::Not, arg.clone());
+                                return mk().unary_expr(UnOp::Not(Default::default()), arg.clone());
                             }
                         }
                         _ => {}
@@ -4480,9 +4480,9 @@ impl<'c> Translation<'c> {
             };
 
             if target {
-                mk().binary_expr(BinOpKind::Ne, val, zero)
+                mk().binary_expr(BinOp::Ne(Default::default()), val, zero)
             } else {
-                mk().binary_expr(BinOpKind::Eq, val, zero)
+                mk().binary_expr(BinOp::Eq(Default::default()), val, zero)
             }
         }
     }

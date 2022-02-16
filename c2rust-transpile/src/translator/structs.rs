@@ -686,18 +686,18 @@ impl<'a> Translation<'a> {
             // Allow the value of this assignment to be used as the RHS of other assignments
             let val = lhs_expr_read.clone();
             let param_expr = match op {
-                BinOp::AssignAdd => mk().binary_expr(BinOpKind::Add, lhs_expr_read, rhs_expr),
-                BinOp::AssignSubtract => mk().binary_expr(BinOpKind::Sub, lhs_expr_read, rhs_expr),
-                BinOp::AssignMultiply => mk().binary_expr(BinOpKind::Mul, lhs_expr_read, rhs_expr),
-                BinOp::AssignDivide => mk().binary_expr(BinOpKind::Div, lhs_expr_read, rhs_expr),
-                BinOp::AssignModulus => mk().binary_expr(BinOpKind::Rem, lhs_expr_read, rhs_expr),
-                BinOp::AssignBitXor => mk().binary_expr(BinOpKind::BitXor, lhs_expr_read, rhs_expr),
-                BinOp::AssignShiftLeft => mk().binary_expr(BinOpKind::Shl, lhs_expr_read, rhs_expr),
+                BinOp::AssignAdd => mk().binary_expr(RBinOp::Add(Default::default()), lhs_expr_read, rhs_expr),
+                BinOp::AssignSubtract => mk().binary_expr(RBinOp::Sub(Default::default()), lhs_expr_read, rhs_expr),
+                BinOp::AssignMultiply => mk().binary_expr(RBinOp::Mul(Default::default()), lhs_expr_read, rhs_expr),
+                BinOp::AssignDivide => mk().binary_expr(RBinOp::Div(Default::default()), lhs_expr_read, rhs_expr),
+                BinOp::AssignModulus => mk().binary_expr(RBinOp::Rem(Default::default()), lhs_expr_read, rhs_expr),
+                BinOp::AssignBitXor => mk().binary_expr(RBinOp::BitXor(Default::default()), lhs_expr_read, rhs_expr),
+                BinOp::AssignShiftLeft => mk().binary_expr(RBinOp::Shl(Default::default()), lhs_expr_read, rhs_expr),
                 BinOp::AssignShiftRight => {
-                    mk().binary_expr(BinOpKind::Shr, lhs_expr_read, rhs_expr)
+                    mk().binary_expr(RBinOp::Shr(Default::default()), lhs_expr_read, rhs_expr)
                 }
-                BinOp::AssignBitOr => mk().binary_expr(BinOpKind::BitOr, lhs_expr_read, rhs_expr),
-                BinOp::AssignBitAnd => mk().binary_expr(BinOpKind::BitAnd, lhs_expr_read, rhs_expr),
+                BinOp::AssignBitOr => mk().binary_expr(RBinOp::BitOr(Default::default()), lhs_expr_read, rhs_expr),
+                BinOp::AssignBitAnd => mk().binary_expr(RBinOp::BitAnd(Default::default()), lhs_expr_read, rhs_expr),
                 BinOp::Assign => rhs_expr,
                 _ => panic!("Cannot convert non-assignment operator"),
             };

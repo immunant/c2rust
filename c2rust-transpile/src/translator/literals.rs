@@ -157,7 +157,7 @@ impl<'c> Translation<'c> {
                 let byte_literal = mk().lit_expr(val);
                 let pointer =
                     transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
-                let array = mk().unary_expr(ast::UnOp::Deref, pointer);
+                let array = mk().unary_expr(UnOp::Deref(Default::default()), pointer);
                 Ok(WithStmts::new_unsafe_val(array))
             }
         }

@@ -107,7 +107,7 @@ impl<'c> Translation<'c> {
 
                 let args = mk().ident_expr("args");
                 let argc = mk().binary_expr(
-                    BinOpKind::Sub,
+                    BinOp::Sub(Default::default()),
                     mk().method_call_expr(args.clone(), "len", no_args.clone()),
                     mk().lit_expr(mk().int_lit(1, "")),
                 );
