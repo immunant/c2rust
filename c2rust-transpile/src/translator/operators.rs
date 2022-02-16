@@ -32,7 +32,7 @@ impl From<c_ast::BinOp> for BinOpKind {
             c_ast::BinOp::And => BinOpKind::And,
             c_ast::BinOp::Or => BinOpKind::Or,
 
-            _ => panic!("C BinOp {:?} is not a valid Rust BinOpKind"),
+            _ => panic!("C BinOp {:?} is not a valid Rust BinOp", op),
         }
     }
 }
