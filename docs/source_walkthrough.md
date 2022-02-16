@@ -16,9 +16,7 @@ This crate contains logic for dispatching command-line arguments to the correct 
 
 ### c2rust-ast-builder
 
-The c2rust-ast-builder crate provides an AST building abstraction on top of rustc's libsyntax. This is used for code generation both in translation and refactoring.
-
-The builder implemented in this package provides a more stable interface to AST generation that we'd get depending directly on libsyntax. Libsyntax itself is consided unstable and subject to change dramatically at each nightly release. Libsyntax provides is own AST building functionality, but it doesn't have many of the conveniences that we use in our own implementation.
+The c2rust-ast-builder crate provides an AST building abstraction on top of the syn crate. This is used for code generation both in translation and refactoring.
 
 ### c2rust-ast-exporter
 
