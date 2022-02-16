@@ -303,7 +303,7 @@ impl<'a> Translation<'a> {
                 } => {
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
                     let mut field = mk();
                     let field_attrs = attrs.iter().map(|attr| {
@@ -330,7 +330,7 @@ impl<'a> Translation<'a> {
                     let field_name = next_padding_field();
                     let ty = mk().array_ty(
                         mk().ident_ty("u8"),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
 
                     // Mark it with `#[bitfield(padding)]`
@@ -421,8 +421,8 @@ impl<'a> Translation<'a> {
                     field_name, bytes, ..
                 } => {
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -431,8 +431,8 @@ impl<'a> Translation<'a> {
                 FieldType::Padding { bytes } => {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -441,7 +441,7 @@ impl<'a> Translation<'a> {
                 FieldType::ComputedPadding { ident } => {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
                         mk().ident_expr(ident),
                     );
                     let field = mk().field(field_name, array_expr);
@@ -598,8 +598,8 @@ impl<'a> Translation<'a> {
                     field_name, bytes, ..
                 } => {
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -608,8 +608,8 @@ impl<'a> Translation<'a> {
                 FieldType::Padding { bytes } => {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
-                        mk().lit_expr(mk().int_lit(bytes.into(), LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes.into())),
                     );
                     let field = mk().field(field_name, array_expr);
 
@@ -618,7 +618,7 @@ impl<'a> Translation<'a> {
                 FieldType::ComputedPadding { ident } => {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
-                        mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed)),
+                        mk().lit_expr(mk().int_unsuffixed_lit(0)),
                         mk().ident_expr(ident),
                     );
                     let field = mk().field(field_name, array_expr);

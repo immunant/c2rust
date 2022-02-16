@@ -367,13 +367,13 @@ impl TypeConverter {
                 let ty = self.convert(ctxt, element)?;
                 Ok(mk().array_ty(
                     ty,
-                    mk().lit_expr(mk().int_lit(count as u128, LitIntType::Unsuffixed)),
+                    mk().lit_expr(mk().int_unsuffixed_lit(count as u128)),
                 ))
             }
 
             CTypeKind::IncompleteArray(element) => {
                 let ty = self.convert(ctxt, element)?;
-                let zero_lit = mk().int_lit(0, LitIntType::Unsuffixed);
+                let zero_lit = mk().int_unsuffixed_lit(0);
                 let zero = mk().lit_expr(zero_lit);
                 Ok(mk().array_ty(ty, zero))
             }
