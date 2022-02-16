@@ -11,9 +11,10 @@ use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use c2rust_ast_printer::pprust;
-use syntax::ast::{
-    self, AttrStyle, BinOpKind, Expr, ExprKind, Lit, LitIntType, LitKind, MetaItemKind,
     NestedMetaItem, StmtKind, StrStyle, StructField, Ty, TyKind,
+use syn::{
+    self, AttrStyle, BinOp as RBinOp, Expr, Meta,
+    ExprBlock, ExprAssign, ExprAssignOp, ExprBinary, ExprUnary, ExprMethodCall, ExprCast,
 };
 use syntax::ptr::P;
 use syntax::source_map::symbol::Symbol;
@@ -44,15 +45,15 @@ enum FieldType {
     },
 }
 
-fn contains_block(expr_kind: &ExprKind) -> bool {
+fn contains_block(expr_kind: &Expr) -> bool {
     match expr_kind {
-        ExprKind::Block(..) => true,
-        ExprKind::Assign(lhs, rhs) => contains_block(&lhs.kind) || contains_block(&rhs.kind),
-        ExprKind::AssignOp(_, lhs, rhs) => contains_block(&lhs.kind) || contains_block(&rhs.kind),
-        ExprKind::Binary(_, lhs, rhs) => contains_block(&lhs.kind) || contains_block(&rhs.kind),
-        ExprKind::Unary(_, e) => contains_block(&e.kind),
-        ExprKind::MethodCall(_, exprs) => exprs.iter().map(|e| contains_block(&e.kind)).any(|b| b),
-        ExprKind::Cast(e, _) => contains_block(&e.kind),
+        Expr::Block(..) => true,
+        Expr::Assign(ExprAssign {left, right, ..}) => contains_block(&left) || contains_block(&right),
+        Expr::AssignOp(ExprAssignOp {left, right, ..}) => contains_block(&left) || contains_block(&right),
+        Expr::Binary(ExprBinary {left, right, ..}) => contains_block(&left) || contains_block(&right),
+        Expr::Unary(ExprUnary {expr, ..}) => contains_block(&expr),
+        Expr::MethodCall(ExprMethodCall {args, ..}) => args.iter().map(|e| contains_block(&e)).any(|b| b),
+        Expr::Cast(ExprCast {expr, ..}) => contains_block(&expr),
         _ => false,
     }
 }
@@ -307,8 +308,8 @@ impl<'a> Translation<'a> {
                     );
                     let mut field = mk();
                     let field_attrs = attrs.iter().map(|attr| {
-                        let ty_str = match &attr.1.kind {
                             TyKind::Path(_, path) => pprust::path_to_string(path),
+                        let ty_str = match &*attr.1 {
                             _ => unreachable!("Found type other than path"),
                         };
                         let field_attr_items = vec![
@@ -706,8 +707,8 @@ impl<'a> Translation<'a> {
             // If there's just one statement we should be able to be able to fit it into one line without issue
             // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
             // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
-            match param_expr.kind {
-                ExprKind::Block(ref block, _) => {
+            match *param_expr {
+                Expr::Block(ExprBlock{ block, ..}) => {
                     let last = block.stmts.len() - 1;
 
                     for (i, stmt) in block.stmts.iter().enumerate() {
@@ -718,15 +719,15 @@ impl<'a> Translation<'a> {
                         stmts.push(stmt.clone());
                     }
 
-                    let last_expr = match block.stmts[last].kind {
-                        StmtKind::Expr(ref expr) => expr.clone(),
-                        _ => return Err(TranslationError::generic("Expected Expr StmtKind")),
+                    let last_expr = match block.stmts[last] {
+                        Stmt::Expr(ref expr) => expr.clone(),
+                        _ => return Err(TranslationError::generic("Expected Expr Stmt")),
                     };
-                    let method_call = mk().method_call_expr(lhs_expr, setter_name, vec![last_expr]);
+                    let method_call = mk().method_call_expr(lhs_expr, setter_name, vec![Box::new(last_expr)]);
 
                     stmts.push(mk().expr_stmt(method_call));
                 }
-                _ if contains_block(&param_expr.kind) => {
+                _ if contains_block(&param_expr) => {
                     let name = self.renamer.borrow_mut().pick_name("rhs");
                     let name_ident = mk().mutbl().ident_pat(name.clone());
                     let temporary_stmt =

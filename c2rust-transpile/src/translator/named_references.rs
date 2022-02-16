@@ -56,22 +56,22 @@ impl<'c> Translation<'c> {
         reference.and_then(|reference| {
             /// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
             fn is_lvalue(e: &Expr) -> bool {
-                match e.kind {
-                    ExprKind::Path(..)
-                        | ExprKind::Unary(ast::UnOp::Deref, _)
-                        | ExprKind::Field(..)
-                        | ExprKind::Index(..) => true,
+                match e {
+                    Expr::Path(..)
+                        | Expr::Unary(ExprUnary {op: syn::UnOp::Deref(_), ..})
+                        | Expr::Field(..)
+                        | Expr::Index(..) => true,
                     _ => false,
                 }
             }
 
             // Check if something is a side-effect free Rust lvalue.
             fn is_simple_lvalue(e: &Expr) -> bool {
-                match e.kind {
-                    ExprKind::Path(..) => true,
-                    ExprKind::Unary(ast::UnOp::Deref, ref e)
-                        | ExprKind::Field(ref e, _)
-                        | ExprKind::Index(ref e, _) => is_simple_lvalue(e),
+                match e {
+                    Expr::Path(..) => true,
+                    Expr::Unary(ExprUnary {op: syn::UnOp::Deref(_), ref expr, ..})
+                        | Expr::Field(ExprField {base: ref expr, ..})
+                        | Expr::Index(ExprIndex {ref expr, ..}) => is_simple_lvalue(expr),
                     _ => false,
                 }
             }
