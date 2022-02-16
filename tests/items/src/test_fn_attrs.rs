@@ -52,6 +52,6 @@ pub fn test_fn_attrs() {
 
     if cfg!(not(target_os = "macos")) {
         // aliased_fn is aliased to the inline_extern function
-        assert!(src.contains("#[no_mangle]\n    #[link_name = \"inline_extern\"]\n    fn aliased_fn();"));
+        assert!(src.contains("extern \"C\" {\n    #[link_name = \"inline_extern\"]\n    fn aliased_fn();"));
     }
 }

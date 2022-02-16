@@ -50,6 +50,6 @@ pub fn test_sectioned_used_static() {
 
         // This static is pub, but we want to ensure it has attributes applied
         assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: libc::c_int = 1 as libc::c_int;"));
-        assert!(src.contains("#[no_mangle]\n    #[link_name = \"no_attrs\"]\n    static mut rust_aliased_static: libc::c_int;"))
+        assert!(src.contains("extern \"C\" {\n    #[link_name = \"no_attrs\"]\n    static mut rust_aliased_static: libc::c_int;"))
     }
 }
