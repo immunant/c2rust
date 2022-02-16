@@ -344,7 +344,6 @@ class TestDirectory:
             "extern_types",
             "simd_ffi",
             "stdsimd",
-            "const_transmute",
             "nll",
             "linkage",
             "register_tool",
