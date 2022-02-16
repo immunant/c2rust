@@ -788,7 +788,7 @@ impl<'c> Translation<'c> {
 
                 mk().call_expr(fn_path, args)
             }
-            _ => mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)),
+            _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
         };
         let arg_type = self.ast_context[arg]
             .kind
@@ -846,7 +846,7 @@ impl<'c> Translation<'c> {
 
                         mk().call_expr(fn_path, args)
                     }
-                    _ => mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed)),
+                    _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
                 };
 
                 // *p + 1

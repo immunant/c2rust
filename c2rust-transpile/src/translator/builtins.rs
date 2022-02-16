@@ -312,7 +312,7 @@ impl<'c> Translation<'c> {
                 let count = self.convert_expr(ctx.used(), args[0])?;
                 count.and_then(|count| {
                     let alloca_name = self.renamer.borrow_mut().fresh();
-                    let zero_elem = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
+                    let zero_elem = mk().lit_expr(mk().int_unsuffixed_lit(0));
                     Ok(WithStmts::new(
                         vec![mk().local_stmt(Box::new(mk().local(
                             mk().mutbl().ident_pat(&alloca_name),

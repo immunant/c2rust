@@ -9,9 +9,9 @@ impl<'c> Translation<'c> {
     /// Generate an integer literal corresponding to the given type, value, and base.
     pub fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> Result<Box<Expr>, TranslationError> {
         let lit = match base {
-            IntBase::Dec => mk().int_lit(val.into(), LitIntType::Unsuffixed),
             IntBase::Hex => mk().float_unsuffixed_lit(format!("0x{:x}", val)),
             IntBase::Oct => mk().float_unsuffixed_lit(format!("0o{:o}", val)),
+            IntBase::Dec => mk().int_unsuffixed_lit(val.into()),
         };
 
         let target_ty = self.convert_type(ty.ctype)?;
@@ -56,10 +56,10 @@ impl<'c> Translation<'c> {
             underlying_type_id.expect("Attempt to construct value of forward declared enum");
         let value = match self.ast_context.resolve_type(underlying_type_id.ctype).kind {
             CTypeKind::UInt => {
-                mk().lit_expr(mk().int_lit((value as u32) as u128, LitIntType::Unsuffixed))
+                mk().lit_expr(mk().int_unsuffixed_lit((value as u32) as u128))
             }
             CTypeKind::ULong => {
-                mk().lit_expr(mk().int_lit((value as u64) as u128, LitIntType::Unsuffixed))
+                mk().lit_expr(mk().int_unsuffixed_lit((value as u64) as u128))
             }
             _ => signed_int_expr(value),
         };
@@ -145,7 +145,7 @@ impl<'c> Translation<'c> {
                 };
                 let u8_ty = mk().path_ty(vec!["u8"]);
                 let width_lit =
-                    mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
+                    mk().lit_expr(mk().int_unsuffixed_lit(val.len() as u128));
                 let array_ty = mk().array_ty(u8_ty, width_lit);
                 let source_ty = mk().ref_ty(array_ty);
                 let mutbl = if ty.qualifiers.is_const {

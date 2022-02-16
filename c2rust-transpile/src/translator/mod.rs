@@ -294,7 +294,6 @@ fn simple_metaitem(name: &str) -> NestedMetaItem {
 }
 
 fn int_arg_metaitem(name: &str, arg: u128) -> NestedMetaItem {
-    let lit = mk().int_lit(arg, LitIntType::Unsuffixed);
     let inner = mk().meta_item(
         vec![name],
         MetaItemKind::List(vec![
@@ -302,6 +301,7 @@ fn int_arg_metaitem(name: &str, arg: u128) -> NestedMetaItem {
         ]),
     );
     mk().nested_meta_item(NestedMetaItem::MetaItem(inner))
+    let lit = mk().int_unsuffixed_lit(arg);
 }
 
 fn cast_int(val: Box<Expr>, name: &str, need_lit_suffix: bool) -> Box<Expr> {
@@ -313,7 +313,7 @@ fn cast_int(val: Box<Expr>, name: &str, need_lit_suffix: bool) -> Box<Expr> {
         _ => None,
     };
     match opt_literal_val {
-        Some(i) if !need_lit_suffix => mk().lit_expr(mk().int_lit(i, LitIntType::Unsuffixed)),
+        Some(i) if !need_lit_suffix => mk().lit_expr(mk().int_unsuffixed_lit(i)),
         Some(i) => mk().lit_expr(mk().int_lit(i, name)),
         None => mk().cast_expr(val, mk().path_ty(vec![name])),
     }
@@ -1384,7 +1384,7 @@ impl<'c> Translation<'c> {
                     "link_section = \"__DATA,__mod_init_func\"",
                 ],
             );
-        let static_array_size = mk().lit_expr(mk().int_lit(1, LitIntType::Unsuffixed));
+        let static_array_size = mk().lit_expr(mk().int_unsuffixed_lit(1));
         let static_ty = mk().array_ty(
             mk().unsafe_().extern_("C").barefn_ty(fn_decl),
             static_array_size,
@@ -1656,7 +1656,7 @@ impl<'c> Translation<'c> {
                 let val = match value {
                     ConstIntExpr::I(value) => signed_int_expr(value),
                     ConstIntExpr::U(value) => {
-                        mk().lit_expr(mk().int_lit(value as u128, LitIntType::Unsuffixed))
+                        mk().lit_expr(mk().int_unsuffixed_lit(value as u128))
                     }
                 };
 
@@ -2751,7 +2751,7 @@ impl<'c> Translation<'c> {
             _ => return Err(TranslationError::generic("null_ptr requires a pointer")),
         };
         let ty = self.convert_type(type_id)?;
-        let mut zero = mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed));
+        let mut zero = mk().lit_expr(mk().int_unsuffixed_lit(0));
         if is_static && !pointee.qualifiers.is_const {
             let mut qtype = pointee;
             qtype.qualifiers.is_const = true;
@@ -3670,16 +3670,16 @@ impl<'c> Translation<'c> {
     pub fn convert_constant(&self, constant: ConstIntExpr) -> Result<Box<Expr>, TranslationError> {
         let expr = match constant {
             ConstIntExpr::U(n) => {
-                mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed))
+                mk().lit_expr(mk().int_unsuffixed_lit(n as u128))
             }
 
             ConstIntExpr::I(n) if n >= 0 => {
-                mk().lit_expr(mk().int_lit(n as u128, LitIntType::Unsuffixed))
+                mk().lit_expr(mk().int_unsuffixed_lit(n as u128))
             }
 
             ConstIntExpr::I(n) => mk().unary_expr(
                 syntax::ast::UnOp::Neg,
-                mk().lit_expr(mk().int_lit((-n) as u128, LitIntType::Unsuffixed)),
+                mk().lit_expr(mk().int_unsuffixed_lit((-n) as u128)),
             ),
         };
         Ok(expr)
@@ -4257,7 +4257,7 @@ impl<'c> Translation<'c> {
         if resolved_ty.is_bool() {
             Ok(WithStmts::new_val(mk().lit_expr(mk().bool_lit(false))))
         } else if resolved_ty.is_integral_type() {
-            Ok(WithStmts::new_val(mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))))
+            Ok(WithStmts::new_val(mk().lit_expr(mk().int_unsuffixed_lit(0))))
         } else if resolved_ty.is_floating_type() {
             match self.ast_context[ty_id].kind {
                 CTypeKind::LongDouble => Ok(WithStmts::new_val(mk().path_expr(vec!["f128", "f128", "ZERO"]))),
@@ -4267,7 +4267,7 @@ impl<'c> Translation<'c> {
             self.null_ptr(resolved_ty_id, is_static)
                 .map(WithStmts::new_val)
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
-            let sz = mk().lit_expr(mk().int_lit(sz as u128, LitIntType::Unsuffixed));
+            let sz = mk().lit_expr(mk().int_unsuffixed_lit(sz as u128));
             Ok(self.implicit_default_expr(elt, is_static)?
                 .map(|elt| mk().repeat_expr(elt, sz)))
         } else if let &CTypeKind::IncompleteArray(_) = resolved_ty {
@@ -4478,7 +4478,7 @@ impl<'c> Translation<'c> {
             let zero = if ty.is_floating_type() {
                 mk().lit_expr(mk().float_unsuffixed_lit("0."))
             } else {
-                mk().lit_expr(mk().int_lit(0, LitIntType::Unsuffixed))
+                mk().lit_expr(mk().int_unsuffixed_lit(0))
             };
 
             if target {
