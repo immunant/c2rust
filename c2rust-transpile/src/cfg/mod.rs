@@ -26,11 +26,8 @@ use std::io;
 use std::io::Write;
 use std::ops::Deref;
 use std::ops::Index;
-use syntax;
-use syntax::ast::{Arm, Expr, ExprKind, Lit, LitIntType, LitKind, Pat, Stmt, StmtKind};
-use syntax::print::pprust;
-use syntax::ptr::P;
 use syntax_pos::{DUMMY_SP, Span};
+use syn::{Arm, Expr, Pat, Stmt, spanned::Spanned};
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -1768,8 +1765,8 @@ impl CfgBuilder {
                                 .convert_expr(ctx.used(), resolved.0)?
                                 .to_pure_expr()
                             {
-                                Some(expr) => match expr.kind {
-                                    ExprKind::Lit(..) | ExprKind::Path(..) => Some(expr),
+                                Some(expr) => match *expr {
+                                    Expr::Lit(..) | Expr::Path(..) => Some(expr),
                                     _ => None,
                                 }
                                 _ => None,
