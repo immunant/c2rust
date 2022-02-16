@@ -172,17 +172,21 @@ class Config:
         # update dependent variables
         self._init_llvm_ver_deps()
 
-        self.TRANSPILER = "target/{}/c2rust-transpile".format(build_type)
-        self.TRANSPILER = os.path.join(self.ROOT_DIR, self.TRANSPILER)
+        env_target_dir = os.getenv('CARGO_TARGET_DIR')
+        self.TARGET_DIR = "{}/".format(build_type)
+        if env_target_dir:
+            self.TARGET_DIR = os.path.join(env_target_dir, self.TARGET_DIR)
+        else:
+            self.TARGET_DIR = os.path.join(self.ROOT_DIR, "target", self.TARGET_DIR)
 
-        self.RREF_BIN = "target/{}/c2rust-refactor".format(build_type)
-        self.RREF_BIN = os.path.join(self.ROOT_DIR, self.RREF_BIN)
+        self.TRANSPILER = "c2rust-transpile"
+        self.TRANSPILER = os.path.join(self.TARGET_DIR, self.TRANSPILER)
 
-        self.C2RUST_BIN = "target/{}/c2rust".format(build_type)
-        self.C2RUST_BIN = os.path.join(self.ROOT_DIR, self.C2RUST_BIN)
+        self.RREF_BIN = "c2rust-refactor"
+        self.RREF_BIN = os.path.join(self.TARGET_DIR, self.RREF_BIN)
 
-        self.TARGET_DIR = "target/{}/".format(build_type)
-        self.TARGET_DIR = os.path.join(self.ROOT_DIR, self.TARGET_DIR)
+        self.C2RUST_BIN = "c2rust"
+        self.C2RUST_BIN = os.path.join(self.TARGET_DIR, self.C2RUST_BIN)
 
         has_skip_sig = args and hasattr(args, 'llvm_skip_signature_checks') 
         self.LLVM_SKIP_SIGNATURE_CHECKS = args.llvm_skip_signature_checks \
