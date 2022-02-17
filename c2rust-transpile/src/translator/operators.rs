@@ -947,7 +947,7 @@ impl<'c> Translation<'c> {
                             // so we work around that by using & and an extra cast
                             // through & to *const to *mut
                             addr_of_arg = mk().addr_of_expr(a);
-                            if mutbl == Mutability::Mutable {
+                            if let Mutability::Mutable = mutbl {
                                 let mut qtype = pointee_ty;
                                 qtype.qualifiers.is_const = true;
                                 let ty_ = self
