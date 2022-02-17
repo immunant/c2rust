@@ -2,6 +2,8 @@
 //! This module provides basic support for converting inline assembly statements.
 
 use super::*;
+use proc_macro2::{TokenStream, TokenTree};
+use syn::__private::ToTokens;
 
 impl<'c> Translation<'c> {
     /// Convert an inline-assembly statement into one or more Rust statements.
@@ -60,7 +62,7 @@ impl<'c> Translation<'c> {
         let mut operand_renames = HashMap::new();
         for &(list, is_output) in &[(outputs, true), (inputs, false)] {
             first = true;
-            tokens.push(TokenTree::token(token::Colon, DUMMY_SP)); // Always emitted, even if list is empty
+            tokens.push(TokenTree::Punct(Punct::new(',', Alone))); // Always emitted, even if list is empty
 
             for (operand_idx, &AsmOperand {
                 ref constraints,
@@ -70,7 +72,7 @@ impl<'c> Translation<'c> {
                 if first {
                     first = false
                 } else {
-                    tokens.push(TokenTree::token(token::Comma, DUMMY_SP))
+                    tokens.push(TokenTree::Punct(Punct::new(',', Alone)))
                 }
 
                 let mut result = self.convert_expr(ctx.used(), expression)?;
@@ -164,19 +166,19 @@ impl<'c> Translation<'c> {
 
         // Clobbers
         first = true;
-        tokens.push(TokenTree::token(token::Colon, DUMMY_SP));
+        tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
         for clobber in clobbers {
             if first {
                 first = false
             } else {
-                tokens.push(TokenTree::token(token::Comma, DUMMY_SP))
+                tokens.push(TokenTree::Punct(Punct::new(',', Alone)))
             }
             push_expr(&mut tokens, mk().lit_expr(clobber));
         }
 
         // Options
         if is_volatile {
-            tokens.push(TokenTree::token(token::Colon, DUMMY_SP));
+            tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
             push_expr(&mut tokens, mk().lit_expr("volatile"));
         }
 
