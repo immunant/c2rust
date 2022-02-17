@@ -106,7 +106,20 @@ pub trait StructuredStatement: Sized {
     fn extend_span(&mut self, span: Span);
 }
 
+#[derive(Debug, Clone)]
+pub struct Spanned<T> {
+    pub node: T,
+    pub span: Span,
+}
+
 pub type StructuredAST<E, P, L, S> = Spanned<StructuredASTKind<E, P, L, S>>;
+
+fn dummy_spanned<T>(inner: T) -> Spanned<T> {
+    Spanned {
+        node: inner,
+        span: Span::dummy(),
+    }
+}
 
 /// Defunctionalized version of `StructuredStatement` trait
 #[allow(missing_docs)]
