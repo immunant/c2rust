@@ -66,8 +66,8 @@ pub enum Label {
 impl Label {
     pub fn pretty_print(&self) -> String {
         match self {
-            &Label::FromC(CStmtId(label_id)) => format!("'c_{}", label_id),
-            &Label::Synthetic(syn_id) => format!("'s_{}", syn_id),
+            &Label::FromC(CStmtId(label_id)) => format!("c_{}", label_id),
+            &Label::Synthetic(syn_id) => format!("s_{}", syn_id),
         }
     }
 
