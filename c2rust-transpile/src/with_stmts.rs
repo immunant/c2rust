@@ -130,8 +130,8 @@ impl WithStmts<Box<Expr>> {
         self.to_pure_expr()
             .map(|expr| {
                 if is_unsafe {
-                    mk().block_expr(
-                        mk().unsafe_().block(
+                    mk().unsafe_block_expr(
+                        mk().unsafe_block(
                             vec![mk().expr_stmt(expr)]
                         )
                     )
