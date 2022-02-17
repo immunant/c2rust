@@ -606,7 +606,7 @@ impl<'c> Translation<'c> {
                     vec![mk().semi_stmt(mk().mac_expr(mk().mac(
                         vec!["unreachable"],
                         vec![],
-                        MacDelimiter::Parenthesis,
+                        MacroDelimiter::Paren(Default::default()),
                     )))],
                     self.panic_or_err("unreachable stub"),
                 ))
