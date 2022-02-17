@@ -736,12 +736,7 @@ impl<'c> Translation<'c> {
                     "Cannot use wrapping offset from in a const expression",
                 ));
             }
-            // The wrapping_offset_from method is locked behind a feature gate
-            // and replaces the now deprecated offset_to (opposite argument order)
-            // wrapping_offset_from panics when the pointee is a ZST
-            self.use_feature("ptr_wrapping_offset_from");
-
-            let mut offset = mk().method_call_expr(lhs, "wrapping_offset_from", vec![rhs]);
+            let mut offset = mk().method_call_expr(lhs, "offset_from", vec![rhs]);
 
             if let Some(sz) = self.compute_size_of_expr(pointee.ctype) {
                 let div = cast_int(sz, "isize", false);
