@@ -1359,13 +1359,14 @@ impl<'c> Translation<'c> {
             .renamer
             .borrow_mut()
             .pick_name("run_static_initializers");
-        let fn_ty = FunctionRetTy::Default(DUMMY_SP);
-        let fn_decl = mk().fn_decl(vec![], fn_ty);
+        let fn_ty = ReturnType::Default;
+        let fn_decl = mk().fn_decl(fn_name.clone(), vec![], None, fn_ty.clone());
+        let fn_bare_decl = Box::new((vec![], None, fn_ty));
         let fn_block = mk().block(sectioned_static_initializers);
         let fn_item = mk()
             .unsafe_()
             .extern_("C")
-            .fn_item(&fn_name, fn_decl.clone(), fn_block);
+            .fn_item(fn_decl.clone(), fn_block);
 
         let static_attributes = mk()
             .single_attr("used")
@@ -1386,7 +1387,7 @@ impl<'c> Translation<'c> {
             );
         let static_array_size = mk().lit_expr(mk().int_unsuffixed_lit(1));
         let static_ty = mk().array_ty(
-            mk().unsafe_().extern_("C").barefn_ty(fn_decl),
+            mk().unsafe_().extern_("C").barefn_ty(fn_bare_decl),
             static_array_size,
         );
         let static_val = mk().array_expr(vec![mk().path_expr(vec![fn_name])]);
@@ -2100,7 +2101,7 @@ impl<'c> Translation<'c> {
                 FunctionRetTy::Ty(ret)
             };
 
-            let decl = mk().fn_decl(args, ret);
+            let decl = mk().fn_decl(new_name, args, is_variadic.then(|| mk().variadic_arg(vec![])), ret);
 
             if let Some(body) = body {
                 // Translating an actual function
@@ -2187,7 +2188,7 @@ impl<'c> Translation<'c> {
                 }
 
                 Ok(ConvertedDecl::Item(
-                    mk_.span(span).unsafe_().fn_item(new_name, decl, block),
+                    mk_.span(span).unsafe_().fn_item(decl, block),
                 ))
             } else {
                 // Translating an extern function declaration
@@ -2208,7 +2209,7 @@ impl<'c> Translation<'c> {
                     };
                 }
 
-                let function_decl = mk_.fn_foreign_item(new_name, decl);
+                let function_decl = mk_.fn_foreign_item(decl);
 
                 Ok(ConvertedDecl::ForeignItem(function_decl))
             }
@@ -3498,18 +3499,13 @@ impl<'c> Translation<'c> {
                                 _ => FunctionRetTy::Ty(ret_ty),
                             let ret_ty = match *ret_ty {
                             };
-                            mk().barefn_ty(
-                                mk().fn_decl(
-                                    vec![
-                                        mk().arg(
-                                            mk().infer_ty(),
-                                            mk().wild_pat(),
-                                        );
-                                        args.len()
-                                    ],
-                                    ret_ty,
-                                )
-                            )
+                            let bare_ty : (Vec<BareFnArg>, Option<Variadic>, ReturnType) = (
+                                vec![mk().bare_arg(mk().infer_ty(), None::<Box<Ident>>); args.len()],
+                                None,
+                                ret_ty
+                            );
+                            let bare_ty = Box::new(bare_ty);
+                            mk().barefn_ty(bare_ty)
                         };
                         match fn_ty {
                             Some(CTypeKind::Function(ret_ty, _, _, _, false)) => {
