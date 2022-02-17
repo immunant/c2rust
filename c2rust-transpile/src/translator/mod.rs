@@ -894,6 +894,63 @@ pub fn translate(
     })
 }
 
+fn item_ident(i: &Item) -> Option<&Ident> {
+    Some(match i {
+        Item::Const(ic) => &ic.ident,
+        Item::Enum(ie) => &ie.ident,
+        Item::ExternCrate(iec) => &iec.ident,
+        Item::Fn(ifn) => &ifn.sig.ident,
+        Item::ForeignMod(_ifm) => return None,
+        Item::Impl(_ii) => return None,
+        Item::Macro(im) => return im.ident.as_ref(),
+        Item::Macro2(im2) => &im2.ident,
+        Item::Mod(im) => &im.ident,
+        Item::Static(is) => &is.ident,
+        Item::Struct(is) => &is.ident,
+        Item::Trait(it) => &it.ident,
+        Item::TraitAlias(ita) => &ita.ident,
+        Item::Type(it) => &it.ident,
+        Item::Union(iu) => &iu.ident,
+        Item::Use(ItemUse {tree: _, ..}) => unimplemented!(),
+        Item::Verbatim(_tokenstream) => {warn!("cannot determine name of tokenstream item"); return None},
+        _ => {warn!("cannot determine name of unknown item kind"); return None},
+    })
+}
+
+fn item_vis(i: &Item) -> Option<Visibility> {
+    Some(match i {
+        Item::Const(ic) => &ic.vis,
+        Item::Enum(ie) => &ie.vis,
+        Item::ExternCrate(iec) => &iec.vis,
+        Item::Fn(ifn) => &ifn.vis,
+        Item::ForeignMod(_ifm) => return None,
+        Item::Impl(_ii) => return None,
+        Item::Macro(_im) => return None,
+        Item::Macro2(im2) => &im2.vis,
+        Item::Mod(im) => &im.vis,
+        Item::Static(is) => &is.vis,
+        Item::Struct(is) => &is.vis,
+        Item::Trait(it) => &it.vis,
+        Item::TraitAlias(ita) => &ita.vis,
+        Item::Type(it) => &it.vis,
+        Item::Union(iu) => &iu.vis,
+        Item::Use(ItemUse {vis, ..}) => vis,
+        Item::Verbatim(_tokenstream) => {warn!("cannot determine visibility of tokenstream item"); return None},
+        _ => {warn!("cannot determine visibility of unknown item kind"); return None},
+    }.clone())
+}
+
+fn foreign_item_ident_vis(fi: &ForeignItem) -> Option<(&Ident, Visibility)> {
+    Some(match fi {
+        ForeignItem::Fn(ifn) => (&ifn.sig.ident, ifn.vis.clone()),
+        ForeignItem::Static(is) => (&is.ident, is.vis.clone()),
+        ForeignItem::Type(it) => (&it.ident, it.vis.clone()),
+        ForeignItem::Macro(_im) => return None,
+        ForeignItem::Verbatim(_tokenstream) => {warn!("cannot determine name and visibility of tokenstream foreign item"); return None},
+        _ => {warn!("cannot determine name and visibility of unknown foreign item kind"); return None},
+    })
+}
+
 fn make_submodule(
     ast_context: &TypedAstContext,
     item_store: &mut ItemStore,
@@ -907,19 +964,26 @@ fn make_submodule(
     let mod_name = clean_path(mod_names, file_path);
 
     for item in items.iter() {
-        let ident_name = item.ident.name.as_str();
+        let ident_name = match item_ident(item) {
+            Some(i) => i.to_string(),
+            None => continue,
+        };
         let use_path = vec!["self".into(), mod_name.clone()];
 
-        let vis = match item.vis.node {
-            VisibilityKind::Public => mk().pub_(),
-            _ => mk(),
+        let vis = match item_vis(item) {
+            Some(Visibility::Public(_)) => mk().pub_(),
+            Some(_) => mk(),
+            None => continue,
         };
 
         use_item_store.add_use_with_attr(use_path, &ident_name, vis);
     }
 
     for foreign_item in foreign_items.iter() {
-        let ident_name = foreign_item.ident.name.as_str();
+        let ident_name = match foreign_item_ident_vis(foreign_item) {
+            Some((ident, _vis)) => ident.to_string(),
+            None => continue,
+        };
         let use_path = vec!["self".into(), mod_name.clone()];
 
         use_item_store.add_use(use_path, &ident_name);
@@ -1004,6 +1068,42 @@ fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
             loc_str.into_symbol(),
         )));
     }
+}
+
+/// Get a mutable reference to the attributes of a ForeignItem
+fn foreign_item_attrs(item: &mut ForeignItem) -> Option<&mut Vec<syn::Attribute>> {
+    Some(match item {
+        ForeignItem::Fn(ForeignItemFn {ref mut attrs, ..}) => attrs,
+        ForeignItem::Static(ForeignItemStatic {ref mut attrs, ..}) => attrs,
+        ForeignItem::Type(ForeignItemType {ref mut attrs, ..}) => attrs,
+        ForeignItem::Macro(ForeignItemMacro {ref mut attrs, ..}) => attrs,
+        ForeignItem::Verbatim(TokenStream {..}) => return None,
+        _ => return None,
+    })
+}
+
+/// Get a mutable reference to the attributes of an Item
+fn item_attrs(item: &mut Item) -> Option<&mut Vec<syn::Attribute>> {
+    Some(match item {
+        Item::Const(ItemConst {ref mut attrs, ..}) => attrs,
+        Item::Enum(ItemEnum {ref mut attrs, ..}) => attrs,
+        Item::ExternCrate(ItemExternCrate {ref mut attrs, ..}) => attrs,
+        Item::Fn(ItemFn {ref mut attrs, ..}) => attrs,
+        Item::ForeignMod(ItemForeignMod {ref mut attrs, ..}) => attrs,
+        Item::Impl(ItemImpl {ref mut attrs, ..}) => attrs,
+        Item::Macro(ItemMacro {ref mut attrs, ..}) => attrs,
+        Item::Macro2(ItemMacro2 {ref mut attrs, ..}) => attrs,
+        Item::Mod(ItemMod {ref mut attrs, ..}) => attrs,
+        Item::Static(ItemStatic {ref mut attrs, ..}) => attrs,
+        Item::Struct(ItemStruct {ref mut attrs, ..}) => attrs,
+        Item::Trait(ItemTrait {ref mut attrs, ..}) => attrs,
+        Item::TraitAlias(ItemTraitAlias {ref mut attrs, ..}) => attrs,
+        Item::Type(ItemType {ref mut attrs, ..}) => attrs,
+        Item::Union(ItemUnion {ref mut attrs, ..}) => attrs,
+        Item::Use(ItemUse {ref mut attrs, ..}) => attrs,
+        Item::Verbatim(TokenStream {..}) => return None,
+        _ => return None,
+    })
 }
 
 /// This represents all of the ways a C expression can be used in a C program. Making this
@@ -4490,7 +4590,8 @@ impl<'c> Translation<'c> {
         let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
-            add_src_loc_attr(&mut item.attrs, &decl.loc.as_ref().map(|x| x.begin()));
+            let attrs = item_attrs(&mut item).expect("no attrs field on unexpected item variant");
+            add_src_loc_attr(attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut item_stores = self.items.borrow_mut();
             let items = item_stores
                 .entry(decl_file_id.unwrap())
@@ -4508,7 +4609,8 @@ impl<'c> Translation<'c> {
         let decl_file_id = self.ast_context.file_id(decl);
 
         if self.tcfg.reorganize_definitions {
-            add_src_loc_attr(&mut item.attrs, &decl.loc.as_ref().map(|x| x.begin()));
+            let attrs = foreign_item_attrs(&mut item).expect("no attrs field on unexpected foreign item variant");
+            add_src_loc_attr(attrs, &decl.loc.as_ref().map(|x| x.begin()));
             let mut items = self.items.borrow_mut();
             let mod_block_items = items
                 .entry(decl_file_id.unwrap())
