@@ -33,11 +33,6 @@ pub fn structured_cfg(
                     Expr::Return(ExprReturn { expr: None, .. }) => {
                         stmts.pop();
                     }
-                    // TODO: why does libsyntax print a ';' after this even if it is 'Expr' and not 'Semi'
-                    //                ExprKind::Ret(Some(ref e)) => {
-                    //                    stmts.pop();
-                    //                    stmts.push(mk().expr_stmt(e));
-                    //                }
                     _ => {}
                 }
             }

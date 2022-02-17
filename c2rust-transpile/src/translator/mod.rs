@@ -1061,10 +1061,10 @@ fn bool_to_int(val: Box<Expr>) -> Box<Expr> {
 fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
     if let Some(src_loc) = src_loc.as_ref() {
         let loc_str = format!("{}:{}", src_loc.line, src_loc.column);
-        attrs.push(attr::mk_attr_outer(mk().meta_item(
-            vec!["c2rust", "src_loc"],
-            loc_str.into_symbol(),
-        )));
+        let meta = mk().meta_namevalue(vec!["c2rust", "src_loc"], loc_str);
+        let prepared = mk().prepare_meta(meta);
+        let attr = mk().attribute(AttrStyle::Outer, prepared.path, prepared.tokens);
+        attrs.push(attr);
     }
 }
 
