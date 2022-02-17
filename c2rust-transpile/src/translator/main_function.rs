@@ -25,13 +25,14 @@ impl<'c> Translation<'c> {
                 ))?,
             };
 
-            let decl = mk().fn_decl(vec![], FunctionRetTy::Default(DUMMY_SP));
-
             let main_fn_name = self
                 .renamer
                 .borrow()
                 .get(&main_id)
                 .expect("Could not find main function in renamer");
+
+            let decl = mk().fn_decl(&main_fn_name, vec![], None, ReturnType::Default);
+
             let main_fn = mk().path_expr(vec![main_fn_name]);
 
             let exit_fn = mk().abs_path_expr(vec!["std", "process", "exit"]);
@@ -232,7 +233,7 @@ impl<'c> Translation<'c> {
             let block = mk().block(stmts);
             let main_attributes = mk().single_attr("main");
             self.use_feature("main");
-            Ok(main_attributes.pub_().fn_item("main", decl, block))
+            Ok(main_attributes.pub_().fn_item(decl, block))
         } else {
             Err(TranslationError::generic(
                 "Cannot translate non-function main entry point",

@@ -241,20 +241,19 @@ impl TypeConverter {
     ) -> Result<Box<Type>, TranslationError> {
         let barefn_inputs = params
             .iter()
-            .map(|x| mk().arg(self.convert(ctxt, x.ctype).unwrap(), mk().wild_pat()))
-            .collect::<Vec<_>>();
+            .map(|x| mk().bare_arg(self.convert(ctxt, x.ctype).unwrap(), None::<Box<Ident>>))
+            .collect::<Vec<BareFnArg>>();
 
         let output = match ret {
             None => mk().never_ty(),
             Some(ret) => self.convert(ctxt, ret.ctype)?,
         };
 
-        if is_variadic {
-            // For variadic functions, we need to add `_: ...` as an explicit argument
-            inputs.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
-        };
+        let variadic = is_variadic.then(||
+            mk().variadic_arg(vec![])
+        );
 
-        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output));
+        let fn_ty = Box::new((barefn_inputs, variadic, ReturnType::Type(Default::default(), output)));
         return Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty));
     }
 
