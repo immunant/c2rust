@@ -1207,7 +1207,7 @@ impl<'c> Translation<'c> {
     {
         let mut item_stores = self.items.borrow_mut();
         let item_store = item_stores
-            .entry(self.cur_file())
+            .entry(Self::cur_file(&self))
             .or_insert_with(ItemStore::new);
         f(item_store)
     }
