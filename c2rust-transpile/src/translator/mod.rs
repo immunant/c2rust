@@ -3302,7 +3302,8 @@ impl<'c> Translation<'c> {
                             format_err!("Expected Variable offsetof to be a side-effect free")
                         })?;
                     let expr = mk().cast_expr(expr, mk().ident_ty("usize"));
-                    let index_expr = Nonterminal::NtExpr(expr);
+                    use syn::__private::ToTokens;
+                    let index_expr = expr.to_token_stream();
 
                     // offset_of!(Struct, field[expr as usize]) as ty
                     let macro_body = vec![
