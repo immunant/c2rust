@@ -2752,7 +2752,6 @@ impl<'c> Translation<'c> {
         if is_static && !pointee.qualifiers.is_const {
             let mut qtype = pointee;
             qtype.qualifiers.is_const = true;
-            self.use_feature("const_raw_ptr_to_usize_cast");
             let ty_ = self
                 .type_converter
                 .borrow_mut()
