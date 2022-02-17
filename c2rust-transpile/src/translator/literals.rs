@@ -72,7 +72,7 @@ impl<'c> Translation<'c> {
     /// Convert a C literal expression to a Rust expression
     pub fn convert_literal(
         &self,
-        ctx: ExprContext,
+        _ctx: ExprContext,
         ty: CQualTypeId,
         kind: &CLiteral,
     ) -> Result<WithStmts<P<Expr>>, TranslationError> {
