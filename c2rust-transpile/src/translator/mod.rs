@@ -279,21 +279,24 @@ pub struct Translation<'c> {
     cur_file: RefCell<Option<FileId>>,
 }
 
-fn simple_metaitem(name: &str) -> NestedMetaItem {
-    let meta_item = mk().meta_item(vec![name], MetaItemKind::Word);
+fn simple_metaitem(name: &str) -> NestedMeta {
+    let meta_item = mk().meta_path(name);
 
-    mk().nested_meta_item(NestedMetaItem::MetaItem(meta_item))
+    mk().nested_meta_item(NestedMeta::Meta(meta_item))
 }
 
-fn int_arg_metaitem(name: &str, arg: u128) -> NestedMetaItem {
-    let inner = mk().meta_item(
-        vec![name],
-        MetaItemKind::List(vec![
-            mk().nested_meta_item(NestedMetaItem::Literal(lit))
-        ]),
-    );
-    mk().nested_meta_item(NestedMetaItem::MetaItem(inner))
+fn int_arg_metaitem(name: &str, arg: u128) -> NestedMeta {
     let lit = mk().int_unsuffixed_lit(arg);
+    use std::iter::FromIterator;
+    let inner =
+        Meta::List(MetaList {
+            path: mk().path(name),
+            paren_token: Default::default(),
+            nested: FromIterator::from_iter(vec![
+                mk().nested_meta_item(NestedMeta::Lit(lit))
+            ].into_iter()),
+    });
+    NestedMeta::Meta(inner)
 }
 
 fn cast_int(val: Box<Expr>, name: &str, need_lit_suffix: bool) -> Box<Expr> {
@@ -957,11 +960,11 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
             values.sort();
             let value_attr_vec = values
                 .into_iter()
-                .map(|value| mk().nested_meta_item(mk().meta_item(vec![value], MetaItemKind::Word)))
+                .map(|value| mk().nested_meta_item(mk().meta_path(value)))
                 .collect::<Vec<_>>();
-            let item = mk().meta_item(vec![key], MetaItemKind::List(value_attr_vec));
-            for attr in mk().meta_item_attr(AttrStyle::Inner, item).as_inner_attrs() {
-                s.print_attribute(&attr);
+            let item = mk().meta_list(vec![key], value_attr_vec);
+            for attr in mk().meta_item_attr(AttrStyle::Inner(Default::default()), item).as_inner_attrs() {
+                out_attrs.push(attr);
             }
         }
 
@@ -1502,7 +1505,7 @@ impl<'c> Translation<'c> {
                     assert!(self.ast_context.has_inner_struct_decl(decl_id));
                     let inner_name = self.resolve_decl_inner_name(decl_id);
                     let inner_ty = mk().path_ty(vec![inner_name.clone()]);
-                    let inner_repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
+                    let inner_repr_attr = mk().meta_list("repr", reprs);
                     let inner_struct = mk().span(s)
                         .pub_()
                         .call_attr("derive", derives)
@@ -1516,7 +1519,7 @@ impl<'c> Translation<'c> {
                         int_arg_metaitem("align", alignment as u128),
                         // TODO: copy others from `reprs` above
                     ];
-                    let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(outer_reprs));
+                    let repr_attr = mk().meta_list("repr", outer_reprs);
                     let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
                     let outer_struct = mk().span(s)
                         .pub_()
@@ -1542,7 +1545,7 @@ impl<'c> Translation<'c> {
                     Ok(ConvertedDecl::Items(structs))
                 } else {
                     assert!(!self.ast_context.has_inner_struct_decl(decl_id));
-                    let repr_attr = mk().meta_item(vec!["repr"], MetaItemKind::List(reprs));
+                    let repr_attr = mk().meta_list("repr", reprs);
                     Ok(ConvertedDecl::Item(
                         mk().span(s)
                             .pub_()
