@@ -6,7 +6,7 @@ use std::ffi::OsStr;
 use std::process::{exit, Command};
 
 fn main() {
-    let subcommand_yamls = [load_yaml!("transpile.yaml"), load_yaml!("refactor.yaml")];
+    let subcommand_yamls = [load_yaml!("transpile.yaml")];
     let matches = App::new("C2Rust")
         .version(crate_version!())
         .author(crate_authors!(", "))
