@@ -807,14 +807,14 @@ pub fn translate(
                     &t.mod_names,
                 );
                 let comments = t.comment_context.get_remaining_comments(*file_id);
-                submodule.span = match t
+                submodule.set_span(match t
                     .comment_store
                     .borrow_mut()
                     .add_comments(&comments)
                 {
-                    Some(pos) => submodule.span.with_hi(pos),
-                    None => submodule.span,
-                };
+                    Some(pos) => submodule.span().with_hi(pos),
+                    None => submodule.span(),
+                });
                 mod_items.push(submodule);
             }
         }
@@ -2228,7 +2228,7 @@ impl<'c> Translation<'c> {
                 body_stmts.append(&mut self.convert_function_body(ctx, name, body_ids, ret)?);
                 let mut block = stmts_block(body_stmts);
                 if let Some(span) = self.get_span(SomeId::Stmt(body)) {
-                    block.span = span;
+                    block.set_span(span);
                 }
 
                 // Only add linkage attributes if the function is `extern`

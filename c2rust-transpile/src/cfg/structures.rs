@@ -4,7 +4,7 @@ use super::*;
 use syn::{ExprReturn, ExprIf, ExprBreak, ExprUnary, Stmt, spanned::Spanned as _};
 use std::result::Result;
 
-use crate::rust_ast::comment_store;
+use crate::rust_ast::{comment_store, BytePos, SpanExt, set_span::SetSpan};
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
@@ -431,8 +431,8 @@ impl StructureState {
             Empty => return (vec![], ast.span),
 
             Singleton(mut s) => {
-                let span = s.span.substitute_dummy(ast.span);
-                s.span = span;
+                let span = s.span().substitute_dummy(ast.span);
+                s.set_span(span);
                 return (vec![s], span);
             }
 
@@ -449,13 +449,13 @@ impl StructureState {
                 // Adjust the first and last elements of the block if this AST
                 // node has a span.
                 if let Some(stmt) = stmts.first_mut() {
-                    stmt.span = span_subst_lo(stmt.span, span).unwrap_or_else(|| {
-                        comment_store.move_comments(stmt.span.lo(), span.lo());
-                        stmt.span.with_lo(span.lo())
-                    });
+                    stmt.set_span(span_subst_lo(stmt.span(), span).unwrap_or_else(|| {
+                        comment_store.move_comments(stmt.span().lo(), span.lo());
+                        stmt.span().with_lo(span.lo())
+                    }));
                 }
                 if let Some(stmt) = stmts.last_mut() {
-                    stmt.span = span_subst_hi(stmt.span, span).unwrap_or(stmt.span);
+                    stmt.set_span(span_subst_hi(stmt.span(), span).unwrap_or(stmt.span()));
                 }
                 return (stmts, span);
             }
@@ -473,13 +473,13 @@ impl StructureState {
                 // Adjust the first and last elements of the block if this AST
                 // node has a span.
                 if let Some(stmt) = stmts.first_mut() {
-                    stmt.span = span_subst_lo(stmt.span, span).unwrap_or_else(|| {
-                        comment_store.move_comments(stmt.span.lo(), span.lo());
-                        stmt.span.with_lo(span.lo())
-                    });
+                    stmt.set_span(span_subst_lo(stmt.span(), span).unwrap_or_else(|| {
+                        comment_store.move_comments(stmt.span().lo(), span.lo());
+                        stmt.span().with_lo(span.lo())
+                    }));
                 }
                 if let Some(stmt) = stmts.last_mut() {
-                    stmt.span = span_subst_hi(stmt.span, span).unwrap_or(stmt.span);
+                    stmt.set_span(span_subst_hi(stmt.span(), span).unwrap_or(stmt.span()));
                 }
                 return (stmts, span);
             }
@@ -550,19 +550,19 @@ impl StructureState {
                             }
                         }
 
-                        // Do the else statemtents contain a single If, IfLet or
+                        // Do the else statements contain a single If, IfLet or
                         // Block expression? The pretty printer handles only
                         // these kinds of expressions for the else case.
                         let is_els_expr = els_stmts.len() == 1 && is_expr(&els_stmts[0]);
 
                         let els_branch = if is_els_expr {
                             let stmt_expr = els_stmts.swap_remove(0);
-                            let stmt_expr_span = stmt_expr.span;
+                            let stmt_expr_span = stmt_expr.span();
                             let mut els_expr = match stmt_expr {
                                 Stmt::Expr(e) => e,
                                 _ => panic!("is_els_expr out of sync"),
                             };
-                            els_expr.span = stmt_expr_span;
+                            els_expr.set_span(stmt_expr_span);
                             Box::new(els_expr)
                         } else {
                             mk().block_expr(mk().span(els_span).block(els_stmts))
@@ -573,7 +573,7 @@ impl StructureState {
                     }
                 };
 
-                if_stmt.span = span;
+                if_stmt.set_span(span);
                 if_stmt
             }
 

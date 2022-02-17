@@ -25,10 +25,14 @@
 //!
 //! Comments cannot currently be attached before the close of a Block, or after all Items in a File.
 
-use crate::rust_ast::{pos_to_span, traverse};
+use crate::rust_ast::{pos_to_span, traverse, SpanExt, DUMMY_SP, BytePos, set_span::SetSpan};
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use std::collections::BTreeMap;
+use std::default::Default;
+use syn::spanned::Spanned as _;
+use syn::__private::ToTokens;
+use proc_macro2::{Span, TokenStream};
 use syn::*;
 use c2rust_ast_printer::pprust::comments;
 
@@ -216,12 +220,12 @@ impl CommentTraverser {
 macro_rules! reinsert_and_traverse {
     ($fn:ident, $ty:ty, $traverse:path) => {
         fn $fn(&mut self, mut x: $ty) -> $ty {
-            let orig = x.span.data();
-            x.span = pos_to_span(self.reinsert_comment_at(orig.lo).unwrap_or(BytePos(0)));
+            let (lo, hi) = x.span().inner();
+            x.set_span(pos_to_span(self.reinsert_comment_at(BytePos(lo)).unwrap_or(BytePos(0))));
             x = $traverse(self, x);
-            if orig.lo != orig.hi {
-                if let Some(new_hi) = self.reinsert_comment_at(orig.hi) {
-                    x.span = x.span.with_hi(new_hi);
+            if lo != hi {
+                if let Some(new_hi) = self.reinsert_comment_at(BytePos(hi)) {
+                    x.set_span(x.span().with_hi(new_hi));
                 }
             }
             x
@@ -240,7 +244,7 @@ impl traverse::Traversal for CommentTraverser {
     reinsert_and_traverse!(traverse_item, Item, traverse::traverse_item_def);
 
     fn traverse_foreign_item(&mut self, mut i: ForeignItem) -> ForeignItem {
-        i.span = pos_to_span(self.reinsert_comment_at(i.span.lo()).unwrap_or(BytePos(0)));
+        i.set_span(pos_to_span(self.reinsert_comment_at(i.span().lo()).unwrap_or(BytePos(0))));
         i
     }
 }
