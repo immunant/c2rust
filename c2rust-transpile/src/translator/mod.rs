@@ -852,10 +852,8 @@ pub fn translate(
         // print trailing comments after exprs/stmts/etc. on the same line. The
         // SourceMap will think that all Spans are invalid, but will return line
         // 0 for all of them.
-        let sm = SourceMap::new(FilePathMapping::empty());
-        sm.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
-        let comments = Comments::new(&sm, reordered_comment_store.into_comments());
+        let comments = Comments::new(reordered_comment_store.into_comments());
 
         // pass all converted items to the Rust pretty printer
         let translation = pprust::to_string_with_comments(comments, |s| {
@@ -881,7 +879,7 @@ pub fn translate(
             // Add the items accumulated
             all_items.extend(items);
 
-            s.print_remaining_comments();
+            //s.print_remaining_comments();
             s.file(&syn::File {shebang: None, attrs, items: all_items.into_iter().map(|x| *x).collect()});
         });
         (translation, pragmas, crates)
