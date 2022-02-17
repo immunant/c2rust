@@ -1,30 +1,12 @@
 //! This module handles accumulating / re-arranging comments for the Rust AST.
 //!
-//! The only way we have found to have comments inserted into the pretty-printed Rust output is via
-//! a comment vector. The Rust pretty-printer accepts a vector of comments and, before printing
-//! any AST node, it dumps out the prefix of comments whose position is less than the span of the
-//! AST node.
-//!
-//! The logic for creating/storing a comment vector is in `CommentStore`. For example, if you want
-//! to add a comment to a match arm:
+//! Comments are stored as attributes on the AST node immediately following the comment.
 //!
 //! ```rust
-//!   let sp: Span = cmmt_store.add_comment_lines(vec!["Some comment on an arm"]);
-//!   let arm = mk().span(sp).arm(pats, None, body);
-//!   ...
-//! ```
-//!
-//! Right before printing the output, it is a good idea to use the `CommentTraverser` to make sure
-//! that the comment vector is in the right order. That just means doing something like this:
-//!
-//! ```rust
-//!   let trav: CommentTraverser = cmmt_store.into_comment_traverser();
-//!   let updated_module: Mod = trav.traverse_mod(module);
-//!   let updated_cmmt_store = trav.into_comment_store();
+//!   insert_comments(&mut expr.attrs, vec!["Some comment on an arm"]);
 //! ```
 //!
 //! Comments can currently be attached and printed in the following positions
-//! (see pprust.rs for current details):
 //!
 //! Before the following AST elements:
 //! - Lit
@@ -41,20 +23,14 @@
 //! - Path
 //! - Arm
 //!
-//! Trailing comments can be printed after the following elements hi pos, but on
-//! the same line:
-//! - Stmt
-//! - Comma separated Expr (struct initializer, tuples literals, etc.)
-//!
-//! Before the close of a Block
+//! Comments cannot currently be attached before the close of a Block, or after all Items in a File.
 
 use crate::rust_ast::{pos_to_span, traverse};
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use std::collections::BTreeMap;
-use syntax::ast::*;
-use syntax::util::comments;
-use syntax_pos::{BytePos, Span};
+use syn::*;
+use c2rust_ast_printer::pprust::comments;
 
 pub struct CommentStore {
     /// The `BytePos` keys do _not_ correspond to the comment position. Instead, they refer to the
@@ -106,22 +82,22 @@ impl CommentStore {
         // The position of isolated comments have to be LESS than the span of
         // the AST node it annotates.
         for cmmt in &mut new_comments {
-            if let comments::CommentStyle::Isolated = cmmt.style {
+            //if let comments::CommentStyle::Isolated = cmmt.style {
                 cmmt.pos = BytePos(self.current_position);
                 self.current_position += 1;
-            }
+            //}
         }
 
         let new_pos = BytePos(self.current_position);
 
         // The position of trailing comments have to be GREATER than the span of
         // the AST node it follows.
-        for cmmt in &mut new_comments {
+        /*for cmmt in &mut new_comments {
             if let comments::CommentStyle::Trailing = cmmt.style {
                 self.current_position += 1;
                 cmmt.pos = BytePos(self.current_position);
             }
-        }
+        }*/
 
         self.output_comments.insert(new_pos, new_comments);
         new_pos
@@ -130,7 +106,7 @@ impl CommentStore {
     /// Add an isolated comment at the current position, then return the `Span`
     /// that should be given to something we want associated with this comment.
     pub fn add_comments(&mut self, lines: &[String]) -> Option<BytePos> {
-        self.extend_existing_comments(lines, None, comments::CommentStyle::Isolated)
+        self.extend_existing_comments(lines, None)//, comments::CommentStyle::Isolated)
     }
 
     /// Add a comment at the specified position, then return the `BytePos` that
@@ -140,7 +116,7 @@ impl CommentStore {
         &mut self,
         lines: &[String],
         pos: Option<BytePos>,
-        style: comments::CommentStyle,
+        //style: comments::CommentStyle,
     ) -> Option<BytePos> {
         fn translate_comment(comment: &String) -> String {
             comment
@@ -167,7 +143,7 @@ impl CommentStore {
             None
         } else {
             let new_comment = comments::Comment {
-                style,
+                //style,
                 lines: lines,
                 pos: BytePos(0), // overwritten in `add_comment`
             };
@@ -201,12 +177,12 @@ impl CommentStore {
             span
         };
 
-        // All comments attached to this span should become isolated.
+        /*// All comments attached to this span should become isolated.
         if let Some(comments) = self.output_comments.get_mut(&span.lo()) {
             for comment in comments {
                 comment.style = comments::CommentStyle::Isolated;
             }
-        }
+        }*/
 
         span
     }
@@ -266,5 +242,36 @@ impl traverse::Traversal for CommentTraverser {
     fn traverse_foreign_item(&mut self, mut i: ForeignItem) -> ForeignItem {
         i.span = pos_to_span(self.reinsert_comment_at(i.span.lo()).unwrap_or(BytePos(0)));
         i
+    }
+}
+
+pub fn insert_comment_attrs(attrs: &mut Vec<Attribute>, new_comments: SmallVec<[&str; 1]>) {
+    attrs.reserve(new_comments.len());
+    let eq: syn::Token![=] = Default::default();
+    fn make_comment_path() -> Path {
+        let mut segments = punctuated::Punctuated::new();
+        segments.push(PathSegment {
+            ident: Ident::new("comment", DUMMY_SP),
+            arguments: PathArguments::None,
+        });
+        Path {
+            leading_colon: None,
+            segments,
+        }
+    }
+
+    for c in new_comments {
+        let lit = Lit::new(proc_macro2::Literal::string(&*c));
+        let mut tokens = TokenStream::new();
+        eq.to_tokens(&mut tokens);
+        lit.to_tokens(&mut tokens);
+        let attr = Attribute {
+            pound_token: Default::default(),
+            style: AttrStyle::Inner(Default::default()),
+            bracket_token: Default::default(),
+            path: make_comment_path(),
+            tokens,
+        };
+        attrs.push(attr);
     }
 }

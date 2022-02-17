@@ -43,7 +43,7 @@ impl<'c> CommentLocator<'c> {
                     if let Some(pos) = self.comment_store.extend_existing_comments(
                         &[comment.kind.clone()],
                         existing_pos,
-                        CommentStyle::Trailing,
+                        //CommentStyle::Trailing,
                     ) {
                         debug!("Attaching comment {:?} to end of line at pos {:?}", comment.kind, pos);
                         // Add the span if we haven't already
@@ -89,7 +89,7 @@ impl<'c> NodeVisitor for CommentLocator<'c> {
                 let new_pos = self.comment_store.extend_existing_comments(
                     &comments,
                     Some(existing.lo()),
-                    CommentStyle::Isolated,
+                    //CommentStyle::Isolated,
                 );
                 debug!("Attaching more comments {:?} to id {:?} at pos {:?}", comments, id, new_pos);
             } else if let Some(pos) = self.comment_store.add_comments(&comments) {

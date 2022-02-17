@@ -1959,7 +1959,7 @@ impl<'c> Translation<'c> {
                         .extend_existing_comments(
                             &[comment],
                             comment_pos,
-                            CommentStyle::Isolated,
+                            //CommentStyle::Isolated,
                         )
                         .map(pos_to_span)
                         .unwrap_or(s);
