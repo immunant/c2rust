@@ -548,7 +548,7 @@ impl<'a> Translation<'a> {
                         .expect("Expected no statements in bitfield initializer");
                     let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
 
-                    stmts.push(mk().expr_stmt(expr));
+                    stmts.push(mk().semi_stmt(expr));
                 }
 
                 let struct_ident = mk().ident_expr("init");
@@ -720,7 +720,7 @@ impl<'a> Translation<'a> {
                     };
                     let method_call = mk().method_call_expr(lhs_expr, setter_name, vec![Box::new(last_expr)]);
 
-                    stmts.push(mk().expr_stmt(method_call));
+                    stmts.push(mk().semi_stmt(method_call));
                 }
                 _ if contains_block(&param_expr) => {
                     let name = self.renamer.borrow_mut().pick_name("rhs");
@@ -737,7 +737,7 @@ impl<'a> Translation<'a> {
                     let assignment_expr =
                         mk().method_call_expr(lhs_expr, setter_name, vec![param_expr.clone()]);
 
-                    stmts.push(mk().expr_stmt(assignment_expr));
+                    stmts.push(mk().semi_stmt(assignment_expr));
                 }
             };
 

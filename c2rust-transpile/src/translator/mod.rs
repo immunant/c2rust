@@ -3822,7 +3822,7 @@ impl<'c> Translation<'c> {
                             // https://github.com/rust-lang/rust/issues/54482
                             let val = mk().paren_expr(block);
                             let stmts = if ctx.is_unused() {
-                                vec![mk().expr_stmt(val.clone())]
+                                vec![mk().semi_stmt(val.clone())]
                             } else {
                                 Vec::new()
                             };

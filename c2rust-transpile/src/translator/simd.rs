@@ -239,7 +239,7 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_val(call))
             } else {
                 Ok(WithStmts::new(
-                    vec![mk().expr_stmt(call)],
+                    vec![mk().semi_stmt(call)],
                     self.panic_or_err("No value for unused shuffle vector return"),
                 ))
             }
