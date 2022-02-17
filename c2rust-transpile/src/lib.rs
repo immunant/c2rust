@@ -381,42 +381,7 @@ fn get_extra_args_macos() -> Vec<String> {
 }
 
 fn invoke_refactor(build_dir: &PathBuf) -> Result<(), Error> {
-    // Make sure the crate builds cleanly
-    let status = process::Command::new("cargo")
-        .args(&["check"])
-        .env("RUSTFLAGS", "-Awarnings")
-        .current_dir(build_dir)
-        .status()?;
-    if !status.success() {
-        return Err(format_err!("Crate does not compile."));
-    }
-
-    // Assumes the subcommand executable is in the same directory as this program.
-    let cmd_path = std::env::current_exe().expect("Cannot get current executable path");
-    let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
-    cmd_path.pop(); // remove current executable
-    cmd_path.push(format!("c2rust-refactor"));
-    assert!(cmd_path.exists(), format!("{:?} is missing", cmd_path));
-    let args = [
-        "--cargo",
-        "--rewrite-mode",
-        "inplace",
-        "rename_unnamed",
-        ";",
-        "reorganize_definitions",
-    ];
-    let status = process::Command::new(cmd_path.into_os_string())
-        .args(&args)
-        .current_dir(build_dir)
-        .status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format_err!(
-            "Refactoring failed. Please fix errors above and re-run:\n    c2rust refactor {}",
-            args.join(" "),
-        ))
-    }
+    return Ok(());
 }
 
 fn reorganize_definitions(
