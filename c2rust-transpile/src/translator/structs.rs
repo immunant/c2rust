@@ -11,9 +11,9 @@ use crate::translator::{ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
 use c2rust_ast_printer::pprust;
-    NestedMetaItem, StmtKind, StrStyle, StructField, Ty, TyKind,
 use syn::{
     self, AttrStyle, BinOp as RBinOp, Expr, Meta,
+    NestedMeta, Stmt, Field, Type,
     ExprBlock, ExprAssign, ExprAssignOp, ExprBinary, ExprUnary, ExprMethodCall, ExprCast,
 };
 use syntax::ptr::P;
@@ -40,7 +40,7 @@ enum FieldType {
     Regular {
         name: String,
         ctype: CTypeId,
-        field: StructField,
+        field: Field,
         use_inner_type: bool,
     },
 }
@@ -278,7 +278,7 @@ impl<'a> Translation<'a> {
         struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> Result<Vec<StructField>, TranslationError> {
+    ) -> Result<Vec<Field>, TranslationError> {
         let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
@@ -534,7 +534,7 @@ impl<'a> Translation<'a> {
 
         fields
             .into_iter()
-            .collect::<WithStmts<Vec<ast::Field>>>()
+            .collect::<WithStmts<Vec<syn::FieldValue>>>()
             .and_then(|fields| {
                 let struct_expr = mk().struct_expr(name.as_str(), fields);
                 let local_variable =
@@ -649,7 +649,7 @@ impl<'a> Translation<'a> {
 
         Ok(fields
             .into_iter()
-            .collect::<WithStmts<Vec<ast::Field>>>()
+            .collect::<WithStmts<Vec<syn::FieldValue>>>()
             .map(|fields| mk().struct_expr(name.as_str(), fields)))
     }
 
