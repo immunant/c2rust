@@ -566,7 +566,7 @@ impl<'c> Translation<'c> {
 
                 assign_stmt.and_then(|assign_stmt| {
                     Ok(WithStmts::new(
-                        vec![mk().expr_stmt(assign_stmt)],
+                        vec![mk().semi_stmt(assign_stmt)],
                         read,
                     ))
                 })
