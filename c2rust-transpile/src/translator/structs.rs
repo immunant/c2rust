@@ -56,19 +56,16 @@ fn contains_block(expr_kind: &Expr) -> bool {
     }
 }
 
-fn assigment_metaitem(lhs: &str, rhs: &str) -> NestedMetaItem {
-    let kind = LitKind::Str(Symbol::intern(rhs), StrStyle::Cooked);
-    let token = kind.to_lit_token();
-    let meta_item = mk().meta_item(
-        vec![lhs],
-        MetaItemKind::NameValue(Lit {
-            token,
-            kind,
-            span: DUMMY_SP,
-        }),
-    );
+fn assignment_metaitem(lhs: &str, rhs: &str) -> NestedMeta {
+    use c2rust_ast_builder::Make;
+    let token = rhs.make(&mk());
+    let meta_item = Meta::NameValue(syn::MetaNameValue {
+        path: mk().path(lhs),
+        eq_token: Default::default(),
+        lit: token,
+    });
 
-    mk().nested_meta_item(NestedMetaItem::MetaItem(meta_item))
+    NestedMeta::Meta(meta_item)
 }
 
 impl<'a> Translation<'a> {
@@ -316,7 +313,7 @@ impl<'a> Translation<'a> {
                             assigment_metaitem("bits", &attr.2),
                         ];
 
-                        mk().meta_item("bitfield", MetaItemKind::List(field_attr_items))
+                        mk().meta_list("bitfield", field_attr_items)
                     });
 
                     for field_attr in field_attrs {
@@ -333,11 +330,11 @@ impl<'a> Translation<'a> {
                     );
 
                     // Mark it with `#[bitfield(padding)]`
-                    let field_padding_inner = mk().meta_item("padding", MetaItemKind::Word);
+                    let field_padding_inner = NestedMeta::Meta(mk().meta_path("padding"));
                     let field_padding_inner =
-                        vec![mk().nested_meta_item(NestedMetaItem::MetaItem(field_padding_inner))];
+                        vec![mk().nested_meta_item(field_padding_inner)];
                     let field_padding_outer =
-                        mk().meta_item("bitfield", MetaItemKind::List(field_padding_inner));
+                        mk().meta_list("bitfield", field_padding_inner);
                     let field = mk()
                         .meta_item_attr(AttrStyle::Outer, field_padding_outer)
                         .pub_()

@@ -84,9 +84,11 @@ impl<'c> Translation<'c> {
                 }
 
                 self.with_cur_file_item_store(|item_store| {
-                    let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+                    let x86_attr = mk()
+                        .meta_item_attr(AttrStyle::Outer, mk().meta_list("cfg", vec![NestedMeta::Meta (mk().meta_namevalue("target_arch", "x86"))]))
+                        .pub_();
                     let x86_64_attr = mk()
-                        .call_attr("cfg", vec!["target_arch = \"x86_64\""])
+                        .meta_item_attr(AttrStyle::Outer, mk().meta_list("cfg", vec![NestedMeta::Meta(mk().meta_namevalue("target_arch", "x86_64"))]))
                         .pub_();
                     let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
 
@@ -165,7 +167,9 @@ impl<'c> Translation<'c> {
 
                 // REVIEW: Also a linear lookup
                 if !SIMD_X86_64_ONLY.contains(&name) {
-                    let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+                    let x86_attr = mk()
+                        .meta_item_attr(AttrStyle::Outer, mk().meta_list("cfg", vec![NestedMeta::Meta (mk().meta_namevalue("target_arch", "x86"))]))
+                        .pub_();
 
                     item_store.add_use_with_attr(
                         vec![std_or_core.clone(), "arch".into(), "x86".into()],
@@ -175,7 +179,7 @@ impl<'c> Translation<'c> {
                 }
 
                 let x86_64_attr = mk()
-                    .call_attr("cfg", vec!["target_arch = \"x86_64\""])
+                    .meta_item_attr(AttrStyle::Outer, mk().meta_list("cfg", vec![NestedMeta::Meta (mk().meta_namevalue("target_arch", "x86_64"))]))
                     .pub_();
 
                 item_store.add_use_with_attr(
