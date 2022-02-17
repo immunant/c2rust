@@ -4,7 +4,7 @@
 //! Rust.
 
 use super::*;
-use syntax::token::{self, TokenKind};
+use proc_macro2::{TokenStream, TokenTree};
 
 impl<'c> Translation<'c> {
     pub fn convert_main(&self, main_id: CDeclId) -> Result<Box<Item>, TranslationError> {
@@ -145,13 +145,12 @@ impl<'c> Translation<'c> {
                             Some(mk().mac_expr(mk().mac(
                                 vec!["format"],
                                 vec![
-                                    token::Interpolated(Rc::new(Nonterminal::NtExpr(mk().lit_expr("{}={}")))),
-                                    token::Comma,
-                                    TokenKind::Ident(var_name_ident.name, var_name_ident.is_raw_guess()),
-                                    token::Comma,
-                                    TokenKind::Ident(var_value_ident.name, var_value_ident.is_raw_guess())
+                                    TokenTree::Literal(proc_macro2::Literal::string("{}={}")),
+                                    TokenTree::Punct(Punct::new(',', proc_macro2::Spacing::Alone)),
+                                    TokenTree::Ident(var_name_ident),
+                                    TokenTree::Punct(Punct::new(',', proc_macro2::Spacing::Alone)),
+                                    TokenTree::Ident(var_value_ident),
                                 ].into_iter()
-                                    .map(|tk| TokenTree::token(tk, DUMMY_SP))
                                     .collect::<TokenStream>(),
                                 MacroDelimiter::Paren(Default::default()),
                             )))

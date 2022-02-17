@@ -1155,8 +1155,7 @@ impl<'c> Translation<'c> {
 
     fn panic_or_err_helper(&self, msg: &str, panic: bool) -> Box<Expr> {
         let macro_name = if panic { "panic" } else { "compile_error" };
-        let macro_msg = vec![TokenTree::token(token::Interpolated(Rc::new(Nonterminal::NtExpr(
-            mk().lit_expr(msg)))), DUMMY_SP)]
+        let macro_msg = vec![TokenTree::Literal(proc_macro2::Literal::string(msg))]
         .into_iter()
             .collect::<TokenStream>();
         mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacroDelimiter::Paren(Default::default())))
@@ -3201,12 +3200,10 @@ impl<'c> Translation<'c> {
 
                     // offset_of!(Struct, field[expr as usize]) as ty
                     let macro_body = vec![
-                        TokenTree::token(token::Interpolated(Rc::new(ty_ident)), DUMMY_SP),
-                        TokenTree::token(token::Comma, DUMMY_SP),
-                        TokenTree::token(token::Interpolated(Rc::new(field_ident)), DUMMY_SP),
-                        TokenTree::token(token::OpenDelim(DelimToken::Bracket), DUMMY_SP),
-                        TokenTree::token(token::Interpolated(Rc::new(index_expr)), DUMMY_SP),
-                        TokenTree::token(token::CloseDelim(DelimToken::Bracket), DUMMY_SP),
+                        TokenTree::Ident(ty_ident),
+                        TokenTree::Punct(Punct::new(',', Alone)),
+                        TokenTree::Ident(field_ident),
+                        TokenTree::Group(proc_macro2::Group::new(proc_macro2::Delimiter::Bracket, index_expr)),
                     ];
                     let path = mk().path("offset_of");
                     let mac = mk().mac_expr(mk().mac(path, macro_body, MacroDelimiter::Paren(Default::default())));
