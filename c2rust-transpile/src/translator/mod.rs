@@ -15,7 +15,7 @@ use syn::*;
 use syn::{BinOp, UnOp}; // To override c_ast::{BinOp,UnOp} from glob import
 use syn::spanned::Spanned as _;
 
-use crate::rust_ast::{pos_to_span, SpanExt};
+use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
