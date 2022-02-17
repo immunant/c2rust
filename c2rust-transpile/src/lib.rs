@@ -59,7 +59,6 @@ use crate::compile_cmds::get_compile_commands;
 use crate::convert_type::RESERVED_NAMES;
 pub use crate::translator::ReplaceMode;
 use std::prelude::v1::Vec;
-use syntax_pos::edition::Edition;
 
 type PragmaVec = Vec<(&'static str, Vec<&'static str>)>;
 type PragmaSet = indexmap::IndexSet<(&'static str, &'static str)>;
@@ -515,9 +514,7 @@ fn transpile_single(
 
     // Perform the translation
     let (translated_string, pragmas, crates) =
-        syntax::with_globals(Edition::Edition2018, move || {
-            translator::translate(typed_context, &tcfg, input_path)
-        });
+        translator::translate(typed_context, &tcfg, input_path);
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,

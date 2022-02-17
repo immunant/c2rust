@@ -513,8 +513,7 @@ pub fn translate(
         expanding_macro: None,
     };
 
-    // `with_globals` sets up a thread-local variable required by the syntax crate.
-    with_globals(Edition::Edition2018, || {
+    {
         t.use_crate(ExternCrate::Libc);
 
         // Sort the top-level declarations by file and source location so that we
