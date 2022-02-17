@@ -17,7 +17,9 @@
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
+use crate::rust_ast::{SpanExt, DUMMY_SP};
 use c2rust_ast_printer::pprust;
+use proc_macro2::Span;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeSet;
 use std::fs::File;
@@ -27,7 +29,6 @@ use std::io;
 use std::io::Write;
 use std::ops::Deref;
 use std::ops::Index;
-use syntax_pos::{DUMMY_SP, Span};
 use syn::{Arm, Expr, Pat, Stmt, spanned::Spanned};
 
 use indexmap::{IndexMap, IndexSet};
@@ -1989,7 +1990,7 @@ impl CfgBuilder {
             false,
         )?;
 
-        let inner_span = stmts.first().map(|stmt| stmt.span);
+        let inner_span = stmts.first().map(|stmt| stmt.span());
 
         // Remove unnecessary break statements. We only need a break statement if we failed to
         // remove the tail expr.

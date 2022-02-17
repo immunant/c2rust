@@ -16,7 +16,6 @@ use syn::{
     NestedMeta, Stmt, Field, Type,
     ExprBlock, ExprAssign, ExprAssignOp, ExprBinary, ExprUnary, ExprMethodCall, ExprCast,
 };
-use syntax_pos::DUMMY_SP;
 
 use itertools::EitherOrBoth::{Both, Right};
 use itertools::Itertools;
