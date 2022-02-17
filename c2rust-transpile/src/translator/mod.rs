@@ -859,39 +859,33 @@ pub fn translate(
 
         // pass all converted items to the Rust pretty printer
         let translation = pprust::to_string_with_comments(comments, |s| {
-            print_header(s, &t, t.tcfg.is_binary(main_file.as_path()));
+            let (attrs, mut all_items) = arrange_header(&t, t.tcfg.is_binary(main_file.as_path()));
 
-            for mod_item in mod_items {
-                s.print_item(&*mod_item);
-            }
+            all_items.extend(mod_items);
 
             // This could have been merged in with items below; however, it's more idiomatic to have
             // imports near the top of the file than randomly scattered about. Also, there is probably
             // no reason to have comments associated with imports so it doesn't need to go through
             // the above comment store process
-            for use_item in uses.into_items() {
-                s.print_item(&use_item);
-            }
+            all_items.extend(uses.into_items());
 
             // Print new uses from submodules
             let (_, _, new_uses) = new_uses.drain();
-            for use_item in new_uses.into_items() {
-                s.print_item(&use_item);
-            }
+            all_items.extend(new_uses.into_items());
+
 
             if !foreign_items.is_empty() {
-                s.print_item(&mk().extern_("C").foreign_items(foreign_items))
+                all_items.push(mk().extern_("C").foreign_items(foreign_items));
             }
 
             // Add the items accumulated
-            for x in items {
-                s.print_item(&*x);
-            }
+            all_items.extend(items);
 
             s.print_remaining_comments();
+            s.file(&syn::File {shebang: None, attrs, items: all_items.into_iter().map(|x| *x).collect()});
         });
         (translation, pragmas, crates)
-    })
+    }
 }
 
 fn item_ident(i: &Item) -> Option<&Ident> {
@@ -1006,22 +1000,25 @@ fn make_submodule(
             vec!["c2rust", "header_src"],
             format!("{}:{}", file_path_str, include_line_number),
         )
-        .mod_item(mod_name, mk().mod_(items))
+        .mod_item(mod_name, Some(mk().mod_(items)))
 }
 
 /// Pretty-print the leading pragmas and extern crate declarations
-fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
+fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec<Box<Item>>) {
+    let mut out_attrs = vec![];
+    let mut out_items = vec![];
     if t.tcfg.emit_modules && !is_binary {
         for c in t.extern_crates.borrow().iter() {
             out_items.push(mk().use_simple_item(
                 mk().abs_path(vec![ExternCrateDetails::from(*c).ident]),
                 None as Option<Ident>,
-            ));
+            ))
         }
     } else {
         let pragmas = t.get_pragmas();
         for (key, mut values) in pragmas {
             values.sort();
+            // generate #[key(values)]
             let value_attr_vec = values
                 .into_iter()
                 .map(|value| mk().nested_meta_item(mk().meta_path(value)))
@@ -1033,7 +1030,7 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
         }
 
         if t.tcfg.emit_no_std {
-            s.print_attribute(&mk().single_attr("no_std").as_inner_attrs()[0]);
+            out_attrs.push(mk().single_attr("no_std").as_inner_attrs()[0].clone());
         }
 
         if is_binary {
@@ -1041,8 +1038,8 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
             for extern_crate in t.extern_crates.borrow().iter() {
                 let extern_crate = ExternCrateDetails::from(*extern_crate);
                 if extern_crate.macro_use {
-                    s.print_item(
-                        &mk()
+                    out_items.push(
+                        mk()
                             .single_attr("macro_use")
                             .extern_crate_item(extern_crate.ident.clone(), None),
                     );
@@ -1052,6 +1049,7 @@ fn print_header(s: &mut pprust::State, t: &Translation, is_binary: bool) {
             out_items.push(mk().use_glob_item(mk().abs_path(vec![&t.tcfg.crate_name()])));
         }
     }
+    (out_attrs, out_items)
 }
 
 /// Convert a boolean expression to a c_int
