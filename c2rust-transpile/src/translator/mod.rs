@@ -1363,21 +1363,27 @@ impl<'c> Translation<'c> {
 
         let static_attributes = mk()
             .single_attr("used")
-            .call_attr(
-                "cfg_attr",
-                vec!["target_os = \"linux\"", "link_section = \".init_array\""],
-            )
-            .call_attr(
-                "cfg_attr",
-                vec!["target_os = \"windows\"", "link_section = \".CRT$XIB\""],
-            )
-            .call_attr(
+            .meta_item_attr(AttrStyle::Outer, mk().meta_list(
                 "cfg_attr",
                 vec![
-                    "target_os = \"macos\"",
-                    "link_section = \"__DATA,__mod_init_func\"",
+                    mk().nested_meta_item(mk().meta_namevalue("target_os", "linux")),
+                    mk().nested_meta_item(mk().meta_namevalue("link_section", ".init_array")),
                 ],
-            );
+            ))
+            .meta_item_attr(AttrStyle::Outer, mk().meta_list(
+                "cfg_attr",
+                vec![
+                    mk().nested_meta_item(mk().meta_namevalue("target_os", "windows")),
+                    mk().nested_meta_item(mk().meta_namevalue("link_section", ".CRT$XIB")),
+                ],
+            ))
+            .meta_item_attr(AttrStyle::Outer, mk().meta_list(
+                "cfg_attr",
+                vec![
+                    mk().nested_meta_item(mk().meta_namevalue("target_os", "macos")),
+                    mk().nested_meta_item(mk().meta_namevalue("link_section", "__DATA,__mod_init_func")),
+                ],
+            ));
         let static_array_size = mk().lit_expr(mk().int_unsuffixed_lit(1));
         let static_ty = mk().array_ty(
             mk().unsafe_().extern_("C").barefn_ty(fn_bare_decl),
@@ -2147,9 +2153,9 @@ impl<'c> Translation<'c> {
 
                 for attr in attrs {
                     mk_ = match attr {
-                        c_ast::Attribute::AlwaysInline => mk_.single_attr("inline(always)"),
+                        c_ast::Attribute::AlwaysInline => mk_.call_attr("inline", vec!["always"]),
                         c_ast::Attribute::Cold => mk_.single_attr("cold"),
-                        c_ast::Attribute::NoInline => mk_.single_attr("inline(never)"),
+                        c_ast::Attribute::NoInline => mk_.call_attr("inline", vec!["never"]),
                         _ => continue,
                     };
                 }
@@ -2174,7 +2180,7 @@ impl<'c> Translation<'c> {
                     if is_global && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
                         self.use_feature("linkage");
                         // ensures that public inlined rust function can be used in other modules
-                        mk_ = mk_.single_attr("linkage = \"external\"");
+                        mk_ = mk_.str_attr("linkage", "external");
                     }
                     // NOTE: it does not seem necessary to have an else branch here that
                     // specifies internal linkage in all other cases due to name mangling by rustc.
