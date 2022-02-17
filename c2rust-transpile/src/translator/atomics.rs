@@ -280,9 +280,9 @@ impl<'c> Translation<'c> {
                             )));
                             let assignment = mk().semi_stmt(mk().assign_expr(
                                 expected,
-                                mk().field_expr(mk().ident_expr(&res_name), "0"),
+                                mk().anon_field_expr(mk().ident_expr(&res_name), 0),
                             ));
-                            let return_value = mk().field_expr(mk().ident_expr(&res_name), "1");
+                            let return_value = mk().anon_field_expr(mk().ident_expr(&res_name), 1);
                             self.convert_side_effects_expr(
                                 ctx,
                                 WithStmts::new(vec![res_let, assignment], return_value),
@@ -368,8 +368,8 @@ impl<'c> Translation<'c> {
         let atomic_cxchg =
             mk().abs_path_expr(vec![std_or_core, "intrinsics", intrinsic_name]);
         let call = mk().call_expr(atomic_cxchg, vec![dst, old_val, src_val]);
-        let field_idx = if returns_val { "0" } else { "1" };
-        let call_expr = mk().field_expr(call, field_idx);
+        let field_idx = if returns_val { 0 } else { 1 };
+        let call_expr = mk().anon_field_expr(call, field_idx);
         self.convert_side_effects_expr(
             ctx,
             WithStmts::new_val(call_expr),
