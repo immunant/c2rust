@@ -350,9 +350,9 @@ fn unwrap_function_pointer(ptr: Box<Expr>) -> Box<Expr> {
 }
 
 fn transmute_expr(source_ty: Box<Type>, target_ty: Box<Type>, expr: Box<Expr>, no_std: bool) -> Box<Expr> {
-        (TyKind::Infer, TyKind::Infer) => Vec::new(),
-        (_, TyKind::Infer) => vec![source_ty],
     let type_args = match (&*source_ty, &*target_ty) {
+        (Type::Infer(_), Type::Infer(_)) => Vec::new(),
+        (_, Type::Infer(_)) => vec![source_ty],
         _ => vec![source_ty, target_ty],
     };
     let std_or_core = if no_std { "core" } else { "std" };
@@ -386,8 +386,11 @@ pub fn stmts_block(mut stmts: Vec<Stmt>) -> Box<Block> {
 
     if stmts.len() > 0 {
         let n = stmts.len() - 1;
-        let s = stmts.remove(n);
-        stmts.push(s.add_trailing_semicolon())
+        let mut s = stmts.remove(n);
+        if let Stmt::Expr(e) = s {
+            s = Stmt::Semi(e, Default::default());
+        }
+        stmts.push(s)
     }
 
     mk().block(stmts)
@@ -1056,7 +1059,7 @@ fn bool_to_int(val: Box<Expr>) -> Box<Expr> {
 }
 
 /// Add a src_loc = "line:col" attribute to an item/foreign_item
-fn add_src_loc_attr(attrs: &mut Vec<ast::Attribute>, src_loc: &Option<SrcLoc>) {
+fn add_src_loc_attr(attrs: &mut Vec<syn::Attribute>, src_loc: &Option<SrcLoc>) {
     if let Some(src_loc) = src_loc.as_ref() {
         let loc_str = format!("{}:{}", src_loc.line, src_loc.column);
         let meta = mk().meta_namevalue(vec!["c2rust", "src_loc"], loc_str);
@@ -2135,7 +2138,7 @@ impl<'c> Translation<'c> {
         self.function_context.borrow_mut().enter_new(name);
 
         self.with_scope(|| {
-            let mut args: Vec<Param> = vec![];
+            let mut args: Vec<FnArg> = vec![];
 
             // handle regular (non-variadic) arguments
             for &(decl_id, ref var, typ) in arguments {
@@ -2191,9 +2194,9 @@ impl<'c> Translation<'c> {
             // If a return type is void, we should instead omit the unit type return,
             // -> (), to be more idiomatic
             let ret = if is_void_ret {
-                FunctionRetTy::Default(DUMMY_SP)
+                ReturnType::Default
             } else {
-                FunctionRetTy::Ty(ret)
+                ReturnType::Type(Default::default(), ret)
             };
 
             let decl = mk().fn_decl(new_name, args, is_variadic.then(|| mk().variadic_arg(vec![])), ret);
@@ -3283,7 +3286,7 @@ impl<'c> Translation<'c> {
                             .expect("Did not find decl_id for offsetof struct")
                     };
                     let name = self.resolve_decl_inner_name(decl_id);
-                    let ty_ident = Nonterminal::NtIdent(mk().ident(name), false);
+                    let ty_ident = mk().ident(name);
 
                     // Field name
                     let field_name = self
@@ -3291,7 +3294,7 @@ impl<'c> Translation<'c> {
                         .borrow()
                         .resolve_field_name(None, *field_id)
                         .expect("Did not find name for offsetof struct field");
-                    let field_ident = Nonterminal::NtIdent(mk().ident(field_name), false);
+                    let field_ident = mk().ident(field_name);
 
                     // Index Expr
                     let expr = self.convert_expr(ctx, *expr_id)?
@@ -3588,9 +3591,9 @@ impl<'c> Translation<'c> {
                     _ => {
                         let callee = self.convert_expr(ctx.used(), func)?;
                         let make_fn_ty = |ret_ty: Box<Type>| {
-                                TyKind::Tup(ref v) if v.is_empty() => FunctionRetTy::Default(DUMMY_SP),
-                                _ => FunctionRetTy::Ty(ret_ty),
                             let ret_ty = match *ret_ty {
+                                Type::Tuple(TypeTuple {elems: ref v, ..}) if v.is_empty() => ReturnType::Default,
+                                _ => ReturnType::Type(Default::default(), ret_ty),
                             };
                             let bare_ty : (Vec<BareFnArg>, Option<Variadic>, ReturnType) = (
                                 vec![mk().bare_arg(mk().infer_ty(), None::<Box<Ident>>); args.len()],

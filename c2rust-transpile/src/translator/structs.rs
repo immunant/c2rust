@@ -302,8 +302,8 @@ impl<'a> Translation<'a> {
                     );
                     let mut field = mk();
                     let field_attrs = attrs.iter().map(|attr| {
-                            TyKind::Path(_, path) => pprust::path_to_string(path),
                         let ty_str = match &*attr.1 {
+                            Type::Path(syn::TypePath {path, ..}) => pprust::path_to_string(path),
                             _ => unreachable!("Found type other than path"),
                         };
                         let field_attr_items = vec![
