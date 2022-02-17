@@ -1167,7 +1167,7 @@ impl<'c> Translation<'c> {
             mk().lit_expr(msg)))), DUMMY_SP)]
         .into_iter()
             .collect::<TokenStream>();
-        mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacDelimiter::Parenthesis))
+        mk().mac_expr(mk().mac(vec![macro_name], macro_msg, MacroDelimiter::Paren(Default::default())))
     }
 
     fn static_initializer_is_unsafe(&self, expr_id: Option<CExprId>, qty: CQualTypeId) -> bool {
@@ -3217,7 +3217,7 @@ impl<'c> Translation<'c> {
                         TokenTree::token(token::CloseDelim(DelimToken::Bracket), DUMMY_SP),
                     ];
                     let path = mk().path("offset_of");
-                    let mac = mk().mac_expr(mk().mac(path, macro_body, MacDelimiter::Parenthesis));
+                    let mac = mk().mac_expr(mk().mac(path, macro_body, MacroDelimiter::Paren(Default::default())));
 
                     // Cast type
                     let cast_ty = self.convert_type(ty.ctype)?;
@@ -3747,14 +3747,8 @@ impl<'c> Translation<'c> {
         let ident = split.next()?;
         let args = split.next()?.trim_end_matches(')');
 
-        let parse_sess = ParseSess::new(FilePathMapping::empty());
-        let ts = parse_stream_from_source_str(
-            FileName::Anon(0),
-            args.to_string(),
-            &parse_sess,
-            None,
-        );
-        Some(WithStmts::new_val(mk().mac_expr(mk().mac(ident, ts, MacDelimiter::Parenthesis))))
+        let ts: TokenStream = syn::parse_str(&args.to_string()).ok()?;
+        Some(WithStmts::new_val(mk().mac_expr(mk().mac(ident, ts, MacroDelimiter::Paren(Default::default())))))
     }
 
     /// If `ctx` is unused, convert `expr` to a semi statement, otherwise return

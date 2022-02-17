@@ -183,7 +183,7 @@ impl<'c> Translation<'c> {
         let mac = mk().mac(
             vec!["asm"],
             tokens.into_iter().collect::<TokenStream>(),
-            MacDelimiter::Parenthesis,
+            MacroDelimiter::Paren(Default::default()),
         );
         let mac = mk().mac_expr(mac);
         let mac = mk().span(span).expr_stmt(mac);

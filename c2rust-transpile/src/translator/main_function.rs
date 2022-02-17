@@ -153,7 +153,7 @@ impl<'c> Translation<'c> {
                                 ].into_iter()
                                     .map(|tk| TokenTree::token(tk, DUMMY_SP))
                                     .collect::<TokenStream>(),
-                                MacDelimiter::Parenthesis,
+                                MacroDelimiter::Paren(Default::default()),
                             )))
                         ))),
                         mk().semi_stmt(mk().method_call_expr(
