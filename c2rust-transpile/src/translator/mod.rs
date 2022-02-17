@@ -3,33 +3,25 @@ use std::collections::HashMap;
 use std::mem;
 use std::ops::Index;
 use std::path::{self, PathBuf};
-use std::rc::Rc;
 use std::char;
+use std::result::Result; // To override syn::Result from glob import
 
 use dtoa;
 
 use failure::{err_msg, Fail};
 use indexmap::{IndexMap, IndexSet};
+use proc_macro2::{Span, TokenStream, TokenTree, Punct, Spacing::*};
+use syn::*;
+use syn::{BinOp, UnOp}; // To override c_ast::{BinOp,UnOp} from glob import
+use syn::spanned::Spanned as _;
 
-use rustc_parse::parse_stream_from_source_str;
-use syntax::attr;
-use syntax::ast::*;
-use syntax::util::comments::CommentStyle;
-use syntax::token::{self, DelimToken, Nonterminal};
-use syntax::ptr::*;
-use syntax::sess::ParseSess;
-use syntax::source_map::{FilePathMapping, SourceMap};
-use syntax::tokenstream::{TokenStream, TokenTree};
-use syntax::{ast, with_globals};
-use syntax_pos::{FileName, Span, DUMMY_SP};
-use syntax_pos::edition::Edition;
-
-use crate::rust_ast::pos_to_span;
+use crate::rust_ast::{pos_to_span, SpanExt};
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
+use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::traverse::Traversal;
-use c2rust_ast_builder::{mk, Builder, IntoSymbol};
-use c2rust_ast_printer::pprust::{self, Comments, PrintState};
+use c2rust_ast_builder::{mk, Builder, properties::*};
+use c2rust_ast_printer::pprust::{self, Comments};
 
 use crate::c_ast;
 use crate::c_ast::iterators::{DFExpr, SomeId};
