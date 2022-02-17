@@ -1,6 +1,7 @@
 pub mod comment_store;
 pub mod item_store;
 pub mod traverse;
+pub mod set_span;
 
 pub use c2rust_ast_printer::pprust::BytePos;
 use proc_macro2::Span;
