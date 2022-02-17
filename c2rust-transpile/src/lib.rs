@@ -4,9 +4,7 @@
 
 extern crate colored;
 extern crate dtoa;
-extern crate rustc_parse;
-extern crate syntax;
-extern crate syntax_pos;
+extern crate syn;
 #[macro_use]
 extern crate indexmap;
 extern crate serde;

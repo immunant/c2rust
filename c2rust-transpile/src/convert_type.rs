@@ -5,8 +5,8 @@ use crate::diagnostics::TranslationError;
 use c2rust_ast_builder::mk;
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
-use syntax::ast::*;
-use syntax::ptr::P;
+use syn::*;
+use std::result::Result;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 enum FieldKey {

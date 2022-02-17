@@ -16,8 +16,6 @@ use syn::{
     NestedMeta, Stmt, Field, Type,
     ExprBlock, ExprAssign, ExprAssignOp, ExprBinary, ExprUnary, ExprMethodCall, ExprCast,
 };
-use syntax::ptr::P;
-use syntax::source_map::symbol::Symbol;
 use syntax_pos::DUMMY_SP;
 
 use itertools::EitherOrBoth::{Both, Right};
