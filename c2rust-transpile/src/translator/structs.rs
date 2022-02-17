@@ -501,7 +501,7 @@ impl<'a> Translation<'a> {
                         // Small hack: we need a value of the inner type,
                         // but `implicit_default_expr` produced a value
                         // of the outer type, so unwrap it manually
-                        init = init.map(|fi| mk().field_expr(fi, "0"));
+                        init = init.map(|fi| mk().anon_field_expr(fi, 0));
                     }
                     let field = init.map(|init| mk().field(field_name, init));
                     fields.push(field);
@@ -517,7 +517,7 @@ impl<'a> Translation<'a> {
 
                     if use_inner_type {
                         // See comment above
-                        expr = expr.map(|fi| mk().field_expr(fi, "0"));
+                        expr = expr.map(|fi| mk().anon_field_expr(fi, 0));
                     }
 
                     if bitfield_width.is_some() {
@@ -640,7 +640,7 @@ impl<'a> Translation<'a> {
                     }
                     if use_inner_type {
                         // See comment above
-                        field_init = field_init.map(|fi| mk().field_expr(fi, "0"));
+                        field_init = field_init.map(|fi| mk().anon_field_expr(fi, 0));
                     }
                     fields.push(field_init.map(|init| mk().field(name, init)))
                 }

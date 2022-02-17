@@ -3582,7 +3582,7 @@ impl<'c> Translation<'c> {
                     if self.ast_context.has_inner_struct_decl(record_id) {
                         // The structure is split into an outer and an inner,
                         // so we need to go through the outer structure to the inner one
-                        val = val.map(|v| mk().field_expr(v, "0"));
+                        val = val.map(|v| mk().anon_field_expr(v, 0));
                     };
 
                     let field_name = self
