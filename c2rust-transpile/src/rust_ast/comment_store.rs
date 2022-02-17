@@ -172,8 +172,13 @@ impl CommentStore {
             if span.lo() == BytePos(0) {
                 span.shrink_to_hi()
             } else {
-                let new_comments = self.output_comments.remove(&span.hi())
-                    .unwrap_or_else(|| panic!("Expected comments attached to the high end of span {:?}", span));
+                let new_comments = match self.output_comments.remove(&span.hi()) {
+                    Some(nc) => nc,
+                    None => {
+                        warn!("Expected comments attached to the high end of span {:?}", span);
+                        return span
+                    },
+                };
                 self.output_comments.entry(span.lo()).or_insert(SmallVec::new()).extend(new_comments);
                 span.shrink_to_lo()
             }
