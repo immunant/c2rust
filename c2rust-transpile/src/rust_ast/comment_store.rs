@@ -260,7 +260,7 @@ impl traverse::Traversal for CommentTraverser {
     reinsert_and_traverse!(traverse_impl_item, ImplItem, traverse::traverse_impl_item_def);
     reinsert_and_traverse!(traverse_block, Block, traverse::traverse_block_def);
     reinsert_and_traverse!(traverse_local, Local, traverse::traverse_local_def);
-    reinsert_and_traverse!(traverse_field, Field, traverse::traverse_field_def);
+    reinsert_and_traverse!(traverse_field, FieldValue, traverse::traverse_field_def);
     reinsert_and_traverse!(traverse_item, Item, traverse::traverse_item_def);
 
     fn traverse_foreign_item(&mut self, mut i: ForeignItem) -> ForeignItem {
