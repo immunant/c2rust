@@ -17,6 +17,7 @@
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
+use c2rust_ast_printer::pprust;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeSet;
 use std::fs::File;
