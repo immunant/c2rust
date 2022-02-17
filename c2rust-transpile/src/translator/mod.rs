@@ -352,7 +352,6 @@ fn unwrap_function_pointer(ptr: Box<Expr>) -> Box<Expr> {
 fn transmute_expr(source_ty: Box<Type>, target_ty: Box<Type>, expr: Box<Expr>, no_std: bool) -> Box<Expr> {
     let type_args = match (&*source_ty, &*target_ty) {
         (Type::Infer(_), Type::Infer(_)) => Vec::new(),
-        (_, Type::Infer(_)) => vec![source_ty],
         _ => vec![source_ty, target_ty],
     };
     let std_or_core = if no_std { "core" } else { "std" };
