@@ -308,9 +308,9 @@ impl<'a> Translation<'a> {
                             _ => unreachable!("Found type other than path"),
                         };
                         let field_attr_items = vec![
-                            assigment_metaitem("name", &attr.0),
-                            assigment_metaitem("ty", &ty_str),
-                            assigment_metaitem("bits", &attr.2),
+                            assignment_metaitem("name", &attr.0),
+                            assignment_metaitem("ty", &ty_str),
+                            assignment_metaitem("bits", &attr.2),
                         ];
 
                         mk().meta_list("bitfield", field_attr_items)
