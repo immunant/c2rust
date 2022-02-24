@@ -1,9 +1,8 @@
 #![feature(libc)]
 #![feature(extern_types)]
 #![feature(asm)]
-#![feature(ptr_wrapping_offset_from)]
 #![feature(label_break_value)]
-#![feature(const_raw_ptr_to_usize_cast)]
+#![feature(rustc_private)]
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
