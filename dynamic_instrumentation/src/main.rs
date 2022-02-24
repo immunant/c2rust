@@ -26,12 +26,20 @@ use rustc_span::def_id::LocalDefId;
 use rustc_span::symbol::Ident;
 use rustc_span::DUMMY_SP;
 
-use std::env;
-
+use anyhow::anyhow;
 use lazy_static::lazy_static;
+use std::env;
+use std::ffi::OsStr;
+use std::path::Path;
 
 lazy_static! {
     static ref INSTRUMENTER: InstrumentMemoryOps = InstrumentMemoryOps::new();
+    static ref METADATA_FILE_PATH: String = {
+        env::args()
+            .skip(1)
+            .next()
+            .expect("Expected metadata ouput file path as the first argument")
+    };
 }
 
 struct MirTransformCallbacks;
@@ -88,8 +96,15 @@ fn override_queries(
     };
 }
 
-fn main() -> rustc_interface::interface::Result<()> {
-    let args = env::args().collect::<Vec<_>>();
+fn main() -> anyhow::Result<()> {
+    // skip the first arg, which is the path to this tool. This leaves the
+    // metadata file as the "path" to the tool, but that's fine since it's
+    // ignored.
+    let args = env::args().skip(1).collect::<Vec<_>>();
     let mut callbacks = MirTransformCallbacks;
-    rustc_driver::RunCompiler::new(&args, &mut callbacks).run()
+    rustc_driver::RunCompiler::new(&args, &mut callbacks)
+        .run()
+        .or_else(|_| Err(anyhow!("Compilation failed")))?;
+    let file_path: &OsStr = METADATA_FILE_PATH.as_ref();
+    INSTRUMENTER.finalize(&Path::new(file_path))
 }

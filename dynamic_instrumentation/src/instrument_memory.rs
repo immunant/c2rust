@@ -1,3 +1,4 @@
+use anyhow::Context;
 use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use c2rust_analysis_rt::{SourcePos, SourceSpan, SpanId};
 use indexmap::IndexSet;
@@ -9,7 +10,9 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{self, ParamEnv, TyCtxt};
 use rustc_span::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_span::{FileName, Span, Symbol, DUMMY_SP};
+use std::fs::File;
 use std::mem;
+use std::path::Path;
 use std::sync::Mutex;
 
 pub struct InstrumentMemoryOps {
@@ -71,6 +74,16 @@ impl InstrumentMemoryOps {
         body_did: LocalDefId,
     ) {
         FunctionInstrumenter::instrument(self, tcx, body, body_did);
+    }
+
+    /// Finish instrumentation and write out metadata to `metadata_file_path`.
+    pub fn finalize(&self, metadata_file_path: &Path) -> anyhow::Result<()> {
+        let mut spans = self.spans.lock().unwrap();
+        dbg!("Writing metadata to {:?}", metadata_file_path);
+        let span_file = File::create(metadata_file_path).context("Could not open metadata file")?;
+        let spans: Vec<SourceSpan> = spans.drain(..).collect();
+        bincode::serialize_into(span_file, &spans).context("Span serialization failed")?;
+        Ok(())
     }
 
     /// Get the unique index corresponding to a particular `Span`.
