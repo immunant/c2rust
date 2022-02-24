@@ -1,16 +1,16 @@
 [workspace]
 members = [
-    "c2rust",
-    "c2rust-transpile",
-    "c2rust-refactor",
-    "c2rust-ast-builder",
-    "c2rust-ast-exporter",
-    "c2rust-ast-printer",
-    "manual/preprocessors",
+    # "c2rust",
+    # "c2rust-transpile",
+    # "c2rust-refactor",
+    # "c2rust-ast-builder",
+    # "c2rust-ast-exporter",
+    # "c2rust-ast-printer",
+    # "manual/preprocessors",
     "analysis/runtime",
-    "c2rust-bitfields",
-    "c2rust-macros",
-    "c2rust-asm-casts",
+    # "c2rust-bitfields",
+    # "c2rust-macros",
+    # "c2rust-asm-casts",
 ]
 exclude = [
     "cross-checks/pointer-tracer",
