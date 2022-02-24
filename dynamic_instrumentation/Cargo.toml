@@ -1,0 +1,12 @@
+[package]
+name = "c2rust-dynamic-instrumentation"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+c2rust-analysis-rt = { path = "../analysis/runtime"}
+indexmap = "1.8"
+lazy_static = "1.4"
+
+[package.metadata.rust-analyzer] 
+rustc_private=true

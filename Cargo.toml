@@ -8,6 +8,7 @@ members = [
     # "c2rust-ast-printer",
     # "manual/preprocessors",
     "analysis/runtime",
+    "dynamic_instrumentation",
     # "c2rust-bitfields",
     # "c2rust-macros",
     # "c2rust-asm-casts",
