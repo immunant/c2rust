@@ -156,9 +156,10 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
         if Some(body_did) == main_did {
             instrumenter.instrument_entry_fn();
         }
+        instrumenter.instrument_ptr_args();
         instrumenter.instrument_ptr_derefs();
         instrumenter.instrument_ptr_assignments();
-        instrumenter.instrument_ptr_args();
+        instrumenter.instrument_ptr_returns();
         instrumenter.instrument_calls();
     }
 
@@ -409,7 +410,31 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
         self.instrument_pointer_locations(ptr_args, "ptr_arg");
     }
 
-    fn instrument_pointer_locations(&mut self, mut places: Vec<(Place<'tcx>, Location)>, fn_name: &str) {
+    fn instrument_ptr_returns(&mut self) {
+        let mut ptr_args = vec![];
+        for (block, block_data) in self.body.basic_blocks().iter_enumerated() {
+            if let TerminatorKind::Return = &block_data.terminator().kind {
+                let place = Place::return_place();
+                if self.body.local_decls[place.local].ty.is_unsafe_ptr() {
+                    ptr_args.push((
+                        place,
+                        Location {
+                            block,
+                            statement_index: block_data.statements.len(),
+                        },
+                    ))
+                }
+            }
+        }
+
+        self.instrument_pointer_locations(ptr_args, "ptr_ret");
+    }
+
+    fn instrument_pointer_locations(
+        &mut self,
+        mut places: Vec<(Place<'tcx>, Location)>,
+        fn_name: &str,
+    ) {
         // Sort by reverse location so that we can split blocks without
         // perturbing future statement indices
         places.sort_unstable_by(|a, b| b.1.cmp(&a.1));
