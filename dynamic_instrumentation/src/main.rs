@@ -1,5 +1,6 @@
 #![feature(rustc_private)]
 extern crate rustc_ast;
+extern crate rustc_const_eval;
 extern crate rustc_driver;
 extern crate rustc_index;
 extern crate rustc_interface;
@@ -16,9 +17,11 @@ use instrument_memory::InstrumentMemoryOps;
 use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
 use rustc_ast::node_id::NodeId;
 use rustc_ast::ptr::P;
+use rustc_const_eval::transform::validate;
 use rustc_driver::Compilation;
 use rustc_interface::interface::Compiler;
 use rustc_interface::Queries;
+use rustc_middle::mir::MirPass;
 use rustc_middle::ty::query::{ExternProviders, Providers};
 use rustc_middle::ty::WithOptConstParam;
 use rustc_session::Session;
@@ -91,6 +94,12 @@ fn override_queries(
 
         INSTRUMENTER.instrument_fn(tcx, &mut mir, def.did.to_def_id());
         dbg!(&mir);
+
+        validate::Validator {
+            when: "After dynamic instrumentation".to_string(),
+            mir_phase: mir.phase,
+        }
+        .run_pass(tcx, &mut mir);
 
         tcx.alloc_steal_mir(mir)
     };
