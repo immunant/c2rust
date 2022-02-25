@@ -3,11 +3,12 @@ use c2rust_analysis_rt::HOOK_FUNCTIONS;
 use c2rust_analysis_rt::{SourcePos, SourceSpan, SpanId};
 use indexmap::IndexSet;
 use rustc_index::vec::IndexVec;
+use rustc_middle::mir::visit::{PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Operand, Rvalue,
-    SourceInfo, Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
+    BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Location, Operand,
+    Place, Rvalue, SourceInfo, Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
-use rustc_middle::ty::{self, ParamEnv, TyCtxt};
+use rustc_middle::ty::{self, List, ParamEnv, TyCtxt};
 use rustc_span::def_id::{DefId, CRATE_DEF_INDEX};
 use rustc_span::{FileName, Span, Symbol, DUMMY_SP};
 use std::fs::File;
@@ -32,11 +33,17 @@ fn cast_ptr_to_usize<'tcx>(
     arg: &Operand<'tcx>,
 ) -> Option<(Statement<'tcx>, Operand<'tcx>)> {
     let arg_ty = match arg {
-        Operand::Copy(place) | Operand::Move(place) => place.ty(locals, tcx).ty,
+        Operand::Copy(place) | Operand::Move(place) => locals[place.local].ty,
         Operand::Constant(c) => c.ty(),
     };
     if !arg_ty.is_any_ptr() {
         return None;
+    }
+
+    let mut ptr_arg = arg.to_copy();
+    // Remove any deref from this pointer arg
+    if let Operand::Copy(place) = &mut ptr_arg {
+        place.projection = List::empty();
     }
 
     // Cast this argument to a usize before passing to the
@@ -48,7 +55,7 @@ fn cast_ptr_to_usize<'tcx>(
         source_info: SourceInfo::outermost(DUMMY_SP),
         kind: StatementKind::Assign(Box::new((
             casted_local.into(),
-            Rvalue::Cast(CastKind::Misc, arg.to_copy(), usize_ty),
+            Rvalue::Cast(CastKind::Misc, ptr_arg, usize_ty),
         ))),
     };
     Some((cast_stmt, casted_arg))
@@ -150,6 +157,7 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
             instrumenter.instrument_entry_fn();
         }
         instrumenter.instrument_calls();
+        instrumenter.instrument_ptr_uses();
     }
 
     fn find_instrumentation_def(&self, name: Symbol) -> Option<DefId> {
@@ -163,21 +171,31 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
         )
     }
 
-    /// Inserts a call to `func` _before_ `block`, followed by `block`.
+    /// Inserts a call to `func`.
+    ///
+    /// The call will be inserted before the statement at index `statement_idx`
+    /// in `block`. If `statement_idx` is the number of statements in the block,
+    /// the call will be inserted at the end of the block.
     ///
     /// `func` must not unwind, as it will have no cleanup destination. Returns
     /// the local slot for the inserted call's return value.
     fn insert_call(
         &mut self,
         block: BasicBlock,
+        statement_idx: usize,
         func: DefId,
         args: Vec<Operand<'tcx>>,
         is_cleanup: bool,
     ) -> Local {
         let (blocks, locals) = self.body.basic_blocks_and_local_decls_mut();
 
-        let old_block_data = mem::replace(&mut blocks[block], BasicBlockData::new(None));
-        let old_block = blocks.push(old_block_data);
+        let successor_stmts = blocks[block].statements.split_off(statement_idx);
+        let succesor_terminator = blocks[block].terminator.take();
+        let successor_block = blocks.push(BasicBlockData {
+            statements: successor_stmts,
+            terminator: succesor_terminator,
+            is_cleanup: blocks[block].is_cleanup,
+        });
 
         let fn_sig = self.tcx.fn_sig(func);
         let fn_sig = self.tcx.liberate_late_bound_regions(func, fn_sig);
@@ -189,7 +207,7 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
             kind: TerminatorKind::Call {
                 func,
                 args,
-                destination: Some((ret_local.into(), old_block)),
+                destination: Some((ret_local.into(), successor_block)),
                 cleanup: None,
                 from_hir_call: true,
                 fn_span: DUMMY_SP,
@@ -213,7 +231,7 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
             .find_instrumentation_def(Symbol::intern("finalize"))
             .expect("Could not find instrumentation context constructor definition");
 
-        let _ = self.insert_call(START_BLOCK, init_fn_did, vec![], false);
+        let _ = self.insert_call(START_BLOCK, 0, init_fn_did, vec![], false);
 
         let mut return_blocks = vec![];
         let mut resume_blocks = vec![];
@@ -230,10 +248,10 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
         }
 
         for block in return_blocks {
-            let _ = self.insert_call(block, fini_fn_did, vec![], false);
+            let _ = self.insert_call(block, 0, fini_fn_did, vec![], false);
         }
         for block in resume_blocks {
-            let _ = self.insert_call(block, fini_fn_did, vec![], true);
+            let _ = self.insert_call(block, 0, fini_fn_did, vec![], true);
         }
     }
 
@@ -309,23 +327,11 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
             args.push(ret_value);
         }
 
-        let span_idx = self.state.get_source_location_idx(self.tcx, fn_span);
-        args.insert(
-            0,
-            Operand::Constant(Box::new(Constant {
-                span: DUMMY_SP,
-                user_ty: None,
-                literal: ty::Const::from_bits(
-                    self.tcx,
-                    span_idx.into(),
-                    ParamEnv::empty().and(self.tcx.types.u32),
-                )
-                .into(),
-            })),
-        );
-
         // Assumes that the instrumentation function returns nil
         let ret_local = locals.push(LocalDecl::new(self.tcx.mk_unit(), DUMMY_SP));
+
+        let span_idx = self.state.get_source_location_idx(self.tcx, fn_span);
+        args.insert(0, self.make_span_const(span_idx));
 
         let func = Operand::function_handle(self.tcx, func_def_id, ty::List::empty(), DUMMY_SP);
         let instr_call = Terminator {
@@ -340,6 +346,74 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
             source_info: SourceInfo::outermost(DUMMY_SP),
         };
 
-        blocks[new_block].terminator.replace(instr_call);
+        self.body.basic_blocks_mut()[new_block]
+            .terminator
+            .replace(instr_call);
+    }
+
+    fn instrument_ptr_uses(&mut self) {
+        let mut ptr_uses = PtrUseVisitor {
+            body: &self.body,
+            uses: vec![],
+        };
+        ptr_uses.visit_body(self.body);
+        let mut ptr_uses = ptr_uses.uses;
+
+        // Sort by reverse location so that we can split blocks without
+        // perturbing future statement indices
+        ptr_uses.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+        for (place, location) in ptr_uses {
+            let ptr_deref_fn = self
+                .find_instrumentation_def(Symbol::intern("ptr_deref"))
+                .expect("Could not find pointer deref hook");
+
+            let (cast_stmt, ptr_arg) =
+                cast_ptr_to_usize(self.tcx, &mut self.body.local_decls, &Operand::Copy(place))
+                    .unwrap_or_else(|| panic!("Expected a pointer operand, got {:?}", place));
+
+            let span_idx = self
+                .state
+                .get_source_location_idx(self.tcx, self.body.source_info(location).span);
+            let span = self.make_span_const(span_idx);
+
+            let _ = self.insert_call(
+                location.block,
+                location.statement_index,
+                ptr_deref_fn,
+                vec![span, ptr_arg],
+                false,
+            );
+            self.body.basic_blocks_mut()[location.block]
+                .statements
+                .push(cast_stmt);
+        }
+    }
+
+    fn make_span_const(&self, idx: u32) -> Operand<'tcx> {
+        Operand::Constant(Box::new(Constant {
+            span: DUMMY_SP,
+            user_ty: None,
+            literal: ty::Const::from_bits(
+                self.tcx,
+                idx.into(),
+                ParamEnv::empty().and(self.tcx.types.u32),
+            )
+            .into(),
+        }))
+    }
+}
+
+struct PtrUseVisitor<'a, 'tcx: 'a> {
+    body: &'a Body<'tcx>,
+    uses: Vec<(Place<'tcx>, Location)>,
+}
+
+impl<'a, 'tcx: 'a> Visitor<'tcx> for PtrUseVisitor<'a, 'tcx> {
+    fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
+        let is_unsafe_ptr = self.body.local_decls[place.local].ty.is_unsafe_ptr();
+        if is_unsafe_ptr && place.is_indirect() && context.is_use() {
+            self.uses.push((*place, location));
+        }
     }
 }
