@@ -88,18 +88,21 @@ fn override_queries(
         let steal_mir = (providers.mir_built)(tcx, def);
         let mut mir = steal_mir.steal();
 
-        // Get the name of the function we're compiling.
-        let name = tcx.item_name(def.did.to_def_id());
-        dbg!(name);
+        let body_did = def.did.to_def_id();
+        if !tcx.is_const_fn(body_did) && !tcx.is_static(body_did) {
+            // Get the name of the function we're compiling.
+            let name = tcx.item_name(body_did);
+            dbg!(name);
 
-        INSTRUMENTER.instrument_fn(tcx, &mut mir, def.did.to_def_id());
-        dbg!(&mir);
+            INSTRUMENTER.instrument_fn(tcx, &mut mir, body_did);
+            dbg!(&mir);
 
-        validate::Validator {
-            when: "After dynamic instrumentation".to_string(),
-            mir_phase: mir.phase,
+            validate::Validator {
+                when: "After dynamic instrumentation".to_string(),
+                mir_phase: mir.phase,
+            }
+            .run_pass(tcx, &mut mir);
         }
-        .run_pass(tcx, &mut mir);
 
         tcx.alloc_steal_mir(mir)
     };
