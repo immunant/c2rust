@@ -157,7 +157,8 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
             instrumenter.instrument_entry_fn();
         }
         instrumenter.instrument_calls();
-        instrumenter.instrument_ptr_uses();
+        instrumenter.instrument_ptr_derefs();
+        instrumenter.instrument_ptr_assignments();
     }
 
     fn find_instrumentation_def(&self, name: Symbol) -> Option<DefId> {
@@ -351,23 +352,26 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
             .replace(instr_call);
     }
 
-    fn instrument_ptr_uses(&mut self) {
-        let mut ptr_uses = PtrUseVisitor {
+    fn instrument_ptr_derefs(&mut self) {
+        let mut ptr_derefs = PtrUseVisitor {
             body: &self.body,
             uses: vec![],
         };
-        ptr_uses.visit_body(self.body);
-        let mut ptr_uses = ptr_uses.uses;
+        ptr_derefs.visit_body(self.body);
+        let mut ptr_uses = ptr_derefs.uses;
+        if ptr_uses.is_empty() {
+            return;
+        }
 
         // Sort by reverse location so that we can split blocks without
         // perturbing future statement indices
         ptr_uses.sort_unstable_by(|a, b| b.1.cmp(&a.1));
 
-        for (place, location) in ptr_uses {
-            let ptr_deref_fn = self
-                .find_instrumentation_def(Symbol::intern("ptr_deref"))
-                .expect("Could not find pointer deref hook");
+        let ptr_deref_fn = self
+            .find_instrumentation_def(Symbol::intern("ptr_deref"))
+            .expect("Could not find pointer deref hook");
 
+        for (place, location) in ptr_uses {
             let (cast_stmt, ptr_arg) =
                 cast_ptr_to_usize(self.tcx, &mut self.body.local_decls, &Operand::Copy(place))
                     .unwrap_or_else(|| panic!("Expected a pointer operand, got {:?}", place));
@@ -381,6 +385,59 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
                 location.block,
                 location.statement_index,
                 ptr_deref_fn,
+                vec![span, ptr_arg],
+                false,
+            );
+            self.body.basic_blocks_mut()[location.block]
+                .statements
+                .push(cast_stmt);
+        }
+    }
+
+    fn instrument_ptr_assignments(&mut self) {
+        let mut assignement_stmts = vec![];
+        for (block, block_data) in self.body.basic_blocks().iter_enumerated() {
+            for (statement_index, statement) in block_data.statements.iter().enumerate() {
+                if let StatementKind::Assign(assign) = &statement.kind {
+                    let place = assign.0;
+                    let local = &self.body.local_decls[place.local];
+                    if local.is_user_variable() && local.ty.is_unsafe_ptr() {
+                        assignement_stmts.push((
+                            place,
+                            Location {
+                                block,
+                                statement_index,
+                            },
+                        ))
+                    }
+                }
+            }
+        }
+
+        // Sort by reverse location so that we can split blocks without
+        // perturbing future statement indices
+        assignement_stmts.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+        let ptr_move_fn = self
+            .find_instrumentation_def(Symbol::intern("ptr_assign"))
+            .expect("Could not find pointer assign hook");
+
+        for (place, location) in assignement_stmts {
+            let (cast_stmt, ptr_arg) =
+                cast_ptr_to_usize(self.tcx, &mut self.body.local_decls, &Operand::Copy(place))
+                    .unwrap_or_else(|| panic!("Expected a pointer operand, got {:?}", place));
+
+            let span_idx = self
+                .state
+                .get_source_location_idx(self.tcx, self.body.source_info(location).span);
+            let span = self.make_span_const(span_idx);
+
+            // Note that we insert at statement_index + 1 to insert _after_ the
+            // assignment statement, making it easy to reuse the local.
+            let _ = self.insert_call(
+                location.block,
+                location.statement_index + 1,
+                ptr_move_fn,
                 vec![span, ptr_arg],
                 false,
             );
