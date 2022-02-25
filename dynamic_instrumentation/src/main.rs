@@ -89,7 +89,7 @@ fn override_queries(
         let name = tcx.item_name(def.did.to_def_id());
         dbg!(name);
 
-        INSTRUMENTER.instrument_fn(tcx, &mut mir, def.did);
+        INSTRUMENTER.instrument_fn(tcx, &mut mir, def.did.to_def_id());
         dbg!(&mir);
 
         tcx.alloc_steal_mir(mir)

@@ -5,10 +5,10 @@ use indexmap::IndexSet;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Operand, Rvalue,
-    SourceInfo, Statement, StatementKind, Terminator, TerminatorKind,
+    SourceInfo, Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
 };
 use rustc_middle::ty::{self, ParamEnv, TyCtxt};
-use rustc_span::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
+use rustc_span::def_id::{DefId, CRATE_DEF_INDEX};
 use rustc_span::{FileName, Span, Symbol, DUMMY_SP};
 use std::fs::File;
 use std::mem;
@@ -67,12 +67,7 @@ impl InstrumentMemoryOps {
     }
 
     /// Instrument memory operations in-place in the function `body`.
-    pub fn instrument_fn<'tcx>(
-        &self,
-        tcx: TyCtxt<'tcx>,
-        body: &mut Body<'tcx>,
-        body_did: LocalDefId,
-    ) {
+    pub fn instrument_fn<'tcx>(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>, body_did: DefId) {
         FunctionInstrumenter::instrument(self, tcx, body, body_did);
     }
 
@@ -130,7 +125,7 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
         state: &'a InstrumentMemoryOps,
         tcx: TyCtxt<'tcx>,
         body: &'a mut Body<'tcx>,
-        _body_did: LocalDefId,
+        body_did: DefId,
     ) {
         let runtime_crate = tcx
             .crates(())
@@ -150,7 +145,84 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
             body,
             runtime_crate_did,
         };
+        let main_did = tcx.entry_fn(()).map(|(def_id, _)| def_id);
+        if Some(body_did) == main_did {
+            instrumenter.instrument_entry_fn();
+        }
         instrumenter.instrument_calls();
+    }
+
+    /// Inserts a call to `func` _before_ `block`, followed by `block`.
+    /// 
+    /// `func` must not unwind, as it will have no cleanup destination. Returns
+    /// the local slot for the inserted call's return value.
+    fn insert_call(&mut self, block: BasicBlock, func: DefId, args: Vec<Operand<'tcx>>, is_cleanup: bool) -> Local {
+        let (blocks, locals) = self.body.basic_blocks_and_local_decls_mut();
+
+        let old_block_data =
+            mem::replace(&mut blocks[block], BasicBlockData::new(None));
+        let old_block = blocks.push(old_block_data);
+
+        let fn_sig = self.tcx.fn_sig(func);
+        let fn_sig = self.tcx.liberate_late_bound_regions(func, fn_sig);
+
+        let ret_local = locals.push(LocalDecl::new(
+            fn_sig.output(),
+            DUMMY_SP,
+        ));
+        let func =
+            Operand::function_handle(self.tcx, func, ty::List::empty(), DUMMY_SP);
+
+        let call = Terminator {
+            kind: TerminatorKind::Call {
+                func,
+                args,
+                destination: Some((ret_local.into(), old_block)),
+                cleanup: None,
+                from_hir_call: true,
+                fn_span: DUMMY_SP,
+            },
+            source_info: SourceInfo::outermost(DUMMY_SP),
+        };
+        blocks[block].terminator.replace(call);
+        if is_cleanup {
+            blocks[block].is_cleanup = true;
+        }
+
+        ret_local
+    }
+
+    fn instrument_entry_fn(&mut self) {
+        let init_fn_did = self
+            .find_instrumentation_def(Symbol::intern("initialize"))
+            .expect("Could not find instrumentation context constructor definition");
+
+        let fini_fn_did = self
+            .find_instrumentation_def(Symbol::intern("finalize"))
+            .expect("Could not find instrumentation context constructor definition");
+
+        let _ = self.insert_call(START_BLOCK,init_fn_did, vec![], false);
+
+        let mut return_blocks = vec![];
+        let mut resume_blocks = vec![];
+        for (block, block_data) in self.body.basic_blocks().iter_enumerated() {
+            match &block_data.terminator().kind {
+                TerminatorKind::Return => {
+                    return_blocks.push(block);
+                }
+                TerminatorKind::Resume => {
+                    resume_blocks.push(block);
+                }
+                _ => {}
+            }
+        }
+
+        for block in return_blocks {
+            let _ = self.insert_call(block, fini_fn_did, vec![], false);
+        }
+        for block in resume_blocks {
+            let _ = self.insert_call(block, fini_fn_did, vec![], true);
+        }
     }
 
     fn instrument_calls(&mut self) {
@@ -161,6 +233,10 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
         }
 
         for (block, callee_name) in calls_to_instrument {
+            let func_def_id = self
+                .find_instrumentation_def(callee_name)
+                .expect("Could not find instrumentation hook function");
+
             let (blocks, locals) = self.body.basic_blocks_and_local_decls_mut();
             let new_block = blocks.push(BasicBlockData::new(None));
             let call = blocks[block].terminator_mut();
@@ -220,14 +296,6 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
             // Assumes that the instrumentation function returns nil
             let ret_local = locals.push(LocalDecl::new(self.tcx.mk_unit(), DUMMY_SP));
 
-            let func_def_id = self
-                .tcx
-                .module_children(self.runtime_crate_did)
-                .iter()
-                .find(|child| child.ident.name == callee_name)
-                .unwrap()
-                .res
-                .def_id();
             let func = Operand::function_handle(self.tcx, func_def_id, ty::List::empty(), DUMMY_SP);
             let instr_call = Terminator {
                 kind: TerminatorKind::Call {
@@ -243,6 +311,17 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
 
             blocks[new_block].terminator.replace(instr_call);
         }
+    }
+
+    fn find_instrumentation_def(&self, name: Symbol) -> Option<DefId> {
+        Some(
+            self.tcx
+                .module_children(self.runtime_crate_did)
+                .iter()
+                .find(|child| child.ident.name == name)?
+                .res
+                .def_id(),
+        )
     }
 
     /// Find and return all calls to functions in [`HOOK_FUNCTIONS`].
