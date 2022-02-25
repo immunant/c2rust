@@ -152,26 +152,38 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
         instrumenter.instrument_calls();
     }
 
+    fn find_instrumentation_def(&self, name: Symbol) -> Option<DefId> {
+        Some(
+            self.tcx
+                .module_children(self.runtime_crate_did)
+                .iter()
+                .find(|child| child.ident.name == name)?
+                .res
+                .def_id(),
+        )
+    }
+
     /// Inserts a call to `func` _before_ `block`, followed by `block`.
-    /// 
+    ///
     /// `func` must not unwind, as it will have no cleanup destination. Returns
     /// the local slot for the inserted call's return value.
-    fn insert_call(&mut self, block: BasicBlock, func: DefId, args: Vec<Operand<'tcx>>, is_cleanup: bool) -> Local {
+    fn insert_call(
+        &mut self,
+        block: BasicBlock,
+        func: DefId,
+        args: Vec<Operand<'tcx>>,
+        is_cleanup: bool,
+    ) -> Local {
         let (blocks, locals) = self.body.basic_blocks_and_local_decls_mut();
 
-        let old_block_data =
-            mem::replace(&mut blocks[block], BasicBlockData::new(None));
+        let old_block_data = mem::replace(&mut blocks[block], BasicBlockData::new(None));
         let old_block = blocks.push(old_block_data);
 
         let fn_sig = self.tcx.fn_sig(func);
         let fn_sig = self.tcx.liberate_late_bound_regions(func, fn_sig);
 
-        let ret_local = locals.push(LocalDecl::new(
-            fn_sig.output(),
-            DUMMY_SP,
-        ));
-        let func =
-            Operand::function_handle(self.tcx, func, ty::List::empty(), DUMMY_SP);
+        let ret_local = locals.push(LocalDecl::new(fn_sig.output(), DUMMY_SP));
+        let func = Operand::function_handle(self.tcx, func, ty::List::empty(), DUMMY_SP);
 
         let call = Terminator {
             kind: TerminatorKind::Call {
@@ -201,7 +213,7 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
             .find_instrumentation_def(Symbol::intern("finalize"))
             .expect("Could not find instrumentation context constructor definition");
 
-        let _ = self.insert_call(START_BLOCK,init_fn_did, vec![], false);
+        let _ = self.insert_call(START_BLOCK, init_fn_did, vec![], false);
 
         let mut return_blocks = vec![];
         let mut resume_blocks = vec![];
@@ -225,107 +237,8 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
         }
     }
 
+    /// Find and instrument all calls to functions in [`HOOK_FUNCTIONS`].
     fn instrument_calls(&mut self) {
-        let calls_to_instrument = self.find_calls_to_instrument();
-        dbg!(&calls_to_instrument);
-        if calls_to_instrument.is_empty() {
-            return;
-        }
-
-        for (block, callee_name) in calls_to_instrument {
-            let func_def_id = self
-                .find_instrumentation_def(callee_name)
-                .expect("Could not find instrumentation hook function");
-
-            let (blocks, locals) = self.body.basic_blocks_and_local_decls_mut();
-            let new_block = blocks.push(BasicBlockData::new(None));
-            let call = blocks[block].terminator_mut();
-            let mut casts = vec![];
-            let (ret_value, mut args, next_block, fn_span) = if let TerminatorKind::Call {
-                destination: Some((place, next_block)),
-                args,
-                fn_span,
-                ..
-            } = &mut call.kind
-            {
-                let next_block = mem::replace(next_block, new_block);
-                let mut instrument_args = args.clone();
-                for (orig_arg, instr_arg) in args.iter_mut().zip(instrument_args.iter_mut()) {
-                    // Make the call operands copies so we don't reuse a moved value
-                    if orig_arg.place().is_some() {
-                        *orig_arg = orig_arg.to_copy();
-                    }
-
-                    if let Some((cast_stmt, cast_local)) =
-                        cast_ptr_to_usize(self.tcx, locals, &orig_arg)
-                    {
-                        *instr_arg = cast_local;
-                        casts.push(cast_stmt);
-                    }
-                }
-                (Operand::Copy(*place), instrument_args, next_block, *fn_span)
-            } else {
-                panic!(
-                    "Expected a call terminator in block to instrument, found: {:?}",
-                    call
-                );
-            };
-            blocks[block].statements.append(&mut casts);
-            if let Some((cast_stmt, cast_local)) = cast_ptr_to_usize(self.tcx, locals, &ret_value) {
-                blocks[new_block].statements.push(cast_stmt);
-                args.push(cast_local);
-            } else {
-                args.push(ret_value);
-            }
-
-            let span_idx = self.state.get_source_location_idx(self.tcx, fn_span);
-            args.insert(
-                0,
-                Operand::Constant(Box::new(Constant {
-                    span: DUMMY_SP,
-                    user_ty: None,
-                    literal: ty::Const::from_bits(
-                        self.tcx,
-                        span_idx.into(),
-                        ParamEnv::empty().and(self.tcx.types.u32),
-                    )
-                    .into(),
-                })),
-            );
-
-            // Assumes that the instrumentation function returns nil
-            let ret_local = locals.push(LocalDecl::new(self.tcx.mk_unit(), DUMMY_SP));
-
-            let func = Operand::function_handle(self.tcx, func_def_id, ty::List::empty(), DUMMY_SP);
-            let instr_call = Terminator {
-                kind: TerminatorKind::Call {
-                    func,
-                    args,
-                    destination: Some((ret_local.into(), next_block)),
-                    cleanup: None,
-                    from_hir_call: true,
-                    fn_span: DUMMY_SP,
-                },
-                source_info: SourceInfo::outermost(DUMMY_SP),
-            };
-
-            blocks[new_block].terminator.replace(instr_call);
-        }
-    }
-
-    fn find_instrumentation_def(&self, name: Symbol) -> Option<DefId> {
-        Some(
-            self.tcx
-                .module_children(self.runtime_crate_did)
-                .iter()
-                .find(|child| child.ident.name == name)?
-                .res
-                .def_id(),
-        )
-    }
-
-    /// Find and return all calls to functions in [`HOOK_FUNCTIONS`].
-    fn find_calls_to_instrument(&self) -> Vec<(BasicBlock, Symbol)> {
         let mut calls = vec![];
         for (id, block) in self.body.basic_blocks().iter_enumerated() {
             match &block.terminator {
@@ -343,6 +256,90 @@ impl<'a, 'tcx: 'a> FunctionInstrumenter<'a, 'tcx> {
                 _ => {}
             }
         }
-        calls
+        dbg!(&calls);
+
+        for (block, callee_name) in calls {
+            self.instrument_call(block, callee_name);
+        }
+    }
+
+    fn instrument_call(&mut self, block: BasicBlock, callee_name: Symbol) {
+        let func_def_id = self
+            .find_instrumentation_def(callee_name)
+            .expect("Could not find instrumentation hook function");
+
+        let (blocks, locals) = self.body.basic_blocks_and_local_decls_mut();
+        let new_block = blocks.push(BasicBlockData::new(None));
+        let call = blocks[block].terminator_mut();
+        let mut casts = vec![];
+        let (ret_value, mut args, next_block, fn_span) = if let TerminatorKind::Call {
+            destination: Some((place, next_block)),
+            args,
+            fn_span,
+            ..
+        } = &mut call.kind
+        {
+            let next_block = mem::replace(next_block, new_block);
+            let mut instrument_args = args.clone();
+            for (orig_arg, instr_arg) in args.iter_mut().zip(instrument_args.iter_mut()) {
+                // Make the call operands copies so we don't reuse a moved value
+                if orig_arg.place().is_some() {
+                    *orig_arg = orig_arg.to_copy();
+                }
+
+                if let Some((cast_stmt, cast_local)) =
+                    cast_ptr_to_usize(self.tcx, locals, &orig_arg)
+                {
+                    *instr_arg = cast_local;
+                    casts.push(cast_stmt);
+                }
+            }
+            (Operand::Copy(*place), instrument_args, next_block, *fn_span)
+        } else {
+            panic!(
+                "Expected a call terminator in block to instrument, found: {:?}",
+                call
+            );
+        };
+        blocks[block].statements.append(&mut casts);
+        if let Some((cast_stmt, cast_local)) = cast_ptr_to_usize(self.tcx, locals, &ret_value) {
+            blocks[new_block].statements.push(cast_stmt);
+            args.push(cast_local);
+        } else {
+            args.push(ret_value);
+        }
+
+        let span_idx = self.state.get_source_location_idx(self.tcx, fn_span);
+        args.insert(
+            0,
+            Operand::Constant(Box::new(Constant {
+                span: DUMMY_SP,
+                user_ty: None,
+                literal: ty::Const::from_bits(
+                    self.tcx,
+                    span_idx.into(),
+                    ParamEnv::empty().and(self.tcx.types.u32),
+                )
+                .into(),
+            })),
+        );
+
+        // Assumes that the instrumentation function returns nil
+        let ret_local = locals.push(LocalDecl::new(self.tcx.mk_unit(), DUMMY_SP));
+
+        let func = Operand::function_handle(self.tcx, func_def_id, ty::List::empty(), DUMMY_SP);
+        let instr_call = Terminator {
+            kind: TerminatorKind::Call {
+                func,
+                args,
+                destination: Some((ret_local.into(), next_block)),
+                cleanup: None,
+                from_hir_call: true,
+                fn_span: DUMMY_SP,
+            },
+            source_info: SourceInfo::outermost(DUMMY_SP),
+        };
+
+        blocks[new_block].terminator.replace(instr_call);
     }
 }
