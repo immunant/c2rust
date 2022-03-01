@@ -822,7 +822,6 @@ pub fn translate(
             .replace(CommentStore::new())
             .into_comment_traverser();
 
-        /*
         // Add a comment mapping span to each node that should have a
         // comment printed before it. The pretty printer picks up these
         // spans and uses them to decide when to emit comments.
@@ -838,7 +837,6 @@ pub fn translate(
             .into_iter()
             .map(|i| traverser.traverse_item(*i)).map(Box::new)
             .collect();
-        */
 
         let mut reordered_comment_store = traverser.into_comment_store();
         let remaining_comments = t.comment_context.get_remaining_comments(t.main_file);
