@@ -283,16 +283,23 @@ macro_rules! with_fn_name {
         fn $fn_name (&mut self, node: &mut $What) {
             // Delegate to the default impl to visit nested expressions.
             let node_span = node.span();
+            debug!("finding home for {:?}: {} {:?}?", self.span, std::stringify!($what), node_span);
             let joined = node_span.join(self.span);
             let tokens = node.into_token_stream();
+            /*for t in tokens {
+                println!("\tspan: {:?} {}", t.span(), t);
+            }*/
             let contains = joined.map(|j| j.eq(&node_span)).unwrap_or(false);
+            println!("joined: {:?}; contains: {:?}", joined, contains);
             /* if the node's span is not changed by joining it with the span to find,
             then the span to find lies within the node's span and we should recurse */
             if contains {
                 visit_mut::$fn_name(self, node);
 
                 if let Some(comments) = self.comments.take() {
+                    debug!("inserted comment on {} node", std::stringify!($what));
                     insert_comment_attrs(&mut node.attrs, comments);
+                    println!("now: {:?}", node)
                 }
             }
         }
