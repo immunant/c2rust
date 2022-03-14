@@ -1,6 +1,8 @@
 pub use c2rust_ast_printer::pprust::BytePos;
 use proc_macro2::Span;
 use syn::*;
+use syn::spanned::Spanned;
+use super::SpanExt;
 
 /// Set the span of an AST node.
 pub trait SetSpan {
@@ -33,6 +35,7 @@ macro_rules! set_span_impl {
                     #[allow(unreachable_patterns)]
                     _ => panic!("could not set span on {} {:?}", stringify!($spanned_ty), self),
                 }
+                assert!(self.span().eq(&s));
             }
         }
     };
@@ -47,6 +50,7 @@ macro_rules! set_span_impl {
                     #[allow(unreachable_patterns)]
                     _ => panic!("could not set span on {} {:?}", stringify!($spanned_ty), self),
                 }
+                assert!(self.span().eq(&s));
             }
         }
     };
@@ -54,6 +58,7 @@ macro_rules! set_span_impl {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, s: Span) {
                 self.$field.spans[0] = s;
+                assert!(self.span().eq(&s));
             }
         }
     };
@@ -61,20 +66,23 @@ macro_rules! set_span_impl {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, s: Span) {
                 self.$field.span = s;
+                assert!(self.span().eq(&s));
             }
         }
     };
     ( struct $spanned_ty:ident, field $field:ident ) => {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, s: Span) {
-                self.$field.set_span(s)
+                self.$field.set_span(s);
+                assert!(self.span().eq(&s));
             }
         }
     };
     ( struct $spanned_ty:ident, via $($where:tt) + ) => {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, s: Span) {
-                self.$($where)+ = s
+                self.$($where)+ = s;
+                assert!(self.span().eq(&s));
             }
         }
     };
