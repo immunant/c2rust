@@ -161,6 +161,10 @@ impl<'c> Translation<'c> {
     }
 
     pub fn get_span(&self, id: SomeId) -> Option<Span> {
-        self.spans.get(&id).copied()
+        let x = self.spans.get(&id).copied();
+        if let Some(ref sp) = x {
+            println!("queried span {:?} for id {:?}", sp, id);
+        }
+        x
     }
 }

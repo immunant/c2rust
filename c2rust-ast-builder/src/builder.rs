@@ -550,6 +550,7 @@ impl Builder {
 
     pub fn span<S: Make<Span>>(self, span: S) -> Self {
         let span = span.make(&self);
+        println!("setting span to {:?}", span);
         Builder { span: span, ..self }
     }
 
