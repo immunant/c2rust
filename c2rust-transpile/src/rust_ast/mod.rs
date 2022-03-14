@@ -6,6 +6,23 @@ pub mod set_span;
 pub use c2rust_ast_printer::pprust::BytePos;
 use proc_macro2::Span;
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
+static SPAN_LIMIT: AtomicU32 = AtomicU32::new(0);
+
+fn raise_span_limit(new_limit: u32) {
+    let limit = SPAN_LIMIT.load(Ordering::Relaxed);
+    let new_limit = 0x2000000;
+    if new_limit >= limit {
+        let delta = new_limit - limit;
+        let s = str::repeat("        ", (delta as usize + 7) / 8);
+        use std::str::FromStr;
+        /* used only for its side-effect of expanding the source map */
+        let _ = proc_macro2::TokenStream::from_str(&s);
+        SPAN_LIMIT.store(new_limit, Ordering::Relaxed);
+    }
+}
+
 /// Make a new span at `pos`
 pub fn pos_to_span(pos: BytePos) -> Span {
     SpanExt::new(pos.0, pos.0)
@@ -137,18 +154,21 @@ fn get_inner(s: &Span) -> (u32, u32) {
     let repr: &SpanRepr = unsafe {
         std::mem::transmute(s)
     };
-    (repr.lo, repr.hi)
+    (repr.lo & 0xffffff, repr.hi & 0xffffff)
 }
 
 /** return a span with the given bounds */
 fn synthesize(lo: u32, hi: u32) -> Span {
+    /* we must raise the span limit by creating dummy sourcemap entries when
+    synthesizing a span; otherwise we hit assertions on some span methods */
+    raise_span_limit(hi);
     validate_repr();
     /* safety: safe if it is safe to transmute between `Span` and `SpanRepr`;
     we call `validate_repr` to verify this. see doc comment on `validare_repr` */
     let repr = SpanRepr {
         compiler_or_fallback: 1,
-        lo,
-        hi,
+        lo: lo | 0x1000000,
+        hi: hi | 0x1000000,
     };
     unsafe {
         std::mem::transmute(repr)
