@@ -16,7 +16,7 @@ use syn::{BinOp, UnOp}; // To override c_ast::{BinOp,UnOp} from glob import
 use syn::spanned::Spanned as _;
 
 use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
-use crate::rust_ast::comment_store::CommentStore;
+use crate::rust_ast::comment_store::{CommentStore, bake_comment_into_file};
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::traverse::Traversal;
@@ -858,7 +858,7 @@ pub fn translate(
         let comments = Comments::new(reordered_comment_store.into_comments());
 
         // pass all converted items to the Rust pretty printer
-        let translation = pprust::to_string_with_comments(comments, |s| {
+        let translation = pprust::to_string(|s| {
             let (attrs, mut all_items) = arrange_header(&t, t.tcfg.is_binary(main_file.as_path()));
 
             all_items.extend(mod_items);
@@ -882,7 +882,15 @@ pub fn translate(
             all_items.extend(items);
 
             //s.print_remaining_comments();
-            s.file(&syn::File {shebang: None, attrs, items: all_items.into_iter().map(|x| *x).collect()});
+            let mut file = syn::File {shebang: None, attrs, items: all_items.into_iter().map(|x| *x).collect()};
+            debug!("about to bake... {:?}", file.span());
+            for comment in comments.comments {
+                debug!("bake 1... at {:?}", comment.pos);
+                let lines_borrow: Vec<_> = comment.lines.iter().map(|x| x.as_str()).collect();
+                bake_comment_into_file(&mut file, &*lines_borrow, pos_to_span(comment.pos));
+            }
+
+            s.file(&file);
         });
         (translation, pragmas, crates)
     }
