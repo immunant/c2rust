@@ -644,7 +644,11 @@ impl StructureState {
 
                 let e = mk().loop_expr(mk().span(body_span).block(body), lbl.map(|l| l.pretty_print()));
 
-                mk().span(span).expr_stmt(e)
+                if span.is_dummy() {
+                    mk()
+                } else {
+                    mk().span(span)
+                }.expr_stmt(e)
             }
 
             Exit(exit_style, lbl) => {
@@ -656,7 +660,11 @@ impl StructureState {
                     ExitStyle::Continue => mk().continue_expr(lbl),
                 };
 
-                mk().span(span).semi_stmt(e)
+                if span.is_dummy() {
+                    mk()
+                } else {
+                    mk().span(span)
+                }.semi_stmt(e)
             }
         };
 
