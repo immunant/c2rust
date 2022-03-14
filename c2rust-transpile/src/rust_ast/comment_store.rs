@@ -278,7 +278,141 @@ impl traverse::Traversal for CommentTraverser {
     }
 }
 
-pub fn insert_comment_attrs(attrs: &mut Vec<Attribute>, new_comments: SmallVec<[&str; 1]>) {
+macro_rules! with_fn_name {
+    ($fn_name:tt, $what:ident, $What:ident) => {
+        fn $fn_name (&mut self, node: &mut $What) {
+            // Delegate to the default impl to visit nested expressions.
+            let node_span = node.span();
+            let joined = node_span.join(self.span);
+            let tokens = node.into_token_stream();
+            let contains = joined.map(|j| j.eq(&node_span)).unwrap_or(false);
+            /* if the node's span is not changed by joining it with the span to find,
+            then the span to find lies within the node's span and we should recurse */
+            if contains {
+                visit_mut::$fn_name(self, node);
+
+                if let Some(comments) = self.comments.take() {
+                    insert_comment_attrs(&mut node.attrs, comments);
+                }
+            }
+        }
+    }
+}
+
+macro_rules! traverse_bake_comments_for_node {
+    ($what:ident, $What:ident, $visit_what_mut:ident) => {
+        with_fn_name!($visit_what_mut, $what, $What);
+    }
+}
+
+
+
+struct UnbakedComment<'a> {
+    comments: Option<&'a [&'a str]>,
+    span: Span,
+}
+
+use syn::visit_mut::VisitMut;
+impl<'a> VisitMut for UnbakedComment<'a> {
+    traverse_bake_comments_for_node!(variant, Variant, visit_variant_mut);
+    traverse_bake_comments_for_node!(field, Field, visit_field_mut);
+    traverse_bake_comments_for_node!(field_value, FieldValue, visit_field_value_mut);
+    traverse_bake_comments_for_node!(derive_input, DeriveInput, visit_derive_input_mut);
+    traverse_bake_comments_for_node!(expr_array, ExprArray, visit_expr_array_mut);
+    traverse_bake_comments_for_node!(expr_assign, ExprAssign, visit_expr_assign_mut);
+    traverse_bake_comments_for_node!(expr_assign_op, ExprAssignOp, visit_expr_assign_op_mut);
+    traverse_bake_comments_for_node!(expr_async, ExprAsync, visit_expr_async_mut);
+    traverse_bake_comments_for_node!(expr_await, ExprAwait, visit_expr_await_mut);
+    traverse_bake_comments_for_node!(expr_binary, ExprBinary, visit_expr_binary_mut);
+    traverse_bake_comments_for_node!(expr_block, ExprBlock, visit_expr_block_mut);
+    traverse_bake_comments_for_node!(expr_box, ExprBox, visit_expr_box_mut);
+    traverse_bake_comments_for_node!(expr_break, ExprBreak, visit_expr_break_mut);
+    traverse_bake_comments_for_node!(expr_call, ExprCall, visit_expr_call_mut);
+    traverse_bake_comments_for_node!(expr_cast, ExprCast, visit_expr_cast_mut);
+    traverse_bake_comments_for_node!(expr_closure, ExprClosure, visit_expr_closure_mut);
+    traverse_bake_comments_for_node!(expr_continue, ExprContinue, visit_expr_continue_mut);
+    traverse_bake_comments_for_node!(expr_field, ExprField, visit_expr_field_mut);
+    traverse_bake_comments_for_node!(expr_for_loop, ExprForLoop, visit_expr_for_loop_mut);
+    traverse_bake_comments_for_node!(expr_group, ExprGroup, visit_expr_group_mut);
+    traverse_bake_comments_for_node!(expr_if, ExprIf, visit_expr_if_mut);
+    traverse_bake_comments_for_node!(expr_index, ExprIndex, visit_expr_index_mut);
+    traverse_bake_comments_for_node!(expr_let, ExprLet, visit_expr_let_mut);
+    traverse_bake_comments_for_node!(expr_lit, ExprLit, visit_expr_lit_mut);
+    traverse_bake_comments_for_node!(expr_loop, ExprLoop, visit_expr_loop_mut);
+    traverse_bake_comments_for_node!(expr_macro, ExprMacro, visit_expr_macro_mut);
+    traverse_bake_comments_for_node!(expr_match, ExprMatch, visit_expr_match_mut);
+    traverse_bake_comments_for_node!(expr_method_call, ExprMethodCall, visit_expr_method_call_mut);
+    traverse_bake_comments_for_node!(expr_paren, ExprParen, visit_expr_paren_mut);
+    traverse_bake_comments_for_node!(expr_path, ExprPath, visit_expr_path_mut);
+    traverse_bake_comments_for_node!(expr_range, ExprRange, visit_expr_range_mut);
+    traverse_bake_comments_for_node!(expr_reference, ExprReference, visit_expr_reference_mut);
+    traverse_bake_comments_for_node!(expr_repeat, ExprRepeat, visit_expr_repeat_mut);
+    traverse_bake_comments_for_node!(expr_return, ExprReturn, visit_expr_return_mut);
+    traverse_bake_comments_for_node!(expr_struct, ExprStruct, visit_expr_struct_mut);
+    traverse_bake_comments_for_node!(expr_try, ExprTry, visit_expr_try_mut);
+    traverse_bake_comments_for_node!(expr_try_block, ExprTryBlock, visit_expr_try_block_mut);
+    traverse_bake_comments_for_node!(expr_tuple, ExprTuple, visit_expr_tuple_mut);
+    traverse_bake_comments_for_node!(expr_type, ExprType, visit_expr_type_mut);
+    traverse_bake_comments_for_node!(expr_unary, ExprUnary, visit_expr_unary_mut);
+    traverse_bake_comments_for_node!(expr_unsafe, ExprUnsafe, visit_expr_unsafe_mut);
+    traverse_bake_comments_for_node!(expr_while, ExprWhile, visit_expr_while_mut);
+    traverse_bake_comments_for_node!(expr_yield, ExprYield, visit_expr_yield_mut);
+    traverse_bake_comments_for_node!(arm, Arm, visit_arm_mut);
+    traverse_bake_comments_for_node!(type_param, TypeParam, visit_type_param_mut);
+    traverse_bake_comments_for_node!(lifetime_def, LifetimeDef, visit_lifetime_def_mut);
+    traverse_bake_comments_for_node!(const_param, ConstParam, visit_const_param_mut);
+    traverse_bake_comments_for_node!(item_const, ItemConst, visit_item_const_mut);
+    traverse_bake_comments_for_node!(item_enum, ItemEnum, visit_item_enum_mut);
+    traverse_bake_comments_for_node!(item_extern_crate, ItemExternCrate, visit_item_extern_crate_mut);
+    traverse_bake_comments_for_node!(item_fn, ItemFn, visit_item_fn_mut);
+    traverse_bake_comments_for_node!(item_foreign_mod, ItemForeignMod, visit_item_foreign_mod_mut);
+    traverse_bake_comments_for_node!(item_impl, ItemImpl, visit_item_impl_mut);
+    traverse_bake_comments_for_node!(item_macro, ItemMacro, visit_item_macro_mut);
+    traverse_bake_comments_for_node!(item_macro2, ItemMacro2, visit_item_macro2_mut);
+    traverse_bake_comments_for_node!(item_mod, ItemMod, visit_item_mod_mut);
+    traverse_bake_comments_for_node!(item_static, ItemStatic, visit_item_static_mut);
+    traverse_bake_comments_for_node!(item_struct, ItemStruct, visit_item_struct_mut);
+    traverse_bake_comments_for_node!(item_trait, ItemTrait, visit_item_trait_mut);
+    traverse_bake_comments_for_node!(item_trait_alias, ItemTraitAlias, visit_item_trait_alias_mut);
+    traverse_bake_comments_for_node!(item_type, ItemType, visit_item_type_mut);
+    traverse_bake_comments_for_node!(item_union, ItemUnion, visit_item_union_mut);
+    traverse_bake_comments_for_node!(item_use, ItemUse, visit_item_use_mut);
+    traverse_bake_comments_for_node!(foreign_item_fn, ForeignItemFn, visit_foreign_item_fn_mut);
+    traverse_bake_comments_for_node!(foreign_item_static, ForeignItemStatic, visit_foreign_item_static_mut);
+    traverse_bake_comments_for_node!(foreign_item_type, ForeignItemType, visit_foreign_item_type_mut);
+    traverse_bake_comments_for_node!(foreign_item_macro, ForeignItemMacro, visit_foreign_item_macro_mut);
+    traverse_bake_comments_for_node!(trait_item_const, TraitItemConst, visit_trait_item_const_mut);
+    traverse_bake_comments_for_node!(trait_item_method, TraitItemMethod, visit_trait_item_method_mut);
+    traverse_bake_comments_for_node!(trait_item_type, TraitItemType, visit_trait_item_type_mut);
+    traverse_bake_comments_for_node!(trait_item_macro, TraitItemMacro, visit_trait_item_macro_mut);
+    traverse_bake_comments_for_node!(impl_item_const, ImplItemConst, visit_impl_item_const_mut);
+    traverse_bake_comments_for_node!(impl_item_method, ImplItemMethod, visit_impl_item_method_mut);
+    traverse_bake_comments_for_node!(impl_item_type, ImplItemType, visit_impl_item_type_mut);
+    traverse_bake_comments_for_node!(impl_item_macro, ImplItemMacro, visit_impl_item_macro_mut);
+    traverse_bake_comments_for_node!(receiver, Receiver, visit_receiver_mut);
+    traverse_bake_comments_for_node!(file, File, visit_file_mut);
+    traverse_bake_comments_for_node!(local, Local, visit_local_mut);
+    traverse_bake_comments_for_node!(bare_fn_arg, BareFnArg, visit_bare_fn_arg_mut);
+    traverse_bake_comments_for_node!(variadic, Variadic, visit_variadic_mut);
+    traverse_bake_comments_for_node!(pat_box, PatBox, visit_pat_box_mut);
+    traverse_bake_comments_for_node!(pat_ident, PatIdent, visit_pat_ident_mut);
+    traverse_bake_comments_for_node!(pat_lit, PatLit, visit_pat_lit_mut);
+    traverse_bake_comments_for_node!(pat_macro, PatMacro, visit_pat_macro_mut);
+    traverse_bake_comments_for_node!(pat_or, PatOr, visit_pat_or_mut);
+    traverse_bake_comments_for_node!(pat_path, PatPath, visit_pat_path_mut);
+    traverse_bake_comments_for_node!(pat_range, PatRange, visit_pat_range_mut);
+    traverse_bake_comments_for_node!(pat_reference, PatReference, visit_pat_reference_mut);
+    traverse_bake_comments_for_node!(pat_rest, PatRest, visit_pat_rest_mut);
+    traverse_bake_comments_for_node!(pat_slice, PatSlice, visit_pat_slice_mut);
+    traverse_bake_comments_for_node!(pat_struct, PatStruct, visit_pat_struct_mut);
+    traverse_bake_comments_for_node!(pat_tuple, PatTuple, visit_pat_tuple_mut);
+    traverse_bake_comments_for_node!(pat_tuple_struct, PatTupleStruct, visit_pat_tuple_struct_mut);
+    traverse_bake_comments_for_node!(pat_type, PatType, visit_pat_type_mut);
+    traverse_bake_comments_for_node!(pat_wild, PatWild, visit_pat_wild_mut);
+    traverse_bake_comments_for_node!(field_pat, FieldPat, visit_field_pat_mut);
+}
+
+fn insert_comment_attrs(attrs: &mut Vec<Attribute>, new_comments: &[&str]) {
     attrs.reserve(new_comments.len());
     let eq: syn::Token![=] = Default::default();
     fn make_comment_path() -> Path {
@@ -306,5 +440,17 @@ pub fn insert_comment_attrs(attrs: &mut Vec<Attribute>, new_comments: SmallVec<[
             tokens,
         };
         attrs.push(attr);
+    }
+}
+
+pub fn bake_comment_into_file(file: &mut File, comment_lines: &[&str], loc: Span) {
+    let mut unbaked = UnbakedComment {
+        comments: Some(comment_lines),
+        span: loc,
+    };
+    debug!("inserting comment '{:?}'", comment_lines);
+    unbaked.visit_file_mut(file);
+    if unbaked.comments.is_some() {
+        debug!("failed to insert comment '{:?}'", comment_lines);
     }
 }

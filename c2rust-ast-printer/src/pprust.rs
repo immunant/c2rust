@@ -19,7 +19,7 @@ pub enum MacHeader<'a> {
 
 pub struct Comments {
     //cm: &'a SourceMap,
-    comments: Vec<comments::Comment>,
+    pub comments: Vec<comments::Comment>,
     current: usize,
 }
 
