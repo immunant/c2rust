@@ -1187,7 +1187,7 @@ struct ConvertedVariable {
 
 /// Args for [`Translation::convert_function`].
 struct ConvertFunctionArgs<'a> {
-    span: Span,
+    span: Option<Span>,
     is_global: bool,
     is_inline: bool,
     is_main: bool,
@@ -1585,9 +1585,7 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing decl {:?}", decl_id))?;
 
-        let mut span = self
-            .get_span(SomeId::Decl(decl_id))
-            .unwrap_or_else(Span::call_site);
+        let mut s = self.get_span(SomeId::Decl(decl_id));
 
         use CDeclKind::*;
         match decl.kind {
@@ -1604,7 +1602,7 @@ impl<'c> Translation<'c> {
                     .resolve_decl_name(decl_id)
                     .unwrap();
 
-                let extern_item = mk().span(span).pub_().ty_foreign_item(name);
+                let extern_item = mk().maybe_span(s).pub_().ty_foreign_item(name);
                 Ok(ConvertedDecl::ForeignItem(extern_item))
             }
 
@@ -1698,7 +1696,7 @@ impl<'c> Translation<'c> {
                     let inner_ty = mk().path_ty(vec![inner_name.clone()]);
                     let inner_repr_attr = mk().meta_list("repr", reprs);
                     let inner_struct = mk()
-                        .span(span)
+                        .maybe_span(s)
                         .pub_()
                         .call_attr("derive", derives)
                         .meta_item_attr(AttrStyle::Outer, inner_repr_attr)
@@ -1714,7 +1712,7 @@ impl<'c> Translation<'c> {
                     let repr_attr = mk().meta_list("repr", outer_reprs);
                     let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
                     let outer_struct = mk()
-                        .span(span)
+                        .maybe_span(s)
                         .pub_()
                         .call_attr("derive", vec!["Copy", "Clone"])
                         .meta_item_attr(AttrStyle::Outer, repr_attr)
@@ -1732,7 +1730,7 @@ impl<'c> Translation<'c> {
                     let padding_value =
                         mk().binary_expr(BinOp::Sub(Default::default()), outer_size, inner_size);
                     let padding_const = mk()
-                        .span(span)
+                        .maybe_span(s)
                         .call_attr("allow", vec!["dead_code", "non_upper_case_globals"])
                         .const_item(padding_name, padding_ty, padding_value);
 
@@ -1743,7 +1741,7 @@ impl<'c> Translation<'c> {
                     let repr_attr = mk().meta_list("repr", reprs);
 
                     let mut mk_ = mk()
-                        .span(span)
+                        .maybe_span(s)
                         .pub_()
                         .call_attr("derive", derives)
                         .meta_item_attr(AttrStyle::Outer, repr_attr);
@@ -1799,7 +1797,7 @@ impl<'c> Translation<'c> {
                 Ok(if field_syns.is_empty() {
                     // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
                     ConvertedDecl::Item(
-                        mk().span(span)
+                        mk().maybe_span(s)
                             .pub_()
                             .call_attr("derive", vec!["Copy", "Clone"])
                             .call_attr("repr", repr)
@@ -1807,7 +1805,7 @@ impl<'c> Translation<'c> {
                     )
                 } else {
                     ConvertedDecl::Item(
-                        mk().span(span)
+                        mk().maybe_span(s)
                             .pub_()
                             .call_attr("derive", vec!["Copy", "Clone"])
                             .call_attr("repr", repr)
@@ -1831,7 +1829,7 @@ impl<'c> Translation<'c> {
                     .expect("Enums should already be renamed");
                 let ty = self.convert_type(integral_type.ctype)?;
                 Ok(ConvertedDecl::Item(
-                    mk().span(span).pub_().type_item(enum_name, ty),
+                    mk().maybe_span(s).pub_().type_item(enum_name, ty),
                 ))
             }
 
@@ -1857,7 +1855,7 @@ impl<'c> Translation<'c> {
                 };
 
                 Ok(ConvertedDecl::Item(
-                    mk().span(span).pub_().const_item(name, ty, val),
+                    mk().maybe_span(s).pub_().const_item(name, ty, val),
                 ))
             }
 
@@ -1978,7 +1976,7 @@ impl<'c> Translation<'c> {
                 self.type_converter.borrow_mut().translate_valist = translate_valist;
 
                 Ok(ConvertedDecl::Item(
-                    mk().span(span).pub_().type_item(new_name, ty),
+                    mk().maybe_span(s).pub_().type_item(new_name, ty),
                 ))
             }
 
@@ -2021,7 +2019,7 @@ impl<'c> Translation<'c> {
                     ""
                 };
                 let mut extern_item = mk_linkage(true, &new_name, ident)
-                    .span(span)
+                    .maybe_span(s)
                     .set_mutbl(mutbl)
                     .vis(visibility);
                 if has_thread_duration {
@@ -2074,12 +2072,8 @@ impl<'c> Translation<'c> {
                     let mut init = init?.to_expr();
 
                     let comment = String::from("// Initialized in run_static_initializers");
-                    let comment_pos = if span.is_dummy() {
-                        None
-                    } else {
-                        Some(span.lo())
-                    };
-                    span = self
+                    let comment_pos = s.map(|s| s.lo());
+                    s = self
                         .comment_store
                         .borrow_mut()
                         .extend_existing_comments(
@@ -2088,7 +2082,7 @@ impl<'c> Translation<'c> {
                             //CommentStyle::Isolated,
                         )
                         .map(pos_to_span)
-                        .unwrap_or(span);
+                        .or(s);
 
                     self.add_static_initializer_to_section(new_name, typ, &mut init)?;
 
@@ -2119,7 +2113,7 @@ impl<'c> Translation<'c> {
 
                 // Force mutability due to the potential for raw pointers occuring in the type
                 // and because we may be assigning to these variables in the external initializer
-                let mut static_def = static_def.span(span).mutbl();
+                let mut static_def = static_def.maybe_span(s).mutbl();
                 if has_thread_duration {
                     static_def = static_def.single_attr("thread_local");
                 }
@@ -2172,7 +2166,7 @@ impl<'c> Translation<'c> {
                             .insert(decl_id, Some(expansion));
                         let ty = self.convert_type(ty)?;
 
-                        Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
+                        Ok(ConvertedDecl::Item(mk().maybe_span(s).pub_().const_item(
                             name,
                             ty,
                             replacement,
@@ -2431,7 +2425,7 @@ impl<'c> Translation<'c> {
                 }
 
                 Ok(ConvertedDecl::Item(
-                    mk_.span(span).unsafe_().fn_item(decl, block),
+                    mk_.maybe_span(span).unsafe_().fn_item(decl, block),
                 ))
             } else {
                 // Translating an extern function declaration
@@ -2443,7 +2437,7 @@ impl<'c> Translation<'c> {
                     ""
                 };
 
-                let mut mk_ = mk_linkage(true, new_name, name).span(span).vis(visibility);
+                let mut mk_ = mk_linkage(true, new_name, name).maybe_span(span).vis(visibility);
 
                 for attr in attrs {
                     mk_ = match attr {
@@ -2680,10 +2674,9 @@ impl<'c> Translation<'c> {
                     .comment_store
                     .borrow_mut()
                     .add_comments(&[comment])
-                    .map(pos_to_span)
-                    .unwrap_or_else(Span::call_site);
+                    .map(pos_to_span);
                 let static_item = mk()
-                    .span(span)
+                    .maybe_span(span)
                     .mutbl()
                     .static_item(&ident2, ty, default_init);
                 let mut init = init?;

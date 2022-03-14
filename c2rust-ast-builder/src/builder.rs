@@ -522,6 +522,15 @@ impl Builder {
         self
     }
 
+    pub fn maybe_span<S: Make<Span>>(self, maybe_span: Option<S>) -> Self {
+        let maybe_span = maybe_span.map(|ms| ms.make(&self));
+        if let Some(span) = maybe_span {
+            self.span(span)
+        } else {
+            self
+        }
+    }
+
     pub fn prepare_meta_namevalue(&self, mnv: MetaNameValue) -> PreparedMetaItem {
         let mut tokens = TokenStream::new();
         mnv.eq_token.to_tokens(&mut tokens);
