@@ -25,6 +25,7 @@ use rustc_middle::mir::{
     BorrowKind, Constant, ConstantKind,
 };
 use rustc_middle::mir::interpret::{Allocation, ConstValue};
+use rustc_middle::mir::pretty;
 use rustc_middle::ty::{TyCtxt, RegionKind, WithOptConstParam};
 use rustc_middle::ty::query::{Providers, ExternProviders};
 use rustc_session::Session;
@@ -35,6 +36,7 @@ use rustc_target::abi::Align;
 use crate::atoms::{AllFacts, AtomMaps, SubPoint};
 
 mod atoms;
+mod def_use;
 mod dump;
 
 
@@ -46,9 +48,16 @@ fn inspect_mir<'tcx>(
     let mut facts = AllFacts::default();
     let mut maps = AtomMaps::default();
 
+    let name = tcx.item_name(def.to_global().did);
+    eprintln!("\nprocessing function {:?}", name);
+    //pretty::write_mir_fn(tcx, mir, &mut |_, _| Ok(()), &mut std::io::stdout()).unwrap();
+
     // Populate `cfg_edge`
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+        eprintln!("{:?}:", bb);
+
         for idx in 0 .. bb_data.statements.len() {
+            eprintln!("  {}: {:?}", idx, bb_data.statements[idx]);
             let start = maps.point(bb, idx, SubPoint::Start);
             let mid = maps.point(bb, idx, SubPoint::Mid);
             let next_start = maps.point(bb, idx + 1, SubPoint::Start);
@@ -57,6 +66,7 @@ fn inspect_mir<'tcx>(
         }
 
         let term_idx = bb_data.statements.len();
+        eprintln!("  {}: {:?}", term_idx, bb_data.terminator());
         let term_start = maps.point(bb, term_idx, SubPoint::Start);
         let term_mid = maps.point(bb, term_idx, SubPoint::Mid);
         facts.cfg_edge.push((term_start, term_mid));
@@ -66,7 +76,9 @@ fn inspect_mir<'tcx>(
         }
     }
 
-    let name = tcx.item_name(def.to_global().did);
+    self::def_use::visit(&mut facts, &mut maps, mir);
+
+
     dump::dump_facts_to_dir(&facts, &maps, format!("inspect/{}", name)).unwrap();
 
     let output = polonius_engine::Output::compute(

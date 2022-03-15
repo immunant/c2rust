@@ -1,7 +1,7 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::hash::Hash;
 use polonius_engine::{self, Atom, FactTypes};
-use rustc_middle::mir::{BasicBlock, Local};
+use rustc_middle::mir::{BasicBlock, Local, Location};
 
 macro_rules! define_atom_type {
     ($Atom:ident) => {
@@ -106,6 +106,10 @@ pub struct AtomMaps {
 impl AtomMaps {
     pub fn point(&mut self, bb: BasicBlock, idx: usize, sub: SubPoint) -> Point {
         self.point.add((bb, idx, sub))
+    }
+
+    pub fn point_mid_location(&mut self, loc: Location) -> Point {
+        self.point(loc.block, loc.statement_index, SubPoint::Mid)
     }
 
     pub fn get_point(&self, x: Point) -> (BasicBlock, usize, SubPoint) {
