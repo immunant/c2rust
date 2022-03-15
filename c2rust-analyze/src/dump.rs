@@ -43,11 +43,11 @@ pub fn dump_facts_to_dir(
             var_dropped_at,
             //use_of_var_derefs_origin,
             //drop_of_var_derefs_origin,
-            //child_path,
-            //path_is_var,
-            //path_assigned_at_base,
-            //path_moved_at_base,
-            //path_accessed_at_base,
+            child_path,
+            path_is_var,
+            path_assigned_at_base,
+            path_moved_at_base,
+            path_accessed_at_base,
             //known_placeholder_subset,
             //placeholder,
         ])
@@ -100,12 +100,12 @@ pub fn dump_output_to_dir(
     Ok(())
 }
 
-struct FactWriter<'w> {
-    maps: &'w AtomMaps,
+struct FactWriter<'tcx, 'w> {
+    maps: &'w AtomMaps<'tcx>,
     dir: &'w path::Path,
 }
 
-impl<'w> FactWriter<'w> {
+impl FactWriter<'_, '_> {
     fn write_facts_to_path<T>(&self, rows: &[T], file_name: &str) -> Result<(), Box<dyn Error>>
     where
         T: FactRow,
@@ -360,14 +360,12 @@ impl Render for Point {
 
 impl Render for Variable {
     fn to_string(&self, maps: &AtomMaps) -> String {
-        // TODO
-        format!("{:?}", maps.get_variable(*self))
+        format!("_{}", usize::from(*self))
     }
 }
 
 impl Render for Path {
     fn to_string(&self, maps: &AtomMaps) -> String {
-        // TODO
-        format!("{:?}", self)
+        format!("mp{}", usize::from(*self))
     }
 }

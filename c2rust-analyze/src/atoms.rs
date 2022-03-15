@@ -1,7 +1,8 @@
 use std::collections::hash_map::{HashMap, Entry};
 use std::hash::Hash;
 use polonius_engine::{self, Atom, FactTypes};
-use rustc_middle::mir::{BasicBlock, Local, Location};
+use rustc_middle::mir::{BasicBlock, Local, Location, Place, PlaceElem};
+use rustc_middle::ty::TyCtxt;
 
 macro_rules! define_atom_type {
     ($Atom:ident) => {
@@ -85,6 +86,20 @@ impl<T: Hash + Eq + Clone, A: Atom> AtomMap<T, A> {
         }
     }
 
+    pub fn add_new(&mut self, x: T) -> (A, bool) {
+        match self.thing_to_atom.entry(x.clone()) {
+            Entry::Occupied(e) => {
+                (*e.get(), false)
+            },
+            Entry::Vacant(e) => {
+                let atom = A::from(self.atom_to_thing.len());
+                self.atom_to_thing.push(x);
+                e.insert(atom);
+                (atom, true)
+            },
+        }
+    }
+
     pub fn get(&self, x: A) -> T {
         self.atom_to_thing[x.into()].clone()
     }
@@ -99,11 +114,12 @@ pub enum SubPoint {
 
 
 #[derive(Clone, Debug, Default)]
-pub struct AtomMaps {
+pub struct AtomMaps<'tcx> {
     point: AtomMap<(BasicBlock, usize, SubPoint), Point>,
+    path: AtomMap<(Local, &'tcx [PlaceElem<'tcx>]), Path>,
 }
 
-impl AtomMaps {
+impl<'tcx> AtomMaps<'tcx> {
     pub fn point(&mut self, bb: BasicBlock, idx: usize, sub: SubPoint) -> Point {
         self.point.add((bb, idx, sub))
     }
@@ -122,6 +138,36 @@ impl AtomMaps {
 
     pub fn get_variable(&self, x: Variable) -> Local {
         Local::from_usize(x.0)
+    }
+
+    pub fn path(&mut self, facts: &mut AllFacts, place: Place<'tcx>) -> Path {
+        self.path_slice(facts, place.local, place.projection)
+    }
+
+    fn path_slice(
+        &mut self,
+        facts: &mut AllFacts,
+        local: Local,
+        projection: &'tcx [PlaceElem<'tcx>],
+    ) -> Path {
+        let (path, new) = self.path.add_new((local, projection));
+        if new {
+            if projection.len() == 0 {
+                let var = self.variable(local);
+                facts.path_is_var.push((path, var));
+            } else {
+                let parent = self.path_slice(facts, local, &projection[.. projection.len() - 1]);
+                // TODO: check ordering of arguments here
+                facts.child_path.push((parent, path));
+            }
+        }
+        path
+    }
+
+    pub fn get_path(&self, tcx: TyCtxt<'tcx>, x: Path) -> Place<'tcx> {
+        let (local, projection) = self.path.get(x);
+        let projection = tcx.intern_place_elems(projection);
+        Place { local, projection }
     }
 }
 
