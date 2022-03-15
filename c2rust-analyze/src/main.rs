@@ -21,12 +21,12 @@ use rustc_interface::Queries;
 use rustc_interface::interface::Compiler;
 use rustc_middle::mir::{
     Body, BasicBlock, BasicBlockData, START_BLOCK, Terminator, TerminatorKind, SourceInfo, Local,
-    LocalDecl, Mutability, Rvalue, AggregateKind, Place, Operand, Statement, StatementKind,
-    BorrowKind, Constant, ConstantKind,
+    LocalDecl, LocalKind, Mutability, Rvalue, AggregateKind, Place, Operand, Statement,
+    StatementKind, BorrowKind, Constant, ConstantKind,
 };
 use rustc_middle::mir::interpret::{Allocation, ConstValue};
 use rustc_middle::mir::pretty;
-use rustc_middle::ty::{TyCtxt, RegionKind, WithOptConstParam};
+use rustc_middle::ty::{TyCtxt, RegionKind, WithOptConstParam, List};
 use rustc_middle::ty::query::{Providers, ExternProviders};
 use rustc_session::Session;
 use rustc_span::DUMMY_SP;
@@ -73,6 +73,16 @@ fn inspect_mir<'tcx>(
         for &succ in bb_data.terminator().successors() {
             let succ_start = maps.point(succ, 0, SubPoint::Start);
             facts.cfg_edge.push((term_mid, succ_start));
+        }
+    }
+
+    // From rustc_borrowck::nll::populate_polonius_move_facts: "Non-arguments start out
+    // deinitialised; we simulate this with an initial move"
+    let entry_point = maps.point(START_BLOCK, 0, SubPoint::Start);
+    for local in mir.local_decls.indices() {
+        if mir.local_kind(local) != LocalKind::Arg {
+            let path = maps.path(&mut facts, Place { local, projection: List::empty() });
+            facts.path_moved_at_base.push((path, entry_point));
         }
     }
 
