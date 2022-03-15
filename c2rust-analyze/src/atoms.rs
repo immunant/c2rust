@@ -44,6 +44,7 @@ impl FactTypes for AnalysisFactTypes {
 }
 
 pub type AllFacts = polonius_engine::AllFacts<AnalysisFactTypes>;
+pub type Output = polonius_engine::Output<AnalysisFactTypes>;
 
 
 
@@ -115,7 +116,7 @@ impl AtomMaps {
         Variable(l.as_usize())
     }
 
-    pub fn get_variable(&mut self, x: Variable) -> Local {
+    pub fn get_variable(&self, x: Variable) -> Local {
         Local::from_usize(x.0)
     }
 }

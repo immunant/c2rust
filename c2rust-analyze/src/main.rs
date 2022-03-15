@@ -1,5 +1,6 @@
 #![feature(rustc_private)]
 extern crate rustc_ast;
+extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_interface;
 extern crate rustc_middle;
@@ -67,6 +68,13 @@ fn inspect_mir<'tcx>(
 
     let name = tcx.item_name(def.to_global().did);
     dump::dump_facts_to_dir(&facts, &maps, format!("inspect/{}", name)).unwrap();
+
+    let output = polonius_engine::Output::compute(
+        &facts,
+        polonius_engine::Algorithm::Naive,
+        true,
+    );
+    dump::dump_output_to_dir(&output, &maps, format!("inspect/{}", name)).unwrap();
 }
 
 
