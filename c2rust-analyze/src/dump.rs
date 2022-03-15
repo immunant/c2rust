@@ -38,9 +38,9 @@ pub fn dump_facts_to_dir(
             //loan_killed_at,
             //subset_base,
             //loan_invalidated_at,
-            //var_used_at,
-            //var_defined_at,
-            //var_dropped_at,
+            var_used_at,
+            var_defined_at,
+            var_dropped_at,
             //use_of_var_derefs_origin,
             //drop_of_var_derefs_origin,
             //child_path,
@@ -203,14 +203,16 @@ trait OutputTable {
     ) -> Result<(), Box<dyn Error>>;
 }
 
-impl<K: Render, V: Render> OutputTable for FxHashMap<K, V> {
+impl<K: Render + Ord, V: Render> OutputTable for FxHashMap<K, V> {
     fn write(
         &self,
         out: &mut dyn Write,
         maps: &AtomMaps,
     ) -> Result<(), Box<dyn Error>> {
-        for (k, v) in self {
-            write!(out, "{}: {}", k.to_string(maps), v.to_string(maps))?;
+        let mut entries = self.iter().collect::<Vec<_>>();
+        entries.sort_by_key(|&(k, _)| k);
+        for (k, v) in entries {
+            writeln!(out, "{}: {}", k.to_string(maps), v.to_string(maps))?;
         }
         Ok(())
     }
@@ -222,7 +224,7 @@ impl OutputTable for bool {
         out: &mut dyn Write,
         maps: &AtomMaps,
     ) -> Result<(), Box<dyn Error>> {
-        write!(out, "{}", self)?;
+        writeln!(out, "{}", self)?;
         Ok(())
     }
 }
@@ -241,6 +243,7 @@ impl<K: Render + Hash + Eq, V: Render> Render for FxHashMap<K, V> {
             if !first {
                 write!(s, ",").unwrap();
             }
+            first = false;
             write!(s, " {}: {}", k.to_string(maps), v.to_string(maps)).unwrap();
         }
         if !first {
@@ -260,6 +263,7 @@ impl<T: Render + Hash + Eq> Render for FxHashSet<T> {
             if !first {
                 write!(s, ",").unwrap();
             }
+            first = false;
             write!(s, " {}", x.to_string(maps)).unwrap();
         }
         if !first {
@@ -279,6 +283,7 @@ impl<K: Render + Ord, V: Render> Render for BTreeMap<K, V> {
             if !first {
                 write!(s, ",").unwrap();
             }
+            first = false;
             write!(s, " {}: {}", k.to_string(maps), v.to_string(maps)).unwrap();
         }
         if !first {
@@ -298,6 +303,7 @@ impl<T: Render + Ord> Render for BTreeSet<T> {
             if !first {
                 write!(s, ",").unwrap();
             }
+            first = false;
             write!(s, " {}", x.to_string(maps)).unwrap();
         }
         if !first {
@@ -317,6 +323,7 @@ impl<T: Render> Render for Vec<T> {
             if !first {
                 write!(s, ", ").unwrap();
             }
+            first = false;
             write!(s, "{}", x.to_string(maps)).unwrap();
         }
         write!(s, "]").unwrap();
