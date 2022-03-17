@@ -32,12 +32,12 @@ pub fn dump_facts_to_dir(
     }
     write_facts_to_path! {
         wr.write_facts_to_path(facts.[
-            //loan_issued_at,
+            loan_issued_at,
             //universal_region,
             cfg_edge,
-            //loan_killed_at,
+            loan_killed_at,
             //subset_base,
-            //loan_invalidated_at,
+            loan_invalidated_at,
             var_used_at,
             var_defined_at,
             var_dropped_at,
@@ -345,8 +345,7 @@ impl Render for Origin {
 
 impl Render for Loan {
     fn to_string(&self, maps: &AtomMaps) -> String {
-        // TODO
-        format!("{:?}", self)
+        format!("bw{}", usize::from(*self))
     }
 }
 

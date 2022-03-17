@@ -116,6 +116,7 @@ pub enum SubPoint {
 #[derive(Clone, Debug, Default)]
 pub struct AtomMaps<'tcx> {
     next_origin: usize,
+    next_loan: usize,
     point: AtomMap<(BasicBlock, usize, SubPoint), Point>,
     path: AtomMap<(Local, &'tcx [PlaceElem<'tcx>]), Path>,
 }
@@ -125,6 +126,12 @@ impl<'tcx> AtomMaps<'tcx> {
         let idx = self.next_origin;
         self.next_origin += 1;
         Origin(idx)
+    }
+
+    pub fn loan(&mut self) -> Loan {
+        let idx = self.next_loan;
+        self.next_loan += 1;
+        Loan(idx)
     }
 
     pub fn point(&mut self, bb: BasicBlock, idx: usize, sub: SubPoint) -> Point {
@@ -175,6 +182,11 @@ impl<'tcx> AtomMaps<'tcx> {
         let (local, projection) = self.path.get(x);
         let projection = tcx.intern_place_elems(projection);
         Place { local, projection }
+    }
+
+    pub fn get_path_projection(&self, tcx: TyCtxt<'tcx>, x: Path) -> &'tcx [PlaceElem<'tcx>] {
+        let (local, projection) = self.path.get(x);
+        projection
     }
 }
 
