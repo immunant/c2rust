@@ -1,4 +1,5 @@
 #![feature(rustc_private)]
+extern crate rustc_arena;
 extern crate rustc_ast;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
@@ -26,7 +27,7 @@ use rustc_middle::mir::{
 };
 use rustc_middle::mir::interpret::{Allocation, ConstValue};
 use rustc_middle::mir::pretty;
-use rustc_middle::ty::{TyCtxt, RegionKind, WithOptConstParam, List};
+use rustc_middle::ty::{TyCtxt, Ty, TyKind, RegionKind, WithOptConstParam, List};
 use rustc_middle::ty::query::{Providers, ExternProviders};
 use rustc_session::Session;
 use rustc_span::DUMMY_SP;
@@ -34,10 +35,17 @@ use rustc_span::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_span::symbol::Ident;
 use rustc_target::abi::Align;
 use crate::atoms::{AllFacts, AtomMaps, SubPoint};
+use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
 mod atoms;
 mod def_use;
 mod dump;
+mod labeled_ty;
+
+
+pub type Label = Option<atoms::Origin>;
+pub type LTy<'tcx> = LabeledTy<'tcx, Label>;
+pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label>;
 
 
 fn inspect_mir<'tcx>(
@@ -86,6 +94,18 @@ fn inspect_mir<'tcx>(
         }
     }
 
+    // Populate `use_of_var_derefs_origin`.
+    let ltcx = LabeledTyCtxt::new(tcx);
+    for (local, decl) in mir.local_decls.iter_enumerated() {
+        let lty = assign_origins(ltcx, &mut facts, &mut maps, decl.ty);
+        let var = maps.variable(local);
+        lty.for_each_label(&mut |label| {
+            if let Some(origin) = label {
+                facts.use_of_var_derefs_origin.push((var, origin));
+            }
+        });
+    }
+
     self::def_use::visit(&mut facts, &mut maps, mir);
 
 
@@ -97,6 +117,20 @@ fn inspect_mir<'tcx>(
         true,
     );
     dump::dump_output_to_dir(&output, &maps, format!("inspect/{}", name)).unwrap();
+}
+
+fn assign_origins<'tcx>(
+    ltcx: LTyCtxt<'tcx>,
+    facts: &mut AllFacts,
+    maps: &mut AtomMaps<'tcx>,
+    ty: Ty<'tcx>,
+) -> LTy<'tcx> {
+    ltcx.label(ty, &mut |ty| match ty.kind() {
+        TyKind::Ref(_, _, _) => {
+            Some(maps.origin())
+        },
+        _ => None,
+    })
 }
 
 

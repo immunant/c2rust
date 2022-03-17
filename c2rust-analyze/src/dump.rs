@@ -41,8 +41,8 @@ pub fn dump_facts_to_dir(
             var_used_at,
             var_defined_at,
             var_dropped_at,
-            //use_of_var_derefs_origin,
-            //drop_of_var_derefs_origin,
+            use_of_var_derefs_origin,
+            drop_of_var_derefs_origin,
             child_path,
             path_is_var,
             path_assigned_at_base,
@@ -339,8 +339,7 @@ impl<A: Render, B: Render> Render for (A, B) {
 
 impl Render for Origin {
     fn to_string(&self, maps: &AtomMaps) -> String {
-        // TODO
-        format!("{:?}", self)
+        format!("'_#{}r", usize::from(*self))
     }
 }
 

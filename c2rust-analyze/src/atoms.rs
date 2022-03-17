@@ -115,11 +115,18 @@ pub enum SubPoint {
 
 #[derive(Clone, Debug, Default)]
 pub struct AtomMaps<'tcx> {
+    next_origin: usize,
     point: AtomMap<(BasicBlock, usize, SubPoint), Point>,
     path: AtomMap<(Local, &'tcx [PlaceElem<'tcx>]), Path>,
 }
 
 impl<'tcx> AtomMaps<'tcx> {
+    pub fn origin(&mut self) -> Origin {
+        let idx = self.next_origin;
+        self.next_origin += 1;
+        Origin(idx)
+    }
+
     pub fn point(&mut self, bb: BasicBlock, idx: usize, sub: SubPoint) -> Point {
         self.point.add((bb, idx, sub))
     }
