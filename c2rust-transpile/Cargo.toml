@@ -38,7 +38,7 @@ serde_json = "1.0"
 smallvec = "1.0"
 strum = "0.24"
 strum_macros = "0.24"
-syn = { version = "1.0", features = ["full", "extra-traits", "parsing", "printing"]}
+syn = { version = "1.0", features = ["full", "extra-traits", "parsing", "printing", "visit-mut"]}
 
 [features]
 # Force static linking of LLVM
