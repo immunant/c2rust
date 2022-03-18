@@ -355,7 +355,7 @@ mod stmt;
 mod token;
 mod ty;
 
-use crate::algorithm::Printer;
+pub use crate::algorithm::Printer;
 use syn::File;
 
 // Target line width.
