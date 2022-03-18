@@ -20,7 +20,7 @@ impl Printer {
         }
     }
 
-    fn attr(&mut self, attr: &Attribute) {
+    pub fn attr(&mut self, attr: &Attribute) {
         if let Some(doc) = value_of_attribute("doc", attr) {
             if doc.contains('\n') {
                 self.word(match attr.style {

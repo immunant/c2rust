@@ -126,7 +126,7 @@ impl Printer {
         self.word("}");
     }
 
-    fn macro_rules_tokens(&mut self, stream: TokenStream, matcher: bool) {
+    pub fn macro_rules_tokens(&mut self, stream: TokenStream, matcher: bool) {
         #[derive(PartialEq)]
         enum State {
             Start,
