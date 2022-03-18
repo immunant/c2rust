@@ -1,0 +1,16 @@
+[package]
+name = "prettyplease-update-examples"
+version = "0.0.0"
+authors = ["David Tolnay <dtolnay@gmail.com>"]
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "prettyplease-update-examples"
+path = "update-examples.rs"
+
+[dependencies]
+anyhow = "1.0"
+prettyplease = { path = "../../" }
+quote = { version = "1.0", default-features = false }
+syn = { version = "1.0", default-features = false, features = ["parsing", "printing"] }
