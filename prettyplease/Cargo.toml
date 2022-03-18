@@ -18,5 +18,5 @@ syn = { version = "1.0.85", default-features = false, features = ["full"] }
 [dev-dependencies]
 syn = { version = "1.0.85", default-features = false, features = ["parsing"] }
 
-[workspace]
-members = ["examples/update"]
+#[workspace]
+#members = ["examples/update"]
