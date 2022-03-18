@@ -163,7 +163,11 @@ impl Printer {
     }
 
     fn type_verbatim(&mut self, ty: &TokenStream) {
-        unimplemented!("Type::Verbatim `{}`", ty);
+        if ty.to_string() == "..." {
+            self.word("...")
+        } else {
+            unimplemented!("Type::Verbatim `{}`", ty);
+        }
     }
 
     pub fn return_type(&mut self, ty: &ReturnType) {
