@@ -8,7 +8,7 @@ pub trait SetSpan {
 }
 
 macro_rules! set_span_impl {
-    ( enum $spanned_ty:ty, $span_ident:ident via $( ( $variant_name:ident => $($where:tt)+ ) ) , + $(,)? ) => {
+    ( enum $spanned_ty:ident, $span_ident:ident via $( ( $variant_name:ident => $($where:tt)+ ) ) , + $(,)? ) => {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, $span_ident: Span) {
                 use $spanned_ty::*;
@@ -22,7 +22,7 @@ macro_rules! set_span_impl {
             }
         }
     };
-    ( enum $spanned_ty:ty, punct $( $variant_name:ident ) , + ) => {
+    ( enum $spanned_ty:ident, punct $( $variant_name:ident ) , + ) => {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, s: Span) {
                 use $spanned_ty::*;
@@ -36,7 +36,7 @@ macro_rules! set_span_impl {
             }
         }
     };
-    ( enum $spanned_ty:ty, $( $variant_name:ident ) , + ) => {
+    ( enum $spanned_ty:ident, $( $variant_name:ident ) , + ) => {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, s: Span) {
                 use $spanned_ty::*;
@@ -50,28 +50,28 @@ macro_rules! set_span_impl {
             }
         }
     };
-    ( struct $spanned_ty:ty, punct $field:ident ) => {
+    ( struct $spanned_ty:ident, punct $field:ident ) => {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, s: Span) {
                 self.$field.spans[0] = s;
             }
         }
     };
-    ( struct $spanned_ty:ty, kw $field:ident ) => {
+    ( struct $spanned_ty:ident, kw $field:ident ) => {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, s: Span) {
                 self.$field.span = s;
             }
         }
     };
-    ( struct $spanned_ty:ty, field $field:ident ) => {
+    ( struct $spanned_ty:ident, field $field:ident ) => {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, s: Span) {
                 self.$field.set_span(s)
             }
         }
     };
-    ( struct $spanned_ty:ty, via $($where:tt) + ) => {
+    ( struct $spanned_ty:ident, via $($where:tt) + ) => {
         impl SetSpan for $spanned_ty {
             fn set_span(&mut self, s: Span) {
                 self.$($where)+ = s
