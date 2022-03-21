@@ -36,7 +36,7 @@ pub fn dump_facts_to_dir(
             //universal_region,
             cfg_edge,
             loan_killed_at,
-            //subset_base,
+            subset_base,
             loan_invalidated_at,
             var_used_at,
             var_defined_at,

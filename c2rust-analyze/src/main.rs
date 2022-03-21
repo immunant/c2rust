@@ -3,6 +3,7 @@ extern crate rustc_arena;
 extern crate rustc_ast;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
+extern crate rustc_index;
 extern crate rustc_interface;
 extern crate rustc_middle;
 extern crate rustc_mir_build;
@@ -42,6 +43,7 @@ mod atoms;
 mod def_use;
 mod dump;
 mod labeled_ty;
+mod type_check;
 
 
 pub type Label = Option<atoms::Origin>;
@@ -101,7 +103,24 @@ fn inspect_mir<'tcx>(
         }
     }
 
+    // Populate `use_of_var_derefs_origin`, and generate `LTy`s for all locals.
+    let ltcx = LabeledTyCtxt::new(tcx);
+    let mut local_ltys = Vec::with_capacity(mir.local_decls.len());
+    for (local, decl) in mir.local_decls.iter_enumerated() {
+        let lty = assign_origins(ltcx, &mut facts, &mut maps, decl.ty);
+        let var = maps.variable(local);
+        lty.for_each_label(&mut |label| {
+            if let Some(origin) = label {
+                facts.use_of_var_derefs_origin.push((var, origin));
+            }
+        });
+        local_ltys.push(lty);
+    }
+
     let mut loans = HashMap::<Local, Vec<(Path, Loan, BorrowKind)>>::new();
+    // Populate `loan_issued_at` and `loans`.
+    type_check::visit(ltcx, &mut facts, &mut maps, &mut loans, &local_ltys, mir);
+    /*
     // Populate `loan_issued_at` and `loans`.
     // TODO: also populate `subset_base` here
     for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
@@ -123,18 +142,7 @@ fn inspect_mir<'tcx>(
             facts.loan_issued_at.push((origin, loan, point));
         }
     }
-
-    // Populate `use_of_var_derefs_origin`.
-    let ltcx = LabeledTyCtxt::new(tcx);
-    for (local, decl) in mir.local_decls.iter_enumerated() {
-        let lty = assign_origins(ltcx, &mut facts, &mut maps, decl.ty);
-        let var = maps.variable(local);
-        lty.for_each_label(&mut |label| {
-            if let Some(origin) = label {
-                facts.use_of_var_derefs_origin.push((var, origin));
-            }
-        });
-    }
+    */
 
     // Populate `loan_invalidated_at`
     def_use::visit_loan_invalidated_at(tcx, &mut facts, &mut maps, &loans, mir);
