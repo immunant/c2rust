@@ -39,6 +39,7 @@ enum FieldType {
         ctype: CTypeId,
         field: Field,
         use_inner_type: bool,
+        is_va_list: bool,
     },
 }
 
@@ -100,7 +101,22 @@ impl<'a> Translation<'a> {
                     .unwrap();
 
                 let ctype = typ.ctype;
-                let mut ty = self.convert_type(ctype)?;
+                // TODO: clean up code and avoid code duplication
+                // TODO: handle or panic on structs with more than one va_list?
+                let is_va_list = self.ast_context.is_va_list(ctype);
+                let mut ty = if is_va_list {
+                    let std_or_core = if self.type_converter.borrow().emit_no_std { "core" } else { "std" };
+                    let path = vec![
+                        mk().path_segment(std_or_core),
+                        mk().path_segment("ffi"),
+                        mk().path_segment_with_args("VaListImpl",
+                            mk().angle_bracketed_args(vec![mk().lifetime("a")])),
+                    ];
+                    let ty = mk().path_ty(mk().abs_path(path));
+                    ty
+                } else {
+                    self.convert_type(ctype)?
+                };
                 let bitfield_width = match bitfield_width {
                     // Bitfield widths of 0 should just be markers for clang,
                     // we shouldn't need to explicitly handle it ourselves
@@ -161,6 +177,7 @@ impl<'a> Translation<'a> {
                             ctype,
                             field,
                             use_inner_type,
+                            is_va_list,
                         });
                         reorganized_fields.extend(extra_fields.into_iter());
 
@@ -272,11 +289,18 @@ impl<'a> Translation<'a> {
         struct_id: CRecordId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-    ) -> Result<Vec<Field>, TranslationError> {
+    ) -> Result<(Vec<Field>, bool), TranslationError> {
         let mut field_entries = Vec::with_capacity(field_ids.len());
         // We need to clobber bitfields in consecutive bytes together (leaving
         // regular fields alone) and add in padding as necessary
         let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
+
+        let contains_va_list = reorganized_fields
+            .iter()
+            .any(|field| match field {
+                FieldType::Regular { is_va_list, .. } => *is_va_list,
+                _ => false,
+            });
 
         let mut padding_count = 0;
         let mut next_padding_field = || {
@@ -353,7 +377,7 @@ impl<'a> Translation<'a> {
                 FieldType::Regular { field, .. } => field_entries.push(field),
             }
         }
-        Ok(field_entries)
+        Ok((field_entries, contains_va_list))
     }
 
     /// Here we output a block to generate a struct literal initializer in.

@@ -1533,7 +1533,7 @@ impl<'c> Translation<'c> {
                 platform_byte_size,
                 ..
             } => {
-                let name = self
+                let mut name = self
                     .type_converter
                     .borrow()
                     .resolve_decl_name(decl_id)
@@ -1564,10 +1564,14 @@ impl<'c> Translation<'c> {
                 }
 
                 // Gather up all the field names and field types
-                let field_entries =
+                let (field_entries, contains_va_list) =
                     self.convert_struct_fields(decl_id, fields, platform_byte_size)?;
 
-                let mut derives = vec!["Copy", "Clone"];
+                let mut derives = vec![];
+                if !contains_va_list {
+                    derives.push("Copy");
+                    derives.push("Clone");
+                };
                 let has_bitfields = fields
                     .iter()
                     .any(|field_id| match self.ast_context.index(*field_id).kind {
@@ -1652,13 +1656,17 @@ impl<'c> Translation<'c> {
                 } else {
                     assert!(!self.ast_context.has_inner_struct_decl(decl_id));
                     let repr_attr = mk().meta_list("repr", reprs);
-                    Ok(ConvertedDecl::Item(
-                        mk().span(s)
-                            .pub_()
-                            .call_attr("derive", derives)
-                            .meta_item_attr(AttrStyle::Outer, repr_attr)
-                            .struct_item(name, field_entries, false),
-                    ))
+
+                    let mut mk_ = mk().span(s)
+                        .pub_()
+                        .call_attr("derive", derives)
+                        .meta_item_attr(AttrStyle::Outer, repr_attr);
+
+                    if contains_va_list {
+                        mk_ = mk_.generic_over(mk().lt_param(mk().ident("a")))
+                    }
+
+                    Ok(ConvertedDecl::Item(mk_.struct_item(name, field_entries, false)))
                 }
             }
 
@@ -3650,7 +3658,7 @@ impl<'c> Translation<'c> {
                 )
             }
 
-            CExprKind::Member(_, expr, decl, kind, _) => {
+            CExprKind::Member(qual_ty, expr, decl, kind, _) => {
                 if ctx.is_unused() {
                     self.convert_expr(ctx, expr)
                 } else {
@@ -3707,6 +3715,12 @@ impl<'c> Translation<'c> {
                     } else {
                         val = val.map(|v| mk().field_expr(v, field_name));
                     };
+
+                    // Most references to the va_list should refer to the VaList
+                    // type, not VaListImpl
+                    if !ctx.expecting_valistimpl && self.ast_context.is_va_list(qual_ty.ctype) {
+                        val = val.map(|v| mk().method_call_expr(v, "as_va_list", Vec::<Box<Expr>>::new()));
+                    }
 
                     Ok(val)
                 }
@@ -4340,6 +4354,21 @@ impl<'c> Translation<'c> {
     ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let resolved_ty_id = self.ast_context.resolve_type_id(ty_id);
         let resolved_ty = &self.ast_context.index(resolved_ty_id).kind;
+
+        if  self.ast_context.is_va_list(resolved_ty_id) {
+            // generate MaybeUninit::uninit().assume_init()
+            let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
+            let name = "uninit";
+            let path = vec![
+                mk().path_segment(std_or_core),
+                mk().path_segment("mem"),
+                mk().path_segment("MaybeUninit"),
+                mk().path_segment(name),
+            ];
+            let call = mk().call_expr(mk().abs_path_expr(path), vec![] as Vec<Box<Expr>>);
+            let call = mk().method_call_expr(call, "assume_init", vec![] as Vec<Box<Expr>>);
+            return Ok(WithStmts::new_val(call));
+        }
 
         if resolved_ty.is_bool() {
             Ok(WithStmts::new_val(mk().lit_expr(mk().bool_lit(false))))

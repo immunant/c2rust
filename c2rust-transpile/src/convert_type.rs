@@ -20,7 +20,7 @@ pub struct TypeConverter {
     fields: HashMap<CDeclId, Renamer<FieldKey>>,
     suffix_names: HashMap<(CDeclId, &'static str), String>,
     features: HashSet<&'static str>,
-    emit_no_std: bool,
+    pub emit_no_std: bool,
 }
 
 pub const RESERVED_NAMES: [&str; 103] = [

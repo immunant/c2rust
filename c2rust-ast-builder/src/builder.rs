@@ -553,6 +553,12 @@ impl Builder {
         Builder { span: span, ..self }
     }
 
+    pub fn generic_over<P: Make<GenericParam>>(mut self, param: P) -> Self {
+        let param = param.make(&self);
+        self.generics.params.push(param);
+        self
+    }
+
     pub fn prepare_meta_namevalue(&self, mnv: MetaNameValue) -> PreparedMetaItem {
         let mut tokens = TokenStream::new();
         mnv.eq_token.to_tokens(&mut tokens);
@@ -2277,6 +2283,23 @@ impl Builder {
 
     pub fn ty<T>(self, kind: Type) -> Type {
         kind
+    }
+
+    pub fn lt_param<L>(self, lifetime: L) -> GenericParam
+    where
+        L: Make<Lifetime>,
+    {
+        let lifetime = lifetime.make(&self);
+        GenericParam::Lifetime(LifetimeDef {
+            attrs: self.attrs.into(),
+            lifetime,
+            colon_token: None,
+            bounds: punct(vec![]),
+        })
+    }
+
+    pub fn lifetime<L: Make<Lifetime>>(self, lt: L) -> Lifetime {
+        lt.make(&self)
     }
 
     pub fn attribute<Pa, Ma>(self, style: AttrStyle, path: Pa, args: Ma) -> Attribute
