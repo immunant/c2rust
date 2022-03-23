@@ -1,35 +1,35 @@
 #![allow(dead_code)]
 use crate::backend::TX;
 use crate::events::{Event, EventKind};
-use crate::span::SpanId;
+use crate::mir_loc::MirLocId;
 
-pub fn malloc(span: SpanId, size: u64, ptr: usize) {
+pub fn malloc(mir_loc: MirLocId, size: u64, ptr: usize) {
     TX.send(Event {
-        span,
+        mir_loc,
         kind: EventKind::Alloc {
             size: size as usize,
             ptr,
         },
     }).unwrap();
 }
-pub fn free(span: SpanId, ptr: usize, _ptr: ()) {
+pub fn free(mir_loc: MirLocId, ptr: usize, _ptr: ()) {
     TX.send(Event {
-        span,
+        mir_loc,
         kind: EventKind::Free { ptr },
     }).unwrap();
 }
-pub fn calloc(span: SpanId, nmemb: u64, size: u64, ptr: usize) {
+pub fn calloc(mir_loc: MirLocId, nmemb: u64, size: u64, ptr: usize) {
     TX.send(Event {
-        span,
+        mir_loc,
         kind: EventKind::Alloc {
             size: (nmemb*size) as usize,
             ptr,
         },
     }).unwrap();
 }
-pub fn realloc(span: SpanId, old_ptr: usize, size: u64, new_ptr: usize) {
+pub fn realloc(mir_loc: MirLocId, old_ptr: usize, size: u64, new_ptr: usize) {
     TX.send(Event {
-        span,
+        mir_loc,
         kind: EventKind::Realloc {
             old_ptr,
             size: size as usize,
@@ -37,9 +37,9 @@ pub fn realloc(span: SpanId, old_ptr: usize, size: u64, new_ptr: usize) {
         },
     }).unwrap();
 }
-pub fn reallocarray(span: SpanId, old_ptr: usize, nmemb: u64, size: u64, new_ptr: usize) {
+pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, new_ptr: usize) {
     TX.send(Event {
-        span,
+        mir_loc,
         kind: EventKind::Realloc {
             old_ptr,
             size: (nmemb*size) as usize,
@@ -49,30 +49,30 @@ pub fn reallocarray(span: SpanId, old_ptr: usize, nmemb: u64, size: u64, new_ptr
 }
 
 
-pub fn ptr_deref(span: SpanId, ptr: usize) {
+pub fn ptr_deref(mir_loc: MirLocId, ptr: usize) {
     TX.send(Event {
-        span,
+        mir_loc,
         kind: EventKind::Deref(ptr),
     }).unwrap();
 }
 
-pub fn ptr_assign(span: SpanId, ptr: usize) {
+pub fn ptr_assign(mir_loc: MirLocId, ptr: usize) {
     TX.send(Event {
-        span,
+        mir_loc,
         kind: EventKind::Assign(ptr),
     }).unwrap();
 }
 
-pub fn ptr_arg(span: SpanId, ptr: usize) {
+pub fn ptr_arg(mir_loc: MirLocId, ptr: usize) {
     TX.send(Event {
-        span,
+        mir_loc,
         kind: EventKind::Arg(ptr),
     }).unwrap();
 }
 
-pub fn ptr_ret(span: SpanId, ptr: usize) {
+pub fn ptr_ret(mir_loc: MirLocId, ptr: usize) {
     TX.send(Event {
-        span,
+        mir_loc,
         kind: EventKind::Ret(ptr),
     }).unwrap();
 }

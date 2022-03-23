@@ -5,7 +5,7 @@ extern crate lazy_static;
 pub mod backend;
 pub mod events;
 mod handlers;
-pub mod span;
+pub mod mir_loc;
 
 use std::env;
 
@@ -13,14 +13,14 @@ use std::env;
 pub const HOOK_FUNCTIONS: &[&'static str] =
     &["malloc", "free", "calloc", "realloc", "reallocarray"];
 
-pub use self::span::{SourcePos, SourceSpan, SpanId};
+pub use self::mir_loc::{DefPathHash, Metadata, MirLoc, MirLocId};
 
 pub use self::handlers::*;
 
 pub fn initialize() {
     let span_filename = env::var("METADATA_FILE")
         .expect("Instrumentation requires the METADATA_FILE environment variable be set");
-    span::set_file(&span_filename);
+    mir_loc::set_file(&span_filename);
     backend::init();
 }
 
