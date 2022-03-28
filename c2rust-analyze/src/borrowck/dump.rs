@@ -8,7 +8,7 @@ use std::hash::Hash;
 use std::io::{BufWriter, Write};
 use std::path;
 use rustc_hash::{FxHashMap, FxHashSet};
-use crate::atoms::{AllFacts, Output, AtomMaps, Origin, Loan, Point, Variable, Path};
+use crate::borrowck::atoms::{AllFacts, Output, AtomMaps, Origin, Loan, Point, Variable, Path};
 
 pub fn dump_facts_to_dir(
     facts: &AllFacts,

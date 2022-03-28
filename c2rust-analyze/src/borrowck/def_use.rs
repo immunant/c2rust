@@ -7,7 +7,7 @@ use rustc_middle::mir::visit::{
     Visitor, PlaceContext, MutatingUseContext, NonMutatingUseContext, NonUseContext,
 };
 use rustc_middle::ty::{TyCtxt, List};
-use crate::atoms::{AllFacts, AtomMaps, Path, Loan, SubPoint};
+use crate::borrowck::atoms::{AllFacts, AtomMaps, Path, Loan, SubPoint};
 
 
 // From `rustc_borrowck/src/def_use.rs`, licensed MIT/Apache2
