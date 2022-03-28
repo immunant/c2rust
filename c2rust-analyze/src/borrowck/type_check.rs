@@ -4,8 +4,8 @@ use rustc_middle::mir::{
     Body, Statement, StatementKind, Terminator, TerminatorKind, Rvalue, Place, Operand, BorrowKind,
     Local, LocalDecl, Location, ProjectionElem,
 };
-use crate::{LTy, LTyCtxt};
-use crate::atoms::{AllFacts, AtomMaps, Point, SubPoint, Path, Loan, Origin};
+use crate::borrowck::{LTy, LTyCtxt};
+use crate::borrowck::atoms::{AllFacts, AtomMaps, Point, SubPoint, Path, Loan, Origin};
 
 
 struct TypeChecker<'tcx, 'a> {
