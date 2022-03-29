@@ -21,8 +21,10 @@ dnf install --quiet --assumeyes \
     ninja-build \
     openssl-devel \
     python3-devel \
+    python3-pip \
     redhat-rpm-config \
-    xz
+    xz \
+    zlib-devel
 
 pip3 install --upgrade pip
 # Current version of scan-build requires setuptools 20.5 or newer to parse
