@@ -31,7 +31,7 @@ impl<'c> Translation<'c> {
                 .get(&main_id)
                 .expect("Could not find main function in renamer");
 
-            let decl = mk().fn_decl(&main_fn_name, vec![], None, ReturnType::Default);
+            let decl = mk().fn_decl("main", vec![], None, ReturnType::Default);
 
             let main_fn = mk().path_expr(vec![main_fn_name]);
 
@@ -230,9 +230,7 @@ impl<'c> Translation<'c> {
             };
 
             let block = mk().block(stmts);
-            let main_attributes = mk().single_attr("main");
-            self.use_feature("main");
-            Ok(main_attributes.pub_().fn_item(decl, block))
+            Ok(mk().pub_().fn_item(decl, block))
         } else {
             Err(TranslationError::generic(
                 "Cannot translate non-function main entry point",
