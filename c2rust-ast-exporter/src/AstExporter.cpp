@@ -886,7 +886,6 @@ class TranslateASTVisitor final
     // Statements
     //
 
-    /*
     bool VisitAttributedStmt(AttributedStmt *S) {
         std::vector<void*> childIds { S->getSubStmt() };
         encode_entry(S, TagAttributedStmt, childIds,
@@ -897,7 +896,6 @@ class TranslateASTVisitor final
         });
         return true;
     }
-    */
 
     bool VisitCompoundStmt(CompoundStmt *CS) {
         std::vector<void *> childIds;

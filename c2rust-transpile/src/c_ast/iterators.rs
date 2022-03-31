@@ -271,6 +271,11 @@ fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
             }
             res
         }
+
+        Attributed {
+            substatement: s,
+            ..
+        } => intos![s]
     }
 }
 

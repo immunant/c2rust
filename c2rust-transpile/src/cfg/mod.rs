@@ -1671,6 +1671,15 @@ impl CfgBuilder {
                     Ok(sub_stmt_next.map(|l| self.new_wip_block(l)))
                 }
 
+                CStmtKind::Attributed { substatement, ..} => {
+                    // Note: we only support the fallthrough attribute for which no action is
+                    // required.
+                    match translator.ast_context.index(substatement).kind {
+                        CStmtKind::Empty =>  Ok(Some(wip)),
+                        _ => panic!("Expected empty attributed statement"),
+                    }
+                }
+
                 CStmtKind::Goto(label_id) => {
                     let tgt_label = Label::FromC(label_id);
                     self.add_wip_block(wip, Jump(tgt_label));
