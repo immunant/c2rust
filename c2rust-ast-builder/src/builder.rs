@@ -792,12 +792,12 @@ impl Builder {
     {
         let func = func.make(&self);
         let args = args.into_iter().map(|a| *a.make(&self)).collect();
-        Box::new(Expr::Call(ExprCall {
+        Box::new(parenthesize_if_necessary(Expr::Call(ExprCall {
             attrs: self.attrs.into(),
             paren_token: token::Paren(self.span),
             func,
             args,
-        }))
+        })))
     }
 
     pub fn method_call_expr<E, S, A>(self, expr: E, seg: S, args: Vec<A>) -> Box<Expr>
@@ -1011,12 +1011,12 @@ impl Builder {
     {
         let lhs = lhs.make(&self);
         let rhs = rhs.make(&self);
-        Box::new(Expr::Index(ExprIndex {
+        Box::new(parenthesize_if_necessary(Expr::Index(ExprIndex {
             attrs: self.attrs.into(),
             bracket_token: token::Bracket(self.span),
             expr: lhs,
             index: rhs,
-        }))
+        })))
     }
 
     pub fn abs_path_expr<Pa>(self, path: Pa) -> Box<Expr>
@@ -2517,8 +2517,24 @@ fn has_rightmost_cast(expr: &Expr) -> bool {
     }
 }
 
+fn expr_precedence(e: &Expr) -> u8 {
+    match e {
+        Expr::Path(_ep) => 18,
+        Expr::MethodCall(_emc) => 17,
+        Expr::Field(_ef) => 16,
+        Expr::Call(_) | Expr::Index(_) => 15,
+        Expr::Try(_et) => 14,
+        Expr::Unary(_eu) => 13,
+        Expr::Cast(_ec) => 12,
+        Expr::Binary(eb) => 2 + binop_precedence(&eb.op),
+        Expr::Assign(_) | Expr::AssignOp(_) => 1,
+        Expr::Return(_) | Expr::Closure(_) => 0,
+        _ => 255,
+    }
+}
+
 /// See https://doc.rust-lang.org/reference/expressions.html
-fn precedence(b: &BinOp) -> u8 {
+fn binop_precedence(b: &BinOp) -> u8 {
     match b {
         BinOp::Add(_) => 8,
         BinOp::Sub(_) => 8,
@@ -2552,59 +2568,54 @@ fn precedence(b: &BinOp) -> u8 {
 }
 
 /// Wrap an expression in parentheses
-fn parenthesize(e: Box<Expr>) -> Box<Expr> {
-    Box::new(Expr::Paren(ExprParen {
+fn parenthesize_mut(e: &mut Box<Expr>) {
+    let mut temp = mk().tuple_expr(Vec::<Box<Expr>>::new());
+    std::mem::swap(e, &mut temp);
+    *e = Box::new(Expr::Paren(ExprParen {
         attrs: vec![],
         paren_token: Default::default(),
-        expr: e,
+        expr: temp,
     }))
 }
 
 /// Wrap an expression's subexpressions in an explicit ExprParen if the
 /// pretty-printed form of the expression would otherwise reparse differently
-fn parenthesize_if_necessary(e: Expr) -> Expr {
+fn parenthesize_if_necessary(mut e: Expr) -> Expr {
+    // If outer operation has higher precedence, parenthesize inner operation
+    let outer_precedence = expr_precedence(&e);
+    let maybe_parenthesize = |inner: &mut Box<Expr>| {
+        if expr_precedence(&*inner) < outer_precedence {
+            parenthesize_mut(inner);
+        }
+    };
     match e {
-        Expr::Field(mut ef) => {
-            if let Expr::Cast(_) | Expr::Unary(_) = *ef.base {
-                ef.base = parenthesize(ef.base);
-            }
-            return Expr::Field(ef);
+        Expr::Field(ref mut ef) => {
+            maybe_parenthesize(&mut ef.base);
         }
-        Expr::MethodCall(mut emc) => {
-            if let Expr::Cast(_) | Expr::Unary(_) = *emc.receiver {
-                emc.receiver = parenthesize(emc.receiver);
-            }
-            return Expr::MethodCall(emc);
+        Expr::MethodCall(ref mut emc) => {
+            maybe_parenthesize(&mut emc.receiver);
         }
-        Expr::Cast(mut ec) => {
-            if let Expr::Binary(_) = *ec.expr {
-                ec.expr = parenthesize(ec.expr);
-            }
-            return Expr::Cast(ec);
+        Expr::Call(ref mut ec) => {
+            maybe_parenthesize(&mut ec.func);
         }
-        Expr::Unary(mut eu) => {
-            if let Expr::Cast(_) = *eu.expr {
-                eu.expr = parenthesize(eu.expr);
-            } else if let Expr::Binary(_) = *eu.expr {
-                eu.expr = parenthesize(eu.expr);
+        Expr::Cast(ref mut ec) => {
+            if let Expr::If(_) = *ec.expr {
+                parenthesize_mut(&mut ec.expr);
+            } else {
+                maybe_parenthesize(&mut ec.expr);
             }
-
-            return Expr::Unary(eu);
         }
-        Expr::Binary(mut eb) => {
-            // If outer operation has higher precedence, parenthesize inner operation
-            if let Expr::Binary(ref leb) = *eb.left {
-                if precedence(&eb.op) > precedence(&leb.op) {
-                    eb.left = parenthesize(eb.left);
-                }
-            }
-            if let Expr::Binary(ref reb) = *eb.right {
-                if precedence(&eb.op) > precedence(&reb.op) {
-                    eb.right = parenthesize(eb.right);
-                }
-            }
-            return Expr::Binary(eb);
+        Expr::Unary(ref mut eu) => {
+            maybe_parenthesize(&mut eu.expr);
         }
-        _ => e,
-    }
+        Expr::Binary(ref mut eb) => {
+            maybe_parenthesize(&mut eb.left);
+            maybe_parenthesize(&mut eb.right);
+        }
+        Expr::Index(ref mut ei) => {
+            maybe_parenthesize(&mut ei.expr);
+        }
+        _ => (),
+    };
+    e
 }
