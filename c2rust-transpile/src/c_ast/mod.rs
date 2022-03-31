@@ -1427,6 +1427,14 @@ pub enum CStmtKind {
         clobbers: Vec<String>,
         is_volatile: bool,
     },
+
+    // Statements annotated with attributes. The substatement can be a NULL
+    // statement in case of __attribute__((__fallthrough__)) at the end of a
+    // case statement
+    Attributed {
+        attributes: Vec<Attribute>,
+        substatement: CStmtId,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -1618,6 +1626,8 @@ pub enum Attribute {
     Used,
     /// __attribute((visibility("hidden")))
     Visibility(String),
+    /// __attribute__((fallthrough, __fallthrough__))
+    Fallthrough
 }
 
 impl CTypeKind {

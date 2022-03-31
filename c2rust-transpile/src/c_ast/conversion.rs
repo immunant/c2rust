@@ -945,6 +945,28 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_STMT);
                 }
 
+                ASTEntryTag::TagAttributedStmt if expected_ty & OTHER_STMT != 0 => {
+                    let substatement = node
+                        .children[0]
+                        .map(|id| self.visit_stmt(id))
+                        .unwrap();
+                    let mut attributes = vec![];
+
+                    match expect_opt_str(&node.extras[0])
+                        .expect("Attributed statement kind not found")
+                    {
+                        Some("fallthrough") | Some("__fallthrough__") =>
+                            attributes.push(Attribute::Fallthrough),
+                        Some(str) => panic!("Unknown statement attribute: {}", str),
+                        None => panic!("Invalid statement attribute"),
+                    };
+
+                    let astmt = CStmtKind::Attributed{ attributes, substatement };
+
+                    self.add_stmt(new_id, located(node, astmt));
+                    self.processed_nodes.insert(new_id, OTHER_STMT);
+                }
+
                 ASTEntryTag::TagForStmt if expected_ty & OTHER_STMT != 0 => {
                     let init = node.children[0].map(|id| self.visit_stmt(id));
 
