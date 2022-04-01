@@ -182,13 +182,18 @@ impl<'c> Translation<'c> {
             push_expr(&mut tokens, mk().lit_expr("volatile"));
         }
 
+        self.with_cur_file_item_store(|item_store| {
+            let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
+            item_store.add_use(vec![std_or_core, "arch".into()], "asm");
+        });
+
         let mac = mk().mac(
             vec!["asm"],
             tokens.into_iter().collect::<TokenStream>(),
             MacroDelimiter::Paren(Default::default()),
         );
         let mac = mk().mac_expr(mac);
-        let mac = mk().span(span).expr_stmt(mac);
+        let mac = mk().span(span).semi_stmt(mac);
         stmts.push(mac);
 
         // Push the post-macro statements
