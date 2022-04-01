@@ -4531,8 +4531,14 @@ impl<'c> Translation<'c> {
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
-            if let Expr::Cast(ExprCast { expr: ref arg, ..}) = *val {
-                if let Expr::Binary(ExprBinary {op, ..}) = **arg {
+            fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
+                match **expr {
+                    Expr::Paren(ExprParen { ref expr, .. }) => expr,
+                    _ => expr,
+                }
+            }
+            if let Expr::Cast(ExprCast { expr: ref arg, ..}) = **unparen(&val) {
+                if let Expr::Binary(ExprBinary {op, ..}) = **unparen(arg) {
                     match op {
                         BinOp::Or(_)
                         | BinOp::And(_)
@@ -4544,10 +4550,10 @@ impl<'c> Translation<'c> {
                         | BinOp::Ge(_) => {
                             if target {
                                 // If target == true, just return the argument
-                                return arg.clone();
+                                return unparen(arg).clone();
                             } else {
                                 // If target == false, return !arg
-                                return mk().unary_expr(UnOp::Not(Default::default()), arg.clone());
+                                return mk().unary_expr(UnOp::Not(Default::default()), unparen(arg).clone());
                             }
                         }
                         _ => {}
