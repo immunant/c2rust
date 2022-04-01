@@ -621,6 +621,29 @@ impl<'c> Translation<'c> {
                 self.panic_or_err("unreachable stub"),
             )),
 
+            "__builtin_rotateleft8"
+            | "__builtin_rotateleft16"
+            | "__builtin_rotateleft32"
+            | "__builtin_rotateleft64" => {
+                self.use_feature("core_intrinsics");
+
+                // Emit `rotate_left(arg0, arg1)`
+                let rotate_func =
+                    mk().abs_path_expr(vec![std_or_core, "intrinsics", "rotate_left"]);
+                let arg0 = self.convert_expr(ctx.used(), args[0])?;
+                let arg1 = self.convert_expr(ctx.used(), args[1])?;
+                arg0.and_then(|arg0| {
+                    arg1.and_then(|arg1| {
+                        let call_expr = mk().call_expr(rotate_func, vec![arg0, arg1]);
+                        self.convert_side_effects_expr(
+                            ctx,
+                            WithStmts::new_val(call_expr),
+                            "Builtin is not supposed to be used",
+                        )
+                    })
+                })
+            }
+
             _ => Err(format_translation_err!(
                 self.ast_context.display_loc(src_loc),
                 "Unimplemented builtin {}",
