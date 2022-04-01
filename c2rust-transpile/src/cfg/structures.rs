@@ -1,7 +1,7 @@
 //! This modules handles converting `Vec<Structure>` into `Vec<Stmt>`.
 
 use super::*;
-use syn::{ExprReturn, ExprIf, ExprBreak, ExprUnary, Stmt, spanned::Spanned as _};
+use syn::{ExprReturn, ExprIf, ExprBreak, ExprParen, ExprUnary, Stmt, spanned::Spanned as _};
 use std::result::Result;
 
 use crate::rust_ast::{comment_store, BytePos, SpanExt, set_span::SetSpan};
@@ -669,8 +669,14 @@ impl StructureState {
 ///   * Negating something of the form `!<expr>` produces `<expr>`
 ///
 fn not(bool_expr: &Box<Expr>) -> Box<Expr> {
+    fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
+        match **expr {
+            Expr::Paren(ExprParen { ref expr, .. }) => expr,
+            _ => expr,
+        }
+    }
     match **bool_expr {
-        Expr::Unary(ExprUnary { op: syn::UnOp::Not(_), ref expr, .. }) => expr.clone(),
+        Expr::Unary(ExprUnary { op: syn::UnOp::Not(_), ref expr, .. }) => unparen(expr).clone(),
         _ => mk().unary_expr("!", bool_expr.clone()),
     }
 }

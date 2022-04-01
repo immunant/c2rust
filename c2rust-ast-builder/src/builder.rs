@@ -2583,37 +2583,44 @@ fn parenthesize_mut(e: &mut Box<Expr>) {
 fn parenthesize_if_necessary(mut e: Expr) -> Expr {
     // If outer operation has higher precedence, parenthesize inner operation
     let outer_precedence = expr_precedence(&e);
-    let maybe_parenthesize = |inner: &mut Box<Expr>| {
+    let parenthesize_if_gte = |inner: &mut Box<Expr>| {
+        if expr_precedence(&*inner) <= outer_precedence {
+            parenthesize_mut(inner);
+        }
+    };
+    let parenthesize_if_gt = |inner: &mut Box<Expr>| {
         if expr_precedence(&*inner) < outer_precedence {
             parenthesize_mut(inner);
         }
     };
     match e {
         Expr::Field(ref mut ef) => {
-            maybe_parenthesize(&mut ef.base);
+            parenthesize_if_gt(&mut ef.base);
         }
         Expr::MethodCall(ref mut emc) => {
-            maybe_parenthesize(&mut emc.receiver);
+            parenthesize_if_gt(&mut emc.receiver);
         }
         Expr::Call(ref mut ec) => {
-            maybe_parenthesize(&mut ec.func);
+            parenthesize_if_gt(&mut ec.func);
         }
         Expr::Cast(ref mut ec) => {
             if let Expr::If(_) = *ec.expr {
                 parenthesize_mut(&mut ec.expr);
             } else {
-                maybe_parenthesize(&mut ec.expr);
+                parenthesize_if_gt(&mut ec.expr);
             }
         }
         Expr::Unary(ref mut eu) => {
-            maybe_parenthesize(&mut eu.expr);
+            parenthesize_if_gt(&mut eu.expr);
         }
         Expr::Binary(ref mut eb) => {
-            maybe_parenthesize(&mut eb.left);
-            maybe_parenthesize(&mut eb.right);
+            parenthesize_if_gt(&mut eb.left);
+            // Because binops associate right, parenthesize same-precedence RHS
+            // (e.g. `5 - (6 - 7)`).
+            parenthesize_if_gte(&mut eb.right);
         }
         Expr::Index(ref mut ei) => {
-            maybe_parenthesize(&mut ei.expr);
+            parenthesize_if_gt(&mut ei.expr);
         }
         _ => (),
     };
