@@ -21,6 +21,7 @@ pub struct TypeConverter {
     suffix_names: HashMap<(CDeclId, &'static str), String>,
     features: HashSet<&'static str>,
     emit_no_std: bool,
+    ctypes_prefix: String,
 }
 
 pub const RESERVED_NAMES: [&str; 103] = [
@@ -133,7 +134,7 @@ pub const RESERVED_NAMES: [&str; 103] = [
 ];
 
 impl TypeConverter {
-    pub fn new(emit_no_std: bool) -> TypeConverter {
+    pub fn new(emit_no_std: bool, ctypes_prefix: String) -> TypeConverter {
         TypeConverter {
             translate_valist: false,
             renamer: Renamer::new(&RESERVED_NAMES),
@@ -141,6 +142,7 @@ impl TypeConverter {
             suffix_names: HashMap::new(),
             features: HashSet::new(),
             emit_no_std,
+            ctypes_prefix,
         }
     }
 
@@ -275,7 +277,7 @@ impl TypeConverter {
             CTypeKind::Void => {
                 Ok(mk()
                     .set_mutbl(mutbl)
-                    .ptr_ty(mk().path_ty(vec!["libc", "c_void"])))
+                    .ptr_ty(mk().path_ty(vec!["core", "ffi", "c_void"])))
             }
 
             CTypeKind::VariableArray(mut elt, _len) => {
@@ -301,6 +303,41 @@ impl TypeConverter {
         }
     }
 
+    /// Convert a primitive C type kind into the equivalent Rust type
+    pub fn convert_primitive_type_kind(&self, kind: &CTypeKind) -> Option<P<Ty>> {
+        let primitive_type = |ty: &str| {
+            let path = self
+                .ctypes_prefix
+                .split("::")
+                .chain(std::iter::once(ty))
+                .collect::<Vec<_>>();
+            mk().path_ty(mk().path(path))
+        };
+
+        match kind {
+            CTypeKind::Void => Some(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
+            CTypeKind::Bool => Some(mk().path_ty(mk().path(vec!["bool"]))),
+            CTypeKind::Short => Some(primitive_type("c_short")),
+            CTypeKind::Int => Some(primitive_type("c_int")),
+            CTypeKind::Long => Some(primitive_type("c_long")),
+            CTypeKind::LongLong => Some(primitive_type("c_longlong")),
+            CTypeKind::UShort => Some(primitive_type("c_ushort")),
+            CTypeKind::UInt => Some(primitive_type("c_uint")),
+            CTypeKind::ULong => Some(primitive_type("c_ulong")),
+            CTypeKind::ULongLong => Some(primitive_type("c_ulonglong")),
+            CTypeKind::SChar => Some(primitive_type("c_schar")),
+            CTypeKind::UChar => Some(primitive_type("c_uchar")),
+            CTypeKind::Char => Some(primitive_type("c_char")),
+            CTypeKind::Float => Some(primitive_type("c_float")),
+            CTypeKind::Double => Some(primitive_type("c_double")),
+            CTypeKind::LongDouble => Some(mk().path_ty(mk().path(vec!["f128", "f128"]))),
+            CTypeKind::Int128 => Some(mk().path_ty(mk().path(vec!["i128"]))),
+            CTypeKind::UInt128 => Some(mk().path_ty(mk().path(vec!["u128"]))),
+
+            _ => None
+        }
+    }
+
     /// Convert a `C` type to a `Rust` one. For the moment, these are expected to have compatible
     /// memory layouts.
     pub fn convert(
@@ -315,26 +352,12 @@ impl TypeConverter {
             return Ok(ty);
         }
 
-        match ctxt.index(ctype).kind {
-            CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
-            CTypeKind::Bool => Ok(mk().path_ty(mk().path(vec!["bool"]))),
-            CTypeKind::Short => Ok(mk().path_ty(mk().path(vec!["libc", "c_short"]))),
-            CTypeKind::Int => Ok(mk().path_ty(mk().path(vec!["libc", "c_int"]))),
-            CTypeKind::Long => Ok(mk().path_ty(mk().path(vec!["libc", "c_long"]))),
-            CTypeKind::LongLong => Ok(mk().path_ty(mk().path(vec!["libc", "c_longlong"]))),
-            CTypeKind::UShort => Ok(mk().path_ty(mk().path(vec!["libc", "c_ushort"]))),
-            CTypeKind::UInt => Ok(mk().path_ty(mk().path(vec!["libc", "c_uint"]))),
-            CTypeKind::ULong => Ok(mk().path_ty(mk().path(vec!["libc", "c_ulong"]))),
-            CTypeKind::ULongLong => Ok(mk().path_ty(mk().path(vec!["libc", "c_ulonglong"]))),
-            CTypeKind::SChar => Ok(mk().path_ty(mk().path(vec!["libc", "c_schar"]))),
-            CTypeKind::UChar => Ok(mk().path_ty(mk().path(vec!["libc", "c_uchar"]))),
-            CTypeKind::Char => Ok(mk().path_ty(mk().path(vec!["libc", "c_char"]))),
-            CTypeKind::Double => Ok(mk().path_ty(mk().path(vec!["libc", "c_double"]))),
-            CTypeKind::LongDouble => Ok(mk().path_ty(mk().path(vec!["f128", "f128"]))),
-            CTypeKind::Float => Ok(mk().path_ty(mk().path(vec!["libc", "c_float"]))),
-            CTypeKind::Int128 => Ok(mk().path_ty(mk().path(vec!["i128"]))),
-            CTypeKind::UInt128 => Ok(mk().path_ty(mk().path(vec!["u128"]))),
+        let kind = &ctxt.index(ctype).kind;
+        if let Some(ty) = self.convert_primitive_type_kind(kind) {
+            return Ok(ty);
+        }
 
+        match *kind {
             CTypeKind::Pointer(qtype) => self.convert_pointer(ctxt, qtype),
 
             CTypeKind::Elaborated(ref ctype) => self.convert(ctxt, *ctype),

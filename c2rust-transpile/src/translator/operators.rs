@@ -68,7 +68,7 @@ impl<'c> Translation<'c> {
                 let lhs = self.convert_condition(ctx, true, lhs)?;
                 let rhs = self.convert_condition(ctx, true, rhs)?;
                 lhs
-                    .map(|x| bool_to_int(mk().binary_expr(BinOpKind::from(op), x, rhs.to_expr())))
+                    .map(|x| self.convert_bool_to_int(mk().binary_expr(BinOpKind::from(op), x, rhs.to_expr())))
                     .and_then(|out| {
                         if ctx.is_unused() {
                             Ok(WithStmts::new(
@@ -655,7 +655,7 @@ impl<'c> Translation<'c> {
                     mk().binary_expr(BinOpKind::Eq, lhs, rhs)
                 };
 
-                Ok(bool_to_int(expr))
+                Ok(self.convert_bool_to_int(expr))
             }
             c_ast::BinOp::NotEqual => {
                 // Using is_some method for null comparison means we don't have to
@@ -677,12 +677,12 @@ impl<'c> Translation<'c> {
                     mk().binary_expr(BinOpKind::Ne, lhs, rhs)
                 };
 
-                Ok(bool_to_int(expr))
+                Ok(self.convert_bool_to_int(expr))
             }
-            c_ast::BinOp::Less => Ok(bool_to_int(mk().binary_expr(BinOpKind::Lt, lhs, rhs))),
-            c_ast::BinOp::Greater => Ok(bool_to_int(mk().binary_expr(BinOpKind::Gt, lhs, rhs))),
-            c_ast::BinOp::GreaterEqual => Ok(bool_to_int(mk().binary_expr(BinOpKind::Ge, lhs, rhs))),
-            c_ast::BinOp::LessEqual => Ok(bool_to_int(mk().binary_expr(BinOpKind::Le, lhs, rhs))),
+            c_ast::BinOp::Less => Ok(self.convert_bool_to_int(mk().binary_expr(BinOpKind::Lt, lhs, rhs))),
+            c_ast::BinOp::Greater => Ok(self.convert_bool_to_int(mk().binary_expr(BinOpKind::Gt, lhs, rhs))),
+            c_ast::BinOp::GreaterEqual => Ok(self.convert_bool_to_int(mk().binary_expr(BinOpKind::Ge, lhs, rhs))),
+            c_ast::BinOp::LessEqual => Ok(self.convert_bool_to_int(mk().binary_expr(BinOpKind::Le, lhs, rhs))),
 
             c_ast::BinOp::BitAnd => Ok(mk().binary_expr(BinOpKind::BitAnd, lhs, rhs)),
             c_ast::BinOp::BitOr => Ok(mk().binary_expr(BinOpKind::BitOr, lhs, rhs)),
@@ -1031,7 +1031,7 @@ impl<'c> Translation<'c> {
 
             c_ast::UnOp::Not => {
                 let val = self.convert_condition(ctx, false, arg)?;
-                Ok(val.map(|x| mk().cast_expr(x, mk().path_ty(vec!["libc", "c_int"]))))
+                Ok(val.map(|x| mk().cast_expr(x, self.convert_primitive_type_kind(&c_ast::CTypeKind::Int))))
             }
             c_ast::UnOp::Extension => {
                 let arg = self.convert_expr(ctx, arg)?;

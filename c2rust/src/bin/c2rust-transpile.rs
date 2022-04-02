@@ -104,6 +104,10 @@ fn main() {
         },
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: matches.is_present("emit-no-std"),
+        ctypes_prefix: matches
+            .value_of("ctypes-prefix")
+            .map(String::from)
+            .unwrap(),
         enabled_warnings,
         log_level,
     };
