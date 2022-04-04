@@ -8,8 +8,8 @@ if [ ! -f ${TARGET_BIN} ]; then
     echo "Rust archive not found: $TARGET_BIN"; exit 1
 fi
 
-cp  ${TARGET_BIN} $SCRIPT_DIR/repo/.libs/libjson-c.a
+cp ${TARGET_BIN} $SCRIPT_DIR/repo/.libs/libjson-c.a
 
 (cd $SCRIPT_DIR/repo/tests && \
-    make clean && make check \
-    | tee `basename "$0"`.log)
+    make clean && make check) 2>&1 \
+    | tee `basename "$0"`.log
