@@ -2580,9 +2580,9 @@ fn parenthesize_mut(e: &mut Box<Expr>) {
 
 /// Wrap an expression's subexpressions in an explicit ExprParen if the
 /// pretty-printed form of the expression would otherwise reparse differently
-fn parenthesize_if_necessary(mut e: Expr) -> Expr {
+fn parenthesize_if_necessary(mut outer: Expr) -> Expr {
     // If outer operation has higher precedence, parenthesize inner operation
-    let outer_precedence = expr_precedence(&e);
+    let outer_precedence = expr_precedence(&outer);
     let parenthesize_if_gte = |inner: &mut Box<Expr>| {
         if expr_precedence(&*inner) <= outer_precedence {
             parenthesize_mut(inner);
@@ -2593,9 +2593,16 @@ fn parenthesize_if_necessary(mut e: Expr) -> Expr {
             parenthesize_mut(inner);
         }
     };
-    match e {
+    match outer {
         Expr::Field(ref mut ef) => {
-            parenthesize_if_gt(&mut ef.base);
+            if let Expr::Index(_) = *ef.base {
+                /* we do not need to parenthesize the indexing in a[b].c */
+            } else {
+            /*if let Expr::Unary(_) = *ef.base {
+                parenthesize_mut(&mut ef.base);
+            } else { */
+                parenthesize_if_gt(&mut ef.base);
+            }
         }
         Expr::MethodCall(ref mut emc) => {
             parenthesize_if_gt(&mut emc.receiver);
@@ -2624,5 +2631,5 @@ fn parenthesize_if_necessary(mut e: Expr) -> Expr {
         }
         _ => (),
     };
-    e
+    outer
 }
