@@ -3,7 +3,7 @@ set -e; set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0" )" && pwd)"
 
-TARGET_BIN="repo/target/release/python"
+TARGET_BIN="${CARGO_TARGET_DIR:-repo/target}/release/python"
 if [ ! -f ${TARGET_BIN} ]; then
     echo "Rust binary not found: $TARGET_BIN"; exit 1
 fi
