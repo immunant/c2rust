@@ -29,20 +29,16 @@ impl ToString for RegHandling {
 fn parse_constraints(mut constraints: &str) -> Option<(RegHandling, bool, String)> {
     use RegHandling::*;
     let mut is_output = match constraints.chars().next() {
-        Some('+') => true,
-        Some('=') => false,
-        _ => {
-            let mem_only = if constraints.starts_with('*') {
-                constraints = &constraints[1..];
-                true
-            } else {
-                false
-            };
-            return Some((In, mem_only, constraints.replace('{', "\"").replace('}', "\"")))
+        Some('+') => {
+            constraints = &constraints[1..];
+            true
         },
+        Some('=') => {
+            constraints = &constraints[1..];
+            false
+        },
+        _ => false,
     };
-    // Skip +/=
-    constraints = &constraints[1..];
 
     let early_clobber = if constraints.starts_with('&') {
         constraints = &constraints[1..];
@@ -51,7 +47,7 @@ fn parse_constraints(mut constraints: &str) -> Option<(RegHandling, bool, String
         false
     };
 
-    let mem_only = if constraints.starts_with('*') {
+    let mut mem_only = if constraints.starts_with('*') {
         constraints = &constraints[1..];
         true
     } else {
@@ -74,13 +70,43 @@ fn parse_constraints(mut constraints: &str) -> Option<(RegHandling, bool, String
         }
     }
 
-    let mode = if is_output {
-        if early_clobber {InOut} else {InLateOut}
+    // Handle register names
+    let mut constraints = constraints.replace('{', "\"").replace('}', "\"");
+
+    if &*constraints == "m" {
+        mem_only = true;
+        constraints = "reg".into();
+    }
+
+    let mode = if mem_only {
+        In
     } else {
-        if early_clobber {Out} else {LateOut}
+        if is_output {
+            if early_clobber {InOut} else {InLateOut}
+        } else {
+            if early_clobber {Out} else {LateOut}
+        }
     };
 
-    Some((mode, mem_only, constraints.replace('{', "\"").replace('}', "\"")))
+    Some((mode, mem_only, constraints))
+}
+
+// References of the form $0 need to be converted to {0}, and references
+// that are mem-only need to be converted to [{0}].
+fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F) -> String {
+    let mut chunks = asm.split('$');
+    let mut out = chunks.next().unwrap().to_owned();
+    for chunk in chunks {
+        let ref_str = chunk.trim_matches(|c: char| !c.is_ascii_alphanumeric());
+        let mem_only = is_mem_only(ref_str);
+        // Push the reference wrapped in {}, or in [{}] if mem-only
+        out.push_str(if mem_only { "[{" } else {"{"});
+        out.push_str(ref_str);
+        out.push_str(if mem_only { "}]" } else {"}"});
+        // Push the rest of the chunk
+        out.push_str(&chunk[ref_str.len()..]);
+    }
+    out
 }
 
 impl<'c> Translation<'c> {
@@ -117,9 +143,6 @@ impl<'c> Translation<'c> {
         let mut post_stmts: Vec<Stmt> = vec![];
         let mut tokens: Vec<TokenTree> = vec![];
 
-        // Assembly template
-        push_expr(&mut tokens, mk().lit_expr(asm));
-
         let mut tied_operands = HashMap::new();
         for (input_idx, &AsmOperand {
             ref constraints,
@@ -134,6 +157,30 @@ impl<'c> Translation<'c> {
                 tied_operands.insert(input_key, output_idx);
             }
         }
+
+        fn operand_is_mem_only(operand: &AsmOperand) -> bool {
+            if let Some((_handling, mem_only, _parsed)) = parse_constraints(&operand.constraints) {
+                mem_only
+            } else {
+                println!("could not parse asm constraints: {}", operand.constraints);
+                false
+            }
+        }
+
+        // Rewrite arg references in assembly template and emit it
+        let rewritten_asm = rewrite_asm(asm, |ref_str: &str| {
+            if let Ok(idx) = ref_str.parse::<usize>() {
+                inputs.iter()
+                    .chain(outputs.iter())
+                    .nth(idx)
+                    .map(operand_is_mem_only)
+                    .unwrap_or(false)
+            } else {
+                false
+                //inputs.iter().find(|input| input.expression.find(ref_str)).is_some()
+            }
+        });
+        push_expr(&mut tokens, mk().lit_expr(rewritten_asm));
 
         // Outputs and Inputs
         let mut operand_renames = HashMap::new();
