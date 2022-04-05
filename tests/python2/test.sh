@@ -8,7 +8,7 @@ if [ ! -f ${TARGET_BIN} ]; then
     echo "Rust binary not found: $TARGET_BIN"; exit 1
 fi
 
-rm -f $SCRIPT_DIR/repo/python && cp $TARGET_BIN $SCRIPT_DIR/repo/python
+rm -f "$SCRIPT_DIR/repo/python" && cp $TARGET_BIN "$SCRIPT_DIR/repo/python"
 
 # https://devguide.python.org/runtests/
 NPROC=`nproc`
@@ -20,5 +20,5 @@ unset DISPLAY
 
 # these tests pass but slow us down
 SLOW_TESTS="test_xpickle test_smtpnet"
-(cd $SCRIPT_DIR/repo && make buildbottest TESTOPTS="-j$NPROC -x $FLAKY_TESTS $SLOW_TESTS -G" 2>&1 \
+(cd "$SCRIPT_DIR/repo" && make buildbottest TESTOPTS="-j$NPROC -x $FLAKY_TESTS $SLOW_TESTS -G" 2>&1 \
      | tee ../`basename "$BASH_SOURCE"`.log)
