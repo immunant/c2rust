@@ -2,4 +2,4 @@
 set -e; set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0" )" && pwd)"
-(cd "$SCRIPT_DIR/repo" && ./buildconf)
+(cd "$SCRIPT_DIR/repo" && ./buildconf) 2>&1 > "$(basename "$0")".log
