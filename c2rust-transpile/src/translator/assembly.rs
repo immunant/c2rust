@@ -5,6 +5,84 @@ use super::*;
 use proc_macro2::{TokenStream, TokenTree};
 use syn::__private::ToTokens;
 
+enum RegHandling {
+    In,
+    Out,
+    InOut,
+    LateOut,
+    InLateOut,
+}
+
+impl ToString for RegHandling {
+    fn to_string(&self) -> String {
+        use RegHandling::*;
+        match self {
+            In => "in",
+            Out => "out",
+            InOut => "inout",
+            LateOut => "lateout",
+            InLateOut => "inlateout",
+        }.to_owned()
+    }
+}
+
+fn parse_constraints(mut constraints: &str) -> Option<(RegHandling, bool, String)> {
+    use RegHandling::*;
+    let mut is_output = match constraints.chars().next() {
+        Some('+') => true,
+        Some('=') => false,
+        _ => {
+            let mem_only = if constraints.starts_with('*') {
+                constraints = &constraints[1..];
+                true
+            } else {
+                false
+            };
+            return Some((In, mem_only, constraints.replace('{', "\"").replace('}', "\"")))
+        },
+    };
+    // Skip +/=
+    constraints = &constraints[1..];
+
+    let early_clobber = if constraints.starts_with('&') {
+        constraints = &constraints[1..];
+        true
+    } else {
+        false
+    };
+
+    let mem_only = if constraints.starts_with('*') {
+        constraints = &constraints[1..];
+        true
+    } else {
+        false
+    };
+
+    let mut split = constraints.splitn(2, ',');
+    constraints = match split.next() {
+        Some(c) => c,
+        // Parse error
+        _ => return None,
+    };
+    // If a comma is present, this is an output of form =[&]foo,N
+    if split.next().is_some() {
+        if !is_output {
+            is_output = true;
+        } else {
+            // '+' followed by ',' is a parse error
+            return None;
+        }
+    }
+
+    let mode = if is_output {
+        if early_clobber {InOut} else {InLateOut}
+    } else {
+        if early_clobber {Out} else {LateOut}
+    };
+
+    Some((mode, mem_only, constraints.replace('{', "\"").replace('}', "\"")))
+}
+
 impl<'c> Translation<'c> {
     /// Convert an inline-assembly statement into one or more Rust statements.
     /// If inline assembly translation is not enabled this will result in an
@@ -38,7 +116,6 @@ impl<'c> Translation<'c> {
         let mut stmts: Vec<Stmt> = vec![];
         let mut post_stmts: Vec<Stmt> = vec![];
         let mut tokens: Vec<TokenTree> = vec![];
-        let mut first;
 
         // Assembly template
         push_expr(&mut tokens, mk().lit_expr(asm));
@@ -61,19 +138,12 @@ impl<'c> Translation<'c> {
         // Outputs and Inputs
         let mut operand_renames = HashMap::new();
         for &(list, is_output) in &[(outputs, true), (inputs, false)] {
-            first = true;
-            tokens.push(TokenTree::Punct(Punct::new(',', Alone))); // Always emitted, even if list is empty
-
             for (operand_idx, &AsmOperand {
                 ref constraints,
                 expression,
             }) in list.iter().enumerate()
             {
-                if first {
-                    first = false
-                } else {
-                    tokens.push(TokenTree::Punct(Punct::new(',', Alone)))
-                }
+                tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
 
                 let mut result = self.convert_expr(ctx.used(), expression)?;
                 stmts.append(result.stmts_mut());
@@ -159,28 +229,38 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                push_expr(&mut tokens, mk().lit_expr(constraints));
-                push_expr(&mut tokens, mk().paren_expr(result));
+                let (reg_handling, mem_only, parsed_constraints) = match parse_constraints(constraints) {
+                    Some(x) => x,
+                    None => return Err(TranslationError::new(None, failure::err_msg(
+                        "Inline assembly constraints could not be parsed: ".to_owned() + constraints,
+                    ).context(TranslationErrorKind::Generic)))
+                };
+                push_expr(&mut tokens, mk().ident_expr(reg_handling.to_string()));
+                push_expr(&mut tokens, mk().paren_expr(if parsed_constraints.contains('"') {
+                    mk().lit_expr(parsed_constraints.trim_matches('"'))
+                } else {
+                    mk().ident_expr(parsed_constraints)
+                }));
+                tokens.push(TokenTree::Punct(Punct::new(' ', Alone)));
+                push_expr(&mut tokens, result);
             }
         }
 
         // Clobbers
-        first = true;
-        tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
         for clobber in clobbers {
-            if first {
-                first = false
-            } else {
-                tokens.push(TokenTree::Punct(Punct::new(',', Alone)))
-            }
-            push_expr(&mut tokens, mk().lit_expr(clobber));
+            tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
+            let result = mk().call_expr(mk().ident_expr("out"), vec![mk().lit_expr(clobber)]);
+            push_expr(&mut tokens, result);
+            tokens.push(TokenTree::Punct(Punct::new(' ', Alone)));
+            push_expr(&mut tokens, mk().ident_expr("_"));
         }
 
         // Options
-        if is_volatile {
+        /*if !is_volatile {
             tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
-            push_expr(&mut tokens, mk().lit_expr("volatile"));
-        }
+            let result = mk().call_expr(mk().ident_expr("options"), vec![mk().ident_expr("pure")]);
+            push_expr(&mut tokens, result);
+        }*/
 
         self.with_cur_file_item_store(|item_store| {
             let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
