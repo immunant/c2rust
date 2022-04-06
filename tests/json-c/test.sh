@@ -10,11 +10,11 @@ fi
 
 cp ${TARGET_BIN} $SCRIPT_DIR/repo/.libs/libjson-c.a
 
-# determine ldflags needed to use the static lib we built
-LDFLAGS=$(cd ${SCRIPT_DIR}/repo && \
+# determine libs needed to use the static lib we built
+LIBS=$(cd ${SCRIPT_DIR}/repo && \
     RUSTFLAGS="--print native-static-libs" cargo build 2>&1 \
     | grep -oP '(?<=native-static-libs: ).*')
 
 (cd $SCRIPT_DIR/repo/tests && \
-    make clean && make check LDFLAGS=$LDFLAGS) 2>&1 \
+    make clean && make check LIBS="$LIBS") 2>&1 \
     | tee `basename "$0"`.log
