@@ -23,8 +23,9 @@ use rustc_span::DUMMY_SP;
 use rustc_span::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_span::symbol::Ident;
 use rustc_target::abi::Align;
+use crate::context::{AnalysisCtxt, PermissionSet};
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
-use self::atoms::{AllFacts, AtomMaps, SubPoint, Path, Loan};
+use self::atoms::{AllFacts, AtomMaps, Output, SubPoint, Origin, Path, Loan};
 
 
 mod atoms;
@@ -33,16 +34,32 @@ mod dump;
 mod type_check;
 
 
-pub type Label = Option<atoms::Origin>;
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
+struct Label {
+    origin: Option<Origin>,
+    perm: PermissionSet,
+}
+
 pub type LTy<'tcx> = LabeledTy<'tcx, Label>;
 pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label>;
 
 
 pub fn borrowck_mir<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    def: WithOptConstParam<LocalDefId>,
+    acx: &AnalysisCtxt<'tcx>,
+    hypothesis: &mut [PermissionSet],
+    name: &str,
     mir: &Body<'tcx>,
 ) {
+    run_polonius(acx, hypothesis, name, mir);
+}
+
+
+fn run_polonius<'tcx>(
+    acx: &AnalysisCtxt<'tcx>,
+    hypothesis: &[PermissionSet],
+    name: &str,
+    mir: &Body<'tcx>,
+) -> (AllFacts, AtomMaps<'tcx>, Output) {
     let mut facts = AllFacts::default();
     let mut maps = AtomMaps::default();
 
@@ -52,8 +69,6 @@ pub fn borrowck_mir<'tcx>(
         let _ = maps.origin();
     }
 
-    let name = tcx.item_name(def.to_global().did);
-    eprintln!("\nprocessing function {:?}", name);
     //pretty::write_mir_fn(tcx, mir, &mut |_, _| Ok(()), &mut std::io::stdout()).unwrap();
 
     // Populate `cfg_edge`
@@ -91,13 +106,13 @@ pub fn borrowck_mir<'tcx>(
     }
 
     // Populate `use_of_var_derefs_origin`, and generate `LTy`s for all locals.
-    let ltcx = LabeledTyCtxt::new(tcx);
+    let ltcx = LabeledTyCtxt::new(acx.tcx);
     let mut local_ltys = Vec::with_capacity(mir.local_decls.len());
-    for (local, decl) in mir.local_decls.iter_enumerated() {
-        let lty = assign_origins(ltcx, &mut facts, &mut maps, decl.ty);
+    for local in mir.local_decls.indices() {
+        let lty = assign_origins(ltcx, hypothesis, &mut facts, &mut maps, acx.local_tys[local]);
         let var = maps.variable(local);
         lty.for_each_label(&mut |label| {
-            if let Some(origin) = label {
+            if let Some(origin) = label.origin {
                 facts.use_of_var_derefs_origin.push((var, origin));
             }
         });
@@ -107,32 +122,9 @@ pub fn borrowck_mir<'tcx>(
     let mut loans = HashMap::<Local, Vec<(Path, Loan, BorrowKind)>>::new();
     // Populate `loan_issued_at` and `loans`.
     type_check::visit(ltcx, &mut facts, &mut maps, &mut loans, &local_ltys, mir);
-    /*
-    // Populate `loan_issued_at` and `loans`.
-    // TODO: also populate `subset_base` here
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
-        for (idx, stmt) in bb_data.statements.iter().enumerate() {
-            let (lhs, rhs) = match stmt.kind {
-                StatementKind::Assign(ref x) => (&x.0, &x.1),
-                _ => continue,
-            };
-            let (borrow_kind, place) = match *rhs {
-                Rvalue::Ref(_, bk, p) => (bk, p),
-                _ => continue,
-            };
-            // TODO: need to do something with this origin (so it shows up in subset_base)
-            let origin = maps.origin();
-            let path = maps.path(&mut facts, place);
-            let loan = maps.loan();
-            loans.entry(place.local).or_default().push((path, loan, borrow_kind));
-            let point = maps.point(bb, idx, SubPoint::Mid);
-            facts.loan_issued_at.push((origin, loan, point));
-        }
-    }
-    */
 
     // Populate `loan_invalidated_at`
-    def_use::visit_loan_invalidated_at(tcx, &mut facts, &mut maps, &loans, mir);
+    def_use::visit_loan_invalidated_at(acx.tcx, &mut facts, &mut maps, &loans, mir);
 
     // Populate `var_defined/used/dropped_at` and `path_assigned/accessed_at_base`.
     def_use::visit(&mut facts, &mut maps, mir);
@@ -146,18 +138,30 @@ pub fn borrowck_mir<'tcx>(
         true,
     );
     dump::dump_output_to_dir(&output, &maps, format!("inspect/{}", name)).unwrap();
+
+    (facts, maps, output)
 }
 
 fn assign_origins<'tcx>(
     ltcx: LTyCtxt<'tcx>,
+    hypothesis: &[PermissionSet],
     facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
-    ty: Ty<'tcx>,
+    lty: crate::LTy<'tcx>,
 ) -> LTy<'tcx> {
-    ltcx.label(ty, &mut |ty| match ty.kind() {
-        TyKind::Ref(_, _, _) => {
-            Some(maps.origin())
-        },
-        _ => None,
+    ltcx.relabel(lty, &mut |lty| {
+        let perm = if lty.label.is_none() {
+            PermissionSet::empty()
+        } else {
+            hypothesis[lty.label.index()]
+        };
+        match lty.ty.kind() {
+            TyKind::Ref(_, _, _) |
+            TyKind::RawPtr(_) => {
+                let origin = Some(maps.origin());
+                Label { origin, perm }
+            },
+            _ => Label { origin: None, perm },
+        }
     })
 }

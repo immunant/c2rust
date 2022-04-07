@@ -226,20 +226,20 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
         func: &mut F,
     ) -> LabeledTy<'tcx, L>
     where
-        F: FnMut(&L2) -> L,
+        F: FnMut(LabeledTy<'tcx, L2>) -> L,
     {
         let args = self.relabel_slice(lty.args, func);
-        self.mk(lty.ty, args, func(&lty.label))
+        self.mk(lty.ty, args, func(lty))
     }
 
     /// Replace the labels on several labeled types.
     pub fn relabel_slice<L2, F>(
         &self,
-        ltys: &'tcx [LabeledTy<'tcx, L2>],
+        ltys: &[LabeledTy<'tcx, L2>],
         func: &mut F,
     ) -> &'tcx [LabeledTy<'tcx, L>]
     where
-        F: FnMut(&L2) -> L,
+        F: FnMut(LabeledTy<'tcx, L2>) -> L,
     {
         let ltys = ltys
             .iter()
