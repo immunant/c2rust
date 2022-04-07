@@ -20,6 +20,7 @@ use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
 use rustc_ast::node_id::NodeId;
 use rustc_ast::ptr::P;
 use rustc_driver::Compilation;
+use rustc_index::vec::IndexVec;
 use rustc_interface::Queries;
 use rustc_interface::interface::Compiler;
 use rustc_middle::mir::{
@@ -36,9 +37,11 @@ use rustc_span::DUMMY_SP;
 use rustc_span::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_span::symbol::Ident;
 use rustc_target::abi::Align;
+use crate::context::{AnalysisCtxt, PointerId, PermissionSet, LTy};
 
 
 mod borrowck;
+mod context;
 mod labeled_ty;
 
 
@@ -47,7 +50,38 @@ fn inspect_mir<'tcx>(
     def: WithOptConstParam<LocalDefId>,
     mir: &Body<'tcx>,
 ) {
-    borrowck::borrowck_mir(tcx, def, mir);
+    let name = tcx.item_name(def.to_global().did);
+    eprintln!("\nprocessing function {:?}", name);
+
+    let mut acx = AnalysisCtxt::new(tcx);
+
+    // Label all pointers in local variables.
+    // TODO: also label pointers in Rvalue::Cast (and ShallowInitBox?)
+    assert!(acx.local_tys.len() == 0);
+    acx.local_tys = IndexVec::with_capacity(mir.local_decls.len());
+    for (local, decl) in mir.local_decls.iter_enumerated() {
+        let lty = assign_pointer_ids(&acx, decl.ty);
+        let l = acx.local_tys.push(lty);
+        assert_eq!(local, l);
+    }
+
+    let mut hypothesis = Vec::with_capacity(acx.num_pointers());
+    for _ in 0 .. acx.num_pointers() {
+        hypothesis.push(PermissionSet::all());
+    }
+
+    borrowck::borrowck_mir(&acx, &mut hypothesis, name.as_str(), mir);
+}
+
+fn assign_pointer_ids<'tcx>(
+    acx: &AnalysisCtxt<'tcx>,
+    ty: Ty<'tcx>,
+) -> LTy<'tcx> {
+    acx.lcx.label(ty, &mut |ty| match ty.kind() {
+        TyKind::Ref(_, _, _) |
+        TyKind::RawPtr(_) => acx.new_pointer(),
+        _ => PointerId::NONE,
+    })
 }
 
 
