@@ -92,10 +92,8 @@ fn override_queries(
         if !tcx.is_const_fn(body_did) && !tcx.is_static(body_did) {
             // Get the name of the function we're compiling.
             let name = tcx.item_name(body_did);
-            dbg!(name);
 
             INSTRUMENTER.instrument_fn(tcx, &mut mir, body_did);
-            dbg!(&mir);
 
             validate::Validator {
                 when: "After dynamic instrumentation".to_string(),

@@ -49,17 +49,17 @@ pub fn reallocarray(mir_loc: MirLocId, old_ptr: usize, nmemb: u64, size: u64, ne
 }
 
 
-pub fn ptr_deref(mir_loc: MirLocId, ptr: usize) {
+pub fn ptr_field(mir_loc: MirLocId, ptr: usize, field_id: u32) {
     TX.send(Event {
         mir_loc,
-        kind: EventKind::Deref(ptr),
+        kind: EventKind::Field(ptr, field_id),
     }).unwrap();
 }
 
-pub fn ptr_assign(mir_loc: MirLocId, ptr: usize) {
+pub fn ptr_copy(mir_loc: MirLocId, ptr: usize) {
     TX.send(Event {
         mir_loc,
-        kind: EventKind::Assign(ptr),
+        kind: EventKind::Copy(ptr),
     }).unwrap();
 }
 
@@ -74,5 +74,19 @@ pub fn ptr_ret(mir_loc: MirLocId, ptr: usize) {
     TX.send(Event {
         mir_loc,
         kind: EventKind::Ret(ptr),
+    }).unwrap();
+}
+
+pub fn ptr_load(mir_loc: MirLocId, ptr: usize) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::LoadAddr(ptr),
+    }).unwrap();
+}
+
+pub fn ptr_store(mir_loc: MirLocId, ptr: usize) {
+    TX.send(Event {
+        mir_loc,
+        kind: EventKind::StoreAddr(ptr),
     }).unwrap();
 }
