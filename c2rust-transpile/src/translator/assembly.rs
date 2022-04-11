@@ -395,6 +395,14 @@ impl<'c> Translation<'c> {
                 if out_expr.is_some() {
                     tokens.push(TokenTree::Punct(Punct::new('=', Joint)));
                     tokens.push(TokenTree::Punct(Punct::new('>', Alone)));
+                } else {
+                    // If inout but no out expr was given, mark clobbered ('_')
+                    if let ArgDirSpec::InOut | ArgDirSpec::InLateOut = operand.dir_spec {
+                        tokens.push(TokenTree::Punct(Punct::new('=', Joint)));
+                        tokens.push(TokenTree::Punct(Punct::new('>', Alone)));
+
+                        tokens.push(TokenTree::Punct(Punct::new('_', Alone)));
+                    }
                 }
             }
             if let Some(out_expr) = out_expr {
