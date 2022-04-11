@@ -410,8 +410,21 @@ impl<'c> Translation<'c> {
             }
         }
 
+        let mut preserves_flags = true;
+        let mut read_only = true;
+
         // Clobbers
         for clobber in clobbers {
+            // Process and drop non-register clobbers
+            if clobber == "cc" {
+                preserves_flags = false;
+                continue
+            };
+            if clobber == "memory" {
+                read_only = false;
+                continue;
+            };
+
             tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
             let result = mk().call_expr(mk().ident_expr("out"), vec![mk().lit_expr(clobber)]);
             push_expr(&mut tokens, result);
@@ -420,11 +433,25 @@ impl<'c> Translation<'c> {
         }
 
         // Options
-        /*if !is_volatile {
-            tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
-            let result = mk().call_expr(mk().ident_expr("options"), vec![mk().ident_expr("pure")]);
-            push_expr(&mut tokens, result);
-        }*/
+        {
+            let mut options = vec![];
+            if preserves_flags {
+                options.push(mk().ident_expr("preserves_flags"));
+            }
+            if !is_volatile {
+                if read_only {
+                    options.push(mk().ident_expr("pure"));
+                    options.push(mk().ident_expr("readonly"));
+                }
+                // We never emit [pure, nomem] right now, but it would be nice
+            }
+
+            if !options.is_empty() {
+                tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
+                let result = mk().call_expr(mk().ident_expr("options"), options);
+                push_expr(&mut tokens, result);
+            }
+        }
 
         self.with_cur_file_item_store(|item_store| {
             let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
