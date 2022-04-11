@@ -234,8 +234,14 @@ impl<'c> Translation<'c> {
                 Ok((mut dir_spec, mem_only, parsed)) => {
                     // Add to args list; if a matching in_expr is found, this is
                     // an inout and we remove the output from the outputs list
-                    let in_expr = inputs_by_register.remove(&parsed)
-                        .map(|(i, operand)| (i, operand.expression));
+                    let mut in_expr = inputs_by_register.remove(&parsed);
+                    if in_expr.is_none() {
+                        // Also check for by-index references to this output
+                        in_expr = inputs_by_register.remove(&i.to_string());
+                    }
+                    // Extract expression
+                    let in_expr = in_expr.map(|(i, operand)| (i, operand.expression));
+
                     // For inouts, change the dirspec to include 'in'
                     if in_expr.is_some() {
                         dir_spec = dir_spec.with_in();
