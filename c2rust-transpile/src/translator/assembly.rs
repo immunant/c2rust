@@ -394,7 +394,7 @@ impl<'c> Translation<'c> {
                 push_expr(&mut tokens, in_expr);
                 if out_expr.is_some() {
                     tokens.push(TokenTree::Punct(Punct::new('=', Joint)));
-                    tokens.push(TokenTree::Punct(Punct::new('>', Joint)));
+                    tokens.push(TokenTree::Punct(Punct::new('>', Alone)));
                 }
             }
             if let Some(out_expr) = out_expr {
