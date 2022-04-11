@@ -117,12 +117,79 @@ fn parse_constraints(mut constraints: &str) ->
     Ok((mode, mem_only, constraints))
 }
 
+fn translate_modifier(modifier: char, arch: &str) -> Option<char> {
+    Some(match arch {
+        "x86" => match modifier {
+            'k' => 'e',
+            'q' => 'r',
+            'b' => 'l',
+            'h' => 'h',
+            'w' => 'x',
+            _ => return None,
+        },
+        "aarch64" => modifier,
+        "arm" => match modifier {
+            'p'|'q' => return None,
+            _ => modifier,
+        },
+        "riscv" => modifier,
+        _ => return None,
+    })
+}
+
 /// References of the form $0 need to be converted to {0}, and references
 /// that are mem-only need to be converted to [{0}].
 fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F) -> String {
-    let mut chunks = asm.split('$');
-    let mut out = chunks.next().unwrap().to_owned();
-    for chunk in chunks {
+    let mut out = String::with_capacity(asm.len());
+
+    let mut first = true;
+    let mut last_empty = false;
+
+    // Iterate over $-prefixed chunks
+    for chunk in asm.split('$') {
+        // No modification needed for first chunk
+        if first {
+            first = false;
+            out.push_str(chunk);
+            continue
+        }
+
+        // Pass-through $$
+        if last_empty {
+            last_empty = false;
+            out.push_str("$$");
+            out.push_str(chunk);
+            continue;
+        }
+
+        // Do not re-wrap ${...}, but do translate modifiers
+        if chunk.starts_with('{') {
+            // Translate operand modifiers ("template modifiers" per Rust)
+            if let Some(end_idx) = chunk.find('}') {
+                let ref_str = &chunk[..end_idx];
+                if let Some(colon_idx) = ref_str.find(':') {
+                    let (before_mods, modifiers) = ref_str.split_at(colon_idx + 1);
+                    out.push_str(before_mods);
+
+                    let modifiers = ref_str[colon_idx + 1..].chars();
+                    for modifier in modifiers {
+                        if let Some(new) = translate_modifier(modifier, "x86") {
+                            out.push(new);
+                        }
+                    }
+                    out.push_str(&chunk[end_idx..]);
+                }
+            } else {
+                out.push_str(chunk);
+            }
+            continue
+        }
+
+        if chunk == "" {
+            last_empty = true;
+            continue;
+        }
+
         let ref_str = chunk.trim_matches(|c: char| !c.is_ascii_alphanumeric());
         let mem_only = is_mem_only(ref_str);
         // Push the reference wrapped in {}, or in [{}] if mem-only
