@@ -93,10 +93,16 @@ fn parse_constraints(mut constraints: &str) ->
     // Handle register names
     let mut constraints = constraints.replace('{', "\"").replace('}', "\"");
 
-    if &*constraints == "m" {
-        mem_only = true;
-        constraints = "reg".into();
-    }
+    match &*constraints {
+        "m" => {
+            mem_only = true;
+            constraints = "reg".into();
+        },
+        "r" => {
+            constraints = "reg".into();
+        }
+        _ => {},
+    };
 
     let mode = if mem_only {
         In
