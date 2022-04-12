@@ -536,7 +536,8 @@ impl<'c> Translation<'c> {
                 options.push(mk().ident_expr("preserves_flags"));
             }
             if !is_volatile {
-                if read_only {
+                // Pure cannot be applied if we have no outputs
+                if read_only && (outputs.len() + clobbers.len()) > 0 {
                     options.push(mk().ident_expr("pure"));
                     options.push(mk().ident_expr("readonly"));
                 }
