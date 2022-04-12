@@ -395,7 +395,6 @@ impl<'c> Translation<'c> {
                     .unwrap_or(false)
             } else {
                 false
-                //inputs.iter().find(|input| input.expression.find(ref_str)).is_some()
             }
         });
 
