@@ -97,7 +97,7 @@ class Config:
 
     CC_DB_JSON = "compile_commands.json"
 
-    CUSTOM_RUST_NAME = 'nightly-2021-10-11'
+    CUSTOM_RUST_NAME = 'nightly-2021-11-22'
 
     LLVM_SKIP_SIGNATURE_CHECKS  = False
 
