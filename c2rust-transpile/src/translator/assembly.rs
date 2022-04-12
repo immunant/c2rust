@@ -627,6 +627,18 @@ impl<'c> Translation<'c> {
                 continue;
             };
 
+            // We must drop clobbers of reserved registers, even though this
+            // really means we're misinforming the compiler of what's been
+            // overwritten. Warn verbosely.
+            let quoted = format!("\"{}\"", clobber);
+            if reg_is_reserved(&quoted).is_some() {
+                warn!("Attempting to clobber reserved register ({}), dropping clobber! \
+                This likely means the potential for miscompilation has been introduced. \
+                Please rewrite this assembly to save/restore the value of this register \
+                if at all possible.", clobber);
+                continue;
+            }
+
             tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
             let result = mk().call_expr(mk().ident_expr("out"), vec![mk().lit_expr(clobber)]);
             push_expr(&mut tokens, result);
