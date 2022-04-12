@@ -137,6 +137,104 @@ fn translate_modifier(modifier: char, arch: &str) -> Option<char> {
     })
 }
 
+/// Rust-native asm! operands, which may be inputs, outputs, or both.
+struct BidirAsmOperand {
+    dir_spec: ArgDirSpec,
+    mem_only: bool,
+    constraints: String,
+    name: Option<String>,
+    // At least one of these is non-None
+    in_expr: Option<(usize, CExprId)>,
+    out_expr: Option<(usize, CExprId)>,
+}
+
+impl BidirAsmOperand {
+    /// Return whether an operand is positional (as opposed to named or using an explicit register)
+    fn is_positional(&self) -> bool {
+        !self.constraints.contains('"') && self.name.is_none()
+    }
+}
+
+/// Return the register and corresponding template modifiers if the constraint
+/// uses a reserved register. Assumes x86_64.
+fn reg_is_reserved(constraint: &str) -> Option<(&str, &str)> {
+    Some(match constraint {
+        "\"bl\"" | "\"bh\"" | "\"bx\"" | "\"ebx\"" | "\"rbx\"" => {
+            let reg = constraint.trim_matches('"');
+            let mods = if reg.len() == 2 {
+                &reg[1..] // l/h/x
+            } else {
+                &reg[..1] // e/r
+            };
+            (reg, mods)
+        },
+        _ => return None,
+    })
+}
+
+/// Emit mov instructions and modify inline assembly operands to copy in and/or
+/// out when an operand uses a reserved register. Instead of constraining the
+/// operand to the reserved register, constrain it to any register and then copy
+/// between the reserved register and the (suitably modified, e.g. `{0:x}`)
+/// operand.
+/// This also requires reordering the operands because we convert them to
+/// named operands, which must precede explicit register operands.
+///
+/// Modifies operands and returns a pair of prefix and suffix strings that
+/// should be appended to the assembly template.
+fn rewrite_reserved_reg_operands(att_syntax: bool, operands: &mut Vec<BidirAsmOperand>) -> (String, String) {
+    let (mut prolog, mut epilog) = (String::new(), String::new());
+
+    let mut rewrite_idxs = vec![];
+    let mut total_positional = 0;
+
+    // Determine which operands must be rewritten and how many
+    // positional operands there are. Positional operands must precede named
+    // operands, so this tells us where to reinsert operands we rewrite.
+    for (i, operand) in operands.iter().enumerate() {
+        if operand.is_positional() {
+            total_positional += 1;
+        } else if let Some((reg, mods)) = reg_is_reserved(&*operand.constraints) {
+            rewrite_idxs.push((i, reg.to_owned(), mods.to_owned()));
+        }
+    }
+
+    let mut n_moved = 0;
+    for (idx, reg, mods) in rewrite_idxs {
+        let operand = &mut operands[idx];
+        let name = format!("restmp{}", n_moved);
+        if let Some((_idx, in_expr)) = operand.in_expr {
+            let move_input = if att_syntax {
+                format!("mov %{}, {{{}:{}}}\n", reg, name, mods)
+            } else {
+                format!("mov {{{}:{}}}\n, {}", name, mods, reg)
+            };
+            prolog.push_str(&move_input);
+        }
+        if let Some((_idx, out_expr)) = operand.out_expr {
+            let move_output = if att_syntax {
+                format!("\nmov {{{}:{}}}, %{}", name, mods, reg)
+            } else {
+                format!("\nmov {}, {{{}:{}}}", reg, name, mods)
+            };
+            epilog.push_str(&move_output);
+        }
+        operand.constraints = "reg".into();
+        operand.name = Some(name);
+
+        // Move operand to after all positional arguments. This does not
+        // interfere with moving subsequent operands that use reserved registers
+        // because explicit register operands must all come after positional
+        // and named operands.
+        //let (positional, named, explicit) = split_operands(operands);
+        let nth_non_positional = total_positional + n_moved;
+        operands.swap(idx, nth_non_positional);
+        n_moved += 1;
+    }
+
+    (prolog, epilog)
+}
+
 fn asm_is_att_syntax(asm: &str) -> bool {
     // For GCC, AT&T syntax is default... unless -masm=intel is passed. This
     // means we can hope but not guarantee that x86 asm with no syntax directive
@@ -287,7 +385,7 @@ impl<'c> Translation<'c> {
             }
         }
 
-        // Rewrite arg references in assembly template and emit it
+        // Rewrite arg references in assembly template
         let rewritten_asm = rewrite_asm(asm, |ref_str: &str| {
             if let Ok(idx) = ref_str.parse::<usize>() {
                 inputs.iter()
@@ -301,10 +399,6 @@ impl<'c> Translation<'c> {
             }
         });
 
-        // Whether the assembly needs the "att_syntax" option
-        let att_syntax = asm_is_att_syntax(&*rewritten_asm);
-        push_expr(&mut tokens, mk().lit_expr(rewritten_asm));
-
         // Detect and pair inputs/outputs that constrain themselves to the same register
         let mut inputs_by_register = HashMap::new();
         for (i, input) in inputs.iter().enumerate() {
@@ -314,14 +408,7 @@ impl<'c> Translation<'c> {
 
         // Convert gcc asm arguments (input and output lists) into a single list
         // of operands with explicit arg dir specs (asm!-style)
-        struct BidirAsmOperand {
-            dir_spec: ArgDirSpec,
-            mem_only: bool,
-            constraints: String,
-            // At least one of these is non-None
-            in_expr: Option<(usize, CExprId)>,
-            out_expr: Option<(usize, CExprId)>,
-        }
+
         // The unified arg list
         let mut args = Vec::<BidirAsmOperand>::new();
 
@@ -346,6 +433,7 @@ impl<'c> Translation<'c> {
                     args.push(BidirAsmOperand {
                         dir_spec,
                         mem_only,
+                        name: None,
                         constraints: parsed,
                         in_expr,
                         out_expr: Some((i, output.expression))
@@ -364,11 +452,22 @@ impl<'c> Translation<'c> {
             args.push(BidirAsmOperand {
                 dir_spec,
                 mem_only,
+                name: None,
                 constraints: parsed,
                 in_expr: Some((i, input.expression)),
                 out_expr: None,
             });
         }
+
+        // Determine whether the assembly is in AT&T syntax
+        let att_syntax = asm_is_att_syntax(&*rewritten_asm);
+
+        // Add workaround for reserved registers (e.g. rbx on x86_64)
+        let (prolog, epilog) = rewrite_reserved_reg_operands(att_syntax, &mut args);
+        let rewritten_asm = prolog + &rewritten_asm + &epilog;
+
+        // Emit assembly template
+        push_expr(&mut tokens, mk().lit_expr(rewritten_asm));
 
         // Outputs and Inputs
         let mut operand_renames = HashMap::new();
@@ -474,6 +573,12 @@ impl<'c> Translation<'c> {
             } else {
                 None
             };
+
+            // Emit "name =" if a name is given
+            if let Some(name) = operand.name {
+                push_expr(&mut tokens, mk().ident_expr(name));
+                tokens.push(TokenTree::Punct(Punct::new('=', Alone)));
+            }
 
             // Emit dir_spec(constraint), quoting constraint if needed
             push_expr(&mut tokens, mk().ident_expr(operand.dir_spec.to_string()));
