@@ -22,6 +22,9 @@ extern "C" {
     #[no_mangle]
     fn printf(_: *const libc::c_char, _: ...) -> libc::c_int;
 }
+
+use std::mem;
+use libc::*;
 pub type size_t = libc::c_ulong;
 #[derive ( Copy , Clone )]
 #[repr(C)]
@@ -34,6 +37,13 @@ pub static mut global: *mut S = 0 as *const S as *mut S;
 pub unsafe extern "C" fn malloc_wrapper(mut size: size_t)
  -> *mut libc::c_void {
     return malloc(size);
+}
+#[no_mangle]
+pub unsafe extern "C" fn simple() {
+    let x = malloc(mem::size_of::<S>() as c_ulong) as *mut S;
+    let y = malloc(mem::size_of::<S>() as c_ulong) as *mut S;
+    (*x).field = 10i32;
+    (*y).field = (*x).field;
 }
 #[no_mangle]
 pub unsafe extern "C" fn exercise_allocator() {
@@ -129,6 +139,7 @@ pub unsafe extern "C" fn invalid() {
 }
 unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
  -> libc::c_int {
+    simple();
     exercise_allocator();
     simple_analysis();
     analysis2();
