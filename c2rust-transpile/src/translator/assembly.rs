@@ -137,6 +137,33 @@ fn translate_modifier(modifier: char, arch: &str) -> Option<char> {
     })
 }
 
+fn asm_is_att_syntax(asm: &str) -> bool {
+    // For GCC, AT&T syntax is default... unless -masm=intel is passed. This
+    // means we can hope but not guarantee that x86 asm with no syntax directive
+    // uses AT&T syntax.
+    // To handle other cases, try to heuristically detect the variant we get
+    // (assuming it's actually x86 asm in the first place...).
+    // As the rust x86 default is intel syntax, we need to emit the "att_syntax"
+    // option if we get a hint that this asm uses AT&T syntax.
+
+    let intel_directive = asm.find(".intel_syntax");
+    let att_directive = asm.find(".att_syntax");
+    if let (Some(intel_pos), Some(att_pos)) = (intel_directive, att_directive) {
+        // Both directives are present; presumably this asm switches to one at
+        // its start and restores the default at the end. Whichever comes first
+        // should be what the asm uses.
+        att_pos < intel_pos
+    } else if intel_directive.is_some() {
+        false
+    } else if att_directive.is_some() {
+        true
+    } else if asm.contains("word ptr") {
+        false
+    } else {
+        asm.contains('$')
+    }
+}
+
 /// References of the form $0 need to be converted to {0}, and references
 /// that are mem-only need to be converted to [{0}].
 fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F) -> String {
@@ -273,6 +300,9 @@ impl<'c> Translation<'c> {
                 //inputs.iter().find(|input| input.expression.find(ref_str)).is_some()
             }
         });
+
+        // Whether the assembly needs the "att_syntax" option
+        let att_syntax = asm_is_att_syntax(&*rewritten_asm);
         push_expr(&mut tokens, mk().lit_expr(rewritten_asm));
 
         // Detect and pair inputs/outputs that constrain themselves to the same register
@@ -511,6 +541,10 @@ impl<'c> Translation<'c> {
                     options.push(mk().ident_expr("readonly"));
                 }
                 // We never emit [pure, nomem] right now, but it would be nice
+            }
+
+            if att_syntax {
+                options.push(mk().ident_expr("att_syntax"));
             }
 
             if !options.is_empty() {
