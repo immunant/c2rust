@@ -181,10 +181,10 @@ fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F) -> String {
             continue
         }
 
-        // Pass-through $$
+        // Pass-through $$ as one $
         if last_empty {
             last_empty = false;
-            out.push_str("$$");
+            out.push_str("$");
             out.push_str(chunk);
             continue;
         }
