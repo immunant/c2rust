@@ -1,1 +1,0 @@
-../../../../cross-checks/c-checks/clang-plugin/README.md

@@ -1,1 +1,0 @@
-../../../../cross-checks/rust-checks/derive-macros/README.md
