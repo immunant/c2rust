@@ -4,10 +4,7 @@ src = "manual/"
 
 [build]
 create-missing = false
-preprocess = ["links", "index", "include_md", "generator_dispatch"]
-
-[preprocessor.include_md]
-command = "cargo run --bin mdbook-include_md --quiet --"
+preprocess = ["links", "index"]
 
 [preprocessor.generator_dispatch]
 command = "python3 manual/preprocessors/generator_dispatch.py"
