@@ -117,6 +117,10 @@ fn parse_constraints(mut constraints: &str) ->
     Ok((mode, mem_only, constraints))
 }
 
+/// Translate a template modifier from llvm/gcc asm template argument modifiers
+/// to those accepted by the Rust asm! macro. This is arch-dependent, so we need
+/// to know which architecture the asm targets.
+/// See https://doc.rust-lang.org/nightly/reference/inline-assembly.html#template-modifiers
 fn translate_modifier(modifier: char, arch: &str) -> Option<char> {
     Some(match arch {
         "x86" => match modifier {
