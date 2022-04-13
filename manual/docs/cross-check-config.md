@@ -1,1 +1,0 @@
-../../docs/cross-check-config.md
