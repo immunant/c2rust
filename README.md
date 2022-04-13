@@ -21,6 +21,8 @@ To learn more, check out our [RustConf'18](https://www.youtube.com/watch?v=WEsR0
 
 To learn more about using and developing C2Rust, check out the [manual](https://c2rust.com/manual/). The manual is still a work-in-progress, so if you can't find something please let us know.
 
+<!-- ANCHOR: installation -->
+
 ## Installation
 
 ### Prerequisites
@@ -82,6 +84,9 @@ you can install it directly from Git:
 Please note that the master branch is under constant development and you may expirience issues or crashes.
 
 You should also set `LLVM_CONFIG_PATH` accordingly if required as described above.
+
+<!-- ANCHOR_END: installation -->
+<!-- ANCHOR: translating-c-to-rust -->
 
 ## Translating C to Rust
 
@@ -154,6 +159,8 @@ You can also use intercept-build to generate a compilation database for compilin
 If you have [bear](https://github.com/rizsotto/Bear) installed, it can be used similarly to intercept-build:
 
     bear <build command>
+
+<!-- ANCHOR_END: translating-c-to-rust -->
 
 ## Contact
 To report issues with translation or refactoring, please use our [Issue Tracker](https://github.com/immunant/c2rust/issues).
