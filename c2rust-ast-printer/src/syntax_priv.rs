@@ -1,6 +1,6 @@
 //! Crate-local helpers from libsyntax needed for the pretty-printer
 
-use syntax::ast::{Lit, LitKind, StrLit, StrStyle};
+use syn::{Lit, LitKind, StrLit, StrStyle};
 use syntax::token;
 use syntax::util::parser::{AssocOp};
 

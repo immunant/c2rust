@@ -71,19 +71,24 @@ impl<'c> Translation<'c> {
     /// Given the name of a typedef check if its one of the SIMD types.
     /// This function returns `true` when the name of the type is one that
     /// it knows how to implement and no further translation should be done.
-    pub fn import_simd_typedef(&self, name: &str) -> bool {
-        match name {
+    pub fn import_simd_typedef(&self, name: &str) -> Result<bool, TranslationError> {
+        Ok(match name {
             // Public API SIMD typedefs:
             "__m128i" | "__m128" | "__m128d" | "__m64" | "__m256" | "__m256d" | "__m256i" => {
-                // __m64 is still behind a feature gate
+                // __m64 and MMX support were removed from upstream Rust.
+                // See https://github.com/immunant/c2rust/issues/369
                 if name == "__m64" {
-                    self.use_feature("stdsimd");
+                    Err(format_err!(
+                        "__m64 and MMX are no longer supported, due to removed upstream support. See https://github.com/immunant/c2rust/issues/369"
+                    ))?;
                 }
 
                 self.with_cur_file_item_store(|item_store| {
-                    let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+                    let x86_attr = mk()
+                        .meta_item_attr(AttrStyle::Outer, mk().meta_list("cfg", vec![NestedMeta::Meta (mk().meta_namevalue("target_arch", "x86"))]))
+                        .pub_();
                     let x86_64_attr = mk()
-                        .call_attr("cfg", vec!["target_arch = \"x86_64\""])
+                        .meta_item_attr(AttrStyle::Outer, mk().meta_list("cfg", vec![NestedMeta::Meta(mk().meta_namevalue("target_arch", "x86_64"))]))
                         .pub_();
                     let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
 
@@ -138,7 +143,7 @@ impl<'c> Translation<'c> {
             | "__mm_loadh_pi_v2f32"
             | "__mm_loadl_pi_v2f32" => true,
             _ => false,
-        }
+        })
     }
 
     /// Determine if a particular function name is an SIMD primitive. If so an appropriate
@@ -162,7 +167,9 @@ impl<'c> Translation<'c> {
 
                 // REVIEW: Also a linear lookup
                 if !SIMD_X86_64_ONLY.contains(&name) {
-                    let x86_attr = mk().call_attr("cfg", vec!["target_arch = \"x86\""]).pub_();
+                    let x86_attr = mk()
+                        .meta_item_attr(AttrStyle::Outer, mk().meta_list("cfg", vec![NestedMeta::Meta (mk().meta_namevalue("target_arch", "x86"))]))
+                        .pub_();
 
                     item_store.add_use_with_attr(
                         vec![std_or_core.clone(), "arch".into(), "x86".into()],
@@ -172,7 +179,7 @@ impl<'c> Translation<'c> {
                 }
 
                 let x86_64_attr = mk()
-                    .call_attr("cfg", vec!["target_arch = \"x86_64\""])
+                    .meta_item_attr(AttrStyle::Outer, mk().meta_list("cfg", vec![NestedMeta::Meta (mk().meta_namevalue("target_arch", "x86_64"))]))
                     .pub_();
 
                 item_store.add_use_with_attr(
@@ -216,7 +223,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         fn_name: &str,
         args: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         self.import_simd_function(fn_name)?;
 
         let mut processed_args = vec![];
@@ -232,7 +239,7 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_val(call))
             } else {
                 Ok(WithStmts::new(
-                    vec![mk().expr_stmt(call)],
+                    vec![mk().semi_stmt(call)],
                     self.panic_or_err("No value for unused shuffle vector return"),
                 ))
             }
@@ -246,7 +253,7 @@ impl<'c> Translation<'c> {
         ctype: CTypeId,
         len: usize,
         is_static: bool,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
         let (fn_name, bytes) = match (&self.ast_context[ctype].kind, len) {
@@ -270,8 +277,6 @@ impl<'c> Translation<'c> {
         };
 
         if is_static {
-            self.use_feature("const_transmute");
-
             let zero_expr = mk().lit_expr(mk().int_lit(0, "u8"));
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
@@ -286,7 +291,7 @@ impl<'c> Translation<'c> {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");
 
-            Ok(WithStmts::new_val(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<P<Expr>>)))
+            Ok(WithStmts::new_val(mk().call_expr(mk().ident_expr(fn_name), Vec::new() as Vec<Box<Expr>>)))
         }
     }
 
@@ -297,7 +302,7 @@ impl<'c> Translation<'c> {
         ids: &[CExprId],
         ctype: CTypeId,
         len: usize,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let param_translation = self.convert_exprs(ctx, ids)?;
         param_translation.and_then(|mut params| {
             // When used in a static, we cannot call the standard functions since they
@@ -310,8 +315,6 @@ impl<'c> Translation<'c> {
                     tuple,
                     self.tcfg.emit_no_std,
                 );
-
-                self.use_feature("const_transmute");
 
                 transmute
             } else {
@@ -365,7 +368,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         child_expr_ids: &[CExprId],
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         // There are three shuffle vector functions which are actually functions, not superbuiltins/macros,
         // which do not need to be handled here: _mm_shuffle_pi8, _mm_shuffle_epi8, _mm256_shuffle_epi8
 

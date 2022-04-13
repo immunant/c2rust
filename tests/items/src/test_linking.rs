@@ -5,10 +5,8 @@ use self::libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn l() -> c_int;
 
-    #[no_mangle]
     fn w() -> c_int;
 }
 

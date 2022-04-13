@@ -5,11 +5,8 @@ use self::libc::{c_double, c_float};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn no_wrapping_neg() -> c_double;
-    #[no_mangle]
     fn float_inc_dec() -> c_float;
-    #[no_mangle]
     fn double_inc_dec() -> c_double;
 }
 

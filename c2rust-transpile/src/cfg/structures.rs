@@ -1,21 +1,20 @@
 //! This modules handles converting `Vec<Structure>` into `Vec<Stmt>`.
 
-use syntax::source_map::{dummy_spanned, Spanned};
-use syntax_pos::BytePos;
-
 use super::*;
+use syn::{ExprReturn, ExprIf, ExprBreak, ExprParen, ExprUnary, Stmt, spanned::Spanned as _};
+use std::result::Result;
 
-use crate::rust_ast::comment_store;
+use crate::rust_ast::{comment_store, BytePos, SpanExt, set_span::SetSpan};
 
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
     root: &Vec<Structure<Stmt>>,
     comment_store: &mut comment_store::CommentStore,
-    current_block: P<Expr>,
+    current_block: Box<Expr>,
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> Result<Vec<Stmt>, TranslationError> {
-    let ast: StructuredAST<P<Expr>, P<Pat>, Label, Stmt> =
+    let ast: StructuredAST<Box<Expr>, Box<Pat>, Label, Stmt> =
         structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
 
     let s = StructureState {
@@ -28,23 +27,12 @@ pub fn structured_cfg(
     // it with the returned value.
     if cut_out_trailing_ret {
         match stmts.last().cloned() {
-            Some(Stmt {
-                kind: StmtKind::Expr(ref ret),
-                ..
-            })
-            | Some(Stmt {
-                kind: StmtKind::Semi(ref ret),
-                ..
-            }) => {
-                match ret.kind {
-                    ExprKind::Ret(None) => {
+            Some(Stmt::Expr(ref ret))
+            | Some(Stmt::Semi(ref ret, _)) => {
+                match ret {
+                    Expr::Return(ExprReturn { expr: None, .. }) => {
                         stmts.pop();
                     }
-                    // TODO: why does libsyntax print a ';' after this even if it is 'Expr' and not 'Semi'
-                    //                ExprKind::Ret(Some(ref e)) => {
-                    //                    stmts.pop();
-                    //                    stmts.push(mk().expr_stmt(e));
-                    //                }
                     _ => {}
                 }
             }
@@ -118,7 +106,20 @@ pub trait StructuredStatement: Sized {
     fn extend_span(&mut self, span: Span);
 }
 
+#[derive(Debug, Clone)]
+pub struct Spanned<T> {
+    pub node: T,
+    pub span: Span,
+}
+
 pub type StructuredAST<E, P, L, S> = Spanned<StructuredASTKind<E, P, L, S>>;
+
+fn dummy_spanned<T>(inner: T) -> Spanned<T> {
+    Spanned {
+        node: inner,
+        span: Span::dummy(),
+    }
+}
 
 /// Defunctionalized version of `StructuredStatement` trait
 #[allow(missing_docs)]
@@ -203,7 +204,7 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 ///
 /// TODO: move this into `structured_cfg`?
 fn structured_cfg_help<
-    S: StructuredStatement<E = P<Expr>, P = P<Pat>, L = Label, S = Stmt>,
+    S: StructuredStatement<E = Box<Expr>, P = Box<Pat>, L = Label, S = Stmt>,
 >(
     exits: Vec<(Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>)>,
     next: &IndexSet<Label>,
@@ -296,10 +297,10 @@ fn structured_cfg_help<
                             ref expr,
                             ref cases,
                         } => {
-                            let branched_cases: Vec<(P<Pat>, S)> = cases
+                            let branched_cases: Vec<(Box<Pat>, S)> = cases
                                 .iter()
                                 .map(|&(ref pat, ref slbl)| Ok((pat.clone(), branch(slbl)?)))
-                                .collect::<Result<Vec<(P<Pat>, S)>, TranslationError>>()?;
+                                .collect::<Result<Vec<(Box<Pat>, S)>, TranslationError>>()?;
 
                             S::mk_match(expr.clone(), branched_cases)
                         }
@@ -385,7 +386,7 @@ pub fn has_multiple<Stmt>(root: &Vec<Structure<Stmt>>) -> bool {
 
 struct StructureState {
     debug_labels: bool,
-    current_block: P<Expr>,
+    current_block: Box<Expr>,
 }
 
 /// Returns a `Span` between the beginning of `span` or `other`, whichever is
@@ -419,7 +420,7 @@ fn span_subst_hi(span: Span, other: Span) -> Option<Span> {
 impl StructureState {
     pub fn into_stmt(
         &self,
-        ast: StructuredAST<P<Expr>, P<Pat>, Label, Stmt>,
+        ast: StructuredAST<Box<Expr>, Box<Pat>, Label, Stmt>,
         comment_store: &mut comment_store::CommentStore,
     ) -> (Vec<Stmt>, Span) {
         use crate::cfg::structures::StructuredASTKind::*;
@@ -430,8 +431,8 @@ impl StructureState {
             Empty => return (vec![], ast.span),
 
             Singleton(mut s) => {
-                let span = s.span.substitute_dummy(ast.span);
-                s.span = span;
+                let span = s.span().substitute_dummy(ast.span);
+                s.set_span(span);
                 return (vec![s], span);
             }
 
@@ -448,13 +449,13 @@ impl StructureState {
                 // Adjust the first and last elements of the block if this AST
                 // node has a span.
                 if let Some(stmt) = stmts.first_mut() {
-                    stmt.span = span_subst_lo(stmt.span, span).unwrap_or_else(|| {
-                        comment_store.move_comments(stmt.span.lo(), span.lo());
-                        stmt.span.with_lo(span.lo())
-                    });
+                    stmt.set_span(span_subst_lo(stmt.span(), span).unwrap_or_else(|| {
+                        comment_store.move_comments(stmt.span().lo(), span.lo());
+                        stmt.span().with_lo(span.lo())
+                    }));
                 }
                 if let Some(stmt) = stmts.last_mut() {
-                    stmt.span = span_subst_hi(stmt.span, span).unwrap_or(stmt.span);
+                    stmt.set_span(span_subst_hi(stmt.span(), span).unwrap_or(stmt.span()));
                 }
                 return (stmts, span);
             }
@@ -472,13 +473,13 @@ impl StructureState {
                 // Adjust the first and last elements of the block if this AST
                 // node has a span.
                 if let Some(stmt) = stmts.first_mut() {
-                    stmt.span = span_subst_lo(stmt.span, span).unwrap_or_else(|| {
-                        comment_store.move_comments(stmt.span.lo(), span.lo());
-                        stmt.span.with_lo(span.lo())
-                    });
+                    stmt.set_span(span_subst_lo(stmt.span(), span).unwrap_or_else(|| {
+                        comment_store.move_comments(stmt.span().lo(), span.lo());
+                        stmt.span().with_lo(span.lo())
+                    }));
                 }
                 if let Some(stmt) = stmts.last_mut() {
-                    stmt.span = span_subst_hi(stmt.span, span).unwrap_or(stmt.span);
+                    stmt.set_span(span_subst_hi(stmt.span(), span).unwrap_or(stmt.span()));
                 }
                 return (stmts, span);
             }
@@ -504,7 +505,7 @@ impl StructureState {
                         let (stmts, span) = self.into_stmt(stmts, comment_store);
 
                         let body = mk().block_expr(mk().span(span).block(stmts));
-                        mk().arm(pat, None as Option<P<Expr>>, body)
+                        mk().arm(pat, None as Option<Box<Expr>>, body)
                     })
                     .collect();
 
@@ -529,40 +530,40 @@ impl StructureState {
                     (true, true) => mk().semi_stmt(cond),
                     (false, true) => {
                         let if_expr =
-                            mk().ifte_expr(cond, mk().span(then_span).block(then_stmts), None as Option<P<Expr>>);
+                            mk().ifte_expr(cond, mk().span(then_span).block(then_stmts), None as Option<Box<Expr>>);
                         mk().expr_stmt(if_expr)
                     }
                     (true, false) => {
                         let negated_cond = not(&cond);
                         let if_expr =
-                            mk().ifte_expr(negated_cond, mk().span(els_span).block(els_stmts), None as Option<P<Expr>>);
+                            mk().ifte_expr(negated_cond, mk().span(els_span).block(els_stmts), None as Option<Box<Expr>>);
                         mk().expr_stmt(if_expr)
                     }
                     (false, false) => {
-                        fn is_expr(kind: &StmtKind) -> bool {
+                        fn is_expr(kind: &Stmt) -> bool {
                             match &kind {
-                                StmtKind::Expr(expr) => match &expr.kind {
-                                    ExprKind::If(..) | ExprKind::Block(..) => true,
+                                Stmt::Expr(expr) => match &expr {
+                                    Expr::If(..) | Expr::Block(..) => true,
                                     _ => false,
                                 },
                                 _ => false,
                             }
                         }
 
-                        // Do the else statemtents contain a single If, IfLet or
+                        // Do the else statements contain a single If, IfLet or
                         // Block expression? The pretty printer handles only
                         // these kinds of expressions for the else case.
-                        let is_els_expr = els_stmts.len() == 1 && is_expr(&els_stmts[0].kind);
+                        let is_els_expr = els_stmts.len() == 1 && is_expr(&els_stmts[0]);
 
                         let els_branch = if is_els_expr {
                             let stmt_expr = els_stmts.swap_remove(0);
-                            let stmt_expr_span = stmt_expr.span;
-                            let mut els_expr = match stmt_expr.kind {
-                                StmtKind::Expr(e) => e,
+                            let stmt_expr_span = stmt_expr.span();
+                            let mut els_expr = match stmt_expr {
+                                Stmt::Expr(e) => e,
                                 _ => panic!("is_els_expr out of sync"),
                             };
-                            els_expr.span = stmt_expr_span;
-                            els_expr
+                            els_expr.set_span(stmt_expr_span);
+                            Box::new(els_expr)
                         } else {
                             mk().block_expr(mk().span(els_span).block(els_stmts))
                         };
@@ -572,7 +573,7 @@ impl StructureState {
                     }
                 };
 
-                if_stmt.span = span;
+                if_stmt.set_span(span);
                 if_stmt
             }
 
@@ -591,7 +592,7 @@ impl StructureState {
                         };
                         let pat = mk().lit_pat(lbl_expr);
                         let body = mk().block_expr(mk().span(stmts_span).block(stmts));
-                        mk().arm(pat, None as Option<P<Expr>>, body)
+                        mk().arm(pat, None as Option<Box<Expr>>, body)
                     })
                     .collect();
 
@@ -599,7 +600,7 @@ impl StructureState {
 
                 arms.push(mk().arm(
                     mk().wild_pat(),
-                    None as Option<P<Expr>>,
+                    None as Option<Box<Expr>>,
                     mk().block_expr(mk().span(then_span).block(then)),
                 ));
 
@@ -617,27 +618,17 @@ impl StructureState {
                 let (body, body_span) = self.into_stmt(*body, comment_store);
 
                 // TODO: this is ugly but it needn't be. We are just pattern matching on particular ASTs.
-                if let Some(&Stmt {
-                    kind: syntax::ast::StmtKind::Expr(ref expr),
-                    span: stmt_span,
-                    ..
-                }) = body.first()
+                if let Some(stmt @ &Stmt::Expr(ref expr)) = body.first()
                 {
+                    let stmt_span = stmt.span();
                     let span = if !stmt_span.is_dummy() { stmt_span } else { span };
-                    if let syntax::ast::ExprKind::If(ref cond, ref thn, None) = expr.kind {
-                        if let &syntax::ast::Block {
-                            ref stmts,
-                            rules: syntax::ast::BlockCheckMode::Default,
-                            ..
-                        } = thn.deref()
+                    if let syn::Expr::If(ExprIf {ref cond, ref then_branch, else_branch: None, ..}) = expr {
+                        let stmts = &then_branch.stmts;
                         {
                             if stmts.len() == 1 {
-                                if let Some(&Stmt {
-                                    kind: syntax::ast::StmtKind::Semi(ref expr),
-                                    ..
-                                }) = stmts.iter().nth(0)
+                                if let Some(&Stmt::Semi(ref expr, _token)) = stmts.iter().nth(0)
                                 {
-                                    if let syntax::ast::ExprKind::Break(None, None) = expr.kind {
+                                    if let syn::Expr::Break(ExprBreak { label: None, expr: None, ..}) = expr {
                                         let e = mk().while_expr(
                                             not(cond),
                                             mk().span(body_span).block(body.iter().skip(1).cloned().collect()),
@@ -677,9 +668,15 @@ impl StructureState {
 ///
 ///   * Negating something of the form `!<expr>` produces `<expr>`
 ///
-fn not(bool_expr: &P<Expr>) -> P<Expr> {
-    match bool_expr.kind {
-        ExprKind::Unary(syntax::ast::UnOp::Not, ref e) => e.clone(),
+fn not(bool_expr: &Box<Expr>) -> Box<Expr> {
+    fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
+        match **expr {
+            Expr::Paren(ExprParen { ref expr, .. }) => expr,
+            _ => expr,
+        }
+    }
+    match **bool_expr {
+        Expr::Unary(ExprUnary { op: syn::UnOp::Not(_), ref expr, .. }) => unparen(expr).clone(),
         _ => mk().unary_expr("!", bool_expr.clone()),
     }
 }

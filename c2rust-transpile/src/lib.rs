@@ -4,9 +4,7 @@
 
 extern crate colored;
 extern crate dtoa;
-extern crate rustc_parse;
-extern crate syntax;
-extern crate syntax_pos;
+extern crate syn;
 #[macro_use]
 extern crate indexmap;
 extern crate serde;
@@ -61,7 +59,6 @@ use crate::compile_cmds::get_compile_commands;
 use crate::convert_type::RESERVED_NAMES;
 pub use crate::translator::ReplaceMode;
 use std::prelude::v1::Vec;
-use syntax_pos::edition::Edition;
 
 type PragmaVec = Vec<(&'static str, Vec<&'static str>)>;
 type PragmaSet = indexmap::IndexSet<(&'static str, &'static str)>;
@@ -87,9 +84,6 @@ pub struct TranspilerConfig {
     pub fail_on_multiple: bool,
     pub filter: Option<Regex>,
     pub debug_relooper_labels: bool,
-    pub cross_checks: bool,
-    pub cross_check_backend: String,
-    pub cross_check_configs: Vec<String>,
     pub prefix_function_names: Option<String>,
     pub translate_asm: bool,
     pub use_c_loop_info: bool,
@@ -387,42 +381,7 @@ fn get_extra_args_macos() -> Vec<String> {
 }
 
 fn invoke_refactor(build_dir: &PathBuf) -> Result<(), Error> {
-    // Make sure the crate builds cleanly
-    let status = process::Command::new("cargo")
-        .args(&["check"])
-        .env("RUSTFLAGS", "-Awarnings")
-        .current_dir(build_dir)
-        .status()?;
-    if !status.success() {
-        return Err(format_err!("Crate does not compile."));
-    }
-
-    // Assumes the subcommand executable is in the same directory as this program.
-    let cmd_path = std::env::current_exe().expect("Cannot get current executable path");
-    let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
-    cmd_path.pop(); // remove current executable
-    cmd_path.push(format!("c2rust-refactor"));
-    assert!(cmd_path.exists(), format!("{:?} is missing", cmd_path));
-    let args = [
-        "--cargo",
-        "--rewrite-mode",
-        "inplace",
-        "rename_unnamed",
-        ";",
-        "reorganize_definitions",
-    ];
-    let status = process::Command::new(cmd_path.into_os_string())
-        .args(&args)
-        .current_dir(build_dir)
-        .status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format_err!(
-            "Refactoring failed. Please fix errors above and re-run:\n    c2rust refactor {}",
-            args.join(" "),
-        ))
-    }
+    return Ok(());
 }
 
 fn reorganize_definitions(
@@ -520,9 +479,7 @@ fn transpile_single(
 
     // Perform the translation
     let (translated_string, pragmas, crates) =
-        syntax::with_globals(Edition::Edition2018, move || {
-            translator::translate(typed_context, &tcfg, input_path)
-        });
+        translator::translate(typed_context, &tcfg, input_path);
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,

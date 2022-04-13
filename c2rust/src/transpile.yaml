@@ -79,28 +79,6 @@ args:
       long: ddebug-labels
       help: Generate readable 'current_block' values in relooper
       takes_value: false
-  - cross-checks:
-      long: cross-checks
-      short: x
-      help: Enable cross-checks
-      takes_value: false
-  - cross-check-config:
-      long: cross-check-config
-      short: X
-      help: Add the given configuration files to the top-level cross_check(...) attribute
-      requires: cross-checks
-      multiple: true
-      takes_value: true
-  - cross-check-backend:
-      long: cross-check-backend
-      help: Select which cross-checking backend to use, e.g., zstd-logging
-      takes_value: true
-      possible_values:
-          - dynamic-dlsym
-          - zstd-logging
-          - libclevrbuf-sys
-          - libfakechecks-sys
-      default_value: zstd-logging
   - COMPILE_COMMANDS:
       help: Input compile_commands.json file
       required: true

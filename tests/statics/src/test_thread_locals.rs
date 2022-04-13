@@ -8,7 +8,6 @@ use thread_locals::rust_thread_entry;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn thread_entry(_: c_uint, _: *mut c_int);
 }
 

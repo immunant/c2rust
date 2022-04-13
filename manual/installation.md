@@ -1,1 +1,1 @@
-{{#include_md README.md#installation}}
+{{#include README.md:installation}}

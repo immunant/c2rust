@@ -39,7 +39,7 @@ impl<'c> Translation<'c> {
         order_fail_id: Option<CExprId>,
         val2_id: Option<CExprId>,
         weak_id: Option<CExprId>,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
         let ptr = self.convert_expr(ctx.used(), ptr_id)?;
         let order = self.convert_memordering(order_id);
@@ -67,13 +67,13 @@ impl<'c> Translation<'c> {
                     self.use_feature("core_intrinsics");
 
                     let atomic_load =
-                        mk().path_expr(vec!["", std_or_core, "intrinsics", intrinsic_name]);
+                        mk().abs_path_expr(vec![std_or_core, "intrinsics", intrinsic_name]);
                     let call = mk().call_expr(atomic_load, vec![ptr]);
                     if name == "__atomic_load" {
                         let ret = val1.expect("__atomic_load should have a ret argument");
                         ret.and_then(|ret| {
                             let assignment = mk().assign_expr(
-                                mk().unary_expr(ast::UnOp::Deref, ret),
+                                mk().unary_expr(UnOp::Deref(Default::default()), ret),
                                 call,
                             );
                             self.convert_side_effects_expr(
@@ -112,9 +112,9 @@ impl<'c> Translation<'c> {
                         self.use_feature("core_intrinsics");
 
                         let atomic_store =
-                            mk().path_expr(vec!["", std_or_core, "intrinsics", intrinsic_name]);
+                            mk().abs_path_expr(vec![std_or_core, "intrinsics", intrinsic_name]);
                         let val = if name == "__atomic_store" {
-                            mk().unary_expr(ast::UnOp::Deref, val)
+                            mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
                             val
                         };
@@ -148,9 +148,9 @@ impl<'c> Translation<'c> {
                         self.use_feature("core_intrinsics");
 
                         let fn_path =
-                            mk().path_expr(vec!["", std_or_core, "intrinsics", intrinsic_name]);
+                            mk().abs_path_expr(vec![std_or_core, "intrinsics", intrinsic_name]);
                         let val = if name == "__atomic_exchange" {
-                            mk().unary_expr(ast::UnOp::Deref, val)
+                            mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
                             val
                         };
@@ -163,7 +163,7 @@ impl<'c> Translation<'c> {
                                 .expect("__atomic_exchange must have a ret pointer argument")
                                 .and_then(|ret| {
                                     let assignment = mk().assign_expr(
-                                        mk().unary_expr(ast::UnOp::Deref, ret),
+                                        mk().unary_expr(UnOp::Deref(Default::default()), ret),
                                         call,
                                     );
                                     self.convert_side_effects_expr(
@@ -262,27 +262,27 @@ impl<'c> Translation<'c> {
                             ))?;
 
                             self.use_feature("core_intrinsics");
-                            let expected = mk().unary_expr(ast::UnOp::Deref, expected);
+                            let expected = mk().unary_expr(UnOp::Deref(Default::default()), expected);
                             let desired = if name == "__atomic_compare_exchange_n" {
                                 desired
                             } else {
-                                mk().unary_expr(ast::UnOp::Deref, desired)
+                                mk().unary_expr(UnOp::Deref(Default::default()), desired)
                             };
 
                             let atomic_cxchg =
-                                mk().path_expr(vec!["", std_or_core, "intrinsics", intrinsic_name]);
+                                mk().abs_path_expr(vec![ std_or_core, "intrinsics", intrinsic_name]);
                             let call = mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
                             let res_name = self.renamer.borrow_mut().fresh();
-                            let res_let = mk().local_stmt(P(mk().local(
+                            let res_let = mk().local_stmt(Box::new(mk().local(
                                 mk().ident_pat(&res_name),
-                                None as Option<P<Ty>>,
+                                None as Option<Box<Type>>,
                                 Some(call),
                             )));
                             let assignment = mk().semi_stmt(mk().assign_expr(
                                 expected,
-                                mk().field_expr(mk().ident_expr(&res_name), "0"),
+                                mk().anon_field_expr(mk().ident_expr(&res_name), 0),
                             ));
-                            let return_value = mk().field_expr(mk().ident_expr(&res_name), "1");
+                            let return_value = mk().anon_field_expr(mk().ident_expr(&res_name), 1);
                             self.convert_side_effects_expr(
                                 ctx,
                                 WithStmts::new(vec![res_let, assignment], return_value),
@@ -356,20 +356,20 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         intrinsic_name: &str,
-        dst: P<Expr>,
-        old_val: P<Expr>,
-        src_val: P<Expr>,
+        dst: Box<Expr>,
+        old_val: Box<Expr>,
+        src_val: Box<Expr>,
         returns_val: bool,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         self.use_feature("core_intrinsics");
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
         // Emit `atomic_cxchg(a0, a1, a2).idx`
         let atomic_cxchg =
-            mk().path_expr(vec!["", std_or_core, "intrinsics", intrinsic_name]);
+            mk().abs_path_expr(vec![std_or_core, "intrinsics", intrinsic_name]);
         let call = mk().call_expr(atomic_cxchg, vec![dst, old_val, src_val]);
-        let field_idx = if returns_val { "0" } else { "1" };
-        let call_expr = mk().field_expr(call, field_idx);
+        let field_idx = if returns_val { 0 } else { 1 };
+        let call_expr = mk().anon_field_expr(call, field_idx);
         self.convert_side_effects_expr(
             ctx,
             WithStmts::new_val(call_expr),
@@ -381,15 +381,15 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         func_name: &str,
-        dst: P<Expr>,
-        src: P<Expr>,
+        dst: Box<Expr>,
+        src: Box<Expr>,
         fetch_first: bool,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         self.use_feature("core_intrinsics");
         let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
         // Emit `atomic_func(a0, a1) (op a1)?`
-        let atomic_func = mk().path_expr(vec!["", std_or_core, "intrinsics", func_name]);
+        let atomic_func = mk().abs_path_expr(vec![std_or_core, "intrinsics", func_name]);
 
         if fetch_first {
             let call_expr = mk().call_expr(atomic_func, vec![dst, src]);
@@ -400,17 +400,17 @@ impl<'c> Translation<'c> {
             )
         } else {
             let (binary_op, is_nand) = if func_name.starts_with("atomic_xadd") {
-                (BinOpKind::Add, false)
+                (BinOp::Add(Default::default()), false)
             } else if func_name.starts_with("atomic_xsub") {
-                (BinOpKind::Sub, false)
+                (BinOp::Sub(Default::default()), false)
             } else if func_name.starts_with("atomic_or") {
-                (BinOpKind::BitOr, false)
+                (BinOp::BitOr(Default::default()), false)
             } else if func_name.starts_with("atomic_xor") {
-                (BinOpKind::BitXor, false)
+                (BinOp::BitXor(Default::default()), false)
             } else if func_name.starts_with("atomic_nand") {
-                (BinOpKind::BitAnd, true)
+                (BinOp::BitAnd(Default::default()), true)
             } else if func_name.starts_with("atomic_and") {
-                (BinOpKind::BitAnd, false)
+                (BinOp::BitAnd(Default::default()), false)
             } else {
                 panic!("Unexpected atomic intrinsic name: {}", func_name)
             };
@@ -419,16 +419,16 @@ impl<'c> Translation<'c> {
             // it into a local temporary so we don't duplicate any side-effects
             // To preserve ordering of side-effects, we also do this for arg0
             let arg0_name = self.renamer.borrow_mut().fresh();
-            let arg0_let = mk().local_stmt(P(mk().local(
+            let arg0_let = mk().local_stmt(Box::new(mk().local(
                 mk().ident_pat(&arg0_name),
-                None as Option<P<Ty>>,
+                None as Option<Box<Type>>,
                 Some(dst),
             )));
 
             let arg1_name = self.renamer.borrow_mut().fresh();
-            let arg1_let = mk().local_stmt(P(mk().local(
+            let arg1_let = mk().local_stmt(Box::new(mk().local(
                 mk().ident_pat(&arg1_name),
-                None as Option<P<Ty>>,
+                None as Option<Box<Type>>,
                 Some(src),
             )));
 
@@ -439,7 +439,7 @@ impl<'c> Translation<'c> {
             let val = mk().binary_expr(binary_op, call, mk().ident_expr(arg1_name));
             let val = if is_nand {
                 // For nand, return `!(atomic_nand(arg0, arg1) & arg1)`
-                mk().unary_expr(UnOp::Not, val)
+                mk().unary_expr(UnOp::Not(Default::default()), val)
             } else {
                 val
             };

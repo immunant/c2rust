@@ -4,7 +4,6 @@ use uninitialized::{rust_entry2, /*myint, myintp,*/ u, e, s, foo, bar, baz};
 use self::libc::{c_int, c_uint};
 
 extern "C" {
-    #[no_mangle]
     fn entry2(_: c_uint, _: *mut c_int);
 }
 

@@ -1,11 +1,6 @@
-#![feature(rustc_private)]
-extern crate rustc;
-extern crate rustc_target;
-extern crate syntax;
-extern crate syntax_pos;
+extern crate proc_macro2;
+extern crate syn;
+//extern crate quote;
 
 mod builder;
-pub use builder::{mk, Builder, Make};
-
-mod into_symbol;
-pub use into_symbol::IntoSymbol;
+pub use builder::{mk, Builder, Make, properties};

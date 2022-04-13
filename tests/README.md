@@ -19,7 +19,6 @@ use self::libc::c_int;
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn example(_: c_uint, _: *mut c_int);
 }
 

@@ -1,0 +1,22 @@
+[package]
+name = "prettyplease"
+version = "0.1.1"
+authors = ["David Tolnay <dtolnay@gmail.com>"]
+edition = "2021"
+rust-version = "1.56"
+license = "MIT OR Apache-2.0"
+description = "A minimal `syn` syntax tree pretty-printer"
+repository = "https://github.com/dtolnay/prettyplease"
+documentation = "https://docs.rs/prettyplease"
+readme = "README.md"
+autoexamples = false
+
+[dependencies]
+proc-macro2 = { version = "1.0", default-features = false }
+syn = { version = "1.0.85", default-features = false, features = ["full"] }
+
+[dev-dependencies]
+syn = { version = "1.0.85", default-features = false, features = ["parsing"] }
+
+#[workspace]
+#members = ["examples/update"]

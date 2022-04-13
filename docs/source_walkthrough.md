@@ -16,9 +16,7 @@ This crate contains logic for dispatching command-line arguments to the correct 
 
 ### c2rust-ast-builder
 
-The c2rust-ast-builder crate provides an AST building abstraction on top of rustc's libsyntax. This is used for code generation both in translation and refactoring.
-
-The builder implemented in this package provides a more stable interface to AST generation that we'd get depending directly on libsyntax. Libsyntax itself is consided unstable and subject to change dramatically at each nightly release. Libsyntax provides is own AST building functionality, but it doesn't have many of the conveniences that we use in our own implementation.
+The c2rust-ast-builder crate provides an AST building abstraction on top of the syn crate. This is used for code generation both in translation and refactoring.
 
 ### c2rust-ast-exporter
 
@@ -59,17 +57,13 @@ The `Make` trait allows for convenient, implicit coercions when using the `Build
 pub trait Make<T> { fn make(self, mk: &Builder) -> T; }
 ```
 
-### P type
-
-The `P` type comes from the `libsyntax` crate and provides functionality similar to `Box` for immutable, shared values. Many components of the Rust AST will store `P<T>` instead of `T` when there are potential savings to be had from shared references.
-
 ### Spans and Node IDs
 
 The Rust AST types are designed to be able to be cross-referenced to source-file locations and various type-information metadata maps. These references are tracked through span and node IDs scattered throughout the AST type definitions. In the case of generating new syntax we don't have any corresponding metadata maps to align with. Instead we fill all of these ID fields with various dummy values: `DUMMY_SP` and `DUMMY_NODE_ID`.
 
 ### Naming convention
 
-Builder methods are named using the pattern `kind_type`. For example to make a `P<Ty>` that is a pointer to another `Ty` use the `ptr_ty` method because internally you're making a `TyKind::Ptr`.
+Builder methods are named using the pattern `kind_type`. For example to make a `Box<Ty>` that is a pointer to another `Ty` use the `ptr_ty` method because internally you're making a `TyKind::Ptr`.
 
 ## Crate Walkthrough: c2rust-transpile
 

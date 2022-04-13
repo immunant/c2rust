@@ -1,4 +1,4 @@
-//! feature_c_variadic, feature_ptr_wrapping_offset_from
+//! feature_c_variadic
 
 extern crate libc;
 
@@ -10,13 +10,10 @@ use self::libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn entry2(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn entry3(_: c_uint, _: *mut c_int);
 }
 

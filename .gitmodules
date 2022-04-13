@@ -1,12 +1,9 @@
-[submodule "ReMon"]
-	path = cross-checks/ReMon
-	url = https://github.com/stijn-volckaert/ReMon.git
 [submodule "examples/snudown/repo"]
 	path = examples/snudown/repo
 	url = https://github.com/immunant/snudown.git
 [submodule "examples/xzoom/xzoom"]
 	path = examples/xzoom/repo
-	url = git://git.r-36.net/xzoom
+	url = git://r-36.net/xzoom
 [submodule "examples/grabc/repo"]
 	path = examples/grabc/repo
 	url = https://github.com/immunant/grabc.git

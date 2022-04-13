@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
-use syntax::util::comments::CommentStyle;
-use syntax::source_map::{DUMMY_SP, Span};
 use crate::c_ast::{CDeclId, CDeclKind, CommentContext, SrcLoc, TypedAstContext};
 use crate::c_ast::iterators::{NodeVisitor, SomeId};
-use crate::rust_ast::pos_to_span;
 use crate::rust_ast::comment_store::CommentStore;
+use crate::rust_ast::{SpanExt, pos_to_span, DUMMY_SP};
 use super::Translation;
+use proc_macro2::Span;
 
 struct CommentLocator<'c> {
     ast_context: &'c TypedAstContext,
@@ -43,7 +42,7 @@ impl<'c> CommentLocator<'c> {
                     if let Some(pos) = self.comment_store.extend_existing_comments(
                         &[comment.kind.clone()],
                         existing_pos,
-                        CommentStyle::Trailing,
+                        //CommentStyle::Trailing,
                     ) {
                         debug!("Attaching comment {:?} to end of line at pos {:?}", comment.kind, pos);
                         // Add the span if we haven't already
@@ -89,7 +88,7 @@ impl<'c> NodeVisitor for CommentLocator<'c> {
                 let new_pos = self.comment_store.extend_existing_comments(
                     &comments,
                     Some(existing.lo()),
-                    CommentStyle::Isolated,
+                    //CommentStyle::Isolated,
                 );
                 debug!("Attaching more comments {:?} to id {:?} at pos {:?}", comments, id, new_pos);
             } else if let Some(pos) = self.comment_store.add_comments(&comments) {

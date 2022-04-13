@@ -2,11 +2,11 @@ use crate::c_ast::CDeclId;
 use crate::c_ast::*;
 use crate::renamer::*;
 use crate::diagnostics::TranslationError;
-use c2rust_ast_builder::mk;
+use c2rust_ast_builder::{mk, properties::*};
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
-use syntax::ast::*;
-use syntax::ptr::P;
+use syn::*;
+use std::result::Result;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 enum FieldKey {
@@ -238,23 +238,22 @@ impl TypeConverter {
         ret: Option<CQualTypeId>,
         params: &Vec<CQualTypeId>,
         is_variadic: bool,
-    ) -> Result<P<Ty>, TranslationError> {
-        let mut inputs = params
+    ) -> Result<Box<Type>, TranslationError> {
+        let barefn_inputs = params
             .iter()
-            .map(|x| mk().arg(self.convert(ctxt, x.ctype).unwrap(), mk().wild_pat()))
-            .collect::<Vec<_>>();
+            .map(|x| mk().bare_arg(self.convert(ctxt, x.ctype).unwrap(), None::<Box<Ident>>))
+            .collect::<Vec<BareFnArg>>();
 
         let output = match ret {
             None => mk().never_ty(),
             Some(ret) => self.convert(ctxt, ret.ctype)?,
         };
 
-        if is_variadic {
-            // For variadic functions, we need to add `_: ...` as an explicit argument
-            inputs.push(mk().arg(mk().cvar_args_ty(), mk().wild_pat()))
-        };
+        let variadic = is_variadic.then(||
+            mk().variadic_arg(vec![])
+        );
 
-        let fn_ty = mk().fn_decl(inputs, FunctionRetTy::Ty(output));
+        let fn_ty = Box::new((barefn_inputs, variadic, ReturnType::Type(Default::default(), output)));
         return Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty));
     }
 
@@ -262,7 +261,7 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         qtype: CQualTypeId,
-    ) -> Result<P<Ty>, TranslationError> {
+    ) -> Result<Box<Type>, TranslationError> {
         let mutbl = if qtype.qualifiers.is_const {
             Mutability::Immutable
         } else {
@@ -307,16 +306,16 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ctype: CTypeId,
-    ) -> Result<P<Ty>, TranslationError> {
+    ) -> Result<Box<Type>, TranslationError> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
             let std_or_core = if self.emit_no_std { "core" } else { "std" };
-            let path = vec!["", std_or_core, "ffi", "VaList"];
-            let ty = mk().path_ty(path);
+            let path = vec![std_or_core, "ffi", "VaList"];
+            let ty = mk().path_ty(mk().abs_path(path));
             return Ok(ty);
         }
 
         match ctxt.index(ctype).kind {
-            CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<P<Ty>>)),
+            CTypeKind::Void => Ok(mk().tuple_ty(vec![] as Vec<Box<Type>>)),
             CTypeKind::Bool => Ok(mk().path_ty(mk().path(vec!["bool"]))),
             CTypeKind::Short => Ok(mk().path_ty(mk().path(vec!["libc", "c_short"]))),
             CTypeKind::Int => Ok(mk().path_ty(mk().path(vec!["libc", "c_int"]))),
@@ -367,13 +366,13 @@ impl TypeConverter {
                 let ty = self.convert(ctxt, element)?;
                 Ok(mk().array_ty(
                     ty,
-                    mk().lit_expr(mk().int_lit(count as u128, LitIntType::Unsuffixed)),
+                    mk().lit_expr(mk().int_unsuffixed_lit(count as u128)),
                 ))
             }
 
             CTypeKind::IncompleteArray(element) => {
                 let ty = self.convert(ctxt, element)?;
-                let zero_lit = mk().int_lit(0, LitIntType::Unsuffixed);
+                let zero_lit = mk().int_unsuffixed_lit(0);
                 let zero = mk().lit_expr(zero_lit);
                 Ok(mk().array_ty(ty, zero))
             }
@@ -415,7 +414,7 @@ impl TypeConverter {
         ctxt: &TypedAstContext,
         ctype: CTypeId,
         params: &Vec<CParamId>
-    ) -> Result<Option<P<Ty>>, TranslationError> {
+    ) -> Result<Option<Box<Type>>, TranslationError> {
         match ctxt.index(ctype).kind {
             // ANSI/ISO C-style function
             CTypeKind::Function(.., true) => Ok(None),

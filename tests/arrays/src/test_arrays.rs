@@ -7,22 +7,16 @@ use self::libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn entry2(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn test_sized_array() -> c_uint;
 
-    #[no_mangle]
     fn variable_arrays(_: *mut c_int);
 
-    #[no_mangle]
     fn alloca_arrays(_: *mut c_int);
 
-    #[no_mangle]
     fn check_some_ints() -> bool;
 }
 

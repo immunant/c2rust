@@ -1,11 +1,8 @@
 use super::*;
 
-use crate::ast;
-use crate::source_map;
-use crate::with_default_globals;
-use syntax_pos;
+use crate::syn;
 
-fn fun_to_string(
+/*fn fun_to_string(
     decl: &ast::FnDecl, header: ast::FnHeader, name: ast::Ident, generics: &ast::Generics
 ) -> String {
     to_string(|s| {
@@ -15,22 +12,22 @@ fn fun_to_string(
         s.end(); // Close the head box.
         s.end(); // Close the outer box.
     })
-}
+}*/
 
-fn variant_to_string(var: &ast::Variant) -> String {
-    to_string(|s| s.print_variant(var))
+fn variant_to_string(var: &syn::Variant) -> String {
+    todo!()//to_string(|s| s.print_variant(var))
 }
 
 #[test]
 fn test_fun_to_string() {
-    with_default_globals(|| {
-        let abba_ident = ast::Ident::from_str("abba");
+    //with_default_globals(|| {
+        /*let abba_ident = syn::Ident::new("abba", proc_macro2::Span::call_site());
 
-        let decl = ast::FnDecl {
+        let decl = FnDecl {
             inputs: Vec::new(),
-            output: ast::FunctionRetTy::Default(syntax_pos::DUMMY_SP),
+            output: syn::ReturnType::Default,
         };
-        let generics = ast::Generics::default();
+        let generics = syn::Generics::default();
         assert_eq!(
             fun_to_string(
                 &decl,
@@ -39,27 +36,23 @@ fn test_fun_to_string() {
                 &generics
             ),
             "fn abba()"
-        );
-    })
+        );*/
+    //})
 }
 
 #[test]
 fn test_variant_to_string() {
-    with_default_globals(|| {
-        let ident = ast::Ident::from_str("principal_skinner");
+    //with_default_globals(|| {
+        let ident = syn::Ident::new("principal_skinner", proc_macro2::Span::call_site());
 
-        let var = ast::Variant {
+        let var = syn::Variant {
+            attrs: vec![],
+            discriminant: None,
+            fields: todo!(),
             ident,
-            vis: source_map::respan(syntax_pos::DUMMY_SP, ast::VisibilityKind::Inherited),
-            attrs: Vec::new(),
-            id: ast::DUMMY_NODE_ID,
-            data: ast::VariantData::Unit(ast::DUMMY_NODE_ID),
-            disr_expr: None,
-            span: syntax_pos::DUMMY_SP,
-            is_placeholder: false,
         };
 
         let varstr = variant_to_string(&var);
         assert_eq!(varstr, "principal_skinner");
-    })
+    //})
 }

@@ -4,10 +4,10 @@
 //! Rust.
 
 use super::*;
-use syntax::token::{self, TokenKind};
+use proc_macro2::{TokenStream, TokenTree};
 
 impl<'c> Translation<'c> {
-    pub fn convert_main(&self, main_id: CDeclId) -> Result<P<Item>, TranslationError> {
+    pub fn convert_main(&self, main_id: CDeclId) -> Result<Box<Item>, TranslationError> {
         if let CDeclKind::Function {
             ref parameters,
             typ,
@@ -25,30 +25,31 @@ impl<'c> Translation<'c> {
                 ))?,
             };
 
-            let decl = mk().fn_decl(vec![], FunctionRetTy::Default(DUMMY_SP));
-
             let main_fn_name = self
                 .renamer
                 .borrow()
                 .get(&main_id)
                 .expect("Could not find main function in renamer");
+
+            let decl = mk().fn_decl("main", vec![], None, ReturnType::Default);
+
             let main_fn = mk().path_expr(vec![main_fn_name]);
 
-            let exit_fn = mk().path_expr(vec!["", "std", "process", "exit"]);
-            let args_fn = mk().path_expr(vec!["", "std", "env", "args"]);
-            let vars_fn = mk().path_expr(vec!["", "std", "env", "vars"]);
+            let exit_fn = mk().abs_path_expr(vec!["std", "process", "exit"]);
+            let args_fn = mk().abs_path_expr(vec!["std", "env", "args"]);
+            let vars_fn = mk().abs_path_expr(vec!["std", "env", "vars"]);
 
-            let no_args: Vec<P<Expr>> = vec![];
+            let no_args: Vec<Box<Expr>> = vec![];
 
             let mut stmts: Vec<Stmt> = vec![];
-            let mut main_args: Vec<P<Expr>> = vec![];
+            let mut main_args: Vec<Box<Expr>> = vec![];
 
             let n = parameters.len();
 
             if n >= 2 {
                 // `argv` and `argc`
 
-                stmts.push(mk().local_stmt(P(mk().local(
+                stmts.push(mk().local_stmt(Box::new(mk().local(
                     mk().mutbl().ident_pat("args"),
                     Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
@@ -57,19 +58,19 @@ impl<'c> Translation<'c> {
                         ]),
                     )])),
                     Some(
-                        mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<P<Expr>>),
+                        mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<Box<Expr>>),
                     ),
                 ))));
                 stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().ident_pat("arg"),
-                    mk().call_expr(args_fn, vec![] as Vec<P<Expr>>),
+                    mk().call_expr(args_fn, vec![] as Vec<Box<Expr>>),
                     mk().block(vec![mk().semi_stmt(mk().method_call_expr(
                         mk().path_expr(vec!["args"]),
                         "push",
                         vec![mk().method_call_expr(
                             mk().method_call_expr(
                                 mk().call_expr(
-                                    mk().path_expr(vec!["", "std", "ffi", "CString", "new"]),
+                                    mk().abs_path_expr(vec!["std", "ffi", "CString", "new"]),
                                     vec![mk().path_expr(vec!["arg"])],
                                 ),
                                 "expect",
@@ -78,7 +79,7 @@ impl<'c> Translation<'c> {
                                 )],
                             ),
                             "into_raw",
-                            vec![] as Vec<P<Expr>>,
+                            vec![] as Vec<Box<Expr>>,
                         )],
                     ))]),
                     None as Option<Ident>,
@@ -87,18 +88,18 @@ impl<'c> Translation<'c> {
                     mk().path_expr(vec!["args"]),
                     "push",
                     vec![mk().call_expr(
-                        mk().path_expr(vec!["", "std", "ptr", "null_mut"]),
-                        vec![] as Vec<P<Expr>>,
+                        mk().abs_path_expr(vec!["std", "ptr", "null_mut"]),
+                        vec![] as Vec<Box<Expr>>,
                     )],
                 )));
 
-                let argc_ty: P<Ty> = match self.ast_context.index(parameters[0]).kind {
+                let argc_ty: Box<Type> = match self.ast_context.index(parameters[0]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
                     _ => Err(TranslationError::generic(
                         "Cannot find type of 'argc' argument in main function",
                     )),
                 }?;
-                let argv_ty: P<Ty> = match self.ast_context.index(parameters[1]).kind {
+                let argv_ty: Box<Type> = match self.ast_context.index(parameters[1]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
                     _ => Err(TranslationError::generic(
                         "Cannot find type of 'argv' argument in main function",
@@ -107,7 +108,7 @@ impl<'c> Translation<'c> {
 
                 let args = mk().ident_expr("args");
                 let argc = mk().binary_expr(
-                    BinOpKind::Sub,
+                    BinOp::Sub(Default::default()),
                     mk().method_call_expr(args.clone(), "len", no_args.clone()),
                     mk().lit_expr(mk().int_lit(1, "")),
                 );
@@ -120,7 +121,7 @@ impl<'c> Translation<'c> {
             if n >= 3 {
                 // non-standard `envp`
 
-                stmts.push(mk().local_stmt(P(mk().local(
+                stmts.push(mk().local_stmt(Box::new(mk().local(
                     mk().mutbl().ident_pat("vars"),
                     Some(mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
@@ -129,30 +130,29 @@ impl<'c> Translation<'c> {
                         ]),
                     )])),
                     Some(
-                        mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<P<Expr>>),
+                        mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![] as Vec<Box<Expr>>),
                     ),
                 ))));
                 let var_name_ident = mk().ident("var_name");
                 let var_value_ident = mk().ident("var_value");
                 stmts.push(mk().semi_stmt(mk().for_expr(
                     mk().tuple_pat(vec![mk().ident_pat("var_name"), mk().ident_pat("var_value")]),
-                    mk().call_expr(vars_fn, vec![] as Vec<P<Expr>>),
+                    mk().call_expr(vars_fn, vec![] as Vec<Box<Expr>>),
                     mk().block(vec![
-                        mk().local_stmt(P(mk().local(
+                        mk().local_stmt(Box::new(mk().local(
                             mk().ident_pat("var"),
                             Some(mk().path_ty(vec!["String"])),
                             Some(mk().mac_expr(mk().mac(
                                 vec!["format"],
                                 vec![
-                                    token::Interpolated(Rc::new(Nonterminal::NtExpr(mk().lit_expr("{}={}")))),
-                                    token::Comma,
-                                    TokenKind::Ident(var_name_ident.name, var_name_ident.is_raw_guess()),
-                                    token::Comma,
-                                    TokenKind::Ident(var_value_ident.name, var_value_ident.is_raw_guess())
+                                    TokenTree::Literal(proc_macro2::Literal::string("{}={}")),
+                                    TokenTree::Punct(Punct::new(',', proc_macro2::Spacing::Alone)),
+                                    TokenTree::Ident(var_name_ident),
+                                    TokenTree::Punct(Punct::new(',', proc_macro2::Spacing::Alone)),
+                                    TokenTree::Ident(var_value_ident),
                                 ].into_iter()
-                                    .map(|tk| TokenTree::token(tk, DUMMY_SP))
                                     .collect::<TokenStream>(),
-                                MacDelimiter::Parenthesis,
+                                MacroDelimiter::Paren(Default::default()),
                             )))
                         ))),
                         mk().semi_stmt(mk().method_call_expr(
@@ -162,7 +162,7 @@ impl<'c> Translation<'c> {
                                 mk().method_call_expr(
                                     mk().method_call_expr(
                                         mk().call_expr(
-                                            mk().path_expr(vec!["","std","ffi","CString","new"]),
+                                            mk().abs_path_expr(vec!["std", "ffi", "CString", "new"]),
                                             vec![mk().path_expr(vec!["var"])],
                                         ),
                                         "expect",
@@ -171,7 +171,7 @@ impl<'c> Translation<'c> {
                                         )],
                                     ),
                                     "into_raw",
-                                    vec![] as Vec<P<Expr>>,
+                                    vec![] as Vec<Box<Expr>>,
                                 )
                             ],
                         ))
@@ -182,12 +182,12 @@ impl<'c> Translation<'c> {
                     mk().path_expr(vec!["vars"]),
                     "push",
                     vec![mk().call_expr(
-                        mk().path_expr(vec!["", "std", "ptr", "null_mut"]),
-                        vec![] as Vec<P<Expr>>,
+                        mk().abs_path_expr(vec!["std", "ptr", "null_mut"]),
+                        vec![] as Vec<Box<Expr>>,
                     )],
                 )));
 
-                let envp_ty: P<Ty> = match self.ast_context.index(parameters[2]).kind {
+                let envp_ty: Box<Type> = match self.ast_context.index(parameters[2]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
                     _ => Err(TranslationError::generic(
                         "Cannot find type of 'envp' argument in main function",
@@ -209,9 +209,9 @@ impl<'c> Translation<'c> {
 
             if let CTypeKind::Void = ret {
                 let call_main = mk().call_expr(main_fn, main_args);
-                let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_main)]);
+                let unsafe_block = mk().unsafe_block(vec![mk().expr_stmt(call_main)]);
 
-                stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
+                stmts.push(mk().expr_stmt(mk().unsafe_block_expr(unsafe_block)));
 
                 let exit_arg = mk().lit_expr(mk().int_lit(0, "i32"));
                 let call_exit = mk().call_expr(exit_fn, vec![exit_arg]);
@@ -224,16 +224,13 @@ impl<'c> Translation<'c> {
                 );
 
                 let call_exit = mk().call_expr(exit_fn, vec![call_main]);
-                let unsafe_block = mk().unsafe_().block(vec![mk().expr_stmt(call_exit)]);
+                let unsafe_block = mk().unsafe_block(vec![mk().expr_stmt(call_exit)]);
 
-                stmts.push(mk().expr_stmt(mk().block_expr(unsafe_block)));
+                stmts.push(mk().expr_stmt(mk().unsafe_block_expr(unsafe_block)));
             };
 
             let block = mk().block(stmts);
-            let main_attributes = self.mk_cross_check(mk(), vec!["none"]);
-            let main_attributes = main_attributes.single_attr("main");
-            self.use_feature("main");
-            Ok(main_attributes.pub_().fn_item("main", decl, block))
+            Ok(mk().pub_().fn_item(decl, block))
         } else {
             Err(TranslationError::generic(
                 "Cannot translate non-function main entry point",

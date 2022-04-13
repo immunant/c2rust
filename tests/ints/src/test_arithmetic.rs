@@ -5,7 +5,6 @@ use self::libc::{c_uint, c_int};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn entry2(_: c_uint, _: *mut c_int);
 }
 

@@ -5,7 +5,6 @@ use self::libc::{c_int, c_uint, size_t};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn exercise_flex_arrays(_: c_uint, _: *mut c_int);
 }
 

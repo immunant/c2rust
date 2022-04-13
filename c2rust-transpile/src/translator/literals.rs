@@ -7,11 +7,11 @@ use std::iter;
 
 impl<'c> Translation<'c> {
     /// Generate an integer literal corresponding to the given type, value, and base.
-    pub fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> Result<P<Expr>, TranslationError> {
+    pub fn mk_int_lit(&self, ty: CQualTypeId, val: u64, base: IntBase) -> Result<Box<Expr>, TranslationError> {
         let lit = match base {
-            IntBase::Dec => mk().int_lit(val.into(), LitIntType::Unsuffixed),
-            IntBase::Hex => mk().float_unsuffixed_lit(format!("0x{:x}", val)),
-            IntBase::Oct => mk().float_unsuffixed_lit(format!("0o{:o}", val)),
+            IntBase::Dec => mk().int_unsuffixed_lit(val.into()),
+            IntBase::Hex => mk().float_unsuffixed_lit(&format!("0x{:x}", val)),
+            IntBase::Oct => mk().float_unsuffixed_lit(&format!("0o{:o}", val)),
         };
 
         let target_ty = self.convert_type(ty.ctype)?;
@@ -20,7 +20,7 @@ impl<'c> Translation<'c> {
 
     /// Given an integer value this attempts to either generate the corresponding enum
     /// variant directly, otherwise it transmutes a number to the enum type.
-    pub fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> P<Expr> {
+    pub fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> Box<Expr> {
         let def_id = match self.ast_context.resolve_type(enum_type_id).kind {
             CTypeKind::Enum(def_id) => def_id,
             _ => panic!("{:?} does not point to an `enum` type"),
@@ -56,10 +56,10 @@ impl<'c> Translation<'c> {
             underlying_type_id.expect("Attempt to construct value of forward declared enum");
         let value = match self.ast_context.resolve_type(underlying_type_id.ctype).kind {
             CTypeKind::UInt => {
-                mk().lit_expr(mk().int_lit((value as u32) as u128, LitIntType::Unsuffixed))
+                mk().lit_expr(mk().int_unsuffixed_lit((value as u32) as u128))
             }
             CTypeKind::ULong => {
-                mk().lit_expr(mk().int_lit((value as u64) as u128, LitIntType::Unsuffixed))
+                mk().lit_expr(mk().int_unsuffixed_lit((value as u64) as u128))
             }
             _ => signed_int_expr(value),
         };
@@ -72,10 +72,10 @@ impl<'c> Translation<'c> {
     /// Convert a C literal expression to a Rust expression
     pub fn convert_literal(
         &self,
-        ctx: ExprContext,
+        _ctx: ExprContext,
         ty: CQualTypeId,
         kind: &CLiteral,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         match *kind {
             CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base)?)),
 
@@ -91,11 +91,11 @@ impl<'c> Translation<'c> {
                         // Fallback for characters outside of the valid Unicode range
                         if (val as i32) < 0 {
                             mk().unary_expr("-", mk().lit_expr(
-                                mk().int_lit((val as i32).abs() as u128, LitIntType::Signed(IntTy::I32))
+                                mk().int_lit((val as i32).abs() as u128, "i32")
                             ))
                         } else {
                             mk().lit_expr(
-                                mk().int_lit(val as u128, LitIntType::Signed(IntTy::I32))
+                                mk().int_lit(val as u128, "i32")
                             )
                         }
                     }
@@ -120,8 +120,8 @@ impl<'c> Translation<'c> {
 
                         mk().call_expr(fn_path, args)
                     }
-                    CTypeKind::Double => mk().lit_expr(mk().float_lit(str, FloatTy::F64)),
-                    CTypeKind::Float => mk().lit_expr(mk().float_lit(str, FloatTy::F32)),
+                    CTypeKind::Double => mk().lit_expr(mk().float_lit(&*str, "f64")),
+                    CTypeKind::Float => mk().lit_expr(mk().float_lit(&*str, "f32")),
                     ref k => panic!("Unsupported floating point literal type {:?}", k),
                 };
                 Ok(WithStmts::new_val(val))
@@ -145,7 +145,7 @@ impl<'c> Translation<'c> {
                 };
                 let u8_ty = mk().path_ty(vec!["u8"]);
                 let width_lit =
-                    mk().lit_expr(mk().int_lit(val.len() as u128, LitIntType::Unsuffixed));
+                    mk().lit_expr(mk().int_unsuffixed_lit(val.len() as u128));
                 let array_ty = mk().array_ty(u8_ty, width_lit);
                 let source_ty = mk().ref_ty(array_ty);
                 let mutbl = if ty.qualifiers.is_const {
@@ -155,10 +155,9 @@ impl<'c> Translation<'c> {
                 };
                 let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
                 let byte_literal = mk().lit_expr(val);
-                if ctx.is_const || ctx.is_static { self.use_feature("const_transmute"); }
                 let pointer =
                     transmute_expr(source_ty, target_ty, byte_literal, self.tcfg.emit_no_std);
-                let array = mk().unary_expr(ast::UnOp::Deref, pointer);
+                let array = mk().unary_expr(UnOp::Deref(Default::default()), pointer);
                 Ok(WithStmts::new_unsafe_val(array))
             }
         }
@@ -172,7 +171,7 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         ids: &[CExprId],
         opt_union_field_id: Option<CFieldId>,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         match self.ast_context.resolve_type(ty.ctype).kind {
             CTypeKind::ConstantArray(ty, n) => {
                 // Convert all of the provided initializer values
@@ -224,7 +223,7 @@ impl<'c> Translation<'c> {
                                 self.implicit_default_expr(ty, ctx.is_static)
                             ).take(n - ids.len())
                         )
-                        .collect::<Result<WithStmts<Vec<P<Expr>>>, TranslationError>>()?
+                        .collect::<Result<WithStmts<Vec<Box<Expr>>>, TranslationError>>()?
                         .map(|vals| {
                             mk().array_expr(vals)
                         }))
@@ -274,7 +273,7 @@ impl<'c> Translation<'c> {
         ids: &[CExprId],
         _ty: CQualTypeId,
         opt_union_field_id: Option<CFieldId>,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         let union_field_id = opt_union_field_id.expect("union field ID");
 
         match self.ast_context.index(union_id).kind {

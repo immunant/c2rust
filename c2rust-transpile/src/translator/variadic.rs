@@ -109,14 +109,14 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         ty: CQualTypeId,
         val_id: CExprId,
-    ) -> Result<WithStmts<P<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
         if self.tcfg.translate_valist {
             let val = self.convert_expr(ctx.expect_valistimpl().used(), val_id)?;
 
             // The current implementation of the C-variadics feature doesn't allow us to
             // return `Option<fn(...) -> _>` from `VaList::arg`, so we detect function pointers
             // and construct the corresponding unsafe type `* mut fn(...) -> _`.
-            let fn_ptr_ty : Option<P<Ty>> = {
+            let fn_ptr_ty : Option<Box<Type>> = {
                 let resolved_ctype = self.ast_context.resolve_type(ty.ctype);
                 if let CTypeKind::Pointer(p) = resolved_ctype.kind {
                     // ty is a pointer type
@@ -153,7 +153,7 @@ impl<'c> Translation<'c> {
             val.and_then(|val| {
                 let path = mk()
                     .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![arg_ty]));
-                let mut val = mk().method_call_expr(val, path, vec![] as Vec<P<Expr>>);
+                let mut val = mk().method_call_expr(val, path, vec![] as Vec<Box<Expr>>);
                 if let Some(ty) = real_arg_ty {
                     val = mk().cast_expr(val, ty);
                 }
@@ -166,7 +166,6 @@ impl<'c> Translation<'c> {
                 } else {
                     let val = if have_fn_ptr {
                         // transmute result of call to `arg` when expecting a function pointer
-                        if ctx.is_const { self.use_feature("const_transmute"); }
                         transmute_expr(mk().infer_ty(), mk().infer_ty(), val, self.tcfg.emit_no_std)
                     } else {
                         val

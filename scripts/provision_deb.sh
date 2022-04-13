@@ -52,7 +52,8 @@ apt-get install -qq \
     software-properties-common \
     unzip \
     libncurses5-dev \
-    luarocks
+    luarocks \
+    zlib1g-dev
 
 apt-get clean # clear apt-caches to reduce image size
 

@@ -6,10 +6,8 @@ use self::libc::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
-    #[no_mangle]
     fn entry(_: c_uint, _: *mut c_int);
 
-    #[no_mangle]
     fn multibyte_chars(_: c_uint, _: *mut c_int) -> c_int;
 }
 
