@@ -49,6 +49,7 @@ pub struct AnalysisCtxt<'tcx> {
     pub lcx: LTyCtxt<'tcx>,
 
     pub local_tys: IndexVec<Local, LTy<'tcx>>,
+    pub addr_of_local: IndexVec<Local, PointerId>,
 
     next_ptr_id: Cell<u32>,
 }
@@ -59,6 +60,7 @@ impl<'tcx> AnalysisCtxt<'tcx> {
             tcx,
             lcx: LabeledTyCtxt::new(tcx),
             local_tys: IndexVec::new(),
+            addr_of_local: IndexVec::new(),
             next_ptr_id: Cell::new(0),
         }
     }

@@ -179,6 +179,8 @@ impl<'tcx> LoanInvalidatedAtVisitor<'tcx, '_> {
         context: PlaceContext,
         location: Location,
     ) {
+        eprintln!("access loan {:?} (kind {:?}) at location {:?} (context {:?} = {:?})",
+            loan, borrow_kind, location, context, categorize(context));
         let invalidate = match (borrow_kind, categorize(context)) {
             (BorrowKind::Shared, Some(DefUse::Use)) => false,
             (_, None) => false,
