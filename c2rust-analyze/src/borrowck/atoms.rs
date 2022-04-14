@@ -146,6 +146,11 @@ impl<'tcx> AtomMaps<'tcx> {
         self.point.get(x)
     }
 
+    pub fn get_point_location(&self, x: Point) -> Location {
+        let (block, statement_index, _) = self.get_point(x);
+        Location { block, statement_index }
+    }
+
     pub fn variable(&mut self, l: Local) -> Variable {
         Variable(l.as_usize())
     }

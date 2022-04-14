@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::hash::Hash;
 use std::mem;
+use either::{Either, Left, Right};
 use polonius_engine::{self, Atom, FactTypes};
 use rustc_ast::ast::{Item, ItemKind, Visibility, VisibilityKind};
 use rustc_ast::node_id::NodeId;
@@ -23,7 +24,8 @@ use rustc_span::DUMMY_SP;
 use rustc_span::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_span::symbol::Ident;
 use rustc_target::abi::Align;
-use crate::context::{AnalysisCtxt, PermissionSet};
+use crate::context::{AnalysisCtxt, PermissionSet, PointerId};
+use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use self::atoms::{AllFacts, AtomMaps, Output, SubPoint, Origin, Path, Loan};
 
@@ -46,11 +48,94 @@ pub type LTyCtxt<'tcx> = LabeledTyCtxt<'tcx, Label>;
 
 pub fn borrowck_mir<'tcx>(
     acx: &AnalysisCtxt<'tcx>,
+    dataflow: &DataflowConstraints,
     hypothesis: &mut [PermissionSet],
     name: &str,
     mir: &Body<'tcx>,
 ) {
-    run_polonius(acx, hypothesis, name, mir);
+    let mut i = 0;
+    loop {
+        eprintln!("run polonius");
+        let (facts, maps, output) = run_polonius(acx, hypothesis, name, mir);
+        eprintln!("polonius: iteration {}: {} errors", i, output.errors.len());
+        i += 1;
+
+        if output.errors.len() == 0 {
+            break;
+        }
+        if i >= 20 { panic!() }
+
+        let mut changed = false;
+        for (_, loans) in &output.errors {
+            for &loan in loans {
+                let issued_point = facts.loan_issued_at.iter().find(|&&(_, l, _)| l == loan)
+                    .map(|&(_, _, point)| point)
+                    .unwrap_or_else(|| panic!("loan {:?} was never issued?", loan));
+                let issued_loc = maps.get_point_location(issued_point);
+                let stmt = mir.stmt_at(issued_loc).left().unwrap_or_else(|| {
+                    panic!("loan {:?} was issued by a terminator (at {:?})?", loan, issued_loc);
+                });
+                // TODO:
+                // - address of local: adjust `addr_of_local[l]`
+                // - address of deref + project: adjust deref'd operand
+                // - copy/move: adjust copied ptr
+                let pl = match stmt.kind {
+                    StatementKind::Assign(ref x) => {
+                        match x.1 {
+                            Rvalue::Use(_) => todo!(),
+                            Rvalue::Ref(_, _, pl) => pl,
+                            Rvalue::AddressOf(_, pl) => pl,
+                            // TODO: handle direct assignment from another pointer
+                            ref rv => panic!(
+                                "loan {:?} was issued by unknown rvalue {:?}?", loan, rv,
+                            ),
+                        }
+                    },
+                    _ => panic!("loan {:?} was issued by non-assign stmt {:?}?", loan, stmt),
+                };
+                eprintln!("want to drop UNIQUE from place {:?}", pl);
+
+                let ptr = if let Some(l) = pl.as_local() {
+                    acx.addr_of_local[l]
+                } else {
+                    todo!();
+                };
+
+                if hypothesis[ptr.index()].contains(PermissionSet::UNIQUE) {
+                    hypothesis[ptr.index()].remove(PermissionSet::UNIQUE);
+                    changed = true;
+                }
+            }
+        }
+
+        eprintln!("propagate");
+        changed |= dataflow.propagate(hypothesis);
+        eprintln!("done propagating");
+
+        if !changed {
+            eprintln!(
+                "{} unresolved borrowck errors in function {:?} (after {} iterations)",
+                output.errors.len(),
+                name,
+                i,
+            );
+            break;
+        }
+    }
+
+    eprintln!("final labeling for {:?}:", name);
+    let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(acx.tcx);
+    for (local, _) in mir.local_decls.iter_enumerated() {
+        let addr_of = hypothesis[acx.addr_of_local[local].index()];
+        let ty = lcx2.relabel(acx.local_tys[local], &mut |lty| {
+            if lty.label == PointerId::NONE {
+                PermissionSet::empty()
+            } else {
+                hypothesis[lty.label.index()]
+            }
+        });
+        eprintln!("{:?}: addr_of = {:?}, type = {:?}", local, addr_of, ty);
+    }
 }
 
 

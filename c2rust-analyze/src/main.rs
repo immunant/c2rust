@@ -1,4 +1,5 @@
 #![feature(rustc_private)]
+extern crate either;
 extern crate rustc_arena;
 extern crate rustc_ast;
 extern crate rustc_data_structures;
@@ -42,6 +43,7 @@ use crate::context::{AnalysisCtxt, PointerId, PermissionSet, LTy};
 
 mod borrowck;
 mod context;
+mod dataflow;
 mod labeled_ty;
 
 
@@ -63,14 +65,21 @@ fn inspect_mir<'tcx>(
         let lty = assign_pointer_ids(&acx, decl.ty);
         let l = acx.local_tys.push(lty);
         assert_eq!(local, l);
+
+        let ptr = acx.new_pointer();
+        let l = acx.addr_of_local.push(ptr);
+        assert_eq!(local, l);
     }
+
+    let dataflow = self::dataflow::generate_constraints(&acx, mir);
 
     let mut hypothesis = Vec::with_capacity(acx.num_pointers());
     for _ in 0 .. acx.num_pointers() {
         hypothesis.push(PermissionSet::all());
     }
+    dataflow.propagate(&mut hypothesis);
 
-    borrowck::borrowck_mir(&acx, &mut hypothesis, name.as_str(), mir);
+    borrowck::borrowck_mir(&acx, &dataflow, &mut hypothesis, name.as_str(), mir);
 }
 
 fn assign_pointer_ids<'tcx>(
