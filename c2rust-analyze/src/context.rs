@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use bitflags::bitflags;
 use rustc_index::vec::IndexVec;
-use rustc_middle::mir::Local;
+use rustc_middle::mir::{Local, Place, PlaceRef, ProjectionElem};
 use rustc_middle::ty::TyCtxt;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
 
@@ -73,5 +73,58 @@ impl<'tcx> AnalysisCtxt<'tcx> {
 
     pub fn num_pointers(&self) -> usize {
         self.next_ptr_id.get() as usize
+    }
+
+    pub fn type_of<T: TypeOf<'tcx>>(&self, x: T) -> LTy<'tcx> {
+        x.type_of(self)
+    }
+
+    pub fn ptr_of<T: TypeOf<'tcx>>(&self, x: T) -> Option<PointerId> {
+        let ptr = self.type_of(x).label;
+        if ptr == PointerId::NONE {
+            None
+        } else {
+            Some(ptr)
+        }
+    }
+}
+
+
+pub trait TypeOf<'tcx> {
+    fn type_of(&self, acx: &AnalysisCtxt<'tcx>) -> LTy<'tcx>;
+}
+
+impl<'tcx, T: TypeOf<'tcx>> TypeOf<'tcx> for &T {
+    fn type_of(&self, acx: &AnalysisCtxt<'tcx>) -> LTy<'tcx> {
+        (**self).type_of(acx)
+    }
+}
+
+impl<'tcx> TypeOf<'tcx> for Local {
+    fn type_of(&self, acx: &AnalysisCtxt<'tcx>) -> LTy<'tcx> {
+        acx.local_tys[*self]
+    }
+}
+
+impl<'tcx> TypeOf<'tcx> for Place<'tcx> {
+    fn type_of(&self, acx: &AnalysisCtxt<'tcx>) -> LTy<'tcx> {
+        acx.type_of(self.as_ref())
+    }
+}
+
+impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
+    fn type_of(&self, acx: &AnalysisCtxt<'tcx>) -> LTy<'tcx> {
+        let mut ty = acx.type_of(self.local);
+        for proj in self.projection {
+            match *proj {
+                ProjectionElem::Deref => todo!("type_of Deref"),
+                ProjectionElem::Field(..) => todo!("type_of Field"),
+                ProjectionElem::Index(..) |
+                ProjectionElem::ConstantIndex { .. } => todo!("type_of Index"),
+                ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
+                ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
+            }
+        }
+        ty
     }
 }

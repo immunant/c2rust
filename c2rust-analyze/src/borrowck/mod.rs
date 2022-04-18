@@ -12,8 +12,8 @@ use rustc_interface::Queries;
 use rustc_interface::interface::Compiler;
 use rustc_middle::mir::{
     Body, BasicBlock, BasicBlockData, START_BLOCK, Terminator, TerminatorKind, SourceInfo, Local,
-    LocalDecl, LocalKind, Mutability, Rvalue, AggregateKind, Place, Operand, Statement,
-    StatementKind, BorrowKind, Constant, ConstantKind,
+    LocalDecl, LocalKind, Mutability, Rvalue, AggregateKind, Place, PlaceRef, PlaceElem, Operand,
+    Statement, StatementKind, BorrowKind, Constant, ConstantKind,
 };
 use rustc_middle::mir::interpret::{Allocation, ConstValue};
 use rustc_middle::mir::pretty;
@@ -27,6 +27,7 @@ use rustc_target::abi::Align;
 use crate::context::{AnalysisCtxt, PermissionSet, PointerId};
 use crate::dataflow::DataflowConstraints;
 use crate::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::util::{describe_rvalue, RvalueDesc};
 use self::atoms::{AllFacts, AtomMaps, Output, SubPoint, Origin, Path, Loan};
 
 
@@ -57,7 +58,10 @@ pub fn borrowck_mir<'tcx>(
     loop {
         eprintln!("run polonius");
         let (facts, maps, output) = run_polonius(acx, hypothesis, name, mir);
-        eprintln!("polonius: iteration {}: {} errors", i, output.errors.len());
+        eprintln!(
+            "polonius: iteration {}: {} errors, {} move_errors",
+            i, output.errors.len(), output.move_errors.len(),
+        );
         i += 1;
 
         if output.errors.len() == 0 {
@@ -75,31 +79,20 @@ pub fn borrowck_mir<'tcx>(
                 let stmt = mir.stmt_at(issued_loc).left().unwrap_or_else(|| {
                     panic!("loan {:?} was issued by a terminator (at {:?})?", loan, issued_loc);
                 });
-                // TODO:
-                // - address of local: adjust `addr_of_local[l]`
-                // - address of deref + project: adjust deref'd operand
-                // - copy/move: adjust copied ptr
-                let pl = match stmt.kind {
-                    StatementKind::Assign(ref x) => {
-                        match x.1 {
-                            Rvalue::Use(_) => todo!(),
-                            Rvalue::Ref(_, _, pl) => pl,
-                            Rvalue::AddressOf(_, pl) => pl,
-                            // TODO: handle direct assignment from another pointer
-                            ref rv => panic!(
-                                "loan {:?} was issued by unknown rvalue {:?}?", loan, rv,
-                            ),
-                        }
+                let ptr = match stmt.kind {
+                    StatementKind::Assign(ref x) => match describe_rvalue(&x.1) {
+                        Some(RvalueDesc::Project { base, proj: _ }) => {
+                            acx.ptr_of(base)
+                                .unwrap_or_else(|| panic!("missing pointer ID for {:?}", base))
+                        },
+                        Some(RvalueDesc::AddrOfLocal { local, proj: _ }) => {
+                            acx.addr_of_local[local]
+                        },
+                        None => panic!("loan {:?} was issued by unknown rvalue {:?}?", loan, x.1),
                     },
                     _ => panic!("loan {:?} was issued by non-assign stmt {:?}?", loan, stmt),
                 };
-                eprintln!("want to drop UNIQUE from place {:?}", pl);
-
-                let ptr = if let Some(l) = pl.as_local() {
-                    acx.addr_of_local[l]
-                } else {
-                    todo!();
-                };
+                eprintln!("want to drop UNIQUE from pointer {:?}", ptr);
 
                 if hypothesis[ptr.index()].contains(PermissionSet::UNIQUE) {
                     hypothesis[ptr.index()].remove(PermissionSet::UNIQUE);
@@ -145,6 +138,7 @@ fn run_polonius<'tcx>(
     name: &str,
     mir: &Body<'tcx>,
 ) -> (AllFacts, AtomMaps<'tcx>, Output) {
+    let tcx = acx.tcx;
     let mut facts = AllFacts::default();
     let mut maps = AtomMaps::default();
 
@@ -181,17 +175,21 @@ fn run_polonius<'tcx>(
     }
 
     // From rustc_borrowck::nll::populate_polonius_move_facts: "Non-arguments start out
-    // deinitialised; we simulate this with an initial move"
+    // deinitialised; we simulate this with an initial move".  On the other hand, arguments are
+    // considered assigned at the entry point.
     let entry_point = maps.point(START_BLOCK, 0, SubPoint::Start);
     for local in mir.local_decls.indices() {
-        if mir.local_kind(local) != LocalKind::Arg {
+        if mir.local_kind(local) == LocalKind::Arg {
+            let path = maps.path(&mut facts, Place { local, projection: List::empty() });
+            facts.path_assigned_at_base.push((path, entry_point));
+        } else {
             let path = maps.path(&mut facts, Place { local, projection: List::empty() });
             facts.path_moved_at_base.push((path, entry_point));
         }
     }
 
     // Populate `use_of_var_derefs_origin`, and generate `LTy`s for all locals.
-    let ltcx = LabeledTyCtxt::new(acx.tcx);
+    let ltcx = LabeledTyCtxt::new(tcx);
     let mut local_ltys = Vec::with_capacity(mir.local_decls.len());
     for local in mir.local_decls.indices() {
         let lty = assign_origins(ltcx, hypothesis, &mut facts, &mut maps, acx.local_tys[local]);
@@ -206,7 +204,7 @@ fn run_polonius<'tcx>(
 
     let mut loans = HashMap::<Local, Vec<(Path, Loan, BorrowKind)>>::new();
     // Populate `loan_issued_at` and `loans`.
-    type_check::visit(ltcx, &mut facts, &mut maps, &mut loans, &local_ltys, mir);
+    type_check::visit(tcx, ltcx, &mut facts, &mut maps, &mut loans, &local_ltys, mir);
 
     // Populate `loan_invalidated_at`
     def_use::visit_loan_invalidated_at(acx.tcx, &mut facts, &mut maps, &loans, mir);

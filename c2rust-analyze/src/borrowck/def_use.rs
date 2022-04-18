@@ -99,7 +99,7 @@ impl<'tcx> Visitor<'tcx> for DefUseVisitor<'tcx, '_> {
 
         if place.is_indirect() {
             // TODO
-            return;
+            //return;
         }
 
         let path = self.maps.path(self.facts, *place);
@@ -107,6 +107,7 @@ impl<'tcx> Visitor<'tcx> for DefUseVisitor<'tcx, '_> {
 
         // TODO: figure out when exactly paths should be recorded as assigned/accessed/moved
         if let PlaceContext::NonMutatingUse(NonMutatingUseContext::Move) = context {
+            self.facts.path_accessed_at_base.push((path, point));
             self.facts.path_moved_at_base.push((path, point));
             return;
         }
@@ -203,7 +204,7 @@ impl<'tcx> Visitor<'tcx> for LoanInvalidatedAtVisitor<'tcx, '_> {
 
         if place.is_indirect() {
             // TODO
-            return;
+            //return;
         }
 
         let local_loans = self.loans.get(&place.local).map_or(&[] as &[_], |x| x);

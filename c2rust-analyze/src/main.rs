@@ -45,6 +45,7 @@ mod borrowck;
 mod context;
 mod dataflow;
 mod labeled_ty;
+mod util;
 
 
 fn inspect_mir<'tcx>(

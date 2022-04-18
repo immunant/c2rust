@@ -33,7 +33,7 @@ pub fn dump_facts_to_dir(
     write_facts_to_path! {
         wr.write_facts_to_path(facts.[
             loan_issued_at,
-            //universal_region,
+            universal_region,
             cfg_edge,
             loan_killed_at,
             subset_base,
@@ -48,8 +48,8 @@ pub fn dump_facts_to_dir(
             path_assigned_at_base,
             path_moved_at_base,
             path_accessed_at_base,
-            //known_placeholder_subset,
-            //placeholder,
+            known_placeholder_subset,
+            placeholder,
         ])
     }
     Ok(())
@@ -135,6 +135,16 @@ trait FactRow {
         out: &mut dyn Write,
         maps: &AtomMaps,
     ) -> Result<(), Box<dyn Error>>;
+}
+
+impl FactRow for Origin {
+    fn write(
+        &self,
+        out: &mut dyn Write,
+        maps: &AtomMaps,
+    ) -> Result<(), Box<dyn Error>> {
+        write_row(out, maps, &[self])
+    }
 }
 
 impl<A, B> FactRow for (A, B)
