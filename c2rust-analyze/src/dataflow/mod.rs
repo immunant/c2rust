@@ -51,21 +51,22 @@ impl DataflowConstraints {
 
     /// Update the pointer permissions in `hypothesis` to satisfy these constraints.
     pub fn propagate(&self, hypothesis: &mut [PermissionSet]) -> bool {
+        eprintln!("=== propagating ===");
+        eprintln!("fixed:");
+        for f in &self.fixed {
+            eprintln!("  {:?}", f);
+        }
+        eprintln!("edges:");
+        for e in &self.edges {
+            eprintln!("  {:?}", e);
+        }
+        eprintln!("hypothesis:");
+        for (i, p) in hypothesis.iter().enumerate() {
+            eprintln!("  {}: {:?}", i, p);
+        }
         match self.propagate_inner(hypothesis) {
             Ok(changed) => changed,
             Err(msg) => {
-                eprintln!("fixed:");
-                for f in &self.fixed {
-                    eprintln!("  {:?}", f);
-                }
-                eprintln!("edges:");
-                for e in &self.edges {
-                    eprintln!("  {:?}", e);
-                }
-                eprintln!("hypothesis:");
-                for (i, p) in hypothesis.iter().enumerate() {
-                    eprintln!("  {}: {:?}", i, p);
-                }
                 panic!("{}", msg);
             },
         }

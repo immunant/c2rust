@@ -5,6 +5,7 @@ use rustc_middle::mir::{
     Local, LocalDecl, Location, ProjectionElem,
 };
 use crate::context::{PermissionSet, PointerId, AnalysisCtxt, LTy};
+use crate::util::{describe_rvalue, RvalueDesc};
 use super::DataflowConstraints;
 
 
@@ -58,26 +59,18 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     return;
                 }
 
-                match *rv {
-                    Rvalue::Use(ref op) => {
-                        // Direct assignment.
-                        let op_lty = self.visit_operand(op);
-                        let op_ptr = op_lty.label;
-                        assert!(op_ptr != PointerId::NONE);
-                        self.add_edge(op_ptr, pl_ptr);
+                let rv_ptr = match describe_rvalue(rv) {
+                    Some(RvalueDesc::Project { base, proj: _ }) => {
+                        self.acx.ptr_of(base)
+                            .unwrap_or_else(|| panic!("missing pointer ID for {:?}", base))
                     },
-
-                    Rvalue::AddressOf(_, pl) => {
-                        if let Some(l) = pl.as_local() {
-                            let addr_ptr = self.acx.addr_of_local[l];
-                            self.add_edge(addr_ptr, pl_ptr);
-                        }
+                    Some(RvalueDesc::AddrOfLocal { local, proj: _ }) => {
+                        self.acx.addr_of_local[local]
                     },
-
-                    _ => {
-                        eprintln!("TODO: handle assignment of {:?}", rv);
-                    },
-                }
+                    None => panic!("TODO: handle assignment of {:?}", rv),
+                };
+                assert!(rv_ptr != PointerId::NONE);
+                self.add_edge(rv_ptr, pl_ptr);
             },
             _ => {},
         }

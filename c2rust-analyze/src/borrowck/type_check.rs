@@ -4,12 +4,14 @@ use rustc_middle::mir::{
     Body, Statement, StatementKind, Terminator, TerminatorKind, Rvalue, Place, Operand, BorrowKind,
     Local, LocalDecl, Location, ProjectionElem,
 };
+use rustc_middle::ty::{TyCtxt, TyKind};
 use crate::borrowck::{LTy, LTyCtxt, Label};
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Point, SubPoint, Path, Loan, Origin};
 use crate::context::PermissionSet;
 
 
 struct TypeChecker<'tcx, 'a> {
+    tcx: TyCtxt<'tcx>,
     ltcx: LTyCtxt<'tcx>,
     facts: &'a mut AllFacts,
     maps: &'a mut AtomMaps<'tcx>,
@@ -69,11 +71,34 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         self.loans.entry(pl.local).or_default().push((path, loan, borrow_kind));
         let point = self.current_point(SubPoint::Mid);
         self.facts.loan_issued_at.push((origin, loan, point));
+        eprintln!("issued loan {:?} = {:?} ({:?})", loan, pl, borrow_kind);
         origin
     }
 
     pub fn visit_rvalue(&mut self, rv: &Rvalue<'tcx>, expect_ty: LTy<'tcx>) -> LTy<'tcx> {
         match *rv {
+            Rvalue::Use(Operand::Move(pl)) |
+            Rvalue::Use(Operand::Copy(pl)) if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) => {
+                // Copy of a raw pointer.  We treat this as a reborrow.
+                let perm = expect_ty.label.perm;
+                let borrow_kind = if perm.contains(PermissionSet::UNIQUE) {
+                    BorrowKind::Mut { allow_two_phase_borrow: false }
+                } else {
+                    BorrowKind::Shared
+                };
+
+                let pl_deref = self.tcx.mk_place_deref(pl);
+                let origin = self.issue_loan(pl_deref, borrow_kind);
+
+                // Return a type with the new loan on the outermost `ref`.
+                let ty = rv.ty(self.local_decls, *self.ltcx);
+                let pl_lty = self.visit_place(pl_deref);
+                let label = Label { origin: Some(origin), perm };
+                let lty = self.ltcx.mk(ty, self.ltcx.mk_slice(&[pl_lty]), label);
+                lty
+
+            },
+
             Rvalue::Use(ref op) => self.visit_operand(op),
 
             Rvalue::Ref(_, borrow_kind, pl) => {
@@ -137,6 +162,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 }
 
 pub fn visit<'tcx>(
+    tcx: TyCtxt<'tcx>,
     ltcx: LTyCtxt<'tcx>,
     facts: &mut AllFacts,
     maps: &mut AtomMaps<'tcx>,
@@ -145,6 +171,7 @@ pub fn visit<'tcx>(
     mir: &Body<'tcx>,
 ) {
     let mut tc = TypeChecker {
+        tcx,
         ltcx,
         facts,
         maps,
