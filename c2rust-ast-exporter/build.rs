@@ -214,9 +214,10 @@ impl LLVMInfo {
         fn find_llvm_config() -> Option<String> {
             // Explicitly provided path in LLVM_CONFIG_PATH
             env::var("LLVM_CONFIG_PATH")
-                .ok()
+            .ok()
+            .or_else(|| {
                 // Relative to LLVM_LIB_DIR
-                .or(env::var("LLVM_LIB_DIR").ok().map(|d| {
+                env::var("LLVM_LIB_DIR").ok().map(|d| {
                     String::from(
                         Path::new(&d)
                             .join("../bin/llvm-config")
@@ -224,9 +225,11 @@ impl LLVMInfo {
                             .unwrap()
                             .to_string_lossy(),
                     )
-                }))
+                })
+            })
+            .or_else(|| {
                 // In PATH
-                .or([
+                [
                     "llvm-config-13",
                     "llvm-config-12",
                     "llvm-config-11",
@@ -257,7 +260,8 @@ impl LLVMInfo {
                     } else {
                         None
                     }
-                }))
+                })
+            })
         }
 
         /// Invoke given `command`, if any, with the specified arguments.
