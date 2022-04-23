@@ -147,8 +147,8 @@ fn build_native(llvm_info: &LLVMInfo) {
 
     println!("cargo:rustc-link-search=native={}", llvm_lib_dir);
 
-    // Some distro's, including arch and Fedora, no longer build with 
-    // BUILD_SHARED_LIBS=ON; programs linking to clang are required to 
+    // Some distro's, including arch and Fedora, no longer build with
+    // BUILD_SHARED_LIBS=ON; programs linking to clang are required to
     // link to libclang-cpp.so instead of individual libraries.
     let use_libclang = if cfg!(target_os = "macos") {
         false
@@ -230,6 +230,7 @@ impl LLVMInfo {
             .or_else(|| {
                 // In PATH
                 [
+                    "llvm-config-14",
                     "llvm-config-13",
                     "llvm-config-12",
                     "llvm-config-11",
@@ -385,7 +386,7 @@ impl LLVMInfo {
         if llvm_major_version >= 10 {
             args.push("FrontendOpenMP");
         }
-    
+
         let mut libs: Vec<String> = invoke_command(
             llvm_config.as_ref(),
             &args,
