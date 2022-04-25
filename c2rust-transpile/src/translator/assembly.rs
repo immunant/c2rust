@@ -525,8 +525,8 @@ impl<'c> Translation<'c> {
         // Rewrite arg references in assembly template
         let rewritten_asm = rewrite_asm(asm, |ref_str: &str| {
             if let Ok(idx) = ref_str.parse::<usize>() {
-                inputs.iter()
-                    .chain(outputs.iter())
+                outputs.iter()
+                    .chain(inputs.iter())
                     .nth(idx)
                     .map(operand_is_mem_only)
                     .unwrap_or(false)
