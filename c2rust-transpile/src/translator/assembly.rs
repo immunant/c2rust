@@ -190,17 +190,23 @@ impl BidirAsmOperand {
 }
 
 /// Return the register and corresponding template modifiers if the constraint
-/// uses a reserved register. Assumes x86_64.
-fn reg_is_reserved(constraint: &str) -> Option<(&str, &str)> {
-    Some(match constraint {
-        "\"bl\"" | "\"bh\"" | "\"bx\"" | "\"ebx\"" | "\"rbx\"" => {
-            let reg = constraint.trim_matches('"');
-            let mods = if reg.len() == 2 {
-                &reg[1..] // l/h/x
-            } else {
-                &reg[..1] // e/r
-            };
-            (reg, mods)
+/// uses a reserved register.
+fn reg_is_reserved(constraint: &str, arch: Arch) -> Option<(&str, &str)> {
+    Some(match arch {
+        Arch::X86OrX86_64 => match constraint {
+            // rbx is reserved on x86_64 but not x86, and esi is reserved on x86
+            // but not x86_64. It would be nice to distinguish these
+            // architectures here.
+            "\"bl\"" | "\"bh\"" | "\"bx\"" | "\"ebx\"" | "\"rbx\"" => {
+                let reg = constraint.trim_matches('"');
+                let mods = if reg.len() == 2 {
+                    &reg[1..] // l/h/x
+                } else {
+                    &reg[..1] // e/r
+                };
+                (reg, mods)
+            },
+            _ => return None,
         },
         _ => return None,
     })
@@ -216,7 +222,8 @@ fn reg_is_reserved(constraint: &str) -> Option<(&str, &str)> {
 ///
 /// Modifies operands and returns a pair of prefix and suffix strings that
 /// should be appended to the assembly template.
-fn rewrite_reserved_reg_operands(att_syntax: bool, operands: &mut Vec<BidirAsmOperand>) -> (String, String) {
+fn rewrite_reserved_reg_operands(att_syntax: bool, arch: Arch,
+    operands: &mut Vec<BidirAsmOperand>) -> (String, String) {
     let (mut prolog, mut epilog) = (String::new(), String::new());
 
     let mut rewrite_idxs = vec![];
@@ -228,7 +235,7 @@ fn rewrite_reserved_reg_operands(att_syntax: bool, operands: &mut Vec<BidirAsmOp
     for (i, operand) in operands.iter().enumerate() {
         if operand.is_positional() {
             total_positional += 1;
-        } else if let Some((reg, mods)) = reg_is_reserved(&*operand.constraints) {
+        } else if let Some((reg, mods)) = reg_is_reserved(&*operand.constraints, arch) {
             rewrite_idxs.push((i, reg.to_owned(), mods.to_owned()));
         }
     }
@@ -506,7 +513,7 @@ impl<'c> Translation<'c> {
         };
 
         // Add workaround for reserved registers (e.g. rbx on x86_64)
-        let (prolog, epilog) = rewrite_reserved_reg_operands(att_syntax, &mut args);
+        let (prolog, epilog) = rewrite_reserved_reg_operands(att_syntax, arch, &mut args);
         let rewritten_asm = prolog + &rewritten_asm + &epilog;
 
         // Emit assembly template
@@ -674,7 +681,7 @@ impl<'c> Translation<'c> {
             // really means we're misinforming the compiler of what's been
             // overwritten. Warn verbosely.
             let quoted = format!("\"{}\"", clobber);
-            if reg_is_reserved(&quoted).is_some() {
+            if reg_is_reserved(&quoted, arch).is_some() {
                 warn!("Attempting to clobber reserved register ({}), dropping clobber! \
                 This likely means the potential for miscompilation has been introduced. \
                 Please rewrite this assembly to save/restore the value of this register \
