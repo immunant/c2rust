@@ -1075,6 +1075,7 @@ class TranslateASTVisitor final
             case '=':
             case '+':
             case '*':
+            case '&':
                 break;
 
             case 'g':
