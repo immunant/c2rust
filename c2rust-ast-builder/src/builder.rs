@@ -1168,12 +1168,12 @@ impl Builder {
     {
         let val = val.make(&self);
         let field = field.make(&self);
-        Box::new(Expr::Field(ExprField {
+        Box::new(parenthesize_if_necessary(Expr::Field(ExprField {
             attrs: self.attrs.into(),
             dot_token: token::Dot(self.span),
             base: val,
             member: Member::Unnamed(Index { index: field, span: self.span }),
-        }))
+        })))
     }
 
     pub fn field<I, E>(self, ident: I, expr: E) -> FieldValue
