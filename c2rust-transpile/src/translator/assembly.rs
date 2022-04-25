@@ -160,6 +160,11 @@ fn parse_constraints(mut constraints: &str, arch: Arch) ->
     Ok((mode, mem_only, constraints))
 }
 
+fn is_regname_or_int(parsed_constraint: &str) -> bool {
+    parsed_constraint.contains('"') ||
+        parsed_constraint.starts_with(|c: char| c.is_ascii_digit())
+}
+
 /// Translate an architecture-specific assembly constraint from llvm/gcc
 /// to those accepted by the Rust asm! macro. "Simple" (arch-independent)
 /// constraints are handled in `parse_constraints`, not here.
@@ -532,9 +537,15 @@ impl<'c> Translation<'c> {
 
         // Detect and pair inputs/outputs that constrain themselves to the same register
         let mut inputs_by_register = HashMap::new();
+        let mut other_inputs = Vec::new();
         for (i, input) in inputs.iter().enumerate() {
             let (_dir_spec, mem_only, parsed) = parse_constraints(&input.constraints, arch)?;
-            inputs_by_register.insert(parsed, (i, input.clone()));
+            // Only pair operands with an explicit register or index
+            if is_regname_or_int(&*parsed) {
+                inputs_by_register.insert(parsed, (i, input.clone()));
+            } else {
+                other_inputs.push((parsed, (i, input.clone())));
+            }
         }
 
         // Convert gcc asm arguments (input and output lists) into a single list
@@ -575,7 +586,8 @@ impl<'c> Translation<'c> {
             }
         }
         // Add unmatched inputs
-        for (_, (i, input)) in inputs_by_register {
+        for (_, (i, input)) in inputs_by_register.into_iter()
+            .chain(other_inputs.into_iter()) {
             let (dir_spec, mem_only, parsed) = match
                 parse_constraints(&input.constraints, arch) {
                 Ok(x) => x,
@@ -717,9 +729,7 @@ impl<'c> Translation<'c> {
 
             // Emit dir_spec(constraint), quoting constraint if needed
             push_expr(&mut tokens, mk().ident_expr(operand.dir_spec.to_string()));
-            let is_regname_or_int = operand.constraints.contains('"') ||
-                operand.constraints.starts_with(|c: char| c.is_ascii_digit());
-            let constraints_ident = if is_regname_or_int {
+            let constraints_ident = if is_regname_or_int(&*operand.constraints) {
                 mk().lit_expr(operand.constraints.trim_matches('"'))
             } else {
                 mk().ident_expr(operand.constraints)
