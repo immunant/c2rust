@@ -40,6 +40,37 @@ impl ArgDirSpec {
     }
 }
 
+/// A machine architecture that rustc inline assembly knows about
+#[derive(Copy, Clone, PartialEq)]
+enum Arch {
+    X86OrX86_64,
+    Arm,
+    Aarch64,
+    Riscv,
+}
+
+/// Parse a machine architecture from a target tuple. This is a best-effort attempt.
+fn parse_arch(target_tuple: &str) -> Option<Arch> {
+    if target_tuple.starts_with("i386") ||
+    target_tuple.starts_with("i486") ||
+    target_tuple.starts_with("i586") ||
+    target_tuple.starts_with("i686") ||
+    target_tuple.starts_with("x86_64") ||
+    target_tuple.starts_with("x86") {
+        Some(Arch::X86OrX86_64)
+    } else if target_tuple.starts_with("aarch64") ||
+    target_tuple.starts_with("armv8") ||
+    target_tuple.starts_with("arm64") {
+        Some(Arch::Aarch64)
+    } else if target_tuple.starts_with("arm") {
+        Some(Arch::Arm)
+    } else if target_tuple.starts_with("riscv") {
+        Some(Arch::Riscv)
+    } else {
+        None
+    }
+}
+
 fn parse_constraints(mut constraints: &str) ->
     Result<(ArgDirSpec, bool, String), TranslationError> {
     let parse_error = |constraints| {
@@ -121,9 +152,9 @@ fn parse_constraints(mut constraints: &str) ->
 /// to those accepted by the Rust asm! macro. This is arch-dependent, so we need
 /// to know which architecture the asm targets.
 /// See https://doc.rust-lang.org/nightly/reference/inline-assembly.html#template-modifiers
-fn translate_modifier(modifier: char, arch: &str) -> Option<char> {
+fn translate_modifier(modifier: char, arch: Arch) -> Option<char> {
     Some(match arch {
-        "x86" => match modifier {
+        Arch::X86OrX86_64 => match modifier {
             'k' => 'e',
             'q' => 'r',
             'b' => 'l',
@@ -131,13 +162,12 @@ fn translate_modifier(modifier: char, arch: &str) -> Option<char> {
             'w' => 'x',
             _ => return None,
         },
-        "aarch64" => modifier,
-        "arm" => match modifier {
+        Arch::Aarch64 => modifier,
+        Arch::Arm => match modifier {
             'p'|'q' => return None,
             _ => modifier,
         },
-        "riscv" => modifier,
-        _ => return None,
+        Arch::Riscv => modifier,
     })
 }
 
@@ -268,7 +298,7 @@ fn asm_is_att_syntax(asm: &str) -> bool {
 
 /// References of the form $0 need to be converted to {0}, and references
 /// that are mem-only need to be converted to [{0}].
-fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F) -> String {
+fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F, arch: Arch) -> String {
     let mut out = String::with_capacity(asm.len());
 
     let mut first = true;
@@ -302,7 +332,7 @@ fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F) -> String {
 
                     let modifiers = ref_str[colon_idx + 1..].chars();
                     for modifier in modifiers {
-                        if let Some(new) = translate_modifier(modifier, "x86") {
+                        if let Some(new) = translate_modifier(modifier, arch) {
                             out.push(new);
                         }
                     }
@@ -355,6 +385,13 @@ impl<'c> Translation<'c> {
             ));
         }
 
+        let arch = match parse_arch(&self.ast_context.target) {
+            Some(arch) => arch,
+            None => return Err(TranslationError::generic(
+                "Cannot translate inline assembly for unfamiliar architecture"
+            )),
+        };
+
         self.use_feature("asm");
 
         fn push_expr(tokens: &mut Vec<TokenTree>, expr: Box<Expr>) {
@@ -400,7 +437,7 @@ impl<'c> Translation<'c> {
             } else {
                 false
             }
-        });
+        }, arch);
 
         // Detect and pair inputs/outputs that constrain themselves to the same register
         let mut inputs_by_register = HashMap::new();
@@ -463,7 +500,10 @@ impl<'c> Translation<'c> {
         }
 
         // Determine whether the assembly is in AT&T syntax
-        let att_syntax = asm_is_att_syntax(&*rewritten_asm);
+        let att_syntax = match arch {
+            Arch::X86OrX86_64 => asm_is_att_syntax(&*rewritten_asm),
+            _ => false,
+        };
 
         // Add workaround for reserved registers (e.g. rbx on x86_64)
         let (prolog, epilog) = rewrite_reserved_reg_operands(att_syntax, &mut args);
