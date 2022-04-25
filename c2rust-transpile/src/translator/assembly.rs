@@ -71,7 +71,7 @@ fn parse_arch(target_tuple: &str) -> Option<Arch> {
     }
 }
 
-fn parse_constraints(mut constraints: &str) ->
+fn parse_constraints(mut constraints: &str, arch: Arch) ->
     Result<(ArgDirSpec, bool, String), TranslationError> {
     let parse_error = |constraints| {
         Err(TranslationError::new(None, failure::err_msg(
@@ -124,6 +124,7 @@ fn parse_constraints(mut constraints: &str) ->
     // Handle register names
     let mut constraints = constraints.replace('{', "\"").replace('}', "\"");
 
+    // Convert (simple) constraints to ones rustc understands
     match &*constraints {
         "m" => {
             mem_only = true;
@@ -132,7 +133,18 @@ fn parse_constraints(mut constraints: &str) ->
         "r" => {
             constraints = "reg".into();
         }
-        _ => {},
+        _ => {
+            if let Some((machine_constraints, is_mem)) =
+              translate_machine_constraint(&*constraints, arch) {
+                constraints = machine_constraints.into();
+                mem_only = is_mem;
+            } else {
+                warn!("Did not recognize inline asm constraint: {}\n\
+                It is likely that this will cause compilation errors or \
+                incorrect semantics in the translated program; please manually \
+                correct.", constraints);
+            }
+        },
     };
 
     let mode = if mem_only {
@@ -146,6 +158,77 @@ fn parse_constraints(mut constraints: &str) ->
     };
 
     Ok((mode, mem_only, constraints))
+}
+
+/// Translate an architecture-specific assembly constraint from llvm/gcc
+/// to those accepted by the Rust asm! macro. "Simple" (arch-independent)
+/// constraints are handled in `parse_constraints`, not here.
+/// See https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html and
+/// https://doc.rust-lang.org/nightly/reference/inline-assembly.html#register-operands
+fn translate_machine_constraint(constraint: &str, arch: Arch) -> Option<(&str, bool)> {
+    let mem = &mut false;
+    // Many constraints are not handled here, because rustc does. The best we can
+    let constraint = match arch {
+        Arch::X86OrX86_64 => match constraint {
+            // "R" => "reg_word", // rust does not support this
+            "Q" => "reg_abcd",
+            "q" => "reg_byte",
+            "a" => "\"a\"",
+            "b" => "\"b\"",
+            "c" => "\"c\"",
+            "d" => "\"d\"",
+            "S" => "\"si\"",
+            "D" => "\"di\"",
+            // "A" => "a_and_d", // rust does not support this
+            "U" => {
+                warn!("the x86 'U' inline assembly operand constraint cannot \
+                be translated correctly. It corresponds to the `clobber_abi` \
+                option for `asm!`, but c2rust does not know the ABI being \
+                used, so it cannot be translated automatically. Please correct \
+                manually after translation.");
+                return None
+            },
+            "f" => "x87_reg",
+            "t" => "\"st(0)\"",
+            "u" => "\"st(1)\"",
+            "x" => "xmm_reg", // this could also translate as ymm_reg
+            "y" => "mmx_reg",
+            "v" => "zmm_reg",
+            "Yz" => "\"xmm0\"",
+            "Yk" => "kreg",
+
+            _ => return None,
+        },
+        Arch::Aarch64 => match constraint {
+            "k" => "\"SP\"",
+            "w" => "vreg",
+            "x" => "vreg_low16",
+            // "y" => "vreg_low8", // rust does not support this
+            // "Upl" => "preg_low8", // rust does not support this
+            "Upa" => "preg",
+            "Q" => { *mem = true; "reg" },
+            "Ump" => { *mem = true; "reg" },
+            _ => return None,
+        },
+        Arch::Arm => match constraint {
+            // "h" => "reg_8_15", // rust does not support this
+            "k" => "\"SP\"",
+            "l" => "reg",
+            "t" => "sreg",
+            "x" => "sreg_low16",
+            "w" => "dreg",
+            // "y" => "sreg",
+            // "z" => "sreg",
+            "Q" => { *mem = true; "reg" },
+            "Uv"|"Uy"|"Uq" => { *mem = true; "reg" },
+            _ => return None,
+        },
+        Arch::Riscv => match constraint {
+            "f" => "freg",
+            _ => return None,
+        },
+    };
+    Some((constraint, *mem))
 }
 
 /// Translate a template modifier from llvm/gcc asm template argument modifiers
@@ -424,14 +507,15 @@ impl<'c> Translation<'c> {
             }
         }
 
-        fn operand_is_mem_only(operand: &AsmOperand) -> bool {
-            if let Ok((_dir_spec, mem_only, _parsed)) = parse_constraints(&operand.constraints) {
+        let operand_is_mem_only = |operand: &AsmOperand| -> bool {
+            if let Ok((_dir_spec, mem_only, _parsed)) =
+                parse_constraints(&operand.constraints, arch) {
                 mem_only
             } else {
                 println!("could not parse asm constraints: {}", operand.constraints);
                 false
             }
-        }
+        };
 
         // Rewrite arg references in assembly template
         let rewritten_asm = rewrite_asm(asm, |ref_str: &str| {
@@ -449,7 +533,7 @@ impl<'c> Translation<'c> {
         // Detect and pair inputs/outputs that constrain themselves to the same register
         let mut inputs_by_register = HashMap::new();
         for (i, input) in inputs.iter().enumerate() {
-            let (_dir_spec, mem_only, parsed) = parse_constraints(&input.constraints)?;
+            let (_dir_spec, mem_only, parsed) = parse_constraints(&input.constraints, arch)?;
             inputs_by_register.insert(parsed, (i, input.clone()));
         }
 
@@ -461,7 +545,7 @@ impl<'c> Translation<'c> {
 
         // Add outputs as inout if a matching input is found, else as outputs
         for (i, output) in outputs.into_iter().enumerate() {
-            match parse_constraints(&output.constraints) {
+            match parse_constraints(&output.constraints, arch) {
                 Ok((mut dir_spec, mem_only, parsed)) => {
                     // Add to args list; if a matching in_expr is found, this is
                     // an inout and we remove the output from the outputs list
@@ -492,7 +576,8 @@ impl<'c> Translation<'c> {
         }
         // Add unmatched inputs
         for (_, (i, input)) in inputs_by_register {
-            let (dir_spec, mem_only, parsed) = match parse_constraints(&input.constraints) {
+            let (dir_spec, mem_only, parsed) = match
+                parse_constraints(&input.constraints, arch) {
                 Ok(x) => x,
                 Err(e) => {eprintln!("{}", e); continue;}
             };
