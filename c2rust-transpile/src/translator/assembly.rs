@@ -393,7 +393,9 @@ fn asm_is_att_syntax(asm: &str) -> bool {
     } else if asm.contains("word ptr") {
         false
     } else {
-        asm.contains('$')
+        // Guess based on sigils used in AT&T assembly. This would be more
+        // robust if it stripped comments first.
+        asm.contains('$') || asm.contains('%') || asm.contains('(')
     }
 }
 
