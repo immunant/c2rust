@@ -120,15 +120,35 @@ class CFile:
 
         return RustFile(extensionless_file + ".rs")
 
+def get_native_arch() -> str:
+    rustc_cfg_args = ["--print", "cfg"]
+    retcode, stdout, stderr = rustc[rustc_cfg_args].run(retcode=None)
+    for line in stdout.split("\n"):
+        if line.startswith("target_arch"):
+            return line.split("=")[1].replace('"', '')
+    raise KeyError
+
+def rustc_has_target(target: str) -> bool:
+    args = ["--target", target, "/dev/null"]
+    retcode, stdout, stderr = rustc[args].run(retcode=None)
+    return not "target may not be installed" in stderr
+
+def target_args(target: Optional[str]) -> List[str]:
+    if target:
+        return ["-target", target]
+    else:
+        return ["-march=native"]
 
 def build_static_library(c_files: Iterable[CFile],
-                         output_path: str) -> Optional[CStaticLibrary]:
+                         output_path: str,
+                         target: Optional[str]) -> Optional[CStaticLibrary]:
     current_path = os.getcwd()
 
     os.chdir(output_path)
 
     # create .o files
-    args = ["-c", "-fPIC", "-march=native"]
+    args = ["-c", "-fPIC"]
+    args.append(target_args(target))
     paths = [c_file.path for c_file in c_files]
 
     if len(paths) == 0:
@@ -195,7 +215,7 @@ class TestDirectory:
         self.full_path = full_path
         self.full_path_src = os.path.join(full_path, "src")
         self.files = files
-        self.name = full_path.split('/')[-1]
+        self.name = os.path.basename(full_path)
         self.keep = keep
         self.logLevel = logLevel
         self.generated_files = {
@@ -204,6 +224,19 @@ class TestDirectory:
             "c_lib": [],
             "cc_db": [],
         }
+
+        # if the test is arch-specific, check if we can run it natively; if not,
+        # set self.target to a known-working target tuple for it
+        self.target = None
+
+        # parse target arch from directory name if it includes a dot
+        split_by_dots = self.name.split('.')
+        if len(split_by_dots) > 1:
+            target_arch = split_by_dots[-1]
+            # if native and target arch differ, cross-compile to specific target
+            if target_arch != get_native_arch():
+                with open(self.full_path + "/target-tuple", 'r', encoding="utf-8") as file:
+                    self.target = file.read().strip()
 
         for entry in os.listdir(self.full_path_src):
             path = os.path.abspath(os.path.join(self.full_path_src, entry))
@@ -277,15 +310,17 @@ class TestDirectory:
     def _generate_cc_db(self, c_file_path: str) -> None:
         directory, cfile = os.path.split(c_file_path)
 
+        target_args = '"-target", "{}", '.format(self.target) if self.target else ""
+
         compile_commands = """ \
         [
           {{
-            "arguments": [ "cc", "-D_FORTIFY_SOURCE=0", "-c", "{0}" ],
+            "arguments": [ "cc", "-D_FORTIFY_SOURCE=0", "-c", {2}"{0}" ],
             "directory": "{1}",
             "file": "{0}"
           }}
         ]
-        """.format(cfile, directory)
+        """.format(cfile, directory, target_args)
 
         cc_db = os.path.join(directory, "compile_commands.json")
 
@@ -325,7 +360,7 @@ class TestDirectory:
         self.print_status(Colors.WARNING, "RUNNING", description)
 
         try:
-            static_library = build_static_library(self.c_files, self.full_path)
+            static_library = build_static_library(self.c_files, self.full_path, self.target)
         except NonZeroReturn as exception:
             self.print_status(Colors.FAIL, "FAILED", "create libtest.a")
             sys.stdout.write('\n')
@@ -371,7 +406,7 @@ class TestDirectory:
                 logging.debug("translating %s", c_file_short)
                 translated_rust_file = c_file.translate(self.generated_files["cc_db"],
                                                         ld_lib_path,
-                                                        extra_args=["-march=native"])
+                                                        extra_args=target_args(self.target))
             except NonZeroReturn as exception:
                 self.print_status(Colors.FAIL, "FAILED", "translate " +
                                   c_file_short)
@@ -458,6 +493,15 @@ class TestDirectory:
 
             if c.BUILD_TYPE == 'release':
                 args.append('--release')
+
+            if self.target:
+                if not rustc_has_target(self.target):
+                    self.print_status(Colors.OKBLUE, "SKIPPED",
+                      "building test {} because the {} target is not installed"
+                      .format(self.name, self.target))
+                    sys.stdout.write('\n')
+                    return []
+                args.append(["--target", self.target])
 
             retcode, stdout, stderr = cargo[args].run(retcode=None)
 
