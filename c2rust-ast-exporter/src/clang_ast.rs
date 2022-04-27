@@ -119,6 +119,7 @@ pub struct AstContext {
     pub comments: Vec<CommentNode>,
     pub files: Vec<SrcFile>,
     pub va_list_kind: BuiltinVaListKind,
+    pub target: String,
 }
 
 pub fn expect_opt_str(val: &Value) -> Option<Option<&str>> {
@@ -160,12 +161,13 @@ pub fn process(items: Value) -> error::Result<AstContext> {
     let mut types: HashMap<u64, TypeNode> = HashMap::new();
     let mut comments: Vec<CommentNode> = vec![];
 
-    let (all_nodes, top_nodes, files, raw_comments, va_list_kind): (
+    let (all_nodes, top_nodes, files, raw_comments, va_list_kind, target): (
         Vec<VecDeque<Value>>,
         Vec<u64>,
         Vec<(String, Option<(u64, u64, u64)>)>,
         Vec<(u64, u64, u64, ByteBuf)>,
         u64,
+        String,
     ) = from_value(items)?;
 
     let va_list_kind = import_va_list_kind(va_list_kind);
@@ -259,5 +261,6 @@ pub fn process(items: Value) -> error::Result<AstContext> {
         comments,
         files,
         va_list_kind,
+        target,
     })
 }

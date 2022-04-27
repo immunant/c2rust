@@ -2403,7 +2403,7 @@ class TranslateConsumer : public clang::ASTConsumer {
             cbor_encoder_init(&encoder, buffer, len, 0);
 
             CborEncoder outer;
-            cbor_encoder_create_array(&encoder, &outer, 5);
+            cbor_encoder_create_array(&encoder, &outer, 6);
 
             CborEncoder array;
 
@@ -2502,8 +2502,12 @@ class TranslateConsumer : public clang::ASTConsumer {
 #endif // CLANG_VERSION_MAJOR >= 10
             cbor_encoder_close_container(&outer, &array);
 
-            // 5. Target VaList type as BuiltiVaListKind
+            // 5. Target VaList type as BuiltinVaListKind
             cbor_encode_uint(&outer, static_cast<std::uintptr_t>(Context.getTargetInfo().getBuiltinVaListKind()));
+
+            // 6. Target triple
+            auto target = Context.getTargetInfo().getTriple().str();
+            cbor_encode_string(&outer, target);
 
             cbor_encoder_close_container(&encoder, &outer);
         };

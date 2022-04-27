@@ -472,6 +472,7 @@ impl ConversionContext {
         }
 
         self.typed_context.va_list_kind = untyped_context.va_list_kind;
+        self.typed_context.target = untyped_context.target.clone();
     }
 
     /// Visit one node.

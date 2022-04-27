@@ -83,6 +83,7 @@ pub struct TypedAstContext {
     pub prenamed_decls: IndexMap<CDeclId, CDeclId>,
 
     pub va_list_kind: BuiltinVaListKind,
+    pub target: String,
 }
 
 /// Comments associated with a typed AST context
@@ -175,6 +176,7 @@ impl TypedAstContext {
             comments: vec![],
             prenamed_decls: IndexMap::new(),
             va_list_kind: BuiltinVaListKind::CharPtrBuiltinVaList,
+            target: String::new(),
         }
     }
 
