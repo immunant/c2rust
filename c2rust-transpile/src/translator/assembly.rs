@@ -424,6 +424,12 @@ fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F, arch: Arch) -> St
             continue;
         }
 
+        // Note empty chunks
+        if chunk == "" {
+            last_empty = true;
+            continue;
+        }
+
         // Do not re-wrap ${...}, but do translate modifiers
         if chunk.starts_with('{') {
             // Translate operand modifiers ("template modifiers" per Rust)
@@ -447,19 +453,47 @@ fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F, arch: Arch) -> St
             continue
         }
 
-        if chunk == "" {
-            last_empty = true;
+        // Translate references of the form %k0 or %3, which look like $k0
+        // or $3 in LLVM asm.
+        if chunk.starts_with(|c: char| c.is_ascii_alphanumeric()) {
+            // Find the end of the reference itself (after 'k0' or '3').
+            let end_idx = chunk.find(|c: char| c == ',' || !c.is_ascii_alphanumeric())
+                .unwrap_or(chunk.len());
+            let ref_str = &chunk[..end_idx];
+
+            let index_str;
+            let mut new_modifiers = String::new();
+            // If the ref string starts with a letter, it's a modifier to translate.
+            if let Some(true) = ref_str.chars().next().map(|c| c.is_ascii_alphabetic()) {
+                let (modifiers, index) = ref_str.split_at(1);
+
+                index_str = index;
+
+                for modifier in modifiers.chars() {
+                    if let Some(new) = translate_modifier(modifier, arch) {
+                        new_modifiers.push(new);
+                    }
+                }
+            } else {
+                // Just digits
+                index_str = ref_str;
+            }
+            let mem_only = is_mem_only(index_str);
+            // Push the reference wrapped in {}, or in [{}] if mem-only
+            out.push_str(if mem_only { "[{" } else {"{"});
+            out.push_str(index_str);
+            if new_modifiers != "" {
+                out.push(':');
+                out.push_str(&*new_modifiers);
+            }
+            out.push_str(if mem_only { "}]" } else {"}"});
+            // Push the rest of the chunk
+            out.push_str(&chunk[end_idx..]);
             continue;
         }
 
-        let ref_str = chunk.trim_matches(|c: char| !c.is_ascii_alphanumeric());
-        let mem_only = is_mem_only(ref_str);
-        // Push the reference wrapped in {}, or in [{}] if mem-only
-        out.push_str(if mem_only { "[{" } else {"{"});
-        out.push_str(ref_str);
-        out.push_str(if mem_only { "}]" } else {"}"});
-        // Push the rest of the chunk
-        out.push_str(&chunk[ref_str.len()..]);
+        // We failed to parse this operand reference
+        out.push_str(&chunk[..]);
     }
     out
 }
