@@ -134,15 +134,21 @@ fn parse_constraints(mut constraints: &str, arch: Arch) ->
             constraints = "reg".into();
         }
         _ => {
-            if let Some((machine_constraints, is_mem)) =
-              translate_machine_constraint(&*constraints, arch) {
-                constraints = machine_constraints.into();
-                mem_only = is_mem;
-            } else {
-                warn!("Did not recognize inline asm constraint: {}\n\
-                It is likely that this will cause compilation errors or \
-                incorrect semantics in the translated program; please manually \
-                correct.", constraints);
+            let is_explicit_reg = constraints.starts_with('"');
+            let is_tied = !constraints.contains(|c: char| !c.is_ascii_digit());
+
+            if !(is_explicit_reg || is_tied) {
+                // Attempt to parse machine-specific constraints
+                if let Some((machine_constraints, is_mem)) =
+                translate_machine_constraint(&*constraints, arch) {
+                    constraints = machine_constraints.into();
+                    mem_only = is_mem;
+                } else {
+                    warn!("Did not recognize inline asm constraint: {}\n\
+                    It is likely that this will cause compilation errors or \
+                    incorrect semantics in the translated program; please \
+                    manually correct.", constraints);
+                }
             }
         },
     };
