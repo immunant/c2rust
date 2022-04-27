@@ -1912,9 +1912,21 @@ class TranslateASTVisitor final
      */
     bool VisitRecordDecl(RecordDecl *D) {
         if (!D->isCanonicalDecl()) {
-            // Emit non-canonical decl so we have a placeholder to attach comments to
+            // Emit non-canonical decl so we have a placeholder to attach comments to.
+            // Attributes may also be attached to the non-canonical declaration so
+            // we emit them too.
             std::vector<void *> childIds = {D->getCanonicalDecl()};
-            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, QualType());
+            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, QualType(),
+                [D](CborEncoder *local) {
+                // 1. Attributes stored as an array of attribute names
+                CborEncoder attrs;
+                size_t attrs_n = D->hasAttrs() ? D->getAttrs().size() : 0;
+                cbor_encoder_create_array(local, &attrs, attrs_n);
+                for (auto a : D->attrs()) {
+                    cbor_encode_text_stringz(&attrs, a->getSpelling());
+                }
+                cbor_encoder_close_container(local, &attrs);
+            });
             return true;
         }
 

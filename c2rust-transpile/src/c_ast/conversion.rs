@@ -2047,6 +2047,29 @@ impl ConversionContext {
 
                     self.add_decl(new_id, located(node, record));
                     self.processed_nodes.insert(new_id, OTHER_DECL);
+
+                    // Look up the canonical declaration and see if it declares a
+                    // struct. If so, check attributes of the non-canonical declaration
+                    // and potentially update its `is_packed` property.
+                    if let Some(v) = self.typed_context.c_decls.get_mut(&canonical_decl) {
+                        match &mut v.kind {
+                            CDeclKind::Struct { is_packed, .. } => {
+                                let attrs = from_value::<Vec<Value>>(node.extras[0].clone())
+                                    .expect("Expected attribute array on non-canonical record decl");
+
+                                for attr in attrs {
+                                    match from_value::<String>(attr.clone())
+                                        .expect("Record attributes should be strings")
+                                        .as_str()
+                                    {
+                                        "packed" => *is_packed = true,
+                                        _ => {}
+                                    }
+                                }
+                            },
+                            _ => {},
+                        }
+                    }
                 }
 
                 ASTEntryTag::TagStaticAssertDecl if expected_ty & DECL != 0 => {
