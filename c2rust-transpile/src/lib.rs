@@ -1,4 +1,3 @@
-#![feature(rustc_private)]
 #![feature(label_break_value)]
 #![feature(box_patterns)]
 
