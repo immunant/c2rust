@@ -370,6 +370,35 @@ fn rewrite_reserved_reg_operands(att_syntax: bool, arch: Arch,
     (prolog, epilog)
 }
 
+/// Removes comments from an x86 assembly template.
+fn remove_comments(mut asm: &str) -> String {
+    // Remove C-style comments
+    let mut without_c_comments = String::with_capacity(asm.len());
+    while let Some(comment_begin) = asm.find("/*") {
+        let comment_len = asm[comment_begin..]
+            .find("*/")
+            // Comments with no terminator extend to the end of the string
+            .unwrap_or(asm[comment_begin..].len());
+        let before_comment = &asm[..comment_begin];
+        without_c_comments.push_str(before_comment);
+        asm = &asm[comment_begin + comment_len..];
+    }
+    // Push whatever is left after the final comment
+    without_c_comments.push_str(asm);
+
+    // Remove EOL comments from each line
+    let mut without_comments = String::with_capacity(without_c_comments.len());
+    for line in without_c_comments.lines() {
+        if let Some(line_comment_idx) = line.find("#") {
+            without_comments.push_str(&line[..line_comment_idx]);
+        } else {
+            without_comments.push_str(line);
+        }
+        without_comments.push('\n');
+    }
+    without_comments
+}
+
 fn asm_is_att_syntax(asm: &str) -> bool {
     // For GCC, AT&T syntax is default... unless -masm=intel is passed. This
     // means we can hope but not guarantee that x86 asm with no syntax directive
@@ -379,6 +408,11 @@ fn asm_is_att_syntax(asm: &str) -> bool {
     // As the rust x86 default is intel syntax, we need to emit the "att_syntax"
     // option if we get a hint that this asm uses AT&T syntax.
 
+    // First, remove comments, so we can look at only the semantically
+    // significant parts of the asm template.
+    let asm = &*remove_comments(asm);
+
+    // Look for syntax directives.
     let intel_directive = asm.find(".intel_syntax");
     let att_directive = asm.find(".att_syntax");
     if let (Some(intel_pos), Some(att_pos)) = (intel_directive, att_directive) {
@@ -393,8 +427,8 @@ fn asm_is_att_syntax(asm: &str) -> bool {
     } else if asm.contains("word ptr") {
         false
     } else {
-        // Guess based on sigils used in AT&T assembly. This would be more
-        // robust if it stripped comments first.
+        // Guess based on sigils used in AT&T assembly:
+        // $ for constants, % for registers, and ( for address calculations
         asm.contains('$') || asm.contains('%') || asm.contains('(')
     }
 }
