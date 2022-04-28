@@ -1700,11 +1700,11 @@ impl CfgBuilder {
                     Ok(next_lbl.map(|l| self.new_wip_block(l)))
                 }
 
-                CStmtKind::Expr(expr) => 'case_blk: {
+                CStmtKind::Expr(expr) => {
                     // This case typically happens in macros from system headers.
                     // We simply inline the common statement at this point rather
                     // than to try and create new control-flow blocks.
-                    if let CExprKind::Unary(_, UnOp::Extension, sube, _) =
+                    let blk_or_wip = if let CExprKind::Unary(_, UnOp::Extension, sube, _) =
                         translator.ast_context[expr].kind
                     {
                         if let CExprKind::Statements(_, stmtid) = translator.ast_context[sube].kind
@@ -1714,22 +1714,31 @@ impl CfgBuilder {
                             let next_lbl = self
                                 .convert_stmt_help(translator, ctx, stmtid, in_tail, comp_entry)?;
 
-                            break 'case_blk Ok(next_lbl.map(|l| self.new_wip_block(l)));
+                            Ok(next_lbl.map(|l| self.new_wip_block(l)))
+                        } else {
+                            Err(wip)
                         }
-                    }
-
-                    wip.extend(translator.convert_expr(ctx.unused(), expr)?.into_stmts());
-
-                    // If we can tell the expression is going to diverge, there is no falling through to
-                    // the next block.
-                    let next = if translator.ast_context.expr_diverges(expr) {
-                        self.add_wip_block(wip, End);
-                        None
                     } else {
-                        Some(wip)
+                        Err(wip)
                     };
 
-                    Ok(next)
+                    match blk_or_wip {
+                        Ok(blk) => Ok(blk),
+                        Err(mut wip) => {
+                            wip.extend(translator.convert_expr(ctx.unused(), expr)?.into_stmts());
+
+                            // If we can tell the expression is going to diverge, there is no falling through to
+                            // the next block.
+                            let next = if translator.ast_context.expr_diverges(expr) {
+                                self.add_wip_block(wip, End);
+                                None
+                            } else {
+                                Some(wip)
+                            };
+
+                            Ok(next)
+                        },
+                    }
                 }
 
                 CStmtKind::Break => {
