@@ -1,5 +1,3 @@
-#![feature(crate_visibility_modifier)]
-
 extern crate syn;
 extern crate proc_macro2;
 
