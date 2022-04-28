@@ -436,7 +436,8 @@ impl StructureState {
                 return (vec![s], span);
             }
 
-            Append(box Spanned {node: Empty, span: lhs_span}, rhs) => {
+            Append(spanned, rhs) if matches!(spanned.node, Empty) => {
+                let lhs_span = spanned.span;
                 let span = ast.span.substitute_dummy(lhs_span);
                 let span = span_subst_lo(span, lhs_span).unwrap_or_else(|| {
                     comment_store.move_comments(lhs_span.lo(), span.lo());

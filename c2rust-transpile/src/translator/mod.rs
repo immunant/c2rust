@@ -1106,6 +1106,14 @@ fn item_attrs(item: &mut Item) -> Option<&mut Vec<syn::Attribute>> {
     })
 }
 
+/// Unwrap a layer of parenthesization from an Expr, if present
+fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
+    match **expr {
+        Expr::Paren(ExprParen { ref expr, .. }) => expr,
+        _ => expr,
+    }
+}
+
 /// This represents all of the ways a C expression can be used in a C program. Making this
 /// distinction is important for:
 ///
@@ -4317,8 +4325,7 @@ impl<'c> Translation<'c> {
             // we are casting to. Here, we can just remove the extraneous cast instead of generating
             // a new one.
             CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) => {
-                return val.map(|x| match *x {
-                    Expr::Paren(ExprParen {expr: box Expr::Cast(ExprCast {ref expr, ..}), ..}) |
+                return val.map(|x| match **unparen(&x) {
                     Expr::Cast(ExprCast {ref expr, ..}) => expr.clone(),
                     _ => panic!(format!(
                         "DeclRef {:?} of enum {:?} is not cast",
@@ -4560,12 +4567,6 @@ impl<'c> Translation<'c> {
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
             // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
             // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
-            fn unparen(expr: &Box<Expr>) -> &Box<Expr> {
-                match **expr {
-                    Expr::Paren(ExprParen { ref expr, .. }) => expr,
-                    _ => expr,
-                }
-            }
             if let Expr::Cast(ExprCast { expr: ref arg, ..}) = **unparen(&val) {
                 if let Expr::Binary(ExprBinary {op, ..}) = **unparen(arg) {
                     match op {
