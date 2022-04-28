@@ -1,5 +1,3 @@
-#![feature(box_patterns)]
-
 extern crate colored;
 extern crate dtoa;
 extern crate syn;
