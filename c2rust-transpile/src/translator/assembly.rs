@@ -174,7 +174,8 @@ fn is_regname_or_int(parsed_constraint: &str) -> bool {
 /// Translate an architecture-specific assembly constraint from llvm/gcc
 /// to those accepted by the Rust asm! macro. "Simple" (arch-independent)
 /// constraints are handled in `parse_constraints`, not here.
-/// See https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html and
+/// See https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html,
+/// https://llvm.org/docs/LangRef.html#constraint-codes, and
 /// https://doc.rust-lang.org/nightly/reference/inline-assembly.html#register-operands
 fn translate_machine_constraint(constraint: &str, arch: Arch) -> Option<(&str, bool)> {
     let mem = &mut false;
@@ -370,7 +371,8 @@ fn rewrite_reserved_reg_operands(att_syntax: bool, arch: Arch,
     (prolog, epilog)
 }
 
-/// Removes comments from an x86 assembly template.
+/// Remove comments from an x86 assembly template. Used only to provide a less-
+/// confounding input to our Intel-vs-AT&T detection in `asm_is_att_syntax`.
 fn remove_comments(mut asm: &str) -> String {
     // Remove C-style comments
     let mut without_c_comments = String::with_capacity(asm.len());
@@ -399,14 +401,15 @@ fn remove_comments(mut asm: &str) -> String {
     without_comments
 }
 
+/// Detect whether an x86[_64] gcc inline asm string uses Intel or AT&T syntax.
+/// For gcc, AT&T syntax is default... unless `-masm=intel` is passed. This
+/// means we can hope but not guarantee that x86 asm with no syntax directive
+/// uses AT&T syntax.
+/// To handle other cases, try to heuristically detect the variant we get
+/// (assuming it's actually x86 asm in the first place...).
+/// As the rust x86 default is intel syntax, we need to emit the "att_syntax"
+/// option if we get a hint that this asm uses AT&T syntax.
 fn asm_is_att_syntax(asm: &str) -> bool {
-    // For GCC, AT&T syntax is default... unless -masm=intel is passed. This
-    // means we can hope but not guarantee that x86 asm with no syntax directive
-    // uses AT&T syntax.
-    // To handle other cases, try to heuristically detect the variant we get
-    // (assuming it's actually x86 asm in the first place...).
-    // As the rust x86 default is intel syntax, we need to emit the "att_syntax"
-    // option if we get a hint that this asm uses AT&T syntax.
 
     // First, remove comments, so we can look at only the semantically
     // significant parts of the asm template.
@@ -433,8 +436,9 @@ fn asm_is_att_syntax(asm: &str) -> bool {
     }
 }
 
-/// References of the form $0 need to be converted to {0}, and references
-/// that are mem-only need to be converted to [{0}].
+/// Rewrite a LLVM inline assembly template string into an asm!-compatible one
+/// by translating its references to operands (of the form $0 or $x0) to {0} or
+/// {0:y} (and wrapping mem-only references in square brackets).
 fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F, arch: Arch) -> String {
     let mut out = String::with_capacity(asm.len());
 
