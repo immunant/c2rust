@@ -1577,6 +1577,7 @@ pub enum CTypeKind {
     Vector(CQualTypeId, usize),
 
     Half,
+    BFloat16,
 }
 
 #[derive(Copy, Clone, Debug)]
