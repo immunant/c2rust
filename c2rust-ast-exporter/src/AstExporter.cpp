@@ -370,6 +370,9 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
         case BuiltinType::ULong:      tag = TagULong;       break;
         case BuiltinType::ULongLong:  tag = TagULongLong;   break;
         case BuiltinType::Half:       tag = TagHalf;        break;
+        #if CLANG_VERSION_MAJOR >= 11
+        case BuiltinType::BFloat16:   tag = TagBFloat16;    break;
+        #endif
         case BuiltinType::Float:      tag = TagFloat;       break;
         case BuiltinType::Double:     tag = TagDouble;      break;
         case BuiltinType::LongDouble: tag = TagLongDouble;  break;
