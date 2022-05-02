@@ -1,4 +1,6 @@
-use rustc_middle::mir::{PlaceRef, PlaceElem, Rvalue, Operand, Local};
+use rustc_hir::def::DefKind;
+use rustc_middle::mir::{PlaceRef, PlaceElem, Rvalue, Operand, Local, Mutability};
+use rustc_middle::ty::{TyCtxt, Ty, TyKind, DefIdTree};
 
 #[derive(Debug)]
 pub enum RvalueDesc<'tcx> {
@@ -49,3 +51,38 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
     })
 }
 
+
+#[derive(Debug)]
+pub enum Callee<'tcx> {
+    PtrOffset { pointee_ty: Ty<'tcx>, mutbl: Mutability },
+}
+
+pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Option<Callee<'tcx>> {
+    let (did, substs) = match *ty.kind() {
+        TyKind::FnDef(did, substs) => (did, substs),
+        _ => return None,
+    };
+    let name = tcx.item_name(did);
+    let poly_sig = tcx.fn_sig(did);
+    let sig = poly_sig.skip_binder();
+
+    match name.as_str() {
+        "offset" => {
+            // The `offset` inherent method of `*const T` and `*mut T`.
+            let parent_did = tcx.parent(did)?;
+            if tcx.def_kind(parent_did) != DefKind::Impl {
+                return None;
+            }
+            if tcx.impl_trait_ref(parent_did).is_some() {
+                return None;
+            }
+            let parent_impl_ty = tcx.type_of(parent_did);
+            let (pointee_ty, mutbl) = match parent_impl_ty.kind() {
+                TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
+                _ => return None,
+            };
+            Some(Callee::PtrOffset { pointee_ty, mutbl })
+        },
+        _ => None,
+    }
+}

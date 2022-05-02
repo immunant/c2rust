@@ -8,6 +8,7 @@ use rustc_middle::ty::{TyCtxt, TyKind};
 use crate::borrowck::{LTy, LTyCtxt, Label};
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Point, SubPoint, Path, Loan, Origin};
 use crate::context::PermissionSet;
+use crate::util::{self, Callee};
 
 
 struct TypeChecker<'tcx, 'a> {
@@ -135,27 +136,49 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
+    fn do_assign(&mut self, pl_lty: LTy<'tcx>, rv_lty: LTy<'tcx>) {
+        eprintln!("assign {:?} = {:?}", pl_lty, rv_lty);
+
+        let pl_origin = pl_lty.label.origin;
+        let rv_origin = rv_lty.label.origin;
+        if let (Some(pl_origin), Some(rv_origin)) = (pl_origin, rv_origin) {
+            let point = self.current_point(SubPoint::Mid);
+            self.facts.subset_base.push((rv_origin, pl_origin, point));
+        }
+    }
+
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
         match stmt.kind {
             StatementKind::Assign(ref x) => {
                 let (pl, ref rv) = **x;
                 let pl_lty = self.visit_place(pl);
                 let rv_lty = self.visit_rvalue(rv, pl_lty);
-                eprintln!("assign {:?} = {:?}", pl_lty, rv_lty);
-
-                let pl_origin = pl_lty.label.origin;
-                let rv_origin = rv_lty.label.origin;
-                if let (Some(pl_origin), Some(rv_origin)) = (pl_origin, rv_origin) {
-                    let point = self.current_point(SubPoint::Mid);
-                    self.facts.subset_base.push((rv_origin, pl_origin, point));
-                }
+                self.do_assign(pl_lty, rv_lty);
             },
             _ => {},
         }
     }
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
+        eprintln!("borrowck: visit_terminator({:?})", term.kind);
         match term.kind {
+            TerminatorKind::Call { ref func, ref args, destination, .. } => {
+                let func_ty = func.ty(self.local_decls, *self.ltcx);
+                eprintln!("callee = {:?}", util::ty_callee(*self.ltcx, func_ty));
+                match util::ty_callee(*self.ltcx, func_ty) {
+                    Some(Callee::PtrOffset { .. }) => {
+                        // We handle this like a pointer assignment.
+
+                        // `destination` must be `Some` because the function doesn't diverge.
+                        let destination = destination.unwrap();
+                        let pl_lty = self.visit_place(destination.0);
+                        assert!(args.len() == 2);
+                        let rv_lty = self.visit_operand(&args[0]);
+                        self.do_assign(pl_lty, rv_lty);
+                    },
+                    None => {},
+                }
+            },
             _ => {},
         }
     }
