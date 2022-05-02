@@ -76,7 +76,7 @@ fn inspect_mir<'tcx>(
 
     let mut hypothesis = Vec::with_capacity(acx.num_pointers());
     for _ in 0 .. acx.num_pointers() {
-        hypothesis.push(PermissionSet::all());
+        hypothesis.push(PermissionSet::UNIQUE);
     }
     dataflow.propagate(&mut hypothesis);
 

@@ -1,5 +1,6 @@
 use rustc_middle::mir::{PlaceRef, PlaceElem, Rvalue, Operand, Local};
 
+#[derive(Debug)]
 pub enum RvalueDesc<'tcx> {
     Project {
         base: PlaceRef<'tcx>,
