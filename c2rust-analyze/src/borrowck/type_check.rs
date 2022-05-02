@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    Body, Statement, StatementKind, Terminator, TerminatorKind, Rvalue, Place, Operand, BorrowKind,
-    Local, LocalDecl, Location, ProjectionElem,
+    Body, Statement, StatementKind, Terminator, TerminatorKind, Rvalue, BinOp, Place, Operand,
+    BorrowKind, Local, LocalDecl, Location, ProjectionElem,
 };
 use rustc_middle::ty::{TyCtxt, TyKind};
 use crate::borrowck::{LTy, LTyCtxt, Label};
 use crate::borrowck::atoms::{AllFacts, AtomMaps, Point, SubPoint, Path, Loan, Origin};
-use crate::context::PermissionSet;
+use crate::context::{PermissionSet, PointerId};
 use crate::util::{self, Callee};
 
 
@@ -39,6 +39,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 ProjectionElem::Deref => {
                     assert_eq!(lty.args.len(), 1);
                     lty = lty.args[0];
+                },
+
+                ProjectionElem::Field(f, _field_ty) => {
+                    match lty.ty.kind() {
+                        TyKind::Tuple(..) => {
+                            lty = lty.args[f.as_usize()];
+                        },
+                        _ => todo!("field of {:?}", lty),
+                    }
                 },
 
                 ref proj => panic!("unsupported projection {:?} in {:?}", proj, pl),
@@ -130,6 +139,24 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let label = Label { origin: Some(origin), perm };
                 let lty = self.ltcx.mk(ty, self.ltcx.mk_slice(&[pl_lty]), label);
                 lty
+            },
+
+            Rvalue::BinaryOp(BinOp::Offset, _) |
+            Rvalue::CheckedBinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
+            Rvalue::BinaryOp(_, ref ab) |
+            Rvalue::CheckedBinaryOp(_, ref ab) => {
+                let ty = rv.ty(self.local_decls, *self.ltcx);
+                self.ltcx.label(ty, &mut |ty| {
+                    assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
+                    Label::default()
+                })
+            },
+
+            Rvalue::Cast(_, _, ty) => {
+                self.ltcx.label(ty, &mut |ty| {
+                    assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
+                    Label::default()
+                })
             },
 
             ref rv => panic!("unsupported rvalue {:?}", rv),
