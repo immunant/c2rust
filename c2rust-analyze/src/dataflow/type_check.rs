@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    Body, Statement, StatementKind, Terminator, TerminatorKind, Rvalue, Place, PlaceRef, Operand,
-    BorrowKind, Local, LocalDecl, Location, ProjectionElem, Mutability,
+    Body, Statement, StatementKind, Terminator, TerminatorKind, Rvalue, BinOp, Place, PlaceRef,
+    Operand, BorrowKind, Local, LocalDecl, Location, ProjectionElem, Mutability,
 };
 use rustc_middle::mir::visit::{PlaceContext, NonMutatingUseContext, MutatingUseContext};
+use rustc_middle::ty::TyKind;
 use crate::context::{PermissionSet, PointerId, AnalysisCtxt, LTy};
 use crate::util::{self, describe_rvalue, RvalueDesc, Callee};
 use super::DataflowConstraints;
@@ -60,6 +61,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     lty = lty.args[0];
                 },
 
+                ProjectionElem::Field(f, _field_ty) => {
+                    match lty.ty.kind() {
+                        TyKind::Tuple(..) => {
+                            lty = lty.args[f.as_usize()];
+                        },
+                        _ => todo!("field of {:?}", lty),
+                    }
+                },
+
                 ref proj => panic!("unsupported projection {:?} in {:?}", proj, pl),
             }
         }
@@ -93,6 +103,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             },
             None => match *rv {
                 Rvalue::Use(ref op) => self.visit_operand(op).label,
+                Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
+                Rvalue::BinaryOp(..) => PointerId::NONE,
+                Rvalue::CheckedBinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
+                Rvalue::CheckedBinaryOp(..) => PointerId::NONE,
+                Rvalue::Cast(_, _, ty) => {
+                    assert!(!matches!(ty.kind(), TyKind::RawPtr(..) | TyKind::Ref(..)));
+                    PointerId::NONE
+                },
                 _ => panic!("TODO: handle assignment of {:?}", rv),
             },
         }        

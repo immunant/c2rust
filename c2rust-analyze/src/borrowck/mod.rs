@@ -118,7 +118,7 @@ pub fn borrowck_mir<'tcx>(
 
     eprintln!("final labeling for {:?}:", name);
     let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(acx.tcx);
-    for (local, _) in mir.local_decls.iter_enumerated() {
+    for (local, decl) in mir.local_decls.iter_enumerated() {
         let addr_of = hypothesis[acx.addr_of_local[local].index()];
         let ty = lcx2.relabel(acx.local_tys[local], &mut |lty| {
             if lty.label == PointerId::NONE {
@@ -127,7 +127,8 @@ pub fn borrowck_mir<'tcx>(
                 hypothesis[lty.label.index()]
             }
         });
-        eprintln!("{:?}: addr_of = {:?}, type = {:?}", local, addr_of, ty);
+        eprintln!("{:?}: addr_of = {:?}, type = {:?}, info = {:?}",
+            local, addr_of, ty, decl.local_info);
     }
 }
 
