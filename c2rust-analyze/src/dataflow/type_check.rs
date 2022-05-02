@@ -6,7 +6,7 @@ use rustc_middle::mir::{
 };
 use rustc_middle::mir::visit::{PlaceContext, NonMutatingUseContext, MutatingUseContext};
 use crate::context::{PermissionSet, PointerId, AnalysisCtxt, LTy};
-use crate::util::{describe_rvalue, RvalueDesc};
+use crate::util::{self, describe_rvalue, RvalueDesc, Callee};
 use super::DataflowConstraints;
 
 
@@ -14,6 +14,7 @@ use super::DataflowConstraints;
 /// constraints as a side effect.
 struct TypeChecker<'tcx, 'a> {
     acx: &'a AnalysisCtxt<'tcx>,
+    mir: &'a Body<'tcx>,
     constraints: DataflowConstraints,
 }
 
@@ -118,6 +119,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
+    fn do_assign(&mut self, pl_ptr: PointerId, rv_ptr: PointerId) {
+        if pl_ptr != PointerId::NONE || rv_ptr != PointerId::NONE {
+            assert!(pl_ptr != PointerId::NONE);
+            assert!(rv_ptr != PointerId::NONE);
+            self.add_edge(rv_ptr, pl_ptr);
+        }
+    }
+
     pub fn visit_statement(&mut self, stmt: &Statement<'tcx>) {
         eprintln!("visit_statement({:?})", stmt);
         match stmt.kind {
@@ -129,18 +138,34 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                 let rv_ptr = self.visit_rvalue(rv);
 
-                if pl_ptr != PointerId::NONE || rv_ptr != PointerId::NONE {
-                    assert!(pl_ptr != PointerId::NONE);
-                    assert!(rv_ptr != PointerId::NONE);
-                    self.add_edge(rv_ptr, pl_ptr);
-                }
+                self.do_assign(pl_ptr, rv_ptr);
             },
             _ => {},
         }
     }
 
     pub fn visit_terminator(&mut self, term: &Terminator<'tcx>) {
+        eprintln!("visit_terminator({:?})", term.kind);
+        let tcx = self.acx.tcx;
         match term.kind {
+            TerminatorKind::Call { ref func, ref args, destination, .. } => {
+                let func_ty = func.ty(self.mir, tcx);
+                eprintln!("callee = {:?}", util::ty_callee(tcx, func_ty));
+                match util::ty_callee(tcx, func_ty) {
+                    Some(Callee::PtrOffset { .. }) => {
+                        // We handle this like a pointer assignment.
+
+                        // `destination` must be `Some` because the function doesn't diverge.
+                        let destination = destination.unwrap();
+                        let ctx = PlaceContext::MutatingUse(MutatingUseContext::Store);
+                        let pl_lty = self.visit_place(destination.0, ctx);
+                        assert!(args.len() == 2);
+                        let rv_lty = self.visit_operand(&args[0]);
+                        self.do_assign(pl_lty.label, rv_lty.label);
+                    },
+                    None => {},
+                }
+            },
             _ => {},
         }
     }
@@ -152,6 +177,7 @@ pub fn visit<'tcx>(
 ) -> DataflowConstraints {
     let mut tc = TypeChecker {
         acx,
+        mir,
         constraints: DataflowConstraints::default(),
     };
 

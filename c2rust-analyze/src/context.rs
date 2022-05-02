@@ -21,6 +21,13 @@ bitflags! {
         /// copy-and-downcast to a non-`LINEAR` location is a borrow, which does not invalidate the
         /// source pointer.)
         const LINEAR = 0x0008;
+        /// This pointer can be offset in the positive direction.
+        ///
+        /// Offsetting the pointer in an unknown direction requires both `OFFSET_ADD` and
+        /// `OFFSET_SUB`.  Offsetting by zero requires neither `OFFSET_ADD` nor `OFFSET_SUB`.
+        const OFFSET_ADD = 0x0010;
+        /// This pointer can be offset in the negative direction.
+        const OFFSET_SUB = 0x0020;
     }
 }
 
