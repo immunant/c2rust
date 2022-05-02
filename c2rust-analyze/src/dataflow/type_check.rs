@@ -162,6 +162,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                         assert!(args.len() == 2);
                         let rv_lty = self.visit_operand(&args[0]);
                         self.do_assign(pl_lty.label, rv_lty.label);
+                        let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
+                        self.constraints.add_all_perms(rv_lty.label, perms);
                     },
                     None => {},
                 }

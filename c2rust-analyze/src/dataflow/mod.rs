@@ -95,7 +95,9 @@ impl DataflowConstraints {
                         #[allow(bad_style)]
                         let PROPAGATE_UP =
                             PermissionSet::READ |
-                            PermissionSet::WRITE;
+                            PermissionSet::WRITE |
+                            PermissionSet::OFFSET_ADD |
+                            PermissionSet::OFFSET_SUB;
 
                         let old_a = hypothesis[a.index()];
                         let old_b = hypothesis[b.index()];
