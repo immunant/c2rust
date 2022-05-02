@@ -16,7 +16,7 @@ ExternalProject_Add(tinycbor_build
             URL ${TINYCBOR_URL}
             URL_HASH MD5=${TINYCBOR_MD5}
             # the fd redirection here fails when the build run inside Cargo
-            CONFIGURE_COMMAND sed -i -r -e "s:'>&9':>$@:" -e "s:9>::" Makefile
+            CONFIGURE_COMMAND sed -i -r -e "s:^\\t.*9.*:\\trm -f $@ \&\& &:" -e "s:'>&9':'>>$@':" -e "s:9>.*::" Makefile
             BUILD_COMMAND make --quiet prefix=<INSTALL_DIR> CFLAGS=-fPIC
             INSTALL_COMMAND make --quiet prefix=<INSTALL_DIR> install            
             BUILD_IN_SOURCE 1
