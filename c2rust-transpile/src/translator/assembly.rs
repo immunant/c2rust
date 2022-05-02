@@ -65,7 +65,7 @@ fn parse_arch(target_tuple: &str) -> Option<Arch> {
         || target_tuple.starts_with("arm64")
     {
         Some(Arch::Aarch64)
-    } else if target_tuple.starts_with("arm") {
+    } else if target_tuple.starts_with("arm") || target_tuple.starts_with("thumbv") {
         Some(Arch::Arm)
     } else if target_tuple.starts_with("riscv") {
         Some(Arch::Riscv)
