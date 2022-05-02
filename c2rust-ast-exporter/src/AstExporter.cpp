@@ -329,10 +329,16 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
             auto t = Info.ElementType;
             auto qt = encodeQualType(t);
 
-            encodeType(T, TagVectorType, [T, qt, Info](CborEncoder *local) {
+            #if CLANG_VERSION_MAJOR >= 12
+            auto ElemCount = Info.EC.getKnownMinValue();
+            #else
+            // getKnownMinValue was added in Clang 12.
+            auto ElemCount = Info.EC.Min;
+            #endif
+
+            encodeType(T, TagVectorType, [T, qt, Info, ElemCount](CborEncoder *local) {
                 cbor_encode_uint(local, qt);
-                cbor_encode_uint(local, Info.EC.getKnownMinValue() *
-                                            Info.NumVectors);
+                cbor_encode_uint(local, ElemCount * Info.NumVectors);
             });
 
             VisitQualType(t);
