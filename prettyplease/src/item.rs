@@ -420,7 +420,7 @@ impl Printer {
         }
     }
 
-    pub fn foreign_item(&mut self, foreign_item: &ForeignItem) {
+    fn foreign_item(&mut self, foreign_item: &ForeignItem) {
         match foreign_item {
             ForeignItem::Fn(item) => self.foreign_item_fn(item),
             ForeignItem::Static(item) => self.foreign_item_static(item),
@@ -482,7 +482,7 @@ impl Printer {
         unimplemented!("ForeignItem::Verbatim `{}`", foreign_item);
     }
 
-    pub fn trait_item(&mut self, trait_item: &TraitItem) {
+    fn trait_item(&mut self, trait_item: &TraitItem) {
         match trait_item {
             TraitItem::Const(item) => self.trait_item_const(item),
             TraitItem::Method(item) => self.trait_item_method(item),
@@ -573,7 +573,7 @@ impl Printer {
         unimplemented!("TraitItem::Verbatim `{}`", trait_item);
     }
 
-    pub fn impl_item(&mut self, impl_item: &ImplItem) {
+    fn impl_item(&mut self, impl_item: &ImplItem) {
         match impl_item {
             ImplItem::Const(item) => self.impl_item_const(item),
             ImplItem::Method(item) => self.impl_item_method(item),
@@ -667,7 +667,7 @@ impl Printer {
         unimplemented!("ImplItem::Verbatim `{}`", impl_item);
     }
 
-    pub fn maybe_variadic(&mut self, arg: &FnArg) -> bool {
+    fn maybe_variadic(&mut self, arg: &FnArg) -> bool {
         let pat_type = match arg {
             FnArg::Typed(pat_type) => pat_type,
             FnArg::Receiver(receiver) => {
