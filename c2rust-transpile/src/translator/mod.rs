@@ -860,7 +860,7 @@ pub fn translate(
         let comments = Comments::new(reordered_comment_store.into_comments());
 
         // pass all converted items to the Rust pretty printer
-        let translation = pprust::to_string_with_comments(comments, |s| {
+        let translation = pprust::to_string(|| {
             let (attrs, mut all_items) = arrange_header(&t, t.tcfg.is_binary(main_file.as_path()));
 
             all_items.extend(mod_items);
@@ -884,7 +884,7 @@ pub fn translate(
             all_items.extend(items);
 
             //s.print_remaining_comments();
-            s.file(&syn::File {shebang: None, attrs, items: all_items.into_iter().map(|x| *x).collect()});
+            syn::File {shebang: None, attrs, items: all_items.into_iter().map(|x| *x).collect()}
         });
         (translation, pragmas, crates)
     }
