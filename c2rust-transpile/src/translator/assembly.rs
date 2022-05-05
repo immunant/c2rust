@@ -472,10 +472,50 @@ fn asm_is_att_syntax(asm: &str) -> bool {
     }
 }
 
+/// If applicable, maps the index of an input operand to the
+/// output operand it is tied to.
+///
+/// Utilizes the fact that GNU inline assembly specifies all
+/// operands in a particular order of [output1, ... outputN]
+/// followed by [input1, ..., inputN] where the indices for all
+/// input operands are indexed relative to the size of the
+/// output operand sequence.
+fn map_input_op_idx(
+    idx: usize,
+    num_output_operands: usize,
+    tied_operands: &HashMap<(usize, bool), usize>,
+) -> usize {
+    if let Some(adj_idx) = idx.checked_sub(num_output_operands) {
+        // will only be Some(idx) if it was an input operand
+        match tied_operands.get(&(adj_idx, false)) {
+            Some(&out_idx) => {
+                return out_idx;
+            }
+            None => {
+                // get number of tied inputs before this index
+                // TODO: can calculate this once before the call, not once for each input
+                let num_tied_before = tied_operands
+                    .keys()
+                    .filter(|&&(iidx, is_out)| !is_out && iidx < adj_idx)
+                    .count();
+                // shift the original index by the number of tied input operands prior to the current one
+                return idx - num_tied_before;
+            }
+        };
+    }
+
+    idx
+}
+
 /// Rewrite a LLVM inline assembly template string into an asm!-compatible one
 /// by translating its references to operands (of the form $0 or $x0) to {0} or
 /// {0:y} (and wrapping mem-only references in square brackets).
-fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F, arch: Arch) -> String {
+fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
+    asm: &str,
+    input_op_mapper: M,
+    is_mem_only: F,
+    arch: Arch,
+) -> Result<String, TranslationError> {
     let mut out = String::with_capacity(asm.len());
 
     let mut first = true;
@@ -511,8 +551,13 @@ fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F, arch: Arch) -> St
                 let ref_str = &chunk[..end_idx];
                 if let Some(colon_idx) = ref_str.find(':') {
                     let (before_mods, modifiers) = ref_str.split_at(colon_idx + 1);
-                    out.push_str(before_mods);
-
+                    out.push_str("{");
+                    let idx: usize = before_mods
+                        .trim_matches(|c: char| !c.is_ascii_digit())
+                        .parse()
+                        .map_err(|_| TranslationError::generic("could not parse operand idx"))?;
+                    out.push_str(input_op_mapper(idx).to_string().as_str());
+                    out.push_str(":");
                     let modifiers = ref_str[colon_idx + 1..].chars();
                     for modifier in modifiers {
                         if let Some(new) = translate_modifier(modifier, arch) {
@@ -556,7 +601,10 @@ fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F, arch: Arch) -> St
             let mem_only = is_mem_only(index_str);
             // Push the reference wrapped in {}, or in [{}] if mem-only
             out.push_str(if mem_only { "[{" } else { "{" });
-            out.push_str(index_str);
+            let idx: usize = index_str
+                .parse()
+                .map_err(|_| TranslationError::generic("could not parse operand idx"))?;
+            out.push_str(input_op_mapper(idx).to_string().as_str());
             if new_modifiers != "" {
                 out.push(':');
                 out.push_str(&*new_modifiers);
@@ -570,7 +618,7 @@ fn rewrite_asm<F: Fn(&str) -> bool>(asm: &str, is_mem_only: F, arch: Arch) -> St
         // We failed to parse this operand reference
         out.push_str(&chunk[..]);
     }
-    out
+    Ok(out)
 }
 
 impl<'c> Translation<'c> {
@@ -647,6 +695,7 @@ impl<'c> Translation<'c> {
         // Rewrite arg references in assembly template
         let rewritten_asm = rewrite_asm(
             asm,
+            |idx: usize| map_input_op_idx(idx, outputs.len(), &tied_operands),
             |ref_str: &str| {
                 if let Ok(idx) = ref_str.parse::<usize>() {
                     outputs
@@ -660,7 +709,7 @@ impl<'c> Translation<'c> {
                 }
             },
             arch,
-        );
+        )?;
 
         // Detect and pair inputs/outputs that constrain themselves to the same register
         let mut inputs_by_register = HashMap::new();

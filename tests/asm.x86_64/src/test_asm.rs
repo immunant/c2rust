@@ -9,12 +9,12 @@ extern "C" {
     fn entry(_: c_uint, _: *mut c_int);
 }
 
-const BUFFER_SIZE: usize = 3;
+const BUFFER_SIZE: usize = 5;
 
 pub fn test_buffer() {
     let mut buffer = [0; BUFFER_SIZE];
     let mut rust_buffer = [0; BUFFER_SIZE];
-    let expected_buffer = [243025, 65070, 51450];
+    let expected_buffer = [243025, 65070, 51450, 12, 12];
 
     unsafe {
         entry(BUFFER_SIZE as u32, buffer.as_mut_ptr());

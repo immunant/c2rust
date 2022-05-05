@@ -34,6 +34,27 @@ int mul5_3(int x) {
     return x;
 }
 
+int mul2(int var64)
+{
+    int out;
+    asm("add %0, %1\n\t"
+        : "=r"(out)
+        : "0"(var64));
+    return out;
+}
+
+
+int mul2_2(int var64)
+{
+    int out;
+    int dummy = 2;
+    asm("add %0, %2\n\t"
+        "add %1, %1"
+        : "=r"(out)
+        : "r"(dummy), "0"(var64));
+    return out;
+}
+
 void entry(const unsigned int buffer_size, int buffer[const])
 {
     int i = 0;
@@ -41,4 +62,6 @@ void entry(const unsigned int buffer_size, int buffer[const])
     buffer[i++] = mul5_1(48605);
     buffer[i++] = mul5_2(13014);
     buffer[i++] = mul5_3(10290);
+    buffer[i++] = mul2(6);
+    buffer[i++] = mul2_2(6);
 }
