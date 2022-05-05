@@ -12,8 +12,8 @@ use rustc_interface::Queries;
 use rustc_interface::interface::Compiler;
 use rustc_middle::mir::{
     Body, BasicBlock, BasicBlockData, START_BLOCK, Terminator, TerminatorKind, SourceInfo, Local,
-    LocalDecl, LocalKind, Mutability, Rvalue, AggregateKind, Place, PlaceRef, PlaceElem, Operand,
-    Statement, StatementKind, BorrowKind, Constant, ConstantKind,
+    LocalDecl, LocalKind, LocalInfo, BindingForm, Mutability, Rvalue, AggregateKind, Place,
+    PlaceRef, PlaceElem, Operand, Statement, StatementKind, BorrowKind, Constant, ConstantKind,
 };
 use rustc_middle::mir::interpret::{Allocation, ConstValue};
 use rustc_middle::mir::pretty;
@@ -127,8 +127,12 @@ pub fn borrowck_mir<'tcx>(
                 hypothesis[lty.label.index()]
             }
         });
-        eprintln!("{:?}: addr_of = {:?}, type = {:?}, info = {:?}",
-            local, addr_of, ty, decl.local_info);
+        eprintln!("{:?} ({}): addr_of = {:?}, type = {:?}",
+            local,
+            describe_local(acx.tcx, decl),
+            addr_of,
+            ty,
+        );
     }
 }
 
@@ -248,4 +252,36 @@ fn assign_origins<'tcx>(
             _ => Label { origin: None, perm },
         }
     })
+}
+
+fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
+    let mut span = decl.source_info.span;
+    if let Some(ref info) = decl.local_info {
+        if let LocalInfo::User(ref binding_form) = **info {
+            let binding_form = binding_form.as_ref().assert_crate_local();
+            if let BindingForm::Var(ref v) = *binding_form {
+                span = v.pat_span;
+            }
+        }
+    }
+
+    let s = tcx.sess.source_map().span_to_snippet(span).unwrap();
+    let s = {
+        let mut s2 = String::new();
+        for word in s.split_ascii_whitespace() {
+            if s2.len() > 0 {
+                s2.push(' ');
+            }
+            s2.push_str(word);
+        }
+        s2
+    };
+
+    let (src1, src2, src3) = if s.len() > 20 {
+        (&s[..10], " ... ", &s[s.len() - 10 ..])
+    } else {
+        (&s[..], "", "")
+    };
+    let line = tcx.sess.source_map().lookup_char_pos(span.lo()).line;
+    format!("{}: {}{}{}", line, src1, src2, src3)
 }
