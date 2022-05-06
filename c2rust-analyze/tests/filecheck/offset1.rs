@@ -29,3 +29,12 @@ pub unsafe fn offset1_immut(x: *const i32, off: isize) -> i32 {
     // CHECK-DAG: ([[#@LINE+1]]: x.offset(off)): {{.*}}type = READ | UNIQUE#
     *x.offset(off)
 }
+
+// CHECK-LABEL: final labeling for "offset1_double"
+// CHECK-DAG: ([[#@LINE+1]]: x): {{.*}}type = READ | UNIQUE | OFFSET_ADD | OFFSET_SUB#
+pub unsafe fn offset1_double(x: *mut i32, off: isize) -> i32 {
+    // CHECK-DAG: ([[#@LINE+3]]: x): {{.*}}type = READ | UNIQUE | OFFSET_ADD | OFFSET_SUB#
+    // CHECK-DAG: ([[#@LINE+2]]: x.offset(off)): {{.*}}type = READ | UNIQUE | OFFSET_ADD | OFFSET_SUB#
+    // CHECK-DAG: ([[#@LINE+1]]: x.offset{{.*}}...{{.*}}): {{.*}}type = READ | UNIQUE#
+    *x.offset(off).offset(off)
+}
