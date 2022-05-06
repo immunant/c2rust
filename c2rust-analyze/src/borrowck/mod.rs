@@ -278,7 +278,7 @@ fn describe_local(tcx: TyCtxt, decl: &LocalDecl) -> String {
     };
 
     let (src1, src2, src3) = if s.len() > 20 {
-        (&s[..10], " ... ", &s[s.len() - 10 ..])
+        (&s[..15], " ... ", &s[s.len() - 5 ..])
     } else {
         (&s[..], "", "")
     };
