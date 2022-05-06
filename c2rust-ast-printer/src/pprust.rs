@@ -1,5 +1,3 @@
-use proc_macro2::{TokenStream, TokenTree};
-
 #[cfg(test)]
 mod tests;
 
@@ -136,9 +134,19 @@ fn main_fn(stmt: syn::Stmt) -> syn::ItemFn {
     }
 }
 
+fn ret_expr() -> syn::Expr {
+    syn::Expr::Return(syn::ExprReturn {
+        attrs: vec![],
+        return_token: Default::default(),
+        expr: None,
+    })
+}
+
 pub fn expr_to_string(e: &syn::Expr) -> String {
     let s = to_string(move || minimal_file(syn::Stmt::Expr(e.clone())));
-    strip_main_fn(&s).to_owned()
+    strip_main_fn(&s)
+    .trim_end_matches(";")
+    .to_owned()
 }
 
 pub fn path_to_string(p: &syn::Path) -> String {
@@ -151,11 +159,7 @@ pub fn path_to_string(p: &syn::Path) -> String {
 }
 
 pub fn pat_to_string(p: &syn::Pat) -> String {
-    let ret_expr = Box::new(syn::Expr::Return(syn::ExprReturn {
-        attrs: vec![],
-        return_token: Default::default(),
-        expr: None,
-    }));
+    let ret_expr = Box::new(ret_expr());
     let e = syn::Expr::Let(syn::ExprLet {
         attrs: vec![],
         let_token: Default::default(),
