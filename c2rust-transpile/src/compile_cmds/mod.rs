@@ -37,7 +37,7 @@ impl CompileCmd {
                 let path = self.directory.join(&self.file);
                 let e = format!("could not canonicalize {}", path.display());
                 path.canonicalize().expect(&e)
-            },
+            }
         }
     }
 }
@@ -102,7 +102,7 @@ fn build_link_commands(mut v: Vec<Rc<CompileCmd>>) -> Result<Vec<LinkCmd>, Error
     for (idx, ccmd) in v.iter().enumerate() {
         let lcmd = match ccmd.file.strip_prefix("/c2rust/link/") {
             Ok(lcmd) => lcmd.to_str().unwrap(),
-            Err(_) => continue
+            Err(_) => continue,
         };
         let mut lcmd: LinkCmd = serde_bencode::from_str(lcmd)?;
 
@@ -124,7 +124,10 @@ fn build_link_commands(mut v: Vec<Rc<CompileCmd>>) -> Result<Vec<LinkCmd>, Error
     // Check if we have left-over compile commands; if we do,
     // bind them to the crate itself (which becomes a `staticlib` or `rlib`)
     let mut idx = 0;
-    v.retain(|_| { idx += 1; !seen_ccmds.contains(&(idx - 1)) });
+    v.retain(|_| {
+        idx += 1;
+        !seen_ccmds.contains(&(idx - 1))
+    });
     if !v.is_empty() {
         let lcmd = LinkCmd {
             // FIXME: this doesn't catch all of them; do we need to???

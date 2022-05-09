@@ -11,12 +11,12 @@ use self::handlebars::Handlebars;
 use self::pathdiff::diff_paths;
 use serde_json::json;
 
-use super::TranspilerConfig;
 use super::compile_cmds::LinkCmd;
-use crate::CrateSet;
-use crate::PragmaSet;
+use super::TranspilerConfig;
 use crate::get_module_name;
+use crate::CrateSet;
 use crate::ExternCrateDetails;
+use crate::PragmaSet;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -98,7 +98,14 @@ pub fn emit_build_files<'lcmd>(
     }
     crate_cfg.and_then(|ccfg| {
         emit_build_rs(tcfg, &reg, &build_dir, ccfg.link_cmd);
-        emit_lib_rs(tcfg, &reg, &build_dir, ccfg.modules, ccfg.pragmas, &ccfg.crates)
+        emit_lib_rs(
+            tcfg,
+            &reg,
+            &build_dir,
+            ccfg.modules,
+            ccfg.pragmas,
+            &ccfg.crates,
+        )
     })
 }
 
@@ -124,11 +131,26 @@ impl ModuleTree {
 
     fn linearize_internal(&self, name: &str, res: &mut Vec<Module>) {
         if self.0.is_empty() {
-            res.push(Module { name: name.to_string(), path: None, open: false, close: false });
+            res.push(Module {
+                name: name.to_string(),
+                path: None,
+                open: false,
+                close: false,
+            });
         } else {
-            res.push(Module { name: name.to_string(), path: None, open: true, close: false });
+            res.push(Module {
+                name: name.to_string(),
+                path: None,
+                open: true,
+                close: false,
+            });
             self.linearize(res);
-            res.push(Module { name: name.to_string(), path: None, open: false, close: true });
+            res.push(Module {
+                name: name.to_string(),
+                path: None,
+                open: false,
+                close: true,
+            });
         }
     }
 }
@@ -176,7 +198,12 @@ fn convert_module_list(
                 let relpath = diff_paths(m, build_dir).unwrap();
                 let path = Some(relpath.to_str().unwrap().to_string());
                 let name = get_module_name(m, true, false, false).unwrap();
-                res.push(Module { path, name, open: false, close: false });
+                res.push(Module {
+                    path,
+                    name,
+                    open: false,
+                    close: false,
+                });
             }
         }
     }
@@ -221,7 +248,6 @@ fn emit_lib_rs(
     pragmas: PragmaSet,
     crates: &CrateSet,
 ) -> Option<PathBuf> {
-
     let modules = convert_module_list(tcfg, build_dir, modules, ModuleSubset::Libraries);
     let crates = convert_dependencies_list(crates.clone());
     let file_name = get_lib_rs_file_name(tcfg);
@@ -263,7 +289,12 @@ fn emit_cargo_toml<'lcmd>(
         "workspace_members": workspace_members.unwrap_or_default(),
     });
     if let Some(ccfg) = crate_cfg {
-        let binaries = convert_module_list(tcfg, build_dir, ccfg.modules.to_owned(), ModuleSubset::Binaries);
+        let binaries = convert_module_list(
+            tcfg,
+            build_dir,
+            ccfg.modules.to_owned(),
+            ModuleSubset::Binaries,
+        );
         let dependencies = convert_dependencies_list(ccfg.crates.clone());
         let crate_json = json!({
             "crate_name": ccfg.crate_name,
@@ -274,13 +305,13 @@ fn emit_cargo_toml<'lcmd>(
             "binaries": binaries,
             "dependencies": dependencies,
         });
-        json.as_object_mut()
-            .unwrap()
-            .extend(crate_json
-                    .as_object()
-                    .cloned() // FIXME: we need to clone it because there's no `into_object`
-                    .unwrap()
-                    .into_iter());
+        json.as_object_mut().unwrap().extend(
+            crate_json
+                .as_object()
+                .cloned() // FIXME: we need to clone it because there's no `into_object`
+                .unwrap()
+                .into_iter(),
+        );
     }
 
     let file_name = "Cargo.toml";

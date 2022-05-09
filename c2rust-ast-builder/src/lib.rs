@@ -3,4 +3,4 @@ extern crate syn;
 //extern crate quote;
 
 mod builder;
-pub use builder::{mk, Builder, Make, properties};
+pub use builder::{mk, properties, Builder, Make};

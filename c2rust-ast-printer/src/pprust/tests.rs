@@ -13,7 +13,10 @@ fn test_expr_to_string() {
 
 #[test]
 fn test_pat_to_string() {
-    let wild_pat = syn::Pat::Wild(syn::PatWild {attrs: vec![], underscore_token: Default::default()});
+    let wild_pat = syn::Pat::Wild(syn::PatWild {
+        attrs: vec![],
+        underscore_token: Default::default(),
+    });
     assert_eq!(pat_to_string(&wild_pat), "_");
 }
 

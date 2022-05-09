@@ -58,9 +58,12 @@ impl<'c> Translation<'c> {
             fn is_lvalue(e: &Expr) -> bool {
                 match e {
                     Expr::Path(..)
-                        | Expr::Unary(ExprUnary {op: syn::UnOp::Deref(_), ..})
-                        | Expr::Field(..)
-                        | Expr::Index(..) => true,
+                    | Expr::Unary(ExprUnary {
+                        op: syn::UnOp::Deref(_),
+                        ..
+                    })
+                    | Expr::Field(..)
+                    | Expr::Index(..) => true,
                     _ => false,
                 }
             }
@@ -69,9 +72,13 @@ impl<'c> Translation<'c> {
             fn is_simple_lvalue(e: &Expr) -> bool {
                 match e {
                     Expr::Path(..) => true,
-                    Expr::Unary(ExprUnary {op: syn::UnOp::Deref(_), ref expr, ..})
-                        | Expr::Field(ExprField {base: ref expr, ..})
-                        | Expr::Index(ExprIndex {ref expr, ..}) => is_simple_lvalue(expr),
+                    Expr::Unary(ExprUnary {
+                        op: syn::UnOp::Deref(_),
+                        ref expr,
+                        ..
+                    })
+                    | Expr::Field(ExprField { base: ref expr, .. })
+                    | Expr::Index(ExprIndex { ref expr, .. }) => is_simple_lvalue(expr),
                     _ => false,
                 }
             }
@@ -88,7 +95,10 @@ impl<'c> Translation<'c> {
             if !uses_read && is_lvalue(&*reference) {
                 Ok(WithStmts::new_val((reference, None)))
             } else if is_simple_lvalue(&*reference) {
-                Ok(WithStmts::new_val((reference.clone(), Some(read(reference)?))))
+                Ok(WithStmts::new_val((
+                    reference.clone(),
+                    Some(read(reference)?),
+                )))
             } else {
                 // This is the case where we explicitly need to factor out possible side-effects.
 
@@ -101,7 +111,8 @@ impl<'c> Translation<'c> {
                     Some(reference),
                 )));
 
-                let write = mk().unary_expr(UnOp::Deref(Default::default()), mk().ident_expr(&ptr_name));
+                let write =
+                    mk().unary_expr(UnOp::Deref(Default::default()), mk().ident_expr(&ptr_name));
 
                 Ok(WithStmts::new(
                     vec![compute_ref],

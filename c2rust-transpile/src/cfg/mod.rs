@@ -29,7 +29,7 @@ use std::io;
 use std::io::Write;
 use std::ops::Deref;
 use std::ops::Index;
-use syn::{Arm, Expr, Pat, Stmt, spanned::Spanned};
+use syn::{spanned::Spanned, Arm, Expr, Pat, Stmt};
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -177,9 +177,7 @@ impl Structure<StmtOrDecl> {
             } => {
                 let body = body
                     .into_iter()
-                    .flat_map(|s: StmtOrDecl| -> Vec<Stmt> {
-                        s.place_decls(lift_me, store)
-                    })
+                    .flat_map(|s: StmtOrDecl| -> Vec<Stmt> { s.place_decls(lift_me, store) })
                     .collect();
                 let terminator = terminator.place_decls(lift_me, store);
                 Structure::Simple {
@@ -462,18 +460,12 @@ impl StmtOrDecl {
 impl StmtOrDecl {
     /// Produce a `Stmt` by replacing `StmtOrDecl::Decl`  variants with either a declaration with
     /// initializer or only an initializer.
-    fn place_decls(
-        self,
-        lift_me: &IndexSet<CDeclId>,
-        store: &mut DeclStmtStore,
-    ) -> Vec<Stmt> {
+    fn place_decls(self, lift_me: &IndexSet<CDeclId>, store: &mut DeclStmtStore) -> Vec<Stmt> {
         match self {
             StmtOrDecl::Stmt(s) => vec![s],
-            StmtOrDecl::Decl(d) if lift_me.contains(&d) => store
-                .extract_assign(d)
-                .unwrap()
-                .into_iter()
-                .collect(),
+            StmtOrDecl::Decl(d) if lift_me.contains(&d) => {
+                store.extract_assign(d).unwrap().into_iter().collect()
+            }
             StmtOrDecl::Decl(d) => store
                 .extract_decl_and_assign(d)
                 .unwrap()
@@ -614,9 +606,7 @@ impl Cfg<Label, StmtOrDecl> {
                         wip.body.push(StmtOrDecl::Stmt(mk().semi_stmt(ret_expr)));
                     }
                     ImplicitReturnType::StmtExpr(ctx, expr_id, brk_label) => {
-                        let (stmts, val) = translator
-                            .convert_expr(ctx, expr_id)?
-                            .discard_unsafe();
+                        let (stmts, val) = translator.convert_expr(ctx, expr_id)?.discard_unsafe();
 
                         wip.body
                             .extend(stmts.into_iter().map(|s| StmtOrDecl::Stmt(s)));
@@ -1015,10 +1005,9 @@ impl DeclStmtStore {
     /// Extract _just_ the Rust statements for a declaration (without initialization). Used when you
     /// want to move just a declaration to a larger scope.
     pub fn extract_decl(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
-        let DeclStmtInfo { decl, assign, .. } = self.store.swap_remove(&decl_id).ok_or(format_err!(
-            "Cannot find information on declaration 1 {:?}",
-            decl_id
-        ))?;
+        let DeclStmtInfo { decl, assign, .. } = self.store.swap_remove(&decl_id).ok_or(
+            format_err!("Cannot find information on declaration 1 {:?}", decl_id),
+        )?;
 
         let decl: Vec<Stmt> = decl.ok_or(format_err!(
             "Declaration for {:?} has already been extracted",
@@ -1039,10 +1028,9 @@ impl DeclStmtStore {
     /// initially attached to). Used when you've moved a declaration but now you need to also run the
     /// initializer.
     pub fn extract_assign(&mut self, decl_id: CDeclId) -> Result<Vec<Stmt>, TranslationError> {
-        let DeclStmtInfo { decl, assign, .. } = self.store.swap_remove(&decl_id).ok_or(format_err!(
-            "Cannot find information on declaration 2 {:?}",
-            decl_id
-        ))?;
+        let DeclStmtInfo { decl, assign, .. } = self.store.swap_remove(&decl_id).ok_or(
+            format_err!("Cannot find information on declaration 2 {:?}", decl_id),
+        )?;
 
         let assign: Vec<Stmt> = assign.ok_or(format_err!(
             "Assignment for {:?} has already been extracted",
@@ -1386,7 +1374,9 @@ impl CfgBuilder {
 
         let mut wip = self.new_wip_block(entry);
 
-        wip.span = translator.get_span(SomeId::Stmt(stmt_id)).unwrap_or(DUMMY_SP);
+        wip.span = translator
+            .get_span(SomeId::Stmt(stmt_id))
+            .unwrap_or(DUMMY_SP);
 
         let out_wip: Result<Option<WipBlock>, TranslationError> =
             match translator.ast_context.index(stmt_id).kind {
@@ -1435,7 +1425,9 @@ impl CfgBuilder {
                     };
 
                     // Condition
-                    let (stmts, val) = translator.convert_condition(ctx, true, scrutinee)?.discard_unsafe();
+                    let (stmts, val) = translator
+                        .convert_condition(ctx, true, scrutinee)?
+                        .discard_unsafe();
                     wip.extend(stmts);
 
                     let cond_val = translator.ast_context[scrutinee].kind.get_bool();
@@ -1490,7 +1482,9 @@ impl CfgBuilder {
                     self.open_loop();
 
                     // Condition
-                    let (stmts, val) = translator.convert_condition(ctx, true, condition)?.discard_unsafe();
+                    let (stmts, val) = translator
+                        .convert_condition(ctx, true, condition)?
+                        .discard_unsafe();
                     let cond_val = translator.ast_context[condition].kind.get_bool();
                     let mut cond_wip = self.new_wip_block(cond_entry);
                     cond_wip.extend(stmts);
@@ -1557,7 +1551,9 @@ impl CfgBuilder {
                     self.continue_labels.pop();
 
                     // Condition
-                    let (stmts, val) = translator.convert_condition(ctx, true, condition)?.discard_unsafe();
+                    let (stmts, val) = translator
+                        .convert_condition(ctx, true, condition)?
+                        .discard_unsafe();
                     let cond_val = translator.ast_context[condition].kind.get_bool();
                     let mut cond_wip = self.new_wip_block(cond_entry);
                     cond_wip.extend(stmts);
@@ -1647,7 +1643,8 @@ impl CfgBuilder {
                         match increment {
                             None => slf.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
                             Some(incr) => {
-                                let incr_stmts = translator.convert_expr(ctx.unused(), incr)?.into_stmts();
+                                let incr_stmts =
+                                    translator.convert_expr(ctx.unused(), incr)?.into_stmts();
                                 let mut incr_wip = slf.new_wip_block(incr_entry);
                                 incr_wip.extend(incr_stmts);
                                 slf.add_wip_block(incr_wip, Jump(cond_entry));
@@ -1737,7 +1734,7 @@ impl CfgBuilder {
                             };
 
                             Ok(next)
-                        },
+                        }
                     }
                 }
 
@@ -1771,7 +1768,7 @@ impl CfgBuilder {
                     // Case
                     let resolved = translator.ast_context.resolve_expr(case_expr);
                     let branch = match resolved.1 {
-                        CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_))  => {
+                        CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => {
                             match translator
                                 .convert_expr(ctx.used(), resolved.0)?
                                 .to_pure_expr()
@@ -1779,7 +1776,7 @@ impl CfgBuilder {
                                 Some(expr) => match *expr {
                                     Expr::Lit(..) | Expr::Path(..) => Some(expr),
                                     _ => None,
-                                }
+                                },
                                 _ => None,
                             }
                         }
@@ -1862,10 +1859,7 @@ impl CfgBuilder {
                         .expect("No 'SwitchCases' to pop");
 
                     let mut cases: Vec<_> = switch_case.cases.clone();
-                    cases.push((
-                        mk().wild_pat(),
-                        switch_case.default.unwrap_or(next_label),
-                    ));
+                    cases.push((mk().wild_pat(), switch_case.default.unwrap_or(next_label)));
 
                     // Add the condition basic block terminator (we need the information built up during
                     // the conversion of the body to make the right terminator)
