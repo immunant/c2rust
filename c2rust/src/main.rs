@@ -1,10 +1,10 @@
 #[macro_use(crate_authors, load_yaml)]
 extern crate clap;
 use clap::{App, AppSettings, SubCommand};
+use git_testament::{git_testament, render_testament};
 use std::env;
 use std::ffi::OsStr;
 use std::process::{exit, Command};
-use git_testament::{git_testament, render_testament};
 
 git_testament!(TESTAMENT);
 

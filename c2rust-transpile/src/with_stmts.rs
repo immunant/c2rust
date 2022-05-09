@@ -126,18 +126,13 @@ impl WithStmts<Box<Expr>> {
 
     pub fn to_unsafe_pure_expr(self) -> Option<Box<Expr>> {
         let is_unsafe = self.is_unsafe;
-        self.to_pure_expr()
-            .map(|expr| {
-                if is_unsafe {
-                    mk().unsafe_block_expr(
-                        mk().unsafe_block(
-                            vec![mk().expr_stmt(expr)]
-                        )
-                    )
-                } else {
-                    expr
-                }
-            })
+        self.to_pure_expr().map(|expr| {
+            if is_unsafe {
+                mk().unsafe_block_expr(mk().unsafe_block(vec![mk().expr_stmt(expr)]))
+            } else {
+                expr
+            }
+        })
     }
 
     pub fn to_pure_expr(self) -> Option<Box<Expr>> {
@@ -160,8 +155,7 @@ impl WithStmts<Box<Expr>> {
     }
 }
 
-impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>>
-{
+impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>> {
     fn from_iter<I: IntoIterator<Item = WithStmts<T>>>(value: I) -> Self {
         let mut stmts = vec![];
         let mut res = vec![];

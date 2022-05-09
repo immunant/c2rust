@@ -25,16 +25,16 @@
 //!
 //! Comments cannot currently be attached before the close of a Block, or after all Items in a File.
 
-use crate::rust_ast::{pos_to_span, traverse, SpanExt, DUMMY_SP, BytePos, set_span::SetSpan};
+use crate::rust_ast::{pos_to_span, set_span::SetSpan, traverse, BytePos, SpanExt, DUMMY_SP};
+use c2rust_ast_printer::pprust::comments;
 use itertools::Itertools;
+use proc_macro2::{Span, TokenStream};
 use smallvec::{smallvec, SmallVec};
 use std::collections::BTreeMap;
 use std::default::Default;
-use syn::spanned::Spanned as _;
 use syn::__private::ToTokens;
-use proc_macro2::{Span, TokenStream};
+use syn::spanned::Spanned as _;
 use syn::*;
-use c2rust_ast_printer::pprust::comments;
 
 pub struct CommentStore {
     /// The `BytePos` keys do _not_ correspond to the comment position. Instead, they refer to the
@@ -63,14 +63,22 @@ impl CommentStore {
 
     /// Convert the comment context into the accumulated (and ordered) `libsyntax` comments.
     pub fn into_comments(self) -> Vec<comments::Comment> {
-        self.output_comments.into_iter().map(|(_, v)| v).flatten().collect()
+        self.output_comments
+            .into_iter()
+            .map(|(_, v)| v)
+            .flatten()
+            .collect()
     }
 
     /// Add comments at the specified position, then return the `BytePos` that
     /// should be given to something we want associated with this comment. If
     /// `pos` is None, or a comment is not found in the given position, use the
     /// current position instead.
-    fn insert_comments(&mut self, mut new_comments: SmallVec<[comments::Comment; 1]>, pos: Option<BytePos>) -> BytePos {
+    fn insert_comments(
+        &mut self,
+        mut new_comments: SmallVec<[comments::Comment; 1]>,
+        pos: Option<BytePos>,
+    ) -> BytePos {
         if let Some(pos) = pos {
             if let Some(comments) = self.output_comments.get_mut(&pos) {
                 comments.extend(new_comments);
@@ -87,8 +95,8 @@ impl CommentStore {
         // the AST node it annotates.
         for cmmt in &mut new_comments {
             //if let comments::CommentStyle::Isolated = cmmt.style {
-                cmmt.pos = BytePos(self.current_position);
-                self.current_position += 1;
+            cmmt.pos = BytePos(self.current_position);
+            self.current_position += 1;
             //}
         }
 
@@ -110,7 +118,7 @@ impl CommentStore {
     /// Add an isolated comment at the current position, then return the `Span`
     /// that should be given to something we want associated with this comment.
     pub fn add_comments(&mut self, lines: &[String]) -> Option<BytePos> {
-        self.extend_existing_comments(lines, None)//, comments::CommentStyle::Isolated)
+        self.extend_existing_comments(lines, None) //, comments::CommentStyle::Isolated)
     }
 
     /// Add a comment at the specified position, then return the `BytePos` that
@@ -128,11 +136,9 @@ impl CommentStore {
                 .map(|line: &str| {
                     let mut line = line.to_owned();
                     let begin = line.trim_start();
-                    if begin.starts_with("//!")
-                        || begin.starts_with("///")
-                    {
+                    if begin.starts_with("//!") || begin.starts_with("///") {
                         let begin_loc = line.len() - begin.len();
-                        line.insert(2+begin_loc, ' ');
+                        line.insert(2 + begin_loc, ' ');
                     };
                     line
                 })
@@ -161,7 +167,10 @@ impl CommentStore {
             return;
         }
         if let Some(comments) = self.output_comments.remove(&old) {
-            self.output_comments.entry(new).or_insert(SmallVec::new()).extend(comments);
+            self.output_comments
+                .entry(new)
+                .or_insert(SmallVec::new())
+                .extend(comments);
         }
     }
 
@@ -175,11 +184,17 @@ impl CommentStore {
                 let new_comments = match self.output_comments.remove(&span.hi()) {
                     Some(nc) => nc,
                     None => {
-                        warn!("Expected comments attached to the high end of span {:?}", span);
-                        return span
-                    },
+                        warn!(
+                            "Expected comments attached to the high end of span {:?}",
+                            span
+                        );
+                        return span;
+                    }
                 };
-                self.output_comments.entry(span.lo()).or_insert(SmallVec::new()).extend(new_comments);
+                self.output_comments
+                    .entry(span.lo())
+                    .or_insert(SmallVec::new())
+                    .extend(new_comments);
                 span.shrink_to_lo()
             }
         } else {
@@ -226,7 +241,9 @@ macro_rules! reinsert_and_traverse {
     ($fn:ident, $ty:ty, $traverse:path) => {
         fn $fn(&mut self, mut x: $ty) -> $ty {
             let (lo, hi) = x.span().inner();
-            x.set_span(pos_to_span(self.reinsert_comment_at(BytePos(lo)).unwrap_or(BytePos(0))));
+            x.set_span(pos_to_span(
+                self.reinsert_comment_at(BytePos(lo)).unwrap_or(BytePos(0)),
+            ));
             x = $traverse(self, x);
             if lo != hi {
                 if let Some(new_hi) = self.reinsert_comment_at(BytePos(hi)) {
@@ -241,15 +258,26 @@ macro_rules! reinsert_and_traverse {
 impl traverse::Traversal for CommentTraverser {
     reinsert_and_traverse!(traverse_stmt, Stmt, traverse::traverse_stmt_def);
     reinsert_and_traverse!(traverse_expr, Expr, traverse::traverse_expr_def);
-    reinsert_and_traverse!(traverse_trait_item, TraitItem, traverse::traverse_trait_item_def);
-    reinsert_and_traverse!(traverse_impl_item, ImplItem, traverse::traverse_impl_item_def);
+    reinsert_and_traverse!(
+        traverse_trait_item,
+        TraitItem,
+        traverse::traverse_trait_item_def
+    );
+    reinsert_and_traverse!(
+        traverse_impl_item,
+        ImplItem,
+        traverse::traverse_impl_item_def
+    );
     reinsert_and_traverse!(traverse_block, Block, traverse::traverse_block_def);
     reinsert_and_traverse!(traverse_local, Local, traverse::traverse_local_def);
     reinsert_and_traverse!(traverse_field, FieldValue, traverse::traverse_field_def);
     reinsert_and_traverse!(traverse_item, Item, traverse::traverse_item_def);
 
     fn traverse_foreign_item(&mut self, mut i: ForeignItem) -> ForeignItem {
-        i.set_span(pos_to_span(self.reinsert_comment_at(i.span().lo()).unwrap_or(BytePos(0))));
+        i.set_span(pos_to_span(
+            self.reinsert_comment_at(i.span().lo())
+                .unwrap_or(BytePos(0)),
+        ));
         i
     }
 }

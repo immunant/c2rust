@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests;
 
-
 #[derive(PartialEq, Eq, Debug, PartialOrd, Ord, Copy, Clone)]
 pub struct BytePos(pub u32);
 
@@ -75,7 +74,8 @@ impl Comments {
 
 impl Extend<comments::Comment> for Comments {
     fn extend<I>(&mut self, iter: I)
-        where I: IntoIterator<Item = comments::Comment>
+    where
+        I: IntoIterator<Item = comments::Comment>,
     {
         self.comments.extend(iter);
     }
@@ -144,9 +144,7 @@ fn ret_expr() -> syn::Expr {
 
 pub fn expr_to_string(e: &syn::Expr) -> String {
     let s = to_string(move || minimal_file(syn::Stmt::Expr(e.clone())));
-    strip_main_fn(&s)
-    .trim_end_matches(";")
-    .to_owned()
+    strip_main_fn(&s).trim_end_matches(";").to_owned()
 }
 
 pub fn path_to_string(p: &syn::Path) -> String {
