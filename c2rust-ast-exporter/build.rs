@@ -87,7 +87,7 @@ fn generate_bindings() -> Result<(), &'static str> {
 
     let cppbindings = bindgen::Builder::default()
         .header("src/ExportResult.hpp")
-        .whitelist_type("ExportResult")
+        .allowlist_type("ExportResult")
         .generate_comments(true)
         .derive_default(true)
         // Tell bindgen we are processing c++

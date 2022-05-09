@@ -106,8 +106,8 @@ impl<'c> Translation<'c> {
             CLiteral::Floating(val, ref c_str) => {
                 let mut bytes: Vec<u8> = vec![];
                 let str = if c_str.is_empty() {
-                    dtoa::write(&mut bytes, val).unwrap();
-                    String::from_utf8(bytes).unwrap()
+                    let mut buffer = dtoa::Buffer::new();
+                    buffer.format(val).to_string()
                 } else {
                     c_str.to_owned()
                 };

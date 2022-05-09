@@ -13,31 +13,31 @@ description = "C2Rust transpiler implementation"
 edition = "2018"
 
 [dependencies]
-clap = {version = "2.33", features = ["yaml"]}
-dtoa = "0.4.2"
-serde = { version = "1.0", features = ["rc"] }
-serde_json = "1.0"
-serde_derive = "1.0.80"
-serde_bytes = "0.11"
-serde_bencode = "0.2"
-syn = { version = "1.0", features = ["full", "parsing", "printing"]}
-proc-macro2 = "1.0"
-indexmap = { version = "1.0.1", features = ["serde-1"] }
 c2rust-ast-builder = { version = "0.15.0", path = "../c2rust-ast-builder" }
-libc = "0.2"
 c2rust-ast-exporter = { version = "0.15.0", path = "../c2rust-ast-exporter" }
 c2rust-ast-printer = { version = "0.15.0", path = "../c2rust-ast-printer" }
-handlebars = "2.0"
-itertools = "0.8"
-pathdiff = "0.1.0"
-regex = "1"
-smallvec = "1.0"
-strum = "0.16"
-strum_macros = "0.16"
-log = "0.4"
-fern = { version = "0.5", features = ["colored"] }
+clap = {version = "2.34", features = ["yaml"]}
+colored = "2.0"
+dtoa = "1.0"
 failure = "0.1.5"
-colored = "1.7"
+fern = { version = "0.6", features = ["colored"] }
+handlebars = "4.2"
+indexmap = { version = "1.0.1", features = ["serde-1"] }
+itertools = "0.10"
+libc = "0.2"
+log = "0.4"
+pathdiff = "0.2"
+proc-macro2 = "1.0"
+regex = "1"
+serde = { version = "1.0", features = ["rc"] }
+serde_bencode = "0.2"
+serde_bytes = "0.11"
+serde_derive = "1.0.80"
+serde_json = "1.0"
+smallvec = "1.0"
+strum = "0.24"
+strum_macros = "0.24"
+syn = { version = "1.0", features = ["full", "parsing", "printing"]}
 
 [features]
 # Force static linking of LLVM
