@@ -9,7 +9,7 @@ if [[ "$EUID" -eq 0 ]]
   exit
 fi
 
-RUST_VER=${RUST_VER:-nightly-2019-12-05}
+RUST_VER=${RUST_VER:-nightly-2021-11-22}
 if hash rustup 2>/dev/null; then # rustup is installed
   rustup toolchain install $RUST_VER
   rustup default $RUST_VER
