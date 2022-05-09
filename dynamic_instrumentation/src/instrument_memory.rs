@@ -5,8 +5,8 @@ use indexmap::IndexSet;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::{PlaceContext, Visitor};
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Location, Operand,
-    Place, PlaceElem, Rvalue, SourceInfo, Statement, StatementKind, Terminator, TerminatorKind,
+    BasicBlock, BasicBlockData, Body, CastKind, Constant, Local, LocalDecl, Location, Mutability, Operand,
+    Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement, StatementKind, Terminator, TerminatorKind,
     START_BLOCK,
 };
 use rustc_middle::ty::{self, List, ParamEnv, TyCtxt};
@@ -53,7 +53,6 @@ impl InstrumentMemoryOps {
         let locs: Vec<MirLoc> = locs.drain(..).collect();
         let functions: HashMap<c2rust_analysis_rt::DefPathHash, String> =
             functions.drain().collect();
-        dbg!("Writing metadata to {:?}", metadata_file_path);
         let metadata_file =
             File::create(metadata_file_path).context("Could not open metadata file")?;
         let metadata = Metadata { locs, functions };
@@ -172,7 +171,6 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                     );
                 }
                 PlaceElem::Deref if !context.is_mutating_use() => {
-                    dbg!(context);
                     self.add_instrumentation(
                         location,
                         load_fn,
@@ -197,10 +195,16 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
             .expect("Could not find pointer store hook");
 
         if let StatementKind::Assign(assign) = &statement.kind {
-            let place = assign.0;
+            let mut place = assign.0;
             let value = &assign.1;
-            let local_decl = &self.body.local_decls[place.local];
-            if place.is_indirect() && local_decl.ty.is_unsafe_ptr() {
+            if place.is_indirect() {
+                let mut place_ref = place.as_ref();
+                while let Some((cur_ref, proj)) = place_ref.last_projection() {
+                    if let ProjectionElem::Deref = proj {
+                        place = Place { local: cur_ref.local, projection: self.tcx.intern_place_elems(cur_ref.projection) };
+                    }
+                    place_ref = cur_ref;
+                }
                 self.add_instrumentation(
                     location,
                     store_fn,
@@ -208,9 +212,7 @@ impl<'a, 'tcx: 'a> Visitor<'tcx> for FunctionInstrumenter<'a, 'tcx> {
                     false,
                     false,
                 );
-
-            }
-            if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
+            } else if value.ty(&self.body.local_decls, self.tcx).is_unsafe_ptr() {
                 // We want to insert after the assignment statement so we can
                 // use the destination local as our instrumentation argument
                 location.statement_index += 1;
@@ -398,7 +400,7 @@ fn do_instrumentation<'tcx>(
         args.insert(0, make_const(tcx, loc_idx));
 
         let (blocks, locals) = body.basic_blocks_and_local_decls_mut();
-        let mut extra_statement = None;
+        let mut extra_statements = None;
         if after_call {
             let call = blocks[loc.block].terminator_mut();
             let ret_value = if let TerminatorKind::Call {
@@ -408,7 +410,6 @@ fn do_instrumentation<'tcx>(
             } = &mut call.kind
             {
                 // Make the call operands copies so we don't reuse a moved value
-                dbg!("Replacing args with copies", &args);
                 args.iter_mut().for_each(|arg| *arg = arg.to_copy());
 
                 Operand::Copy(*place)
@@ -419,8 +420,8 @@ fn do_instrumentation<'tcx>(
                 );
             };
 
-            if let Some((cast_stmt, cast_local)) = cast_ptr_to_usize(tcx, locals, &ret_value) {
-                extra_statement = Some(cast_stmt);
+            if let Some((casts, cast_local)) = cast_ptr_to_usize(tcx, locals, &ret_value) {
+                extra_statements = Some(casts);
                 args.push(cast_local);
             } else {
                 args.push(ret_value);
@@ -452,8 +453,8 @@ fn do_instrumentation<'tcx>(
             let orig_call = mem::replace(orig_call, instrument_call);
             blocks[loc.block].terminator = Some(orig_call);
 
-            if let Some(stmt) = extra_statement {
-                blocks[successor_block].statements.push(stmt);
+            if let Some(stmts) = extra_statements {
+                blocks[successor_block].statements.extend(stmts);
             }
         }
 
@@ -491,9 +492,9 @@ fn insert_call<'tcx>(
     });
 
     for arg in &mut args {
-        if let Some((cast_stmt, cast_local)) = cast_ptr_to_usize(tcx, locals, &arg) {
+        if let Some((cast_stmts, cast_local)) = cast_ptr_to_usize(tcx, locals, &arg) {
             *arg = cast_local;
-            blocks[block].statements.insert(statement_index, cast_stmt);
+            blocks[block].statements.splice(statement_index..statement_index, cast_stmts);
         }
     }
 
@@ -530,20 +531,41 @@ fn cast_ptr_to_usize<'tcx>(
     tcx: TyCtxt<'tcx>,
     locals: &mut IndexVec<Local, LocalDecl<'tcx>>,
     arg: &Operand<'tcx>,
-) -> Option<(Statement<'tcx>, Operand<'tcx>)> {
-    let arg_ty = match arg {
-        Operand::Copy(place) | Operand::Move(place) => locals[place.local].ty,
-        Operand::Constant(c) => c.ty(),
-    };
+) -> Option<(Vec<Statement<'tcx>>, Operand<'tcx>)> {
+    let arg_ty = arg.ty(locals, tcx);
     if !arg_ty.is_any_ptr() {
         return None;
     }
 
-    let mut ptr_arg = arg.to_copy();
-    // Remove any deref from this pointer arg
-    if let Operand::Copy(place) = &mut ptr_arg {
-        place.projection = List::empty();
-    }
+    let mut new_stmts = vec![];
+
+    let ptr_arg = if !arg_ty.is_unsafe_ptr() {
+        let ptr_ty = arg_ty.builtin_deref(false).unwrap();
+        let raw_ptr_ty = tcx.mk_ptr(ptr_ty);
+        let raw_ptr_local = locals.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
+        let mut deref = arg.place().expect("Can't get the address of a constant").clone();
+        let mut projs = Vec::with_capacity(deref.projection.len() + 1);
+        projs.extend(deref.projection);
+        projs.push(ProjectionElem::Deref);
+        deref.projection = tcx.intern_place_elems(&*projs);
+        let cast_stmt = Statement {
+            source_info: SourceInfo::outermost(DUMMY_SP),
+            kind: StatementKind::Assign(Box::new((
+                raw_ptr_local.into(),
+                Rvalue::AddressOf(ptr_ty.mutbl, deref),
+            ))),
+        };
+        new_stmts.push(cast_stmt);
+        Operand::Move(raw_ptr_local.into())
+    } else {
+        let mut ptr_arg = arg.to_copy();
+        // Remove any deref from this pointer arg
+        if let Operand::Copy(place) = &mut ptr_arg {
+            place.projection = List::empty();
+        }
+
+        ptr_arg
+    };
 
     // Cast this argument to a usize before passing to the
     // instrumentation function
@@ -557,5 +579,6 @@ fn cast_ptr_to_usize<'tcx>(
             Rvalue::Cast(CastKind::Misc, ptr_arg, usize_ty),
         ))),
     };
-    Some((cast_stmt, casted_arg))
+    new_stmts.push(cast_stmt);
+    Some((new_stmts, casted_arg))
 }
