@@ -240,6 +240,20 @@ fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan
     })
 }
 
+fn has_packed_attribute(attrs: Vec<Value>) -> bool {
+    for attr in attrs {
+        match from_value::<String>(attr.clone())
+            .expect("Record attributes should be strings")
+            .as_str()
+        {
+            "packed" => return true,
+            _ => {}
+        }
+    }
+
+    return false;
+}
+
 impl ConversionContext {
     /// Create a new 'ConversionContext' seeded with top-level nodes from an 'AstContext'.
     pub fn new(untyped_context: &AstContext) -> ConversionContext {
@@ -1917,16 +1931,7 @@ impl ConversionContext {
                         None
                     };
 
-                    let mut is_packed = false;
-                    for attr in attrs {
-                        match from_value::<String>(attr.clone())
-                            .expect("Records attributes should be strings")
-                            .as_str()
-                        {
-                            "packed" => is_packed = true,
-                            _ => {}
-                        }
-                    }
+                    let mut is_packed = has_packed_attribute(attrs);
 
                     let record = CDeclKind::Struct {
                         name,
@@ -1964,16 +1969,7 @@ impl ConversionContext {
                         None
                     };
 
-                    let mut is_packed = false;
-                    for attr in attrs {
-                        match from_value::<String>(attr.clone())
-                            .expect("Records attributes should be strings")
-                            .as_str()
-                        {
-                            "packed" => is_packed = true,
-                            _ => {}
-                        }
-                    }
+                    let mut is_packed = has_packed_attribute(attrs);
 
                     let record = CDeclKind::Union { name, fields, is_packed };
 
@@ -2057,15 +2053,7 @@ impl ConversionContext {
                                 let attrs = from_value::<Vec<Value>>(node.extras[0].clone())
                                     .expect("Expected attribute array on non-canonical record decl");
 
-                                for attr in attrs {
-                                    match from_value::<String>(attr.clone())
-                                        .expect("Record attributes should be strings")
-                                        .as_str()
-                                    {
-                                        "packed" => *is_packed = true,
-                                        _ => {}
-                                    }
-                                }
+                                *is_packed = has_packed_attribute(attrs);
                             },
                             _ => {},
                         }
