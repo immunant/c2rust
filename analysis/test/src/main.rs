@@ -1,6 +1,5 @@
 #![feature(libc)]
 #![feature(extern_types)]
-#![feature(asm)]
 #![feature(label_break_value)]
 #![feature(rustc_private)]
 

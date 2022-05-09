@@ -137,6 +137,13 @@ pub unsafe extern "C" fn invalid() {
     global = 0 as *mut S;
     free(s as *mut libc::c_void);
 }
+pub unsafe extern "C" fn testing() {
+    let mut x = 10i32;
+    let mut y = 32i32;
+    let mut ptr = &mut x as *mut i32;
+    let ref mut fresh1 = ptr;
+    *fresh1 = &mut y as *mut i32;
+}
 unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
  -> libc::c_int {
     simple();
@@ -147,6 +154,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char)
     no_owner(0i32);
     no_owner(1i32);
     invalid();
+    testing();
     return 0i32;
 }
 pub fn main() {
