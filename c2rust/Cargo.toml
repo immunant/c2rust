@@ -16,16 +16,16 @@ travis-ci = { repository = "immunant/c2rust" }
 azure-devops = { project = "immunant/c2rust", pipeline = "immunant.c2rust", build="1" }
 
 [dependencies]
-clap = {version = "2.33", features = ["yaml"]}
+clap = {version = "2.34", features = ["yaml"]}
 log = "0.4"
-env_logger = "0.7"
-regex = "1.3"
-shlex = "0.1"
+env_logger = "0.9"
 git-testament = "0.2.1"
+regex = "1.3"
+shlex = "1.1"
 c2rust-transpile = { version = "0.15.1", path = "../c2rust-transpile" }
 
 [build-dependencies]
-rustc_version = "0.2"
+rustc_version = "0.4"
 chrono = "0.4"
 
 [features]

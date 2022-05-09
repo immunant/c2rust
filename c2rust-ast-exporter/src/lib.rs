@@ -85,7 +85,6 @@ include!(concat!(env!("OUT_DIR"), "/cppbindings.rs"));
 
 extern "C" {
     // ExportResult *ast_exporter(int argc, char *argv[]);
-    #[no_mangle]
     fn ast_exporter(
         argc: libc::c_int,
         argv: *const *const libc::c_char,
@@ -94,10 +93,8 @@ extern "C" {
     ) -> *mut ExportResult;
 
     // void drop_export_result(ExportResult *result);
-    #[no_mangle]
     fn drop_export_result(ptr: *mut ExportResult);
 
-    #[no_mangle]
     fn clang_version() -> *const libc::c_char;
 }
 
