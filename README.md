@@ -7,9 +7,11 @@
 
 [Latest Version]: https://img.shields.io/crates/v/c2rust.svg
 [crates.io]: https://crates.io/crates/c2rust
-[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2019--12--05-lightgrey.svg "Rustc nightly-2019-12-05"
+[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2021--11--22-lightgrey.svg "Rustc nightly-2021-11-22"
 
-C2Rust helps you migrate C99-compliant code to Rust. The [translator](c2rust-transpile) (or transpiler) produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to preserve functionality; test suites should continue to pass after translation. Generating safe and idiomatic Rust code from C ultimately requires manual effort. However, we are building a scriptable [refactoring tool](c2rust-refactor) that reduces the tedium of doing so.
+C2Rust helps you migrate C99-compliant code to Rust. The [translator](c2rust-transpile) (or transpiler) produces unsafe Rust code that closely mirrors the input C code. The primary goal of the translator is to preserve functionality; test suites should continue to pass after translation. 
+
+Generating safe and idiomatic Rust code from C ultimately requires manual effort. We are currently working on analysis to automate some of the effort required to lift unsafe Rust into safe Rust types. This work is still in the early stages, please get in touch if you're interested! We previously maintained a scriptable [refactoring tool](c2rust-refactor) that reduces the tedium of refactoring, but this tool is now deprecated so that we can move forward with a recent Rust toolchain.
 
 Here's the big picture:
 
@@ -47,29 +49,26 @@ C2Rust requires LLVM 7 or later with its corresponding clang compiler and librar
         brew install llvm python3 cmake openssl
 
 
-Finally, installing the correct nightly Rust compiler with [Rustup](https://rustup.rs/) is required on all platforms. You will also need to add `rustfmt` and `rustc-dev`:
-
-    rustup install nightly-2019-12-05
-    rustup component add --toolchain nightly-2019-12-05 rustfmt rustc-dev
+The C2Rust transpiler now builds using a stable Rust compiler. If you are developing other features, you may need to install the correct nightly compiler version.
 
 ### Installing from crates.io
 
-    cargo +nightly-2019-12-05 install c2rust
+    cargo install c2rust
 
 On OS X with Homebrew LLVM, you need to point the build system at the LLVM installation as follows:
 
-    LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo +nightly-2019-12-05 install c2rust
+    LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo install c2rust
 
 On Linux with Linuxbrew LLVM, you need to point the build system at the LLVM installation as follows:
 
-    LLVM_CONFIG_PATH=/home/linuxbrew/.linuxbrew/opt/llvm/bin/llvm-config cargo +nightly-2019-12-05 install c2rust
+    LLVM_CONFIG_PATH=/home/linuxbrew/.linuxbrew/opt/llvm/bin/llvm-config cargo  install c2rust
 
 Note: adjust `LLVM_CONFIG_PATH` accordingly if Linuxbrew was installed to your home directory.
 
 On Gentoo, you need to point the build system to the location of `libclang.so`
   and `llvm-config` as follows:
 
-    LLVM_CONFIG_PATH=/path/to/llvm-config LIBCLANG_PATH=/path/to/libclang.so cargo +nightly-2019-12-05 install c2rust
+    LLVM_CONFIG_PATH=/path/to/llvm-config LIBCLANG_PATH=/path/to/libclang.so cargo install c2rust
 
 
 If you have trouble with building and installing, or want to build from the latest master, the [developer docs](docs/README-developers.md#building-with-system-llvm-libraries) provide more details on the build system.
@@ -79,7 +78,7 @@ If you have trouble with building and installing, or want to build from the late
 If you'd like to check our recently developed features or you urgently require a bugfixed version of c2rust
 you can install it directly from Git:
 
-    cargo +nightly-2019-12-05 install --git https://github.com/immunant/c2rust.git c2rust
+    cargo install --git https://github.com/immunant/c2rust.git c2rust
 
 Please note that the master branch is under constant development and you may expirience issues or crashes.
 
