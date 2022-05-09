@@ -2061,7 +2061,8 @@ impl ConversionContext {
                     // and potentially update its `is_packed` property.
                     if let Some(v) = self.typed_context.c_decls.get_mut(&canonical_decl) {
                         match &mut v.kind {
-                            CDeclKind::Struct { is_packed, .. } => {
+                            CDeclKind::Struct { is_packed, .. } |
+                            CDeclKind::Union { is_packed, .. } => {
                                 let attrs = from_value::<Vec<Value>>(node.extras[0].clone())
                                     .expect("Expected attribute array on non-canonical record decl");
 
