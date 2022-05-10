@@ -1,0 +1,40 @@
+From 6176e0a28d7c5ef3a5e9cbd02521999c412de72c Mon Sep 17 00:00:00 2001
+From: Alfie Fresta <alfie.fresta@gmail.com>
+Date: Sat, 2 Oct 2021 18:10:09 +0100
+Subject: [PATCH] Makefile: Use file name instead of file descriptor for
+ .config target
+
+---
+ Makefile           | 2 +-
+ Makefile.configure | 4 ++--
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 948e3faf..6492ea16 100644
+--- a/Makefile
++++ b/Makefile
+@@ -134,7 +134,7 @@ silentcheck: | $(BINLIBRARY)
+ 	TESTARGS=-silent $(MAKE) -f $(MAKEFILE) -s check
+ configure: .config
+ .config: Makefile.configure
+-	$(MAKE) -f $(SRCDIR)Makefile.configure OUT='>&9' configure 9> $@
++	$(MAKE) -f $(SRCDIR)Makefile.configure OUT='$@' configure
+ 
+ lib/libtinycbor-freestanding.a: $(TINYCBOR_FREESTANDING_SOURCES:.c=.o)
+ 	@$(MKDIR) -p lib
+diff --git a/Makefile.configure b/Makefile.configure
+index c2f51eea..16bab6bb 100644
+--- a/Makefile.configure
++++ b/Makefile.configure
+@@ -27,9 +27,9 @@ sink:
+ configure: $(foreach it,$(ALLTESTS),check-$(it))
+ 
+ check-%:
+-	@echo $(subst check-,,$@)-tested := 1 $(OUT)
++	@echo $(subst check-,,$@)-tested := 1 >>$(OUT)
+ 	$(if $(V),,@)if printf "$($(subst check-,PROGRAM-,$@))" | \
+ 	    $(CC) -xc $($(subst check-,CCFLAGS-,$@)) -o /dev/null - $(if $(V),,>/dev/null 2>&1); \
+ 	then \
+-	    echo $(subst check-,,$@)-pass := 1 $(OUT); \
++	    echo $(subst check-,,$@)-pass := 1 >>$(OUT); \
+ 	fi
