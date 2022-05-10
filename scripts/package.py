@@ -24,7 +24,7 @@ python3 = get_cmd_or_die('python3')
 
 # These crates should be sorted in reverse dependency order.
 CRATES = [
-    c.MACROS_CRATE_DIR,
+    # c.MACROS_CRATE_DIR,
 
     # Not packaging cross-checking crates for now.
     # c.XCHECK_CONFIG_CRATE_DIR,
@@ -38,7 +38,7 @@ CRATES = [
     c.AST_EXPORTER_CRATE_DIR,
     # c.BITFIELDS_CRATE_DIR,
     c.TRANSPILE_CRATE_DIR,
-    c.REFACTOR_CRATE_DIR,
+    # c.REFACTOR_CRATE_DIR,
     c.C2RUST_DIR,
 ]
 
