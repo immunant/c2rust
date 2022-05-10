@@ -1,6 +1,6 @@
 [package]
 name = "c2rust-ast-printer"
-version = "0.15.0"
+version = "0.16.0"
 authors = ["The Rust Project Developers", "Stephen Crane <sjc@immunant.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"

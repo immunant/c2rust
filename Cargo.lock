@@ -131,7 +131,7 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
 name = "c2rust"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "c2rust-transpile",
  "chrono",
@@ -150,7 +150,7 @@ version = "0.2.0"
 
 [[package]]
 name = "c2rust-ast-builder"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "proc-macro2",
  "syn",
@@ -158,7 +158,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-ast-exporter"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "bindgen",
  "clang-sys",
@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-ast-printer"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "log",
  "prettyplease",
@@ -199,7 +199,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-macros"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -208,7 +208,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-transpile"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "c2rust-ast-builder",
  "c2rust-ast-exporter",
