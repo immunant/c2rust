@@ -50,7 +50,7 @@ jobs:
           ~/.cargo/git
           target
           ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'c2rust-ast-exporter/**/CMakeLists.txt', 'examples/**/CMakeLists.txt') }}
         restore-keys: |
           ${{ runner.os }}-cargo-
 
