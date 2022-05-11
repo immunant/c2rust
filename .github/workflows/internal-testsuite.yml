@@ -50,9 +50,7 @@ jobs:
           ~/.cargo/git
           target
           ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
-        key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'c2rust-ast-exporter/**/CMakeLists.txt', 'examples/**/CMakeLists.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
+        key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/c2rust-ast-exporter/**/CMakeLists.txt', '**/examples/**/CMakeLists.txt') }}
 
     - name: Cache Python - pip
       uses: actions/cache@v2
