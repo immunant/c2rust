@@ -12,4 +12,4 @@ description = "Rust AST builder support crate for the C2Rust project"
 
 [dependencies]
 proc-macro2 = { version = "1.0", features = ["span-locations"]}
-syn = { version = "1.0", features = ["full", "proc-macro", "printing"] }
+syn = { version = "1.0", features = ["full", "extra-traits", "printing"]}
