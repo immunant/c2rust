@@ -465,10 +465,15 @@ fn asm_is_att_syntax(asm: &str) -> bool {
         true
     } else if asm.contains("word ptr") {
         false
-    } else {
+    } else if asm.contains('$') || asm.contains('%') || asm.contains('(') {
         // Guess based on sigils used in AT&T assembly:
         // $ for constants, % for registers, and ( for address calculations
-        asm.contains('$') || asm.contains('%') || asm.contains('(')
+        true
+    } else if asm.contains('[') {
+        false
+    } else {
+        // default to true, because AT&T is the default for gcc inline asm
+        true
     }
 }
 

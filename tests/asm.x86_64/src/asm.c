@@ -55,6 +55,19 @@ int mul2_2(int var64)
     return out;
 }
 
+int six(void) {
+    int out = 0;
+    int zero = 0;
+    int six = 6;
+
+    // tests AT&T syntax default without extra context
+    asm("add %1, %0\n\t"
+        : "=r"(out)
+        : "r"(six), "0"(zero));
+
+    return out;
+}
+
 void entry(const unsigned int buffer_size, int buffer[const])
 {
     int i = 0;
@@ -64,4 +77,5 @@ void entry(const unsigned int buffer_size, int buffer[const])
     buffer[i++] = mul5_3(10290);
     buffer[i++] = mul2(6);
     buffer[i++] = mul2_2(6);
+    buffer[i++] = six();
 }
