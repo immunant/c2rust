@@ -2,6 +2,7 @@
 //! This module provides basic support for converting inline assembly statements.
 
 use super::*;
+use c2rust_ast_exporter::get_clang_major_version;
 use proc_macro2::{TokenStream, TokenTree};
 use syn::__private::ToTokens;
 
@@ -477,6 +478,19 @@ fn asm_is_att_syntax(asm: &str) -> bool {
     }
 }
 
+fn check_intel_syntax_support() {
+    match get_clang_major_version() {
+        Some(v) if v < 14 => {
+            warn!(
+                "detected clang version ({:?} < 14) does not meet requirements \
+                 for clang inline assembly support for Intel syntax ",
+                v
+            )
+        }
+        _ => (),
+    };
+}
+
 /// If applicable, maps the index of an input operand to the
 /// output operand it is tied to.
 ///
@@ -789,13 +803,17 @@ impl<'c> Translation<'c> {
         }
 
         // Determine whether the assembly is in AT&T syntax
-        let att_syntax = match arch {
+        let is_att_syntax = match arch {
             Arch::X86OrX86_64 => asm_is_att_syntax(&*rewritten_asm),
             _ => false,
         };
 
+        if !is_att_syntax {
+            check_intel_syntax_support();
+        }
+
         // Add workaround for reserved registers (e.g. rbx on x86_64)
-        let (prolog, epilog) = rewrite_reserved_reg_operands(att_syntax, arch, &mut args);
+        let (prolog, epilog) = rewrite_reserved_reg_operands(is_att_syntax, arch, &mut args);
         let rewritten_asm = prolog + &rewritten_asm + &epilog;
 
         // Emit assembly template
@@ -989,7 +1007,7 @@ impl<'c> Translation<'c> {
                 // We never emit [pure, nomem] right now, but it would be nice
             }
 
-            if att_syntax {
+            if is_att_syntax {
                 options.push(mk().ident_expr("att_syntax"));
             }
 
