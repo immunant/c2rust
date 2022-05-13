@@ -271,6 +271,9 @@ fn translate_machine_constraint(constraint: &str, arch: Arch) -> Option<(&str, b
         },
         Arch::Riscv => match constraint {
             "f" => "freg",
+            /* Rust inline assembly has no constraint for that, but uses the argument as an
+            * immediate value anyway */
+            "i" => "reg",
             _ => return None,
         },
     };
