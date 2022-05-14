@@ -4080,7 +4080,7 @@ impl<'c> Translation<'c> {
 
                 let mut stmts = match self.ast_context[result_id].kind {
                     CStmtKind::Expr(expr_id) => {
-                        let ret = cfg::ImplicitReturnType::StmtExpr(ctx, expr_id, lbl);
+                        let ret = cfg::ImplicitReturnType::StmtExpr(ctx, expr_id, lbl.clone());
                         self.convert_function_body(ctx, &name, &substmt_ids[0..(n - 1)], ret)?
                     }
 
