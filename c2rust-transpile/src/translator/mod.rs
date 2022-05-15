@@ -2448,7 +2448,7 @@ impl<'c> Translation<'c> {
             }
 
             let current_block_ty = if self.tcfg.debug_relooper_labels {
-                mk().ref_lt_ty("'static", mk().path_ty(vec!["str"]))
+                mk().ref_lt_ty("static", mk().path_ty(vec!["str"]))
             } else {
                 mk().path_ty(vec!["u64"])
             };
