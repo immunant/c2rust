@@ -388,7 +388,7 @@ fn get_extra_args_macos() -> Vec<String> {
     args
 }
 
-fn invoke_refactor(build_dir: &PathBuf) -> Result<(), Error> {
+fn invoke_refactor(_build_dir: &PathBuf) -> Result<(), Error> {
     return Ok(());
 }
 

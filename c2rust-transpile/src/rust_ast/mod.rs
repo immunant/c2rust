@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 static SPAN_LIMIT: AtomicU32 = AtomicU32::new(0);
 
-fn raise_span_limit(new_limit: u32) {
+fn raise_span_limit(_new_limit: u32) {
     let limit = SPAN_LIMIT.load(Ordering::Relaxed);
     let new_limit = 0x2000000;
     if new_limit >= limit {

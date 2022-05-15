@@ -18,10 +18,9 @@ use syn::{BinOp, UnOp}; // To override c_ast::{BinOp,UnOp} from glob import
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
-use crate::rust_ast::traverse::Traversal;
 use crate::rust_ast::{pos_to_span, SpanExt, DUMMY_SP};
 use c2rust_ast_builder::{mk, properties::*, Builder};
-use c2rust_ast_printer::pprust::{self, Comments};
+use c2rust_ast_printer::pprust::{self};
 
 use crate::c_ast;
 use crate::c_ast::iterators::{DFExpr, SomeId};
@@ -829,9 +828,8 @@ pub fn translate(
         let (items, foreign_items, uses) = t.items.borrow_mut()[&t.main_file].drain();
 
         // Re-order comments
-        // FIXME: We shouldn't have to replace with an empty comment store here,
-        // that's bad design
-        let mut traverser = t
+        // FIXME: We shouldn't have to replace with an empty comment store here, that's bad design
+        let traverser = t
             .comment_store
             .replace(CommentStore::new())
             .into_comment_traverser();
@@ -864,7 +862,8 @@ pub fn translate(
         // SourceMap will think that all Spans are invalid, but will return line
         // 0 for all of them.
 
-        let comments = Comments::new(reordered_comment_store.into_comments());
+        // FIXME: Use or delete this code
+        // let comments = Comments::new(reordered_comment_store.into_comments());
 
         // pass all converted items to the Rust pretty printer
         let translation = pprust::to_string(|| {
@@ -1595,7 +1594,7 @@ impl<'c> Translation<'c> {
                 platform_byte_size,
                 ..
             } => {
-                let mut name = self
+                let name = self
                     .type_converter
                     .borrow()
                     .resolve_decl_name(decl_id)
@@ -4492,7 +4491,7 @@ impl<'c> Translation<'c> {
         // Extract the IDs of the `EnumConstant` decls underlying the enum.
         let variants = match self.ast_context.index(enum_decl).kind {
             CDeclKind::Enum { ref variants, .. } => variants,
-            _ => panic!("{:?} does not point to an `enum` declaration"),
+            _ => panic!("{:?} does not point to an `enum` declaration", enum_decl),
         };
 
         match self.ast_context.index(expr).kind {
@@ -4502,10 +4501,7 @@ impl<'c> Translation<'c> {
             CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) => {
                 return val.map(|x| match **unparen(&x) {
                     Expr::Cast(ExprCast { ref expr, .. }) => expr.clone(),
-                    _ => panic!(format!(
-                        "DeclRef {:?} of enum {:?} is not cast",
-                        expr, enum_decl
-                    )),
+                    _ => panic!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl),
                 })
             }
 

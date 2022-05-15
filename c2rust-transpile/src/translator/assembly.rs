@@ -376,7 +376,7 @@ fn rewrite_reserved_reg_operands(
     for (idx, reg, mods) in rewrite_idxs {
         let operand = &mut operands[idx];
         let name = format!("restmp{}", n_moved);
-        if let Some((_idx, in_expr)) = operand.in_expr {
+        if let Some((_idx, _in_expr)) = operand.in_expr {
             let move_input = if att_syntax {
                 format!("mov %{}, {{{}:{}}}\n", reg, name, mods)
             } else {
@@ -384,7 +384,7 @@ fn rewrite_reserved_reg_operands(
             };
             prolog.push_str(&move_input);
         }
-        if let Some((_idx, out_expr)) = operand.out_expr {
+        if let Some((_idx, _out_expr)) = operand.out_expr {
             let move_output = if att_syntax {
                 format!("\nmov {{{}:{}}}, %{}", name, mods, reg)
             } else {
@@ -555,7 +555,7 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
             if let Some(end_idx) = chunk.find('}') {
                 let ref_str = &chunk[..end_idx];
                 if let Some(colon_idx) = ref_str.find(':') {
-                    let (before_mods, modifiers) = ref_str.split_at(colon_idx + 1);
+                    let (before_mods, _modifiers) = ref_str.split_at(colon_idx + 1);
                     out.push_str("{");
                     let idx: usize = before_mods
                         .trim_matches(|c: char| !c.is_ascii_digit())
@@ -720,7 +720,7 @@ impl<'c> Translation<'c> {
         let mut inputs_by_register = HashMap::new();
         let mut other_inputs = Vec::new();
         for (i, input) in inputs.iter().enumerate() {
-            let (_dir_spec, mem_only, parsed) = parse_constraints(&input.constraints, arch)?;
+            let (_dir_spec, _mem_only, parsed) = parse_constraints(&input.constraints, arch)?;
             // Only pair operands with an explicit register or index
             if is_regname_or_int(&*parsed) {
                 inputs_by_register.insert(parsed, (i, input.clone()));
@@ -820,7 +820,7 @@ impl<'c> Translation<'c> {
                     out_expr = mk().mutbl().addr_of_expr(out_expr);
                 }
 
-                if let Some(tied_operand) = tied_operands.get(&(output_idx, true)) {
+                if let Some(_tied_operand) = tied_operands.get(&(output_idx, true)) {
                     // If we have an input operand tied to an output operand,
                     // we need to replicate clang's behavior: the inline assembly
                     // uses the larger type internally, and the smaller value gets

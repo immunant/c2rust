@@ -1894,7 +1894,8 @@ impl ConversionContext {
                         .expect("Expected attribute array on var decl");
 
                     assert!(has_static_duration || has_thread_duration || !is_externally_visible,
-                            format!("Variable cannot be extern without also being static or thread-local: {}", ident));
+                            "Variable cannot be extern without also being static or thread-local: {}",
+                            ident);
 
                     let initializer = node
                         .children
@@ -1957,7 +1958,7 @@ impl ConversionContext {
                         None
                     };
 
-                    let mut is_packed = has_packed_attribute(attrs);
+                    let is_packed = has_packed_attribute(attrs);
 
                     let record = CDeclKind::Struct {
                         name,
@@ -1995,7 +1996,7 @@ impl ConversionContext {
                         None
                     };
 
-                    let mut is_packed = has_packed_attribute(attrs);
+                    let is_packed = has_packed_attribute(attrs);
 
                     let record = CDeclKind::Union {
                         name,

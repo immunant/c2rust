@@ -28,7 +28,7 @@ impl<'c> Translation<'c> {
     pub fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> Box<Expr> {
         let def_id = match self.ast_context.resolve_type(enum_type_id).kind {
             CTypeKind::Enum(def_id) => def_id,
-            _ => panic!("{:?} does not point to an `enum` type"),
+            _ => panic!("{:?} does not point to an `enum` type", enum_type_id),
         };
 
         let (variants, underlying_type_id) = match self.ast_context[def_id].kind {
@@ -37,7 +37,7 @@ impl<'c> Translation<'c> {
                 integral_type,
                 ..
             } => (variants, integral_type),
-            _ => panic!("{:?} does not point to an `enum` declaration"),
+            _ => panic!("{:?} does not point to an `enum` declaration", def_id),
         };
 
         for &variant_id in variants {
@@ -104,7 +104,6 @@ impl<'c> Translation<'c> {
             }
 
             CLiteral::Floating(val, ref c_str) => {
-                let mut bytes: Vec<u8> = vec![];
                 let str = if c_str.is_empty() {
                     let mut buffer = dtoa::Buffer::new();
                     buffer.format(val).to_string()
