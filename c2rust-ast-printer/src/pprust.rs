@@ -55,8 +55,8 @@ impl Comments {
 
     pub fn trailing_comment(
         &mut self,
-        span: proc_macro2::Span,
-        next_pos: Option<usize>,
+        _span: proc_macro2::Span,
+        _next_pos: Option<usize>,
     ) -> Option<String> {
         /*if let Some(cmnt) = self.next() {
             if cmnt.style != comments::Trailing { return None; }
