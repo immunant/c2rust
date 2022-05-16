@@ -4076,7 +4076,7 @@ impl<'c> Translation<'c> {
                 let result_id = substmt_ids[n - 1];
 
                 let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
-                let lbl = cfg::Label::FromC(compound_stmt_id);
+                let lbl = cfg::Label::FromC(compound_stmt_id, None);
 
                 let mut stmts = match self.ast_context[result_id].kind {
                     CStmtKind::Expr(expr_id) => {

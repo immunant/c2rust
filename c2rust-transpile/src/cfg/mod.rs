@@ -58,7 +58,7 @@ use crate::cfg::multiples::*;
 pub enum Label {
     /// Some labels come directly from the C side (namely those created from labels, cases, and
     /// defaults). For those, we just re-use the `CLabelId` of the C AST node.
-    FromC(CLabelId),
+    FromC(CLabelId, Option<Rc<str>>),
 
     /// Most labels are synthetically created while unwrapping control-flow constructs (like loops)
     /// into basic blocks.
@@ -68,8 +68,9 @@ pub enum Label {
 impl Label {
     pub fn pretty_print(&self) -> String {
         match self {
-            &Label::FromC(CStmtId(label_id)) => format!("c_{}", label_id),
-            &Label::Synthetic(syn_id) => format!("s_{}", syn_id),
+            Label::FromC(_, Some(s)) => format!("_{}", s.as_ref()),
+            Label::FromC(CStmtId(label_id), None) => format!("c_{}", label_id),
+            Label::Synthetic(syn_id) => format!("s_{}", syn_id),
         }
     }
 
@@ -649,6 +650,7 @@ impl Cfg<Label, StmtOrDecl> {
 }
 
 use std::fmt::Debug;
+use std::rc::Rc;
 
 /// The polymorphism here is only to make it clear exactly how little these functions need to know
 /// about the actual contents of the CFG - we only actual call these on one monomorphic CFG type.
@@ -1661,7 +1663,11 @@ impl CfgBuilder {
                 }
 
                 CStmtKind::Label(sub_stmt) => {
-                    let this_label = Label::FromC(stmt_id);
+                    let label_name = translator.ast_context.label_names
+                        .get(&stmt_id)
+                        .cloned()
+                        .expect("missing name for a label defined in C source");
+                    let this_label = Label::FromC(stmt_id, Some(label_name));
                     self.add_wip_block(wip, Jump(this_label.clone()));
                     self.last_per_stmt_mut().c_labels_defined.insert(stmt_id);
 
@@ -1681,7 +1687,11 @@ impl CfgBuilder {
                 }
 
                 CStmtKind::Goto(label_id) => {
-                    let tgt_label = Label::FromC(label_id);
+                    let label_name = translator.ast_context.label_names
+                        .get(&label_id)
+                        .cloned()
+                        .expect("missing label name for a Goto label");
+                    let tgt_label = Label::FromC(label_id, Some(label_name));
                     self.add_wip_block(wip, Jump(tgt_label));
                     self.last_per_stmt_mut()
                         .c_labels_used
@@ -1779,7 +1789,7 @@ impl CfgBuilder {
 
                 CStmtKind::Case(case_expr, sub_stmt, cie) => {
                     self.last_per_stmt_mut().saw_unmatched_case = true;
-                    let this_label = Label::FromC(stmt_id);
+                    let this_label = Label::FromC(stmt_id, None);
                     self.add_wip_block(wip, Jump(this_label.clone()));
 
                     // Case
@@ -1820,7 +1830,7 @@ impl CfgBuilder {
 
                 CStmtKind::Default(sub_stmt) => {
                     self.last_per_stmt_mut().saw_unmatched_default = true;
-                    let this_label = Label::FromC(stmt_id);
+                    let this_label = Label::FromC(stmt_id, None);
                     self.add_wip_block(wip, Jump(this_label.clone()));
 
                     // Default case
