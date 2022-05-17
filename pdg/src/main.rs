@@ -14,6 +14,22 @@ extern crate rustc_target;
 mod graph;
 mod builder;
 
+use builder::read_event_log;
+use std::env;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref EVENT_TRACE_FILE_PATH: String = {
+        env::args()
+            .skip(1)
+            .next()
+            .expect("Expected event trace file path as the first argument")
+    };
+}
+
 fn main() {
-    println!("Hello");
+    let events = read_event_log(EVENT_TRACE_FILE_PATH.to_string());
+    for event in events {
+        println!("{:?}", event.kind);
+    }
 }
