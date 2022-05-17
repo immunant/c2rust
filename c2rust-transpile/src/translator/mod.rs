@@ -4589,7 +4589,7 @@ impl<'c> Translation<'c> {
                 .implicit_default_expr(inner, is_static)?
                 .map(|val| vec_expr(val, count)))
         } else if let &CTypeKind::Vector(CQualTypeId { ctype, .. }, len) = resolved_ty {
-            self.implicit_vector_default(ctype, len, is_static)
+            self.implicit_vector_default(ctype, len, is_static).map_err(Into::into)
         } else {
             Err(format_err!("Unsupported default initializer: {:?}", resolved_ty).into())
         }

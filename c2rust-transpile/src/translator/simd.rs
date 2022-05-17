@@ -1,13 +1,15 @@
 #![deny(missing_docs)]
 //! This module provides translation for SIMD operations and expressions.
 
-use super::*;
+use failure::bail;
 
 use crate::c_ast::BinOp::{Add, BitAnd, ShiftRight};
+use crate::c_ast::CastKind::{BitCast, IntegralCast};
 use crate::c_ast::CExprKind::{Binary, Call, Conditional, ExplicitCast, ImplicitCast, Literal};
 use crate::c_ast::CLiteral::Integer;
 use crate::c_ast::CTypeKind::{Char, Double, Float, Int, LongLong, Short};
-use crate::c_ast::CastKind::{BitCast, IntegralCast};
+
+use super::*;
 
 /// As of rustc 1.29, rust is known to be missing some SIMD functions.
 /// See https://github.com/rust-lang-nursery/stdsimd/issues/579
@@ -282,7 +284,7 @@ impl<'c> Translation<'c> {
         ctype: CTypeId,
         len: usize,
         is_static: bool,
-    ) -> Result<WithStmts<Box<Expr>>, TranslationError> {
+    ) -> Result<WithStmts<Box<Expr>>, failure::Error> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
         let (fn_name, bytes) = match (&self.ast_context[ctype].kind, len) {
@@ -292,17 +294,10 @@ impl<'c> Translation<'c> {
             (Double, 4) => ("_mm256_setzero_pd", 32),
             (Char, 16) | (Int, 4) | (LongLong, 2) => ("_mm_setzero_si128", 16),
             (Char, 32) | (Int, 8) | (LongLong, 4) => ("_mm256_setzero_si256", 32),
-            (Char, 8) | (Int, 2) | (LongLong, 1) => {
-                // __m64 is still unstable as of rust 1.29
-                self.use_feature("stdsimd");
-
-                ("_mm_setzero_si64", 8)
-            }
-            (kind, len) => Err(format_err!(
-                "Unsupported vector default initializer: {:?} x {}",
-                kind,
-                len
-            ))?,
+            (Char, 8) | (Int, 2) | (LongLong, 1) =>
+                bail!("__m64 and MMX are no longer supported, due to removed upstream support. See https://github.com/immunant/c2rust/issues/369"),
+            (kind, len) =>
+                bail!("Unsupported vector default initializer: {:?} x {}", kind, len),
         };
 
         if is_static {
