@@ -1,6 +1,8 @@
+#![feature(min_specialization)]
 #![feature(rustc_private)]
 extern crate rustc_ast;
 extern crate rustc_const_eval;
+extern crate rustc_serialize;
 extern crate rustc_driver;
 extern crate rustc_index;
 extern crate rustc_interface;
@@ -11,12 +13,14 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
-mod graph;
 mod builder;
+mod graph;
 
-use builder::read_event_log;
-use std::env;
+use builder::{read_event_log, read_metadata};
+use c2rust_analysis_rt::mir_loc;
+use c2rust_analysis_rt::Metadata;
 use lazy_static::lazy_static;
+use std::env;
 
 lazy_static! {
     static ref EVENT_TRACE_FILE_PATH: String = {
@@ -28,8 +32,15 @@ lazy_static! {
 }
 
 fn main() {
+    c2rust_analysis_rt::initialize();
+
     let events = read_event_log(EVENT_TRACE_FILE_PATH.to_string());
+
     for event in events {
-        println!("{:?}", event.kind);
+        let loc = event.mir_loc;
+        let mir_loc = mir_loc::get(loc).unwrap();
+        println!("{:?} -> {:?}", mir_loc, event.kind);
     }
+
+    c2rust_analysis_rt::finalize();
 }

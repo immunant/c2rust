@@ -1,37 +1,26 @@
-use indexed_vec::{Idx, IndexVec};
+use rustc_index::newtype_index;
+use rustc_index::vec::{IndexVec};
 use rustc_middle::mir::{BasicBlock, Field, Local};
 use rustc_span::def_id::DefId;
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct GraphId(usize);
-
-impl Idx for GraphId {
-    fn new(v: usize) -> Self {
-        GraphId(v)
-    }
-
-    fn index(self) -> usize {
-        self.0
-    }
-}
+// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+newtype_index!(
+    pub struct GraphId { DEBUG_FORMAT = "GraphId({})" }
+);
 
 // Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct NodeId(usize);
-
-impl Idx for NodeId {
-    fn new(v: usize) -> Self {
-        NodeId(v)
-    }
-
-    fn index(self) -> usize {
-        self.0
-    }
-}
+newtype_index!(
+    pub struct NodeId { DEBUG_FORMAT = "NodeId({})" }
+);
 
 // Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-pub const ROOT_NODE: NodeId = NodeId(0);
+// #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+// pub struct NodeId(usize);
+
+
+// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+pub const ROOT_NODE: NodeId = NodeId::from_u32(0);
 
 /// A pointer derivation graph, which tracks the handling of one object throughout its lifetime.
 pub struct Graph {
