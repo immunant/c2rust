@@ -173,12 +173,8 @@ impl<'c> Translation<'c> {
                 ))?;
             }
 
-            // The majority of x86/64 SIMD is stable, however there are still some
-            // bits that are behind a feature gate.
-            self.use_feature("stdsimd");
-
             self.with_cur_file_item_store(|item_store| {
-                let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" }.to_string();
+                let std_or_core = if self.tcfg.emit_no_std { "core" } else { "std" };
 
                 // REVIEW: Also a linear lookup
                 if !SIMD_X86_64_ONLY.contains(&name) {
@@ -193,7 +189,7 @@ impl<'c> Translation<'c> {
                         .pub_();
 
                     item_store.add_use_with_attr(
-                        vec![std_or_core.clone(), "arch".into(), "x86".into()],
+                        vec![std_or_core.to_owned(), "arch".into(), "x86".into()],
                         name,
                         x86_attr,
                     );
@@ -212,7 +208,7 @@ impl<'c> Translation<'c> {
                     .pub_();
 
                 item_store.add_use_with_attr(
-                    vec![std_or_core, "arch".into(), "x86_64".into()],
+                    vec![std_or_core.to_owned(), "arch".into(), "x86_64".into()],
                     name,
                     x86_64_attr,
                 );
