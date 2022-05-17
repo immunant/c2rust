@@ -11,22 +11,20 @@ use crate::c_ast::CTypeKind::{Char, Double, Float, Int, LongLong, Short};
 
 use super::*;
 
-/// As of rustc 1.29, rust is known to be missing some SIMD functions.
+/// As of rustc 1.58, rust is known to be missing some SIMD functions.
 /// See https://github.com/rust-lang-nursery/stdsimd/issues/579
-static MISSING_SIMD_FUNCTIONS: [&str; 36] = [
+static MISSING_SIMD_FUNCTIONS: &[&str] = &[
     "_mm_and_si64",
     "_mm_andnot_si64",
     "_mm_cmpeq_pi16",
     "_mm_cmpeq_pi32",
     "_mm_cmpeq_pi8",
     "_mm_cvtm64_si64",
-    "_mm_cvtph_ps",
     "_mm_cvtsi32_si64",
     "_mm_cvtsi64_m64",
     "_mm_cvtsi64_si32",
     "_mm_empty",
     "_mm_free",
-    "_mm_loadu_si64",
     "_mm_madd_pi16",
     "_mm_malloc",
     "_mm_mulhi_pi16",
